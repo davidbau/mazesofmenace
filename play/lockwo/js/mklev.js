@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
@@ -388,6 +388,20 @@ async function makelevel() {
         // "branch" levregion.  A 1-cell region so place_lregion's rn1 loop draws
         // exactly rn2(1) for x and rn2(1) for y (mkmaze.c:396/397).
         quest_place_branch();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Archeologist quest "home"
+    // (start) level, a moated keep.  Same finalize as Bar-strt: place the 1-cell
+    // "branch" levregion (place_lregion rn2(1)/rn2(1)); then makelevel() runs
+    // mineralize(-1,-1,-1,-1,FALSE), whose kelp loop draws rn2(30) per MOAT cell
+    // (gold/gem seeding is suppressed on this special level), matching the trace.
+    if (slev && slev.proto === 'Arc-strt') {
+        await makemaz_arc_strt();
+        quest_place_branch();
+        // C ref: mineralize() (moat kelp) is NOT called here — the JS engine
+        // defers the fill phase (fill_special_room loop + mineralize) into
+        // fastforward_fill_mineralize(), which runs at C's level_finalize_topology
+        // point (kelp rn2(30) per MOAT cell just before the hero arrival spot).
         return;
     }
 

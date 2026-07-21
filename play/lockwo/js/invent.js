@@ -967,7 +967,10 @@ export function body_part(part) {
     return (part >= 0 && part < HUMANOID_PARTS.length) ? HUMANOID_PARTS[part] : 'body part';
 }
 function fingers_or_gloves(_the) { return game.uarmg ? 'gloves' : 'fingers'; }
-function empty_handed() { return 'empty handed'; }
+// C ref: wield.c empty_handed() — gloves imply hands so "empty handed"; a
+// gloveless humanoid is "bare handed"; a paws/handless polyform (never reached
+// here) is "not wielding anything".  The starter heroes are always humanoid.
+function empty_handed() { return game.uarmg ? 'empty handed' : 'bare handed'; }
 function is_gloves(obj) { return obj?.otyp === 159 || obj?.otyp === 160; }
 function pair_of(obj) { return is_gloves(obj) || /boots|gloves/.test(objects[obj?.otyp]?.name || ''); }
 function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
@@ -1760,27 +1763,17 @@ export async function attr_window_advance() {
     return true;
 }
 
-// Draw a topline message over the live map+status and hold it on the grid
-// until the next key dismisses it.  moveloop_core() clears _pending_message
-// right after a command and then re-renders twice (allmain.js line 304 +
-// cmd.js rhack line 40) before the capturing nhgetch, so the one-shot
-// _freeze_screen_once is not enough — set _modal_screen, which makes
-// flush_screen() skip both re-renders (same mechanism the inventory uses).
-function renderToplineModal(msg) {
-    game._pending_message = msg;
-    return flush_screen(1).then(() => {
-        game._modal_screen = 'topl';
-    });
-}
-
 export async function dovspell() {
     // C ref: spell.c dovspell() — view the known-spell list (the '+' command).
     const display = game.nhDisplay;
     const spell = await import('./spell.js');
     const nspells = spell.num_spells();
     if (!nspells || !display?.setCell) {
-        // C ref: spell.c dovspell — no known spells, just the topline message.
-        await renderToplineModal('You don\'t know any spells right now.');
+        // C ref: spell.c dovspell() — with no known spells it just prints the
+        // topline message (an ordinary pline, NOT a blocking/modal window) and
+        // returns ECMD_OK; the following keypress is handled as a normal
+        // command (so a trailing <space> yields "Unknown command ' '.").
+        await pline('You don\'t know any spells right now.');
         return ECMD_OK;
     }
 
@@ -4012,6 +4005,11 @@ export async function pick_one_obj(obj) {
     // pickup_prinv(held, count, "lifting") with no encumbrance change => prinv
     // with a NULL prefix, i.e. the bare "<letter> - <name>." pickup line.
     prinv(null, held, quan);
+    // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a following
+    // same-turn message (e.g. a monster opening a door -> "You hear a door
+    // open.") accumulates onto the pickup line via update_topl() instead of
+    // replacing it (matches the wield/wear prinv paths).
+    game._toplin = 1;
     return held;
 }
 
@@ -4988,18 +4986,44 @@ export function mergable(otmp, obj) {
     return true;
 }
 
+// C ref: invent.c doprgold() — the '$' command.  Reports wallet gold
+// (money_cnt over invent incl. containers) + any hidden_gold(); flags.verbose
+// (the default / covered path) uses the "Your wallet ..." phrasing.  A plain
+// pline (not a blocking window), so the following key is a normal command.
 export async function doprgold() {
     const umoney = money_cnt(inventoryArray()) || game._goldCount || 0;
     const hmoney = hidden_gold(false);
-    const total = umoney + hmoney;
-    await renderMessageOnMap(total ? `You are carrying a total of ${total} ${currency(total)}.` : 'You have no money.');
+    if (game.flags?.verbose !== false) {
+        let buf = umoney ? `Your wallet contains ${umoney} ${currency(umoney)}`
+                         : 'Your wallet is empty';
+        if (hmoney)
+            buf += `, ${umoney ? 'and' : 'but'} you have ${hmoney} `
+                 + `${umoney ? 'more' : currency(hmoney)} stashed away in your pack`;
+        await pline(`${buf}.`);
+    } else {
+        const total = umoney + hmoney;
+        await pline(total ? `You are carrying a total of ${total} ${currency(total)}.`
+                          : 'You have no money.');
+    }
     shopper_financial_report();
     return ECMD_OK;
 }
 
-export function doprwep() {
-    if (!game.uwep) game._pending_message = `You are ${empty_handed()}.`;
-    else prinv(null, game.uwep, 0);
+// C ref: invent.c doprwep() — the ')' command (#seeweapon).  Bare hands ->
+// empty_handed(); otherwise show the wielded weapon (and offhand when
+// two-weaponing) via prinv (a one-item top-line message, tty's single-item
+// inventory-query form).
+export async function doprwep() {
+    if (!game.uwep) {
+        await pline(`You are ${empty_handed()}.`);
+    } else if (!game.iflags?.menu_requested) {
+        prinv(null, game.uwep, 0);
+        if (game.u?.twoweap && game.uswapwep) prinv(null, game.uswapwep, 0);
+    } else {
+        const lets = [game.uwep, game.u?.twoweap ? game.uswapwep : null, game.uquiver]
+            .filter(Boolean).map((o) => o.invlet).join('');
+        await dispinv_with_action(lets, true, null);
+    }
     return ECMD_OK;
 }
 
@@ -5009,9 +5033,47 @@ export function noarmor(report_uskin) {
         : 'You are not wearing any armor.';
 }
 
-export function doprarm() { if (!wearing_armor()) noarmor(true); else display_inventory(null, false); return ECMD_OK; }
-export function doprring() { if (!game.uleft && !game.uright) game._pending_message = 'You are not wearing any rings.'; else display_inventory(null, false); return ECMD_OK; }
-export function dopramulet() { if (!game.uamul) game._pending_message = 'You are not wearing an amulet.'; else display_inventory(String(obj_to_let(game.uamul)), false); return ECMD_OK; }
+// C ref: invent.c doprarm() — the '[' command (#seearmor).  No armor ->
+// noarmor(); a single worn piece renders as a one-item top-line message
+// ("<let> - <doname> (being worn)."); multiple pieces use the inventory menu.
+export async function doprarm() {
+    const worn = [game.uarm, game.uarmc, game.uarms, game.uarmh,
+                  game.uarmg, game.uarmf, game.uarmu].filter(Boolean);
+    if (!worn.length) {
+        noarmor(true);
+    } else if (worn.length === 1 && !game.iflags?.menu_requested) {
+        prinv(null, worn[0], 0);
+    } else {
+        await dispinv_with_action(worn.map((o) => o.invlet).join(''), true, null);
+    }
+    return ECMD_OK;
+}
+
+// C ref: invent.c doprring() — the '=' command (#seerings).
+export async function doprring() {
+    const worn = [game.uright, game.uleft].filter(Boolean);
+    if (!worn.length) {
+        game._pending_message = 'You are not wearing any rings.';
+    } else if (worn.length === 1 && !game.iflags?.menu_requested) {
+        prinv(null, worn[0], 0);
+    } else {
+        await dispinv_with_action(worn.map((o) => o.invlet).join(''), true,
+                                  worn.length === 1 ? 'Ring' : 'Rings');
+    }
+    return ECMD_OK;
+}
+
+// C ref: invent.c dopramulet() — the '"' command (#seeamulet).
+export async function dopramulet() {
+    if (!game.uamul) {
+        game._pending_message = 'You are not wearing an amulet.';
+    } else if (!game.iflags?.menu_requested) {
+        prinv(null, game.uamul, 0);
+    } else {
+        await dispinv_with_action(String(obj_to_let(game.uamul)), true, 'Amulet');
+    }
+    return ECMD_OK;
+}
 
 export function tool_being_used(obj) {
     if (obj?.owornmask & (W_TOOL | W_SADDLE)) return true;

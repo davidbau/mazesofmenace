@@ -26,6 +26,7 @@ import {
     monsterNames,
     pmnames,
     mresists,
+    mconveys,
     PM_GIANT_SPIDER,
     PM_LICHEN,
     PM_ACID_BLOB,
@@ -181,6 +182,7 @@ export function mons(mndx) {
         geno: genos[mndx],
         difficulty: difficulties[mndx],
         mresists: mresists[mndx],
+        mconveys: mconveys[mndx],
         mflags1: mflags1s[mndx],
         mflags2: mflags2s[mndx],
         mflags3: mflags3s[mndx],
@@ -805,6 +807,22 @@ export function regenerates(ptr) {
 /** C ref: mondata.h can_teleport — M1_TPORT */
 export function can_teleport(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_TPORT);
+}
+
+/** C ref: mondata.h control_teleport — M1_TPORT_CNTRL */
+export function control_teleport(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_TPORT_CNTRL);
+}
+
+/**
+ * C ref: mondata.h telepathic — floating eye / mind flayer / master.
+ */
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+export function telepathic(ptr) {
+    const mndx = ptr?.mndx;
+    return mndx === PM_FLOATING_EYE
+        || mndx === PM_MIND_FLAYER
+        || mndx === PM_MASTER_MIND_FLAYER;
 }
 
 /** C ref: mondata.h webmaker — cave/giant spider only (keep in sync with mons). */

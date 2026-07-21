@@ -10,27 +10,31 @@
 //         invent.c getobj; attrib.c poison_strdmg / gainstr;
 //         potion.c make_vomiting / make_glib;
 //         costly_tin → shk costly_alteration; use_tin_opener (D-0940).
-// Named omissions: floorfood pool-lava reach gate / cockatrice-feel;
-// cpostfx specials (wraith/were/nurse/
-// stalker/…); corpse_intrinsic / givit; hallu from AD_STUN/AD_HALU;
+// Named omissions: floorfood cockatrice-feel;
+// hallu AD_STUN covered D-0943; corpse_intrinsic/givit covered D-0944;
+// were*/mimic/attrcurse covered D-0945 (set_mimic_blocking /
+// retouch_equipment / display_nhwindow WIN_MAP polish / livelog /
+// eatmupdate hallu toggle);
 // tainted Sick; make_blinded body / Hear_again afternmv;
 // sellobj_state on invent-full dropy; costly_alteration COST_BITE;
 // ?/* menu; multi-turn choke/newuhs messages; gethungry ring/amulet
 // accessorytime + newuhs; losestr setuhpmax / terminal-frailty full
 // death path; vomit cantvomit/Sick/FAINTING/acid-breath;
 // Fixed_abil Popeye Olive/Bluto;
-// eatspecial PAPER/potion/ring/amulet/leash/trident/flint/uwepgone/
-// unpunish/vault_gd; still_chewing wall/door shop damage + watch_dig;
 // livelog conduct; cprefx revive_corpse after rider death; cprefx
 // polymon stone-golem failure polish.
+// D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
+// D-0956: Ring_gone / float_up / rescham / choke(strangle) /
+// set_mimic_blocking / perceives in eataccessory.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { flush_topl_more, pline, You_feel } from './display.js';
+import { flush_topl_more, pline, You_feel, newsym, see_monsters, more } from './display.js';
 import { yn_function } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
-    objectNames, objects,
+    SCROLL_CLASS, POTION_CLASS, RING_CLASS, AMULET_CLASS,
+    objectNames, objects, objectDescrs,
 } from './objects.js';
 import {
     weight, splitobj, objects_at, delobj, stackobj,
@@ -40,23 +44,28 @@ import {
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
+    an,
 } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
     vegan, vegetarian, nohands, verysmall,
-    is_rider, is_undead, olfaction,
+    is_rider, is_undead, olfaction, is_giant,
+    can_teleport, control_teleport, telepathic,
     flesh_petrifies, slimeproof, your_race, poly_when_stoned,
+    is_clinger, breathless, is_flyer,
     PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames, G_UNIQ,
+    MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
+    M1_SEE_INVIS,
 } from './monsters.js';
 import { same_race } from './mondata.js';
-import { were_beastie } from './were.js';
+import { were_beastie, set_ulycn } from './were.js';
 import { monflee } from './monmove.js';
-import { dist2 } from './mon.js';
+import { dist2, rescham } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FLOOR, OBJ_FREE, OBJ_INVENT,
     SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
-    W_ARMOR, W_TOOL, W_AMUL, W_SADDLE,
+    W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
     TIMEOUT, NON_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
@@ -64,26 +73,44 @@ import {
     IRONBARS, W_NONDIGGABLE, BEAR_TRAP, TT_BEARTRAP,
     STONING, DIED, SLIMED, FROMOUTSIDE, Upolyd, NEUTRAL,
     COST_DSTROY, COST_OPEN, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+    INTRINSIC, POLY_NOFLAGS, DISPLACED,
+    FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
+    ACID_RES, STONE_RES, TELEPAT, TELEPORT, TELEPORT_CONTROL, LAST_PROP,
+    SEE_INVIS, INVIS, PROT_FROM_SHAPE_CHANGERS, LEVITATION, SLEEPY,
+    M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
+    WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
+    CHOKING, A_LAWFUL, STRANGLED,
 } from './const.js';
 import {
-    adjattrib, gainstr, acurr, acurrstr, change_luck, exercise,
-    A_STR, A_DEX, A_CHA, A_WIS,
+    adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
+    A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
-import { nomul, losehp, still_chewing } from './hack.js';
-import { near_capacity, observe_object } from './invent.js';
+import { nomul, losehp, still_chewing, is_pool, is_lava } from './hack.js';
+import { near_capacity, observe_object, makeknown } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
+    make_stunned, make_hallucinated,
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
-import { dropy, dropx } from './do.js';
-import { type_is_pname, rndmonnam } from './do_name.js';
+import { dropy, dropx, make_blinded } from './do.js';
+import { type_is_pname, rndmonnam, pmname, Ugender } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
-import { t_at, deltrap, reset_utrap, b_trapped } from './trap.js';
+import { t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up } from './trap.js';
 import { done, delayed_killer } from './end.js';
-import { polymon } from './polyself.js';
+import { polymon, polyself, rehumanize, change_sex } from './polyself.js';
 import { costly_alteration, costly_spot } from './shk.js';
-import { wield_tool } from './wield.js';
+import {
+    wield_tool, uwepgone, uswapwepgone, uqwepgone,
+} from './wield.js';
+import { pluslvl } from './exper.js';
+import { toggle_displacement, setworn, Ring_gone } from './do_wear.js';
+import { attrcurse } from './sit.js';
+import { dismount_steed } from './steed.js';
+import { unpunish } from './read.js';
+import { vault_gd_watching } from './vault.js';
+import { set_mimic_blocking } from './vision.js';
+import { PM_KNIGHT } from './generated/monsters_data.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
 const INVLET_BASIC = 52;
@@ -93,6 +120,32 @@ const MEAT_RING = objectNames.indexOf('MEAT_RING');
 const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
 const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
 const BEARTRAP = objectNames.indexOf('BEARTRAP');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const ORANGE_OTYP = objectNames.indexOf('ORANGE');
+const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
+const LEASH = objectNames.indexOf('LEASH');
+const TRIDENT = objectNames.indexOf('TRIDENT');
+const FLINT = objectNames.indexOf('FLINT');
+const RIN_SEE_INVISIBLE = objectNames.indexOf('RIN_SEE_INVISIBLE');
+const RIN_INVISIBILITY = objectNames.indexOf('RIN_INVISIBILITY');
+const RIN_PROTECTION_FROM_SHAPE_CHAN =
+    objectNames.indexOf('RIN_PROTECTION_FROM_SHAPE_CHAN');
+const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
+const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
+const RIN_GAIN_STRENGTH = objectNames.indexOf('RIN_GAIN_STRENGTH');
+const RIN_GAIN_CONSTITUTION = objectNames.indexOf('RIN_GAIN_CONSTITUTION');
+const RIN_INCREASE_ACCURACY = objectNames.indexOf('RIN_INCREASE_ACCURACY');
+const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
+const RIN_FREE_ACTION = objectNames.indexOf('RIN_FREE_ACTION');
+const RIN_SUSTAIN_ABILITY = objectNames.indexOf('RIN_SUSTAIN_ABILITY');
+const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
+const AMULET_OF_CHANGE = objectNames.indexOf('AMULET_OF_CHANGE');
+const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
+const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
+const AMULET_OF_FLYING = objectNames.indexOf('AMULET_OF_FLYING');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 
 /**
  * C ref: gy.youmonst.data via set_uasmon / invent.c basic assign.
@@ -138,6 +191,8 @@ const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_NEWT = monsterNames.indexOf('PM_NEWT');
+const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_SCORPION = monsterNames.indexOf('PM_SCORPION');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
 const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
 const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
@@ -154,7 +209,35 @@ const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_CAVE_DWELLER = monsterNames.indexOf('PM_CAVE_DWELLER');
 const PM_ORC = monsterNames.indexOf('PM_ORC');
+const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
+const PM_HUMAN_WERERAT = monsterNames.indexOf('PM_HUMAN_WERERAT');
+const PM_HUMAN_WEREJACKAL = monsterNames.indexOf('PM_HUMAN_WEREJACKAL');
+const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
+const PM_WERERAT = monsterNames.indexOf('PM_WERERAT');
+const PM_WEREJACKAL = monsterNames.indexOf('PM_WEREJACKAL');
+const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
+const PM_NURSE = monsterNames.indexOf('PM_NURSE');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_YELLOW_LIGHT = monsterNames.indexOf('PM_YELLOW_LIGHT');
+const PM_GIANT_BAT = monsterNames.indexOf('PM_GIANT_BAT');
+const PM_BAT = monsterNames.indexOf('PM_BAT');
+const PM_GIANT_MIMIC = monsterNames.indexOf('PM_GIANT_MIMIC');
+const PM_LARGE_MIMIC = monsterNames.indexOf('PM_LARGE_MIMIC');
+const PM_SMALL_MIMIC = monsterNames.indexOf('PM_SMALL_MIMIC');
+const PM_QUANTUM_MECHANIC = monsterNames.indexOf('PM_QUANTUM_MECHANIC');
+const PM_CHAMELEON = monsterNames.indexOf('PM_CHAMELEON');
+const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
+const PM_SANDESTIN = monsterNames.indexOf('PM_SANDESTIN');
+const PM_GENETIC_ENGINEER = monsterNames.indexOf('PM_GENETIC_ENGINEER');
+const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
+const PM_DISENCHANTER = monsterNames.indexOf('PM_DISENCHANTER');
+const PM_MIND_FLAYER = monsterNames.indexOf('PM_MIND_FLAYER');
+const PM_MASTER_MIND_FLAYER = monsterNames.indexOf('PM_MASTER_MIND_FLAYER');
+const PM_VIOLET_FUNGUS = monsterNames.indexOf('PM_VIOLET_FUNGUS');
 const EGG = objectNames.indexOf('EGG');
+/* C monattk.h — stun / hallucination damage types for cpostfx hallu. */
+const AD_STUN = 12;
+const AD_HALU = 36;
 
 /** C: eat.c CANNIBAL_ALLOWED — Cave Dweller or orc race. */
 function CANNIBAL_ALLOWED() {
@@ -225,6 +308,27 @@ function attacktype(ptr, aatyp) {
         if (slots[i]?.aatyp === aatyp) return true;
     }
     return false;
+}
+
+/** C ref: mondata.h dmgtype — true if any mattk slot has adtyp. */
+function dmgtype(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.adtyp === adtyp) return true;
+    }
+    return false;
+}
+
+/** C timeout.h set_itimeout — replace TIMEOUT bits on a long prop. */
+function set_itimeout_prop(u, key, val) {
+    u[key] = ((u[key] | 0) & ~TIMEOUT) | ((val | 0) & TIMEOUT);
+}
+
+/** C timeout.h incr_itimeout — add to TIMEOUT bits. */
+function incr_itimeout_prop(u, key, incr) {
+    const cur = (u[key] | 0) & TIMEOUT;
+    u[key] = ((u[key] | 0) & ~TIMEOUT) | ((cur + (incr | 0)) & TIMEOUT);
 }
 
 /**
@@ -669,22 +773,74 @@ async function getobj_eat() {
 }
 
 /**
+ * C ref: dbridge.c is_pool_or_lava — drawbridge-under deferred.
+ * @param {number} x
+ * @param {number} y
+ */
+function is_pool_or_lava(x, y) {
+    return is_pool(x, y) || is_lava(x, y);
+}
+
+/** C ref: youprop.h Wwalking — (H||E) && !waterlevel. */
+function Wwalking() {
+    const u = game.u || {};
+    const prop = u.uprops?.[WWALKING];
+    const bits = (prop?.intrinsic | 0) || (prop?.extrinsic | 0)
+        || (u.HWwalking | 0) || (u.EWwalking | 0);
+    return !!(bits && !Is_waterlevel(u.uz));
+}
+
+/**
+ * C ref: youprop.h Flying — (H||E||steed-flyer) && !B.
+ * @returns {boolean}
+ */
+function Flying() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    const prop = u.uprops?.[FLYING];
+    const blocked = (u.BFlying | 0) || (prop?.blocked | 0);
+    if (u.usteed && is_flyer(u.usteed.data) && !blocked) return true;
+    return !!(((u.HFlying | 0) || (u.EFlying | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0))
+        && !blocked);
+}
+
+/** C ref: youprop.h Breathless — magical breathing || breathless(form). */
+function Breathless() {
+    const u = game.u || {};
+    const prop = u.uprops?.[MAGICAL_BREATHING];
+    if ((prop?.intrinsic | 0) || (prop?.extrinsic | 0)
+        || (u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)) {
+        return true;
+    }
+    return breathless(hero_form_data());
+}
+
+/**
  * C ref: eat.c floorfood("eat", 0) — yn floor edibles, else invent getobj.
- * Branch envelope: can_reach_floor / !usteed / !menu_requested skip to
- * invent; metallivore beartrap + IRONBARS + floor gold ynq; edible floor
+ * Branch envelope: can_reach_floor / !usteed / !menu_requested /
+ * pool-lava+(Wwalking|clinger|(Flying&&!Breathless)) skip to invent;
+ * metallivore beartrap + IRONBARS + floor gold ynq; edible floor
  * FOOD (non-coin) ynq; invent getobj_eat.
- * Named omissions: pool/lava reach gate; will_feel_cockatrice;
+ * Named omissions: will_feel_cockatrice;
  * safe_qbuf ansimpleoname fallback; getobj_else "else" wording;
  * sacrifice/tin corpsecheck arms.
  */
 async function floorfood_eat() {
     const u = game.u || {};
-    // C: iflags.menu_requested || !can_reach_floor || usteed → skipfloor
-    // pool/lava + Wwalking/clinger/Flying deferred (named omission)
-    if (!game.flags?.menu_requested && can_reach_floor(true) && !u.usteed) {
-        const ux = u.ux | 0;
-        const uy = u.uy | 0;
-        const form = hero_form_data();
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const form = hero_form_data();
+    // C: menu_requested || !can_reach_floor || usteed ||
+    //    (pool/lava && (Wwalking || clinger || (Flying && !Breathless)))
+    //    → skipfloor
+    const skip_floor = !!(game.flags?.menu_requested
+        || !can_reach_floor(true)
+        || u.usteed
+        || (is_pool_or_lava(ux, uy)
+            && (Wwalking() || is_clinger(form)
+                || (Flying() && !Breathless()))));
+    if (!skip_floor) {
         // C: feeding && metallivorous — beartrap, bars, then gold
         if (metallivorous(form)) {
             const ttmp = t_at(ux, uy);
@@ -1005,23 +1161,415 @@ async function eye_of_newt_buzz() {
 }
 
 /**
+ * C ref: eat.c intrinsic_possible — true iff corpse can convey `type`.
+ */
+function intrinsic_possible(type, ptr) {
+    if (!ptr) return 0;
+    const mc = ptr.mconveys | 0;
+    switch (type | 0) {
+    case FIRE_RES: return (mc & MR_FIRE) !== 0 ? 1 : 0;
+    case SLEEP_RES: return (mc & MR_SLEEP) !== 0 ? 1 : 0;
+    case COLD_RES: return (mc & MR_COLD) !== 0 ? 1 : 0;
+    case DISINT_RES: return (mc & MR_DISINT) !== 0 ? 1 : 0;
+    case SHOCK_RES: return (mc & MR_ELEC) !== 0 ? 1 : 0;
+    case POISON_RES: return (mc & MR_POISON) !== 0 ? 1 : 0;
+    case ACID_RES: return (mc & MR_ACID) !== 0 ? 1 : 0;
+    case STONE_RES: return (mc & MR_STONE) !== 0 ? 1 : 0;
+    case TELEPORT: return can_teleport(ptr) ? 1 : 0;
+    case TELEPORT_CONTROL: return control_teleport(ptr) ? 1 : 0;
+    case TELEPAT: return telepathic(ptr) ? 1 : 0;
+    default: return 0;
+    }
+}
+
+/**
+ * C ref: eat.c should_givit — permanent-intrinsic chance vs mlevel.
+ */
+function should_givit(type, ptr) {
+    let chance;
+    switch (type | 0) {
+    case POISON_RES:
+        if ((ptr?.mndx === PM_KILLER_BEE || ptr?.mndx === PM_SCORPION)
+            && !rn2(4)) {
+            chance = 1;
+        } else {
+            chance = 15;
+        }
+        break;
+    case TELEPORT:
+        chance = 10;
+        break;
+    case TELEPORT_CONTROL:
+        chance = 12;
+        break;
+    case TELEPAT:
+        chance = 1;
+        break;
+    default:
+        chance = 15;
+        break;
+    }
+    return (ptr?.mlevel | 0) > rn2(chance);
+}
+
+/**
+ * C ref: eat.c temp_givit — timed acid/stone resist chance.
+ */
+function temp_givit(type, ptr) {
+    const chance = (type | 0) === STONE_RES ? 6
+        : (type | 0) === ACID_RES ? 3 : 0;
+    return chance ? ((ptr?.mlevel | 0) > rn2(chance)) : false;
+}
+
+/**
+ * C ref: eat.c givit — grant permanent or timed intrinsic from corpse.
+ * Named omissions: debugpline only.
+ */
+async function givit(type, ptr) {
+    if (!should_givit(type, ptr) && !temp_givit(type, ptr)) return;
+
+    const u = game.u || (game.u = {});
+    const hallu = !!(u.Hallucination || ((u.HHallucination | 0) & TIMEOUT));
+
+    switch (type | 0) {
+    case FIRE_RES:
+        if (!((u.HFire_resistance | 0) & FROMOUTSIDE)) {
+            await pline(hallu ? 'You be chillin\'.' : 'You feel a momentary chill.');
+            u.HFire_resistance = (u.HFire_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case SLEEP_RES:
+        if (!((u.HSleep_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel('wide awake.');
+            u.HSleep_resistance = (u.HSleep_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case COLD_RES:
+        if (!((u.HCold_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel('full of hot air.');
+            u.HCold_resistance = (u.HCold_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case DISINT_RES:
+        if (!((u.HDisint_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel(hallu ? 'totally together, man.' : 'very firm.');
+            u.HDisint_resistance = (u.HDisint_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case SHOCK_RES:
+        if (!((u.HShock_resistance | 0) & FROMOUTSIDE)) {
+            if (hallu) await You_feel('grounded in reality.');
+            else await pline('Your health currently feels amplified!');
+            u.HShock_resistance = (u.HShock_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case POISON_RES:
+        if (!((u.HPoison_resistance | 0) & FROMOUTSIDE)) {
+            const had = !!(u.Poison_resistance || u.HPoison_resistance
+                || u.EPoison_resistance);
+            await You_feel(had ? 'especially healthy.' : 'healthy.');
+            u.HPoison_resistance = (u.HPoison_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPORT:
+        if (!((u.HTeleportation | 0) & FROMOUTSIDE)) {
+            await You_feel(hallu ? 'diffuse.' : 'very jumpy.');
+            u.HTeleportation = (u.HTeleportation | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPORT_CONTROL:
+        if (!((u.HTeleport_control | 0) & FROMOUTSIDE)) {
+            await You_feel(hallu
+                ? 'centered in your personal space.'
+                : 'in control of yourself.');
+            u.HTeleport_control = (u.HTeleport_control | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPAT:
+        if (!((u.HTelepat | 0) & FROMOUTSIDE)) {
+            await You_feel(hallu
+                ? 'in touch with the cosmos.'
+                : 'a strange mental acuity.');
+            u.HTelepat = (u.HTelepat | 0) | FROMOUTSIDE;
+            const Blind = !!(u.Blind || ((u.HBlinded | 0) & TIMEOUT));
+            if (Blind) see_monsters();
+        }
+        break;
+    case ACID_RES: {
+        const Acid_resistance = !!(u.Acid_resistance || u.HAcid_resistance
+            || u.EAcid_resistance);
+        if (!Acid_resistance) {
+            await You_feel(hallu
+                ? 'secure from flashbacks'
+                : 'less concerned about being harmed by acid');
+        }
+        incr_itimeout_prop(u, 'HAcid_resistance', d(3, 6));
+        break;
+    }
+    case STONE_RES: {
+        const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
+            || u.EStone_resistance);
+        if (!Stone_resistance) {
+            await You_feel(hallu
+                ? 'unusually limber'
+                : 'less concerned about becoming petrified');
+        }
+        incr_itimeout_prop(u, 'HStone_resistance', d(3, 6));
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/**
+ * C ref: eat.c corpse_intrinsic — pick one conveyable prop (or -1 STR).
+ * Non-deterministic; call once per corpse.
+ */
+function corpse_intrinsic(ptr) {
+    const conveys_STR = is_giant(ptr);
+    let count = 0;
+    let prop = 0;
+    if (conveys_STR) {
+        count = 1;
+        prop = -1;
+    }
+    for (let i = 1; i <= LAST_PROP; i++) {
+        if (!intrinsic_possible(i, ptr)) continue;
+        ++count;
+        if (!rn2(count)) prop = i;
+    }
+    // if strength is the only candidate, give it 50% chance
+    if (conveys_STR && count === 1 && !rn2(2)) prop = 0;
+    return prop;
+}
+
+/**
+ * C ref: eat.c eatmdone — end gold-pile mimicry (afternmv / leak cleanup).
+ */
+function eatmdone() {
+    if (game.eatmbuf) {
+        if (game.nomovemsg === game.eatmbuf) game.nomovemsg = null;
+        game.eatmbuf = null;
+    }
+    const ym = game.youmonst;
+    if (ym && (ym.m_ap_type | 0) !== M_AP_NOTHING) {
+        ym.m_ap_type = M_AP_NOTHING;
+        ym.mappearance = 0;
+        const u = game.u || {};
+        newsym(u.ux | 0, u.uy | 0);
+    }
+    return 0;
+}
+
+/**
  * C ref: eat.c cpostfx — post-corpse effects.
- * Branch envelope (D-0492): default check_intrinsics → eye_of_newt_buzz
- * for AT_MAGC || PM_NEWT. Special switch cases, AD_STUN/AD_HALU hallu,
- * corpse_intrinsic / givit deferred.
+ * Branch envelope (D-0943/D-0944/D-0945): named specials + check_intrinsics
+ * hallu/newt + corpse_intrinsic → givit / gainstr; were* set_ulycn;
+ * mimic gold eatmdone/afternmv; disenchanter attrcurse.
+ * Named omissions: retouch_equipment after set_ulycn; set_mimic_blocking;
+ * curs_on_u; livelog first polyself conduct; eatmupdate hallu toggle.
  */
 async function cpostfx(pm) {
-    // Ordinary corpses (incl. newt) take C's default check_intrinsics path.
-    // Named deferred specials (wraith, were*, nurse body, stalker/bat/mimic,
-    // quantum, lizard body, chameleon/doppel/genetic, displacer,
-    // disenchanter, riders, mind flayer INT) are no-ops until ported —
-    // they must not set check_intrinsics when their bodies land.
+    let tmp = 0;
+    let catch_lycanthropy = NON_PM;
+    let check_intrinsics = false;
+    const u = game.u || (game.u = {});
     const ptr = mons(pm);
-    // C: dmgtype AD_STUN/AD_HALU / violet fungus → make_hallucinated deferred
-    if (attacktype(ptr, AT_MAGC) || pm === PM_NEWT) {
-        await eye_of_newt_buzz();
+
+    // C: prior gold-mimic eatmbuf leak cleanup
+    if (game.eatmbuf) eatmdone();
+
+    switch (pm | 0) {
+    case PM_WRAITH:
+        await pluslvl(false);
+        break;
+    case PM_HUMAN_WERERAT:
+        catch_lycanthropy = PM_WERERAT;
+        break;
+    case PM_HUMAN_WEREJACKAL:
+        catch_lycanthropy = PM_WEREJACKAL;
+        break;
+    case PM_HUMAN_WEREWOLF:
+        catch_lycanthropy = PM_WEREWOLF;
+        break;
+    case PM_NURSE:
+        if (Upolyd(u)) u.mh = u.mhmax | 0;
+        else u.uhp = u.uhpmax | 0;
+        await make_blinded(0, !u.ucreamed);
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        check_intrinsics = true;
+        break;
+    case PM_STALKER: {
+        const Invis = !!(u.Invis || (u.HInvis | 0) || (u.EInvis | 0));
+        const Blind = !!(u.Blind || ((u.HBlinded | 0) & TIMEOUT));
+        const BInvis = !!(u.BInvis | 0);
+        if (!Invis) {
+            set_itimeout_prop(u, 'HInvis', rn1(100, 50));
+            if (!Blind && !BInvis) await self_invis_message();
+        } else {
+            if (!((u.HInvis | 0) & INTRINSIC)) {
+                await You_feel('hidden!');
+            }
+            u.HInvis = (u.HInvis | 0) | FROMOUTSIDE;
+            u.HSee_invisible = (u.HSee_invisible | 0) | FROMOUTSIDE;
+        }
+        newsym(u.ux | 0, u.uy | 0);
+        // FALLTHROUGH → yellow light / giant bat stun
     }
-    // C: corpse_intrinsic → givit / gainstr deferred (newt conveys none)
+    // falls through
+    case PM_YELLOW_LIGHT:
+    case PM_GIANT_BAT:
+        await make_stunned(((u.HStun | 0) & TIMEOUT) + 30, false);
+        // FALLTHROUGH → bat stun
+    // falls through
+    case PM_BAT:
+        await make_stunned(((u.HStun | 0) & TIMEOUT) + 30, false);
+        break;
+    case PM_GIANT_MIMIC:
+        tmp += 10;
+        // FALLTHROUGH
+    case PM_LARGE_MIMIC:
+        tmp += 20;
+        // FALLTHROUGH
+    case PM_SMALL_MIMIC: {
+        tmp += 20;
+        const youdata = hero_form_data();
+        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+        if (youdata?.mlet !== 'S_MIMIC' && !Unchanging) {
+            const hallu = !!(u.Hallucination
+                || ((u.HHallucination | 0) & TIMEOUT));
+            const tempshape = hallu ? 'an orange' : 'a pile of gold';
+            if (!game.u.uconduct) game.u.uconduct = {};
+            // livelog first polyselfs deferred; still count
+            game.u.uconduct.polyselfs = (game.u.uconduct.polyselfs | 0) + 1;
+            await pline(
+                `You can't resist the temptation to mimic ${tempshape}.`,
+            );
+            if (u.usteed) await dismount_steed(DISMOUNT_FELL);
+            nomul(-tmp);
+            game.multi_reason = 'pretending to be a pile of gold';
+            const formNoun = Upolyd(u)
+                ? pmname(youdata?.mndx ?? u.umonnum, Ugender())
+                : (game.urace?.noun || 'human');
+            const again = an(formNoun);
+            game.eatmbuf = hallu
+                ? `You suddenly dread being peeled and mimic ${again} again!`
+                : `You now prefer mimicking ${again} again.`;
+            game.nomovemsg = game.eatmbuf;
+            game.afternmv = eatmdone;
+            if (!game.youmonst) game.youmonst = {};
+            game.youmonst.m_ap_type = M_AP_OBJECT;
+            game.youmonst.mappearance = hallu ? ORANGE_OTYP : GOLD_PIECE;
+            newsym(u.ux | 0, u.uy | 0);
+            // C: curs_on_u deferred; display_nhwindow(WIN_MAP,TRUE) → more()
+            await more();
+        }
+        break;
+    }
+    case PM_QUANTUM_MECHANIC:
+        await pline('Your velocity suddenly seems very uncertain!');
+        if ((u.HFast | 0) & INTRINSIC) {
+            u.HFast = (u.HFast | 0) & ~INTRINSIC;
+            await pline('You seem slower.');
+        } else {
+            u.HFast = (u.HFast | 0) | FROMOUTSIDE;
+            await pline('You seem faster.');
+        }
+        break;
+    case PM_LIZARD:
+        if (((u.HStun | 0) & TIMEOUT) > 2) {
+            await make_stunned(2, false);
+        }
+        if (((u.HConfusion | 0) & TIMEOUT) > 2) {
+            await make_confused(2, false);
+        }
+        check_intrinsics = true;
+        break;
+    case PM_CHAMELEON:
+    case PM_DOPPELGANGER:
+    case PM_SANDESTIN:
+    case PM_GENETIC_ENGINEER: {
+        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+        if (Unchanging) {
+            await You_feel('momentarily different.');
+        } else {
+            if (game.context?.tin?.tin) {
+                use_up_tin(game.context.tin.tin);
+                lesshungry(200 + (metallivorous(hero_form_data()) ? 5 : 0));
+            }
+            if ((pm | 0) === PM_GENETIC_ENGINEER) {
+                await pline('You undergo a freakish metamorphosis.');
+            } else {
+                await pline('You feel a change coming over you.');
+            }
+            await polyself(POLY_NOFLAGS);
+        }
+        break;
+    }
+    case PM_DISPLACER_BEAST: {
+        const Displaced = !!(u.HDisplaced || u.EDisplaced
+            || (u.uprops?.[DISPLACED]?.intrinsic | 0)
+            || (u.uprops?.[DISPLACED]?.extrinsic | 0));
+        if (!Displaced) await toggle_displacement(null, 0, true);
+        incr_itimeout_prop(u, 'HDisplaced', d(6, 6));
+        break;
+    }
+    case PM_DISENCHANTER:
+        await attrcurse();
+        break;
+    case PM_DEATH:
+    case PM_PESTILENCE:
+    case PM_FAMINE:
+        break;
+    case PM_MIND_FLAYER:
+    case PM_MASTER_MIND_FLAYER: {
+        const intBase = u.acurr?.a?.[A_INT] | 0;
+        const intMax = game.urace?.attrmax?.[A_INT] ?? 18;
+        if (intBase < intMax) {
+            if (!rn2(2)) {
+                await pline('Yum!  That was real brain food!');
+                await adjattrib(A_INT, 1, false);
+                break; // don't give telepathy via check_intrinsics
+            }
+        } else {
+            await pline('For some reason, that tasted bland.');
+        }
+        // FALLTHROUGH → default check_intrinsics
+    }
+    // falls through
+    default:
+        check_intrinsics = true;
+        break;
+    }
+
+    if (check_intrinsics) {
+        if (dmgtype(ptr, AD_STUN) || dmgtype(ptr, AD_HALU)
+            || (pm | 0) === PM_VIOLET_FUNGUS) {
+            await pline('Oh wow!  Great stuff!');
+            await make_hallucinated(
+                ((u.HHallucination | 0) & TIMEOUT) + 200,
+                false,
+                0,
+            );
+        }
+        if (attacktype(ptr, AT_MAGC) || (pm | 0) === PM_NEWT) {
+            await eye_of_newt_buzz();
+        }
+        // C: corpse_intrinsic → givit / gainstr (D-0944)
+        const prop = corpse_intrinsic(ptr);
+        if (prop === -1) {
+            await gainstr(null, 0, true);
+        } else if (prop > 0) {
+            await givit(prop, ptr);
+        }
+    }
+
+    if (ismnum(catch_lycanthropy)) {
+        set_ulycn(catch_lycanthropy);
+        // retouch_equipment(2) deferred
+    }
 }
 
 /**
@@ -1436,10 +1984,374 @@ function useupf(otmp, numused) {
 }
 
 /**
- * C ref: eat.c eatspecial — finish non-food meal: lesshungry + useup.
- * Named omissions: PAPER messages; dopotion; eataccessory; leash;
- * trident/flint; uwepgone/uqwepgone/uswapwepgone; unpunish ball/chain;
- * vault_gd_watching(GD_EATGOLD).
+ * C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr.
+ */
+function objdescr_is(obj, descr) {
+    if (!obj) return false;
+    const oc = game.objects?.[obj.otyp];
+    if (!oc) return false;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
+    return dn != null && dn === descr;
+}
+
+/** C util.h sgn — sign of n as -1/0/1. */
+function sgn(n) {
+    n |= 0;
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+/**
+ * C ref: apply.c o_unleash — clear leashmon on destroy/steal.
+ * Named omissions: update_inventory.
+ */
+function o_unleash(otmp) {
+    if (!otmp) return;
+    const lid = otmp.leashmon | 0;
+    if (lid) {
+        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            if ((mtmp.m_id | 0) === lid) {
+                mtmp.mleashed = 0;
+                break;
+            }
+        }
+    }
+    otmp.leashmon = 0;
+}
+
+/**
+ * C ref: youprop.h Strangled — extrinsic STRANGLED or flat.
+ */
+function Strangled() {
+    const u = game.u || {};
+    if (u.Strangled) return true;
+    const prop = u.uprops?.[STRANGLED];
+    return !!((prop?.extrinsic | 0) || (u.EStrangled | 0));
+}
+
+/** C mondata.h perceives — form sees invisible. */
+function perceives(ptr) {
+    return !!(((ptr?.mflags1 | 0) & M1_SEE_INVIS) !== 0);
+}
+
+/** Ensure uprops[prop] exists; return intrinsic bits. */
+function prop_intrinsic(prop) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[prop]) u.uprops[prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    return u.uprops[prop].intrinsic | 0;
+}
+
+/** Set uprops[prop].intrinsic (and common H* mirrors). */
+function set_prop_intrinsic(prop, bits) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[prop]) u.uprops[prop] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    u.uprops[prop].intrinsic = bits | 0;
+    // Mirror flats used elsewhere in the port
+    if (prop === SEE_INVIS) u.HSee_invisible = bits | 0;
+    else if (prop === INVIS) u.HInvis = bits | 0;
+    else if (prop === SLEEP_RES) u.HSleep_resistance = bits | 0;
+    else if (prop === PROTECTION) u.HProtection = bits | 0;
+    else if (prop === SLEEPY) u.HSleepy = bits | 0;
+    else if (prop === LEVITATION) u.HLevitation = bits | 0;
+    else if (prop === PROT_FROM_SHAPE_CHANGERS) {
+        u.HProtection_from_shape_changers = bits | 0;
+    }
+}
+
+/**
+ * C ref: eat.c bounded_increase — combat intrinsic growth caps.
+ */
+function bounded_increase(old, inc, typ) {
+    const u = game.u || {};
+    old |= 0;
+    inc |= 0;
+    typ |= 0;
+    if (u.uright && (u.uright.otyp | 0) === typ && typ !== RIN_PROTECTION) {
+        old -= u.uright.spe | 0;
+    }
+    if (u.uleft && (u.uleft.otyp | 0) === typ && typ !== RIN_PROTECTION) {
+        old -= u.uleft.spe | 0;
+    }
+    let absold = Math.abs(old);
+    let absinc = Math.abs(inc);
+    const sgnold = sgn(old);
+    const sgninc = sgn(inc);
+
+    if (absinc === 0 || sgnold !== sgninc || absold + absinc < 10) {
+        // use inc as-is
+    } else if (absold + absinc < 20) {
+        absinc = rnd(absinc);
+        if (absold + absinc < 10) absinc = 10 - absold;
+        inc = sgninc * absinc;
+    } else if (absold + absinc < 40) {
+        absinc = rn2(absinc) ? 1 : 0;
+        if (absold + absinc < 20) absinc = rnd(20 - absold);
+        inc = sgninc * absinc;
+    } else {
+        inc = 0;
+    }
+    if (u.uright && (u.uright.otyp | 0) === typ && typ !== RIN_PROTECTION) {
+        old += u.uright.spe | 0;
+    }
+    if (u.uleft && (u.uleft.otyp | 0) === typ && typ !== RIN_PROTECTION) {
+        old += u.uleft.spe | 0;
+    }
+    return (old + inc) | 0;
+}
+
+/**
+ * C ref: eat.c choke — satiated stuffing or amulet of strangulation.
+ * Branch envelope: non-satiated only AoS; lawful Knight adjalign; exercise CON;
+ * Breathless/Hunger/!Strangled&&!rn2(20) → vomit path (AoS composure);
+ * else killer + done(CHOKING).
+ * Named omissions: killer_xname polish (xname stand-in); multi-turn food choke
+ * callers beyond eataccessory.
+ */
+async function choke(food) {
+    const u = game.u || (game.u = {});
+    if ((u.uhs | 0) !== SATIATED) {
+        if (!food || (food.otyp | 0) !== AMULET_OF_STRANGULATION) return;
+    } else if ((game.urole?.mnum | 0) === PM_KNIGHT
+        && (u.ualign?.type | 0) === A_LAWFUL) {
+        adjalign(-1);
+        await You_feel('like a glutton!');
+    }
+
+    exercise(A_CON, false);
+
+    if (Breathless() || Hunger() || (!Strangled() && !rn2(20))) {
+        if (food && (food.otyp | 0) === AMULET_OF_STRANGULATION) {
+            await pline('You choke, but recover your composure.');
+            return;
+        }
+        await pline('You stuff yourself and then vomit voluminously.');
+        morehungry(Hunger() ? ((u.uhunger | 0) - 60) : 1000);
+        vomit();
+    } else {
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = KILLED_BY_AN;
+        if (food) {
+            await pline(`You choke over your ${foodword(food)}.`);
+            if (food.oclass === COIN_CLASS) {
+                game.killer.name = 'very rich meal';
+            } else {
+                game.killer.format = KILLED_BY;
+                game.killer.name = xname(food);
+            }
+        } else {
+            await pline('You choke over it.');
+            game.killer.name = 'quick snack';
+        }
+        await pline('You die...');
+        await done(CHOKING);
+    }
+}
+
+/**
+ * C ref: eat.c accessory_has_effect — digest magic pline.
+ */
+async function accessory_has_effect(otmp) {
+    const kind = otmp.oclass === RING_CLASS ? 'ring' : 'amulet';
+    await pline(`Magic spreads through your body as you digest the ${kind}.`);
+}
+
+/**
+ * C ref: eat.c eataccessory — ring/amulet digest effects.
+ * Branch envelope: Ring_gone; observe+known; rn2(3/5) switch
+ * (default oc_oprop FROMOUTSIDE + see-invis/invis/levitation/PfSC arms;
+ * adorn/gain-str/con/increase/protection/free-action; amulet change/
+ * unchanging/strangle choke/restful; sustain/life/fly/reflect no-ops).
+ * Named omissions: sink-fall death beyond Ring_gone; learnring;
+ * float_down in Ring_off; restartcham polish beyond restartcham helper.
+ */
+async function eataccessory(otmp) {
+    const u = game.u || (game.u = {});
+    const typ = otmp.otyp | 0;
+    const oc = game.objects?.[typ] || {};
+    const prop = oc.oc_oprop | 0;
+    let oldprop = prop_intrinsic(prop);
+
+    if (otmp === u.uleft || otmp === u.uright) {
+        await Ring_gone(otmp);
+        if ((u.uhp | 0) <= 0) return; // died from sink fall (if Ring_gone ports it)
+    }
+    observe_object(otmp);
+    otmp.known = 1;
+
+    const chance = otmp.oclass === RING_CLASS ? 3 : 5;
+    if (rn2(chance)) return;
+
+    switch (typ) {
+    default: {
+        if (!prop) break;
+        if (!(prop_intrinsic(prop) & FROMOUTSIDE)) {
+            await accessory_has_effect(otmp);
+        }
+        set_prop_intrinsic(prop, prop_intrinsic(prop) | FROMOUTSIDE);
+
+        switch (typ) {
+        case RIN_SEE_INVISIBLE: {
+            set_mimic_blocking();
+            see_monsters();
+            const blind = !!(u.Blind || ((u.HBlinded | 0) & TIMEOUT)
+                || (u.EBlinded | 0) || u.uroleplay?.blind);
+            const invis = !!(prop_intrinsic(INVIS)
+                || (u.EInvis | 0) || (u.BInvis | 0) || u.Invis);
+            if (invis && !oldprop && !(u.ESee_invisible | 0)
+                && !perceives(hero_form_data()) && !blind) {
+                newsym(u.ux | 0, u.uy | 0);
+                await pline('Suddenly you can see yourself.');
+                makeknown(typ);
+            }
+            break;
+        }
+        case RIN_INVISIBILITY: {
+            const blind = !!(u.Blind || ((u.HBlinded | 0) & TIMEOUT)
+                || (u.EBlinded | 0) || u.uroleplay?.blind);
+            const seeInv = !!(prop_intrinsic(SEE_INVIS)
+                || (u.ESee_invisible | 0) || u.See_invisible);
+            if (!oldprop && !(u.EInvis | 0) && !(u.BInvis | 0)
+                && !seeInv && !blind) {
+                newsym(u.ux | 0, u.uy | 0);
+                const hallu = !!(u.Hallucination
+                    || ((u.HHallucination | 0) & TIMEOUT));
+                await pline(
+                    `Your body takes on a ${hallu ? 'normal' : 'strange'} transparency...`,
+                );
+                makeknown(typ);
+            }
+            break;
+        }
+        case RIN_PROTECTION_FROM_SHAPE_CHAN:
+            rescham();
+            break;
+        case RIN_LEVITATION: {
+            // undo the intrinsic |= FROMOUTSIDE done above
+            set_prop_intrinsic(LEVITATION, oldprop);
+            const levit = !!(prop_intrinsic(LEVITATION)
+                || (u.ELevitation | 0) || u.Levitation);
+            if (!levit) {
+                await float_up();
+                incr_itimeout_prop(u, 'HLevitation', d(10, 20));
+                if (!u.uprops) u.uprops = {};
+                if (!u.uprops[LEVITATION]) {
+                    u.uprops[LEVITATION] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                }
+                u.uprops[LEVITATION].intrinsic = u.HLevitation | 0;
+                makeknown(typ);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    case RIN_ADORNMENT:
+        await accessory_has_effect(otmp);
+        if (await adjattrib(A_CHA, otmp.spe | 0, -1)) makeknown(typ);
+        break;
+    case RIN_GAIN_STRENGTH:
+        await accessory_has_effect(otmp);
+        if (await adjattrib(A_STR, otmp.spe | 0, -1)) makeknown(typ);
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        await accessory_has_effect(otmp);
+        if (await adjattrib(A_CON, otmp.spe | 0, -1)) makeknown(typ);
+        break;
+    case RIN_INCREASE_ACCURACY:
+        await accessory_has_effect(otmp);
+        u.uhitinc = bounded_increase(u.uhitinc | 0, otmp.spe | 0,
+            RIN_INCREASE_ACCURACY);
+        break;
+    case RIN_INCREASE_DAMAGE:
+        await accessory_has_effect(otmp);
+        u.udaminc = bounded_increase(u.udaminc | 0, otmp.spe | 0,
+            RIN_INCREASE_DAMAGE);
+        break;
+    case RIN_PROTECTION:
+    case AMULET_OF_GUARDING:
+        await accessory_has_effect(otmp);
+        set_prop_intrinsic(PROTECTION,
+            prop_intrinsic(PROTECTION) | FROMOUTSIDE);
+        u.HProtection = prop_intrinsic(PROTECTION);
+        {
+            const bump = typ === RIN_PROTECTION ? (otmp.spe | 0) : 2;
+            u.ublessed = bounded_increase(u.ublessed | 0, bump, typ);
+        }
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        break;
+    case RIN_FREE_ACTION: {
+        if (!(prop_intrinsic(SLEEP_RES) & FROMOUTSIDE)
+            && !((u.HSleep_resistance | 0) & FROMOUTSIDE)) {
+            await accessory_has_effect(otmp);
+        }
+        const sleepRes = !!(prop_intrinsic(SLEEP_RES)
+            || (u.HSleep_resistance | 0) || (u.ESleep_resistance | 0)
+            || u.Sleep_resistance);
+        if (!sleepRes) await You_feel('wide awake.');
+        u.HSleep_resistance = (u.HSleep_resistance | 0) | FROMOUTSIDE;
+        set_prop_intrinsic(SLEEP_RES,
+            prop_intrinsic(SLEEP_RES) | FROMOUTSIDE);
+        break;
+    }
+    case AMULET_OF_CHANGE:
+        await accessory_has_effect(otmp);
+        makeknown(typ);
+        change_sex();
+        {
+            const female = !!(game.flags?.female);
+            await pline(`You are suddenly very ${female ? 'feminine' : 'masculine'}!`);
+        }
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        break;
+    case AMULET_OF_UNCHANGING:
+        if (!u.Unchanging && !((u.HUnchanging | 0) & FROMOUTSIDE)
+            && Upolyd(u)) {
+            await accessory_has_effect(otmp);
+            makeknown(typ);
+            await rehumanize();
+        }
+        break;
+    case AMULET_OF_STRANGULATION:
+        await choke(otmp);
+        break;
+    case AMULET_OF_RESTFUL_SLEEP: {
+        const newnap = rnd(100);
+        const oldnap = (u.HSleepy | 0) & TIMEOUT;
+        if (!((u.HSleepy | 0) & FROMOUTSIDE)
+            && !(prop_intrinsic(SLEEPY) & FROMOUTSIDE)) {
+            await accessory_has_effect(otmp);
+        }
+        u.HSleepy = (u.HSleepy | 0) | FROMOUTSIDE;
+        set_prop_intrinsic(SLEEPY, prop_intrinsic(SLEEPY) | FROMOUTSIDE);
+        if (newnap < oldnap || oldnap === 0) {
+            u.HSleepy = ((u.HSleepy | 0) & ~TIMEOUT) | newnap;
+            set_prop_intrinsic(SLEEPY, u.HSleepy | 0);
+        }
+        break;
+    }
+    case RIN_SUSTAIN_ABILITY:
+    case AMULET_OF_LIFE_SAVING:
+    case AMULET_OF_FLYING:
+    case AMULET_OF_REFLECTION:
+        break;
+    }
+}
+
+/**
+ * C ref: eat.c eatspecial — finish non-food meal: lesshungry + side
+ * effects + useup.
+ * Branch envelope: coin useupall/useupf + vault_gd_watching(GD_EATGOLD);
+ * PAPER messages; dopotion; eataccessory; leash o_unleash;
+ * trident/flint exercise; uwep/uqwep/uswapwep gone; unpunish ball/chain;
+ * carried useup else useupf.
+ * Named omissions: SCR_MAIL ifdef;
+ * artifact_light in uwepgone; sink-fall death beyond Ring_gone;
+ * float_down / learnring / adjust_attrib in Ring_off_or_gone.
  */
 async function eatspecial() {
     const otmp = game.context?.victual?.piece;
@@ -1454,11 +2366,61 @@ async function eatspecial() {
     if (otmp.oclass === COIN_CLASS) {
         if (carried(otmp)) useupall(otmp);
         else useupf(otmp, otmp.quan || 1);
+        vault_gd_watching(GD_EATGOLD);
         return;
     }
-    // PAPER / POTION / RING / AMULET / LEASH / TRIDENT / FLINT deferred
-    if (carried(otmp)) useup(otmp);
-    else useupf(otmp, 1);
+
+    const material = game.objects?.[otmp.otyp]?.oc_material ?? 0;
+    if (material === MAT_PAPER) {
+        // SCR_MAIL ifdef MAIL_STRUCTURES deferred
+        if ((otmp.otyp | 0) === SCR_SCARE_MONSTER) {
+            await pline(`Yuck${otmp.blessed ? '!' : '.'}`);
+        } else if (otmp.oclass === SCROLL_CLASS
+            && objdescr_is(otmp, 'YUM YUM')) {
+            await pline(`Yum${otmp.blessed ? '!' : '.'}`);
+        } else {
+            await pline('Needs salt...');
+        }
+    }
+
+    if (otmp.oclass === POTION_CLASS) {
+        otmp.quan = (otmp.quan || 1) + 1; // dopotion() does a useup()
+        const { dopotion } = await import('./potion.js');
+        await dopotion(otmp);
+    } else if (otmp.oclass === RING_CLASS || otmp.oclass === AMULET_CLASS) {
+        await eataccessory(otmp);
+    } else if ((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0)) {
+        o_unleash(otmp);
+    }
+
+    if ((otmp.otyp | 0) === TRIDENT && !otmp.cursed) {
+        const hallu = !!(game.u?.Hallucination
+            || ((game.u?.HHallucination | 0) & TIMEOUT));
+        await pline(hallu
+            ? 'Four out of five dentists agree.'
+            : 'That was pure chewing satisfaction!');
+        exercise(A_WIS, true);
+    }
+    if ((otmp.otyp | 0) === FLINT && !otmp.cursed) {
+        await pline('Yabba-dabba delicious!');
+        exercise(A_CON, true);
+    }
+
+    const u = game.u || {};
+    if (otmp === u.uwep && (otmp.quan || 1) === 1) uwepgone();
+    if (otmp === u.uquiver && (otmp.quan || 1) === 1) uqwepgone();
+    if (otmp === u.uswapwep && (otmp.quan || 1) === 1) uswapwepgone();
+
+    if (otmp === u.uball) {
+        unpunish();
+    }
+    if (otmp === u.uchain) {
+        unpunish(); // but no useup()
+    } else if (carried(otmp)) {
+        useup(otmp);
+    } else {
+        useupf(otmp, 1);
+    }
 }
 
 /**

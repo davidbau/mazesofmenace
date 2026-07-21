@@ -277,10 +277,16 @@ const WEAP = {
     27: { ws: 6,  wl: 8,  hb: 0, sk: P_SPEAR },        // SPEAR
     30: { ws: 8,  wl: 8,  hb: 0, sk: P_SPEAR },        // DWARVISH_SPEAR
     34: { ws: 4,  wl: 3,  hb: 2, sk: P_DAGGER },       // DAGGER
+    35: { ws: 5,  wl: 3,  hb: 2, sk: P_DAGGER },       // ELVEN_DAGGER (objects.h: sdam 5 ldam 3 hb 2)
+    36: { ws: 3,  wl: 3,  hb: 2, sk: P_DAGGER },       // ORCISH_DAGGER (sdam 3 ldam 3 hb 2)
+    37: { ws: 4,  wl: 3,  hb: 2, sk: P_DAGGER },       // SILVER_DAGGER (sdam 4 ldam 3 hb 2)
     39: { ws: 3,  wl: 3,  hb: 2, sk: P_KNIFE },        // SCALPEL (healer start)
     40: { ws: 3,  wl: 2,  hb: 0, sk: P_KNIFE },        // KNIFE
     44: { ws: 6,  wl: 4,  hb: 0, sk: P_AXE },          // AXE
     46: { ws: 6,  wl: 8,  hb: 0, sk: P_SHORT_SWORD },  // SHORT_SWORD
+    47: { ws: 8,  wl: 8,  hb: 0, sk: P_SHORT_SWORD },  // ELVEN_SHORT_SWORD (sdam 8 ldam 8)
+    48: { ws: 5,  wl: 8,  hb: 0, sk: P_SHORT_SWORD },  // ORCISH_SHORT_SWORD (sdam 5 ldam 8)
+    49: { ws: 7,  wl: 8,  hb: 0, sk: P_SHORT_SWORD },  // DWARVISH_SHORT_SWORD (sdam 7 ldam 8)
     50: { ws: 8,  wl: 8,  hb: 0, sk: P_SCIMITAR },     // SCIMITAR
     54: { ws: 8,  wl: 12, hb: 0, sk: P_LONG_SWORD },   // LONG_SWORD
     56: { ws: 10, wl: 12, hb: 1, sk: P_LONG_SWORD },   // KATANA

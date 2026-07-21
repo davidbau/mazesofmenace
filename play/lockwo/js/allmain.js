@@ -899,12 +899,30 @@ export async function moveloop_turn() {
     } while (g.u.umovement < NORMAL_SPEED);
 }
 
-// C ref: eat.c gethungry() — the rn2(20) "accessorytime" roll each turn.  While
-// u.uinvulnerable (prayer invulnerability) C returns immediately ("you don't
-// feel hungrier"), so NO rn2(20) is rolled on those turns.
+// C ref: eat.c gethungry() — per-turn hunger.  While u.uinvulnerable (prayer
+// invulnerability) C returns immediately ("you don't feel hungrier"), so NO
+// rn2(20) is rolled on those turns.  Otherwise: an awake eater (all starter
+// role-monsters are carnivorous/herbivorous) that isn't slow-digesting loses 1
+// nutrition/turn; an Unaware (asleep/unconscious) hero burns at 1/10 (the
+// rn2(10) is evaluated only when Unaware, per C's `!Unaware || !rn2(10)`
+// short-circuit).  The rn2(20) "accessorytime" roll always fires; its odd/even
+// cases only bite the starter hero via near_capacity()>SLT_ENCUMBER (Stressed+)
+// — rings/regeneration/conflict are all absent.  newuhs() recomputes u.uhs (no
+// HUNGRY/WEAK threshold is crossed by the covered sessions, so no message).
 function gethungry() {
-    if (game.u?.uinvulnerable) return;
-    rn2(20);
+    const u = game.u;
+    if (!u || u.uinvulnerable) return;
+    const unaware = !!(u.usleep || u.uunconscious || u.ufrozen);
+    const consume = unaware ? (rn2(10) === 0) : true;
+    if (consume) u.uhunger = (u.uhunger ?? 900) - 1;
+    const accessorytime = rn2(20);
+    if ((accessorytime & 1) && (game._curcap || 0) > 1 /* SLT_ENCUMBER */)
+        u.uhunger = (u.uhunger ?? 900) - 1;
+    // C ref: eat.c newuhs(TRUE) — SATIATED(0)/NOT_HUNGRY(1)/HUNGRY(2)/WEAK(3)/
+    // FAINTING(4) from u.uhunger thresholds (see eat.js newuhs for the full port
+    // incl. the transition messages, which the covered sessions never reach).
+    const h = u.uhunger ?? 900;
+    u.uhs = (h > 1000) ? 0 : (h > 150) ? 1 : (h > 50) ? 2 : (h > 0) ? 3 : 4;
 }
 
 // C ref: allmain.c regen_hp(wtcap) — natural HP regeneration.  Only the

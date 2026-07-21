@@ -9,10 +9,10 @@ import {
 } from './display.js';
 import { cansee } from './vision.js';
 import { rn2, rnd } from './rng.js';
-import { place_object, splitobj, stackobj } from './mkobj.js';
+import { place_object, splitobj, stackobj, delobj, is_crackable } from './mkobj.js';
 import {
-    WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS,
-    objectNames, objectNameStrs,
+    WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
+    POTION_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -21,25 +21,44 @@ import {
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
     ACCFOOD, HMON_THROWN, engulfing_u, STRAT_WAITMASK,
     M_AP_TYPE, M_AP_MONSTER,
+    BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
+    ismnum,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
     ammo_and_launcher, is_ammo, doswapweapon, doquiver_core, welded,
 } from './wield.js';
-import { acurr, A_DEX } from './attrib.js';
+import { acurr, A_DEX, change_luck } from './attrib.js';
 import {
     PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
     PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC,
     PM_ELF, PM_ORC, PM_GNOME,
     monsterNames,
 } from './generated/monsters_data.js';
-import { xname, singular, an, the, vtense } from './objnam.js';
+import { xname, singular, an, the, vtense, doname } from './objnam.js';
 import { m_at, wakeup } from './mon.js';
 import { mon_nam } from './do_name.js';
 import { is_domestic, nohands, M1_NOTAKE } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon } from './uhitm.js';
+import { potionbreathe } from './potion.js';
+
+const GLASS = 19;
+const POT_WATER = objectNames.indexOf('POT_WATER');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const EGG = objectNames.indexOf('EGG');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const MELON = objectNames.indexOf('MELON');
+const MIRROR = objectNames.indexOf('MIRROR');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
+const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const LENSES = objectNames.indexOf('LENSES');
+const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const BOULDER = objectNames.indexOf('BOULDER');
+const STATUE = objectNames.indexOf('STATUE');
+const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 
 /** C ref: mondata.h notake — M1_NOTAKE (cannot pick up / throw). */
 function notake(ptr) {
@@ -74,10 +93,6 @@ const PM_MONKEY = monsterNames.indexOf('PM_MONKEY');
 const PM_APE = monsterNames.indexOf('PM_APE');
 const PM_LICHEN = monsterNames.indexOf('PM_LICHEN');
 const VEGGY = 3; // objclass.h
-const EGG = objectNames.indexOf('EGG');
-const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
-const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
-const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
 function cmdq_add_ec(fn) {
@@ -505,15 +520,178 @@ async function throw_obj(obj, shotlimit) {
     }
     return 1;
 }
+/** C ref: pline.c You_hear — acoustics; Unaware/Underwater deferred. */
+function Deaf() {
+    const u = game.u || {};
+    return !!(u.HDeaf || u.Deaf);
+}
+async function You_hear(line) {
+    if (Deaf()) return;
+    await pline(`You hear ${line}`);
+}
+function Blind() {
+    return !!(game.u?.Blind || game.u?.ublind);
+}
+/** C: distu / next2u — adjacent incl. hero cell. */
+function next2u(x, y) {
+    const u = game.u || {};
+    const dx = Math.abs((x | 0) - (u.ux | 0));
+    const dy = Math.abs((y | 0) - (u.uy | 0));
+    return dx <= 1 && dy <= 1;
+}
+/** C ref: objnam.c Doname2 — doname with leading capital. */
+function Doname2(obj) {
+    const s = doname(obj) || '';
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 /**
- * C ref: dothrow.c breaktest() — always rolls obj_resists; darts don't break.
+ * C ref: dothrow.c breaktest — obj_resists then glass / potion / egg /
+ * cream pie / melon / venom / camera.
  */
 function breaktest(obj) {
     if (!obj) return false;
-    // nonbreakchance 1 for normal items
-    if (obj_resists(obj, 1, 99)) return false;
-    // glass / potions / eggs etc. — not needed for Tourist darts
-    return false;
+    const oc = game.objects?.[obj.otyp | 0];
+    let nonbreakchance = 1;
+    if (obj.oclass === ARMOR_CLASS && (oc?.oc_material | 0) === GLASS) {
+        nonbreakchance = 90;
+    }
+    if (obj_resists(obj, nonbreakchance, 99)) return false;
+    if ((oc?.oc_material | 0) === GLASS && !obj.oartifact
+        && obj.oclass !== GEM_CLASS) {
+        return true;
+    }
+    const otyp = obj.oclass === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
+    switch (otyp) {
+    case EXPENSIVE_CAMERA:
+    case POT_WATER:
+    case EGG:
+    case CREAM_PIE:
+    case MELON:
+    case ACID_VENOM:
+    case BLINDING_VENOM:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * C ref: dothrow.c breakmsg — shatter / splat / mess / splash.
+ * Crackable armor silent (erode_obj owns the message).
+ */
+async function breakmsg(obj, in_view) {
+    if (!obj || is_crackable(obj)) return;
+    let to_pieces = '';
+    const otyp = obj.oclass === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
+    switch (otyp) {
+    default:
+        // glass/crystal wand (and odd types) — fall through to shatter
+        // FALLTHROUGH
+    case LENSES:
+    case MIRROR:
+    case CRYSTAL_BALL:
+    case EXPENSIVE_CAMERA:
+        to_pieces = ' into a thousand pieces';
+        // FALLTHROUGH
+    case POT_WATER:
+        if (!in_view) await You_hear('something shatter!');
+        else {
+            const quan = obj.quan | 0;
+            await pline(
+                `${Doname2(obj)} shatter${quan === 1 ? 's' : ''}${to_pieces}!`,
+            );
+        }
+        break;
+    case EGG:
+    case MELON:
+        await pline('Splat!');
+        break;
+    case CREAM_PIE:
+        if (in_view) await pline('What a mess!');
+        break;
+    case ACID_VENOM:
+    case BLINDING_VENOM:
+        await pline('Splash!');
+        break;
+    }
+}
+
+/**
+ * C ref: dothrow.c breakobj — side effects then delobj (non-fracture).
+ * Named omit: crackable erode_obj; explode_oil; release_camera_demon;
+ * shop check_shop_obj / stolen_value / make_angry_shk; pyrolisk explode.
+ * @returns {Promise<number>} 1 if destroyed
+ */
+async function breakobj(obj, x, y, hero_caused, _from_invent) {
+    if (!obj) return 0;
+    if (is_crackable(obj)) {
+        // erode_obj ERODE_CRACK deferred — still remove for striking path
+        delobj(obj);
+        return 1;
+    }
+    const otyp = obj.oclass === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
+    let fracture = false;
+    switch (otyp) {
+    case MIRROR:
+        if (hero_caused) change_luck(-2);
+        break;
+    case POT_WATER:
+        obj.in_use = 1;
+        if ((obj.otyp | 0) === POT_OIL && obj.lamplit) {
+            // explode_oil deferred
+        } else if (next2u(x, y)) {
+            await potionbreathe(obj);
+        }
+        break;
+    case EXPENSIVE_CAMERA:
+        // release_camera_demon deferred
+        break;
+    case EGG:
+        if (hero_caused && obj.spe && ismnum(obj.corpsenm)) {
+            change_luck(-Math.min(obj.quan | 0, 5));
+        }
+        void PM_PYROLISK; // explosion deferred
+        break;
+    case BOULDER:
+    case STATUE:
+        fracture = true;
+        break;
+    default:
+        break;
+    }
+    // shop billing deferred
+    if (!fracture) delobj(obj);
+    return 1;
+}
+
+/**
+ * C ref: dothrow.c hero_breaks — breaktest/breakmsg/breakobj by hero.
+ * @returns {Promise<number>} 0 if intact, 1 if broke
+ */
+export async function hero_breaks(obj, x, y, breakflags = 0) {
+    if (!obj) return 0;
+    const from_invent = (breakflags & BRK_FROM_INV) !== 0;
+    const in_view = Blind() ? false : (from_invent || cansee(x, y));
+    let brk = breakflags & BRK_KNOWN_OUTCOME;
+    if (!brk) {
+        brk = breaktest(obj) ? BRK_KNOWN2BREAK : BRK_KNOWN2NOTBREAK;
+    }
+    if (brk === BRK_KNOWN2NOTBREAK) return 0;
+    await breakmsg(obj, in_view);
+    return breakobj(obj, x, y, true, from_invent);
+}
+
+/**
+ * C ref: dothrow.c breaks — non-hero breakage path.
+ * @returns {Promise<number>} 0 if intact, 1 if broke
+ */
+export async function breaks(obj, x, y) {
+    if (!obj) return 0;
+    const in_view = Blind() ? false : cansee(x, y);
+    if (!breaktest(obj)) return 0;
+    await breakmsg(obj, in_view);
+    return breakobj(obj, x, y, false, false);
 }
 
 /**

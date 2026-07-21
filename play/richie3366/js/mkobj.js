@@ -38,7 +38,7 @@ import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
     HATCH_EGG, MAX_EGG_HATCH_TIME,
-    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
+    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED, OBJ_MIGRATING,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -1333,6 +1333,26 @@ export function add_to_buried(obj) {
     if (!game.level) game.level = {};
     obj.nobj = game.level.buriedobjlist || null;
     game.level.buriedobjlist = obj;
+}
+
+/**
+ * C ref: mkobj.c add_to_migration — OBJ_FREE → migrating_objs chain.
+ * Named omit: maybe_reset_pick (lock context); unpaid panic (caller
+ * should clear unpaid before migrate).
+ */
+export function add_to_migration(obj) {
+    if (!obj) return;
+    if (obj.where != null && obj.where !== OBJ_FREE) {
+        obj.where = OBJ_FREE;
+    }
+    obj.no_charge = 0;
+    // maybe_reset_pick deferred
+    obj.where = OBJ_MIGRATING;
+    obj.nobj = game.migrating_objs || null;
+    const uz = game.u?.uz;
+    obj.omigr_from_dnum = uz?.dnum | 0;
+    obj.omigr_from_dlevel = uz?.dlevel | 0;
+    game.migrating_objs = obj;
 }
 
 export function objects_at(x, y) {

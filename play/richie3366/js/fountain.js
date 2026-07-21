@@ -85,7 +85,7 @@ function FOUNTAIN_IS_WARNED(x, y) {
 }
 
 /** C ref: rm.h SET_FOUNTAIN_WARNED */
-function SET_FOUNTAIN_WARNED(x, y) {
+export function SET_FOUNTAIN_WARNED(x, y) {
     const loc = game.level?.at(x, y);
     if (loc) loc.looted = (loc.looted || 0) | F_WARNED;
 }
@@ -586,8 +586,9 @@ async function gush(x, y, poolcnt) {
  * C ref: fountain.c dogushforth — gush along LOS from (u.ux,u.uy).
  * Collect couldsee cells first (gush does not vision_recalc), then
  * await each gush so pline/water_damage RNG stay in C order.
+ * Exported for dig.c furniture_handled (D-0954).
  */
-async function dogushforth(drinking) {
+export async function dogushforth(drinking) {
     const u = game.u || {};
     const poolcnt = { n: 0 };
     const cells = [];

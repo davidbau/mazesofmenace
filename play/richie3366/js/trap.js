@@ -60,7 +60,8 @@ import {
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     KILLED_BY, KILLED_BY_AN, NO_PART,
     WATER, BURNING,
-    TT_NONE, TT_BEARTRAP, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
+    TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+    LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
     HEAD, ARM,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
     CORPSTAT_NONE, MM_NOCOUNTBIRTH, MM_NOMSG,
@@ -69,6 +70,7 @@ import {
     IS_OBSTRUCTED, IS_STWALL, IS_TREE,
     HVY_ENCUMBER, ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container,
+    xytodir, DIR_180, DIR_ERR,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -800,6 +802,59 @@ export function deltrap(trap) {
     if (i >= 0) traps.splice(i, 1);
 }
 
+/**
+ * C ref: trap.c conjoined_pits — adjacent pits linked via conjoined bits.
+ * @param {object|null} trap2
+ * @param {object|null} trap1
+ * @param {boolean} u_entering_trap2
+ */
+export function conjoined_pits(trap2, trap1, u_entering_trap2) {
+    if (!trap1 || !trap2) return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp)
+        || !is_pit(trap1.ttyp)
+        || (u_entering_trap2
+            && !(game.u?.utrap && (game.u.utraptype | 0) === TT_PIT))) {
+        return false;
+    }
+    const dx = sgn((trap2.tx | 0) - (trap1.tx | 0));
+    const dy = sgn((trap2.ty | 0) - (trap1.ty | 0));
+    const diridx = xytodir(dx, dy);
+    if (diridx !== DIR_ERR) {
+        const adjidx = DIR_180(diridx);
+        if (((trap1.conjoined | 0) & (1 << diridx))
+            && ((trap2.conjoined | 0) & (1 << adjidx))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: trap.c delfloortrap — destroy floor-emanating trap types.
+ * Clears hero utrap (unless buried ball) or mon mtrapped, then deltrap.
+ */
+export function delfloortrap(ttmp) {
+    if (!ttmp) return false;
+    const ttyp = ttmp.ttyp | 0;
+    if (ttyp === SQKY_BOARD || ttyp === BEAR_TRAP || ttyp === LANDMINE
+        || ttyp === FIRE_TRAP || is_pit(ttyp) || is_hole(ttyp)
+        || ttyp === TELEP_TRAP || ttyp === LEVEL_TELEP
+        || ttyp === WEB || ttyp === MAGIC_TRAP || ttyp === ANTI_MAGIC) {
+        if (u_at(ttmp.tx, ttmp.ty)) {
+            if ((game.u?.utraptype | 0) !== TT_BURIEDBALL) {
+                reset_utrap(true);
+            }
+        } else {
+            const mtmp = m_at(ttmp.tx, ttmp.ty);
+            if (mtmp) mtmp.mtrapped = 0;
+        }
+        deltrap(ttmp);
+        return true;
+    }
+    return false;
+}
+
 /** Hero sentinel: game.youmonst or explicit _youmonst flag from dotrap. */
 function is_youmonst(mtmp) {
     return !!(mtmp && (mtmp === game.youmonst || mtmp._youmonst));
@@ -1045,7 +1100,7 @@ async function trapeffect_dart_trap(mtmp, trap) {
 }
 
 // C ref: trap.c feeltrap — mark seen + redisplay via newsym → map_trap
-function feeltrap(trap) {
+export function feeltrap(trap) {
     if (!trap) return;
     trap.tseen = true;
     newsym(trap.tx, trap.ty);
@@ -1275,7 +1330,7 @@ function s_suffix(s) {
  * C ref: trap.c set_utrap — set hero trap timer/type; botl when armed↔clear.
  * Named omission: float_vs_flight Lev/Fly block.
  */
-function set_utrap(tim, typ) {
+export function set_utrap(tim, typ) {
     const u = game.u || (game.u = {});
     const was = !!(u.utrap | 0);
     const now = !!(tim | 0);
@@ -1292,6 +1347,90 @@ function set_utrap(tim, typ) {
  */
 export function reset_utrap(_msg) {
     set_utrap(0, 0);
+}
+
+/** C youprop.h Flying subset for float_up. */
+function Flying_fu() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    const blocked = (u.BFlying | 0);
+    return !!(((u.HFlying | 0) || (u.EFlying | 0)) && !blocked);
+}
+
+/**
+ * C ref: trap.c float_up — gain levitation messages + float_vs_flight +
+ * encumber_msg.
+ * Branch envelope: utrap PIT/lava/infloor/buriedball/web/bear; uinwater
+ * spoteffects; uswallow animal/spiral; Hallucination; airlevel; default;
+ * steed flyer/floater gate + dismount; Flying lose-control; float_vs_flight;
+ * encumber_msg.
+ * Named omissions: buried_ball exact coord; Lev_at_will steed float;
+ * surface() wording (floor/ground stand-in).
+ */
+export async function float_up() {
+    const u = game.u || (game.u = {});
+    if (game.disp) game.disp.botl = true;
+    if (game.flags) game.flags.botl = true;
+
+    if (u.utrap) {
+        const typ = u.utraptype | 0;
+        if (typ === TT_PIT) {
+            reset_utrap(false);
+            await pline(`You float up, out of the ${trapname(PIT, false)}!`);
+            game.vision_full_recalc = 1;
+            const { fill_pit } = await import('./dig.js');
+            fill_pit(u.ux | 0, u.uy | 0);
+        } else if (typ === TT_LAVA || typ === TT_INFLOOR) {
+            await pline(
+                `Your body pulls upward, but your ${makeplural(body_part(LEG))} are still stuck.`,
+            );
+        } else if (typ === TT_BURIEDBALL) {
+            // buried_ball(&cc) deferred — room vs ground via hero cell
+            const loc = game.level?.at(u.ux | 0, u.uy | 0);
+            const ground = loc && IS_ROOM(loc.typ) ? 'floor' : 'ground';
+            await pline(
+                `You feel lighter, but your ${body_part(LEG)} is still chained to the ${ground}.`,
+            );
+        } else if (typ === TT_WEB) {
+            await pline(
+                `You float up slightly, but you are still stuck in the ${trapname(WEB, false)}.`,
+            );
+        } else {
+            await pline(
+                `You float up slightly, but your ${body_part(LEG)} is still stuck.`,
+            );
+        }
+    } else if (u.uinwater) {
+        const { spoteffects } = await import('./pickup.js');
+        await spoteffects(true);
+    } else if (u.uswallow) {
+        const stuck = u.ustuck;
+        if (stuck && is_animal(stuck.data)) {
+            await pline('You float away from the floor.');
+        } else if (stuck) {
+            await pline(`You spiral up into ${mon_nam(stuck)}.`);
+        }
+    } else if (Hallucination()) {
+        await pline("Up, up, and awaaaay!  You're walking on air!");
+    } else if (Is_airlevel(u.uz)) {
+        await pline('You gain control over your movements.');
+    } else {
+        await pline('You start to float in the air!');
+    }
+
+    if (u.usteed && !is_floater(u.usteed.data) && !is_flyer(u.usteed.data)) {
+        // Lev_at_will steed float deferred — always dismount path
+        await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
+        const { dismount_steed } = await import('./steed.js');
+        const { DISMOUNT_GENERIC } = await import('./const.js');
+        await dismount_steed(DISMOUNT_GENERIC);
+    }
+    if (Flying_fu()) {
+        await pline('You are no longer able to control your flight.');
+    }
+    const { float_vs_flight } = await import('./polyself.js');
+    float_vs_flight();
+    await encumber_msg();
 }
 
 /**
@@ -2299,8 +2438,8 @@ function resists_blnd(mon) {
     if (is_youmonst(mon)) return Blind() || Unaware();
     return !!(mon?.mblinded || !mon?.mcansee || mon?.msleeping);
 }
-async function self_invis_message() {
-    // C ref: potion.c self_invis_message
+/** C ref: potion.c self_invis_message — stalker corpse / invis potion. */
+export async function self_invis_message() {
     const prefix = Hallucination()
         ? 'Far out, man!  You'
         : 'Gee!  All of a sudden, you';

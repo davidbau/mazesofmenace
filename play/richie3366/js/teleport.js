@@ -13,25 +13,26 @@ import {
     D_CLOSED, D_LOCKED,
     MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING, NO_TRAP,
     is_xport,
-    ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
+    ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP, TEMPLE,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
     UTOTYPE_NONE, OBJ_FREE, SLT_ENCUMBER,
     is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     MAGIC_PORTAL, RLOC_MSG, RLOC_NOMSG,
-    BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A,
+    BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
 } from './const.js';
-import { objects_at, mksobj } from './mkobj.js';
+import { objects_at, mksobj, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
     monsterNames, passes_walls, is_dlord, is_dprince,
+    is_rider, control_teleport,
 } from './monsters.js';
 import {
     newsym, pline, You_feel, see_monsters, canseemon, canspotmon, sensemon,
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
-import { nomul } from './hack.js';
+import { nomul, in_rooms } from './hack.js';
 import { makeknown, prinv, near_capacity } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
@@ -909,6 +910,70 @@ export async function scrolltele(scroll) {
  */
 export async function tele() {
     await scrolltele(null);
+}
+
+/**
+ * C ref: teleport.c u_teleport_mon — hero teleports a monster.
+ * Envelope: stasis; temple priest resist; rloc / rider-control enexto.
+ * Named omit: engulfing_u unstuck + limbo; shop bill polish.
+ * @returns {Promise<boolean>} true if relocated
+ */
+export async function u_teleport_mon(mtmp, give_feedback) {
+    if (!mtmp) return false;
+    const moves = game.moves | 0;
+    if ((game.level?.flags?.stasis_until | 0) >= moves) {
+        if (give_feedback) {
+            await pline(
+                `A mysterious force prevents you teleporting ${mon_nam(mtmp)}!`,
+            );
+        }
+        return false;
+    }
+    if (mtmp.ispriest && in_rooms(mtmp.mx | 0, mtmp.my | 0, TEMPLE)) {
+        if (give_feedback) {
+            await pline(`${Monnam(mtmp)} resists your magic!`);
+        }
+        return false;
+    }
+    // engulfing_u + noteleport limbo deferred
+    void engulfing_u;
+    if ((is_rider(mtmp.data) || control_teleport(mtmp.data))
+        && rn2(13)) {
+        const cc = { x: 0, y: 0 };
+        const u = game.u || {};
+        if (enexto(cc, u.ux | 0, u.uy | 0, mtmp.data)) {
+            rloc_to(mtmp, cc.x, cc.y);
+            return true;
+        }
+    }
+    return !!(await rloc(mtmp, RLOC_MSG));
+}
+
+/**
+ * C ref: teleport.c rloco — relocate a floor object.
+ * Envelope: extract + goodpos pick + place_object. Named omit:
+ * Rider corpse revive; flooreffects; shop bill/stolen_value; W-tower
+ * /dndest restricted_fall.
+ * @returns {boolean} true if placed elsewhere
+ */
+export function rloco(obj) {
+    if (!obj) return false;
+    const otx = obj.ox | 0;
+    const oty = obj.oy | 0;
+    obj_extract_self(obj);
+    let tx = 0;
+    let ty = 0;
+    let try_limit = 4000;
+    do {
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
+        if (!--try_limit) break;
+    } while (!goodpos(tx, ty, null, 0));
+    // flooreffects / shop bill deferred
+    place_object(obj, tx, ty);
+    if (otx || oty) newsym(otx, oty);
+    newsym(tx, ty);
+    return true;
 }
 
 /**

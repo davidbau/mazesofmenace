@@ -19,6 +19,7 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
+    W_ARMOR, W_AMUL,
 } from './const.js';
 import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE } from './mkobj.js';
 import { t_at, t_missile } from './trap.js';
@@ -1154,20 +1155,19 @@ async function m_move(mtmp) {
                 return { appr: r.appr, prmin: r.prmin, prmax: r.prmax };
             })());
 
-        // C ref: monmove.c:1882 — if the monster can't actually see the hero but
-        // can follow a scent/track, steer toward the last tracked square instead
-        // of the (stale) apparent position.  This is a no-op for a monster that
-        // can see the hero (should_see true), which covers the cobra at step 261.
-        //
-        // The redirect is DISABLED for now: firing it requires the hostile
-        // footstep-track (gettrack) to be byte-parity with C for every monster
-        // that has lost sight of the hero, and that sub-parity is not yet in
-        // place — enabling it here regresses the seed4500 steps 253-260 (a
-        // fleeing/searching monster steered to a track square C didn't).  Gate
-        // kept (with should_see + can_track computed) so re-enabling is a
-        // one-line change once gettrack parity for hostiles lands.
-        const ENABLE_TRACK_REDIRECT = false;
-        if (ENABLE_TRACK_REDIRECT && !should_see && can_track(ptr)) {
+        // C ref: monmove.c:1882 — if the monster can't actually see the hero
+        // (should_see false: out of sight / >36 away / darkness) but can follow a
+        // scent/track (can_track = haseyes || wields Excalibur), steer toward the
+        // hero's last footprint square (gettrack) instead of the stale apparent
+        // position.  A newt in a corridor 18 squares from a stationary hero
+        // therefore follows the hero's trail (seed0002 step 86: the newt takes
+        // the trail cell the hero last walked, not the geometrically-nearest
+        // corridor cell).  This is a no-op when the monster can see the hero.
+        // Correctness depends on the footprint ring (utrack) being per-level, the
+        // same as C's save_track()/rest_track(): see goto_level(), which now
+        // stashes+clears utrack on every level change so gettrack() never returns
+        // a stale square from a previously-visited level.
+        if (!should_see && can_track(ptr)) {
             const cp = gettrack(omx, omy);
             if (cp) { ggx = cp.x; ggy = cp.y; }
         }
@@ -2075,10 +2075,20 @@ function mon_in_shop(_x, _y) { return false; }
 // C ref: levl[x][y].lit — is the map square lit?  Mirrors dogmove.js isLit().
 function levl_lit(x, y) { return !!game.level?.at(x, y)?.lit; }
 
+// C ref: monflag.h M1_NOEYES — species with no eyes (blobs, jellies, molds,
+// fungi, oozes/puddings, mimics, piercers, lurker/trapper, vortices, lights,
+// elementals).  Indexed by makemon.js pmidx (mapped by name from
+// include/monsters.h).  haseyes(ptr) == !M1_NOEYES.
+const NOEYES_PMIDX = new Set([
+    6, 7, 8, 56, 57, 58, 64, 65, 66, 78, 79, 80, 98, 99, 106, 107, 108, 109,
+    110, 111, 118, 119, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+    206, 207, 208, 209,
+]);
 // C ref: mondata.c:623 can_track(ptr) — u_wield_art(EXCALIBUR) || haseyes(ptr).
-// The hero never wields Excalibur in these slices; haseyes is TRUE for every
-// dungeon monster our sessions place (no M1_NOEYES species), so this is TRUE.
-function can_track(_ptr) { return true; }
+// The hero never wields Excalibur in the recorded sessions, so this reduces to
+// haseyes(ptr): an eyeless monster (M1_NOEYES) cannot follow the hero's scent
+// trail and never takes the gettrack() redirect in m_move().
+function can_track(ptr) { return !NOEYES_PMIDX.has(ptr?.pmidx); }
 
 // Attack-type metadata (aatyp only — the to-hit gate and the MMOVE_MOVED
 // "can shoot after move" decision only need attack TYPES, not damage).  Keyed
@@ -2115,6 +2125,22 @@ const MON_HITU_ATTACKS = {
     // S_RODENT rats — single AT_BITE / AD_PHYS, 1d3 (NOT the generic 1d4).
     'sewer rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
     'giant rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
+    // S_DOG family (include/monsters.h): a single AT_BITE whose dice vary per
+    // species — the generic fallback below is 1d4, but the jackal (1d2), fox
+    // (1d3), little dog/dog (1d6) and large dog (2d4) differ, so name them here.
+    // The bite damage d(damn,damd) is rolled in hitmu; a wrong die changes the
+    // value even at aligned RNG (RND(x) modulo differs) — seed0007 fox = 1d3.
+    'jackal': [MA(AT_BITE, AD_PHYS, 1, 2)],
+    'fox': [MA(AT_BITE, AD_PHYS, 1, 3)],
+    'coyote': [MA(AT_BITE, AD_PHYS, 1, 4)],
+    'little dog': [MA(AT_BITE, AD_PHYS, 1, 6)],
+    'dog': [MA(AT_BITE, AD_PHYS, 1, 6)],
+    'large dog': [MA(AT_BITE, AD_PHYS, 2, 4)],
+    // S_FELINE family (include/monsters.h): AT_BITE (cats) — kitten/housecat
+    // 1d6, large cat 2d4 (the bigger cats above are AT_CLAW, not placed here).
+    'kitten': [MA(AT_BITE, AD_PHYS, 1, 6)],
+    'housecat': [MA(AT_BITE, AD_PHYS, 1, 6)],
+    'large cat': [MA(AT_BITE, AD_PHYS, 2, 4)],
     // S_ORC family (include/monsters.h): a single AT_WEAP attack whose dice
     // vary per species — the generic S_ORC fallback below is 1d6, but the
     // goblin (1d4), orc (1d8) and Uruk-hai (1d8) differ, so name them here.
@@ -2971,7 +2997,7 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
 async function mhitm_ad_elec(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
     await hitmsg(mtmp, mattk);                       // "The grid bug bites!"
-    if (!mhitm_mgc_atk_negated(mtmp)) {
+    if (!await mhitm_mgc_atk_negated(mtmp, true)) {  // uhitm.c:2709 verbosely=TRUE
         await emitU('You get zapped!');
         // Shock_resistance not present for the starter heroes here.
         // monstunseesu(M_SEEN_ELEC): no RNG.
@@ -3021,7 +3047,7 @@ async function mhitm_ad_phys(mtmp, mattk, mhm) {
 // AD_DRST bites roll rn2(8)!=0), poisoned() would run; that path is scoped out
 // here (it would surface as an honest divergence, never a silent desync).
 async function mhitm_ad_drst(mtmp, mattk, mhm) {
-    const negated = mhitm_mgc_atk_negated(mtmp); // rn2(10) (uhitm.c:3123)
+    const negated = await mhitm_mgc_atk_negated(mtmp, false); // rn2(10), no msg (uhitm.c:3126)
     await hitmsg(mtmp, mattk);                    // "The cobra bites!"
     if (!negated && !rn2(8)) {                    // uhitm.c:3155
         // poisoned(buf, ptmp=A_STR, pmname, 30, FALSE) — NOT reached by any
@@ -3031,14 +3057,55 @@ async function mhitm_ad_drst(mtmp, mattk, mhm) {
     }
 }
 
+// C ref: mhitu.c:1088 magic_negation(mon) — "armor that sufficiently covers the
+// body might be able to block magic".  Ported for the hero defender (the only
+// caller here): the max a_can (objects[].oc_can) over the hero's worn armor,
+// then bumped by extrinsic Protection (EProtection; +2 for the amulet of
+// guarding) or, absent that, floored to 1 by intrinsic Protection
+// (HProtection && u.ublessed>0, or the protection-spell u.uspellprot).  The
+// Protection accounting reads the game-state fields when present; none of the
+// starter heroes carry them, so the result is driven purely by worn armor.
+function magic_negation(_hero) {
+    const u = game.u || {};
+    const EProtection = u.EProtection ?? game.EProtection ?? 0;
+    let via_amul = false;
+    const gotprot = (EProtection !== 0);                     // is_you branch
+    let mc = 0;
+    for (const o of (game.invent || [])) {
+        const worn = o.owornmask || 0;
+        if (worn & W_ARMOR) {                                // a_can only for worn armor
+            const armpro = OBJECTS[o.otyp]?.oc_can || 0;
+            if (armpro > mc) mc = armpro;
+        } else if (worn & W_AMUL) {
+            via_amul = (o.otyp === AMULET_OF_GUARDING_OTYP);
+        }
+        // is_you -> the protects() weapon/artifact scan is skipped (continue).
+    }
+    if (gotprot) {
+        mc += via_amul ? 2 : 1;                              // multiple sources don't stack
+        if (mc > 3) mc = 3;
+    } else if (mc < 1) {
+        // intrinsic Protection confers a minimum mc of 1 (weaker than extrinsic)
+        const HProtection = u.HProtection ?? 0;
+        const uspellprot = u.uspellprot ?? 0;
+        const ublessed = u.ublessed ?? 0;
+        if ((HProtection && ublessed > 0) || uspellprot)
+            mc = 1;
+    }
+    return mc;
+}
+const AMULET_OF_GUARDING_OTYP = 210;                         // onames.h AMULET_OF_GUARDING
+
 // C ref: uhitm.c:75 mhitm_mgc_atk_negated(magr, mdef, verbosely) — magical
-// cancellation check.  mcan is false for these monsters; magic_negation(hero)
-// is 0 (no protective armor), so negated = !(rn2(10) >= 0) = !(true) = FALSE,
-// but the rn2(10) is still rolled.  Returns TRUE when the attack is thwarted.
-function mhitm_mgc_atk_negated(mtmp) {
+// cancellation check.  mcan is false for these monsters, so the rn2(10) always
+// rolls; negated = !(rn2(10) >= 3*armpro) with armpro = magic_negation(hero).
+// When negated and verbosely (the AD_ELEC/most mhitu paths pass TRUE), the hero
+// sees "You avoid harm." on the top line.  Returns TRUE when thwarted.
+async function mhitm_mgc_atk_negated(mtmp, verbosely = false) {
     if (mtmp.mcan) return true;                      // no message, no roll
-    const armpro = 0;                                // magic_negation(hero) == 0
+    const armpro = magic_negation();                 // uhitm.c:86
     const negated = !(rn2(10) >= 3 * armpro);        // uhitm.c:87
+    if (negated && verbosely) await emitU('You avoid harm.'); // uhitm.c:92 (mdef==hero)
     return negated;
 }
 

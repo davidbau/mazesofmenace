@@ -15,10 +15,14 @@ const SADDLE = 235;
 
 // Per-pet display info (class symbol + color).  C ref: include/monsters.h
 // (the starting pets).  Pets are drawn in HI_DOMESTIC = CLR_WHITE.
+// mflags3: the M3_* flag group (include/monsters.h).  All three starting pets
+// are M3_INFRAVISIBLE (0x200) so the hero's infravision reveals them in dark
+// corridors (display.c see_with_infrared -> infravisible(mon->data)); the
+// kitten additionally has M3_INFRAVISION (0x100).
 const PET_DATA = {
-    16: { name: 'little dog', mlet: 'd', mcolor: 15 }, // PM_LITTLE_DOG
-    34: { name: 'kitten', mlet: 'f', mcolor: 15 },     // PM_KITTEN
-    102: { name: 'pony', mlet: 'u', mcolor: 3 },        // PM_PONY (brown)
+    16: { name: 'little dog', mlet: 'd', mcolor: 15, mflags3: 0x200 }, // PM_LITTLE_DOG
+    34: { name: 'kitten', mlet: 'f', mcolor: 15, mflags3: 0x300 },     // PM_KITTEN (INFRAVISIBLE|INFRAVISION)
+    102: { name: 'pony', mlet: 'u', mcolor: 3, mflags3: 0x200 },        // PM_PONY (brown)
 };
 
 export const PM_LITTLE_DOG = 16;
@@ -205,10 +209,13 @@ function makedog_mon(pettype, x, y) {
         if (cc) { mx = cc.x; my = cc.y; }
     }
 
-    const petinfo = PET_DATA[pettype] || { name: 'pet', mlet: 'd', mcolor: 15 };
+    const petinfo = PET_DATA[pettype] || { name: 'pet', mlet: 'd', mcolor: 15, mflags3: 0x200 };
     const mtmp = {
         data: { pmidx: pettype, name: petinfo.name, mlet: petinfo.mlet,
                 mcolor: petinfo.mcolor,
+                // mflags3 (M3_*): starting pets are M3_INFRAVISIBLE so the hero's
+                // infravision shows them in dark corridors (see_with_infrared).
+                mflags3: petinfo.mflags3 ?? 0x200,
                 // carnivore/herbivore flags drive dogfood() classification.
                 carnivore: pettype !== PM_PONY,
                 herbivore: pettype === PM_PONY },

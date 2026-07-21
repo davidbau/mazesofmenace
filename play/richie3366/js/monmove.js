@@ -766,7 +766,7 @@ export function distfleeck(mtmp) {
  * C ref: monmove.c watch_on_duty — peaceful watch that can see hero in town
  * may notice lockpicking / digging (!rn2(3) gate).
  * Named omissions: mon_yells polish (plain pline); pickaxe dig occupation
- * still absent so is_digging() is false until dig ports.
+ * via dig.js is_digging() (D-0951).
  */
 async function watch_on_duty(mtmp) {
     const u = game.u || {};

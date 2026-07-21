@@ -854,8 +854,13 @@ async function zapyourself(obj, ordinary) {
         // spares such heroes is skipped.  learn_it (makeknown) would run only if
         // done() returned to zapyourself(), but the contest player accepts death,
         // so identification is never touched on this path.
-        // killer.name = "shot <him/her>self with a death ray" — used only by the
-        // (not-yet-ported) death disclosure, so it is left unset here.
+        // C ref: zap.c:2894 — Sprintf(killer.name, "shot %sself with a death ray",
+        // uhim()); killer.format = NO_KILLER_PREFIX.  uhim() is her/him/it by
+        // gender; used verbatim by outrip()'s tombstone + the score summary.
+        {
+            const him = game.flags?.female ? 'her' : 'him';
+            game._killer_name = `shot ${him}self with a death ray`;
+        }
         // Two urgent_pline()s then done(DIED).  urgent_pline() -> putmesg() ->
         // update_topl() (pline.c:315, topl.c:251).  getdir()'s
         // clear_nhwindow(WIN_MESSAGE) left the topline empty, so the first message
@@ -913,12 +918,14 @@ async function done_selfzap(how) {
     //   if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))   (end.c:1364)
     if (how < GENOCIDED && can_make_bones()) {
         await y_n('Save bones?', 'yn\x1b', 'n');
-        // The actual bones-file creation (drop_upon_death + the ghost makemon +
-        // the death disclosure screens) is not yet ported; the replay diverges at
-        // the next frame.
     }
-    game.program_state = game.program_state || {};
-    game.program_state.gameover = true;
+
+    // C ref: end.c really_done() — the endgame disclosure/tombstone/topten
+    // teardown.  outrip_and_score() renders the tombstone, the tty window
+    // --More-- acknowledgements, and the wizard-mode topten line, driving
+    // nhgetch() at each boundary (the last read ends the segment).
+    const { outrip_and_score } = await import('./end.js');
+    await outrip_and_score(how);
 }
 
 // C ref: zap.c dozap — the 'z' command.  Pick a wand, then apply it.  Directionless

@@ -13,6 +13,172 @@ import { game } from './gstate.js';
 // end.h death codes (subset).  DIED=0; PANICKED separates "real" deaths from
 // program panics in done().
 const DIED = 0;
+const PANICKED = 11;
+
+// C ref: end.c ends[] — "when you %s" phrasing per death code (also the
+// "You %s in <dungeon>" verb for the score summary).
+const ENDS = [
+    'died', 'choked', 'were poisoned', 'starved', 'drowned', 'burned',
+    'dissolved in the lava', 'were crushed', 'turned to stone',
+    'turned into slime', 'were genocided', 'panicked', 'were tricked',
+    'quit', 'escaped', 'ascended',
+];
+// C ref: end.c deaths[] — noun form used when no killer text is available.
+const DEATHS = [
+    'died', 'choked', 'poisoned', 'starvation', 'drowning', 'burning',
+    'dissolving under the heat and pressure', 'crushed', 'turned to stone',
+    'turned into slime', 'genocided', 'panic', 'trickery', 'quit',
+    'escaped', 'ascended',
+];
+
+// C ref: role.c Goodbye() — role-specific farewell for the score summary line.
+function goodbye_for_role(roleName) {
+    switch (roleName) {
+    case 'Knight':   return 'Fare thee well';
+    case 'Samurai':  return 'Sayonara';
+    case 'Tourist':  return 'Aloha';
+    case 'Valkyrie': return 'Farvel';
+    default:         return 'Goodbye';
+    }
+}
+
+// C ref: hack.h plur(x) — "" when x == 1, "s" otherwise.
+function plur(n) { return (n === 1) ? '' : 's'; }
+
+// Sum the coins carried directly in `inv` (C ref: engrave.c money_cnt — does NOT
+// descend into containers; that is hidden_gold()'s job).
+function money_toplevel(inv) {
+    let s = 0;
+    for (const o of inv) if (o && o.oclass === COIN_CLASS) s += o.quan || 0;
+    return s;
+}
+// C ref: invent.c hidden_gold(TRUE) — total gold stashed inside carried
+// containers (recursively).  Kept separate from money_toplevel() so the score
+// calculation mirrors end.c (umoney = money_cnt + hidden_gold).
+function hidden_gold_inv(inv) {
+    let s = 0;
+    for (const o of inv) {
+        if (o?.cobj) {
+            for (const c of o.cobj) {
+                if (c?.oclass === COIN_CLASS) s += c.quan || 0;
+                if (c?.cobj) s += hidden_gold_inv([c]);
+            }
+        }
+    }
+    return s;
+}
+const COIN_CLASS = 12; // mkobj.js COIN_CLASS
+
+// C ref: end.c really_done() endgame display + rip.c outrip() + topten().
+// Reached from done_selfzap()/done() once the hero has actually died (the
+// wizard-mode "Die?" query was accepted and, if bones are possible, "Save
+// bones?" answered).  Renders the tombstone page, the tty window-teardown
+// --More-- acknowledgements, and (in wizard/discover mode) the topten
+// "score list will not be checked" line, driving nhgetch() at each boundary so
+// every frame is captured.  The final nhgetch() exhausts the recorded input and
+// terminates the segment (as the moveloop's own read would otherwise do).
+export async function outrip_and_score(how) {
+    const disp = game?.nhDisplay;
+    const { nhgetch } = await import('./input.js');
+    if (!disp?.putstr) { // no display (shouldn't happen in replay) — just end.
+        game.program_state = game.program_state || {};
+        game.program_state.gameover = true;
+        return;
+    }
+    const { genl_outrip } = await import('./rip.js');
+    const u = game.u;
+    const NO_COLOR = 8; // terminal.js NO_COLOR (default fg; emits no SGR escape)
+    const ROWS = 24;
+
+    // ── gather the values engraved / printed ──
+    const plname = game.plname || game.svp?.plname || 'wizard';
+    const female = !!game.flags?.female;
+    const roleName = (female && game.urole?.name?.f)
+        ? game.urole.name.f
+        : (game.urole?.name?.m || 'Adventurer');
+    const inv = Array.isArray(game.invent) ? game.invent
+        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+    // umoney = money_cnt(invent) + hidden_gold(TRUE); gd.done_money = umoney.
+    const umoney = money_toplevel(inv) + hidden_gold_inv(inv);
+
+    // depth of the death level (dnum 0 -> depth == dlevel).
+    const uz = u?.uz || { dnum: 0, dlevel: 1 };
+    const dungeonName = game.dungeons?.[uz.dnum]?.dname || 'The Dungeons of Doom';
+    const depth = (game.dungeons?.[uz.dnum]?.depth_start ?? 1) + (uz.dlevel | 0) - 1;
+
+    // C ref: end.c really_done() score calc.  deepest_lev_reached(FALSE) is the
+    // deepest depth reached; approximate with the current depth (the only level
+    // reached in the covered path).  tmp = net gold gain, minus 10%, plus a
+    // per-level bonus; u.urexp already holds the reward-experience earned in play.
+    const deepest = depth;
+    let tmp = umoney - (u?.umoney0 || 0);
+    if (tmp < 0) tmp = 0;
+    if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
+    tmp += 50 * (deepest - 1);
+    const urexp = (u?.urexp || 0) + tmp;
+
+    // Death description for the tombstone (formatkiller with NO_KILLER_PREFIX
+    // just yields killer.name).  ends[]/deaths[] fall back for the summary.
+    const deathText = game._killer_name || DEATHS[how] || 'died';
+    const year = (+String(game.datetime || '').slice(0, 4)) || 2020;
+    const moves = (game.moves == null ? 0 : (game.moves | 0));
+
+    // ── build the endgame TEXT window (24 lines), C ref rip.c + end.c ──
+    const lines = [];
+    lines.push('');                                    // 0 (genl_outrip leading "")
+    for (const r of genl_outrip(plname, umoney, deathText, year))
+        lines.push(r);                                 // 1..15 (stone)
+    lines.push('');                                    // 16 (genl_outrip trailing "")
+    lines.push('');                                    // 17
+    lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`); // 18
+    lines.push('');                                    // 19
+    lines.push(`You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
+        + ` with ${urexp} point${plur(urexp)},`);      // 20
+    lines.push(`and ${umoney} piece${plur(umoney)} of gold, after ${moves} move${plur(moves)}.`); // 21
+    lines.push(`You were level ${u?.ulevel || 1} with a maximum of ${u?.uhpmax || 0}`
+        + ` hit point${plur(u?.uhpmax || 0)} when you ${ENDS[how]}.`); // 22
+    lines.push('');                                    // 23
+
+    const MORE = '--More--';
+    const drawMore = (row) => {
+        for (let i = 0; i < MORE.length; i++) disp.setCell(i, row, MORE[i], NO_COLOR, 0);
+        disp.setCursor(MORE.length, row); // cursor one past --More-- (col 8)
+    };
+
+    // Page 1 — the tombstone.  C tty process_text_window() prints window lines
+    // 0..(rows-2) then pauses with --More-- on the last row (rows-1 == 23).
+    disp.clearScreen();
+    for (let i = 0; i < ROWS - 1 && i < lines.length; i++) {
+        if (lines[i]) disp.putstr(0, i, lines[i], NO_COLOR, 0);
+    }
+    drawMore(ROWS - 1);
+    await nhgetch();
+
+    // The remaining pages are blank --More-- acknowledgements: process_text_window
+    // clears and shows its final page (window line 23 == "" -> blank) with
+    // --More--, then the endgame window teardown / topten() setup pauses for the
+    // recorded space/return acknowledgements before the score line is printed.
+    for (let b = 0; b < 5; b++) {
+        disp.clearScreen();
+        drawMore(ROWS - 1);
+        await nhgetch();
+    }
+
+    // topten() in wizard/discover mode: raw_print("") then raw_print(msg) — two
+    // lines to the bare screen (no --More--); cursor ends on the row after.
+    // C ref: topten.c topten() wizard branch + tty raw_print.
+    disp.clearScreen();
+    const wizard = !!game.flags?.debug;
+    const msg = `Since you were in ${wizard ? 'wizard' : 'discover'} mode,`
+        + ' the score list will not be checked.';
+    disp.putstr(0, 1, msg, NO_COLOR, 0);
+    disp.setCursor(0, 2);
+    game.program_state = game.program_state || {};
+    game.program_state.gameover = true;
+    // Final read: consumes the last recorded key (or exhausts the queue, which
+    // ends the segment exactly as the moveloop's own command read would).
+    await nhgetch();
+}
 
 let _display = null;
 async function deps() {

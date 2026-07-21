@@ -106,6 +106,16 @@ function _blocks(level, x, y) {
     // C ref: vision.c does_block — TREE, CLOUD, waterwall (WATER) and LAVAWALL
     // also block line of sight (the Big Room's inner W/Z rings, for instance).
     if (typ === TREE || typ === CLOUD || typ === WATER || typ === LAVAWALL) return true;
+    // C ref: vision.c does_block — "Boulders block light."  Scan the floor
+    // objects at <x,y> for a boulder (otyp 474).  A quest-home rolling-boulder
+    // trap, for instance, drops a boulder that casts a real LOS shadow.
+    const objs = level.objects;
+    if (objs) {
+        for (const o of objs) {
+            if (o.otyp === 474 /*BOULDER*/ && o.where === 'floor'
+                && o.ox === x && o.oy === y) return true;
+        }
+    }
     return false;
 }
 

@@ -1,5 +1,6 @@
 // were.js — Lycanthrope shape change (partial).
-// C ref: were.c were_change / new_were / counter_were.
+// C ref: were.c were_change / new_were / counter_were / set_ulycn /
+//        were_beastie.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -11,6 +12,7 @@ import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { canseemon, newsym, pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { set_mon_data } from './mondata.js';
+import { set_uasmon } from './polyself.js';
 
 const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
 const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
@@ -117,6 +119,16 @@ export function new_were(mon) {
     if (lost > 0) mon.mhp = (mon.mhp | 0) + lost;
     newsym(mon.mx, mon.my);
     // mon_break_armor / possibly_unwield / monflee deferred
+}
+
+/**
+ * C ref: were.c set_ulycn — catch or cure lycanthropy (no shape change).
+ * Updates u.ulycn then set_uasmon so Drain_resistance FROM_LYCN tracks.
+ */
+export function set_ulycn(which) {
+    const u = game.u || (game.u = {});
+    u.ulycn = which | 0;
+    set_uasmon();
 }
 
 /**

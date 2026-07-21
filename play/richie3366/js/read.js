@@ -42,7 +42,7 @@ import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, objectNames,
 } from './objects.js';
-import { weight, uncurse, blessorcurse, mkobj } from './mkobj.js';
+import { weight, uncurse, blessorcurse, mkobj, delobj } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
 import {
     makeknown, display_pickinv_reply, identify_pack, near_capacity,
@@ -291,7 +291,7 @@ function lightdamage(_obj, _ordinary, amt) {
  * Deferred: snuff_lit / artifact_light / Punished move_bc / gremlin hits /
  * Sunsword spot / Underwater beyond no_op gate.
  */
-async function litroom(on, obj) {
+export async function litroom(on, obj) {
     const u = game.u || {};
     const Blind = !!(u.Blind || u.ublind);
     const blessed_effect = !!(obj && obj.oclass === SCROLL_CLASS && obj.blessed);
@@ -713,6 +713,18 @@ async function seffect_identify(sobj) {
         );
     }
     return null; // used up when scroll
+}
+
+/**
+ * C ref: read.c unpunish — remove ball & chain (chain destroyed, ball freed).
+ * Named omissions: delobj newsym / monster-under-chain polish.
+ */
+export function unpunish() {
+    const u = game.u || (game.u = {});
+    const savechain = u.uchain;
+    setworn(null, W_CHAIN); // clears uchain
+    if (savechain) delobj(savechain);
+    setworn(null, W_BALL); // clears uball; ball persists if carried/floor
 }
 
 /**

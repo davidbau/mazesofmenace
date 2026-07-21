@@ -192,14 +192,22 @@ export function newhp() {
 }
 
 // C ref: exper.c more_experienced(int exper, int rexp) — accumulate XP/score.
+// urexp (score) is the running reward-experience total, incremented by
+// rexpincr = 4*exper + rexp.  It is not shown on the status line (showscore
+// off in the recorded rc) but IS displayed on the death tombstone / score
+// summary (end.c really_done / rip.c), so keep it current.
 export function more_experienced(exper, rexp) {
     const u = game.u;
     const oldexp = u.uexp || 0;
     let newexp = oldexp + exper;
     if (newexp < 0 && exper > 0) newexp = Number.MAX_SAFE_INTEGER;
     if (newexp !== oldexp) u.uexp = newexp;
-    // urexp/score and beginner flag are display-irrelevant for the recorded
-    // sessions (showscore off); omit to avoid touching unrelated state.
+
+    const oldrexp = u.urexp || 0;
+    const rexpincr = 4 * exper + (rexp || 0);
+    let newrexp = oldrexp + rexpincr;
+    if (newrexp < 0 && rexpincr > 0) newrexp = Number.MAX_SAFE_INTEGER;
+    if (newrexp !== oldrexp) u.urexp = newrexp;
 }
 
 // C ref: exper.c newexplevel(void) — gain a level when XP crosses threshold.

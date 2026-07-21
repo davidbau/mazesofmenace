@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { DART, mksobj, mkobj, next_ident, mkobj_at, weight } from './mkobj.js';
+import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse } from './mkobj.js';
 import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
 // Object-class constants inlined (not imported) to avoid a circular-import TDZ:
 // mkobj.js's dependency chain reaches makemon.js, so importing these names here
@@ -365,6 +365,32 @@ const MON_CWT = [
     1450, 1450,
 ];
 
+// C ref: include/monsters.h SIZ() nutrition field (cnutrit) — the base
+// nutrition of a corpse of this species (eat.c obj_nutrition() for a CORPSE,
+// which sets otmp->oeaten before the per-bite lesshungry() delivery).  Indexed
+// by pmidx; extracted verbatim from the MON()/SIZ() entries in monsters.h.
+const MON_CNUTRIT = [
+    10, 5, 5, 10, 50, 5, 10, 100, 150, 10, 30, 30, 250, 250, 250, 250, 150, 200, 200, 250,
+    250, 250, 200, 350, 300, 200, 300, 10, 10, 10, 10, 10, 150, 200, 300, 300, 300, 250, 300, 400,
+    20, 200, 300, 200, 300, 250, 300, 300, 400, 400, 100, 100, 10, 100, 200, 200, 20, 20, 20, 100,
+    150, 200, 150, 30, 200, 400, 500, 300, 300, 300, 100, 200, 150, 200, 200, 300, 300, 350, 200, 300,
+    300, 100, 500, 500, 500, 650, 800, 800, 12, 30, 5, 30, 30, 30, 50, 50, 100, 100, 350, 350,
+    250, 300, 300, 300, 300, 350, 0, 0, 0, 0, 0, 0, 250, 250, 500, 700, 10, 300, 0, 0,
+    600, 400, 400, 400, 400, 400, 20, 30, 20, 20, 500, 600, 500, 500, 500, 500, 500, 500, 500, 500,
+    500, 500, 500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 400, 0, 0, 0, 0, 200, 30,
+    30, 30, 30, 100, 100, 100, 120, 120, 150, 750, 750, 700, 750, 750, 500, 750, 900, 700, 600, 200,
+    200, 200, 200, 100, 100, 100, 100, 50, 50, 75, 150, 175, 200, 250, 375, 100, 100, 100, 100, 400,
+    400, 400, 400, 500, 700, 750, 250, 250, 150, 250, 20, 20, 250, 200, 60, 80, 80, 100, 60, 100,
+    350, 300, 300, 350, 400, 500, 400, 400, 400, 0, 0, 0, 700, 50, 500, 700, 700, 550, 750, 50,
+    50, 75, 150, 175, 200, 250, 50, 375, 5, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0,
+    400, 30, 250, 250, 350, 350, 350, 350, 350, 350, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400,
+    400, 400, 400, 400, 400, 400, 400, 0, 0, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400,
+    400, 400, 400, 0, 500, 500, 500, 500, 500, 500, 500, 1, 1, 1, 400, 20, 30, 350, 250, 250,
+    1000, 20, 20, 30, 200, 40, 100, 400, 400, 0, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400,
+    400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 700, 400, 400, 400, 550, 400, 400, 400, 1700, 700,
+    1600, 400,
+];
+
 // C ref: include/monsters.h SIZ() body-size field (MZ_*).  MZ_TINY=0 (this set
 // is a superset of VERYSMALL, which only covers the species used by mkobj.js's
 // STATUE spellbook test), MZ_SMALL=1, MZ_MEDIUM/MZ_HUMAN=2, MZ_LARGE=3,
@@ -443,6 +469,7 @@ const MONS = MONS_RAW.map((t) => ({
     mflags3: MFLAGS3[t[0]] ?? 0, // C include/monsters.h MON() flg3 group
     ac: MON_AC[t[0]] ?? 10,      // C LVL() base armour class (find_mac)
     cwt: MON_CWT[t[0]],          // C SIZ() corpse weight (mkobj weight())
+    cnutrit: MON_CNUTRIT[t[0]] ?? 0, // C SIZ() corpse nutrition (eat.c)
     msize: MON_MSIZE[t[0]],      // C SIZ() body size MZ_* (mkobj weight())
     verysmall: VERYSMALL.has(t[0]), // MZ_TINY -> true (used by mkobj.js)
     carnivore: ((MFOOD[t[0]] ?? 0) & 1) !== 0, // M1_CARNIVORE
@@ -501,6 +528,11 @@ export function level_difficulty_ext() {
 export function mon_cwt(pmidx) {
     const m = MONS[pmidx];
     return m && m.cwt != null ? m.cwt : undefined;
+}
+// C ref: mons[pmidx].cnutrit — a corpse's base nutrition (eat.c obj_nutrition).
+export function mon_cnutrit(pmidx) {
+    const m = MONS[pmidx];
+    return m && m.cnutrit != null ? m.cnutrit : 0;
 }
 export function mon_msize(pmidx) {
     const m = MONS[pmidx];
@@ -890,13 +922,14 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
 // mtmp. We only need the RNG-consuming mksobj() call; the post-creation
 // blessing/spe tweaks in C don't consume RNG for the low-level cases here.
 function mongets(_mtmp, otyp) {
-    if (!otyp) return;
+    if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
     // C ref: mpickobj() adds the object to mtmp->minvent.  Track non-empty
     // inventory so the Big Room m_initinv gold uses d(ld, minvent?5:10), and
     // keep the object itself so it can be dropped (relobj) when the monster
     // dies (mon.c m_detach -> relobj drops mtmp->minvent onto the map).
     if (_mtmp) { _mtmp._hasinv = true; mpickobj(_mtmp, otmp); }
+    return otmp;   // C mongets() returns the created obj (used by ARM_BONUS math)
 }
 
 function m_initthrow(_mtmp, otyp, oquan) {
@@ -1366,18 +1399,100 @@ function rnd_misc_item(mtmp) {
     }
     return 0;
 }
+// C ref: mondata.h is_mercenary(ptr) == (mflags2 & M2_MERC).  The JS MONS slice
+// doesn't carry mflags2, so key on the mercenary PM indices (guard, soldier,
+// sergeant, lieutenant, captain, watchman, watch captain) — reuse the existing
+// MERC_PM set defined above.
+function m_is_mercenary(mm) { return MERC_PM.has(mm); }
+
+// C ref: hack.h ARM_BONUS(obj) = objects[otyp].a_ac + spe
+//                                 - min(greatest_erosion(obj), a_ac).
+// a_ac = 10 - (ARMOR macro ac arg) for the mercenary-granted armours.
+const MERC_A_AC = new Map([
+    [121, 7], [122, 7],          // PLATE_MAIL, CRYSTAL_PLATE_MAIL
+    [124, 6], [125, 6],          // SPLINT_MAIL, BANDED_MAIL
+    [131, 3], [132, 3],          // STUDDED_LEATHER_ARMOR, RING_MAIL
+    [134, 2],                    // LEATHER_ARMOR
+    [97, 1], [95, 1],            // HELMET, DENTED_POT
+    [150, 1], [156, 2],          // SMALL_SHIELD, LARGE_SHIELD
+    [163, 1], [165, 2],          // LOW_BOOTS, HIGH_BOOTS
+    [159, 1], [145, 1],          // LEATHER_GLOVES, LEATHER_CLOAK
+]);
+function merc_arm_bonus(o) {
+    if (!o) return 0;
+    const aac = MERC_A_AC.get(o.otyp) || 0;
+    const ero = Math.max(o.oeroded || 0, o.oeroded2 || 0);
+    return aac + (o.spe || 0) - Math.min(ero, aac);
+}
+
+// C ref: makemon.c m_initinv() is_mercenary() branch.  mtmp is the mercenary;
+// mm its PM index.  RNG must match C exactly (five armour rounds gated on the
+// running AC estimate 'mac', then type-specific whistle/rations).
+function m_initinv_mercenary(mtmp, mm) {
+    let mac;
+    switch (mm) {
+    case 272: mac = -1; break;   // PM_GUARD
+    case 277: mac = 3; break;    // PM_SOLDIER
+    case 278: mac = 0; break;    // PM_SERGEANT
+    case 280: mac = -2; break;   // PM_LIEUTENANT
+    case 281: mac = -3; break;   // PM_CAPTAIN
+    case 282: mac = 3; break;    // PM_WATCHMAN
+    case 283: mac = -2; break;   // PM_WATCH_CAPTAIN
+    default: mac = 0; break;
+    }
+    let otmp = null;
+    const add_ac = () => { if (otmp) mac += merc_arm_bonus(otmp); otmp = null; };
+    // round 1: body armour
+    if (mac < -1 && rn2(5)) otmp = mongets(mtmp, rn2(5) ? 121 : 122);           // PLATE_MAIL : CRYSTAL_PLATE_MAIL
+    else if (mac < 3 && rn2(5)) otmp = mongets(mtmp, rn2(3) ? 124 : 125);       // SPLINT_MAIL : BANDED_MAIL
+    else if (rn2(5)) otmp = mongets(mtmp, rn2(3) ? 132 : 131);                  // RING_MAIL : STUDDED_LEATHER_ARMOR
+    else otmp = mongets(mtmp, 134);                                            // LEATHER_ARMOR
+    add_ac();
+    // round 2: helmets
+    if (mac < 10 && rn2(3)) otmp = mongets(mtmp, 97);                           // HELMET
+    else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, 95);                      // DENTED_POT
+    add_ac();
+    // round 3: shields
+    if (mac < 10 && rn2(3)) otmp = mongets(mtmp, 150);                          // SMALL_SHIELD
+    else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, 156);                     // LARGE_SHIELD
+    add_ac();
+    // round 4: boots
+    if (mac < 10 && rn2(3)) otmp = mongets(mtmp, 163);                          // LOW_BOOTS
+    else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, 165);                     // HIGH_BOOTS
+    add_ac();
+    // round 5: gloves + cloak
+    if (mac < 10 && rn2(3)) otmp = mongets(mtmp, 159);                          // LEATHER_GLOVES
+    else if (mac < 10 && rn2(2)) otmp = mongets(mtmp, 145);                     // LEATHER_CLOAK
+    add_ac();
+
+    if (mm === 283) {
+        /* watch captain: better weapon rather than extra gear */
+    } else if (mm === 282) {
+        if (rn2(3)) mongets(mtmp, 245 /*TIN_WHISTLE*/);   // most watchmen carry a whistle
+    } else if (mm === 272) {
+        const o = mksobj(245 /*TIN_WHISTLE*/, true, false); // vault guard: cursed whistle
+        curse(o); mpickobj(mtmp, o); mtmp._hasinv = true;
+    } else { /* soldiers and their officers */
+        if (!rn2(3)) mongets(mtmp, 294 /*K_RATION*/);
+        if (!rn2(2)) mongets(mtmp, 295 /*C_RATION*/);
+        if (mm !== 277 /*PM_SOLDIER*/ && !rn2(3)) mongets(mtmp, 256 /*BUGLE*/);
+    }
+}
+
 function m_initinv_full(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr || Is_rogue_level(game.u?.uz)) return;
     const mlet = ptr.mcls, mm = ptr.pmidx;
     switch (mlet) {
     case 53: // S_HUMAN
-        // C ref: makemon.c m_initinv() S_HUMAN case.  Only the shopkeeper
-        // branch is reachable from stock_room (mercenary/priest/monk variants
-        // are not generated by the shop-stocking path).  PM_SHOPKEEPER gets a
-        // skeleton key, then a fall-through switch(rn2(4)) that grants a cascade
-        // of wands/potions (case 3 -> only WAN_STRIKING).
-        if (mm === 271 /*PM_SHOPKEEPER*/) {
+        // C ref: makemon.c m_initinv() S_HUMAN case.  Mercenaries (soldiers,
+        // watchmen, ...) get five rounds of armour approximating their AC, plus
+        // a whistle/rations depending on type.  Reached by quest-home watchmen
+        // (Arc-strt).  Then the shopkeeper branch (skeleton key + wand/potion
+        // cascade), reachable from stock_room.
+        if (m_is_mercenary(mm)) {
+            m_initinv_mercenary(mtmp, mm);
+        } else if (mm === 271 /*PM_SHOPKEEPER*/) {
             mongets(mtmp, 221 /*SKELETON_KEY*/);
             switch (rn2(4)) { // makemon.c:704
             case 0: mongets(mtmp, 428 /*WAN_MAGIC_MISSILE*/); /* FALLTHRU */
@@ -1638,6 +1753,37 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     if ((ptr.mcls === 19 /* S_SPIDER */ || ptr.mcls === 45 /* S_SNAKE */)
         && game.in_mklev && x && y) {
         mkobj_at(0 /* RANDOM_CLASS */, x, y, true);
+        // C ref: makemon.c:1312 hideunder(mtmp) — a concealing (M1_CONCEAL)
+        // hider hides under the object it just dropped.  During in_mklev there's
+        // no message and no RNG; the effect is just mundetected=1 (so the square
+        // renders as the object, not the monster).  Condition mirrors mon.c
+        // hideunder(): concealing species, an object present, dry ground, and
+        // not on a non-pit trap (siege snakes here are never on a trap).
+        // C ref: mon.c hideunder() gating: a hider can't hide while on a trap
+        // that isn't a pit (e.g. the giant spider mktrap() drops onto a WEB stays
+        // visible), and can_hide_under_obj() rejects a bare small (<10) coin pile.
+        let nonPitTrap = false;
+        const trps = game.level?.traps;
+        if (trps) for (const t of trps) {
+            if (t.tx === x && t.ty === y) { nonPitTrap = (t.ttyp !== 11 /*PIT*/ && t.ttyp !== 12 /*SPIKED_PIT*/); break; }
+        }
+        const objs = game.level?.objects;
+        let hasObj = false, hasNonCoin = false, coinQuan = 0;
+        if (objs) for (const o of objs) {
+            if (o.where === 'floor' && o.ox === x && o.oy === y) {
+                hasObj = true;
+                if (o.oclass === COIN_CLASS) coinQuan += (o.quan || 1); else hasNonCoin = true;
+            }
+        }
+        const canHideUnder = hasObj && (hasNonCoin || coinQuan >= 10);
+        // Gated to quest-level generation (like peace_minded_bigrm / the eel
+        // sleep roll): the ordinary level-gen path keeps the prior conservative
+        // behavior (concealing hiders there shifted seed4500's post-divergence
+        // frames).  Within a quest home the siege snakes hide under their drops.
+        if (game._quest_gen && mm_hides_under_pm(ptr) && canHideUnder && !nonPitTrap
+            && !mm_is_pool(x, y) && !mm_is_lava(x, y)) {
+            mtmp.mundetected = 1;
+        }
     }
 
     // C ref: makemon.c:1304 — S_MIMIC monsters get an appearance via
@@ -1706,6 +1852,16 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
 function mm_cansee(x, y) {
     if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
     return !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+}
+
+// C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  The JS MONS slice
+// carries no mflags1, so identify the concealing species by pmidx (the 8
+// M1_CONCEAL entries in include/monsters.h: cave spider, centipede, scorpion,
+// garter snake, snake, water moccasin, pit viper, cobra).  Kept local here to
+// avoid a monmove.js import cycle (which breaks module init order).
+const MM_M1_CONCEAL_PMIDX = new Set([94, 95, 97, 214, 215, 216, 218, 219]);
+function mm_hides_under_pm(ptr) {
+    return ptr != null && MM_M1_CONCEAL_PMIDX.has(ptr.pmidx);
 }
 
 // C ref: rm.h is_pool / is_lava — terrain type tests used by goodpos().

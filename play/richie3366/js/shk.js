@@ -8,7 +8,8 @@
 //        sub_one_frombill / subfrombill / alter_cost;
 //        mkobj.c bill_dummy_object / costly_alteration (D-0940);
 //        add_damage shop repair list (D-0941);
-//        pay_for_damage / getcad / hot_pursuit (D-0942).
+//        pay_for_damage / getcad / hot_pursuit (D-0942);
+//        shopdig dig-warn / pack-snatch (D-0958).
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
@@ -40,6 +41,7 @@ import {
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
     DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
+    W_SWAPWEP, W_QUIVER, TT_PIT,
 } from './const.js';
 import { hero_conflict, resist_conflict, m_canseeu } from './mondata.js';
 import { mon_nam } from './do_name.js';
@@ -53,15 +55,17 @@ import {
 import { cansee } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
-import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
+import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT } from './generated/monsters_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam } from './shknam.js';
 import { splitobj, next_ident } from './mkobj.js';
 import { add_to_minv } from './makemon.js';
 import { acurr, acurrstr, A_CHA, adjalign } from './attrib.js';
-import { simpleonames } from './objnam.js';
+import { simpleonames, makeplural } from './objnam.js';
 import { xname, doname, paydoname, set_doname_shop_suffix } from './objnam.js';
-import { is_human, is_demon } from './monsters.js';
+import {
+    is_human, is_demon, nolimbs, is_floater, is_flyer, amorphous, M1_SLITHY,
+} from './monsters.js';
 import { nhgetch } from './input.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -71,8 +75,11 @@ import { enexto, rloc_to_flag } from './teleport.js';
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
 const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
-/** C monflag.h MS_ANIMAL — animal noises ceiling for muteshk. */
+const LEASH = objectNames.indexOf('LEASH');
+/** C monflag.h MS_SILENT / MS_ANIMAL / MS_HUMANOID. */
+const MS_SILENT = 0;
 const MS_ANIMAL = 17;
+const MS_HUMANOID = 25;
 /** C monflag.h MS_SELL — shopkeeper when tables omit msound. */
 const MS_SELL = 39;
 
@@ -876,6 +883,177 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
 }
 
 /**
+ * C ref: shk.c shopdig — warn (fall=0) or snatch pack (fall=1) when
+ * digging a hole in a shop.
+ * Envelope (D-0958): inhishop verbalize / knight adjalign; fall path
+ * mnexto + invent snatch via setnotworn/freeinv/subfrombill/add_to_minv.
+ * Named omit: SetVoice; nolimbs #if0 curse/rile early-return.
+ * @param {number} fall 0 = start dig warn; 1 = fall-through snatch
+ */
+export async function shopdig(fall) {
+    const u = game.u || {};
+    const flags = game.flags || {};
+    const ushop = (u.ushops || '')[0];
+    if (!ushop) return;
+    const shkp = shop_keeper(ushop.charCodeAt(0));
+    if (!shkp) return;
+    if (!inhishop(shkp)) {
+        if (Role_if(PM_KNIGHT)) {
+            await pline('You feel like a common thief.');
+            const atyp = u.ualign?.type | 0;
+            adjalign(-(atyp > 0 ? 1 : atyp < 0 ? -1 : 0));
+        }
+        return;
+    }
+
+    // 0 == can't speak, 1 == animal noises, 2 == speaks
+    let lang = 0;
+    if (helpless(shkp) || is_silent_shk(shkp)) {
+        // lang stays 0
+    } else {
+        let ms = shkp?.data?.msound;
+        if (ms == null) ms = shkp?.isshk ? MS_SELL : 0;
+        ms |= 0;
+        if (ms <= MS_ANIMAL) lang = 1;
+        else if (ms >= MS_HUMANOID) lang = 2;
+    }
+
+    if (!fall) {
+        if (lang === 2) {
+            if (!hero_deaf() && !muteshk(shkp)) {
+                // SetVoice deferred
+                if ((u.utraptype | 0) === TT_PIT) {
+                    await verbalize(
+                        `Be careful, ${flags.female ? 'madam' : 'sir'}, `
+                        + 'or you might fall through the floor.',
+                    );
+                } else {
+                    await verbalize(
+                        `${flags.female ? 'Madam' : 'Sir'}, do not damage `
+                        + 'the floor here!',
+                    );
+                }
+            }
+        }
+        if (Role_if(PM_KNIGHT)) {
+            await pline('You feel like a common thief.');
+            const atyp = u.ualign?.type | 0;
+            adjalign(-(atyp > 0 ? 1 : atyp < 0 ? -1 : 0));
+        }
+        return;
+    }
+
+    // fall === 1 — snatch pack when close + owed
+    const eshk = ESHK(shkp);
+    if (!um_dist(shkp.mx | 0, shkp.my | 0, 5)
+        || helpless(shkp)
+        || !((eshk?.billct | 0) || (eshk?.debit | 0))) {
+        return;
+    }
+
+    let grabs = 'grabs';
+    if (nolimbs(shkp.data)) {
+        grabs = 'knocks off';
+        // C #if0 curse/rile early-return deferred
+    }
+
+    if (!m_next2u(shkp)) {
+        const { mnexto } = await import('./mon.js');
+        await mnexto(shkp, RLOC_MSG);
+        if (!m_next2u(shkp)) {
+            if (lang === 2) {
+                await pline(
+                    `${Shknam(shkp)} curses you in anger and frustration!`,
+                );
+            } else if (lang === 1) {
+                const { growl } = await import('./sounds.js');
+                await growl(shkp);
+            }
+            rile_shk(shkp);
+            return;
+        }
+        await pline(
+            `${Shknam(shkp)} ${makeplural(locomotion_shk(shkp.data, 'leap'))}`
+            + `, and ${grabs} your backpack!`,
+        );
+    } else {
+        await pline(`${Shknam(shkp)} ${grabs} your backpack!`);
+    }
+
+    const invent = game.invent || [];
+    for (const obj of [...invent]) {
+        if (!obj) continue;
+        if (((obj.owornmask | 0) & ~(W_SWAPWEP | W_QUIVER)) !== 0
+            || (obj === u.uswapwep && u.twoweap)
+            || (LEASH >= 0 && (obj.otyp | 0) === LEASH && (obj.leashmon | 0))) {
+            continue;
+        }
+        if (obj === game.current_wand) continue;
+        setnotworn_shopdig(obj);
+        freeinv_shopdig(obj);
+        subfrombill(obj, shkp);
+        add_to_minv(shkp, obj); // may free obj in C; JS keeps reference
+    }
+}
+
+/** C mondata.h is_silent — msound == MS_SILENT. */
+function is_silent_shk(mtmp) {
+    let ms = mtmp?.data?.msound;
+    if (ms == null) ms = mtmp?.isshk ? MS_SELL : MS_SILENT;
+    return (ms | 0) === MS_SILENT;
+}
+
+/**
+ * C mondata.c locomotion — verb for how a monster moves (shopdig leap).
+ * Capitals when def starts uppercase.
+ */
+function locomotion_shk(ptr, def) {
+    const d = String(def ?? '');
+    const cap = !!(d[0] && d[0] === d[0].toUpperCase()
+        && d[0] !== d[0].toLowerCase());
+    const pick = (lo, hi) => (cap ? hi : lo);
+    if (is_floater(ptr)) return pick('float', 'Float');
+    if (is_flyer(ptr)) return pick('fly', 'Fly');
+    if (((ptr?.mflags1 ?? 0) & M1_SLITHY) !== 0) {
+        return pick('slither', 'Slither');
+    }
+    if (amorphous(ptr)) return pick('ooze', 'Ooze');
+    if (!(ptr?.mmove | 0)) return pick('wiggle', 'Wiggle');
+    if (nolimbs(ptr)) return pick('crawl', 'Crawl');
+    return d;
+}
+
+/** C worn.c setnotworn — clear hero worn slots pointing at obj. */
+function setnotworn_shopdig(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    for (const slot of [
+        'uwep', 'uswapwep', 'uqwep', 'uquiver',
+        'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+        'uleft', 'uright', 'uamul', 'ublindf',
+    ]) {
+        if (u[slot] === obj) u[slot] = null;
+    }
+    obj.owornmask = 0;
+}
+
+/** C invent.c freeinv — splice from invent[]; refresh gold botl cache. */
+function freeinv_shopdig(obj) {
+    if (!obj) return;
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.nobj = null;
+    obj.where = OBJ_FREE;
+    if ((obj.oclass | 0) === COIN_CLASS) {
+        game._goldCount = Math.max(
+            0, (game._goldCount || 0) - ((obj.quan | 0) || 0),
+        );
+        if (game.flags) game.flags.botl = true;
+    }
+}
+
+/**
  * C ref: mkobj.c costly_alteration — shop bill for modified unpaid goods.
  * Branch envelope: invent/free unpaid verbalize+bill_dummy; floor same-
  * shop verbalize+bill_dummy.
@@ -1365,9 +1543,15 @@ function carrying(otyp) {
     return null;
 }
 
-/** C ref: dig.c holetime — dig occupation in shop; stub: not digging. */
+/** C ref: dig.c holetime — dig occupation in shop (D-0951). */
 function holetime() {
-    return -1;
+    // Mirror dig.js holetime without static dig import (cycle risk via pay).
+    // dig occupation sets occtxt to "digging"/"chopping" via set_occupation.
+    if (typeof game.occupation !== 'function') return -1;
+    const txt = game.occtxt || '';
+    if (txt !== 'digging' && txt !== 'chopping') return -1;
+    if (!(game.u?.ushops)) return -1;
+    return ((250 - ((game.context?.digging?.effort) | 0)) / 20) | 0;
 }
 
 /** C: onlineu(xx,yy) → online2(xx,yy,u.ux,u.uy) */

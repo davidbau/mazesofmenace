@@ -31,8 +31,19 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.j
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { hide_monst } from './mon.js';
+import { more_experienced, newexplevel } from './exper.js';
+
+// C ref: dungeon.c level_difficulty() — factor of difficulty from depth.  The
+// covered ports' path is the main dungeon with no amulet and outside the
+// endgame, where res == depth(&u.uz); the builds-up (Sokoban / Vlad's Tower)
+// and ring-of-aggravate-monster adjustments are not exercised.
+const PM_TOURIST = 10; // makemon/exper PM index
+function level_difficulty() {
+    return depth_of_level(game.u.uz);
+}
 import { mon_catchup_elapsed_time } from './dogmove.js';
 import { onquest } from './questpgr.js';
+import { initrack } from './track.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
 //    mkmaze.c bad_location, teleport.c goodpos/collect_coords/enexto) ──
@@ -347,7 +358,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const oldLedger = `${u.uz.dnum}:${u.uz.dlevel}`;
     g._level_store[oldLedger] = {
         level: g.level, stairs: g.stairs, omoves: g.moves ?? 0,
+        // C ref: track.c save_track() (called from savelev()) — the hero's
+        // footprint ring (utrack) is written into the departing level's save
+        // file, then save_track's release_data() branch runs initrack() to clear
+        // the live ring.  So each level owns its own footprints; gettrack() on
+        // the destination never sees squares the hero walked on a DIFFERENT
+        // level.  Mirror that here: stash the ring by reference into the old
+        // level's store, then initrack() below installs a fresh empty ring.
+        utrack: g._utrack, utcnt: g._utcnt, utpnt: g._utpnt,
     };
+    // C ref: save_track() release_data() -> initrack().  Clear the live ring so
+    // a freshly-made destination (mklev, no saved track) starts with none, and a
+    // reloaded destination gets its own ring back via getlev_restore().
+    initrack();
 
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
@@ -409,6 +432,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
+
+    // C ref: do.c goto_level() — on first entry to a level ("if (new)"), a
+    // Tourist gains reward-experience scaled by the level's difficulty:
+    //   if (Role_if(PM_TOURIST)) { more_experienced(level_difficulty(), 0);
+    //                              newexplevel(); }
+    // No RNG unless the gain crosses an experience-level boundary (newexplevel
+    // -> pluslvl), which does not happen on the shallow covered levels.  This
+    // feeds u.urexp for the end-of-game score (rip.c / end.c).
+    if (firstVisit && game.urole?.mnum === PM_TOURIST) {
+        more_experienced(level_difficulty(), 0);
+        newexplevel();
+    }
+
     const annotation = game._level_annotations?.[ledger];
     if (annotation) await update_topl(`You remember this level as ${annotation}.`);
     // The on-foot transit message + its --More-- frame were already delivered
@@ -432,6 +468,17 @@ async function getlev_restore(ledger) {
     g.level = store.level;
     g.stairs = store.stairs;
     g.fmon = g.level.monsters;
+
+    // C ref: track.c rest_track() (called from getlev()) — restore this level's
+    // saved footprint ring.  goto_level() cleared the live ring (initrack) when
+    // it left the previous level, so a level we never departed keeps its empty
+    // ring; one we saved gets its own footprints back (utrack was stashed by
+    // reference so it is exactly the ring as of our last departure).
+    if (store.utrack) {
+        g._utrack = store.utrack;
+        g._utcnt = store.utcnt ?? 0;
+        g._utpnt = store.utpnt ?? 0;
+    }
 
     // C ref: restore.c getlev() — elapsed = svm.moves - svo.omoves (turns spent
     // away from this level).

@@ -704,7 +704,28 @@ export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, materia
     oc_skill: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
     oc_subtyp: OC_SKILL[otyp] != null ? OC_SKILL[otyp] : 0,
     oc_magic: 0,
+    oc_can: 0,
 }));
+
+// C ref: include/objects.h ARMOR()/HELM()/CLOAK() `can` field -> a_can, the
+// armor's magic-cancellation (MC).  Only armor pieces have a nonzero a_can;
+// magic_negation() (mhitu.c) reads the max a_can over the wearer's worn armor.
+// Extracted verbatim from the per-armor macros (every unlisted otyp is 0):
+//   can 1: ring/scale/chain/banded/splint/bronze-plate/studded/leather suits,
+//          most cloaks, cornuthaum;  can 2: plate/crystal-plate/mithril suits,
+//          oilskin cloak, robe;  can 3: cloak of protection.
+const OC_CAN = {
+    93: 1,                                   // cornuthaum (helm)
+    121: 2, 122: 2, 123: 1, 124: 1, 125: 1,  // plate/crystal 2; bronze/splint/banded 1
+    126: 2, 127: 2,                          // dwarvish/elven mithril-coat
+    128: 1, 129: 1, 130: 1, 131: 1,          // chain/orcish-chain/scale/studded
+    132: 1, 133: 1, 134: 1,                  // ring mail/orcish ring mail/leather armor
+    138: 1, 139: 1, 140: 1, 141: 1,          // mummy wrapping/elven/orcish/dwarvish cloak
+    142: 2, 143: 2, 144: 1, 145: 1,          // oilskin cloak/robe 2; alchemy smock/leather cloak 1
+    146: 3, 147: 1, 148: 1, 149: 1,          // cloak of protection 3; invis/magic-res/displacement 1
+};
+for (const otyp in OC_CAN)
+    if (objects[otyp]) objects[otyp].oc_can = OC_CAN[otyp];
 
 // C ref: include/objects.h BITS() mgc field — oc_magic, the "magic" flag used
 // by poly_obj() (zap.c) to keep a polymorphed object's magic-or-not status the

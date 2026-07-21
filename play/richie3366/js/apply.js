@@ -10,6 +10,7 @@ import { vision_recalc, cansee } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames, objectNameStrs,
+    objectDescrs,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
@@ -18,7 +19,8 @@ import {
     COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
-    EXT_ENCUMBER,
+    EXT_ENCUMBER, COST_DSTROY, HEAD, HAND,
+    EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -40,6 +42,10 @@ import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path } from './dothrow.js';
 import { teleds } from './teleport.js';
 import { morehungry, use_tin_opener } from './eat.js';
+import { yn_function } from './getline.js';
+import { costly_alteration } from './shk.js';
+import { zappable } from './zap.js';
+import { explode } from './explode.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -80,6 +86,30 @@ const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
 const LENSES = objectNames.indexOf('LENSES');
 const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
+const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+const WAN_NOTHING = objectNames.indexOf('WAN_NOTHING');
+const WAN_LOCKING = objectNames.indexOf('WAN_LOCKING');
+const WAN_PROBING = objectNames.indexOf('WAN_PROBING');
+const WAN_ENLIGHTENMENT = objectNames.indexOf('WAN_ENLIGHTENMENT');
+const WAN_SECRET_DOOR_DETECTION =
+    objectNames.indexOf('WAN_SECRET_DOOR_DETECTION');
+const WAN_STASIS = objectNames.indexOf('WAN_STASIS');
+const WAN_DEATH = objectNames.indexOf('WAN_DEATH');
+const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
+const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
+const WAN_COLD = objectNames.indexOf('WAN_COLD');
+const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
+const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
+const WAN_CREATE_MONSTER = objectNames.indexOf('WAN_CREATE_MONSTER');
+const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
+const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const WAN_CANCELLATION = objectNames.indexOf('WAN_CANCELLATION');
+const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
+const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
+const WAN_UNDEAD_TURNING = objectNames.indexOf('WAN_UNDEAD_TURNING');
+
+const NOTHING_ELSE_HAPPENS = 'But nothing else happens...';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_UMBER_HULK = monsterNames.indexOf('PM_UMBER_HULK');
@@ -898,9 +928,11 @@ function make_blinded(xtime, _talk) {
     }
 }
 
-/** C ref: mondata.c body_part — FACE → "face"; poly table deferred. */
+/** C ref: mondata.c body_part — FACE/HEAD/HAND; poly table deferred. */
 function body_part(part) {
     if (part === FACE) return 'face';
+    if (part === HEAD) return 'head';
+    if (part === HAND) return 'hand';
     return 'body part';
 }
 
@@ -1001,14 +1033,299 @@ async function use_cream_pie(obj) {
     return ECMD_OK;
 }
 
+/** C ref: objnam.c yname — invent → "your …". */
+function yname(obj) {
+    return `your ${xname(obj)}`;
+}
+
+/** C ref: o_init.c objdescr_is — appearance string match. */
+function objdescr_is(obj, descr) {
+    if (!obj) return false;
+    const oc = game.objects?.[obj.otyp];
+    if (!oc) return false;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
+    return dn != null && dn === descr;
+}
+
+/** C ref: invent.c freehand — either hand free. */
+function freehand_break() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    if (!uwep) return true;
+    const bimanual = !!(game.objects?.[uwep.otyp]?.oc_bimanual
+        || game.objects?.[uwep.otyp]?.oc_big);
+    if (!bimanual && (!u.uarms || !u.uarms.cursed)) return true;
+    if (!uwep.cursed) return true;
+    return false;
+}
+
+/**
+ * C ref: apply.c discard_broken_wand — delobj current_wand + nomul(0).
+ */
+async function discard_broken_wand() {
+    const obj = game.current_wand;
+    game.current_wand = null;
+    if (obj) delobj(obj);
+    nomul(0);
+}
+
+/**
+ * C ref: apply.c broken_wand_explode — explode + makeknown + discard.
+ * explode() bills shopdamage via zap_over_floor (D-0949).
+ */
+async function broken_wand_explode(obj, dmg, expltype) {
+    const u = game.u || {};
+    await explode(u.ux | 0, u.uy | 0, -(obj.otyp | 0), dmg, WAND_CLASS, expltype);
+    makeknown(obj.otyp);
+    await discard_broken_wand();
+}
+
+/**
+ * C ref: apply.c do_break_wand — apply a wand by breaking it.
+ * Envelope: nohands/freehand/STR gates; yn confirm; unpaid
+ * costly_alteration; freeinv; zappable restore charge; explode-type
+ * wands (death/lightning/fire/cold/missile); nothing-else inert wands;
+ * magical explode + WAN_DIGGING adjacent dig_check/digactualhole +
+ * WAN_CREATE_MONSTER makemon + dig shop pay_for_damage (D-0950);
+ * strike/cancel/poly/tele/undead adjacent bhitm/bhitpile/zapyourself
+ * + WAN_LIGHT litroom (D-0952).
+ * Named omit: release_hold WAN_OPENING; ParanoidBreakwand getlin "yes";
+ * check_unpaid bill polish; ICE spot_stop_timers; HOLE goto_level;
+ * flash_hits; revive container/buried polish.
+ * @returns {number} ECMD_*
+ */
+async function do_break_wand(obj) {
+    if (!obj) return ECMD_OK;
+    const is_fragile = objdescr_is(obj, 'balsa') || objdescr_is(obj, 'glass');
+
+    if (nohands(game.youmonst?.data)) {
+        await pline(`You can't break ${yname(obj)} without hands!`);
+        return ECMD_OK;
+    }
+    if (!freehand_break()) {
+        await pline(`Your ${makeplural(body_part(HAND))} are occupied!`);
+        return ECMD_OK;
+    }
+    if (acurr(A_STR) < (is_fragile ? 5 : 10)) {
+        await pline(`You don't have the strength to break ${yname(obj)}!`);
+        return ECMD_OK;
+    }
+
+    // C: paranoid_query(ParanoidBreakwand, …) — plain yn when flag unset
+    const c = await yn_function(
+        `Are you really sure you want to break ${yname(obj)}?`,
+        'yn',
+        'n',
+    );
+    if (c !== 'y') return ECMD_OK;
+
+    await pline(
+        `Raising ${yname(obj)} high above your ${body_part(HEAD)}, you ${
+            is_fragile ? 'snap' : 'break'
+        } it in two!`,
+    );
+
+    if (obj.unpaid) {
+        // check_unpaid deferred — costly_alteration bills destroy
+        await costly_alteration(obj, COST_DSTROY);
+    }
+
+    game.current_wand = obj;
+    freeinv_pie(obj);
+    setnotworn(obj);
+
+    if (!zappable(obj)) {
+        await pline(NOTHING_ELSE_HAPPENS);
+        await discard_broken_wand();
+        return ECMD_TIME;
+    }
+    // zappable consumed a charge; put it back
+    obj.spe = (obj.spe | 0) + 1;
+    if (!(obj.spe | 0)) obj.spe = rnd(3);
+
+    const u = game.u || {};
+    obj.ox = u.ux | 0;
+    obj.oy = u.uy | 0;
+    let dmg = (obj.spe | 0) * 4;
+    let affects_objects = false;
+
+    switch (obj.otyp) {
+    case WAN_OPENING:
+        // release_hold deferred — fall through to nothing for non-stuck
+        if (u.ustuck) {
+            // release_hold deferred
+            if (obj.dknown) makeknown(WAN_OPENING);
+            await discard_broken_wand();
+            return ECMD_TIME;
+        }
+        // FALLTHROUGH
+    case WAN_WISHING:
+    case WAN_NOTHING:
+    case WAN_LOCKING:
+    case WAN_PROBING:
+    case WAN_ENLIGHTENMENT:
+    case WAN_SECRET_DOOR_DETECTION:
+    case WAN_STASIS:
+        await pline(NOTHING_ELSE_HAPPENS);
+        await discard_broken_wand();
+        return ECMD_TIME;
+    case WAN_DEATH:
+    case WAN_LIGHTNING:
+        await broken_wand_explode(obj, dmg * 4, EXPL_MAGICAL);
+        return ECMD_TIME;
+    case WAN_FIRE:
+        await broken_wand_explode(obj, dmg * 2, EXPL_FIERY);
+        return ECMD_TIME;
+    case WAN_COLD:
+        await broken_wand_explode(obj, dmg * 2, EXPL_FROSTY);
+        return ECMD_TIME;
+    case WAN_MAGIC_MISSILE:
+        await broken_wand_explode(obj, dmg, EXPL_MAGICAL);
+        return ECMD_TIME;
+    case WAN_STRIKING:
+        await pline('A wall of force smashes down around you!');
+        dmg = d(1 + (obj.spe | 0), 6);
+        // FALLTHROUGH
+    case WAN_CANCELLATION:
+    case WAN_POLYMORPH:
+    case WAN_TELEPORTATION:
+    case WAN_UNDEAD_TURNING:
+        affects_objects = true;
+        break;
+    default:
+        break;
+    }
+
+    // magical explosion before specific effects
+    await explode(
+        obj.ox | 0, obj.oy | 0, -(obj.otyp | 0), rnd(dmg),
+        WAND_CLASS, EXPL_MAGICAL,
+    );
+
+    const {
+        dig_check, fillholetyp, digactualhole, liquid_flow,
+        fill_pit, maybe_dunk_boulders, watch_dig,
+    } = await import('./dig.js');
+    const {
+        DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, IS_WALL, IS_DOOR,
+        Can_dig_down, PIT, HOLE, ROOM, ICE, N_DIRS, xdir, ydir, isok,
+        SHOPBASE, NO_MM_FLAGS, NO_KILLER_PREFIX,
+    } = await import('./const.js');
+    const { in_rooms, losehp, maybe_half_phys } = await import('./hack.js');
+    const { makemon } = await import('./makemon.js');
+    const { pay_for_damage } = await import('./shk.js');
+    const { recalc_block_point } = await import('./vision.js');
+    const { t_at } = await import('./trap.js');
+    const {
+        bhitm, bhitpile, bhito, zapsetup, zapwrapup, zapyourself,
+    } = await import('./zap.js');
+    const { m_at } = await import('./mon.js');
+    const { litroom } = await import('./read.js');
+    const { finish_losehp_done } = await import('./end.js');
+
+    zapsetup();
+
+    let shop_damage = false;
+    let fillmsg = false;
+    const BY_OBJECT = null;
+
+    for (let i = 0; i <= N_DIRS; i++) {
+        const x = (obj.ox | 0) + (xdir[i] | 0);
+        const y = (obj.oy | 0) + (ydir[i] | 0);
+        if (!isok(x, y)) continue;
+
+        if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
+        game._bhitpos.x = x;
+        game._bhitpos.y = y;
+
+        if (obj.otyp === WAN_DIGGING) {
+            const dcres = dig_check(BY_OBJECT, x, y);
+            if (dcres < DIGCHECK_FAILED || dcres === DIGCHECK_FAIL_BOULDER) {
+                const lev = game.level?.at(x, y);
+                if (lev && (IS_WALL(lev.typ) || IS_DOOR(lev.typ))) {
+                    await watch_dig(null, x, y, true);
+                    if (in_rooms(x, y, SHOPBASE)) shop_damage = true;
+                }
+                // ICE spot_stop_timers deferred
+                void ICE;
+                const typ = fillholetyp(x, y, false);
+                if (typ !== ROOM) {
+                    if (lev) {
+                        lev.typ = typ;
+                        lev.flags = 0;
+                    }
+                    await liquid_flow(
+                        x, y, typ, t_at(x, y),
+                        fillmsg
+                            ? null
+                            : 'Some holes are quickly filled with %s!',
+                    );
+                    fillmsg = true;
+                } else {
+                    const pitOnly = rn2(obj.spe | 0) < 3
+                        || (!Can_dig_down(u.uz) && !lev?.candig);
+                    await digactualhole(
+                        x, y, BY_OBJECT, pitOnly ? PIT : HOLE,
+                    );
+                }
+            }
+            fill_pit(x, y);
+            maybe_dunk_boulders(x, y);
+            recalc_block_point(x, y);
+            continue;
+        }
+        if (obj.otyp === WAN_CREATE_MONSTER) {
+            // near hero — x,y might be rock
+            makemon(null, u.ux | 0, u.uy | 0, NO_MM_FLAGS);
+            continue;
+        }
+        if (x !== (u.ux | 0) || y !== (u.uy | 0)) {
+            const mon = m_at(x, y);
+            if (mon) await bhitm(mon, obj);
+            if (affects_objects && objects_at(x, y)) {
+                await bhitpile(obj, bhito, x, y, 0);
+            }
+        } else {
+            if (affects_objects && objects_at(x, y)) {
+                await bhitpile(obj, bhito, x, y, 0);
+            }
+            const damage = await zapyourself(obj, false);
+            if (damage) {
+                const him = game.flags?.female ? 'her' : 'him';
+                const buf = `killed ${him}self by breaking a wand`;
+                losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
+                if (game._losehp_needs_done || game.program_state?.gameover) {
+                    await finish_losehp_done();
+                }
+            }
+        }
+    }
+
+    await zapwrapup();
+
+    if (shop_damage) {
+        await pay_for_damage('dig into', false);
+    }
+
+    if (obj.otyp === WAN_LIGHT) {
+        await litroom(true, obj);
+    }
+
+    await discard_broken_wand();
+    return ECMD_TIME;
+}
+
 /**
  * C ref: apply.c doapply() — nohands + check_capacity before getobj;
  * LOCK_PICK/key/STETHOSCOPE + MIRROR/CAMERA + sack/bag use_container +
- * musical instruments + cream pie + MAGIC_MARKER→dowrite.
- * Named omissions: retouch_object; do_break_wand; flip_through_book;
- * flip_coin; jelly; whip/grapple/blindfold/lenses; use_stone; use_pole/
- * use_pick_axe; traps; oil; BoT; Medusa/nymph mirror arms; camera closeup;
- * most non-instrument tools.
+ * musical instruments + cream pie + MAGIC_MARKER→dowrite + TIN_OPENER +
+ * WAND_CLASS → do_break_wand (D-0949 explode-type / D-0950 dig+create /
+ * D-0952 strike/cancel/poly/tele/undead bhit + WAN_LIGHT) +
+ * is_pick/is_axe → use_pick_axe (D-0951).
+ * Named omissions: retouch_object; flip_through_book; flip_coin; jelly;
+ * whip/grapple/blindfold/lenses; use_stone; use_pole; traps;
+ * oil; BoT; Medusa/nymph mirror arms; camera closeup; most non-instrument
+ * tools; break-wand release_hold / flash_hits polish.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -1025,6 +1342,12 @@ export async function doapply() {
 
     const obj = await getobj_apply();
     if (!obj) return false;
+
+    // C: WAND_CLASS → do_break_wand (before tool cases in C after getobj)
+    if (obj.oclass === WAND_CLASS) {
+        const res = await do_break_wand(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
 
     if (obj.otyp === LOCK_PICK || obj.otyp === SKELETON_KEY
         || obj.otyp === CREDIT_CARD) {
@@ -1093,6 +1416,13 @@ export async function doapply() {
     // C apply.c case TIN_OPENER → use_tin_opener (D-0940)
     if (obj.otyp === TIN_OPENER) {
         const res = await use_tin_opener(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
+
+    // C apply.c PICK_AXE/DWARVISH_MATTOCK + default is_pick|is_axe (D-0951)
+    if (is_pick(obj) || is_axe(obj)) {
+        const { use_pick_axe } = await import('./dig.js');
+        const res = await use_pick_axe(obj);
         return (res & ECMD_TIME) !== 0;
     }
 

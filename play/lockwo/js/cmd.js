@@ -14,6 +14,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
          attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
+         doprgold, doprwep, doprarm, doprring, dopramulet,
          renderWindowScreen, ECMD_NOTHANDLED } from './invent.js';
 import { WEAPON_CLASS } from './mkobj.js';
 import { doeat } from './eat.js';
@@ -285,23 +286,37 @@ export async function rhack(key) {
     } else if (ch === '\\') {
         dodiscovered();
         game.context.move = 0;
+    } else if (ch === '$') {
+        // C ref: cmd.c { GOLD_SYM, "showgold", ..., doprgold } — show wallet gold.
+        await doprgold();
+        game.context.move = 0;
+    } else if (ch === ')') {
+        // C ref: cmd.c { WEAPON_SYM, "seeweapon", ..., doprwep } — wielded weapon.
+        await doprwep();
+        game.context.move = 0;
+    } else if (ch === '[') {
+        // C ref: cmd.c { ARMOR_SYM, "seearmor", ..., doprarm } — worn armor.
+        await doprarm();
+        game.context.move = 0;
+    } else if (ch === '=') {
+        // C ref: cmd.c { RING_SYM, "seerings", ..., doprring } — worn ring(s).
+        await doprring();
+        game.context.move = 0;
+    } else if (ch === '"') {
+        // C ref: cmd.c { AMULET_SYM, "seeamulet", ..., dopramulet } — worn amulet.
+        await dopramulet();
+        game.context.move = 0;
     } else if (ch === '+') {
         await dovspell();
         game.context.move = 0;
     } else if (ch === 'S') {
         // C ref: cmd.c { 'S', "save", ..., dosave, ... } -> save.c dosave().
-        // Clears the message window, asks y_n("Really save?"); on 'n' (the
-        // covered path) it clears the message again and returns ECMD_OK (no game
-        // turn).  The actual save (writing a file + terminating) is not driven
-        // by any covered session, so only the decline path is modelled.
-        game._pending_message = '';
-        const ans = await y_n('Really save?', 'yn\x1b', 'n');
-        game._pending_message = '';
-        if (ans !== 'n') {
-            // y_n only returns from {y,n} or default 'n'; a 'y' would save.
-            await pline('Saving...');
-        }
-        game.context.move = 0;
+        // Clears the message window, asks y_n("Really save?"); 'n' declines (no
+        // game turn), 'y' writes the save to the shared storage handle and
+        // terminates the segment with "Be seeing you..." (a later segment's
+        // restore reads the save back).
+        const { dosave } = await import('./save.js');
+        await dosave();
     } else if (ch === '\x18') { // ^X
         doattributes();
         game.context.move = 0;

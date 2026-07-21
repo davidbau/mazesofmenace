@@ -264,6 +264,40 @@ export function setuqwep(obj) {
         u.uquiver = null;
     }
 }
+
+/**
+ * C ref: wield.c uwepgone — clear W_WEP before destroying last wielded item.
+ * Named omissions: artifact_light end_burn / Tobjnam shine; update_inventory.
+ */
+export function uwepgone() {
+    const u = game.u || (game.u = {});
+    if (!u.uwep) return;
+    // artifact_light end_burn deferred
+    setuwep(null);
+    if (!game.gu) game.gu = {};
+    game.gu.unweapon = true;
+}
+
+/**
+ * C ref: wield.c uswapwepgone — clear W_SWAPWEP before destroy.
+ * Named omissions: update_inventory.
+ */
+export function uswapwepgone() {
+    const u = game.u || (game.u = {});
+    if (!u.uswapwep) return;
+    setuswapwep(null);
+}
+
+/**
+ * C ref: wield.c uqwepgone — clear W_QUIVER before destroy.
+ * Named omissions: update_inventory.
+ */
+export function uqwepgone() {
+    const u = game.u || (game.u = {});
+    if (!u.uquiver) return;
+    setuqwep(null);
+}
+
 /**
  * C ref: wield.c doswapweapon — exchange uwep ↔ uswapwep (takes time on success).
  * @returns {number} 0 fail; 1 took time (ECMD_TIME)

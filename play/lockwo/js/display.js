@@ -1016,6 +1016,13 @@ function _statusLine2() {
         s += ` Xp:${u.ulevel || 1}`;
     if (game.flags?.time)
         s += ` T:${game.moves || 1}`;
+    // C ref: botl.c bot2 — the hunger field (BL_HUNGER) precedes the
+    // encumbrance field: `if (u.uhs != NOT_HUNGRY) hu_stat[u.uhs]`.  hu_stat[]
+    // (eat.c) = {Satiated, "", Hungry, Weak, Fainting, Fainted, Starved}; the
+    // empty NOT_HUNGRY(1) entry is skipped.  u.uhs is maintained by newuhs().
+    const HU_STAT = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'];
+    const uhs = u.uhs ?? 1;
+    if (uhs !== 1 && HU_STAT[uhs]) s += ` ${HU_STAT[uhs]}`;
     // C ref: botl.c bot1()/enc_stat[] — the encumbrance field (BL_CAP) precedes
     // the status conditions.  enc_stat[near_capacity()] is "" when unencumbered,
     // else Burdened/Stressed/Strained/Overtaxed/Overloaded.  near_capacity() is

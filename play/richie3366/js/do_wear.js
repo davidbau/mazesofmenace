@@ -6,6 +6,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, mark_topline_prompt,
+    newsym, see_monsters,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname } from './objnam.js';
@@ -22,7 +23,7 @@ import {
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
-    DISPLACED, INVIS,
+    DISPLACED, INVIS, SEE_INVIS, LEVITATION, PROT_FROM_SHAPE_CHANGERS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
     BOLT_LIM, LEFT_HANDED, GLIB,
 } from './const.js';
@@ -37,7 +38,8 @@ import {
 } from './mkobj.js';
 import { erode_obj } from './trap.js';
 import { rn2, rnd } from './rng.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, set_mimic_blocking } from './vision.js';
+import { restartcham } from './mon.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -75,6 +77,19 @@ const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
 const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
 const WHITE_DRAGON_SCALES = objectNames.indexOf('WHITE_DRAGON_SCALES');
 const WHITE_DRAGON_SCALE_MAIL = objectNames.indexOf('WHITE_DRAGON_SCALE_MAIL');
+
+const RIN_SEE_INVISIBLE = objectNames.indexOf('RIN_SEE_INVISIBLE');
+const RIN_INVISIBILITY = objectNames.indexOf('RIN_INVISIBILITY');
+const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
+const RIN_WARNING = objectNames.indexOf('RIN_WARNING');
+const RIN_GAIN_STRENGTH = objectNames.indexOf('RIN_GAIN_STRENGTH');
+const RIN_GAIN_CONSTITUTION = objectNames.indexOf('RIN_GAIN_CONSTITUTION');
+const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
+const RIN_INCREASE_ACCURACY = objectNames.indexOf('RIN_INCREASE_ACCURACY');
+const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
+const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
+const RIN_PROTECTION_FROM_SHAPE_CHAN =
+    objectNames.indexOf('RIN_PROTECTION_FROM_SHAPE_CHAN');
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat
 const ARM_SUIT = 0;
@@ -588,7 +603,8 @@ async function Helmet_on() {
  * changes and hero can see/sense self. Timed-displacement (obj null) and
  * Blind_telepat-only sensing deferred when not needed for extrinsic cloak.
  */
-async function toggle_displacement(obj, oldprop, on) {
+/** C ref: do_wear.c toggle_displacement — cloak / corpse Displaced msg. */
+export async function toggle_displacement(obj, oldprop, on) {
     if (on ? game._initial_don : game.context?.takeoff?.cancelled_don) return;
     const u = game.u || {};
     const prop = u.uprops?.[DISPLACED];
@@ -1495,6 +1511,124 @@ function obj_erode_type(otmp) {
     if (is_rottable(otmp)) return ERODE_ROT;
     if (is_corrodeable(otmp)) return ERODE_CORRODE;
     return ERODE_NONE;
+}
+
+/** C youprop.h See_invisible / Invisible / Blind / Protection_from_shape_changers */
+function See_invisible_dw() {
+    const u = game.u || {};
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible
+        || (u.uprops?.[SEE_INVIS]?.intrinsic | 0)
+        || (u.uprops?.[SEE_INVIS]?.extrinsic | 0));
+}
+function Invis_dw() {
+    const u = game.u || {};
+    return !!((u.HInvis | 0) || (u.EInvis | 0) || u.Invis
+        || (u.uprops?.[INVIS]?.intrinsic | 0)
+        || (u.uprops?.[INVIS]?.extrinsic | 0));
+}
+function Invisible_dw() {
+    return Invis_dw() && !See_invisible_dw();
+}
+function Blind_dw() {
+    const u = game.u || {};
+    return !!(u.Blind || ((u.HBlinded | 0) & TIMEOUT) || (u.EBlinded | 0)
+        || u.uroleplay?.blind);
+}
+function Protection_from_shape_changers_dw() {
+    const u = game.u || {};
+    return !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers
+        || (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.intrinsic | 0)
+        || (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.extrinsic | 0));
+}
+
+/**
+ * C ref: do_wear.c Ring_off_or_gone — clear ring slot + otyp side effects.
+ * Branch envelope: setworn clear; SEE_INVIS/INVIS messages + set_mimic_blocking;
+ * LEVITATION float_vs_flight (float_down deferred); accuracy/damage;
+ * PROTECTION find_ac; PfSC restartcham; WARNING see_monsters.
+ * Named omissions: toggle_stealth; learnring polish; adjust_attrib STR/CON/CHA;
+ * float_down body; sink-fall death from Ring_gone callers beyond setworn.
+ * @param {object} obj
+ * @param {boolean} gone TRUE → destroy/eat path (same clear as setworn null)
+ */
+export async function Ring_off_or_gone(obj, gone) {
+    if (!obj) return;
+    const u = game.u || (game.u = {});
+    const mask = (obj.owornmask | 0) & W_RING;
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~mask;
+    }
+    // gone vs off: both clear via setworn(null, …); setnotworn ≡ clear slots
+    void gone;
+    if (mask & W_RINGL) setworn(null, W_RINGL);
+    if (mask & W_RINGR) setworn(null, W_RINGR);
+    // If owornmask already cleared, fall back to slot identity
+    if (!(mask & W_RING)) {
+        if (obj === u.uleft) setworn(null, W_RINGL);
+        else if (obj === u.uright) setworn(null, W_RINGR);
+    }
+
+    const otyp = obj.otyp | 0;
+    switch (otyp) {
+    case RIN_WARNING:
+        see_monsters();
+        break;
+    case RIN_SEE_INVISIBLE:
+        if (!See_invisible_dw()) {
+            set_mimic_blocking();
+            see_monsters();
+        }
+        if (Invisible_dw() && !Blind_dw()) {
+            newsym(u.ux | 0, u.uy | 0);
+            await pline('Suddenly you cannot see yourself.');
+            // learnring deferred
+        }
+        break;
+    case RIN_INVISIBILITY:
+        if (!Invis_dw() && !(u.BInvis | 0) && !Blind_dw()) {
+            newsym(u.ux | 0, u.uy | 0);
+            await pline(
+                `Your body seems to unfade${See_invisible_dw() ? ' completely' : '..'}.`,
+            );
+        }
+        break;
+    case RIN_LEVITATION: {
+        // float_down deferred — float_vs_flight covers trapped/fly block
+        const { float_vs_flight } = await import('./polyself.js');
+        float_vs_flight();
+        break;
+    }
+    case RIN_INCREASE_ACCURACY:
+        u.uhitinc = (u.uhitinc | 0) - (obj.spe | 0);
+        break;
+    case RIN_INCREASE_DAMAGE:
+        u.udaminc = (u.udaminc | 0) - (obj.spe | 0);
+        break;
+    case RIN_PROTECTION:
+        if (obj.spe) find_ac();
+        break;
+    case RIN_PROTECTION_FROM_SHAPE_CHAN:
+        if (!Protection_from_shape_changers_dw()) restartcham();
+        break;
+    case RIN_GAIN_STRENGTH:
+    case RIN_GAIN_CONSTITUTION:
+    case RIN_ADORNMENT:
+        // adjust_attrib deferred
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * C ref: do_wear.c Ring_gone — Ring_off_or_gone(obj, TRUE).
+ */
+export async function Ring_gone(obj) {
+    await Ring_off_or_gone(obj, true);
 }
 
 /**

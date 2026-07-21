@@ -1,11 +1,12 @@
 // vault.js — Vault occupancy and guard summoning.
 // C ref: vault.c — vault_occupied, findgd, newegd, find_guard_dest, invault,
-//        clear_fcorr, restfakecorr, gd_move dig + restore.
+//        clear_fcorr, restfakecorr, gd_move dig + restore,
+//        vault_gd_watching (D-0953).
 // Named omissions: migrating_mons findgd park; vault_summon_gd;
 // uleftvault; wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
-// need noit_mhis; gd_move hostile/witness/goldincorridor;
+// need noit_mhis; gd_move goldincorridor (witness consume/destroy live);
 // gd_mv_monaway; mpickgold; dig del_engr_at; confused-disappears arms;
 // Well begone verbalize; clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo,
 // corridor-disappears / encased-in-rock pline.
@@ -33,8 +34,10 @@ import {
     MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR, IS_STWALL, IS_POOL,
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
+    GD_EATGOLD, GD_DESTROYGOLD,
 } from './const.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
+import { m_canseeu } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
@@ -320,6 +323,23 @@ export function findgd() {
         return mtmp;
     }
     return null;
+}
+
+/**
+ * C ref: vault.c vault_gd_watching — mark vault guard witness bits when
+ * the guard can see the hero (eat/destroy gold).
+ * Branch envelope: findgd + mx + mcansee + m_canseeu → EGD.witness for
+ * GD_EATGOLD / GD_DESTROYGOLD.
+ */
+export function vault_gd_watching(activity) {
+    const guard = findgd();
+    if (guard && (guard.mx | 0) && guard.mcansee && m_canseeu(guard)) {
+        if ((activity | 0) === GD_EATGOLD
+            || (activity | 0) === GD_DESTROYGOLD) {
+            const egd = EGD(guard);
+            if (egd) egd.witness = activity | 0;
+        }
+    }
 }
 
 /**
@@ -630,12 +650,12 @@ function um_dist(x, y, n) {
  * adjacent dig while-loop (wall→DOOR if beyond ROOM, else ortho
  * redirect, else STONE→CORR) + place guard + restfakecorr;
  * early/gddone/begone → gd_move_cleanup.
- * Named omissions: hostile/witness/goldincorridor; wallify body;
+ * Named omissions: goldincorridor; wallify body;
  * other verbalize arms; gd_mv_monaway; mpickgold; stuck
  * find_guard_dest retry / confused disappears; dig del_engr_at;
  * clear_fcorr Punished/rloc/yelp arms; corridor-disappears /
  * encased pline; sticks() on ustuck (treat ustuck as blocking Move
- * along! like !sticks); Well begone verbalize.
+ * along! like !sticks); Well begone verbalize; SetVoice on witness.
  *
  * @returns {Promise<number>} 1 moved, 0 stayed, -1 normal AI, -2 died
  */
@@ -667,6 +687,14 @@ export async function gd_move(grd) {
     }
 
     if (egrd.witness) {
+        // C: SetVoice deferred; consume/destroy verbalize + hostile
+        if (!Deaf()) {
+            await verbalize(
+                `How dare you ${
+                    ((egrd.witness | 0) & GD_EATGOLD) ? 'consume' : 'destroy'
+                } that gold, scoundrel!`,
+            );
+        }
         egrd.witness = 0;
         grd.mpeaceful = 0;
         return -1;

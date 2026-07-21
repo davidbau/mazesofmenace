@@ -335,8 +335,9 @@ function poly_gender() {
 /**
  * C ref: polyself.c change_sex — flip flags.female / mfemale.
  * Named omissions: pl_character rename; amorous-demon set_uasmon.
+ * Exported for eat.c eataccessory AMULET_OF_CHANGE.
  */
-function change_sex() {
+export function change_sex() {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
     const ptr = game.youmonst?.data;

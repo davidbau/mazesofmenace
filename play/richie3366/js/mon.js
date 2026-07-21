@@ -46,7 +46,7 @@ import { fightm } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
-import { set_mimic_sym, newcham, pickvampshape } from './makemon.js';
+import { set_mimic_sym, newcham, pickvampshape, pm_to_cham } from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
@@ -565,6 +565,65 @@ export function seemimic(mtmp) {
     // is_lightblocker unblock_point on discover deferred (vision_reset covers
     // does_block; D-0585 ports is_lightblocker_mappear into _blocks)
     if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
+}
+
+/**
+ * C ref: mon.c normal_shape — cham revert / were / seemimic.
+ * Thin: cham newcham + seemimic; were/meating deferred.
+ */
+export function normal_shape(mon) {
+    if (!mon) return;
+    const mcham = mon.cham;
+    if (ismnum(mcham)) {
+        const mcan = mon.mcan;
+        newcham(mon, mons(mcham), NC_SHOW_MSG);
+        mon.cham = NON_PM;
+        if (mcan) mon.mcan = 1;
+        newsym(mon.mx | 0, mon.my | 0);
+    }
+    // is_were / new_were deferred
+    if (M_AP_TYPE(mon) !== M_AP_NOTHING) {
+        if (!mon.meating) {
+            if (M_AP_TYPE(mon) !== M_AP_MONSTER) mon.msleeping = 1;
+            seemimic(mon);
+        }
+        // finish_meating deferred
+    }
+}
+
+/**
+ * C ref: mon.c rescham — force all mons to normal_shape (PfSC on).
+ */
+export function rescham() {
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp | 0) <= 0) continue;
+        normal_shape(mon);
+    }
+}
+
+/**
+ * C ref: mon.c m_restartcham — re-allow cham; sleeping mimic re-hide.
+ */
+function m_restartcham(mtmp) {
+    if (!mtmp) return;
+    if (!mtmp.mcan) {
+        const mndx = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
+        mtmp.cham = pm_to_cham(mndx);
+    }
+    if (mtmp.data?.mlet === 'S_MIMIC' && mtmp.msleeping) {
+        set_mimic_sym(mtmp);
+        newsym(mtmp.mx | 0, mtmp.my | 0);
+    }
+}
+
+/**
+ * C ref: mon.c restartcham — after removing PfSC protection.
+ */
+export function restartcham() {
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp | 0) <= 0) continue;
+        m_restartcham(mon);
+    }
 }
 
 /**

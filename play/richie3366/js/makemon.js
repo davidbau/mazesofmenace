@@ -678,7 +678,7 @@ function newmonhp(mon, ptr) {
 }
 
 /** C ref: mon.c pm_to_cham — shapeshifter species index else NON_PM */
-function pm_to_cham(mndx) {
+export function pm_to_cham(mndx) {
     if (mndx < LOW_PM || mndx >= NUMMONS) return NON_PM;
     return is_shapeshifter(mons(mndx)) ? mndx : NON_PM;
 }

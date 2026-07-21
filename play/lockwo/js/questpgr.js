@@ -139,6 +139,19 @@ const BAR_FIRSTTIME = [
     '    "By %d, there will be blood spilt today."',
 ];
 
+// dat/quest.lua Arc.firsttime.text (with the %-codes convert_arg substitutes).
+const ARC_FIRSTTIME = [
+    'You are suddenly in familiar surroundings.  The buildings in the distance',
+    'seem to be those of your old alma mater, but something is wrong.  It feels',
+    'as if there has been a riot recently, or %H has',
+    'been under siege.',
+    '',
+    'All of the windows are boarded up, and there are objects scattered around',
+    'the entrance.',
+    '',
+    'Strange forbidding shapes seem to be moving in the distance.',
+];
+
 // C ref: quest.c onquest() — called from goto_level() arrival.  Dispatches to
 // on_start() on the quest start (home) level for a first-time arrival.
 export async function onquest() {
@@ -152,8 +165,9 @@ export async function onquest() {
     if (g._quest_first_start) return;
     g._quest_first_start = true;
     const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
-    // Only the Barbarian quest home level is ported.
-    if (roles[rolenum]?.filecode !== 'Bar') return;
+    // Only the quest home levels whose Xxx-strt.lua generation is ported.
+    const fc = roles[rolenum]?.filecode;
+    if (fc !== 'Bar' && fc !== 'Arc') return;
     await com_pager_quest_firsttime(rolenum);
 }
 
@@ -168,11 +182,19 @@ async function com_pager_quest_firsttime(rolenum) {
     }
     // convert_arg substitutions: %x see/sense, %H homebase, %l leader, %d deity.
     const alignType = alignTypeFromIndex(g.initalign);
-    const deity = align_gname(rolenum, alignType);          // "Crom" (neutral)
-    const leader = 'Pelias';                                // ldrname(): proper name
-    const home = 'the Camp of the Duali Tribe';             // urole.homebase
+    const deity = align_gname(rolenum, alignType);
     const xsee = (g.u?.blinded > 0 || g.ublindf) ? 'sense' : 'see';
-    const lines = BAR_FIRSTTIME.map((l) => l
+    let template, leader, home;
+    if (roles[rolenum]?.filecode === 'Arc') {
+        template = ARC_FIRSTTIME;
+        leader = 'Lord Carnarvon';
+        home = 'the College of Archeology';               // Arc urole.homebase
+    } else {
+        template = BAR_FIRSTTIME;
+        leader = 'Pelias';                                // ldrname(): proper name
+        home = 'the Camp of the Duali Tribe';             // Bar urole.homebase
+    }
+    const lines = template.map((l) => l
         .replace(/%x/g, xsee).replace(/%H/g, home)
         .replace(/%l/g, leader).replace(/%d/g, deity));
 

@@ -11,6 +11,7 @@ import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_DOWNPLAY, body_part,
          hands_obj, obj_doname } from './invent.js';
 import { exercise } from './attrib.js';
+import { more_experienced } from './exper.js';
 import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_PARALYSIS, POT_HEALING,
          POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_BOOZE, POT_SICKNESS,
          objects, COIN_CLASS } from './mkobj.js';
@@ -394,8 +395,10 @@ async function dopotion(otmp) {
     }
     if (otmp.dknown && !objects[otmp.otyp]?.oc_name_known) {
         if (!game.potion_unkn) {
+            // C ref: potion.c dopotion — makeknown() + more_experienced(0, 10)
+            // (score-only, no RNG).
             makeknown(otmp.otyp);
-            // more_experienced(0, 10): no RNG, score-only.
+            more_experienced(0, 10);
         } else {
             await trycall(otmp);
         }

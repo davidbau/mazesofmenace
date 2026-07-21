@@ -54,7 +54,7 @@ function yname(obj) {
 }
 
 /** C ref: lock.c reset_pick */
-function reset_pick() {
+export function reset_pick() {
     if (!game.xlock) game.xlock = {};
     const xl = game.xlock;
     xl.usedtime = 0;
@@ -134,6 +134,16 @@ export function picking_lock(out) {
     out.x = 0;
     out.y = 0;
     return false;
+}
+
+/**
+ * C ref: lock.c picking_at — picklock occupation targets this door cell.
+ */
+export function picking_at(x, y) {
+    if (game.occupation !== picklock) return false;
+    const door = game.xlock?.door;
+    const lev = game.level?.at?.(x, y);
+    return !!(door && lev && door === lev);
 }
 
 /**

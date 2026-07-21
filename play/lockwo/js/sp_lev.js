@@ -1351,6 +1351,227 @@ function quest_flip_branch(flp) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// Archeologist quest "home" level loader (dat/Arc-strt.lua).
+//
+// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Arc-strt")
+// -> load_special("Arc-strt.lua").  Same splev engine as Bar-strt: loading
+// nhlib.lua first runs shuffle(align) (rn2(3),rn2(2)); level_init solidfill
+// draws one rn2(2); then the des.* program runs in file order consuming the
+// PRNG exactly.  Hand-ported so the stream matches C's recorded trace.
+//
+// The fort is a moated keep; Lord Carnarvon + guards inside, siege monsters
+// (random snakes/mummies via des.monster("S"/"M")) outside, six random traps,
+// and a moat that gets kelp during mineralize() at level finalize.
+// ════════════════════════════════════════════════════════════════════════
+
+const ARC_STRT_MAP = [
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+    '....................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.................',
+    '....................}-------------------------------------}.................',
+    '....................}|..S......+.................+.......|}.................',
+    '....................}-S---------------+----------|.......|}.................',
+    '....................}|.|...............|.......+.|.......|}.................',
+    '....................}|.|...............---------.---------}.................',
+    '....................}|.S.\\.............+.................+..................',
+    '....................}|.|...............---------.---------}.................',
+    '....................}|.|...............|.......+.|.......|}.................',
+    '....................}-S---------------+----------|.......|}.................',
+    '....................}|..S......+.................+.......|}.................',
+    '....................}-------------------------------------}.................',
+    '....................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.................',
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+].join('\n');
+
+// C ref: trap.h trap-type constants (only the ones traptype_rnd() switches on).
+const ARC_NO_TRAP = 0, ARC_ROCKTRAP = 3, ARC_HOLE = 13, ARC_TRAPDOOR = 14;
+// C ref: monsym.h — def_char_to_monclass('S') = S_SNAKE, ('M') = S_MUMMY.
+const ARC_S_SNAKE = 45, ARC_S_MUMMY = 39, ARC_G_NOGEN = 0x0200;
+
+// C ref: mklev.c traptype_rnd() — pick a random trap type, NO_TRAP if "too
+// hard"/disallowed on this level.  We reimplement it locally (rather than share
+// mklev.js's copy) so it uses depth-based level_difficulty() — the quest home is
+// dlevel 1 in the quest branch but ledger-depth 14, and traptype_rnd() in C uses
+// level_difficulty() (== depth), not dlevel.  noteleport is set on this level.
+function arc_traptype_rnd() {
+    const lvl = depth_of_level(game.u?.uz);
+    const noteleport = !!game.level?.flags?.noteleport;
+    let kind = rnd(25);                              // rnd(TRAPNUM-1)
+    switch (kind) {
+    case 24: case 25: case 17: case 23:              // TRAPPED_DOOR/CHEST, MAGIC_PORTAL, VIBRATING_SQUARE
+        kind = ARC_NO_TRAP; break;
+    case 7: case 8:                                  // ROLLING_BOULDER_TRAP, SLP_GAS_TRAP
+        if (lvl < 2) kind = ARC_NO_TRAP; break;
+    case 16:                                         // LEVEL_TELEP
+        if (lvl < 5 || noteleport) kind = ARC_NO_TRAP; break;
+    case 12:                                         // SPIKED_PIT
+        if (lvl < 5) kind = ARC_NO_TRAP; break;
+    case 6:                                          // LANDMINE
+        if (lvl < 6) kind = ARC_NO_TRAP; break;
+    case 18:                                         // WEB
+        if (lvl < 7) kind = ARC_NO_TRAP; break;
+    case 19: case 22:                                // STATUE_TRAP, POLY_TRAP
+        if (lvl < 8) kind = ARC_NO_TRAP; break;
+    case 10:                                         // FIRE_TRAP (only in Gehennom)
+        kind = ARC_NO_TRAP; break;
+    case 15:                                         // TELEP_TRAP
+        if (noteleport) kind = ARC_NO_TRAP; break;
+    case 13:                                         // HOLE — much rarer
+        if (rn2(7)) kind = ARC_NO_TRAP; break;
+    }
+    return kind;
+}
+
+// C ref: sp_lev.c create_trap for a random type + random (maze) location.
+// get_location_coord(DRY) loop rejecting stairs/ladder, then mktrap(0,...):
+// retry traptype_rnd() until valid, is_hole&&!Can_fall_thru -> ROCKTRAP, place,
+// then the always-drawn victim check rnd(4) (lvl(14) <= rnd(4) is never true).
+async function quest_create_trap_random() {
+    let x = -1, y = -1, trycnt = 0;
+    do {
+        const c = bigrm_get_location_dry();          // internal DRY retry loop
+        x = c.x; y = c.y;
+        const t = game.level?.at(x, y)?.typ;
+        if (t !== STAIRS && t !== LADDER) break;
+    } while (++trycnt <= 100);
+    let kind;
+    do { kind = arc_traptype_rnd(); } while (kind === ARC_NO_TRAP);
+    // hardfloor is set on this level -> Can_fall_thru() is FALSE (RNG-neutral).
+    if (kind === ARC_HOLE || kind === ARC_TRAPDOOR) kind = ARC_ROCKTRAP;
+    await maketrap(x, y, kind);                       // rolling-boulder draws launch coord
+    rnd(4);                                            // mktrap victim check (mklev.c:2137)
+}
+
+// C ref: sp_lev.c create_monster for a class char ("S"/"M") with no specific id:
+// sp_amask_to_amask(AM_SPLEV_RANDOM) draws induced_align rn2(3); pm =
+// mkclass(class, G_NOGEN); explicit coord -> no get_location RNG; makemon().
+function quest_create_monster_class(classNum, mx, my) {
+    rn2(3);                                            // induced_align (dungeon.c:2012)
+    const ptr = mkclass(classNum, ARC_G_NOGEN);
+    if (!ptr) return null;
+    let x = q_absx(mx), y = q_absy(my);
+    if (mm_mon_at(x, y)) { const cc = enexto_spawn(x, y, ptr); if (cc) { x = cc.x; y = cc.y; } }
+    const mtmp = makemon(ptr, x, y, 0);
+    if (mtmp && ptr.mcls === 57 /* S_EEL */) {
+        const t = game.level?.at(x, y)?.typ;
+        if (t === POOL || t === MOAT || t === WATER) mtmp.mundetected = true;
+    }
+    return mtmp;
+}
+
+// C ref: sp_lev.c create_monster tail — a monster with a CUSTOM inventory
+// function but no DEFAULT_INVENT flag has its makemon-granted default inventory
+// removed before the custom function runs: mdrop_special_objs(mtmp) then
+// discard_minvent(mtmp, TRUE).  mdrop_special_objs (steal.c) draws
+// obj_resists(obj, 0, 0) == rn2(100) for EACH minvent item (invocation tools /
+// quest artifacts would be kept; a quest leader carries none), so a leader who
+// got one defensive item from m_initinv contributes exactly one rn2(100) here.
+function quest_drop_default_invent(mtmp) {
+    if (!mtmp || !Array.isArray(mtmp.minvent)) return;
+    for (let i = 0; i < mtmp.minvent.length; i++) {
+        rn2(100);                                      // obj_resists(obj, 0, 0)
+    }
+    // discard_minvent(mtmp, TRUE): non-artifact items dealloc with no RNG.
+    mtmp.minvent = [];
+}
+
+// Main executor.  C ref: makemaz("Arc-strt") -> load_special.
+export async function makemaz_arc_strt() {
+    const g = game;
+    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    shuffle(['law', 'neutral', 'chaos']);
+    // des.level_flags("mazelevel", "noteleport", "hardfloor") — no RNG.
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+    }
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(ARC_STRT_MAP, lit);
+    // des.region(...) x16 — whole level lit, then lit/unlit sub-rooms.  No RNG.
+    quest_region_light(0, 0, 75, 19, true);
+    quest_region_light(22, 6, 23, 6, false);
+    quest_region_light(25, 6, 30, 6, false);
+    quest_region_light(32, 6, 48, 6, false);
+    quest_region_light(50, 6, 56, 8, true);
+    quest_region_light(40, 8, 46, 8, false);
+    quest_region_light(22, 8, 22, 12, false);
+    quest_region_light(24, 8, 38, 12, false);
+    quest_region_light(48, 8, 48, 8, true);
+    quest_region_light(40, 10, 56, 10, true);
+    quest_region_light(48, 12, 48, 12, true);
+    quest_region_light(40, 12, 46, 12, false);
+    quest_region_light(50, 12, 56, 14, true);
+    quest_region_light(22, 14, 23, 14, false);
+    quest_region_light(25, 14, 30, 14, false);
+    quest_region_light(32, 14, 48, 14, false);
+    // des.stair("down", 55, 7) — no RNG.
+    quest_place_stair(55, 7, false);
+    // des.levregion({ region={63,6,63,6}, type="branch" }) — register, no RNG.
+    quest_register_branch(63, 6);
+    // des.door(...) x12 — explicit states, no RNG.
+    quest_set_door(22, 7, 'closed'); quest_set_door(38, 7, 'closed');
+    quest_set_door(47, 8, 'locked'); quest_set_door(23, 10, 'locked');
+    quest_set_door(39, 10, 'locked'); quest_set_door(57, 10, 'locked');
+    quest_set_door(47, 12, 'locked'); quest_set_door(22, 13, 'closed');
+    quest_set_door(38, 13, 'closed'); quest_set_door(24, 14, 'locked');
+    quest_set_door(31, 14, 'closed'); quest_set_door(49, 14, 'locked');
+
+    g._quest_gen = true;
+    g._full_mon_gen = true;
+    try {
+        // Lord Carnarvon + custom inventory (fedora+5, bullwhip+4).
+        const carnarvon = quest_create_monster('Lord Carnarvon', 25, 10, null);
+        // custom inventory replaces makemon's default: mdrop_special_objs +
+        // discard_minvent (one obj_resists rn2(100) for his defensive item).
+        quest_drop_default_invent(carnarvon);
+        quest_create_object(92 /*FEDORA*/, null, null, 5, carnarvon);
+        quest_create_object(82 /*BULLWHIP*/, null, null, 4, carnarvon);
+        // The treasure of Lord Carnarvon.
+        quest_create_object(CHEST, 25, 10, null, null);
+        // student guards for the audience chamber.
+        const students = [[26, 9], [27, 9], [28, 9], [26, 10],
+                          [28, 10], [26, 11], [27, 11], [28, 11]];
+        for (const [sx, sy] of students) quest_create_monster('student', sx, sy, null);
+        // city watch guards in the antechambers.
+        quest_create_monster('watchman', 50, 6, null);
+        quest_create_monster('watchman', 50, 14, null);
+        // Eels in the moat.
+        quest_create_monster('giant eel', 20, 10, null);
+        quest_create_monster('giant eel', 45, 4, null);
+        quest_create_monster('giant eel', 33, 16, null);
+        // des.non_diggable — no RNG.
+        // Six random traps.
+        for (let i = 0; i < 6; i++) await quest_create_trap_random();
+        // Monsters on siege duty (random snakes "S" / mummies "M").
+        const siege = [
+            [ARC_S_SNAKE, 60, 9], [ARC_S_MUMMY, 60, 10], [ARC_S_SNAKE, 60, 11],
+            [ARC_S_SNAKE, 60, 12], [ARC_S_MUMMY, 60, 13], [ARC_S_SNAKE, 61, 10],
+            [ARC_S_SNAKE, 61, 11], [ARC_S_SNAKE, 61, 12], [ARC_S_SNAKE, 30, 3],
+            [ARC_S_MUMMY, 20, 17], [ARC_S_SNAKE, 67, 2], [ARC_S_SNAKE, 10, 19],
+        ];
+        for (const [cls, cx, cy] of siege) quest_create_monster_class(cls, cx, cy);
+    } finally {
+        g._quest_gen = false;
+        g._full_mon_gen = false;
+    }
+
+    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) (!corrmaze)
+    // then flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) { flip_level(flp); quest_flip_branch(flp); }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // Big Room special level loader (bigrm-1.lua .. bigrm-13.lua).
 //
 // C ref: mkmaze.c makemaz("bigrm") -> rnd(13) picks the variant, then

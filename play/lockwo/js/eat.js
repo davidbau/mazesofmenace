@@ -2,7 +2,7 @@
 // C ref: nethack-c/upstream/src/eat.c
 
 import { rn2, rnd, rn1 } from './rng.js';
-import { monster_by_pmidx, mon_cwt } from './makemon.js';
+import { monster_by_pmidx, mon_cwt, mon_cnutrit } from './makemon.js';
 import { game } from './gstate.js';
 import { pline, update_topl, y_n } from './display.js';
 
@@ -588,6 +588,17 @@ function losehp_eat(n) {
     if (u.uhp < 0) u.uhp = 0;
 }
 
+// C ref: eat.c lesshungry(num) — raise u.uhunger by num and recompute the
+// hunger state.  The choke path (u.uhunger >= 2000 while a canchoke victual is
+// active) isn't reached by the covered sessions, so this is the plain
+// "add nutrition then newuhs()" body.
+function lesshungry_eat(num) {
+    const u = game.u;
+    if (!u) return;
+    u.uhunger = (u.uhunger ?? 900) + num;
+    newuhs(false);
+}
+
 async function eatcorpse_cmd(otmp) {
     await loadEatDeps();
     const u = game.u;
@@ -649,24 +660,45 @@ async function eatcorpse_cmd(otmp) {
     const cwt = mon_cwt_of(mnum);
     let reqtime = 3 + (cwt >> 6);
 
+    // C ref: eat.c obj_nutrition(CORPSE) — a fresh corpse's nutrition is
+    // mons[mnum].cnutrit; touchfood() sets otmp->oeaten to it on first bite.
+    // The per-turn lesshungry() delivery below drives the hero's uhunger (hence
+    // the Satiated/Hungry status word).  Age-based rot reduction (>>=2) is
+    // applied in the rot-away branch, mirroring consume_oeaten(otmp, 2).
+    // A fresh corpse has oeaten==0/unset; C's obj_nutrition(CORPSE) yields
+    // mons[mnum].cnutrit, which touchfood() stores into oeaten.  A partly-eaten
+    // corpse keeps its remaining oeaten.
+    let oeaten = otmp.oeaten ? otmp.oeaten : mon_cnutrit(mnum);
+
     // rot-away gate: if (!tp && !nonrotting && (orotten || !rn2(7)))
     const nonrotting = false; // goblin corpse rots normally
     let usedUp = false;
     if (!tp && !nonrotting && (otmp.orotten || !rn2(7))) {   // eat.c:1949
         // rottenfood()/cnutrit==0 branches: for a fresh, nourishing goblin the
         // consume_oeaten path runs (no extra RNG).  Not the message branch.
+        // C ref: eat.c:1970 consume_oeaten(otmp, 2) — a rotted corpse loses 3/4
+        // of its nutrition (oeaten >>= 2).
+        oeaten = oeaten >> 2;
     } else if (tp) {
         // C ref: eat.c:1976 — a damage message (sick/tainted/acid/poison) was
         // already delivered; skip the taste message and roll no taste RNG.
     } else {
         // the yummy/palatable taste message.
         const vegetarian = speciesVegetarian(spName);
-        // hero carnivorous? human monk is omnivore -> carnivorous() FALSE.
-        const heroCarni = false, heroHerbi = false;
+        // C ref: eat.c uses carnivorous(gy.youmonst.data)/herbivorous(...).  A
+        // non-polymorphed hero's data is the role's player-monster (mons[].
+        // mflags1): every role player-monster is M1_OMNIVORE (carnivore AND
+        // herbivore) EXCEPT the Monk, whose player-monster is M1_HERBIVORE only.
+        // (Polymorph is not modeled by the covered sessions.)
+        const PM_MONK = 5;
+        const isMonk = (game.u?.umonnum === PM_MONK)
+                       || (game.urole?.mnum === PM_MONK);
+        const heroCarni = !isMonk, heroHerbi = true;
         const yummy = vegetarian ? (!heroCarni && heroHerbi)
                                  : (heroCarni && !heroHerbi);
-        // palatable: ((vegetarian?herbi:carni) && rn2(10) && ...).  First
-        // operand FALSE for omnivore hero -> short-circuits (no rn2(10)).
+        // palatable: ((vegetarian?herbi:carni) && rn2(10) && ...).  For an
+        // omnivore hero the first operand is TRUE, so rn2(10) is rolled; C's &&
+        // short-circuits the (rotted<1 || !rn2(rotted+1)) tail when rn2(10)==0.
         const palatable = (vegetarian ? heroHerbi : heroCarni)
                           ? (!!rn2(10) && (rotted < 1 || !rn2(rotted + 1)))
                           : false;
@@ -692,12 +724,23 @@ async function eatcorpse_cmd(otmp) {
     // moveloop runs the eatfood() occupation for the remaining reqtime-1 turns —
     // each turn advancing the monster move loop, which is where the bulk of this
     // command's RNG (and the pet's repeated dog_move) comes from.
+    // C ref: eat.c doeat() nmod computation (eat.c:3068) — nutrition units per
+    // round of eating.  For oeaten >= reqtime it's -floor(oeaten/reqtime) (the
+    // negative "big bite" case bite() handles); otherwise reqtime % oeaten (the
+    // positive "1 point on some turns" case).  Used by eatfood_step's bite().
+    let nmod;
+    if (reqtime === 0 || oeaten === 0) nmod = 0;
+    else if (oeaten >= reqtime) nmod = -Math.trunc(oeaten / reqtime);
+    else nmod = reqtime % oeaten;
+
     game.context = game.context || {};
     game.context.victual = {
         piece: otmp,
         o_id: otmp.o_id,
         usedtime: 1,
         reqtime,
+        nmod,
+        oeaten,
         eating: 1,
         canchoke: 0,
         fullwarn: 0,
@@ -734,7 +777,19 @@ export async function eatfood_step() {
     if (!v.eating) { game._eat_occupation = false; return false; }
     v.usedtime = (v.usedtime || 0) + 1;
     if (v.usedtime <= v.reqtime) {
-        // bite(): per-turn nutrition bookkeeping, no RNG for a corpse.
+        // C ref: eat.c bite() — per-turn nutrition delivery (no RNG for a
+        // corpse).  nmod < 0: a "big bite" of -nmod units each turn; nmod > 0:
+        // 1 unit on turns where usedtime % nmod != 0.  lesshungry() raises
+        // u.uhunger, driving the hunger status word (Satiated/Hungry) shown on
+        // the bottom line; consume_oeaten depletes the remaining nutrition.
+        const nmod = v.nmod || 0;
+        if (nmod < 0) {
+            lesshungry_eat(-nmod);
+            v.oeaten = (v.oeaten || 0) + nmod;      // oeaten -= -nmod
+        } else if (nmod > 0 && (v.usedtime % nmod)) {
+            lesshungry_eat(1);
+            v.oeaten = (v.oeaten || 0) - 1;
+        }
         return true; // still busy
     }
     // done

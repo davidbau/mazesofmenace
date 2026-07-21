@@ -84,13 +84,34 @@ function mark_visible_range(row, left, right) {
  * C ref: monst.h is_lightblocker_mappear — boulder / closed-door / wall / tree
  * disguise blocks light like the real feature.
  */
-function is_lightblocker_mappear(mon) {
+export function is_lightblocker_mappear(mon) {
     if (!mon) return false;
     const ap = M_AP_TYPE(mon);
     if (ap === M_AP_OBJECT) return (mon.mappearance | 0) === BOULDER;
     if (ap !== M_AP_FURNITURE) return false;
     const app = mon.mappearance | 0;
     return app === S_hcdoor || app === S_vcdoor || app < S_ndoor || app === S_tree;
+}
+
+/**
+ * C ref: display.c mimic_light_blocking — See_invisible toggles light block
+ * for invisible lightblocker mimics. JS rebuilds via recalc_block_point.
+ */
+function mimic_light_blocking(mtmp) {
+    if (!mtmp || !mtmp.minvis) return;
+    if (!is_lightblocker_mappear(mtmp)) return;
+    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+}
+
+/**
+ * C ref: display.c set_mimic_blocking — iter_mons mimic_light_blocking.
+ * Call when See_invisible state changes.
+ */
+export function set_mimic_blocking() {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        mimic_light_blocking(mtmp);
+    }
 }
 
 /**

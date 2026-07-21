@@ -202,7 +202,9 @@ export async function doread() {
 
     if (!(await seffects(scroll))) {
         if (!objects[otyp]?.oc_name_known) {
-            if (game.known) makeknown(otyp);
+            // C ref: read.c doread -> learnscroll -> learnscrolltyp():
+            // makeknown() + more_experienced(0, 10) (score-only, no RNG).
+            if (game.known) { makeknown(otyp); more_experienced(0, 10); }
             // trycall(scroll): naming prompt, not modeled.
         }
         scroll.in_use = false;

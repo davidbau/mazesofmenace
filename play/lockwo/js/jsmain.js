@@ -196,6 +196,13 @@ export class NethackGame {
         // Friday-the-13th game-start messages.  C ref: calendar.c getnow.
         g.datetime = this._datetime || null;
 
+        // Cross-segment persistence handle (save.c/restore.c): the sandbox
+        // shares one Web-Storage-shaped object across a session's segments, so
+        // a save written by the 'S' command survives into the next segment's
+        // restore.  Expose it on `game` so the deep-in-the-command-loop save
+        // path can reach it.
+        g.storage = this._storage || null;
+
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
         g.plname = opts.name || '';
@@ -243,6 +250,14 @@ export class NethackGame {
         // does not supply one.  That selection can consume RNG before
         // o_init/newgame startup begins.
         await this._startupCharacterSelection(optsel);
+
+        // C ref: unixmain.c — if this player already has a save file, restore it
+        // instead of starting a new game (restore_saved_game() -> dorecover()).
+        const { have_saved_game, dorestore } = await import('./restore.js');
+        if (have_saved_game()) {
+            await dorestore();
+            return;
+        }
 
         // Run game startup
         await newgame();
