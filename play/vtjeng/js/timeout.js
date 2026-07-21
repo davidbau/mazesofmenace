@@ -40,7 +40,12 @@ import {
     PM_LIZARD,
     S_TROLL,
 } from './monsters.js';
-import { TALLOW_CANDLE, WAX_CANDLE } from './objects.js';
+import {
+    BRASS_LANTERN,
+    OIL_LAMP,
+    TALLOW_CANDLE,
+    WAX_CANDLE,
+} from './objects.js';
 import { rn1, rn2, rnd, rnz } from './rng.js';
 
 const NO_CLEANUP_ERROR = Symbol('no cleanup error');
@@ -250,41 +255,28 @@ export function start_timer(
     return true;
 }
 
-// Like remove_timer(), matching intentionally ignores kind because the C API
-// assumes each (function, argument) pair is unique.
-function remove_timer(funcIndex, arg, state) {
-    let previous = null;
-    let current = state.gt.timer_base;
-    while (current
-           && (current.func_index !== funcIndex || current.arg !== arg)) {
-        previous = current;
-        current = current.next;
-    }
-    if (!current) return null;
-    if (previous) previous.next = current.next;
-    else state.gt.timer_base = current.next;
-    current.next = null;
-    return current;
-}
-
 export function stop_timer(funcIndex, arg, state = game, env = {}) {
     timerGlobals(state);
+    // C assumes each (function, argument) pair is unique, so matching
+    // intentionally ignores kind.
+    let previous = null;
     let matched = null;
     for (let timer = state.gt.timer_base; timer; timer = timer.next) {
         if (timer.func_index === funcIndex && timer.arg === arg) {
             matched = timer;
             break;
         }
+        previous = timer;
     }
-    const cleanup = matched
-        ? preflightTimerCleanup(matched, state, env)
-        : null;
-    const timer = remove_timer(funcIndex, arg, state);
-    if (!timer) return 0;
-    if (timer.kind === TIMER_OBJECT)
+    if (!matched) return 0;
+    const cleanup = preflightTimerCleanup(matched, state, env);
+    if (previous) previous.next = matched.next;
+    else state.gt.timer_base = matched.next;
+    matched.next = null;
+    if (matched.kind === TIMER_OBJECT)
         arg.timed = Math.trunc(arg.timed ?? 0) - 1;
-    cleanupTimer(timer, state, cleanup);
-    return timer.timeout - currentMove(state);
+    cleanupTimer(matched, state, cleanup);
+    return matched.timeout - currentMove(state);
 }
 
 export function peek_timer(funcIndex, arg, state = game) {
@@ -335,13 +327,15 @@ export function obj_has_timer(obj, funcIndex, state = game) {
     return peek_timer(funcIndex, obj, state) !== 0;
 }
 
-// C ref: timeout.c begin_burn(), ordinary-candle cases. age is fuel remaining
-// before this segment; after scheduling it stores the fuel remaining when the
-// segment expires. The warning boundaries at 75, 15, and 0 split the timer.
+// C ref: timeout.c begin_burn(), ordinary candle and lamp cases. age is fuel
+// remaining before this segment; after scheduling it stores the fuel remaining
+// when the segment expires.
 export function begin_burn(obj, alreadyLit = false, env = {}) {
     const state = env.state ?? game;
     const normalized = { ...env, state, hooks: env.hooks ?? {} };
-    if (obj?.otyp !== TALLOW_CANDLE && obj?.otyp !== WAX_CANDLE)
+    const isCandle = obj?.otyp === TALLOW_CANDLE || obj?.otyp === WAX_CANDLE;
+    const isLamp = obj?.otyp === BRASS_LANTERN || obj?.otyp === OIL_LAMP;
+    if (!isCandle && !isLamp)
         throw new UnsupportedBurnObjectError(obj);
 
     const age = Math.trunc(obj.age ?? 0);
@@ -350,10 +344,19 @@ export function begin_burn(obj, alreadyLit = false, env = {}) {
         throw new RangeError(`begin_burn: invalid candle age ${obj.age}`);
 
     let turns;
-    if (age > 75) turns = age - 75;
-    else if (age > 15) turns = age - 15;
-    else turns = age;
-    const radius = candle_light_range(obj);
+    let radius = 3;
+    if (isLamp) {
+        if (age > 150) turns = age - 150;
+        else if (age > 100) turns = age - 100;
+        else if (age > 50) turns = age - 50;
+        else if (age > 25) turns = age - 25;
+        else turns = age;
+    } else {
+        if (age > 75) turns = age - 75;
+        else if (age > 15) turns = age - 15;
+        else turns = age;
+        radius = candle_light_range(obj);
+    }
     let updateInventory = null;
     let position = null;
 

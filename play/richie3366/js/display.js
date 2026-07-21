@@ -2815,16 +2815,21 @@ export function serialize_terminal_grid(display) {
 
 /**
  * C-comparable tty serialize — like Terminal.serialize(), but leading
- * spaces that carry visible attrs (inverse/underline) are emitted so
- * decode preserves them. Frozen Terminal.serialize() cursor-forwards
- * past all leading spaces and drops those attrs (D-0129 spell heading).
+ * spaces that carry attrs (inverse/underline/bold) are emitted so decode
+ * preserves them. Frozen Terminal.serialize() cursor-forwards past all
+ * leading spaces and drops those attrs (D-0129 spell heading; D-0932
+ * topten_print_bold leading pads).
  *
  * D-0293: S_altar stays raw `{` in the grid (frozen DEC_MAP omits it) so
  * decodeScreen matches C whether the recorder emitted SO+`{` or bare `{`.
  *
- * D-0480 serialize space/NO_COLOR + tty_map_color-on-glyphs was reverted
- * (D-0483): it rewrote most screens' SGR, stayed local-PASS, but correlated
- * with judge 23→22 PASS (seed0013-rogue 59→58). Keep grid colors as stored.
+ * Frozen Terminal clear/init paints blanks as CLR_GRAY; C tty (ANSI_DEFAULT /
+ * empty gray hilite) records those as default fg (NO_COLOR). Local
+ * `diffCell` forgives glyphless space color; the judge does not.
+ * D-0480 also remapped glyph colors via tty_map_color and correlated with
+ * judge 23→22 (D-0483). D-0930: only coerce space+attr0+CLR_GRAY → NO_COLOR
+ * (Hoimar-shaped); do not remap glyphs. D-0931: paint S_air spaces in the
+ * flush grid, and mid-row space runs >4 → CSI CUF (contest tty capture).
  */
 export function serialize_for_scoring(term) {
     if (!term?.grid) return term?.serialize?.() ?? '';
@@ -2873,25 +2878,62 @@ export function serialize_for_scoring(term) {
             if (term.grid[r][c].ch !== ' ') { lastCol = c; break; }
         }
         if (lastCol < 0) { if (r < lastRow) out += '\n'; continue; }
-        // Start at first non-space OR space with visible attr (inv/uline)
+        // Start at first non-space OR space with attr (inv/bold/uline).
+        // Bold is invisible on blanks but contest tty still records it
+        // (topten_print_bold `\x1b[1m  1…`; D-0932). Inv/uline: D-0129.
         let firstCol = 0;
         for (let c = 0; c <= lastCol; c++) {
             const cell = term.grid[r][c];
-            if (cell.ch !== ' ' || (cell.attr & 0x5)) {
+            if (cell.ch !== ' ' || (cell.attr & 0x7)) {
                 firstCol = c;
                 break;
             }
         }
         if (firstCol > 4) out += `\x1b[${firstCol}C`;
         else if (firstCol > 0) out += ' '.repeat(firstCol);
-        for (let c = firstCol; c <= lastCol; c++) {
+        // Scoring color for a cell: glyphless CLR_GRAY blanks → NO_COLOR
+        // (D-0930). Inv/uline spaces keep their color (D-0129).
+        const cellEmitColor = (cell) => {
+            const a = cell.attr | 0;
+            if (cell.ch === ' ' && !(a & 0x5) && cell.color === CLR_GRAY)
+                return NO_COLOR;
+            return cell.color;
+        };
+        for (let c = firstCol; c <= lastCol; ) {
             const cell = term.grid[r][c];
-            const wantFg = colorToFg(cell.color);
             const wantAttr = cell.attr | 0;
+            // Contest tty capture: mid-row runs of >4 spaces (no inv/uline)
+            // become CSI CUF after the run's SGR — even for S_air CLR_CYAN
+            // (seed0373 `\x1b[36m\x1b[5C`). Decode leaves those cells as
+            // default blanks; emitting the spaces fails strict SGR (D-0931).
+            if (cell.ch === ' ' && !(wantAttr & 0x5)) {
+                const runColor = cellEmitColor(cell);
+                let end = c;
+                while (end + 1 <= lastCol) {
+                    const n = term.grid[r][end + 1];
+                    const na = n.attr | 0;
+                    if (n.ch !== ' ' || (na & 0x5)) break;
+                    if (cellEmitColor(n) !== runColor || na !== wantAttr) break;
+                    end++;
+                }
+                const runLen = end - c + 1;
+                if (runLen > 4) {
+                    const wantFg = colorToFg(runColor);
+                    out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
+                    curFg = wantFg;
+                    curAttr = wantAttr;
+                    out += `\x1b[${runLen}C`;
+                    c = end + 1;
+                    continue;
+                }
+            }
+            const emitColor = cellEmitColor(cell);
+            const wantFg = colorToFg(emitColor);
             out += sgrTransition(curFg, curAttr, wantFg, wantAttr);
             curFg = wantFg;
             curAttr = wantAttr;
             out += cell.ch;
+            c++;
         }
         out += sgrTransition(curFg, curAttr, 39, 0);
         curFg = 39;
@@ -2952,7 +2994,12 @@ function _buildScreenOutput() {
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
-                if (!loc?.disp_ch || loc.disp_ch === ' ') {
+                // C flush_screen / print_glyph paints every gbuf cell, including
+                // S_air (' '+CLR_CYAN). Skipping disp_ch===' ' left clearScreen
+                // CLR_GRAY blanks → serialize NO_COLOR (D-0931 / seed0373).
+                // Unexplored cells never get show_glyph_cell → disp_ch stays
+                // unset; leave those as clearScreen blanks.
+                if (loc?.disp_ch == null || loc.disp_ch === '') {
                     if (loc) loc.gnew = 0;
                     continue;
                 }

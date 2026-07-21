@@ -115,6 +115,10 @@ async function text_page_wait() {
 
 /**
  * C ref: wintty.c process_text_window NHW_TEXT + H2344 putstr page-at-a-time.
+ * Paint bound: after tty_curs(1,n) curx is 0-based 0; the put loop is
+ * `++curx < cols` → at most cols-1 glyphs (col cols-1 stays blank). Long
+ * no-space lines (e.g. get_configfile paths) are stored whole by tty_putstr
+ * but only the first cols-1 cells are emitted (D-0933).
  * @returns {Promise<boolean>} true if ESC cancelled remaining pages
  */
 /**
@@ -128,6 +132,7 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
         return false;
     }
     const cols = disp.cols || 80;
+    const textCols = cols - 1; // C: ++curx < cols from curx==0
     const rows = 24;
     const pageRows = rows - 1; // leave bottom for --More-- / (end)
     let offset = 0;
@@ -141,7 +146,7 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
             const entry = chunk[r];
             const text = typeof entry === 'string' ? (entry || '') : (entry?.text || '');
             const attr = typeof entry === 'string' ? 0 : (entry?.attr || 0);
-            for (let i = 0; i < text.length && i < cols; i++)
+            for (let i = 0; i < text.length && i < textCols; i++)
                 disp.setCell(i, r, text[i], NO_COLOR, attr);
         }
         // C H2344: tty_curs(1, cury+1); cl_eos(); then more on rows-1
@@ -311,9 +316,11 @@ export async function show_nhw_menu_text(lines, opts = {}) {
             game._menu_overlay = true;
             const chunk = lines.slice(offset, offset + pageRows);
             disp.clearScreen();
+            // C process_text_window: ++curx < cols from curx==0 → cols-1 glyphs
+            const textCols = cols - 1;
             for (let r = 0; r < chunk.length; r++) {
                 const text = chunk[r] || '';
-                for (let i = 0; i < text.length && i < cols; i++)
+                for (let i = 0; i < text.length && i < textCols; i++)
                     disp.setCell(i, r, text[i], NO_COLOR, 0);
             }
             const last = offset + pageRows >= lines.length;
