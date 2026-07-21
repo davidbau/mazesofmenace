@@ -32,6 +32,7 @@ import { docrt, flush_screen, pline, update_topl, topl_more, y_n } from './displ
 import { vision_reset, vision_recalc } from './vision.js';
 import { hide_monst } from './mon.js';
 import { mon_catchup_elapsed_time } from './dogmove.js';
+import { onquest } from './questpgr.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
 //    mkmaze.c bad_location, teleport.c goodpos/collect_coords/enexto) ──
@@ -555,6 +556,11 @@ export async function wiz_level_tele(readLevel) {
         await goto_level(newlevel, false, false, false);
         if (game.flags?.verbose !== false)
             await pline('You materialize on a different level!');
+        // C ref: do.c goto_level() arrival block — In_quest(&u.uz) -> onquest():
+        // the quest home level's first-time arrival message.  Delivered after
+        // the "You materialize..." topline so its window flushes that topline
+        // with --More-- first.
+        await onquest();
         // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — the wizard-mode
         // level teleport does NOT cost a game turn (no movemon / gethungry /
         // monster-spawn pass).  Returning ECMD_TIME here advanced moves by one
@@ -592,6 +598,7 @@ export async function wiz_level_tele(readLevel) {
     // flags.verbose (the default).
     if (game.flags?.verbose !== false)
         await pline('You materialize on a different level!');
+    await onquest();
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
 }

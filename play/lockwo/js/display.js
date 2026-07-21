@@ -2,23 +2,24 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee } from './vision.js';
+import { cansee, Blind } from './vision.js';
 import { nhgetch } from './input.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
-    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, isok,
     SDOOR, SCORR, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, ICE,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, IRONBARS, TREE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
+    In_quest,
 } from './const.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BLUE, CLR_RED,
-    CLR_ORANGE, CLR_GREEN, DEC_TO_UNICODE,
+    CLR_ORANGE, CLR_GREEN, DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { monster_by_pmidx } from './makemon.js';
 import { objects } from './mkobj.js';
@@ -164,6 +165,43 @@ function maybe_observe_near_object(x, y) {
     const distu = (x - ux) * (x - ux) + (y - uy) * (y - uy);
     if (distu > neardist) return;
     obj.dknown = 1;
+}
+
+// C ref: display.c see_nearby_objects() — mark the top object of nearby stacks
+// as having been seen, and if it was being displayed as a generic object,
+// redisplay it as specific.  Called from u_on_newpos() (dungeon.c) whenever the
+// hero relocates on the same level (and is not Blind/Hallucinating/Swallowed),
+// so an undescribed potion/gem/spellbook the hero walks *near* (without its own
+// tile being redrawn by newsym) still upgrades from the generic gray class
+// glyph to its appearance color.  Mirrors the neardist square scan around the
+// hero; consumes no RNG.  As in maybe_observe_near_object, we only set dknown
+// (skipping observe_object's discover_object / '\'-list bookkeeping, which is a
+// separate object-identification concern) and only for generic objects, since
+// only those change their on-map appearance when observed.
+export function see_nearby_objects() {
+    const u = game.u;
+    if (!u || u.ux == null || u.uy == null) return;
+    // C ref: dungeon.c u_on_newpos guard — !Blind && !Hallucination && !uswallow.
+    if (Blind() || u.uhallu || u.uswallow) return;
+    const x = u.ux, y = u.uy;
+    const xr = u.xray_range ?? 0;
+    const r = (xr > 2) ? xr : 2;
+    const neardist = (r * r) * 2 - r;
+    for (let iy = y - r; iy <= y + r; iy++) {
+        for (let ix = x - r; ix <= x + r; ix++) {
+            if (!isok(ix, iy)) continue;
+            const obj = vobj_at(ix, iy);
+            // skip if no object, already seen up close, or not a generic glyph
+            if (!obj || obj.dknown || !obj_is_generic(obj)) continue;
+            // skip if the spot can't be seen or is too far (diagonal)
+            if (!cansee(ix, iy)) continue;
+            const distu = (ix - x) * (ix - x) + (iy - y) * (iy - y);
+            if (distu > neardist) continue;
+            // observe_object (dknown only) — was generic, so redisplay specific.
+            obj.dknown = 1;
+            newsym(ix, iy);
+        }
+    }
 }
 
 // Topmost visible object at (x, y).  C ref: display.h vobj_at.
@@ -582,7 +620,13 @@ function terrain_glyph(loc, x, y) {
     case ICE:       return dec ? { ch: '~', color: CLR_CYAN, dec: true }
                                : { ch: '.', color: CLR_CYAN, dec: false };
     case IRONBARS:  return { ch: '#', color: CLR_GRAY, dec: false };
-    case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
+    // C ref: dat/symbols DECgraphics S_tree = \xe7 (meta-g).  The recorder emits
+    // it as 'g' inside the DEC (Shift-Out) font; the frozen decoder's DEC_MAP has
+    // no 'g' entry, so the recorded C cell renders as the literal 'g'.  Emit 'g'
+    // with dec=FALSE (same trick as S_pool's '`') so the JS cell matches.  The
+    // default (non-DEC) symset draws a tree as '#'.
+    case TREE:      return dec ? { ch: 'g', color: CLR_GREEN, dec: false }
+                               : { ch: '#', color: CLR_GREEN, dec: false };
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: defsym.h PCHAR(36, '{', S_sink, CLR_WHITE).
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
@@ -732,11 +776,19 @@ export function newsym(x, y) {
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec };
         }
-        // A visible monster takes precedence over the background.
+        // A visible monster takes precedence over the background.  C ref:
+        // display.c newsym -> mon_visible(mon): an mundetected hider (e.g. a
+        // giant eel submerged in water) is NOT shown; the background shows
+        // through instead.
         const mon = m_at(x, y);
-        if (mon) {
+        if (mon && !mon.mundetected) {
             const mg = monster_glyph(mon);
-            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec);
+            // C ref: win/tty/wintty.c tty_print_glyph — a pet glyph (MG_PET)
+            // is drawn with iflags.wc2_petattr (default ATR_INVERSE) when
+            // iflags.hilite_pet is set.  Only the attribute is changed, not the
+            // monster's color.
+            const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
+            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
         } else {
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
         }
@@ -920,7 +972,12 @@ function _statusLine2() {
     // the ledger depth across branches (so the Gnomish Mines show Dlvl:3, not
     // the mines-relative dlevel 1), not u.uz.dlevel.
     const dlvlNum = inTut ? (u.uz?.dlevel || 1) : depth_of_level(u.uz);
-    let s = `${lvlLabel}:${dlvlNum} $:${game._goldCount || 0} HP:${hpShown}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
+    // C ref: botl.c describe_level — In_quest levels display "Home <dunlev>"
+    // (the quest-branch-relative level, u.uz.dlevel), with no "Dlvl:" prefix.
+    const levelDesc = In_quest(u.uz)
+        ? `Home ${u.uz?.dlevel || 1}`
+        : `${lvlLabel}:${dlvlNum}`;
+    let s = `${levelDesc} $:${game._goldCount || 0} HP:${hpShown}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
     // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>], optional T:<moves>.
     if (game.flags?.showexp)
         s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;

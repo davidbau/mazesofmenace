@@ -23,7 +23,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { update_topl, topl_more, render_map_to_grid } from './display.js';
+import { update_topl, topl_more, render_map_to_grid, docrt } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 
 const COLS = 80;
@@ -56,26 +56,75 @@ const NAMEW = 23;
 // `kind`: 'bool' toggles; 'compound' runs a handler (only pickup_types is
 // exercised); 'other' compound-like (autopickup exceptions &c.).  `apsuffix`
 // adds "  (for autopickup)".  Page 1 (a..p) is the only page the sessions show.
+// C ref: options.c allopt[] default values — booleans, keyed by option name.
+// TRUE = "X" (on) by default, FALSE = " " (off).  Used by both the display
+// (boolStr) and the toggle logic (toggleSimpleBool) so they stay consistent.
+const SIMPLE_BOOL_DEFAULT = {
+    // off by default
+    price_quotes: false, autodig: false, autoquiver: false, pushweapon: false,
+    hilite_pet: false, hilite_pile: false, showrace: false, showexp: false,
+    time: false, hitpointbar: false,
+    // on by default
+    autoopen: true, cmdassist: true, dropped_nopick: true, fireassist: true,
+    pickup_stolen: true, pickup_thrown: true,
+    bgcolors: true, color: true, customcolors: true, customsymbols: true,
+    sparkle: true,
+    // autopickup (&flags.pickup) is handled specially (defaults Off)
+};
+
+// C ref: options.c set_option's opt_need_redraw cases — toggling one of these
+// map-display booleans forces flush_screen(1)/docrt() to redraw the level, so a
+// stationary pet or object pile picks up (or drops) its highlight immediately.
+const REDRAW_ON_TOGGLE = new Set([
+    'hilite_pet', 'hilite_pile', 'showrace', 'sparkle',
+    'color', 'bgcolors', 'customcolors', 'customsymbols',
+]);
+
+// C ref: options.c doset_simple_menu() — the four displayed sections
+// (OptS_General..OptS_Status; OptS_Advanced is excluded), each option in
+// allopt[] order.  Accelerators are NOT fixed here: process_menu_window /
+// tty_end_menu assigns a..z fresh on every page, so a page-2 option starts at
+// 'a' again.  See buildSimpleFlat()/paginateSimple().
 const SIMPLE_SECTIONS = [
     { name: 'General', items: [
-        { a: 'a', name: 'fruit',        kind: 'compound', val: () => (game.flags?.pl_fruit) || 'slime mold' },
-        { a: 'b', name: 'number_pad',   kind: 'compound', val: () => '0=off' },
-        { a: 'c', name: 'price_quotes', kind: 'bool',     val: () => ' ' },
+        { name: 'fruit',        kind: 'compound', val: () => (game.flags?.pl_fruit) || 'slime mold' },
+        { name: 'number_pad',   kind: 'compound', val: () => '0=off' },
+        { name: 'price_quotes', kind: 'bool',     val: () => boolStr('price_quotes', false) },
     ] },
     { name: 'Behavior', items: [
-        { a: 'd', name: 'autodig',               kind: 'bool',     val: () => boolStr('autodig', false) },
-        { a: 'e', name: 'autoopen',              kind: 'bool',     val: () => boolStr('autoopen', true) },
-        { a: 'f', name: 'autopickup',            kind: 'bool',     val: () => boolStr('autopickup', autopickupOn()) },
-        { a: 'g', name: 'autopickup exceptions', kind: 'other',    val: () => '(0 currently set)' },
-        { a: 'h', name: 'autoquiver',            kind: 'bool',     val: () => boolStr('autoquiver', false) },
-        { a: 'i', name: 'autounlock',            kind: 'compound', val: () => 'apply-key' },
-        { a: 'j', name: 'cmdassist',             kind: 'bool',     val: () => boolStr('cmdassist', true) },
-        { a: 'k', name: 'dropped_nopick',        kind: 'bool',     val: () => boolStr('dropped_nopick', true), apsuffix: true },
-        { a: 'l', name: 'fireassist',            kind: 'bool',     val: () => boolStr('fireassist', true) },
-        { a: 'm', name: 'pickup_stolen',         kind: 'bool',     val: () => boolStr('pickup_stolen', true), apsuffix: true },
-        { a: 'n', name: 'pickup_thrown',         kind: 'bool',     val: () => boolStr('pickup_thrown', true), apsuffix: true },
-        { a: 'o', name: 'pickup_types',          kind: 'compound', val: () => pickupTypesStr(), apsuffix: true },
-        { a: 'p', name: 'pushweapon',            kind: 'bool',     val: () => boolStr('pushweapon', false) },
+        { name: 'autodig',               kind: 'bool',     val: () => boolStr('autodig', false) },
+        { name: 'autoopen',              kind: 'bool',     val: () => boolStr('autoopen', true) },
+        { name: 'autopickup',            kind: 'bool',     val: () => boolStr('autopickup', autopickupOn()) },
+        { name: 'autopickup exceptions', kind: 'other',    val: () => '(0 currently set)' },
+        { name: 'autoquiver',            kind: 'bool',     val: () => boolStr('autoquiver', false) },
+        { name: 'autounlock',            kind: 'compound', val: () => 'apply-key' },
+        { name: 'cmdassist',             kind: 'bool',     val: () => boolStr('cmdassist', true) },
+        { name: 'dropped_nopick',        kind: 'bool',     val: () => boolStr('dropped_nopick', true), apsuffix: true },
+        { name: 'fireassist',            kind: 'bool',     val: () => boolStr('fireassist', true) },
+        { name: 'pickup_stolen',         kind: 'bool',     val: () => boolStr('pickup_stolen', true), apsuffix: true },
+        { name: 'pickup_thrown',         kind: 'bool',     val: () => boolStr('pickup_thrown', true), apsuffix: true },
+        { name: 'pickup_types',          kind: 'compound', val: () => pickupTypesStr(), apsuffix: true },
+        { name: 'pushweapon',            kind: 'bool',     val: () => boolStr('pushweapon', false) },
+    ] },
+    { name: 'Map', items: [
+        { name: 'bgcolors',      kind: 'bool',     val: () => boolStr('bgcolors', true) },
+        { name: 'color',         kind: 'bool',     val: () => boolStr('color', true) },
+        { name: 'customcolors',  kind: 'bool',     val: () => boolStr('customcolors', true) },
+        { name: 'customsymbols', kind: 'bool',     val: () => boolStr('customsymbols', true) },
+        { name: 'hilite_pet',    kind: 'bool',     val: () => boolStr('hilite_pet', false) },
+        { name: 'hilite_pile',   kind: 'bool',     val: () => boolStr('hilite_pile', false) },
+        { name: 'showrace',      kind: 'bool',     val: () => boolStr('showrace', false) },
+        { name: 'sparkle',       kind: 'bool',     val: () => boolStr('sparkle', true) },
+        { name: 'symset',        kind: 'compound', val: () => 'DECgraphics, active, handler=DEC' },
+    ] },
+    { name: 'Status', items: [
+        { name: 'hitpointbar',             kind: 'bool',     val: () => boolStr('hitpointbar', false) },
+        { name: 'menu colors',             kind: 'other',    val: () => '(0 currently set)' },
+        { name: 'showexp',                 kind: 'bool',     val: () => boolStr('showexp', false) },
+        { name: 'status condition fields', kind: 'other',    val: () => '(16 currently set)' },
+        { name: 'status highlight rules',  kind: 'other',    val: () => '(0 currently set)' },
+        { name: 'statuslines',             kind: 'compound', val: () => '2' },
+        { name: 'time',                    kind: 'bool',     val: () => boolStr('time', false) },
     ] },
 ];
 
@@ -481,138 +530,181 @@ async function runFruitHandler() {
 
 // --- doset_simple() "Options" menu rendering ---------------------------------
 
-// Build the flat page-1 entry list (matches the recorded layout: ? help line,
-// then each section heading + its items).  Each entry is either a heading/blank
-// ('x') or a selectable option ('a').  Bodies are recomputed each render so
-// toggled booleans and pickup_types reflect their current values.
-function buildSimpleEntries() {
-    const entries = [];
-    entries.push({ t: 'a', a: '?', body: 'show help', kind: 'help' });
+// Build the flat menu-item list exactly as C assembles it: doset_simple_menu()
+// adds the help entry then, per section, a blank + inverse heading + the option
+// lines; tty_end_menu() then reverses and prepends a blank and the "Options"
+// title.  So the final order is: title, blank, help, then for each section
+// (blank, heading, items...).  Each entry:
+//   { type:'title'|'blank'|'heading'|'item', ... }
+// selectable items carry {selectable:true, kind, name, item, body}; the help
+// entry is selectable with an explicit '?' selector.  Bodies are recomputed on
+// each build so toggled booleans / pickup_types show current values.
+function buildSimpleFlat() {
+    const items = [];
+    // help '?': explicit selector (never auto-lettered).
+    items.push({ type: 'item', selectable: true, sel: '?', explicit: true,
+                 kind: 'help', body: 'show help' });
     for (const sec of SIMPLE_SECTIONS) {
-        entries.push({ t: 'x', text: '' });
-        // " %-30s " -> 32-wide heading field, all inverse.
-        const head = ' ' + sec.name.padEnd(30, ' ') + ' ';
-        entries.push({ t: 'x', text: head, inv: true });
+        items.push({ type: 'blank' });
+        items.push({ type: 'heading', name: sec.name });
         for (const it of sec.items) {
             let body = it.name.padEnd(NAMEW, ' ') + ' [' + it.val() + ']';
             if (it.apsuffix) body += '  (for autopickup)';
-            entries.push({ t: 'a', a: it.a, body, item: it });
+            items.push({ type: 'item', selectable: true, kind: it.kind,
+                         name: it.name, item: it, body });
         }
     }
-    return entries;
+    // tty_end_menu(): prepend a blank, then the title (added in that order so
+    // the reversed-then-prepended list starts with the title).
+    items.unshift({ type: 'blank' });
+    items.unshift({ type: 'title', name: 'Options' });
+    return items;
 }
 
-// Render the full-screen (offx == 0) "Options" menu page.  PICK_ONE menus draw
-// no selection markers, so option lines are " <accel> - <body>".
-function renderSimplePage(entries, footRowText, footCol) {
+// process_menu_window's accelerator for the next auto-lettered item: 'a'..'z'
+// then 'A'..'Z'.  C ref: tty_end_menu() menu_ch advance.
+function nextMenuCh(ch) {
+    if (ch === 'z') return 'A';
+    return String.fromCharCode(ch.charCodeAt(0) + 1);
+}
+
+// Split the flat item list into tty pages and assign fresh a..z accelerators
+// per page to auto-lettered (non-explicit) selectable items.  C ref:
+// tty_end_menu(): lmax = min(52, rows-1); npages = (nitems + lmax-1)/lmax;
+// menu_ch resets to 'a' at each page boundary and only advances for selectable
+// items whose selector isn't already set (so the explicit '?' is skipped).
+function paginateSimple(items) {
+    const lmax = ROWS - 1; // min(52, 24-1) = 23
+    const pages = [];
+    let menu_ch = 'a';
+    for (let n = 0; n < items.length; n++) {
+        const pageIdx = Math.floor(n / lmax);
+        if (n % lmax === 0) { menu_ch = 'a'; pages[pageIdx] = { items: [] }; }
+        const it = items[n];
+        if (it.selectable && !it.explicit) {
+            it.sel = menu_ch;
+            menu_ch = nextMenuCh(menu_ch);
+        }
+        pages[pageIdx].items.push(it);
+    }
+    return pages;
+}
+
+// Render one full-screen (offx == 0) "Options" page.  PICK_ONE draws no
+// selection markers, so option lines are " <accel> - <body>".  The footer is
+// "(N of M)" (or "(end) " for a single page), drawn at col 1 with a plain
+// leading space at col 0, and the cursor placed one past it.  C ref:
+// process_menu_window() line drawing + dmore() morestr placement.
+function renderSimpleMenuPage(page, pageIdx, npages) {
     const d = disp();
     if (!d) return;
     d.clearScreen();
-    // Title is drawn as a menu heading-less window title; the recorder shows it
-    // inverse at col 1 (" Options").  In the captured grid the title occupies
-    // the first row.
     let r = 0;
-    clearRow(d, 0, r);
-    d.putstr(0, r, ' ', NO_COLOR, 0);
-    d.putstr(1, r, 'Options', NO_COLOR, ATR_INVERSE);
-    r++;
-    // tty inserts a blank line between the window title and the first item.
-    clearRow(d, 0, r);
-    r++;
-    for (const e of entries) {
+    for (const it of page.items) {
         clearRow(d, 0, r);
-        if (e.t === 'x') {
-            if (e.text) {
-                if (e.inv) {
-                    // Section heading: " %-30s " (32-wide) is fully inverse,
-                    // drawn at col 1; col 0 is the plain menu leading space.
-                    // C ref: add_menu_heading() -> ATR_INVERSE over the whole buf.
-                    d.putstr(0, r, ' ', NO_COLOR, 0);
-                    d.putstr(1, r, e.text, NO_COLOR, ATR_INVERSE);
-                } else {
-                    const lead = e.text.match(/^ */)[0].length;
-                    d.putstr(0, r, e.text.slice(0, lead), NO_COLOR, 0);
-                    d.putstr(lead, r, e.text.slice(lead), NO_COLOR, 0);
-                }
-            }
-        } else {
-            // " <accel> - <body>"
-            d.putstr(0, r, ` ${e.a} - ${e.body}`, NO_COLOR, 0);
+        if (it.type === 'title') {
+            // "Options" title: no leading space, inverse, at col 1.
+            d.putstr(0, r, ' ', NO_COLOR, 0);
+            d.putstr(1, r, it.name, NO_COLOR, ATR_INVERSE);
+        } else if (it.type === 'heading') {
+            // Section heading: " %-30s " (32-wide) fully inverse at col 1;
+            // col 0 is the plain menu leading space.
+            const head = ' ' + it.name.padEnd(30, ' ') + ' ';
+            d.putstr(0, r, ' ', NO_COLOR, 0);
+            d.putstr(1, r, head, NO_COLOR, ATR_INVERSE);
+        } else if (it.type === 'item') {
+            d.putstr(0, r, ` ${it.sel} - ${it.body}`, NO_COLOR, 0);
         }
+        // 'blank' rows need no drawing (already cleared).
         r++;
     }
+    // Footer at row = number of item lines on this page.
     clearRow(d, 0, r);
-    d.putstr(1, r, footRowText, NO_COLOR, 0);
-    d.setCursor(footCol, r);
+    const morestr = npages > 1 ? `(${pageIdx + 1} of ${npages})` : '(end) ';
+    d.putstr(0, r, ' ' + morestr, NO_COLOR, 0);
+    d.setCursor(1 + morestr.length, r);
 }
 
 // C ref: options.c doset_simple()/doset_simple_menu() — the 'O' command.
-// PICK_ONE loop: show the "Options" menu, act on one pick (toggle bool / run
-// compound handler), then re-show with updated values until the player exits
-// with <return>/ESC (no pick).  Consumes no dungeon RNG.
+// PICK_ONE loop: build+show the "Options" menu, act on one pick (toggle bool /
+// run compound handler), then tear it down and re-build+re-show with updated
+// values until the player exits with <return>/ESC or space past the last page
+// (no pick).  Each select_menu round starts on page 1; the player pages with
+// space/'>' (forward) and '<' (back); a letter picks that page's option and
+// ends the round.  Consumes no dungeon RNG.
 export async function dosetSimple() {
-    for (;;) {
-        const entries = buildSimpleEntries();
-        // Only page 1 is reachable in the recorded sessions; render it with the
-        // "(1 of 2)" footer (the full list spans two tty pages).
-        const footRowText = ' (1 of 2)';
-        const footCol = 9; // cursor one past "(1 of 2)" -> col 9
-        renderSimplePage(entries, footRowText, footCol);
-        game._modal_screen = 'optmenu';
-        const c = await nhgetch();
-        delete game._modal_screen;
-        const ch = String.fromCharCode(c);
+    for (;;) { // doset_simple_menu() loop — one select_menu round per iteration
+        const items = buildSimpleFlat();
+        const pages = paginateSimple(items);
+        const npages = pages.length;
+        let page = 0;
+        let pick = null;
+        let cancelled = false;
 
-        if (c === 27) return 0;                       // ESC: exit menu
-        if (c === 13 || c === 10) return 0;           // <return> with no pick: exit
-        if (ch === ' ' || ch === '>') {
-            // next page; the recorded sessions never page, so treat as exit-less
-            // no-op (a real page 2 would show; not exercised).  C scrolls pages.
-            continue;
+        // select_menu(PICK_ONE): show the current page and read one response.
+        for (;;) {
+            renderSimpleMenuPage(pages[page], page, npages);
+            game._modal_screen = 'optmenu';
+            const c = await nhgetch();
+            delete game._modal_screen;
+            const ch = String.fromCharCode(c);
+
+            if (c === 27) { cancelled = true; break; }    // ESC: cancel
+            if (c === 13 || c === 10) break;              // <return>: finish, no pick
+            if (ch === ' ') {                             // space: next page, else finish
+                if (page < npages - 1) { page++; continue; }
+                break;
+            }
+            if (ch === '>') { if (page < npages - 1) page++; continue; } // '>': next page only
+            if (ch === '<') { if (page > 0) page--; continue; }         // '<': previous page
+            // A letter selects that page's option (PICK_ONE ends the round).
+            const hit = pages[page].items.find(it => it.selectable && it.sel === ch);
+            if (hit) { pick = hit; break; }
+            // unknown accelerator: ignore (tty rings the bell)
         }
 
-        // Find the selected option on this page.
-        const hit = entries.find(e => e.t === 'a' && e.a === ch && e.kind !== 'help');
-        if (!hit) continue;                            // unknown accelerator: ignore
-        const it = hit.item;
+        if (cancelled) return 0;
+        if (!pick) return 0;                              // no pick: exit menu
+
+        if (pick.kind === 'help') {
+            // Toggle the brief help text (not exercised here beyond the flag).
+            game._simple_options_help = !game._simple_options_help;
+            continue;
+        }
+        const it = pick.item;
         if (it.kind === 'bool') {
             // PICK_ONE boolean: parseoptions toggles it.  The simple menu emits
             // no top-line "toggled" message (give_opt_msg is FALSE) — the menu
             // simply re-renders with the new value.
             toggleSimpleBool(it.name);
-            // loop: re-show menu with updated value
+            // C ref: options.c doset_simple() — after each pick, if the toggled
+            // option set go.opt_need_redraw (hilite_pet & other map-display
+            // options), flush_screen(1) redraws the map.  Recompute the cell
+            // glyph state now so the post-menu map reflects e.g. hilite_pet on a
+            // stationary pet (newsym alone only refreshes cells that change).
+            if (REDRAW_ON_TOGGLE.has(it.name)) await docrt();
         } else if (it.name === 'pickup_types') {
             await runPickupTypesHandler();
-            // loop: re-show menu (pickup_types value updated)
         } else if (it.name === 'fruit') {
             await runFruitHandler();
-            // loop: re-show menu (fruit value updated)
         }
         // Other compound/other entries aren't exercised; re-show the menu.
     }
 }
 
-// Toggle a boolean tracked in game.flags for the simple menu.
+// Toggle a boolean tracked in game.flags for the simple menu, using the shared
+// SIMPLE_BOOL_DEFAULT table so display (boolStr) and toggle agree.
 function toggleSimpleBool(name) {
     game.flags = game.flags || {};
-    switch (name) {
-    case 'autopickup': {
-        // C ref: optlist.h autopickup defaults Off; toggling an unset value
-        // turns it on.
+    if (name === 'autopickup') {
+        // C ref: optlist.h autopickup defaults Off; toggling an unset value on.
         const cur = game.flags.pickup === undefined ? false : !!game.flags.pickup;
         game.flags.pickup = !cur;
-        break;
+        return;
     }
-    default: {
-        // Defaults per the recorded Options menu (most start true except
-        // autodig/autoquiver/pushweapon/price_quotes).
-        const offByDefault = { autodig: true, autoquiver: true, pushweapon: true, price_quotes: true };
-        const dflt = !offByDefault[name];
-        const cur = game.flags[name] === undefined ? dflt : !!game.flags[name];
-        game.flags[name] = !cur;
-        break;
-    }
-    }
+    const dflt = SIMPLE_BOOL_DEFAULT[name] ?? false;
+    const cur = game.flags[name] === undefined ? dflt : !!game.flags[name];
+    game.flags[name] = !cur;
 }
 
 // C ref: options.c doset() — the 'O' command.  Runs the full options menu,

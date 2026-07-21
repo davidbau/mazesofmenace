@@ -14,8 +14,9 @@
 // pile (obj_unpolyable / obj_shudders / poly_obj floor / zapwrapup
 // You_feel); RAY WAN_DIGGING/SPE_DIG → zap_dig (dig.c).
 // Named omissions: zap_updown/uswallow bhitm; bhitm poly body; zap_map;
-// spell ubuzz; mon_reflects; fireball/gas/Hallucination
-// hdmgtype rn2; full zap_over_floor; shopdamage;
+// spell ubuzz; mon_reflects; fireball/Hallucination hdmgtype rn2;
+// zap_over_floor beyond fire-pool steam + poison-gas 1x1 trail
+// (ice melt/fountain/WEB/cold/acid bars/POOL→PIT deferred); shopdamage;
 // map_invisible/unmap during buzz; backfire body; other NODIR; wrest
 // pline; check_capacity/nohands; check_unpaid; update_inventory;
 // shieldeff/monstunseesu; setworn EReflecting bits (worn
@@ -27,7 +28,8 @@
 // erode_armor; death-breath disintegrate_arm; potionbreathe invis flash
 // (D-0741); inventory_resistance_check; destroy_items elec body;
 // ugolemeffects; burn_away_slime; spell_damage_bonus / Knight questart
-// double; Rider/Death specials.
+// double; Rider/Death specials; type<0 mon death → monkilled (uses
+// killed for now).
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -44,7 +46,7 @@ import { doname, xname, vtense } from './objnam.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
 import { findit } from './detect.js';
 import {
-    confdir, fall_asleep, losehp, maybe_half_phys, nomul,
+    confdir, fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
 } from './hack.js';
 import {
     nonliving, is_demon, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -60,6 +62,7 @@ import { mon_nam } from './do_name.js';
 import { finish_losehp_done } from './end.js';
 import { burnarmor } from './trap.js';
 import { potionbreathe } from './potion.js';
+import { create_gas_cloud } from './region.js';
 import {
     mkobj, delobj, objects_at, replace_object, rnd_class, weight, splitobj,
     oc_merge_of,
@@ -74,6 +77,7 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END,
     OBJ_FLOOR, Has_contents, ZAPPED_WAND, NOTELL, STRAT_WAITMASK,
+    POOL, Is_waterlevel,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -200,13 +204,58 @@ function BZ_U_WAND(bztyp) {
     return 0 + (bztyp | 0);
 }
 
-/** C ref: zap.c flash_types subset for wand 0..5 */
+/**
+ * C ref: zap.c flash_types — wand 0..9 / spell 10..19 / breath 20..29.
+ * Empty slots match C; Hallucination suppress deferred (caller passes
+ * fltyp already via zaptype).
+ */
 function flash_str(fltyp) {
     const names = [
         'magic missile', 'bolt of fire', 'bolt of cold', 'sleep ray',
-        'death ray', 'bolt of lightning',
+        'death ray', 'bolt of lightning', '', '', '', '',
+        'magic missile', 'fireball', 'cone of cold', 'sleep ray',
+        'finger of death', 'bolt of lightning', '', '', '', '',
+        'blast of missiles', 'blast of fire', 'blast of frost',
+        'blast of sleep gas', 'blast of disintegration',
+        'blast of lightning', 'blast of poison gas', 'blast of acid',
+        '', '',
     ];
-    return names[zaptype(fltyp) % 10] || 'ray';
+    return names[zaptype(fltyp)] || 'ray';
+}
+
+/**
+ * C ref: zap.c zap_over_floor — floor effects for buzz trail.
+ * Envelope: ZT_FIRE is_pool → create_gas_cloud(rnd(5)) (+ POOL rangemod);
+ * ZT_POISON_GAS ZAP_POS → create_gas_cloud(1,8). Named omit: WEB burn,
+ * ice melt, fountain steam, POOL→ROOM+maketrap PIT, cold/acid bars,
+ * shopdamage, ignoremon body.
+ */
+function zap_over_floor(x, y, type, _shopdamage, _ignoremon, _explodingWand) {
+    if ((type | 0) === -1) return -1000; // PHYS_EXPL_TYPE
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return 0;
+    const damgtype = zaptype(type) % 10;
+    let rangemod = 0;
+
+    switch (damgtype) {
+    case ZT_FIRE:
+        if (is_pool(x, y)) {
+            const u = game.u || {};
+            if (!Is_waterlevel(u.uz)) {
+                create_gas_cloud(x, y, rnd(5), 0);
+            }
+            // C: POOL evaporates to ROOM+maketrap(PIT) — deferred; still
+            // apply rangemod so buzz length matches.
+            if ((loc.typ | 0) === POOL) rangemod -= 3;
+        }
+        break;
+    case ZT_POISON_GAS:
+        if (ZAP_POS(loc.typ)) create_gas_cloud(x, y, 1, 8);
+        break;
+    default:
+        break;
+    }
+    return rangemod;
 }
 
 /**
@@ -628,8 +677,13 @@ async function zhitm(mon, type, nd, ootmp) {
         tmp = d(nd, 6);
         orig_dmg = tmp;
         if (resists_cold(mon)) tmp += 7;
-        // burnarmor + destroy_items(AD_FIRE)/ignite_items deferred
-        void orig_dmg;
+        // C: burnarmor → maybe destroy_items+ignite_items
+        if (await burnarmor(mon)) {
+            if (!rn2(3)) {
+                tmp += await destroy_items(mon, AD_FIRE, orig_dmg);
+                ignite_items(mon.minvent);
+            }
+        }
         break;
     case ZT_COLD:
         if (resists_cold(mon) /* || defended(mon, AD_COLD) */) {
@@ -835,11 +889,15 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
 }
 
 /**
- * C ref: zap.c dobuzz — hero wand ray + DISP_BEAM trail + zhitm.
- * Hallucination hdmgtype rn2, fireball/gas, mon_reflects, shopdamage,
- * map_invisible/unmap during buzz deferred.
+ * C ref: zap.c dobuzz — wand/spell/breath ray + DISP_BEAM + zhitm/zhitu.
+ * Envelope: type<0 newsym; rn1(7,7) range; zap_over_floor trail (gas
+ * deferred until after hit/reflect); mon/hero zap_hit. Named omit:
+ * fireball; mon_reflects; shopdamage; map_invisible; Hallu hdmgtype;
+ * type<0 monkilled (uses killed); steed redirect.
  */
-async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss) {
+export async function dobuzz(
+    type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss,
+) {
     const fltyp = zaptype(type);
     const damgtype = fltyp % 10;
     // C: Hallucination ? rn2(6) : damgtype — Hallu path deferred
@@ -848,8 +906,14 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
     let sy = sy0;
     let dx = dx0;
     let dy = dy0;
+    // C: type < 0 → newsym(u.ux, u.uy) before range roll
+    if ((type | 0) < 0) {
+        const u = game.u || {};
+        if (u.ux != null) newsym(u.ux, u.uy);
+    }
     let range = rn1(7, 7);
     if (dx === 0 && dy === 0) range = 1;
+    const shopdamage = { v: false };
 
     // C: tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype))
     tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
@@ -876,16 +940,26 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                     await nh_delay_output();
                 }
 
-                // zap_over_floor sleep: closed door absorbs (rangemod -1000)
-                if (closed_door(sx, sy)) {
-                    await pline('The door absorbs your bolt!');
-                    range += -1000;
-                }
-
                 // C: gb.bhitpos for hit()/miss()
                 if (!game.bhitpos) game.bhitpos = {};
                 game.bhitpos.x = sx;
                 game.bhitpos.y = sy;
+
+                let gas_hit = damgtype === ZT_POISON_GAS;
+                // fireballs skip; poison gas defers zap_over_floor until
+                // after hit/reflect so reflection can cancel the cloud.
+                if (!gas_hit) {
+                    range += zap_over_floor(
+                        sx, sy, type, shopdamage, true, 0,
+                    );
+                }
+
+                // Prior wand path: closed door absorb pline (C uses
+                // zap_over_floor rangemod; keep message for screen PASS).
+                if ((type | 0) >= 0 && closed_door(sx, sy)) {
+                    await pline('The door absorbs your bolt!');
+                    range += -1000;
+                }
 
                 let mon = m_at(sx, sy);
                 if (mon) {
@@ -902,6 +976,7 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                             // disintegrate_mon deferred → kill
                             await killed(mon);
                         } else if ((mon.mhp | 0) < 1) {
+                            // C type<0 → monkilled; killed stands in
                             await killed(mon);
                         } else {
                             if (!ootmp.otmp) {
@@ -923,6 +998,8 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                     nomul(0);
                     if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
                         range -= 2;
+                        // Keep "The <flash>" phrasing (matches prior wand PASS
+                        // screens; C The() capitalizes without adding "The ").
                         await pline(`The ${flash_str(fltyp)} hits you!`);
                         if (Reflecting()) {
                             if (!Blind()) {
@@ -937,6 +1014,7 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                             }
                             dx = -dx;
                             dy = -dy;
+                            gas_hit = false;
                         } else {
                             await zhitu(type, nd, flash_str(fltyp), sx, sy);
                             // C: fatal losehp never returns into dobuzz
@@ -946,6 +1024,10 @@ async function dobuzz(type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss)
                         await pline(`The ${flash_str(fltyp)} whizzes by you!`);
                     }
                     nomul(0);
+                }
+
+                if (gas_hit) {
+                    zap_over_floor(sx, sy, type, shopdamage, true, 0);
                 }
 
                 if (!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)) {

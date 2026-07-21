@@ -302,33 +302,38 @@ async function newgame_real() {
 async function moveloop_preamble_messages() {
     const g = game;
     const moonphase = phase_of_the_moon();
-    let preamble = null;
+    const msgs = [];
     // C ref: allmain.c moveloop_preamble() — a full moon grants +1 Luck and
     // Friday the 13th costs -1 via change_luck().  That starting Luck feeds the
     // rnl() bias roll (rnl() fires a secondary rn2(37+|Luck|) when Luck != 0),
     // e.g. the door-open rnl(20) check, so we MUST apply the side-effect to keep
     // the RNG stream in lockstep with C.  Full moon and Friday-the-13th are
-    // independent in C (separate if blocks), so apply each luck change on its
-    // own; the displayed preamble keeps the moon message precedence.
+    // independent in C (separate if blocks each with its own pline), so BOTH
+    // messages are printed when both hold (e.g. a full moon that also falls on
+    // Friday the 13th) — the moon message first, then the Friday-13th warning.
     if (moonphase === FULL_MOON) {
-        preamble = 'You are lucky!  Full moon tonight.';
+        msgs.push('You are lucky!  Full moon tonight.');
         g.u.uluck = (g.u.uluck || 0) + 1; // change_luck(1)
     } else if (moonphase === NEW_MOON) {
-        preamble = 'Be careful!  New moon tonight.';
+        msgs.push('Be careful!  New moon tonight.');
     }
     if (friday_13th()) {
-        if (!preamble)
-            preamble = 'Watch out!  Bad things can happen on Friday the 13th.';
+        msgs.push('Watch out!  Bad things can happen on Friday the 13th.');
         g.u.uluck = (g.u.uluck || 0) - 1; // change_luck(-1)
     }
 
-    if (!preamble) return false;
+    if (msgs.length === 0) return false;
 
-    // The welcome line is the current top-line message; the new preamble
-    // message can't share the line, so acknowledge the welcome via --More--.
-    await topl_more();
-    // Now the preamble message becomes the top line for the next step.
-    await pline(preamble);
+    // Each preamble message can't share the top line with the one before it
+    // (the moon "You are lucky!" line starts with "You " so C forces a fresh
+    // line; the Friday-13th warning is too long to concatenate).  So each new
+    // message pages the current top-line message with --More-- first: the
+    // welcome line is paged before the first preamble message, and (when both
+    // hold) the moon message is paged before the Friday-13th warning.
+    for (const m of msgs) {
+        await topl_more();
+        await pline(m);
+    }
     return true;
 }
 
@@ -598,7 +603,7 @@ const FAST_AT_LEVEL = Object.freeze({
 // We model only the role-granted intrinsic.  Extrinsic Fast (speed boots) is
 // handled separately by youHaveVeryFast(); since Very_fast takes priority in
 // u_calc_moveamt's else-if chain, the two never both fire on the same turn.
-function youHaveFast() {
+export function youHaveFast() {
     const mnum = gameRoleMnum();
     const lvl = FAST_AT_LEVEL[mnum];
     if (lvl == null) return false;
@@ -611,8 +616,13 @@ function youHaveFast() {
 // HFast & TIMEOUT term) isn't exercised by the scored sessions, so only the
 // worn-boots term is modelled here.
 function youHaveVeryFast() {
-    return game.uarmf?.otyp === SPEED_BOOTS;
+    // C ref: hack.h Very_fast — EFast is set on the boots slot by setworn() when
+    // speed boots (oc_oprop FAST) are worn, and manually on the W_ARM slot by
+    // dragon_armor_handling() when blue dragon scale mail/scales are worn (their
+    // oc_oprop is not FAST, so the extrinsic is applied by hand — u.efastArm).
+    return game.uarmf?.otyp === SPEED_BOOTS || !!game.u?.efastArm;
 }
+export { youHaveVeryFast };
 
 // C ref: attrib.c innate ability tables (*_abil[] with &HSearching).  The
 // dungeon-XP level at which each role first gains intrinsic Searching.  Keys

@@ -14,7 +14,7 @@ import { rn2, rnd } from './rng.js';
 import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok } from './const.js';
 import { obj_resists } from './zap.js';
 import { newsym, vobj_at, object_glyph } from './display.js';
-import { couldsee as visCouldsee, clear_path, cansee } from './vision.js';
+import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam } from './uhitm.js';
 import { floor_object_name } from './invent.js';
 import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon } from './monmove.js';
@@ -41,6 +41,27 @@ const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 100;
 const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
       ENORMOUS_MEATBALL = 269, MEAT_RING = 270, APPLE = 277, BANANA = 281,
       CARROT = 282, CLOVE_OF_GARLIC = 284, SLIME_MOLD = 285;
+
+// C ref: include/objects.h FOOD() `delay` field — objects[otyp].oc_delay, the
+// number of turns a creature spends digesting each non-corpse comestible.
+// dog_nutrition() copies this into mtmp->meating; m_move() (monmove.c:1745)
+// then returns MMOVE_DONE without moving while meating>0, so the value decides
+// how many turns the pet stays put after eating.  Ported verbatim from the
+// FOOD block (tripe ration is otyp 264, in the same order as mkobj.js
+// OBJECT_DATA).  Foods with delay 1 are the default and omitted.
+const FOOD_OC_DELAY = {
+    264: 2,   // tripe ration
+    269: 20,  // enormous meatball
+    271: 2,   // glob of gray ooze
+    272: 2,   // glob of brown pudding
+    273: 2,   // glob of green slime
+    274: 2,   // glob of black pudding
+    290: 2,   // pancake
+    291: 2,   // lembas wafer
+    292: 3,   // cram ration
+    293: 5,   // food ration
+    296: 0,   // tin
+};
 
 // C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).  Only three
 // species carry the flag (include/monsters.h); none are tamable pets, so a TIN
@@ -579,29 +600,22 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
     return appr;
 }
 
-// C ref: vision.c do_clear_area(omx,omy,9, wantdoor) restricted to the
-// dogmove.c wantdoor() client: visit each square within `range` (circle radius)
-// of (scol,srow) that the pet could see, and keep the one closest to the hero
-// (min distu).  view_from-from-a-non-hero-center is approximated with
-// clear_path (line of sight) from the pet's square — sufficient for the open
-// dlvl-1 layouts the contest sessions exercise; mirrors the C control flow.
+// C ref: vision.c do_clear_area(scol, srow, range, wantdoor, &fardist).  When
+// the center is NOT the hero (always true for the pet), C forwards to
+// view_from(srow, scol, (seenV**)0, 0, 0, range, func, arg), which runs the
+// full shadow-casting field-of-view sweep from the pet's square and calls the
+// wantdoor client on every square the pet could see (in the sweep's discovery
+// order).  wantdoor keeps the visited square closest to the hero (min distu),
+// breaking ties toward the first-visited square (strict `>`).  We now drive the
+// real view_from (routing mark_visible_range through the func) instead of the
+// old per-square clear_path approximation, so the goal matches C exactly.
 function do_clear_area_wantdoor(scol, srow, range, best) {
     const u = game.u;
-    const maxY = Math.min(srow + range, ROWNO - 1);
-    const minY = Math.max(srow - range, 0);
-    for (let y = minY; y <= maxY; y++) {
-        const dy = y - srow;
-        // circle: |dx| <= sqrt(range^2 - dy^2) (matches circle_ptr offset bound)
-        const off = Math.floor(Math.sqrt(range * range - dy * dy));
-        const minX = Math.max(scol - off, 1);
-        const maxX = Math.min(scol + off, COLNO - 1);
-        for (let x = minX; x <= maxX; x++) {
-            if (!(x === scol && y === srow) && !clear_path(scol, srow, x, y))
-                continue;
-            const ndist = dist2(x, y, u.ux, u.uy);
-            if (best.d > ndist) { best.d = ndist; best.x = x; best.y = y; }
-        }
-    }
+    // C ref: dogmove.c wantdoor() — *dist_ptr > distu(x,y) ? keep (x,y).
+    view_from(srow, scol, null, null, null, range, (x, y) => {
+        const ndist = dist2(x, y, u.ux, u.uy);
+        if (best.d > ndist) { best.d = ndist; best.x = x; best.y = y; }
+    }, best);
 }
 
 function DDIST(x, y, ox, oy) { return dist2(x, y, ox, oy); }
@@ -1019,9 +1033,21 @@ function dog_nutrition(mtmp, obj) {
         // observable, never the exact value).
         nutrit = 50;
     } else {
-        mtmp.meating = 1;
+        // C ref: dog_nutrition — a non-corpse food's digesting time is
+        // objects[otyp].oc_delay, NOT a flat 1.  meating gates the pet's
+        // movement for the next oc_delay m_move() calls (monmove.c:1745 returns
+        // MMOVE_DONE while meating>0), so it MUST match C exactly: e.g. a pet
+        // that gobbles a tripe ration (oc_delay 2) stays put for two turns,
+        // shifting when it next re-enters the movemon loop relative to the other
+        // monsters.  A flat 1 let the pet move a turn too early.
+        mtmp.meating = FOOD_OC_DELAY[obj.otyp] ?? 1;
         nutrit = 50;
     }
+    // C ref: dog_nutrition — a partially-eaten food scales meating (and nutrit)
+    // by the remaining fraction via eaten_stat().  Floor food fed to a pet is
+    // normally fresh (oeaten==0), so this branch is not exercised by the current
+    // sessions; when it is, clamp meating to at least 1 as eaten_stat() does.
+    if (obj.oeaten && mtmp.meating > 1) mtmp.meating = 1;
     const msize = (mtmp.data?.msize != null)
         ? mtmp.data.msize
         : (mon_msize(mtmp.data?.pmidx) ?? 2 /* MZ_MEDIUM */);

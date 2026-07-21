@@ -4,13 +4,14 @@
 // spelleffects for the healing-on-self case exercised by the gameplay sessions.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen } from './display.js';
+import { pline, update_topl, flush_screen } from './display.js';
 import { exercise } from './attrib.js';
 import { objects, mksobj, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
-import { A_WIS, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC } from './const.js';
+import { A_WIS, A_INT, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC,
+         STRAT_WAITFORU, STRAT_APPEARMSG } from './const.js';
 import { p_skill_of } from './enhance.js';
 import { discover_object } from './o_init.js';
 
@@ -368,15 +369,118 @@ async function getdir() {
     return null;
 }
 
-// C ref: spell.c study_book — read a spellbook to memorize its spell.  Ports
-// the "already know it quite well" branch (the only one exercised): no dull /
-// resume / blank / novel handling needed beyond the structural guards.  Returns
-// 1 if a game turn was used, 0 otherwise.  The dull-sleep rnd(25) only fires
-// for "dull"-appearance books, which the covered book is not.
+// C ref: include/objects.h SPELL(...,delay,...) — objects[otyp].oc_delay, the
+// per-spellbook study delay (parallel to SPELL_META's oc_level).  The JS objects
+// table doesn't carry oc_delay, so it lives here keyed by otyp (SPE_*).
+const SPELL_DELAY = new Map([
+    [365, 6], [366, 2], [367, 4], [368, 7], [369, 1], [370, 10], [371, 1],
+    [372, 1], [373, 2], [374, 1], [375, 2], [376, 2], [377, 2], [378, 2],
+    [379, 2], [380, 3], [381, 3], [382, 3], [383, 3], [384, 3], [385, 3],
+    [386, 3], [387, 4], [388, 4], [389, 4], [390, 5], [391, 5], [392, 5],
+    [393, 5], [394, 5], [395, 7], [396, 6], [397, 8], [398, 8], [399, 6],
+    [400, 7], [401, 8], [402, 3], [403, 3], [404, 1], [405, 4],
+]);
+function oc_delay_of(otyp) { return SPELL_DELAY.get(otyp) ?? 0; }
+
+const PM_WIZARD = 12; // C ref: include/monsters.h; role check for the difficulty prompt.
+const LENSES = 232; // C ref: include/objects.h otyp; +2 read_ability when worn.
+const SPE_BOOK_OF_THE_DEAD = 408; // C ref: include/objects.h otyp.
+
+// C ref: hack.c nomul(nval) — make the hero helpless/busy for |nval| turns.
+// `if (multi < nval) return; multi = nval;` plus clearing travel state.  Set
+// directly (like potion.c peffect_paralysis in potion.js): the move loop's
+// multi<0 countdown runs the busy turns and announces nomovemsg when it hits 0.
+function nomul(nval) {
+    if ((game.multi ?? 0) < nval) return;
+    game.multi = nval;
+    game.context = game.context || {};
+    game.context.travel = game.context.travel1 = game.context.mv = 0;
+}
+
+// C ref: wizard.c aggravate() — wake every monster on the level and clear its
+// "wait for you" / "appear message" strategy; a frozen monster gets a 1-in-5
+// chance to become able to move again.  In_W_tower is irrelevant off the Wizard
+// tower (both hero and monsters test FALSE), so no monster is skipped.
+function aggravate() {
+    const mons = game.fmon || game.level?.monsters || [];
+    for (const mtmp of mons) {
+        if (!mtmp) continue;
+        if (mtmp.mhp != null && mtmp.mhp < 1) // DEADMONSTER(mtmp)
+            continue;
+        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
+        mtmp.msleeping = 0;
+        if (!mtmp.mcanmove && !rn2(5)) {
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        }
+    }
+}
+
+// C ref: spell.c cursed_book() — malign effects when reading a book that's too
+// hard (or cursed).  Selector is rn2(oc_level); with oc_level <= 7 the switch
+// never reaches the `default` (rndcurse) arm.  Returns TRUE if the book is
+// destroyed (only the exploding-rune arm, reachable for level-7 books).
+async function cursed_book(bp) {
+    const lev = spell_level_of(bp.otyp); // objects[bp->otyp].oc_level
+    let dmg = 0;
+    switch (rn2(lev)) {
+    case 0:
+        await update_topl('You feel a wrenching sensation.');
+        // tele() (teleport self) not ported; effect omitted.
+        break;
+    case 1:
+        await update_topl('You feel threatened.');
+        aggravate();
+        break;
+    case 2:
+        // make_blinded(BlindedTimeout + rn1(100, 250), TRUE)
+        rn1(100, 250);
+        break;
+    case 3:
+        // take_gold(): remove all carried coins (no RNG); effect omitted here.
+        break;
+    case 4:
+        await update_topl('These runes were just too much to comprehend.');
+        // make_confused(HConfusion + rn1(7, 16), FALSE)
+        rn1(7, 16);
+        break;
+    case 5: {
+        await update_topl('The book was coated with contact poison!');
+        // uarmg erode path (no hero gloves in the covered flow); else poison.
+        const Poison_resistance = !!game.u?.Poison_resistance;
+        rn1(Poison_resistance ? 2 : 4, Poison_resistance ? 1 : 3);
+        rnd(Poison_resistance ? 6 : 10);
+        break;
+    }
+    case 6:
+        if (game.u?.Antimagic) {
+            await update_topl('The book explodes, but you are unharmed!');
+        } else {
+            await update_topl('As you read the book, it explodes in your face!');
+            dmg = 2 * rnd(10) + 5;
+            void dmg; // losehp() not ported for this arm
+        }
+        return true;
+    default:
+        // rndcurse(): unreachable for spellbooks (oc_level <= 7).
+        break;
+    }
+    return false;
+}
+
+// C ref: spell.c study_book — read a spellbook to memorize its spell.  Ports the
+// "already know it quite well" refresh branch and the uncursed/cursed "too hard
+// to comprehend" branch (rnd(20) difficulty roll -> cursed_book -> crumble
+// check).  The dull-sleep rnd(25) fires only for "dull"-appearance books and the
+// success-path memorization occupation (learn) are not yet ported.  Returns 1
+// if a game turn was used, 0 otherwise.
 export async function study_book(spellbook) {
-    const { makeknown } = await import('./invent.js');
+    const { makeknown, useup, trycall } = await import('./invent.js');
     const { y_n } = await import('./display.js');
+    const u = game.u;
     const booktype = spellbook.otyp;
+    const confused = !!(u?.uconf || u?.HConfusion);
+    let too_hard = false;
 
     if (booktype === SPE_BLANK_PAPER) {
         await pline('This spellbook is all blank.');
@@ -388,7 +492,17 @@ export async function study_book(spellbook) {
         return 1;
     }
 
-    // svc.context.spbook.delay assignment is bookkeeping (no RNG / no display).
+    const oc_level = spell_level_of(booktype);
+    const oc_delay = oc_delay_of(booktype);
+    // C ref: spell.c study_book — study delay by spell level (svc.context.spbook.delay).
+    let delay;
+    switch (oc_level) {
+    case 1: case 2: delay = -oc_delay; break;
+    case 3: case 4: delay = -(oc_level - 1) * oc_delay; break;
+    case 5: case 6: delay = -oc_level * oc_delay; break;
+    case 7:         delay = -8 * oc_delay; break;
+    default:        return 0;
+    }
 
     // Already know it well?  spellknow > KEEN/10 for a freshly-learned spell.
     let i = 0;
@@ -402,8 +516,52 @@ export async function study_book(spellbook) {
         if (ans === 'n')
             return 0;
     }
-    // Re-studying a known spell (ans === 'y') and first-time learning are not
-    // exercised by the covered sessions.
+
+    // "Books are often wiser than their readers" — chance to fail (too hard).
+    spellbook.in_use = true;
+    if (!spellbook.blessed && booktype !== SPE_BOOK_OF_THE_DEAD) {
+        if (spellbook.cursed) {
+            too_hard = true;
+        } else {
+            // uncursed - chance to fail
+            const lenses = (u?.ublindf && u.ublindf.otyp === LENSES) ? 2 : 0;
+            const read_ability = ACURR(A_INT) + 4 + Math.floor((u?.ulevel || 0) / 2)
+                                 - 2 * oc_level + lenses;
+            // only wizards know if a spell is too difficult
+            if ((game.urole?.mnum === PM_WIZARD) && read_ability < 20 && !confused) {
+                const qbuf = `This spellbook is ${read_ability < 12 ? 'very ' : ''}`
+                           + 'difficult to comprehend.  Continue?';
+                if (await y_n(qbuf) !== 'y') {
+                    spellbook.in_use = false;
+                    return 1;
+                }
+            }
+            // its up to random luck now
+            if (rnd(20) > read_ability)
+                too_hard = true;
+        }
+    }
+
+    if (too_hard) {
+        const gone = await cursed_book(spellbook);
+        nomul(delay); // study time; hero is busy for |delay| turns
+        game.multi_reason = 'reading a book';
+        // C sets gn.nomovemsg = 0 and unmul() defaults it to "You can move again."
+        game.nomovemsg = 'You can move again.';
+        if (gone || !rn2(3)) {
+            if (!gone)
+                await pline('The spellbook crumbles to dust!');
+            trycall(spellbook);
+            useup(spellbook);
+        } else {
+            spellbook.in_use = false;
+        }
+        return 1;
+    }
+    // Success path (uncursed easy / blessed book) and confused_book reading are
+    // not yet ported (memorization occupation via learn()); preserve prior
+    // behaviour of consuming the turn without the multi-turn study.
+    spellbook.in_use = false;
     return 1;
 }
 

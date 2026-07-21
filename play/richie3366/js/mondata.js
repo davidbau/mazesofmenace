@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { couldsee } from './vision.js';
-import { rnd } from './rng.js';
+import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
 import { objectNames } from './objects.js';
 import {
@@ -12,9 +12,23 @@ import {
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
     M1_SEE_INVIS,
 } from './monsters.js';
-import { M_SEEN_NOTHING, CONFLICT } from './const.js';
+import {
+    M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
+    M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, CONFLICT,
+} from './const.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
+
+/* C ref: monattk.h AD_* used by cvt_adtyp_to_mseenres / get_atkdam_type */
+const AD_MAGM = 1;
+const AD_FIRE = 2;
+const AD_COLD = 3;
+const AD_SLEE = 4;
+const AD_DISN = 5;
+const AD_ELEC = 6;
+const AD_DRST = 7;
+const AD_ACID = 8;
+const AD_RBRE = 242;
 
 /**
  * C ref: mondata.c set_mon_data — assign data/mnum; when new form is
@@ -270,6 +284,38 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
 /** C ref: mondata.c name_to_mon */
 export function name_to_mon(in_str, gender_name_var = null) {
     return name_to_monplus(in_str, null, gender_name_var);
+}
+
+/**
+ * C ref: mondata.c cvt_adtyp_to_mseenres — AD_foo → M_SEEN_bar.
+ * M_SEEN_REFL has no AD_* mapping.
+ */
+export function cvt_adtyp_to_mseenres(adtyp) {
+    switch (adtyp | 0) {
+    case AD_MAGM: return M_SEEN_MAGR;
+    case AD_FIRE: return M_SEEN_FIRE;
+    case AD_COLD: return M_SEEN_COLD;
+    case AD_SLEE: return M_SEEN_SLEEP;
+    case AD_DISN: return M_SEEN_DISINT;
+    case AD_ELEC: return M_SEEN_ELEC;
+    case AD_DRST: return M_SEEN_POISON;
+    case AD_ACID: return M_SEEN_ACID;
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+/**
+ * C ref: mondata.c get_atkdam_type — AD_RBRE → random breath AD_*.
+ */
+export function get_atkdam_type(adtyp) {
+    if ((adtyp | 0) === AD_RBRE) {
+        const rnd_breath_typ = [
+            AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE,
+            AD_DISN, AD_ELEC, AD_DRST, AD_ACID,
+        ];
+        return rnd_breath_typ[rn2(rnd_breath_typ.length)];
+    }
+    return adtyp | 0;
 }
 
 /** C ref: monst.h m_seenres */

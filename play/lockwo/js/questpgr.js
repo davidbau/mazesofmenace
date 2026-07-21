@@ -11,7 +11,10 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR } from './terminal.js';
 import { roles, rank_of, align_gname, align_gtitle } from './role.js';
-import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
+import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, In_quest } from './const.js';
+import { rn2 } from './rng.js';
+import { flush_screen, topl_more } from './display.js';
+import { renderWindowScreen } from './invent.js';
 
 // dat/quest.lua questtext.common.legacy.text
 const LEGACY_TEXT = [
@@ -107,4 +110,83 @@ export async function com_pager_legacy() {
     disp.setCursor(textCol + 8, moreRow);
 
     await nhgetch();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Quest arrival messages.  C ref: quest.c onquest()/on_start() + questpgr.c
+// qt_pager()/com_pager_core()/deliver_by_window().  When the hero first
+// reaches the quest "home" (start) level, on_start() delivers the role's
+// "firsttime" quest text.  com_pager_core() first runs nhl_init() which loads
+// quest.lua; loading it executes nhlib.lua's top-level shuffle(align), drawing
+// rn2(3) then rn2(2) — the only RNG the pager consumes.  The text is shown in a
+// full-screen NHW_TEXT window (--More-- at the bottom row).  Only the Barbarian
+// home level is ported (its Bar-strt.lua generation is the ported quest level).
+// ════════════════════════════════════════════════════════════════════════
+
+// dat/quest.lua Bar.firsttime.text (with the %-codes convert_arg substitutes).
+const BAR_FIRSTTIME = [
+    'Warily you scan your surroundings, all of your senses alert for signs',
+    'of possible danger.  Off in the distance, you can %x the familiar shapes',
+    'of %H.',
+    '',
+    'But why, you think, should %l be there?',
+    '',
+    'Suddenly, the hairs on your neck stand on end as you detect the aura of',
+    'evil magic in the air.',
+    '',
+    'Without thought, you ready your weapon, and mutter under your breath:',
+    '',
+    '    "By %d, there will be blood spilt today."',
+];
+
+// C ref: quest.c onquest() — called from goto_level() arrival.  Dispatches to
+// on_start() on the quest start (home) level for a first-time arrival.
+export async function onquest() {
+    const g = game;
+    if (g.u?.uevent?.qcompleted) return;
+    if (!In_quest(g.u?.uz)) return;
+    // Is_qstart(&u.uz)
+    const qs = g.qstart_level;
+    if (!qs || g.u.uz.dnum !== qs.dnum || g.u.uz.dlevel !== qs.dlevel) return;
+    // on_start(): qt_pager("firsttime") once, then set first_start.
+    if (g._quest_first_start) return;
+    g._quest_first_start = true;
+    const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
+    // Only the Barbarian quest home level is ported.
+    if (roles[rolenum]?.filecode !== 'Bar') return;
+    await com_pager_quest_firsttime(rolenum);
+}
+
+async function com_pager_quest_firsttime(rolenum) {
+    const g = game;
+    // com_pager_core -> nhl_init() loads quest.lua -> nhlib.lua top-level
+    // shuffle(align): rn2(3), rn2(2).
+    const a = ['law', 'neutral', 'chaos'];
+    for (let i = a.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const t = a[i - 1]; a[i - 1] = a[j - 1]; a[j - 1] = t;
+    }
+    // convert_arg substitutions: %x see/sense, %H homebase, %l leader, %d deity.
+    const alignType = alignTypeFromIndex(g.initalign);
+    const deity = align_gname(rolenum, alignType);          // "Crom" (neutral)
+    const leader = 'Pelias';                                // ldrname(): proper name
+    const home = 'the Camp of the Duali Tribe';             // urole.homebase
+    const xsee = (g.u?.blinded > 0 || g.ublindf) ? 'sense' : 'see';
+    const lines = BAR_FIRSTTIME.map((l) => l
+        .replace(/%x/g, xsee).replace(/%H/g, home)
+        .replace(/%l/g, leader).replace(/%d/g, deity));
+
+    // deliver_by_window -> display_nhwindow(datawin, TRUE): the pending topline
+    // ("You materialize on a different level!") is flushed with --More-- first,
+    // then the NHW_TEXT window is shown (full screen, --More-- at the last row).
+    await topl_more();                                      // screen: "...--More--"
+    renderWindowScreen(lines, { footer: '--More--', footerRow: 23, footerCol: 0, modal: 'textwin' });
+    await flush_screen(1);
+    g._modal_screen = 'topl';
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+    }
+    delete g._modal_screen;
+    g._pending_message = '';
 }

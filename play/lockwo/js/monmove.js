@@ -30,7 +30,7 @@ import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS } from './mkobj.js';
 import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
-import { Monnam, canspotmon, make_corpse, corpse_chance } from './uhitm.js';
+import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
@@ -894,6 +894,36 @@ async function mon_trapeffect(mtmp, trap) {
             const trapkilled = await mon_thitm(0, mtmp, null, dam, false);
             return trapkilled ? Trap_Killed_Mon
                 : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+        }
+        return Trap_Effect_Finished;
+    }
+    case SQKY_BOARD: {
+        // C ref: trapeffect_sqky_board() else-branch (monster), trap.c:1438.  A
+        // monster steps on a squeaky board and it announces itself.  No RNG:
+        // Soundeffect is an audio no-op and trapnote()/pline()/You_hear()/
+        // wake_nearto() all draw nothing here (no buried zombies at this depth,
+        // svc.context.mon_moving is set so wake_nearto_core's pet branch is
+        // skipped) — it is purely a hero-facing sound message.
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const Deaf = !!game.u?.Deaf;
+        const { trapnote, seetrap } = await import('./trap.js');
+        if (in_sight) {
+            if (!Deaf) {
+                await pline_mon(mtmp,
+                    `A board beneath ${mon_nam(mtmp)} squeaks ${trapnote(trap, false)} loudly.`);
+                seetrap(trap);
+            }
+            // The Deaf + in_sight sub-branch ("<Mon> stops momentarily and
+            // appears to cringe.") needs mindless(mtmp->data); the pmidx
+            // monster data here carries no mflags1 and Deaf never holds in the
+            // modeled sessions, so it can't fire — left unmodeled.
+        } else {
+            // same near/far threshold as mzapmsg(): couldsee -> BOLT_LIM+1 else
+            // BOLT_LIM-3, compared against mdistu (dist from hero) squared.
+            const range = couldsee(mtmp.mx, mtmp.my) ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+            const near = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= range * range;
+            if (!Deaf)
+                await emitU(`You hear ${trapnote(trap, false)} squeak ${near ? 'nearby' : 'in the distance'}.`);
         }
         return Trap_Effect_Finished;
     }

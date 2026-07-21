@@ -123,6 +123,23 @@ export function choose_trapnote(ttmp) {
     return picks.length ? picks[rn2(picks.length)] : rn2(12);
 }
 
+// C ref: trap.c trapnote() — the musical-note name of a squeaky board.  With
+// noprefix false, prepend the "a"/"an" article the same way objnam.c just_an()
+// does: every note name has a space at str[1], so just_an() takes its
+// single-letter branch and picks "an " when the lowercased first letter is one
+// of "aefhilmnosx" (e.g. "an A note", "an E flat"), else "a " ("a C note").
+const TNNAMES = [
+    'C note', 'D flat', 'D note', 'E flat',
+    'E note', 'F note', 'F sharp', 'G note',
+    'G sharp', 'A note', 'B flat', 'B note',
+];
+export function trapnote(trap, noprefix) {
+    const tn = TNNAMES[trap.tnote];
+    if (noprefix) return tn;
+    const article = 'aefhilmnosx'.includes(tn[0].toLowerCase()) ? 'an ' : 'a ';
+    return article + tn;
+}
+
 // C ref: trap.c maketrap() — create a trap at (x,y) of the given type.
 // Contest port: keeps the lightweight trap record used by mklev/display but
 // faithfully emits the PRNG calls C makes in maketrap's type switch (notably

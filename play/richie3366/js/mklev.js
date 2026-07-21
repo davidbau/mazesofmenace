@@ -1894,8 +1894,8 @@ function load_medusa_1() {
 /**
  * C ref: dat/medusa-3.lua via load_special — raven-tree Medusa variant.
  * Named omissions: worn/artifact STONE_RES in resists_ston; medusa-2/4;
- * flip_level lregion coord update; ensure_way_out / solidify / map_cleanup;
- * full mongone invent teardown beyond fmon unlink.
+ * ensure_way_out / solidify; full mongone invent teardown beyond fmon unlink.
+ * D-0928: flip updates lregions; land still JS@(43,6) vs C@(42,7).
  */
 function load_medusa_3() {
     const g = game;
@@ -2116,7 +2116,11 @@ function load_medusa_3() {
     }
     for (let i = 0; i < 30; i++) splev_create_monster('raven', 0);
 
-    // C load_special: wallification → flip → lregions → fixup
+    // C load_special: link_doors_rooms → remove_boundary_syms → map_cleanup
+    // → wallification → flip → fixup (tele copied from flipped lregions)
+    link_doors_rooms();
+    remove_boundary_syms();
+    map_cleanup();
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -7955,9 +7959,11 @@ function flip_level_rnd(flp, extras) {
  * C ref: sp_lev.c flip_level — transpose terrain / traps / objs / mons /
  * rooms / doors / stairs / engravings in the extends bbox.
  * Ported: ox/oy + buried coords; swap `_objects_at` with terrain cells
- * (D-0804; preserves nexthere — never rebuild from fobj). Named omissions:
- * drawbridge flip helpers, vault-guard extras, worm segs, exclusion zones,
- * ball/chain, level.monsters[][] grid swap, flip_visuals(extras).
+ * (D-0804; preserves nexthere — never rebuild from fobj); mgoal / priest
+ * shrpos / shk shk|shd; ungated door Flip_coord; `_level_monsters` swap
+ * (C level.monsters[][]). Named omissions: drawbridge flip helpers,
+ * vault-guard extras, worm-seg helpers beyond grid swap, exclusion zones,
+ * ball/chain, flip_visuals(extras).
  */
 function flip_level(flp, _extras) {
     if ((flp & 3) === 0) return;
@@ -7970,6 +7976,12 @@ function flip_level(flp, _extras) {
     const FlipY = (y) => (maxy - y) + miny;
     const inFlipArea = (x, y) =>
         x >= minx && x <= maxx && y >= miny && y <= maxy;
+    // C ref: sp_lev.c Flip_coord
+    const Flip_coord = (cc) => {
+        if (!cc) return;
+        if (flp & 1) cc.y = FlipY(cc.y);
+        if (flp & 2) cc.x = FlipX(cc.x);
+    };
 
     // C: flip SpLev_Map bits with the terrain (needed for solidify_map)
     if (game.SpLev_Map && game.SpLev_Map.size) {
@@ -7986,18 +7998,17 @@ function flip_level(flp, _extras) {
         game.SpLev_Map = next;
     }
 
-    // stairs
+    // stairs — C flip_level does not gate on inFlipArea (unlike traps/objs)
     for (let stway = game.stairs; stway; stway = stway.next) {
-        if ((flp & 1) && inFlipArea(stway.sx, stway.sy))
-            stway.sy = FlipY(stway.sy);
-        if ((flp & 2) && inFlipArea(stway.sx, stway.sy))
-            stway.sx = FlipX(stway.sx);
+        if (flp & 1) stway.sy = FlipY(stway.sy);
+        if (flp & 2) stway.sx = FlipX(stway.sx);
     }
-    if (game.level?.upstair && inFlipArea(game.level.upstair.x, game.level.upstair.y)) {
+    // JS mirrors of upstair/dnstair (C only has gs.stairs) — same ungated flip
+    if (game.level?.upstair) {
         if (flp & 1) game.level.upstair.y = FlipY(game.level.upstair.y);
         if (flp & 2) game.level.upstair.x = FlipX(game.level.upstair.x);
     }
-    if (game.level?.dnstair && inFlipArea(game.level.dnstair.x, game.level.dnstair.y)) {
+    if (game.level?.dnstair) {
         if (flp & 1) game.level.dnstair.y = FlipY(game.level.dnstair.y);
         if (flp & 2) game.level.dnstair.x = FlipX(game.level.dnstair.x);
     }
@@ -8041,12 +8052,20 @@ function flip_level(flp, _extras) {
         if (flp & 2) otmp.ox = FlipX(otmp.ox);
     }
 
-    // monsters
+    // monsters — C sp_lev.c flip_level: mx/my + mgoal (+ priest/shk extras)
     if (game.fmon) {
         for (const mtmp of game.fmon) {
             if (!mtmp || !inFlipArea(mtmp.mx, mtmp.my)) continue;
             if (flp & 1) mtmp.my = FlipY(mtmp.my);
             if (flp & 2) mtmp.mx = FlipX(mtmp.mx);
+            Flip_coord(mtmp.mgoal);
+            // C: EPRI(mtmp)->shrpos / ESHK(mtmp)->shk|shd
+            if (mtmp.ispriest && mtmp.mextra?.epri?.shrpos) {
+                Flip_coord(mtmp.mextra.epri.shrpos);
+            } else if (mtmp.isshk && mtmp.mextra?.eshk) {
+                Flip_coord(mtmp.mextra.eshk.shk);
+                Flip_coord(mtmp.mextra.eshk.shd);
+            }
         }
     }
 
@@ -8084,7 +8103,6 @@ function flip_level(flp, _extras) {
             }
         }
     }
-
     // rooms (+ nested sbrooms — C sp_lev.c flip_level)
     const flipRoomBounds = (sroom) => {
         if (!sroom || sroom.hx < 0) return;
@@ -8111,16 +8129,15 @@ function flip_level(flp, _extras) {
         flipRoomBounds(sroom);
     }
 
-    // doors
+    // doors — C Flip_coord ungated (unlike traps/objs)
     const doors = game.level?.doors || [];
     for (let i = 0; i < (game.level?.doorindex | doors.length | 0); i++) {
         const d = doors[i];
-        if (!d || !inFlipArea(d.x, d.y)) continue;
-        if (flp & 1) d.y = FlipY(d.y);
-        if (flp & 2) d.x = FlipX(d.x);
+        if (!d) continue;
+        Flip_coord(d);
     }
 
-    // terrain cell swap (+ level.objects / _objects_at pile heads — C)
+    // terrain cell swap (+ level.objects / monsters grid — C)
     const swapObjectsAt = (x1, y1, x2, y2) => {
         if (!game._objects_at) return;
         const ka = `${x1},${y1}`;
@@ -8131,6 +8148,18 @@ function flip_level(flp, _extras) {
         else game._objects_at.delete(ka);
         if (oa !== undefined) game._objects_at.set(kb, oa);
         else game._objects_at.delete(kb);
+    };
+    // C: swap svl.level.monsters[][] (JS: worm segs on _level_monsters)
+    const swapMonstersAt = (x1, y1, x2, y2) => {
+        if (!game._level_monsters) return;
+        const ka = `${x1},${y1}`;
+        const kb = `${x2},${y2}`;
+        const ma = game._level_monsters.has(ka) ? game._level_monsters.get(ka) : undefined;
+        const mb = game._level_monsters.has(kb) ? game._level_monsters.get(kb) : undefined;
+        if (mb !== undefined) game._level_monsters.set(ka, mb);
+        else game._level_monsters.delete(ka);
+        if (ma !== undefined) game._level_monsters.set(kb, ma);
+        else game._level_monsters.delete(kb);
     };
     if (flp & 1) {
         for (let x = minx; x <= maxx; x++) {
@@ -8144,6 +8173,7 @@ function flip_level(flp, _extras) {
                 Object.assign(b, tmp);
                 // C: swap svl.level.objects[x][y] ↔ [x][ny]
                 swapObjectsAt(x, y, x, ny);
+                swapMonstersAt(x, y, x, ny);
             }
         }
     }
@@ -8159,6 +8189,7 @@ function flip_level(flp, _extras) {
                 Object.assign(b, tmp);
                 // C: swap svl.level.objects[x][y] ↔ [nx][y]
                 swapObjectsAt(x, y, nx, y);
+                swapMonstersAt(x, y, nx, y);
             }
         }
     }
@@ -17928,11 +17959,13 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
 // ============================================================
 
 function get_level_extends() {
-    // C ref: mkmaze.c get_level_extends — post-subtract xmin/xmax clamps.
+    // C ref: mkmaze.c get_level_extends — scan bounds match C
+    // (`xmin <= COLNO`, `ymin <= ROWNO`); OOB reads as STONE. Post-subtract
+    // clamps xmin/xmax only (ymin/ymax may be outside until flip_level).
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
     let found = false, nonwall = false;
-    for (xmin = 0; !found && xmin <= COLNO - 1; xmin++) {
+    for (xmin = 0; !found && xmin <= COLNO; xmin++) {
         for (let y = 0; y <= ROWNO - 1; y++) {
             const typ = map.at(xmin, y)?.typ ?? STONE;
             if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }
@@ -17950,7 +17983,7 @@ function get_level_extends() {
     xmax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
     if (xmax >= COLNO) xmax = COLNO - 1;
     found = false; nonwall = false;
-    for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
+    for (ymin = 0; !found && ymin <= ROWNO; ymin++) {
         for (let x = xmin; x <= xmax; x++) {
             const typ = map.at(x, ymin)?.typ ?? STONE;
             if (typ !== STONE) { found = true; if (!IS_WALL(typ)) nonwall = true; }

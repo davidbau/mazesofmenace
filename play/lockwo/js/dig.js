@@ -8,14 +8,14 @@
 // occupation (dig_check / dighole) is a separate unported subsystem.
 
 import { game } from './gstate.js';
-import { rnd, rn2 } from './rng.js';
+import { rnd, rn2, rn1 } from './rng.js';
 import { newsym } from './display.js';
-import { unblock_point, recalc_block_point } from './vision.js';
+import { unblock_point, recalc_block_point, cansee } from './vision.js';
 import {
     IS_WALL, IS_TREE, IS_OBSTRUCTED, IS_STWALL, IS_DOOR,
     STONE, CORR, DOOR, ROOM, SCORR, SDOOR,
     D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
-    W_NONDIGGABLE,
+    W_NONDIGGABLE, isok, Is_earthlevel,
 } from './const.js';
 import { mksobj_at, ROCK, BOULDER } from './mkobj.js';
 
@@ -161,6 +161,121 @@ export async function mdig_tunnel(mtmp) {
         unblock_point(mtmp.mx, mtmp.my); // vision
 
     return false;
+}
+
+// C ref: dig.c zap_dig() — digging via a wand-of-digging zap or dig spell.
+// Reachable path for the covered sessions: the hero, standing in a lit room,
+// zaps the wand in a cardinal direction (u.dz == 0) and carves a passage across
+// the level — razing the first wall it meets into a doorway, then tunnelling
+// the rock beyond into a corridor.  RNG: a single `digdepth = rn1(18, 8)` is
+// drawn up front; every terrain edit in the loop below draws no RNG, so the
+// post-zap RNG cursor advances by exactly one rn2(18) (matching C).  The
+// swallowed and up/down branches are structurally faithful but their deep
+// subsystems (expels() / dighole()) are not exercised here and are left as
+// no-ops with C-ref notes.
+export async function zap_dig() {
+    const u = game.u;
+    const lvl = game.level;
+
+    if (u.uswallow) {
+        // C ref: dig.c:1568 — pierce/near-kill the engulfer and get expelled.
+        // No engulfing monster in the covered sessions; unported.
+        return;
+    }
+
+    if (u.dz) {
+        // C ref: dig.c:1584 — zapping up loosens a ceiling rock; zapping down
+        // runs dighole().  Neither is exercised (the covered zaps are lateral);
+        // the dighole subsystem is not ported.
+        return;
+    }
+
+    // normal case: digging across the level.  C ref: dig.c:1612.
+    let shopdoor = false, shopwall = false;   /* shop damage: no shop here */
+    const maze_dig = !!lvl?.flags?.is_maze_lev && !Is_earthlevel(u.uz);
+    const dx = u.dx | 0, dy = u.dy | 0;
+    let zx = u.ux + dx, zy = u.uy + dy;
+    // pit-dig (zapping laterally while trapped in a pit, u.utraptype==TT_PIT)
+    // is not exercised; pitdig stays FALSE.
+    let digdepth = rn1(18, 8);
+    // tmp_at(DISP_BEAM, S_digbeam): beam animation is display-only (no RNG) and
+    // leaves no residue in the final grid, so it is omitted.
+
+    while (--digdepth >= 0) {
+        if (!isok(zx, zy)) break;
+        const room = lvl.at(zx, zy);
+        if (!room) break;
+
+        if (closed_door(zx, zy) || room.typ === SDOOR) {
+            // C ref: dig.c:1669 — raze a door / expose+raze a secret door.
+            // (shop-door damage: in_rooms(SHOPBASE) is empty on this level.)
+            if (room.typ === SDOOR) {
+                room.typ = DOOR; /* doormask set below */
+            } else if (cansee(zx, zy)) {
+                const { update_topl } = await import('./display.js');
+                await update_topl('The door is razed!');
+            }
+            // watch_dig(): only reacts in town with the Watch present; no-op.
+            room.doormask = D_NODOOR;
+            recalc_block_point(zx, zy); // vision
+            newsym(zx, zy);
+            digdepth -= 2;
+            if (maze_dig) break;
+        } else if (maze_dig) {
+            // C ref: dig.c:1684 — on a maze level walls/trees->room, rock->corr,
+            // then break.  Not reached on the covered (non-maze) levels.
+            if (IS_WALL(room.typ)) {
+                if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    room.typ = ROOM; room.flags = 0;
+                    unblock_point(zx, zy);
+                    newsym(zx, zy);
+                }
+                break;
+            } else if (IS_TREE(room.typ)) {
+                if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    room.typ = ROOM; room.flags = 0;
+                    unblock_point(zx, zy);
+                    newsym(zx, zy);
+                }
+                break;
+            } else if (room.typ === STONE || room.typ === SCORR) {
+                if (!((room.wall_info || 0) & W_NONDIGGABLE)) {
+                    room.typ = CORR; room.flags = 0;
+                    unblock_point(zx, zy);
+                    newsym(zx, zy);
+                }
+                break;
+            }
+        } else if (IS_OBSTRUCTED(room.typ)) {
+            // C ref: dig.c:1711 — pierce a wall/tree into a doorway/floor, or
+            // tunnel plain rock into a corridor.
+            if (!may_dig(zx, zy)) break;
+            if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                // (shop-wall damage omitted: no shop here; watch_dig() no-op.)
+                if (lvl.flags?.is_cavernous_lev && !in_town(zx, zy)) {
+                    room.typ = CORR; room.flags = 0;
+                } else {
+                    room.typ = DOOR; room.doormask = D_NODOOR;
+                }
+                digdepth -= 2;
+            } else if (IS_TREE(room.typ)) {
+                room.typ = ROOM; room.flags = 0;
+                digdepth -= 2;
+            } else { /* IS_OBSTRUCTED but not IS_WALL/SDOOR/TREE: plain rock */
+                room.typ = CORR; room.flags = 0;
+                digdepth--;
+            }
+            unblock_point(zx, zy); // vision
+            newsym(zx, zy);
+        }
+        zx += dx;
+        zy += dy;
+    }
+    // tmp_at(DISP_END, 0): closing beam call — display-only, omitted.
+
+    // pit_flow / pay_for_damage: unreachable (no pit dug, no shop) here.
+    void shopdoor; void shopwall;
+    return;
 }
 
 // C ref: mkobj.c in_town(x, y) — town of the Gnomish Mines.  Not modeled here

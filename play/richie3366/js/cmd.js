@@ -1115,11 +1115,29 @@ export async function rhack(key) {
     // C ref: reset_commands bind C(dir) → do_rush_*; e.g. C('j')=='\n' south
     const rushDir = rushDirFromCtrl(key);
 
-    // C: non-prefix command after F drops the fight prefix (feedback deferred)
-    if (ch !== 'F' && ch !== 'm' && !isMovementKey(ch) && !isRunKey(ch)
-        && !rushDir && game.context?.forcefight) {
+    // C rhack (cmd.c): prefix_seen=do_fight + command lacking CMD_gGF_PREFIX
+    // → pline feedback, ECMD_FAIL, reset_cmd_vars — do NOT run the command.
+    // Silent clear used to let F+# fall through into doextcmd, desyncing
+    // later getobj letters as movement (D-0927 seed4500 @87803).
+    // Named omissions: nested g/G PREFIXCMD after F; full CMD_gGF table.
+    if (game.context?.forcefight
+        && ch !== 'F' && ch !== 'm'
+        && !isMovementKey(ch) && !isRunKey(ch) && !rushDir) {
+        const upDown = (ch === '<' || ch === '>');
+        await pline(
+            `The 'F' prefix should be followed by a movement command${
+                upDown ? ' other than up or down' : ''}.`,
+        );
         game.context.forcefight = 0;
         game.domove_attempting = 0;
+        game.context.move = 0;
+        game.context.mv = 0;
+        if (game.context.run) game.context.run = 0;
+        if ((game.multi | 0) > 0) game.multi = 0;
+        game.context.travel = 0;
+        game.context.travel1 = 0;
+        if (game.iflags) game.iflags.menu_requested = false;
+        return;
     }
     // C rhack: keep menu_requested for CMD_M_PREFIX commands (O→doset_simple
     // reads it to call doset). Drop only when the next command rejects 'm'.

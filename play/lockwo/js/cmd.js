@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects } from './display.js';
 import { vision_recalc, cansee, recalc_block_point } from './vision.js';
 import { do_attack, is_safemon, x_monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
@@ -32,6 +32,8 @@ import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
+         IS_STWALL, IS_FURNITURE, ACCESSIBLE,
+         TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL,
          A_STR, A_DEX, A_CON, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT } from './const.js';
@@ -67,6 +69,20 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
 }
+
+// C ref: cmd.c reset_commands() — with number_pad off the movement keys bind
+// three ways per direction: the plain letter -> walk (do_move, run==0), the
+// capitalized letter -> run (do_run, run==1, handled by isRunKey), and
+// C(<letter>) i.e. Ctrl+letter -> rush (do_rush, run==3).  Map each of the 8
+// direction control codes (letter & 0x1f) to its direction letter so the rush
+// binding is faithful.  C('j') == 10 (LF) is caught earlier with Return, so it
+// isn't listed here.
+const CTRL_RUSH_DIR = (() => {
+    const m = {};
+    for (const letter of 'hklyubn') // 'j' -> 10 handled with Return
+        m[letter.charCodeAt(0) & 0x1f] = letter;
+    return m;
+})();
 
 // C ref: hack.c — check if a cell blocks movement
 export function blocksMove(x, y) {
@@ -501,6 +517,27 @@ export async function rhack(key) {
         // elapsed turn was already taken), so the moveloop does not schedule
         // another per-turn pass.  C ref: cmd.c do_run_*(), hack.c domove().
         await do_run(RUN_DX[ch], RUN_DY[ch]);
+    } else if (CTRL_RUSH_DIR[key] !== undefined) {
+        // C ref: cmd.c reset_commands() — Ctrl+<direction letter> is bound to
+        // the rush movement (do_rush_*, set_move_cmd(dir, 3)).  Rush goes until
+        // something interesting (following corridors past forks differently from
+        // a plain run); e.g. C('l') / '\f' rushes east.  hack.js drives the
+        // whole multi-turn rush inline and leaves game.context.move = 0.
+        const rdir = CTRL_RUSH_DIR[key];
+        await do_run_prefixed(DIR_DX[rdir], DIR_DY[rdir], 3);
+    } else if (ch === 'F') {
+        // C ref: cmd.c do_fight() — the 'F' fight prefix forces an attack in the
+        // direction of the following movement command (attack even when nothing
+        // is seen there).  It sets svc.context.forcefight, takes no time, and
+        // prints nothing; the next movement command consumes and clears the
+        // flag.  A second 'F' cancels ("Double fight prefix, canceled.").
+        if (game.context.forcefight) {
+            await Norep_topl('Double fight prefix, canceled.');
+            game.context.forcefight = 0;
+        } else {
+            game.context.forcefight = 1;
+        }
+        game.context.move = 0;
     } else if (ch === 'm') {
         // C ref: cmd.c do_reqmenu — the 'm' movement prefix sets
         // iflags.menu_requested (move without autopickup / force a menu on the
@@ -533,6 +570,9 @@ export async function rhack(key) {
         // turn elapses).  C ref: hack.c domove() / rhack().  Do NOT override
         // it here, or blocked moves would wrongly advance the turn counter.
         await domove(DIR_DX[ch], DIR_DY[ch]);
+        // C ref: cmd.c rhack() DOMOVE_WALK branch — forcefight is cleared right
+        // after domove() so the 'F' prefix only affects this one step.
+        game.context.forcefight = 0;
     } else if (ch === '>') {
         // C ref: cmd.c { '>', "down", dodown } — descend a down staircase.
         // dodown returns ECMD_TIME (1) when the hero actually descends (a turn
@@ -710,10 +750,16 @@ async function kick_door(loc, x, y, avrg_attrib) {
             exercise(A_STR, true); // -> rn2(19)
             loc.doormask = D_BROKEN;
         }
+        // C ref: dokick.c:951-952 feel_newsym(x,y); recalc_block_point(x,y) —
+        // the broken/gone door is now transparent, so re-run vision (reveals
+        // whatever lies beyond the doorway).
         newsym(x, y);
+        recalc_block_point(x, y);
     } else {
         exercise(A_STR, true);
-        await pline(`${(game.u?.Deaf || rn2(3) !== 0) ? 'Thwack' : 'Whammm'}!!`);
+        // C ref: dokick.c:966 pline("%s!!", (Deaf || !rn2(3)) ? "Thwack" :
+        // "Whammm") — Thwack when rn2(3)==0 (or Deaf), else Whammm.
+        await pline(`${(game.u?.Deaf || rn2(3) === 0) ? 'Thwack' : 'Whammm'}!!`);
     }
     // C ref: topl.c — pline() leaves the message unacknowledged
     // (toplin = TOPLINE_NEED_MORE).  A turn-consuming kick is followed by the
@@ -1114,6 +1160,43 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // ── force-fight an empty square ──  C ref: hack.c domove_fight_empty(x,y).
+    // With the 'F' prefix (svc.context.forcefight) and no monster at the target,
+    // the hero wastes a turn "attacking" the terrain rather than moving there.
+    // (The remembered-invisible-'I' glyph trigger and the pick-axe dig branch
+    // are not exercised by the corpus, so only the plain forcefight-at-terrain
+    // case is modelled.)  Consumes no RNG.  C: domove_core runs this before
+    // trapmove()/test_move(), so it sits right after the monster-bump block.
+    if (game.context?.forcefight) {
+        const off_edge = !isok(newx, newy);
+        const loc = off_edge ? null : game.level?.at(newx, newy);
+        const typ = loc ? loc.typ : STONE;
+        // C: solid = off_edge || !accessible(x,y) || IS_FURNITURE(typ)
+        const solid = off_edge || !ACCESSIBLE(typ) || IS_FURNITURE(typ);
+        let buf;
+        if (off_edge) {
+            buf = 'an unknown obstacle';
+        } else if (solid) {
+            // C: a seen square (or any stone-wall / secret door/corridor) is
+            // named via the cmap explanation ("the wall"); otherwise it reads
+            // as an unknown obstacle.
+            const seen = ((loc?.seenv ?? 0) & 0xff) || IS_STWALL(typ)
+                       || typ === SDOOR || typ === SCORR;
+            const expl = seen ? forcefight_terrain_expl(typ) : null;
+            buf = expl ? `the ${expl}` : 'an unknown obstacle';
+        } else {
+            buf = 'thin air';
+        }
+        // C: You("%s%s %s.", solid ? "harmlessly " : "", "attack", buf).
+        await pline(`You ${solid ? 'harmlessly ' : ''}attack ${buf}.`);
+        // C nomul(0): no run/multi is active during a plain 'F'+walk, so this is
+        // a no-op here; the wasted attack still elapses a game turn.
+        game.multi = 0;
+        game.context.mv = 0;
+        game.context.move = 1;
+        return;
+    }
+
     // ── trapped hero struggles instead of moving ──  C ref: hack.c
     // domove_core() (hack.c:2830): once past the monster-bump handling, a hero
     // with u.utrap set calls trapmove(); a still-stuck (or just-freed) hero
@@ -1229,6 +1312,14 @@ export async function domove(dx, dy) {
     // the squares the hero left and entered (rnd(5) per engraved square).
     maybe_smudge_engr(oldx, oldy, newx, newy);
 
+    // C ref: hack.c domove_core() -> u_on_newpos() -> dungeon.c see_nearby_objects().
+    // Having relocated on the same level, the hero may now be close enough to a
+    // generic (undescribed) potion/gem/spellbook to see it up close, upgrading
+    // its map glyph from the generic gray class symbol to its appearance color.
+    // Runs before vision_recalc(1) (matching u_on_newpos's position in
+    // domove_core), so it uses the still-old viz_array like C does.
+    see_nearby_objects();
+
     // Update display
     newsym(oldx, oldy);
     vision_recalc(1);
@@ -1240,6 +1331,22 @@ export async function domove(dx, dy) {
     // floor pile is announced ("Things that are here:" --More--) before a dart
     // trap fires on the same square.
     await spoteffects(() => pickup_after_move(newx, newy));
+}
+
+// C ref: drawing.c defsyms[].explanation (the short "desc" field) for the
+// terrain a hero force-fights via domove_fight_empty().  Walls (and secret
+// doors, which display as walls) read as "wall"; pools/moat/water read as
+// "water"; lava as "molten lava"; stone/tree/iron-bars name themselves.
+// Returns null for terrain types not named here (caller falls back to "an
+// unknown obstacle"), mirroring the seen-but-unhandled case conservatively.
+function forcefight_terrain_expl(typ) {
+    if (typ === STONE) return 'stone';
+    if (IS_WALL(typ) || typ === SDOOR) return 'wall';
+    if (typ === TREE) return 'tree';
+    if (typ === IRONBARS) return 'iron bars';
+    if (typ === POOL || typ === MOAT || typ === WATER) return 'water';
+    if (typ === LAVAPOOL) return 'molten lava';
+    return null;
 }
 
 // C ref: hack.c trapmove(x, y, desttrap) — the hero, already trapped, tries to
@@ -1350,6 +1457,20 @@ async function pickup_after_move(x, y) {
     const ctx = game.context || {};
     const hasObj = (game.level?.objects || []).some(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    // C ref: pickup.c pickup() — "if there's anything here, stop running":
+    //   if (OBJ_AT(u.ux,u.uy) && svc.context.run && svc.context.run != 8
+    //       && !svc.context.nopick) nomul(0);
+    // This runs INSIDE pickup(), i.e. BEFORE autopickup lifts the object, so a
+    // run halts ON the object's square even when autopickup then removes it from
+    // the floor.  (hack.js runStopOnObject only catches the no-autopickup case,
+    // where the object is still on the floor after the move.)  nomul(0): leave a
+    // busy hero alone (multi < 0), else clear multi + travel state to end the run.
+    if (hasObj && ctx.run && ctx.run !== 8 && !ctx.nopick
+        && (game.multi ?? 0) >= 0) {
+        game.multi = 0;
+        game.context = game.context || {};
+        game.context.travel = game.context.travel1 = game.context.mv = 0;
+    }
     if (game.flags?.pickup) {
         const nPicked = await autopickup_after_move(x, y);
         // C ref: pickup.c pickup() -> check_here(n_picked > 0): after autopickup,

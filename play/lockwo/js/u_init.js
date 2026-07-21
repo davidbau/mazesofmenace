@@ -563,9 +563,19 @@ function ini_inv_wear_armor(obj) {
     }
 }
 
-// C ref: objclass.h is_ammo — a stacked (quan>1) weapon is treated as ammo
-// for the starting-quiver decision (matches invent.js is_ammo).
-function ini_is_ammo(obj) { return obj.oclass === WEAPON_CLASS && (obj.quan || 1) > 1; }
+// C ref: obj.h is_ammo(obj) || is_missile(obj) — the starting quiver takes only
+// launcher ammunition (arrows/bolts, oc_skill in [-P_CROSSBOW, -P_BOW]) and
+// thrown missiles (darts/shuriken/boomerangs, [-P_BOOMERANG, -P_DART]).  Both
+// have a NEGATIVE oc_skill; a melee weapon such as a dagger (P_DAGGER, a
+// positive skill) is neither, so a stack of starting daggers becomes the
+// wielded/alternate weapon (uwep/uswapwep), not the quiver — the earlier
+// quan>1 heuristic wrongly quivered them.
+function ini_is_ammo(obj) {
+    if (obj.oclass !== WEAPON_CLASS) return false;
+    const sk = objects?.[obj.otyp]?.oc_skill ?? 0;
+    return (sk >= -22 && sk <= -20)   // is_ammo:    -P_CROSSBOW .. -P_BOW
+        || (sk >= -25 && sk <= -23);  // is_missile: -P_BOOMERANG .. -P_DART
+}
 
 // C ref: hack.h ARM_BONUS — a_ac + spe (no erosion at game start).
 function ARM_BONUS(obj) {

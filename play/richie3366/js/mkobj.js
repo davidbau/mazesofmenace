@@ -38,7 +38,7 @@ import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
     HATCH_EGG, MAX_EGG_HATCH_TIME,
-    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
+    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -243,18 +243,17 @@ export function splitobj(obj, num) {
     };
 
     // Insert child just after parent on nobj (and nexthere when on floor).
-    // C invent is the nobj list; JS also keeps game.invent[] — splice child
-    // in after parent so carried splits are visible to inv_cnt / steal weight.
+    // C invent is the nobj list; JS keeps a parallel game.invent[] — do NOT
+    // splice the child into invent[] here. A carried split copies where=
+    // OBJ_INVENT via {...obj} but stays off invent[] until eat.c touchfood
+    // freeinv+addinv_nomerge (or another addinv path) assigns a letter.
+    // Premature invent[] insert left duplicate invlets and broke seed0002
+    // pet dogfood/obj_resists (D-0924).
     otmp.nobj = obj.nobj || null;
     obj.nobj = otmp;
     if (obj.where === OBJ_FLOOR) {
         otmp.nexthere = obj.nexthere || null;
         obj.nexthere = otmp;
-    } else if (obj.where === OBJ_INVENT || (game.invent || []).includes(obj)) {
-        const inv = game.invent || (game.invent = []);
-        const idx = inv.indexOf(obj);
-        if (idx >= 0 && !inv.includes(otmp)) inv.splice(idx + 1, 0, otmp);
-        otmp.where = OBJ_INVENT;
     }
     return otmp;
 }

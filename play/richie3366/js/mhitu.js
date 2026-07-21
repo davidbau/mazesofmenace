@@ -9,9 +9,9 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM,
-    DISPLACED, IS_WATERWALL, RLOC_MSG,
+    DISPLACED, IS_WATERWALL, RLOC_MSG, TIMEOUT,
 } from './const.js';
-import { thrwmu, spitmu } from './mthrowu.js';
+import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys } from './hack.js';
@@ -31,7 +31,7 @@ import { rloc, tele_restrict } from './teleport.js';
 import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
-    MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE,
+    MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes,
 } from './monsters.js';
 import { done_in_by } from './end.js';
 import { msummon, Inhell } from './minion.js';
@@ -41,7 +41,7 @@ import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     could_seduce,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AT_ENGL, AT_GAZE, AT_SPIT,
+    AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
@@ -337,7 +337,83 @@ async function mdamageu(mtmp, n) {
     if ((u.uhp || 0) < 1) {
         await done_in_by(mtmp, DIED);
     }
-}/**
+}
+
+/** C ref: youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+
+/** C ref: youprop.h Blind — (HBlinded||EBlinded) && !BBlinded. */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    if (u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror + vision_recalc.
+ * Eyes override / Punished set_bc / talk messages deferred (talk unused).
+ */
+function make_blinded(xtime, _talk) {
+    const u = game.u || (game.u = {});
+    const wasBlind = Blind();
+    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT)
+        | (xtime ? ((xtime | 0) & TIMEOUT) : 0);
+    const nowBlind = Blind();
+    u.Blind = nowBlind;
+    u.ublind = false;
+    if (wasBlind !== nowBlind) {
+        if (game.flags) game.flags.botl = true;
+        game.vision_full_recalc = 1;
+        vision_recalc(0);
+    }
+}
+
+/**
+ * C ref: mondata.c can_blnd — mhitu AD_BLND subset (AT_CLAW raven).
+ * Named omissions: cream-pie/venom obj arms; Blindfolded ublindf; visor;
+ * raven-vs-raven; resists_blnd light aatyps; mon_perma_blind.
+ */
+function can_blnd_u(magr, aatyp) {
+    const you = game.youmonst;
+    if (!haseyes(you?.data)) return false;
+    if (aatyp === AT_CLAW) {
+        // C: ublindf (incl. lenses) protects
+        if (game.u?.ublindf) return false;
+        return true;
+    }
+    if (aatyp === AT_WEAP || aatyp === AT_SPIT || aatyp === AT_NONE) {
+        return false; // needs obj — deferred
+    }
+    // AT_TUCH/STNG: cancelled blocks
+    if ((aatyp === AT_TUCH || aatyp === AT_STNG) && (magr?.mcan | 0)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_blnd mhitu branch (mdef == youmonst).
+ * "%s blinds you!" then make_blinded(BlindedTimeout+damage); damage→0.
+ * Named omission: Eyes of the Overworld vision_clears; uhitm/mhitm arms.
+ */
+async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
+    if (can_blnd_u(mtmp, mattk.aatyp | 0)) {
+        if (!Blind()) {
+            await pline(`${Monnam(mtmp)} blinds you!`);
+        }
+        make_blinded(BlindedTimeout() + (mhm.damage | 0), false);
+        if (!Blind()) {
+            // Eyes of the Overworld — vision_clears deferred
+        }
+    }
+    mhm.damage = 0;
+    mhm.hitflags |= M_ATTK_HIT;
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_phys mhitu branch — bare hitmsg or weapon+dmgval.
  * Hugs / corpse / silver / poison / pudding clone deferred.
  */
@@ -863,7 +939,8 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + DRST/DRDX/DRCO + SITM/SEDU ported; other adtyps zero damage.
+ * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND ported;
+ * other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -884,6 +961,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_SITM:
     case AD_SEDU:
         await mhitm_ad_sedu(mtmp, mattk, mhm);
+        break;
+    case AD_BLND:
+        await mhitm_ad_blnd_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;
@@ -1108,6 +1188,12 @@ export async function mattacku(mtmp) {
                     skipnonmagc = true;
                 }
             }
+            break;
+
+        case AT_BREA:
+            // C ref: mhitu.c AT_BREA — breamu when range2 (takes care of
+            // displacement via mux/muy lined_up).
+            if (range2) sum[i] = await breamu(mtmp, mattk);
             break;
 
         case AT_SPIT:

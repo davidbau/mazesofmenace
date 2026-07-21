@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
@@ -378,6 +378,16 @@ async function makelevel() {
     }
     if (slev && slev.proto && slev.proto.toLowerCase() === 'oracle') {
         await makemaz_oracle();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Barbarian quest "home"
+    // (start) level.  Only Bar-strt is ported; other quest levels fall through.
+    if (slev && slev.proto === 'Bar-strt') {
+        await makemaz_bar_strt();
+        // C ref: place_lregions() at level finalize — place the registered
+        // "branch" levregion.  A 1-cell region so place_lregion's rn1 loop draws
+        // exactly rn2(1) for x and rn2(1) for y (mkmaze.c:396/397).
+        quest_place_branch();
         return;
     }
 
@@ -2505,6 +2515,38 @@ function mk_bad_branch_location(x, y) {
     if (occupied(x, y)) return true;
     // cavernous mines: is_maze_lev is false, so only ROOM is valid.
     return loc.typ !== ROOM;
+}
+
+// C ref: mkmaze.c place_lregions() — place the registered "branch" levregion
+// on a quest home level.  game._quest_branch holds the (already flipped) 1-cell
+// region; place_lregion's probabilistic loop therefore draws rn1(1,x)=rn2(1)+x
+// and rn1(1,y)=rn2(1)+y, then put_lregion_here(LR_BRANCH) -> place_branch.
+function quest_place_branch() {
+    const br = game._quest_branch;
+    if (!br) return;
+    const branchp = is_branchlev();
+    if (!branchp) return;
+    const lx = br.x1, ly = br.y1, hx = br.x2, hy = br.y2;
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        // put_lregion_here(LR_BRANCH): on a maze level bad_location accepts
+        // ROOM (and CORR); the branch cell (the cleared portal spot) is ROOM.
+        const loc = game.level?.at(x, y);
+        if (loc && !occupied(x, y)
+            && (loc.typ === ROOM || (loc.typ === CORR && game.level?.flags?.is_maze_lev))) {
+            mk_place_branch_at(branchp, x, y);
+            return;
+        }
+    }
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && !occupied(x, y) && loc.typ === ROOM) {
+                mk_place_branch_at(branchp, x, y);
+                return;
+            }
+        }
 }
 
 function mk_put_branch_here(x, y, branchp) {

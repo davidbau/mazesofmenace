@@ -22,6 +22,7 @@ import {
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
 import { update_topl } from './display.js';
+import { phase_of_the_moon, friday_13th, night, NEW_MOON, FULL_MOON } from './calendar.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -123,6 +124,28 @@ export function enlightenment_lines() {
     if (moves === 1) youHave('just started your adventure');
     else enlLine('You ', 'entered ', `the dungeon ${moves} turn${moves === 1 ? '' : 's'} ago`, '');
 
+    // ── other environmental factors ──  C ref: insight.c
+    // background_enlightenment().  C tests midnight()/night() first (the
+    // "midnight hour"/"nighttime" line); midnight() has no JS helper, so only
+    // the nighttime line is modeled (a no-op for daytime sessions).  Then the
+    // moon phase and Friday-the-13th status are reported, in that order, BEFORE
+    // the experience-point line.
+    if (night())
+        enlLine('It ', 'is ', 'nighttime', '');
+    const moonphase = phase_of_the_moon();
+    if (moonphase === FULL_MOON || moonphase === NEW_MOON) {
+        // C: Sprintf(buf, "a %s moon in effect%s", ..., "") -> enl_msg("There ",
+        // "is ", "was ", buf, "").  "in effect" (not "tonight") because the phase
+        // is the start-of-session value, not necessarily the current real time.
+        const which = (moonphase === FULL_MOON) ? 'full' : 'new';
+        enlLine('There ', 'is ', `a ${which} moon in effect`, '');
+    }
+    if (friday_13th()) {
+        // C: enlght_out(" Bad things can happen on Friday the 13th.") — a raw
+        // enlght_out() line (its own leading space, no trailing you-are period).
+        out(' Bad things can happen on Friday the 13th.');
+    }
+
     // experience (not polymorphed); no "needed" clause off wizard/final
     youHave(`${u.uexp ?? 0} experience point${(u.uexp ?? 0) === 1 ? '' : 's'}`);
 
@@ -183,11 +206,37 @@ export function enlightenment_lines() {
     return lines;
 }
 
+// C ref: wield.c empty_handed() — how a weaponless hero is described: gloves
+// imply hands so "empty handed"; a gloveless humanoid is "bare handed";
+// otherwise (paws / no hands from an exotic polyform, never reached here) "not
+// wielding anything".
+function empty_handed() {
+    if (game.uarmg) return 'empty handed';
+    // The starter heroes are humanoid (only an exotic polyself would not be).
+    return 'bare handed';
+}
+
+// C ref: weapon.c is a Monk-only discipline — martial arts is the only role
+// that trains P_MARTIAL_ARTS, so the bare-handed skill reads "martial arts" for
+// a Monk and "bare handed combat" for everyone else.
+function isMartialArtsRole() {
+    const rn = (game.urole?.name?.m || '').toLowerCase();
+    return rn === 'monk';
+}
+
 // C ref: insight.c weapon_insight() — wielding line + weapon skill level.
 function weaponInsight(youAre, youHave) {
     const uwep = game.uwep;
     if (!uwep) {
-        youAre('empty handed');
+        // C: you_are(empty_handed(), "").
+        youAre(empty_handed());
+        // C: weapon_type(0) == P_BARE_HANDED_COMBAT, always reported.  At game
+        // start no modeled non-Monk role has trained it, so the level is
+        // P_UNSKILLED -> "unskilled in <skill>" via you_are (hav == false).  The
+        // "and can enhance that" clause needs skill-practice tracking (can
+        // advance is false for a fresh hero), so it's omitted here.
+        const skName = isMartialArtsRole() ? 'martial arts' : 'bare handed combat';
+        youAre(`unskilled in ${skName}`);
         return;
     }
     const descr = weaponDescr(uwep);

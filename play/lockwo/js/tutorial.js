@@ -29,10 +29,15 @@ import { name_to_pmidx, monster_by_pmidx, newmonhp } from './makemon.js';
 import { make_engr_at } from './engrave.js';
 import { hole_destination, choose_trapnote } from './trap.js';
 
-// ── tut-1.lua map (verbatim). Lua coord (cx,cy) maps to absolute map cell
-//    (xstart + cx - 1, ystart + cy - 1).  des.map([[...]]) uses halign=valign=
-//    "center"; for this 75x16 fragment on an 80x21 level the centered origin is
-//    xstart=3, ystart=4 (empirically confirmed against the recorded screens). ──
+// ── tut-1.lua map (verbatim, dat/tut-1.lua des.map). Lua coord (cx,cy) maps to
+//    absolute map cell (xstart + cx, ystart + cy) with the empirically-pinned
+//    origin OFF=3 (confirmed against the recorded screens).  The map fragment is
+//    75 wide x 18 tall; on an 80x21 level it lands at absolute (3,3)..(77,20). ──
+// NB: this MUST match the .lua row-for-row — an earlier transcription dropped
+// lua row 10 ("|----+----.----+---.|.--|.|.|# ..."), which shifted every row
+// below it up by one and mis-typed the wall junctions in the lower map (e.g.
+// (7,12) wallified as a plain HWALL instead of the correct TRCORNER, and the
+// four-trap / secret-door corridors were misaligned).
 const TUT_MAP = [
     '---------------------------------------------------------------------------',
     '|-.--|.......|......|..S....|.F.......|.............|.......|.............|',
@@ -44,7 +49,8 @@ const TUT_MAP = [
     '|......|          |.-------------------.......|...|....--S----............|',
     '|......|  ######  |.........|      |..S.......|...|....|.....|............|',
     '|----.-| -+-   #  |.....---.|######+..|.......S...|....|.....|............|',
-    '|........|.|......|.|...F...|#  ........|.....+...|....|.....F............|',
+    '|----+----.----+---.|.--|.|.|#     ------------...|....|.....F............|',
+    '|........|.|......|.|...F...|#  ........|.....+...|....|.....|............|',
     '|.P......-S|......|------.---# .........|.....|...|....-------........----|',
     '|..........|......+.|...|.|.S# ..--S-----.....|LLL|..................|..| |',
     '|.W......---......|.|.|.|.|.|# ..|......|.....|LLL|..................|..--|',
@@ -102,10 +108,23 @@ function setTerrain(lvl) {
             loc.typ = typ;
             loc.roomno = NO_ROOM;
             loc.lit = false;
-            if (typ === HWALL || typ === IRONBARS) loc.horizontal = true;
-            else if (typ === VWALL) loc.horizontal = false;
-            if (typ === SDOOR) loc.doormask = D_CLOSED;
-            if (typ === DOOR) loc.doormask = D_NODOOR;
+            // C ref: sp_lev.c sel_set_ter — the map fills left-to-right, so a
+            // door / secret door inherits horizontal orientation when the cell
+            // to its left is a wall (or an already-horizontal door); HWALL and
+            // IRONBARS are horizontal.  This orients the tut-1 secret doors
+            // (e.g. the 'S' at des {4,6}) so they render as part of a horizontal
+            // wall run ('-') rather than a vertical one ('|').
+            if (typ === SDOOR || typ === DOOR) {
+                loc.doormask = (typ === SDOOR) ? D_CLOSED : D_NODOOR;
+                const left = x > 0 ? lvl.at(x - 1, y) : null;
+                if (left && ((left.typ >= VWALL && left.typ <= DBWALL)
+                             || left.horizontal))
+                    loc.horizontal = true;
+            } else if (typ === HWALL || typ === IRONBARS) {
+                loc.horizontal = true;
+            } else if (typ === VWALL) {
+                loc.horizontal = false;
+            }
         }
     }
 }
@@ -126,6 +145,26 @@ function engrave(cx, cy, type, text) {
     const { x, y } = A(cx, cy);
     const ep = make_engr_at(x, y, text, text, game.moves ?? 1, type);
     if (ep) ep.nowipeout = true;
+}
+
+// C ref: dat/tut-1.lua tut_key()/tut_key_help().  tut_key(cmd) resolves a
+// command to its key binding and, when that binding is a Ctrl-<X> combo (the
+// nh.eckey string matches "^X"), stashes the bare letter in tut_ctrl_key.
+// tut_key_help(x,y) then drops a one-off "Ctrl-key combinations are shown
+// prefixed with a caret" engraving at (x,y) *iff* the most recent tut_key call
+// was such a combo, and clears the flag.  The only Ctrl-bound command the
+// tutorial references before the first tut_key_help() is "kick" (^D), so the
+// note lands at des {6,8}; by the second call (des {64,4}) the flag has been
+// cleared and no further Ctrl command has re-set it, so nothing is engraved
+// there — matching C.  (No PRNG in either path.)
+let tut_ctrl_key = null;
+function tutKeyHelp(cx, cy) {
+    if (tut_ctrl_key != null) {
+        engrave(cx, cy, ENGRAVE,
+            "Note: Outside the tutorial, Ctrl-key combinations are shown prefixed"
+            + " with a caret, like '^" + tut_ctrl_key + "'");
+        tut_ctrl_key = null;
+    }
 }
 
 // des.door — set a door's mask (no PRNG; the "random" state DOES roll rn2(5)).
@@ -259,6 +298,7 @@ function createMonster(cx, cy, name, opts = {}) {
 // ── the tut-1.lua des.* program, in exact source order ──
 function runTutProgram() {
     const lvl = game.level;
+    tut_ctrl_key = null; // reset the tut_key_help state for this level build
 
     // des.level_init({ style="solidfill", fg=" " }); — solidfill already filled
     // by clear (STONE).  The lit roll is consumed in genTutorialLevel() before
@@ -278,6 +318,17 @@ function runTutProgram() {
 
     // des.teleport_region({ region={9,3,9,3} }) — recorded later by fixup.
 
+    // C ref: tut-1.lua:65-67 — nh.parse_config turns on some newbie-friendly
+    // OPTIONS for the tutorial (no PRNG).  mention_walls: bumping a wall/stone
+    // announces "It's a wall."/"It's solid stone." (hack.c test_move).
+    // lit_corridor: corridors render as S_litcorr (display.js).  mention_decor
+    // announces decor terrain you step onto.  These are global game flags.
+    if (game.flags) {
+        game.flags.mention_walls = true;
+        game.flags.mention_decor = true;
+        game.flags.lit_corridor = true;
+    }
+
     // Engravings (lines 80-93) — no PRNG.  Ranger uses hjkl movement keys.
     engrave(9, 3, ENGRAVE, 'Move around with h j k l');
     // C ref: dat/tut-1.lua diagmovekeys = SW NE SE NW = "b u n y" (vi-keys).
@@ -291,8 +342,12 @@ function runTutProgram() {
     engrave(4, 5, ENGRAVE, 'You can leave the tutorial via the magic portal.');
     createTrap(4, 4, MAGIC_PORTAL, { seen: true });   // mktrap rnd(4)
 
-    engrave(5, 9, ENGRAVE, "This door is locked. Kick it with '^D'");
+    // tut_key("kick") resolves to Ctrl-D: it returns the string "Ctrl-D" (used
+    // in the engraving text) AND sets tut_ctrl_key := "D" (used by tutKeyHelp).
+    tut_ctrl_key = 'D';
+    engrave(5, 9, ENGRAVE, "This door is locked. Kick it with 'Ctrl-D'");
     setDoor(5, 10, D_LOCKED);
+    tutKeyHelp(6, 8); // tut-1.lua:107 — engraves the ^D note at des {6,8}
 
     engrave(5, 12, ENGRAVE, "Look around the map with ';', press ESC when you're done");
     engrave(10, 13, ENGRAVE, "Use 's' to search for secret doors");
@@ -405,6 +460,11 @@ function runTutProgram() {
 
     engrave(58, 9, BURN, "Use '>' to go down the stairs");
     makeStair(58, 10);
+
+    // tut-1.lua:294 — "one more ctrl-key help, if needed".  No Ctrl-bound
+    // command was referenced since the ^D note above cleared tut_ctrl_key, so
+    // this is a no-op (nothing engraved at des {64,4}), matching C.
+    tutKeyHelp(64, 4);
 
     engrave(65, 3, BURN, 'UNDER CONSTRUCTION');
     createTrap(66, 2, MAGIC_PORTAL, { seen: true });    // rnd(4)

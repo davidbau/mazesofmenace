@@ -9,6 +9,7 @@ import { pline, newsym, m_at, show_glyph_cell, update_topl, topl_more, y_n,
 import { getobj, makeknown, useupall, useup, delobj, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS } from './invent.js';
 import { exercise } from './attrib.js';
+import { more_experienced } from './exper.js';
 import { findit } from './detect.js';
 import { cansee } from './vision.js';
 import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -374,6 +375,10 @@ async function zapwrapup() {
 // (the WAN_POLYMORPH-on-a-pile case the wizard sessions exercise).
 async function weffects(obj) {
     const otyp = obj.otyp;
+    // C ref: zap.c weffects — was_unkn snapshots whether the type is still
+    // undiscovered; `disclose` gates the post-effect learnwand()/experience.
+    let disclose = false;
+    const was_unkn = !objects[otyp]?.oc_name_known;
     exercise(A_WIS, true);
     // u.usteed zap_steed not modelled (no riding in covered wizard sessions).
     if (objects[otyp]?.dir === IMMEDIATE) {
@@ -390,11 +395,26 @@ async function weffects(obj) {
     } else if (objects[otyp]?.dir === NODIR) {
         await zapnodir(obj);
     } else {
-        // RAY (oc_dir == RAY): magic missile / fire / cold / sleep / death /
-        // lightning.  C ref: zap.c weffects() else-branch -> ubuzz(BZ_U_WAND,nd).
-        // WAN_DIGGING -> zap_dig() is not exercised by the covered sessions.
-        const off = BZ_OFS_WAN(otyp);            // 0..5 (MM..LIGHTNING order)
-        await ubuzz(off, (otyp === WAN_MAGIC_MISSILE) ? 2 : 6);
+        // RAY (oc_dir == RAY).  C ref: zap.c weffects() else-branch.
+        if (otyp === WAN_DIGGING || otyp === SPE_DIG) {
+            // WAN_DIGGING / SPE_DIG carve terrain instead of firing a bolt.
+            const { zap_dig } = await import('./dig.js');
+            await zap_dig();
+        } else {
+            // magic missile / fire / cold / sleep / death / lightning ->
+            // ubuzz(BZ_U_WAND(BZ_OFS_WAN(otyp)), nd).
+            const off = BZ_OFS_WAN(otyp);        // 0..5 (MM..LIGHTNING order)
+            await ubuzz(off, (otyp === WAN_MAGIC_MISSILE) ? 2 : 6);
+        }
+        disclose = true;
+    }
+    // C ref: zap.c weffects — a RAY (or steed) effect is always disclosed:
+    // learnwand() discovers the wand type (which, when the type first becomes
+    // name-known and credit_hero is set, exercises Wisdom -> rn2(19)); a wand
+    // whose type was previously unknown also grants a little score/experience.
+    if (disclose) {
+        learnwand(obj);
+        if (was_unkn) more_experienced(0, 10);
     }
 }
 
@@ -402,6 +422,9 @@ async function weffects(obj) {
 // Wand order in objects.h: MAGIC_MISSILE(0) FIRE(1) COLD(2) SLEEP(3) DEATH(4)
 // LIGHTNING(5); the resulting offset is the abstract zap type (ZT_FIRE etc.).
 const WAN_MAGIC_MISSILE = 428;
+// C ref: objects.h — the two RAY-class dig items dispatched to zap_dig().
+const WAN_DIGGING = 427;
+const SPE_DIG = 365;
 function BZ_OFS_WAN(otyp) { return Math.abs(otyp - WAN_MAGIC_MISSILE) % 10; }
 
 // Abstract damage types (zaptype % 10), C ref: monattk.h AD_* minus 1.

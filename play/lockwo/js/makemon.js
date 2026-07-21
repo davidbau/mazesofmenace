@@ -1014,7 +1014,17 @@ const W_BOULDER = 474, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_ORCISH_BOW = 85, W_ORCISH_ARROW = 20, W_URUK_HAI_SHIELD = 154,
     W_ORCISH_DAGGER = 36, W_CROSSBOW = 88, W_CROSSBOW_BOLT = 23, W_BOW = 83,
     W_ARROW = 18, W_LUCERN_HAMMER = 64, W_AKLYS = 76, W_RANSEUR = 60,
-    W_GLAIVE = 62, W_SPETUM = 61, W_DART = 24;
+    W_GLAIVE = 62, W_SPETUM = 61, W_DART = 24,
+    W_CHAIN_MAIL = 128, W_LEATHER_ARMOR = 134, W_LEATHER_JACKET = 135,
+    W_LEATHER_CLOAK = 145, W_LEATHER_GLOVES = 159, W_LOW_BOOTS = 163,
+    W_HIGH_BOOTS = 165, W_POT_HEALING = 307, W_SHURIKEN = 25;
+
+// C ref: mon.c msound MS_GUARDIAN quest-guardian humans (G_NOGEN, so never
+// randomly generated — only placed explicitly by a quest home level).
+const GUARDIAN_WEAP_NAMES = new Set([
+    'student', 'attendant', 'abbot', 'acolyte', 'guide', 'apprentice',
+    'chieftain', 'page', 'roshi', 'warrior', 'hunter', 'thug', 'neanderthal',
+]);
 
 // PM_* indices in this build's JS mons[] (verified by name lookup).
 const ELF_PM = new Set([264, 265, 266, 267, 268]);
@@ -1112,6 +1122,38 @@ function m_initweap_full(mtmp) {
             case 2:
                 if (rn2(2)) { mongets(mtmp, W_ELVEN_SPEAR); mongets(mtmp, W_ELVEN_SHIELD); }
                 break;
+            }
+        } else if (GUARDIAN_WEAP_NAMES.has(ptr.name)) {
+            // C ref: makemon.c m_initweap S_HUMAN `msound == MS_GUARDIAN` branch
+            // — quest "guardian" humans (the priest/ninja branches that precede
+            // it in C are omitted; those monster types never reach here on the
+            // ported Barbarian home level).
+            const nm = ptr.name;
+            if (nm === 'student' || nm === 'attendant' || nm === 'abbot'
+                || nm === 'acolyte' || nm === 'guide' || nm === 'apprentice') {
+                if (rn2(2)) mongets(mtmp, rn2(3) ? W_DAGGER : W_KNIFE);
+                if (rn2(5)) mongets(mtmp, rn2(3) ? W_LEATHER_JACKET : W_LEATHER_CLOAK);
+                if (rn2(3)) mongets(mtmp, rn2(3) ? W_LOW_BOOTS : W_HIGH_BOOTS);
+                if (rn2(3)) mongets(mtmp, W_POT_HEALING);
+            } else if (nm === 'chieftain' || nm === 'page' || nm === 'roshi'
+                       || nm === 'warrior') {
+                mongets(mtmp, rn2(3) ? W_LONG_SWORD : W_SHORT_SWORD);
+                mongets(mtmp, rn2(3) ? W_CHAIN_MAIL : W_LEATHER_ARMOR);
+                if (rn2(2)) mongets(mtmp, rn2(2) ? W_LOW_BOOTS : W_HIGH_BOOTS);
+                if (!rn2(3)) mongets(mtmp, W_LEATHER_CLOAK);
+                if (!rn2(3)) { mongets(mtmp, W_BOW); m_initthrow(mtmp, W_ARROW, 12); }
+            } else if (nm === 'hunter') {
+                mongets(mtmp, rn2(3) ? W_SHORT_SWORD : W_DAGGER);
+                if (rn2(2)) mongets(mtmp, rn2(2) ? W_LEATHER_JACKET : W_LEATHER_ARMOR);
+                mongets(mtmp, W_BOW); m_initthrow(mtmp, W_ARROW, 12);
+            } else if (nm === 'thug') {
+                mongets(mtmp, W_CLUB);
+                mongets(mtmp, rn2(3) ? W_DAGGER : W_KNIFE);
+                if (rn2(2)) mongets(mtmp, W_LEATHER_GLOVES);
+                mongets(mtmp, rn2(2) ? W_LEATHER_JACKET : W_LEATHER_ARMOR);
+            } else if (nm === 'neanderthal') {
+                mongets(mtmp, W_CLUB);
+                mongets(mtmp, W_LEATHER_ARMOR);
             }
         }
         break;
@@ -1236,17 +1278,28 @@ function rnd_defensive_item(mtmp) {
     const pm = mtmp?.data;
     if (!pm || rnd_item_excluded(pm)) return 0;
     const d = pm.difficulty ?? 0;
+    // C ref: muse.c rnd_defensive_item — teleport picks retry once on a
+    // noteleport level; digging picks retry in Sokoban.
+    const noteleport = !!game.level?.flags?.noteleport;
+    const inSokoban = (game.sokoban_dnum != null
+                       && game.u?.uz?.dnum === game.sokoban_dnum);
+    let trycnt = 0;
     for (;;) {
         const roll = rn2(8 + (d > 3 ? 1 : 0) + (d > 6 ? 1 : 0) + (d > 8 ? 1 : 0));
         switch (roll) {
-        case 6: case 9: return (!rn2(3)) ? 423 : 333;
+        case 6: case 9:
+            if (noteleport && ++trycnt < 2) continue;   // goto try_again
+            return (!rn2(3)) ? 423 : 333;
         case 0: case 1: return 333;
         case 8: case 10: return (!rn2(3)) ? 412 : 329;
         case 2: return 329;
         case 3: return 307;
         case 4: return 308;
         case 5: return 315;
-        case 7: return 427;
+        case 7:
+            if (inSokoban && rn2(4)) continue;          // goto try_again
+            if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) return 0;
+            return 427;
         default: return 0;
         }
     }
@@ -1545,6 +1598,19 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     if (ptr.mcls === 13 /* S_MIMIC */ && (game._full_mon_gen || game._bigrm_gen)
         && x && y) {
         set_mimic_sym(mtmp);
+    }
+
+    // C ref: makemon.c:1389 — during level creation an n-demon / Wumpus /
+    // long worm / giant eel that isn't guarding the Amulet has a 4/5 chance of
+    // starting asleep, consuming one rn2(5).  This draw sits AFTER peace_minded
+    // and BEFORE group spawning / m_initweap.  Gated to quest-level generation
+    // (game._quest_gen) so ordinary-level and Big Room streams are untouched;
+    // within a quest home level only the giant eels reach it.
+    if (game._quest_gen && game.in_mklev && !game.u?.uhave?.amulet) {
+        const nm = ptr.name;
+        if ((nm === 'giant eel' || nm === 'long worm' || nm === 'wumpus')
+            && rn2(5))
+            mtmp.msleeping = true;
     }
 
     // C ref: makemon.c:1430-1438 group spawning.  anymon (mdat==NULL here means

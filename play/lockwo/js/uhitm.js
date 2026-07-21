@@ -793,7 +793,7 @@ async function plineMon(mtmp, fmt) {
 }
 
 // C ref: do_name.c mon_nam(mtmp) — "the <mon>" (lower case article).
-function mon_nam(mtmp) {
+export function mon_nam(mtmp) {
     return x_monnam(mtmp, /*ARTICLE_THE*/ 1, null, 0, false);
 }
 

@@ -22,36 +22,19 @@ const seenv_matrix = [
     [SV4, SV5, SV6],
 ];
 
-// C ref: vision.c new_angle(lev, sv, row, col) — when a crosswall or T-wall
-// (typ in [CROSSWALL .. TRWALL]) is seen from one of the cardinal directions
-// (SV0/SV2/SV4/SV6), the seen-vector also gains the two flanking bits if the
-// neighbouring squares toward those flanks are transparent (viz_clear).  This
-// is what lets a T-wall/crosswall corner render its proper junction glyph
-// (e.g. a TRWALL drawn as '-' instead of '|') as a room is revealed; the
-// skeleton omitted it, so such walls rendered with the wrong cmap symbol.
+// C ref: vision.c new_angle(lev, sv, row, col).  Upstream NetHack 5.0 leaves
+// EXTEND_SPINE *undefined* (the `/*#define EXTEND_SPINE*/` at vision.c:366 is
+// commented out), so the compiled definition is the trivial
+//     #define new_angle(lev, sv, row, col) (*sv)
+// i.e. the seen-vector bit is exactly the raw seenv_matrix entry, with NO
+// flanking-spine extension.  (The #ifdef EXTEND_SPINE branch would OR in the
+// two adjacent SV bits for T-walls/crosswalls when the flanking square is
+// viz_clear — but that branch is not built.)  Porting the EXTEND_SPINE branch
+// made T-wall/crosswall corners sprout an extra spine one step too early — e.g.
+// as soon as a flanking door became transparent — where C keeps the plain
+// corner glyph until the wall is actually re-seen from the adjacent angle.
 function new_angle(loc, sv, row, col) {
-    let res = sv;
-    if (loc.typ >= CROSSWALL && loc.typ <= TRWALL) {
-        switch (sv) {
-        case SV0:
-            if (col > 0 && viz_clear[row][col - 1]) res |= SV7;
-            if (row > 0 && viz_clear[row - 1][col]) res |= SV1;
-            break;
-        case SV2:
-            if (row > 0 && viz_clear[row - 1][col]) res |= SV1;
-            if (col < COLNO - 1 && viz_clear[row][col + 1]) res |= SV3;
-            break;
-        case SV4:
-            if (col < COLNO - 1 && viz_clear[row][col + 1]) res |= SV3;
-            if (row < ROWNO - 1 && viz_clear[row + 1][col]) res |= SV5;
-            break;
-        case SV6:
-            if (row < ROWNO - 1 && viz_clear[row + 1][col]) res |= SV5;
-            if (col > 0 && viz_clear[row][col - 1]) res |= SV7;
-            break;
-        }
-    }
-    return res;
+    return sv;
 }
 
 // Circle data for range limits (C vision.c:27-70)
@@ -91,6 +74,16 @@ const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    // C ref: vision.c right_side()/left_side() — when a `vis_func` is supplied
+    // (the do_clear_area / view_from callback path used by dogmove wantdoor), C
+    // calls (*vis_func)(i, row, varg) for i in [left..right] instead of setting
+    // the could-see bitmap.  Mirror that here so the pet's field-of-view sweep
+    // visits squares in the exact same order (needed for wantdoor's strict-`>`
+    // tie-break).  No bitmap/rmin/rmax updates happen in func mode (as in C).
+    if (game.cs_func) {
+        for (let i = left; i <= right; i++) game.cs_func(i, row, game.cs_arg);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -551,12 +544,18 @@ function left_side(row, left_mark, right, limitsIdx) {
 }
 
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+// `func`/`arg`: when supplied (do_clear_area's non-hero-centered path), each
+// visible square invokes func(col, row, arg) instead of updating a could-see
+// bitmap (cs_rows may be null).  mark_visible_range() dispatches on game.cs_func.
+export function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0,
+                          func = null, arg = null) {
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
+    game.cs_func = func;
+    game.cs_arg = arg;
 
     let left, right;
     if (viz_clear[srow][scol]) {
@@ -762,4 +761,6 @@ export function init_vision_globals() {
     game.cs_rows = null;
     game.cs_left = null;
     game.cs_right = null;
+    game.cs_func = null;
+    game.cs_arg = null;
 }

@@ -62,7 +62,7 @@ import { monster_by_pmidx } from './makemon.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { find_ac } from './u_init.js';
-import { moveloop_turn } from './allmain.js';
+import { moveloop_turn, youHaveFast, youHaveVeryFast } from './allmain.js';
 import { acurr_eff } from './attrib.js';
 import {
     UNENCUMBERED, OVERLOADED,
@@ -1061,6 +1061,12 @@ function obj_appearance_descr(obj) {
 // in simple_obj_name; this returns only the base/type phrase.
 function objectBaseName(obj) {
     if (!obj) return 'object';
+    // C ref: objnam.c xname_flags — a Cleric (priest/priestess) always senses an
+    // object's beatitude, so naming any object forces its bknown on ("avoid
+    // set_bknown() to bypass update_inventory()").  This is unconditional (no
+    // Blind/distant guard) and persistent, so a blessed/cursed wished-for or
+    // picked-up item shows its BUC word the first time it is described.
+    if (Role_if(PM_CLERIC) && obj.bknown !== 1) obj.bknown = 1;
     if (obj.otyp === GOLD_PIECE || obj.oclass === COIN_CLASS)
         return `${obj.quan || 0} gold piece${(obj.quan || 0) === 1 ? '' : 's'}`;
 
@@ -1338,8 +1344,14 @@ function worn_status_suffix(obj) {
     if (!obj) return '';
     const m = obj.owornmask || 0;
     if (m & QW_WEP) {
-        const ammoOrMissile = is_ammo(obj) || is_missile(obj);
-        if ((obj.quan !== 1 || ammoOrMissile) && !(obj === game.uwep && game.u?.twoweap))
+        // C ref: objnam.c doname_base — alternate "(wielded)" phrasing for
+        // non-weapons and for wielded ammo/missiles: a WEAPON_CLASS object uses
+        // the ammo/missile test, anything else (tools that aren't weptools, and
+        // non-weapon objects like a wielded spellbook) uses !is_weptool.
+        const altPhrasing = (obj.oclass === WEAPON_CLASS)
+            ? (is_ammo(obj) || is_missile(obj))
+            : !is_weptool(obj);
+        if ((obj.quan !== 1 || altPhrasing) && !(obj === game.uwep && game.u?.twoweap))
             return ' (wielded)';
         // C ref: objnam.c doname_base — a bimanual weapon reads "in hands"
         // (makeplural of body_part(HAND)); otherwise "in right hand" (URIGHTY
@@ -2693,6 +2705,43 @@ async function Boots_on() {
     if (game._allow_inventory_update !== undefined) update_inventory();
 }
 
+// C ref: objects.c — dragon scale mail / scales otyps (this codebase's numbering).
+const BLUE_DRAGON_SCALE_MAIL = 108, BLUE_DRAGON_SCALES = 118;
+
+// C ref: do_wear.c dragon_armor_handling(otmp, puton, on_purpose) — extra
+// abilities for wearing/removing dragon scale armor.  Only the blue dragon
+// (speed) case produces a message and a gameplay effect (extrinsic Fast, set on
+// the W_ARM slot by hand because blue DSM's oc_oprop is not FAST); the other
+// colors confer silent extrinsic resistances that no scored frame observes.
+async function dragon_armor_handling(otmp, puton) {
+    if (!otmp) return;
+    if (otmp.otyp === BLUE_DRAGON_SCALES || otmp.otyp === BLUE_DRAGON_SCALE_MAIL) {
+        if (puton) {
+            // C: if (!Very_fast) You("speed up%s.", Fast ? " a bit more" : "");
+            //    EFast |= W_ARM;  (message before the extrinsic is applied)
+            if (!youHaveVeryFast())
+                await update_topl(`You speed up${youHaveFast() ? ' a bit more' : ''}.`);
+            if (game.u) game.u.efastArm = true;
+        } else {
+            // C: EFast &= ~W_ARM; if (!Very_fast && !cancelled_don) You("slow down.");
+            if (game.u) game.u.efastArm = false;
+            if (!youHaveVeryFast()) await update_topl('You slow down.');
+        }
+    }
+}
+
+// C ref: do_wear.c Armor_on() — the afternmv that runs when the body-armor
+// dressing maneuver completes.  The suit's +/- is already evident from the AC
+// status line (obj.known set at wear time); the only remaining on-effect that a
+// scored session exercises is dragon scale mail's dragon_armor_handling.
+async function Armor_on() {
+    const uarm = game.uarm;
+    if (!uarm) return;
+    if (!uarm.known) uarm.known = 1;
+    await dragon_armor_handling(uarm, true);
+    if (game._allow_inventory_update !== undefined) update_inventory();
+}
+
 // C ref: do_wear.c Blindf_on(obj) — call setworn() itself, give the wear
 // feedback, then (because the eyewear blinds the hero) emit "You can't see any
 // more." and toggle blindness so the vision system blanks the now-unseen map.
@@ -2880,9 +2929,11 @@ async function accessory_or_armor_on(obj) {
         // intrinsic autosearch) and clears multi when done.
         // C ref: do_wear.c sets ga.afternmv to the slot's *_on routine before
         // nomul(-delay); unmul() runs it after the maneuver finishes.  Boots get
-        // Boots_on (speed-up message + makeknown for speed boots); the other
-        // slots' afternmv effects aren't exercised by the scored sessions.
-        const afternmv = (mask === WA_ARMF) ? Boots_on : null;
+        // Boots_on (speed-up message + makeknown for speed boots); the body-armor
+        // suit gets Armor_on (dragon scale mail's dragon_armor_handling); the
+        // other slots' afternmv effects aren't exercised by the scored sessions.
+        const afternmv = (mask === WA_ARMF) ? Boots_on
+            : (mask === WA_ARM) ? Armor_on : null;
         await run_dress_occupation(delay, 'You finish your dressing maneuver.', afternmv);
         if (game._allow_inventory_update !== undefined) update_inventory();
         return ECMD_OK;

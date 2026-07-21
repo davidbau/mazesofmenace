@@ -1,6 +1,6 @@
 // mthrowu.js — Monster ranged throw/shoot (partial).
 // C ref: mthrowu.c thrwmu / monshoot / m_throw / ohitmon / thitu /
-//         lined_up / m_lined_up / spitmm / spitmu /
+//         lined_up / m_lined_up / spitmm / spitmu / breamm / breamu /
 //         u_catch_thrown_obj / drop_throw.
 
 import { game } from './gstate.js';
@@ -15,6 +15,7 @@ import {
     M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
     DISP_FLASH, DISP_END, XKILL_NOMSG,
     M_ATTK_MISS, M_ATTK_HIT, EDOG,
+    BZ_OFS_AD, BZ_VALID_ADTYP, BZ_M_BREATH, M_SEEN_REFL,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import {
@@ -48,16 +49,28 @@ import {
     PM_MONK, PM_ROGUE, PM_HUMAN,
 } from './generated/monsters_data.js';
 import { potionhit } from './potion.js';
+import { dobuzz } from './zap.js';
+import {
+    m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type,
+} from './mondata.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
-/** C ref: monattk.h — spit damage types used by spitmm. */
+/** C ref: monattk.h — spit / breath damage types. */
 const AD_BLND = 11;
 const AD_DRST = 7;
 const AD_ACID = 8;
+const AD_SLEE = 4;
+
+/** C ref: mthrowu.c breathwep[] — Hallucination rnd_hallublast deferred. */
+const BREATHWEP = [
+    'fragments', 'fire', 'frost', 'sleep gas', 'a disintegration blast',
+    'lightning', 'poison gas', 'acid', 'strange breath #8',
+    'strange breath #9',
+];
 
 /** C ref: hacklib.c s_suffix — local for cancelled-spit dry rattle. */
 function s_suffix(s) {
@@ -226,10 +239,17 @@ export function lined_up(mtmp) {
 }
 
 /**
+ * C ref: mthrowu.c breathwep_name — Hallucination path deferred.
+ */
+function breathwep_name(typ) {
+    return BREATHWEP[BZ_OFS_AD(typ)] || 'strange breath';
+}
+
+/**
  * C ref: mthrowu.c spitmm — monster spits venom at mtarg (hero or mon).
  * mksobj always when lined up (next_ident); then rn2(BOLT_LIM-distmin)
  * decides whether to throw or discard. Named omissions: Soundeffect;
- * isminion pet-hunger skip already gated; breamm breath path.
+ * isminion pet-hunger skip already gated.
  */
 export async function spitmm(mtmp, mattk, mtarg) {
     if (mtmp.mcan) {
@@ -297,6 +317,92 @@ export async function spitmm(mtmp, mattk, mtarg) {
  */
 export async function spitmu(mtmp, mattk) {
     return spitmm(mtmp, mattk, game.youmonst || game.u);
+}
+
+/**
+ * C ref: mthrowu.c breamm — monster breath weapon at mtarg.
+ * Envelope: m_lined_up; mcan cough; m_seenres/REFL skip; !mspec_used &&
+ * rn2(3) → dobuzz(BZ_M_BREATH); mspec_used / pet hunger. Named omissions:
+ * Hallucination breathwep_name; Soundeffect cough; AD_SLEE Sleep_res
+ * mspec bump uses flat Sleep_resistance; mon-mon mattackm AT_BREA deferred
+ * (import cycle — hero path via breamu/mattacku).
+ */
+export async function breamm(mtmp, mattk, mtarg) {
+    const typ = get_atkdam_type(mattk?.adtyp | 0);
+    const you = game.youmonst;
+    const utarget = mtarg === you || mtarg === game.u;
+    const u = game.u || {};
+
+    if (m_lined_up(mtarg, mtmp)) {
+        if (mtmp.mcan) {
+            if (!(u.Deaf || game.flags?.acoustics === false)) {
+                if (canseemon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} coughs.`);
+                } else {
+                    await You_hear('a cough.');
+                }
+            }
+            return M_ATTK_MISS;
+        }
+
+        // C: if we've seen the actual resistance, don't bother, or
+        // if we're close by and they reflect, just jump the player
+        if (utarget && (m_seenres(mtmp, cvt_adtyp_to_mseenres(typ))
+            || m_seenres(mtmp, M_SEEN_REFL))) {
+            return M_ATTK_HIT;
+        }
+
+        if (!mtmp.mspec_used && rn2(3)) {
+            if (BZ_VALID_ADTYP(typ)) {
+                if (canseemon(mtmp)) {
+                    await pline(
+                        `${Monnam(mtmp)} breathes ${breathwep_name(typ)}!`,
+                    );
+                }
+                game.buzzer = mtmp;
+                try {
+                    await dobuzz(
+                        BZ_M_BREATH(BZ_OFS_AD(typ)),
+                        mattk?.damn | 0,
+                        mtmp.mx, mtmp.my,
+                        sgn(game._tbx || 0), sgn(game._tby || 0),
+                        utarget, utarget, false,
+                    );
+                } finally {
+                    game.buzzer = null;
+                }
+                nomul(0);
+                // C: breath runs out sometimes; don't if target fell asleep
+                if (!utarget || !rn2(3)) {
+                    mtmp.mspec_used = 8 + rn2(18);
+                }
+                if (utarget && typ === AD_SLEE) {
+                    const Sleep_resistance = !!(u.Sleep_resistance
+                        || u.HSleep_resistance || u.ESleep_resistance);
+                    if (!Sleep_resistance) {
+                        mtmp.mspec_used = (mtmp.mspec_used | 0) + rnd(20);
+                    }
+                }
+                if (mtmp.mtame && !mtmp.isminion) {
+                    const dog = EDOG(mtmp);
+                    if (dog && (dog.hungrytime | 0) >= 10) {
+                        dog.hungrytime = (dog.hungrytime | 0) - 10;
+                    }
+                }
+            }
+            // C: else impossible("Breath weapon …") — no RNG
+        } else {
+            return M_ATTK_MISS;
+        }
+    }
+    return M_ATTK_HIT;
+}
+
+/**
+ * C ref: mthrowu.c breamu — breamm vs hero.
+ */
+export async function breamu(mtmp, mattk) {
+    return breamm(mtmp, mattk, game.youmonst || game.u);
 }
 
 /**

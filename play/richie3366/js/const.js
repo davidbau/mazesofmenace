@@ -254,8 +254,14 @@ export const NUM_ATTRS = 6;
 export function STR18(x) { return 18 + x; }  // 18/xx
 export function STR19(x) { return 100 + x; } // 19 and above
 
-// C ref: zap.h — BZ_OFS_AD(x) = (x) - 1
+// C ref: hack.h BZ_OFS_AD — abs(adtyp - AD_MAGM) % 10; AD_MAGM==1 → adtyp-1
 export function BZ_OFS_AD(adtyp) { return adtyp - 1; }
+/** C ref: hack.h BZ_VALID_ADTYP — AD_MAGM..AD_SPC2 */
+export function BZ_VALID_ADTYP(adtyp) {
+    return (adtyp | 0) >= 1 && (adtyp | 0) <= 10;
+}
+/** C ref: hack.h BZ_M_BREATH — monster breath buzz type (-29..-20) */
+export function BZ_M_BREATH(bztyp) { return -20 - (bztyp | 0); }
 
 // Room types (mkroom.h)
 export const OROOM = 0;

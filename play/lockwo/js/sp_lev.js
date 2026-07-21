@@ -18,7 +18,7 @@ import {
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
     TELEP_TRAP,
 } from './const.js';
-import { mkgold, next_ident, mksobj, set_corpsenm, obj_resists_rng,
+import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, mkobj_at } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mm_mon_at, enexto_spawn } from './makemon.js';
@@ -943,6 +943,411 @@ export function lspo_map({ map, x = -1, y = -1, halign = 'none',
     }
 
     return sel;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Barbarian quest "home" level loader (dat/Bar-strt.lua).
+//
+// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Bar-strt")
+// -> load_special("Bar-strt.lua") executes the splev engine.  Loading
+// nhlib.lua first runs `shuffle(align)` at module top level (rn2(3), rn2(2)),
+// exactly as the Big Room path does.  We hand-port Bar-strt.lua to JS calling
+// the same RNG-consuming primitives in the same order so the PRNG stream
+// matches C exactly (verified against the recorded rng trace).
+//
+// Only the Barbarian start level is ported here (the other roles' quest homes
+// and the locate/goal/filler levels fall through to the regular generator).
+// ════════════════════════════════════════════════════════════════════════
+
+const BAR_STRT_MAP = [
+    '..................................PP........................................',
+    '...................................PP.......................................',
+    '...................................PP.......................................',
+    '....................................PP......................................',
+    '........--------------......-----....PPP....................................',
+    '........|...S........|......+...|...PPP.....................................',
+    '........|----........|......|...|....PP.....................................',
+    '........|.\\..........+......-----...........................................',
+    '........|----........|...............PP.....................................',
+    '........|...S........|...-----.......PPP....................................',
+    '........--------------...+...|......PPPPP...................................',
+    '.........................|...|.......PPP....................................',
+    '...-----......-----......-----........PP....................................',
+    '...|...+......|...+..--+--.............PP...................................',
+    '...|...|......|...|..|...|..............PP..................................',
+    '...-----......-----..|...|.............PPPP.................................',
+    '.....................-----............PP..PP................................',
+    '.....................................PP...PP................................',
+    '....................................PP...PP.................................',
+    '....................................PP....PP................................',
+].join('\n');
+
+// map-relative (mx,my) -> absolute level coord using the map offset that
+// bigrm_load_map computed into gx.xstart / gy.ystart.
+function q_absx(mx) { return mx + gx.xstart; }
+function q_absy(my) { return my + gy.ystart; }
+
+// C ref: sp_lev.c splev_initlev() LVLINIT_SOLIDFILL with fg=" " and no explicit
+// lit -> BOOL_RANDOM -> one rn2(2); then lvlfill_solid(STONE, lit).  Returns the
+// lit bit so the map load can preserve it.
+function quest_level_init_solidfill() {
+    const lit = rn2(2);                  // sp_lev.c:2992
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 0; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (loc) { loc.typ = STONE; loc.lit = !!lit; loc.roomno = NO_ROOM; }
+        }
+    return lit;
+}
+
+// C ref: sp_lev.c lspo_replace_terrain region form.  The region {x1,y1,x2,y2}
+// is map-relative; get_location(ANY_LOC) adds the map offset, the selection is
+// the whole rect, and the iterate is x-outer (max(1,lx)..hx) / y-inner
+// (ly..hy).  For each cell whose typ==fromtyp an rn2(100) is drawn and, when
+// < chance, the cell becomes totyp.  No lit change (tolit==NOCHANGE).
+function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
+    const rx1 = q_absx(x1), ry1 = q_absy(y1);
+    const rx2 = q_absx(x2), ry2 = q_absy(y2);
+    const lox = Math.max(1, rx1), hix = Math.min(rx2, COLNO - 1);
+    const loy = Math.max(0, ry1), hiy = Math.min(ry2, ROWNO - 1);
+    for (let x = lox; x <= hix; x++)
+        for (let y = loy; y <= hiy; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (loc.typ === fromtyp && rn2(100) < chance) loc.typ = totyp;
+        }
+}
+
+// C ref: selvar.c selection_do_randline (rec=12 from nhlsel.c l_selection_randline).
+// Recursive midpoint displacement: each level with rough>=2 draws rn2(rough)
+// twice; rough shrinks by *2/3 each recursion until <2.  We build a set of the
+// carved points; the RNG draw count is independent of the exact midpoints (they
+// never leave the map for these coords), so this matches the recorded stream.
+function quest_do_randline(x1, y1, x2, y2, rough, rec, pts) {
+    if (rec < 1 || (x2 === x1 && y2 === y1)) return;
+    let r = rough;
+    const span = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+    if (r > span) r = span;
+    let mx, my;
+    if (r < 2) {
+        mx = Math.trunc((x1 + x2) / 2);
+        my = Math.trunc((y1 + y2) / 2);
+    } else {
+        do {
+            const dx = rn2(r) - Math.trunc(r / 2);
+            const dy = rn2(r) - Math.trunc(r / 2);
+            mx = Math.trunc((x1 + x2) / 2) + dx;
+            my = Math.trunc((y1 + y2) / 2) + dy;
+        } while (mx > COLNO - 1 || mx < 0 || my < 0 || my > ROWNO - 1);
+    }
+    pts.add(mx + ',' + my);
+    r = Math.trunc((r * 2) / 3);
+    rec--;
+    quest_do_randline(x1, y1, mx, my, r, rec, pts);
+    quest_do_randline(mx, my, x2, y2, r, rec, pts);
+    pts.add(x2 + ',' + y2);
+}
+
+// C ref: des.terrain(selection.randline(new(), x1,y1, x2,y2, rough), ".") —
+// carve a rough line of ROOM cells.  Corners are offset via get_location_coord.
+function quest_terrain_randline(x1, y1, x2, y2, rough, totyp) {
+    const ax1 = q_absx(x1), ay1 = q_absy(y1);
+    const ax2 = q_absx(x2), ay2 = q_absy(y2);
+    const pts = new Set();
+    quest_do_randline(ax1, ay1, ax2, ay2, rough, 12, pts);
+    for (const k of pts) {
+        const [x, y] = k.split(',').map(Number);
+        const loc = game.level?.at(x, y);
+        if (loc && totyp !== INVALID_TYPE && totyp < MAX_TYPE) loc.typ = totyp;
+    }
+}
+
+// C ref: sp_lev.c lspo_region 2-arg form (selection, "lit"/"unlit").  No RNG,
+// no room: clone the rect selection, grow it by one cell in all directions when
+// lighting, and set each cell's lit flag.  Coords are map-relative.
+function quest_region_light(x1, y1, x2, y2, lit) {
+    const ax1 = q_absx(x1), ay1 = q_absy(y1);
+    const ax2 = q_absx(x2), ay2 = q_absy(y2);
+    const cells = new Set();
+    for (let x = ax1; x <= ax2; x++)
+        for (let y = ay1; y <= ay2; y++)
+            if (isok(x, y)) cells.add(x + ',' + y);
+    if (lit) {
+        const grown = new Set(cells);
+        for (const k of cells) {
+            const [x, y] = k.split(',').map(Number);
+            for (let dx = -1; dx <= 1; dx++)
+                for (let dy = -1; dy <= 1; dy++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (isok(nx, ny)) grown.add(nx + ',' + ny);
+                }
+        }
+        for (const k of grown) {
+            const [x, y] = k.split(',').map(Number);
+            const loc = game.level?.at(x, y);
+            if (loc) loc.lit = true;
+        }
+    } else {
+        for (const k of cells) {
+            const [x, y] = k.split(',').map(Number);
+            const loc = game.level?.at(x, y);
+            if (loc) loc.lit = false;
+        }
+    }
+}
+
+// C ref: sp_lev.c create_monster.  Name -> find_montype (gender rn2(2) unless
+// the species has a fixed gender) -> amask AM_SPLEV_RANDOM -> induced_align
+// rn2(3) -> get_location_coord (explicit coord: no RNG) -> MON_AT/enexto ->
+// makemon(pm, x, y, 0).  peacefulOverride (if not null) is applied afterwards.
+function quest_create_monster(name, mx, my, peacefulOverride) {
+    const pmidx = name_to_pmidx(name);
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return null;
+    // find_montype: fixed-gender species (gcode male=1 / female=2) draw no RNG;
+    // otherwise a random gender is rolled during Lua parsing.
+    if (ptr.gcode !== 1 && ptr.gcode !== 2) rn2(2);   // sp_lev.c:3156
+    rn2(3);                                            // induced_align (dungeon.c:2012)
+    let x = q_absx(mx), y = q_absy(my);
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, ptr);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    const mtmp = makemon(ptr, x, y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    // C ref: makemon.c S_EEL case -> hideunder(mtmp) during mklev: an eel on a
+    // pool becomes mundetected (submerged), so it renders as water.  No RNG.
+    if (mtmp && ptr.mcls === 57 /* S_EEL */) {
+        const t = game.level?.at(x, y)?.typ;
+        if (t === POOL || t === MOAT || t === WATER) mtmp.mundetected = true;
+    }
+    return mtmp;
+}
+
+// C ref: sp_lev.c create_object.  get_location(DRY) [explicit coord: no RNG;
+// no coord: random DRY loop] -> mksobj/mksobj_at -> apply spe.  For an inventory
+// item (carryingMon set) the object is created at a random DRY floor spot
+// (consuming that get_location) and then moved into the monster's inventory.
+function quest_create_object(otyp, mx, my, spe, carryingMon) {
+    let x, y;
+    if (mx != null) { x = q_absx(mx); y = q_absy(my); }
+    else { const c = bigrm_get_location_dry(); x = c.x; y = c.y; }
+    let otmp;
+    if (carryingMon) {
+        otmp = mksobj(otyp, true, true);           // not placed on floor
+        if (spe != null) otmp.spe = spe;
+        if (!carryingMon.minvent) carryingMon.minvent = [];
+        carryingMon.minvent.push(otmp);
+    } else {
+        otmp = mksobj_at(otyp, x, y, true, true);
+        if (spe != null) otmp.spe = spe;
+    }
+    return otmp;
+}
+
+// C ref: sp_lev.c create_trap for a fixed-type, fixed-coord trap: get_location
+// (explicit -> no RNG) then mktrap(type, MKTRAP_MAZEFLAG|NOSPIDERONWEB).  The
+// only RNG mktrap consumes here is the victim check rnd(4) (mklev.c:2137), which
+// is always drawn (in_mklev, kind != NO_TRAP) and, at this level difficulty,
+// never places a victim.
+async function quest_create_trap(ttyp, mx, my) {
+    const x = q_absx(mx), y = q_absy(my);
+    await maketrap(x, y, ttyp);
+    rnd(4);                                          // mktrap victim check
+}
+
+// C ref: selvar.c selection_floodfill via l_selection_flood: floods from the
+// start cell over all 4-connected cells whose typ matches the start cell's typ
+// (set_floodfillchk_match_under).  No RNG.  Coords are map-relative.
+function quest_floodfill_match(mx, my) {
+    const sx = q_absx(mx), sy = q_absy(my);
+    const start = game.level?.at(sx, sy);
+    if (!start) return new Set();
+    const wantTyp = start.typ;
+    const seen = new Set();
+    const stack = [[sx, sy]];
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        const k = x + ',' + y;
+        if (seen.has(k) || !isok(x, y)) continue;
+        if (game.level?.at(x, y)?.typ !== wantTyp) continue;
+        seen.add(k);
+        stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+    return seen;
+}
+
+// C ref: selvar.c selection_rndcoord — count the set points inside the
+// selection's bounding box, rn2(count), then walk the bounding box in x-outer /
+// y-inner order to the chosen point (removing it when removeit).  `sel` is a Set
+// of "x,y" keys.
+function quest_rndcoord(sel) {
+    const pts = [];
+    let lx = COLNO, hx = -1, ly = ROWNO, hy = -1;
+    for (const k of sel) {
+        const [x, y] = k.split(',').map(Number);
+        if (x < lx) lx = x; if (x > hx) hx = x;
+        if (y < ly) ly = y; if (y > hy) hy = y;
+    }
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++)
+            if (sel.has(x + ',' + y)) pts.push([x, y]);
+    if (!pts.length) return null;
+    const c = rn2(pts.length);
+    const [px, py] = pts[c];
+    sel.delete(px + ',' + py);
+    return { x: px, y: py };
+}
+
+// Main executor.  C ref: makemaz("Bar-strt") -> load_special.
+export async function makemaz_bar_strt() {
+    const g = game;
+    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    shuffle(['law', 'neutral', 'chaos']);
+    // des.level_flags("mazelevel", "noteleport", "hardfloor") — no RNG.
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+    }
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(BAR_STRT_MAP, lit);
+    // replace_terrain x3 (floor -> tree with per-region chance).
+    quest_replace_terrain(37, 0, 59, 19, ROOM, TREE, 5);
+    quest_replace_terrain(60, 0, 64, 19, ROOM, TREE, 10);
+    quest_replace_terrain(65, 0, 75, 19, ROOM, TREE, 20);
+    // guarantee a path + free spot for the portal.
+    quest_terrain_randline(37, 7, 62, 2, 7, ROOM);
+    { const loc = g.level?.at(q_absx(62), q_absy(2)); if (loc) loc.typ = ROOM; }
+    // region lighting (whole level lit, a few unlit sub-rooms) — no RNG.
+    quest_region_light(0, 0, 75, 19, true);
+    quest_region_light(9, 5, 11, 5, false);
+    quest_region_light(9, 7, 11, 7, true);
+    quest_region_light(9, 9, 11, 9, false);
+    quest_region_light(13, 5, 20, 9, true);
+    quest_region_light(29, 5, 31, 6, true);
+    quest_region_light(26, 10, 28, 11, true);
+    quest_region_light(4, 13, 6, 14, true);
+    quest_region_light(15, 13, 17, 14, true);
+    quest_region_light(22, 14, 24, 15, true);
+    // des.stair("down", 9, 9) — no RNG.
+    quest_place_stair(9, 9, false);
+    // des.levregion({ region={62,2,62,2}, type="branch" }) — register, no RNG.
+    quest_register_branch(62, 2);
+    // des.door(...) x8 — explicit states, no RNG.
+    quest_set_door(12, 5, 'locked'); quest_set_door(12, 9, 'locked');
+    quest_set_door(21, 7, 'closed');
+    quest_set_door(7, 13, 'open'); quest_set_door(18, 13, 'open');
+    quest_set_door(23, 13, 'open'); quest_set_door(25, 10, 'open');
+    quest_set_door(28, 5, 'open');
+
+    g._quest_gen = true;
+    g._full_mon_gen = true;
+    try {
+        // Elder Pelias + custom inventory (runesword+5, chain mail+5).
+        const pelias = quest_create_monster('Pelias', 10, 7, null);
+        quest_create_object(58 /*RUNESWORD*/, null, null, 5, pelias);
+        quest_create_object(128 /*CHAIN_MAIL*/, null, null, 5, pelias);
+        // The treasure of Pelias.
+        quest_create_object(CHEST, 9, 5, null, null);
+        // chieftain guards for the audience chamber.
+        const chieftains = [[10, 5], [10, 9], [11, 5], [11, 9],
+                            [14, 5], [14, 9], [16, 5], [16, 9]];
+        for (const [cx, cy] of chieftains) quest_create_monster('chieftain', cx, cy, null);
+        // des.non_diggable — no RNG.
+        // One trap to keep the ogres at bay.
+        await quest_create_trap(12 /*SPIKED_PIT*/, 37, 7);
+        // Eels in the river.
+        quest_create_monster('giant eel', 36, 1, null);
+        quest_create_monster('giant eel', 37, 9, null);
+        quest_create_monster('giant eel', 39, 15, null);
+        // Monsters on siege duty: floodfill(37,7) & area(40,3, 45,20), 12 ogres.
+        const flood = quest_floodfill_match(37, 7);
+        const ax1 = q_absx(40), ay1 = q_absy(3), ax2 = q_absx(45), ay2 = q_absy(20);
+        const ogrelocs = new Set();
+        for (const k of flood) {
+            const [x, y] = k.split(',').map(Number);
+            if (x >= ax1 && x <= ax2 && y >= ay1 && y <= ay2) ogrelocs.add(k);
+        }
+        for (let i = 0; i < 12; i++) {
+            const c = quest_rndcoord(ogrelocs);
+            if (!c) { rn2(1); continue; }
+            quest_create_monster_at('ogre', c.x, c.y, false);
+        }
+    } finally {
+        g._quest_gen = false;
+        g._full_mon_gen = false;
+    }
+
+    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) (!corrmaze)
+    // then flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) { flip_level(flp); quest_flip_branch(flp); }
+}
+
+// A specific-coord ogre (create_monster with an explicit coord from rndcoord).
+function quest_create_monster_at(name, x, y, peaceful) {
+    const pmidx = name_to_pmidx(name);
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return null;
+    if (ptr.gcode !== 1 && ptr.gcode !== 2) rn2(2);   // find_montype gender
+    rn2(3);                                            // induced_align
+    let mx = x, my = y;
+    if (mm_mon_at(mx, my)) {
+        const cc = enexto_spawn(mx, my, ptr);
+        if (cc) { mx = cc.x; my = cc.y; }
+    }
+    const mtmp = makemon(ptr, mx, my, 0);
+    if (mtmp && peaceful != null) mtmp.mpeaceful = !!peaceful;
+    return mtmp;
+}
+
+// des.stair("down", mx, my) — place a down stairway.  No RNG.
+function quest_place_stair(mx, my, up) {
+    const x = q_absx(mx), y = q_absy(my);
+    const loc = game.level?.at(x, y);
+    if (loc) loc.typ = STAIRS;
+    if (!game.stairs) game.stairs = [];
+    game.stairs.push({ sx: x, sy: y, up: !!up });
+    if (up) { game.upstair = { x, y }; if (game.level) game.level.upstair = { x, y }; }
+    else { game.dnstair = { x, y }; if (game.level) game.level.dnstair = { x, y }; }
+}
+
+// des.levregion({region={mx,my,mx,my}, type="branch"}) — store a 1-cell branch
+// arrival region (absolute coords) for placement at level finalize.  No RNG.
+function quest_register_branch(mx, my) {
+    game._quest_branch = { x1: q_absx(mx), y1: q_absy(my), x2: q_absx(mx), y2: q_absy(my) };
+}
+
+// des.door(state, mx, my) — set the door mask on an existing DOOR/SDOOR cell.
+const _QDOORMASK = { open: 0x20 /*D_ISOPEN*/, closed: 0x04 /*D_CLOSED*/, locked: 0x08 /*D_LOCKED*/ };
+function quest_set_door(mx, my, state) {
+    const loc = game.level?.at(q_absx(mx), q_absy(my));
+    if (!loc) return;
+    if (loc.typ === SDOOR) loc.typ = DOOR;
+    loc.doormask = _QDOORMASK[state] ?? 0x04;
+}
+
+// flip the stored branch region alongside the map (flip_level flips lregions in
+// C).  Mirrors flip_level's FlipX/FlipY within the level extents.
+function quest_flip_branch(flp) {
+    const br = game._quest_branch;
+    if (!br) return;
+    const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
+    const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
+    const fx = (x) => (minx + maxx - x), fy = (y) => (miny + maxy - y);
+    for (const [kx, ky] of [['x1', 'y1'], ['x2', 'y2']]) {
+        if (!inArea(br[kx], br[ky])) continue;
+        if (flp & 1) br[ky] = fy(br[ky]);
+        if (flp & 2) br[kx] = fx(br[kx]);
+    }
+    if (br.x1 > br.x2) { const t = br.x1; br.x1 = br.x2; br.x2 = t; }
+    if (br.y1 > br.y2) { const t = br.y1; br.y1 = br.y2; br.y2 = t; }
 }
 
 // ════════════════════════════════════════════════════════════════════════
