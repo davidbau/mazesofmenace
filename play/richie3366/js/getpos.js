@@ -15,7 +15,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph, look_shown_at, newsym_force } from './display.js';
 import { cansee } from './vision.js';
-import { distant_name, doname } from './objnam.js';
+import { distant_name, doname, ansimpleoname } from './objnam.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING,
@@ -321,7 +321,10 @@ function mon_at_xy(x, y) {
     return null;
 }
 
-/** C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called plname. */
+/**
+ * C ref: pager.c self_lookat — race + pmname + called plname + Punished
+ * chained suffix. Steed / mhidden / utrap deferred (same as pager.js).
+ */
 function self_lookat_brief() {
     const u = game.u || {};
     let race = '';
@@ -334,7 +337,13 @@ function self_lookat_brief() {
     const plname = game.plname || 'hero';
     const invis =
         u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
-    return `${invis}${race}${form} called ${plname}`;
+    let buf = `${invis}${race}${form} called ${plname}`;
+    // C: if (Punished) … uball ? ansimpleoname(uball) : "nothing?"
+    // C: Punished ≡ (uball != 0)
+    if (u.uball) {
+        buf += `, chained to ${ansimpleoname(u.uball)}`;
+    }
+    return buf;
 }
 
 /**

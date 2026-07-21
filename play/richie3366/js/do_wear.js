@@ -4,7 +4,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, You_feel, mark_topline_prompt,
+} from './display.js';
 import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname } from './objnam.js';
 import { find_ac } from './u_init.js';
@@ -987,7 +989,12 @@ function takeoff_lets() {
     return lets.join('');
 }
 
-/** C ref: invent.c getobj("take off", takeoff_ok, …) */
+/**
+ * C ref: invent.c getobj("take off", takeoff_ok, GETOBJ_NOFLAGS)
+ * via yn_function(qbuf, NULL, '\0'). Leave gt.toplines on success —
+ * delayed armoroff has no off_msg until afternmv; parse clears after
+ * next-command nhgetch (same as getobj_drop).
+ */
 async function getobj_takeoff() {
     for (;;) {
         await flush_topl_more();
@@ -995,19 +1002,14 @@ async function getobj_takeoff() {
         const query = lets
             ? `What do you want to take off? [${lets} or ?*]`
             : 'What do you want to take off? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
+        const ch = await yn_function(query, null, '\0');
+        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
         }
         if (ch === '?' || ch === '*') {
+            // ?/* pickinv deferred — cancel like prior stub
             await pline('Never mind.');
             return null;
         }
@@ -1021,7 +1023,8 @@ async function getobj_takeoff() {
             await pline('You are not wearing that.');
             return null;
         }
-        game._pending_message = '';
+        // C: leave gt.toplines for parse clear_nhwindow(WIN_MESSAGE)
+        mark_topline_prompt(game._pending_message);
         return otmp;
     }
 }

@@ -44,6 +44,10 @@ import {
     ESCAPED,
     In_endgame,
     In_sokoban,
+    SHOPBASE,
+    TEMPLE,
+    ROOMOFFSET,
+    MAXNROFROOMS,
 } from './const.js';
 
 const FLAG_MAP = {
@@ -712,22 +716,31 @@ export function init_dungeons() {
 }
 
 /**
+ * C ref: dungeon.c find_mapseen — lookup only; does not touch lastseentyp.
+ */
+function find_mapseen(lev) {
+    const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
+    const dnum = uz.dnum | 0;
+    const dlevel = uz.dlevel | 0;
+    return (game.mapseenchn || []).find(
+        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
+    ) || null;
+}
+
+/**
  * C ref: dungeon.c init_mapseen — create mapseen node sorted by
- * dnum then dlevel; clear lastseentyp for the new level.
+ * dnum then dlevel; clear lastseentyp only when allocating a new node
+ * (≡ C memset on first entry). Re-entry returns existing without wiping
+ * lastseentyp (C never re-calls init for the same level).
  */
 export function init_mapseen(lev) {
     const uz = lev || game.u?.uz || { dnum: 0, dlevel: 1 };
     const dnum = uz.dnum | 0;
     const dlevel = uz.dlevel | 0;
     if (!game.mapseenchn) game.mapseenchn = [];
-    // Already present (re-entry) — C always allocates; JS dedupes
-    const existing = game.mapseenchn.find(
-        (m) => (m.lev?.dnum | 0) === dnum && (m.lev?.dlevel | 0) === dlevel,
-    );
-    if (existing) {
-        game.lastseentyp = null;
-        return existing;
-    }
+    const existing = find_mapseen(uz);
+    if (existing) return existing;
+    const nrooms = (MAXNROFROOMS + 1) * 2;
     const init = {
         lev: { dnum, dlevel },
         custom: null,
@@ -736,8 +749,10 @@ export function init_mapseen(lev) {
         feat: empty_feat(),
         br: null,
         final_resting_place: null,
+        // C: mapseen.msrooms[(MAXNROFROOMS+1)*2]
+        msrooms: Array.from({ length: nrooms }, () => ({ seen: 0, untended: 0 })),
     };
-    // C: memset lastseentyp on each init_mapseen
+    // C: memset lastseentyp on each init_mapseen (new level only)
     game.lastseentyp = null;
     let inserted = false;
     for (let i = 0; i < game.mapseenchn.length; i++) {
@@ -756,11 +771,11 @@ export function init_mapseen(lev) {
 
 /**
  * Ensure a mapseen node exists for the given (or current) level.
- * C always has one after init_mapseen on level entry; JS creates lazily
- * for overview/annotation when mklev path was skipped.
+ * C recalc/room_discovered use find_mapseen; init_mapseen only on
+ * first mklev entry.
  */
 function ensure_mapseen(lev) {
-    return init_mapseen(lev);
+    return find_mapseen(lev) || init_mapseen(lev);
 }
 
 function empty_feat() {
@@ -880,14 +895,69 @@ function count_feat_lastseentyp(mptr, x, y) {
 
 /**
  * C ref: dungeon.c recalc_mapseen — reset current-level feat counts from
- * lastseentyp. Shop/temple room traversal, bones, valley/sanctum flags,
- * and Blind bigroom deferred (named in C-JS-MAP).
+ * msrooms (shops/temples) + lastseentyp. Bones/valley/sanctum/oracle/
+ * Blind bigroom/drawbridge castle still deferred (named in C-JS-MAP).
  */
 export function recalc_mapseen() {
     const mptr = ensure_mapseen(null);
+    if (!mptr.msrooms) {
+        const nrooms = (MAXNROFROOMS + 1) * 2;
+        mptr.msrooms = Array.from({ length: nrooms }, () => ({ seen: 0, untended: 0 }));
+    }
     mptr.feat = empty_feat();
-    // C: if (!Levitation) update_lastseentyp(u.ux, u.uy);
     const u = game.u;
+    const rooms = game.level?.rooms || [];
+
+    // C: track rooms the hero is in → msrooms[].seen / untended
+    const urooms = u?.urooms || '';
+    for (let i = 0; i < urooms.length; i++) {
+        const ridx = urooms.charCodeAt(i) - ROOMOFFSET;
+        if (ridx < 0 || ridx >= mptr.msrooms.length) continue;
+        mptr.msrooms[ridx].seen = 1;
+        const rt = rooms[ridx]?.rtype | 0;
+        if (rt >= SHOPBASE) {
+            // ≡ shop_keeper + inhishop without importing shk (DAG)
+            const shkp = rooms[ridx]?.resident || null;
+            const eshk = shkp?.mextra?.eshk || null;
+            let untended = 1;
+            if (shkp && eshk && shkp.mx != null) {
+                const loc = game.level?.at?.(shkp.mx, shkp.my);
+                if (loc && ((loc.roomno | 0) === (eshk.shoproom | 0))) {
+                    untended = 0;
+                }
+            }
+            mptr.msrooms[ridx].untended = untended;
+        } else if (rt === TEMPLE) {
+            // findpriest/inhistemple detail deferred — resident priest ⇒ tended
+            const priest = rooms[ridx]?.resident || null;
+            mptr.msrooms[ridx].untended = priest ? 0 : 1;
+        } else {
+            mptr.msrooms[ridx].untended = 0;
+        }
+    }
+
+    // C: recalculate room knowledge — shops and temples
+    for (let i = 0; i < mptr.msrooms.length; i++) {
+        if (!mptr.msrooms[i].seen) continue;
+        const rt = rooms[i]?.rtype | 0;
+        if (rt >= SHOPBASE) {
+            if (mptr.msrooms[i].untended) {
+                mptr.feat.shoptype = SHOPBASE - 1;
+            } else if (!(mptr.feat.nshop | 0)) {
+                mptr.feat.shoptype = rt;
+            } else if ((mptr.feat.shoptype | 0) !== rt) {
+                mptr.feat.shoptype = 0;
+            }
+            const count = (mptr.feat.nshop | 0) + 1;
+            if (count <= 3) mptr.feat.nshop = count;
+        } else if (rt === TEMPLE) {
+            const count = (mptr.feat.ntemple | 0) + 1;
+            if (count <= 3) mptr.feat.ntemple = count;
+        }
+        // DELPHI → flags.oracle deferred
+    }
+
+    // C: if (!Levitation) update_lastseentyp(u.ux, u.uy);
     if (u && !u.Levitation && u.ux > 0) {
         update_lastseentyp(u.ux, u.uy);
     }
@@ -898,6 +968,52 @@ export function recalc_mapseen() {
         }
     }
     return mptr;
+}
+
+/**
+ * C ref: dungeon.c room_discovered — mark room seen + recalc_mapseen.
+ * Called when check_special_room delivers an enter message (incl. shops).
+ */
+export function room_discovered(roomno) {
+    const mptr = ensure_mapseen(null);
+    if (!mptr.msrooms) {
+        const nrooms = (MAXNROFROOMS + 1) * 2;
+        mptr.msrooms = Array.from({ length: nrooms }, () => ({ seen: 0, untended: 0 }));
+    }
+    const ridx = roomno | 0;
+    if (ridx < 0 || ridx >= mptr.msrooms.length) return;
+    if (!mptr.msrooms[ridx].seen) {
+        mptr.msrooms[ridx].seen = 1;
+        recalc_mapseen();
+    }
+}
+
+/**
+ * C ref: dungeon.c recbranch_mapseen — note forward branch taken by
+ * stairs/fall/portal (not level-teleport / Eye).
+ */
+export function recbranch_mapseen(source, dest) {
+    if ((source?.dnum | 0) === (dest?.dnum | 0)) return;
+    let br = null;
+    for (const cand of game.branches || []) {
+        if (on_level(source, cand.end1) && on_level(dest, cand.end2)) {
+            br = cand;
+            break;
+        }
+        if (on_level(source, cand.end2) && on_level(dest, cand.end1)) {
+            return; // reverse / return trip — ignore
+        }
+    }
+    if (!br) return;
+    const mptr = (game.mapseenchn || []).find(
+        (m) => on_level(m.lev, source),
+    );
+    if (!mptr) return;
+    if (mptr.br && mptr.br !== br) {
+        // C: impossible("Two branches on the same level?")
+        return;
+    }
+    mptr.br = br;
 }
 
 /** C ref: dungeon.c seen_string — 0/1/2/3 → no/a|an/some/many */
@@ -919,8 +1035,39 @@ function plur(n) {
 }
 
 /**
+ * C ref: dungeon.c shop_string — short shop description for #overview.
+ * Uses shtypes[].name (annotation null in upstream for common shops);
+ * SHOPBASE-1 → untended. Keep names aligned with shknam.c shtypes[].
+ */
+function shop_string(rtype) {
+    const shoptype = (rtype | 0) - SHOPBASE;
+    if (shoptype < 0) return 'untended shop';
+    const NAMES = [
+        'general store',
+        'used armor dealership',
+        'second-hand bookstore',
+        'liquor emporium',
+        'antique weapons outlet',
+        'delicatessen',
+        'jewelers',
+        'quality apparel and accessories',
+        'hardware store',
+        'rare books',
+        'lighting store',
+    ];
+    return NAMES[shoptype] || 'shop';
+}
+
+/** Local an() for shop overview — avoid objnam import cycle. */
+function an_shop(str) {
+    const s = String(str || '');
+    const c = (s[0] || 'x').toLowerCase();
+    return ('aeiou'.includes(c) ? 'an ' : 'a ') + s;
+}
+
+/**
  * C ref: dungeon.c print_mapseen OF_INTEREST feature sentence (PREFIX +
- * ADDNTOBUF). Shop/temple/altar-to-god deferred when counts are 0.
+ * ADDNTOBUF). Altar-to-god when all coaligned still deferred.
  */
 function mapseen_feat_line(mptr) {
     const feat = mptr.feat || empty_feat();
@@ -933,10 +1080,10 @@ function mapseen_feat_line(mptr) {
         if (!v) return;
         buf += `${COMMA()}${seen_string(v, nam)} ${nam}${plur(v)}`;
     };
-    // Shop / temple+altar order matches C; shoptype/an(shop) deferred
+    // Shop / temple+altar order matches C
     if ((feat.nshop | 0) > 0) {
         if ((feat.nshop | 0) > 1) ADDNTOBUF('shop', feat.nshop);
-        else buf += `${COMMA()}a shop`; // shop_string deferred
+        else buf += `${COMMA()}${an_shop(shop_string(feat.shoptype | 0))}`;
     }
     if ((feat.naltar | 0) > 0 || (feat.ntemple | 0) > 0) {
         const nt = feat.ntemple | 0;
@@ -957,6 +1104,48 @@ function mapseen_feat_line(mptr) {
     const idx = PREFIX.length;
     if (buf.length > idx) {
         buf = buf.slice(0, idx) + buf[idx].toUpperCase() + buf.slice(idx + 1);
+    }
+    return `${buf}.`;
+}
+
+/** C ref: dungeon.c br_string2 — branch label for overview. */
+function br_string2(br) {
+    const quest_dnum = game.quest_dnum;
+    const closed_portal = (br?.end2?.dnum | 0) === (quest_dnum | 0)
+        && !!(game.u?.uevent?.qexpelled);
+    switch (br?.type) {
+    case BR_PORTAL:
+        return closed_portal ? 'Sealed portal' : 'Portal';
+    case BR_NO_END1:
+        return 'Connection';
+    case BR_NO_END2:
+        return br.end1_up ? 'One way stairs up' : 'One way stairs down';
+    case BR_STAIR:
+        return br.end1_up ? 'Stairs up' : 'Stairs down';
+    default:
+        return '(unknown)';
+    }
+}
+
+/** C ref: dungeon.c Is_special — match in sp_levchn. */
+function Is_special(lev) {
+    for (const s of game.sp_levchn || []) {
+        if (on_level(lev, s.dlevel)) return s;
+    }
+    return null;
+}
+
+/**
+ * C ref: dungeon.c print_mapseen branch line.
+ */
+function mapseen_branch_line(mptr) {
+    if (!mptr.br) return null;
+    const PREFIX = '      ';
+    const dname = game.dungeons?.[mptr.br.end2?.dnum | 0]?.dname || 'a dungeon';
+    let buf = `${PREFIX}${br_string2(mptr.br)} to ${dname}`;
+    if (mptr.br.end1_up && !In_endgame(mptr.br.end2)) {
+        const depth = depth_of(mptr.br.end2);
+        buf += `, level ${depth}`;
     }
     return `${buf}.`;
 }
@@ -1033,10 +1222,9 @@ export async function donamelevel() {
  * why: 0 #overview; 1/2 end disclosure (lived/died); -1 menu deferred.
  * End disclosure uses select_menu PICK_NONE → corner "(end)", not
  * display_nhwindow --More-- (unlike enlightenment putstr path).
- * Named omissions: builds_up range headers; shop_string / altar-god;
- * branch lines; cemetery bones list beyond dead hero; wizard proto
- * names; PICK_ONE annotation menu (why==-1); endgame-first traverse
- * when In_endgame (Planes above DoD).
+ * Named omissions: builds_up range headers; altar-god coalign suffix;
+ * cemetery bones list beyond dead hero; PICK_ONE annotation menu
+ * (why==-1); endgame-first traverse when In_endgame (Planes above DoD).
  * @param {number} why
  * @param {number} reason how-died when why>0
  */
@@ -1051,6 +1239,7 @@ export async function show_overview(why = 0, reason = 0) {
     const u = game.u || {};
     const entries = [];
     let lastdun = -1;
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
 
     // C traverse_mapseenchn(viewendgame=0) + interest_mapseen for why==0.
     // Endgame-first pass (Planes above DoD) deferred when In_endgame.
@@ -1067,9 +1256,17 @@ export async function show_overview(why = 0, reason = 0) {
         lastdun = dnum;
         const dun = game.dungeons?.[dnum];
         const dname = dun?.dname || 'The Dungeons of Doom';
+        // C: quest / Knox appear as level 1
+        const knox_dnum = game.knox_level?.dnum;
+        let depthstart;
+        if (dnum === (game.quest_dnum | 0)
+            || (knox_dnum != null && dnum === (knox_dnum | 0))) {
+            depthstart = 1;
+        } else {
+            depthstart = (dun?.depth_start | 0) || 1;
+        }
         if (printdun) {
             // C print_mapseen: entry-only → "Name:"; else "Name: levels A to B"
-            const depthstart = (dun?.depth_start | 0) || 1;
             const ureached = dun?.dunlev_ureached | 0;
             const entry = dun?.entry_lev | 0;
             let hdr = `${dname}:`;
@@ -1085,10 +1282,14 @@ export async function show_overview(why = 0, reason = 0) {
                 attr: why > 0 ? 0 : ATR_INVERSE,
             });
         }
-        const depthstart = (dun?.depth_start | 0) || 1;
         const levnum = depthstart + (mptr.lev?.dlevel | 0) - 1;
         const TAB = '   ';
         let levLine = `${why !== -1 ? TAB : ''}Level ${levnum}:`;
+        // C wizard: Is_special → " [proto]"
+        if (wizard) {
+            const slev = Is_special(mptr.lev);
+            if (slev?.proto) levLine += ` [${slev.proto}]`;
+        }
         if (mptr.custom) levLine += ` "${mptr.custom}"`;
         const onHere = on_level(u.uz, mptr.lev);
         if (onHere) {
@@ -1113,6 +1314,8 @@ export async function show_overview(why = 0, reason = 0) {
         } else if (why === 0) {
             const featLine = mapseen_feat_line(mptr);
             if (featLine) entries.push({ text: featLine, attr: 0 });
+            const brLine = mapseen_branch_line(mptr);
+            if (brLine) entries.push({ text: brLine, attr: 0 });
         }
     }
 
@@ -1132,8 +1335,9 @@ export async function show_overview(why = 0, reason = 0) {
 /**
  * C ref: dungeon.c dooverview / show_overview (#overview).
  * Branch envelope: why=0 PICK_NONE via interest_mapseen + feature
- * sentence (print_mapseen OF_INTEREST) + ESC/space dismiss.
- * shop_string / altar-god / branch lines / endgame-first order deferred.
+ * sentence (print_mapseen OF_INTEREST) + shop_string + branch lines
+ * + wizard Is_special proto + ESC/space dismiss.
+ * altar-god / endgame-first order / builds_up deferred.
  */
 export async function dooverview() {
     await show_overview(0, 0);

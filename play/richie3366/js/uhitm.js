@@ -570,7 +570,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
             obj.quan = 0;
             obj.where = OBJ_FREE;
         }
-        wakeup(mon, true);
+        await wakeup(mon, true);
         return true; // mon alive (dmg forced 0)
     }
 
@@ -660,7 +660,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     }
     // C: !destroyed → wakeup; maybe_knockback → mhitm_knockback
     // (rn2(3)+rn2(chance) before gates; hurtle body still stubbed)
-    wakeup(mon, true);
+    await wakeup(mon, true);
     if (maybe_knockback) {
         let mattk = get_mattk(game.youmonst, 0, mon);
         // set_uasmon deferred — non-poly hero form is AT_WEAP AD_PHYS
@@ -685,7 +685,7 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
         await pline(`You miss ${mon_nam(mon)}.`);
         // C missum: if (!helpless(mdef)) wakeup(mdef, TRUE)
         if (!mon.msleeping && mon.mcanmove !== 0) {
-            wakeup(mon, true);
+            await wakeup(mon, true);
         }
     } else {
         if (weapon && (weapon.oclass === WEAPON_CLASS
@@ -1101,7 +1101,7 @@ async function that_is_a_mimic(mtmp, mimic_flags) {
  */
 async function stumble_onto_mimic(mtmp) {
     await that_is_a_mimic(mtmp, MIM_REVEAL);
-    wakeup(mtmp, false);
+    await wakeup(mtmp, false);
 }
 
 /**
@@ -1134,7 +1134,7 @@ export async function attack_checks(mtmp) {
         await pline("Wait!  There's something there you can't see!");
         map_invisible(mtmp.mx, mtmp.my);
         // mimic AD_STCK ustuck deferred
-        wakeup(mtmp, true);
+        await wakeup(mtmp, true);
         return true;
     }
 

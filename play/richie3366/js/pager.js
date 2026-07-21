@@ -27,7 +27,7 @@ import {
 } from './getpos.js';
 import { mon_at } from './uhitm.js';
 import { objects_at } from './mkobj.js';
-import { doname, an, xname, singular } from './objnam.js';
+import { doname, an, xname, singular, ansimpleoname } from './objnam.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
@@ -198,7 +198,10 @@ function look_getpos_cmode() {
     return GPCOORDS_MAP;
 }
 
-/** C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called plname. */
+/**
+ * C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called
+ * plname + Punished ", chained to %s". Steed / mhidden / utrap deferred.
+ */
 function self_lookat() {
     const u = game.u || {};
     // C: race only when !Upolyd; Sprintf(race, "%s ", urace.adj)
@@ -212,8 +215,14 @@ function self_lookat() {
     const plname = game.plname || 'hero';
     const invis =
         u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
-    // Steed / mhidden / Punished / utrap arms deferred
-    return `${invis}${race}${form} called ${plname}`;
+    let buf = `${invis}${race}${form} called ${plname}`;
+    // C: if (Punished) … uball ? ansimpleoname(uball) : "nothing?"
+    // C: Punished ≡ (uball != 0)
+    if (u.uball) {
+        buf += `, chained to ${ansimpleoname(u.uball)}`;
+    }
+    // Steed / mhidden / utrap arms deferred
+    return buf;
 }
 
 /**
@@ -255,8 +264,15 @@ function look_at_monster_buf(mtmp) {
  * putstr windows (look_here, etc.). Corner (offx≠0) paints all rows then
  * one dmore; fullscreen pages at rows-1. Both use xwaitforspace(quitchars)
  * — only space/CR/ESC advance; hjklyubn stay on the page (capture still).
+ *
+ * @param {string[]} lines
+ * @param {{ keep_message_leftover?: boolean }} [opts]
+ *   When true (look_here only): model invent.c `display_nhwindow(WIN_MESSAGE,
+ *   FALSE)` before the menu — toplin EMPTY without wipe, so NHW_MENU's
+ *   `tty_clear_nhwindow(WIN_MESSAGE)` is a no-op and getpos leftovers stay
+ *   left of offx through dismiss. Ordinary corner menus clear (D-0929).
  */
-export async function show_nhw_menu_text(lines) {
+export async function show_nhw_menu_text(lines, opts = {}) {
     const disp = game.nhDisplay;
     if (!disp) {
         await text_page_wait();
@@ -275,7 +291,11 @@ export async function show_nhw_menu_text(lines) {
     const maxrow = lines.length;
     if (maxrow >= rows || game.flags?.menu_overlay === false) offx = 0;
 
-    game._pending_message = '';
+    // Default: clear topline (C NHW_MENU corner tty_clear when toplin!=EMPTY,
+    // fullscreen always). look_here opts.keep_message_leftover skips clear
+    // for corner — prior WIN_MESSAGE FALSE left glyphs / _pending_message.
+    const keepLeftover = !!opts.keep_message_leftover && offx !== 0;
+    if (!keepLeftover) game._pending_message = '';
     game._menu_overlay = false;
     await flush_screen(1);
 
@@ -329,7 +349,13 @@ export async function show_nhw_menu_text(lines) {
     }
 
     game._menu_overlay = false;
+    // C erase_menu_or_text: offx==0 → docrt; else docorner. JS still
+    // docrt() for Hallu see_monsters burns (cohort RNG); cls() wipes
+    // _pending_message, so restore only look_here leftovers C leaves
+    // left of offx (D-0929 — not every corner menu).
+    const savedTopl = keepLeftover ? (game._pending_message || '') : '';
     await docrt();
+    if (savedTopl) game._pending_message = savedTopl;
     await flush_screen(1);
 }
 

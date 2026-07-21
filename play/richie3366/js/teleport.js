@@ -14,8 +14,8 @@ import {
     MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING, NO_TRAP,
     is_xport,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP,
-    LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT,
-    UTOTYPE_NONE,
+    LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
+    UTOTYPE_NONE, OBJ_FREE, SLT_ENCUMBER,
     is_hole, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     MAGIC_PORTAL, RLOC_MSG, RLOC_NOMSG,
@@ -32,13 +32,14 @@ import {
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
 import { nomul } from './hack.js';
-import { makeknown, prinv } from './invent.js';
+import { makeknown, prinv, near_capacity } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
 import { get_level, find_hell } from './dungeon.js';
-import { depth } from './hacklib.js';
+import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
 import { mon_nam, Monnam, x_monnam } from './do_name.js';
+import { placebc, unplacebc, drag_ball, move_bc } from './ball.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
@@ -695,12 +696,12 @@ function teleok(x, y, trapok) {
 }
 
 /**
- * C ref: teleport.c teleds — hero placement subset for vault_tele.
- * Envelope: place + vision; TELEDS_TELEPORT+verbose materialize pline;
- * spoteffects(TRUE) after (nested ok — C does the same).
- * Named omissions: ball/chain, swallow, vault_guard uleftvault, regions,
- * drag_ball, switch_terrain, notice_mon_*; shop-enter plines beyond
- * spoteffects subset.
+ * C ref: teleport.c teleds — hero placement (vault_tele / ^T / scroll).
+ * Envelope: Punished unplacebc/placebc (or drag_ball when in range);
+ * place + vision; TELEDS_TELEPORT+verbose materialize; spoteffects(TRUE).
+ * Named omissions: swallow docrt, vault_guard uleftvault, regions,
+ * switch_terrain, fill_pit, notice_mon_*, hideunder/mimic, buried-ball
+ * unearth; shop-enter plines beyond spoteffects subset.
  *
  * Do NOT set u.urooms before spoteffects — C only temporarily fakes
  * urooms for vault_guard exit, then restores so move_update can detect
@@ -710,19 +711,63 @@ export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
     if (!u) return;
     const is_teleport = ((teleds_flags | 0) & TELEDS_TELEPORT) !== 0;
+    let allow_drag = ((teleds_flags | 0) & TELEDS_ALLOW_DRAG) !== 0;
     const ox = u.ux | 0;
     const oy = u.uy | 0;
+    // C: Punished ≡ (uball != 0); ball_active if ball not OBJ_FREE
+    let ball_active = !!(u.uball && (u.uball.where | 0) !== OBJ_FREE);
+    let ball_still_in_range = false;
+    if (!ball_active
+        || near_capacity() > SLT_ENCUMBER
+        || distmin(ox, oy, nux | 0, nuy | 0) > 1) {
+        allow_drag = false;
+    }
+
+    // C: if ball must move and !allow_drag → unplacebc; else maybe drag
+    if (ball_active) {
+        const uball = u.uball;
+        const invent = game.invent || [];
+        const ball_carried = invent.includes(uball);
+        if (!ball_carried
+            && distmin(nux | 0, nuy | 0, uball.ox | 0, uball.oy | 0) <= 2) {
+            ball_still_in_range = true;
+        } else if (!allow_drag) {
+            unplacebc();
+        }
+    }
+
     u.ux0 = ox;
     u.uy0 = oy;
+    // u.utrap clear (C reset_utrap(FALSE) — messages deferred)
+    u.utrap = 0;
+    u.utraptype = 0;
+    // set_ustuck / hideunder / swallow docrt deferred
+
+    if (ball_active && (ball_still_in_range || allow_drag)) {
+        const drag = await drag_ball(nux | 0, nuy | 0, allow_drag);
+        if (drag.ok) {
+            move_bc(0, drag.bc_control, drag.ballx, drag.bally,
+                drag.chainx, drag.chainy);
+        } else {
+            // C: drag fail may clear Punished; re-check then unplacebc
+            ball_active = !!(u.uball && (u.uball.where | 0) !== OBJ_FREE);
+            if (ball_active) unplacebc();
+        }
+    }
+
+    // C: u_on_newpos after drag_ball (needs old ux,uy when allow_drag)
     u.ux = nux | 0;
     u.uy = nuy | 0;
     if (u.usteed) {
         u.usteed.mx = u.ux;
         u.usteed.my = u.uy;
     }
-    // u.utrap clear on teleport
-    u.utrap = 0;
-    u.utraptype = 0;
+    // fill_pit(ux0,uy0) deferred
+    // C: placebc when chain was taken off map (OBJ_FREE)
+    if (ball_active && u.uchain && (u.uchain.where | 0) === OBJ_FREE) {
+        placebc();
+    }
+
     newsym(ox, oy);
     newsym(u.ux, u.uy);
     // C: see_monsters() before vision — refresh warns at new distu

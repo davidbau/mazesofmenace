@@ -594,13 +594,13 @@ export function setmangry(mtmp, via_attack) {
 
 /**
  * C ref: mon.c wake_nearto / wake_nearto_core — clear sleep/wait in radius.
- * Named omissions: wake_msg pline; disturb_buried_zombies; petcall whistletime.
+ * Named omissions: disturb_buried_zombies; petcall whistletime.
  */
-function wake_nearto(x, y, distance) {
+async function wake_nearto(x, y, distance) {
     for (const m of game.fmon || []) {
         if (!m || m.mx == null || (m.mhp | 0) <= 0) continue;
         if (distance === 0 || dist2(m.mx, m.my, x, y) < distance) {
-            // wake_msg deferred
+            await wake_msg(m, false);
             m.msleeping = 0;
             if (!((m.data?.geno | 0) & G_UNIQ) && m.mstrategy != null) {
                 m.mstrategy &= ~STRAT_WAITMASK;
@@ -609,15 +609,28 @@ function wake_nearto(x, y, distance) {
     }
 }
 
+const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
+
+/**
+ * C ref: mon.c wake_msg — "X wakes up[!.]" when msleeping && canseemon.
+ * interesting (via_attack) → '!'; flesh golem → " It's alive!".
+ */
+export async function wake_msg(mtmp, interesting) {
+    if (!mtmp?.msleeping || !canseemon(mtmp)) return;
+    const punct = interesting ? '!' : '.';
+    const alive = (mtmp.mnum | 0) === PM_FLESH_GOLEM ? " It's alive!" : '';
+    await pline(`${Monnam(mtmp)} wakes up${punct}${alive}`);
+}
+
 /**
  * C ref: mon.c wakeup — clear sleep / non-monster disguise; via_attack → setmangry.
- * Named omissions: wake_msg; finish_meating; growl pline (radius only);
- * ghod_hitsu; hot_pursuit when shk && !*u.ushops.
+ * Named omissions: finish_meating; ghod_hitsu; hot_pursuit when shk && !*u.ushops.
  */
-export function wakeup(mtmp, via_attack) {
+export async function wakeup(mtmp, via_attack) {
     if (!mtmp) return;
     const was_sleeping = !!mtmp.msleeping;
-    // wake_msg deferred (canseemon sleep pline)
+    // C: wake_msg before clearing msleeping (D-0928 #1161)
+    await wake_msg(mtmp, via_attack);
     mtmp.msleeping = 0;
     if (M_AP_TYPE(mtmp) !== M_AP_NOTHING) {
         if (M_AP_TYPE(mtmp) !== M_AP_MONSTER) seemimic(mtmp);
@@ -629,11 +642,11 @@ export function wakeup(mtmp, via_attack) {
     // finish_meating deferred
     if (via_attack) {
         const was_peaceful = !!mtmp.mpeaceful;
-        // C: was_sleeping → growl → wake_nearto(mx,my, mlevel*18).
-        // Growl verb pline deferred (mid-hit --More--); radius is required
-        // so nearby sleepers are not later disturb()'d with rn2(50).
-        if (was_sleeping && mtmp.mx) {
-            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
+        // C: was_sleeping → growl → wake_nearto (D-0922/#1161)
+        if (was_sleeping) {
+            // Dynamic import avoids mon↔sounds↔uhitm static cycle.
+            const { growl } = await import('./sounds.js');
+            await growl(mtmp);
         }
         setmangry(mtmp, true);
         if (was_peaceful) {

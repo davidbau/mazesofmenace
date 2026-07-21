@@ -55,6 +55,8 @@ import {
     In_endgame,
     ZOMBIFY_MON, TIMER_OBJECT,
     Is_rogue_level,
+    Is_knox_level,
+    Is_botlevel,
     Is_medusa_level,
     Is_baal_level,
     RLOC_ERR,
@@ -330,18 +332,24 @@ export function known_branch_stairs(sway) {
 
 /**
  * C ref: stairs.c stairs_description — ordinary / Dlvl1-up / known-branch.
- * Deferred: "to level N" after traverse, Elemental Planes / end-game amulet
- * destination strings beyond the Dlvl1 no-amulet case.
+ * Deferred: Elemental Planes destination string when amulet + on_level planes
+ * (C uses "to the Elemental Planes" vs generic "to the end game").
  */
 export function stairs_description(sway, stcase = true) {
     if (!sway) return '';
+    const tolev = sway.tolev || { dnum: 0, dlevel: 1 };
     const stairs = sway.isladder ? 'ladder' : (stcase ? 'staircase' : 'stairs');
     const updown = sway.up ? 'up' : 'down';
     if (!known_branch_stairs(sway)) {
         let out = `${stairs} ${updown}`;
         if (sway.u_traversed) {
-            // C: specialdepth / depth(&tolev) — approximate with tolev.dlevel
-            out += ` to level ${sway.tolev.dlevel}`;
+            // C: specialdepth = quest_dnum || single_level_branch (knox);
+            // to_dlev = specialdepth ? dunlev(&tolev) : depth(&tolev)
+            const specialdepth = In_quest(tolev) || Is_knox_level(tolev);
+            const to_dlev = specialdepth
+                ? (tolev.dlevel | 0)
+                : (depth_of_level(tolev) | 0);
+            out += ` to level ${to_dlev}`;
         }
         return out;
     }
@@ -17323,16 +17331,27 @@ function generate_stairs_find_room() {
     return g.level.rooms[rn2(g.level.nroom)];
 }
 
+/**
+ * C ref: mklev.c mkstairs — place ordinary up/down stairs within the branch.
+ * Cannot place stairs off an end of the dungeon (up on dunlev 1, down on
+ * botlevel); des.stair / minefill still call this and rely on the no-op.
+ * Branch stairs go through place_branch → stairway_add, not here.
+ */
 function mkstairs(x, y, up, croom) {
     const g = game;
+    if (!x || !isok(x, y)) return;
+    // C: if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz))) return;
+    const dlev = g.u?.uz?.dlevel ?? 1;
+    if (up ? dlev === 1 : Is_botlevel(g.u?.uz)) return;
+
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;
-        loc.ladder = up ? 1 : 2;
+        loc.ladder = up ? LA_UP : LA_DOWN;
     }
     const dest = {
         dnum: g.u?.uz?.dnum ?? 0,
-        dlevel: (g.u?.uz?.dlevel ?? 1) + (up ? -1 : 1),
+        dlevel: dlev + (up ? -1 : 1),
     };
     stairway_add(x, y, !!up, false, dest);
     if (up) g.level.upstair = { x, y };
@@ -17342,8 +17361,8 @@ function mkstairs(x, y, up, croom) {
 async function generate_stairs() {
     const g = game;
     const pos = { x: 0, y: 0 };
-    // Down stairs
-    {
+    // C: if (!Is_botlevel(&u.uz)) { find room; mkstairs down }
+    if (!Is_botlevel(g.u?.uz)) {
         const croom = generate_stairs_find_room();
         if (croom) {
             if (!somexyspace(croom, pos)) {
@@ -17353,7 +17372,7 @@ async function generate_stairs() {
             mkstairs(pos.x, pos.y, 0, croom);
         }
     }
-    // Up stairs only if not level 1
+    // C: if (u.uz.dlevel != 1) { find room; mkstairs up }
     if ((g.u?.uz?.dlevel ?? 1) !== 1) {
         const croom = generate_stairs_find_room();
         if (croom) {

@@ -3005,7 +3005,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         return;
     }
 
-    // C: display_nhwindow(WIN_MESSAGE, FALSE) then NHW_MENU putstr list
+    // C: display_nhwindow(WIN_MESSAGE, FALSE) then NHW_MENU putstr list.
+    // WIN_MESSAGE FALSE sets toplin EMPTY without wipe — getpos leftovers
+    // stay left of overlay; keep_message_leftover models that (D-0929).
     await flush_topl_more();
     const lines = [];
     if (dfeature && !skip_dfeature && fbuf) {
@@ -3024,7 +3026,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         lines.push(doname_with_price(o));
     }
     const { show_nhw_menu_text } = await import('./pager.js');
-    await show_nhw_menu_text(lines);
+    await show_nhw_menu_text(lines, { keep_message_leftover: true });
     {
         const { read_engr_at } = await import('./engrave.js');
         await read_engr_at(u?.ux, u?.uy);

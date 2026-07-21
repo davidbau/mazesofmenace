@@ -106,12 +106,14 @@ function tended_shop(sroom) {
 /**
  * C ref: mon.c wake_nearto / wake_nearto_core (zombie/petcall deferred).
  * Clears msleeping + non-G_UNIQ STRAT_WAITMASK inside dist2 < distance.
+ * wake_msg via dynamic import (avoids sounds↔mon↔uhitm static cycle).
  */
-function wake_nearto(x, y, distance) {
+async function wake_nearto(x, y, distance) {
+    const { wake_msg } = await import('./mon.js');
     for (const mtmp of game.fmon || []) {
         if (!mtmp || mtmp.mx == null || (mtmp.mhp | 0) <= 0) continue;
         if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
-            // wake_msg deferred
+            await wake_msg(mtmp, false);
             mtmp.msleeping = 0;
             if (!((mtmp.data?.geno | 0) & G_UNIQ) && mtmp.mstrategy != null) {
                 mtmp.mstrategy &= ~STRAT_WAITMASK;
@@ -120,10 +122,10 @@ function wake_nearto(x, y, distance) {
     }
 }
 
-function noisy_shop(sroom) {
+async function noisy_shop(sroom) {
     const mtmp = sroom?.resident;
     if (mtmp && inhishop(mtmp)) {
-        wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+        await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
     }
 }
 
@@ -322,7 +324,7 @@ export async function dosounds() {
                 'Neiman and Marcus arguing!',
             ];
             await You_hear(shop_msg[rn2(2) + hallu]);
-            noisy_shop(sroom);
+            await noisy_shop(sroom);
         }
         return;
     }
@@ -431,8 +433,8 @@ function growl_sound(mtmp) {
 
 /**
  * C ref: sounds.c growl — seriously abused pet (incl. hero attacking).
- * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omissions:
- * iflags.last_msg PLNMSG_GROWL; wake_msg inside wake_nearto.
+ * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omission:
+ * iflags.last_msg PLNMSG_GROWL.
  */
 export async function growl(mtmp) {
     if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
@@ -450,7 +452,7 @@ export async function growl(mtmp) {
         }
         // C: wake_nearto(mx, my, mlevel * 18) after growl pline
         if (mtmp.mx) {
-            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
+            await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
         }
     }
 }
@@ -496,7 +498,7 @@ export async function yelp(mtmp) {
         if (game.context?.run) nomul(0);
         // C: wake_nearto(mx, my, mlevel * 12)
         if (mtmp.mx) {
-            wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 12);
+            await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 12);
         }
     }
 }

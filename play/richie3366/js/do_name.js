@@ -5,14 +5,20 @@ import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, docrt, canspotmon } from './display.js';
-import { paint_corner_nhw_menu, discover_object } from './invent.js';
 import {
-    ONAME_VIA_NAMING, MGIVENNAME, has_mgivenname, W_SADDLE, engulfing_u,
-    Upolyd, MD_PAD_BOGONS,
+    flush_screen, flush_topl_more, docrt, canspotmon, pline,
+} from './display.js';
+import {
+    paint_corner_nhw_menu, discover_object, compactify_invlets,
+} from './invent.js';
+import {
+    ONAME_VIA_NAMING, ONAME_KNOW_ARTI, MGIVENNAME, has_mgivenname,
+    W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
+    has_oname, ONAME,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -22,8 +28,8 @@ import {
     LOW_PM, SPECIAL_PM,
 } from './monsters.js';
 import { getlin } from './getline.js';
-import { an, xname } from './objnam.js';
-import { POTION_CLASS } from './objects.js';
+import { an, xname, simpleonames } from './objnam.js';
+import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 
@@ -31,8 +37,133 @@ const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
 const BOGON_CODES = '-_+|=';
+const QUITCHARS = ' \r\n\x1b';
+
+/** C ref: do_name.c name_ok — anything but gold; DOWNPLAY unseen/arti/novel. */
+function name_ok(obj) {
+    if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL) {
+        return GETOBJ_DOWNPLAY;
+    }
+    return GETOBJ_SUGGEST;
+}
+
+/** SUGGEST invent letters only (C getobj `bp` / `lets[]`; DOWNPLAY → altlets). */
+function name_suggest_lets() {
+    const lets = [];
+    for (const o of game.invent || []) {
+        if (o?.invlet && name_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+    }
+    // C getobj sortloot SORTLOOT_INVLET
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    return lets.join('');
+}
+
+/**
+ * C ref: invent.c getobj("name", name_ok, GETOBJ_PROMPT)
+ * Prompt compactify when suggested>5; ?/* → display_pickinv_reply;
+ * gold EXCLUDE → "You cannot name gold."; missing letter → continue.
+ */
+async function getobj_name() {
+    for (;;) {
+        await flush_topl_more();
+        const rawLets = name_suggest_lets();
+        // C: GETOBJ_PROMPT → forceprompt; empty SUGGEST still prompts [*]
+        const lets = rawLets.length > 5
+            ? compactify_invlets(rawLets)
+            : rawLets;
+        const query = lets
+            ? `What do you want to name? [${lets} or ?*]`
+            : 'What do you want to name? [*]';
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (QUITCHARS.includes(ch) || key === 27) {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            const { display_pickinv_reply } = await import('./invent.js');
+            const ilet = await display_pickinv_reply(
+                ch === '*' ? '*' : rawLets,
+            );
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (name_ok(picked) === GETOBJ_EXCLUDE) {
+                await pline('You cannot name gold.');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        if (name_ok(otmp) === GETOBJ_EXCLUDE) {
+            await pline('You cannot name gold.');
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/** C ref: objnam.c Ysimple_name2 — capitalize simpleonames. */
+function Ysimple_name2(obj) {
+    const s = simpleonames(obj) || 'item';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * C ref: do_name.c do_oname — getlin name then oname.
+ * Artifact_name slip / wipeout_text / literate conduct deferred.
+ */
+async function do_oname(obj) {
+    if (!obj) return;
+    if (obj.otyp === SPE_NOVEL) {
+        await pline(`${Ysimple_name2(obj)} already has a published name.`);
+        return;
+    }
+    const which = (obj.quan || 1) !== 1 ? 'these' : 'this';
+    // C: safe_qbuf(qbuf, qbuf, "?", obj, xname, simpleonames, "item")
+    const qbuf = `What do you want to name ${which} ${xname(obj)}?`;
+    const buf = await getlin(qbuf);
+    if (!buf || buf === '\x1b') return;
+
+    const name = buf.trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    const truncated = name.length >= PL_PSIZ
+        ? name.slice(0, PL_PSIZ - 1)
+        : name;
+
+    if (obj.oartifact) {
+        await pline(
+            `${has_oname(obj) ? ONAME(obj) : 'The artifact'} resists the attempt.`,
+        );
+        return;
+    }
+
+    // artifact_name / restrict_name / wipeout_text slip deferred
+    oname(obj, truncated, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+}
 
 /** C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance. */
 export function Hallucination() {
@@ -473,7 +604,7 @@ export function safe_oname(obj) {
 
 /**
  * C ref: do_name.c docallcmd — "What do you want to name?" menu.
- * Cancel and floor getpos-cancel paths; other branches named deferred.
+ * `i` → getobj("name")+do_oname; floor getpos-cancel; other branches deferred.
  */
 export async function docallcmd() {
     await flush_topl_more();
@@ -502,7 +633,9 @@ export async function docallcmd() {
             return;
         }
         if (ch === 'i' || ch === 'y') {
-            await name_invent_obj_stub();
+            // C: getobj("name", name_ok, GETOBJ_PROMPT) → do_oname
+            const obj = await getobj_name();
+            if (obj) await do_oname(obj);
             return;
         }
         if (ch === 'a' || ch === 'l') {
@@ -512,19 +645,6 @@ export async function docallcmd() {
         }
         if (ch === 'm' || ch === 'C' || ch === 'o' || ch === 'n'
             || ch === 'd' || ch === '\\') {
-            return;
-        }
-    }
-}
-
-/** C ref: docallcmd case 'i' → getobj("name") — cancel via Esc. */
-async function name_invent_obj_stub() {
-    game._pending_message = 'What do you want to name? [?] ';
-    await flush_screen(1);
-    for (;;) {
-        const key = await nhgetch();
-        if (key === 27 || key === 13 || key === 10) {
-            game._pending_message = '';
             return;
         }
     }

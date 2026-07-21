@@ -8,12 +8,16 @@ import {
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
     is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
-    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, ICE,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     xdir, ydir, N_DIRS,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-    OVERLOADED, SLT_ENCUMBER, Is_airlevel,
+    OVERLOADED, SLT_ENCUMBER, Is_airlevel, Is_waterlevel,
+    Is_medusa_level, Is_juiblex_level,
+    TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
+    SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
+    INTRINSIC, UNCHANGING,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
@@ -26,8 +30,10 @@ import { xname } from './objnam.js';
 import { A_STR, A_CON, exercise } from './attrib.js';
 import { rn2 } from './rng.js';
 import { midnight } from './calendar.js';
-import { PM_GRID_BUG } from './generated/monsters_data.js';
-import { hliquid } from './do_name.js';
+import {
+    PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
+} from './generated/monsters_data.js';
+import { hliquid, Hallucination } from './do_name.js';
 import { near_capacity } from './invent.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
@@ -452,12 +458,63 @@ export async function unmul(msg_override) {
     if (typeof f === 'function') await f();
 }
 
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function Unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C ref: hack.c maybe_wail — low-HP warning (≤50 turns between msgs).
+ * Soundeffect deferred (no RNG). Wizard/Elf/Valkyrie power-count arm
+ * uses u.uprops[].intrinsic & INTRINSIC.
+ */
+async function maybe_wail() {
+    const moves = game.moves | 0;
+    if (moves <= ((game.wailmsg | 0) + 50)) return;
+    game.wailmsg = moves;
+
+    const u = game.u || {};
+    const roleM = game.urole?.mnum | 0;
+    const raceM = game.urace?.mnum | 0;
+    if (roleM === PM_WIZARD || raceM === PM_ELF || roleM === PM_VALKYRIE) {
+        const who = (roleM === PM_WIZARD || roleM === PM_VALKYRIE)
+            ? (game.urole?.name?.m || 'Wizard')
+            : 'Elf';
+        if ((u.uhp | 0) === 1) {
+            await pline(`${who} is about to die.`);
+        } else {
+            const powers = [
+                TELEPORT, SEE_INVIS, POISON_RES, COLD_RES,
+                SHOCK_RES, FIRE_RES, SLEEP_RES, DISINT_RES,
+                TELEPORT_CONTROL, STEALTH, FAST, INVIS,
+            ];
+            let powercnt = 0;
+            for (const p of powers) {
+                if (((u.uprops?.[p]?.intrinsic | 0) & INTRINSIC) !== 0) {
+                    ++powercnt;
+                }
+            }
+            await pline(powercnt >= 4
+                ? `${who}, all your powers will be lost...`
+                : `${who}, your life force is running out.`);
+        }
+    } else {
+        // C: Soundeffect(se_wailing_of_the_banshee, 75) deferred
+        await You_hear((u.uhp | 0) === 1
+            ? 'the wailing of the Banshee...'
+            : 'the howling of the CwnAnnwn...');
+    }
+}
+
 /**
  * C ref: hack.c losehp() — subtract HP (or mh when Upolyd).
  * Fatal: set killer + gameover + `_losehp_needs_done` so callers must not
  * continue (C `done(DIED)` is noreturn). Callers in async paths await
- * `finish_losehp_done` from end.js; showdamage / maybe_wail / rehumanize
- * deferred.
+ * `finish_losehp_done` from end.js; showdamage / rehumanize deferred.
+ * Low-HP `maybe_wail` sets `_needs_maybe_wail` — callers must
+ * `await finish_maybe_wail()` (C blocks inside losehp on You_hear).
  */
 export function losehp(n, knam, k_format = KILLED_BY) {
     const u = game.u || (game.u = {});
@@ -483,6 +540,8 @@ export function losehp(n, knam, k_format = KILLED_BY) {
             if (!game.killer) game.killer = { name: '', format: 0 };
             game.killer.name = knam || '';
             game.killer.format = k_format;
+        } else if (n > 0 && (u.mh | 0) * 10 < (u.mhmax | 0) && Unchanging(u)) {
+            game._needs_maybe_wail = true;
         }
         return;
     }
@@ -501,8 +560,19 @@ export function losehp(n, knam, k_format = KILLED_BY) {
         if (!game.killer) game.killer = { name: '', format: 0 };
         game.killer.name = knam || '';
         game.killer.format = k_format;
+    } else if (n > 0 && (u.uhp | 0) * 10 < (u.uhpmax | 0)) {
+        game._needs_maybe_wail = true;
     }
-    // else if (n > 0 && u.uhp * 10 < u.uhpmax) maybe_wail() — deferred
+}
+
+/**
+ * C ref: hack.c losehp → maybe_wail (You_hear / pline may `--More--`).
+ * Call after losehp when `_needs_maybe_wail` may be set.
+ */
+export async function finish_maybe_wail() {
+    if (!game._needs_maybe_wail) return;
+    game._needs_maybe_wail = false;
+    await maybe_wail();
 }
 
 /** C: IS_SHOP(x) — rooms[x].rtype >= SHOPBASE */
@@ -648,16 +718,39 @@ export function is_lava(x, y) {
 }
 
 /**
- * C ref: pager.c waterbody_name — pool/moat/lava/wall; medusa/juiblex/
- * samurai pond / SURFACE_AT drawbridge deferred. Hallu via hliquid (D-0849).
+ * C ref: pager.c waterbody_name — pool/moat/lava/ice/wall; medusa
+ * shallow sea / juiblex swamp / samurai qstart pond (D-0928 #1163).
+ * Named omit: SURFACE_AT drawbridge under-typ (raw typ for now).
  */
 export function waterbody_name(x, y) {
     if (!isok(x, y)) return 'drink';
+    // C: SURFACE_AT — DRAWBRIDGE_UP under deferred → raw typ
     const typ = game.level?.at(x, y)?.typ;
+    const hallucinate = Hallucination() && !game.program_state?.gameover;
     if (typ === LAVAPOOL) return `molten ${hliquid('lava')}`;
+    if (typ === ICE) {
+        if (!hallucinate) return 'ice';
+        return `frozen ${hliquid('water')}`;
+    }
     if (typ === POOL) return `pool of ${hliquid('water')}`;
-    if (typ === MOAT) return 'moat';
-    if (IS_WATERWALL(typ)) return `wall of ${hliquid('water')}`;
+    if (typ === MOAT) {
+        if (hallucinate) return `deep ${hliquid('water')}`;
+        if (Is_medusa_level(game.u?.uz)) return 'shallow sea';
+        if (Is_juiblex_level(game.u?.uz)) return 'swamp';
+        // C: Role_if(PM_SAMURAI) && Is_qstart(&u.uz)
+        const qs = game.qstart_level;
+        const uz = game.u?.uz;
+        if (game.urole?.mnum === PM_SAMURAI
+            && qs && uz
+            && uz.dnum === qs.dnum && uz.dlevel === qs.dlevel) {
+            return 'pond';
+        }
+        return 'moat';
+    }
+    if (IS_WATERWALL(typ)) {
+        if (Is_waterlevel(game.u?.uz)) return 'limitless water';
+        return `wall of ${hliquid('water')}`;
+    }
     if (typ === LAVAWALL) return `wall of ${hliquid('lava')}`;
     return 'water';
 }
@@ -970,7 +1063,7 @@ export function impaired_movement() {
  * wake `!Stealth && !rn2(3)` (wake_msg pline deferred).
  * Named omissions: Mine Town ACH_TOWN; furniture_present throne detail;
  * BARRACKS monstinroom occupied vs abandoned; DELPHI oracle verbalize;
- * room_discovered mapseen; wake_msg canseemon text.
+ * wake_msg canseemon text.
  */
 export async function check_special_room(newlev) {
     const u = game.u;
@@ -1053,8 +1146,11 @@ export async function check_special_room(newlev) {
             break;
         }
 
-        // room_discovered deferred
-        void msg_given;
+        // C: if (msg_given) room_discovered(roomno);
+        if (msg_given) {
+            const { room_discovered } = await import('./dungeon.js');
+            room_discovered(roomno);
+        }
 
         if (rt !== 0) {
             if (rooms?.[roomno]) rooms[roomno].rtype = OROOM;

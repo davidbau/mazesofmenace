@@ -15,7 +15,7 @@
 // You_feel); RAY WAN_DIGGING/SPE_DIG → zap_dig (dig.c).
 // Named omissions: zap_updown/uswallow bhitm; bhitm poly body; zap_map;
 // spell ubuzz; mon_reflects; fireball/Hallucination hdmgtype rn2;
-// zap_over_floor beyond fire-pool steam + poison-gas 1x1 trail
+// zap_over_floor fire-pool steam + hissing-gas Norep + poison-gas 1x1 trail
 // (ice melt/fountain/WEB/cold/acid bars/POOL→PIT deferred); shopdamage;
 // map_invisible/unmap during buzz; backfire body; other NODIR; wrest
 // pline; check_capacity; check_unpaid; update_inventory;
@@ -35,14 +35,14 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin } from './getline.js';
 import {
-    flush_screen, flush_topl_more, pline, You_feel, newsym,
+    flush_screen, flush_topl_more, pline, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon,
 } from './display.js';
 import { cansee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown } from './invent.js';
-import { doname, xname, vtense } from './objnam.js';
+import { doname, xname, vtense, The } from './objnam.js';
 import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
 import { findit } from './detect.js';
 import {
@@ -77,7 +77,7 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, DISP_BEAM, DISP_CHANGE, DISP_END,
     OBJ_FLOOR, Has_contents, ZAPPED_WAND, NOTELL, STRAT_WAITMASK,
-    POOL, Is_waterlevel, AD_RBRE, UNCHANGING,
+    POOL, Is_waterlevel, AD_RBRE, UNCHANGING, PLNMSG_ENVELOPED_IN_GAS,
 } from './const.js';
 
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -225,12 +225,13 @@ function flash_str(fltyp) {
 
 /**
  * C ref: zap.c zap_over_floor — floor effects for buzz trail.
- * Envelope: ZT_FIRE is_pool → create_gas_cloud(rnd(5)) (+ POOL rangemod);
- * ZT_POISON_GAS ZAP_POS → create_gas_cloud(1,8). Named omit: WEB burn,
- * ice melt, fountain steam, POOL→ROOM+maketrap PIT, cold/acid bars,
- * shopdamage, ignoremon body.
+ * Envelope: ZT_FIRE is_pool → create_gas_cloud(rnd(5)) + Norep hissing
+ * gas / uneventful (+ POOL rangemod); ZT_POISON_GAS ZAP_POS →
+ * create_gas_cloud(1,8). Named omit: WEB burn, ice melt, fountain
+ * steam, POOL→ROOM+maketrap PIT (+ see_it evaporate msg), cold/acid
+ * bars, shopdamage, ignoremon body.
  */
-function zap_over_floor(x, y, type, _shopdamage, _ignoremon, _explodingWand) {
+async function zap_over_floor(x, y, type, _shopdamage, _ignoremon, _explodingWand) {
     if ((type | 0) === -1) return -1000; // PHYS_EXPL_TYPE
     const loc = game.level?.at?.(x, y);
     if (!loc) return 0;
@@ -241,12 +242,40 @@ function zap_over_floor(x, y, type, _shopdamage, _ignoremon, _explodingWand) {
     case ZT_FIRE:
         if (is_pool(x, y)) {
             const u = game.u || {};
-            if (!Is_waterlevel(u.uz)) {
+            const on_water_level = !!Is_waterlevel(u.uz);
+            let msggiven = false;
+            // C youprop.h Deaf
+            const deaf = !!(
+                (u.HDeaf | 0) || (u.EDeaf | 0)
+                || u.uroleplay?.deaf || u.Deaf
+            );
+            let msgtxt = !deaf
+                ? 'You hear hissing gas.'
+                : ((type | 0) >= 0
+                    ? 'That seemed remarkably uneventful.'
+                    : null);
+
+            if (!on_water_level) {
                 create_gas_cloud(x, y, rnd(5), 0);
+                if ((game.iflags?.last_msg | 0) === PLNMSG_ENVELOPED_IN_GAS) {
+                    msggiven = true;
+                }
             }
-            // C: POOL evaporates to ROOM+maketrap(PIT) — deferred; still
-            // apply rangemod so buzz length matches.
-            if ((loc.typ | 0) === POOL) rangemod -= 3;
+
+            if ((loc.typ | 0) !== POOL) {
+                // MOAT / DRAWBRIDGE_UP / WATER — C waterlevel/see_it msgs
+                const see_it = cansee(x, y);
+                if (on_water_level) {
+                    msgtxt = (see_it || !deaf) ? 'Some water boils.' : null;
+                } else if (see_it) {
+                    msgtxt = 'Some water evaporates.';
+                }
+            } else {
+                // C: POOL → ROOM + maketrap(PIT) + see_it evaporate — deferred;
+                // still apply rangemod so buzz length matches.
+                rangemod -= 3;
+            }
+            if (msgtxt && !msggiven) await Norep(msgtxt);
         }
         break;
     case ZT_POISON_GAS:
@@ -371,12 +400,6 @@ function is_hero_spell(type) {
     return (type | 0) >= ZT_SPELL_0 && (type | 0) < 20;
 }
 
-/** C ref: hacklib.c The — capitalize first letter. */
-function The(str) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
 /** C ref: zap.c exclam */
 function exclam(force) {
     if (force < 0) return '?';
@@ -384,7 +407,7 @@ function exclam(force) {
     return '!';
 }
 
-/** C ref: zap.c hit — ray hit message. */
+/** C ref: zap.c hit — ray hit message (objnam The adds article). */
 async function hit_zap(str, mtmp, force) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
     const by = game.bhitpos?.y ?? mtmp.my;
@@ -950,7 +973,7 @@ export async function dobuzz(
                 // fireballs skip; poison gas defers zap_over_floor until
                 // after hit/reflect so reflection can cancel the cloud.
                 if (!gas_hit) {
-                    range += zap_over_floor(
+                    range += await zap_over_floor(
                         sx, sy, type, shopdamage, true, 0,
                     );
                 }
@@ -998,7 +1021,7 @@ export async function dobuzz(
                             // slept_monst deferred
                             void mon_could_move;
                             if (damgtype !== ZT_SLEEP) {
-                                wakeup(mon, (type | 0) >= 0);
+                                await wakeup(mon, (type | 0) >= 0);
                             }
                         }
                         range -= 2;
@@ -1007,8 +1030,7 @@ export async function dobuzz(
                     nomul(0);
                     if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
                         range -= 2;
-                        // Keep "The <flash>" phrasing (matches prior wand PASS
-                        // screens; C The() capitalizes without adding "The ").
+                        // C: pline_The / The(flash) via article + capitalize
                         await pline(`The ${flash_str(fltyp)} hits you!`);
                         if (Reflecting()) {
                             if (!Blind()) {
@@ -1036,7 +1058,7 @@ export async function dobuzz(
                 }
 
                 if (gas_hit) {
-                    zap_over_floor(sx, sy, type, shopdamage, true, 0);
+                    await zap_over_floor(sx, sy, type, shopdamage, true, 0);
                 }
 
                 if (!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)) {

@@ -16,7 +16,9 @@ import {
     W_ARMOR, W_ACCESSORY, W_SADDLE, A_STR, NO_KILLER_PREFIX, KILLED_BY_AN,
 } from './const.js';
 import { dist2, distmin } from './hacklib.js';
-import { is_pool, nomul, losehp, maybe_half_phys } from './hack.js';
+import {
+    is_pool, nomul, losehp, finish_maybe_wail, maybe_half_phys,
+} from './hack.js';
 import { near_capacity, weight_cap, encumber_msg } from './invent.js';
 import { rn2, rnd } from './rng.js';
 import { t_at } from './trap.js';
@@ -138,22 +140,26 @@ export async function drag_down() {
     if (forward) {
         if (rn2(6)) {
             await pline('The iron ball drags you downstairs!');
+            // C: losehp → maybe_wail (You_hear --More--)
             losehp(
                 maybe_half_phys(rnd(6)),
                 'dragged downstairs by an iron ball',
                 NO_KILLER_PREFIX,
             );
+            await finish_maybe_wail();
             await litter();
         }
     } else {
         if (rn2(2)) {
             // Soundeffect(se_iron_ball_hits_you, 25) deferred
             await pline('The iron ball smacks into you!');
+            // C: losehp → maybe_wail (You_hear --More--)
             losehp(
                 maybe_half_phys(rnd(20)),
                 'iron ball collision',
                 KILLED_BY_AN,
             );
+            await finish_maybe_wail();
             exercise(A_STR, false);
             dragchance -= 2;
         }
@@ -164,6 +170,7 @@ export async function drag_down() {
                 'dragged downstairs by an iron ball',
                 NO_KILLER_PREFIX,
             );
+            await finish_maybe_wail();
             exercise(A_STR, false);
             await litter();
         }

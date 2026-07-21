@@ -304,7 +304,7 @@ async function tmiss(obj, mon, maybe_wakeup) {
     } else {
         await miss_missile(missile, mon);
     }
-    if (maybe_wakeup && !rn2(3)) wakeup(mon, true);
+    if (maybe_wakeup && !rn2(3)) await wakeup(mon, true);
 }
 
 /**
@@ -346,7 +346,7 @@ async function thitmonst(mon, obj) {
 
     if (guaranteed_hit) {
         // C swallow vanish arm deferred — still wake like C before body
-        wakeup(mon, true);
+        await wakeup(mon, true);
         return false;
     }
 

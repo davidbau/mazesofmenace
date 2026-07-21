@@ -33,14 +33,20 @@ import {
     fumaroles,
     movebubbles,
 } from './mklev.js';
-import { In_tutorial, at_dgn_entrance, print_level_annotation } from './dungeon.js';
+import {
+    In_tutorial, at_dgn_entrance, print_level_annotation,
+    recalc_mapseen, recbranch_mapseen,
+} from './dungeon.js';
 import { Is_waterlevel, Is_airlevel } from './const.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst } from './mon.js';
 import { enexto } from './teleport.js';
-import { monster_nearby, losehp, maybe_half_phys, check_special_room } from './hack.js';
+import {
+    monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
+    check_special_room,
+} from './hack.js';
 import { place_object, stackobj } from './mkobj.js';
 import { doname } from './objnam.js';
 import { compactify_invlets, near_capacity, learn_unseen_invent } from './invent.js';
@@ -72,6 +78,29 @@ function Hallucination() {
     const u = game.u || {};
     if (u.Hallucination) return true;
     return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
+}
+/** C ref: youprop.h Levitation — (H||E) && !B. */
+function Levitation() {
+    const u = game.u || {};
+    if (u.Levitation) return true;
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+/** C ref: youprop.h Flying — (H||E) && !B; steed-flyer arm deferred. */
+function Flying() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    return !!(((u.HFlying | 0) || (u.EFlying | 0))
+        && !(u.BFlying | 0));
+}
+/**
+ * C ref: hack.c u_locomotion — Lev/Fly verbs; poly locomotion() deferred.
+ * @param {string} defWord
+ */
+function u_locomotion(defWord) {
+    if (Levitation()) return 'float';
+    if (Flying()) return 'fly';
+    return defWord;
 }
 
 /**
@@ -335,9 +364,11 @@ async function selftouch_stair_fall(_arg) {
  * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
  * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
  * ACH_HELL / MICRO display_nhwindow after Valley odor;
- * Flying/Punished climb variants, full `selftouch` petrify,
- * u_collide_m full limbo. Ported: Punished `drag_down`/`ballrelease`
- * on stair fall (D-0918); In_quest `onquest`;
+ * poly `locomotion()` climb verb / steed-flyer Flying; full `selftouch`
+ * petrify; u_collide_m full limbo. Ported: Punished climb
+ * `great_effort` + Flying ladder "along" (D-0928 #1159);
+ * Punished `drag_down`/`ballrelease` on stair fall (D-0918);
+ * In_quest `onquest`;
  * In_endgame `newdungeon`+amulet `resurrect` new-Wizard makemon + appear
  * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
  * Gehennom Valley arrival plines + `gehennom_entered` (D-0801);
@@ -383,6 +414,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: check_special_room(TRUE) on leave — move_update clears urooms so
     // arrival re-enters temple/shop messages (intemple).
     await check_special_room(true);
+    // C: recalc_mapseen() before leaving — persist feat/msrooms on mapseen
+    recalc_mapseen();
     // C: do.c goto_level — Punished unplacebc before savelev so ball&chain
     // are not left on the departing floor (D-0915).
     // C: Punished ≡ (uball != 0)
@@ -431,6 +464,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             lx: d?.lx | 0, ly: d?.ly | 0, hx: d?.hx | 0, hy: d?.hy | 0,
             nlx: d?.nlx | 0, nly: d?.nly | 0, nhx: d?.nhx | 0, nhy: d?.nhy | 0,
         });
+        // C save.c savelev — Sfo_schar lastseentyp[COLNO][ROWNO] with the
+        // level (after savelevl). Without this, getlev left the prior
+        // level's lastseentyp live and leave-time recalc_mapseen polluted
+        // mapseen.feat (extra overview fountains).
+        const snapLastseen = (lst) => {
+            if (!lst) return null;
+            return lst.map((row) => (row ? Array.from(row) : null));
+        };
         game.level_info[old_ledger] = {
             flags: (prev.flags | 0) | VISITED | LFILE_EXISTS,
             omoves: game.moves | 0,
@@ -445,6 +486,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             regions: game.regions || [],
             updest: snapDest(game.updest),
             dndest: snapDest(game.dndest),
+            lastseentyp: snapLastseen(game.lastseentyp),
         };
     }
 
@@ -453,6 +495,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         assign_graphics(Is_rogue_level(newlevel) ? ROGUESET : PRIMARYSET);
     }
     check_gold_symbol();
+
+    // C: record seen branch for stairs/fall/portal (not level-teleport)
+    if ((at_stairs || falling || portal)
+        && ((u.uz.dnum | 0) !== (newlevel.dnum | 0))) {
+        recbranch_mapseen(u.uz, newlevel);
+    }
 
     assign_level(u.uz0 || (u.uz0 = { dnum: 0, dlevel: 0 }), u.uz);
     assign_level(u.uz, newlevel);
@@ -516,6 +564,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.regions = info.regions || [];
         if (info.updest) game.updest = { ...info.updest };
         if (info.dndest) game.dndest = { ...info.dndest };
+        // C restore.c getlev — Sfi_schar lastseentyp after rest_levl
+        if (info.lastseentyp) {
+            game.lastseentyp = info.lastseentyp.map(
+                (row) => (row ? Array.from(row) : null),
+            );
+        } else {
+            game.lastseentyp = null;
+        }
         rebuildObjectsAt(game.fobj);
         relight_monsters();
         rest_track(info.track);
@@ -578,11 +634,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 if (dnst) u_on_newpos(dnst.sx, dnst.sy);
                 else u_on_upstairs();
             }
-            // C: ordinary climb (Flying/Punished "great effort" deferred)
-            if (game.flags?.verbose !== false) {
-                await pline(atLadder
-                    ? 'You climb up the ladder.'
-                    : 'You climb up the stairs.');
+            // C: do.c goto_level — great_effort = Punished && !Levitation;
+            // pline when flags.verbose || great_effort; u_locomotion +
+            // Flying ladder " along".
+            {
+                const great_effort = !!(u.uball) && !Levitation();
+                if (game.flags?.verbose !== false || great_effort) {
+                    const along = (Flying() && atLadder) ? ' along' : '';
+                    const what = atLadder ? 'ladder' : 'stairs';
+                    await pline(
+                        `${great_effort ? 'With great effort, you' : 'You'}`
+                        + ` ${u_locomotion('climb')} up${along} the ${what}.`,
+                    );
+                }
             }
         } else {
             // C ordinary descent: find_from(uz0) else sstairs/upstairs
@@ -624,6 +688,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                     await dismount_steed(DISMOUNT_FELL);
                 } else {
                     // C: losehp(Maybe_Half_Phys(rnd(3)), …, KILLED_BY)
+                    // → maybe_wail (You_hear --More--)
                     losehp(
                         maybe_half_phys(rnd(3)),
                         atLadder
@@ -631,6 +696,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                             : 'tumbling down a flight of stairs',
                         KILLED_BY,
                     );
+                    await finish_maybe_wail();
                 }
                 // C: selftouch("Falling, you") — cockatrice corpse petrify
                 // deferred (no-op unless uwep corpse + touch_petrifies wired).
