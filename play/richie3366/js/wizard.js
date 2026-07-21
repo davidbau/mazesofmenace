@@ -1,22 +1,143 @@
 // wizard.js — Wizard of Yendor harassment from wizard.c.
-// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; tactics.
+// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; tactics;
+//         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
 import { game } from './gstate.js';
-import { makemon, set_malign } from './makemon.js';
+import { makemon, set_malign, pick_nasty } from './makemon.js';
 import { mons, is_covetous } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
-    MM_NOWAIT, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG,
-    STRAT_NONE, STRAT_HEAL, RLOC_MSG,
+    MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, STRAT_WAITMASK, STRAT_WAITFORU,
+    STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, RLOC_MSG, In_endgame,
 } from './const.js';
 import { pline, verbalize, Norep } from './display.js';
 import { Monnam } from './do_name.js';
-import { rn2 } from './rng.js';
-import { noteleport_level } from './teleport.js';
+import { rn2, rnd } from './rng.js';
+import { noteleport_level, enexto } from './teleport.js';
 import { mnexto } from './mon.js';
 import { inhishop } from './shk.js';
+import { msummon, monster_census, Inhell } from './minion.js';
 
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+const PM_ARCH_LICH = monsterNames.indexOf('PM_ARCH_LICH');
+const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
+const AT_MAGC = 255; // monattk.h
+const MAXNASTIES = 10;
+
+function sgn(n) {
+    return (n > 0) ? 1 : (n < 0) ? -1 : 0;
+}
+
+/** C ref: mondata.h attacktype — any mattk slot with aatyp. */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: wizard.c nasty — summon nasties aligned with caster (or neutral
+ * when summoner is null / late-game harassment).
+ * Envelope: Inhell `!rn2(10)` → msummon(null); else rnd(ulevel/3) outer ×
+ * pick_nasty / enexto / makemon loop with difcap + demon↔angel reject.
+ * Named omissions: full unmakemon (born/extinct/discard_minvent) — reject
+ * path sets mhp=0 so census skips; rogue/juvenile polish is in pick_nasty.
+ *
+ * @param {object|null} summoner
+ * @returns {Promise<number>} census delta (created count)
+ */
+export async function nasty(summoner) {
+    const u = game.u || {};
+    const mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
+    const census = monster_census(false);
+    let count = 0;
+
+    if (!rn2(10) && Inhell()) {
+        // C: msummon((struct monst *) 0) — WoY-like demon help
+        count = await msummon(null);
+    } else {
+        count = 0;
+        const s_cls = summoner ? (summoner.data?.mlet || 0) : 0;
+        let difcap = summoner ? (summoner.data?.difficulty | 0) : 0;
+        const castalign = summoner ? sgn(summoner.data?.maligntyp | 0) : 0;
+        let tmp = ((u.ulevel | 0) > 3) ? Math.trunc((u.ulevel | 0) / 3) : 1;
+        const bypos = { x: u.ux | 0, y: u.uy | 0 };
+
+        for (let i = rnd(tmp); i > 0 && count < MAXNASTIES; --i) {
+            jloop: for (let j = 0; j < 20; j++) {
+                let trylimit = 10 + 1;
+                let makeindex;
+                let m_cls;
+                do {
+                    if (!--trylimit) continue jloop; // C: goto nextj
+                    makeindex = pick_nasty(difcap);
+                    m_cls = mons(makeindex)?.mlet;
+                } while ((difcap > 0
+                        && (mons(makeindex)?.difficulty | 0) >= difcap
+                        && attacktype(mons(makeindex), AT_MAGC))
+                    || (s_cls === 'S_DEMON' && m_cls === 'S_ANGEL')
+                    || (s_cls === 'S_ANGEL' && m_cls === 'S_DEMON'));
+
+                if (summoner && !enexto(
+                    bypos,
+                    summoner.mux | 0,
+                    summoner.muy | 0,
+                    mons(makeindex),
+                )) {
+                    continue;
+                }
+
+                let mtmp = makemon(mons(makeindex), bypos.x, bypos.y, mmflags);
+                if (mtmp) {
+                    mtmp.msleeping = 0;
+                    mtmp.mpeaceful = 0;
+                    mtmp.mtame = 0;
+                    set_malign(mtmp);
+                } else {
+                    // Random substitute for geno'd selection
+                    mtmp = makemon(null, bypos.x, bypos.y, mmflags);
+                    if (mtmp) {
+                        m_cls = mtmp.data?.mlet;
+                        if ((difcap > 0
+                                && (mtmp.data?.difficulty | 0) >= difcap
+                                && rn2(In_endgame(u.uz) ? 3 : 7)
+                                && attacktype(mtmp.data, AT_MAGC))
+                            || (s_cls === 'S_DEMON' && m_cls === 'S_ANGEL')
+                            || (s_cls === 'S_ANGEL' && m_cls === 'S_DEMON')) {
+                            // Named omission: unmakemon — mark dead for census
+                            mtmp.mhp = 0;
+                            mtmp = null;
+                        }
+                    }
+                }
+
+                if (mtmp) {
+                    if (mtmp.data === mons(PM_ARCH_LICH)
+                        || mtmp.data === mons(PM_ARCHON)) {
+                        tmp = Math.min(
+                            mons(PM_ARCHON)?.difficulty | 0,
+                            mons(PM_ARCH_LICH)?.difficulty | 0,
+                        );
+                        if (!difcap || difcap > tmp) difcap = tmp;
+                    }
+                    mtmp.mspec_used = rnd(4);
+
+                    if (++count >= MAXNASTIES
+                        || (mtmp.data?.maligntyp | 0) === 0
+                        || sgn(mtmp.data?.maligntyp | 0) === castalign) {
+                        break;
+                    }
+                }
+            } // for j
+        } // for i
+    }
+
+    if (count) count = monster_census(false) - census;
+    return count;
+}
 
 /**
  * C ref: wizard.c aggravate — wake/unfreeze monsters on this W-tower side.
@@ -74,7 +195,7 @@ function strategy(mtmp) {
  * FALLTHROUGH-to-harass deferred (falling through burned extra rn2 when C
  * early-returned from HEAL).
  */
-export function tactics(mtmp) {
+export async function tactics(mtmp) {
     const strat = strategy(mtmp);
     mtmp.mstrategy = ((mtmp.mstrategy | 0) & (STRAT_WAITMASK | STRAT_APPEARMSG))
         | strat;
@@ -86,7 +207,7 @@ export function tactics(mtmp) {
         return 0;
     case STRAT_NONE:
         if (!noteleport_level(mtmp) && !rn2(!mtmp.mflee ? 5 : 33)) {
-            mnexto(mtmp, RLOC_MSG);
+            await mnexto(mtmp, RLOC_MSG);
         }
         return 0;
     default:

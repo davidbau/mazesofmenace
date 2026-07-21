@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, mark_topline_prompt } from './display.js';
+import { flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop } from './display.js';
 import { COLNO } from './const.js';
 
 /**
@@ -651,6 +651,9 @@ export async function doextcmd() {
  */
 export async function yn_function(query, resp = 'yn', def = 'n') {
     await flush_topl_more();
+    // C tty_yn_function: after optional more(), clear WIN_STOP|WIN_NOSTOP
+    // before painting the prompt (topl.c).
+    clear_win_stop();
     // C: char def — '\0' is falsy (no " (c)" suffix). JS '\0' is truthy.
     const hasDef = !!(def && def !== '\0');
     let prompt;

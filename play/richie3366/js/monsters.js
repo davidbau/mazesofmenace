@@ -164,6 +164,7 @@ export const M3_WANTSARTI = 0x0010;
 export const M3_COVETOUS = 0x001f; /* M3_WANTSALL — wants something */
 export const M3_WAITFORU = 0x0040;
 export const M3_CLOSE = 0x0080;
+export const M3_WAITMASK = 0x00c0; /* M3_WAITFORU | M3_CLOSE */
 export const M3_INFRAVISION = 0x0100;
 export const M3_INFRAVISIBLE = 0x0200;
 

@@ -1389,7 +1389,7 @@ export async function m_move(mtmp, after) {
         if ((mtmp.mhp | 0) < 7 || mtmp.mpeaceful || rn2(2)) {
             await rloc(mtmp, RLOC_MSG);
         } else {
-            mnexto(mtmp, RLOC_MSG);
+            await mnexto(mtmp, RLOC_MSG);
         }
         return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
     }
@@ -1678,7 +1678,7 @@ export async function dochug(mtmp) {
     // C: covetous tactics before distfleeck (may mnexto / spend turn via
     // mstate). Named: target_on pursuit / STRAT_HEAL stairs body in wizard.js.
     if (is_covetous(mtmp.data)) {
-        tactics(mtmp);
+        await tactics(mtmp);
         // C: if (mtmp->mstate) return 0 — MON_FLOOR is 0
         if (mtmp.mstate) return 0;
         set_apparxy(mtmp);

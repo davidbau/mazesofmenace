@@ -67,7 +67,7 @@ import {
     polyok,
     is_mplayer,
     hides_under,
-    M3_CLOSE, M3_WAITFORU,
+    M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
 } from './monsters.js';
 import { big_to_little } from './mondata.js';
 import {
@@ -81,7 +81,7 @@ import {
     ROOMOFFSET, LS_MONSTER,
     AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
-    STRAT_CLOSE, STRAT_WAITFORU, is_pit,
+    STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
     MFAST,
 } from './const.js';
@@ -745,7 +745,7 @@ const NASTIES = [
  * Named omissions: rogue monsym uppercase retry; juvenile name-string gate
  * on big_to_little alt (always accept non-geno alt).
  */
-function pick_nasty(difcap) {
+export function pick_nasty(difcap) {
     let res = NASTIES[rn2(NASTIES.length)];
     // Rogue uppercase re-ROLL deferred (monsym table not wired here)
     let alt = res;
@@ -942,7 +942,7 @@ export function newcham(mtmp, mdat, _ncflags = 0) {
         if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0)
             return false;
     }
-    if (target === olddata) return false;
+    if ((target?.mndx | 0) === (olddata?.mndx | 0)) return false;
 
     mgender_from_permonst(mtmp, target);
     const hpn = mtmp.mhp | 0;
@@ -2073,10 +2073,14 @@ export function makemon(mdat, x, y, mmflags = 0) {
     mtmp.mpeaceful = peace_minded(ptr) ? 1 : 0;
 
     // C: ptr->mflags3 && !(mmflags & MM_NOWAIT) → STRAT_WAITFORU / STRAT_CLOSE
+    // / STRAT_APPEARMSG (makemon.c; D-0928 #1128 — appear pline forces
+    // --More-- before hitmu so mold notake keys stay aligned).
     if ((ptr.mflags3 | 0) && !(mmflags & MM_NOWAIT)) {
         if (ptr.mflags3 & M3_WAITFORU) mtmp.mstrategy |= STRAT_WAITFORU;
         if (ptr.mflags3 & M3_CLOSE) mtmp.mstrategy |= STRAT_CLOSE;
-        // STRAT_APPEARMSG for WAITMASK|COVETOUS deferred
+        if (ptr.mflags3 & (M3_WAITMASK | M3_COVETOUS)) {
+            mtmp.mstrategy |= STRAT_APPEARMSG;
+        }
     }
 
     // C: link onto fmon before group/invent

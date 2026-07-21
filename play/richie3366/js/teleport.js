@@ -565,7 +565,10 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
     const near = du <= 2
         ? ' next to you'
         : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-    const Blind = !!(game.u?.Blind || game.u?.ublind);
+    // C youprop.h Blind — poly brown mold is blind (D-0928 #1128).
+    const u = game.u || {};
+    const Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind || u.ublind)
+        && !(u.BBlinded | 0));
     const who = appearmsg ? Amonnam(mtmp) : Monnam(mtmp);
     const sud = appearmsg ? 'suddenly ' : '';
     const verb = Blind ? 'arrives' : 'appears';
@@ -574,11 +577,19 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
 
 /**
  * Place mon at (x,y) with rloc_to_core message order.
+ * C ref: teleport.c rloc_to_flag.
  */
-async function rloc_to_with_msg(mtmp, x, y, rlocflags) {
+export async function rloc_to_flag(mtmp, x, y, rlocflags) {
     const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
     rloc_to(mtmp, x, y);
     await rloc_post_move_msg(mtmp, x, y, state);
+}
+
+/**
+ * Place mon at (x,y) with rloc_to_core message order.
+ */
+async function rloc_to_with_msg(mtmp, x, y, rlocflags) {
+    await rloc_to_flag(mtmp, x, y, rlocflags);
 }
 
 /**

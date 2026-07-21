@@ -28,7 +28,7 @@ import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs,
 } from './objects.js';
-import { PM_ARCHEOLOGIST, nolimbs } from './monsters.js';
+import { PM_ARCHEOLOGIST, nolimbs, nohands, verysmall } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable,
@@ -1426,7 +1426,12 @@ async function accessory_or_armor_on(obj) {
  * @returns {number} 0 = no turn / cancel, 1 = took time
  */
 export async function dowear() {
-    // verysmall/nohands deferred — humanoid always ok
+    // C: verysmall || nohands → "Don't even bother." (ECMD_OK, no getobj)
+    const ptr = game.youmonst?.data;
+    if (verysmall(ptr) || nohands(ptr)) {
+        await pline("Don't even bother.");
+        return 0;
+    }
     const u = game.u || {};
     if (
         u.uarm && u.uarmu && u.uarmc && u.uarmh && u.uarms && u.uarmg && u.uarmf

@@ -9,7 +9,8 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
-    DISPLACED, IS_WATERWALL, RLOC_MSG, TIMEOUT, ARTICLE_A,
+    DISPLACED, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, ARTICLE_A,
+    LEFT_SIDE, RIGHT_SIDE, LEG,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -33,13 +34,13 @@ import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
-    hides_under,
+    hides_under, is_flyer,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by } from './end.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { A_STR, A_DEX, A_CON, acurr, poisoned } from './attrib.js';
+import { A_STR, A_DEX, A_CON, acurr, exercise, poisoned } from './attrib.js';
 import { xkilled } from './uhitm.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
@@ -51,12 +52,17 @@ import {
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize } from './polyself.js';
+import { set_wounded_legs } from './trap.js';
 
 /** C ref: monattk.h — passiveum damage types beyond mhitm export set. */
 const AD_STUN = 12;
 const AD_PLYS = 14;
+const AD_LEGS = 17; /* damages legs (xan) — monattk.h */
 const AD_STON = 18;
 const AD_ENCH = 41;
+
+const LOW_BOOTS = objectNames.indexOf('LOW_BOOTS');
+const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 
@@ -372,6 +378,29 @@ function Blind() {
     if (u.uroleplay?.blind) return true;
     if (u.ublind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C ref: youprop.h Levitation — (H||E) && !B. */
+function Levitation() {
+    const u = game.u || {};
+    if (u.Levitation) return true;
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/** C ref: youprop.h Flying — (H||E||steed flyer) && !B; Lev overrides elsewhere. */
+function Flying() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    const steedFly = !!(u.usteed && is_flyer(u.usteed.data));
+    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFly)
+        && !(u.BFlying | 0));
+}
+
+/** C ref: mondata.c body_part — LEG → "leg"; full poly deferred. */
+function body_part(part) {
+    if (part === LEG) return 'leg';
+    return 'body';
 }
 
 /**
@@ -700,7 +729,8 @@ async function expels(mtmp, mdat, message) {
         }
     }
     await unstuck(mtmp);
-    mnexto(mtmp, 0);
+    // C: mnexto(mtmp, RLOC_NOMSG) — expel must not STRAT_APPEARMSG
+    await mnexto(mtmp, RLOC_NOMSG);
     newsym(game.u.ux, game.u.uy);
 }
 
@@ -1026,9 +1056,54 @@ async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_legs — mhitu (mdef == youmonst) arm only.
+ * Side rn2(2) always; steed/Lev/Fly vs non-flyer reach fail; mcan nuzzle;
+ * boots may scratch (damage 0 return) or prick; else set_wounded_legs +
+ * exercise STR/DEX. Named omissions: uhitm/mhitm arms; poly body_part.
+ */
+async function mhitm_ad_legs_u(mtmp, _mattk, mhm) {
+    const u = game.u || {};
+    // C: long side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE; — always first
+    const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
+    const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
+    const Monst_name = Monnam(mtmp);
+    const leg = body_part(LEG);
+
+    if ((u.usteed || Levitation() || Flying()) && !is_flyer(mtmp.data)) {
+        await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
+        mhm.damage = 0;
+    } else if (mtmp.mcan) {
+        await pline(`${Monnam(mtmp)} nuzzles against your ${sidestr} ${leg}!`);
+        mhm.damage = 0;
+    } else {
+        if (u.uarmf) {
+            if (rn2(2) && ((u.uarmf.otyp | 0) === LOW_BOOTS
+                    || (u.uarmf.otyp | 0) === IRON_SHOES)) {
+                await pline(
+                    `${Monst_name} pricks the exposed part of your ${sidestr} ${leg}!`,
+                );
+            } else if (!rn2(5)) {
+                await pline(`${Monst_name} pricks through your ${sidestr} boot!`);
+            } else {
+                await pline(`${Monst_name} scratches your ${sidestr} boot!`);
+                mhm.damage = 0;
+                return;
+            }
+        } else {
+            await pline(`${Monst_name} pricks your ${sidestr} ${leg}!`);
+        }
+
+        // C: set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
+        await set_wounded_legs(side, rnd(60 - acurr(A_DEX)));
+        exercise(A_STR, false);
+        exercise(A_DEX, false);
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND + STON ported;
- * other adtyps zero damage.
+ * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND + STON + LEGS
+ * ported; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -1055,6 +1130,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_STON:
         await mhitm_ad_ston_u(mtmp, mattk, mhm);
+        break;
+    case AD_LEGS:
+        await mhitm_ad_legs_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

@@ -10,6 +10,14 @@ import {
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
+import { pline, verbalize } from './display.js';
+import { nasty } from './wizard.js';
+import { M1_SEE_INVIS } from './monsters.js';
+
+/** C ref: mondata.h perceives — M1_SEE_INVIS. */
+function perceives(ptr) {
+    return ((ptr?.mflags1 | 0) & M1_SEE_INVIS) !== 0;
+}
 
 // C ref: mcastu.h MONSPELL — unified spell ids
 export const MCAST_PSI_BOLT = 0;
@@ -177,10 +185,39 @@ function mcast_open_wounds(dmg) {
 }
 
 /**
+ * C ref: mcastu.c mcast_summon_mons — nasty(mtmp) + appear plines.
+ * Named omissions: SetVoice; Blind/Deaf polish on appear wording.
+ */
+async function mcast_summon_mons(mtmp) {
+    const count = await nasty(mtmp);
+    if (!count) {
+        // nothing created
+    } else if (mtmp.iswiz) {
+        const plur = count === 1 ? '' : 's';
+        await verbalize(`Destroy the thief, my pet${plur}!`);
+    } else {
+        const one = count === 1;
+        const mappear = one ? 'A monster appears' : 'Monsters appear';
+        const u = game.u || {};
+        const Invis = !!(u.Invis || u.HInvis || u.EInvis);
+        const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+        if (Invis && !perceives(mtmp.data)
+            && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
+            await pline(`${mappear} ${one ? 'at' : 'around'} a spot near you!`);
+        } else if (Displaced
+            && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
+            await pline(`${mappear} ${one ? 'by' : 'around'} your displaced image!`);
+        } else {
+            await pline(`${mappear} from nowhere!`);
+        }
+    }
+}
+
+/**
  * C ref: mcastu.c castmu — spell selection + undirected early-out for
  * dochug non-attack cast. Burns mspec_used + fumble rn2; applies
- * HASTE_SELF / CURE_SELF / PSI_BOLT / OPEN_WOUNDS (D-0928). Other
- * mcast_spell bodies deferred.
+ * HASTE_SELF / CURE_SELF / PSI_BOLT / OPEN_WOUNDS / SUMMON_MONS (D-0928).
+ * Other mcast_spell bodies deferred.
  *
  * @param {object} mtmp
  * @param {{ adtyp: number }} mattk
@@ -237,7 +274,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         else dmg = d(Math.trunc(ml / 2) + 1, 6);
     }
 
-    // C ref: mcastu.c mcast_spell — undirected HASTE/CURE + directed
+    // C ref: mcastu.c mcast_spell — undirected HASTE/CURE/SUMMON + directed
     // PSI_BOLT (mdamageu). Other spell bodies still deferred.
     if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
         switch (spellnum) {
@@ -254,6 +291,11 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
                     (mtmp.mhp | 0) + d(3, 6),
                 );
             }
+            dmg = 0;
+            break;
+        case MCAST_SUMMON_MONS:
+            // C: mcast_summon_mons → nasty(mtmp)
+            await mcast_summon_mons(mtmp);
             dmg = 0;
             break;
         case MCAST_PSI_BOLT:

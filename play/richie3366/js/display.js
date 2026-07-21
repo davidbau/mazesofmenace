@@ -3120,7 +3120,9 @@ export async function pline(msg) {
 
     // Capture skip before more(); C still paints the new line with the
     // pre-more skip flag even if ESC sets WIN_STOP during more().
-    const skip = _win_stop;
+    // C update_topl: local `skip`; "You die" clears WIN_STOP then
+    // sets skip=FALSE so redotoplin still runs (D-0928 #1132).
+    let skip = _win_stop;
     const notdied = !String(msg).startsWith('You die');
     const line = String(msg);
 
@@ -3137,7 +3139,6 @@ export async function pline(msg) {
     if (!skip && _toplin === TOPLINE_NEED_MORE) {
         await more();
     }
-    if (!notdied) _win_stop = false;
 
     // C ref: topl.c update_topl — replace spaces with `\n` while n0 >= CO
     let formatted = line;
@@ -3163,6 +3164,11 @@ export async function pline(msg) {
     _toplines = formatted;
     // C: strncpy(gp.prevmsg, line, BUFSZ) after putmesg
     _prevmsg = line;
+    // C: if (!notdied) cw->flags &= ~WIN_STOP, skip = FALSE;
+    if (!notdied) {
+        _win_stop = false;
+        skip = false;
+    }
     if (!skip) {
         game._pending_message = formatted;
         _toplin = TOPLINE_NEED_MORE;

@@ -3,19 +3,17 @@
 //
 // Contest contract: the judge orchestrates sessions (load JSON,
 // normalize v4/v5, loop segments, aggregate scores). It calls
-// runSegment(segment, prevGame) for each game segment and reads back
+// runSegment(input) for each game segment and reads back
 // game.getScreens() / getRngLog() / getCursors() to compare with
-// C-recorded session data.
+// C-recorded session data. Cross-segment state travels through input.storage.
 //
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
-import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
 import { initoptions_finish } from './fruit.js';
-import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { setStorageForTesting } from './storage.js';
 import { objects_globals_init } from './objects.js';
@@ -62,7 +60,6 @@ export class NethackGame {
         this._animFramesByStep = [];
         this._pendingAnimFrames = [];
         this._lastRngIdx = 0;
-        this._nhgetchCount = 0;
     }
 
     // Universal animation-frame hook.  Call once per intermediate
@@ -186,8 +183,6 @@ export class NethackGame {
     _installCaptureHook() {
         const nhGame = this;
         game._preNhgetchHook = async () => {
-            const keyIdx = nhGame._nhgetchCount++;
-
             // Capture RNG slice since last capture
             const fullLog = getRngLog() || [];
             const slice = fullLog.slice(nhGame._lastRngIdx);
@@ -235,18 +230,19 @@ export class NethackGame {
 // ── Per-segment runner — the contest contract ──
 //
 // The judge calls this once per segment. Input is a clean replay
-// descriptor with up to five fields (NO recorded answers):
+// descriptor with up to six fields (NO recorded answers):
 //
-//   { seed: number,        // PRNG seed
-//     datetime: string,    // fixed datetime "YYYYMMDDHHMMSS"
-//     nethackrc: string,   // game-options rc text
-//     moves: string,       // raw key sequence to replay from launch
-//     storage: object }    // Web-Storage-shaped (getItem/setItem/...)
-//                          //   handle for cross-segment persistence —
-//                          //   shared across all segments of a
-//                          //   session. The browser passes a
-//                          //   localStorage-backed view so save files
-//                          //   survive page reload too.
+//   { seed: number,           // PRNG seed
+//     datetime: string,       // fixed datetime "YYYYMMDDHHMMSS"
+//     nethackrc: string,      // game-options rc text
+//     moves: string,          // raw key sequence to replay from launch
+//     recorderIsDst: boolean, // recorder tm_isdst bit; defaults to true
+//     storage: object }       // Web-Storage-shaped (getItem/setItem/...)
+//                             //   handle for cross-segment persistence —
+//                             //   shared across all segments of a
+//                             //   session. The browser passes a
+//                             //   localStorage-backed view so save files
+//                             //   survive page reload too.
 //
 // Each call returns a self-contained game whose getScreens() /
 // getRngLog() / getCursors() / getAnimationFramesByStep() cover ONLY

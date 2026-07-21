@@ -14,7 +14,7 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL,
-    MAGIC_PORTAL, TIMEOUT,
+    MAGIC_PORTAL, TIMEOUT, RLOC_NOMSG,
 } from './const.js';
 import { seetrap } from './trap.js';
 import { COIN_CLASS } from './objects.js';
@@ -879,10 +879,11 @@ async function u_collide_m(mtmp) {
         u.ux = cc.x;
         u.uy = cc.y;
     } else {
-        mnexto(mtmp, 0);
+        // C: mnexto(mtmp, RLOC_NOMSG) on level-entry collide
+        await mnexto(mtmp, RLOC_NOMSG);
     }
     mtmp = m_at(u.ux, u.uy);
-    if (mtmp) mnexto(mtmp, 0);
+    if (mtmp) await mnexto(mtmp, RLOC_NOMSG);
 }
 
 /**

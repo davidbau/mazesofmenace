@@ -2174,11 +2174,10 @@ export const GP_AVOID_MONPOS = 0x01000000;
 
 // Monster relocation flags (include/hack.h; src/teleport.c rloc/rloc_to)
 // Runtime fields: rloc/rloc_to rlocflags args
-export const RLOC_NONE = 0x0000;
-export const RLOC_NOMSG = 0x0001;
-export const RLOC_MSG = 0x0002;
-export const RLOC_TELE = 0x0004;
-export const RLOC_ERR = 0x0100;
+export const RLOC_NONE = 0x00;
+export const RLOC_ERR = 0x01; /* allow impossible() if no rloc */
+export const RLOC_MSG = 0x02; /* show vanish/appear msg */
+export const RLOC_NOMSG = 0x04; /* prevent appear msg, even for STRAT_APPEARMSG */
 
 // Hero teleport placement flags (include/hack.h; src/teleport.c teleds)
 // Runtime fields: teleds/safe_teleds flags args

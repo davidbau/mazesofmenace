@@ -34,7 +34,7 @@ import {
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict, noteleport_level } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon } from './display.js';
 import { online2 } from './hacklib.js';
@@ -425,7 +425,9 @@ function decide_to_shapeshift(mon) {
                 mndx = pickvampshape(mon);
                 if (ismnum(mndx)) {
                     ptr = mons(mndx);
-                    dochng = ptr !== mon.data;
+                    // C: dochng = (ptr != mon->data). mons() returns a fresh
+                    // object each call, so compare mndx (same mons[] slot).
+                    dochng = (ptr?.mndx | 0) !== (mon.data?.mndx | 0);
                 }
             }
             if (dochng && amorphous(mon.data)
@@ -657,10 +659,11 @@ export function m_at(x, y) {
 }
 
 /**
- * C ref: mon.c mnexto — place next to hero via enexto + rloc_to.
+ * C ref: mon.c mnexto — place next to hero via enexto + rloc_to_flag.
  * Omits mon_telecontrol / overcrowding limbo.
+ * RLOC_MSG / STRAT_APPEARMSG appear plines need the flag path (D-0928 #1128).
  */
-export function mnexto(mtmp, _rlocflags = 0) {
+export async function mnexto(mtmp, rlocflags = 0) {
     if (!mtmp) return;
     const u = game.u;
     if (mtmp === u?.usteed) {
@@ -670,7 +673,7 @@ export function mnexto(mtmp, _rlocflags = 0) {
     }
     const mm = { x: 0, y: 0 };
     if (!enexto(mm, u.ux, u.uy, mtmp.data) || !isok_xy(mm.x, mm.y)) return;
-    rloc_to(mtmp, mm.x, mm.y);
+    await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
 }
 
 // C ref: mon.c mon_allowflags() — hostile/peaceful + dig/tunnel flags

@@ -36,8 +36,13 @@ import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import { addtobill, costly_spot } from './shk.js';
-import { nohands } from './monsters.js';
+import { nohands, M1_NOTAKE } from './monsters.js';
 import { welded } from './wield.js';
+
+/** C ref: mondata.h notake — M1_NOTAKE. */
+function notake(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_NOTAKE);
+}
 
 /* C ref: pickup.c static load-prefix strings for pickup_prinv / lift_object */
 const slightloadpfx = 'You have a little trouble';
@@ -443,12 +448,13 @@ function autopick_testobj(otmp) {
 /**
  * C ref: pickup.c pickup(what).
  * Ported envelope: autopickup && (nopick / !OBJ_AT / pool / lava) →
- * describe_decor + read_engr_at; autopickup && !flags.pickup →
- * check_here(FALSE); autopick filter (D-0368) then **always**
- * check_here(n_picked>0) (D-0387); manual `,` AUTOSELECT_SINGLE /
- * multi query_objlist PICK_ANY (D-0365). Deferred: unconscious skip,
- * notake, traditional yn/query_classes, hideunder, newsym_force,
- * full is_pool.
+ * describe_decor + read_engr_at; **multi/!pickup/notake** share one
+ * gate (C pickup.c) so notake still plines under autopickup when
+ * `flags.pickup` is off (D-0928 #1127); autopick filter (D-0368) then
+ * **always** check_here(n_picked>0) (D-0387); manual `,`
+ * AUTOSELECT_SINGLE / multi query_objlist PICK_ANY (D-0365).
+ * Deferred: unconscious skip, traditional yn/query_classes, hideunder,
+ * newsym_force, full is_pool.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -474,21 +480,35 @@ export async function pickup(what) {
         }
     }
 
-    // C: autopickup && !flags.pickup → check_here(FALSE); return 0
-    if (autopickup && !game.flags?.pickup) {
-        if (objects_at(u.ux, u.uy)
-            && game.context?.run && game.context.run !== 8
-            && !game.context?.nopick) {
-            nomul(0);
-        }
-        await check_here(false);
-        return 0;
-    }
-
     if (!can_reach_floor(true)) {
         // C: describe_decor even when !mention_decor; read_engr arms partial
         await describe_decor();
         return 0;
+    }
+
+    // C ref: pickup.c pickup — multi/!pickup/notake share one gate so
+    // notake still plines under autopickup when flags.pickup is off
+    // (poly brown mold onto loot; D-0928 #1127).
+    if (!u.uswallow) {
+        const youdata = game.youmonst?.data;
+        const nt = notake(youdata);
+        if (((game.multi | 0) && !game.context?.run)
+            || (autopickup && !game.flags?.pickup)
+            || nt) {
+            if (objects_at(u.ux, u.uy)
+                && game.context?.run && game.context.run !== 8
+                && !game.context?.nopick) {
+                nomul(0);
+            }
+            await check_here(false);
+            if (nt && objects_at(u.ux, u.uy)
+                && (autopickup || game.flags?.pickup)) {
+                await pline(
+                    'You are physically incapable of picking anything up.',
+                );
+            }
+            return 0;
+        }
     }
 
     // C: OBJ_AT && run && run != 8 && !nopick → nomul(0) before pick
