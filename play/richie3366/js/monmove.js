@@ -7,7 +7,7 @@ import {
     can_track, likes_gold, likes_gems, likes_objs, likes_magic,
     throws_rocks, is_swimmer, likes_lava, mindless, is_animal, strongmonst, is_mercenary,
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
-    is_vampshifter, is_watch, is_mind_flayer,
+    is_vampshifter, is_watch, is_mind_flayer, is_covetous,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -68,6 +68,7 @@ import { picking_lock } from './lock.js';
 import { newsym, pline } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
+import { tactics } from './wizard.js';
 import { rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
 import {
@@ -1674,6 +1675,14 @@ export async function dochug(mtmp) {
     }
 
     set_apparxy(mtmp);
+    // C: covetous tactics before distfleeck (may mnexto / spend turn via
+    // mstate). Named: target_on pursuit / STRAT_HEAL stairs body in wizard.js.
+    if (is_covetous(mtmp.data)) {
+        tactics(mtmp);
+        // C: if (mtmp->mstate) return 0 — MON_FLOOR is 0
+        if (mtmp.mstate) return 0;
+        set_apparxy(mtmp);
+    }
     let { inrange, nearby, scared } = distfleeck(mtmp);
 
     // C: find_defensive / find_misc before movement phase

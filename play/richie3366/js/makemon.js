@@ -56,6 +56,7 @@ import {
     is_vampire,
     is_vampshifter,
     vampshifted,
+    is_bat,
     nonliving,
     amorphous,
     unsolid,
@@ -82,6 +83,7 @@ import {
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
+    MFAST,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
@@ -2089,7 +2091,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C: switch (ptr->mlet) BEFORE set_malign / G_SGROUP (makemon.c:1303).
     // Cave spider is G_SGROUP — mkobj_at(RANDOM) must burn before group rn2(2)
-    // (D-0761). Named omissions: orc/elf peace; unicorn align peace; bat hell speed.
+    // (D-0761). Named omissions: orc/elf peace; unicorn align peace.
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
     else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
         // C: in_mklev → mkobj_at(RANDOM) then hideunder(mtmp).
@@ -2134,6 +2136,14 @@ export function makemon(mdat, x, y, mmflags = 0) {
         // C: if (rn2(5) && !u.uhave.amulet) msleeping = 1
         if (rn2(5) && !(game.u?.uhave?.amulet || game.u?.uhave_amulet))
             mtmp.msleeping = 1;
+    } else if (ptr.mlet === 'S_BAT') {
+        // C: Inhell && is_bat(ptr) → mon_adjust_speed(mtmp, 2, NULL)
+        // (case 2: permspeed=MFAST, no creation msg; boots check empty)
+        const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
+        if (inhell && is_bat(ptr)) {
+            mtmp.permspeed = MFAST;
+            mtmp.mspeed = MFAST;
+        }
     }
 
     // C: emits_light after mlet, before cham/mitem (makemon.c:1348)

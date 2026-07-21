@@ -40,6 +40,7 @@ import { mon_explodes } from './explode.js';
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -119,15 +120,35 @@ async function noises(magr, mattk) {
     }
 }
 
+/** C ref: youprop.h Cold_resistance — intrinsic/extrinsic cold resist. */
+function Cold_resistance() {
+    const u = game.u || {};
+    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
+}
+
+/** C ref: mondata.c resists_cold — MR_COLD on data / intrinsics / extrinsics. */
+function resists_cold(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_COLD);
+}
+
+function is_you_defender(mdef) {
+    // null = hero (mattacku / mgc convention); undefined = skip arm
+    return mdef === null || mdef === game.youmonst || !!(mdef && mdef._youmonst);
+}
+
 /**
  * C ref: mhitu.c getmattk — base mptr->mattk[indx] + live substitutions.
  * Uses extracted monsters_data mattks (mons().mattk), not a hand table.
+ * Optional mdef enables defender-dependent arms (lich cold→PHYS). Omit mdef
+ * to skip those (aatyp-only scans).
  * Named omissions: SEDUCE=0 SSEX→c_sa_no/DRLI; consecutive DISE/PEST/FAMN→STUN;
- * AD_DREN energy scaling; cancelled/artifact AT_WEAP→PHYS; lich cold-resist
- * touch→PHYS; home-elemental damn*2. prev_result / mdef args deferred until
- * those arms are wired (callers pass magr,i only today).
+ * AD_DREN energy scaling; cancelled/artifact AT_WEAP→PHYS;
+ * home-elemental damn*2; prev_result disease-stun chain.
  */
-export function get_mattk(magr, i) {
+export function get_mattk(magr, i, mdef = undefined) {
     if (i < 0 || i >= NATTK) return { ...NO_ATTK };
     const slots = magr?.data?.mattk;
     if (!slots || !slots[i]) return { ...NO_ATTK };
@@ -164,6 +185,19 @@ export function get_mattk(magr, i) {
         }
         // C: alt_attk_buf — not &mattk[indx]; "again" pointer+1 must fail
         attk._slot = null;
+    } else if (mdef !== undefined && i === 0
+        && attk.aatyp === AT_TUCH && attk.adtyp === AD_COLD) {
+        // C: lich cold touch vs cold-resistant target → weaker PHYS
+        // master 3d6→2d6; arch 5d6→3d6; lich 1d10→1d6; demi 3d4→2d4
+        const udefend = is_you_defender(mdef);
+        const cold_ok = udefend ? Cold_resistance() : resists_cold(mdef);
+        const mndx = mdef?.data?.mndx ?? mdef?.mnum ?? -1;
+        if (cold_ok && mndx !== PM_SHADE) {
+            attk.adtyp = AD_PHYS;
+            attk.damn = ((attk.damn | 0) + 1) >> 1;
+            if (attk.damd === 10) attk.damd = 6;
+            attk._slot = null;
+        }
     }
 
     return attk;
@@ -660,7 +694,7 @@ export async function mattackm(magr, mdef) {
             continue;
         }
 
-        const mattk = get_mattk(magr, i);
+        const mattk = get_mattk(magr, i, mdef);
         let mwep = null;
         let attk = 1;
         let strike = 0;

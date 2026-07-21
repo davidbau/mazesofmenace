@@ -2101,11 +2101,11 @@ export async function burnarmor(victim) {
 }
 
 /**
- * C ref: trap.c trapeffect_fire_trap — monster branch (hero dofiretrap deferred).
+ * C ref: trap.c trapeffect_fire_trap — monster branch (hero → dofiretrap).
  * Envelope: d(2,4); resists_fire shield; else thitm / rn2(num+1) mhpmax;
- * golem alt HP; burnarmor naked → destroy_items stub. Named omissions:
- * destroy_items/ignite_items/burn_floor_objects/melt_ice bodies; surface();
- * shieldeff; hero dofiretrap.
+ * golem alt HP; burnarmor || rn2(3) → destroy_items(AD_FIRE) + HP.
+ * Named omissions: ignite_items/burn_floor_objects/melt_ice; surface();
+ * shieldeff.
  */
 async function trapeffect_fire_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
@@ -2160,8 +2160,14 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags) {
 
     // C: if (burnarmor(mtmp) || rn2(3)) { destroy_items; ignite; HP }
     // Naked burnarmor returns TRUE → short-circuit (no rn2(3)).
+    // Dynamic import avoids trap↔zap cycle (zap imports burnarmor).
     if ((await burnarmor(mtmp)) || rn2(3)) {
-        // destroy_items(AD_FIRE) / ignite_items deferred (no RNG stub)
+        const { destroy_items } = await import('./zap.js');
+        const xtradmg = await destroy_items(mtmp, AD_FIRE, orig_dmg);
+        // ignite_items deferred
+        if ((mtmp.mhp | 0) > 0) {
+            mtmp.mhp = (mtmp.mhp | 0) - (xtradmg | 0);
+        }
         if ((mtmp.mhp | 0) <= 0) {
             await monkilled(mtmp, '', AD_FIRE);
             trapkilled = true;
@@ -2301,7 +2307,10 @@ async function dofiretrap(box) {
     else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN);
     const you = game.youmonst || { _youmonst: true };
     if ((await burnarmor(you)) || rn2(3)) {
-        // destroy_items / ignite_items deferred
+        // Dynamic import avoids trap↔zap cycle.
+        const { destroy_items } = await import('./zap.js');
+        await destroy_items(you, AD_FIRE, orig_dmg);
+        // ignite_items deferred
     }
 }
 

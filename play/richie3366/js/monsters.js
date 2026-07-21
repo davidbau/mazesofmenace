@@ -156,6 +156,12 @@ export const M1_OMNIVORE = 0x60000000;
 export const M1_METALLIVORE = 0x80000000; /* monflag.h — eats metal */
 
 // C ref: monflag.h M3_*
+export const M3_WANTSAMUL = 0x0001;
+export const M3_WANTSBELL = 0x0002;
+export const M3_WANTSBOOK = 0x0004;
+export const M3_WANTSCAND = 0x0008;
+export const M3_WANTSARTI = 0x0010;
+export const M3_COVETOUS = 0x001f; /* M3_WANTSALL — wants something */
 export const M3_WAITFORU = 0x0040;
 export const M3_CLOSE = 0x0080;
 export const M3_INFRAVISION = 0x0100;
@@ -249,12 +255,16 @@ export function adj_erinys(abuse) {
     difficulties[PM_ERINYS] = Math.min(10 + Math.trunc(uabuse / 3), 25);
 }
 
-// C ref: mondata.h infravision / infravisible
+// C ref: mondata.h infravision / infravisible / is_covetous
 export function infravision(ptr) {
     return !!((ptr?.mflags3 ?? 0) & M3_INFRAVISION);
 }
 export function infravisible(ptr) {
     return !!((ptr?.mflags3 ?? 0) & M3_INFRAVISIBLE);
+}
+/** C ref: mondata.h is_covetous — any M3_WANTS* bit (M3_COVETOUS mask). */
+export function is_covetous(ptr) {
+    return !!((ptr?.mflags3 ?? 0) & M3_COVETOUS);
 }
 
 // C ref: mondata.h / monflag.h — verysmall = msize < MZ_SMALL
@@ -620,6 +630,14 @@ export function is_shapeshifter(ptr) {
 /** C ref: mondata.h is_vampire — mlet S_VAMPIRE */
 export function is_vampire(ptr) {
     return ptr?.mlet === 'S_VAMPIRE';
+}
+/** C ref: mondata.h is_bat — bat / giant bat / vampire bat only (not raven) */
+const PM_BAT = monsterNames.indexOf('PM_BAT');
+const PM_GIANT_BAT = monsterNames.indexOf('PM_GIANT_BAT');
+const PM_VAMPIRE_BAT = monsterNames.indexOf('PM_VAMPIRE_BAT');
+export function is_bat(ptr) {
+    const n = ptr?.mndx;
+    return n === PM_BAT || n === PM_GIANT_BAT || n === PM_VAMPIRE_BAT;
 }
 /**
  * C ref: mondata.h is_vampshifter — cham is a vampire species.

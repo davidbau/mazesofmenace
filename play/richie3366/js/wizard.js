@@ -1,14 +1,20 @@
 // wizard.js — Wizard of Yendor harassment from wizard.c.
-// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate.
+// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; tactics.
 
 import { game } from './gstate.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons } from './monsters.js';
+import { mons, is_covetous } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { MM_NOWAIT, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG } from './const.js';
+import {
+    MM_NOWAIT, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG,
+    STRAT_NONE, STRAT_HEAL, RLOC_MSG,
+} from './const.js';
 import { pline, verbalize, Norep } from './display.js';
 import { Monnam } from './do_name.js';
 import { rn2 } from './rng.js';
+import { noteleport_level } from './teleport.js';
+import { mnexto } from './mon.js';
+import { inhishop } from './shk.js';
 
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 
@@ -28,6 +34,64 @@ export function aggravate() {
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
         }
+    }
+}
+
+/**
+ * C ref: wizard.c strategy — HP-band + covetous/shop/temple gates.
+ * Envelope: cases 0–3 → STRAT_HEAL / STRAT_NONE. Named omissions:
+ * target_on(M3_WANTS*) pursuit; inhistemple (ispriest always treated as
+ * in-temple skip like shopkeeper-in-shop).
+ */
+function strategy(mtmp) {
+    if (!is_covetous(mtmp.data)
+        || (mtmp.isshk && inhishop(mtmp))
+        || mtmp.ispriest) {
+        return STRAT_NONE;
+    }
+    const hpmax = mtmp.mhpmax | 0;
+    const band = hpmax > 0 ? (((mtmp.mhp | 0) * 3) / hpmax) | 0 : 0;
+    switch (band) {
+    default:
+    case 0:
+        return STRAT_HEAL;
+    case 1:
+        if (mtmp.data !== mons(PM_WIZARD_OF_YENDOR)) return STRAT_HEAL;
+        // FALLTHROUGH — Wizard less cautious
+    case 2:
+        // C: dstrat=HEAL then target_on… — target deferred → HEAL
+        return STRAT_HEAL;
+    case 3:
+        // C: dstrat=NONE then target_on… — target deferred → NONE
+        return STRAT_NONE;
+    }
+}
+
+/**
+ * C ref: wizard.c tactics — covetous special move before distfleeck.
+ * Envelope: strategy → mstrategy update → STRAT_NONE harass rn2/mnexto.
+ * STRAT_HEAL: set mavenge only; choose_stairs / rloc / healmon /
+ * FALLTHROUGH-to-harass deferred (falling through burned extra rn2 when C
+ * early-returned from HEAL).
+ */
+export function tactics(mtmp) {
+    const strat = strategy(mtmp);
+    mtmp.mstrategy = ((mtmp.mstrategy | 0) & (STRAT_WAITMASK | STRAT_APPEARMSG))
+        | strat;
+
+    switch (strat) {
+    case STRAT_HEAL:
+        // choose_stairs / In_W_tower rloc / healmon / FALLTHROUGH deferred
+        mtmp.mavenge = 1;
+        return 0;
+    case STRAT_NONE:
+        if (!noteleport_level(mtmp) && !rn2(!mtmp.mflee ? 5 : 33)) {
+            mnexto(mtmp, RLOC_MSG);
+        }
+        return 0;
+    default:
+        // STRAT_PLAYER / GROUND / MONSTR pursuit deferred
+        return 0;
     }
 }
 

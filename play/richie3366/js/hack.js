@@ -13,6 +13,7 @@ import {
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     xdir, ydir, N_DIRS,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+    OVERLOADED, SLT_ENCUMBER, Is_airlevel,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry } from './eat.js';
@@ -22,11 +23,12 @@ import { is_hider, throws_rocks, noncorporeal } from './monsters.js';
 import { objects_at, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { xname } from './objnam.js';
-import { A_STR, exercise } from './attrib.js';
+import { A_STR, A_CON, exercise } from './attrib.js';
 import { rn2 } from './rng.js';
 import { midnight } from './calendar.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { hliquid } from './do_name.js';
+import { near_capacity } from './invent.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -318,6 +320,31 @@ export function monster_nearby() {
         }
     }
     return false;
+}
+
+/**
+ * C ref: hack.c carrying_too_much — OVERLOADED (or low-HP + >SLT) blocks
+ * movement; collapses / "not enough stamina". Air level exempt.
+ * @returns {Promise<boolean>} true if movement is blocked
+ */
+export async function carrying_too_much() {
+    if (Is_airlevel(game.u?.uz)) return false;
+    const wtcap = near_capacity();
+    const u = game.u || {};
+    const lowHp = Upolyd(u)
+        ? ((u.mh | 0) < 5 && (u.mh | 0) !== (u.mhmax | 0))
+        : ((u.uhp | 0) < 10 && (u.uhp | 0) !== (u.uhpmax | 0));
+    if (!(wtcap >= OVERLOADED || (wtcap > SLT_ENCUMBER && lowHp))) {
+        return false;
+    }
+    if (wtcap < OVERLOADED) {
+        await pline("You don't have enough stamina to move.");
+        exercise(A_CON, false);
+    } else {
+        await pline('You collapse under your load.');
+    }
+    nomul(0);
+    return true;
 }
 
 /**

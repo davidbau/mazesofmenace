@@ -61,7 +61,7 @@ import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
-    impaired_movement, is_pool, is_lava,
+    impaired_movement, is_pool, is_lava, carrying_too_much,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -1549,13 +1549,19 @@ async function domove(dx, dy) {
     u.ux0 = u.ux;
     u.uy0 = u.uy;
 
+    // C ref: hack.c domove_core — carrying_too_much before swallow/attack
+    if (await carrying_too_much()) {
+        if (game.context?.run) end_running();
+        return;
+    }
+
     let newx;
     let newy;
     let mtmp;
 
     // C ref: hack.c domove_core — swallowed: zero dx/dy, u_on_newpos onto
     // ustuck, attack engulfer; skip impaired_movement / m_at walk path.
-    // Named omissions still ahead of the non-swallow arm: carrying_too_much,
+    // Named omissions still ahead of the non-swallow arm:
     // air_turbulence, slippery_ice_fumbling, water_turbulence,
     // escape_from_sticky_mon.
     if ((u.uswallow | 0) && u.ustuck) {

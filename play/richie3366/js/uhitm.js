@@ -662,7 +662,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     // (rn2(3)+rn2(chance) before gates; hurtle body still stubbed)
     wakeup(mon, true);
     if (maybe_knockback) {
-        let mattk = get_mattk(game.youmonst, 0);
+        let mattk = get_mattk(game.youmonst, 0, mon);
         // set_uasmon deferred — non-poly hero form is AT_WEAP AD_PHYS
         if (mattk.aatyp === AT_NONE) {
             mattk = { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 0, damd: 0 };
