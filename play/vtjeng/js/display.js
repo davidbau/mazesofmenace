@@ -9,7 +9,12 @@ import {
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
     ACCESSIBLE, BLINDED, CONFUSION, DEAF, FLYING, HALLUC, HALLUC_RES,
     LEVITATION, NOT_HUNGRY, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE,
-    SLIMED, STONED, STR18, STRANGLED, STUNNED,
+    SLIMED, STONED, STR18, STRANGLED, STUNNED, OBJ_FLOOR,
+    P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_SABER,
+    P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_HAMMER,
+    P_QUARTERSTAFF, P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE,
+    P_BOW, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN, P_BOOMERANG,
+    P_WHIP, P_UNICORN_HORN,
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, SCORR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, SDOOR,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
@@ -17,7 +22,7 @@ import {
     POOL, MOAT, ICE, LAVAPOOL, LAVAWALL, AIR, CLOUD, WATER,
     DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER,
-    D_BROKEN, D_ISOPEN, LA_DOWN,
+    D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, LA_DOWN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -25,6 +30,7 @@ import {
     HI_DOMESTIC, HI_METAL, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
 } from './const.js';
 import {
+    ATR_NONE,
     ATR_INVERSE,
     NO_COLOR,
     CLR_BLACK,
@@ -45,20 +51,62 @@ import {
 } from './terminal.js';
 import { rankOf } from './roles.js';
 import { m_at } from './monst.js';
-import { dist2 } from './hacklib.js';
+import { depth as dungeonDepth, dist2 } from './hacklib.js';
 import { observe_object } from './o_init.js';
 import { engr_at } from './engrave.js';
 import { status_version } from './version.js';
+import { objectType, isWeptool } from './obj.js';
+import { newuexp } from './exper.js';
+import { weapon_type } from './startup_skills.js';
+import { bimanual } from './worn.js';
 import {
+    ART_MITRE_OF_HOLINESS,
+    ART_TSURUGI_OF_MURAMASA,
+} from './artifacts.js';
+import {
+    AKLYS,
+    AMULET_OF_GUARDING,
+    ARMOR_CLASS,
+    AMULET_CLASS,
+    BALL_CLASS,
     BOULDER,
+    CHAIN_CLASS,
+    CLOAK_OF_PROTECTION,
+    COIN_CLASS,
     CORPSE,
+    CORNUTHAUM,
+    CREAM_PIE,
+    DUNCE_CAP,
+    DWARVISH_MATTOCK,
+    EGG,
+    ELVEN_LEATHER_HELM,
+    FEDORA,
     FIRST_REAL_GEM,
     FIRST_SPELL,
+    FLINT,
     FOOD_CLASS,
+    GEM_CLASS,
+    GRAPPLING_HOOK,
+    ILLOBJ_CLASS,
     LAST_GLASS_GEM,
     LAST_SPELL,
+    LUCKSTONE,
+    OBJ_NAME,
     POTION_CLASS,
+    RIN_PROTECTION,
+    RING_CLASS,
+    ROCK,
+    ROCK_CLASS,
+    SCROLL_CLASS,
+    SPBOOK_CLASS,
     STATUE,
+    TIN,
+    TIN_OPENER,
+    TOOL_CLASS,
+    TOWEL,
+    VENOM_CLASS,
+    WAND_CLASS,
+    WEAPON_CLASS,
 } from './objects.js';
 import {
     cmap_symbol,
@@ -121,7 +169,7 @@ import {
 } from './symbols.js';
 import { t_at } from './trap.js';
 import { visible_region_at } from './region.js';
-import { NON_PM, PM_TENGU } from './monsters.js';
+import { M1_HUMANOID, NON_PM, PM_TENGU } from './monsters.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -600,7 +648,13 @@ export function monster_glyph_info(monster, state = game) {
         ? optional_misc_symbol(4, state)
             ?? monster_class_symbol(monster.data.mlet, state)
         : monster_class_symbol(monster.data.mlet, state);
-    return glyphPresentation(symbol, monster.data.mcolor, state);
+    const glyph = glyphPresentation(symbol, monster.data.mcolor, state);
+    // C ref: win/tty/wintty.c:tty_print_glyph(). Pet highlighting is a tty
+    // presentation attribute; it does not alter the remembered floor glyph.
+    if (monster.mtame && state.iflags?.wc_hilite_pet) {
+        glyph.attr = state.iflags.wc2_petattr ?? ATR_INVERSE;
+    }
+    return glyph;
 }
 
 // C ref: display.h obj_is_generic().  Unobserved potions, real/glass gems,
@@ -610,6 +664,15 @@ export function object_is_generic(obj) {
         && (obj?.oclass === POTION_CLASS
             || (obj?.otyp >= FIRST_REAL_GEM && obj.otyp <= LAST_GLASS_GEM)
             || (obj?.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL));
+}
+
+// C ref: display.h obj_is_piletop(). A top boulder conceals non-boulders
+// beneath it, but two stacked boulders still use the pile-top glyph family.
+function object_is_piletop(obj, state) {
+    const next = state.level?.objects?.[obj.ox]?.[obj.oy]?.nexthere;
+    return obj.where === OBJ_FLOOR
+        && Boolean(next)
+        && (obj.otyp !== BOULDER || next.otyp === BOULDER);
 }
 
 export function object_glyph_info(obj, state = game) {
@@ -635,7 +698,15 @@ export function object_glyph_info(obj, state = game) {
         if (obj.otyp === CORPSE && state.mons?.[obj.corpsenm])
             color = state.mons[obj.corpsenm].mcolor;
     }
-    return glyphPresentation(symbol, color, state);
+    const glyph = glyphPresentation(symbol, color, state);
+    // C ref: win/tty/wintty.c tty_print_glyph(). Pile highlighting is a tty
+    // presentation attribute and is suppressed together with inverse video.
+    if (object_is_piletop(obj, state)
+        && state.iflags?.hilite_pile
+        && state.iflags?.wc_inverse !== false) {
+        glyph.attr = ATR_INVERSE;
+    }
+    return glyph;
 }
 
 // ── Terrain to display character + color + DEC flag ──
@@ -1060,9 +1131,268 @@ export function get_strength_str(strength) {
     return '18/**';
 }
 
-function _statusLine1() {
-    const u = game.u;
-    if (!u) return '';
+// C ref: weapon.c P_NAME() and weapon_descr(). These are the singular skill
+// descriptions which survive botl.c:weapon_status()'s special cases.
+const WEAPON_SKILL_DESCRIPTIONS = Object.freeze({
+    [P_DAGGER]: 'dagger',
+    [P_KNIFE]: 'knife',
+    [P_AXE]: 'axe',
+    [P_PICK_AXE]: 'pick-axe',
+    [P_CLUB]: 'club',
+    [P_MACE]: 'mace',
+    [P_MORNING_STAR]: 'morning star',
+    [P_FLAIL]: 'flail',
+    [P_HAMMER]: 'hammer',
+    [P_QUARTERSTAFF]: 'quarterstaff',
+    [P_POLEARMS]: 'polearms',
+    [P_SPEAR]: 'spear',
+    [P_TRIDENT]: 'trident',
+    [P_LANCE]: 'lance',
+    [P_BOW]: 'bow',
+    [P_SLING]: 'sling',
+    [P_CROSSBOW]: 'crossbow',
+    [P_DART]: 'dart',
+    [P_SHURIKEN]: 'shuriken',
+    [P_BOOMERANG]: 'boomerang',
+    [P_WHIP]: 'whip',
+    [P_UNICORN_HORN]: 'unicorn horn',
+});
+
+// C ref: drawing.c def_oc_syms[].name after weapon.c makesingular().
+const OBJECT_CLASS_DESCRIPTIONS = Object.freeze({
+    [ILLOBJ_CLASS]: 'illegal object',
+    [WEAPON_CLASS]: 'weapon',
+    [ARMOR_CLASS]: 'armor',
+    [RING_CLASS]: 'ring',
+    [AMULET_CLASS]: 'amulet',
+    [TOOL_CLASS]: 'tool',
+    [FOOD_CLASS]: 'food',
+    [POTION_CLASS]: 'potion',
+    [SCROLL_CLASS]: 'scroll',
+    [SPBOOK_CLASS]: 'spellbook',
+    [WAND_CLASS]: 'wand',
+    [COIN_CLASS]: 'coin',
+    [GEM_CLASS]: 'rock',
+    [ROCK_CLASS]: 'large stone',
+    [BALL_CLASS]: 'iron ball',
+    [CHAIN_CLASS]: 'chain',
+    [VENOM_CLASS]: 'venom',
+});
+
+function _objectName(obj, state) {
+    return OBJ_NAME(objectType(obj, state), state)
+        ?? OBJECT_CLASS_DESCRIPTIONS[obj.oclass]
+        ?? 'object';
+}
+
+function _statusAmmo(obj, state) {
+    const type = objectType(obj, state);
+    const skill = Math.trunc(type.oc_skill ?? type.oc_subtyp ?? 0);
+    return (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS)
+        && skill >= -P_CROSSBOW && skill <= -P_BOW;
+}
+
+// C ref: weapon.c weapon_descr().
+function _weaponDescr(obj, state) {
+    const skill = weapon_type(obj, state);
+    let description = WEAPON_SKILL_DESCRIPTIONS[skill];
+
+    if (skill === 0) {
+        if ([CORPSE, TIN, EGG, STATUE, BOULDER, TOWEL, TIN_OPENER]
+            .includes(obj.otyp)) {
+            description = _objectName(obj, state);
+        } else if (obj.globby) {
+            description = 'glob';
+        } else {
+            description = OBJECT_CLASS_DESCRIPTIONS[obj.oclass] ?? 'object';
+        }
+    } else if (skill === P_SLING && _statusAmmo(obj, state)) {
+        description = obj.otyp === ROCK
+            || (obj.otyp >= LUCKSTONE && obj.otyp <= FLINT)
+            ? 'stone'
+            : obj.oclass === GEM_CLASS
+                ? 'gem'
+                : OBJECT_CLASS_DESCRIPTIONS[obj.oclass] ?? 'object';
+    } else if (skill === P_BOW && _statusAmmo(obj, state)) {
+        description = 'arrow';
+    } else if (skill === P_CROSSBOW && _statusAmmo(obj, state)) {
+        description = 'bolt';
+    } else if (skill === P_FLAIL && obj.otyp === GRAPPLING_HOOK) {
+        description = 'hook';
+    } else if (skill === P_PICK_AXE && obj.otyp === DWARVISH_MATTOCK) {
+        description = 'mattock';
+    }
+    return description ?? _objectName(obj, state);
+}
+
+// C ref: botl.c weapon_status().
+export function weapon_status(state = game) {
+    const u = state.u;
+    const weapon = state.uwep;
+    if (!weapon) {
+        if (state.uarmg) return 'Empty-hnd';
+        const species = state.mons?.[u?.umonnum] ?? state.youmonst?.data;
+        return species && (species.mflags1 & M1_HUMANOID)
+            ? 'Bare-hnds' : 'No-weapon';
+    }
+    if (u?.twoweap) {
+        const lance = weapon_type(weapon, state) === P_LANCE
+            || weapon_type(state.uswapwep, state) === P_LANCE;
+        return u.usteed && lance ? 'Dual+joust' : 'Dual-weps';
+    }
+
+    const skill = weapon_type(weapon, state);
+    let description;
+    if (u?.usteed && skill === P_LANCE) description = 'joust';
+    else if (weapon.otyp === AKLYS) description = 'aklys';
+    else if (weapon.oclass === WEAPON_CLASS
+             && skill >= P_SHORT_SWORD && skill <= P_SABER) {
+        description = 'sword';
+    } else {
+        switch (skill) {
+        case P_QUARTERSTAFF: description = 'staff'; break;
+        case P_MORNING_STAR: description = 'mrng-star'; break;
+        case P_POLEARMS: description = 'pole'; break;
+        case P_UNICORN_HORN: description = 'unihorn'; break;
+        default:
+            description = _weaponDescr(weapon, state);
+            if (description.toLowerCase() === 'food'
+                && weapon.otyp === CREAM_PIE) description = 'pie';
+            break;
+        }
+    }
+
+    description = description[0].toUpperCase() + description.slice(1);
+    let result = '';
+    if ((weapon.oclass === WEAPON_CLASS || isWeptool(weapon, state))
+        && bimanual(weapon, state)
+        && !description.startsWith('2')
+        && !description.toLowerCase().startsWith('two')) result = '2H-';
+    result += description;
+    return result.replaceAll(' ', '-');
+}
+
+function _helmetSimpleName(helmet) {
+    return [ELVEN_LEATHER_HELM, FEDORA, CORNUTHAUM, DUNCE_CAP]
+        .includes(helmet.otyp) ? 'hat' : 'helm';
+}
+
+// C ref: botl.c armor_status().
+export function armor_status(state = game) {
+    const slots = [
+        state.uarmg,
+        state.uarmc,
+        state.uarm,
+        state.uarmu,
+        state.uarmh,
+        state.uarmf,
+        state.uarms,
+    ];
+    const count = slots.filter(Boolean).length;
+    let result;
+    if (count === 0) {
+        result = 'naked';
+    } else if (count === 1) {
+        result = state.uarmg ? 'gloves'
+            : state.uarmc ? 'cloak'
+                : state.uarm ? 'suit'
+                    : state.uarmu ? 'shirt'
+                        : state.uarmh ? _helmetSimpleName(state.uarmh)
+                            : state.uarmf ? 'boots' : 'shield';
+    } else {
+        result = [
+            state.uarmg && 'G',
+            state.uarmc && 'C',
+            state.uarm && 'A',
+            state.uarmu && 'U',
+            state.uarmh && 'H',
+            state.uarmf && 'B',
+            state.uarms && 'S',
+        ].filter(Boolean).join('');
+    }
+
+    if (state.uright?.otyp === RIN_PROTECTION
+        || state.uleft?.otyp === RIN_PROTECTION
+        || state.uamul?.otyp === AMULET_OF_GUARDING
+        || state.uarmc?.otyp === CLOAK_OF_PROTECTION
+        || state.uarmh?.oartifact === ART_MITRE_OF_HOLINESS
+        || state.uwep?.oartifact === ART_TSURUGI_OF_MURAMASA) result += '+';
+    return result[0].toUpperCase() + result.slice(1);
+}
+
+const TERRAIN_DESCRIPTIONS = Object.freeze([
+    'Stone', 'Wall', 'Wall', 'Wall', 'Wall', 'Wall', 'Wall', 'Wall',
+    'Wall', 'Wall', 'Wall', 'Wall', 'Portcullis', 'Tree', 'Wall',
+    'Stone', 'Pool', 'Moat', 'Water', '(gap)', 'Lava', 'LavaWall',
+    'Bars', 'Doorway', 'Corridor', 'Room', 'Stairs', 'Ladder', 'Fountain',
+    'Throne', 'Sink', 'Grave', 'Altar', 'Ice', 'Bridge', 'Air', 'Cloud',
+    '', 'Wall', 'Floor', 'Ground', 'Open-door', 'Shut-door', 'Swamp',
+    'Submerged', 'Sea', 'WaterWall',
+]);
+
+// C ref: hack.c classify_terrain(). The pseudo-types 39..46 are indices in
+// botl.c terrain_descr[], not map terrain values.
+export function classify_terrain(state = game) {
+    const u = state.u;
+    const loc = state.level?.at(u?.ux, u?.uy);
+    let typ = state.level?.lastseentyp?.[u?.ux]?.[u?.uy] ?? loc?.typ ?? STONE;
+
+    if (u?.uinwater) {
+        typ = 44; // xSUBMERGED
+    } else {
+        switch (typ) {
+        case STONE:
+            if (state.level?.flags?.arboreal) typ = TREE;
+            break;
+        case CORR:
+        case ROOM:
+            typ = sameLevel(u?.uz, state.earth_level) ? 40 : 39;
+            break;
+        case DOOR: {
+            const mask = loc?.flags || loc?.doormask || 0;
+            if (mask & D_ISOPEN) typ = 41;
+            else if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) typ = 42;
+            break;
+        }
+        case DRAWBRIDGE_UP: {
+            const under = drawbridgeMask(loc ?? {}) & DB_UNDER;
+            typ = under === DB_ICE ? ICE
+                : under === DB_LAVA ? LAVAPOOL
+                    : under === DB_MOAT ? MOAT : STONE;
+            if (typ === STONE || typ === ROOM) typ = 40;
+            break;
+        }
+        case MOAT:
+            if (sameLevel(u?.uz, state.medusa_level)) typ = 45;
+            else if (sameLevel(u?.uz, state.juiblex_level)) typ = 43;
+            break;
+        case WATER:
+            if (!sameLevel(u?.uz, state.water_level)) typ = 46;
+            break;
+        default:
+            break;
+        }
+    }
+
+    state.iflags ??= {};
+    state.iflags.terrain_typ = typ;
+    return typ;
+}
+
+function _terrainStatus(state = game) {
+    const typ = classify_terrain(state);
+    return TERRAIN_DESCRIPTIONS[typ] ?? '';
+}
+
+function _optionalStatusFields() {
+    const fields = [];
+    if (game.flags?.weaponstatus) fields.push(weapon_status(game));
+    if (game.flags?.armorstatus) fields.push(armor_status(game));
+    if (game.flags?.terrainstatus) fields.push(_terrainStatus(game));
+    return fields.length ? ` ${fields.join(' ')}` : '';
+}
+
+function _statusPlayerName() {
     // C ref: botl.c do_statusline1().  The status line capitalizes only an
     // initial ASCII lowercase byte, then reserves at most BOTL_NSIZ bytes for
     // the player name.  Player names are ASCII in the source option parser.
@@ -1071,19 +1401,58 @@ function _statusLine1() {
     if (name[0] >= 'a' && name[0] <= 'z') {
         name = name[0].toUpperCase() + name.slice(1);
     }
+    return name;
+}
+
+function _statusTitle() {
+    const u = game.u;
+    if (!u) return '';
+    const name = _statusPlayerName();
     const role = rankOf(game.urole, u.ulevel ?? 1, game.flags?.female)
         || game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
-    const title = `${name} the ${role}`;
+    return `${name} the ${role}`;
+}
+
+function _statusHitpointBarTitle() {
+    let bar = _statusTitle().slice(0, 30).padEnd(30);
+    if (_criticallyLowHp(true)) {
+        const chars = [...bar];
+        for (let index = chars.length - 1; index >= 1; index -= 2) {
+            if (chars[index] === ' ' && chars[index - 1] === ' ') {
+                chars[index] = '-';
+            }
+        }
+        bar = chars.join('');
+    }
+    return bar;
+}
+
+function _statusAlignment(u = game.u) {
+    return u?.ualign?.type === 0
+        ? 'Neutral' : u?.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+}
+
+function _statusLine1(includeAlignment = true) {
+    const u = game.u;
+    if (!u) return '';
+    const title = _statusTitle();
+    let displayedTitle = title;
+    if (game.iflags?.wc2_hitpointbar) {
+        displayedTitle = `[${_statusHitpointBarTitle()}]`;
+    }
     const attrs = u.acurr?.a ?? [];
     const strength = attrs[A_STR]
         ? get_strength_str(attrs[A_STR]) : '?';
     const stats = `St:${strength} Dx:${attrs[A_DEX] || '?'} Co:${attrs[A_CON] || '?'} In:${attrs[A_INT] || '?'} Wi:${attrs[A_WIS] || '?'} Ch:${attrs[A_CHA] || '?'}`;
-    const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    const align = _statusAlignment(u);
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column
-    const gap = Math.max(1, 31 - title.length);
-    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
+    const gap = Math.max(1, 31 - displayedTitle.length);
+    const suffix = includeAlignment ? ` ${align}` : '';
+    if (gap > 4) {
+        return `${displayedTitle}\x1b[${gap}C${stats}${suffix}`;
+    }
+    return `${displayedTitle}${' '.repeat(gap)}${stats}${suffix}`;
 }
 
 const HUNGER_STATUS = Object.freeze([
@@ -1103,70 +1472,622 @@ function _propertyActiveUnblocked(u, index) {
     return _propertyActive(u, index) && !u.uprops?.[index]?.blocked;
 }
 
-// C ref: botl.c do_statusline2(), condition assembly. Encumbrance remains
+function _hungerStatus(u) {
+    if ((u.uhs ?? NOT_HUNGRY) === NOT_HUNGRY) return '';
+    const hunger = HUNGER_STATUS[u.uhs];
+    return hunger ? ` ${hunger}` : '';
+}
+
+const STATUS_CONDITION_SPECS = Object.freeze([
+    { option: 'barehanded', rank: 20, enabled: false,
+        forms: ['Bare', 'Bar', 'Bh'] },
+    { option: 'blind', rank: 10, enabled: true,
+        forms: ['Blind', 'Blnd', 'Bl'] },
+    { option: 'conf', rank: 10, enabled: true,
+        forms: ['Conf', 'Cnf', 'Cf'] },
+    { option: 'deaf', rank: 10, enabled: true,
+        forms: ['Deaf', 'Def', 'Df'] },
+    { option: 'fly', rank: 10, enabled: true,
+        forms: ['Fly', 'Fly', 'Fl'] },
+    { option: 'foodpois', rank: 6, enabled: true,
+        forms: ['FoodPois', 'Fpois', 'Poi'] },
+    { option: 'hallucinat', rank: 10, enabled: true,
+        forms: ['Hallu', 'Hal', 'Hl'] },
+    { option: 'ice', rank: 20, enabled: false,
+        forms: ['Icy', 'Icy', 'Ic'] },
+    { option: 'levitate', rank: 10, enabled: true,
+        forms: ['Lev', 'Lev', 'Lv'] },
+    { option: 'ride', rank: 10, enabled: true,
+        forms: ['Ride', 'Rid', 'Rd'] },
+    { option: 'slime', rank: 6, enabled: true,
+        forms: ['Slime', 'Slim', 'Slm'] },
+    { option: 'stone', rank: 6, enabled: true,
+        forms: ['Stone', 'Ston', 'Sto'] },
+    { option: 'strngl', rank: 4, enabled: true,
+        forms: ['Strngl', 'Stngl', 'Str'] },
+    { option: 'stun', rank: 10, enabled: true,
+        forms: ['Stun', 'Stun', 'St'] },
+    { option: 'termill', rank: 6, enabled: true,
+        forms: ['TermIll', 'Ill', 'Ill'] },
+]);
+
+function _statusConditionActive(option, u) {
+    switch (option) {
+    case 'barehanded': return !game.uarmg && !game.uwep;
+    case 'blind': return _propertyActiveUnblocked(u, BLINDED);
+    case 'conf': return _propertyIntrinsic(u, CONFUSION);
+    case 'deaf': return _propertyActive(u, DEAF) || u.uroleplay?.deaf;
+    case 'fly': return _propertyActiveUnblocked(u, FLYING);
+    case 'foodpois':
+        return _propertyIntrinsic(u, SICK)
+            && Boolean((u.usick_type ?? 0) & SICK_VOMITABLE);
+    case 'hallucinat':
+        return _propertyIntrinsic(u, HALLUC)
+            && !_propertyActive(u, HALLUC_RES);
+    case 'ice':
+        return game.level?.at(u.ux, u.uy)?.typ === ICE;
+    case 'levitate': return _propertyActiveUnblocked(u, LEVITATION);
+    case 'ride': return Boolean(u.usteed);
+    case 'slime': return _propertyIntrinsic(u, SLIMED);
+    case 'stone': return _propertyIntrinsic(u, STONED);
+    case 'strngl': return _propertyIntrinsic(u, STRANGLED);
+    case 'stun': return _propertyIntrinsic(u, STUNNED);
+    case 'termill':
+        return _propertyIntrinsic(u, SICK)
+            && Boolean((u.usick_type ?? 0) & SICK_NONVOMITABLE);
+    default: return false;
+    }
+}
+
+// C ref: botl.c condtests[], conditions[], and cond_cmp(). Encumbrance remains
 // absent at the new-game boundary because u_init_carry_attr_boost() guarantees
 // that the initial inventory is within capacity.
-function _statusConditions(u) {
-    const conditions = [];
-    if (_propertyIntrinsic(u, STONED)) conditions.push('Stone');
-    if (_propertyIntrinsic(u, SLIMED)) conditions.push('Slime');
-    if (_propertyIntrinsic(u, STRANGLED)) conditions.push('Strngl');
-    if (_propertyIntrinsic(u, SICK)) {
-        if ((u.usick_type ?? 0) & SICK_VOMITABLE) conditions.push('FoodPois');
-        if ((u.usick_type ?? 0) & SICK_NONVOMITABLE) conditions.push('TermIll');
-    }
-    if ((u.uhs ?? NOT_HUNGRY) !== NOT_HUNGRY) {
-        const hunger = HUNGER_STATUS[u.uhs];
-        if (hunger) conditions.push(hunger);
-    }
-    if (_propertyActiveUnblocked(u, BLINDED)) conditions.push('Blind');
-    if (_propertyActive(u, DEAF) || u.uroleplay?.deaf) conditions.push('Deaf');
-    if (_propertyIntrinsic(u, STUNNED)) conditions.push('Stun');
-    if (_propertyIntrinsic(u, CONFUSION)) conditions.push('Conf');
-    if (_propertyIntrinsic(u, HALLUC)
-        && !_propertyActive(u, HALLUC_RES)) conditions.push('Hallu');
-    if (_propertyActiveUnblocked(u, LEVITATION)) conditions.push('Lev');
-    if (_propertyActiveUnblocked(u, FLYING)) conditions.push('Fly');
-    if (u.usteed) conditions.push('Ride');
-    return conditions.length ? ` ${conditions.join(' ')}` : '';
+function _statusConditionEntries(u, shrinkLevel = 0) {
+    const configured = game.iflags?.status_conditions ?? {};
+    return STATUS_CONDITION_SPECS
+        .filter((spec) => (configured[spec.option] ?? spec.enabled)
+            && _statusConditionActive(spec.option, u))
+        .sort((left, right) => left.rank - right.rank
+            || left.option.localeCompare(right.option))
+        .map((spec) => ({
+            option: spec.option,
+            text: spec.forms[shrinkLevel],
+        }));
+}
+
+function _statusConditions(u, shrinkLevel = 0) {
+    const conditions = _statusConditionEntries(u, shrinkLevel);
+    return conditions.length
+        ? ` ${conditions.map(({ text }) => text).join(' ')}` : '';
+}
+
+function _statusExperience(u) {
+    return game.flags?.showexp
+        ? `${u.ulevel || 1}/${u.uexp || 0}`
+        : `${u.ulevel || 1}`;
+}
+
+// C ref: botl.c describe_level(). The tutorial uses its branch label in the
+// compact status field; ordinary startup retains the traditional Dlvl label.
+function _statusLevelDescription(u, short = false) {
+    const tutorial = Number.isInteger(game.tutorial_dnum)
+        && u.uz?.dnum === game.tutorial_dnum;
+    const label = tutorial ? 'Tutorial' : short ? 'Dl' : 'Dlvl';
+    return `${label}:${dungeonDepth(u.uz)}`;
+}
+
+function _statusVersionSuffix(status) {
+    if (!game.flags?.showvers) return status.slice(0, 79);
+    const version = status_version(game.flags);
+    // win/tty/wintty.c render_status() right-justifies BL_VERS against the
+    // TTY's 79 printable status columns when it is the row's final field.
+    const versionColumn = Math.max(status.length + 1, 79 - version.length);
+    return `${status.padEnd(versionColumn)}${version}`.slice(0, 79);
 }
 
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    const experience = game.flags?.showexp
-        ? `${u.ulevel || 1}/${u.uexp || 0}`
-        : `${u.ulevel || 1}`;
     const time = game.flags?.time ? ` T:${game.moves || 1}` : '';
-    const status = `Dlvl:${u.uz?.dlevel || 1} $:${money_cnt(game.invent)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${experience}${time}${_statusConditions(u)}`;
-    if (!game.flags?.showvers) return status;
-
-    const version = status_version(game.flags);
-    // win/tty/wintty.c render_status() right-justifies BL_VERS against the
-    // TTY's 79 printable status columns when it is the row's final field.
-    const versionColumn = Math.max(status.length + 1, 79 - version.length);
-    return `${status.padEnd(versionColumn)}${version}`;
+    const optional = _optionalStatusFields();
+    const versionLength = game.flags?.showvers
+        ? status_version(game.flags).length + 1 : 0;
+    let conditionLevel = 0;
+    let capacityPadding = '';
+    let shortLevel = false;
+    const build = () => `${_statusLevelDescription(u, shortLevel)} $:${money_cnt(game.invent)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${_statusExperience(u)}${time}${_hungerStatus(u)}${capacityPadding}${_statusConditions(u, conditionLevel)}${optional}`;
+    let status = build();
+    // wintty.c make_things_fit() first tries both abbreviated condition
+    // vocabularies, then shortens "Dlvl" to "Dl" before truncating.
+    while (status.length + versionLength > 79 && conditionLevel < 2) {
+        conditionLevel++;
+        status = build();
+    }
+    if (status.length + versionLength > 79) {
+        // shrink_enc() reconstructs an unencumbered BL_CAP as one blank;
+        // unlike tty_status_update(), it does not suppress that blank again.
+        capacityPadding = ' ';
+        status = build();
+    }
+    if (status.length + versionLength > 79) {
+        shortLevel = true;
+        status = build();
+    }
+    return _statusVersionSuffix(status);
 }
 
-function writeStatusRows(display) {
-    if (!display?.grid) return;
-    display.clearRow(22);
-    display.clearRow(23);
-    const first = _statusLine1().replace(
+function _statusLine3VitalsBase(u) {
+    const align = u.ualign?.type === 0
+        ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    return `${align} $:${money_cnt(game.invent)} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${_statusExperience(u)}`;
+}
+
+function _statusLine3Vitals() {
+    const u = game.u;
+    if (!u) return '';
+    return `${_statusLine3VitalsBase(u)}${_hungerStatus(u)}`;
+}
+
+function _statusLine3Details() {
+    const u = game.u;
+    if (!u) return '';
+    const time = game.flags?.time ? ` T:${game.moves || 1}` : '';
+    const optional = _optionalStatusFields();
+    const version = game.flags?.showvers ? status_version(game.flags) : '';
+    const versionFieldLength = version ? version.length + 1 : 0;
+    let conditionLevel = 0;
+    let shortLevel = false;
+    const prefix = () => `${_statusLevelDescription(u, shortLevel)}${time}`;
+    let conditions = _statusConditions(u, conditionLevel);
+    const nominalLength = () => prefix().length + conditions.length
+        + optional.length + versionFieldLength;
+    while (nominalLength() > 79 && conditionLevel < 2) {
+        conditionLevel++;
+        conditions = _statusConditions(u, conditionLevel);
+    }
+    if (nominalLength() > 79) shortLevel = true;
+
+    // C ref: wintty.c render_status(). It computes nominal field positions,
+    // indents BL_CONDITION toward BL_HUNGER, then resumes later fields at
+    // their nominal positions. That can overwrite the indented condition.
+    const row = new Array(79).fill(' ');
+    const write = (start, text) => {
+        for (let index = 0; index < text.length; ++index) {
+            const column = start + index;
+            if (column >= 0 && column < row.length) row[column] = text[index];
+        }
+    };
+    const level = prefix();
+    write(0, level);
+    let nominal = level.length;
+    if (conditions) {
+        const x = nominal + 1; // tty field positions are one-based.
+        const hungerX = _statusLine3VitalsBase(u).length + 1;
+        let lastColumn = 80;
+        if (!optional && version) lastColumn -= versionFieldLength;
+        let conditionX = x;
+        if (x < hungerX
+            && hungerX + conditions.length < lastColumn - 1) {
+            conditionX = hungerX;
+        } else if (x + conditions.length < 79) {
+            conditionX = lastColumn - conditions.length;
+        }
+        write(conditionX - 1, conditions);
+        nominal += conditions.length;
+    }
+    if (optional) {
+        write(nominal, optional);
+        nominal += optional.length;
+    }
+    if (version) {
+        const field = ` ${version}`;
+        const rightStart = 79 - field.length;
+        const start = Math.max(nominal, rightStart);
+        for (let column = nominal; column < start && column < row.length;
+            ++column) row[column] = ' ';
+        write(start, field);
+    }
+    return row.join('').trimEnd();
+}
+
+function statusTextRows() {
+    return game.iflags?.wc2_statuslines === 3
+        ? [_statusLine1(false), _statusLine3Vitals(), _statusLine3Details()]
+        : [_statusLine1(), _statusLine2()];
+}
+
+function _statusPercentage(value, maximum) {
+    if (!maximum) return 0;
+    const percent = Math.trunc((100 * value) / maximum);
+    return percent === 0 && value !== 0 ? 1 : percent;
+}
+
+function _statusExperiencePercentage(u) {
+    const level = u.ulevel ?? 1;
+    if (level >= 30) return 0;
+    const levelStart = newuexp(level - 1);
+    const gained = (u.uexp ?? 0) - levelStart;
+    const needed = newuexp(level) - levelStart;
+    return gained === needed - 1
+        ? 100 : _statusPercentage(gained, needed);
+}
+
+function _criticallyLowHp(onlyIfInjured) {
+    const u = game.u;
+    const current = u?.uhp ?? 0;
+    let maximum = u?.uhpmax ?? 0;
+    if (onlyIfInjured && current >= maximum) return false;
+    maximum = Math.min(maximum, 15 * (u?.ulevel ?? 1));
+    const rank = (u?.ulevel ?? 1) <= 2
+        ? 0 : (u.ulevel <= 30 ? Math.trunc((u.ulevel + 2) / 4) : 8);
+    const divisor = rank <= 1 ? 5
+        : rank <= 3 ? 6 : rank <= 5 ? 7 : rank <= 7 ? 8 : 9;
+    return current <= 5 || current * divisor <= maximum;
+}
+
+function _statusFieldData(field) {
+    const u = game.u;
+    const attrs = u?.acurr?.a ?? [];
+    const title = _statusTitle();
+    switch (field) {
+    case 'title':
+        return { text: title.slice(_statusPlayerName().length + 5) };
+    case 'strength': return { value: attrs[A_STR] ?? 0 };
+    case 'dexterity': return { value: attrs[A_DEX] ?? 0 };
+    case 'constitution': return { value: attrs[A_CON] ?? 0 };
+    case 'intelligence': return { value: attrs[A_INT] ?? 0 };
+    case 'wisdom': return { value: attrs[A_WIS] ?? 0 };
+    case 'charisma': return { value: attrs[A_CHA] ?? 0 };
+    case 'alignment': return { text: _statusAlignment(u) };
+    case 'score': return { value: 0 };
+    case 'carrying-capacity': return { value: 0, text: '' };
+    case 'gold': return { value: money_cnt(game.invent) };
+    case 'power':
+        return {
+            value: u?.uen ?? 0,
+            percent: _statusPercentage(u?.uen ?? 0, u?.uenmax ?? 0),
+        };
+    case 'power-max': return { value: u?.uenmax ?? 0 };
+    case 'experience-level':
+        return {
+            value: u?.ulevel ?? 1,
+            percent: _statusExperiencePercentage(u),
+        };
+    case 'armor-class': return { value: u?.uac ?? 10 };
+    case 'hd': return { value: 0 };
+    case 'time': return { value: game.moves ?? 1 };
+    case 'hunger':
+        return {
+            value: u?.uhs ?? NOT_HUNGRY,
+            text: HUNGER_STATUS[u?.uhs ?? NOT_HUNGRY] ?? '',
+        };
+    case 'hitpoints':
+        return {
+            value: u?.uhp ?? 0,
+            percent: _statusPercentage(u?.uhp ?? 0, u?.uhpmax ?? 0),
+        };
+    case 'hitpoints-max': return { value: u?.uhpmax ?? 0 };
+    case 'dungeon-level': return { text: _statusLevelDescription(u) };
+    case 'experience':
+        return {
+            value: u?.uexp ?? 0,
+            percent: _statusExperiencePercentage(u),
+        };
+    case 'version': return { text: status_version(game.flags) };
+    case 'weapon': return { text: weapon_status(game) };
+    case 'armor': return { text: armor_status(game) };
+    case 'terrain': return { text: _terrainStatus(game) };
+    default: return { text: '' };
+    }
+}
+
+function _statusFuzzyText(value) {
+    return String(value ?? '').toLowerCase().replace(/[" _-]+/gu, '');
+}
+
+function _statusRelationMatches(actual, relation, threshold) {
+    switch (relation) {
+    case '<': return actual < threshold;
+    case '<=': return actual <= threshold;
+    case '>': return actual > threshold;
+    case '>=': return actual >= threshold;
+    default: return actual === threshold;
+    }
+}
+
+// C ref: botl.c:get_hilite(). Initial status has no up/down transition, but
+// persistent percentage, absolute, text, always, and critical rules retain
+// the source best-fit precedence.
+function _statusFieldStyle(field) {
+    if (!game.iflags?.hilite_delta) return null;
+    const rules = (game.iflags.status_hilites ?? []).filter(
+        (rule) => rule.field === field,
+    );
+    const data = _statusFieldData(field);
+    if (!rules.length || (data.text === '' && data.value == null)) return null;
+    let selected = null;
+    let exact = false;
+    let persistent = false;
+    let critical = false;
+    const minimum = {
+        percentage: Number.POSITIVE_INFINITY,
+        absolute: Number.POSITIVE_INFINITY,
+    };
+    const maximum = {
+        percentage: Number.NEGATIVE_INFINITY,
+        absolute: Number.NEGATIVE_INFINITY,
+    };
+    for (const rule of rules) {
+        if (critical && rule.behavior !== 'critical') continue;
+        if (persistent && rule.behavior === 'always') continue;
+        if (rule.behavior === 'always') {
+            selected = rule;
+        } else if (rule.behavior === 'critical') {
+            if (field === 'hitpoints' && _criticallyLowHp(false)) {
+                selected = rule;
+                critical = true;
+                persistent = false;
+            }
+        } else if (rule.behavior === 'text') {
+            const matches = _statusFuzzyText(rule.text)
+                === _statusFuzzyText(data.text);
+            if (matches) {
+                selected = rule;
+                exact = true;
+            }
+        } else if (rule.behavior === 'percentage'
+                   || rule.behavior === 'absolute') {
+            const actual = rule.behavior === 'percentage'
+                ? data.percent ?? 0 : data.value ?? 0;
+            if (rule.relation === '=' && actual === rule.value) {
+                selected = rule;
+                exact = persistent = true;
+                minimum[rule.behavior] = rule.value;
+                maximum[rule.behavior] = rule.value;
+            } else if (!exact
+                       && _statusRelationMatches(
+                           actual, rule.relation, rule.value,
+                       )) {
+                if ((rule.relation === '<' || rule.relation === '<=')
+                    && rule.value <= minimum[rule.behavior]) {
+                    selected = rule;
+                    minimum[rule.behavior] = rule.value;
+                    persistent = true;
+                } else if ((rule.relation === '>' || rule.relation === '>=')
+                           && rule.value >= maximum[rule.behavior]) {
+                    selected = rule;
+                    maximum[rule.behavior] = rule.value;
+                    persistent = true;
+                }
+            }
+        }
+    }
+    return selected?.style ?? null;
+}
+
+function _statusConditionStyle(option) {
+    if (!game.iflags?.hilite_delta) return null;
+    const colors = new Set();
+    let attr = ATR_NONE;
+    let matched = false;
+    for (const rule of game.iflags.status_hilites ?? []) {
+        if (rule.field !== 'condition'
+            || !rule.conditions.includes(option)) continue;
+        matched = true;
+        colors.add(rule.style.color);
+        if (rule.style.clearAttributes) attr = ATR_NONE;
+        attr |= rule.style.attr;
+    }
+    return matched
+        ? { color: Math.min(...colors), attr } : null;
+}
+
+function _expandedStatusRow(row) {
+    return row.replace(
         /\x1b\[[0-9;]*[A-Za-z]/g,
         (sequence) => sequence.match(/\x1b\[\d+C/)
             ? ' '.repeat(parseInt(sequence.slice(2), 10)) : '',
     );
-    for (let column = 0;
-        column < Math.min(first.length, display.cols);
-        ++column) {
-        display.setCell(column, 22, first[column], NO_COLOR, 0);
+}
+
+function _statusStyleRows(rows) {
+    const renderedRows = rows.map(_expandedStatusRow);
+    const styles = renderedRows.map((row) => Array.from(
+        { length: row.length }, () => ({ color: NO_COLOR, attr: ATR_NONE }),
+    ));
+    const apply = (row, start, end, style) => {
+        if (!style || row < 0 || start < 0) return;
+        for (let column = start;
+            column < Math.min(end, styles[row].length);
+            ++column) {
+            styles[row][column] = {
+                color: style.color,
+                attr: style.attr,
+            };
+        }
+    };
+    const find = (
+        field,
+        regexp,
+        group = 0,
+        rowIndexes = null,
+        fromEnd = false,
+    ) => {
+        const style = _statusFieldStyle(field);
+        if (!style) return;
+        for (const row of rowIndexes ?? renderedRows.keys()) {
+            const match = fromEnd
+                ? [...renderedRows[row].matchAll(new RegExp(
+                    regexp.source,
+                    regexp.flags.includes('g')
+                        ? regexp.flags : `${regexp.flags}g`,
+                ))].at(-1)
+                : renderedRows[row].match(regexp);
+            const value = match?.[group];
+            if (match && value != null) {
+                const relative = group ? match[0].indexOf(value) : 0;
+                const start = match.index + relative;
+                apply(row, start, start + value.length, style);
+                return;
+            }
+        }
+    };
+
+    if (!game.iflags?.wc2_hitpointbar) {
+        apply(0, 0, _statusTitle().length, _statusFieldStyle('title'));
     }
-    const second = _statusLine2();
-    for (let column = 0;
-        column < Math.min(second.length, display.cols);
-        ++column) {
-        display.setCell(column, 23, second[column], NO_COLOR, 0);
+    find('strength', /St:[^ ]+/u, 0, [0], true);
+    find('dexterity', /Dx:[^ ]+/u, 0, [0], true);
+    find('constitution', /Co:[^ ]+/u, 0, [0], true);
+    find('intelligence', /In:[^ ]+/u, 0, [0], true);
+    find('wisdom', /Wi:[^ ]+/u, 0, [0], true);
+    find('charisma', /Ch:[^ ]+/u, 0, [0], true);
+    find(
+        'alignment',
+        /(Lawful|Neutral|Chaotic)/u,
+        1,
+        renderedRows.length === 3 ? [1] : [0],
+        true,
+    );
+    find('dungeon-level', /^(?:Dlvl|Dl|Tutorial):\d+/u);
+    find('gold', /\$:\d+/u);
+    find('hitpoints', /(HP:-?\d+)\(-?\d+\)/u, 1);
+    find('hitpoints-max', /HP:-?\d+(\(-?\d+\))/u, 1);
+    find('power', /(Pw:-?\d+)\(-?\d+\)/u, 1);
+    find('power-max', /Pw:-?\d+(\(-?\d+\))/u, 1);
+    find('armor-class', /AC:-?\d+/u);
+    find('experience-level', /(Xp:\d+)(?:\/\d+)?/u, 1);
+    find('experience', /Xp:\d+\/(\d+)/u, 1);
+    find('time', /T:\d+/u);
+
+    const hunger = _statusFieldData('hunger').text;
+    if (hunger) {
+        for (let row = 0; row < renderedRows.length; ++row) {
+            const start = renderedRows[row].indexOf(hunger);
+            if (start >= 0) {
+                apply(
+                    row, start, start + hunger.length,
+                    _statusFieldStyle('hunger'),
+                );
+                break;
+            }
+        }
+    }
+
+    const optionalRow = renderedRows.length - 1;
+    let optionalStart = 0;
+    for (const [field, enabled] of [
+        ['weapon', game.flags?.weaponstatus],
+        ['armor', game.flags?.armorstatus],
+        ['terrain', game.flags?.terrainstatus],
+    ]) {
+        if (!enabled) continue;
+        const value = _statusFieldData(field).text;
+        const start = renderedRows[optionalRow].indexOf(value, optionalStart);
+        apply(
+            optionalRow, start, start + value.length,
+            _statusFieldStyle(field),
+        );
+        optionalStart = Math.max(optionalStart, start + value.length);
+    }
+    if (game.flags?.showvers) {
+        const version = _statusFieldData('version').text;
+        const start = renderedRows[optionalRow].lastIndexOf(version);
+        apply(
+            optionalRow, start, start + version.length,
+            _statusFieldStyle('version'),
+        );
+    }
+
+    const conditionRow = renderedRows.length - 1;
+    for (let shrinkLevel = 0; shrinkLevel < 3; ++shrinkLevel) {
+        const entries = _statusConditionEntries(game.u, shrinkLevel);
+        let searchStart = 0;
+        const ranges = [];
+        for (const entry of entries) {
+            const start = renderedRows[conditionRow].indexOf(
+                entry.text, searchStart,
+            );
+            if (start < 0) break;
+            ranges.push({ entry, start });
+            searchStart = start + entry.text.length;
+        }
+        if (ranges.length === entries.length) {
+            for (const { entry, start } of ranges) {
+                apply(
+                    conditionRow,
+                    start,
+                    start + entry.text.length,
+                    _statusConditionStyle(entry.option),
+                );
+            }
+            break;
+        }
+    }
+
+    if (game.iflags?.wc2_hitpointbar) {
+        const hp = _statusFieldData('hitpoints');
+        let barLength = Math.trunc((30 * hp.percent) / 100);
+        if (barLength < 1 && hp.percent > 0) barLength = 1;
+        if (barLength >= 30 && hp.percent < 100) barLength = 29;
+        // tty_putstatusfield() advances across trailing padding rather than
+        // writing it, so recorder shadow cells there retain normal attrs.
+        const printedLength = _statusHitpointBarTitle()
+            .slice(0, barLength).trimEnd().length;
+        const hpStyle = _statusFieldStyle('hitpoints');
+        apply(0, 1, 1 + printedLength, {
+            color: hpStyle?.color ?? NO_COLOR,
+            attr: ATR_INVERSE,
+        });
+    }
+    return styles;
+}
+
+function mapViewport(rows, statusRowCount) {
+    const height = Math.min(ROWNO, rows - 1 - statusRowCount);
+    if (height >= ROWNO) return { height: ROWNO, top: 0 };
+
+    // win/tty/wintty.c setclipped() and tty_cliparound(). Startup begins
+    // with clipy=0; one cliparound() follows initial hero placement.
+    let top = 0;
+    let bottom = height;
+    const heroY = game.u?.uy ?? 0;
+    if (heroY < top + 2) {
+        top = Math.max(0, heroY - Math.trunc((bottom - top) / 2));
+        bottom = top + height;
+    } else if (heroY > bottom - 2) {
+        bottom = Math.min(
+            ROWNO,
+            bottom + Math.trunc((bottom - top) / 2),
+        );
+        top = bottom - height;
+    }
+    return { height, top };
+}
+
+function writeStatusRows(
+    display,
+    rows = statusTextRows(),
+    styles = _statusStyleRows(rows),
+) {
+    if (!display?.grid) return;
+    const firstRow = display.rows - rows.length;
+    for (let index = 0; index < rows.length; ++index) {
+        const screenRow = firstRow + index;
+        display.clearRow(screenRow);
+        const text = _expandedStatusRow(rows[index]);
+        for (let column = 0;
+            column < Math.min(text.length, display.cols);
+            ++column) {
+            const style = styles[index]?.[column];
+            display.setCell(
+                column,
+                screenRow,
+                text[column],
+                style?.color ?? NO_COLOR,
+                style?.attr ?? ATR_NONE,
+            );
+        }
     }
 }
 
@@ -1201,19 +2122,20 @@ export function serialize_terminal_grid(display) {
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
+    const statusRows = statusTextRows();
+    const viewport = mapViewport(display.rows, statusRows.length);
 
     let output = '';
     // Row 0: message
     output += (game._pending_message || '') + '\n';
 
-    // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
-    for (let y = 0; y < ROWNO; y++) {
+    // Map viewport between the message row and the status window.
+    for (let offset = 0; offset < viewport.height; ++offset) {
+        const y = viewport.top + offset;
         output += render_map_row(y) + '\n';
     }
 
-    // Row 22-23: status
-    output += _statusLine1() + '\n';
-    output += _statusLine2();
+    output += statusRows.join('\n');
 
     game._screen_output = output;
 
@@ -1226,7 +2148,8 @@ function _buildScreenOutput() {
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
         const browserGlyphs = Boolean(display.spans);
-        for (let y = 0; y < ROWNO; y++) {
+        for (let offset = 0; offset < viewport.height; ++offset) {
+            const y = viewport.top + offset;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc) continue;
@@ -1238,7 +2161,7 @@ function _buildScreenOutput() {
                 if (!ch || ch === ' ') continue;
                 display.setCell(
                     x - 1,
-                    y + 1,
+                    offset + 1,
                     ch,
                     browserGlyphs
                         ? loc.disp_browser_color ?? loc.disp_color ?? NO_COLOR
@@ -1249,10 +2172,13 @@ function _buildScreenOutput() {
                 );
             }
         }
-        writeStatusRows(display);
+        writeStatusRows(display, statusRows);
         // Cursor at hero
         if (game.u?.ux > 0)
-            display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            display.setCursor(
+                game.u.ux - 1,
+                game.u.uy - viewport.top + 1,
+            );
     }
 }
 

@@ -127,6 +127,40 @@ const SOURCE_CONDITION_NAMES = Object.freeze((
     + '|stone|strngl|stun|submerged|termill|tethered|trap|unconscious'
     + '|woundedlegs|holding'
 ).split('|'));
+// C ref: botl.c:condtests[]. opt_out entries begin enabled; opt_in entries
+// begin disabled until an explicit cond_* option enables them.
+const DEFAULT_STATUS_CONDITIONS = Object.freeze({
+    barehanded: false,
+    blind: true,
+    busy: false,
+    conf: true,
+    deaf: true,
+    iron: true,
+    fly: true,
+    foodpois: true,
+    glowhands: false,
+    grab: true,
+    hallucinat: true,
+    held: false,
+    ice: false,
+    lava: true,
+    levitate: true,
+    paralyzed: false,
+    ride: true,
+    sleep: false,
+    slime: true,
+    slip: false,
+    stone: true,
+    strngl: true,
+    stun: true,
+    submerged: false,
+    termill: true,
+    tethered: false,
+    trap: false,
+    unconscious: false,
+    woundedlegs: false,
+    holding: false,
+});
 // C refs: defsym.h's three *_PARSE expansions and symbols.c:loadsyms[] and
 // match_sym(). Names after the case-sensitive S_ prefix are case-insensitive.
 const SOURCE_SYMBOL_NAMES = new Set((
@@ -240,8 +274,18 @@ function defaultResult() {
         iflags: {
             wc_color: true,
             wc_inverse: true,
+            wc_hilite_pet: false,
+            hilite_pile: false,
+            wc2_hitpointbar: false,
             wc_splash_screen: true,
             wc_eight_bit_input: false,
+            wc2_statuslines: 2,
+            wc2_petattr: ATR_INVERSE,
+            hilite_delta: 0,
+            status_hilites: [],
+            status_conditions: { ...DEFAULT_STATUS_CONDITIONS },
+            num_pad: false,
+            num_pad_mode: 0,
             customcolors: true,
             customsymbols: true,
             menu_overlay: true,
@@ -262,6 +306,8 @@ function defaultResult() {
         dogname: '',
         horsename: '',
         pl_fruit: DEFAULT_FRUIT,
+        gameplayBindings: [],
+        commandOperations: [],
         symbolOperations: [],
         rogueSymbols: {},
     };
@@ -784,6 +830,433 @@ function menuHeadingAttribute(token) {
         ? MENU_HEADING_ATTRIBUTES[token] : null;
 }
 
+// C refs: botl.c initblstats[], fieldids_alias[], parse_status_hl1(), and
+// parse_status_hl2(). Rules stay in source append order for get_hilite()-
+// shaped selection by the tty status renderer.
+const STATUS_HILITE_FIELDS = Object.freeze({
+    title: 'string',
+    strength: 'int',
+    dexterity: 'int',
+    constitution: 'int',
+    intelligence: 'int',
+    wisdom: 'int',
+    charisma: 'int',
+    alignment: 'string',
+    score: 'long',
+    'carrying-capacity': 'int',
+    gold: 'long',
+    power: 'int',
+    'power-max': 'int',
+    'experience-level': 'int',
+    'armor-class': 'int',
+    hd: 'int',
+    time: 'long',
+    hunger: 'int',
+    hitpoints: 'int',
+    'hitpoints-max': 'int',
+    'dungeon-level': 'string',
+    experience: 'long',
+    condition: 'condition',
+    version: 'string',
+    weapon: 'string',
+    armor: 'string',
+    terrain: 'string',
+});
+
+const STATUS_PERCENT_FIELDS = new Set([
+    'power', 'experience-level', 'hitpoints', 'experience',
+]);
+
+const STATUS_TEXT_THRESHOLDS = Object.freeze({
+    'carrying-capacity': Object.freeze({
+        burdened: 'burdened',
+        stressed: 'stressed',
+        strained: 'strained',
+        overtaxed: 'overtaxed',
+        overloaded: 'overloaded',
+    }),
+    hunger: Object.freeze({
+        satiated: 'satiated',
+        hungry: 'hungry',
+        weak: 'weak',
+        fainting: 'fainting',
+        fainted: 'fainted',
+        starved: 'starved',
+    }),
+});
+
+const STATUS_HILITE_FIELD_ALIASES = Object.freeze({
+    characteristics: 'characteristics',
+    encumbrance: 'carrying-capacity',
+    experiencepoints: 'experience',
+    dx: 'dexterity',
+    co: 'constitution',
+    con: 'constitution',
+    points: 'score',
+    cap: 'carrying-capacity',
+    pw: 'power',
+    pwmax: 'power-max',
+    xl: 'experience-level',
+    xplvl: 'experience-level',
+    ac: 'armor-class',
+    hitdice: 'hd',
+    turns: 'time',
+    hp: 'hitpoints',
+    hpmax: 'hitpoints-max',
+    dgn: 'dungeon-level',
+    xp: 'experience',
+    exp: 'experience',
+    flags: 'condition',
+});
+
+const STATUS_CHARACTERISTIC_FIELDS = Object.freeze([
+    'strength',
+    'dexterity',
+    'constitution',
+    'intelligence',
+    'wisdom',
+    'charisma',
+]);
+
+const STATUS_HILITE_CONDITIONS = Object.freeze({
+    bare: 'barehanded',
+    blind: 'blind',
+    busy: 'busy',
+    conf: 'conf',
+    deaf: 'deaf',
+    iron: 'iron',
+    fly: 'fly',
+    foodpois: 'foodpois',
+    glow: 'glowhands',
+    grab: 'grab',
+    hallu: 'hallucinat',
+    held: 'held',
+    icy: 'ice',
+    inlava: 'lava',
+    lev: 'levitate',
+    parlyz: 'paralyzed',
+    ride: 'ride',
+    zzz: 'sleep',
+    slime: 'slime',
+    slip: 'slip',
+    stone: 'stone',
+    strngl: 'strngl',
+    stun: 'stun',
+    submrg: 'submerged',
+    termill: 'termill',
+    teth: 'tethered',
+    trap: 'trap',
+    out: 'unconscious',
+    wlegs: 'woundedlegs',
+    uhold: 'holding',
+});
+
+const STATUS_CONDITION_ALIASES = Object.freeze({
+    strangled: ['strngl'],
+    all: SOURCE_CONDITION_NAMES,
+    majortroubles: [
+        'foodpois', 'grab', 'lava', 'slime', 'stone', 'strngl', 'termill',
+    ],
+    minortroubles: [
+        'blind', 'conf', 'deaf', 'hallucinat', 'paralyzed', 'submerged',
+        'stun',
+    ],
+    movement: ['levitate', 'fly', 'ride'],
+    optin: SOURCE_CONDITION_NAMES.filter(
+        (name) => !DEFAULT_STATUS_CONDITIONS[name],
+    ),
+});
+
+function statusHiliteFieldName(rawName) {
+    const normalized = menuHeadingToken(rawName);
+    const exact = Object.keys(STATUS_HILITE_FIELDS).find(
+        (name) => menuHeadingToken(name) === normalized,
+    );
+    if (exact) return exact;
+    if (Object.hasOwn(STATUS_HILITE_FIELD_ALIASES, normalized)) {
+        return STATUS_HILITE_FIELD_ALIASES[normalized];
+    }
+    const partials = Object.keys(STATUS_HILITE_FIELDS).filter(
+        (name) => menuHeadingToken(name).startsWith(normalized),
+    );
+    return partials.length === 1 ? partials[0] : null;
+}
+
+function parseStatusHiliteAction(
+    rawAction,
+    lineNumber,
+    { allowRepeatedColors = false, inheritedColor = NO_COLOR } = {},
+) {
+    const subfields = String(rawAction).split(/[+&]/u);
+    if (!subfields.length || subfields.some((part) => !part.trim())) {
+        optionError(lineNumber, `invalid status highlight '${rawAction}'`);
+    }
+    let attr = ATR_NONE;
+    let clearAttributes = false;
+    let color = inheritedColor;
+    let colorSeen = false;
+    for (const rawSubfield of subfields) {
+        const token = menuHeadingToken(rawSubfield);
+        const parsedAttr = menuHeadingAttribute(token);
+        if (parsedAttr != null) {
+            if (parsedAttr === ATR_NONE) {
+                attr = ATR_NONE;
+                clearAttributes = true;
+            } else {
+                attr |= parsedAttr;
+            }
+            continue;
+        }
+        const parsedColor = menuHeadingColor(token, rawSubfield.trim());
+        if (parsedColor == null || (colorSeen && !allowRepeatedColors)) {
+            optionError(lineNumber, `invalid status highlight '${rawAction}'`);
+        }
+        color = parsedColor;
+        colorSeen = true;
+    }
+    return { attr, clearAttributes, color };
+}
+
+function statusConditionNames(rawConditions, lineNumber) {
+    const selected = new Set();
+    for (const rawCondition of String(rawConditions).split(/[+&]/u)) {
+        const token = menuHeadingToken(rawCondition);
+        const canonical = STATUS_HILITE_CONDITIONS[token];
+        const alias = STATUS_CONDITION_ALIASES[token];
+        // condition aliases accept a unique prefix after exact matching.
+        const partialAliases = Object.keys(STATUS_CONDITION_ALIASES).filter(
+            (name) => name.startsWith(token),
+        );
+        const names = canonical ? [canonical]
+            : alias ?? (partialAliases.length === 1
+                ? STATUS_CONDITION_ALIASES[partialAliases[0]] : null);
+        if (!names) {
+            optionError(lineNumber, `unknown status condition '${rawCondition}'`);
+        }
+        for (const name of names) selected.add(name);
+    }
+    return [...selected];
+}
+
+function parseNumericStatusThreshold(rawThreshold) {
+    const match = String(rawThreshold).match(
+        /^([<>]=?|=)?([+-]?\d+)(%)?$/u,
+    );
+    if (!match) return null;
+    const operator = match[1] || '=';
+    return {
+        behavior: match[3] ? 'percentage' : 'absolute',
+        relation: operator,
+        value: Number.parseInt(match[2], 10),
+    };
+}
+
+function parseStatusHiliteRule(field, threshold, action, lineNumber) {
+    const fieldType = STATUS_HILITE_FIELDS[field];
+    const normalized = String(threshold).trim().toLowerCase();
+    let behavior;
+    let relation = '=';
+    let value = null;
+    let text = '';
+    if (normalized === 'always') {
+        behavior = 'always';
+    } else if (normalized === 'up') {
+        behavior = 'changed';
+        relation = fieldType === 'string' ? '=' : '>';
+    } else if (normalized === 'down') {
+        behavior = 'changed';
+        relation = fieldType === 'string' ? '=' : '<';
+    } else if (normalized === 'changed') {
+        behavior = 'changed';
+    } else if (field === 'hitpoints' && normalized === 'criticalhp') {
+        behavior = 'critical';
+    } else {
+        const numeric = parseNumericStatusThreshold(normalized);
+        if (numeric) {
+            if (fieldType === 'string') {
+                optionError(
+                    lineNumber,
+                    `status field '${field}' does not accept numeric thresholds`,
+                );
+            }
+            ({ behavior, relation, value } = numeric);
+            if (behavior === 'percentage') {
+                if (!STATUS_PERCENT_FIELDS.has(field)) {
+                    optionError(
+                        lineNumber,
+                        `status field '${field}' does not accept percentages`,
+                    );
+                }
+                if (value < 0 || value > 100
+                    || (relation === '<' && value === 0)
+                    || (relation === '>' && value === 100)) {
+                    optionError(
+                        lineNumber,
+                        `status percentage '${threshold}' is out of range`,
+                    );
+                }
+            } else {
+                const lower = field === 'armor-class' ? -128
+                    : relation === '>' ? -1 : relation === '<' ? 1 : 0;
+                if (value < lower
+                    || (fieldType === 'int' && value > 32767)) {
+                    optionError(
+                        lineNumber,
+                        `status threshold '${threshold}' is out of range`,
+                    );
+                }
+            }
+        } else if (Object.hasOwn(STATUS_TEXT_THRESHOLDS, field)) {
+            const canonical = STATUS_TEXT_THRESHOLDS[field][
+                menuHeadingToken(normalized)
+            ];
+            if (!canonical) {
+                optionError(
+                    lineNumber,
+                    `unknown status threshold '${threshold}'`,
+                );
+            }
+            behavior = 'text';
+            text = canonical;
+        } else if (fieldType === 'string') {
+            behavior = 'text';
+            text = normalized;
+        } else {
+            optionError(
+                lineNumber,
+                `unknown status behavior '${threshold}'`,
+            );
+        }
+    }
+    return {
+        field,
+        behavior,
+        relation,
+        value,
+        text,
+        style: parseStatusHiliteAction(action, lineNumber),
+    };
+}
+
+function parseStatusHiliteComponents(components, lineNumber) {
+    const field = statusHiliteFieldName(components[0]);
+    if (!field) {
+        optionError(
+            lineNumber,
+            `unknown status field '${components[0]}'`,
+        );
+    }
+    if (components.length < 2) {
+        optionError(lineNumber, 'incomplete status highlight rule');
+    }
+    const fields = field === 'characteristics'
+        ? STATUS_CHARACTERISTIC_FIELDS : [field];
+    const rules = [];
+    if (field === 'condition') {
+        if (components.length < 3 || components.length % 2 === 0) {
+            optionError(lineNumber, 'incomplete condition highlight rule');
+        }
+        let inheritedColor = NO_COLOR;
+        for (let index = 1; index < components.length; index += 2) {
+            const style = parseStatusHiliteAction(
+                components[index + 1],
+                lineNumber,
+                { allowRepeatedColors: true, inheritedColor },
+            );
+            inheritedColor = style.color;
+            rules.push({
+                field: 'condition',
+                conditions: statusConditionNames(
+                    components[index], lineNumber,
+                ),
+                style,
+            });
+        }
+        return rules;
+    }
+    if (components.length === 2) {
+        for (const target of fields) {
+            rules.push(parseStatusHiliteRule(
+                target, 'always', components[1], lineNumber,
+            ));
+        }
+        return rules;
+    }
+    if (components.length % 2 === 0) {
+        optionError(lineNumber, 'incomplete status highlight rule');
+    }
+    for (let index = 1; index < components.length; index += 2) {
+        for (const target of fields) {
+            rules.push(parseStatusHiliteRule(
+                target,
+                components[index],
+                components[index + 1],
+                lineNumber,
+            ));
+        }
+    }
+    return rules;
+}
+
+function parseStatusHiliteRules(value, lineNumber) {
+    const rules = [];
+    let components = [''];
+    let componentIndex = 0;
+    const flush = () => {
+        if (components.some(Boolean)) {
+            rules.push(...parseStatusHiliteComponents(
+                components.map((part) => part.trim()), lineNumber,
+            ));
+        }
+        components = [''];
+        componentIndex = 0;
+    };
+    for (const character of String(value).toLowerCase()) {
+        if (character === '/') {
+            componentIndex++;
+            components[componentIndex] = '';
+        } else if (character === ' ') {
+            if (componentIndex === 1
+                && menuHeadingToken(components[0]) === 'title') {
+                components[componentIndex] += character;
+            } else if (componentIndex > 0) {
+                flush();
+            }
+        } else {
+            components[componentIndex] += character;
+        }
+    }
+    flush();
+    if (!rules.length) {
+        optionError(lineNumber, 'hilite_status requires a value');
+    }
+    return rules;
+}
+
+function setStatusHiliteOption(result, value, negated, lineNumber) {
+    if (negated && value != null) {
+        result.iflags.status_hilites.length = 0;
+        return;
+    }
+    if (value == null || !String(value).trim()) {
+        optionError(lineNumber, 'hilite_status requires a value');
+    }
+    result.iflags.status_hilites.push(
+        ...parseStatusHiliteRules(value, lineNumber),
+    );
+    if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
+}
+
+function setStatusHiliteDuration(result, value, negated) {
+    if (negated) {
+        result.iflags.hilite_delta = 0;
+        return;
+    }
+    const parsed = value == null || value === ''
+        ? 3 : Number.parseInt(value, 10) || 0;
+    result.iflags.hilite_delta = parsed < 0 ? 1 : parsed;
+}
+
 function parseMenuHeadingStyle(value, lineNumber) {
     const rawTokens = String(value).split('&').map((token) => token.trim());
     const tokens = rawTokens.map(menuHeadingToken);
@@ -838,6 +1311,24 @@ function setMenuHeadings(result, value, negated, lineNumber) {
     }
 }
 
+// C ref: options.c:optfn_petattr(). The tty port accepts one text
+// attribute and keeps the chosen style when hilite_pet is later disabled.
+function setPetAttribute(result, value, negated, lineNumber) {
+    if (value != null && negated) {
+        optionError(lineNumber, 'negated petattr cannot have a value');
+    }
+    if (value != null) {
+        const attr = menuHeadingAttribute(menuHeadingToken(value));
+        if (attr == null) {
+            optionError(lineNumber, `unknown petattr parameter '${value}'`);
+        }
+        result.iflags.wc2_petattr = attr;
+    } else if (negated) {
+        result.iflags.wc2_petattr = ATR_NONE;
+    }
+    result.iflags.wc_hilite_pet = result.iflags.wc2_petattr !== ATR_NONE;
+}
+
 // C refs: options.c default_menu_cmd_info[], txt2key(),
 // illegal_menu_cmd_key(), and add_menu_cmd_alias().
 const MENU_COMMAND_OPTIONS = Object.freeze([
@@ -859,6 +1350,39 @@ const MENU_COMMAND_OPTIONS = Object.freeze([
 const MENU_COMMAND_BY_NAME = Object.freeze(Object.fromEntries(
     MENU_COMMAND_OPTIONS.map(({ name, command }) => [name, command]),
 ));
+
+// C ref: cmd.c spkeys_binds[]. These names update prompt/navigation keys,
+// not the extended-command binding list queried by nh.eckey().
+const SPECIAL_KEY_COMMANDS = new Set([
+    'getdir.self',
+    'getdir.self2',
+    'getdir.help',
+    'getdir.mouse',
+    'count',
+    'getpos.self',
+    'getpos.pick',
+    'getpos.pick.quick',
+    'getpos.pick.once',
+    'getpos.pick.verbose',
+    'getpos.valid',
+    'getpos.autodescribe',
+    'getpos.mon.next',
+    'getpos.mon.prev',
+    'getpos.obj.next',
+    'getpos.obj.prev',
+    'getpos.door.next',
+    'getpos.door.prev',
+    'getpos.unexplored.next',
+    'getpos.unexplored.prev',
+    'getpos.valid.next',
+    'getpos.valid.prev',
+    'getpos.all.next',
+    'getpos.all.prev',
+    'getpos.help',
+    'getpos.filter',
+    'getpos.moveskip',
+    'getpos.menu',
+]);
 
 const DEFAULT_OBJECT_CLASS_SYMBOLS = new Set([
     ']', ')', '[', '=', '"', '(', '%', '!', '?', '+', '/', '$', '*', '`',
@@ -1018,14 +1542,58 @@ function applyMenuBinding(result, binding, lineNumber) {
     const keyText = binding.slice(0, colon);
     const commandName = binding.slice(colon + 1).trim();
     const command = MENU_COMMAND_BY_NAME[commandName];
-    // Other valid gameplay bindings belong to the command subsystem rather
-    // than this startup parser; retain only menu aliases here.
-    if (command === undefined) return;
     const key = textToKey(keyText);
+    if (command === undefined) {
+        if (keyText === 'mouse1' || keyText === 'mouse2') return;
+        if (!key) {
+            optionError(lineNumber, `unknown key binding key '${keyText}'`);
+        }
+        if (SPECIAL_KEY_COMMANDS.has(commandName)) return;
+        // Keep gameplay bindings in source application order. The first
+        // consumer is nh.eckey() while loading tut-1; command execution still
+        // belongs to the later turn milestone.
+        const operation = {
+            key,
+            command: commandName.toLowerCase(),
+        };
+        result.gameplayBindings.push(operation);
+        result.commandOperations.push({ type: 'bind', ...operation });
+        return;
+    }
     if (!key || illegalMenuCommandKey(key)) {
         optionError(lineNumber, `reserved menu command key '${keyText}'`);
     }
     addMenuCommandAlias(result, key, command);
+}
+
+// C ref: options.c optfn_number_pad(). These fields affect cmd_from_ecname()
+// during tutorial generation even though command dispatch remains unported.
+function setNumberPadOption(result, value, negated, lineNumber) {
+    let enabled;
+    let mode;
+    if (value == null || value === '') {
+        enabled = !negated;
+        mode = 0;
+    } else {
+        if (negated) {
+            optionError(lineNumber, 'number_pad may not be negated with a value');
+        }
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isInteger(parsed) || parsed < -1 || parsed > 4
+            || (parsed === 0 && value[0] !== '0')) {
+            optionError(lineNumber, `illegal number_pad parameter '${value}'`);
+        }
+        enabled = parsed > 0;
+        mode = parsed < 0 ? 1
+            : (parsed === 2 ? 1 : parsed === 3 ? 2 : parsed === 4 ? 3 : 0);
+    }
+    result.iflags.num_pad = enabled;
+    result.iflags.num_pad_mode = mode;
+    result.commandOperations.push({
+        type: 'number_pad',
+        enabled,
+        mode,
+    });
 }
 
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
@@ -1052,6 +1620,15 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
         result.iflags.wc_color = enabled;
     } else if (name === 'use_inverse') {
         result.iflags.wc_inverse = enabled;
+    } else if (name === 'hilite_pet') {
+        result.iflags.wc_hilite_pet = enabled;
+        if (enabled && result.iflags.wc2_petattr === ATR_NONE) {
+            result.iflags.wc2_petattr = ATR_INVERSE;
+        }
+    } else if (name === 'hilite_pile') {
+        result.iflags.hilite_pile = enabled;
+    } else if (name === 'hitpointbar') {
+        result.iflags.wc2_hitpointbar = enabled;
     } else if (name === 'legacy') result.flags.legacy = enabled;
     else if (name === 'tutorial') {
         result.flags.tutorial = enabled;
@@ -1065,6 +1642,13 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
     } else if (name === 'customcolors' || name === 'customsymbols') {
         result.iflags[name] = enabled;
     } else if (name === 'pushweapon') result.flags.pushweapon = enabled;
+    else if (name === 'rest_on_space') {
+        result.flags.rest_on_space = enabled;
+        result.commandOperations.push({
+            type: 'rest_on_space',
+            enabled,
+        });
+    }
     else if (name === 'showexp') result.flags.showexp = enabled;
     else if (name === 'time') result.flags.time = enabled;
     else if (name === 'verbose') result.flags.verbose = enabled;
@@ -1257,6 +1841,16 @@ function applyOption(result, optionState, option, lineNumber) {
         setPlaymode(result, value, negated, lineNumber);
     } else if (name === 'menu_headings') {
         setMenuHeadings(result, value, negated, lineNumber);
+    } else if (name === 'petattr') {
+        setPetAttribute(result, value, negated, lineNumber);
+    } else if (name === 'hilite_status') {
+        setStatusHiliteOption(result, value, negated, lineNumber);
+    } else if (name === 'statushilites') {
+        setStatusHiliteDuration(result, value, negated);
+    } else if (name.startsWith('cond_')) {
+        const enabled = !negated;
+        result.flags[name] = enabled;
+        result.iflags.status_conditions[name.slice('cond_'.length)] = enabled;
     } else if (menuCommand && parsedName === name) {
         setMenuCommandOption(
             result, menuCommand, value, negated, lineNumber,
@@ -1297,6 +1891,8 @@ function applyOption(result, optionState, option, lineNumber) {
             name,
             rawValue: value,
         }]);
+    } else if (name === 'number_pad') {
+        setNumberPadOption(result, value, negated, lineNumber);
     } else if (value != null) {
         if (negated) {
             optionError(
@@ -1325,6 +1921,17 @@ function applyOption(result, optionState, option, lineNumber) {
                 );
             }
             result.flags.versinfo = versinfo;
+        } else if (name === 'statuslines') {
+            // options.c:optfn_statuslines() uses atoi() and accepts only the
+            // two window-port layouts supported by tty.
+            const statuslines = Number.parseInt(value, 10);
+            if (statuslines !== 2 && statuslines !== 3) {
+                optionError(
+                    lineNumber,
+                    "'statuslines' must be 2 or 3",
+                );
+            }
+            result.iflags.wc2_statuslines = statuslines;
         } else {
             // This parser currently gives source semantics to the startup
             // subset above. Preserve other valid options for later subsystem
