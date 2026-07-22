@@ -278,6 +278,7 @@ function defaultResult() {
             hilite_pile: false,
             wc2_hitpointbar: false,
             wc_splash_screen: true,
+            status_updates: true,
             wc_eight_bit_input: false,
             wc2_statuslines: 2,
             wc2_petattr: ATR_INVERSE,
@@ -297,6 +298,12 @@ function defaultResult() {
                 attr: ATR_INVERSE,
                 color: NO_COLOR,
             },
+        },
+        a11y: {
+            accessiblemsg: false,
+            glyph_updates: false,
+            mon_notices: false,
+            mon_notices_blocked: 0,
         },
         roleFilter: defaultRoleFilter(),
         uroleplay: defaultRoleplay(),
@@ -1635,6 +1642,14 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
         result.tutorial_set = true;
     } else if (name === 'splash_screen') {
         result.iflags.wc_splash_screen = enabled;
+    } else if (name === 'status_updates') {
+        result.iflags.status_updates = enabled;
+    } else if (name === 'accessiblemsg') {
+        result.a11y.accessiblemsg = enabled;
+    } else if (name === 'mention_map') {
+        result.a11y.glyph_updates = enabled;
+    } else if (name === 'spot_monsters') {
+        result.a11y.mon_notices = enabled;
     } else if (name === 'menu_overlay') {
         result.iflags.menu_overlay = enabled;
     } else if (name === 'eight_bit_tty') {
