@@ -1130,6 +1130,23 @@ export async function moveloop_core() {
         return;
     }
 
+    // C ref: allmain.c moveloop_core():485 — the picklock occupation (set by
+    // lock.c pick_lock() from #loot's autounlock).  Like #force above, the move
+    // loop RUNS THE OCCUPATION instead of reading a command: each turn advances
+    // usedtime and rolls rn2(100) >= chance ("still busy"), until the lock is
+    // picked ("You succeed in picking the lock." + exercise) or the attempt is
+    // abandoned.  The monster moves for the turn already ran above (moveloop_turn
+    // via _pendingTurn), matching C's context.move -> movemon -> occupation order.
+    if (g._picklock_box) {
+        const { picklock } = await import('./extcmd-handlers.js');
+        const busy = await picklock();
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._picklock_box = null;
+        return;
+    }
+
     // C ref: allmain.c moveloop_core() — when the hero is helpless / busy with a
     // multi-turn action (gm.multi < 0, e.g. "jumping around" after #jump), no
     // command is read; instead game time keeps passing (context.move stays 1)

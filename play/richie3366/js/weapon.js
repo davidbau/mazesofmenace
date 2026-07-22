@@ -10,7 +10,7 @@ import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
 import { Monnam } from './do_name.js';
-import { doname } from './objnam.js';
+import { doname, xname, vtense } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
@@ -1071,4 +1071,99 @@ export function monmulti(mtmp, otmp, mwep) {
     if (quan < multishot) multishot = quan;
     if (multishot < 1) multishot = 1;
     return multishot;
+}
+
+const TOWEL = objectNames.indexOf('TOWEL');
+
+/** C obj.h is_wet_towel — TOWEL with spe > 0. */
+export function is_wet_towel(o) {
+    return !!(o && o.otyp === TOWEL && (o.spe | 0) > 0);
+}
+
+/** C invent.c carried — invent membership. */
+function towel_carried(obj) {
+    return !!(obj && (game.invent || []).includes(obj));
+}
+
+/** C invent.c mcarried — minvent membership. */
+function towel_mcarried(obj) {
+    return !!(obj?.ocarry);
+}
+
+/** C hacklib.c s_suffix — possessive for mon towel dry pline. */
+function s_suffix_towel(s) {
+    if (!s) return s;
+    const last = s.charAt(s.length - 1).toLowerCase();
+    if (last === 's' || last === 'x' || last === 'z'
+        || s.toLowerCase().endsWith('sh') || s.toLowerCase().endsWith('ch')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/** C objnam.c Yobjnam2 thin — "Your <xname>" [+ verb]. */
+function Yobjnam2_towel(obj, verb) {
+    const nam = xname(obj);
+    if (!verb) return `Your ${nam}`;
+    return `Your ${nam} ${vtense(nam, verb)}`;
+}
+
+/**
+ * C ref: weapon.c finish_towel_change — clamp spe 0..7; uwep unweapon;
+ * invent update deferred.
+ */
+function finish_towel_change(obj, newspe) {
+    newspe = Math.min(newspe | 0, 7);
+    obj.spe = Math.max(newspe, 0);
+    if (obj === game.u?.uwep) {
+        if (!game.gu) game.gu = {};
+        game.gu.unweapon = !is_wet_towel(obj);
+    }
+    // update_inventory deferred
+}
+
+/**
+ * C ref: weapon.c wet_a_towel
+ * amt ≤ 0: increment by -amt; amt > 0: set; amt == 0: no-op.
+ * Verbose invent/mcarried plines when wetness increases.
+ */
+export async function wet_a_towel(obj, amt, verbose) {
+    if (!obj) return;
+    const cur = obj.spe | 0;
+    const newspe = (amt <= 0) ? cur - amt : amt;
+    if (newspe > cur && verbose) {
+        const wetness = (newspe < 3)
+            ? (!cur ? 'damp' : 'damper')
+            : (!cur ? 'wet' : 'wetter');
+        if (towel_carried(obj)) {
+            await pline(`${Yobjnam2_towel(obj, null)} gets ${wetness}.`);
+        } else if (towel_mcarried(obj) && canseemon(obj.ocarry)) {
+            await pline(
+                `${s_suffix_towel(Monnam(obj.ocarry))} ${xname(obj)} gets ${wetness}.`,
+            );
+        }
+    }
+    if (newspe !== cur) finish_towel_change(obj, newspe);
+}
+
+/**
+ * C ref: weapon.c dry_a_towel
+ * amt < 0: decrement by abs(amt); amt ≥ 0: set (0 is not a no-op).
+ * Verbose invent/mcarried plines when wetness decreases.
+ */
+export async function dry_a_towel(obj, amt, verbose) {
+    if (!obj) return;
+    const cur = obj.spe | 0;
+    const newspe = (amt < 0) ? cur + amt : amt;
+    if (newspe < cur && verbose) {
+        const out = !newspe ? ' out' : '';
+        if (towel_carried(obj)) {
+            await pline(`${Yobjnam2_towel(obj, null)} dries${out}.`);
+        } else if (towel_mcarried(obj) && canseemon(obj.ocarry)) {
+            await pline(
+                `${s_suffix_towel(Monnam(obj.ocarry))} ${xname(obj)} dries${out}.`,
+            );
+        }
+    }
+    if (newspe !== cur) finish_towel_change(obj, newspe);
 }

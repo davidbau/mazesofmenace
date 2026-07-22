@@ -5,12 +5,13 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, canseemon, canspotmon, newsym,
+    map_invisible, unmap_invisible, glyph_is_invisible, You_feel,
 } from './display.js';
 import { vision_recalc, cansee } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
-    COIN_CLASS, GEM_CLASS, FOOD_CLASS, objectNames, objectNameStrs,
-    objectDescrs,
+    COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
+    objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
@@ -19,34 +20,50 @@ import {
     COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
-    EXT_ENCUMBER, COST_DSTROY, HEAD, HAND,
+    EXT_ENCUMBER, COST_DSTROY, HEAD, HAND, NOSE,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
+    RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE, SUPPRESS_SADDLE, has_mgivenname,
+    PLNMSG_enum, NO_TRAP_FLAGS,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
-import { m_at, dist2, seemimic, see_monster_closeup } from './mon.js';
-import { compactify_invlets, makeknown, near_capacity } from './invent.js';
+import { m_at, dist2, seemimic, see_monster_closeup, find_mid, mnexto, wake_nearby } from './mon.js';
+import {
+    compactify_invlets, makeknown, near_capacity, observe_object, prinv,
+} from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
     likes_gems, M1_SEE_INVIS, monsterNames, mons, throws_rocks,
+    unsolid, nolimbs, has_head, breathless,
+    PM_ARCHEOLOGIST, PM_GNOME,
 } from './monsters.js';
-import { wield_tool } from './wield.js';
-import { splitobj, delobj, objects_at } from './mkobj.js';
-import { xname, the, makeplural } from './objnam.js';
-import { acurr, A_CHA, A_STR } from './attrib.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { can_blow } from './mondata.js';
+import { wield_tool, welded } from './wield.js';
+import { splitobj, delobj, objects_at, unbless } from './mkobj.js';
+import { xname, the, The, makeplural, vtense } from './objnam.js';
+import { obj_resists } from './dogmove.js';
+import { acurr, A_CHA, A_STR, change_luck } from './attrib.js';
+import { Monnam, mon_nam, x_monnam, y_monnam } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path } from './dothrow.js';
-import { teleds } from './teleport.js';
+import { teleds, tele_to_rnd_pet, noteleport_level } from './teleport.js';
 import { morehungry, use_tin_opener } from './eat.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { costly_alteration } from './shk.js';
 import { zappable, release_hold } from './zap.js';
 import { explode } from './explode.js';
-import { flash_hits_mon } from './uhitm.js';
+import { flash_hits_mon, xkilled } from './uhitm.js';
+import { growl, yelp, whimper, mon_msound } from './sounds.js';
+import { vault_summon_gd } from './vault.js';
+import { fill_pit } from './dig.js';
+import { mintrap, Trap_Killed_Mon } from './trap.js';
+import { make_glib } from './potion.js';
+import { Blindf_on, Blindf_off, cursed_check } from './do_wear.js';
+import { dropx } from './do.js';
+import { is_wet_towel, dry_a_towel } from './weapon.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -64,7 +81,25 @@ const TOUCHSTONE = objectNames.indexOf('TOUCHSTONE');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const FLINT = objectNames.indexOf('FLINT');
+const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
 const SACK = objectNames.indexOf('SACK');
+/* C objclass.h enum obj_material_types — use_stone material switch */
+const MAT_LIQUID = 1;
+const MAT_WAX = 2;
+const MAT_CLOTH = 6;
+const MAT_LEATHER = 7;
+const MAT_WOOD = 8;
+const MAT_SILVER = 14;
+const MAT_GOLD = 15;
+const MAT_GLASS = 19;
+const MAT_GEMSTONE = 20;
+const MAT_MINERAL = 21;
+/** C decl.c c_obj_colors[] — streak color for use_stone. */
+const C_OBJ_COLORS = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'transparent', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
 const OILSKIN_SACK = objectNames.indexOf('OILSKIN_SACK');
 const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
@@ -86,9 +121,17 @@ const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
 const LENSES = objectNames.indexOf('LENSES');
 const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+const LEASH = objectNames.indexOf('LEASH');
+const SADDLE = objectNames.indexOf('SADDLE');
+const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
+const MAGIC_WHISTLE = objectNames.indexOf('MAGIC_WHISTLE');
+const TOWEL = objectNames.indexOf('TOWEL');
+const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const WAN_NOTHING = objectNames.indexOf('WAN_NOTHING');
@@ -118,6 +161,11 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_UMBER_HULK = monsterNames.indexOf('PM_UMBER_HULK');
 const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+/** C apply.c MAXLEASHED. */
+const MAXLEASHED = 2;
+/** C monflag.h MS_SILENT. */
+const MS_SILENT = 0;
 /** C mon.h howmonseen bits — NORMAL suffices for lit-room pets. */
 const MONSEEN_NORMAL = 0x01;
 const MONSEEN_SEEINVIS = 0x02;
@@ -883,11 +931,12 @@ function make_blinded(xtime, _talk) {
     }
 }
 
-/** C ref: mondata.c body_part — FACE/HEAD/HAND; poly table deferred. */
+/** C ref: mondata.c body_part — FACE/HEAD/HAND/NOSE; poly table deferred. */
 function body_part(part) {
     if (part === FACE) return 'face';
     if (part === HEAD) return 'head';
     if (part === HAND) return 'hand';
+    if (part === NOSE) return 'nose';
     return 'body part';
 }
 
@@ -1270,17 +1319,707 @@ async function do_break_wand(obj) {
     return ECMD_TIME;
 }
 
+/** C apply.c um_dist — true if Chebyshev distance to hero > n. */
+function um_dist(x, y, n) {
+    const u = game.u || {};
+    return Math.abs((u.ux | 0) - (x | 0)) > n
+        || Math.abs((u.uy | 0) - (y | 0)) > n;
+}
+
+/** C you.h m_next2u — squared distu ≤ 2. */
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+/** C hacklib.c s_suffix — possessive for leash snap pline. */
+function s_suffix_leash(s) {
+    const str = String(s || '');
+    if (!str) return "'s";
+    const last = str.charAt(str.length - 1);
+    if (last === 's' || last === 'x' || last === 'z'
+        || str.endsWith('ch') || str.endsWith('sh')) {
+        return `${str}'`;
+    }
+    return `${str}'s`;
+}
+
+/** C do_name.c l_monnam — ARTICLE_NONE + called. */
+function l_monnam(mtmp) {
+    return x_monnam(
+        mtmp, ARTICLE_NONE, null,
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        true,
+    );
+}
+
+/** C you.h mhis — hallu rn2 deferred (leash pull-free msg). */
+function mhis_leash(mtmp) {
+    if (mtmp?.female) return 'her';
+    return 'his';
+}
+
+/**
+ * C ref: wizard.c mon_has_amulet — minvent holds AMULET_OF_YENDOR.
+ */
+export function mon_has_amulet(mtmp) {
+    if (!mtmp || AMULET_OF_YENDOR < 0) return 0;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.otyp | 0) === AMULET_OF_YENDOR) return 1;
+    }
+    return 0;
+}
+
+/**
+ * C ref: apply.c number_leashed — invent LEASH with leashmon set.
+ */
+export function number_leashed() {
+    let i = 0;
+    if (LEASH < 0) return 0;
+    for (const obj of game.invent || []) {
+        if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) i++;
+    }
+    return i;
+}
+
+/**
+ * C ref: apply.c get_mleash — invent LEASH attached to mtmp->m_id.
+ */
+export function get_mleash(mtmp) {
+    if (!mtmp || LEASH < 0) return null;
+    const mid = mtmp.m_id | 0;
+    for (const otmp of game.invent || []) {
+        if ((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0) === mid) {
+            return otmp;
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: apply.c o_unleash — clear mleashed on mon matching leashmon.
+ * Named omit: update_inventory redraw.
+ */
+export function o_unleash(otmp) {
+    if (!otmp) return;
+    const lid = otmp.leashmon | 0;
+    if (lid) {
+        for (const mtmp of game.fmon || []) {
+            if ((mtmp.m_id | 0) === lid) {
+                mtmp.mleashed = 0;
+                break;
+            }
+        }
+    }
+    otmp.leashmon = 0;
+}
+
+/**
+ * C ref: apply.c m_unleash — clear leashmon + mleashed; optional feedback.
+ * Named omit: update_inventory redraw; pline_mon SetVoice.
+ */
+export async function m_unleash(mtmp, feedback) {
+    if (!mtmp) return;
+    if (feedback) {
+        if (canseemon(mtmp)) {
+            await pline(
+                `${Monnam(mtmp)} pulls free of ${mhis_leash(mtmp)} leash!`,
+            );
+        } else {
+            await pline('Your leash falls slack.');
+        }
+    }
+    const otmp = get_mleash(mtmp);
+    if (otmp) otmp.leashmon = 0;
+    mtmp.mleashed = 0;
+}
+
+/**
+ * C ref: apply.c unleash_all — bones / death clear.
+ */
+export function unleash_all() {
+    if (LEASH >= 0) {
+        for (const otmp of game.invent || []) {
+            if ((otmp.otyp | 0) === LEASH) otmp.leashmon = 0;
+        }
+    }
+    for (const mtmp of game.fmon || []) {
+        mtmp.mleashed = 0;
+    }
+}
+
+/**
+ * C ref: apply.c leashable — not long worm / unsolid / headless blob.
+ */
+export function leashable(mtmp) {
+    if (!mtmp?.data) return false;
+    const mnum = mtmp.mnum ?? mtmp.data.mndx ?? -1;
+    if (PM_LONG_WORM >= 0 && mnum === PM_LONG_WORM) return false;
+    if (unsolid(mtmp.data)) return false;
+    if (nolimbs(mtmp.data) && !has_head(mtmp.data)) return false;
+    return true;
+}
+
+/**
+ * C ref: apply.c mleashed_next2u — jerk pet adjacent or drop leash.
+ * Returns true when cursed leash blocks next_to_u (get_iter_mons stop).
+ */
+async function mleashed_next2u(mtmp) {
+    if (!mtmp?.mleashed) return false;
+    if (!m_next2u(mtmp)) await mnexto(mtmp, RLOC_NOMSG);
+    if (!m_next2u(mtmp)) {
+        const otmp = get_mleash(mtmp);
+        if (!otmp) {
+            // C: impossible("leashed-unleashed mon?");
+            return true;
+        }
+        if (otmp.cursed) return true;
+        mtmp.mleashed = 0;
+        otmp.leashmon = 0;
+        await You_feel(
+            `${number_leashed() > 1 ? 'a' : 'the'} leash go slack.`,
+        );
+    }
+    return false;
+}
+
+/**
+ * C ref: apply.c next_to_u — leashed pets must stay adjacent; steed+AoY ban.
+ * @returns {Promise<boolean>}
+ */
+export async function next_to_u() {
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) <= 0) continue;
+        if (await mleashed_next2u(mtmp)) return false;
+    }
+    const steed = game.u?.usteed;
+    if (steed && mon_has_amulet(steed)) return false;
+    return true;
+}
+
+/**
+ * C ref: apply.c check_leash — stretch/choke/snap after hero moved from (x,y).
+ */
+export async function check_leash(x, y) {
+    if (LEASH < 0) return;
+    const u = game.u || {};
+    for (const otmp of game.invent || []) {
+        if ((otmp.otyp | 0) !== LEASH || (otmp.leashmon | 0) === 0) continue;
+        const mtmp = find_mid(otmp.leashmon | 0, 0);
+        if (!mtmp) {
+            otmp.leashmon = 0;
+            continue;
+        }
+        if (dist2(u.ux | 0, u.uy | 0, mtmp.mx | 0, mtmp.my | 0)
+            > dist2(x | 0, y | 0, mtmp.mx | 0, mtmp.my | 0)) {
+            if (!um_dist(mtmp.mx | 0, mtmp.my | 0, 3)) {
+                // still close enough
+            } else if (otmp.cursed && !breathless(mtmp.data)) {
+                if (um_dist(mtmp.mx | 0, mtmp.my | 0, 5)
+                    || ((mtmp.mhp = (mtmp.mhp | 0) - rnd(2)) <= 0)) {
+                    const save_pacifism = game.u?.uconduct?.killer | 0;
+                    await pline(
+                        `Your leash chokes ${mon_nam(mtmp)} to death!`,
+                    );
+                    await xkilled(mtmp, XKILL_NOMSG);
+                    if ((mtmp.mhp | 0) > 0 && game.u?.uconduct) {
+                        game.u.uconduct.killer = save_pacifism;
+                    }
+                } else {
+                    await pline(
+                        `${Monnam(mtmp)} is choked by the leash!`,
+                    );
+                    if (mtmp.mtame && rn2(mtmp.mtame | 0)) {
+                        mtmp.mtame = (mtmp.mtame | 0) - 1;
+                    }
+                }
+            } else if (um_dist(mtmp.mx | 0, mtmp.my | 0, 5)) {
+                await pline(
+                    `${s_suffix_leash(Monnam(mtmp))} leash snaps loose!`,
+                );
+                await m_unleash(mtmp, false);
+            } else {
+                await pline('You pull on the leash.');
+                if (mon_msound(mtmp) !== MS_SILENT) {
+                    switch (rn2(3)) {
+                    case 0:
+                        await growl(mtmp);
+                        break;
+                    case 1:
+                        await yelp(mtmp);
+                        break;
+                    default:
+                        await whimper(mtmp);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * C ref: cmd.c get_adjacent_loc — getdir then adjacent/self cell for leash.
+ */
+async function get_adjacent_loc_leash() {
+    if (!(await getdir_self_ok(null))) {
+        await pline('Never mind.');
+        return null;
+    }
+    const u = game.u || {};
+    const cc = {
+        x: (u.ux | 0) + (u.dx | 0),
+        y: (u.uy | 0) + (u.dy | 0),
+    };
+    if (!isok(cc.x, cc.y) && !(u.dx === 0 && u.dy === 0 && u.dz === 0)) {
+        return null;
+    }
+    if (u.dx === 0 && u.dy === 0) {
+        cc.x = u.ux | 0;
+        cc.y = u.uy | 0;
+    }
+    return cc;
+}
+
+/**
+ * C ref: apply.c use_leash_core — attach/detach leash at spotted mon.
+ */
+async function use_leash_core(obj, mtmp, cc, spotmon) {
+    const loc = game.level?.at?.(cc.x, cc.y);
+    if (!spotmon && !glyph_is_invisible(loc)) {
+        await pline(
+            `You fail to ${obj.leashmon ? 'un' : ''}leash something.`,
+        );
+        map_invisible(cc.x, cc.y);
+    } else if (!mtmp.mtame) {
+        await pline(
+            `${Monnam(mtmp)} ${!obj.leashmon ? 'cannot be' : 'is not'} leashed!`,
+        );
+    } else if (!obj.leashmon) {
+        if (mtmp.mleashed) {
+            await pline(
+                `This ${spotmon ? l_monnam(mtmp) : 'creature'} is already leashed.`,
+            );
+        } else if (unsolid(mtmp.data)) {
+            await pline('The leash would just fall off.');
+        } else if (nolimbs(mtmp.data) && !has_head(mtmp.data)) {
+            await pline(
+                `${Monnam(mtmp)} has no extremities the leash would fit.`,
+            );
+        } else if (!leashable(mtmp)) {
+            let lmonnam = l_monnam(mtmp);
+            if ((cc.x | 0) !== (mtmp.mx | 0) || (cc.y | 0) !== (mtmp.my | 0)) {
+                lmonnam = `${s_suffix_leash(lmonnam)} tail`;
+            }
+            await pline(
+                `The leash won't fit onto ${spotmon ? 'your ' : ''}${lmonnam}.`,
+            );
+        } else {
+            await pline(
+                `You slip the leash around ${spotmon ? 'your ' : ''}${l_monnam(mtmp)}.`,
+            );
+            mtmp.mleashed = 1;
+            obj.leashmon = mtmp.m_id | 0;
+            mtmp.msleeping = 0;
+        }
+    } else if ((obj.leashmon | 0) !== (mtmp.m_id | 0)) {
+        await pline('This leash is not attached to that creature.');
+    } else if (obj.cursed) {
+        await pline('The leash would not come off!');
+        obj.bknown = 1;
+    } else {
+        mtmp.mleashed = 0;
+        obj.leashmon = 0;
+        await pline(
+            `You remove the leash from ${spotmon ? 'your ' : ''}${l_monnam(mtmp)}.`,
+        );
+    }
+}
+
+/**
+ * C ref: apply.c use_leash — apply LEASH (getdir + attach/detach).
+ * Named omit: engulfer You_cant phrasing polish beyond noit_mon_nam.
+ */
+async function use_leash(obj) {
+    const u = game.u || {};
+    if (u.uswallow) {
+        const stuck = u.ustuck;
+        const nam = stuck ? mon_nam(stuck) : 'it';
+        if (!obj.leashmon) {
+            await pline(`You can't leash ${nam} from inside.`);
+        } else if (stuck && (obj.leashmon | 0) === (stuck.m_id | 0)) {
+            await pline(`You can't unleash ${nam} from inside.`);
+        } else {
+            await pline(`You can't unleash anything from inside ${nam}.`);
+        }
+        return ECMD_OK;
+    }
+    if (!obj.leashmon && number_leashed() >= MAXLEASHED) {
+        await pline('You cannot leash any more pets.');
+        return ECMD_OK;
+    }
+
+    const cc = await get_adjacent_loc_leash();
+    if (!cc) return ECMD_OK;
+
+    if ((cc.x | 0) === (u.ux | 0) && (cc.y | 0) === (u.uy | 0)) {
+        if (u.usteed && (u.dz | 0) > 0) {
+            await use_leash_core(obj, u.usteed, cc, 1);
+            return ECMD_TIME;
+        }
+        await pline('Leash yourself?  Very funny...');
+        return ECMD_OK;
+    }
+
+    const mtmp = m_at(cc.x, cc.y);
+    if (!mtmp) {
+        await pline('There is no creature there.');
+        unmap_invisible(cc.x, cc.y);
+        return ECMD_TIME;
+    }
+
+    await use_leash_core(obj, mtmp, cc, canspotmon(mtmp) ? 1 : 0);
+    return ECMD_TIME;
+}
+
+/** C youprop.h Deaf — TIMEOUT/extrinsic/intrinsic/roleplay. */
+function Deaf_hero() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.Deaf || u.uroleplay?.deaf);
+}
+
+/** C youprop.h Underwater. */
+function Underwater_hero() {
+    return !!game.u?.Underwater;
+}
+
+/** C objnam.c Yobjnam2 thin. */
+function Yobjnam2_apply(obj, verb) {
+    const nam = xname(obj);
+    // vtense deferred — glow/glows for singular tools
+    const v = verb === 'glow' ? 'glows' : verb;
+    return `Your ${nam} ${v}`;
+}
+
+/** C hacklib.c upstart. */
+function upstart(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/** C apply.c HowMany for magic_whistled cumulative pline. */
+function HowMany(n) {
+    if ((n | 0) < 2) return 'sqrt(-1)';
+    if ((n | 0) === 2) return 'two';
+    if ((n | 0) === 3) return 'three';
+    if ((n | 0) === 4) return 'four';
+    if ((n | 0) <= 7) return 'several';
+    return 'many';
+}
+
+/**
+ * C ref: apply.c use_whistle — tin whistle (and uncursed eucalyptus).
+ * Branch: !can_blow; Underwater bubbles; else Deaf/You + wake_nearby(TRUE);
+ * cursed → vault_summon_gd.
+ * Named omit: Soundeffect.
+ */
+async function use_whistle(obj) {
+    if (!can_blow(game.youmonst)) {
+        await pline('You are incapable of using the whistle.');
+        return;
+    }
+    if (Underwater_hero()) {
+        await pline(`You blow bubbles through ${yname(obj)}.`);
+        return;
+    }
+    if (Deaf_hero()) {
+        await You_feel(`rushing air tickle your ${body_part(NOSE)}.`);
+    } else {
+        const pitch = obj.cursed ? 'shrill' : 'high';
+        await pline(`You produce a ${pitch} whistling sound.`);
+    }
+    await wake_nearby(true);
+    if (obj.cursed) vault_summon_gd();
+}
+
+/**
+ * C ref: apply.c magic_whistled — tame pets mnexto + mintrap; discover /
+ * cumulative appear/shift/disappear pline when already known.
+ * Named omit: disturb polish; full rloc vanish msgs when undiscovered.
+ */
+async function magic_whistled(obj) {
+    const lf = game.level?.flags || {};
+    if ((lf.stasis_until | 0) >= (game.moves | 0)) return;
+
+    const already = !!game.objects?.[obj.otyp]?.oc_name_known;
+    let shift = 0;
+    let appear = 0;
+    let disappear = 0;
+    let trapped = 0;
+    let shiftbuf = '';
+    let appearbuf = '';
+    let disappearbuf = '';
+    let mnam = '';
+
+    const pets = [...(game.fmon || [])];
+    for (const mtmp of pets) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
+        if (!mtmp.mtame || mtmp === game.u?.usteed) continue;
+        if (mtmp.mtrapped) {
+            mtmp.mtrapped = 0;
+            fill_pit(mtmp.mx | 0, mtmp.my | 0);
+        }
+        const oseen = canspotmon(mtmp);
+        if (oseen) mnam = y_monnam(mtmp);
+        if (M_AP_TYPE(mtmp)) seemimic(mtmp);
+        const omx = mtmp.mx | 0;
+        const omy = mtmp.my | 0;
+        await mnexto(mtmp, already ? RLOC_NONE : RLOC_MSG);
+        if ((mtmp.mx | 0) !== omx || (mtmp.my | 0) !== omy) {
+            if (mtmp.mundetected) {
+                mtmp.mundetected = 0;
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+            }
+            if (!game.iflags) game.iflags = {};
+            game.iflags.last_msg = PLNMSG_enum;
+            if ((await mintrap(mtmp, NO_TRAP_FLAGS)) === Trap_Killed_Mon) {
+                change_luck(-1);
+            }
+            if ((game.iflags.last_msg | 0) !== PLNMSG_enum) {
+                trapped++;
+                continue;
+            }
+            const nseen = (mtmp.mhp | 0) <= 0 ? false : canspotmon(mtmp);
+            if (nseen) {
+                mnam = y_monnam(mtmp);
+                if (oseen) {
+                    if (++shift === 1) shiftbuf = `${mnam} shifts location`;
+                } else if (++appear === 1) {
+                    appearbuf = `${mnam} appears`;
+                }
+            } else if (oseen) {
+                if (++disappear === 1) disappearbuf = `${mnam} disappears`;
+            }
+        }
+    }
+
+    let buf = '';
+    if (!already) {
+        if (shift + appear + trapped > 0) makeknown(obj.otyp);
+    } else {
+        if (shift > 0) {
+            if (shift > 1) {
+                shiftbuf = `${HowMany(shift)} creatures shift locations`;
+            }
+            buf = upstart(shiftbuf);
+        }
+        if (appear > 0) {
+            if (appear > 1) {
+                appearbuf = `${HowMany(appear)} ${
+                    shift === 0 ? 'creatures'
+                        : shift === 1 ? 'other creatures' : 'others'
+                } appear`;
+            }
+            if (shift === 0) buf = upstart(appearbuf);
+            else buf += `${disappear ? ',' : ' and'} ${appearbuf}`;
+        }
+        if (disappear > 0) {
+            if (disappear > 1) {
+                disappearbuf = `${HowMany(disappear)} ${
+                    shift === 0 && appear === 0 ? 'creatures'
+                        : shift < 2 && appear < 2 ? 'other creatures' : 'others'
+                } disappear`;
+            }
+            if (shift + appear === 0) buf = upstart(disappearbuf);
+            else buf += `${shift && appear ? ',' : ''} and ${disappearbuf}`;
+        }
+    }
+    if (buf) await pline(`${buf}.`);
+}
+
+/**
+ * C ref: apply.c use_magic_whistle — magic whistle / blessed eucalyptus.
+ * Branch: !can_blow; cursed !rn2(2) wake + maybe tele_to_rnd_pet;
+ * else magic_whistled. Named omit: Soundeffect.
+ */
+async function use_magic_whistle(obj) {
+    if (!can_blow(game.youmonst)) {
+        await pline('You are incapable of using the whistle.');
+        return;
+    }
+    if (obj.cursed && !rn2(2)) {
+        const uw = Underwater_hero() ? 'very ' : '';
+        const tone = Deaf_hero()
+            ? 'frequency vibration'
+            : 'pitched humming noise';
+        await pline(`You produce a ${uw}high-${tone}.`);
+        await wake_nearby(true);
+        if (!rn2(2) && !noteleport_level(game.youmonst)) {
+            await tele_to_rnd_pet();
+        }
+        return;
+    }
+    const hallu = !!(game.u?.Hallucination || game.u?.HHallucination);
+    const deaf = Deaf_hero();
+    const uw = Underwater_hero();
+    let adj;
+    if (hallu) adj = 'normal';
+    else if (uw && !deaf) adj = 'strange, high-pitched';
+    else adj = 'strange';
+    if (deaf) {
+        await pline(`You produce a ${adj}, sharp vibration.`);
+    } else {
+        await pline(`You produce a ${adj} whistling sound.`);
+    }
+    await magic_whistled(obj);
+}
+
+/** C invent.c freehand — welded two-hand / cursed shield gate. */
+function freehand_towel() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    if (!uwep || !welded(uwep)) return true;
+    const bimanual = !!(game.objects?.[uwep.otyp]?.oc_big);
+    if (!bimanual && (!u.uarms || !u.uarms.cursed)) return true;
+    return false;
+}
+
+/** C objnam.c gloves_simple_name — gauntlets discovery polish deferred. */
+function gloves_simple_name_towel(_obj) {
+    return 'gloves';
+}
+
+/**
+ * C ref: apply.c use_towel — wipe glib / cream / cursed slapstick.
+ * dry_a_towel when wet (weapon.c). gulp_blnd_check swallow arm deferred.
+ * @returns {number} ECMD_OK | ECMD_TIME
+ */
+async function use_towel(obj) {
+    const u = game.u || (game.u = {});
+    const drying_feedback = obj === u.uwep;
+
+    if (!freehand_towel()) {
+        await pline(`You have no free ${body_part(HAND)}!`);
+        return ECMD_OK;
+    }
+    if (obj === u.ublindf) {
+        await pline("You cannot use it while you're wearing it!");
+        return ECMD_OK;
+    }
+    if (obj.cursed) {
+        switch (rn2(3)) {
+        case 2: {
+            const old = (u.Glib | 0) & TIMEOUT;
+            make_glib((old | 0) + rn1(10, 3));
+            await pline(
+                `Your ${makeplural(body_part(HAND))} ${
+                    old ? 'are filthier than ever' : 'get slimy'
+                }!`,
+            );
+            if (is_wet_towel(obj)) {
+                await dry_a_towel(obj, -1, drying_feedback);
+            }
+            return ECMD_TIME;
+        }
+        case 1: {
+            if (!u.ublindf) {
+                const old = u.ucreamed | 0;
+                u.ucreamed = old + rn1(10, 3);
+                await pline(
+                    `Yecch!  Your ${body_part(FACE)} ${
+                        old ? 'has more' : 'now has'
+                    } gunk on it!`,
+                );
+                make_blinded(BlindedTimeout() + ((u.ucreamed | 0) - old), true);
+            } else {
+                const bf = u.ublindf;
+                let what;
+                if (bf.otyp === LENSES) what = 'lenses';
+                else if (obj.otyp === bf.otyp) what = 'other towel';
+                else what = 'blindfold';
+                if (bf.cursed) {
+                    await pline(
+                        `You push your ${what} ${
+                            rn2(2) ? 'cock-eyed' : 'crooked'
+                        }.`,
+                    );
+                } else {
+                    const saved = bf;
+                    await pline(`You push your ${what} off.`);
+                    await Blindf_off(bf);
+                    await dropx(saved);
+                }
+            }
+            if (is_wet_towel(obj)) {
+                await dry_a_towel(obj, -1, drying_feedback);
+            }
+            return ECMD_TIME;
+        }
+        case 0:
+            break;
+        default:
+            break;
+        }
+    }
+
+    if ((u.Glib | 0) & TIMEOUT) {
+        make_glib(0);
+        await pline(
+            `You wipe off your ${
+                !u.uarmg
+                    ? makeplural(body_part(HAND))
+                    : gloves_simple_name_towel(u.uarmg)
+            }.`,
+        );
+        if (is_wet_towel(obj)) {
+            await dry_a_towel(obj, -1, drying_feedback);
+        }
+        return ECMD_TIME;
+    }
+    if (u.ucreamed | 0) {
+        const cream = u.ucreamed | 0;
+        // C: incr_itimeout(&HBlinded, -ucreamed)
+        make_blinded(BlindedTimeout() - cream, false);
+        u.ucreamed = 0;
+        if (!Blind()) {
+            await pline("You've got the glop off.");
+            // gulp_blnd_check deferred → always false
+            make_blinded(1, false);
+            make_blinded(0, true);
+        } else {
+            await pline(`Your ${body_part(FACE)} feels clean now.`);
+        }
+        if (is_wet_towel(obj)) {
+            await dry_a_towel(obj, -1, drying_feedback);
+        }
+        return ECMD_TIME;
+    }
+
+    await pline(
+        `Your ${body_part(FACE)} and ${makeplural(body_part(HAND))} are already clean.`,
+    );
+    return ECMD_OK;
+}
+
 /**
  * C ref: apply.c doapply() — nohands + check_capacity before getobj;
  * LOCK_PICK/key/STETHOSCOPE + MIRROR/CAMERA + sack/bag use_container +
  * musical instruments + cream pie + MAGIC_MARKER→dowrite + TIN_OPENER +
  * WAND_CLASS → do_break_wand (D-0949 explode-type / D-0950 dig+create /
  * D-0952 strike/cancel/poly/tele/undead bhit + WAN_LIGHT) +
- * is_pick/is_axe → use_pick_axe (D-0951).
+ * is_pick/is_axe → use_pick_axe (D-0951) + LEASH → use_leash (D-1005) +
+ * SADDLE → use_saddle (D-1008) +
+ * TIN_WHISTLE / MAGIC_WHISTLE / EUCALYPTUS_LEAF whistle arms (D-1007) +
+ * TOWEL → use_towel (D-1009) +
+ * CRYSTAL_BALL → use_crystal_ball (D-1010) +
+ * BLINDFOLD / LENSES → Blindf_on/off (D-1013) +
+ * graystone LUCKSTONE/LOADSTONE/TOUCHSTONE/FLINT → use_stone (D-1014).
  * Named omissions: retouch_object; flip_through_book; flip_coin; jelly;
- * whip/grapple/blindfold/lenses; use_stone; use_pole; traps;
- * oil; BoT; Medusa/nymph mirror arms; most non-instrument
- * tools; break-wand release_hold / flash_hits (D-0979).
+ * whip/grapple; use_pole; traps;
+ * oil; BoT; Medusa/nymph mirror arms;
+ * break-wand release_hold / flash_hits (D-0979).
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -1381,9 +2120,388 @@ export async function doapply() {
         return (res & ECMD_TIME) !== 0;
     }
 
+    // C apply.c case LEASH → use_leash (D-1005)
+    if (LEASH >= 0 && obj.otyp === LEASH) {
+        const res = await use_leash(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
+
+    // C apply.c case SADDLE → use_saddle (D-1008)
+    if (SADDLE >= 0 && obj.otyp === SADDLE) {
+        const { use_saddle } = await import('./steed.js');
+        const res = await use_saddle(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
+
+    // C apply.c case MAGIC_WHISTLE / TIN_WHISTLE (D-1007)
+    if (MAGIC_WHISTLE >= 0 && obj.otyp === MAGIC_WHISTLE) {
+        await use_magic_whistle(obj);
+        return true; // ECMD_TIME
+    }
+    if (TIN_WHISTLE >= 0 && obj.otyp === TIN_WHISTLE) {
+        await use_whistle(obj);
+        return true; // ECMD_TIME
+    }
+
+    // C apply.c case EUCALYPTUS_LEAF → blessed magic / else tin whistle
+    if (obj.otyp === EUCALYPTUS_LEAF) {
+        if (obj.blessed) {
+            await use_magic_whistle(obj);
+            if (!rn2(49)) {
+                const Blind = !!(game.u?.Blind || game.u?.ublind
+                    || ((game.u?.HBlinded | 0) & TIMEOUT));
+                if (!Blind) {
+                    await pline(
+                        `${Yobjnam2_apply(obj, 'glow')} brown.`,
+                    );
+                    obj.bknown = 1;
+                }
+                unbless(obj);
+            }
+        } else {
+            await use_whistle(obj);
+        }
+        return true; // ECMD_TIME
+    }
+
+    // C apply.c case TOWEL → use_towel (D-1009)
+    if (TOWEL >= 0 && obj.otyp === TOWEL) {
+        const res = await use_towel(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
+
+    // C apply.c case CRYSTAL_BALL → use_crystal_ball (D-1010)
+    if (CRYSTAL_BALL >= 0 && obj.otyp === CRYSTAL_BALL) {
+        const { use_crystal_ball } = await import('./detect.js');
+        await use_crystal_ball(obj);
+        return true; // ECMD_TIME (doapply res defaults to TIME)
+    }
+
+    // C apply.c case BLINDFOLD / LENSES → Blindf_on / Blindf_off (D-1013)
+    // res stays ECMD_TIME even when cursed / already-wearing (C default).
+    if ((BLINDFOLD >= 0 && obj.otyp === BLINDFOLD)
+        || (LENSES >= 0 && obj.otyp === LENSES)) {
+        const u = game.u || (game.u = {});
+        if (obj === u.ublindf) {
+            if (!cursed_check(obj)) {
+                await Blindf_off(obj);
+            } else {
+                await pline(
+                    game._cursed_takeoff_msg || "You can't.  It is cursed.",
+                );
+            }
+        } else if (!u.ublindf) {
+            await Blindf_on(obj);
+        } else {
+            const worn = u.ublindf;
+            const already = (TOWEL >= 0 && worn.otyp === TOWEL)
+                ? 'covered by a towel'
+                : (BLINDFOLD >= 0 && worn.otyp === BLINDFOLD)
+                    ? 'wearing a blindfold'
+                    : 'wearing lenses';
+            await pline(`You are already ${already}.`);
+        }
+        return true; // ECMD_TIME
+    }
+
+    // C apply.c case LUCKSTONE/LOADSTONE/TOUCHSTONE/FLINT → use_stone (D-1014)
+    if (is_graystone(obj)) {
+        const res = await use_stone(obj);
+        return (res & ECMD_TIME) !== 0;
+    }
+
     // Other apply otyps deferred
     await pline("Sorry, I don't know how to use that.");
     return false;
+}
+
+/** C invent.c plur — quan!=1 → "s". */
+function plur_quan(quan) {
+    return (quan | 0) !== 1 ? 's' : '';
+}
+
+/** C obj.h is_flimsy — material ≤ LEATHER or rubber hose. */
+function is_flimsy_stone(otmp) {
+    if (!otmp) return false;
+    const mat = game.objects?.[otmp.otyp]?.oc_material ?? 0;
+    return mat <= MAT_LEATHER || otmp.otyp === RUBBER_HOSE;
+}
+
+/** C objnam.c otense / Tobjnam — for use_stone polish/wet msgs. */
+function otense_stone(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+function Tobjnam_stone(obj, verb) {
+    const bp = The(xname(obj));
+    return verb ? `${bp} ${otense_stone(obj, verb)}` : bp;
+}
+
+/** C role.h Role_if / Race_if — touchstone identify gate. */
+function Role_if_stone(pm) {
+    return (game.urole?.mnum | 0) === pm;
+}
+function Race_if_stone(pm) {
+    return (game.urace?.mnum | 0) === pm;
+}
+
+/**
+ * C ref: invent.c useup — invent consume one (no obj_resists).
+ * Used when cursed touchstone shatters a gem.
+ */
+function useup_stone(otmp) {
+    if (!otmp) return;
+    if ((otmp.quan || 1) > 1) {
+        otmp.quan--;
+        return;
+    }
+    const u = game.u || {};
+    if (u.uwep === otmp) u.uwep = null;
+    if (u.uswapwep === otmp) u.uswapwep = null;
+    if (u.uqwep === otmp) u.uqwep = null;
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+    otmp.quan = 0;
+    otmp.where = OBJ_FREE;
+}
+
+/**
+ * C ref: apply.c touchstone_ok — coins + unidentified gems SUGGEST;
+ * else DOWNPLAY (identified gems still selectable).
+ */
+function touchstone_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === COIN_CLASS) return GETOBJ_SUGGEST;
+    if (obj.oclass === GEM_CLASS
+        && !(obj.dknown && game.objects?.[obj.otyp]?.oc_name_known)) {
+        return GETOBJ_SUGGEST;
+    }
+    return GETOBJ_DOWNPLAY;
+}
+
+/** C invent.c any_obj_ok — every invent item SUGGEST. */
+function any_obj_ok_stone(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    return GETOBJ_SUGGEST;
+}
+
+/**
+ * C ref: invent.c getobj(stonebuf, touchstone_ok|any_obj_ok, GETOBJ_PROMPT)
+ * for use_stone second-object pick. DOWNPLAY letters accepted; EXCLUDE not.
+ */
+async function getobj_rub_on_stone(stonebuf, okfn) {
+    const suggest_lets = () => {
+        const lets = [];
+        for (const o of game.invent || []) {
+            if (o?.invlet && okfn(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+        }
+        return lets.join('');
+    };
+    const has_downplay = () => {
+        for (const o of game.invent || []) {
+            if (okfn(o) === GETOBJ_DOWNPLAY) return true;
+        }
+        return false;
+    };
+
+    for (;;) {
+        await flush_topl_more();
+        const rawLets = suggest_lets();
+        if (!rawLets && !has_downplay()) {
+            await pline("You don't have anything to use.");
+            return null;
+        }
+        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
+        const query = lets
+            ? `What do you want to ${stonebuf}? [${lets} or ?*]`
+            : `What do you want to ${stonebuf}? [*]`;
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            const { display_pickinv_reply } = await import('./invent.js');
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            const rank = okfn(picked);
+            if (rank === GETOBJ_EXCLUDE) {
+                await pline('That is a silly thing to rub.');
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        const rank = okfn(otmp);
+        if (rank === GETOBJ_EXCLUDE) {
+            await pline('That is a silly thing to rub.');
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C ref: apply.c use_stone — graystone / touchstone rub.
+ * Branch envelope: observe_object; getobj touchstone_ok|any_obj_ok;
+ * self-rub refuse; cursed touchstone shatter gem via obj_resists(80,100);
+ * Blind scritch / Hallu fractals; GEM/RING identify for Arc/Gnome/blessed;
+ * cloth/liquid/wax/wood/gold/silver/flimsy streak msgs.
+ * Named omissions: none for ordinary streak path; shop costly_alteration N/A.
+ * @returns {number} ECMD_*
+ */
+async function use_stone(tstone) {
+    const scritch = '"scritch, scritch"';
+    const Blind_now = Blind();
+    if (!Blind_now) observe_object(tstone);
+
+    const known = tstone.otyp === TOUCHSTONE && tstone.dknown
+        && !!game.objects?.[TOUCHSTONE]?.oc_name_known;
+    const stonebuf = `rub on the stone${plur_quan(tstone.quan)}`;
+    const obj = await getobj_rub_on_stone(
+        stonebuf,
+        known ? touchstone_ok : any_obj_ok_stone,
+    );
+    if (!obj) return ECMD_CANCEL;
+
+    if (obj === tstone && (obj.quan || 1) === 1) {
+        await pline(`You can't rub ${the(xname(obj))} on itself.`);
+        return ECMD_OK;
+    }
+
+    if (tstone.otyp === TOUCHSTONE && tstone.cursed
+        && obj.oclass === GEM_CLASS && !is_graystone(obj)
+        && !obj_resists(obj, 80, 100)) {
+        if (Blind()) {
+            await You_feel('something shatter.');
+        } else if (game.u?.Hallucination) {
+            await pline('Oh, wow, look at the pretty shards.');
+        } else {
+            await pline(
+                `A sharp crack shatters ${(obj.quan || 1) > 1 ? 'one of ' : ''}`
+                + `${the(xname(obj))}.`,
+            );
+        }
+        useup_stone(obj);
+        return ECMD_TIME;
+    }
+
+    if (Blind()) {
+        await pline(scritch);
+        return ECMD_TIME;
+    }
+    if (game.u?.Hallucination) {
+        await pline('Oh wow, man: Fractals!');
+        return ECMD_TIME;
+    }
+
+    let do_scratch = false;
+    let streak_color = null;
+    let oclass = obj.oclass;
+    const oc = game.objects?.[obj.otyp];
+    const mat = oc?.oc_material ?? 0;
+
+    // prevent non-gemstone rings from being treated like gems
+    if (oclass === RING_CLASS
+        && mat !== MAT_GEMSTONE && mat !== MAT_MINERAL) {
+        oclass = RANDOM_CLASS;
+    }
+
+    switch (oclass) {
+    case GEM_CLASS:
+    case RING_CLASS:
+        if (tstone.otyp !== TOUCHSTONE) {
+            do_scratch = true;
+        } else if (obj.oclass === GEM_CLASS
+            && (tstone.blessed
+                || (!tstone.cursed
+                    && (Role_if_stone(PM_ARCHEOLOGIST)
+                        || Race_if_stone(PM_GNOME))))) {
+            makeknown(TOUCHSTONE);
+            makeknown(obj.otyp);
+            await prinv(null, obj, 0);
+            return ECMD_TIME;
+        } else {
+            if (mat === MAT_GLASS) {
+                do_scratch = true;
+                break;
+            }
+        }
+        streak_color = C_OBJ_COLORS[oc?.oc_color ?? 0] || null;
+        break;
+
+    default:
+        switch (mat) {
+        case MAT_CLOTH:
+            await pline(`${Tobjnam_stone(tstone, 'look')} a little more polished now.`);
+            return ECMD_TIME;
+        case MAT_LIQUID:
+            if (!obj.known) {
+                await pline('You must think this is a wetstone, do you?');
+            } else {
+                await pline(`${Tobjnam_stone(tstone, 'are')} a little wetter now.`);
+            }
+            return ECMD_TIME;
+        case MAT_WAX:
+            streak_color = 'waxy';
+            break;
+        case MAT_WOOD:
+            streak_color = 'wooden';
+            break;
+        case MAT_GOLD:
+            do_scratch = true;
+            streak_color = 'golden';
+            break;
+        case MAT_SILVER:
+            do_scratch = true;
+            streak_color = 'silvery';
+            break;
+        default:
+            if (is_flimsy_stone(obj)) {
+                streak_color = C_OBJ_COLORS[oc?.oc_color ?? 0] || null;
+            } else {
+                do_scratch = tstone.otyp !== TOUCHSTONE;
+            }
+            break;
+        }
+        break;
+    }
+
+    const stones = `stone${plur_quan(tstone.quan)}`;
+    if (do_scratch) {
+        await pline(
+            `You make ${streak_color ? streak_color : ''}`
+            + `${streak_color ? ' ' : ''}scratch marks on the ${stones}.`,
+        );
+    } else if (streak_color) {
+        await pline(`You see ${streak_color} streaks on the ${stones}.`);
+    } else {
+        await pline(scritch);
+    }
+    return ECMD_TIME;
 }
 
 /** C ref: apply.c rub_ok */
@@ -1468,7 +2586,7 @@ function cmdq_add_key(ch) {
 
 /**
  * C ref: apply.c dorub — #rub lamp/stone/jelly.
- * Named omissions: use_stone / use_royal_jelly; djinni_from_bottle / begin_burn
+ * Named omissions: use_royal_jelly; djinni_from_bottle / begin_burn
  * full lamp transform; check_unpaid_usage; Blind smoke wording uses see/smell.
  * @returns {number} ECMD_*
  */
@@ -1482,7 +2600,15 @@ export async function dorub() {
     if (!obj) return ECMD_CANCEL;
 
     if (obj.oclass === GEM_CLASS || obj.oclass === FOOD_CLASS) {
-        // use_stone / use_royal_jelly deferred
+        // C: is_graystone → use_stone; LUMP_OF_ROYAL_JELLY → use_royal_jelly
+        if (is_graystone(obj)) {
+            return use_stone(obj);
+        }
+        if (obj.otyp === LUMP_OF_ROYAL_JELLY) {
+            // use_royal_jelly deferred
+            await pline("Sorry, I don't know how to use that.");
+            return ECMD_OK;
+        }
         await pline("Sorry, I don't know how to use that.");
         return ECMD_OK;
     }

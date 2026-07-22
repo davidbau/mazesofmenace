@@ -72,11 +72,47 @@ function Monnam(mtmp) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// C ref: do_name.c x_monnam() do_it — when the hero can't spot the monster,
+// mon_nam()/Monnam() collapse to "it" (article != ARTICLE_YOUR, not gameover,
+// not the steed/engulfer).  For the modeled hero canspotmon() reduces to
+// canseemon() == mm_can_see_mon() (no telepathy/detection, and cold undead
+// aren't infravisible).  do_it is tested before the name is consulted, so even
+// a named monster that can't be spotted renders as "it".
+function mon_nam_mm(mtmp) {
+    if (!mm_can_see_mon(mtmp)) return 'it';
+    return the_monnam(mtmp);
+}
+function Monnam_mm(mtmp) {
+    const s = mon_nam_mm(mtmp);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // C ref: mhitm.c gv.vis — the attack is visible when either combatant is both
 // in line of sight (cansee) and spottable.  The contest pets/hostiles are
 // ordinary visible animals, so canspotmon reduces to cansee here.
 function mm_visible(magr, mdef) {
     return (cansee(magr.mx, magr.my) || cansee(mdef.mx, mdef.my));
+}
+
+// C ref: mhitm.c noises() — when a mon-vs-mon attack isn't visible (gv.vis
+// false) the hero may still hear it.  farq = mdistu(magr) > 15 (dist2 from the
+// hero).  Gated so a repeated same-distance noise within 10 turns is silent;
+// tracked by gf.far_noise / gn.noisetime (stored on the game object so they
+// reset per game and persist within it).  The contest's modeled attacks are
+// never AT_EXPL, so the sound is always "some noises".
+async function noises(magr, mattk) {
+    const u = game.u;
+    if (u?.Deaf) return;
+    const dx = magr.mx - (u?.ux ?? 0), dy = magr.my - (u?.uy ?? 0);
+    const farq = (dx * dx + dy * dy) > 15;
+    const prevFar = !!game.far_noise;
+    const noisetime = game.noisetime || 0;
+    if (farq !== prevFar || (game.moves - noisetime) > 10) {
+        game.far_noise = farq;
+        game.noisetime = game.moves;
+        const what = (mattk && mattk.aatyp === AT_EXPL) ? 'an explosion' : 'some noises';
+        await emitMMmsg(`You hear ${what}${farq ? ' in the distance' : ''}.`);
+    }
 }
 
 // C ref: mondata.h nonliving(ptr) — undead/golem/vortex/etc don't "die", they
@@ -100,7 +136,7 @@ function hit_verb(aatyp) {
 
 // ── attack-type / damage-type enums (include/monattk.h) ──────────────────────
 const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
-      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_WEAP = 254;
+      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_EXPL = 11, AT_WEAP = 254;
 const AD_PHYS = 0;
 
 // weapon_check states (C ref: monst.h wpn_chk_flags).
@@ -481,14 +517,20 @@ export async function mattackm(magr, mdef) {
             if (strike) {
                 // C ref: mhitm.c hitmm() emits "X <verb> Y." (when visible) and
                 // THEN calls mdamagem() — so the hit message precedes any death
-                // message.  Neither consumes RNG.
+                // message.  Neither consumes RNG.  When not visible the hero may
+                // instead hear the scuffle (noises()).
                 if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam(magr)} ${hit_verb(mattk.aatyp)} ${the_monnam(mdef)}.`);
+                    await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
+                else
+                    await noises(magr, mattk);
                 res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
             } else {
-                // C ref: mhitm.c missmm() — "X misses Y." (when visible).  No RNG.
+                // C ref: mhitm.c missmm() — "X misses Y." (when visible), else
+                // noises().  No RNG.
                 if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam(magr)} misses ${the_monnam(mdef)}.`);
+                    await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
+                else
+                    await noises(magr, mattk);
             }
             break;
 
@@ -514,11 +556,15 @@ export async function mattackm(magr, mdef) {
             strike = (tmp > dieroll) ? 1 : 0;
             if (strike) {
                 if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam(magr)} ${hit_verb(mattk.aatyp)} ${the_monnam(mdef)}.`);
+                    await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
+                else
+                    await noises(magr, mattk);
                 res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
             } else {
                 if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam(magr)} misses ${the_monnam(mdef)}.`);
+                    await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
+                else
+                    await noises(magr, mattk);
             }
             break;
         }

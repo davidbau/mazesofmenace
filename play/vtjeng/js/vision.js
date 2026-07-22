@@ -1,20 +1,22 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no boulders, mimics,
-// underwater, or pit handling.
+// Stripped-down port for the contest skeleton: no mimics, underwater, or pit
+// handling.
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
 import { do_light_sources } from './light.js';
+import { BOULDER } from './objects.js';
+import { visible_region_at } from './region.js';
+import { m_at } from './monst.js';
 import {
-    BLINDED, COLNO, ROWNO, DOOR, SDOOR, POOL,
+    BLINDED, COLNO, COULD_SEE, IN_SIGHT, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, SEE_INVIS,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     IS_WALL, TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
-
-const COULD_SEE = 0x1;
-const IN_SIGHT = 0x2;
+import { S_hcdoor, S_ndoor, S_tree, S_vcdoor } from './symbols.js';
 
 function heroIsBlind(hero) {
     const blindness = hero?.uprops?.[BLINDED];
@@ -73,16 +75,39 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
-// Simplified blockage check: walls, closed doors, stone
+function heroSeesInvisible() {
+    const property = game.u?.uprops?.[SEE_INVIS];
+    return Boolean(property?.intrinsic || property?.extrinsic);
+}
+
+// C refs: monst.h is_lightblocker_mappear(); vision.c does_block().
+function mimicBlocksLight(x, y) {
+    const monster = m_at(x, y, game);
+    if (!monster || (monster.minvis && !heroSeesInvisible())) return false;
+    const appearanceType = monster.m_ap_type & M_AP_TYPMASK;
+    if (appearanceType === M_AP_OBJECT)
+        return monster.mappearance === BOULDER;
+    return appearanceType === M_AP_FURNITURE
+        && (monster.mappearance === S_hcdoor
+            || monster.mappearance === S_vcdoor
+            || monster.mappearance < S_ndoor
+            || monster.mappearance === S_tree);
+}
+
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
     const typ = loc.typ ?? 0;
     if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
     if (typ === DOOR) {
-        const mask = loc.doormask ?? 0;
+        // rm.doormask aliases the shared flags field in C.  Generated levels
+        // use flags while some focused callers still populate doormask.
+        const mask = loc.flags || loc.doormask || 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
+    if (level.objects?.[x]?.[y]?.otyp === BOULDER) return true;
+    if (mimicBlocksLight(x, y)) return true;
+    if (visible_region_at(x, y, game)) return true;
     return false;
 }
 

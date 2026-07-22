@@ -1772,7 +1772,15 @@ export async function dodown() {
         return ECMD_OK;
     }
 
-    // C: next_to_u — leashed-only gate; always true without leash wiring
+    // C: next_to_u — leashed pet may hold hero back (D-1005)
+    {
+        const { next_to_u } = await import('./apply.js');
+        if (!(await next_to_u())) {
+            await pline('You are held back by your pet!');
+            return ECMD_OK;
+        }
+    }
+
     game.at_ladder = !!(game.level?.at(u.ux, u.uy)?.typ === LADDER)
         || !!(stway && stway.isladder);
 
@@ -1785,7 +1793,7 @@ export async function dodown() {
  * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
  *
  * Omits: rooted, pit climb_pit, stucksteed, u_stuck_cannot_go, encumbrance
- * load gate, ledger 1 escape yn, next_to_u leash.
+ * load gate, ledger 1 escape yn.
  */
 export async function doup() {
     const u = game.u;
@@ -1806,6 +1814,15 @@ export async function doup() {
     if (ledger_no(u.uz) === 1) {
         await pline("You can't go up here.");
         return ECMD_OK;
+    }
+
+    // C: next_to_u — leashed pet may hold hero back (D-1005)
+    {
+        const { next_to_u } = await import('./apply.js');
+        if (!(await next_to_u())) {
+            await pline('You are held back by your pet!');
+            return ECMD_OK;
+        }
     }
 
     game.at_ladder = !!(game.level?.at(u.ux, u.uy)?.typ === LADDER)

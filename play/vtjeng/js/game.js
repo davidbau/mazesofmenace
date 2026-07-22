@@ -25,6 +25,7 @@ export function makeLocation() {
         // representations under recorder patch 006.
         disp_browser_ch: null,
         disp_browser_color: null,
+        disp_browser_attr: null,
         gnew: 0,           // dirty flag for flush_glyph_buf
         glyph_symidx: -1,  // S_* symbol index
         remembered_glyph: undefined,  // { ch, color, decgfx, symidx }
@@ -59,6 +60,9 @@ export class GameMap {
         this.monsters = makeCoordinateGrid(() => null);
         this.monlist = null;
         this.traps = [];
+        // C ref: region.c gr.regions[]/svn.n_regions. A new level owns a
+        // fresh active-region list; visible gas clouds are not terrain.
+        this.regions = [];
         this.flags = {
             nfountains: 0,
             nsinks: 0,

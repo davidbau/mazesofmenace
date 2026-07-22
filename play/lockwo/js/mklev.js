@@ -17,6 +17,7 @@ import { maketrap } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn } from './makemon.js';
 import { m_at } from './display.js';
+import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
 import {
@@ -252,20 +253,10 @@ function in_rooms(x, y, rtype) { return []; }
 // Core mklev functions (ported from main project's mklev.js)
 // ============================================================
 
-// C ref: bones.c getbones()
-// NB: in C, `discover` == flags.explore (the same macro) and `wizard` ==
-// flags.debug. In explore/discover playmode getbones returns 0 with NO rng
-// draw (the rn2(3) is reached only when NOT in discover mode). Our options
-// parser stores playmode:explore as flags.playmode === 'explore' (it never
-// sets flags.explore), so check both spellings.
-function getbones() {
-    const flags = game.flags || {};
-    const discover = flags.explore || flags.playmode === 'explore';
-    if (discover) return false;               // C: if (discover) return 0; (no rng)
-    if (flags.bones === false) return false;  // C: if (!flags.bones) return 0;
-    if (rn2(3) && !flags.debug) return false; // C: if (rn2(3) && !wizard) return 0;
-    return false;
-}
+// C ref: bones.c getbones() — now the single source of truth in bones.js
+// (imported above).  In the harness it draws the rn2(3) "find bones?" gate and,
+// when a prior segment left a bones blob in the shared storage handle for this
+// level, prompts + reloads it (wizard "Get bones?"/"Unlink bones?").
 
 // C ref: allmain.c l_nhcore_init()
 export function l_nhcore_init() {
@@ -280,7 +271,7 @@ export function l_nhcore_init() {
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
-    if (getbones()) return;
+    if (await getbones()) return;   // bones loaded → level already grafted
     g.in_mklev = true;
     await makelevel();
     recount_level_features();

@@ -48,6 +48,18 @@ export function newgame_pre_mklev(g = game) {
     g.context.warnlevel = 1;
     g.context.next_attrib_check = 600;
     g.context.tribute = { enabled: true };
+    // C ref: context.h achievement_tracking.  Prize creation on Mines' End
+    // and Sokoban End records object identity here before floor stacking;
+    // actual achievements are awarded later when the hero picks the prize up.
+    g.context.achieveo = {
+        mines_prize_oid: 0,
+        soko_prize_oid: 0,
+        castle_prize_old: 0,
+        mines_prize_otyp: 0,
+        soko_prize_otyp: 0,
+        castle_prize_otyp: 0,
+        minetn_reached: false,
+    };
     reset_mvitals(g);
     init_objects(g);
     g.flags.pantheon = -1;
@@ -96,8 +108,9 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
-    // C ref: allmain.c newgame(). Only the final inventory reaches equipment,
-    // discovery, spell, and skill initialization.
+    // C ref: allmain.c newgame(). Only the accepted inventory reaches object
+    // discovery, equipment, spell, and skill initialization.  Each rejected
+    // u_init_inventory_attrs() still repeats inherent role/race knowledge.
     while (g.u.uroleplay.reroll && await reroll_menu(g)) {
         u_init_inventory_attrs(g, undefined, { objectHooks });
         await bot();

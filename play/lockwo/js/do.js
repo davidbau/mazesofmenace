@@ -28,7 +28,7 @@ import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
-import { docrt, flush_screen, pline, update_topl, topl_more, y_n } from './display.js';
+import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
 import { vision_reset, vision_recalc } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -334,6 +334,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game._toplin = 0;
     }
 
+    // C ref: keepdogs()/mon leaving the level — the accompanying pet is no
+    // longer on the departing level, so the tty shows the terrain it stood on.
+    // Redraw each captured pet's old cell now: AFTER the on-foot transit frame
+    // ("You descend the stairs.--More--") has been captured with the pet still
+    // shown (C's gbuf keeps it there), but BEFORE mklev() — so a mid-mklev prompt
+    // over the departing level (wizard bones "Get bones?" on a ^V level-teleport,
+    // which has no transit frame) is captured with the pet already gone, exactly
+    // as C shows it.  u.uz still refers to the departing level here, so the
+    // hero's vision (and thus the redrawn terrain) is correct.
+    for (const m of kept) newsym(m.mx, m.my);
+
     // Move to the destination level.
     g._visited_levels = g._visited_levels || {};
     g._level_store = g._level_store || {};
@@ -378,10 +389,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (firstVisit) {
         g._visited_levels[ledger] = true;
         // C: mklev() — getbones() rn2(3) + makelevel() structural generation.
+        // When getbones() reloads a bones file it grafts the level and returns
+        // early from mklev() (setting g._bones_loaded); makelevel()/the room fill
+        // + mineralize pass are then NOT run (C's mklev() returns before
+        // makelevel()), so the reloaded legacy level is used verbatim.
+        g._bones_loaded = false;
         await mklev();
-        // C does the room fill + mineralize inside makelevel(); the JS engine
-        // factors it into fastforward_fill_mineralize().
-        await fastforward_fill_mineralize();
+        if (!g._bones_loaded) {
+            // C does the room fill + mineralize inside makelevel(); the JS engine
+            // factors it into fastforward_fill_mineralize().
+            await fastforward_fill_mineralize();
+        }
     } else {
         // C ref: do.c goto_level() "returning to previously visited level;
         // reload it" -> reseed_random() (a no-op in this build:

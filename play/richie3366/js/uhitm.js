@@ -1490,7 +1490,7 @@ export async function do_attack(mtmp) {
     }
 
     // check_capacity / overexertion
-    if (overexertion()) {
+    if (await overexertion()) {
         return true; // fainted
     }
 

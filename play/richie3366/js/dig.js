@@ -390,14 +390,8 @@ export async function bury_an_obj(otmp, dealloced) {
     if (otmp === u.uchain || obj_resists(otmp, 0, 0)) return otmp2;
 
     if (otmp.otyp === LEASH && (otmp.leashmon | 0) !== 0) {
-        const lid = otmp.leashmon | 0;
-        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-            if ((mtmp.m_id | 0) === lid) {
-                mtmp.mleashed = 0;
-                break;
-            }
-        }
-        otmp.leashmon = 0;
+        const { o_unleash } = await import('./apply.js');
+        o_unleash(otmp);
     }
     // end_burn(lamplit && otyp != POT_OIL) deferred
     if (otmp.lamplit && otmp.otyp !== POT_OIL) {
@@ -480,6 +474,56 @@ export function unearth_objs(x, y) {
     }
     del_engr_at(x, y);
     newsym(x, y);
+}
+
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+
+/**
+ * C ref: dig.c buried_ball — nearest buried HEAVY_IRON_BALL within dist2≤8.
+ * Mutates cc.{x,y} to ball coords when found off-target.
+ * @param {{x:number,y:number}} cc
+ * @returns {object|null}
+ */
+function buried_ball(cc) {
+    const u = game.u || {};
+    let ball = null;
+    let bdist = 0;
+    if (!(u.utrap | 0) || (u.utraptype | 0) === TT_BURIEDBALL) {
+        for (let otmp = game.level?.buriedobjlist || null; otmp; otmp = otmp.nobj) {
+            if ((otmp.otyp | 0) !== HEAVY_IRON_BALL) continue;
+            if ((otmp.ox | 0) === (cc.x | 0) && (otmp.oy | 0) === (cc.y | 0)) {
+                return otmp;
+            }
+            const odist = dist2(otmp.ox | 0, otmp.oy | 0, cc.x | 0, cc.y | 0);
+            if (odist <= 8 && (!ball || odist < bdist)) {
+                ball = otmp;
+                bdist = odist;
+            }
+        }
+    }
+    if (ball) {
+        cc.x = ball.ox | 0;
+        cc.y = ball.oy | 0;
+    }
+    return ball;
+}
+
+/**
+ * C ref: dig.c buried_ball_to_freedom — unbury ball, reset TT_BURIEDBALL.
+ * Named omit: RUST_METAL timer stop (C #if 0).
+ */
+export function buried_ball_to_freedom() {
+    const u = game.u || {};
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    const ball = buried_ball(cc);
+    if (ball) {
+        obj_extract_self(ball);
+        place_object(ball, cc.x, cc.y);
+        stackobj(ball);
+        reset_utrap(true);
+        del_engr_at(cc.x, cc.y);
+        newsym(cc.x, cc.y);
+    }
 }
 
 /**
@@ -663,9 +707,13 @@ export async function digactualhole(x, y, madeby, ttyp) {
         if (atHero) {
             // switch_terrain deferred
             if (u.Levitation || u.Flying) wont_fall = true;
-            // next_to_u leash gate — always true without leash wiring
+            // next_to_u leash gate — pet may jerk hero back (D-1005)
             if (!u.ustuck && !wont_fall) {
-                // leashed pet jerk deferred (next_to_u always true)
+                const { next_to_u } = await import('./apply.js');
+                if (!(await next_to_u())) {
+                    await pline('You are jerked back by your pet!');
+                    wont_fall = true;
+                }
             }
 
             if (u.ustuck || wont_fall) {
@@ -723,7 +771,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
                 const { teleport_pet, migrate_to_level } = await import(
                     './teleport.js',
                 );
-                if (teleport_pet(mtmp, false)) {
+                if (await teleport_pet(mtmp, false)) {
                     const tolevel = { dnum: 0, dlevel: 1 };
                     if (Is_stronghold(u.uz)) {
                         const v = game.valley_level;

@@ -1,16 +1,26 @@
-// Initial-level monster creation.
+// Initial-level monster creation for ordinary rooms, themed-room fills, and
+// starting pets.
 // C ref: makemon.c makemon(), m_initthrow(), m_initweap(), m_initinv(), and
 // mongets(); worn.c m_dowear(). The implementation fails closed outside the
-// species and call shapes reachable during ordinary-room filling and starting
-// pet creation on dungeon level one. Expanding it means porting the
-// corresponding complete source branches, not approximating their PRNG
-// effects.
+// species and call shapes reachable during ordinary-room filling, the Ghost
+// themed fill, and starting-pet creation. Fog clouds, wood nymphs, and the
+// three mimic sizes support the Cloud, Garden, and Storeroom fills.
+// Expanding the closed set means porting the corresponding complete source
+// branches, not approximating their PRNG effects.
 
 import {
     ACCESSIBLE,
+    AM_CHAOTIC,
+    AM_LAWFUL,
+    AM_NEUTRAL,
+    BLCORNER,
+    CROSSWALL,
+    DOOR,
     G_GENOD,
     GP_AVOID_MONPOS,
     GP_CHECKSCARY,
+    HWALL,
+    I_SPECIAL,
     isok,
     MM_ANGRY,
     MM_ASLEEP,
@@ -19,31 +29,59 @@ import {
     MM_MALE,
     MM_NOCOUNTBIRTH,
     MM_NOGRP,
+    M_AP_FURNITURE,
+    M_AP_OBJECT,
     M_SEEN_NOTHING,
     NO_MINVENT,
+    ONAME,
+    ONAME_NO_FLAGS,
     OBJ_MINVENT,
+    ROOMOFFSET,
+    SCORR,
+    SDOOR,
     SEE_INVIS,
+    TDWALL,
+    TLCORNER,
+    TRWALL,
+    TUWALL,
     W_AMUL,
     W_ARMH,
+    IS_WALL,
 } from './const.js';
+import { artifact_exists } from './artifacts.js';
 import { newedog } from './dog.js';
 import { christen_monst, rndghostname } from './do_name.js';
 import { on_level } from './dungeon.js';
 import { game } from './gstate.js';
-import { add_to_minv } from './invent.js';
+import {
+    add_to_minv,
+    obfree,
+    obj_extract_self,
+    update_inventory,
+} from './invent.js';
 import {
     newmonhp,
     peace_minded,
     propagate,
+    rndmonnum,
     rndmonst,
     set_malign,
 } from './makemon.js';
-import { is_female, is_male, is_neuter } from './mondata.js';
+import {
+    can_be_hatched,
+    is_female,
+    is_male,
+    is_neuter,
+} from './mondata.js';
 import { m_at, newMonster, place_monster } from './monst.js';
 import {
     AT_WEAP,
+    M1_ANIMAL,
+    M1_MINDLESS,
+    M1_NOHANDS,
     M2_DOMESTIC,
     M2_GREEDY,
+    MZ_SMALL,
     NON_PM,
     PM_ELF,
     PM_FOG_CLOUD,
@@ -57,22 +95,40 @@ import {
     PM_KITTEN,
     PM_LICHEN,
     PM_LITTLE_DOG,
+    PM_SMALL_MIMIC,
+    PM_LARGE_MIMIC,
+    PM_GIANT_MIMIC,
     PM_NEWT,
     PM_PONY,
     PM_SEWER_RAT,
+    PM_SKELETON,
     PM_WOOD_NYMPH,
+    PM_ARCHEOLOGIST,
+    PM_WIZARD,
+    G_NOCORPSE,
     S_GHOST,
     S_KOBOLD,
     S_KOP,
+    S_MUMMY,
+    S_MIMIC,
+    S_MIMIC_DEF,
     S_NYMPH,
     S_ORC,
 } from './monsters.js';
-import { mksobj, next_ident, weight } from './obj.js';
+import { mkobj, mksobj, next_ident, weight } from './obj.js';
 import {
     AMULET_CLASS,
     AMULET_OF_LIFE_SAVING,
     ARMOR_CLASS,
+    COIN_CLASS,
+    CORPSE,
     DART,
+    EGG,
+    FIGURINE,
+    FOOD_CLASS,
+    GEM_CLASS,
+    GOLD_PIECE,
+    MAXOCLASSES,
     MIRROR,
     ORCISH_DAGGER,
     ORCISH_HELM,
@@ -84,17 +140,41 @@ import {
     POT_OBJECT_DETECTION,
     POT_POLYMORPH,
     POT_SPEED,
+    POTION_CLASS,
+    RING_CLASS,
+    ROCK_CLASS,
     SCR_CREATE_MONSTER,
     SCR_TELEPORTATION,
+    SCROLL_CLASS,
+    SLIME_MOLD,
+    SPBOOK_CLASS,
+    STATUE,
+    STRANGE_OBJECT,
+    TIN,
+    TOOL_CLASS,
     WAN_CREATE_MONSTER,
     WAN_DIGGING,
     WAN_MAKE_INVISIBLE,
     WAN_POLYMORPH,
     WAN_SPEED_MONSTER,
     WAN_TELEPORTATION,
+    WAND_CLASS,
+    WEAPON_CLASS,
 } from './objects.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { enexto_core } from './teleport.js';
+import {
+    S_altar,
+    S_dnstair,
+    S_grave,
+    S_hcdoor,
+    S_hwall,
+    S_sink,
+    S_throne,
+    S_upstair,
+    S_vcdoor,
+    S_vwall,
+} from './symbols.js';
 
 const SUPPORTED_FLAGS = NO_MINVENT
     | MM_NOCOUNTBIRTH
@@ -117,6 +197,9 @@ const INITIAL_LEVEL_MONSTERS = new Set([
     PM_FOG_CLOUD,
     PM_WOOD_NYMPH,
     PM_GHOST,
+    PM_SMALL_MIMIC,
+    PM_LARGE_MIMIC,
+    PM_GIANT_MIMIC,
     PM_LITTLE_DOG,
     PM_KITTEN,
     PM_PONY,
@@ -124,12 +207,21 @@ const INITIAL_LEVEL_MONSTERS = new Set([
 
 const STARTING_PETS = new Set([PM_LITTLE_DOG, PM_KITTEN, PM_PONY]);
 
-// include/monattk.h and include/monflag.h predicates used by muse.c's
-// random-item selectors. monsters.js exports only the generated constants
-// needed broadly enough to share across modules.
+// include/monattk.h predicate used by muse.c's random-item selectors.
 const AT_EXPL = 13;
-const M1_MINDLESS = 0x00010000;
-const M1_ANIMAL = 0x00040000;
+
+// makemon.c set_mimic_sym() source tables. The first two entries deliberately
+// make furniture twice as likely as each ordinary object class.
+const MIMIC_SYMBOLS = Object.freeze([
+    MAXOCLASSES, MAXOCLASSES, RING_CLASS, WAND_CLASS, WEAPON_CLASS,
+    FOOD_CLASS, COIN_CLASS, SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS,
+    AMULET_CLASS, TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
+    S_MIMIC_DEF, S_MIMIC_DEF,
+]);
+const MIMIC_FURNITURE = Object.freeze([
+    S_upstair, S_upstair, S_dnstair, S_dnstair,
+    S_altar, S_grave, S_throne, S_sink,
+]);
 
 export class UnsupportedMonsterCreationError extends Error {
     constructor(operation) {
@@ -163,6 +255,111 @@ function isInitialDungeonLevel(state) {
 
 function isArmed(species) {
     return species.mattk.some((attack) => attack.aatyp === AT_WEAP);
+}
+
+function setMimicCorpsenm(monster, value) {
+    monster.mextra ??= {};
+    monster.mextra.mcorpsenm = value;
+}
+
+// C ref: makemon.c set_mimic_sym(), for ordinary and themed initial rooms.
+// The descriptor which requested the Storeroom mimic overwrites this shape,
+// but all RNG, temporary-object allocation, and fruit state here occur first.
+function set_mimic_sym(monster, normalized) {
+    const { random, state } = normalized;
+    const x = monster.mx;
+    const y = monster.my;
+    const object = state.level.objects?.[x]?.[y];
+    let appearance;
+    let appearanceType;
+
+    const location = state.level.at(x, y);
+    if (object) {
+        appearanceType = M_AP_OBJECT;
+        appearance = object.otyp;
+    } else if (location.typ === DOOR || IS_WALL(location.typ)
+               || location.typ === SDOOR || location.typ === SCORR) {
+        appearanceType = M_AP_FURNITURE;
+        const leftType = state.level.at(x - 1, y)?.typ;
+        const horizontal = x !== 0 && [
+            HWALL,
+            TLCORNER,
+            TRWALL,
+            BLCORNER,
+            TDWALL,
+            CROSSWALL,
+            TUWALL,
+        ].includes(leftType);
+        appearance = isRogueLevel(state)
+            ? horizontal ? S_hwall : S_vwall
+            : horizontal ? S_hcdoor : S_vcdoor;
+    } else {
+        const roomIndex = (state.level.at(x, y)?.roomno ?? 0) - ROOMOFFSET;
+        const roomType = roomIndex >= 0
+            ? state.level.rooms?.[roomIndex]?.rtype ?? 0
+            : null;
+        if (roomType !== 0 && roomType !== 1) {
+            throw new UnsupportedMonsterCreationError(
+                `mimic room type ${roomType ?? 'none'}`,
+            );
+        }
+
+        const symbol = MIMIC_SYMBOLS[random.rn2(MIMIC_SYMBOLS.length)];
+        if (symbol === MAXOCLASSES) {
+            appearanceType = M_AP_FURNITURE;
+            appearance = MIMIC_FURNITURE[
+                random.rn2(MIMIC_FURNITURE.length)
+            ];
+        } else {
+            appearanceType = M_AP_OBJECT;
+            if (symbol === S_MIMIC_DEF) {
+                appearance = STRANGE_OBJECT;
+            } else if (symbol === COIN_CLASS) {
+                appearance = GOLD_PIECE;
+            } else {
+                const temporary = mkobj(symbol, false, normalized);
+                appearance = temporary.otyp;
+                obfree(temporary, null, normalized);
+            }
+        }
+    }
+
+    monster.m_ap_type = appearanceType;
+    monster.mappearance = appearance;
+    if (appearanceType === M_AP_OBJECT
+        && (appearance === STATUE || appearance === FIGURINE
+            || appearance === CORPSE || appearance === EGG
+            || appearance === TIN)) {
+        let species = rndmonnum(normalized);
+        const noCorpse = Boolean(
+            state.mvitals[species]?.mvflags & G_NOCORPSE,
+        );
+        if (appearance === CORPSE && noCorpse) {
+            species = random.rn1(
+                PM_WIZARD - PM_ARCHEOLOGIST + 1,
+                PM_ARCHEOLOGIST,
+            );
+        } else if ((appearance === EGG
+                    && can_be_hatched(species, normalized) === NON_PM)
+                   || (appearance === TIN && noCorpse)) {
+            species = NON_PM;
+        }
+        setMimicCorpsenm(monster, species);
+    } else if (appearanceType === M_AP_OBJECT
+               && appearance === SLIME_MOLD) {
+        setMimicCorpsenm(monster, state.context.current_fruit);
+        state.flags.made_fruit = true;
+    } else if (appearanceType === M_AP_FURNITURE
+               && appearance === S_altar) {
+        const alignment = random.rn2(3) - 1;
+        setMimicCorpsenm(
+            monster,
+            alignment < 0 ? AM_CHAOTIC
+                : alignment > 0 ? AM_LAWFUL : AM_NEUTRAL,
+        );
+    } else if (monster.mextra && 'mcorpsenm' in monster.mextra) {
+        monster.mextra.mcorpsenm = NON_PM;
+    }
 }
 
 function assertSupportedSpecies(species) {
@@ -431,32 +628,119 @@ function m_initinv(monster, normalized) {
     }
 }
 
-// C ref: worn.c m_dowear(). Within the supported inventory set, an orcish
-// helm and amulet of life saving are the only wearable objects. Neither has
-// an applicable creation-time extrinsic side effect.
-function m_dowear(monster) {
+function armorBonus(obj, state) {
+    const base = state.objects?.[obj.otyp]?.a_ac;
+    if (!Number.isInteger(base)) {
+        throw new Error('m_dowear requires initialized armor data');
+    }
+    const erosion = Math.max(obj.oeroded ?? 0, obj.oeroded2 ?? 0);
+    return base + obj.spe - Math.min(erosion, base);
+}
+
+// C ref: worn.c m_dowear()/m_dowear_type(). Within the supported inventory
+// set, an orcish helm and amulet of life saving are the only wearable objects.
+// Neither has an applicable creation-time extrinsic side effect.
+export function m_dowear(monster, creation = false, env = {}) {
+    const state = env.state ?? game;
+    const species = monster.data;
+    const bodyFlags = species.mflags1 ?? 0;
+    if (species.msize < MZ_SMALL
+        || (bodyFlags & M1_NOHANDS)
+        || (bodyFlags & M1_ANIMAL)) {
+        return monster;
+    }
+    if ((bodyFlags & M1_MINDLESS)
+        && (!creation
+            || (species.mlet !== S_MUMMY
+                && species.pmidx !== PM_SKELETON))) {
+        return monster;
+    }
     let amulet = null;
-    let helm = null;
+    let wornAmulet = null;
+    let wornHelm = null;
     for (let obj = monster.minvent; obj; obj = obj.nobj) {
         if (obj.where !== OBJ_MINVENT || obj.ocarry !== monster) {
             throw new Error('m_dowear found invalid monster inventory ownership');
         }
-        if (obj.otyp === AMULET_OF_LIFE_SAVING) amulet ??= obj;
-        else if (obj.otyp === ORCISH_HELM) helm = obj;
-        else if (obj.oclass === AMULET_CLASS
+        if (obj.otyp === AMULET_OF_LIFE_SAVING) {
+            amulet ??= obj;
+            if (obj.owornmask & W_AMUL) {
+                if (wornAmulet) {
+                    throw new Error('m_dowear found multiple worn amulets');
+                }
+                wornAmulet = obj;
+            }
+        } else if (obj.otyp === ORCISH_HELM) {
+            if (obj.owornmask & W_ARMH) {
+                if (wornHelm) {
+                    throw new Error('m_dowear found multiple worn helmets');
+                }
+                wornHelm = obj;
+            }
+        } else if (obj.oclass === AMULET_CLASS
             || obj.oclass === ARMOR_CLASS) {
             throw new UnsupportedMonsterCreationError(
                 `wearing object ${obj.otyp}`,
             );
         }
     }
-    if (amulet && !amulet.owornmask) {
+
+    // m_dowear_type(W_AMUL) keeps an occupied life-saving slot without even
+    // considering another amulet.
+    if (!wornAmulet && amulet) {
         monster.misc_worn_check |= W_AMUL;
         amulet.owornmask |= W_AMUL;
     }
-    if (helm && !helm.owornmask) {
+
+    // m_dowear_type(W_ARMH) retains ties and replaces only with a strictly
+    // better unworn helm.  extra_pref() is zero for every supported helmet.
+    let bestHelm = wornHelm;
+    if (!wornHelm?.cursed) {
+        for (let obj = monster.minvent; obj; obj = obj.nobj) {
+            if (obj.otyp !== ORCISH_HELM || obj.owornmask) continue;
+            if (!bestHelm
+                || armorBonus(obj, state) > armorBonus(bestHelm, state)) {
+                bestHelm = obj;
+            }
+        }
+    }
+    if (bestHelm && bestHelm !== wornHelm) {
+        if (wornHelm) wornHelm.owornmask &= ~W_ARMH;
         monster.misc_worn_check |= W_ARMH;
-        helm.owornmask |= W_ARMH;
+        bestHelm.owornmask |= W_ARMH;
+    }
+    return monster;
+}
+
+// C ref: mkobj.c discard_minvent().  The currently supported makemon()
+// species cannot receive invocation artifacts or other special objects which
+// mdrop_special_objs() would preserve on the floor.  Artifact bookkeeping is
+// still reversed here before each generated inventory object is uncreated.
+export function discard_minvent(monster, uncreateArtifacts, env = {}) {
+    const normalized = creationEnv(env);
+    while (monster.minvent) {
+        const obj = monster.minvent;
+        const unwornmask = obj.owornmask;
+        // C's extract_from_minvent(..., TRUE, TRUE) removes worn state before
+        // freeing the object.  No supported creation-time worn item grants an
+        // extrinsic, so the remaining local effects are the two worn masks and
+        // check_gear_next_turn()'s I_SPECIAL reassessment flag.
+        obj_extract_self(obj, normalized);
+        obj.owornmask = 0;
+        if (unwornmask) {
+            monster.misc_worn_check &= ~unwornmask;
+            monster.misc_worn_check |= I_SPECIAL;
+        }
+        if (uncreateArtifacts && obj.oartifact) {
+            artifact_exists(
+                obj,
+                ONAME(obj),
+                false,
+                ONAME_NO_FLAGS,
+                normalized.state,
+            );
+        }
+        obfree(obj, null, normalized);
     }
     return monster;
 }
@@ -474,7 +758,8 @@ function initializeGender(monster, ptr, mmflags, random) {
 }
 
 // C ref: makemon.c makemon(). This implements the level-one, explicit-square
-// call shapes needed by fill_ordinary_room() and dog.c:makedog().
+// call shapes needed by fill_ordinary_room(), the Ghost themed fill, and
+// dog.c:makedog().
 //
 // After supported-call validation, source no-creation outcomes return null:
 // generation is disabled, the square is occupied, selection has no candidate,
@@ -548,16 +833,21 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     monster.mpeaceful = (mmflags & MM_ANGRY)
         ? false
         : peace_minded(ptr, normalized);
-    if (ptr.mlet === S_ORC && state.urace.mnum === PM_ELF)
+    if (ptr.mlet === S_MIMIC) {
+        set_mimic_sym(monster, normalized);
+    } else if (ptr.mlet === S_ORC && state.urace.mnum === PM_ELF) {
         monster.mpeaceful = false;
-    if (ptr.mlet === S_NYMPH
+    } else if (ptr.mlet === S_NYMPH
         && random.rn2(5)
         && !state.u.uhave.amulet) {
         monster.msleeping = true;
     }
     monster.cham = NON_PM;
-    if (mndx === PM_GHOST)
-        christen_monst(monster, rndghostname(normalized));
+    if (mndx === PM_GHOST) {
+        christen_monst(monster, rndghostname(normalized), {
+            updateInventory: () => update_inventory(normalized),
+        });
+    }
     if (byHero && !state.in_mklev) {
         // makemon.c calls set_apparxy() here. At initial startup the hero is
         // visible and undisplaced, so the source result is exact and drawless.
@@ -569,7 +859,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     if (!(mmflags & NO_MINVENT)) {
         if (isArmed(ptr)) m_initweap(monster, normalized);
         m_initinv(monster, normalized);
-        m_dowear(monster);
+        m_dowear(monster, true, normalized);
 
         const saddleRoll = random.rn2(100);
         if (!saddleRoll && (ptr.mflags2 & M2_DOMESTIC)) {

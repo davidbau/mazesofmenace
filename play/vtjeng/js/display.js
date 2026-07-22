@@ -6,30 +6,37 @@ import { money_cnt } from './invent.js';
 import { cansee } from './vision.js';
 import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS,
-    BLINDED, CONFUSION, DEAF, FLYING, HALLUC, HALLUC_RES,
+    AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
+    ACCESSIBLE, BLINDED, CONFUSION, DEAF, FLYING, HALLUC, HALLUC_RES,
     LEVITATION, NOT_HUNGRY, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE,
     SLIMED, STONED, STR18, STRANGLED, STUNNED,
-    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
+    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, SCORR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, SDOOR,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     IRONBARS, TREE, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
     POOL, MOAT, ICE, LAVAPOOL, LAVAWALL, AIR, CLOUD, WATER,
+    DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+    DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER,
     D_BROKEN, D_ISOPEN, LA_DOWN,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    HI_DOMESTIC, HI_METAL,
+    HI_DOMESTIC, HI_METAL, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK,
 } from './const.js';
 import {
+    ATR_INVERSE,
     NO_COLOR,
     CLR_BLACK,
     CLR_BLUE,
+    CLR_BRIGHT_GREEN,
     CLR_BROWN,
     CLR_BRIGHT_BLUE,
+    CLR_BRIGHT_MAGENTA,
     CLR_CYAN,
     CLR_GREEN,
     CLR_GRAY,
+    CLR_MAGENTA,
     CLR_ORANGE,
     CLR_RED,
     CLR_WHITE,
@@ -40,6 +47,7 @@ import { rankOf } from './roles.js';
 import { m_at } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { observe_object } from './o_init.js';
+import { engr_at } from './engrave.js';
 import { status_version } from './version.js';
 import {
     BOULDER,
@@ -54,6 +62,7 @@ import {
 } from './objects.js';
 import {
     cmap_symbol,
+    cmap_symbol_byte,
     glyph_customization,
     misc_symbol,
     monster_class_symbol,
@@ -79,12 +88,19 @@ import {
     S_vcdoor,
     S_hcdoor,
     S_room,
+    S_darkroom,
+    S_engroom,
     S_corr,
     S_litcorr,
+    S_engrcorr,
     S_upstair,
     S_dnstair,
+    S_upladder,
+    S_dnladder,
     S_brupstair,
     S_brdnstair,
+    S_brupladder,
+    S_brdnladder,
     S_altar,
     S_grave,
     S_throne,
@@ -94,10 +110,17 @@ import {
     S_ice,
     S_lava,
     S_lavawall,
+    S_vodbridge,
+    S_hodbridge,
+    S_vcdbridge,
+    S_hcdbridge,
     S_air,
     S_cloud,
     S_water,
+    trap_to_defsym,
 } from './symbols.js';
+import { t_at } from './trap.js';
+import { visible_region_at } from './region.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -125,6 +148,18 @@ const ANSI_COLOR = [
 const WALL_TYPES = new Set([
     SDOOR, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+]);
+
+// C ref: include/defsym.h, trap cmap colors indexed by enum trap_types.
+// Index 0 is NO_TRAP and is intentionally unused.
+const TRAP_COLORS = Object.freeze([
+    NO_COLOR,
+    HI_METAL, HI_METAL, CLR_GRAY, CLR_BROWN, HI_METAL,
+    CLR_RED, CLR_GRAY, CLR_BRIGHT_BLUE, CLR_BLUE, CLR_ORANGE,
+    CLR_BLACK, CLR_BLACK, CLR_BROWN, CLR_BROWN, CLR_MAGENTA,
+    CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_GRAY, CLR_GRAY,
+    CLR_BRIGHT_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_GREEN, CLR_MAGENTA,
+    CLR_ORANGE, CLR_ORANGE,
 ]);
 
 // C ref: display.c wall_matrix[] and cross_matrix[][].
@@ -381,8 +416,12 @@ function recorderMapColor(color, state) {
     return color;
 }
 
-function terrainCmap(index, color, state) {
-    return glyphPresentation(cmap_symbol(index, state), color, state);
+function terrainCmap(index, color, state, customizationName = null) {
+    const customization = customizationName
+        ? glyph_customization(customizationName, state) : null;
+    return glyphPresentation(
+        cmap_symbol(index, state), color, state, customization,
+    );
 }
 
 function stairwayAt(state, x, y) {
@@ -392,14 +431,62 @@ function stairwayAt(state, x, y) {
     return null;
 }
 
-function glyphPresentation(symbol, color, state) {
+function glyphPresentation(symbol, color, state, customization = null) {
     const result = {
         ch: symbol.ch,
         color: recorderMapColor(color, state),
         dec: symbol.dec,
     };
-    if (symbol.displayCh) result.displayCh = symbol.displayCh;
+    const displayCh = customization?.displayCh ?? symbol.displayCh;
+    if (displayCh) result.displayCh = displayCh;
+    if (customization?.rgb && state.iflags?.wc_color !== false) {
+        result.rgb = [...customization.rgb];
+        result.displayColor = `rgb(${customization.rgb.join(', ')})`;
+    }
     return result;
+}
+
+function knownBranchStairway(stairway, state) {
+    return Boolean(stairway?.u_traversed
+        && stairway.tolev?.dnum !== state.u?.uz?.dnum);
+}
+
+function drawbridgeMask(loc) {
+    // drawbridgemask aliases struct rm's flags.  Keep the compatibility
+    // field for state written by the earlier JS map representation.
+    return loc.flags || loc.drawbridgemask || 0;
+}
+
+function altarPresentation(loc, state) {
+    const mask = (loc.altarmask ?? loc.flags ?? 0);
+    let category;
+    let color;
+    if ((mask & AM_SANCTUM) === AM_SANCTUM) {
+        category = 'other';
+        color = CLR_BRIGHT_MAGENTA;
+    } else {
+        switch (mask & AM_MASK) {
+        case AM_LAWFUL:
+            category = 'lawful';
+            color = CLR_GRAY;
+            break;
+        case AM_NEUTRAL:
+            category = 'neutral';
+            color = CLR_GRAY;
+            break;
+        case AM_CHAOTIC:
+            category = 'chaotic';
+            color = CLR_GRAY;
+            break;
+        default:
+            category = 'unaligned';
+            color = CLR_RED;
+            break;
+        }
+    }
+    return terrainCmap(
+        S_altar, color, state, `G_${category}_altar`,
+    );
 }
 
 function accessibilityOverridesEnabled(state) {
@@ -426,6 +513,69 @@ export function hero_glyph_info(state = game) {
 export function monster_glyph_info(monster, state = game) {
     if (!monster?.data)
         throw new TypeError('monster_glyph_info requires monster data');
+    const appearanceType = monster.m_ap_type & M_AP_TYPMASK;
+    if (appearanceType === M_AP_FURNITURE) {
+        // C ref: display.c display_monster() maps a furniture appearance
+        // through cmap_to_glyph(), independently of the underlying terrain.
+        const sym = monster.mappearance;
+        if (sym >= S_vwall && sym <= S_trwall)
+            return terrainCmap(sym, NO_COLOR, state);
+        switch (sym) {
+        case S_ndoor:
+        case S_room:
+        case S_darkroom:
+        case S_corr:
+        case S_litcorr:
+        case S_upstair:
+        case S_dnstair:
+            return terrainCmap(sym, NO_COLOR, state);
+        case S_vodoor:
+        case S_hodoor:
+        case S_vcdoor:
+        case S_hcdoor:
+        case S_upladder:
+        case S_dnladder:
+            return terrainCmap(sym, CLR_BROWN, state);
+        case S_bars:
+            return terrainCmap(sym, HI_METAL, state);
+        case S_tree:
+            return terrainCmap(sym, CLR_GREEN, state);
+        case S_engroom:
+        case S_engrcorr:
+            return terrainCmap(sym, CLR_BRIGHT_BLUE, state);
+        case S_brupstair:
+        case S_brdnstair:
+        case S_brupladder:
+        case S_brdnladder:
+        case S_throne:
+            return terrainCmap(sym, CLR_YELLOW, state);
+        case S_altar:
+            // cmap_to_glyph(S_altar) deliberately chooses neutral rather than
+            // the alignment stored in the mimic's mcorpsenm overlay.
+            return altarPresentation({ altarmask: AM_NEUTRAL }, state);
+        case S_grave:
+        case S_sink:
+            return terrainCmap(sym, CLR_WHITE, state);
+        case S_fountain:
+            return terrainCmap(
+                sym, CLR_BRIGHT_BLUE, state, 'G_fountain',
+            );
+        default:
+            // Special-level descriptors can name other cmap entries. Keep
+            // their symbol source-faithful even when no specialized color
+            // mapping is needed by initial-level generation.
+            return terrainCmap(sym, NO_COLOR, state);
+        }
+    }
+    if (appearanceType === M_AP_OBJECT) {
+        const type = state.objects?.[monster.mappearance];
+        return object_glyph_info({
+            otyp: monster.mappearance,
+            oclass: type?.oc_class,
+            corpsenm: monster.mextra?.mcorpsenm,
+            dknown: false,
+        }, state);
+    }
     const symbol = monster.mtame && accessibilityOverridesEnabled(state)
         ? optional_misc_symbol(4, state)
             ?? monster_class_symbol(monster.data.mlet, state)
@@ -469,16 +619,22 @@ export function object_glyph_info(obj, state = game) {
 export function terrain_glyph(loc, x, y, state = game) {
     const typ = loc.typ;
     if (WALL_TYPES.has(typ)) {
+        const arborealSecretDoor = typ === SDOOR
+            && (loc.arboreal_sdoor || loc.candig);
         return terrainCmap(
-            loc.seenv ? wall_angle(loc) : S_stone,
-            NO_COLOR,
+            arborealSecretDoor
+                ? S_tree : loc.seenv ? wall_angle(loc) : S_stone,
+            arborealSecretDoor ? CLR_GREEN : NO_COLOR,
             state,
         );
     }
 
     switch (typ) {
+    case SCORR:
     case STONE:
-        return terrainCmap(S_stone, NO_COLOR, state);
+        return state.level?.flags?.arboreal
+            ? terrainCmap(S_tree, CLR_GREEN, state)
+            : terrainCmap(S_stone, NO_COLOR, state);
     case ROOM:
         return terrainCmap(S_room, NO_COLOR, state);
     case IRONBARS:
@@ -486,7 +642,7 @@ export function terrain_glyph(loc, x, y, state = game) {
     case TREE:
         return terrainCmap(S_tree, CLR_GREEN, state);
     case ALTAR:
-        return terrainCmap(S_altar, NO_COLOR, state);
+        return altarPresentation(loc, state);
     case GRAVE:
         return terrainCmap(S_grave, CLR_WHITE, state);
     case THRONE:
@@ -494,10 +650,9 @@ export function terrain_glyph(loc, x, y, state = game) {
     case SINK:
         return terrainCmap(S_sink, CLR_WHITE, state);
     case FOUNTAIN: {
-        const glyph = terrainCmap(S_fountain, CLR_BRIGHT_BLUE, state);
-        const customization = glyph_customization('G_fountain', state);
-        if (customization?.displayCh) glyph.displayCh = customization.displayCh;
-        return glyph;
+        return terrainCmap(
+            S_fountain, CLR_BRIGHT_BLUE, state, 'G_fountain',
+        );
     }
     case POOL:
     case MOAT:
@@ -550,8 +705,7 @@ export function terrain_glyph(loc, x, y, state = game) {
         // C refs: display.c:back_to_glyph(), stairs.c:known_branch_stairs().
         const stairway = stairwayAt(state, x, y);
         const down = Boolean(loc.ladder & LA_DOWN);
-        const knownBranch = Boolean(stairway?.u_traversed
-            && stairway.tolev?.dnum !== state.u?.uz?.dnum);
+        const knownBranch = knownBranchStairway(stairway, state);
         return terrainCmap(
             knownBranch
                 ? down ? S_brdnstair : S_brupstair
@@ -560,7 +714,47 @@ export function terrain_glyph(loc, x, y, state = game) {
             state,
         );
     }
-    default:        return { ch: '?', color: NO_COLOR, dec: false };
+    case LADDER: {
+        const stairway = stairwayAt(state, x, y);
+        const down = Boolean(loc.ladder & LA_DOWN);
+        const knownBranch = knownBranchStairway(stairway, state);
+        return terrainCmap(
+            knownBranch
+                ? down ? S_brdnladder : S_brupladder
+                : down ? S_dnladder : S_upladder,
+            knownBranch ? CLR_YELLOW : CLR_BROWN,
+            state,
+        );
+    }
+    case DBWALL:
+        return terrainCmap(
+            loc.horizontal ? S_hcdbridge : S_vcdbridge,
+            CLR_BROWN,
+            state,
+        );
+    case DRAWBRIDGE_UP:
+        switch (drawbridgeMask(loc) & DB_UNDER) {
+        case DB_MOAT:
+            return terrainCmap(S_pool, CLR_BLUE, state);
+        case DB_LAVA:
+            return terrainCmap(S_lava, CLR_RED, state);
+        case DB_ICE:
+            return terrainCmap(S_ice, CLR_CYAN, state);
+        case DB_FLOOR:
+        default:
+            // back_to_glyph() diagnoses an invalid underlay and still uses
+            // room floor, so callers always receive a drawable background.
+            return terrainCmap(S_room, NO_COLOR, state);
+        }
+    case DRAWBRIDGE_DOWN:
+        return terrainCmap(
+            loc.horizontal ? S_hodbridge : S_vodbridge,
+            CLR_BROWN,
+            state,
+        );
+    default:
+        // display.c:back_to_glyph() uses room floor after its impossible().
+        return terrainCmap(S_room, NO_COLOR, state);
     }
 }
 
@@ -573,6 +767,7 @@ export function show_glyph_cell(
     decgfx = false,
     attr = 0,
     displayCh = null,
+    displayColor = null,
 ) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -583,17 +778,71 @@ export function show_glyph_cell(
         loc.disp_attr = attr | 0;
     }
     loc.disp_browser_ch = displayCh;
-    loc.disp_browser_color = displayCh ? color : null;
+    loc.disp_browser_color = displayColor ?? (displayCh ? color : null);
+    loc.disp_browser_attr = displayCh ? attr | 0 : null;
     loc.gnew = 1;
 }
 
 function rememberedMapGlyph(glyph) {
-    return {
+    const remembered = {
         ch: glyph.ch,
         color: glyph.color,
         decgfx: glyph.dec,
         displayCh: glyph.displayCh ?? null,
     };
+    if (glyph.attr) remembered.attr = glyph.attr;
+    if (glyph.displayColor) remembered.displayColor = glyph.displayColor;
+    if (glyph.rgb) remembered.rgb = [...glyph.rgb];
+    return remembered;
+}
+
+// C refs: engrave.h engraving_to_defsym()/spot_shows_engravings();
+// display.c map_engraving(). Ice uses the room engraving symbol.
+function engravingGlyph(engraving, loc, state) {
+    if (!engraving?.erevealed
+        || (loc.typ !== ROOM && loc.typ !== ICE && loc.typ !== CORR)) {
+        return null;
+    }
+    const glyph = terrainCmap(
+        loc.typ === CORR ? S_engrcorr : S_engroom,
+        CLR_BRIGHT_BLUE,
+        state,
+    );
+    if (loc.typ === CORR && state.iflags?.wc_inverse !== false) {
+        const engraved = cmap_symbol_byte(S_engrcorr, state);
+        if (engraved === cmap_symbol_byte(S_corr, state)
+            || engraved === cmap_symbol_byte(S_litcorr, state)) {
+            // display.c:reset_glyphmap() marks an otherwise indistinguishable
+            // corridor engraving with MG_BW_ENGR; tty uses inverse video.
+            glyph.attr = ATR_INVERSE;
+        }
+    }
+    return glyph;
+}
+
+function sameLevel(a, b) {
+    return Boolean(a && b
+        && a.dnum === b.dnum && a.dlevel === b.dlevel);
+}
+
+function floorLayersCovered(loc, state) {
+    // C refs: display.h covers_objects()/covers_traps(); dbridge.c is_pool()
+    // and is_lava().  A submerged hero sees through water to floor layers.
+    if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL) return true;
+    let pool = loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER;
+    if (loc.typ === DRAWBRIDGE_UP
+        && (drawbridgeMask(loc) & DB_UNDER) === DB_MOAT
+        && !sameLevel(state.u?.uz, state.juiblex_level)) {
+        pool = true;
+    }
+    return pool && !state.u?.uinwater;
+}
+
+function trapGlyph(trap, state) {
+    const color = TRAP_COLORS[trap.ttyp];
+    if (color === undefined)
+        throw new RangeError(`trap type ${trap.ttyp} has no display color`);
+    return terrainCmap(trap_to_defsym(trap.ttyp), color, state);
 }
 
 function observeNearbyObject(object, x, y, state) {
@@ -609,16 +858,63 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
-    const object = game.level?.objects?.[x]?.[y] ?? null;
+    const visible = cansee(x, y);
+    if (visible) {
+        // display.c:newsym() snapshots permanent location lighting at the
+        // physical-visibility boundary, before any covering layer returns.
+        loc.waslit = Boolean(loc.lit);
+    }
+    const engraving = engr_at(x, y, game);
+    // display.c:newsym() reveals a visible engraving even when an object,
+    // monster, or the hero currently covers its glyph.
+    if (visible && engraving) engraving.erevealed = true;
+
+    // display.c:newsym() lets a visible gas region cover every accessible
+    // location, including the hero. Ordinary visible, unsensed monsters only
+    // override it when adjacent; object-disguised mimics do not. Returning
+    // here intentionally leaves the remembered underlying glyph untouched.
+    const region = visible ? visible_region_at(x, y, game) : null;
+    if (region && ACCESSIBLE(loc.typ)) {
+        const monster = m_at(x, y, game);
+        const adjacentVisibleMonster = monster
+            && !monster.minvis
+            && !monster.mundetected
+            && ![M_AP_FURNITURE, M_AP_OBJECT].includes(
+                monster.m_ap_type & M_AP_TYPMASK,
+            )
+            && dist2(x, y, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2;
+        if (!adjacentVisibleMonster) {
+            const cloud = terrainCmap(
+                region.glyph,
+                region.arg ? CLR_BRIGHT_GREEN : CLR_GRAY,
+                game,
+            );
+            show_glyph_cell(
+                x, y, cloud.ch, cloud.color, cloud.dec, cloud.attr ?? 0,
+                cloud.displayCh ?? null, cloud.displayColor ?? null,
+            );
+            return;
+        }
+    }
+
+    const covered = floorLayersCovered(loc, game);
+    const object = covered
+        ? null : game.level?.objects?.[x]?.[y] ?? null;
     if (object) observeNearbyObject(object, x, y, game);
-    const underlying = object
-        ? object_glyph_info(object, game)
-        : terrain_glyph(loc, x, y);
+    const trap = covered ? null : t_at(x, y, game);
+    let underlying;
+    if (object) underlying = object_glyph_info(object, game);
+    else if (trap?.tseen) underlying = trapGlyph(trap, game);
+    else {
+        underlying = engravingGlyph(engraving, loc, game)
+            ?? terrain_glyph(loc, x, y);
+    }
 
     if (game.u?.ux === x && game.u?.uy === y) {
         const hero = hero_glyph_info(game);
         show_glyph_cell(
-            x, y, hero.ch, hero.color, hero.dec, 0, hero.displayCh ?? null,
+            x, y, hero.ch, hero.color, hero.dec, hero.attr ?? 0,
+            hero.displayCh ?? null, hero.displayColor ?? null,
         );
         if (game.level?.flags?.hero_memory)
             loc.remembered_glyph = rememberedMapGlyph(underlying);
@@ -626,27 +922,39 @@ export function newsym(x, y) {
     }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
-    if (cansee(x, y)) {
-        if (game.level?.flags?.hero_memory)
-            loc.remembered_glyph = rememberedMapGlyph(underlying);
+    if (visible) {
         const monster = m_at(x, y, game);
         const shown = monster && !monster.minvis && !monster.mundetected
             ? monster_glyph_info(monster, game)
             : underlying;
+        // display_monster() maps an unsensed mimic appearance onto memory.
+        // Ordinary monsters leave memory as the actual layer underneath them.
+        const remembered = monster
+            && !monster.minvis
+            && !monster.mundetected
+            && [M_AP_FURNITURE, M_AP_OBJECT].includes(
+                monster.m_ap_type & M_AP_TYPMASK,
+            )
+            ? shown : underlying;
+        if (game.level?.flags?.hero_memory)
+            loc.remembered_glyph = rememberedMapGlyph(remembered);
         show_glyph_cell(
             x,
             y,
             shown.ch,
             shown.color,
             shown.dec,
-            0,
+            shown.attr ?? 0,
             shown.displayCh ?? null,
+            shown.displayColor ?? null,
         );
     } else if (loc.remembered_glyph) {
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
-            loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
-            loc.remembered_glyph.displayCh);
+            loc.remembered_glyph.color, loc.remembered_glyph.decgfx,
+            loc.remembered_glyph.attr ?? 0,
+            loc.remembered_glyph.displayCh,
+            loc.remembered_glyph.displayColor ?? null);
     }
 }
 
@@ -909,10 +1217,12 @@ function _buildScreenOutput() {
                     x - 1,
                     y + 1,
                     ch,
-                    browserGlyphs && loc.disp_browser_ch
+                    browserGlyphs
                         ? loc.disp_browser_color ?? loc.disp_color ?? NO_COLOR
                         : loc.disp_color ?? NO_COLOR,
-                    loc.disp_attr ?? 0,
+                    browserGlyphs && loc.disp_browser_ch
+                        ? loc.disp_browser_attr ?? 0
+                        : loc.disp_attr ?? 0,
                 );
             }
         }
@@ -938,9 +1248,4 @@ export async function cls() {
 // ── bot ──
 export async function bot() {
     writeStatusRows(game?.nhDisplay);
-}
-
-// ── pline ──
-export async function pline(msg) {
-    game._pending_message = msg;
 }

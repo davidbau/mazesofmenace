@@ -389,7 +389,7 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
 
 /**
  * C ref: dog.c wary_dog — pet revive / lifesave tameness gate.
- * Named omit: m_unleash body; dismount_steed DISMOUNT_THROWN; pline_mon SetVoice.
+ * Named omit: dismount_steed DISMOUNT_THROWN; pline_mon SetVoice.
  */
 export async function wary_dog(mtmp, was_dead) {
     if (!mtmp) return;
@@ -434,7 +434,10 @@ export async function wary_dog(mtmp, was_dead) {
             );
         }
         newsym(mtmp.mx | 0, mtmp.my | 0);
-        if (mtmp.mleashed) mtmp.mleashed = 0; // m_unleash deferred
+        if (mtmp.mleashed) {
+            const { m_unleash } = await import('./apply.js');
+            await m_unleash(mtmp, true);
+        }
         if (game.u?.usteed === mtmp) game.u.usteed = null; // dismount deferred
     } else if (edog) {
         edog.revivals = (edog.revivals | 0) + 1;
@@ -461,8 +464,7 @@ export async function wary_dog(mtmp, was_dead) {
 /**
  * C ref: dog.c abuse_dog — reduce tameness; yelp/growl when on-map.
  * Called from hmon_hitmon_pet (and kick/zap/trap/hack callers deferred).
- * Named omissions: m_unleash body when mtame hits 0 while leashed;
- * worm redraw on untame; Aggravate/Conflict /=2 path unverified this peel.
+ * Named omissions: worm redraw on untame; Aggravate/Conflict /=2 path unverified this peel.
  */
 export async function abuse_dog(mtmp) {
     if (!mtmp?.mtame) return;
@@ -481,8 +483,8 @@ export async function abuse_dog(mtmp) {
     }
 
     if (!mtmp.mtame && mtmp.mleashed) {
-        // m_unleash(mtmp, TRUE) deferred — clear flag only
-        mtmp.mleashed = 0;
+        const { m_unleash } = await import('./apply.js');
+        await m_unleash(mtmp, true);
     }
 
     // C: skip sound when pet mid-leaving (mx==0)

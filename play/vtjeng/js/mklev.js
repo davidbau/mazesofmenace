@@ -19,7 +19,7 @@ import { add_to_container } from './invent.js';
 import { makemon } from './makemon_create.js';
 import { mkclass } from './makemon.js';
 import { mineralize } from './mineralize.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { d, rn2, rnd, rn1, rne, rnz } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import {
     mkaltar,
@@ -80,7 +80,24 @@ import {
     traptype_rnd,
 } from './mktrap.js';
 import { random_engraving } from './random_engraving.js';
+import {
+    get_free_room_loc,
+    get_location,
+    get_location_coord,
+    get_room_loc,
+    inside_room,
+    is_ok_location,
+    somex,
+    somey,
+    somexy,
+} from './room_coordinates.js';
 import { set_levltyp } from './terrain.js';
+import {
+    initialize_themeroom_postprocess_branch,
+    run_themeroom_postprocess,
+    themeroom_fill,
+    UnsupportedThemeroomFillError,
+} from './themeroom_fill.js';
 import { PM_GIANT_SPIDER, S_HUMAN } from './monsters.js';
 import { THEMEROOM_DEFINITIONS } from './themeroom_data.js';
 import {
@@ -115,6 +132,11 @@ import {
 
 const XLIM = 4;
 const YLIM = 3;
+
+const THEMEROOM_RANDOM_METHODS = Object.freeze([
+    'd', 'rn1', 'rn2', 'rnd', 'rne', 'rnz',
+]);
+const SOURCE_THEMEROOM_RANDOM = Object.freeze({ d, rn1, rn2, rnd, rne, rnz });
 
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
@@ -442,6 +464,7 @@ export function initialize_themeroom_branch(state = game, random = rn2) {
         state.themeroom_align[dnum] = align;
         state._luathemes_loaded[dnum] = true;
     }
+    initialize_themeroom_postprocess_branch(state);
     return state.themeroom_align[dnum];
 }
 
@@ -535,7 +558,7 @@ async function makelevel() {
 async function makerooms() {
     const g = game;
     let tried_vault = false;
-    const difficulty = depth_of_level(g.u?.uz);
+    const difficulty = level_difficulty(g);
     let themeroom_tries = 0;
 
     while (g.level.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
@@ -731,36 +754,69 @@ export class UnsupportedThemeroomActionError extends Error {
     }
 }
 
-function invoke_themeroom_fill(room, definition, context) {
+function preflight_themeroom_fill(definition, context) {
     if (typeof context.themeroomFill !== 'function') {
-        if (context.allowMissingFill) return;
+        if (context.allowMissingFill) return false;
         throw new UnsupportedThemeroomActionError(
             definition,
             'requires an injected themeroom-fill callback',
         );
     }
+    if (!Number.isInteger(context.difficulty)) {
+        throw new UnsupportedThemeroomActionError(
+            definition,
+            'requires an integer difficulty for its themeroom-fill callback',
+        );
+    }
+    const facade = context.randomFacade;
+    for (const method of THEMEROOM_RANDOM_METHODS) {
+        if (typeof facade?.[method] !== 'function') {
+            throw new UnsupportedThemeroomActionError(
+                definition,
+                `requires randomFacade.${method} for its themeroom-fill callback`,
+            );
+        }
+    }
+    if (facade.rn2 !== context.random
+        || facade.rnd !== context.randomOneBased) {
+        throw new UnsupportedThemeroomActionError(
+            definition,
+            'requires randomFacade.rn2/rnd to match the map RNG streams',
+        );
+    }
+    return true;
+}
+
+function invoke_themeroom_fill(room, definition, context) {
+    // Strict callers validate before creating the room or loading its map.
+    // The missing-callback case is the live generator's temporary partial port.
+    if (typeof context.themeroomFill !== 'function') return;
     // Lua invokes contents before leaving the current room context. Keep this
-    // call synchronous and pass the indexed room that selection.room() needs.
-    context.themeroomFill(room, {
-        definition,
-        difficulty: context.difficulty,
-        random: context.random,
-        randomOneBased: context.randomOneBased,
+    // call synchronous. This is the exact themeroom_fill(room, difficulty,
+    // rawEnv) contract, including the indexed room that selection.room() needs.
+    context.themeroomFill(room, context.difficulty, {
         state: game,
+        random: context.randomFacade,
     });
+}
+
+function staged_themeroom_fill(room, difficulty, env) {
+    try {
+        return themeroom_fill(room, difficulty, env);
+    } catch (error) {
+        // Live generation still performs the complete source-order reservoir
+        // and executes every supported result. Only the missing-handler
+        // boundary is tolerated until the remaining fill bodies are ported.
+        if (error instanceof UnsupportedThemeroomFillError) return null;
+        throw error;
+    }
 }
 
 // C refs: themerms.lua filler_region(); sp_lev.c lspo_region().
 function filler_region(filler, origin, definition, context) {
     const state = game;
     const themed = context.random(100) < 30;
-    if (themed && typeof context.themeroomFill !== 'function'
-        && !context.allowMissingFill) {
-        throw new UnsupportedThemeroomActionError(
-            definition,
-            'requires an injected themeroom-fill callback',
-        );
-    }
+    if (themed) preflight_themeroom_fill(definition, context);
     const lit = litstate_rnd(
         -1,
         context.random,
@@ -806,12 +862,7 @@ function dispatch_room_action(definition, context) {
             `has unsupported room contents ${JSON.stringify(action.contents.kind)}`,
         );
     }
-    if (action.contents && typeof context.themeroomFill !== 'function') {
-        throw new UnsupportedThemeroomActionError(
-            definition,
-            'requires an injected themeroom-fill callback',
-        );
-    }
+    if (action.contents) preflight_themeroom_fill(definition, context);
 
     const chance = spec.chance ?? 100;
     const declaredType = room_type_from_schema(spec.type, definition);
@@ -875,6 +926,7 @@ function dispatch_map_action(definition, context) {
             `requires unimplemented map handler ${JSON.stringify(handler)}`,
         );
     }
+    preflight_themeroom_fill(definition, context);
 
     const origin = lspo_map(definition, context.random);
     if (!origin) return false;
@@ -892,10 +944,22 @@ export function dispatch_themeroom(
     randomOneBased = rnd,
     env = {},
 ) {
+    // The strict dispatcher currently owns the process-global level just like
+    // the live generator. Reject an apparent alternate-state injection before
+    // any source draw or level mutation instead of silently writing `game`.
+    if (env.state !== undefined && env.state !== game) {
+        throw new TypeError(
+            'dispatch_themeroom only supports the global game state',
+        );
+    }
+    const sourceRandomFacade = random === rn2 && randomOneBased === rnd
+        ? SOURCE_THEMEROOM_RANDOM
+        : null;
     const context = {
         difficulty: env.difficulty ?? level_difficulty(game),
         random,
         randomOneBased,
+        randomFacade: env.randomFacade ?? sourceRandomFacade,
         themeroomFill: env.themeroomFill,
     };
     switch (definition?.action?.kind) {
@@ -916,18 +980,34 @@ export function dispatch_themeroom(
     }
 }
 
-// C ref: themerms.lua themerooms_generate(). The live generator retains the
-// previous partial-runtime boundary until every selected callback can execute:
-// direct filler maps run without their optional fill, and other callbacks use
-// the ordinary-room fallback. dispatch_themeroom() is the strict integration
-// seam for completing that transition without partially mutating a level.
+// C ref: themerms.lua themerooms_generate(). Generic room descriptors use the
+// strict synchronous dispatcher and the complete source-order fill reservoir.
+// While three fill bodies remain unported, the live default callback tolerates
+// only UnsupportedThemeroomFillError after selection; implemented fills and
+// explicitly injected callbacks retain strict behavior. Direct filler maps
+// omit their optional fill, and unported direct callbacks use the ordinary-room
+// fallback. dispatch_themeroom() remains the strict completion seam.
 export async function themerooms_generate(
     difficulty,
     random = rn2,
     randomOneBased = rnd,
+    rawEnv = {},
 ) {
     const pick = select_themeroom(difficulty, random);
     if (!pick) return false;
+    if (pick.action?.kind === 'room') {
+        const sourceRandomFacade = random === rn2 && randomOneBased === rnd
+            ? SOURCE_THEMEROOM_RANDOM
+            : null;
+        const useDefaultFill = rawEnv.themeroomFill == null;
+        return dispatch_themeroom(pick, random, randomOneBased, {
+            difficulty,
+            randomFacade: rawEnv.randomFacade ?? sourceRandomFacade,
+            themeroomFill: useDefaultFill
+                ? staged_themeroom_fill
+                : rawEnv.themeroomFill,
+        });
+    }
     if (pick.map && pick.filler) {
         const origin = lspo_map(pick, random);
         return origin ? filler_region(
@@ -946,7 +1026,11 @@ export async function themerooms_generate(
 
     // sp_lev.c build_room() evaluates the default 100% chance with rn2(100).
     random(100);
-    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    const ok = create_room(
+        -1, -1, -1, -1, -1, -1, OROOM, -1,
+        random,
+        randomOneBased,
+    );
     if (ok) {
         const room = game.level.rooms[game.level.nroom - 1];
         if (room) {
@@ -1056,7 +1140,9 @@ function create_room(
             if (ly === 0 && hy >= ROWNO - 1
                 && (!g.level.nroom || !random(g.level.nroom))
                 && (yabs + dy > Math.trunc(ROWNO / 2))) {
-                yabs = randomOneBased(3) + 1;
+                // hack.h defines rn1(x, y) as the macro rn2(x) + y; the
+                // recorder therefore identifies this source call as rn2(3).
+                yabs = random(3) + 2;
                 if (g.level.nroom < 4 && dy > 1) dy--;
             }
             const lowx = { v: xabs }, ddx = { v: dx };
@@ -1536,94 +1622,27 @@ function makecorridors() {
     }
 }
 
-// ============================================================
-// Room helper functions
-// ============================================================
-
-function roomCoordinateEnv(rawEnv = {}) {
-    return {
-        state: rawEnv.state ?? game,
-        randomOneBased: rawEnv.randomOneBased ?? rawEnv.random?.rn1 ?? rn1,
-    };
-}
-
-export function somex(croom, rawEnv = {}) {
-    const { randomOneBased } = roomCoordinateEnv(rawEnv);
-    return randomOneBased(croom.hx - croom.lx + 1, croom.lx);
-}
-
-export function somey(croom, rawEnv = {}) {
-    const { randomOneBased } = roomCoordinateEnv(rawEnv);
-    return randomOneBased(croom.hy - croom.ly + 1, croom.ly);
-}
-
-export function inside_room(croom, x, y, state = game) {
-    if (croom.irregular) {
-        const roomno = croom.roomnoidx + ROOMOFFSET;
-        const loc = state.level?.at(x, y);
-        return Boolean(loc && !loc.edge && loc.roomno === roomno);
-    }
-
-    return x >= croom.lx - 1 && x <= croom.hx + 1
-        && y >= croom.ly - 1 && y <= croom.hy + 1;
-}
-
-// C ref: mkroom.c somexy(). Pick a coordinate in the room while excluding
-// subroom footprints. Keep the source's post-increment retry boundary: a
-// regular room with subrooms rejects even a valid 100th candidate.
-export function somexy(croom, c, rawEnv = {}) {
-    const env = roomCoordinateEnv(rawEnv);
-    const { state } = env;
-    let tryCnt = 0;
-
-    if (croom.irregular) {
-        const roomno = croom.roomnoidx + ROOMOFFSET;
-        while (tryCnt++ < 100) {
-            c.x = somex(croom, env);
-            c.y = somey(croom, env);
-            const loc = state.level.at(c.x, c.y);
-            if (!loc.edge && loc.roomno === roomno) return true;
-        }
-        for (c.x = croom.lx; c.x <= croom.hx; ++c.x) {
-            for (c.y = croom.ly; c.y <= croom.hy; ++c.y) {
-                const loc = state.level.at(c.x, c.y);
-                if (!loc.edge && loc.roomno === roomno) return true;
-            }
-        }
-        return false;
-    }
-
-    if (!croom.nsubrooms) {
-        c.x = somex(croom, env);
-        c.y = somey(croom, env);
-        return true;
-    }
-
-    while (tryCnt++ < 100) {
-        c.x = somex(croom, env);
-        c.y = somey(croom, env);
-        if (IS_WALL(state.level.at(c.x, c.y).typ)) continue;
-
-        let inSubroom = false;
-        for (let i = 0; i < croom.nsubrooms; ++i) {
-            if (inside_room(croom.sbrooms[i], c.x, c.y, state)) {
-                inSubroom = true;
-                break;
-            }
-        }
-        if (inSubroom) continue;
-        break;
-    }
-    return tryCnt < 100;
-}
-
-export { occupied, traptype_rnd };
+// Keep the long-standing mklev.js surface while the shared implementation
+// lives below both level generation and themed-fill creation.
+export {
+    get_free_room_loc,
+    get_location,
+    get_location_coord,
+    get_room_loc,
+    inside_room,
+    is_ok_location,
+    occupied,
+    somex,
+    somey,
+    somexy,
+    traptype_rnd,
+};
 
 // C ref: mkroom.c somexyspace(). The source do-while attempts one initial
 // candidate plus at most 100 retries, for 101 total calls to somexy().
 export function somexyspace(croom, c, rawEnv = {}) {
-    const env = roomCoordinateEnv(rawEnv);
-    const { state } = env;
+    const state = rawEnv.state ?? game;
+    const env = { ...rawEnv, state };
     let tryCnt = 0;
     let okay;
     do {
@@ -2253,13 +2272,19 @@ function set_wall_state() { /* no-op for contest */ }
 function level_finalize_topology() {
     const dnum = game.u?.uz?.dnum ?? 0;
     if (game._luathemes_loaded?.[dnum]) {
-        // C ref: mklev.c themerooms_post_level_generate(). Static maps retain
-        // generic wall glyphs until every room and corridor has been placed.
+        // C ref: mklev.c themerooms_post_level_generate(). Deferred themed
+        // work runs after every room fill and before final wallification.
+        run_themeroom_postprocess();
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     }
     bound_digging();
     mineralize(-1, -1, -1, -1, false, { state: game });
     game.in_mklev = false;
+    // mklev.c:level_finalize_topology() clears the Lua coordinate origin after
+    // post-level callbacks because xstart/ystart are not persisted with a
+    // level.  Later special-level operations must start from the zero frame.
+    game.xstart = 0;
+    game.ystart = 0;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)

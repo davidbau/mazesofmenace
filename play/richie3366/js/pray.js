@@ -7,27 +7,30 @@
 // Branch envelope: ParanoidPray → paranoid_query(ParanoidConfirm) (D-1000)
 // + wizard Force (D-0517) + #pray ublesscnt-too-soon (p_type 0) →
 // angrygods; p_type 3 → pleased You_feel + action rn1 + TROUBLE_HIT
-// fix_worst_trouble (D-0920) + ublesscnt rnz(350); #offer not-on-altar;
+// fix_worst_trouble (D-0920) + TROUBLE_LYCANTHROPE you_unwere (D-1004)
+// + majors Stoned…Region (D-1011) + collapsing…cursed_blindfold +
+// all minor TROUBLE_* (D-1012) + ublesscnt rnz(350); #offer not-on-altar;
 // Knight/Cleric #turn chant + exercise + undead iter + nomul;
 // digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
 // (punish/attrcurse/rndcurse/summon_minion/god_zaps_you).
-// Named omissions: other in_trouble majors/minors; other fix_worst_trouble
-// cases; pleased pat_on_head gifts / crown /
-// give_spell; p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
+// Named omissions: pleased pat_on_head gifts / crown / give_spell;
+// p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
 // pray_revive; floorfood sacrifice; known_spell SPE_TURN_UNDEAD /
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
 // desecrate_altar; SetVoice pitch; ureflects non-shield slots; shieldeff;
-// poly mlet "creature" vs mortal.
+// poly mlet "creature" vs mortal; BlindedTimeout==1 region polish;
+// stuck_in_wall blocked_boulder Sokoban diagonal polish; update_inventory
+// redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnl, rnz, rnd } from './rng.js';
+import { rn2, rn1, rnl, rnz, rnd, d } from './rng.js';
 import { pline, verbalize, You_feel } from './display.js';
 import { nomul } from './hack.js';
-import { A_WIS, change_luck, adjattrib, adjalign, exercise } from './attrib.js';
+import { A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise } from './attrib.js';
 import { align_gname, xlev_to_rank, uhim } from './roles.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, uncurse } from './mkobj.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
 import { can_chant } from './spell.js';
@@ -40,42 +43,96 @@ import { setuhpmax } from './exper.js';
 import { done } from './end.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { mon_nam, Monnam } from './do_name.js';
-import { disintegrate_arm } from './do_wear.js';
+import { disintegrate_arm, setworn, stuck_ring, unchanger } from './do_wear.js';
 import { summon_minion } from './minion.js';
-import { makeknown } from './invent.js';
-import { punish } from './read.js';
+import { makeknown, near_capacity, encumber_msg } from './invent.js';
+import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
-import { An } from './objnam.js';
+import { An, xname, makeplural, vtense } from './objnam.js';
 import { objectNames, POT_WATER, POTION_CLASS } from './objects.js';
 import {
     is_undead as mon_is_undead,
     is_demon as mon_is_demon,
     is_vampshifter,
+    nohands, throws_rocks,
     MR_ELEC, MR_DISINT,
 } from './monsters.js';
 import {
     PM_KNIGHT,
     PM_CLERIC,
 } from './generated/monsters_data.js';
+import { you_unwere } from './were.js';
+import {
+    make_slimed, make_stoned, make_sick,
+    make_confused, make_stunned, make_hallucinated,
+    make_glib, make_deaf,
+} from './potion.js';
+import { init_uhunger } from './eat.js';
+import { region_danger, region_safety } from './region.js';
+import { safe_teleds } from './teleport.js';
+import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
+import { welded } from './wield.js';
+import { which_armor } from './worn.js';
+import { rehumanize } from './polyself.js';
+import { make_blinded } from './do.js';
+import { buried_ball_to_freedom } from './dig.js';
+import { confers_luck } from './artifact.js';
 import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, A_NONE, A_LAWFUL, A_NEUTRAL,
     A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, PARANOID_CONFIRM,
     LL_CONDUCT,
-    LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd,
+    LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
-    W_ARMS, W_ARMC, W_ARM,
+    W_ARMS, W_ARMC, W_ARM, W_AMUL, OBJ_FREE, SICK_ALL,
+    WEAK, HUNGRY, TT_LAVA, TT_BURIEDBALL, TELEDS_NO_FLAGS, DISSOLVED,
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
+    EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
+    SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
 } from './const.js';
 
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
+const LEVITATION_BOOTS = objectNames.indexOf('LEVITATION_BOOTS');
+const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
+const RIN_SUSTAIN_ABILITY = objectNames.indexOf('RIN_SUSTAIN_ABILITY');
+const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
+const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
+const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
+const SADDLE = objectNames.indexOf('SADDLE');
+const BOULDER = objectNames.indexOf('BOULDER');
 
 const MOLOCH = 'Moloch';
 
 const STRIDENT = 4; // pray.c
 const DEVOUT = 14; // pray.c
 // C: pray.c TROUBLE_* (priority via in_trouble order, not magnitude)
+const TROUBLE_STONED = 14;
+const TROUBLE_SLIMED = 13;
+const TROUBLE_STRANGLED = 12;
+const TROUBLE_LAVA = 11;
+const TROUBLE_SICK = 10;
+const TROUBLE_STARVING = 9;
+const TROUBLE_REGION = 8;
 const TROUBLE_HIT = 7;
+const TROUBLE_LYCANTHROPE = 6;
+const TROUBLE_COLLAPSING = 5;
+const TROUBLE_STUCK_IN_WALL = 4;
+const TROUBLE_CURSED_LEVITATION = 3;
+const TROUBLE_UNUSEABLE_HANDS = 2;
+const TROUBLE_CURSED_BLINDFOLD = 1;
+const TROUBLE_PUNISHED = -1;
+const TROUBLE_FUMBLING = -2;
+const TROUBLE_CURSED_ITEMS = -3;
+const TROUBLE_SADDLE = -4;
+const TROUBLE_BLIND = -5;
+const TROUBLE_POISONED = -6;
+const TROUBLE_WOUNDED_LEGS = -7;
+const TROUBLE_HUNGRY = -8;
+const TROUBLE_STUNNED = -9;
+const TROUBLE_CONFUSED = -10;
+const TROUBLE_HALLUCINATION = -11;
 // C: pray.c godvoices[]
 const GODVOICES = ['booms out', 'thunders', 'rings out', 'booms'];
 
@@ -173,33 +230,360 @@ function critically_low_hp(only_if_injured) {
     return curhp <= 5 || curhp * divisor <= maxhp;
 }
 
+/** C: pray.c `#define Cursed_obj(obj, typ)`. */
+function Cursed_obj(obj, typ) {
+    return !!(obj && (obj.otyp | 0) === (typ | 0) && obj.cursed);
+}
+
+/** C youprop.h Blindfolded / BlindedTimeout / Blinded / Passes_walls / Fixed_abil. */
+function Blindfolded() {
+    return !!(game.u?.EBlinded || game.u?.ublindf);
+}
+function Blindfolded_only() {
+    return Blindfolded() && !BlindedProp();
+}
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+function BlindedProp() {
+    const u = game.u || {};
+    // C: Blinded ≡ (HBlinded && !BBlinded)
+    return !!((u.HBlinded | 0) && !(u.BBlinded | 0));
+}
+function Passes_walls() {
+    const u = game.u || {};
+    return !!((u.HPasses_walls | 0) || (u.EPasses_walls | 0) || u.Passes_walls);
+}
+function Fixed_abil() {
+    const u = game.u || {};
+    return !!((u.HFixed_abil | 0) || (u.EFixed_abil | 0) || u.Fixed_abil);
+}
+function Wounded_legs() {
+    const u = game.u || {};
+    return !!(u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+}
+function DeafProp() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/** C obj.h bimanual — WEAPON/TOOL with oc_big. */
+function bimanual(obj) {
+    if (!obj) return false;
+    return !!(game.objects?.[obj.otyp]?.oc_bimanual
+        || game.objects?.[obj.otyp]?.oc_big);
+}
+
+/** C engrave.c freehand — welded two-hand / cursed shield gate. */
+function freehand() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    if (!uwep || !welded(uwep)) return true;
+    if (!bimanual(uwep) && (!u.uarms || !u.uarms.cursed)) return true;
+    return false;
+}
+
+/** C: mondata.c body_part thin — poly table deferred. */
+function body_part(part) {
+    if ((part | 0) === EYE) return 'eye';
+    if ((part | 0) === STOMACH) return 'stomach';
+    return 'body';
+}
+
+/** C: mondata.c eyecount — poly forms deferred (humanoid 2). */
+function eyecount(_data) {
+    return 2;
+}
+
+/**
+ * C ref: pray.c blocked_boulder — boulder stack / pushability gate.
+ * Named omit: Sokoban diagonal + pool sink nuance beyond isok/obstruct.
+ */
+function blocked_boulder(dx, dy) {
+    const u = game.u || {};
+    let count = 0;
+    for (let otmp = objects_at((u.ux | 0) + dx, (u.uy | 0) + dy);
+        otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp | 0) === BOULDER) count += otmp.quan | 0;
+    }
+    const nx = (u.ux | 0) + 2 * dx;
+    const ny = (u.uy | 0) + 2 * dy;
+    if (count === 0) return false;
+    if (count >= 2) {
+        // C: pool/lava may still allow push — thin: treat ≥2 as blocked
+        return true;
+    }
+    if (dx && dy && !!(game.level?.flags?.sokoban_rules
+        || game.level?.flags?.sokoban || game.Sokoban)) {
+        return true;
+    }
+    if (!isok(nx, ny)) return true;
+    const loc = game.level?.at(nx, ny);
+    if (loc && IS_OBSTRUCTED(loc.typ | 0)) return true;
+    for (let otmp = objects_at(nx, ny); otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp | 0) === BOULDER) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: pray.c stuck_in_wall — all 8 neighbors obstructed / boulder-blocked.
+ */
+function stuck_in_wall() {
+    const u = game.u || {};
+    if (Passes_walls()) return false;
+    let count = 0;
+    for (let i = -1; i <= 1; i++) {
+        const x = (u.ux | 0) + i;
+        for (let j = -1; j <= 1; j++) {
+            if (!i && !j) continue;
+            const y = (u.uy | 0) + j;
+            const loc = game.level?.at(x, y);
+            const typ = loc ? (loc.typ | 0) : -1;
+            if (!isok(x, y)
+                || (IS_OBSTRUCTED(typ) && typ !== SDOOR && typ !== SCORR)
+                || (blocked_boulder(i, j)
+                    && !throws_rocks(game.youmonst?.data))) {
+                count++;
+            }
+        }
+    }
+    return count === 8;
+}
+
+/**
+ * C ref: pray.c worst_cursed_item — select cursed worn/invent for uncurse.
+ * @returns {object|null}
+ */
+function worst_cursed_item() {
+    const u = game.u || {};
+    let otmp = null;
+    if (near_capacity() >= HVY_ENCUMBER) {
+        for (const o of game.invent || []) {
+            if (Cursed_obj(o, LOADSTONE)) return o;
+        }
+    }
+    if (u.uwep && welded(u.uwep) && (u.uright || bimanual(u.uwep))) {
+        otmp = u.uwep;
+    } else if (u.uarmg && u.uarmg.cursed) {
+        otmp = u.uarmg;
+    } else if (u.uarms && u.uarms.cursed) {
+        otmp = u.uarms;
+    } else if (u.uarmc && u.uarmc.cursed) {
+        otmp = u.uarmc;
+    } else if (u.uarm && u.uarm.cursed) {
+        otmp = u.uarm;
+    } else if (u.uarmh && u.uarmh.cursed
+        && (u.uarmh.otyp | 0) !== HELM_OF_OPPOSITE_ALIGNMENT) {
+        otmp = u.uarmh;
+    } else if (u.uarmf && u.uarmf.cursed) {
+        otmp = u.uarmf;
+    } else if (u.uarmu && u.uarmu.cursed) {
+        otmp = u.uarmu;
+    } else if (u.uamul && u.uamul.cursed) {
+        otmp = u.uamul;
+    } else if (u.uleft && u.uleft.cursed) {
+        otmp = u.uleft;
+    } else if (u.uright && u.uright.cursed) {
+        otmp = u.uright;
+    } else if (u.ublindf && u.ublindf.cursed) {
+        otmp = u.ublindf;
+    } else if (u.uwep && welded(u.uwep)) {
+        otmp = u.uwep;
+    } else if (u.uswapwep && u.uswapwep.cursed && u.twoweap) {
+        otmp = u.uswapwep;
+    } else {
+        otmp = null;
+        for (const o of game.invent || []) {
+            if (!o.cursed) continue;
+            if ((o.otyp | 0) === LOADSTONE || confers_luck(o)) {
+                otmp = o;
+                break;
+            }
+        }
+    }
+    return otmp || null;
+}
+
+/**
+ * C ref: pray.c fix_curse_trouble — glow + uncurse (+ Glib gloves clear).
+ * Named omit: update_inventory redraw; PLNMSG_OBJ_GLOWS.
+ */
+async function fix_curse_trouble(otmp, what) {
+    const u = game.u || {};
+    if (!otmp) return;
+    if (otmp === u.uarmg && (u.Glib | 0)) {
+        make_glib(0);
+        await pline('Your gloves are no longer slippery.');
+        if (!otmp.cursed) return;
+    }
+    if (!Blind() || (otmp === u.ublindf && Blindfolded_only())) {
+        const glow = what || `Your ${xname(otmp)} softly glows`;
+        await pline(`${glow} ${hcolor('amber')}.`);
+        otmp.bknown = !Hallucination();
+    }
+    uncurse(otmp);
+}
+
 /**
  * C ref: pray.c in_trouble — major/minor trouble ranking.
- * Ported: TROUBLE_HIT via critically_low_hp (D-0920).
- * Named omissions: Stoned/Slimed/Strangled/Lava/Sick/Starving/Region
- * and all later major/minor arms (lycanthrope…hallucination).
+ * Ported: all TROUBLE_* majors + minors (D-1011/D-1012).
+ * Named omit: swallow Blind attacktype_fordmg gate polish.
  */
 function in_trouble() {
     const u = game.u || {};
-    // Majors above HIT deferred — when those flags are unset, HIT matches C.
+    // C: major troubles in priority order
+    if (u.Stoned) return TROUBLE_STONED;
+    if (u.Slimed) return TROUBLE_SLIMED;
+    if (u.Strangled || (u.HStrangled | 0) || (u.EStrangled | 0)) {
+        return TROUBLE_STRANGLED;
+    }
+    if (u.utrap && (u.utraptype | 0) === TT_LAVA) return TROUBLE_LAVA;
+    if (u.Sick) return TROUBLE_SICK;
+    if ((u.uhs | 0) >= WEAK) return TROUBLE_STARVING;
+    if (region_danger()) return TROUBLE_REGION;
     const unchanging = !!(u.Unchanging || u.HUnchanging);
     if ((!Upolyd(u) || unchanging) && critically_low_hp(false)) {
         return TROUBLE_HIT;
     }
+    if (ismnum(u.ulycn)) return TROUBLE_LYCANTHROPE;
+    const abaseStr = u.acurr?.a?.[A_STR] | 0;
+    const amaxStr = u.amax?.a?.[A_STR] | 0;
+    if (near_capacity() >= EXT_ENCUMBER && amaxStr - abaseStr > 3) {
+        return TROUBLE_COLLAPSING;
+    }
+    if (stuck_in_wall()) return TROUBLE_STUCK_IN_WALL;
+    if (Cursed_obj(u.uarmf, LEVITATION_BOOTS)
+        || stuck_ring(u.uleft, RIN_LEVITATION)
+        || stuck_ring(u.uright, RIN_LEVITATION)) {
+        return TROUBLE_CURSED_LEVITATION;
+    }
+    if (nohands(game.youmonst?.data) || !freehand()) {
+        if (u.uwep && welded(u.uwep)) return TROUBLE_UNUSEABLE_HANDS;
+        if (Upolyd(u) && nohands(game.youmonst?.data)
+            && (!unchanging
+                || (() => {
+                    const ot = unchanger();
+                    return ot && ot.cursed;
+                })())) {
+            return TROUBLE_UNUSEABLE_HANDS;
+        }
+    }
+    if (Blindfolded() && u.ublindf && u.ublindf.cursed) {
+        return TROUBLE_CURSED_BLINDFOLD;
+    }
+
+    // C: minor troubles
+    if (Punished() || (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL)) {
+        return TROUBLE_PUNISHED;
+    }
+    if (Cursed_obj(u.uarmg, GAUNTLETS_OF_FUMBLING)
+        || Cursed_obj(u.uarmf, FUMBLE_BOOTS)) {
+        return TROUBLE_FUMBLING;
+    }
+    if (worst_cursed_item()) return TROUBLE_CURSED_ITEMS;
+    if (u.usteed) {
+        const sad = which_armor(u.usteed, W_SADDLE);
+        if (Cursed_obj(sad, SADDLE)) return TROUBLE_SADDLE;
+    }
+    if (BlindedTimeout() > 1
+        && !((u.HBlinded | 0) & ~TIMEOUT)
+        && (!u.uswallow
+            /* attacktype_fordmg swallow Blind deferred — treat as not blind */)) {
+        return TROUBLE_BLIND;
+    }
+    if (((u.HDeaf | 0) & TIMEOUT) > 1) return TROUBLE_BLIND;
+
+    for (let i = 0; i < A_MAX; i++) {
+        const base = u.acurr?.a?.[i] | 0;
+        const mx = u.amax?.a?.[i] | 0;
+        if (base < mx) return TROUBLE_POISONED;
+    }
+    if (Wounded_legs() && !u.usteed) return TROUBLE_WOUNDED_LEGS;
+    if ((u.uhs | 0) >= HUNGRY) return TROUBLE_HUNGRY;
+    if ((u.HStun | 0) & TIMEOUT) return TROUBLE_STUNNED;
+    if ((u.HConfusion | 0) & TIMEOUT) return TROUBLE_CONFUSED;
+    if ((u.HHallucination | 0) & TIMEOUT) return TROUBLE_HALLUCINATION;
     return 0;
+}
+
+/** C invent.c useup for worn strangulation amulet (setworn + freeinv). */
+function useup_strangle_amulet(otmp) {
+    if (!otmp) return;
+    const u = game.u || {};
+    if (u.uamul === otmp) setworn(null, W_AMUL);
+    else if ((otmp.owornmask | 0) & W_AMUL) {
+        otmp.owornmask = (otmp.owornmask | 0) & ~W_AMUL;
+    }
+    if ((otmp.quan || 1) > 1) {
+        otmp.quan--;
+        return;
+    }
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+    otmp.quan = 0;
+    otmp.where = OBJ_FREE;
 }
 
 /**
  * C ref: pray.c fix_worst_trouble — divine repair of one trouble code.
- * Ported: TROUBLE_HIT (You_feel + rnd(5) uhpmax boost + full heal).
- * Named omissions: all other TROUBLE_* cases.
+ * Ported: Stoned…Hallucination + saddle (D-1011/D-1012).
  */
 async function fix_worst_trouble(trouble) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
+    let otmp = null;
+    let what = null;
+    const leftglow = 'Your left ring softly glows';
+    const rightglow = 'Your right ring softly glows';
+
     switch (trouble) {
+    case TROUBLE_STONED:
+        await make_stoned(0, 'You feel more limber.', 0, '');
+        break;
+    case TROUBLE_SLIMED:
+        await make_slimed(0, 'The slime disappears.');
+        break;
+    case TROUBLE_STRANGLED: {
+        if (u.uamul && (u.uamul.otyp | 0) === AMULET_OF_STRANGULATION) {
+            await pline('Your amulet vanishes!');
+            useup_strangle_amulet(u.uamul);
+        }
+        await pline('You can breathe again.');
+        u.Strangled = 0;
+        u.HStrangled = 0;
+        u.EStrangled = 0;
+        game.flags.botl = true;
+        break;
+    }
+    case TROUBLE_LAVA:
+        if (!(await safe_teleds(TELEDS_NO_FLAGS))) {
+            reset_utrap(true);
+        }
+        await rescued_from_terrain(DISSOLVED);
+        break;
+    case TROUBLE_STARVING:
+        // C: FALLTHROUGH into TROUBLE_HUNGRY
+        await pline(`Your ${body_part(STOMACH)} feels content.`);
+        init_uhunger();
+        game.flags.botl = true;
+        break;
+    case TROUBLE_HUNGRY:
+        await pline(`Your ${body_part(STOMACH)} feels content.`);
+        init_uhunger();
+        game.flags.botl = true;
+        break;
+    case TROUBLE_SICK:
+        await You_feel('better.');
+        await make_sick(0, '', false, SICK_ALL);
+        break;
+    case TROUBLE_REGION:
+        await region_safety();
+        break;
     case TROUBLE_HIT: {
-        // C: You_feel("much better.");
         await You_feel('much better.');
         let maxhp;
         if (Upolyd(u)) {
@@ -214,6 +598,151 @@ async function fix_worst_trouble(trouble) {
         setuhpmax(Math.max(maxhp, 5 + 1), true);
         u.uhp = u.uhpmax;
         game.flags.botl = true;
+        break;
+    }
+    case TROUBLE_COLLAPSING: {
+        const abaseStr = u.acurr?.a?.[A_STR] | 0;
+        const amaxStr = u.amax?.a?.[A_STR] | 0;
+        await You_feel(`${amaxStr - abaseStr > 6 ? 'much ' : ''}stronger.`);
+        if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+        if (!u.amax) u.amax = { a: [...(u.acurr.a || [10, 10, 10, 10, 10, 10])] };
+        u.acurr.a[A_STR] = u.amax.a[A_STR] | 0;
+        game.flags.botl = true;
+        if (Fixed_abil()) {
+            otmp = stuck_ring(u.uleft, RIN_SUSTAIN_ABILITY);
+            if (otmp) {
+                if (otmp === u.uleft) what = leftglow;
+            } else {
+                otmp = stuck_ring(u.uright, RIN_SUSTAIN_ABILITY);
+                if (otmp === u.uright) what = rightglow;
+            }
+            if (otmp) {
+                await fix_curse_trouble(otmp, what);
+                break;
+            }
+        }
+        break;
+    }
+    case TROUBLE_STUCK_IN_WALL:
+        if (await safe_teleds(TELEDS_NO_FLAGS)) {
+            await pline('Your surroundings change.');
+        } else {
+            // C: set_itimeout(&HPasses_walls, d(4,4)+4)
+            const xt = d(4, 4) + 4;
+            u.HPasses_walls = ((u.HPasses_walls | 0) & ~TIMEOUT) | (xt & TIMEOUT);
+            await You_feel('much slimmer.');
+        }
+        break;
+    case TROUBLE_CURSED_LEVITATION:
+        if (Cursed_obj(u.uarmf, LEVITATION_BOOTS)) {
+            otmp = u.uarmf;
+        } else if ((otmp = stuck_ring(u.uleft, RIN_LEVITATION))) {
+            if (otmp === u.uleft) what = leftglow;
+        } else if ((otmp = stuck_ring(u.uright, RIN_LEVITATION))) {
+            if (otmp === u.uright) what = rightglow;
+        }
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_UNUSEABLE_HANDS:
+        if (u.uwep && welded(u.uwep)) {
+            await fix_curse_trouble(u.uwep, what);
+            break;
+        }
+        if (Upolyd(u) && nohands(game.youmonst?.data)) {
+            if (!(u.Unchanging || u.HUnchanging)) {
+                await pline('Your shape becomes uncertain.');
+                await rehumanize();
+            } else {
+                otmp = unchanger();
+                if (otmp && otmp.cursed) {
+                    await fix_curse_trouble(otmp, what);
+                    break;
+                }
+            }
+        }
+        // C: impossible if still nohands/!freehand — omit
+        break;
+    case TROUBLE_CURSED_BLINDFOLD:
+        await fix_curse_trouble(u.ublindf, what);
+        break;
+    case TROUBLE_LYCANTHROPE:
+        await you_unwere(true);
+        break;
+    case TROUBLE_PUNISHED:
+        await pline('Your chain disappears.');
+        if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
+            buried_ball_to_freedom();
+        } else {
+            unpunish();
+        }
+        break;
+    case TROUBLE_FUMBLING:
+        if (Cursed_obj(u.uarmg, GAUNTLETS_OF_FUMBLING)) otmp = u.uarmg;
+        else if (Cursed_obj(u.uarmf, FUMBLE_BOOTS)) otmp = u.uarmf;
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_CURSED_ITEMS:
+        otmp = worst_cursed_item();
+        if (otmp === u.uright) what = rightglow;
+        else if (otmp === u.uleft) what = leftglow;
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_POISONED: {
+        if (Hallucination()) {
+            await pline("There's a tiger in your tank.");
+        } else {
+            await You_feel('in good health again.');
+        }
+        if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+        if (!u.amax) u.amax = { a: [...u.acurr.a] };
+        for (let i = 0; i < A_MAX; i++) {
+            if ((u.acurr.a[i] | 0) < (u.amax.a[i] | 0)) {
+                u.acurr.a[i] = u.amax.a[i] | 0;
+                game.flags.botl = true;
+            }
+        }
+        await encumber_msg();
+        break;
+    }
+    case TROUBLE_BLIND: {
+        let msgbuf = '';
+        let eyes = body_part(EYE);
+        const cure_deaf = !!((u.HDeaf | 0) & TIMEOUT);
+        if (BlindedProp() || BlindedTimeout()) {
+            if (eyecount(game.youmonst?.data) !== 1) eyes = makeplural(eyes);
+            msgbuf = `Your ${eyes} ${vtense(eyes, 'feel')} better`;
+            u.ucreamed = 0;
+            await make_blinded(0, false);
+        }
+        if (cure_deaf) {
+            await make_deaf(0, false);
+            if (!DeafProp()) {
+                msgbuf += msgbuf ? ' and you can hear again' : 'You can hear again';
+            }
+        }
+        if (msgbuf) await pline(`${msgbuf}.`);
+        break;
+    }
+    case TROUBLE_WOUNDED_LEGS:
+        await heal_legs(0);
+        break;
+    case TROUBLE_STUNNED:
+        await make_stunned(0, true);
+        break;
+    case TROUBLE_CONFUSED:
+        await make_confused(0, true);
+        break;
+    case TROUBLE_HALLUCINATION:
+        await pline('Looks like you are back in Kansas.');
+        await make_hallucinated(0, false, 0);
+        break;
+    case TROUBLE_SADDLE: {
+        otmp = which_armor(u.usteed, W_SADDLE);
+        if (otmp && !Blind()) {
+            await pline(`Your ${xname(otmp)} softly glows ${hcolor('amber')}.`);
+            otmp.bknown = 1;
+        }
+        if (otmp) uncurse(otmp);
         break;
     }
     default:
@@ -720,8 +1249,7 @@ async function gods_upset(g_align) {
  * Branch envelope: You_feel align msg; off-altar/low-record adjalign;
  * action rn1 + STRIDENT clamp; fix_worst_trouble switch (HIT D-0920);
  * ublesscnt rnz(350) (+udemigod kick).
- * Named omissions: other in_trouble/fix_worst_trouble cases; pat_on_head
- * gift switch (repair/uncurse/spellbook/intrinsic/crown/give_spell);
+ * Named omissions: pleased pat_on_head gift switch;
  * moves>100000 ublesscnt incr; on_altar wrong-god early return polish.
  */
 async function pleased(g_align) {

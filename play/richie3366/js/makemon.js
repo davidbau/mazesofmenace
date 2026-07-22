@@ -87,7 +87,7 @@ import {
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
-    MFAST,
+    MFAST, MAXMONNO,
 } from './const.js';
 import { enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
@@ -939,21 +939,33 @@ function mgender_from_permonst(mtmp, mdat) {
 }
 
 /**
+ * C ref: makemon.c mbirth_limit — Nazgul 9 / Erinys 3 / else MAXMONNO.
+ */
+function mbirth_limit(mndx) {
+    const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
+    const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
+    if (mndx === PM_NAZGUL) return 9;
+    if (mndx === PM_ERINYS) return 3;
+    return MAXMONNO;
+}
+
+/**
  * C ref: mon.c newcham — random form via select_newcham_form/accept.
  * Named omissions: message/polyspot/worm/mimic/leash/light/inventory arms;
  * Protection_from_shape_changers cancel path; endgame mplayer rank strip;
- * mbirth_limit Nazgul/erinyes gate; cancelled→uncancel before random form.
+ * cancelled→uncancel before random form.
  * @returns {boolean} true if form changed
  */
 export function newcham(mtmp, mdat, _ncflags = 0) {
     if (!mtmp) return false;
     const olddata = mtmp.data;
     if (mtmp.cham === NON_PM || mtmp.cham == null) {
-        // C: non-shapechanger — riders immune; forced mdat (golem petrify)
-        // allowed; random form without cham rejected.
+        // C: non-shapechanger — riders + mbirth_limit immunes (Nazgul/Erinys);
+        // ordinary non-cham may still take random or forced mdat (D-1006).
         if (is_rider(olddata)) return false;
-        if (!mdat) return false;
-        // cancelled→uncancel / mbirth_limit deferred
+        const omndx = olddata?.mndx ?? olddata?.mnum ?? NON_PM;
+        if (mbirth_limit(omndx | 0) < MAXMONNO) return false;
+        // cancelled→uncancel deferred
     }
     let target = mdat;
     if (!target) {

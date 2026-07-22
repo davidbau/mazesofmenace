@@ -10,7 +10,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, topl_more, update_topl, flush_screen, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
+import { pline, topl_more, update_topl, y_n, flush_screen, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
@@ -845,7 +845,12 @@ async function docallcmd() {
 
 // LARGE_BOX..CHEST are the floor containers the recorded sessions touch.
 const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216;
+// Unlocking tools (objclass.h otyp values from mkobj.js).
+const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
+const PM_ROGUE = 8;
 function is_box_otyp(otyp) { return otyp === LARGE_BOX_OTYP || otyp === CHEST_OTYP || otyp === ICE_BOX_OTYP; }
+// C ref: attrib.h ACURR(x) — current attribute value.
+function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
 function box_basename(otyp) {
     return otyp === CHEST_OTYP ? 'chest' : otyp === ICE_BOX_OTYP ? 'ice box' : 'large box';
 }
@@ -1006,9 +1011,83 @@ async function use_container(box, more_containers) {
     return used ? 1 : 0;
 }
 
+// C ref: lock.c autokey(opening=TRUE) — pick an unlocking tool from inventory:
+// skeleton key, else lock pick, else credit card.  (The quest-artifact
+// preference ordering is irrelevant for the starter inventory.)
+function autokey_unlock() {
+    const inv = Array.isArray(game.invent) ? game.invent : [];
+    let key = null, pick = null, card = null;
+    for (const o of inv) {
+        if (o.otyp === SKELETON_KEY && !key) key = o;
+        else if (o.otyp === LOCK_PICK && !pick) pick = o;
+        else if (o.otyp === CREDIT_CARD && !card) card = o;
+    }
+    return key || pick || card || null;
+}
+
+// C ref: lock.c lock_action() — the "-ing" phrase naming the current lock
+// activity, chosen from the target's state and the tool.  A locked box picked
+// with a lock pick / credit card yields "picking the lock".
+function lock_action(xl) {
+    const box = xl.box;
+    if (box && !box.olocked)
+        return box.otyp === CHEST_OTYP ? 'locking the chest' : 'locking the box';
+    if (xl.picktyp === LOCK_PICK || xl.picktyp === CREDIT_CARD)
+        return 'picking the lock';
+    if (box)
+        return box.otyp === CHEST_OTYP ? 'unlocking the chest' : 'unlocking the box';
+    return 'picking the lock';
+}
+
+// C ref: lock.c pick_lock() — the autounlock box branch (rx/container supplied,
+// so no direction prompt).  Under the default AUTOUNLOCK_APPLY_KEY it prompts
+// "Unlock it with <yname(tool)>?" and, on 'y', sets up the lock-picking
+// occupation.  The success chance (box branch): LOCK_PICK 4*DEX+25*rogue,
+// SKELETON_KEY 75+DEX, CREDIT_CARD DEX+20*rogue, halved if the box is cursed.
+// Returns 1 (PICKLOCK_DID_SOMETHING, occupation started) on 'y', else 0
+// (PICKLOCK_DID_NOTHING, declined -> no time passes).
+async function pick_lock_box(pick, box) {
+    const picktyp = pick.otyp;
+    // yname(uncursed lock pick) -> "your lock pick"; skeleton key -> "your key".
+    const toolname = picktyp === LOCK_PICK ? 'your lock pick'
+                   : picktyp === SKELETON_KEY ? 'your key'
+                   : picktyp === CREDIT_CARD ? 'your credit card'
+                   : 'your tool';
+    // ynq(): the "Hmmm... turns out to be locked." topline is still pending, so
+    // it is paged with --More-- before the prompt is drawn.
+    game._yn_need_more = true;
+    const c = await y_n(`Unlock it with ${toolname}?`, 'ynq\x1b', 'q');
+    if (c !== 'y')
+        return 0; // PICKLOCK_DID_NOTHING (c == 'q'/'n'/ESC)
+
+    const isRogue = (game.urole?.mnum === PM_ROGUE);
+    let ch;
+    switch (picktyp) {
+    case CREDIT_CARD:  ch = ACURR(A_DEX) + 20 * (isRogue ? 1 : 0); break;
+    case LOCK_PICK:    ch = 4 * ACURR(A_DEX) + 25 * (isRogue ? 1 : 0); break;
+    case SKELETON_KEY: ch = 75 + ACURR(A_DEX); break;
+    default:           ch = 0;
+    }
+    if (box.cursed) ch = Math.trunc(ch / 2);
+
+    // C: svc.context.move = 0; gx.xlock.{box,chance,picktyp,usedtime,magic_key}.
+    // The move loop then runs picklock() each turn (do_occupation).
+    game.xlock = {
+        box,
+        door: null,
+        chance: ch,
+        picktyp,
+        usedtime: 0,
+        magic_key: false, // is_magic_key(): a plain lock pick is not the MKoT
+    };
+    game._picklock_box = box;
+    return 1; // PICKLOCK_DID_SOMETHING — a turn elapses
+}
+
 // C ref: pickup.c doloot()/do_loot_cont().  Floor container under the hero:
-// locked -> "Hmmm, <the box> turns out to be locked." (no time, per the
-// apply-key autounlock path with no key); unlocked -> use_container().
+// locked -> announce the lock, then attempt the default autounlock
+// (AUTOUNLOCK_APPLY_KEY): pick an unlocking tool and run pick_lock(); unlocked
+// -> use_container().
 async function doloot() {
     const box = floor_box_here();
     if (!box) {
@@ -1022,10 +1101,56 @@ async function doloot() {
         if (box.lknown) await pline(`The ${name} is locked.`);
         else await pline(`Hmmm, the ${name} turns out to be locked.`);
         box.lknown = 1;
-        // autounlock apply-key with no key -> nothing further; no time passes.
+        // flags.autounlock defaults to AUTOUNLOCK_APPLY_KEY: find an unlocking
+        // tool (autokey) and, if one is carried, attempt pick_lock() at the
+        // hero's square (coords supplied -> no direction prompt).
+        const unlocktool = autokey_unlock();
+        if (unlocktool) {
+            const r = await pick_lock_box(unlocktool, box);
+            return r ? 1 : 0;
+        }
+        // no unlocking tool -> nothing further; no time passes.
         return 0;
     }
+    box.lknown = 1;
     return await use_container(box, false);
+}
+
+// C ref: lock.c picklock() — the lock-picking occupation, run each turn from the
+// move loop (do_occupation).  Returns 1 while still busy (keep the occupation),
+// 0 when finished (success, give-up, or the box/hero moved).
+export async function picklock() {
+    const u = game.u;
+    const xl = game.xlock;
+    if (!xl || !xl.box) { game._picklock_box = null; game.xlock = null; return 0; }
+
+    // you or the box moved -> abort (usedtime = 0), no message.
+    if (xl.box.where !== 'floor' || xl.box.ox !== u.ux || xl.box.oy !== u.uy) {
+        game._picklock_box = null; game.xlock = null; return 0;
+    }
+    // give-up check (usedtime >= 50 || nohands).  The starter hero has hands.
+    if (xl.usedtime++ >= 50) {
+        await update_topl(`You give up your attempt at ${lock_action(xl)}.`);
+        exercise(A_DEX, true); // even if you don't succeed
+        game._picklock_box = null; game.xlock = null; return 0;
+    }
+
+    // rn2(100) >= chance -> still busy (re-roll next turn).  C ref: lock.c:98.
+    if (rn2(100) >= xl.chance)
+        return 1;
+
+    // (The Master-Key-of-Thievery trap-disarm branch is skipped: a plain lock
+    // pick is not a magic key and the starter box is untrapped.)
+
+    await pline(`You succeed in ${lock_action(xl)}.`);
+    xl.box.olocked = !xl.box.olocked;
+    xl.box.lknown = 1;
+    // if (xl.box.otrapped) chest_trap(...) — chest traps are not modeled; the
+    // starter box is untrapped so this path is inert.
+    exercise(A_DEX, true); // -> rn2(19)
+    game._picklock_box = null;
+    game.xlock = null;
+    return 0; // usedtime = 0
 }
 
 // C ref: lock.c doforce().  Scoped to the recorded path: a forceable weapon

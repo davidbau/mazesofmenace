@@ -914,10 +914,21 @@ async function done_selfzap(how) {
 
     // really_done(how): bones_ok = (how < GENOCIDED) && can_make_bones()
     // (end.c:1201).  can_make_bones() draws rn2(1 + (depth>>2)) and, in wizard
-    // mode, returns TRUE (bones.c:355).  savebones() then asks, in wizard mode,
-    //   if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))   (end.c:1364)
+    // mode, returns TRUE (bones.c:355).  really_done then, in wizard mode,
+    //   if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))
+    //       savebones(how, endtime, corpse);                          (end.c:1362)
+    // savebones() rewrites the death level into a legacy/bones level (drop the
+    // hero's inventory onto the floor, raise a ghost, wipe remembered display)
+    // and stashes it in the shared storage handle for a later segment's
+    // getbones() to reload — this is exactly seed5006 seg0's Dlvl:3 death whose
+    // bones seg1's ^V-to-3 loads.
     if (how < GENOCIDED && can_make_bones()) {
-        await y_n('Save bones?', 'yn\x1b', 'n');
+        const bones_wiz = !!game.flags?.debug;
+        const bones_ans = bones_wiz ? await y_n('Save bones?', 'yn\x1b', 'n') : 'y';
+        if (!bones_wiz || bones_ans === 'y') {
+            const { savebones } = await import('./bones.js');
+            await savebones(how, game._death_corpse || null);
+        }
     }
 
     // C ref: end.c really_done() — the endgame disclosure/tombstone/topten

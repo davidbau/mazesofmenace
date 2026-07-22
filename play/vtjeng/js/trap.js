@@ -2,7 +2,16 @@
 // C ref: trap.c -- t_at(), hole_destination(), maketrap(), choose_trapnote().
 
 import {
+    BEAR_TRAP,
+    BOLT_LIM,
     CORR,
+    DB_FLOOR,
+    DB_ICE,
+    DB_LAVA,
+    DB_MOAT,
+    DB_UNDER,
+    D_CLOSED,
+    D_LOCKED,
     DOOR,
     DRAWBRIDGE_UP,
     HOLE,
@@ -13,8 +22,11 @@ import {
     IS_ROOM,
     IS_WALL,
     LADDER,
+    LAVAWALL,
     LEVEL_TELEP,
     MAGIC_PORTAL,
+    MELT_ICE_AWAY,
+    N_DIRS,
     PIT,
     ROLLING_BOULDER_TRAP,
     ROOM,
@@ -29,20 +41,180 @@ import {
     TRAPDOOR,
     TRAPPED_CHEST,
     TRAPPED_DOOR,
+    TT_BEARTRAP,
+    TT_LAVA,
+    TT_NONE,
+    TT_PIT,
+    TT_WEB,
     VIBRATING_SQUARE,
+    WATER,
+    WEB,
+    ZAP_POS,
+    is_hole,
+    is_pit,
+    is_xport,
     isok,
+    xdir,
+    ydir,
 } from './const.js';
 import { on_level } from './dungeon.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { stackobj } from './invent.js';
+import { mksobj, place_object, weight } from './obj.js';
+import { BOULDER } from './objects.js';
+import { rn1, rn2, rnd, rne } from './rng.js';
 
 function trapEnv(env = {}) {
     return {
         ...env,
         state: env.state ?? game,
-        random: env.random ?? { rn2 },
+        random: env.random ?? { rn1, rn2, rnd, rne },
     };
 }
+
+function capability(env, name) {
+    return env[name] ?? env.hooks?.[name] ?? DEFAULT_CAPABILITIES[name];
+}
+
+function drawbridgeFlags(location) {
+    // `flags` is the live struct-rm union slot; drawbridgemask is retained as
+    // a compatibility input for older state fixtures.
+    return location.flags || location.drawbridgemask || 0;
+}
+
+function drawbridgeUnder(location) {
+    return drawbridgeFlags(location) & DB_UNDER;
+}
+
+// C refs: dbridge.c is_pool(), is_lava(), and is_pool_or_lava(). A raised
+// drawbridge's tile type describes the closed span, not the terrain below it.
+function isPoolAt(location, state) {
+    if (location.typ !== DRAWBRIDGE_UP) return IS_POOL(location.typ);
+    return drawbridgeUnder(location) === DB_MOAT
+        && !on_level(state.u?.uz, state.juiblex_level);
+}
+
+function isLavaAt(location) {
+    return IS_LAVA(location.typ)
+        || (location.typ === DRAWBRIDGE_UP
+            && drawbridgeUnder(location) === DB_LAVA);
+}
+
+function closedDoor(location) {
+    const mask = location.flags || location.doormask || 0;
+    return location.typ === DOOR
+        && Boolean(mask & (D_CLOSED | D_LOCKED));
+}
+
+function clearLaunchPath(coordinate, distance, dx, dy, env) {
+    let { x, y } = coordinate;
+    while (distance-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y)) return false;
+        const location = env.state.level.at(x, y);
+        if (!ZAP_POS(location.typ) || closedDoor(location)) return false;
+        const trap = t_at(x, y, env.state);
+        if (trap && (is_pit(trap.ttyp)
+            || is_hole(trap.ttyp)
+            || is_xport(trap.ttyp))) {
+            return false;
+        }
+    }
+    coordinate.x = x;
+    coordinate.y = y;
+    return true;
+}
+
+// mthrowu.c:linedup(..., 1) for an explicitly supplied launch offset.  The
+// boulderhandling=1 branch ignores intervening boulders, so only terrain and
+// the source's orthogonal-or-diagonal range contract matter here.
+function explicitLaunchCoordinate(trap, env) {
+    const offset = env.state.launchplace;
+    if (!offset) return null;
+    const target = {
+        x: trap.tx + offset.x,
+        y: trap.ty + offset.y,
+    };
+    if (!isok(target.x, target.y)) return null;
+    const dx = target.x - trap.tx;
+    const dy = target.y - trap.ty;
+    const distance = Math.max(Math.abs(dx), Math.abs(dy));
+    if (!distance || distance >= BOLT_LIM
+        || (dx && dy && Math.abs(dx) !== Math.abs(dy))) {
+        return null;
+    }
+    const sx = Math.sign(dx);
+    const sy = Math.sign(dy);
+    for (let step = 1; step < distance; ++step) {
+        const location = env.state.level.at(
+            trap.tx + sx * step,
+            trap.ty + sy * step,
+        );
+        if (!ZAP_POS(location.typ) || closedDoor(location)
+            || location.typ === WATER || location.typ === LAVAWALL) {
+            return null;
+        }
+    }
+    return target;
+}
+
+// trap.c:find_random_launch_coord(). The path is tested in both directions
+// because a rolling boulder must pass through the trigger square and continue
+// to the mirrored endpoint.
+function findRandomLaunchCoordinate(trap, env) {
+    if (!trap || env.state.level.flags?.sokoban_rules) return null;
+    const explicit = explicitLaunchCoordinate(trap, env);
+    if (explicit) return explicit;
+
+    let distance = env.random.rn1(5, 4);
+    let direction = env.random.rn2(N_DIRS);
+    let trycount = 0;
+    while (distance >= 2) {
+        const dx = xdir[direction];
+        const dy = ydir[direction];
+        const launch = { x: trap.tx, y: trap.ty };
+        const endpoint = env.state.level.at(
+            trap.tx + distance * dx,
+            trap.ty + distance * dy,
+        );
+        let success = endpoint
+            && !isPoolAt(endpoint, env.state)
+            && !isLavaAt(endpoint)
+            && clearLaunchPath(launch, distance, dx, dy, env);
+        const opposite = { x: trap.tx, y: trap.ty };
+        if (!clearLaunchPath(opposite, distance, -dx, -dy, env))
+            success = false;
+        if (success) return launch;
+        direction = (direction + 1) % N_DIRS;
+        if (++trycount % N_DIRS === 0) --distance;
+    }
+    return null;
+}
+
+// trap.c:mkroll_launch() rolling-boulder subset.
+function makeRollingBoulderLaunch(trap, x, y, env) {
+    const launch = findRandomLaunchCoordinate(trap, env) ?? { x, y };
+    if (launch.x !== x || launch.y !== y) {
+        const boulder = mksobj(BOULDER, true, false, env);
+        boulder.quan = 1;
+        boulder.owt = weight(boulder, env);
+        place_object(boulder, launch.x, launch.y, env);
+        stackobj(boulder, env);
+    }
+    trap.launch.x = launch.x;
+    trap.launch.y = launch.y;
+    trap.launch2 = {
+        x: x - (launch.x - x),
+        y: y - (launch.y - y),
+    };
+    capability(env, 'newsym')?.(launch.x, launch.y, env);
+    return true;
+}
+
+const DEFAULT_CAPABILITIES = Object.freeze({
+    makeRollingBoulderLaunch,
+});
 
 export function t_at(x, y, state = game) {
     for (const trap of state.level?.traps ?? []) {
@@ -108,24 +280,113 @@ function resetTrap(trap, typ) {
     trap.conjoined = 0;
 }
 
-function pitTerrain(x, y, env) {
-    const { state } = env;
-    const location = state.level.at(x, y);
+function buriedObjectAt(x, y, state) {
     let buried = state.level.buriedobjlist;
     while (buried && (buried.ox !== x || buried.oy !== y))
         buried = buried.nobj;
-    if (buried && typeof env.unearthObjects !== 'function')
+    return buried;
+}
+
+function preflightPitTerrain(x, y, env) {
+    const location = env.state.level.at(x, y);
+    if (buriedObjectAt(x, y, env.state)
+        && typeof capability(env, 'unearthObjects') !== 'function') {
         throw new Error('maketrap requires the buried-object subsystem');
+    }
+    if (location.typ === DRAWBRIDGE_UP
+        && drawbridgeUnder(location) === DB_ICE) {
+        if (typeof capability(env, 'objIceEffects') !== 'function') {
+            throw new Error(
+                'maketrap requires obj_ice_effects for drawbridge ice',
+            );
+        }
+        if (typeof capability(env, 'spotStopTimers') !== 'function') {
+            throw new Error(
+                'maketrap requires spot_stop_timers for drawbridge ice',
+            );
+        }
+    }
+}
+
+function preflightHoleDestination(env) {
+    const current = env.state.u?.uz;
+    if (!current || !env.state.dungeons?.[current.dnum]) {
+        throw new Error(
+            'hole_destination requires initialized dungeon state',
+        );
+    }
+}
+
+function heroTrapNeedsReset(x, y, typ, env) {
+    const hero = env.state.u;
+    if (!hero?.utrap || hero.ux !== x || hero.uy !== y) return false;
+    switch (hero.utraptype) {
+    case TT_BEARTRAP: return typ !== BEAR_TRAP;
+    case TT_WEB: return typ !== WEB;
+    case TT_PIT: return !is_pit(typ);
+    case TT_LAVA: return !isLavaAt(env.state.level.at(x, y));
+    default: return false;
+    }
+}
+
+function preflightTrapCreation(x, y, typ, resetHero, env) {
+    if (resetHero && typeof capability(env, 'resetUtrap') !== 'function') {
+        throw new Error('maketrap requires hero-trap reset support');
+    }
+    switch (typ) {
+    case STATUE_TRAP:
+        if (typeof capability(env, 'makeTrapStatue') !== 'function')
+            throw new Error('maketrap requires the statue-trap subsystem');
+        break;
+    case ROLLING_BOULDER_TRAP:
+        if (typeof capability(env, 'makeRollingBoulderLaunch')
+            !== 'function') {
+            throw new Error(
+                'maketrap requires the rolling-boulder launch subsystem',
+            );
+        }
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        preflightPitTerrain(x, y, env);
+        break;
+    case HOLE:
+    case TRAPDOOR:
+        preflightHoleDestination(env);
+        preflightPitTerrain(x, y, env);
+        break;
+    default:
+        break;
+    }
+}
+
+function resetHeroTrap(env) {
+    capability(env, 'resetUtrap')(false, env);
+    if (env.state.u.utrap || env.state.u.utraptype !== TT_NONE) {
+        throw new Error(
+            'maketrap resetUtrap must clear u.utrap and u.utraptype',
+        );
+    }
+}
+
+function pitTerrain(x, y, env) {
+    const { state } = env;
+    const location = state.level.at(x, y);
     let clearFlags = true;
 
     if (location.typ === DRAWBRIDGE_UP) {
-        // Drawbridge state is not reachable during ordinary D:1 room filling.
-        // Require its owner rather than silently discarding drawbridge flags.
-        if (typeof env.openDrawbridgeFloor !== 'function') {
-            throw new Error('maketrap requires drawbridge terrain support');
-        }
-        env.openDrawbridgeFloor(x, y, env);
+        const wasIce = drawbridgeUnder(location) === DB_ICE;
+        location.flags = (drawbridgeFlags(location) & ~DB_UNDER) | DB_FLOOR;
         clearFlags = false;
+        if (wasIce) {
+            capability(env, 'objIceEffects')(x, y, true, env);
+            capability(env, 'spotStopTimers')(
+                x,
+                y,
+                MELT_ICE_AWAY,
+                env,
+            );
+        }
     } else if (IS_ROOM(location.typ)) {
         location.typ = ROOM;
     } else if (location.typ === STONE || location.typ === SCORR) {
@@ -137,14 +398,13 @@ function pitTerrain(x, y, env) {
     }
 
     if (clearFlags) location.flags = 0;
-    env.unearthObjects?.(x, y, env);
-    env.recalculateBlockPoint?.(x, y, env);
+    capability(env, 'unearthObjects')?.(x, y, env);
+    capability(env, 'recalculateBlockPoint')?.(x, y, env);
 }
 
 // C ref: trap.c maketrap(). This owns the level trap list and implements the
-// core branches used by ordinary D:1 generation. Object, drawbridge, and
-// launch subsystems which are not yet ported fail explicitly at their source
-// boundary.
+// core branches used by ordinary D:1 generation. Object and launch subsystems
+// which are not yet ported fail explicitly at their source boundary.
 export function maketrap(x, y, typ, rawEnv = {}) {
     const env = trapEnv(rawEnv);
     const { state } = env;
@@ -158,7 +418,7 @@ export function maketrap(x, y, typ, rawEnv = {}) {
         if (trap.ttyp === MAGIC_PORTAL || trap.ttyp === VIBRATING_SQUARE)
             return null;
     } else if (location.typ === LADDER || location.typ === STAIRS
-        || IS_POOL(location.typ) || IS_LAVA(location.typ)
+        || isPoolAt(location, state) || isLavaAt(location)
         || (IS_FURNITURE(location.typ) && typ !== PIT && typ !== HOLE)
         || (location.typ === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
         || (IS_AIR(location.typ) && typ !== MAGIC_PORTAL)
@@ -168,23 +428,19 @@ export function maketrap(x, y, typ, rawEnv = {}) {
         trap = { tx: x, ty: y };
     }
 
+    const resetHero = oldplace && heroTrapNeedsReset(x, y, typ, env);
+    preflightTrapCreation(x, y, typ, resetHero, env);
+    if (resetHero) resetHeroTrap(env);
     resetTrap(trap, typ);
     switch (typ) {
     case SQKY_BOARD:
         trap.tnote = choose_trapnote(trap, env);
         break;
     case STATUE_TRAP:
-        if (typeof env.makeTrapStatue !== 'function')
-            throw new Error('maketrap requires the statue-trap subsystem');
-        env.makeTrapStatue(x, y, env);
+        capability(env, 'makeTrapStatue')(x, y, env);
         break;
     case ROLLING_BOULDER_TRAP:
-        if (typeof env.makeRollingBoulderLaunch !== 'function') {
-            throw new Error(
-                'maketrap requires the rolling-boulder launch subsystem',
-            );
-        }
-        env.makeRollingBoulderLaunch(trap, x, y, env);
+        capability(env, 'makeRollingBoulderLaunch')(trap, x, y, env);
         break;
     case PIT:
     case SPIKED_PIT:

@@ -1,8 +1,9 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
-//         peffect_extra_healing, make_confused, dodip; invent.c getobj;
-//         fountain.c drinkfountain / dipfountain.
+//         peffect_extra_healing, peffect_water, make_confused, dodip;
+//         invent.c getobj; fountain.c drinkfountain / dipfountain.
+// Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -12,30 +13,32 @@ import { weight, obj_extract_self } from './mkobj.js';
 import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
-import { doname, xname, short_oname, thesimpleoname } from './objnam.js';
+import { doname, xname, short_oname, thesimpleoname, makeplural } from './objnam.js';
 import { dipfountain, drinkfountain, drinksink } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES,
-    QBUFSZ, STONED, SLIMED,
+    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
+    A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { losehp, nomul, maybe_half_phys } from './hack.js';
 import { cansee } from './vision.js';
-import { mons } from './monsters.js';
+import { mons, mon_hates_blessings, pmnames } from './monsters.js';
 import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
-import { trycall } from './do_name.js';
+import { trycall, hliquid } from './do_name.js';
 import { newuhs } from './eat.js';
 import { heal_legs } from './trap.js';
 import {
     delayed_killer, find_delayed_killer, dealloc_killer,
 } from './end.js';
+import { you_were, you_unwere, set_ulycn } from './were.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -50,6 +53,7 @@ const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
+const POT_WATER = objectNames.indexOf('POT_WATER');
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -427,6 +431,29 @@ export function make_glib(xtime) {
 }
 
 /**
+ * C ref: potion.c make_deaf(xtime, talk) — HDeaf TIMEOUT set/clear.
+ * Named omit: Unaware talk suppress polish when sticky Deaf extrinsic.
+ * @param {number} xtime
+ * @param {boolean} talk
+ */
+export async function make_deaf(xtime, talk) {
+    const u = game.u || (game.u = {});
+    const old = u.HDeaf | 0;
+    if (u.Unaware) talk = false;
+    u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | itimeout(xtime);
+    const now = u.HDeaf | 0;
+    if (!!xtime !== !!old) {
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        if (talk) {
+            const Deaf = !!(now || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+            if (old && !Deaf) await pline('You can hear again.');
+            else await pline('You are unable to hear anything.');
+        }
+    }
+}
+
+/**
  * C ref: potion.c make_confused(xtime, talk)
  * Sync HConfusion TIMEOUT bits; mirror onto u.Confusion for JS gates
  * (C: Confusion ≡ HConfusion).
@@ -511,6 +538,57 @@ export async function make_stoned(xtime, msg, killedby, killername) {
         dealloc_killer(find_delayed_killer(STONED));
     } else if (!old) {
         delayed_killer(STONED, killedby | 0, killername || '');
+    }
+}
+
+/**
+ * C ref: potion.c make_sick — fatal illness / food poisoning TIMEOUT.
+ * Branch envelope: onset (Sick_resistance gate + talk msgs); cure by
+ * usick_type mask (partial vs full); delayed SICK killer.
+ * Named omissions: Unaware talk suppress; #wizintrinsic KILLED_BY vs
+ * KILLED_BY_AN cause polish.
+ */
+export async function make_sick(xtime, cause, talk, type) {
+    const u = game.u || (game.u = {});
+    const old = u.Sick | 0;
+    if (xtime > 0) {
+        const Sick_resistance = !!(u.Sick_resistance || u.HSick_resistance
+            || u.ESick_resistance);
+        if (Sick_resistance) return;
+        if (!old) {
+            await You_feel('deathly sick.');
+        } else if (talk) {
+            await You_feel(
+                `${xtime <= ((old & TIMEOUT) / 2) ? 'much' : 'even'} worse.`,
+            );
+        }
+        u.Sick = ((u.Sick | 0) & ~TIMEOUT) | itimeout(xtime);
+        u.usick_type = (u.usick_type | 0) | (type | 0);
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    } else if (old && ((type | 0) & ((u.usick_type | 0) || SICK_ALL))) {
+        // was sick, now not (or partly)
+        u.usick_type = (u.usick_type | 0) & ~(type | 0);
+        if (u.usick_type) {
+            if (talk) await You_feel('somewhat better.');
+            u.Sick = ((u.Sick | 0) & ~TIMEOUT)
+                | itimeout((old & TIMEOUT) * 2);
+        } else {
+            if (talk) await You_feel('cured.  What a relief!');
+            u.Sick = 0;
+        }
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+
+    const kptr = find_delayed_killer(SICK);
+    if (u.Sick) {
+        exercise(A_CON, false);
+        if (xtime || !old || !kptr) {
+            delayed_killer(SICK, KILLED_BY_AN, cause || '');
+        }
+    } else {
+        dealloc_killer(kptr);
     }
 }
 
@@ -672,9 +750,73 @@ async function peffect_booze(otmp) {
 }
 
 /**
+ * C ref: potion.c peffect_water — plain / holy / unholy water.
+ * Lycanthropy cure / force-change arms (D-1004). make_sick body deferred
+ * (TIMEOUT clear only). mon_hates_blessings via is_undead|is_demon|vamp.
+ */
+async function peffect_water(otmp) {
+    const u = game.u || (game.u = {});
+    if (!otmp.blessed && !otmp.cursed) {
+        await pline(`This tastes like ${hliquid('water')}.`);
+        u.uhunger = (u.uhunger | 0) + rnd(10);
+        newuhs(false);
+        return;
+    }
+    potion_unkn++;
+    const hates = mon_hates_blessings(game.youmonst)
+        || (u.ualign?.type | 0) === A_CHAOTIC;
+    if (hates) {
+        if (otmp.blessed) {
+            await pline(`This burns like ${hliquid('acid')}!`);
+            exercise(A_CON, false);
+            if (ismnum(u.ulycn)) {
+                const nm = pmnames[u.ulycn | 0]?.[NEUTRAL]
+                    || pmnames[u.ulycn | 0]?.[2]
+                    || 'beast';
+                await pline(`Your affinity to ${makeplural(nm)} disappears!`);
+                if ((u.umonnum | 0) === (u.ulycn | 0)) {
+                    await you_unwere(false);
+                }
+                set_ulycn(NON_PM);
+            }
+            losehp(
+                maybe_half_phys(d(2, 6)),
+                'potion of holy water',
+                KILLED_BY_AN,
+            );
+        } else if (otmp.cursed) {
+            await You_feel('quite proud of yourself.');
+            await healup(d(2, 6), 0, false, false);
+            if (ismnum(u.ulycn) && !Upolyd(u)) await you_were();
+            exercise(A_CON, true);
+        }
+    } else if (otmp.blessed) {
+        await You_feel('full of awe.');
+        // C: make_sick(0L, NULL, TRUE, SICK_ALL) — clear Sick TIMEOUT
+        u.Sick = 0;
+        exercise(A_WIS, true);
+        exercise(A_CON, true);
+        if (ismnum(u.ulycn)) await you_unwere(true); // "Purified"
+    } else {
+        if ((u.ualign?.type | 0) === A_LAWFUL) {
+            await pline(`This burns like ${hliquid('acid')}!`);
+            losehp(
+                maybe_half_phys(d(2, 6)),
+                'potion of unholy water',
+                KILLED_BY_AN,
+            );
+        } else {
+            await You_feel('full of dread.');
+        }
+        if (ismnum(u.ulycn) && !Upolyd(u)) await you_were();
+        exercise(A_CON, false);
+    }
+}
+
+/**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
- * paralysis / confusion / booze / healing / extra healing / sickness;
- * other otyps in map.
+ * paralysis / confusion / booze / healing / extra healing / sickness /
+ * water; other otyps in map.
  */
 async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -702,6 +844,9 @@ async function peffects(otmp) {
         return -1;
     case POT_SICKNESS:
         await peffect_sickness(otmp);
+        return -1;
+    case POT_WATER:
+        await peffect_water(otmp);
         return -1;
     default:
         // Other peffect_* deferred — do not useup
@@ -944,7 +1089,8 @@ function bottlename() {
 /**
  * C ref: potion.c potionbreathe — vapor on hero (thrown/destroy distance 0).
  * Envelope: invis flash / paralysis / sleeping / confusion / blindness /
- * acid exercise. Other otyps and towel / Free_action resist msgs partial.
+ * acid exercise + POT_WATER lycan vapor (D-1004). Other otyps and towel /
+ * Free_action resist msgs partial.
  */
 export async function potionbreathe(obj) {
     const u = game.u || {};
@@ -1005,6 +1151,16 @@ export async function potionbreathe(obj) {
         // make_blinded deferred — brief Blind stub
         if (!(u.Blind || u.ublind)) await pline('It suddenly gets dark.');
         u.Blinded = (u.Blinded | 0) + rnd(5);
+        break;
+    case POT_WATER:
+        // C: vapor triggers lycanthrope change but does not cure
+        if (ismnum(u.ulycn)) {
+            if (obj.blessed && (u.umonnum | 0) === (u.ulycn | 0)) {
+                await you_unwere(false);
+            } else if (obj.cursed && !Upolyd(u)) {
+                await you_were();
+            }
+        }
         break;
     case POT_ACID:
         exercise(A_CON, false);

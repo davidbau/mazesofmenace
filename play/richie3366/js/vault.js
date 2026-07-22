@@ -1,8 +1,8 @@
 // vault.js — Vault occupancy and guard summoning.
 // C ref: vault.c — vault_occupied, findgd, newegd, find_guard_dest, invault,
 //        clear_fcorr, restfakecorr, gd_move dig + restore,
-//        vault_gd_watching (D-0953).
-// Named omissions: migrating_mons findgd park; vault_summon_gd;
+//        vault_gd_watching (D-0953); vault_summon_gd (D-1007).
+// Named omissions: migrating_mons findgd park;
 // uleftvault; wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
@@ -323,6 +323,17 @@ export function findgd() {
         return mtmp;
     }
     return null;
+}
+
+/**
+ * C ref: vault.c vault_summon_gd — cursed tin whistle in a vault.
+ * If occupied and no live guard, bump uinvault so invault summons soon.
+ */
+export function vault_summon_gd() {
+    const u = game.u || (game.u = {});
+    if (vault_occupied(u.urooms) && !findgd()) {
+        u.uinvault = (VAULT_GUARD_TIME - 1) | 0;
+    }
 }
 
 /**

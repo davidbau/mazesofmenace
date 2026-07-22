@@ -42,6 +42,9 @@ const GEM_CLASS = 9, FOOD_CLASS = 7;
 // Applicable foods (mkobj.js OBJECT_DATA indices).
 const EUCALYPTUS_LEAF = 276, LUMP_OF_ROYAL_JELLY_OTYP = 286, CREAM_PIE = 287;
 
+// C ref: include/onames.h — the lock-picking tools (mkobj.js OBJECTS rows).
+const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
+
 // ECMD result codes (cmd.h).  doapply() returns one of these; the caller maps
 // ECMD_TIME -> game turn elapsed.
 const ECMD_OK = 0;
@@ -371,6 +374,15 @@ export async function doapply() {
     // C ref apply.c:4258 — applying a cream pie immerses the hero's face in it.
     if (obj.otyp === CREAM_PIE) {
         return await use_cream_pie(obj);
+    }
+
+    // C ref apply.c:4285 — a lock pick / skeleton key / credit card picks a
+    // lock: pick_lock() prompts for a direction and unlocks an adjacent door /
+    // a container underfoot.  Non-zero result (DID/LEARNED_SOMETHING) -> a turn
+    // elapsed (ECMD_TIME); PICKLOCK_DID_NOTHING (0) -> no turn (ECMD_OK).
+    if (obj.otyp === LOCK_PICK || obj.otyp === SKELETON_KEY || obj.otyp === CREDIT_CARD) {
+        const r = await _cmd.pick_lock(obj);
+        return r ? ECMD_TIME : ECMD_OK;
     }
 
     // Any other tool isn't exercised; mirror C's "I don't know how to use that"

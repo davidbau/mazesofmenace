@@ -776,10 +776,13 @@ export function setmangry(mtmp, via_attack) {
 }
 
 /**
- * C ref: mon.c wake_nearto / wake_nearto_core — clear sleep/wait in radius.
- * Named omissions: disturb_buried_zombies; petcall whistletime.
+ * C ref: mon.c wake_nearto_core — clear sleep/wait in radius.
+ * Named omissions: disturb_buried_zombies; wake_msg when msleeping already
+ * cleared by sync callers.
+ * @param {boolean} [petcall=false] — whistle: set EDOG.whistletime + clear track
  */
-export async function wake_nearto(x, y, distance) {
+async function wake_nearto_core(x, y, distance, petcall = false) {
+    const mon_moving = !!(game.context?.mon_moving);
     for (const m of game.fmon || []) {
         if (!m || m.mx == null || (m.mhp | 0) <= 0) continue;
         if (distance === 0 || dist2(m.mx, m.my, x, y) < distance) {
@@ -788,8 +791,37 @@ export async function wake_nearto(x, y, distance) {
             if (!((m.data?.geno | 0) & G_UNIQ) && m.mstrategy != null) {
                 m.mstrategy &= ~STRAT_WAITMASK;
             }
+            if (mon_moving || !petcall) continue;
+            if (m.mtame) {
+                if (!m.isminion) {
+                    if (!m.edog) m.edog = {};
+                    m.edog.whistletime = game.moves | 0;
+                }
+                // C: mon_track_clear(mtmp)
+                if (m.mtrack) {
+                    for (let j = 0; j < m.mtrack.length; j++) {
+                        m.mtrack[j] = { x: 0, y: 0 };
+                    }
+                }
+            }
         }
     }
+}
+
+/**
+ * C ref: mon.c wake_nearto — wake_nearto_core(..., FALSE).
+ */
+export async function wake_nearto(x, y, distance) {
+    await wake_nearto_core(x, y, distance, false);
+}
+
+/**
+ * C ref: mon.c wake_nearby — wake_nearto_core(u, ulevel*20, petcall).
+ * Whistle uses petcall=TRUE for EDOG.whistletime (D-1007).
+ */
+export async function wake_nearby(petcall = false) {
+    const u = game.u || {};
+    await wake_nearto_core(u.ux | 0, u.uy | 0, ((u.ulevel | 0) * 20) | 0, !!petcall);
 }
 
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');

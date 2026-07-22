@@ -14,13 +14,18 @@ import {
     is_human, is_elf, is_dwarf, is_gnome, is_orc, is_giant, is_golem,
     is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
     is_unicorn, is_longworm,
+    breathless, verysmall, has_head,
 } from './monsters.js';
 import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
     M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, CONFLICT,
 } from './const.js';
+import { mon_msound } from './sounds.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
+/** C monflag.h MS_SILENT / MS_BUZZ. */
+const MS_SILENT = 0;
+const MS_BUZZ = 10;
 
 /* C ref: monattk.h AD_* used by cvt_adtyp_to_mseenres / get_atkdam_type */
 const AD_MAGM = 1;
@@ -447,6 +452,28 @@ export function monstunseesu(seenres) {
         if ((mtmp.mhp | 0) < 1) continue;
         if (m_canseeu(mtmp)) m_clearseenres(mtmp, seenres);
     }
+}
+
+/**
+ * C ref: mondata.c can_blow — whistle/horn mouth check.
+ * Silent or MS_BUZZ forms that are breathless/verysmall/headless/eel cannot;
+ * hero also fails when Strangled.
+ * Named omit: full is_silent table (uses mon_msound inference).
+ */
+export function can_blow(mtmp) {
+    if (!mtmp) return false;
+    const ptr = mtmp.data;
+    const ms = mon_msound(mtmp);
+    if ((ms === MS_SILENT || ms === MS_BUZZ)
+        && (breathless(ptr) || verysmall(ptr)
+            || !has_head(ptr) || ptr?.mlet === 'S_EEL')) {
+        return false;
+    }
+    if (mtmp === game.youmonst) {
+        const u = game.u || {};
+        if (u.Strangled || (u.EStrangled | 0)) return false;
+    }
+    return true;
 }
 
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

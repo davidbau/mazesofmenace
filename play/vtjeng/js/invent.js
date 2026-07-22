@@ -138,13 +138,21 @@ function requireInventoryRefresh(env) {
     }
 }
 
+// Dependency-only half of update_inventory(). Callers which must mutate
+// other state first can preserve C order while still failing atomically when
+// the permanent-inventory window boundary is unavailable.
+export function preflight_update_inventory(env = {}) {
+    const normalized = inventoryEnv(env);
+    requireInventoryRefresh(normalized);
+    return normalized;
+}
+
 // C ref: invent.c update_inventory(). Calls before the move loop and while
 // map output is suppressed are deliberately ignored. moveloop_preamble()
 // owns the first live startup refresh.
 export function update_inventory(env = {}) {
-    const normalized = inventoryEnv(env);
+    const normalized = preflight_update_inventory(env);
     if (!inventoryRefreshActive(normalized)) return false;
-    requireInventoryRefresh(normalized);
     if (typeof normalized.hooks.updateInventory !== 'function') return false;
     normalized.state.iflags ??= {};
     const savedSuppressPrice = normalized.state.iflags.suppress_price;
@@ -619,15 +627,6 @@ function oidPriceAdjustment(obj, oid, state) {
     return canVary && oid % 4 === 0 ? 1 : 0;
 }
 
-function deleteContents(container, env) {
-    while (container.cobj) {
-        const obj = container.cobj;
-        container.cobj = extractNobj(obj, container.cobj);
-        obj.ocontainer = null;
-        obfree(obj, null, env);
-    }
-}
-
 function preflightObfree(obj, merge, env) {
     if (obj.otyp === LEASH && obj.leashmon)
         requiredHook(env, 'unleashObject', obj);
@@ -651,6 +650,15 @@ function preflightObfree(obj, merge, env) {
         preflightObfree(contents, null, env);
 }
 
+// Dependency-only half of shk.c obfree().  Callers such as burial extract an
+// object before freeing it, so they must be able to resolve every downstream
+// lifecycle owner while the original floor chains are still intact.
+export function preflight_obfree(obj, merge = null, env = {}) {
+    const normalized = inventoryEnv(env);
+    preflightObfree(obj, merge, normalized);
+    return normalized;
+}
+
 function comparisonWillDiscover(otmp, obj, state) {
     const targetBknown = otmp.oclass === COIN_CLASS ? false : otmp.bknown;
     return Boolean(obj.known) !== Boolean(otmp.known)
@@ -663,7 +671,9 @@ function comparisonWillDiscover(otmp, obj, state) {
 // C ref: shk.c obfree(). The general shop bill is not ported; encountering a
 // billed object fails at that seam. Owned startup objects still preserve the
 // source's o_id-based price adjustment when stacks merge.
-function obfree(obj, merge, env) {
+export function obfree(obj, merge = null, rawEnv = {}) {
+    const env = inventoryEnv(rawEnv);
+    preflightObfree(obj, merge, env);
     if (obj.otyp === LEASH && obj.leashmon)
         requiredHook(env, 'unleashObject', obj)(obj, env);
 
@@ -678,7 +688,7 @@ function obfree(obj, merge, env) {
         env.state.context.spbook.book = null;
         env.state.context.spbook.o_id = 0;
     }
-    if (obj.cobj) deleteContents(obj, env);
+    if (obj.cobj) delete_contents(obj, env);
     if (isContainer(obj)) {
         const lock = env.state.xlock ?? env.state.context?.xlock;
         if (lock?.box === obj)
@@ -823,6 +833,55 @@ export function merged(otmp, obj, env = {}) {
     }
     obfree(obj, otmp, normalized);
     return true;
+}
+
+// C ref: invent.c stackobj(). Preserve the newly placed object by merging an
+// older compatible pile member into it, which is the pointer order used by C.
+export function stackobj(obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    if (!obj || typeof obj !== 'object')
+        throw new TypeError('stackobj requires an object');
+    const pile = normalized.state.level?.objects?.[obj.ox]?.[obj.oy];
+    if (obj.where === OBJ_FLOOR && !pile)
+        throw new Error('stackobj: object is not on its floor pile');
+    if (obj.where === OBJ_FLOOR) {
+        let linked = false;
+        for (let current = pile; current; current = current.nexthere) {
+            if (current === obj) {
+                linked = true;
+                break;
+            }
+        }
+        if (!linked)
+            throw new Error('stackobj: object is not on its floor pile');
+    }
+    // sp_lev.c also calls stackobj() after putting a direct custom-inventory
+    // object into OBJ_MINVENT (or after mpickobj merged and deleted it).  C
+    // simply scans the remembered coordinate's floor pile in every case.
+    for (let current = pile; current; current = current.nexthere) {
+        if (current !== obj && merged(obj, current, normalized)) break;
+    }
+    return obj;
+}
+
+// C ref: shk.c delete_contents(). Preflight the whole sibling chain before
+// extracting any child, so a missing lifecycle dependency cannot partially
+// destroy a container.  Extraction then updates ownership and weight at the
+// same source boundary as C.
+export function delete_contents(container, env = {}) {
+    const normalized = inventoryEnv(env);
+    for (let current = container?.cobj ?? null;
+        current;
+        current = current.nobj) {
+        preflightObjectExtraction(current, normalized);
+        preflightObfree(current, null, normalized);
+    }
+    while (container?.cobj) {
+        const current = container.cobj;
+        obj_extract_self(current, normalized);
+        obfree(current, null, normalized);
+    }
+    return container;
 }
 
 function inventoryIndex(invlet) {

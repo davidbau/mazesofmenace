@@ -48,6 +48,7 @@ import {
     encodeUtf8ByteString,
     encodeUtf8Text,
 } from './hacklib.js';
+import { sourceGlyphName } from './glyph_ids.js';
 import { rn2 } from './rng.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
@@ -238,6 +239,7 @@ function defaultResult() {
         },
         iflags: {
             wc_color: true,
+            wc_inverse: true,
             wc_splash_screen: true,
             wc_eight_bit_input: false,
             customcolors: true,
@@ -1048,6 +1050,8 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
     else if (name === 'color') {
         result.flags.color = enabled;
         result.iflags.wc_color = enabled;
+    } else if (name === 'use_inverse') {
+        result.iflags.wc_inverse = enabled;
     } else if (name === 'legacy') result.flags.legacy = enabled;
     else if (name === 'tutorial') {
         result.flags.tutorial = enabled;
@@ -1112,9 +1116,15 @@ function appendSymbolSelection(
 }
 
 function appendSymbolOverrides(result, set, assignments) {
+    // This ordered stream is authoritative.  flags/rogueSymbols below are
+    // compatibility snapshots for older callers and only represent S_*
+    // symbol slots. Standalone G_* records are retained here because C saves
+    // them back to config, although parsesymbols() does not apply them.
     result.symbolOperations.push({ kind: 'override', set, assignments });
     const target = set === 'rogue' ? result.rogueSymbols : result.flags;
-    for (const { name, rawValue } of assignments) target[name] = rawValue;
+    for (const { kind, name, rawValue } of assignments) {
+        if (kind !== 'glyph') target[name] = rawValue;
+    }
 }
 
 // C ref: symbols.c:parsesymbols(). Its comma recursion applies the suffix
@@ -1176,11 +1186,20 @@ function parseSymbolAssignments(value, lineNumber) {
         const rawValue = mungspaces(cString(delimiter + 1));
         // match_sym() independently stops its lookup key at ':' or '='.
         // With the carried-colon quirk, sourceName can still contain an '='.
-        const name = sourceName.split(/[:=]/u, 1)[0].trim().toLowerCase();
-        if (!SOURCE_SYMBOL_NAMES.has(name)) {
+        const lookupName = sourceName
+            .split(/[:=]/u, 1)[0]
+            .trim()
+            .toLowerCase();
+        // parse_id()'s G_ gate is case-sensitive; match_glyph() then compares
+        // the complete glyph-ID cache case-insensitively.
+        const glyphName = sourceName.startsWith('G_')
+            ? sourceGlyphName(lookupName) : null;
+        if (!SOURCE_SYMBOL_NAMES.has(lookupName) && !glyphName) {
             optionError(lineNumber, `unknown symbol '${sourceName}'`);
         }
-        assignments.push({ name, rawValue });
+        assignments.push(glyphName
+            ? { kind: 'glyph', name: glyphName, rawValue }
+            : { kind: 'symbol', name: lookupName, rawValue });
         return assignments;
     };
 

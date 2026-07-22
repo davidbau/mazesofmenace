@@ -389,7 +389,7 @@ const H_SOUNDS = [
  * Infer msound when generated tables omit it.
  * S_DOG → MS_BARK; S_FELINE → MS_MEW; S_NYMPH → MS_SEDUCE.
  */
-function mon_msound(mtmp) {
+export function mon_msound(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr) return 0;
     if (ptr.msound != null) return ptr.msound | 0;
@@ -453,6 +453,41 @@ export async function growl(mtmp) {
         // C: wake_nearto(mx, my, mlevel * 18) after growl pline
         if (mtmp.mx) {
             await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
+        }
+    }
+}
+
+/**
+ * C ref: sounds.c whimper — leash-pull / mistreat soft pet sound.
+ * Hallucination → ROLL_FROM(h_sounds). Named omit: Soundeffect; wake_msg.
+ */
+export async function whimper(mtmp) {
+    if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
+    let whimper_verb = null;
+    if (game.u?.Hallucination) {
+        whimper_verb = H_SOUNDS[rn2(H_SOUNDS.length)];
+    } else {
+        switch (mon_msound(mtmp)) {
+        case MS_MEW:
+        case MS_BARK:
+            whimper_verb = 'whimper';
+            break;
+        case MS_ROAR:
+            whimper_verb = 'whine';
+            break;
+        case MS_SQEEK:
+            whimper_verb = 'squeal';
+            break;
+        default:
+            break;
+        }
+    }
+    if (whimper_verb) {
+        await pline(`${Monnam(mtmp)} ${vtense(null, whimper_verb)}.`);
+        if (game.context?.run) nomul(0);
+        // C: wake_nearto(mx, my, mlevel * 6)
+        if (mtmp.mx) {
+            await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 6);
         }
     }
 }

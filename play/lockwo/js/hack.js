@@ -27,9 +27,10 @@ import { roles, races } from './role.js';
 import { DATABASE_ENTRIES } from './data_base_data.js';
 import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE } from './terminal.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
+         POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
          IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA,
-         isok } from './const.js';
+         Is_waterlevel, isok } from './const.js';
 
 // Run direction deltas for the capital-letter run commands (and the
 // 'G'/'g' prefix followed by a movement key).  C: xdir[]/ydir[].
@@ -380,25 +381,30 @@ const GETPOS_TIP = [
     'and pressing ? will show the key help.',
 ];
 
-// Render a tty NHW_TEXT window as an overlay (the map/status drawn by the
-// previous flush_screen show through outside the window's column band).
-// C ref: wintty.c tty_display_nhwindow + process_text_window.  offx follows
-// the recorder build's H2344_BROKEN form used by com_pager_legacy():
-//   offx = min(min(82, cols/2), cols - maxcol - 1), maxcol = max(len)+1.
-// A NHW_TEXT window prints each line at column offx (no leading space, unlike
-// NHW_MENU); the "(end)" pager sits on the row after the content at offx and
-// the cursor parks at offx + len("(end)") + 1.
+// Render the farlook tip as an overlay corner window (the map/status drawn by
+// the previous flush_screen show through outside the window's column band).
+// C ref: nhlua.c nhl_text() builds the tip as a *NHW_MENU* (create_nhwindow
+// NHW_MENU + add_menu_str per line + select_menu(PICK_NONE)), NOT a NHW_TEXT
+// window.  wintty.c tty_display_nhwindow uses the H2344_BROKEN corner-menu form
+//   offx = min(min(82, cols/2), cols - maxcol - 1), maxcol = max(len)+2
+// and process_menu_window draws a leading blank at column offx (via the
+// "(void) putchar(' ')" corner branch after cl_end) then the item text at
+// offx+1.  The "(end)" morestr sits on the row after the content at offx+1 and
+// dmore parks the cursor one past it (offx+1 + len("(end)") + 1).  The message
+// window (row 0) is cleared full-width first (tty_clear_nhwindow(WIN_MESSAGE)).
 function render_getpos_tip() {
     const disp = game.nhDisplay;
     if (!disp?.putstr) return;
 
     const lines = GETPOS_TIP;
+    // add_menu_str reserves 2 columns (H2344_BROKEN menu item width = len+2).
     let maxcol = 0;
-    for (const l of lines) if (l.length + 1 > maxcol) maxcol = l.length + 1;
+    for (const l of lines) if (l.length + 2 > maxcol) maxcol = l.length + 2;
 
     const cols = 80;
     let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
     if (offx < 0) offx = 0;
+    const textCol = offx + 1; // leading blank at offx, item text at offx+1
 
     const blankCols = (row) => {
         for (let c = offx; c < cols; c++) disp.setCell(c, row, ' ', NO_COLOR, 0);
@@ -407,12 +413,12 @@ function render_getpos_tip() {
 
     for (let i = 0; i < lines.length; i++) {
         blankCols(i);
-        if (lines[i]) disp.putstr(offx, i, lines[i], NO_COLOR, 0);
+        if (lines[i]) disp.putstr(textCol, i, lines[i], NO_COLOR, 0);
     }
     const endRow = lines.length;
     blankCols(endRow);
-    disp.putstr(offx, endRow, '(end)', NO_COLOR, 0);
-    disp.setCursor(offx + '(end)'.length + 1, endRow);
+    disp.putstr(textCol, endRow, '(end)', NO_COLOR, 0);
+    disp.setCursor(textCol + '(end)'.length + 1, endRow);
 }
 
 // C ref: hack.c handle_tip(TIP_GETPOS): show the farlook tip the first time
@@ -529,6 +535,17 @@ function terrain_description(x, y) {
     if (typ === CORR) return loc.lit ? 'lit corridor' : 'corridor';
     if (typ === ROOM) return loc.lit ? 'floor of a room' : 'dark part of a room';
     if (typ === ICE) return 'ice';
+    // C ref: pager.c do_screen_description S_pool/S_water/S_lava/S_lavawall
+    // glyph branch -> waterbody_name(x, y), which dispatches on SURFACE_AT (==
+    // levl[][].typ for a non-drawbridge cell).  Non-hallucinating names below;
+    // the special-level moat variants (medusa "shallow sea", juiblex "swamp",
+    // samurai-quest-home "pond") and hallucinated liquids are not modelled.
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === LAVAWALL) return 'wall of lava';
+    if (typ === POOL) return 'pool of water';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER)
+        return Is_waterlevel(game.u?.uz) ? 'limitless water' : 'wall of water';
     if (typ === STAIRS) return stair_descr(x, y);
     if (typ === FOUNTAIN) return 'fountain';
     return 'floor of a room';
@@ -1782,12 +1799,21 @@ export async function do_look_full() {
 // in a cancel and the hero stays put.
 export async function dotele_wizard() {
     const u = game.u;
-    // tele(): pline("Where do %s want to be teleported?", "you"); then C does
-    // curs(WIN_MAP, cx, cy) + flush_screen(0) so the prompt is on the grid when
-    // getpos()'s first readchar blocks.  Render it here (getpos's first loop
-    // iteration leaves the prompt alone because the tip was already shown).
+    // tele() -> scrolltele(0): with the wizard override taken, C prints
+    //   pline("Where do %s want to be teleported?", "you")   [no steed]
+    // then getpos(&cc, force=TRUE, "the desired position").  The pline leaves the
+    // message line pending (NEED_MORE); getpos()'s first-use farlook tip window
+    // (handle_tip -> l_nhcore_call) then forces that pending line to be
+    // acknowledged with --More-- before the tip is drawn.  So the recorded frames
+    // are: "Where do you want to be teleported?--More--" (topl_more), then the
+    // tip text window, then flags.verbose's "(For instructions type a '?')"
+    // appended ahead of "Move cursor to the desired position:".  Model the pline
+    // as a NEED_MORE topline and let getpos(verbose) fire the topl_more() frame.
     await getpos_render('Where do you want to be teleported?', u.ux, u.uy);
-    const cc = await getpos('the desired position', u.ux, u.uy, null, /*force=*/true);
+    game._toplin = 1; // TOPLIN_NEED_MORE — pending "Where..." pline
+    game._toplines = 'Where do you want to be teleported?';
+    const verbose = game.flags?.verbose !== false;
+    const cc = await getpos('the desired position', u.ux, u.uy, null, /*force=*/true, verbose);
     if (!cc) {
         // ESC: getpos() returned < 0 -> tele() returns; dotele() still ECMD_TIME.
         return 1;

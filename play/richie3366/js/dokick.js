@@ -726,7 +726,7 @@ async function maybe_kick_monster(mon, x, y) {
         ctx.forcefight = true; /* attack even if invisible */
     }
     let keep = mon;
-    if ((await attack_checks(mon)) || overexertion()) {
+    if ((await attack_checks(mon)) || (await overexertion())) {
         keep = null; /* don't kick after all */
     }
     ctx.forcefight = save_forcefight;

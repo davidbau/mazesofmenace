@@ -40,7 +40,7 @@ import { dozap } from './zap.js';
 import { doread } from './read.js';
 import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
-import { doapply } from './apply.js';
+import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
@@ -1860,6 +1860,10 @@ async function domove(dx, dy) {
     game.domove_succeeded |= (game.domove_attempting || 0)
         & (DOMOVE_RUSH | DOMOVE_WALK);
     smudgeCoords = { oldx, oldy, newx, newy };
+
+    // C ref: hack.c domove — check_leash(u.ux0, u.uy0) after place, before
+    // newsym/vision (D-1005).
+    await check_leash(u.ux0 | 0, u.uy0 | 0);
 
     // C ref: dungeon.c u_on_newpos — same-level → see_nearby_objects
     // (upgrade generic potion/gem/spellbook glyphs when within neardist).

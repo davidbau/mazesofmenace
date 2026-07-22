@@ -21,17 +21,17 @@ import {
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
     W_ARMOR, W_AMUL,
 } from './const.js';
-import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE } from './mkobj.js';
+import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART } from './mkobj.js';
 import { t_at, t_missile } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
-import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS } from './mkobj.js';
+import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS, weight } from './mkobj.js';
 import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
-import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance } from './uhitm.js';
+import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
@@ -498,6 +498,27 @@ export function mfndpos(mon, flag) {
     return poss;
 }
 
+// C ref: monmove.c:1296 m_avoid_kicked_loc(mtmp, nx, ny) — a peaceful/tame
+// monster that can see (and isn't confused/stunned/conflicted) avoids the
+// single square the hero just kicked, as long as that square is adjacent to
+// the hero (next2u).  gk.kickedloc is set by dokick() for the kick turn and
+// cleared by the next hero action (see cmd.js).  isok({0,0}) is false, so a
+// cleared kickedloc disables the avoidance.  Only affects the pet's/peaceful's
+// mfndpos candidate scan (dog_move / m_move), where the skipped square never
+// reaches the rn2(++chcnt) tie-break — the source of the seed0060 divergence.
+export function m_avoid_kicked_loc(mtmp, nx, ny) {
+    const Conflict = false; // Conflict not modeled for these sessions
+    const kl = game.kickedloc;
+    if (!kl) return false;
+    return (mtmp.mpeaceful || mtmp.mtame)
+        && mtmp.mcansee
+        && !mtmp.mconf && !mtmp.mstun
+        && !Conflict
+        && isok(kl.x, kl.y)
+        && nx === kl.x && ny === kl.y
+        && dist2(nx, ny, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2;
+}
+
 // C ref: trap.c m_harmless_trap(mtmp, ttmp) — is trap `ttmp` harmless to `mtmp`?
 // A floor-trigger trap doesn't fire for an airborne monster; a bear trap can't
 // hold a small/amorphous/whirly/unsolid monster; statue/magic/vibrating-square
@@ -758,28 +779,41 @@ function stone_missile(obj) {
         && obj.oclass !== 1 /* RING_CLASS */;
 }
 
+// C ref: worn.c find_mac(mdef) — base armour class of a monster with no worn
+// armour (the mines-shallow / pet species here carry none).  makemon.js stores
+// the LVL() base AC on mon.data.ac; C reads mdef->data->ac when nothing is worn.
+function find_mac_mon(mon) {
+    return mon?.data?.ac ?? 10;
+}
+
 // C ref: trap.c thitm(tlev, mon, obj, d_override, nocorpse) — a trap missile
 // (or falling rock) strikes a monster.  When d_override is non-zero (the
 // rock-trap / rolling-boulder path) the accuracy roll (rnd(20)) is skipped and
-// the hit is forced for exactly that much damage.  Returns TRUE if the monster
-// is killed.  RNG-faithful: the d_override branch draws NO rnd(20); a kill draws
+// the hit is forced for exactly that much damage; otherwise the strike is
+// resolved by `find_mac(mon) + tlev + obj->spe <= rnd(20)` (the arrow/dart-trap
+// path).  Returns TRUE if the monster is killed.  RNG-faithful: the d_override
+// branch draws NO rnd(20); the missile path draws exactly one rnd(20) for the
+// accuracy roll and, only on a hit, dmgval(obj,mon)'s dice; a kill draws
 // corpse_chance()'s rn2 + make_corpse()'s object rolls (via mon_kill_leaving).
 async function mon_thitm(tlev, mon, obj, d_override, nocorpse) {
-    // Only the forced-damage (d_override) callers are exercised by the modeled
-    // traps; the accuracy-roll branch (find_mac + rnd(20) for arrow/dart traps
-    // striking a monster) is left unmodeled rather than guess its ordering.
-    let strike = d_override ? 1 : 0;
+    let strike;
+    if (d_override) strike = 1;
+    else if (obj) strike = (find_mac_mon(mon) + tlev + (obj.spe || 0) <= rnd(20)) ? 1 : 0;
+    else strike = (find_mac_mon(mon) + tlev <= rnd(20)) ? 1 : 0;
     let trapkilled = false;
+    // C: doname(obj) names the missile ("a dart", "a rock", "an arrow", ...).
+    const missile = obj ? await mon_missile_name(obj) : '';
     if (!strike) {
         // Near-miss: obj && cansee -> "<Mon> is almost hit by <obj>!" (display).
         if (obj && cansee(mon.mx, mon.my))
-            await pline_mon(mon, `${Monnam(mon)} is almost hit by a rock!`);
+            await pline_mon(mon, `${Monnam(mon)} is almost hit by ${missile}!`);
     } else {
         let dam = 1;
         const harmless = !!(obj && stone_missile(obj) && passes_rocks(mon.data));
         if (obj && cansee(mon.mx, mon.my))
-            await pline_mon(mon, `${Monnam(mon)} is hit by a rock${harmless ? ' but is not harmed.' : '!'}`);
+            await pline_mon(mon, `${Monnam(mon)} is hit by ${missile}${harmless ? ' but is not harmed.' : '!'}`);
         if (d_override) dam = d_override;
+        else if (obj) { dam = dmgval(obj, mon); if (dam < 1) dam = 1; }
         if (!harmless) {
             mon.mhp -= dam;
             if (mon.mhp <= 0) {
@@ -792,13 +826,43 @@ async function mon_thitm(tlev, mon, obj, d_override, nocorpse) {
         }
     }
     if (obj && (!strike || d_override)) {
-        // The rock settles on the monster's square.
-        place_object(obj, mon.mx, mon.my);
+        // C ref: thitm() -> place_object(obj) + stackobj(obj).  The missile
+        // settles on the monster's square; C's stackobj then merges it INTO an
+        // existing mergable floor stack at that cell (mkobj.c stackobj ->
+        // merged(&existing, &new): the existing pile object survives with the
+        // combined quantity and the fresh missile is consumed).  The net effect
+        // is that the top-of-pile glyph reverts to whatever the missile landed on
+        // (e.g. a trap-victim's corpse) instead of the freshly-fired missile.
+        // The repo's global stackobj() indexes level.objects as a 2-D grid, but
+        // this port keeps level.objects as a flat array (place_object/vobj_at),
+        // so mirror C's merge inline (as uhitm.js relobj() already does for pet
+        // drops) rather than route through the stale helper.
         obj.where = 'floor'; obj.ox = mon.mx; obj.oy = mon.my;
-        const { stackobj } = await import('./invent.js');
-        stackobj(obj);
+        const { mergable } = await import('./invent.js');
+        const objs = game.level ? (game.level.objects || (game.level.objects = [])) : [];
+        let dest = null;
+        for (const f of objs) {
+            if (f !== obj && f.where === 'floor' && f.ox === mon.mx && f.oy === mon.my
+                && mergable(f, obj)) { dest = f; break; }
+        }
+        if (dest) {
+            // merged(&dest, &obj): dest keeps its pile slot, absorbs obj's quan.
+            dest.quan = (dest.quan || 1) + (obj.quan || 1);
+            dest.owt = weight(dest);
+            obj.where = 'free'; // obj_extract_self: the consumed missile leaves the floor
+        } else {
+            place_object(obj, mon.mx, mon.my);
+        }
     }
     return trapkilled;
+}
+
+// C ref: trap.c thitm() names the missile with doname(obj); doname_invent is our
+// full doname (enchantment / BUC when known, quantity otherwise).  A fresh
+// trap-launched missile is quan==1, unidentified, spe 0 -> "a dart" / "a rock".
+async function mon_missile_name(obj) {
+    const { doname_invent } = await import('./invent.js');
+    return doname_invent(obj);
 }
 
 // C ref: mon.c monkilled(mdef,"",AD_PHYS) -> mondied() -> mondead() [detach] +
@@ -833,10 +897,17 @@ function mon_accessible(x, y) {
     return typ != null && typ >= DOOR;
 }
 
-// C ref: pline_mon — a monster-attributed message.  Routed through pline.
+// C ref: pline_mon(mon,...) -> vpline -> update_topl (topl.c).  A monster-
+// attributed message pages a still-unacknowledged top line with --More-- (and
+// appends after it when both fit) exactly as C's topl buffer does, so it must
+// route through update_topl, NOT the raw pline that merely overwrites the line.
+// This is what lets a trap's "<pet> is almost hit by a dart!" page the pet's
+// still-pending "<pet> steps reluctantly onto <obj>." line with --More--, as C
+// records.  _toplin is reset per command (cmd.js rhack), so the paging is
+// confined to the current turn — cross-turn messages start a fresh line.
 async function pline_mon(_mon, msg) {
-    const { pline } = await import('./display.js');
-    await pline(msg);
+    const { update_topl } = await import('./display.js');
+    await update_topl(msg);
 }
 
 // C ref: trap.c trapeffect_selector() for a non-youmonst monster.  Dispatch on
@@ -938,6 +1009,42 @@ async function mon_trapeffect(mtmp, trap) {
             // sessions; leave unmodeled rather than guess its RNG.
         }
         return Trap_Effect_Finished;
+    case ARROW_TRAP:
+    case DART_TRAP: {
+        // C ref: trapeffect_arrow_trap / trapeffect_dart_trap monster branch
+        // (trap.c:1190 / :1245).  A monster steps onto a shooting trap: a
+        // freshly-triggered trap (trap.once == 0) fires immediately; an already-
+        // triggered+seen trap has a 1-in-15 dud ("triggers a trap but nothing
+        // happens").  The missile is created (t_missile -> mksobj), the dart-only
+        // 1-in-6 poison roll fires, seetrap reveals the trap to a watcher, then
+        // thitm(tlev, mon, missile, 0, FALSE) resolves the accuracy roll: tlev is
+        // 8 for an arrow, 7 for a dart.  On a miss "<Mon> is almost hit by <obj>!"
+        // and the missile lands on the floor (where a pet can later apport it).
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        if (trap.once && trap.tseen && !rn2(15)) {
+            if (in_sight && see_it)
+                await pline_mon(mtmp, `${Monnam(mtmp)} triggers a trap but nothing happens.`);
+            deltrap_local(trap);       // C: deltrap(trap)
+            newsym(mtmp.mx, mtmp.my);
+            // C returns Trap_Is_Gone; the trap is deleted and the monster is
+            // neither killed nor caught, which for our caller is identical to
+            // Trap_Effect_Finished (only Killed/Caught are acted on).
+            return Trap_Effect_Finished;
+        }
+        trap.once = 1;
+        const isdart = trap.ttyp === DART_TRAP;
+        const otmp = t_missile(isdart ? DART : ARROW, trap);
+        // C: dart trap rolls a 1-in-6 poison chance; the arrow trap does not.
+        if (isdart && !rn2(6)) otmp.opoisoned = 1;             // trap.c:1273
+        if (in_sight) {
+            const { seetrap } = await import('./trap.js');
+            seetrap(trap);
+        }
+        const trapkilled = await mon_thitm(isdart ? 7 : 8, mtmp, otmp, 0, false);
+        return trapkilled ? Trap_Killed_Mon
+            : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+    }
     default:
         // Trap type not yet modeled for monsters.  Consume no RNG and let the
         // monster pass; add the faithful effect here when a session needs it.
@@ -1235,6 +1342,11 @@ async function m_move(mtmp) {
 
     for (let i = 0; i < cnt; i++) {
         const nx = poss[i].x, ny = poss[i].y;
+
+        // C ref: monmove.c:1953 — a peaceful/tame monster avoids the square the
+        // hero just kicked (checked before the mtrack backtrack roll).  Inert for
+        // hostiles (m_avoid_kicked_loc requires mpeaceful||mtame).
+        if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
 
         if (appr !== 0) {
             // mtrack avoidance — the rn2(4*(cnt-j)) rolls (monmove.c:1963)

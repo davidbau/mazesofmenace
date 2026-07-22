@@ -194,8 +194,9 @@ async function already_wearing(cc) {
 /**
  * C ref: do_wear.c cursed — message + bknown when stuck.
  * Plural when boots/gloves/lenses or quan>1 (not quan alone).
+ * Named omit: welded(uwep) branch; Glib fingers_or_gloves retry pline.
  */
-function cursed_check(otmp) {
+export function cursed_check(otmp) {
     if (!otmp) return false;
     if (otmp.cursed) {
         const use_plural = is_boots(otmp) || is_gloves(otmp)
@@ -979,7 +980,7 @@ function Blind() {
  * Named omissions: Punished set_bc; Eyes of Overworld birth-blind clear;
  * full toggle_blindness see_monsters / Sting / learn_unseen_invent.
  */
-async function Blindf_on(otmp) {
+export async function Blindf_on(otmp) {
     const already_blind = Blind();
     remove_worn_item(otmp);
     setworn(otmp, W_TOOL);
@@ -1012,7 +1013,7 @@ async function Blindf_on(otmp) {
  * Named omissions: gulp_blnd_check; Punished set_bc; full toggle_blindness
  * see_monsters / Sting / learn_unseen_invent.
  */
-async function Blindf_off(otmp) {
+export async function Blindf_off(otmp) {
     const u = game.u || (game.u = {});
     const was_blind = Blind();
     if (!otmp) otmp = u.ublindf;
@@ -2159,4 +2160,47 @@ export async function destroy_arm() {
     }
     if (ret) await stop_occupation();
     return ret;
+}
+
+/**
+ * C ref: do_wear.c stuck_ring — cursed/welded blocker for removing ring.
+ * Used by pray fix_worst_trouble levitation / Fixed_abil paths.
+ * @param {object|null} ring
+ * @param {number} otyp
+ * @returns {object|null}
+ */
+export function stuck_ring(ring, otyp) {
+    const u = game.u || {};
+    if (ring !== u.uleft && ring !== u.uright) {
+        // C: impossible("stuck_ring: neither left nor right?");
+        return null;
+    }
+    if (ring && (ring.otyp | 0) === (otyp | 0)) {
+        const data = game.youmonst?.data;
+        if (nolimbs(data) && u.uamul
+            && (u.uamul.otyp | 0) === AMULET_OF_UNCHANGING && u.uamul.cursed) {
+            return u.uamul;
+        }
+        const RING_ON_PRIMARY = ((u.uhandedness | 0) === LEFT_HANDED)
+            ? u.uleft
+            : u.uright;
+        if (u.uwep && welded(u.uwep)
+            && (ring === RING_ON_PRIMARY || ring_bimanual(u.uwep))) {
+            return u.uwep;
+        }
+        if (u.uarmg && u.uarmg.cursed) return u.uarmg;
+        if (ring.cursed) return ring;
+        if (u.uarmg && (u.Glib | 0)) return u.uarmg;
+    }
+    return null;
+}
+
+/**
+ * C ref: do_wear.c unchanger — worn AMULET_OF_UNCHANGING if any.
+ * @returns {object|null}
+ */
+export function unchanger() {
+    const u = game.u || {};
+    if (u.uamul && (u.uamul.otyp | 0) === AMULET_OF_UNCHANGING) return u.uamul;
+    return null;
 }

@@ -2017,7 +2017,7 @@ function o_unleash(otmp) {
     if (!otmp) return;
     const lid = otmp.leashmon | 0;
     if (lid) {
-        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        for (const mtmp of game.fmon || []) {
             if ((mtmp.m_id | 0) === lid) {
                 mtmp.mleashed = 0;
                 break;

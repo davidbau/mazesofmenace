@@ -19,7 +19,7 @@ import { newsym, vobj_at, object_glyph } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam } from './uhitm.js';
 import { floor_object_name, doname_invent, sobj_at } from './invent.js';
-import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon } from './monmove.js';
+import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc } from './monmove.js';
 import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
 import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
@@ -397,7 +397,15 @@ async function dog_invent(mtmp, edog, udist) {
     // No minvent: maybe eat or pick up an underfoot object.
     const here = objectsAt(omx, omy);
     if (here.length) {
-        const obj = here[0]; // svl.level.objects[omx][omy] = top of pile
+        // C ref: dogmove.c dog_invent — obj = svl.level.objects[omx][omy], the
+        // HEAD of the tile's nexthere chain, i.e. the most-recently-placed (top)
+        // object.  place_object() appends to this port's flat level.objects array
+        // (vobj_at returns the LAST match as the drawn top glyph), so the head is
+        // the LAST element here, not here[0].  Picking the true top makes the pet
+        // apport the same object C does — e.g. a freshly-fired trap dart lying on
+        // top of a trap-victim's corpse — so the tile reverts to the corpse glyph
+        // once the dart is taken, matching C.
+        const obj = here[here.length - 1];
         // nofetch classes (BALL/CHAIN/...) and special prizes are skipped in C
         // before dogfood; the starting level's underfoot objects aren't those.
         const edible = dogfood(mtmp, obj);
@@ -955,6 +963,14 @@ export async function dog_move(mtmp, after) {
             if (r !== null) return r; // attacked -> done with this move
             continue;                 // balked -> next candidate square
         }
+
+        // C ref: dogmove.c:1183 — the pet avoids the square the hero just
+        // kicked (gk.kickedloc, set for the kick turn, cleared next action).
+        // The skipped square never reaches the rn2(++chcnt) tie-break, so the
+        // pet's candidate count matches C (seed0060: kitten cnt 4 -> 3).
+        // m_avoid_soko_push_loc (dogmove.c:1185) is Sokoban-only and never
+        // triggers on the contest's non-Sokoban levels.
+        if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
 
         // C ref: dogmove.c:1188 — the dog avoids a harmful trap it can see, but
         // might have to cross one to follow the hero: a *seen* trap gives a 39/40

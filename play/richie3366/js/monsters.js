@@ -137,6 +137,7 @@ export const M1_NOTAKE = 0x00000800; /* monflag.h — cannot pick up objects */
 export const M1_NOHANDS = 0x00002000;
 export const M1_NOFEET = 0x00004000; /* monflag.h — no feet/legs to kick/wear boots */
 export const M1_NOLIMBS = 0x00006000; /* monflag.h — M1_NOHANDS|M1_NOFEET */
+export const M1_NOHEAD = 0x00008000; /* monflag.h — no head to behead */
 export const M1_HUMANOID = 0x00020000; /* monflag.h — humanoid head/arms/torso */
 export const M1_SLITHY = 0x00080000; /* monflag.h — has serpent body */
 export const M1_UNSOLID = 0x00100000; /* monflag.h — no solid/liquid body */
@@ -298,6 +299,11 @@ export function nohands(ptr) {
 /** C ref: mondata.h nolimbs — (mflags1 & M1_NOLIMBS) == M1_NOLIMBS */
 export function nolimbs(ptr) {
     return ((ptr?.mflags1 ?? 0) & M1_NOLIMBS) === M1_NOLIMBS;
+}
+
+/** C ref: mondata.h has_head — !(mflags1 & M1_NOHEAD). */
+export function has_head(ptr) {
+    return !((ptr?.mflags1 ?? 0) & M1_NOHEAD);
 }
 
 /** C ref: mondata.h is_hider — M1_HIDE (mimics appear as something else). */
@@ -700,6 +706,21 @@ export function is_vampshifter(mon) {
     if (cham < LOW_PM) return false;
     return is_vampire(mons(cham));
 }
+
+/**
+ * C ref: mondata.c hates_blessings — undead or demon type.
+ */
+export function hates_blessings(ptr) {
+    return is_undead(ptr) || is_demon(ptr);
+}
+
+/**
+ * C ref: mondata.c mon_hates_blessings — vampshifter or hates_blessings(data).
+ */
+export function mon_hates_blessings(mon) {
+    return is_vampshifter(mon) || hates_blessings(mon?.data);
+}
+
 /** C ref: mondata.h vampshifted — vampshifter currently not in vampire form */
 export function vampshifted(mon) {
     return is_vampshifter(mon) && mon?.data?.mlet !== 'S_VAMPIRE';

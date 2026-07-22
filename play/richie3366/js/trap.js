@@ -28,9 +28,9 @@ import {
 import { doname, an, the, The, xname, makeplural, vtense } from './objnam.js';
 import {
     Monnam, mon_nam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
-    christen_monst, rndmonnam,
+    christen_monst, rndmonnam, hliquid,
 } from './do_name.js';
-import { dist2, distmin, m_at, wakeup, seemimic } from './mon.js';
+import { dist2, distmin, m_at, wakeup, seemimic, m_carrying } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, vision_recalc } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import {
@@ -66,7 +66,7 @@ import {
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     UTOTYPE_NONE, UTOTYPE_FALLING, Is_stronghold,
     KILLED_BY, KILLED_BY_AN, NO_PART, STONING,
-    WATER, BURNING,
+    WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
     TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
     HEAD, ARM,
@@ -97,7 +97,7 @@ import {
 } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
-import { dmgval, MON_WEP, mwepgone } from './weapon.js';
+import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel } from './weapon.js';
 import { observe_object, encumber_msg, near_capacity } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
@@ -1645,6 +1645,50 @@ export function reset_utrap(_msg) {
     set_utrap(0, 0);
 }
 
+/**
+ * C ref: trap.c back_on_ground — simplified surface wording.
+ * Named omissions: ice_descr / surface / Levitation-Flying preposition
+ * matrix beyond solid-ground default.
+ */
+async function back_on_ground(rescued) {
+    const prefix = rescued ? 'You find yourself' : 'You are back';
+    await pline(`${prefix} on solid ground.`);
+    if (!game.iflags) game.iflags = {};
+    game.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+}
+
+/**
+ * C ref: trap.c rescued_from_terrain — post-tele/lifesave terrain feedback.
+ * Envelope: DROWNING pool/air; BURNING/DISSOLVED pool/lava; else
+ * back_on_ground(TRUE). Named omissions: waterlevel air bubble;
+ * IS_WATERWALL "midst"; update_lastseentyp / prev_decor.
+ */
+export async function rescued_from_terrain(how) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    let mesggiven = false;
+    if (how === DROWNING) {
+        if (is_pool(ux, uy)) {
+            await pline(`You find yourself on top of ${hliquid('water')}.`);
+            mesggiven = true;
+        }
+    } else if (how === BURNING || how === DISSOLVED) {
+        if (is_pool(ux, uy)) {
+            await pline(
+                `You find yourself ${u.uinwater ? 'in' : 'on'} ${hliquid('water')}.`,
+            );
+            mesggiven = true;
+        } else if (is_lava(ux, uy)) {
+            await pline(
+                `You find yourself on top of ${hliquid('molten lava')}.`,
+            );
+            mesggiven = true;
+        }
+    }
+    if (!mesggiven) await back_on_ground(true);
+}
+
 /** C youprop.h Flying subset for float_up. */
 function Flying_fu() {
     const u = game.u || {};
@@ -2576,14 +2620,13 @@ async function trapeffect_level_telep(mtmp, trap, trflags) {
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const forcetrap = (trflags & FORCETRAP) !== 0;
-    return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
+    return await mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
 }
 
 /**
  * C ref: trap.c fall_through — hero drops through hole/trapdoor or throne
  * shaft (td=false). schedule_goto FALLING; impact_drop when don't fall.
- * Named omissions: next_to_u leash body (always true without leash);
- * feeltrap side-effects beyond tseen; display_nhwindow exact.
+ * Named omissions: feeltrap side-effects beyond tseen; display_nhwindow exact.
  */
 export async function fall_through(td, ftflags = 0) {
     const u = game.u || {};
@@ -2632,8 +2675,12 @@ export async function fall_through(td, ftflags = 0) {
         dont_fall = "don't fall in.";
     } else if ((ptr?.msize | 0) >= MZ_HUGE) {
         dont_fall = "don't fit through.";
+    } else {
+        const { next_to_u } = await import('./apply.js');
+        if (!(await next_to_u())) {
+            dont_fall = 'are jerked back by your pet!';
+        }
     }
-    // next_to_u leash gate — always true without leash wiring
 
     if (dont_fall) {
         await pline(`You ${dont_fall}`);
@@ -2729,7 +2776,7 @@ async function trapeffect_hole(mtmp, trap, trflags) {
         if (!inescapable) return Trap_Effect_Finished;
         // Sokoban yank still falls through
     }
-    return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
+    return await mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
 }
 
 /**
@@ -2893,7 +2940,7 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
 
 /**
  * C ref: trap.c burnarmor — armor-slot burn picker.
- * Envelope: wet-towel dry deferred; rn2(5) slot loop; case 1 cloak/suit/
+ * Envelope: wet-towel dry (D-1009); rn2(5) slot loop; case 1 cloak/suit/
  * shirt always returns TRUE after erode attempt; other cases erode then
  * continue on ER_NOTHING. Named: grease_protect polish; materialnm helm.
  */
@@ -2901,7 +2948,27 @@ export async function burnarmor(victim) {
     if (!victim) return false;
     const hitting_u = is_youmonst(victim) || !!victim._youmonst;
     const u = game.u || {};
-    // Towel dry_a_towel rn2 deferred
+    // C: burning may dry one wet towel (carrying / m_carrying TOWEL walk)
+    if (hitting_u) {
+        const inv = game.invent || [];
+        let i = inv.findIndex((o) => o && o.otyp === TOWEL);
+        for (; i >= 0 && i < inv.length; i++) {
+            const item = inv[i];
+            if (is_wet_towel(item)) {
+                const oldspe = item.spe | 0;
+                await dry_a_towel(item, rn2(oldspe + 1), true);
+                if ((item.spe | 0) !== oldspe) break;
+            }
+        }
+    } else {
+        for (let item = m_carrying(victim, TOWEL); item; item = item.nobj) {
+            if (is_wet_towel(item)) {
+                const oldspe = item.spe | 0;
+                await dry_a_towel(item, rn2(oldspe + 1), true);
+                if ((item.spe | 0) !== oldspe) break;
+            }
+        }
+    }
     for (;;) {
         switch (rn2(5)) {
         case 0: {
@@ -3401,7 +3468,7 @@ async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const monname = Monnam(mtmp);
-    if (mtele_trap(mtmp, trap)) {
+    if (await mtele_trap(mtmp, trap)) {
         if (in_sight) {
             if (canseemon(mtmp)) {
                 await pline(`${monname} seems disoriented.`);
@@ -3802,18 +3869,6 @@ const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
 const TOWEL = objectNames.indexOf('TOWEL');
 
 /**
- * C ref: weapon.c wet_a_towel — amt≤0 increments by -amt; else set.
- * Named omit: invent/mcarried pline; uwep unweapon via finish_towel_change.
- */
-function wet_a_towel(obj, amt, _verbose) {
-    const cur = obj.spe | 0;
-    const newspe = (amt <= 0) ? cur - amt : amt;
-    if (newspe !== cur) {
-        obj.spe = Math.max(0, Math.min(7, newspe | 0));
-    }
-}
-
-/**
  * C ref: trap.c water_damage
  * Branch envelope: null → ER_NOTHING; splash_lit; CAN_OF_GREASE;
  * TOWEL wet; greased wash rn2(2); Is_container / Waterproof_container
@@ -3832,7 +3887,7 @@ export async function water_damage(obj, _ostr, force) {
         return ER_NOTHING;
     }
     if (obj.otyp === TOWEL && (obj.spe | 0) < 7) {
-        wet_a_towel(obj, -rnd(7 - (obj.spe | 0)), true);
+        await wet_a_towel(obj, -rnd(7 - (obj.spe | 0)), true);
         return ER_NOTHING;
     }
     if (obj.greased) {

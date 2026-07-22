@@ -44,11 +44,11 @@ import { A_STR, A_DEX, A_CON, acurr, exercise, poisoned } from './attrib.js';
 import { xkilled } from './uhitm.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
-    could_seduce,
+    could_seduce, mon_poly,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_BOOM, AT_MAGC,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_SITM, AD_SEDU, AD_SSEX,
+    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize } from './polyself.js';
@@ -1101,9 +1101,30 @@ async function mhitm_ad_legs_u(mtmp, _mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_poly — mhitu (mdef == youmonst) arm.
+ * hitmsg; if Maybe_Half_Phys(dmg) < current HP → mon_poly or negated msg.
+ * Named omissions: magr.mcan You aren't transformed polish.
+ */
+async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    const u = game.u || {};
+    const curhp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+    if (maybe_half_phys(mhm.damage | 0) < curhp) {
+        const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+        if (negated) {
+            if (mtmp.mcan) await pline("You aren't transformed.");
+        } else {
+            mhm.damage = await mon_poly(mtmp, game.youmonst, mhm.damage | 0);
+            mhm.hitflags |= M_ATTK_HIT;
+            mhm.done = true;
+        }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND + STON + LEGS
- * ported; other adtyps zero damage.
+ * + POLY (D-1004); other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -1133,6 +1154,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_LEGS:
         await mhitm_ad_legs_u(mtmp, mattk, mhm);
+        break;
+    case AD_POLY:
+        await mhitm_ad_poly_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

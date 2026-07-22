@@ -262,8 +262,17 @@ async function done(how) {
         // bones-file write is never reached here (bones_ok is FALSE).
         const GENOCIDED = 10; // end.h
         if (how < GENOCIDED) {
-            const { can_make_bones } = await import('./bones.js');
-            can_make_bones(); // draws rn2(1 + (depth>>2)); result discarded (no bones)
+            // C ref: end.c really_done() — bones_ok = (how < GENOCIDED) &&
+            // can_make_bones(); if (bones_ok) savebones(how, corpse).
+            // can_make_bones() draws rn2(1 + (depth>>2)); in wizard mode it then
+            // returns TRUE, so savebones() rewrites the death level into a legacy
+            // (bones) level and stashes it in the shared storage handle for a
+            // later segment's getbones() to reload.  This is where seed5006's
+            // seg0 death on Dlvl:3 leaves the bones that seg1's ^V-to-3 loads.
+            const { can_make_bones, savebones } = await import('./bones.js');
+            if (can_make_bones()) {
+                await savebones(how, game._death_corpse || null);
+            }
         }
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;

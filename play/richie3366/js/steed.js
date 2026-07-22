@@ -1,16 +1,18 @@
 // steed.js — Saddle / riding.
-// C ref: steed.c — can_saddle, put_saddle_on_mon, can_ride, doride,
-// mount_steed, landing_spot, dismount_steed (BYCHOICE subset).
+// C ref: steed.c — can_saddle, use_saddle, put_saddle_on_mon, can_ride,
+// doride, mount_steed, landing_spot, dismount_steed (BYCHOICE subset).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
 import { makeknown, near_capacity } from './invent.js';
 import {
-    humanoid, noncorporeal, verysmall, bigmonst,
-    is_flyer, is_floater, M1_AMORPHOUS, M1_HUMANOID, MZ_MEDIUM,
+    humanoid, noncorporeal, verysmall, bigmonst, nohands,
+    amorphous, is_whirly, unsolid, touch_petrifies,
+    is_flyer, is_floater, M1_HUMANOID, MZ_MEDIUM,
 } from './monsters.js';
 import {
-    W_SADDLE, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+    W_SADDLE, W_WEP, W_SWAPWEP, W_QUIVER,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL,
     MAXULEV, NO_KILLER_PREFIX, SLT_ENCUMBER,
     DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
     DISMOUNT_FELL, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES,
@@ -19,23 +21,30 @@ import {
     N_DIRS, xdir, ydir, FROMOUTSIDE,
     M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
     has_mgivenname, MGIVENNAME, TELEDS_ALLOW_DRAG,
-    VIBRATING_SQUARE, DIED,
+    VIBRATING_SQUARE, DIED, Never_mind, FEMALE, MALE,
+    P_RIDING, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
+    A_DEX, A_CHA, A_WIS,
 } from './const.js';
-import { objectNames } from './objects.js';
+import { objectNames, objectDescrs } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, canspotmon } from './display.js';
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, pmname } from './do_name.js';
 import { losehp, maybe_half_phys } from './hack.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
-import { pmnames, PM_KNIGHT } from './generated/monsters_data.js';
+import { pmnames, PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { vision_recalc } from './vision.js';
+import { which_armor } from './worn.js';
+import { acurr, exercise, Fumbling } from './attrib.js';
+import { P_SKILL } from './weapon.js';
+import { welded } from './wield.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 
 /** C steed.c steeds[] — mlets that may wear a saddle. */
 const STEED_MLETS = new Set([
@@ -124,16 +133,81 @@ function sobj_at(otyp, x, y) {
     return null;
 }
 
-/** C ref: steed.c can_saddle — whirly/unsolid omitted (always false for steeds). */
+/** C ref: steed.c can_saddle — steeds[] + size/humanoid/amorphous gates. */
 export function can_saddle(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr) return false;
     if (!STEED_MLETS.has(ptr.mlet)) return false;
     if ((ptr.msize ?? 0) < MZ_MEDIUM) return false;
     if (humanoid(ptr) && ptr.mlet !== 'S_CENTAUR') return false;
-    if ((ptr.mflags1 ?? 0) & M1_AMORPHOUS) return false;
-    if (noncorporeal(ptr)) return false;
+    if (amorphous(ptr) || noncorporeal(ptr) || is_whirly(ptr) || unsolid(ptr)) {
+        return false;
+    }
     return true;
+}
+
+/** C ref: engrave.c freehand — welded two-hand / cursed shield gate. */
+function freehand() {
+    const u = game.u || {};
+    const uwep = u.uwep;
+    if (!uwep || !welded(uwep)) return true;
+    const bimanual = !!(game.objects?.[uwep.otyp]?.oc_big);
+    if (!bimanual && (!u.uarms || !u.uarms.cursed)) return true;
+    return false;
+}
+
+/**
+ * C ref: pickup.c u_handsy — nohands / freehand before saddle apply.
+ * @returns {Promise<boolean>}
+ */
+async function u_handsy() {
+    if (nohands(game.youmonst?.data)) {
+        await pline('You have no hands!');
+        return false;
+    }
+    if (!freehand()) {
+        await pline('You have no free hand.');
+        return false;
+    }
+    return true;
+}
+
+/** C ref: o_init.c objdescr_is — appearance string match. */
+function objdescr_is(obj, descr) {
+    if (!obj) return false;
+    const oc = game.objects?.[obj.otyp];
+    if (!oc) return false;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
+    return dn != null && dn === descr;
+}
+
+/** C invent freeinv — remove from hero invent array. */
+function freeinv(otmp) {
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+}
+
+/**
+ * C worn.c remove_worn_item — clear weapon/quiver slots before freeinv.
+ * Full prop/artifact/light paths deferred.
+ */
+function remove_worn_item(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    const mask = obj.owornmask || 0;
+    if (mask & W_WEP) {
+        if (u.uwep === obj) u.uwep = null;
+        obj.owornmask &= ~W_WEP;
+    }
+    if (mask & W_SWAPWEP) {
+        if (u.uswapwep === obj) u.uswapwep = null;
+        obj.owornmask &= ~W_SWAPWEP;
+    }
+    if (mask & W_QUIVER) {
+        if (u.uquiver === obj) u.uquiver = null;
+        obj.owornmask &= ~W_QUIVER;
+    }
 }
 
 /** C ref: steed.c can_ride */
@@ -194,6 +268,108 @@ export function put_saddle_on_mon(saddle, mtmp) {
     mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;
+}
+
+/**
+ * C ref: steed.c use_saddle — apply SADDLE onto adjacent monster.
+ * Envelope: u_handsy; getdir; self/spot/wear/petrify/special/can_saddle;
+ * chance from DEX/CHA/tame/level/Knight/riding skill/impair/gloves|boots/
+ * cursed; maybewakesteed; rn2(100)<chance → freeinv+put_saddle_on_mon.
+ * Named omit: update_mon_extrinsics; poly body_part(HAND) phrasing.
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME | ECMD_CANCEL
+ */
+export async function use_saddle(otmp) {
+    const u = game.u || (game.u = {});
+
+    if (!(await u_handsy())) return ECMD_OK;
+
+    if (u.uswallow || u.Underwater || !(await getdir(null))) {
+        await pline(Never_mind);
+        return ECMD_CANCEL;
+    }
+    if (!(u.dx | 0) && !(u.dy | 0)) {
+        await pline('Saddle yourself?  Very funny...');
+        return ECMD_OK;
+    }
+
+    const tx = (u.ux | 0) + (u.dx | 0);
+    const ty = (u.uy | 0) + (u.dy | 0);
+    const mtmp = isok(tx, ty) ? m_at(tx, ty) : null;
+    if (!mtmp || !canspotmon(mtmp)) {
+        await pline('I see nobody there.');
+        return ECMD_TIME;
+    }
+
+    if (((mtmp.misc_worn_check || 0) & W_SADDLE)
+        || which_armor(mtmp, W_SADDLE)) {
+        await pline(`${Monnam(mtmp)} doesn't need another one.`);
+        return ECMD_TIME;
+    }
+
+    const ptr = mtmp.data;
+    const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
+        || u.EStone_resistance);
+    if (touch_petrifies(ptr) && !u.uarmg && !Stone_resistance) {
+        await pline(`You touch ${mon_nam(mtmp)}.`);
+        const g = mtmp.female ? FEMALE : MALE;
+        const { instapetrify } = await import('./trap.js');
+        await instapetrify(`attempting to saddle ${an(pmname(ptr, g))}`);
+    }
+    // C: ptr == &mons[PM_AMOROUS_DEMON]
+    if (PM_AMOROUS_DEMON >= 0 && (ptr?.mndx ?? mtmp.mnum) === PM_AMOROUS_DEMON) {
+        await pline('Shame on you!');
+        exercise(A_WIS, false);
+        return ECMD_TIME;
+    }
+    if (mtmp.isminion || mtmp.isshk || mtmp.ispriest || mtmp.isgd
+        || mtmp.iswiz) {
+        await pline(`I think ${mon_nam(mtmp)} would mind.`);
+        return ECMD_TIME;
+    }
+    if (!can_saddle(mtmp)) {
+        await pline("You can't saddle such a creature.");
+        return ECMD_TIME;
+    }
+
+    // C: chance = ACURR(A_DEX) + ACURR(A_CHA)/2 + 2*mtame + …
+    let chance = acurr(A_DEX) + Math.trunc(acurr(A_CHA) / 2)
+        + 2 * (mtmp.mtame | 0);
+    chance += (u.ulevel | 0) * (mtmp.mtame ? 20 : 5);
+    if (!mtmp.mtame) chance -= 10 * (mtmp.m_lev | 0);
+    if (Role_if(PM_KNIGHT)) chance += 20;
+    switch (P_SKILL(P_RIDING)) {
+    case P_ISRESTRICTED:
+    case P_UNSKILLED:
+    default:
+        chance -= 20;
+        break;
+    case P_BASIC:
+        break;
+    case P_SKILLED:
+        chance += 15;
+        break;
+    case P_EXPERT:
+        chance += 30;
+        break;
+    }
+    const Confusion = !!(u.HConfusion || u.Confusion);
+    const Glib = !!(u.Glib | 0);
+    if (Confusion || Fumbling() || Glib) chance -= 20;
+    else if (u.uarmg && objdescr_is(u.uarmg, 'riding gloves')) chance += 10;
+    else if (u.uarmf && objdescr_is(u.uarmf, 'riding boots')) chance += 10;
+    if (otmp.cursed) chance -= 50;
+
+    maybewakesteed(mtmp);
+
+    if (rn2(100) < chance) {
+        await pline(`You put the saddle on ${mon_nam(mtmp)}.`);
+        if (otmp.owornmask) remove_worn_item(otmp);
+        freeinv(otmp);
+        put_saddle_on_mon(otmp, mtmp);
+    } else {
+        await pline(`${Monnam(mtmp)} resists!`);
+    }
+    return ECMD_TIME;
 }
 
 /**

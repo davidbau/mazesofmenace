@@ -5,7 +5,7 @@
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
+import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
@@ -34,12 +34,23 @@ import {
     MGIVENNAME,
     ONAME_NO_FLAGS,
     G_GENOD,
+    POLY_NOFLAGS,
+    ARTICLE_A,
+    SUPPRESS_NAME,
+    SUPPRESS_IT,
+    SUPPRESS_INVISIBLE,
+    TELL,
+    RLOC_MSG,
+    XKILL_GIVEMSG,
+    XKILL_NOCORPSE,
+    nothing_happens,
+    AD_RBRE,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons,
     is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, amorphous,
-    is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL,
+    is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import {
@@ -47,10 +58,13 @@ import {
     obj_meld, pudding_merge_message, place_object, add_to_container,
     weight,
 } from './mkobj.js';
-import { Monnam, mon_nam, oname, pmname } from './do_name.js';
+import { Monnam, mon_nam, oname, pmname, x_monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { mon_explodes } from './explode.js';
-import { newcham } from './makemon.js';
+import { newcham, pm_to_cham } from './makemon.js';
+import { polyself } from './polyself.js';
+import { you_were, you_unwere } from './were.js';
+import { rloc, tele_restrict, tele } from './teleport.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -227,11 +241,185 @@ export function get_mattk(magr, i, mdef = undefined) {
     return attk;
 }
 
+/** C ref: youprop.h Antimagic — H || E flat. */
+function Antimagic(u = game.u || {}) {
+    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+}
+
+/** C ref: youprop.h Unchanging — H || E flat. */
+function Unchanging(u = game.u || {}) {
+    return !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+}
+
+/**
+ * C ref: mondata.c resists_magm — dmgtype AD_MAGM / baby gray / AD_RBRE.
+ * Named omit: wielded/worn/carried ANTIMAGIC artifact scan.
+ */
+function resists_magm(mon) {
+    if (!mon) return false;
+    const ptr = mon.data;
+    if (!ptr) return false;
+    if (dmgtype(ptr, 1 /* AD_MAGM */)) return true;
+    const mndx = ptr.mndx ?? ptr.mnum;
+    if (mndx === monsterNames.indexOf('PM_BABY_GRAY_DRAGON')) return true;
+    if (dmgtype(ptr, AD_RBRE)) return true;
+    return false;
+}
+
+/**
+ * C ref: zap.c resist — WAND_CLASS alev=12; tell/shield polish deferred.
+ * @returns {boolean} true if resisted
+ */
+function resist_poly(mtmp, _tell) {
+    const alev = 12; // WAND_CLASS
+    let dlev = mtmp.m_lev | 0;
+    if (dlev > 50) dlev = 50;
+    else if (dlev < 1) dlev = 1;
+    const mr = mtmp.data?.mr | 0;
+    return rn2(100 + alev - dlev) < mr;
+}
+
+function is_youmonst(m) {
+    return m == null || m === game.youmonst || !!(m && m._youmonst);
+}
+
+/**
+ * C ref: mhitm.c mon_poly — AD_POLY metamorphosis.
+ * Ported: youmonst lycanthropy/polyself (D-1004) + monster-defender
+ * resists_magm/resist/system-shock/newcham/tele follow-up (D-1006).
+ * Named omissions: shieldeff / shieldeff_mon flash; ANTIMAGIC gear scan
+ * in resists_magm; TELL resist pline polish.
+ * @returns {Promise<number>} remaining damage (0 when shape-change applied)
+ */
+export async function mon_poly(magr, mdef, dmg) {
+    const oldform = mdef?.data;
+    const isyou = is_youmonst(mdef);
+    if (isyou) {
+        const u = game.u || {};
+        if (Antimagic(u)) {
+            // shieldeff(u.ux, u.uy) deferred
+        } else if (Unchanging(u)) {
+            // just take a little damage
+        } else if ((u.ulycn | 0) === NON_PM) {
+            await pline('You are subjected to a freakish metamorphosis.');
+            await polyself(POLY_NOFLAGS);
+            dmg = 0;
+        } else if ((u.umonnum | 0) !== (u.ulycn | 0)) {
+            await You_feel('an unnatural urge coming on.');
+            await you_were();
+            dmg = 0;
+        } else {
+            await You_feel('a natural urge coming on.');
+            await you_unwere(false);
+            dmg = 0;
+        }
+    } else {
+        const Before = Monnam(mdef);
+        const vis = _mm_vis
+            || is_youmonst(magr)
+            || (canspotmon(mdef) && cansee(mdef.mx | 0, mdef.my | 0));
+        if (resists_magm(mdef)) {
+            // shieldeff_mon deferred
+        } else if (resist_poly(mdef, TELL)) {
+            // general resistance to magic — TELL pline deferred
+        } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM
+                   && (mdef.mcan
+                       || pm_to_cham(mdef.data?.mndx ?? mdef.mnum ?? NON_PM)
+                           !== NON_PM)) {
+            // system shock — half max HP rather than kill outright
+            if (vis) await pline(`${Before} shudders!`);
+            dmg += Math.trunc(((mdef.mhpmax | 0) + 1) / 2);
+            mdef.mhp = (mdef.mhp | 0) - (dmg | 0);
+            dmg = 0;
+            if (deadmonster(mdef)) {
+                if (is_youmonst(magr)) {
+                    const { xkilled } = await import('./uhitm.js');
+                    await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
+                } else {
+                    await monkilled(mdef, '', AD_RBRE);
+                }
+            }
+        } else if (newcham(mdef, null, 0)) {
+            if (vis) {
+                const was_seen = Before.toLowerCase() !== 'it';
+                const verbosely = game.flags?.verbose !== false || !was_seen;
+                const freaky = ' undergoes a freakish metamorphosis';
+                if (canspotmon(mdef)) {
+                    const into = x_monnam(
+                        mdef, ARTICLE_A, null,
+                        SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                        false,
+                    );
+                    await pline(
+                        `${Before}${verbosely ? freaky : ''}`
+                        + `${verbosely ? ' and' : ''} turns into ${into}.`,
+                    );
+                } else if (was_seen || is_youmonst(magr)) {
+                    await pline(
+                        `${Before}${freaky}`
+                        + `${!was_seen ? '' : ' and disappears'}.`,
+                    );
+                }
+            }
+            dmg = 0;
+            if (can_teleport(magr?.data)) {
+                if (is_youmonst(magr)) {
+                    await tele();
+                } else if (!(await tele_restrict(magr))) {
+                    await rloc(magr, RLOC_MSG);
+                }
+            }
+        } else if (vis && game.flags?.verbose !== false) {
+            await pline(nothing_happens);
+        }
+    }
+    // when a transformation has happened, can't attack again for poly
+    // effect during next turn or two; not enforced for poly'd hero
+    if (mdef?.data !== oldform && magr && !is_youmonst(magr)) {
+        magr.mspec_used = (magr.mspec_used | 0) + rnd(2);
+    }
+    return dmg | 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_poly — mhitm (mon→mon) and uhitm (you→mon) arms.
+ * Named omissions: uhitm weaponless poly'd-hero path (damageum); shieldeff.
+ */
+export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
+    void mattk;
+    const negated = (await mhitm_mgc_atk_negated(magr, mdef, false))
+        || !!(magr?.mspec_used);
+    if (is_youmonst(magr)) {
+        // uhitm: require weaponless + dmg < mhp
+        const uwep = game.u?.uwep;
+        if (!uwep && (mhm.damage | 0) < (mdef.mhp | 0)) {
+            if (negated) {
+                await pline(`${Monnam(mdef)} is not transformed.`);
+            } else {
+                mhm.damage = await mon_poly(magr, mdef, mhm.damage | 0);
+                if (deadmonster(mdef)) mhm.hitflags |= M_ATTK_DEF_DIED;
+                mhm.hitflags |= M_ATTK_HIT;
+                mhm.done = true;
+            }
+        }
+    } else if (is_youmonst(mdef)) {
+        // mhitu arm lives in mhitu.js mhitm_ad_poly_u
+    } else {
+        // mhitm
+        if ((mhm.damage | 0) < (mdef.mhp | 0) && !negated) {
+            mhm.damage = await mon_poly(magr, mdef, mhm.damage | 0);
+            if (deadmonster(mdef)) mhm.hitflags |= M_ATTK_DEF_DIED;
+            mhm.hitflags |= M_ATTK_HIT;
+            mhm.done = true;
+        }
+    }
+}
+
 export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
-    AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX,
+    AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     could_seduce,
 };
 
@@ -796,7 +984,7 @@ async function missmm(magr, mdef, mattk) {
     }
 }
 
-// C ref: mhitm.c mdamagem() — physical bite damage + knockback RNG
+// C ref: mhitm.c mdamagem() — physical bite damage + AD_POLY + knockback RNG
 async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     let damage = d(mattk.damn || 0, mattk.damd || 0);
     let hitflags = M_ATTK_MISS;
@@ -804,6 +992,29 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
     if (mattk.adtyp === AD_STCK) {
         damage = 0;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_poly for AD_POLY (D-1006)
+    if ((mattk.adtyp | 0) === AD_POLY) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_poly(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await monkilled(mdef, '', mattk.adtyp | 0);
+            const grew = grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return hitflags || M_ATTK_HIT;
     }
 
     mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);

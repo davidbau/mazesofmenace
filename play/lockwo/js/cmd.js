@@ -8,15 +8,15 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects } from './display.js';
-import { vision_recalc, cansee, recalc_block_point } from './vision.js';
-import { do_attack, is_safemon, x_monnam } from './uhitm.js';
+import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
+import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
          attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
          renderWindowScreen, ECMD_NOTHANDLED } from './invent.js';
-import { WEAPON_CLASS } from './mkobj.js';
+import { WEAPON_CLASS, objects as OBJECTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
 import { dodrink } from './potion.js';
@@ -624,6 +624,14 @@ export async function rhack(key) {
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+
+    // C ref: cmd.c rhack() — after a command that elapsed a game turn, if the
+    // hero did something OTHER than kicking, reset the kicked location so pets
+    // no longer avoid it (dokick keeps it for its own monster-move phase; the
+    // hack.c domove() path also clears it, which the movement branch above
+    // covers here).  isok({0,0}) is false, so this disables the avoidance.
+    if (game.context?.move && key !== 4)
+        game.kickedloc = { x: 0, y: 0 };
 }
 
 // C ref: detect.c dosearch0(aflag) — search the 8 adjacent squares for hidden
@@ -806,6 +814,11 @@ async function dokick() {
 
     const x = u.ux + dir.dx, y = u.uy + dir.dy;
     u.dx = dir.dx; u.dy = dir.dy;
+
+    // C ref: dokick.c:1325 — record the kicked square so a peaceful/tame
+    // monster avoids stepping onto it for this turn's monster-move phase
+    // (m_avoid_kicked_loc).  Cleared by the next hero action (rhack/domove).
+    game.kickedloc = { x, y };
 
     // wake_nearby(FALSE) / u_wipe_engr(2): no RNG unless standing on an
     // engraving (not the case here).
@@ -1051,8 +1064,39 @@ async function doclose() {
     return 2; // ECMD_TIME
 }
 
-const LOCK_PICK = 222, SKELETON_KEY = 215, CREDIT_CARD = 219;
+// C ref: include/onames.h — the lock-picking tools (mkobj.js OBJECTS rows).
+// (Earlier revisions had SKELETON_KEY/CREDIT_CARD wrong (215=LARGE_BOX,
+// 219=BAG_OF_HOLDING); corrected so autokey()/pick_lock() key off the real
+// object types.)
+const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
+const LARGE_BOX = 214, CHEST = 215, ICE_BOX = 216;
 const PM_ROGUE = 8;
+
+// C ref: include/lock.h — pick_lock() / lock-occupation result codes.
+const PICKLOCK_DID_NOTHING = 0, PICKLOCK_DID_SOMETHING = 1,
+      PICKLOCK_LEARNED_SOMETHING = 2;
+
+// C ref: objclass.h Is_box() — the three lockable floor containers.
+function Is_box_otyp(otyp) {
+    return otyp === LARGE_BOX || otyp === CHEST || otyp === ICE_BOX;
+}
+// an(name): the object's unidentified simple name with its indefinite article.
+// The tools/boxes here are never appearance-shuffled, so objects[otyp].name is
+// the displayed noun.
+function an_obj(otyp) {
+    const nm = OBJECTS[otyp]?.name || 'object';
+    return (/^[aeiou]/i.test(nm) ? 'an ' : 'a ') + nm;
+}
+// C ref: lock.c lock_action() — the gerund phrase for the occupation messages.
+function lock_action_str(picktyp, target) {
+    if (target.door && !(target.door.doormask & D_LOCKED)) return 'locking the door';
+    if (target.box && !target.box.olocked)
+        return target.box.otyp === CHEST ? 'locking the chest' : 'locking the box';
+    if (picktyp === LOCK_PICK || picktyp === CREDIT_CARD) return 'picking the lock';
+    if (target.door) return 'unlocking the door';
+    if (target.box) return target.box.otyp === CHEST ? 'unlocking the chest' : 'unlocking the box';
+    return 'picking the lock';
+}
 
 // C ref: lock.c autokey(opening) — choose an unlocking tool from inventory:
 // skeleton key, else lock pick, else credit card.  The starter rogue carries a
@@ -1114,6 +1158,133 @@ async function pick_lock_door(pick, cx, cy, door) {
     newsym(cx, cy);
     exercise(A_DEX, true); // -> rn2(19)
     return 2; // occupation elapsed a turn (advance monsters)
+}
+
+// C ref: lock.c pick_lock(pick, 0, 0, NULL) — the #apply path for a lock pick /
+// skeleton key / credit card.  get_adjacent_loc() -> getdir() prompts "In what
+// direction?"; the target is a container under the hero (dx==dy==0) or an
+// adjacent door.  Returns a PICKLOCK_* code (doapply maps non-zero -> ECMD_TIME).
+// The occupation is resolved inline in a single turn, exactly like the existing
+// pick_lock_door() (a failed first rn2(100) is treated as one elapsed turn).
+// Unreached-at-these-depths sub-branches (resuming an interrupted attempt,
+// nohands/engulfed, drawbridge locks, credit-card shopkeepers, door-mimics, and
+// the Master-Key trap-disarm) are documented rather than modelled.
+export async function pick_lock(pick) {
+    const u = game.u;
+    const picktyp = pick.otyp;
+    const isRogue = (game.urole?.mnum === PM_ROGUE);
+
+    // get_adjacent_loc(NULL, "Invalid location!", u.ux, u.uy, &cc):
+    const dir = await getdir();
+    if (!dir) { await pline('Never mind.'); return PICKLOCK_DID_NOTHING; }
+    const cx = u.ux + dir.dx, cy = u.uy + dir.dy;
+    if (!isok(cx, cy)) { await pline('Invalid location!'); return PICKLOCK_DID_NOTHING; }
+
+    let ch = 0, target = null;
+    if (cx === u.ux && cy === u.uy) {
+        // Pick the lock on a container under the hero.
+        if (dir.dz < 0) {
+            await pline("There isn't any sort of lock up there.");
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
+        // is_lava / is_pool guards: the hero stands on dry floor in these runs.
+        // C walks svl.level.objects[x][y] head-first (newest first); this port's
+        // level.objects is a flat, push-ordered array, so reverse for that order.
+        const pile = (game.level?.objects || [])
+            .filter((o) => o.where === 'floor' && o.ox === cx && o.oy === cy)
+            .reverse();
+        let count = 0;
+        for (const otmp of pile) {
+            if (!Is_box_otyp(otmp.otyp)) continue;
+            count++;
+            let verb, it = false;
+            if (otmp.obroken) verb = 'fix';
+            else if (!otmp.olocked) { verb = 'lock'; it = true; }
+            else if (picktyp !== LOCK_PICK) { verb = 'unlock'; it = true; }
+            else verb = 'pick';
+            otmp.lknown = 1;
+            game._yn_need_more = true;
+            const c = await y_n(`There is ${an_obj(otmp.otyp)} here; ${verb} ${it ? 'it' : 'its lock'}?`, 'ynq\x1b', 'q');
+            if (c === 'q' || c === '\x1b') return PICKLOCK_DID_NOTHING;
+            if (c === 'n') continue; // try next box
+            if (otmp.obroken) {
+                await pline(`You can't fix its broken lock with ${an_obj(picktyp)}.`);
+                return PICKLOCK_LEARNED_SOMETHING;
+            }
+            if (picktyp === CREDIT_CARD && !otmp.olocked) {
+                await pline(`You can't do that with ${an_obj(picktyp)}.`);
+                return PICKLOCK_LEARNED_SOMETHING;
+            }
+            switch (picktyp) {
+            case CREDIT_CARD:  ch = ACURR(A_DEX) + 20 * (isRogue ? 1 : 0); break;
+            case LOCK_PICK:    ch = 4 * ACURR(A_DEX) + 25 * (isRogue ? 1 : 0); break;
+            case SKELETON_KEY: ch = 75 + ACURR(A_DEX); break;
+            }
+            if (otmp.cursed) ch = Math.trunc(ch / 2);
+            target = { box: otmp };
+            break;
+        }
+        if (!target) {
+            if (!count) await pline("There doesn't seem to be any sort of lock here.");
+            return PICKLOCK_LEARNED_SOMETHING; // decided against all boxes
+        }
+    } else {
+        // Pick the lock in an adjacent door.  (u.utrap TT_PIT guard: unreached.)
+        const mtmp = m_at(cx, cy);
+        if (mtmp && canspotmon(mtmp)) {
+            await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
+        const door = game.level?.at(cx, cy);
+        if (!door || !IS_DOOR(door.typ)) {
+            // C ref: lock.c — the not-a-door branch runs update_mapseen_for(cc) +
+            // feel_location(cc) and returns PICKLOCK_LEARNED_SOMETHING when that
+            // examination changes the remembered glyph / seen-vector / lastseentyp
+            // (feel_location() always set_seenv()s the probed tile from the hero's
+            // new vantage), else PICKLOCK_DID_NOTHING.  For the sighted hero
+            // probing an adjacent square this examination registers as LEARNED (a
+            // turn elapses).  This port doesn't keep C's per-tile glyph/seenv
+            // memory to distinguish the rare already-fully-cached DID_NOTHING case,
+            // so it returns LEARNED — matching the recorded turn-consuming apply.
+            await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
+        switch (door.doormask) {
+        case D_NODOOR: await pline('This doorway has no door.'); return PICKLOCK_LEARNED_SOMETHING;
+        case D_ISOPEN: await pline('You cannot lock an open door.'); return PICKLOCK_LEARNED_SOMETHING;
+        case D_BROKEN: await pline('This door is broken.'); return PICKLOCK_LEARNED_SOMETHING;
+        default: break;
+        }
+        if (picktyp === CREDIT_CARD && !(door.doormask & D_LOCKED)) {
+            await pline("You can't lock a door with a credit card.");
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
+        game._yn_need_more = true;
+        const c = await y_n(`${(door.doormask & D_LOCKED) ? 'Unlock' : 'Lock'} it?`, 'ynq\x1b', 'q');
+        if (c !== 'y') return PICKLOCK_DID_NOTHING;
+        switch (picktyp) {
+        case CREDIT_CARD:  ch = 2 * ACURR(A_DEX) + 20 * (isRogue ? 1 : 0); break;
+        case LOCK_PICK:    ch = 3 * ACURR(A_DEX) + 30 * (isRogue ? 1 : 0); break;
+        case SKELETON_KEY: ch = 70 + ACURR(A_DEX); break;
+        }
+        target = { door, cx, cy };
+    }
+
+    // set_occupation(picklock, ...): first turn (usedtime 0) rolls rn2(100);
+    // >= chance -> still busy (would carry over), else succeed this turn.
+    if (rn2(100) >= ch) return PICKLOCK_DID_SOMETHING; // busy: a turn elapsed
+    await pline(`You succeed in ${lock_action_str(picktyp, target)}.`);
+    if (target.door) {
+        const door = target.door;
+        if (door.doormask & D_TRAPPED) door.doormask = D_NODOOR; // b_trapped unreached
+        else if (door.doormask & D_LOCKED) door.doormask = D_CLOSED;
+        else door.doormask = D_LOCKED;
+        newsym(target.cx, target.cy);
+    } else {
+        target.box.olocked = target.box.olocked ? 0 : 1;
+    }
+    exercise(A_DEX, true); // -> rn2(19)
+    return PICKLOCK_DID_SOMETHING;
 }
 
 // C ref: hack.c domove / domove_core — execute a movement, including the

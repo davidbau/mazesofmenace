@@ -4334,8 +4334,16 @@ export function prinv(prefix, obj, quan = 0) {
     // C ref: invent.c prinv()/xprname() — the per-item line uses the full
     // doname() form (BUC, enchant, erosion, and worn-status suffix such as
     // "(at the ready)"), not the bare object name.
-    const text = xprname(obj, doname_invent_quan(obj, quan), obj_to_let(obj), true, 0, quan);
-    game._pending_message = `${prefix ? `${prefix} ` : ''}${text}`;
+    //   boolean total_of = (quan && (quan < obj->quan));
+    // When a subset count is lifted onto (merged into) a larger stack — e.g.
+    // picking up gold that merges with coins already carried — C suppresses the
+    // trailing period on the item name (xprname dot = !total_of) and, when
+    // flags.verbose, appends " (<obj->quan> in total)." after it.
+    const total_of = !!(quan && obj && quan < obj.quan);
+    const text = xprname(obj, doname_invent_quan(obj, quan), obj_to_let(obj), !total_of, 0, quan);
+    const totalbuf = (total_of && flags().verbose !== false)
+        ? ` (${obj.quan} in total).` : '';
+    game._pending_message = `${prefix ? `${prefix} ` : ''}${text}${totalbuf}`;
 }
 
 // doname_invent for a (temporarily) overridden quantity, restoring it after.

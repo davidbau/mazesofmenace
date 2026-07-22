@@ -1,7 +1,7 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
 // clear_regions / run_regions / m_in_out_region / inside_gas_cloud;
-// read.c valid_cloud_pos.
+// region_danger / region_safety (pray); read.c valid_cloud_pos.
 // Named omissions: inside_f damage/pline (dam>0); dissipation plines;
 // numeric cmap glyph ints (JS tags 'S_poisoncloud'/'S_cloud'); hero
 // enveloped pline; create_gas_cloud_selection; binary save_regions
@@ -10,11 +10,12 @@
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
-import { isok, ACCESSIBLE, u_at } from './const.js';
+import { rn2, rn1, d } from './rng.js';
+import { pline, You_feel } from './display.js';
+import { isok, ACCESSIBLE, u_at, TIMEOUT } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import { recalc_block_point } from './vision.js';
-import { monsterNames } from './monsters.js';
+import { monsterNames, nonliving, breathless } from './monsters.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // callback index stand-in
@@ -321,4 +322,76 @@ export function create_gas_cloud(x, y, cloudsize, damage) {
 
     make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
+}
+
+/** C youprop.h Poison_resistance — H || E || flag. */
+function Poison_resistance() {
+    const u = game.u || {};
+    return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
+        || u.Poison_resistance);
+}
+
+/** C youprop.h Breathless — magical breathing || breathless(form). */
+function Breathless() {
+    const u = game.u || {};
+    if ((u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || u.Magical_breathing) {
+        return true;
+    }
+    const data = game.youmonst?.data;
+    return data ? breathless(data) : false;
+}
+
+/**
+ * C ref: region.c region_danger — prayer trouble: hero in damaging gas.
+ * Completely harmless when nonliving/Breathless; Poison_resistance skips.
+ */
+export function region_danger() {
+    const u = game.u || {};
+    const data = game.youmonst?.data;
+    let n = 0;
+    for (const reg of game.regions || []) {
+        if (!inside_region(reg, u.ux | 0, u.uy | 0)) continue;
+        if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
+        if ((data && nonliving(data)) || Breathless()) continue;
+        if (Poison_resistance()) continue;
+        ++n;
+    }
+    return n > 0;
+}
+
+/**
+ * C ref: region.c region_safety — clear prayer gas-cloud trouble.
+ * Envelope: multi/non-expiring → safe_teleds (+ Magical_breathing if
+ * still in danger); single expiring → remove_region; already gone msg.
+ * Named omissions: BlindedTimeout==1 make_blinded polish.
+ */
+export async function region_safety() {
+    const u = game.u || (game.u = {});
+    let r = null;
+    let n = 0;
+    for (const reg of game.regions || []) {
+        if (!inside_region(reg, u.ux | 0, u.uy | 0)) continue;
+        if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
+        if (!n++ && (reg.ttl | 0) >= 0) r = reg;
+    }
+
+    if (n > 1 || (n === 1 && !r)) {
+        const { safe_teleds } = await import('./teleport.js');
+        const { TELEDS_NO_FLAGS } = await import('./const.js');
+        await safe_teleds(TELEDS_NO_FLAGS);
+        if (region_danger()) {
+            // C: set_itimeout(&HMagical_breathing, d(4,4)+4)
+            const xt = d(4, 4) + 4;
+            u.HMagical_breathing = ((u.HMagical_breathing | 0) & ~TIMEOUT)
+                | (xt >= TIMEOUT ? TIMEOUT : xt);
+            await You_feel('able to breathe.');
+        }
+    } else if (r) {
+        remove_region(r);
+        await pline('The gas cloud enveloping you dissipates.');
+    } else {
+        await pline('The gas cloud has dissipated.');
+    }
+    // BlindedTimeout==1 make_blinded deferred (do.js↔region cycle)
 }

@@ -15,7 +15,7 @@ import {
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     xdir, ydir, N_DIRS,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-    OVERLOADED, SLT_ENCUMBER, Is_airlevel, Is_waterlevel,
+    OVERLOADED, SLT_ENCUMBER, HVY_ENCUMBER, Is_airlevel, Is_waterlevel,
     Is_medusa_level, Is_juiblex_level,
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
@@ -363,13 +363,36 @@ export async function carrying_too_much() {
 }
 
 /**
- * C ref: hack.c overexertion — melee hunger via gethungry; maybe faint.
- * Encumber HP loss (near_capacity / overexert_hp) deferred — no RNG when
- * not heavily encumbered.
+ * C ref: hack.c overexert_hp — HP loss or pass-out from exertion.
+ * Called from overexertion (melee) and allmain moveloop (encumber+moved).
  */
-export function overexertion() {
+export async function overexert_hp() {
+    const u = game.u || (game.u = {});
+    const polyd = Upolyd(u);
+    let hp = polyd ? (u.mh | 0) : (u.uhp | 0);
+    if (hp > 1) {
+        hp -= 1;
+        if (polyd) u.mh = hp;
+        else u.uhp = hp;
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+    } else {
+        await pline('You pass out from exertion!');
+        exercise(A_CON, false);
+        fall_asleep(-10, false);
+    }
+}
+
+/**
+ * C ref: hack.c overexertion — melee hunger via gethungry; maybe faint.
+ * When moves%3 != 0 and near_capacity >= HVY_ENCUMBER → overexert_hp.
+ */
+export async function overexertion() {
     gethungry();
-    return (game.multi | 0) < 0;
+    if (((game.moves | 0) % 3) !== 0 && near_capacity() >= HVY_ENCUMBER) {
+        await overexert_hp();
+    }
+    return (game.multi | 0) < 0; // might have fainted (forced to sleep)
 }
 
 /**

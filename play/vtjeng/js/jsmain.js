@@ -50,6 +50,11 @@ export async function wd_message(
     const iflags = state.iflags ??= {};
     const flags = state.flags ??= {};
 
+    // C aliases wizard/discover to flags.debug/flags.explore. JavaScript keeps
+    // both spellings for source-shaped consumers, so each paranoia assignment
+    // below synchronizes the duplicated field it actually clears. The earlier
+    // set_playmode() decision is responsible for the authorization state.
+
     if (iflags.wiz_error_flag) {
         const wizards = String(state.sysopt?.wizards ?? '');
         if (wizards.length) {
