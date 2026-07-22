@@ -15,6 +15,7 @@ import {
     COLNO,
     DART_TRAP,
     DRY,
+    FEMALE,
     FOUNTAIN,
     ICE,
     HOT,
@@ -22,11 +23,13 @@ import {
     IS_STWALL,
     LADDER,
     LANDMINE,
+    MALE,
     MELT_ICE_AWAY,
     MKTRAP_MAZEFLAG,
     MKTRAP_NOSPIDERONWEB,
     MKTRAP_SEEN,
     M_AP_OBJECT,
+    M_AP_MONSTER,
     NO_LOC_WARN,
     ROCKTRAP,
     ROLLING_BOULDER_TRAP,
@@ -37,6 +40,7 @@ import {
     SLP_GAS_TRAP,
     SP_COORD_IS_RANDOM,
     STAIRS,
+    STATUE_TRAP,
     STRAT_WAITFORU,
     TELEP_TRAP,
     TIMER_LEVEL,
@@ -55,6 +59,7 @@ import {
     discard_minvent,
     makemon,
     m_dowear,
+    restore_waiting_vampire,
     UnsupportedMonsterCreationError,
 } from './makemon_create.js';
 import { mkclass } from './makemon.js';
@@ -72,6 +77,7 @@ import {
     OIL_LAMP,
     RING_CLASS,
     SCROLL_CLASS,
+    STATUE,
     WEAPON_CLASS,
 } from './objects.js';
 import {
@@ -113,6 +119,8 @@ import {
     PM_STUDENT,
     PM_THUG,
     PM_TOURIST,
+    PM_VAMPIRE,
+    PM_VAMPIRE_LEADER,
     PM_VALKYRIE,
     PM_WARRIOR,
     PM_WIZARD,
@@ -123,6 +131,7 @@ import {
     S_GHOST,
     S_LIGHT,
     S_MIMIC,
+    S_VAMPIRE,
 } from './monsters.js';
 import { m_at } from './monst.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
@@ -255,15 +264,21 @@ function createTrap(type, flags, x, y, env) {
     return mktrap(type, flags, null, { x, y }, themedCreationEnv(env));
 }
 
-// sp_lev.h SP_COORD_PACK() plus sp_lev.c create_trap(). Lua callback
-// coordinates are relative to the current room; get_free_room_loc() converts
-// them back to the map and preserves the source relocation fallback if that
-// fixed point is no longer ROOM terrain.
-function createRoomTrapAt(type, flags, coordinate, room, env) {
+// sp_lev.c create_trap(). Resolve either an SP_COORD_PACK() value or the
+// random-coordinate sentinel before handing the fixed point to mktrap().
+function createRoomTrap(type, flags, packedCoordinate, room, env) {
     const absolute = { x: -1, y: -1 };
-    const packed = (coordinate.x & 0xff) + ((coordinate.y & 0xff) << 16);
-    get_free_room_loc(absolute, room, packed, env);
-    return createTrap(type, flags, absolute.x, absolute.y, env);
+    get_free_room_loc(absolute, room, packedCoordinate, env);
+    createTrap(type, flags, absolute.x, absolute.y, env);
+}
+
+// C ref: nhlib.lua d(). Its math.random(1, sides) consumes one injected core
+// draw per die, in increasing die order.
+function rollLuaDice(number, sides, random) {
+    let total = 0;
+    for (let die = 0; die < number; ++die)
+        total += 1 + random.rn2(sides);
+    return total;
 }
 
 const ALTAR_ALIGNMENT_MASK = Object.freeze({
@@ -476,9 +491,16 @@ function createMonsterBody(specification, room, env) {
         ? env.state.mons?.[specification.id] : null;
     let female;
     if (species) {
-        const parsedFemale = is_female(species)
-            ? true
-            : is_male(species) ? false : Boolean(env.random.rn2(2));
+        let parsedFemale;
+        if (is_female(species)) {
+            parsedFemale = true;
+        } else if (is_male(species)) {
+            parsedFemale = false;
+        } else if (specification.parsedGender != null) {
+            parsedFemale = specification.parsedGender === FEMALE;
+        } else {
+            parsedFemale = Boolean(env.random.rn2(2));
+        }
         female = specification.female == null
             || is_female(species) || is_male(species)
             ? parsedFemale
@@ -541,7 +563,20 @@ function createMonsterBody(specification, room, env) {
     monster.female = female;
     if (specification.asleep != null)
         monster.msleeping = Boolean(specification.asleep);
-    if (specification.waiting) monster.mstrategy |= STRAT_WAITFORU;
+    if (specification.waiting) {
+        monster.mstrategy |= STRAT_WAITFORU;
+        // sp_lev.c:create_monster() restores a naturally shifted waiting
+        // vampire unless the descriptor explicitly requested a monster
+        // appearance. makemon() already suppressed inventory for the initial
+        // successful shift; the reversion must not regenerate it here.
+        const isVampireShifter = monster.cham === PM_VAMPIRE
+            || monster.cham === PM_VAMPIRE_LEADER;
+        if (isVampireShifter
+            && monster.data.mlet !== S_VAMPIRE
+            && specification.appearAs?.type !== M_AP_MONSTER) {
+            restore_waiting_vampire(monster, monsterEnv);
+        }
+    }
     return monster;
 }
 
@@ -580,6 +615,13 @@ export function create_monster(specification, room, rawEnv = {}) {
     // descriptor only. Reject other appearance pairs before create_monster()
     // consumes RNG or mutates level state.
     assertSupportedMonsterAppearance(specification, env.state);
+    if (specification.parsedGender != null
+        && specification.parsedGender !== MALE
+        && specification.parsedGender !== FEMALE) {
+        throw new TypeError(
+            'special-level monster parsedGender must be MALE or FEMALE',
+        );
+    }
     const inventory = specification.inventory;
     if (inventory != null && typeof inventory !== 'function') {
         throw new TypeError(
@@ -740,10 +782,10 @@ function fillBoulderRoom(room, _difficulty, env) {
         if (env.random.rn2(100) < 50) {
             createObject({ id: BOULDER, coordinate }, room, env);
         } else {
-            createRoomTrapAt(
+            createRoomTrap(
                 ROLLING_BOULDER_TRAP,
                 MKTRAP_MAZEFLAG,
-                coordinate,
+                (coordinate.x & 0xff) + ((coordinate.y & 0xff) << 16),
                 room,
                 env,
             );
@@ -853,9 +895,7 @@ function fillBuriedTreasure(room, _difficulty, env) {
                     activeEnv,
                 );
             }
-            let objectCount = 0;
-            for (let die = 0; die < 3; ++die)
-                objectCount += 1 + activeEnv.random.rn2(4);
+            const objectCount = rollLuaDice(3, 4, activeEnv.random);
             for (let index = 0; index < objectCount; ++index)
                 createObject({}, room, activeEnv);
         },
@@ -899,11 +939,7 @@ function fillMassacre(room, _difficulty, env) {
     let species = MASSACRE_SPECIES[
         env.random.rn2(MASSACRE_SPECIES.length)
     ];
-    // nhlib.lua d(5,5) calls math.random(1,5) once per die. Spell those draws
-    // out so an injected core stream observes the same five calls.
-    let corpseCount = 0;
-    for (let die = 0; die < 5; ++die)
-        corpseCount += 1 + env.random.rn2(5);
+    const corpseCount = rollLuaDice(5, 5, env.random);
     for (let index = 0; index < corpseCount; ++index) {
         if (env.random.rn2(100) < 10) {
             species = MASSACRE_SPECIES[
@@ -911,6 +947,25 @@ function fillMassacre(room, _difficulty, env) {
             ];
         }
         createObject({ id: CORPSE, corpsenm: species }, room, env);
+    }
+}
+
+// dat/themerms.lua "Statuary". nhlib.lua d(5,5) and d(3) consume one
+// math.random() call per die; every ordinary statue precedes every trap.
+function fillStatuary(room, _difficulty, env) {
+    const statueCount = rollLuaDice(5, 5, env.random);
+    for (let index = 0; index < statueCount; ++index)
+        createObject({ id: STATUE }, room, env);
+
+    const trapCount = rollLuaDice(1, 3, env.random);
+    for (let index = 0; index < trapCount; ++index) {
+        createRoomTrap(
+            STATUE_TRAP,
+            MKTRAP_MAZEFLAG,
+            SP_COORD_IS_RANDOM,
+            room,
+            env,
+        );
     }
 }
 
@@ -1025,6 +1080,7 @@ const FILL_HANDLERS = Object.freeze({
     light_source: fillLightSource,
     massacre: fillMassacre,
     spider_nest: fillSpiderNest,
+    statuary: fillStatuary,
     storeroom: fillStoreroom,
     teleportation_hub: fillTeleportationHub,
     temple_of_the_gods: fillTempleOfTheGods,

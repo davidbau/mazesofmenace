@@ -5,6 +5,7 @@
 import {
     ARROW_TRAP,
     BEAR_TRAP,
+    CORPSTAT_NONE,
     CORPSTAT_INIT,
     DART_TRAP,
     DB_LAVA,
@@ -23,6 +24,8 @@ import {
     MKTRAP_NOSPIDERONWEB,
     MKTRAP_NOVICTIM,
     MKTRAP_SEEN,
+    MM_NOCOUNTBIRTH,
+    MM_NOMSG,
     NO_MM_FLAGS,
     NO_TRAP,
     PIT,
@@ -58,7 +61,10 @@ import {
     on_level,
 } from './dungeon.js';
 import { game } from './gstate.js';
-import { is_rider } from './mondata.js';
+import { add_to_container, obj_extract_self } from './invent.js';
+import { makemon, mongone } from './makemon_create.js';
+import { rndmonnum_adj } from './makemon.js';
+import { is_rider, is_unicorn } from './mondata.js';
 import {
     PM_ARCHEOLOGIST,
     PM_DWARF,
@@ -99,12 +105,13 @@ import {
     POTION_CLASS,
     ROCK,
     SPE_BOOK_OF_THE_DEAD,
+    STATUE,
     TALLOW_CANDLE,
     TOOL_CLASS,
     WAX_CANDLE,
     WEAPON_CLASS,
 } from './objects.js';
-import { rn1, rn2, rnd, rne, rnz } from './rng.js';
+import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { maketrap, t_at } from './trap.js';
 import { mkcorpstat } from './corpstat.js';
 import { begin_burn } from './timeout.js';
@@ -113,7 +120,7 @@ function levelTrapEnv(env = {}) {
     return {
         ...env,
         state: env.state ?? game,
-        random: env.random ?? { rn1, rn2, rnd, rne, rnz },
+        random: env.random ?? { d, rn1, rn2, rnd, rne, rnz },
         hooks: env.hooks ?? {},
     };
 }
@@ -395,6 +402,53 @@ function mazeCoordinate(coordinate, env) {
     choose(coordinate, env);
 }
 
+function isCoalignedUnicorn(species, state) {
+    return is_unicorn(species)
+        && Math.sign(state.u.ualign.type) === Math.sign(species.maligntyp);
+}
+
+// C ref: trap.c mk_trap_statue(). The temporary monster exists solely to
+// generate the living statue's inventory, which is transferred before the
+// monster follows the ordinary mongone()/dmonsfree() detachment lifecycle.
+// The source pre-decrements its ten-try counter: the first nine co-aligned true
+// unicorns retry, but the tenth is accepted.
+function mk_trap_statue(x, y, env) {
+    const { state } = env;
+    let tryCount = 10;
+    let species;
+    do {
+        species = state.mons[rndmonnum_adj(3, 6, env)];
+    } while (--tryCount > 0
+        && isCoalignedUnicorn(species, state));
+
+    const statue = mkcorpstat(
+        STATUE,
+        null,
+        species,
+        x,
+        y,
+        CORPSTAT_NONE,
+        env,
+    );
+    const monster = makemon(
+        state.mons[statue.corpsenm],
+        0,
+        0,
+        MM_NOCOUNTBIRTH | MM_NOMSG,
+        env,
+    );
+    if (!monster) return;
+
+    while (monster.minvent) {
+        const obj = monster.minvent;
+        obj.owornmask = 0;
+        obj_extract_self(obj, env);
+        add_to_container(statue, obj, env);
+    }
+    statue.owt = weight(statue, env);
+    mongone(monster, env);
+}
+
 export function mktrap(
     num,
     mktrapflags = MKTRAP_NOFLAGS,
@@ -403,6 +457,10 @@ export function mktrap(
     rawEnv = {},
 ) {
     const env = levelTrapEnv(rawEnv);
+    env.hooks = {
+        makeTrapStatue: mk_trap_statue,
+        ...env.hooks,
+    };
     const { random, state } = env;
     if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) return null;
     if (tm && (isPoolAt(tm.x, tm.y, state) || isLavaAt(tm.x, tm.y, state)))

@@ -42,6 +42,7 @@ import {
     mkobj_at,
     mksobj,
     mksobj_at,
+    objectType,
     weight,
 } from './obj.js';
 import {
@@ -61,6 +62,7 @@ import {
     POT_HEALING,
     POT_SPEED,
     RANDOM_CLASS,
+    RIN_TELEPORTATION,
     RING_CLASS,
     SCROLL_CLASS,
     SCR_CONFUSE_MONSTER,
@@ -71,6 +73,7 @@ import {
     SPE_HEALING,
     STATUE,
     WAN_DIGGING,
+    WAN_TELEPORTATION,
     WEAPON_CLASS,
 } from './objects.js';
 import { maketrap } from './trap.js';
@@ -92,33 +95,53 @@ import {
     somexy,
 } from './room_coordinates.js';
 import { set_levltyp } from './terrain.js';
+import { stock_room } from './shknam.js';
 import {
+    lspo_object,
+    new_sp_lev_object_context,
+} from './sp_lev_object.js';
+import {
+    create_monster,
     initialize_themeroom_postprocess_branch,
     run_themeroom_postprocess,
     themeroom_fill,
-    UnsupportedThemeroomFillError,
 } from './themeroom_fill.js';
-import { PM_GIANT_SPIDER, S_HUMAN } from './monsters.js';
+import {
+    G_IGNORE,
+    G_NOGEN,
+    PM_GIANT_SPIDER,
+    PM_GIANT_ZOMBIE,
+    PM_ETTIN_ZOMBIE,
+    PM_VAMPIRE_LEADER,
+    S_HUMAN,
+    S_LICH,
+    S_MUMMY,
+    S_VAMPIRE,
+    S_ZOMBIE,
+} from './monsters.js';
 import { THEMEROOM_DEFINITIONS } from './themeroom_data.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
+    D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET,
     OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
     BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, SHOPBASE,
-    ROOMOFFSET, MAXNROFROOMS, SHARED,
+    ARMORSHOP, WEAPONSHOP,
+    ROOMOFFSET, MAXNROFROOMS, MAX_SUBROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, TREE,
     DUST,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     IS_LAVA,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE,
+    W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY,
+    FILL_NONE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL,
     DBWALL, AIR, CLOUD,
     MAX_TYPE, MATCH_WALL,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
-    LR_UPTELE,
+    LR_TELE, LR_UPTELE, MALE,
     NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP,
     SQKY_BOARD, LANDMINE, ROLLING_BOULDER_TRAP,
     SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE,
@@ -132,6 +155,11 @@ import {
 
 const XLIM = 4;
 const YLIM = 3;
+
+// sp_lev.c room alignment values are private to that loader.
+const SPLEV_CENTER = 3;
+const SPLEV_RIGHT = 5;
+const SPLEV_BOTTOM = 5;
 
 const THEMEROOM_RANDOM_METHODS = Object.freeze([
     'd', 'rn1', 'rn2', 'rnd', 'rne', 'rnz',
@@ -312,10 +340,13 @@ export async function mklev() {
 function clear_level_structures() {
     const g = game;
     g.level = new GameMap();
+    g.subrooms = [];
+    g.nsubroom = 0;
     g.made_branch = false;
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     g.stairs = null;
     g.head_engr = null;
+    g.exclusion_zones = null;
     g.vault_x = -1;
     const lf = g.level.flags;
     lf.has_shop = false;
@@ -357,9 +388,8 @@ function litstate_rnd(litstate, random = rn2, randomOneBased = rnd) {
     return !!litstate;
 }
 
-// C ref: sp_lev.c fill_special_room(). Shops and zoo-family rooms keep narrow
-// hooks until their population subsystems are ported; vault filling and all
-// recursion, fill-policy, and level-flag behavior are complete here.
+// C ref: sp_lev.c fill_special_room(). The Twin businesses shop types are
+// backed by stock_room(); zoo-family rooms retain their narrow population hook.
 export function fill_special_room(croom, env = {}) {
     if (!croom) return;
 
@@ -382,9 +412,8 @@ export function fill_special_room(croom, env = {}) {
 
     if (croom.needfill === FILL_NORMAL) {
         if (croom.rtype >= SHOPBASE) {
-            if (typeof env.stockRoom !== 'function')
-                throw new Error('fill_special_room requires the stock_room subsystem');
-            env.stockRoom(croom.rtype - SHOPBASE, croom, normalized);
+            const stockRoom = env.stockRoom ?? stock_room;
+            stockRoom(croom.rtype - SHOPBASE, croom, normalized);
             flags.has_shop = true;
             return;
         }
@@ -499,11 +528,19 @@ async function makelevel() {
     makecorridors();
     await make_niches();
 
-    // Vault creation (simplified for contest)
+    // C ref: mklev.c makelevel() secret-vault realization and retry.
     if (g.vault_x !== -1) {
         const vw = { v: 1 }, vh = { v: 1 };
         const vx = { v: g.vault_x }, vy = { v: g.vault_y };
-        if (check_room(vx, vw, vy, vh, true)) {
+        let realized = check_room(vx, vw, vy, vh, true);
+        if (!realized && rnd_rect() && create_vault()) {
+            const staged = g.level.rooms[g.level.nroom];
+            g.vault_x = vx.v = staged.lx;
+            g.vault_y = vy.v = staged.ly;
+            realized = check_room(vx, vw, vy, vh, true);
+            if (!realized) staged.hx = -1;
+        }
+        if (realized) {
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
             g.level.flags.has_vault = true;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
@@ -513,8 +550,6 @@ async function makelevel() {
             }
             if (!g.level.flags.noteleport && !rn2(3))
                 await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified
         }
     }
 
@@ -756,7 +791,6 @@ export class UnsupportedThemeroomActionError extends Error {
 
 function preflight_themeroom_fill(definition, context) {
     if (typeof context.themeroomFill !== 'function') {
-        if (context.allowMissingFill) return false;
         throw new UnsupportedThemeroomActionError(
             definition,
             'requires an injected themeroom-fill callback',
@@ -788,9 +822,7 @@ function preflight_themeroom_fill(definition, context) {
 }
 
 function invoke_themeroom_fill(room, definition, context) {
-    // Strict callers validate before creating the room or loading its map.
-    // The missing-callback case is the live generator's temporary partial port.
-    if (typeof context.themeroomFill !== 'function') return;
+    // Callers validate before creating the room or loading its map.
     // Lua invokes contents before leaving the current room context. Keep this
     // call synchronous. This is the exact themeroom_fill(room, difficulty,
     // rawEnv) contract, including the indexed room that selection.room() needs.
@@ -800,44 +832,55 @@ function invoke_themeroom_fill(room, definition, context) {
     });
 }
 
-function staged_themeroom_fill(room, difficulty, env) {
-    try {
-        return themeroom_fill(room, difficulty, env);
-    } catch (error) {
-        // Live generation still performs the complete source-order reservoir
-        // and executes every supported result. Only the missing-handler
-        // boundary is tolerated until the remaining fill bodies are ported.
-        if (error instanceof UnsupportedThemeroomFillError) return null;
-        throw error;
-    }
-}
-
-// C refs: themerms.lua filler_region(); sp_lev.c lspo_region().
-function filler_region(filler, origin, definition, context) {
+// C ref: sp_lev.c lspo_region() irregular-room branch.
+function register_irregular_map_region(
+    seed,
+    roomType,
+    needfill,
+    joined,
+    context,
+) {
     const state = game;
-    const themed = context.random(100) < 30;
-    if (themed) preflight_themeroom_fill(definition, context);
     const lit = litstate_rnd(
         -1,
         context.random,
         context.randomOneBased,
     );
-    const sx = origin.x + filler.x;
-    const sy = origin.y + filler.y;
     const roomIndex = state.level.nroom;
-    const bounds = flood_fill_themeroom(sx, sy, roomIndex + ROOMOFFSET, lit, state);
-    if (!bounds) return false;
+    const bounds = flood_fill_themeroom(
+        seed.x,
+        seed.y,
+        roomIndex + ROOMOFFSET,
+        lit,
+        state,
+    );
+    if (!bounds) return null;
     state.smeq ??= new Array(MAXNROFROOMS + 1).fill(0);
     state.smeq[roomIndex] = roomIndex;
     add_room(
         bounds.minx, bounds.miny, bounds.maxx, bounds.maxy,
-        false, themed ? THEMEROOM : OROOM, true,
+        false, roomType, true,
     );
     const room = state.level.rooms[roomIndex];
     room.rlit = lit ? 1 : 0;
     room.irregular = true;
-    room.needjoining = true;
-    room.needfill = FILL_NORMAL;
+    room.needjoining = joined;
+    room.needfill = needfill;
+    return room;
+}
+
+// C refs: themerms.lua filler_region(); sp_lev.c lspo_region().
+function filler_region(filler, origin, definition, context) {
+    const themed = context.random(100) < 30;
+    if (themed) preflight_themeroom_fill(definition, context);
+    const room = register_irregular_map_region(
+        { x: origin.x + filler.x, y: origin.y + filler.y },
+        themed ? THEMEROOM : OROOM,
+        FILL_NORMAL,
+        true,
+        context,
+    );
+    if (!room) return false;
     if (themed) invoke_themeroom_fill(room, definition, context);
     return true;
 }
@@ -845,10 +888,50 @@ function filler_region(filler, origin, definition, context) {
 function room_type_from_schema(type, definition) {
     if (type === 'ordinary') return OROOM;
     if (type === 'themed') return THEMEROOM;
+    if (type === 'armor shop') return ARMORSHOP;
+    if (type === 'weapon shop') return WEAPONSHOP;
     throw new UnsupportedThemeroomActionError(
         definition,
         `has unsupported room type ${JSON.stringify(type)}`,
     );
+}
+
+// C ref: sp_lev.c lspo_room(). Keep the callback boundary in one place so
+// nested handlers share room failure propagation, parent irregularity, and
+// the post-callback door-table scan. A returned room means that this descriptor
+// was created; callers must inspect context.roomFailed for aggregate failure
+// because a nested descriptor can fail while this room still finalizes.
+export function run_room_descriptor(spec, parent, context, contents = null) {
+    if (context.roomFailed) return null;
+    const room = build_room(
+        {
+            x: spec.x ?? -1,
+            y: spec.y ?? -1,
+            w: spec.w ?? -1,
+            h: spec.h ?? -1,
+            xalign: spec.xalign ?? -1,
+            yalign: spec.yalign ?? -1,
+            rtype: room_type_from_schema(
+                spec.type ?? 'ordinary',
+                context.definition,
+            ),
+            chance: spec.chance ?? 100,
+            rlit: spec.lit ?? -1,
+            needfill: spec.filled ?? FILL_NONE,
+            joined: spec.joined ?? true,
+        },
+        parent,
+        context.random,
+        context.randomOneBased,
+    );
+    if (!room) {
+        context.roomFailed = true;
+        return null;
+    }
+    if (parent) parent.irregular = true;
+    if (contents) contents(room);
+    add_doors_to_room(room);
+    return room;
 }
 
 // C refs: sp_lev.c build_room(), lspo_room(). Preserve the room construction
@@ -864,31 +947,462 @@ function dispatch_room_action(definition, context) {
     }
     if (action.contents) preflight_themeroom_fill(definition, context);
 
-    const chance = spec.chance ?? 100;
-    const declaredType = room_type_from_schema(spec.type, definition);
-    const roomType = (!chance || context.random(100) < chance)
-        ? declaredType
-        : OROOM;
-    const ok = create_room(
-        spec.x ?? -1,
-        spec.y ?? -1,
-        spec.w ?? -1,
-        spec.h ?? -1,
-        -1,
-        -1,
-        roomType,
-        spec.lit ?? -1,
-        context.random,
-        context.randomOneBased,
+    const room = run_room_descriptor(
+        spec,
+        null,
+        context,
+        action.contents
+            ? (created) => invoke_themeroom_fill(created, definition, context)
+            : null,
     );
-    if (!ok) return false;
+    if (!room) return false;
+    return !context.roomFailed;
+}
 
-    const room = game.level.rooms[game.level.nroom - 1];
-    topologize(room);
-    room.needfill = spec.filled ?? FILL_NONE;
-    room.needjoining = spec.joined ?? true;
-    if (action.contents) invoke_themeroom_fill(room, definition, context);
+// C ref: themerms.lua "Fake Delphi" callback.
+function fake_delphi(context) {
+    const room = run_room_descriptor(
+        { type: 'ordinary', w: 11, h: 9, filled: FILL_NORMAL },
+        null,
+        context,
+        (parent) => {
+            run_room_descriptor(
+                {
+                    type: 'ordinary',
+                    x: 4,
+                    y: 3,
+                    w: 3,
+                    h: 3,
+                    filled: FILL_NORMAL,
+                },
+                parent,
+                context,
+                (child) => {
+                    create_room_door(
+                        { state: 'random', wall: 'all' },
+                        child,
+                        context.random,
+                    );
+                },
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: themerms.lua "Room in a room" callback.
+function room_in_a_room(context) {
+    const room = run_room_descriptor(
+        { type: 'ordinary', filled: FILL_NORMAL },
+        null,
+        context,
+        (parent) => {
+            run_room_descriptor(
+                { type: 'ordinary' },
+                parent,
+                context,
+                (child) => {
+                    create_room_door(
+                        { state: 'random', wall: 'all' },
+                        child,
+                        context.random,
+                    );
+                },
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: themerms.lua "Huge room with another room inside" callback.
+function huge_room_with_another_room_inside(context) {
+    const width = context.random(10) + 11;
+    const height = context.random(5) + 8;
+    const room = run_room_descriptor(
+        { type: 'ordinary', w: width, h: height, filled: FILL_NORMAL },
+        null,
+        context,
+        (parent) => {
+            if (context.random(100) >= 90) return;
+            run_room_descriptor(
+                { type: 'ordinary', filled: FILL_NORMAL },
+                parent,
+                context,
+                (child) => {
+                    create_room_door(
+                        { state: 'random', wall: 'all' },
+                        child,
+                        context.random,
+                    );
+                    if (context.random(100) < 50) {
+                        create_room_door(
+                            { state: 'random', wall: 'all' },
+                            child,
+                            context.random,
+                        );
+                    }
+                },
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: themerms.lua "Nesting rooms" callback.
+function nesting_rooms(context) {
+    const width = context.random(4) + 9;
+    const height = context.random(4) + 9;
+    const room = run_room_descriptor(
+        { type: 'ordinary', w: width, h: height, filled: FILL_NORMAL },
+        null,
+        context,
+        (parent) => {
+            const parentWidth = parent.hx - parent.lx + 1;
+            const parentHeight = parent.hy - parent.ly + 1;
+            const minWidth = Math.floor(parentWidth / 2);
+            const minHeight = Math.floor(parentHeight / 2);
+            const childWidth = minWidth
+                + context.random(parentWidth - 1 - minWidth);
+            const childHeight = minHeight
+                + context.random(parentHeight - 1 - minHeight);
+            run_room_descriptor(
+                {
+                    type: 'ordinary',
+                    w: childWidth,
+                    h: childHeight,
+                    filled: FILL_NORMAL,
+                },
+                parent,
+                context,
+                (child) => {
+                    if (context.random(100) < 90) {
+                        run_room_descriptor(
+                            { type: 'ordinary', filled: FILL_NORMAL },
+                            child,
+                            context,
+                            (grandchild) => {
+                                create_room_door(
+                                    { state: 'random', wall: 'all' },
+                                    grandchild,
+                                    context.random,
+                                );
+                                if (context.random(100) < 15) {
+                                    create_room_door(
+                                        { state: 'random', wall: 'all' },
+                                        grandchild,
+                                        context.random,
+                                    );
+                                }
+                            },
+                        );
+                    }
+                    create_room_door(
+                        { state: 'random', wall: 'all' },
+                        child,
+                        context.random,
+                    );
+                    if (context.random(100) < 15) {
+                        create_room_door(
+                            { state: 'random', wall: 'all' },
+                            child,
+                            context.random,
+                        );
+                    }
+                },
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: sp_lev.c sel_set_ter(), restricted to the SET_LIT_NOCHANGE terrain
+// used by these direct handlers. Coordinates are relative to the current room.
+function set_room_terrain(room, relativeX, relativeY, typ) {
+    const x = room.lx + relativeX;
+    const y = room.ly + relativeY;
+    if (!set_levltyp(x, y, typ, { state: game })) return false;
+    const location = game.level.at(x, y);
+    if (typ === HWALL || typ === IRONBARS) {
+        location.horizontal = true;
+    } else if (typ === CLOUD) {
+        del_engr_at(x, y, game);
+    }
     return true;
+}
+
+// C ref: themerms.lua "Pillars" callback.
+function pillars(context) {
+    const room = run_room_descriptor(
+        { type: 'themed', w: 10, h: 10 },
+        null,
+        context,
+        (parent) => {
+            const terrain = [
+                HWALL, HWALL, HWALL, HWALL, LAVAPOOL, POOL, TREE,
+            ];
+            shuffle_core_values(terrain, context.random);
+            const columns = Math.trunc((parent.hx - parent.lx + 1) / 4);
+            const rows = Math.trunc((parent.hy - parent.ly + 1) / 4);
+            for (let x = 0; x < columns; ++x) {
+                for (let y = 0; y < rows; ++y) {
+                    const left = x * 4 + 2;
+                    const top = y * 4 + 2;
+                    set_room_terrain(parent, left, top, terrain[0]);
+                    set_room_terrain(parent, left + 1, top, terrain[0]);
+                    set_room_terrain(parent, left, top + 1, terrain[0]);
+                    set_room_terrain(parent, left + 1, top + 1, terrain[0]);
+                }
+            }
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+function direct_creation_environment(context) {
+    const facade = context.randomFacade;
+    for (const method of THEMEROOM_RANDOM_METHODS) {
+        if (typeof facade?.[method] !== 'function') {
+            throw new UnsupportedThemeroomActionError(
+                context.definition,
+                `requires randomFacade.${method} for special-level creation`,
+            );
+        }
+    }
+    if (facade.rn2 !== context.random
+        || facade.rnd !== context.randomOneBased) {
+        throw new UnsupportedThemeroomActionError(
+            context.definition,
+            'requires randomFacade.rn2/rnd to match the room RNG streams',
+        );
+    }
+    return {
+        state: game,
+        random: facade,
+        spObjectContext: new_sp_lev_object_context(),
+    };
+}
+
+// C ref: themerms.lua "Mausoleum" callback.
+function mausoleum(context) {
+    const creationEnvironment = direct_creation_environment(context);
+    const width = 5 + context.random(3) * 2;
+    const height = 5 + context.random(3) * 2;
+    const room = run_room_descriptor(
+        { type: 'themed', w: width, h: height },
+        null,
+        context,
+        (parent) => {
+            run_room_descriptor(
+                {
+                    type: 'themed',
+                    x: Math.trunc((width - 1) / 2),
+                    y: Math.trunc((height - 1) / 2),
+                    w: 1,
+                    h: 1,
+                    joined: false,
+                },
+                parent,
+                context,
+                (child) => {
+                    if (context.random(100) < 50) {
+                        const classes = [
+                            S_MUMMY, S_VAMPIRE, S_LICH, S_ZOMBIE,
+                        ];
+                        shuffle_core_values(classes, context.random);
+                        create_monster(
+                            {
+                                class: classes[0],
+                                coordinate: { x: 0, y: 0 },
+                                waiting: true,
+                            },
+                            child,
+                            creationEnvironment,
+                        );
+                    } else {
+                        const species = mkclass(
+                            S_HUMAN,
+                            G_NOGEN | G_IGNORE,
+                            creationEnvironment,
+                        );
+                        if (!species) {
+                            throw new Error(
+                                'Mausoleum could not resolve a human corpse species',
+                            );
+                        }
+                        lspo_object(
+                            {
+                                id: CORPSE,
+                                corpsenm: species.pmidx,
+                                coordinate: { x: 0, y: 0 },
+                            },
+                            child,
+                            creationEnvironment,
+                        );
+                    }
+                    if (context.random(100) < 20) {
+                        create_room_door(
+                            { state: 'secret', wall: 'all' },
+                            child,
+                            context.random,
+                        );
+                    }
+                },
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: themerms.lua "Random dungeon feature in the middle of an odd-sized
+// room" callback.
+function random_dungeon_feature_in_odd_room(context) {
+    const width = 3 + context.random(3) * 2;
+    const height = 3 + context.random(3) * 2;
+    const room = run_room_descriptor(
+        { type: 'ordinary', filled: FILL_NORMAL, w: width, h: height },
+        null,
+        context,
+        (parent) => {
+            const features = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+            shuffle_core_values(features, context.random);
+            set_room_terrain(
+                parent,
+                Math.trunc((width - 1) / 2),
+                Math.trunc((height - 1) / 2),
+                features[0],
+            );
+        },
+    );
+    return Boolean(room && !context.roomFailed);
+}
+
+// C ref: themerms.lua "Twin businesses" callback. Constructing the Lua
+// placements table evaluates all twelve directional helpers before the
+// shop-type swap and d(8) placement choice; retain that surprising draw order.
+function twin_businesses(context) {
+    const percent = (chance) => context.random(100) < chance;
+    const southeast = () => (percent(50) ? 'south' : 'east');
+    const northeast = () => (percent(50) ? 'north' : 'east');
+    const northwest = () => (percent(50) ? 'north' : 'west');
+    const southwest = () => (percent(50) ? 'south' : 'west');
+
+    const outer = run_room_descriptor(
+        { type: 'themed', w: 9, h: 5 },
+        null,
+        context,
+        (parent) => {
+            const placements = [
+                {
+                    lx: 1, ly: 1, rx: 4, ry: 1,
+                    leftWall: 'south', rightWall: southeast(),
+                },
+                {
+                    lx: 1, ly: 2, rx: 4, ry: 2,
+                    leftWall: 'north', rightWall: northeast(),
+                },
+                {
+                    lx: 1, ly: 1, rx: 5, ry: 1,
+                    leftWall: southeast(), rightWall: southwest(),
+                },
+                {
+                    lx: 1, ly: 1, rx: 5, ry: 2,
+                    leftWall: southeast(), rightWall: northwest(),
+                },
+                {
+                    lx: 1, ly: 2, rx: 5, ry: 1,
+                    leftWall: northeast(), rightWall: southwest(),
+                },
+                {
+                    lx: 1, ly: 2, rx: 5, ry: 2,
+                    leftWall: northeast(), rightWall: northwest(),
+                },
+                {
+                    lx: 2, ly: 1, rx: 5, ry: 1,
+                    leftWall: southwest(), rightWall: 'south',
+                },
+                {
+                    lx: 2, ly: 2, rx: 5, ry: 2,
+                    leftWall: northwest(), rightWall: 'north',
+                },
+            ];
+
+            let leftType = 'weapon shop';
+            let rightType = 'armor shop';
+            if (percent(50))
+                [leftType, rightType] = [rightType, leftType];
+
+            const shopDoorState = () => {
+                if (percent(1)) return 'locked';
+                if (percent(50)) return 'closed';
+                return 'open';
+            };
+            const placement = placements[context.randomOneBased(8) - 1];
+
+            run_room_descriptor(
+                {
+                    type: leftType,
+                    x: placement.lx,
+                    y: placement.ly,
+                    w: 3,
+                    h: 3,
+                    filled: FILL_NORMAL,
+                    joined: false,
+                },
+                parent,
+                context,
+                (room) => create_room_door({
+                    state: shopDoorState(),
+                    wall: placement.leftWall,
+                }, room, context.random),
+            );
+            run_room_descriptor(
+                {
+                    type: rightType,
+                    x: placement.rx,
+                    y: placement.ry,
+                    w: 3,
+                    h: 3,
+                    filled: FILL_NORMAL,
+                    joined: false,
+                },
+                parent,
+                context,
+                (room) => create_room_door({
+                    state: shopDoorState(),
+                    wall: placement.rightWall,
+                }, room, context.random),
+            );
+        },
+    );
+    return Boolean(outer && !context.roomFailed);
+}
+
+const DIRECT_THEMEROOM_HANDLERS = new Map([
+    ['fake-delphi', fake_delphi],
+    ['room-in-a-room', room_in_a_room],
+    [
+        'huge-room-with-another-room-inside',
+        huge_room_with_another_room_inside,
+    ],
+    ['nesting-rooms', nesting_rooms],
+    ['pillars', pillars],
+    ['mausoleum', mausoleum],
+    [
+        'random-dungeon-feature-in-the-middle-of-an-odd-sized-room',
+        random_dungeon_feature_in_odd_room,
+    ],
+    ['twin-businesses', twin_businesses],
+]);
+
+function dispatch_direct_action(definition, context) {
+    const handler = DIRECT_THEMEROOM_HANDLERS.get(definition.action.handler);
+    if (!handler) {
+        throw new UnsupportedThemeroomActionError(
+            definition,
+            `requires unimplemented direct handler ${JSON.stringify(definition.action.handler)}`,
+        );
+    }
+    return handler(context);
 }
 
 // C refs: dat/nhlib.lua shuffle(); sp_lev.c lspo_replace_terrain(). nhlib's
@@ -915,24 +1429,153 @@ function blocked_center_contents(definition, origin, context) {
     );
 }
 
+// C refs: nhlobj.c l_obj_new_readobjnam(); objnam.c readobjnam(). The Water
+// vault uses four exact, wishable names. Their common path is mksobj(...,
+// TRUE, FALSE); a mergeable exact object also evaluates the source rnd(6)
+// quantity guard even though its requested count and generated count are one.
+function new_water_vault_escape_object(otyp, env) {
+    // readobjnam() resolves the unambiguous class-qualified name through
+    // rnd_otyp_by_namedesc(..., xtra_prob=1) before constructing it.
+    env.random.rn2(objectType(otyp, env.state).oc_prob + 1);
+    const obj = mksobj(otyp, true, false, env);
+    if (objectType(otyp, env.state).oc_merge)
+        env.random.rnd(6);
+    return obj;
+}
+
+function add_teleport_exclusion(origin, state = game) {
+    state.exclusion_zones = {
+        zonetype: LR_TELE,
+        lx: origin.x + 2,
+        ly: origin.y + 2,
+        hx: origin.x + 3,
+        hy: origin.y + 3,
+        next: state.exclusion_zones ?? null,
+    };
+}
+
+// C ref: themerms.lua "Water-surrounded vault" map callback.
+function water_surrounded_vault_contents(
+    origin,
+    context,
+    baseCreationEnvironment,
+) {
+    const room = register_irregular_map_region(
+        { x: origin.x + 3, y: origin.y + 3 },
+        THEMEROOM,
+        FILL_NONE,
+        false,
+        context,
+    );
+    if (!room) return false;
+
+    const creationEnvironment = objectGenerationEnv({
+        ...baseCreationEnvironment,
+        frame: {
+            xstart: origin.x,
+            ystart: origin.y,
+            xsize: origin.width,
+            ysize: origin.height,
+        },
+    });
+    const nastyUndead = [
+        PM_GIANT_ZOMBIE,
+        PM_ETTIN_ZOMBIE,
+        PM_VAMPIRE_LEADER,
+    ];
+    const chestSpots = [
+        { x: 2, y: 2 },
+        { x: 3, y: 2 },
+        { x: 2, y: 3 },
+        { x: 3, y: 3 },
+    ];
+    shuffle_core_values(chestSpots, context.random);
+
+    const escapeTypes = [
+        SCR_TELEPORTATION,
+        RIN_TELEPORTATION,
+        WAN_TELEPORTATION,
+        WAN_DIGGING,
+    ];
+    const escapeObject = new_water_vault_escape_object(
+        escapeTypes[context.random(escapeTypes.length)],
+        creationEnvironment,
+    );
+    const firstChestSpec = {
+        id: CHEST,
+        coordinate: chestSpots[0],
+    };
+    // themerms.lua spells this field `olocked`; lspo_object() only reads
+    // `locked`, so the source retains the chest's randomly generated state.
+    const firstChest = lspo_object(
+        firstChestSpec,
+        null,
+        creationEnvironment,
+    );
+    add_to_container(firstChest, escapeObject, creationEnvironment);
+    firstChest.owt = weight(firstChest, creationEnvironment);
+
+    for (let index = 1; index < chestSpots.length; ++index) {
+        lspo_object(
+            { id: CHEST, coordinate: chestSpots[index] },
+            null,
+            creationEnvironment,
+        );
+    }
+
+    shuffle_core_values(nastyUndead, context.random);
+    create_monster(
+        {
+            id: nastyUndead[0],
+            coordinate: { x: 2, y: 2 },
+            // The source string is "vampire lord", whose male pmname makes
+            // find_montype() skip its otherwise-random parser gender draw.
+            ...(nastyUndead[0] === PM_VAMPIRE_LEADER
+                ? { parsedGender: MALE } : {}),
+        },
+        null,
+        creationEnvironment,
+    );
+    add_teleport_exclusion(origin);
+    return true;
+}
+
 function dispatch_map_action(definition, context) {
     const contents = definition.action.contents;
-    const supported = contents?.kind === 'filler-region'
-        || (contents?.kind === 'handler' && contents.handler === 'blocked-center');
-    if (!supported) {
+    if (!has_supported_map_action(definition)) {
         const handler = contents?.handler ?? contents?.kind ?? 'missing contents';
         throw new UnsupportedThemeroomActionError(
             definition,
             `requires unimplemented map handler ${JSON.stringify(handler)}`,
         );
     }
-    preflight_themeroom_fill(definition, context);
+    const waterVault = contents?.kind === 'handler'
+        && contents.handler === 'water-surrounded-vault';
+    const creationEnvironment = waterVault
+        ? direct_creation_environment(context)
+        : null;
+    if (!waterVault) preflight_themeroom_fill(definition, context);
 
     const origin = lspo_map(definition, context.random);
     if (!origin) return false;
+    if (waterVault) {
+        return water_surrounded_vault_contents(
+            origin,
+            context,
+            creationEnvironment,
+        );
+    }
     if (contents.kind === 'handler')
         return blocked_center_contents(definition, origin, context);
     return filler_region(contents.filler, origin, definition, context);
+}
+
+function has_supported_map_action(definition) {
+    const contents = definition?.action?.contents;
+    return contents?.kind === 'filler-region'
+        || (contents?.kind === 'handler'
+            && (contents.handler === 'blocked-center'
+                || contents.handler === 'water-surrounded-vault'));
 }
 
 // Runtime counterpart to a selected themerms.lua contents function. Keep this
@@ -956,11 +1599,13 @@ export function dispatch_themeroom(
         ? SOURCE_THEMEROOM_RANDOM
         : null;
     const context = {
+        definition,
         difficulty: env.difficulty ?? level_difficulty(game),
         random,
         randomOneBased,
         randomFacade: env.randomFacade ?? sourceRandomFacade,
         themeroomFill: env.themeroomFill,
+        roomFailed: false,
     };
     switch (definition?.action?.kind) {
     case 'room':
@@ -968,10 +1613,7 @@ export function dispatch_themeroom(
     case 'map':
         return dispatch_map_action(definition, context);
     case 'handler':
-        throw new UnsupportedThemeroomActionError(
-            definition,
-            `requires unimplemented direct handler ${JSON.stringify(definition.action.handler)}`,
-        );
+        return dispatch_direct_action(definition, context);
     default:
         throw new UnsupportedThemeroomActionError(
             definition,
@@ -982,11 +1624,8 @@ export function dispatch_themeroom(
 
 // C ref: themerms.lua themerooms_generate(). Generic room descriptors use the
 // strict synchronous dispatcher and the complete source-order fill reservoir.
-// While three fill bodies remain unported, the live default callback tolerates
-// only UnsupportedThemeroomFillError after selection; implemented fills and
-// explicitly injected callbacks retain strict behavior. Direct filler maps
-// omit their optional fill, and unported direct callbacks use the ordinary-room
-// fallback. dispatch_themeroom() remains the strict completion seam.
+// Every initial-generation definition now uses its registered source handler;
+// dispatch_themeroom() remains the strict completion seam.
 export async function themerooms_generate(
     difficulty,
     random = rn2,
@@ -995,50 +1634,17 @@ export async function themerooms_generate(
 ) {
     const pick = select_themeroom(difficulty, random);
     if (!pick) return false;
-    if (pick.action?.kind === 'room') {
-        const sourceRandomFacade = random === rn2 && randomOneBased === rnd
-            ? SOURCE_THEMEROOM_RANDOM
-            : null;
-        const useDefaultFill = rawEnv.themeroomFill == null;
-        return dispatch_themeroom(pick, random, randomOneBased, {
-            difficulty,
-            randomFacade: rawEnv.randomFacade ?? sourceRandomFacade,
-            themeroomFill: useDefaultFill
-                ? staged_themeroom_fill
-                : rawEnv.themeroomFill,
-        });
-    }
-    if (pick.map && pick.filler) {
-        const origin = lspo_map(pick, random);
-        return origin ? filler_region(
-            pick.filler,
-            origin,
-            pick,
-            {
-                allowMissingFill: true,
-                difficulty,
-                random,
-                randomOneBased,
-                themeroomFill: null,
-            },
-        ) : false;
-    }
-
-    // sp_lev.c build_room() evaluates the default 100% chance with rn2(100).
-    random(100);
-    const ok = create_room(
-        -1, -1, -1, -1, -1, -1, OROOM, -1,
-        random,
-        randomOneBased,
-    );
-    if (ok) {
-        const room = game.level.rooms[game.level.nroom - 1];
-        if (room) {
-            topologize(room);
-            room.needfill = FILL_NORMAL;
-        }
-    }
-    return ok;
+    const sourceRandomFacade = random === rn2 && randomOneBased === rnd
+        ? SOURCE_THEMEROOM_RANDOM
+        : null;
+    const useDefaultFill = rawEnv.themeroomFill == null;
+    return dispatch_themeroom(pick, random, randomOneBased, {
+        difficulty,
+        randomFacade: rawEnv.randomFacade ?? sourceRandomFacade,
+        themeroomFill: useDefaultFill
+            ? themeroom_fill
+            : rawEnv.themeroomFill,
+    });
 }
 
 // C ref: sp_lev.c check_room()
@@ -1157,8 +1763,58 @@ function create_room(
             htmp = ddy.v + 1;
             r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp, hy: yabs + htmp };
         } else {
-            // positioned room (not used for seed8000)
-            return false;
+            // sp_lev.c create_room(): some, but not all, parameters are
+            // random. Random positions reserve the source's extra border.
+            let rndpos = 0;
+            if (xtmp < 0 && ytmp < 0) {
+                xtmp = randomOneBased(5);
+                ytmp = randomOneBased(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) {
+                wtmp = random(15) + 3;
+                htmp = random(8) + 2;
+            }
+            if (xaltmp === -1) xaltmp = randomOneBased(3);
+            if (yaltmp === -1) yaltmp = randomOneBased(3);
+
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+            if (xaltmp === SPLEV_RIGHT) {
+                xabs += Math.trunc(COLNO / 5) - wtmp;
+            } else if (xaltmp === SPLEV_CENTER) {
+                xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2);
+            }
+            if (yaltmp === SPLEV_BOTTOM) {
+                yabs += Math.trunc(ROWNO / 5) - htmp;
+            } else if (yaltmp === SPLEV_CENTER) {
+                yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2);
+            }
+
+            if (xabs + wtmp - 1 > COLNO - 2)
+                xabs = COLNO - wtmp - 3;
+            if (xabs < 2) xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2)
+                yabs = ROWNO - htmp - 3;
+            if (yabs < 2) yabs = 2;
+
+            r2 = {
+                lx: xabs - 1,
+                ly: yabs - 1,
+                hx: xabs + wtmp + rndpos,
+                hy: yabs + htmp + rndpos,
+            };
+            r1 = get_rect(r2);
+            if (r1) {
+                const lowx = { v: xabs }, ddx = { v: wtmp };
+                const lowy = { v: yabs }, ddy = { v: htmp };
+                if (!check_room(lowx, ddx, lowy, ddy, vault, random)) {
+                    r1 = null;
+                } else {
+                    xabs = lowx.v;
+                    yabs = lowy.v;
+                }
+            }
         }
     } while (++trycnt <= 100 && !r1);
     if (!r1) return false;
@@ -1182,11 +1838,6 @@ function create_vault() {
 function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     const g = game;
     const croom = {
-        lx: lowx, ly: lowy, hx: hix, hy: hiy,
-        rtype, rlit: lit ? 1 : 0,
-        doorct: 0, fdoor: g.level.doorindex,
-        irregular: false, needjoining: !special,
-        nsubrooms: 0, sbrooms: [],
         roomnoidx: g.level.nroom,
         needfill: 0,
     };
@@ -1196,6 +1847,132 @@ function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     if (g.level.nroom < MAXNROFROOMS) {
         g.level.rooms[g.level.nroom] = { hx: -1 };
     }
+}
+
+// C ref: mklev.c add_subroom(). Subrooms occupy the second half of the
+// conceptual rooms[] allocation, so their topology room numbers remain stable
+// when the top-level room array is later sorted.
+function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const g = game;
+    g.subrooms ??= [];
+    g.nsubroom ??= 0;
+    proom.sbrooms ??= [];
+    proom.nsubrooms ??= proom.sbrooms.length;
+    if (g.nsubroom >= MAXNROFROOMS)
+        throw new Error('level has too many subrooms');
+    if (proom.nsubrooms >= MAX_SUBROOMS)
+        throw new Error('room has too many subrooms');
+
+    const croom = {
+        roomnoidx: MAXNROFROOMS + 1 + g.nsubroom,
+        needfill: FILL_NONE,
+    };
+    do_room_or_subroom(
+        croom,
+        lowx,
+        lowy,
+        hix,
+        hiy,
+        lit,
+        rtype,
+        special,
+        false,
+    );
+    proom.sbrooms[proom.nsubrooms++] = croom;
+    g.subrooms[g.nsubroom++] = croom;
+    g.subrooms[g.nsubroom] = { hx: -1 };
+}
+
+// C ref: sp_lev.c create_subroom(). Coordinates are relative to the parent
+// room; the paired edge adjustments intentionally retain the source's
+// one-based random-position quirks.
+function create_subroom(
+    proom,
+    x,
+    y,
+    w,
+    h,
+    rtype,
+    rlit,
+    random = rn2,
+    randomOneBased = rnd,
+) {
+    const width = proom.hx - proom.lx + 1;
+    const height = proom.hy - proom.ly + 1;
+    if (width < 4 || height < 4) return false;
+
+    if (w === -1) w = randomOneBased(width - 3);
+    if (h === -1) h = randomOneBased(height - 3);
+    if (x === -1) x = randomOneBased(width - w);
+    if (y === -1) y = randomOneBased(height - h);
+    if (x === 1) x = 0;
+    if (y === 1) y = 0;
+    if (x + w + 1 === width) ++x;
+    if (y + h + 1 === height) ++y;
+    if (rtype === -1) rtype = OROOM;
+    rlit = litstate_rnd(rlit, random, randomOneBased);
+    add_subroom(
+        proom,
+        proom.lx + x,
+        proom.ly + y,
+        proom.lx + x + w - 1,
+        proom.ly + y + h - 1,
+        rlit,
+        rtype,
+        false,
+    );
+    return true;
+}
+
+// C ref: sp_lev.c build_room(). This low-level boundary accepts normalized
+// rtype/rlit/needfill fields; direct handlers adapt their Lua-shaped fields via
+// run_room_descriptor(). chance selects the requested type versus OROOM, not
+// whether a room exists. create_room()/create_subroom() append one room and
+// return only success, so null below means construction itself failed.
+export function build_room(
+    spec,
+    parent = null,
+    random = rn2,
+    randomOneBased = rnd,
+) {
+    const requestedType = spec.rtype ?? OROOM;
+    const chance = spec.chance ?? 100;
+    const rtype = (!chance || random(100) < chance)
+        ? requestedType : OROOM;
+    const roomIndex = parent
+        ? (game.nsubroom ?? 0) : game.level.nroom;
+    const ok = parent
+        ? create_subroom(
+            parent,
+            spec.x ?? -1,
+            spec.y ?? -1,
+            spec.w ?? -1,
+            spec.h ?? -1,
+            rtype,
+            spec.rlit ?? -1,
+            random,
+            randomOneBased,
+        )
+        : create_room(
+            spec.x ?? -1,
+            spec.y ?? -1,
+            spec.w ?? -1,
+            spec.h ?? -1,
+            spec.xalign ?? -1,
+            spec.yalign ?? -1,
+            rtype,
+            spec.rlit ?? -1,
+            random,
+            randomOneBased,
+        );
+    if (!ok) return null;
+
+    const room = parent
+        ? game.subrooms[roomIndex] : game.level.rooms[roomIndex];
+    topologize(room);
+    room.needfill = spec.needfill ?? FILL_NONE;
+    room.needjoining = spec.joined ?? true;
+    return room;
 }
 
 // C ref: mklev.c do_room_or_subroom()
@@ -1219,10 +1996,10 @@ function do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, _rtype, special, i
     croom.doorct = 0;
     croom.fdoor = game.level.doorindex;
     croom.irregular = false;
+    croom.needjoining = !special;
     croom.nsubrooms = 0;
     croom.sbrooms = [];
     if (!special) {
-        croom.needjoining = true;
         for (let x = lowx - 1; x <= hix + 1; x++)
             for (let y = lowy - 1; y <= hiy + 1; y += (hiy - lowy + 2)) {
                 const loc = map.at(x, y);
@@ -1512,12 +2289,20 @@ function add_door(x, y, aroom) {
         const d = g.level.doors[aroom.fdoor + i];
         if (d && d.x === x && d.y === y) return;
     }
+    // level.doors concatenates each room's [fdoor, fdoor + doorct) slice.
+    // Inserting into an earlier slice shifts every later room's starting index.
     if (aroom.doorct === 0) aroom.fdoor = g.level.doorindex;
     aroom.doorct++;
     for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--)
         g.level.doors[tmp] = g.level.doors[tmp - 1];
-    for (const broom of g.level.rooms || []) {
-        if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
+    for (let i = 0; i < g.level.nroom; ++i) {
+        const broom = g.level.rooms[i];
+        if (!broom || broom === aroom || !(broom.doorct > 0)) continue;
+        if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
+    for (let i = 0; i < (g.nsubroom ?? 0); ++i) {
+        const broom = g.subrooms?.[i];
+        if (!broom || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
     }
     g.level.doors[aroom.fdoor] = { x, y };
@@ -1546,6 +2331,175 @@ function okdoor(x, y) {
         || (isok(x, y - 1) && !IS_OBSTRUCTED(map.at(x, y - 1).typ))
         || (isok(x, y + 1) && !IS_OBSTRUCTED(map.at(x, y + 1).typ))
     );
+}
+
+const ROOM_DOOR_STATE_MASKS = Object.freeze({
+    random: -1,
+    open: D_ISOPEN,
+    closed: D_CLOSED,
+    locked: D_LOCKED,
+    nodoor: D_NODOOR,
+    broken: D_BROKEN,
+    secret: D_SECRET,
+});
+
+const ROOM_DOOR_WALL_MASKS = Object.freeze({
+    all: W_ANY,
+    random: W_ANY,
+    north: W_NORTH,
+    south: W_SOUTH,
+    east: W_EAST,
+    west: W_WEST,
+});
+
+function rnddoor(random) {
+    // C ref: sp_lev.c rnddoor(). ROLL_FROM chooses among these five states.
+    return [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][random(5)];
+}
+
+// C ref: sp_lev.c create_door(). The descriptor is deliberately mutable:
+// source resolves its random fields in place before attempting placement.
+export function create_door(dd, broom, random = rn2) {
+    if (dd.secret === -1) dd.secret = random(2);
+    if (dd.wall === W_RANDOM) dd.wall = W_ANY;
+
+    if (dd.mask === -1) {
+        if (!dd.secret) {
+            if (!random(3)) {
+                if (!random(5)) dd.mask = D_ISOPEN;
+                else if (!random(6)) dd.mask = D_LOCKED;
+                else dd.mask = D_CLOSED;
+                if (dd.mask !== D_ISOPEN && !random(25))
+                    dd.mask |= D_TRAPPED;
+            } else {
+                dd.mask = D_NODOOR;
+            }
+        } else {
+            if (!random(5)) dd.mask = D_LOCKED;
+            else dd.mask = D_CLOSED;
+            if (!random(20)) dd.mask |= D_TRAPPED;
+        }
+    }
+
+    let x = 0;
+    let y = 0;
+    let trycnt;
+    for (trycnt = 0; trycnt < 100; ++trycnt) {
+        const dwall = dd.wall;
+        const dpos = dd.pos;
+        switch (random(4)) {
+        case 0:
+            if (!(dwall & W_NORTH)) continue;
+            y = broom.ly - 1;
+            x = broom.lx + (dpos === -1
+                ? random(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y - 1)
+                || IS_OBSTRUCTED(game.level.at(x, y - 1).typ)) continue;
+            break;
+        case 1:
+            if (!(dwall & W_SOUTH)) continue;
+            y = broom.hy + 1;
+            x = broom.lx + (dpos === -1
+                ? random(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y + 1)
+                || IS_OBSTRUCTED(game.level.at(x, y + 1).typ)) continue;
+            break;
+        case 2:
+            if (!(dwall & W_WEST)) continue;
+            x = broom.lx - 1;
+            y = broom.ly + (dpos === -1
+                ? random(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x - 1, y)
+                || IS_OBSTRUCTED(game.level.at(x - 1, y).typ)) continue;
+            break;
+        case 3:
+            if (!(dwall & W_EAST)) continue;
+            x = broom.hx + 1;
+            y = broom.ly + (dpos === -1
+                ? random(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x + 1, y)
+                || IS_OBSTRUCTED(game.level.at(x + 1, y).typ)) continue;
+            break;
+        }
+        if (okdoor(x, y)) break;
+    }
+    if (trycnt >= 100) return false;
+    if (!set_levltyp(x, y, dd.secret ? SDOOR : DOOR, { state: game }))
+        return false;
+
+    // struct rm.flags is a five-bit field. In particular, the parser's
+    // D_SECRET pseudo-mask is truncated when it is assigned to an SDOOR.
+    const mask = dd.mask & 0x1f;
+    const loc = game.level.at(x, y);
+    loc.flags = mask;
+    loc.doormask = mask;
+    return true;
+}
+
+// C ref: sp_lev.c lspo_door(), restricted to its room-wall form. Lua's
+// random state resolution consumes and discards rnddoor() before create_door()
+// rolls the actual state; rnddoor() never yields the parser-only secret state.
+export function create_room_door(spec, broom, random = rn2) {
+    const stateName = spec.state ?? 'random';
+    const wallName = spec.wall ?? 'all';
+    if (!Object.hasOwn(ROOM_DOOR_STATE_MASKS, stateName))
+        throw new RangeError(`unsupported room door state ${JSON.stringify(stateName)}`);
+    if (!Object.hasOwn(ROOM_DOOR_WALL_MASKS, wallName))
+        throw new RangeError(`unsupported room door wall ${JSON.stringify(wallName)}`);
+
+    const mask = ROOM_DOOR_STATE_MASKS[stateName];
+    if (mask === -1) rnddoor(random);
+    return create_door({
+        secret: mask === D_SECRET ? 1 : 0,
+        mask,
+        pos: spec.pos ?? -1,
+        wall: ROOM_DOOR_WALL_MASKS[wallName],
+    }, broom, random);
+}
+
+// C ref: sp_lev.c shared_with_room()/maybe_add_door().
+function shared_with_room(x, y, droom) {
+    const map = game.level;
+    const loc = map.at(x, y);
+    const rmno = (droom.roomnoidx ?? -1) + ROOMOFFSET;
+    if (!loc || rmno < ROOMOFFSET) return false;
+    if (loc.roomno === rmno && !loc.edge) return false;
+    if (isok(x - 1, y) && map.at(x - 1, y).roomno === rmno
+        && x - 1 <= droom.hx) return true;
+    if (isok(x + 1, y) && map.at(x + 1, y).roomno === rmno
+        && x + 1 >= droom.lx) return true;
+    if (isok(x, y - 1) && map.at(x, y - 1).roomno === rmno
+        && y - 1 <= droom.hy) return true;
+    if (isok(x, y + 1) && map.at(x, y + 1).roomno === rmno
+        && y + 1 >= droom.ly) return true;
+    return false;
+}
+
+function maybe_add_door(x, y, droom) {
+    const loc = game.level.at(x, y);
+    const rmno = (droom.roomnoidx ?? -1) + ROOMOFFSET;
+    if (droom.hx >= 0 && loc
+        && ((!droom.irregular && inside_room(droom, x, y))
+            || loc.roomno === rmno
+            || shared_with_room(x, y, droom))) {
+        add_door(x, y, droom);
+    }
+}
+
+// C ref: sp_lev.c add_doors_to_room(). lspo_room() calls this after a room's
+// contents callback, then recurses through any already-completed subrooms.
+export function add_doors_to_room(croom) {
+    for (let x = croom.lx - 1; x <= croom.hx + 1; ++x) {
+        for (let y = croom.ly - 1; y <= croom.hy + 1; ++y) {
+            const typ = game.level.at(x, y)?.typ;
+            if (IS_DOOR(typ) || typ === SDOOR)
+                maybe_add_door(x, y, croom);
+        }
+    }
+    const subrooms = croom.sbrooms ?? [];
+    const count = croom.nsubrooms ?? subrooms.length;
+    for (let i = 0; i < count; ++i)
+        add_doors_to_room(subrooms[i]);
 }
 
 // C ref: mklev.c join()

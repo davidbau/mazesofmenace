@@ -433,12 +433,16 @@ function stairwayAt(state, x, y) {
 }
 
 function glyphPresentation(symbol, color, state, customization = null) {
+    const displayCh = customization?.displayCh ?? symbol.displayCh;
     const result = {
-        ch: symbol.ch,
+        // tty_print_glyph() sends UTF-8 customizations through g_pututf8().
+        // Recorder patch 006 does not mirror that byte sequence into its
+        // shadow frame, so its existing cell stays untouched.  The browser
+        // still receives the Unicode presentation independently.
+        ch: customization?.displayCh ? null : symbol.ch,
         color: recorderMapColor(color, state),
         dec: symbol.dec,
     };
-    const displayCh = customization?.displayCh ?? symbol.displayCh;
     if (displayCh) result.displayCh = displayCh;
     if (customization?.rgb && state.iflags?.wc_color !== false) {
         result.rgb = [...customization.rgb];
@@ -574,7 +578,9 @@ export function monster_glyph_info(monster, state = game) {
         // from zeroobj, so its class remains zero even though normal object
         // glyphs still derive their class from otyp.  That distinction is
         // visible for distant gems and spellbooks, and makes fake potions
-        // concrete rather than generic.
+        // concrete rather than generic.  display_monster() deliberately uses
+        // PM_TENGU as a valid species placeholder when the mimic has no
+        // mcorpsenm; corpse color and statue symbols can observe that field.
         const fakeObject = {
             otyp: monster.mappearance,
             oclass: 0,
