@@ -51,7 +51,7 @@ import {
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
-import { A_MAX, A_WIS, A_CON, adjattrib, exercise, acurr } from './attrib.js';
+import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
 import { lesshungry, morehungry, poison_strdmg, vomit } from './eat.js';
 import { losehp, in_town } from './hack.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
@@ -238,6 +238,33 @@ export async function breaksink(x, y) {
         game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
     }
     newsym(x, y);
+}
+
+/**
+ * C ref: fountain.c sink_backs_up — kick/drink mud + once-per-sink ring.
+ * Branch envelope: Blind/Deaf msg; Flupp prefix when !Deaf; S_LRING gate
+ * → You_see ring + mkobj_at RING_CLASS + exercise DEX/WIS.
+ * Named omit: body_part(FACE) poly forms (humanoid "face").
+ */
+export async function sink_backs_up(x, y) {
+    const u = game.u || {};
+    const Blind = !!(u.Blind || u.ublind);
+    const Deaf = !!(u.Deaf || u.HDeaf || u.EDeaf || u.uroleplay?.deaf);
+    let buf;
+    if (!Blind) buf = 'Muddy waste pops up from the drain';
+    else if (!Deaf) buf = 'You hear a sloshing sound';
+    else buf = 'Something splashes you in the face';
+    await pline(`${!Deaf ? 'Flupp!  ' : ''}${buf}.`);
+
+    const loc = game.level?.at(x, y);
+    if (loc && !((loc.looted | 0) & S_LRING)) {
+        if (!Blind) await pline('You see a ring shining in its midst.');
+        mkobj_at(RING_CLASS, x, y, true);
+        newsym(x, y);
+        exercise(A_DEX, true);
+        exercise(A_WIS, true);
+        loc.looted = (loc.looted | 0) | S_LRING;
+    }
 }
 
 /**

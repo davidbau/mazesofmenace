@@ -892,10 +892,11 @@ async function chest_shatter_msg(otmp) {
 
 /**
  * C ref: lock.c breakchestlock — unlock+break or destroy box + spill.
- * Named omissions: costly_alteration / stolen_value shop bill; ice-box
+ * Named omissions: costly_alteration COST_BRKLCK; ice-box
  * corpse age / start_corpse_timeout; potionbreathe on shatter.
+ * Shop stolen_value on shatter/destroy (D-0983).
  */
-async function breakchestlock(box, destroyit) {
+export async function breakchestlock(box, destroyit) {
     if (!destroyit) {
         // C: costly_alteration(COST_BRKLCK) deferred
         box.olocked = 0;
@@ -904,13 +905,27 @@ async function breakchestlock(box, destroyit) {
         return;
     }
     const u = game.u || {};
+    const { costly_spot, shop_keeper, stolen_value } = await import('./shk.js');
+    const ushop = (u.ushops || '')[0];
+    const shkp = (ushop && costly_spot(u.ux | 0, u.uy | 0))
+        ? shop_keeper(ushop)
+        : null;
+    const costly = !!shkp;
+    const peaceful_shk = !!(costly && shkp.mpeaceful);
+    let loss = 0;
+    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
+
     await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
     while (box.cobj) {
         const otmp = box.cobj;
         obj_extract_self(otmp);
         if (!rn2(3) || otmp.oclass === POTION_CLASS) {
             await chest_shatter_msg(otmp);
-            // shop stolen_value deferred
+            if (costly) {
+                loss += await stolen_value(
+                    otmp, u.ux | 0, u.uy | 0, peaceful_shk, true,
+                );
+            }
             if ((otmp.quan || 1) === 1) {
                 // C: obfree — no obj_resists
                 otmp.quan = 0;
@@ -924,6 +939,16 @@ async function breakchestlock(box, destroyit) {
         // ICE_BOX corpse age deferred
         place_object(otmp, u.ux | 0, u.uy | 0);
         stackobj(otmp);
+    }
+    if (costly) {
+        loss += await stolen_value(
+            box, u.ux | 0, u.uy | 0, peaceful_shk, true,
+        );
+    }
+    if (loss) {
+        await pline(
+            `You owe ${loss} ${currency(loss)} for objects destroyed.`,
+        );
     }
     delobj(box);
 }

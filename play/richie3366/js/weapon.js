@@ -62,6 +62,19 @@ export function MON_WEP(mon) {
     return mon?.mw || null;
 }
 
+/**
+ * C ref: weapon.c mwepgone — clear monster wielded weapon.
+ * Named omissions: setmnotwielded artifact_light / light-source polish.
+ */
+export function mwepgone(mon) {
+    if (!mon) return;
+    const mwep = MON_WEP(mon);
+    if (!mwep) return;
+    mon.mw = null;
+    mwep.owornmask = (mwep.owornmask || 0) & ~W_WEP;
+    mon.weapon_check = NEED_WEAPON;
+}
+
 /** C ref: obj.h is_weptool */
 function is_weptool(otmp) {
     return otmp?.oclass === TOOL_CLASS

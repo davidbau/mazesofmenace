@@ -26,7 +26,7 @@
 // EReflecting bits; ureflects W_WEP/W_AMUL/W_ARM/silver-dragon arms
 // beyond shield makeknown; create_polymon after poly_zapped;
 // do_osshock shop bill; invent/worn poly_obj arms; floor boxlock;
-// blank_novel / corpse revive→rot timer; shop stolen_value;
+// blank_novel / corpse revive→rot timer;
 // cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
 // body; ignite_items body; burnarmor worn erode ported (D-0741);
 // acid_damage/erode_armor; death-breath disintegrate_arm;
@@ -53,6 +53,7 @@ import { getlin } from './getline.js';
 import {
     flush_screen, flush_topl_more, pline, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon,
+    obj_glyph,
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
@@ -99,7 +100,7 @@ import { newcham, makemon, monhp_per_lvl, neweshk, add_to_minv } from './makemon
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize } from './polyself.js';
-import { costly_alteration } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish } from './read.js';
@@ -115,16 +116,17 @@ import {
 } from './mkobj.js';
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
-    TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, FOOD_CLASS, NODIR,
-    IMMEDIATE, objectNames,
+    TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, FOOD_CLASS, COIN_CLASS,
+    NODIR, IMMEDIATE, objectNames,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
-    DISP_BEAM, DISP_CHANGE, DISP_END,
+    DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
-    Has_contents, ZAPPED_WAND, NOTELL, TELL,
+    Has_contents, ZAPPED_WAND, THROWN_WEAPON, KICKED_WEAPON,
+    FLASHED_LIGHT, INVIS_BEAM, NOTELL, TELL,
     STRAT_WAITMASK,
     POOL, MOAT, WATER, ICE, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
     DRAWBRIDGE_DOWN, ICED_POOL, ICED_MOAT, DB_ICE, DB_UNDER, DB_FLOOR,
@@ -141,7 +143,7 @@ import {
     OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
     WEB, PIT, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
     TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, COLNO, ROWNO,
-    IS_ALTAR, IS_STWALL, Is_earthlevel, IS_AIR, CLOUD,
+    IS_ALTAR, IS_STWALL, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
     MM_NOTAIL, MM_ADJACENTOK, NATTK,
 } from './const.js';
 
@@ -2064,7 +2066,7 @@ function SYSOPT_SEDUCE_zap() {
  * worm light-source swap.
  * @returns {object|null}
  */
-function montraits(obj, cc, adjacentok) {
+export function montraits(obj, cc, adjacentok) {
     let mtmp = null;
     const mtmp2 = has_omonst(obj) ? get_mtraits(obj, true) : null;
     if (!mtmp2) return null;
@@ -2155,7 +2157,7 @@ function montraits(obj, cc, adjacentok) {
  * @param {{ mtype: number }} box inout mtype
  * @returns {boolean}
  */
-function cant_revive(box, revival, from_obj) {
+export function cant_revive(box, revival, from_obj) {
     let mtype = box.mtype | 0;
     if (mtype === PM_GUARD
         || (mtype === PM_SHOPKEEPER && !revival)
@@ -2249,8 +2251,9 @@ function obfree_corpse(obj) {
 
 /**
  * C ref: zap.c revive — invent/minvent/floor + container/buried +
- * cant_revive zombie/doppel + montraits/omonst + ghost recorporealize.
- * Named omit: shop stolen_value; cant_finish_meal; Rider delobj_core force;
+ * cant_revive zombie/doppel + montraits/omonst + ghost recorporealize +
+ * shop stolen_value (D-0983).
+ * Named omit: cant_finish_meal; Rider delobj_core force;
  * animate_statue caller of montraits.
  * @returns {Promise<object|null>} revived monst or null
  */
@@ -2396,9 +2399,15 @@ async function revive(corpse, by_hero) {
     if (by_hero) {
         x = used.ox | 0;
         y = used.oy | 0;
+        const carried = used.where === OBJ_INVENT
+            || (game.invent || []).includes(used);
+        let shkp = null;
+        if (costly_spot(x, y)
+            && (carried ? used.unpaid : !used.no_charge)) {
+            const rooms = in_rooms(x, y, SHOPBASE) || '';
+            shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+        }
         if (cansee(x, y)) {
-            const carried = used.where === OBJ_INVENT
-                || (game.invent || []).includes(used);
             const prefix = one_of ? 'one of ' : '';
             const own = carried ? 'your ' : 'the ';
             let nm = xname(used) || 'corpse';
@@ -2409,8 +2418,13 @@ async function revive(corpse, by_hero) {
             await pline(`${up} glows iridescently.`);
             if (!game.iflags) game.iflags = {};
             game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+        } else if (shkp) {
+            await pline('A corpse is resuscitated.');
         }
-        // shop stolen_value deferred
+        // don't charge for shopkeeper's own corpse if we just revived him
+        if (shkp && mtmp !== shkp) {
+            await stolen_value(used, x, y, !!shkp.mpeaceful, false);
+        }
     }
 
     // C: recorporealization of an active ghost via OMID
@@ -3417,7 +3431,7 @@ async function bhito(obj, otmp) {
             }
             fracture_rock(obj);
         } else if ((obj.otyp | 0) === STATUE) {
-            if (break_statue(obj)) {
+            if (await break_statue(obj)) {
                 if (cansee(obj.ox | 0, obj.oy | 0)) {
                     await pline('The statue shatters.');
                 } else {
@@ -3490,51 +3504,138 @@ export async function bhitpile(wand, fhito, tx, ty, _zz) {
 }
 
 /**
- * C ref: zap.c bhit — ZAPPED_WAND lateral path only.
- * Thrown/kicked/flash/tmp_at / zap_map / doorlock deferred.
+ * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON lateral paths.
+ * Branch envelope: kicked start+range--; WATERWALL/LAVAWALL stop;
+ * hits_bars; mon stop; coin/ship_object; DISP_FLASH tmp_at +
+ * nh_delay_output; pool/lava/sink stop.
+ * Named omit: THROWN_WEAPON / FLASHED_LIGHT / INVIS_BEAM callers;
+ * show_transient_light; shade_miss / M_AP_OBJECT skip; WEB stick rn2;
+ * shkcatch pick; map_invisible / unmap_object; zap_map / doorlock;
+ * returning_missile / tethered weapon; Hallucination rn2_on_display_rng.
+ * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
 async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
-    const obj = pobj?.obj;
+    let obj = pobj?.obj;
     const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
-    bhitpos.x = game.u?.ux | 0;
-    bhitpos.y = game.u?.uy | 0;
+    game.bhitpos = bhitpos;
     let r = range | 0;
+    let result = null;
+    let point_blank = true;
+    const do_flash = weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM && !!obj;
 
-    while (r-- > 0) {
-        bhitpos.x += ddx;
-        bhitpos.y += ddy;
-        const x = bhitpos.x | 0;
-        const y = bhitpos.y | 0;
-        if (!isok(x, y)) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
-            break;
-        }
-
-        const loc = game.level?.at?.(x, y);
-        let typ = loc?.typ;
-
-        const mtmp = m_at(x, y);
-        if (mtmp && weapon === ZAPPED_WAND) {
-            if (fhitm) await fhitm(mtmp, obj);
-            else await bhitm(mtmp, obj);
-            r -= 3;
-        }
-
-        if (fhito) {
-            if (await bhitpile(obj, fhito, x, y, 0)) r--;
-        }
-
-        if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === STONE)) {
-            // doorlock deferred
-        }
-        if (!ZAP_POS(typ) || closed_door(x, y)) {
-            bhitpos.x -= ddx;
-            bhitpos.y -= ddy;
-            break;
-        }
+    // C: kicked object starts one square ahead; range--
+    if (weapon === KICKED_WEAPON) {
+        bhitpos.x = (game.u?.ux | 0) + ddx;
+        bhitpos.y = (game.u?.uy | 0) + ddy;
+        r--;
+    } else {
+        bhitpos.x = game.u?.ux | 0;
+        bhitpos.y = game.u?.uy | 0;
     }
-    return null;
+
+    // C: tmp_at(DISP_FLASH, obj_to_glyph(...)) for thrown/kicked/flash
+    if (do_flash) tmp_at(DISP_FLASH, obj_glyph(obj));
+
+    try {
+        while (r-- > 0) {
+            bhitpos.x += ddx;
+            bhitpos.y += ddy;
+            const x = bhitpos.x | 0;
+            const y = bhitpos.y | 0;
+            if (!isok(x, y)) {
+                bhitpos.x -= ddx;
+                bhitpos.y -= ddy;
+                break;
+            }
+
+            const loc = game.level?.at?.(x, y);
+            const typ = loc?.typ;
+
+            // C: WATERWALL / LAVAWALL stop thrown/kicked items
+            if ((weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+                && (IS_WATERWALL(typ) || typ === LAVAWALL)) {
+                break;
+            }
+            // C: iron bars hits_bars for thrown/kicked (D-0990)
+            if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON) {
+                // show_transient_light deferred
+                if (typ === IRONBARS) {
+                    const { hits_bars } = await import('./mthrowu.js');
+                    if (await hits_bars(
+                        pobj, x - ddx, y - ddy, x, y,
+                        point_blank ? 0 : !rn2(5), 1,
+                    )) {
+                        obj = pobj?.obj;
+                        bhitpos.x -= ddx;
+                        bhitpos.y -= ddy;
+                        break;
+                    }
+                }
+            }
+
+            let mtmp = m_at(x, y);
+            // WEB trap stick / shade_miss / mimic-as-object skip deferred
+
+            if (mtmp) {
+                if (weapon === ZAPPED_WAND) {
+                    if (fhitm) await fhitm(mtmp, obj);
+                    else await bhitm(mtmp, obj);
+                    r -= 3;
+                } else if (weapon !== FLASHED_LIGHT && weapon !== INVIS_BEAM) {
+                    // THROWN_WEAPON / KICKED_WEAPON — stop on monster
+                    game.notonhead = ((x | 0) !== (mtmp.mx | 0)
+                        || (y | 0) !== (mtmp.my | 0));
+                    result = mtmp;
+                    break;
+                }
+            }
+
+            if (fhito) {
+                if (await bhitpile(obj, fhito, x, y, 0)) r--;
+            } else if (weapon === KICKED_WEAPON) {
+                // C: coin pile stop OR ship_object hole/stairs
+                obj = pobj?.obj;
+                if (!obj) break;
+                const coinPile = (obj.oclass | 0) === COIN_CLASS
+                    && !!objects_at(x, y);
+                if (coinPile) break;
+                const { ship_object } = await import('./dokick.js');
+                if (await ship_object(obj, x, y, costly_spot(x, y))) {
+                    break;
+                }
+            }
+
+            if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === STONE)) {
+                // doorlock deferred
+            }
+            if (!ZAP_POS(typ) || closed_door(x, y)) {
+                bhitpos.x -= ddx;
+                bhitpos.y -= ddy;
+                break;
+            }
+            if (do_flash) {
+                // map_invisible / unmap_object deferred
+                tmp_at(x, y);
+                await nh_delay_output();
+                // C: kicked objects fall in pools/lava; sink stops physical
+                if (weapon === KICKED_WEAPON
+                    && (is_pool(x, y) || is_lava(x, y))) {
+                    break;
+                }
+                if (IS_SINK(typ) && weapon !== FLASHED_LIGHT) break;
+            } else if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM) {
+                if (weapon === KICKED_WEAPON
+                    && (is_pool(x, y) || is_lava(x, y))) {
+                    break;
+                }
+                if (IS_SINK(typ) && weapon !== FLASHED_LIGHT) break;
+            }
+            point_blank = false;
+        }
+    } finally {
+        if (do_flash) tmp_at(DISP_END, 0);
+    }
+    return result;
 }
 
 function zapsetup() {
@@ -3551,7 +3652,7 @@ export async function zapwrapup() {
     game._obj_zapped = false;
 }
 
-export { zapsetup, bhito };
+export { zapsetup, bhito, bhit };
 
 /**
  * C ref: zap.c weffects — exercise + effect dispatch.

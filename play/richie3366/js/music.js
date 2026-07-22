@@ -10,8 +10,8 @@
 // passtune getlin / Castle drawbridge open/close + Mastermind hints
 // (D-0977).
 // Named omissions: Hero_playnotes audio; consume_obj_charge unpaid
-// polish; onscary wiz/angel/rider; can_blow poly; selftouch/mselftouch
-// petrify; flooreffects full (boulder→pit thin); maketrap shop-hole/
+// polish; onscary wiz/angel/rider; can_blow poly;
+// flooreffects full (boulder→pit thin); maketrap shop-hole/
 // drawbridge-up/wall morph; Soundeffect; count_level_features on
 // fountain/sink morph; sleep_monst defended(AD_SLEE)/shieldeff;
 // tamedog givemsg pline; set_entity crush on open/close.
@@ -42,7 +42,7 @@ import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam } from './do_name.js';
 import { cansee, recalc_block_point } from './vision.js';
 import { m_at, wakeup, seemimic } from './mon.js';
-import { maketrap, t_at, set_utrap, reset_utrap, deltrap } from './trap.js';
+import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
 import {
     fillholetyp, liquid_flow,
 } from './dig.js';
@@ -511,10 +511,6 @@ function sobj_at(otyp, x, y) {
     return null;
 }
 
-/** C trap.c mselftouch / selftouch — petrify-wield deferred (no RNG). */
-function mselftouch(_mon, _arg, _byplayer) { /* no-op */ }
-function selftouch(_arg) { /* no-op */ }
-
 /**
  * C ref: music.c do_pit — maketrap PIT + boulder/liquid/mon/hero fall.
  * @param {number} x
@@ -600,7 +596,7 @@ async function do_pit(x, y, tu_pit) {
                     await You_hear('a scream!');
                 }
             }
-            mselftouch(mtmp, 'Falling, ', true);
+            await mselftouch(mtmp, 'Falling, ', true);
             if ((mtmp.mhp | 0) > 0) {
                 mtmp.mhp -= rnd(m_already_trapped ? 4 : 6);
                 if ((mtmp.mhp | 0) <= 0) {
@@ -639,7 +635,7 @@ async function do_pit(x, y, tu_pit) {
                 'fell into a chasm',
                 NO_KILLER_PREFIX,
             );
-            selftouch('Falling, you');
+            await selftouch('Falling, you');
         } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
             const keepfooting = (!(Fumbling() && rn2(5))
                 && (!(rnl(Role_if(PM_ARCHEOLOGIST) ? 3 : 9))
@@ -659,7 +655,7 @@ async function do_pit(x, y, tu_pit) {
                     || nolimbs(game.youmonst?.data)))
                     ? 'Shaken, you'
                     : 'Falling down, you';
-                selftouch(msg);
+                await selftouch(msg);
             }
         }
     } else {

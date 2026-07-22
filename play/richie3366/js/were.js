@@ -1,18 +1,27 @@
 // were.js — Lycanthrope shape change (partial).
 // C ref: were.c were_change / new_were / counter_were / set_ulycn /
-//        were_beastie.
+//        were_beastie / you_were / you_unwere.
+// Branch envelope: ParanoidWerechange getlin via paranoid_query (D-1001);
+// mon were_change / new_were; set_ulycn Drain_resistance.
+// Named omissions: were_summon; howl You_hear + wake_nearto; mon_break_armor;
+// allmain Polymorph/ulycn once-per-turn caller; potion/mhitm you_were wires;
+// pray TROUBLE_LYCANTHROPE (eat wolfsbane wired).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { night, FULL_MOON } from './calendar.js';
 import {
-    is_were, is_human, mons, LOW_PM, NON_PM,
+    is_were, is_human, mons, LOW_PM, NON_PM, NEUTRAL,
 } from './monsters.js';
 import { monsterNames, pmnames } from './generated/monsters_data.js';
-import { canseemon, newsym, pline } from './display.js';
+import { canseemon, newsym, pline, You_feel } from './display.js';
 import { Monnam } from './do_name.js';
 import { set_mon_data } from './mondata.js';
-import { set_uasmon } from './polyself.js';
+import { set_uasmon, polymon, rehumanize } from './polyself.js';
+import { monster_nearby } from './hack.js';
+import { an } from './objnam.js';
+import { paranoid_query } from './getline.js';
+import { PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING } from './const.js';
 
 const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
 const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
@@ -37,6 +46,35 @@ function Protection_from_shape_changers() {
     return !!(u.HProtection_from_shape_changers
         || u.EProtection_from_shape_changers
         || u.Protection_from_shape_changers);
+}
+
+/** C ref: youprop.h Polymorph_control — H || E via flat + uprops. */
+function Polymorph_control(u = game.u || {}) {
+    const e = u.uprops?.[POLYMORPH_CONTROL];
+    return !!((u.Polymorph_control || u.HPolymorph_control || u.EPolymorph_control)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function Unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Unaware — multi < 0 && usleep. */
+function Unaware(u = game.u || {}) {
+    return (u.multi | 0) < 0 && !!u.usleep;
+}
+
+/** C ref: youprop.h Stunned — HStun / flat. */
+function Stunned(u = game.u || {}) {
+    return !!((u.HStun | 0) || u.Stunned);
+}
+
+/** C flag.h ParanoidWerechange */
+function ParanoidWerechange() {
+    return ((game.flags?.paranoia_bits | 0) & PARANOID_WERECHANGE) !== 0;
 }
 
 /**
@@ -129,6 +167,57 @@ export function set_ulycn(which) {
     const u = game.u || (game.u = {});
     u.ulycn = which | 0;
     set_uasmon();
+}
+
+/**
+ * C ref: were.c you_were — forced / controlled change into ulycn form.
+ * Polymorph_control → paranoid_query(ParanoidWerechange); else abort when
+ * monster_nearby. Then polymon(ulycn).
+ */
+export async function you_were() {
+    const u = game.u || {};
+    const controllable_poly = Polymorph_control(u) && !(Stunned(u) || Unaware(u));
+
+    if (Unchanging(u) || (u.umonnum | 0) === (u.ulycn | 0)) return;
+    if (controllable_poly) {
+        // C: `+4` skips "were" prefix on pmnames[NEUTRAL]
+        const names = pmnames[u.ulycn | 0];
+        const nm = names?.[NEUTRAL] || names?.[2] || 'beast';
+        const beast = nm.startsWith('were') ? nm.slice(4) : nm;
+        const qbuf = `Do you want to change into ${an(beast)}?`;
+        if (!(await paranoid_query(ParanoidWerechange(), qbuf))) return;
+    } else if (monster_nearby()) {
+        return;
+    }
+    if (game.were_changes != null) game.were_changes++;
+    else game.were_changes = 1;
+    await polymon(u.ulycn | 0);
+}
+
+/**
+ * C ref: were.c you_unwere — purify and/or leave beast form.
+ * purify → You_feel purified + set_ulycn(NON_PM). Controllable poly asks
+ * ParanoidWerechange "Remain in beast form?"; else rehumanize when safe.
+ */
+export async function you_unwere(purify) {
+    const u = game.u || (game.u = {});
+    const controllable_poly = Polymorph_control(u) && !(Stunned(u) || Unaware(u));
+
+    if (purify) {
+        await You_feel('purified.');
+        set_ulycn(NON_PM);
+    }
+    if (!Unchanging(u) && is_were(game.youmonst?.data)
+        && !monster_nearby()
+        && (!controllable_poly
+            || !(await paranoid_query(
+                ParanoidWerechange(), 'Remain in beast form?',
+            )))) {
+        await rehumanize();
+    } else if (is_were(game.youmonst?.data) && !(u.mtimedone | 0)) {
+        // C: 40% of initial were change
+        u.mtimedone = rn1(200, 200);
+    }
 }
 
 /**

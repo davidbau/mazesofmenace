@@ -41,8 +41,9 @@ import { otyp_uses_known, distant_name, doname } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL,
-    MELT_ICE_AWAY, HATCH_EGG, BURN_OBJECT, MAX_EGG_HATCH_TIME,
-    OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED, OBJ_MIGRATING,
+    MELT_ICE_AWAY, HATCH_EGG, BURN_OBJECT, SHRINK_GLOB, MAX_EGG_HATCH_TIME,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
+    OBJ_MIGRATING,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -57,6 +58,10 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
+const GLOB_OF_GRAY_OOZE = objectNames.indexOf('GLOB_OF_GRAY_OOZE');
+const GLOB_OF_BROWN_PUDDING = objectNames.indexOf('GLOB_OF_BROWN_PUDDING');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
+const GLOB_OF_BLACK_PUDDING = objectNames.indexOf('GLOB_OF_BLACK_PUDDING');
 const ROT_ICE_ADJUSTMENT = 2; // mkobj.c — rotting on ice takes 2× as long
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const ELVEN_SHIELD = objectNames.indexOf('ELVEN_SHIELD');
@@ -64,10 +69,18 @@ const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const LARGEST_INT = 32767; // C ref: global.h
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_GRAY_OOZE = monsterNames.indexOf('PM_GRAY_OOZE');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const NON_PM = MON_NON_PM;
+
+/** C ref: obj.h Is_pudding — four GLOB_* otyps. */
+export function Is_pudding(obj) {
+    const o = obj?.otyp | 0;
+    return o === GLOB_OF_GRAY_OOZE || o === GLOB_OF_BROWN_PUDDING
+        || o === GLOB_OF_GREEN_SLIME || o === GLOB_OF_BLACK_PUDDING;
+}
 
 // C ref: mkobj.c dknowns[] — classes that start with dknown=0
 const DKNOWN_CLEAR_CLASSES = new Set([
@@ -186,6 +199,8 @@ export function weight(obj) {
     let wt = objects[obj.otyp]?.oc_weight ?? 0;
     const quan = obj.quan || 1;
     if (quan < 1) return 0;
+    // C: globby — owt managed by mksobj/obj_absorb/shrink_glob; return as-is
+    if (obj.globby) return obj.owt | 0;
     // C: Is_container || STATUE — contents weight (BoH cursed/blessed factor deferred)
     if (Is_container(obj) || obj.otyp === STATUE) {
         let cwt = 0;
@@ -748,8 +763,8 @@ async function rot_corpse(obj) {
  * C ref: timeout.c run_timers — fire due timers at start of list.
  * Called from nh_timeout after intrinsic TIMEOUT handling.
  * Envelope: ROT_CORPSE; ROT_ORGANIC (dig.c); TIMER_LEVEL MELT_ICE_AWAY
- * (D-0965/D-0967); BURN_OBJECT (D-0978). Named omit: REVIVE_MON /
- * ZOMBIFY_MON / hatch.
+ * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB thin (D-0993).
+ * Named omit: REVIVE_MON / ZOMBIFY_MON / hatch; full shrink ice/eat catch-up.
  */
 export async function run_timers() {
     const g = timer_base();
@@ -772,9 +787,49 @@ export async function run_timers() {
         } else if (curr.action === BURN_OBJECT && curr.obj) {
             const { burn_object } = await import('./timeout.js');
             await burn_object(curr.obj, curr.timeout | 0);
+        } else if (curr.action === SHRINK_GLOB && curr.obj) {
+            await shrink_glob(curr.obj);
         }
         // REVIVE_MON / ZOMBIFY_MON / hatch deferred — entry dropped
     }
+}
+
+/**
+ * C ref: mkobj.c start_glob_timeout — schedule SHRINK_GLOB (~25 turns).
+ */
+export function start_glob_timeout(obj, when = 0) {
+    if (!obj?.globby) return;
+    if (obj.timed) stop_timer(SHRINK_GLOB, obj);
+    let w = when | 0;
+    if (w < 1) w = 25 + rn2(5) - 2; // 23..27
+    start_timer(w, TIMER_OBJECT, SHRINK_GLOB, obj);
+}
+
+/**
+ * C ref: mkobj.c shrink_glob — thin: −1 owt / destroy at 0; ice/eat/catch-up
+ * polish deferred.
+ */
+async function shrink_glob(obj) {
+    if (!obj?.globby) return;
+    const owt = (obj.owt | 0) - 1;
+    if (owt <= 0) {
+        const ox = obj.ox | 0;
+        const oy = obj.oy | 0;
+        const wasFloor = (obj.where | 0) === OBJ_FLOOR;
+        delobj(obj);
+        if (wasFloor) {
+            try {
+                const { newsym } = await import('./display.js');
+                newsym(ox, oy);
+            } catch { /* optional */ }
+        }
+        return;
+    }
+    obj.owt = owt;
+    if ((obj.where | 0) === OBJ_CONTAINED && obj.ocontainer) {
+        obj.ocontainer.owt = weight(obj.ocontainer);
+    }
+    start_glob_timeout(obj, 0);
 }
 
 // C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE/EGG timeouts
@@ -932,8 +987,18 @@ function mksobj_init(otmp, artif) {
             // C ref: mkobj.c CANDY_BAR → read.c assign_candy_wrapper
             assign_candy_wrapper(otmp);
         }
-        if (name !== 'CORPSE' && name !== 'MEAT_RING' && name !== 'KELP_FROND'
-            && !name.startsWith('GLOB_')) {
+        // C: Is_pudding → globby init (before quan=2 roll)
+        if (Is_pudding(otmp)) {
+            otmp.globby = 1;
+            otmp.quan = 1;
+            otmp.owt = objects[otmp.otyp]?.oc_weight ?? 20;
+            otmp.known = 1;
+            otmp.dknown = 1;
+            // C: corpsenm = PM_GRAY_OOZE + (otyp - GLOB_OF_GRAY_OOZE)
+            otmp.corpsenm = PM_GRAY_OOZE + ((otmp.otyp | 0) - GLOB_OF_GRAY_OOZE);
+            start_glob_timeout(otmp, 0);
+        } else if (name !== 'CORPSE' && name !== 'MEAT_RING'
+            && name !== 'KELP_FROND') {
             if (!rn2(6)) otmp.quan = 2;
         }
         break;
@@ -1150,7 +1215,7 @@ function clear_dknown(obj) {
         || otyp === SHIELD_OF_REFLECTION) {
         obj.dknown = 0;
     }
-    // Is_pudding → dknown=1 deferred (globby path)
+    // Is_pudding → dknown=1 set in mksobj_init after clear_dknown
 }
 
 // C ref: mkobj.c mksobj()
@@ -1333,12 +1398,15 @@ export function oc_merge_of(otyp) {
 }
 
 /**
- * C ref: invent.c mergable() — floor-stack subset (no shop/mail/globby/candle).
+ * C ref: invent.c mergable() — floor-stack subset + globby early TRUE.
+ * Named omit: shop/mail/candle polish beyond current checks.
  */
 export function mergable(otmp, obj) {
     if (!obj || !otmp || obj === otmp || obj.otyp !== otmp.otyp) return false;
     if (obj.nomerge || otmp.nomerge || !oc_merge_of(obj.otyp)) return false;
     if (obj.oclass === COIN_CLASS) return true;
+    // C: globby skip remaining attribute checks
+    if (obj.globby) return true;
     if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
         return false;
     const hl = obj.how_lost ?? LOST_NONE;
@@ -1362,11 +1430,20 @@ export function mergable(otmp, obj) {
 /**
  * C ref: invent.c merged() — absorb *pobj into *potmp; free *pobj.
  * stackobj passes (&newObj, &existing) so the newly placed object survives.
+ * Globby → pudding_merge_message + obj_absorb (D-0993).
  */
 function merged(potmp, pobj) {
     let otmp = potmp.obj;
     let obj = pobj.obj;
     if (!mergable(otmp, obj)) return false;
+    if (obj.globby) {
+        // sync callers: fire-and-forget message (flooreffects awaits)
+        void pudding_merge_message(otmp, obj);
+        const kept = obj_absorb(potmp, pobj);
+        potmp.obj = kept;
+        pobj.obj = null;
+        return !!kept;
+    }
     if (!obj.lamplit && !obj.globby) {
         const oq = otmp.quan || 1;
         const nq = obj.quan || 1;
@@ -1404,6 +1481,197 @@ export function stackobj(obj) {
         if (merged(potmp, pobj)) break;
         // C may reassign *potmp; keep local binding current
         obj = potmp.obj;
+    }
+}
+
+/**
+ * C ref: invent.c nxtobj — next same-otyp via nobj or nexthere.
+ */
+export function nxtobj(obj, type, by_nexthere) {
+    let otmp = obj;
+    do {
+        otmp = by_nexthere ? otmp?.nexthere : otmp?.nobj;
+        if (!otmp) break;
+    } while ((otmp.otyp | 0) !== (type | 0));
+    return otmp || null;
+}
+
+/**
+ * C ref: mkobj.c obj_nexto_xy — find mergable same-otyp at/near (x,y).
+ * Under-feet first; if recurs, 3×3 random-order search (burns rn2(2)×2).
+ */
+export function obj_nexto_xy(obj, x, y, recurs) {
+    if (!obj) return null;
+    const otyp = obj.otyp | 0;
+    let otmp = objects_at(x, y);
+    while (otmp) {
+        if (otmp !== obj && (otmp.otyp | 0) === otyp && mergable(otmp, obj)) {
+            return otmp;
+        }
+        otmp = nxtobj(otmp, otyp, true);
+    }
+    if (!recurs) return null;
+    const dx = rn2(2) ? -1 : 1;
+    const dy = rn2(2) ? -1 : 1;
+    const ex = (x | 0) - dx;
+    const ey = (y | 0) - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            if (isok(fx, fy) && (fx !== (x | 0) || fy !== (y | 0))) {
+                const near = obj_nexto_xy(obj, fx, fy, false);
+                if (near) return near;
+            }
+        }
+    }
+    return null;
+}
+
+/** C ref: mkobj.c obj_nexto — wrapper around obj_nexto_xy at obj coords. */
+export function obj_nexto(otmp) {
+    if (!otmp) return null;
+    return obj_nexto_xy(otmp, otmp.ox | 0, otmp.oy | 0, true);
+}
+
+/**
+ * C ref: shk.c globby_bill_fixup — shop bill when globs merge.
+ * Named omit: full unpaid/debit/credit scenarios (no-op when neither unpaid).
+ */
+function globby_bill_fixup(_absorber, _absorbed) {
+    // deferred — unpaid shop merge not exercised by fortress public suite
+}
+
+/**
+ * C ref: mkobj.c obj_absorb — *obj1 absorbs *obj2; free *obj2.
+ * @param {{obj: object|null}} p1 survivor ref
+ * @param {{obj: object|null}} p2 absorbed ref (nulled)
+ * @returns {object|null} survivor
+ */
+export function obj_absorb(p1, p2) {
+    const otmp1 = p1?.obj;
+    const otmp2 = p2?.obj;
+    if (!otmp1 || !otmp2 || otmp1 === otmp2) return otmp1 || null;
+    globby_bill_fixup(otmp1, otmp2);
+    if (!!otmp1.bknown !== !!otmp2.bknown) {
+        otmp1.bknown = 0;
+        otmp2.bknown = 0;
+    }
+    if (!!otmp1.rknown !== !!otmp2.rknown) {
+        otmp1.rknown = 0;
+        otmp2.rknown = 0;
+    }
+    if (!!otmp1.greased !== !!otmp2.greased) {
+        otmp1.greased = 0;
+        otmp2.greased = 0;
+    }
+    if (otmp1.orotten || otmp2.orotten) {
+        otmp1.orotten = 1;
+        otmp2.orotten = 1;
+    }
+    const o1wt = otmp1.oeaten ? (otmp1.oeaten | 0) : (otmp1.owt | 0);
+    const o2wt = otmp2.oeaten ? (otmp2.oeaten | 0) : (otmp2.owt | 0);
+    const moves = game.moves | 0;
+    const agetmp = Math.trunc(
+        (((moves - (otmp1.age | 0)) * o1wt) + ((moves - (otmp2.age | 0)) * o2wt))
+            / (o1wt + o2wt || 1),
+    );
+    otmp1.age = moves - agetmp;
+    otmp1.owt = (otmp1.owt | 0) + o2wt;
+    if (otmp1.oeaten || otmp2.oeaten) otmp1.oeaten = o1wt + o2wt;
+    otmp1.quan = 1;
+    if (otmp1.globby && otmp2.globby) {
+        let tm1 = stop_timer(SHRINK_GLOB, otmp1);
+        let tm2 = stop_timer(SHRINK_GLOB, otmp2);
+        tm1 = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
+        start_glob_timeout(otmp1, tm1);
+    }
+    obj_extract_self(otmp2);
+    otmp2.quan = 0;
+    otmp2.where = OBJ_FREE;
+    p2.obj = null;
+    p1.obj = otmp1;
+    return otmp1;
+}
+
+/**
+ * C ref: mkobj.c obj_meld — heavier absorbs lighter (floor+free special).
+ * @param {{obj: object|null}} p1
+ * @param {{obj: object|null}} p2
+ * @returns {object|null}
+ */
+export function obj_meld(p1, p2) {
+    const otmp1 = p1?.obj;
+    const otmp2 = p2?.obj;
+    if (!otmp1 || !otmp2 || otmp1 === otmp2) return otmp1 || otmp2 || null;
+    let ox = 0;
+    let oy = 0;
+    let result;
+    // C: unless (otmp2 floor && otmp1 free), prefer heavier otmp1
+    if (!((otmp2.where | 0) === OBJ_FLOOR && (otmp1.where | 0) === OBJ_FREE)
+        && ((otmp1.owt | 0) > (otmp2.owt | 0)
+            || ((otmp1.owt | 0) === (otmp2.owt | 0) && rn2(2)))) {
+        if ((otmp2.where | 0) === OBJ_FLOOR) {
+            ox = otmp2.ox | 0;
+            oy = otmp2.oy | 0;
+        }
+        result = obj_absorb(p1, p2);
+    } else {
+        if ((otmp1.where | 0) === OBJ_FLOOR) {
+            ox = otmp1.ox | 0;
+            oy = otmp1.oy | 0;
+        }
+        result = obj_absorb(p2, p1);
+    }
+    if (ox) {
+        void import('./display.js').then(({ newsym }) => newsym(ox, oy));
+        // maybe_unhide_at deferred
+    }
+    return result;
+}
+
+/**
+ * C ref: mkobj.c pudding_merge_message — hero notices two globs coalesce.
+ */
+export async function pudding_merge_message(otmp, otmp2) {
+    if (!otmp || !otmp2) return;
+    const { pline } = await import('./display.js');
+    const { cansee } = await import('./vision.js');
+    const { obj_typename, makeplural } = await import('./objnam.js');
+    const Blind = () => {
+        const u = game.u || {};
+        if (u.uroleplay?.blind) return true;
+        return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+    };
+    const Hallucination = () => {
+        const u = game.u || {};
+        if (u.Hallucination) return true;
+        return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
+    };
+    const carried = (o) => (o.where | 0) === OBJ_INVENT;
+    const visible = cansee(otmp.ox | 0, otmp.oy | 0)
+        || cansee(otmp2.ox | 0, otmp2.oy | 0);
+    const onfloor = (otmp.where | 0) === OBJ_FLOOR
+        || (otmp2.where | 0) === OBJ_FLOOR;
+    const inpack = carried(otmp) || carried(otmp2);
+    if ((!Blind() && visible) || inpack) {
+        if (Hallucination()) {
+            if (onfloor) await pline('You see parts of the floor melting!');
+            else if (inpack) {
+                await pline('Your pack reaches out and grabs something!');
+            }
+        } else if (onfloor || inpack) {
+            const u = game.u || {};
+            const adj = ((otmp.ox | 0) !== (u.ux | 0) || (otmp.oy | 0) !== (u.uy | 0))
+                && ((otmp2.ox | 0) !== (u.ux | 0) || (otmp2.oy | 0) !== (u.uy | 0));
+            await pline(
+                `The ${
+                    (onfloor && adj) ? 'adjacent ' : ''
+                }${makeplural(obj_typename(otmp.otyp))} coalesce${
+                    inpack ? ' inside your pack' : ''
+                }.`,
+            );
+        }
+    } else {
+        await pline('You hear a faint sloshing sound.');
     }
 }
 

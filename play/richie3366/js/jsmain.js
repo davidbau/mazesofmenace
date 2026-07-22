@@ -119,6 +119,8 @@ export class NethackGame {
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             // C options.c / optlist.h — tips default On
             tips: true,
+            // C optlist.h confirm — opt_out default On
+            confirm: true,
             // C options.c initoptions_base — autounlock default apply-key
             autounlock: AUTOUNLOCK_APPLY_KEY,
             ...opts.flags,
@@ -127,6 +129,7 @@ export class NethackGame {
             g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
         }
         if (g.flags.tips == null) g.flags.tips = true;
+        if (g.flags.confirm == null) g.flags.confirm = true;
         if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
             g.flags.end_disclose = 'n'.repeat(6);
         }

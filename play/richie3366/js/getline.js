@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop } from './display.js';
-import { COLNO } from './const.js';
+import { COLNO, QBUFSZ, PARANOID_CONFIRM } from './const.js';
 
 /**
  * C ref: topl.c topl_putsym — before writing when curx == CO-1, emit `\n`
@@ -643,6 +643,74 @@ export async function doextcmd() {
     }
     const res = await ec.run();
     return res | 0;
+}
+
+/** C ref: hacklib.c mungspaces — collapse runs of whitespace to one space. */
+function mungspaces(s) {
+    return String(s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * C ref: cmd.c paranoid_ynq — when be_paranoid, getlin must answer "yes"
+ * (case-insensitive); else yn_function. ParanoidConfirm loops until
+ * yes/no/quit/ESC (accept_q gates quit). Result 'y'|'n'|'q'.
+ * @param {boolean} be_paranoid
+ * @param {string} prompt
+ * @param {boolean} [accept_q=false]
+ * @returns {Promise<string>}
+ */
+export async function paranoid_ynq(be_paranoid, prompt, accept_q = false) {
+    let c = 'n';
+    if (be_paranoid) {
+        const bits = game.flags?.paranoia_bits | 0;
+        const ParanoidConfirm = (bits & PARANOID_CONFIRM) !== 0;
+        let pbuf = String(prompt ?? '');
+        const responsetype = ParanoidConfirm
+            ? (accept_q ? '[yes|no|quit]' : '[yes|no]')
+            : (accept_q ? '[yes|n|q] (n)' : '[yes|n] (n)');
+        let promptprefix = '';
+        let trylimit = 6;
+        let ans = '';
+        do {
+            const k = promptprefix.length + 1 + responsetype.length;
+            if (pbuf.length + k > QBUFSZ - 1) {
+                const keep = (QBUFSZ - 1) - k - 4;
+                pbuf = `${pbuf.slice(0, Math.max(0, keep))}...?`;
+            }
+            const qbuf = `${promptprefix}${pbuf} ${responsetype}`;
+            ans = await getlin(qbuf);
+            if (ans === '\x1b') {
+                c = 'q';
+                break;
+            }
+            ans = mungspaces(ans);
+            if (ans.toLowerCase() === 'yes') {
+                c = 'y';
+                break;
+            }
+            if (ans.toLowerCase() === 'quit') {
+                c = 'q';
+                break;
+            }
+            promptprefix = '"Yes" or "No": ';
+        } while (ParanoidConfirm && ans.toLowerCase() !== 'no' && --trylimit);
+    } else if (accept_q) {
+        c = await yn_function(prompt, 'ynq', 'n');
+    } else {
+        c = await yn_function(prompt, 'yn', 'n');
+    }
+    if (c !== 'y' && (c !== 'q' || !accept_q)) c = 'n';
+    return c;
+}
+
+/**
+ * C ref: cmd.c paranoid_query — True iff paranoid_ynq returns 'y'.
+ * @param {boolean} be_paranoid
+ * @param {string} prompt
+ * @returns {Promise<boolean>}
+ */
+export async function paranoid_query(be_paranoid, prompt) {
+    return (await paranoid_ynq(be_paranoid, prompt, false)) === 'y';
 }
 
 /**

@@ -3,7 +3,6 @@
 // Named omissions: wizard SHOPTYPE; Izchak minetown light-shk;
 // irregular-shop edge cases; platform ifdef shktools names;
 // full mongone/shkgone beyond Orcus invent+detach;
-// veggy_item obj-path tin/corpse species (type-only used by shkveg).
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -306,15 +305,58 @@ function nonrotting_corpse_tin(mnum) {
 }
 
 /**
- * C ref: shknam.c veggy_item — type-only path (obj null, corpsenm=PM_LICHEN).
- * Obj-path tin/corpse species deferred (shkveg only needs types).
+ * C ref: shknam.c veggy_item — obj path (tin/corpse species) or type-only
+ * (obj null → corpsenm=PM_LICHEN stand-in for stocking).
  */
-function veggy_item_otyp(otyp) {
+export function veggy_item(obj, otypArg) {
+    let otyp;
+    let oclass;
+    let corpsenm;
+    if (obj) {
+        otyp = obj.otyp | 0;
+        oclass = obj.oclass | 0;
+        corpsenm = obj.corpsenm | 0;
+    } else {
+        otyp = otypArg | 0;
+        oclass = game.objects?.[otyp]?.oc_class | 0;
+        corpsenm = PM_LICHEN;
+    }
+    if (oclass !== FOOD_CLASS) return false;
     const oc = game.objects?.[otyp];
-    if (!oc || oc.oc_class !== FOOD_CLASS) return false;
-    if (oc.oc_material === VEGGY || otyp === EGG) return true;
+    if ((oc?.oc_material | 0) === VEGGY || otyp === EGG) return true;
+    if (otyp === TIN && corpsenm === NON_PM) {
+        return !!obj && (obj.spe | 0) === 1; // spinach
+    }
     if (otyp === TIN || otyp === CORPSE) {
-        return !!vegetarian(mons(PM_LICHEN));
+        return ismnum(corpsenm) && !!vegetarian(mons(corpsenm));
+    }
+    return false;
+}
+
+/** Type-only veggy_item stand-in (stocking). */
+function veggy_item_otyp(otyp) {
+    return veggy_item(null, otyp);
+}
+
+/**
+ * C ref: shknam.c saleable — does shkp's shop stock this item?
+ */
+export function saleable(shkp, obj) {
+    if (!shkp || !obj) return false;
+    const shp_indx = (ESHK(shkp)?.shoptype | 0) - SHOPBASE;
+    const shp = shtypes[shp_indx];
+    if (!shp) return false;
+    if (shp.symb === RANDOM_CLASS) return true;
+    const iprobs = shp.iprobs || [];
+    for (let i = 0; i < iprobs.length && (iprobs[i].iprob | 0); i++) {
+        const itype = iprobs[i].itype | 0;
+        if (itype === VEGETARIAN_CLASS) {
+            if (veggy_item(obj, 0)) return true;
+        } else if (itype < 0) {
+            if (itype === -(obj.otyp | 0)) return true;
+        } else if (itype === (obj.oclass | 0)) {
+            return true;
+        }
     }
     return false;
 }

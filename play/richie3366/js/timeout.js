@@ -26,6 +26,7 @@ import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
 import { G_UNIQ, is_were } from './monsters.js';
 import { rehumanize } from './polyself.js';
+import { you_unwere } from './were.js';
 import { new_light_source, del_light_source } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
@@ -225,7 +226,7 @@ function incr_itimeout_HFumbling(incr) {
  * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… expiry messages;
  * Glib; ublesscnt (in allmain); usptime; ugallop; delayed
  * killers; defer_decor; full ice/mount slip_or_trip arms;
- * you_unwere (were → rehumanize).
+ * you_unwere callers beyond mtimedone (pray TROUBLE / potion).
  * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171).
  */
 export async function nh_timeout() {
@@ -386,8 +387,8 @@ export async function nh_timeout() {
                 const mlvl = game.youmonst?.data?.mlevel | 0;
                 u.mtimedone = rnd(100 * mlvl + 1);
             } else if (is_were(game.youmonst?.data)) {
-                // you_unwere(FALSE) deferred — rehumanize like non-were
-                await rehumanize();
+                // C: you_unwere(FALSE) — polycontrl may ask rehumanize
+                await you_unwere(false);
             } else {
                 await rehumanize();
             }

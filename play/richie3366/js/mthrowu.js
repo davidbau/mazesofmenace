@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
-    distmin, dist2, m_at, m_carrying, seemimic, setmangry,
+    distmin, dist2, m_at, m_carrying, seemimic, setmangry, wake_nearto,
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -16,6 +16,9 @@ import {
     DISP_FLASH, DISP_END, XKILL_NOMSG,
     M_ATTK_MISS, M_ATTK_HIT, EDOG,
     BZ_OFS_AD, BZ_VALID_ADTYP, BZ_M_BREATH, M_SEEN_REFL,
+    BRK_BY_HERO, BRK_MELEE, W_NONDIGGABLE, WT_IRON_BALL_INCR,
+    P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE,
+    Has_contents,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import {
@@ -30,19 +33,23 @@ import {
 import { find_mac, mondied } from './mhitm.js';
 import { xkilled } from './uhitm.js';
 import { ammo_and_launcher, is_launcher } from './wield.js';
-import { acurr, A_DEX, A_STR, exercise } from './attrib.js';
+import { acurr, acurrstr, A_DEX, A_STR, exercise } from './attrib.js';
 import { calc_capacity } from './invent.js';
-import { losehp, nomul, maybe_half_phys } from './hack.js';
+import { losehp, nomul, maybe_half_phys, dissolve_bars } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
     pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
     nh_delay_output, newsym, canspotmon,
 } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
-import { nohands, mons, throws_rocks, MZ_MEDIUM, nonliving } from './monsters.js';
+import {
+    nohands, mons, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
+} from './monsters.js';
 import { xname, singular, an, vtense, the } from './objnam.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
+    ARMOR_CLASS, ROCK_CLASS, FOOD_CLASS, SPBOOK_CLASS, WAND_CLASS,
+    BALL_CLASS, CHAIN_CLASS, COIN_CLASS, SCROLL_CLASS,
     objectNames,
 } from './objects.js';
 import {
@@ -56,9 +63,40 @@ import {
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const WAR_HAMMER = objectNames.indexOf('WAR_HAMMER');
+const POT_ACID = objectNames.indexOf('POT_ACID');
+const STATUE = objectNames.indexOf('STATUE');
+const CORPSE = objectNames.indexOf('CORPSE');
+const MEAT_STICK = objectNames.indexOf('MEAT_STICK');
+const ENORMOUS_MEATBALL = objectNames.indexOf('ENORMOUS_MEATBALL');
+const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
+const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
+const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
+const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
+const LENSES = objectNames.indexOf('LENSES');
+const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
+const MAGIC_WHISTLE = objectNames.indexOf('MAGIC_WHISTLE');
+const SLING = objectNames.indexOf('SLING');
+const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
+const KELP_FROND = objectNames.indexOf('KELP_FROND');
+const SPRIG_OF_WOLFSBANE = objectNames.indexOf('SPRIG_OF_WOLFSBANE');
+const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
+const PANCAKE = objectNames.indexOf('PANCAKE');
+const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const SACK = objectNames.indexOf('SACK');
+const OILSKIN_SACK = objectNames.indexOf('OILSKIN_SACK');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+/** C objclass.h arm_gloves + materials.h. */
+const ARM_GLOVES = 3;
+const LEATHER = 7;
+const CLOTH = 6;
+const SILVER = 14;
+const GOLD = 15;
 /** C ref: monattk.h — spit / breath damage types. */
 const AD_BLND = 11;
 const AD_DRST = 7;
@@ -478,9 +516,10 @@ function u_catch_thrown_obj(otmp) {
 }
 
 /**
- * C ref: mthrowu.c drop_throw — mulch or place+stack.
+ * C ref: mthrowu.c drop_throw — mulch or ship_object or place+stack.
+ * Named omit: flooreffects / passive_obj.
  */
-function drop_throw(obj, ohit, x, y) {
+async function drop_throw(obj, ohit, x, y) {
     let broken = false;
     const n = objectNames[obj.otyp];
     if (n === 'CREAM_PIE' || obj.oclass === VENOM_CLASS
@@ -492,9 +531,16 @@ function drop_throw(obj, ohit, x, y) {
     if (broken) {
         delobj(obj);
     } else {
-        // flooreffects / ship_object deferred
-        place_object(obj, x, y);
-        stackobj(obj);
+        const { ship_object } = await import('./dokick.js');
+        broken = await ship_object(obj, x, y, false);
+        if (!broken) {
+            // C: flooreffects before place (D-0987); passive_obj deferred
+            const { flooreffects } = await import('./do.js');
+            if (!(await flooreffects(obj, x, y, 'fall'))) {
+                place_object(obj, x, y);
+                stackobj(obj);
+            }
+        }
     }
     game._thrownobj = null;
     return broken;
@@ -593,7 +639,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
             }
         }
         if (!range) {
-            drop_throw(otmp, false, mtmp.mx, mtmp.my);
+            await drop_throw(otmp, false, mtmp.mx, mtmp.my);
             return true;
         }
         return false;
@@ -662,7 +708,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
     }
     // C: objgone = drop_throw(...); if (!objgone && range == -1) {
     //    obj_extract_self(otmp); return FALSE; } — rolling boulder keeps going
-    const objgone = drop_throw(otmp, true, bx, by);
+    const objgone = await drop_throw(otmp, true, bx, by);
     if (!objgone && (range | 0) === -1) {
         obj_extract_self(otmp);
         return false;
@@ -701,7 +747,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         dx = rn2(3) - 1;
         dy = rn2(3) - 1;
         if (!dx && !dy) {
-            drop_throw(singleobj, false, x, y);
+            await drop_throw(singleobj, false, x, y);
             return;
         }
     }
@@ -710,7 +756,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     if (!isok(x + dx, y + dy)
         || IS_OBSTRUCTED(game.level?.at?.(x + dx, y + dy)?.typ ?? 0)
         || closed_door(x + dx, y + dy)) {
-        drop_throw(singleobj, false, x, y);
+        await drop_throw(singleobj, false, x, y);
         return;
     }
 
@@ -767,7 +813,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         return;
                     }
                     if (hitu) {
-                        drop_throw(singleobj, true, u.ux, u.uy);
+                        await drop_throw(singleobj, true, u.ux, u.uy);
                         break;
                     }
                 } else {
@@ -783,7 +829,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             || IS_OBSTRUCTED(game.level?.at?.(bx + dx, by + dy)?.typ ?? 0)
             || closed_door(bx + dx, by + dy);
         if (!range || nextBlocked) {
-            drop_throw(singleobj, false, bx, by);
+            await drop_throw(singleobj, false, bx, by);
             break;
         }
         // C: tmp_at(bhitpos); nh_delay_output() — only when flight continues
@@ -876,4 +922,178 @@ async function thrwmu_body(mtmp) {
     const mwep = MON_WEP(mtmp);
     await monshoot(mtmp, otmp, mwep);
     nomul(0);
+}
+
+/** C ref: obj.h is_flimsy — material ≤ LEATHER or rubber hose. */
+function is_flimsy(otmp) {
+    const mat = game.objects?.[otmp?.otyp]?.oc_material ?? 99;
+    return mat <= LEATHER || (otmp?.otyp | 0) === RUBBER_HOSE;
+}
+
+/**
+ * C ref: dothrow.c harmless_missile — soft items that bounce quietly.
+ * Named omission: none for the otyp list; kept local to avoid dothrow↔trap
+ * import cycles when wired from hit_bars.
+ */
+function harmless_missile(obj) {
+    if (!obj) return false;
+    const otyp = obj.otyp | 0;
+    switch (otyp) {
+    case SLING:
+    case EUCALYPTUS_LEAF:
+    case KELP_FROND:
+    case SPRIG_OF_WOLFSBANE:
+    case FORTUNE_COOKIE:
+    case PANCAKE:
+        return true;
+    case RUBBER_HOSE:
+    case BAG_OF_TRICKS:
+        return (obj.spe | 0) < 1;
+    case SACK:
+    case OILSKIN_SACK:
+    case BAG_OF_HOLDING:
+        return !Has_contents(obj);
+    default:
+        if ((obj.oclass | 0) === SCROLL_CLASS) return true;
+        if ((game.objects?.[otyp]?.oc_material | 0) === CLOTH) return true;
+        break;
+    }
+    return false;
+}
+
+/**
+ * C ref: mthrowu.c hit_bars — break/whang against IRONBARS; may null *objp.
+ * Named omissions: Soundeffect enums; Blind feel polish.
+ * @param {{ obj: object|null }} objp
+ */
+export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
+    let otmp = objp?.obj;
+    if (!otmp) return;
+    const obj_type = otmp.otyp | 0;
+    const loc = game.level?.at?.(barsx, barsy);
+    const nodissolve = !!((loc?.wall_info | 0) & W_NONDIGGABLE);
+    const your_fault = (breakflags & BRK_BY_HERO) !== 0;
+    const melee_attk = (breakflags & BRK_MELEE) !== 0;
+    let noise = 0;
+
+    // Dynamic import avoids mthrowu → dothrow → trap → mthrowu cycle.
+    const { hero_breaks, breaks } = await import('./dothrow.js');
+    const broke = your_fault
+        ? await hero_breaks(otmp, objx, objy, breakflags)
+        : await breaks(otmp, objx, objy);
+    if (broke) {
+        objp.obj = null;
+        if (obj_type === POT_ACID) {
+            if (cansee(barsx, barsy) && !nodissolve) {
+                await pline('The iron bars are dissolved!');
+            } else {
+                await You_hear(
+                    game.u?.Hallucination ? 'angry snakes!' : 'a hissing noise.',
+                );
+            }
+            if (!nodissolve) dissolve_bars(barsx, barsy);
+        }
+        return;
+    }
+
+    if (!(game.u?.Deaf || game.flags?.acoustics === false)) {
+        const barsounds = ['', 'Whang', 'Whap', 'Flapp', 'Clink', 'Clonk'];
+        let bsindx;
+        if (obj_type === BOULDER || obj_type === HEAVY_IRON_BALL) {
+            bsindx = 1;
+        } else if (harmless_missile(otmp)) {
+            bsindx = 2;
+        } else if (is_flimsy(otmp)) {
+            bsindx = 3;
+        } else if ((otmp.oclass | 0) === COIN_CLASS
+            || (game.objects?.[obj_type]?.oc_material | 0) === GOLD
+            || (game.objects?.[obj_type]?.oc_material | 0) === SILVER) {
+            bsindx = 4;
+        } else {
+            bsindx = barsounds.length - 1;
+        }
+        await pline(`${barsounds[bsindx]}!`);
+    }
+    if (!(harmless_missile(otmp) || is_flimsy(otmp))) noise = 4 * 4;
+
+    if (your_fault && (obj_type === WAR_HAMMER
+        || obj_type === HEAVY_IRON_BALL)) {
+        const spe = (obj_type === HEAVY_IRON_BALL)
+            ? Math.trunc((otmp.owt | 0) / WT_IRON_BALL_INCR)
+            : (otmp.spe | 0);
+        const chance = (melee_attk ? 40 : 60) - acurrstr() - spe;
+        if (!rn2(Math.max(2, chance))) {
+            await pline('You break the bars apart!');
+            dissolve_bars(barsx, barsy);
+            noise = noise * 2;
+        }
+    }
+
+    if (noise) await wake_nearto(barsx, barsy, noise);
+}
+
+/**
+ * C ref: mthrowu.c hits_bars — TRUE if missile stops at bars; may destroy.
+ * whodidit: 1 hero, 0 other, -1 check-only (no hit_bars side effects).
+ * @param {{ obj: object|null }} obj_p
+ * @returns {Promise<boolean>}
+ */
+export async function hits_bars(obj_p, x, y, barsx, barsy, always_hit, whodidit) {
+    const otmp = obj_p?.obj;
+    if (!otmp) return false;
+    const obj_type = otmp.otyp | 0;
+    let hits = !!always_hit;
+
+    if (!hits) {
+        switch (otmp.oclass | 0) {
+        case WEAPON_CLASS: {
+            const oskill = game.objects?.[obj_type]?.oc_skill ?? 0;
+            hits = (oskill !== -P_BOW && oskill !== -P_CROSSBOW
+                && oskill !== -P_DART && oskill !== -P_SHURIKEN
+                && oskill !== P_SPEAR
+                && oskill !== P_KNIFE);
+            break;
+        }
+        case ARMOR_CLASS:
+            hits = (game.objects?.[obj_type]?.oc_armcat ?? -1) !== ARM_GLOVES;
+            break;
+        case TOOL_CLASS:
+            hits = (obj_type !== SKELETON_KEY && obj_type !== LOCK_PICK
+                && obj_type !== CREDIT_CARD && obj_type !== TALLOW_CANDLE
+                && obj_type !== WAX_CANDLE && obj_type !== LENSES
+                && obj_type !== TIN_WHISTLE && obj_type !== MAGIC_WHISTLE);
+            break;
+        case ROCK_CLASS:
+            if (obj_type !== STATUE
+                || (mons(otmp.corpsenm)?.msize ?? 0) > MZ_TINY) {
+                hits = true;
+            }
+            break;
+        case FOOD_CLASS:
+            if (obj_type === CORPSE
+                && (mons(otmp.corpsenm)?.msize ?? 0) > MZ_TINY) {
+                hits = true;
+            } else {
+                hits = (obj_type === MEAT_STICK
+                    || obj_type === ENORMOUS_MEATBALL);
+            }
+            break;
+        case SPBOOK_CLASS:
+        case WAND_CLASS:
+        case BALL_CLASS:
+        case CHAIN_CLASS:
+            hits = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (hits && whodidit !== -1) {
+        await hit_bars(
+            obj_p, x, y, barsx, barsy,
+            (whodidit === 1) ? BRK_BY_HERO : 0,
+        );
+    }
+    return hits;
 }

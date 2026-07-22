@@ -4,15 +4,15 @@
 // (doturn / maybe_turn_mon_iter, D-0912); desecrate_altar / god_zaps_you /
 // fry_by_god (D-0963); angrygods cases 4–8 + gods_angry (D-0969).
 //
-// Branch envelope: ParanoidPray yn confirm (default on) + wizard Force
-// (D-0517) + #pray ublesscnt-too-soon (p_type 0) → angrygods; p_type 3 →
-// pleased You_feel + action rn1 + TROUBLE_HIT fix_worst_trouble (D-0920)
-// + ublesscnt rnz(350); #offer not-on-altar; Knight/Cleric #turn chant +
-// exercise + undead iter + nomul; digactualhole altar → desecrate_altar;
-// angrygods 0–8 + default zap (punish/attrcurse/rndcurse/summon_minion/
-// god_zaps_you).
+// Branch envelope: ParanoidPray → paranoid_query(ParanoidConfirm) (D-1000)
+// + wizard Force (D-0517) + #pray ublesscnt-too-soon (p_type 0) →
+// angrygods; p_type 3 → pleased You_feel + action rn1 + TROUBLE_HIT
+// fix_worst_trouble (D-0920) + ublesscnt rnz(350); #offer not-on-altar;
+// Knight/Cleric #turn chant + exercise + undead iter + nomul;
+// digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
+// (punish/attrcurse/rndcurse/summon_minion/god_zaps_you).
 // Named omissions: other in_trouble majors/minors; other fix_worst_trouble
-// cases; ParanoidConfirm "yes"; pleased pat_on_head gifts / crown /
+// cases; pleased pat_on_head gifts / crown /
 // give_spell; p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
 // pray_revive; floorfood sacrifice; known_spell SPE_TURN_UNDEAD /
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
@@ -28,7 +28,7 @@ import { nomul } from './hack.js';
 import { A_WIS, change_luck, adjattrib, adjalign, exercise } from './attrib.js';
 import { align_gname, xlev_to_rank, uhim } from './roles.js';
 import { objects_at } from './mkobj.js';
-import { yn_function } from './getline.js';
+import { yn_function, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
 import { can_chant } from './spell.js';
 import { couldsee } from './vision.js';
@@ -59,7 +59,8 @@ import {
 } from './generated/monsters_data.js';
 import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, A_NONE, A_LAWFUL, A_NEUTRAL,
-    A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, LL_CONDUCT,
+    A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, PARANOID_CONFIRM,
+    LL_CONDUCT,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
     W_ARMS, W_ARMC, W_ARM,
@@ -350,6 +351,37 @@ async function godvoice(g_align, words) {
     await pline(
         `The voice of ${align_gname(game.urole, g_align)} ${how}: ${quot}${w}${quot}`,
     );
+}
+
+/**
+ * C ref: pray.c altar_wrath — kick/engrave/dig desecration voice.
+ * Branch envelope: own-altar record > -rn2(4) → godvoice + adjattrib WIS
+ * + record--; else Deaf-aware whisper + verbalize + Luck>−5 rn2 luck loss.
+ * Named omit: SetVoice pitch.
+ */
+export async function altar_wrath(x, y) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0 };
+    const altaralign = a_align(x, y);
+    const Deaf = !!(u.Deaf || u.HDeaf || u.EDeaf || u.uroleplay?.deaf);
+
+    if ((u.ualign.type | 0) === (altaralign | 0)
+        && (u.ualign.record | 0) > -rn2(4)) {
+        await godvoice(altaralign, 'How darest thou desecrate my altar!');
+        await adjattrib(A_WIS, -1, false);
+        u.ualign.record = (u.ualign.record | 0) - 1;
+    } else {
+        await pline(
+            `${!Deaf ? 'A voice (could it be' : 'Despite your deafness, you seem to hear'} ${
+                align_gname(game.urole, altaralign)
+            }${!Deaf ? '?) whispers' : ' say'}:`,
+        );
+        // SetVoice deferred
+        await verbalize('Thou shalt pay, infidel!');
+        if (Luck() > -5 && rn2(Luck() + 6)) {
+            change_luck(rn2(20) ? -1 : -2);
+        }
+    }
 }
 
 /**
@@ -818,6 +850,7 @@ export async function prayer_done() {
 /**
  * C ref: pray.c dopray — #pray
  * ParanoidPray (default) → paranoid_query(ParanoidConfirm, …);
+ * Confirm bit → getlin "yes"; else yn (D-1000).
  * wizard Force-the-gods (D-0517) → may raise p_type to 3 + clear
  * ublesscnt so uinvulnerable gates gethungry during nomul(-3).
  */
@@ -829,10 +862,14 @@ export async function dopray() {
         ? true
         : (bits & PARANOID_PRAY) !== 0;
     if (paranoidPray) {
-        // C: paranoid_query(ParanoidConfirm, …); Confirm→getlin "yes" deferred
-        const ok = (await yn_function(
-            'Are you sure you want to pray?', 'yn', 'n',
-        )) === 'y';
+        // C: paranoid_query(ParanoidConfirm, "Are you sure…")
+        const ParanoidConfirm = bits == null
+            ? false
+            : (bits & PARANOID_CONFIRM) !== 0;
+        const ok = await paranoid_query(
+            ParanoidConfirm,
+            'Are you sure you want to pray?',
+        );
         if (!ok) return ECMD_OK;
     }
 

@@ -23,7 +23,7 @@ import {
     M_AP_TYPE, M_AP_MONSTER, M_AP_NOTHING,
     BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
     ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA,
-    HURTLING, FORCEBUNGLE,
+    HURTLING, FORCEBUNGLE, IRONBARS,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -335,7 +335,7 @@ async function tmiss(obj, mon, maybe_wakeup) {
  * leader catch, guaranteed_hit swallow body.
  * @returns {boolean} true if obj was consumed / taken care of
  */
-async function thitmonst(mon, obj) {
+export async function thitmonst(mon, obj) {
     const otyp = obj.otyp | 0;
     const guaranteed_hit = engulfing_u(mon);
     // C: dieroll = rnd(20) before class branches (unused on else/tmiss path)
@@ -554,7 +554,7 @@ function Doname2(obj) {
  * C ref: dothrow.c breaktest — obj_resists then glass / potion / egg /
  * cream pie / melon / venom / camera.
  */
-function breaktest(obj) {
+export function breaktest(obj) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp | 0];
     let nonbreakchance = 1;
@@ -625,10 +625,11 @@ async function breakmsg(obj, in_view) {
 /**
  * C ref: dothrow.c breakobj — side effects then delobj (non-fracture).
  * Named omit: crackable erode_obj; explode_oil; release_camera_demon;
- * shop check_shop_obj / stolen_value / make_angry_shk; pyrolisk explode.
+ * pyrolisk explode; break_seq simultaneous make_angry polish.
  * @returns {Promise<number>} 1 if destroyed
  */
-async function breakobj(obj, x, y, hero_caused, _from_invent) {
+/** Exported for flooreffects hot-ground shatter (do.c; D-0992). */
+export async function breakobj(obj, x, y, hero_caused, from_invent) {
     if (!obj) return 0;
     if (is_crackable(obj)) {
         // erode_obj ERODE_CRACK deferred — still remove for striking path
@@ -665,7 +666,32 @@ async function breakobj(obj, x, y, hero_caused, _from_invent) {
     default:
         break;
     }
-    // shop billing deferred
+    // C: hero_caused shop billing (D-0994)
+    if (hero_caused) {
+        const { check_shop_obj, stolen_value, costly_spot, shop_keeper,
+            make_angry_shk } = await import('./shk.js');
+        const { in_rooms } = await import('./hack.js');
+        const { SHOPBASE, ESHK } = await import('./const.js');
+        const ushops = game.u?.ushops || '';
+        if (from_invent || obj.unpaid) {
+            if (ushops || obj.unpaid) {
+                await check_shop_obj(obj, x, y, true);
+            }
+        } else if (!obj.no_charge && costly_spot(x, y)) {
+            const o_shop = in_rooms(x, y, SHOPBASE) || '';
+            const shkp = shop_keeper(o_shop.charCodeAt(0) || 0);
+            if (shkp) {
+                const loss = await stolen_value(
+                    obj, x, y, !!shkp.mpeaceful, false,
+                );
+                if (loss > 0
+                    && o_shop.charCodeAt(0) !== (ushops.charCodeAt(0) || 0)) {
+                    await make_angry_shk(shkp, x, y);
+                }
+                void ESHK;
+            }
+        }
+    }
     if (!fracture) delobj(obj);
     return 1;
 }
@@ -743,6 +769,7 @@ async function throwit(obj) {
     let x = u.ux;
     let y = u.uy;
     let hitmon = null;
+    let point_blank = true;
     while (range-- > 0) {
         const nx = x + dx;
         const ny = y + dy;
@@ -751,10 +778,25 @@ async function throwit(obj) {
         if (!loc) break;
         const typ = loc.typ ?? 0;
         const closed = IS_DOOR(typ) && ((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+        // C bhit: IRONBARS via hits_bars before ZAP_POS stop (D-0990)
+        if (typ === IRONBARS) {
+            const { hits_bars } = await import('./mthrowu.js');
+            const pobj = { obj };
+            if (await hits_bars(
+                pobj, x, y, nx, ny,
+                point_blank ? 0 : !rn2(5), 1,
+            )) {
+                if (!pobj.obj) return; // destroyed at bars
+                obj = pobj.obj;
+                break; // land at previous cell (x,y)
+            }
+            // passes through — fall through to advance
+        }
         // C bhit: if (!ZAP_POS(typ) || closed_door) { bhitpos -= dir; break; }
         if (!ZAP_POS(typ) || closed) break;
         x = nx;
         y = ny;
+        point_blank = false;
         // C bhit THROWN_WEAPON: stop on monster
         const mon = m_at(x, y);
         if (mon) {
@@ -773,7 +815,38 @@ async function throwit(obj) {
         // Broken — darts usually survive via obj_resists
         return;
     }
+    // C: Splash/Plop before flooreffects when landing in pool/lava
+    {
+        const { is_pool, is_lava } = await import('./hack.js');
+        const { weight } = await import('./mkobj.js');
+        const { WT_SPLASH_THRESHOLD } = await import('./const.js');
+        if (!Deaf() && !game.u?.Underwater
+            && (is_pool(x, y)
+                || (is_lava(x, y) /* && !is_flammable deferred */))) {
+            await pline(
+                (weight(obj) > WT_SPLASH_THRESHOLD) ? 'Splash!' : 'Plop!',
+            );
+        }
+    }
+    // C: flooreffects then ship_object then place (D-0987)
+    {
+        const { flooreffects } = await import('./do.js');
+        if (await flooreffects(obj, x, y, 'fall')) return;
+    }
+    // C: !mon && ship_object(obj, bhitpos, FALSE) before place
+    {
+        const { ship_object } = await import('./dokick.js');
+        if (await ship_object(obj, x, y, false)) return;
+    }
     place_object(obj, x, y);
+    // C: charge / take possession for shop throw land (D-0994)
+    {
+        const ushops = game.u?.ushops || '';
+        if ((ushops || obj.unpaid) && obj !== game.u?.uball) {
+            const { check_shop_obj } = await import('./shk.js');
+            await check_shop_obj(obj, x, y, false);
+        }
+    }
     // C: throwit → stackobj after place_object
     stackobj(obj);
     // C dothrow.c throwit: if (cansee(bhitpos)) newsym — land glyph

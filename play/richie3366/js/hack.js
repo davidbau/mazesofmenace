@@ -42,7 +42,7 @@ import {
 import { hliquid, Hallucination } from './do_name.js';
 import { near_capacity } from './invent.js';
 import { record_achievement } from './insight.js';
-import { b_trapped } from './trap.js';
+import { b_trapped, selftouch } from './trap.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -1493,19 +1493,11 @@ function is_weptool_hack(obj) {
 }
 
 /**
- * C ref: trap.c selftouch — cockatrice-corpse / twoweapon petrify deferred
- * (same envelope as stair-fall / music; no unbound RNG here).
- */
-async function selftouch_sink(_arg) {
-    /* no-op until touch_petrifies + instapetrify wired */
-}
-
-/**
  * C ref: hack.c dosinkfall — land on sink while levitating/flying.
  * Branch envelope: innate/blocked wobble vs flight control vs crash
  * (rn1 dmg + floor weapons + exercise); stop_donning; strip arti/timeout
  * lev + RIN_LEVITATION / LEVITATION_BOOTS; float_vs_flight.
- * Named omissions: full selftouch petrify; Boots_off LEVITATION float_down
+ * Named omissions: Boots_off LEVITATION float_down
  * side-effect (HLevitation++ bracket still prevents mid-strip land).
  */
 export async function dosinkfall() {
@@ -1538,7 +1530,7 @@ export async function dosinkfall() {
             return;
         }
         exercise(A_DEX, false);
-        await selftouch_sink('Falling, you');
+        await selftouch('Falling, you');
         const { doname } = await import('./objnam.js');
         for (let obj = objects_at(u.ux | 0, u.uy | 0); obj; obj = obj.nexthere) {
             if (obj.oclass === WEAPON_CLASS || is_weptool_hack(obj)) {

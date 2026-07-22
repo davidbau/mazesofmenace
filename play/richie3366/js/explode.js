@@ -1,8 +1,9 @@
-// explode.js — Explosion effects (partial).
-// C ref: explode.c mon_explodes / explode / explosionmask;
+// explode.js — Explosion effects (partial) + scatter (thin).
+// C ref: explode.c mon_explodes / explode / explosionmask / scatter;
 //        zap.c destroy_items / resist / zap_over_floor
 //        (D-0949 shopdamage → pay_for_damage; D-0968 AD_FIRE;
-//         D-0971 AD_COLD/ELEC; D-0973 AD_MAGM/DISN/DRST/ACID).
+//         D-0971 AD_COLD/ELEC; D-0973 AD_MAGM/DISN/DRST/ACID;
+//         D-0986 scatter MAY_HIT for tree kick).
 //
 // Branch envelope: AT_BOOM AD_PHYS / AD_MAGM..AD_SPC2 → MON_EXPLODE;
 // WAND_CLASS / BURNING_OIL / SCROLL / TRAP_EXPLODE olet preamble;
@@ -11,35 +12,48 @@
 // vampshifter); 3x3 zap_over_floor + shop pay; PHYS + MAGM/FIRE/
 // COLD/DISN/ELEC/DRST/ACID mon/hero damage (destroy_items,
 // burnarmor FIRE, resist, cold×2↔fire, Half_phys PHYS/ACID,
-// exercise A_STR, xkilled/monkilled); wake_nearto.
+// exercise A_STR, xkilled/monkilled); wake_nearto;
+// scatter individual/pile + MAY_HIT flight (tree/kick).
 // Named omissions: hallu rndmonnam; sparkle/shield glyphs;
 // ugolemeffects/golemeffects; Invulnerable;
 // grabbing/engulf double-damage; wake_nearto
 // beyond msleeping; Role_switch damu only for known role pm;
-// resists_magm worn/artifact ANTIMAGIC scan; engulfer_explosion_msg.
+// resists_magm worn/artifact ANTIMAGIC scan; engulfer_explosion_msg;
+// scatter MAY_FRACTURE/MAY_DESTROY/shop bill/flooreffects/VIS_EFFECTS/
+// uball chain shatter/hideunder.
 
 import { game } from './gstate.js';
-import { d, rn2 } from './rng.js';
-import { pline } from './display.js';
+import { d, rn2, rnd } from './rng.js';
+import { pline, newsym } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, setmangry } from './mon.js';
 import { Monnam } from './do_name.js';
-import { maybe_half_phys } from './hack.js';
+import {
+    maybe_half_phys, nomul, stop_occupation,
+} from './hack.js';
 import { exercise, A_STR } from './attrib.js';
 import {
     isok, u_at, PHYS_EXPL_TYPE, MON_EXPLODE, EXPL_NOXIOUS, EXPL_FIERY,
     EXPL_FROSTY, EXPL_MAGICAL,
     STRAT_WAITMASK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
     BURNING_OIL, TRAP_EXPLODE, XKILL_GIVEMSG, XKILL_NOCORPSE, BURNING, DIED,
+    N_DIRS, xdir, ydir, ZAP_POS, IS_DOOR, IS_SINK, STONE,
+    LARGEST_INT, MAY_HITMON, MAY_HITYOU,
+    D_ISOPEN, D_NODOOR, D_BROKEN,
 } from './const.js';
 import {
     pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT, MR_POISON,
-    MR_ACID, nonliving, is_demon, is_vampshifter,
+    MR_ACID, nonliving, is_demon, is_vampshifter, bigmonst,
 } from './monsters.js';
 import {
     PM_CLERIC, PM_MONK, PM_WIZARD, PM_HEALER, PM_KNIGHT, monsterNames,
 } from './generated/monsters_data.js';
 import { WAND_CLASS, SCROLL_CLASS, objectNames, RAY } from './objects.js';
+import {
+    objects_at, obj_extract_self, splitobj, place_object, stackobj,
+} from './mkobj.js';
+import { ohitmon, thitu } from './mthrowu.js';
+import { dmgval } from './weapon.js';
 
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
@@ -582,4 +596,138 @@ export async function mon_explodes(mon, mattk) {
     );
 
     game.killer.name = '';
+}
+
+/** C closed_door — mask not open/broken/nodoor. */
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    const mask = loc.doormask | 0;
+    return mask !== D_NODOOR && mask !== D_ISOPEN && mask !== D_BROKEN;
+}
+
+/**
+ * C ref: explode.c scatter — fling objects from (sx,sy) by blastforce.
+ * Branch envelope (D-0986): individual_object or pile peel via splitobj;
+ * random 8-dir flight; stop on !isok / !ZAP_POS / closed_door / sink;
+ * MAY_HITMON → ohitmon; MAY_HITYOU → thitu; place_object+stackobj.
+ * Named omit: MAY_FRACTURE/MAY_DESTROY; shop credit/stolen; flooreffects
+ * (always place); VIS_EFFECTS; uball/uchain shatter; hideunder.
+ * @returns {number} total quantity that left the origin square
+ */
+export async function scatter(sx, sy, blastforce, scflags, obj = null) {
+    const flags = scflags | 0;
+    let individual = !!obj;
+    const schain = [];
+    let farthest = 0;
+    let total = 0;
+
+    while (true) {
+        let otmp = individual ? obj : objects_at(sx, sy);
+        if (!otmp) break;
+
+        // uball/uchain shatter deferred
+        if ((otmp.quan | 0) > 1) {
+            let qtmp = (otmp.quan | 0) - 1;
+            if (qtmp > LARGEST_INT) qtmp = LARGEST_INT;
+            qtmp = rnd(qtmp | 0);
+            otmp = splitobj(otmp, qtmp);
+        } else if (individual) {
+            obj = null;
+        }
+        obj_extract_self(otmp);
+        // MAY_FRACTURE / MAY_DESTROY deferred
+
+        const dir = rn2(N_DIRS);
+        let range = (blastforce | 0) - Math.trunc((otmp.owt | 0) / 40);
+        if (range < 1) range = 1;
+        range = rnd(range);
+        if (range > farthest) farthest = range;
+        schain.push({
+            obj: otmp,
+            ox: sx | 0,
+            oy: sy | 0,
+            dx: xdir[dir],
+            dy: ydir[dir],
+            range,
+            stopped: false,
+        });
+        if (individual && !obj) break;
+    }
+
+    while (farthest-- > 0) {
+        for (const stmp of schain) {
+            if (!((stmp.range-- > 0) && !stmp.stopped)) continue;
+            game.thrownobj = stmp.obj;
+            let bx = stmp.ox + stmp.dx;
+            let by = stmp.oy + stmp.dy;
+            if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+            game.bhitpos.x = bx;
+            game.bhitpos.y = by;
+            let typ = STONE;
+            if (isok(bx, by)) typ = game.level?.at(bx, by)?.typ ?? STONE;
+            if (!isok(bx, by)) {
+                bx -= stmp.dx;
+                by -= stmp.dy;
+                stmp.stopped = true;
+            } else if (!ZAP_POS(typ) || closed_door(bx, by)) {
+                bx -= stmp.dx;
+                by -= stmp.dy;
+                stmp.stopped = true;
+            } else {
+                const mtmp = m_at(bx, by);
+                if (mtmp) {
+                    if (flags & MAY_HITMON) {
+                        stmp.range--;
+                        if (await ohitmon(mtmp, stmp.obj, 1, false)) {
+                            stmp.obj = null;
+                            stmp.stopped = true;
+                        }
+                    }
+                } else if (u_at(bx, by)) {
+                    if (flags & MAY_HITYOU) {
+                        if (game.multi) nomul(0);
+                        const dam = dmgval(stmp.obj, game.youmonst);
+                        let hitvalu = 8 + (stmp.obj?.spe | 0);
+                        if (bigmonst(game.youmonst?.data)) hitvalu++;
+                        const objp = { obj: stmp.obj };
+                        const hitu = await thitu(
+                            hitvalu,
+                            maybe_half_phys(dam),
+                            objp,
+                            null,
+                        );
+                        stmp.obj = objp.obj;
+                        if (!stmp.obj) stmp.stopped = true;
+                        if (hitu) {
+                            stmp.range -= 3;
+                            await stop_occupation();
+                        }
+                    }
+                }
+            }
+            stmp.ox = bx;
+            stmp.oy = by;
+            if (IS_SINK(game.level?.at(stmp.ox, stmp.oy)?.typ)) {
+                stmp.stopped = true;
+            }
+            game.thrownobj = null;
+        }
+    }
+
+    for (const stmp of schain) {
+        const x = stmp.ox | 0;
+        const y = stmp.oy | 0;
+        if (stmp.obj) {
+            if (x !== (sx | 0) || y !== (sy | 0)) {
+                total += stmp.obj.quan | 0;
+            }
+            // flooreffects deferred — always place
+            place_object(stmp.obj, x, y);
+            stackobj(stmp.obj);
+        }
+        newsym(x, y);
+    }
+    newsym(sx, sy);
+    return total;
 }

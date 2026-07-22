@@ -20,11 +20,11 @@ import {
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
     EXT_ENCUMBER, COST_DSTROY, HEAD, HAND,
-    EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY,
+    EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
-import { m_at, dist2, seemimic } from './mon.js';
+import { m_at, dist2, seemimic, see_monster_closeup } from './mon.js';
 import { compactify_invlets, makeknown, near_capacity } from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
@@ -42,7 +42,7 @@ import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path } from './dothrow.js';
 import { teleds } from './teleport.js';
 import { morehungry, use_tin_opener } from './eat.js';
-import { yn_function } from './getline.js';
+import { yn_function, paranoid_query } from './getline.js';
 import { costly_alteration } from './shk.js';
 import { zappable, release_hold } from './zap.js';
 import { explode } from './explode.js';
@@ -791,15 +791,18 @@ async function do_blinding_ray(obj) {
     obj.oy = game.u.uy | 0;
     if (mtmp) {
         await flash_hits_mon(mtmp, obj);
-        // see_monster_closeup for camera deferred
+        // C: camera → see_monster_closeup(mtmp, TRUE) (D-0999)
+        if ((obj.otyp | 0) === EXPENSIVE_CAMERA) {
+            await see_monster_closeup(mtmp, true);
+        }
     }
     // transient_light_cleanup deferred
 }
 
 /**
  * C apply.c use_camera — getdir; charge; cursed/self zapyourself; ray.
- * Named omissions: Underwater warranty; swallow/dz photos; full
- * zapyourself CAMERA; see_monster_closeup; flash_hits_mon mimic/gremlin.
+ * Named omissions: Underwater warranty polish; swallow/dz photos;
+ * full zapyourself CAMERA; flash_hits_mon mimic/gremlin polish.
  * @returns {number} ECMD_*
  */
 async function use_camera(obj) {
@@ -1034,16 +1037,15 @@ async function broken_wand_explode(obj, dmg, expltype) {
 
 /**
  * C ref: apply.c do_break_wand — apply a wand by breaking it.
- * Envelope: nohands/freehand/STR gates; yn confirm; unpaid
+ * Envelope: nohands/freehand/STR gates; paranoid_query confirm; unpaid
  * costly_alteration; freeinv; zappable restore charge; explode-type
  * wands (death/lightning/fire/cold/missile); nothing-else inert wands;
  * magical explode + WAN_DIGGING adjacent dig_check/digactualhole +
  * WAN_CREATE_MONSTER makemon + dig shop pay_for_damage (D-0950);
  * strike/cancel/poly/tele/undead adjacent bhitm/bhitpile/zapyourself
  * + WAN_LIGHT litroom (D-0952).
- * Named omit: ParanoidBreakwand getlin "yes";
- * check_unpaid bill polish; ICE spot_stop_timers; HOLE goto_level;
- * revive container/buried polish.
+ * Named omit: check_unpaid bill polish; ICE spot_stop_timers;
+ * HOLE goto_level; revive container/buried polish.
  * @returns {number} ECMD_*
  */
 async function do_break_wand(obj) {
@@ -1063,13 +1065,15 @@ async function do_break_wand(obj) {
         return ECMD_OK;
     }
 
-    // C: paranoid_query(ParanoidBreakwand, …) — plain yn when flag unset
-    const c = await yn_function(
+    // C: paranoid_query(ParanoidBreakwand, …) — getlin "yes" when bit set
+    const bits = game.flags?.paranoia_bits | 0;
+    const be_paranoid = (bits & PARANOID_BREAKWAND) !== 0;
+    if (!(await paranoid_query(
+        be_paranoid,
         `Are you really sure you want to break ${yname(obj)}?`,
-        'yn',
-        'n',
-    );
-    if (c !== 'y') return ECMD_OK;
+    ))) {
+        return ECMD_OK;
+    }
 
     await pline(
         `Raising ${yname(obj)} high above your ${body_part(HEAD)}, you ${
@@ -1275,7 +1279,7 @@ async function do_break_wand(obj) {
  * is_pick/is_axe → use_pick_axe (D-0951).
  * Named omissions: retouch_object; flip_through_book; flip_coin; jelly;
  * whip/grapple/blindfold/lenses; use_stone; use_pole; traps;
- * oil; BoT; Medusa/nymph mirror arms; camera closeup; most non-instrument
+ * oil; BoT; Medusa/nymph mirror arms; most non-instrument
  * tools; break-wand release_hold / flash_hits (D-0979).
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */

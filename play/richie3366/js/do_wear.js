@@ -41,7 +41,7 @@ import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable,
 } from './mkobj.js';
-import { erode_obj } from './trap.js';
+import { erode_obj, selftouch } from './trap.js';
 import { rn2, rnd } from './rng.js';
 import { vision_recalc, set_mimic_blocking } from './vision.js';
 import { restartcham, rescham } from './mon.js';
@@ -2065,8 +2065,8 @@ async function wornarm_destroyed(wornarm) {
 /**
  * C ref: do_wear.c disintegrate_arm — destroy one worn armor piece
  * (god_zaps_you / dragon breath / destroy-armor scroll).
- * Named omissions: end_burn lamplit DSM; selftouch after gloves;
- * cancel_don; cloak/suit name polish beyond armor_doff_simple_name.
+ * Named omissions: end_burn lamplit DSM; cancel_don;
+ * cloak/suit name polish beyond armor_doff_simple_name.
  * @param {object|null} atmp specific piece or null for any
  * @returns {Promise<number>} 1 if destroyed, else 0
  */
@@ -2117,7 +2117,7 @@ export async function disintegrate_arm(atmp) {
     }
 
     await wornarm_destroyed(otmp);
-    void losing_gloves; // selftouch deferred
+    if (losing_gloves) await selftouch('You');
     await stop_occupation();
     return 1;
 }

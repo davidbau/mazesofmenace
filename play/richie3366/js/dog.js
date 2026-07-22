@@ -16,19 +16,30 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam } from './do_name.js';
-import { monnear, m_at } from './mon.js';
+import { monnear, m_at, see_monster_closeup } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { newsym, pline, canspotmon } from './display.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
+import { objectNames } from './generated/objects_data.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;
+}
+
+/** C invent.c carrying — first invent obj of otyp. */
+function carrying(otyp) {
+    if (otyp < 0) return null;
+    for (const otmp of game.invent || []) {
+        if ((otmp?.otyp | 0) === otyp) return otmp;
+    }
+    return null;
 }
 
 // C ref: dog.c pet_type()
@@ -76,7 +87,7 @@ function initedog(mtmp, everything) {
 }
 
 // C ref: dog.c makedog()
-export function makedog() {
+export async function makedog() {
     if (game.preferred_pet === 'n') {
         if (!game.context) game.context = {};
         game.context.startingpet_typ = NON_PM;
@@ -107,10 +118,16 @@ export function makedog() {
 
     if (!game.context.startingpet_mid) {
         game.context.startingpet_mid = mtmp.m_id ?? 1;
-        // C: initial horses wear a saddle (pauper excluded); see_monster_closeup deferred
+        // C: initial horses wear a saddle (pauper excluded)
         if (!game.u?.uroleplay?.pauper && pettype === PM_PONY) {
             put_saddle_on_mon(null, mtmp);
         }
+        // C: starting pet seen_close; photo if carrying camera (D-0999)
+        if (!game.bhitpos) game.bhitpos = {};
+        game.bhitpos.x = mtmp.mx | 0;
+        game.bhitpos.y = mtmp.my | 0;
+        game.notonhead = false;
+        await see_monster_closeup(mtmp, !!carrying(EXPENSIVE_CAMERA));
     }
 
     // C: if (!gp.petname_used++ && *petname) christen_monst

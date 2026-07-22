@@ -63,6 +63,7 @@ import {
     passes_walls,
     noncorporeal,
     is_golem,
+    is_rider,
     humanoid,
     polyok,
     is_mplayer,
@@ -940,15 +941,19 @@ function mgender_from_permonst(mtmp, mdat) {
 /**
  * C ref: mon.c newcham — random form via select_newcham_form/accept.
  * Named omissions: message/polyspot/worm/mimic/leash/light/inventory arms;
- * Protection_from_shape_changers cancel path; endgame mplayer rank strip.
+ * Protection_from_shape_changers cancel path; endgame mplayer rank strip;
+ * mbirth_limit Nazgul/erinyes gate; cancelled→uncancel before random form.
  * @returns {boolean} true if form changed
  */
 export function newcham(mtmp, mdat, _ncflags = 0) {
     if (!mtmp) return false;
     const olddata = mtmp.data;
     if (mtmp.cham === NON_PM || mtmp.cham == null) {
-        // cancelled→uncancel shapeshifter path deferred
-        return false;
+        // C: non-shapechanger — riders immune; forced mdat (golem petrify)
+        // allowed; random form without cham rejected.
+        if (is_rider(olddata)) return false;
+        if (!mdat) return false;
+        // cancelled→uncancel / mbirth_limit deferred
     }
     let target = mdat;
     if (!target) {

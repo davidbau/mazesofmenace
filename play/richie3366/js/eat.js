@@ -55,10 +55,10 @@ import {
     is_clinger, breathless, is_flyer,
     PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames, G_UNIQ,
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
-    M1_SEE_INVIS,
+    M1_SEE_INVIS, is_were,
 } from './monsters.js';
 import { same_race } from './mondata.js';
-import { were_beastie, set_ulycn } from './were.js';
+import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
 import { dist2, rescham } from './mon.js';
 import { set_occupation, can_reach_floor } from './engrave.js';
@@ -159,6 +159,7 @@ function hero_form_data() {
 }
 
 const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
+const SPRIG_OF_WOLFSBANE = objectNames.indexOf('SPRIG_OF_WOLFSBANE');
 const APPLE = objectNames.indexOf('APPLE');
 const PEAR = objectNames.indexOf('PEAR');
 const LEMBAS_WAFER = objectNames.indexOf('LEMBAS_WAFER');
@@ -1573,7 +1574,9 @@ async function cpostfx(pm) {
 }
 
 /**
- * C ref: eat.c done_eating — finish meal; cpostfx for CORPSE; fpostfx cookie.
+ * C ref: eat.c done_eating — finish meal; cpostfx for CORPSE; fpostfx.
+ * Envelope: fortune cookie rumor; wolfsbane you_unwere(TRUE).
+ * Named omissions: carrot blindness; other fpostfx otyps.
  */
 async function done_eating(message) {
     const piece = game.context?.victual?.piece;
@@ -1591,8 +1594,14 @@ async function done_eating(message) {
     if (piece.otyp === CORPSE || piece.globby) {
         await cpostfx(piece.corpsenm | 0);
     } else if (piece.otyp === FORTUNE_COOKIE) {
-        // C: fpostfx — cookie rumor only (other fpostfx deferred)
+        // C: fpostfx — cookie rumor
         await outrumor(bcsign(piece), BY_COOKIE);
+    } else if (piece.otyp === SPRIG_OF_WOLFSBANE) {
+        // C: fpostfx SPRIG_OF_WOLFSBANE → you_unwere(TRUE)
+        const u = game.u || {};
+        if (ismnum(u.ulycn) || is_were(game.youmonst?.data)) {
+            await you_unwere(true);
+        }
     }
     useup(piece);
     if (game.context) game.context.victual = {};

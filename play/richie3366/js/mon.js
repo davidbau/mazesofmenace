@@ -34,7 +34,7 @@ import {
 } from './mondata.js';
 import { objects_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
-import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon, canspotmon } from './display.js';
@@ -53,9 +53,12 @@ import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
 import { vtense } from './objnam.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
 const NC_SHOW_MSG = 1;
 
 /** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
@@ -269,9 +272,128 @@ export function record_mvitals_died(mndx) {
     if (mndx == null || mndx < LOW_PM) return;
     if (!game.mvitals) game.mvitals = [];
     const slot = game.mvitals[mndx] || (game.mvitals[mndx] = {
-        mvflags: 0, born: 0, died: 0,
+        mvflags: 0, born: 0, died: 0, seen_close: 0, photographed: 0,
     });
     if ((slot.died | 0) < 255) slot.died = (slot.died | 0) + 1;
+}
+
+/** C youprop.h Blind / Blind_telepat / Hallucination subset for closeup. */
+function closeup_Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+function closeup_Blind_telepat() {
+    const u = game.u || {};
+    return !!((u.HTelepat | 0) || (u.ETelepat | 0) || u.Blind_telepat);
+}
+function closeup_Hallucination() {
+    const u = game.u || {};
+    if (u.Hallucination) return true;
+    return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
+}
+
+/**
+ * C ref: mon.c see_monster_closeup — mark mvitals seen_close; camera
+ * photo + Tourist EXP for first photograph of each type (D-0999).
+ * @param {object} mtmp
+ * @param {boolean} photo
+ */
+export async function see_monster_closeup(mtmp, photo) {
+    if (!mtmp) return;
+    if (closeup_Hallucination() || (closeup_Blind() && !closeup_Blind_telepat())) {
+        return;
+    }
+
+    let mndx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+    if (M_AP_TYPE(mtmp) === M_AP_MONSTER && !sensemon(mtmp)) {
+        mndx = mtmp.mappearance | 0;
+    }
+    if (mndx === PM_LONG_WORM && game.notonhead) {
+        mndx = PM_LONG_WORM_TAIL;
+    }
+
+    if (!game.mvitals) game.mvitals = [];
+    const slot = game.mvitals[mndx] || (game.mvitals[mndx] = {
+        mvflags: 0, born: 0, died: 0, seen_close: 0, photographed: 0,
+    });
+    if (!slot.seen_close) {
+        slot.seen_close = 1;
+        if (!game.context) game.context = {};
+        if (!game.context.lifelist) game.context.lifelist = {};
+        game.context.lifelist.total_seen_upclose =
+            (game.context.lifelist.total_seen_upclose | 0) + 1;
+    }
+
+    // photo: Invis / undetected / non-monster disguise skip
+    if (photo && !mtmp.minvis && !mtmp.mundetected
+        && (M_AP_TYPE(mtmp) === M_AP_NOTHING
+            || M_AP_TYPE(mtmp) === M_AP_MONSTER)) {
+        if (M_AP_TYPE(mtmp) === M_AP_MONSTER) {
+            mndx = mtmp.mappearance | 0;
+        }
+        const pslot = game.mvitals[mndx] || (game.mvitals[mndx] = {
+            mvflags: 0, born: 0, died: 0, seen_close: 0, photographed: 0,
+        });
+        if (!pslot.photographed) {
+            pslot.photographed = 1;
+            if (!game.context) game.context = {};
+            if (!game.context.lifelist) game.context.lifelist = {};
+            game.context.lifelist.total_photographed =
+                (game.context.lifelist.total_photographed | 0) + 1;
+
+            const rolePm = game.urole?.mnum;
+            const trueNdx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+            const ctx = game.context;
+            if (rolePm === PM_TOURIST
+                && ((mtmp.m_id | 0) !== (ctx.startingpet_mid | 0)
+                    || mndx !== (ctx.startingpet_typ | 0))
+                && mndx === trueNdx) {
+                more_experienced(experience(mtmp, 0), 0);
+                await newexplevel();
+            }
+        }
+    }
+}
+
+/**
+ * C ref: mon.c see_nearby_monsters — adjacent canseemon/sensemon →
+ * see_monster_closeup(photo=FALSE). Wired from allmain once-per-hero
+ * time-passed (D-1000).
+ * Named omit: transient_light_cleanup; under_water/under_ground polish.
+ */
+export async function see_nearby_monsters() {
+    if (closeup_Hallucination()
+        || (closeup_Blind() && !closeup_Blind_telepat())) {
+        return;
+    }
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (let x = ux - 1; x <= ux + 1; x++) {
+        for (let y = uy - 1; y <= uy + 1; y++) {
+            if (!isok_xy(x, y)) continue;
+            const mtmp = m_at(x, y);
+            if (!mtmp) continue;
+            let mndx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+            if (M_AP_TYPE(mtmp) === M_AP_MONSTER) {
+                mndx = mtmp.mappearance | 0;
+            }
+            if (!game.mvitals) game.mvitals = [];
+            const slot = game.mvitals[mndx];
+            if (slot?.seen_close) continue;
+            // C: canseemon || (mundetected && sensemon)
+            if (canseemon(mtmp)
+                || (mtmp.mundetected && sensemon(mtmp))) {
+                if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+                game.bhitpos.x = x;
+                game.bhitpos.y = y;
+                game.notonhead = (x !== (mtmp.mx | 0)
+                    || y !== (mtmp.my | 0));
+                await see_monster_closeup(mtmp, false);
+            }
+        }
+    }
 }
 
 // C ref: hack.h NODIAG — only grid bugs

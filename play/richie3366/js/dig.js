@@ -33,7 +33,7 @@ import {
     confdir, losehp, maybe_half_phys, nomul,
 } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS } from './objects.js';
+import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
 import {
     is_watch, is_flyer, is_floater, grounded, MZ_HUGE, passes_walls,
@@ -48,6 +48,7 @@ import { stairway_at } from './mklev.js';
 import {
     t_at, maketrap, seetrap, feeltrap, set_utrap, reset_utrap, deltrap,
     delfloortrap, trapname, mintrap, b_trapped, conjoined_pits,
+    activate_statue_trap,
 } from './trap.js';
 import { nhgetch } from './input.js';
 import { set_occupation, can_reach_floor, del_engr_at } from './engrave.js';
@@ -96,6 +97,7 @@ import {
     xytodir, DIR_180, DIR_ERR,
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE,
+    CORPSTAT_HISTORIC, STATUE_TRAP,
 } from './const.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -431,16 +433,32 @@ export async function bury_an_obj(otmp, dealloced) {
 
 /**
  * C ref: dig.c bury_objs — bury every floor object at <x,y>.
- * Named omit: shop stolen_value / "owe … for burying merchandise".
+ * Shop stolen_value + bury merchandise owe (D-0983).
  */
 export async function bury_objs(x, y) {
+    const rooms = in_rooms(x, y, SHOPBASE) || '';
+    const { shop_keeper, costly_spot, stolen_value } = await import('./shk.js');
+    const { shkname } = await import('./shknam.js');
+    const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+    const costly = !!(shkp && costly_spot(x, y));
+    let loss = 0;
+    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
+
     for (let otmp = objects_at(x, y); otmp; ) {
-        // costly stolen_value arm deferred (named omit)
+        if (costly && !game.context?.mon_moving) {
+            loss += await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
+            if ((otmp.oclass | 0) !== COIN_CLASS) otmp.no_charge = 1;
+        }
         otmp = await bury_an_obj(otmp, null);
     }
     del_engr_at(x, y);
     newsym(x, y);
     // maybe_unhide_at deferred
+    if (costly && loss) {
+        await pline(
+            `You owe ${shkname(shkp)} ${loss} ${currency(loss)} for burying merchandise.`,
+        );
+    }
 }
 
 /**
@@ -518,7 +536,7 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
  * fall goto_level + shopdig(1) pack snatch; mon teleport_pet migrate;
  * impact_drop floor objs through hole.
  * Named omit: switch_terrain; buried_ball_to_punishment;
- * make_angry_shk; impact_drop shop stolen_value.
+ * make_angry_shk; ship_object callers.
  */
 export async function digactualhole(x, y, madeby, ttyp) {
     const lev = game.level?.at(x, y);
@@ -1463,18 +1481,28 @@ export function fracture_rock(obj) {
 }
 
 /**
- * C ref: zap.c break_statue — contents out + fracture_rock.
- * Named omit: STATUE_TRAP activate; archaeologist historic guilt.
+ * C ref: zap.c break_statue — STATUE_TRAP activate_shatter or contents
+ * out + fracture_rock; Archeologist historic guilt when by hero.
  */
-export function break_statue(obj) {
+export async function break_statue(obj) {
     if (!obj) return false;
     const x = obj.ox | 0;
     const y = obj.oy | 0;
-    // STATUE_TRAP activation deferred
+    const trap = t_at(x, y);
+    const by_you = !game.context?.mon_moving;
+    if (trap && (trap.ttyp | 0) === STATUE_TRAP
+        && (await activate_statue_trap(trap, x, y, true))) {
+        return false;
+    }
     while (obj.cobj) {
         const item = obj.cobj;
         obj_extract_self(item);
         place_object(item, x, y);
+    }
+    if (by_you && Role_if(PM_ARCHEOLOGIST)
+        && ((obj.spe | 0) & CORPSTAT_HISTORIC)) {
+        await You_feel('guilty about damaging such a historic statue.');
+        adjalign(-1);
     }
     obj.spe = 0;
     fracture_rock(obj);
@@ -1812,7 +1840,7 @@ async function dig() {
         if (digtyp === DIGTYP_STATUE) {
             const obj = sobj_at(STATUE, dpx, dpy);
             if (obj) {
-                if (break_statue(obj)) digtxt = 'The statue shatters.';
+                if (await break_statue(obj)) digtxt = 'The statue shatters.';
                 else digtxt = null;
             }
         } else if (digtyp === DIGTYP_BOULDER) {

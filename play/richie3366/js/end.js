@@ -8,7 +8,7 @@ import { depth } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
 } from './display.js';
-import { yn_function } from './getline.js';
+import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
@@ -25,7 +25,7 @@ import {
     BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
-    PARANOID_DIE, PARANOID_BONES, TT_LAVA, Has_contents,
+    PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     LIFESAVED, W_AMUL,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
@@ -912,17 +912,17 @@ export async function finish_losehp_done() {
 
 /**
  * C ref: end.c done2 — `#quit` (GENERALCMD, ECMD_OK; no turn).
- * Named omissions: In_tutorial abandon / schedule_goto; ParanoidQuit
- * getlin "yes" (uses yn when !ParanoidQuit, matching default bits);
+ * Named omissions: In_tutorial abandon / schedule_goto;
  * Dump-core 'y' → NH_abort / sound_exit (treated as stopprint quit);
  * curs_on_u / wait_synch / multi nomul on cancel (topline clear only).
+ * ParanoidQuit getlin "yes" via paranoid_query when bit set (D-0999).
  */
 export async function done2() {
     // C: paranoid_query(ParanoidQuit, …). Default paranoia_bits omit
-    // PARANOID_QUIT → yn_function. getlin "yes" when set is deferred.
-    const ok = (await yn_function(
-        'Really quit without saving?', 'yn', 'n',
-    )) === 'y';
+    // PARANOID_QUIT → yn_function.
+    const flags = game.flags || {};
+    const paranoidQuit = ((flags.paranoia_bits | 0) & PARANOID_QUIT) !== 0;
+    const ok = await paranoid_query(paranoidQuit, 'Really quit without saving?');
     if (!ok) {
         // C end.c done2 cancel arm: clear_nhwindow(WIN_MESSAGE) so the
         // yn prompt does not linger into the next nhgetch capture.
@@ -943,16 +943,6 @@ export async function done2() {
 
     await done(QUIT);
     return ECMD_OK;
-}
-
-/**
- * C ref: cmd.c paranoid_query — True for 'y'. Paranoid getlin "yes"
- * deferred; when be_paranoid, still uses yn_function (same as default
- * ParanoidDie/Bones off path for seed traces).
- */
-async function paranoid_query(be_paranoid, prompt) {
-    void be_paranoid;
-    return (await yn_function(prompt, 'yn', 'n')) === 'y';
 }
 
 /**

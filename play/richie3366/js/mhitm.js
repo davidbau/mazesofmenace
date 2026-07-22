@@ -5,7 +5,7 @@
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, canspotmon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
+import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
@@ -19,6 +19,7 @@ import {
     CORPSTAT_FEMALE,
     CORPSTAT_MALE,
     CORPSTAT_NONE,
+    CORPSTAT_HISTORIC,
     W_ARMOR,
     TAINT_AGE,
     NORMAL_SPEED,
@@ -26,21 +27,44 @@ import {
     NEED_WEAPON,
     NEED_HTH_WEAPON,
     MON_DETACH,
+    LOW_PM,
+    NON_PM,
+    ismnum,
+    has_mgivenname,
+    MGIVENNAME,
+    ONAME_NO_FLAGS,
+    G_GENOD,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
-    bigmonst, is_golem, is_mplayer, is_rider, monsterNames,
-    is_animal, M1_SEE_INVIS,
+    bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons,
+    is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, amorphous,
+    is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL,
 } from './monsters.js';
 import { objectNames } from './objects.js';
-import { relobj_on_death, mkcorpstat, stackobj } from './mkobj.js';
-import { Monnam, mon_nam } from './do_name.js';
+import {
+    relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
+    obj_meld, pudding_merge_message, place_object, add_to_container,
+    weight,
+} from './mkobj.js';
+import { Monnam, mon_nam, oname, pmname } from './do_name.js';
+import { an } from './objnam.js';
 import { mon_explodes } from './explode.js';
+import { newcham } from './makemon.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
+const STATUE = objectNames.indexOf('STATUE');
+const ROCK = objectNames.indexOf('ROCK');
+const BOULDER = objectNames.indexOf('BOULDER');
+const GLOB_OF_BLACK_PUDDING = objectNames.indexOf('GLOB_OF_BLACK_PUDDING');
+const PM_GRAY_OOZE = monsterNames.indexOf('PM_GRAY_OOZE');
+const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -468,9 +492,10 @@ async function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c make_corpse — undead specials before G_NOCORPSE; else default_1.
-// Named omission: dragon scales, unicorn horn, worm tooth, golem drops,
-// lich dust, and other pre-G_NOCORPSE switch arms (D-0271 undead only).
+// C ref: mon.c make_corpse — undead specials before G_NOCORPSE; pudding globs;
+// else default_1. Named omission: dragon scales, unicorn horn, worm tooth,
+// golem drops, lich dust, and other pre-G_NOCORPSE switch arms (D-0271
+// undead; D-0993 pudding merge).
 export function make_corpse(mtmp) {
     const mdat = mtmp.data;
     const mndx = mtmp.mnum ?? mdat?.mndx;
@@ -497,6 +522,25 @@ export function make_corpse(mtmp) {
         return obj;
     }
 
+    // C: gray ooze / brown pudding / green slime / black pudding → GLOB
+    if (mndx === PM_GRAY_OOZE || mndx === PM_BROWN_PUDDING
+        || mndx === PM_GREEN_SLIME || mndx === PM_BLACK_PUDDING) {
+        // C: GLOB_OF_BLACK_PUDDING - (PM_BLACK_PUDDING - mndx)
+        const gtyp = GLOB_OF_BLACK_PUDDING - (PM_BLACK_PUDDING - mndx);
+        let obj = mksobj_at(gtyp, x, y, true, false);
+        while (obj) {
+            const otmp = obj_nexto(obj);
+            if (!otmp) break;
+            void pudding_merge_message(obj, otmp);
+            const r1 = { obj };
+            const r2 = { obj: otmp };
+            obj = obj_meld(r1, r2);
+        }
+        // free_mgivenname deferred
+        newsym(x, y);
+        return obj;
+    }
+
     if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
 
     corpstatflags |= CORPSTAT_INIT;
@@ -513,6 +557,149 @@ export function make_corpse(mtmp) {
         newsym(x, y);
     }
     return obj;
+}
+
+/**
+ * C ref: mon.c mon_to_stone — golem → stone golem via newcham.
+ * Call only when poly_when_stoned is true.
+ */
+export async function mon_to_stone(mtmp) {
+    if (!mtmp?.data || !is_golem(mtmp.data)) {
+        return;
+    }
+    if (canseemon(mtmp)) {
+        await pline(`${Monnam(mtmp)} solidifies...`);
+    }
+    if (newcham(mtmp, mons(PM_STONE_GOLEM), 0)) {
+        if (canseemon(mtmp)) {
+            const g = mtmp.female ? FEMALE : MALE;
+            await pline(`Now it's ${an(pmname(mtmp.data, g))}.`);
+        }
+    } else if (canseemon(mtmp)) {
+        await pline('... and returns to normal.');
+    }
+}
+
+/**
+ * C ref: mon.c vamp_stone — vampshifter / stone-immune cham revert.
+ * Named omissions: expels; closed_door enexto rloc; set_mon_min_mhpmax
+ * polish; full lapidifying / rises plines; display_nhwindow.
+ * @returns {boolean} true if petrification should continue
+ */
+export async function vamp_stone(mtmp) {
+    if (!mtmp) return true;
+    if (is_vampshifter(mtmp)) {
+        const mndx = mtmp.cham ?? NON_PM;
+        const cur = mtmp.data?.mndx ?? NON_PM;
+        if (mndx >= LOW_PM && mndx !== cur
+            && !((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD)) {
+            mtmp.mcanmove = 1;
+            mtmp.mfrozen = 0;
+            if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
+            mtmp.mhp = mtmp.mhpmax | 0;
+            // expels / door-rloc deferred
+            newcham(mtmp, mons(mndx), 0);
+            if ((mtmp.data?.mndx | 0) === (mndx | 0)) mtmp.cham = NON_PM;
+            else mtmp.cham = mndx;
+            if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
+            return false;
+        }
+    } else if (ismnum(mtmp.cham)
+        && ((mons(mtmp.cham)?.mresists | 0) & MR_STONE)) {
+        mtmp.mcanmove = 1;
+        mtmp.mfrozen = 0;
+        if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
+        mtmp.mhp = mtmp.mhpmax | 0;
+        newcham(mtmp, mons(mtmp.cham), 0); // NC_SHOW_MSG deferred
+        if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
+        return false;
+    }
+    void amorphous;
+    void is_flyer;
+    return true;
+}
+
+/**
+ * C ref: zap.c obj_resists(obj,0,0) — invocation tools only (no rn2);
+ * ordinary objects burn rn2(100) then fail with ochance 0.
+ */
+function obj_resists_00(obj) {
+    if (!obj) return false;
+    const n = objectNames[obj.otyp];
+    if (n === 'AMULET_OF_YENDOR'
+        || n === 'SPE_BOOK_OF_THE_DEAD'
+        || n === 'CANDELABRUM_OF_INVOCATION'
+        || n === 'BELL_OF_OPENING'
+        || (n === 'CORPSE' && is_rider(mons(obj.corpsenm)))) {
+        return true;
+    }
+    rn2(100); // C always consumes for ordinary
+    return false;
+}
+
+/**
+ * C ref: mon.c monstone — statue or rock + mondead.
+ * Named omissions: lifesaved_monster; flooreffects on ejected boulder;
+ * end_burn lamplit; engulfing_u digests pline; free_mgivenname.
+ */
+export async function monstone(mdef) {
+    if (!(await vamp_stone(mdef))) return;
+
+    const x = mdef.mx | 0;
+    const y = mdef.my | 0;
+    mdef.mhp = 0;
+    // lifesaved_monster deferred
+    if ((mdef.mhp | 0) > 0) return;
+
+    mdef.mtrapped = 0;
+
+    let otmp;
+    const msize = mdef.data?.msize ?? 0;
+    const geno = mdef.data?.geno ?? 0;
+    if (msize > MZ_TINY
+        || !rn2(2 + (((geno & G_FREQ) > 2) ? 1 : 0))) {
+        let oldminvent = null;
+        while (mdef.minvent) {
+            const obj = mdef.minvent;
+            mdef.minvent = obj.nobj;
+            obj.nobj = null;
+            obj.owornmask = 0;
+            obj.ocarry = null;
+            if (obj.otyp === BOULDER || obj_resists_00(obj)) {
+                // flooreffects deferred — place on floor
+                place_object(obj, x, y);
+            } else {
+                // end_burn deferred
+                obj.nobj = oldminvent;
+                oldminvent = obj;
+            }
+        }
+        mdef.mw = null;
+        let corpstatflags = CORPSTAT_NONE;
+        if (mdef.female) corpstatflags |= CORPSTAT_FEMALE;
+        else if (!is_neuter(mdef.data)) corpstatflags |= CORPSTAT_MALE;
+        if ((mdef.data?.geno | 0) & G_UNIQ) corpstatflags |= CORPSTAT_HISTORIC;
+        otmp = mkcorpstat(STATUE, mdef, mdef.data, x, y, corpstatflags);
+        if (has_mgivenname(mdef) && otmp) {
+            otmp = oname(otmp, MGIVENNAME(mdef), ONAME_NO_FLAGS);
+        }
+        while (oldminvent) {
+            const obj = oldminvent;
+            oldminvent = obj.nobj;
+            obj.nobj = null;
+            if (otmp) add_to_container(otmp, obj);
+        }
+        if (otmp) otmp.owt = weight(otmp);
+    } else {
+        otmp = mksobj_at(ROCK, x, y, true, false);
+    }
+
+    if (otmp) stackobj(otmp);
+    if (x > 0 && glyph_is_invisible(game.level?.at?.(x, y))) {
+        unmap_object(x, y);
+    }
+    if (x > 0 && cansee(x, y)) newsym(x, y);
+    mondead(mdef);
 }
 
 // C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)

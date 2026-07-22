@@ -17,8 +17,9 @@
 // dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
-// (non-zero) path; disturb_grave; can_reach_floor ustuck-hugs /
+// (non-zero) path; can_reach_floor ustuck-hugs /
 // ceiling_hider / MZ_HUGE / uteetering_at_seen_pit / uescaped_shaft.
+// disturb_grave (D-0985) via kick_nondoor / engraving callers.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
@@ -37,12 +38,17 @@ import {
 } from './objects.js';
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
-    ROOM, GRAVE,
+    ROOM, GRAVE, IS_GRAVE, MM_NOMSG,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
 } from './const.js';
 import { nomul } from './hack.js';
 import { t_at } from './trap.js';
+import { makemon } from './makemon.js';
+import { monsterNames } from './generated/monsters_data.js';
+import { mons } from './monsters.js';
+
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
 
 const TOWEL = objectNames.indexOf('TOWEL');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
@@ -627,4 +633,19 @@ export async function doengrave() {
 
     // Setup does not take time — occupation runs next moveloop tick
     return 0;
+}
+
+/**
+ * C ref: engrave.c disturb_grave — kick/engrave on undisturbed headstone.
+ * Branch envelope: You disturb; set horizontal(disturbed); makemon
+ * PM_GHOUL; exercise WIS false. Named omit: impossible() diagnostics.
+ */
+export async function disturb_grave(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev || !IS_GRAVE(lev.typ)) return;
+    if (lev.horizontal) return; // already disturbed
+    await pline('You disturb the undead!');
+    lev.horizontal = 1;
+    if (PM_GHOUL >= 0) makemon(mons(PM_GHOUL), x, y, MM_NOMSG);
+    exercise(A_WIS, false);
 }

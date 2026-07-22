@@ -19,7 +19,9 @@ import { schedule_goto, deferred_goto } from './do.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
 import { makemon, reset_align_shift_cache } from './makemon.js';
-import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
+import {
+    mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, see_nearby_monsters,
+} from './mon.js';
 import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, reset_erinys } from './monsters.js';
 import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
@@ -513,7 +515,7 @@ export async function newgame() {
     // C ref: allmain.c newgame() — u_on_upstairs before makedog
     u_on_upstairs();
     // C ref: allmain.c → makedog() (skipped when preferred_pet === 'n')
-    makedog();
+    await makedog();
 
     // C ref: allmain.c → u_init_inventory_attrs() (after makedog)
     await u_init_inventory_attrs();
@@ -759,6 +761,9 @@ export async function moveloop_core() {
         if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
             g.context.seer_turn = g.moves + rn1(31, 15);
         }
+        // C: sink_into_lava / pooleffects / under_water|ground deferred;
+        // see_nearby_monsters at end of actual-time-passed (D-1000).
+        await see_nearby_monsters();
     }
 
     // Vision + display (before getch — screen capture in nhgetch)

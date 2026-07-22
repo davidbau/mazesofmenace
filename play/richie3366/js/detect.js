@@ -17,7 +17,7 @@
 // **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: Hallucination/cls
-// map_trap wait; activate_statue_trap; artifact SPFX_SEARCH;
+// map_trap wait; artifact SPFX_SEARCH;
 // warnreveal body (mfind0 via_warning wired);
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
 // trap/object restore deferred; unconstrain underwater-buried-swallow;
@@ -43,7 +43,7 @@ import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
 import { visible_region_at } from './region.js';
 import { an } from './objnam.js';
 import { A_WIS, exercise } from './attrib.js';
-import { t_at } from './trap.js';
+import { t_at, activate_statue_trap } from './trap.js';
 import { engr_at } from './engrave.js';
 import { cmd_safety_prevention } from './do.js';
 import { m_at, seemimic } from './mon.js';
@@ -287,11 +287,9 @@ export async function dosearch0(aflag) {
                 if (trap && !trap.tseen && !rnl(8)) {
                     nomul_clear();
                     if (trap.ttyp === STATUE_TRAP) {
-                        // activate_statue_trap deferred — still mark seen so
-                        // we do not re-roll forever; return 1 like C.
-                        trap.tseen = true;
-                        exercise(A_WIS, true);
-                        newsym(trap.tx, trap.ty);
+                        if (await activate_statue_trap(trap, x, y, false)) {
+                            exercise(A_WIS, true);
+                        }
                         return 1;
                     }
                     await find_trap(trap);
