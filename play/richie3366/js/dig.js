@@ -1,6 +1,7 @@
 // dig.js — Monster tunneling / terrain dig / wand dig / pickaxe occupation.
 // C ref: dig.c mdig_tunnel / zap_dig / draft_message / watch_dig /
 //        dig_check / fillholetyp / digactualhole / liquid_flow /
+//        bury_an_obj / bury_objs / unearth_objs / rot_organic /
 //        dig_typ / pick_can_reach / is_digging / holetime / dig /
 //        digcheck_fail_message / use_pick_axe / use_pick_axe2 / dighole /
 //        furniture_handled / dig_up_grave; dbridge.c destroy_drawbridge;
@@ -10,7 +11,9 @@
 //        D-0954 furniture_handled + HOLE goto_level; D-0957 dig_up_grave;
 //        D-0959 destroy_drawbridge; D-0960 mkcavearea earth;
 //        D-0961 impact_drop / down_gate / drop_to;
-//        D-0962 conjoined_pits / autodig quiet / boulder-fill)
+//        D-0962 conjoined_pits / autodig quiet / boulder-fill;
+//        D-0963 desecrate_altar / god_zaps_you;
+//        D-0967 bury/unearth/obj_ice_effects wire)
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -22,14 +25,15 @@ import { cansee, recalc_block_point, vision_recalc } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import {
     mksobj_at, objects_at, obj_extract_self, delobj, place_object, weight,
-    set_corpsenm,
+    set_corpsenm, add_to_buried, stackobj, is_organic, start_timer, stop_timer,
+    obj_ice_effects,
 } from './mkobj.js';
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava,
     confdir, losehp, maybe_half_phys, nomul,
 } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS } from './objects.js';
+import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
 import {
     is_watch, is_flyer, is_floater, grounded, MZ_HUGE, passes_walls,
@@ -62,6 +66,8 @@ import {
 import {
     find_drawbridge, is_drawbridge_wall, destroy_drawbridge,
 } from './dbridge.js';
+import { obj_resists } from './dogmove.js';
+import { unpunish } from './read.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -88,12 +94,16 @@ import {
     TT_BURIEDBALL, TT_INFLOOR, DRAWBRIDGE_DOWN, MIGR_RANDOM,
     TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG,
     xytodir, DIR_180, DIR_ERR,
+    ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
+    ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE,
 } from './const.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const ROCK = objectNames.indexOf('ROCK');
 const STATUE = objectNames.indexOf('STATUE');
 const CORPSE = objectNames.indexOf('CORPSE');
+const LEASH = objectNames.indexOf('LEASH');
+const POT_OIL = objectNames.indexOf('POT_OIL');
 const TREEFRUITS = [
     objectNames.indexOf('APPLE'),
     objectNames.indexOf('ORANGE'),
@@ -351,19 +361,144 @@ export function fillholetyp(x, y, fill_if_any) {
     return ROOM;
 }
 
+/** C ref: dbridge.c / rm.h is_ice — ICE or drawbridge-under DB_ICE. */
+function is_ice(x, y) {
+    if (!isok(x, y)) return false;
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return false;
+    if ((lev.typ | 0) === ICE) return true;
+    return (lev.typ | 0) === DRAWBRIDGE_UP
+        && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
+}
+
+/**
+ * C ref: dig.c bury_an_obj — floor obj → buriedobjlist (or merge rock/
+ * boulder). Returns nexthere predecessor chain link for bury_objs loop.
+ * Named omit: end_burn lamplit; shop stolen_value callers handle separately.
+ */
+export async function bury_an_obj(otmp, dealloced) {
+    if (dealloced) dealloced.v = false;
+    const u = game.u || {};
+    if (otmp === u.uball) {
+        unpunish();
+        set_utrap(rn1(50, 20), TT_BURIEDBALL);
+        await pline('The iron ball gets buried!');
+    }
+    const otmp2 = otmp.nexthere || null;
+    if (otmp === u.uchain || obj_resists(otmp, 0, 0)) return otmp2;
+
+    if (otmp.otyp === LEASH && (otmp.leashmon | 0) !== 0) {
+        const lid = otmp.leashmon | 0;
+        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            if ((mtmp.m_id | 0) === lid) {
+                mtmp.mleashed = 0;
+                break;
+            }
+        }
+        otmp.leashmon = 0;
+    }
+    // end_burn(lamplit && otyp != POT_OIL) deferred
+    if (otmp.lamplit && otmp.otyp !== POT_OIL) {
+        otmp.lamplit = 0;
+    }
+
+    obj_extract_self(otmp);
+
+    const under_ice = is_ice(otmp.ox | 0, otmp.oy | 0);
+    if ((otmp.otyp === ROCK && !under_ice) || otmp.otyp === BOULDER) {
+        if (dealloced) dealloced.v = true;
+        otmp.quan = 0;
+        otmp.where = OBJ_FREE;
+        otmp.timed = 0;
+        return otmp2;
+    }
+    if (otmp.otyp === CORPSE) {
+        // C: should cancel timer if under_ice — still a C TODO
+    } else if ((under_ice
+        ? (otmp.oclass === POTION_CLASS)
+        : is_organic(otmp))
+        && !obj_resists(otmp, 5, 95)) {
+        start_timer(
+            (under_ice ? 0 : 250) + rnd(250),
+            TIMER_OBJECT,
+            ROT_ORGANIC,
+            otmp,
+        );
+    }
+    add_to_buried(otmp);
+    return otmp2;
+}
+
+/**
+ * C ref: dig.c bury_objs — bury every floor object at <x,y>.
+ * Named omit: shop stolen_value / "owe … for burying merchandise".
+ */
+export async function bury_objs(x, y) {
+    for (let otmp = objects_at(x, y); otmp; ) {
+        // costly stolen_value arm deferred (named omit)
+        otmp = await bury_an_obj(otmp, null);
+    }
+    del_engr_at(x, y);
+    newsym(x, y);
+    // maybe_unhide_at deferred
+}
+
+/**
+ * C ref: dig.c unearth_objs — buriedobjlist at <x,y> → floor pile.
+ * Named omit: buried_ball / buried_ball_to_punishment arm.
+ */
+export function unearth_objs(x, y) {
+    let otmp = game.level?.buriedobjlist || null;
+    while (otmp) {
+        const otmp2 = otmp.nobj || null;
+        if ((otmp.ox | 0) === (x | 0) && (otmp.oy | 0) === (y | 0)) {
+            // buried_ball_to_punishment deferred
+            obj_extract_self(otmp);
+            if (otmp.timed) stop_timer(ROT_ORGANIC, otmp);
+            place_object(otmp, x, y);
+            stackobj(otmp);
+        }
+        otmp = otmp2;
+    }
+    del_engr_at(x, y);
+    newsym(x, y);
+}
+
+/**
+ * C ref: dig.c rot_organic — buried organic finished rotting; contents
+ * re-buried then container freed.
+ */
+export async function rot_organic(obj) {
+    if (!obj) return;
+    while (Has_contents(obj)) {
+        const child = obj.cobj;
+        if (!child) break;
+        child.ox = obj.ox | 0;
+        child.oy = obj.oy | 0;
+        await bury_an_obj(child, null);
+    }
+    obj_extract_self(obj);
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+    obj.timed = 0;
+}
+
 /**
  * C ref: dig.c liquid_flow — after terrain set to pool/moat/lava.
- * Branch envelope: delfloortrap; fillmsg; hero pooleffects / mon minliquid
- * deferred thin; obj fire/water damage deferred.
+ * Branch envelope (D-0967): delfloortrap; obj_ice_effects + unearth_objs;
+ * fillmsg; hero pooleffects deferred; mon minliquid.
+ * Named omit: fire_damage_chain / water_damage_chain on released objs.
  */
 export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
     if (!is_pool_or_lava(x, y)) return;
     if (ttmp) deltrap(ttmp);
-    // obj_ice_effects / unearth_objs / damage chains deferred
+    obj_ice_effects(x, y, true);
+    unearth_objs(x, y);
     if (fillmsg) {
         const liq = hliquid(typ === LAVAPOOL ? 'lava' : 'water');
         await pline(String(fillmsg).replace('%s', liq));
     }
+    // fire_damage_chain / water_damage_chain deferred
     if (u_at(x, y)) {
         // pooleffects deferred
     } else {
@@ -377,11 +512,12 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
 
 /**
  * C ref: dig.c digactualhole — create PIT or HOLE trap + side effects.
- * Branch envelope (D-0950/D-0954/D-0958/D-0961): furniture_handled; maketrap;
- * furniture fall msg; shop add_damage / pay ruin; PIT at_u set_utrap +
- * wake_nearby; HOLE hero fall goto_level + shopdig(1) pack snatch; mon
- * teleport_pet migrate; impact_drop floor objs through hole.
- * Named omit: desecrate_altar; switch_terrain; buried_ball_to_punishment;
+ * Branch envelope (D-0950/D-0954/D-0958/D-0961/D-0963): furniture_handled;
+ * maketrap; furniture fall msg; desecrate_altar on hero/obj altar dig;
+ * shop add_damage / pay ruin; PIT at_u set_utrap + wake_nearby; HOLE hero
+ * fall goto_level + shopdig(1) pack snatch; mon teleport_pet migrate;
+ * impact_drop floor objs through hole.
+ * Named omit: switch_terrain; buried_ball_to_punishment;
  * make_angry_shk; impact_drop shop stolen_value.
  */
 export async function digactualhole(x, y, madeby, ttyp) {
@@ -459,8 +595,11 @@ export async function digactualhole(x, y, madeby, ttyp) {
     if (IS_FURNITURE(old_typ) && cansee(x, y)) {
         await pline(`The ${furniture} falls into the ${tname}!`);
     }
-    // desecrate_altar deferred when heros_fault && IS_ALTAR(old_typ)
-    void old_aligntyp;
+    // C: wrath should immediately follow altar destruction message
+    if (heros_fault && IS_ALTAR(old_typ)) {
+        const { desecrate_altar } = await import('./pray.js');
+        await desecrate_altar(false, old_aligntyp);
+    }
 
     if (ttyp === PIT) {
         if (shopdoor && heros_fault) {
@@ -1431,7 +1570,7 @@ export async function dig_up_grave(cc) {
  * digactualhole(PIT)+dig_up_grave (D-0957); fillholetyp liquid;
  * digactualhole PIT/HOLE.
  * Named omit: magical traps explode; DRAWBRIDGE_UP fluid polish;
- * spot_checks; by_magic traps; desecrate_altar (god_zaps_you).
+ * spot_checks; by_magic traps.
  */
 export async function dighole(pit_only, _by_magic, cc) {
     const u = game.u || {};

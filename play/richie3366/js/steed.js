@@ -454,8 +454,8 @@ export async function mount_steed(mtmp, force) {
 /**
  * C ref: steed.c dismount_steed — DISMOUNT_BYCHOICE envelope.
  * Thrown/fell damage, poly, engulfed, bones, water/lava steed death,
- * float_down levitation/pool/trap arms, encumber_msg, polearm unweapon
- * deferred. float_down → pickup when !Air/Water ported (D-0220).
+ * Punished/ustuck float_down arms, encumber_msg, polearm unweapon
+ * deferred. float_down → pickup when !Air/Water (D-0220 / D-0966).
  */
 export async function dismount_steed(reason) {
     const u = game.u || (game.u = {});
@@ -528,12 +528,11 @@ export async function dismount_steed(reason) {
 
     if (reason !== DISMOUNT_ENGULFED && reason !== DISMOUNT_BONES) {
         // C: float_down(0, W_SADDLE) — W_SADDLE skips "come down" msgs;
-        // non-Air/Water → pickup(1) directly (not via spoteffects; the
-        // in_steed_dismounting flag only suppresses teleds' pickup).
-        // Levitation/pool/trap arms deferred.
+        // non-Air/Water → pickup(1) (D-0220 / D-0966).
         game.in_steed_dismounting = true;
-        const { pickup } = await import('./pickup.js');
-        await pickup(1);
+        const { float_down } = await import('./trap.js');
+        const { W_SADDLE } = await import('./const.js');
+        await float_down(0, W_SADDLE);
         game.in_steed_dismounting = false;
         if (!game.flags) game.flags = {};
         game.flags.botl = true;

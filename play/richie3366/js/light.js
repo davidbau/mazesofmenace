@@ -1,9 +1,10 @@
 // light.js — C ref: light.c light_source list + do_light_sources.
-// Monster emitters only this iteration (object/camera flash deferred).
+// LS_MONSTER + LS_OBJECT (lamps/candles via begin_burn); camera flash deferred.
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, MAX_RADIUS, LS_MONSTER, TEMP_LIT,
+    COLNO, ROWNO, MAX_RADIUS, LS_MONSTER, LS_OBJECT, TEMP_LIT,
+    OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT,
 } from './const.js';
 import { clear_path } from './vision.js';
 import { monsterNames } from './monsters.js';
@@ -30,7 +31,7 @@ export function emits_light(ptr) {
     return 0;
 }
 
-/** C ref: light.c new_light_source — LS_MONSTER subset. */
+/** C ref: light.c new_light_source — LS_MONSTER / LS_OBJECT. */
 export function new_light_source(x, y, range, type, id) {
     if (range > MAX_RADIUS || range < 0) return null;
     if (!game.light_base) game.light_base = [];
@@ -39,7 +40,7 @@ export function new_light_source(x, y, range, type, id) {
         y: y | 0,
         range: range | 0,
         type,
-        id, // monst ref for LS_MONSTER
+        id, // monst (LS_MONSTER) or obj (LS_OBJECT)
         flags: 0,
     };
     game.light_base.push(ls);
@@ -47,7 +48,7 @@ export function new_light_source(x, y, range, type, id) {
     return ls;
 }
 
-/** C ref: light.c del_light_source — LS_MONSTER by monst identity. */
+/** C ref: light.c del_light_source — by type + id identity. */
 export function del_light_source(type, id) {
     const list = game.light_base;
     if (!list?.length) return;
@@ -80,22 +81,37 @@ export function relight_monsters() {
 
 /**
  * C ref: light.c do_light_sources — mark TEMP_LIT in cs_rows.
- * Named omissions: LS_OBJECT; LSF_NEEDS_FIXUP; hero-duplicate range trim.
+ * Named omissions: LSF_NEEDS_FIXUP; circle_ptr exact ring; hero range trim.
  */
 export function do_light_sources(cs_rows) {
     const list = game.light_base;
     if (!list?.length || !cs_rows) return;
 
-    // circle_ptr(1) → offsets [1,1] for dy 0..1 (C vision.c circle_data)
-    // range 1: row±0 → x±1; row±1 → x±1
+    // Approximate circle as square of side 2*range (circle_ptr deferred).
     for (const ls of list) {
         if (ls.type === LS_MONSTER) {
             const m = ls.id;
             if (!m || m.mx <= 0) continue;
             ls.x = m.mx | 0;
             ls.y = m.my | 0;
+        } else if (ls.type === LS_OBJECT) {
+            const obj = ls.id;
+            if (!obj?.lamplit) continue;
+            if (obj.where === OBJ_INVENT
+                || (game.invent || []).includes(obj)) {
+                ls.x = game.u?.ux | 0;
+                ls.y = game.u?.uy | 0;
+            } else if (obj.where === OBJ_FLOOR) {
+                ls.x = obj.ox | 0;
+                ls.y = obj.oy | 0;
+            } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
+                ls.x = obj.ocarry.mx | 0;
+                ls.y = obj.ocarry.my | 0;
+            } else {
+                continue;
+            }
         } else {
-            continue; // object lights deferred
+            continue;
         }
         const range = ls.range | 0;
         if (range < 1) continue;
@@ -107,8 +123,7 @@ export function do_light_sources(cs_rows) {
         for (; y <= max_y; y++) {
             const row = cs_rows[y];
             if (!row) continue;
-            // C circle_ptr(range)[abs(y-ls.y)] for range 1 is 1
-            const offset = range; // range===1 only for now
+            const offset = range;
             let min_x = ls.x - offset;
             if (min_x < 1) min_x = 1;
             let max_x = ls.x + offset;

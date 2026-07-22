@@ -46,7 +46,7 @@ import { fightm } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
-import { set_mimic_sym, newcham, pickvampshape, pm_to_cham } from './makemon.js';
+import { set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd, newemin, newepri } from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
@@ -657,7 +657,7 @@ export function setmangry(mtmp, via_attack) {
  * C ref: mon.c wake_nearto / wake_nearto_core — clear sleep/wait in radius.
  * Named omissions: disturb_buried_zombies; petcall whistletime.
  */
-async function wake_nearto(x, y, distance) {
+export async function wake_nearto(x, y, distance) {
     for (const m of game.fmon || []) {
         if (!m || m.mx == null || (m.mhp | 0) <= 0) continue;
         if (distance === 0 || dist2(m.mx, m.my, x, y) < distance) {
@@ -1308,6 +1308,139 @@ export function dmonsfree() {
         list[w++] = m;
     }
     list.length = w;
+}
+
+/**
+ * C ref: mon.c copy_mextra — deep-copy mextra bags (edog/eshk/epri/…).
+ * Also mirrors top-level mtmp.edog used by dog.js.
+ */
+export function copy_mextra(mtmp2, mtmp1) {
+    if (!mtmp2 || !mtmp1) return;
+    const srcExtra = mtmp1.mextra || null;
+    const srcEdog = mtmp1.edog || srcExtra?.edog || null;
+    if (!srcExtra && !srcEdog) return;
+
+    if (!mtmp2.mextra) mtmp2.mextra = {};
+
+    const name = srcExtra?.mgivenname || mtmp1.mgivenname;
+    if (name) {
+        mtmp2.mextra.mgivenname = String(name);
+        mtmp2.mgivenname = mtmp2.mextra.mgivenname;
+    }
+    if (srcExtra?.egd) {
+        newegd(mtmp2);
+        Object.assign(mtmp2.mextra.egd, srcExtra.egd);
+    }
+    if (srcExtra?.epri) {
+        newepri(mtmp2);
+        Object.assign(mtmp2.mextra.epri, srcExtra.epri);
+    }
+    if (srcExtra?.eshk) {
+        neweshk(mtmp2);
+        Object.assign(mtmp2.mextra.eshk, srcExtra.eshk);
+    }
+    if (srcExtra?.emin) {
+        newemin(mtmp2);
+        Object.assign(mtmp2.mextra.emin, srcExtra.emin);
+    }
+    if (srcEdog) {
+        if (!mtmp2.mextra.edog) mtmp2.mextra.edog = {};
+        Object.assign(mtmp2.mextra.edog, srcEdog);
+        if (srcEdog.ogoal) {
+            mtmp2.mextra.edog.ogoal = {
+                x: srcEdog.ogoal.x | 0,
+                y: srcEdog.ogoal.y | 0,
+            };
+        }
+        mtmp2.edog = mtmp2.mextra.edog;
+    }
+    if (srcExtra?.ebones) {
+        if (!mtmp2.mextra.ebones) mtmp2.mextra.ebones = {};
+        Object.assign(mtmp2.mextra.ebones, srcExtra.ebones);
+    }
+    if (srcExtra && Object.prototype.hasOwnProperty.call(srcExtra, 'mcorpsenm')) {
+        mtmp2.mextra.mcorpsenm = srcExtra.mcorpsenm;
+    }
+}
+
+/**
+ * C ref: mon.c find_mid — locate monst by m_id on fmon (FM_FMON).
+ * Named omit: FM_MIGRATE / FM_MYDOGS / FM_EVERYWHERE.
+ */
+export function find_mid(mid, _fm = 0) {
+    const want = mid | 0;
+    if (!want) return null;
+    for (const m of game.fmon || []) {
+        if ((m.m_id | 0) === want) return m;
+    }
+    return null;
+}
+
+/**
+ * C ref: mon.c mongone — remove living mon from map/fmon (ghost join).
+ * Named omit: timers, worm segs, shop, light sources, invent drop.
+ */
+export function mongone(mtmp) {
+    if (!mtmp) return;
+    // Drop invent silently — C transfers invent before mongone in revive
+    mtmp.minvent = null;
+    const list = game.fmon;
+    if (list) {
+        const i = list.indexOf(mtmp);
+        if (i >= 0) list.splice(i, 1);
+    }
+    if (game.u?.ustuck === mtmp) game.u.ustuck = null;
+    if (game.u?.usteed === mtmp) game.u.usteed = null;
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    mtmp.mx = 0;
+    mtmp.my = 0;
+    if (mx > 0) newsym(mx, my);
+}
+
+/**
+ * C ref: mon.c replmon — swap map mon for larger/traits replacement.
+ * Named omit: polearm.hitmon; worm segs; light sources; full replshk bill.
+ */
+export function replmon(mtmp, mtmp2) {
+    if (!mtmp || !mtmp2) return;
+    for (let otmp = mtmp2.minvent; otmp; otmp = otmp.nobj) {
+        otmp.ocarry = mtmp2;
+    }
+    mtmp.minvent = null;
+
+    if (game.context?.polearm?.hitmon === mtmp) {
+        game.context.polearm.hitmon = mtmp2;
+    }
+
+    const list = game.fmon || [];
+    const i = list.indexOf(mtmp);
+    if (i >= 0) list.splice(i, 1);
+    if (!list.includes(mtmp2)) list.unshift(mtmp2);
+    game.fmon = list;
+
+    if (game.u?.ustuck === mtmp) game.u.ustuck = mtmp2;
+    if (game.u?.usteed === mtmp) game.u.usteed = mtmp2;
+    // replshk deferred beyond isshk flag already on mtmp2
+
+    mtmp.mx = 0;
+    mtmp.my = 0;
+}
+
+/**
+ * C ref: mon.c restore_cham — shape-changer vs Protection_from_shape_changers.
+ */
+export function restore_cham(mon) {
+    if (!mon) return;
+    const u = game.u || {};
+    const prot = !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers);
+    if (prot || mon.mcan) {
+        normal_shape(mon);
+    } else if ((mon.cham | 0) === NON_PM || mon.cham == null) {
+        mon.cham = pm_to_cham(mon.data?.mndx ?? mon.mnum ?? NON_PM);
+    }
 }
 
 // C ref: mon.c movemon()

@@ -7,20 +7,30 @@ import {
     UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
     STUNNED, HALLUC, LEVITATION, INVIS, SEE_INVIS, CLAIRVOYANT,
     TELEPORT, REGENERATION,
+    OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_FREE,
+    OBJ_CONTAINED, OBJ_BURIED,
+    CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, BURN_OBJECT, LS_OBJECT,
+    MAX_RADIUS, W_ARM,
 } from './const.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
-import { run_timers, objects_at } from './mkobj.js';
-import { make_confused } from './potion.js';
+import { run_timers, start_timer, stop_timer, weight,
+    obj_extract_self, delobj, objects_at } from './mkobj.js';
+import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel } from './display.js';
+import { pline, You_feel, newsym } from './display.js';
 import { inv_weight } from './invent.js';
-import { doname, makeplural } from './objnam.js';
+import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
 import { G_UNIQ, is_were } from './monsters.js';
 import { rehumanize } from './polyself.js';
+import { new_light_source, del_light_source } from './light.js';
+import { cansee } from './vision.js';
+import { is_art } from './artifact.js';
+import { ART_SUNSWORD } from './generated/artifacts_data.js';
+import { Monnam } from './do_name.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -386,4 +396,467 @@ export async function nh_timeout() {
 
     // C: run_timers() at end of nh_timeout — corpse rot / object timers
     await run_timers();
+}
+
+/* ---- light / burn (timeout.c) — D-0978 ---- */
+
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
+const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
+const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+
+/** C ref: obj.h Is_candle */
+export function Is_candle(otmp) {
+    return !!otmp && ((otmp.otyp | 0) === TALLOW_CANDLE
+        || (otmp.otyp | 0) === WAX_CANDLE);
+}
+
+/** C ref: obj.h age_is_relative */
+export function age_is_relative(otmp) {
+    if (!otmp) return false;
+    const t = otmp.otyp | 0;
+    return t === BRASS_LANTERN || t === OIL_LAMP
+        || t === CANDELABRUM_OF_INVOCATION
+        || t === TALLOW_CANDLE || t === WAX_CANDLE
+        || t === POT_OIL;
+}
+
+/** C ref: obj.h ignitable */
+export function ignitable(otmp) {
+    if (!otmp) return false;
+    const t = otmp.otyp | 0;
+    return t === BRASS_LANTERN || t === OIL_LAMP
+        || (t === MAGIC_LAMP && (otmp.spe | 0) > 0)
+        || t === CANDELABRUM_OF_INVOCATION
+        || t === TALLOW_CANDLE || t === WAX_CANDLE
+        || t === POT_OIL;
+}
+
+/** C ref: artifact.c artifact_light — Sunsword + worn gold DSM/scales. */
+export function artifact_light(obj) {
+    if (!obj) return false;
+    const t = obj.otyp | 0;
+    if ((t === GOLD_DRAGON_SCALE_MAIL || t === GOLD_DRAGON_SCALES)
+        && ((obj.owornmask | 0) & W_ARM) !== 0) {
+        return true;
+    }
+    return is_art(obj, ART_SUNSWORD);
+}
+
+/** C ref: light.c candle_light_range */
+export function candle_light_range(obj) {
+    if (!obj) return 3;
+    if ((obj.otyp | 0) === CANDELABRUM_OF_INVOCATION) {
+        const spe = obj.spe | 0;
+        return spe < 4 ? 2 : (spe < 7 ? 3 : 4);
+    }
+    if (Is_candle(obj)) {
+        const n = obj.quan | 0;
+        let radius = 1;
+        while (radius * radius <= n && radius < MAX_RADIUS) radius++;
+        return radius;
+    }
+    return 3;
+}
+
+/** C ref: light.c arti_light_radius */
+export function arti_light_radius(obj) {
+    if (!obj?.lamplit || !artifact_light(obj)) return 0;
+    let res = obj.blessed ? 3 : (!obj.cursed ? 2 : 1);
+    if (obj === game.u?.uskin) res = 1;
+    else if ((obj.otyp | 0) === GOLD_DRAGON_SCALE_MAIL) res++;
+    return res;
+}
+
+function Blind() {
+    const u = game.u || {};
+    return !!((u.HBlind | 0) || (u.EBlind | 0) || u.Blind
+        || ((u.HBlinded | 0) & TIMEOUT) || (u.EBlinded | 0));
+}
+
+function carried(obj) {
+    return !!obj && (obj.where === OBJ_INVENT
+        || (game.invent || []).includes(obj));
+}
+
+/** C ref: zap.c get_obj_location — invent/floor/minvent + flags. */
+export function get_obj_location(obj, locflags = 0) {
+    if (!obj) return null;
+    switch (obj.where) {
+    case OBJ_INVENT:
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    case OBJ_FLOOR:
+        return { x: obj.ox | 0, y: obj.oy | 0 };
+    case OBJ_MINVENT:
+        if (obj.ocarry && (obj.ocarry.mx | 0)) {
+            return { x: obj.ocarry.mx | 0, y: obj.ocarry.my | 0 };
+        }
+        break;
+    case OBJ_BURIED:
+        if (locflags & BURIED_TOO) {
+            return { x: obj.ox | 0, y: obj.oy | 0 };
+        }
+        break;
+    case OBJ_CONTAINED:
+        if (locflags & CONTAINED_TOO) {
+            return get_obj_location(obj.ocontainer, locflags);
+        }
+        break;
+    default:
+        if ((game.invent || []).includes(obj)) {
+            return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+        }
+        break;
+    }
+    return null;
+}
+
+function Shk_Your(obj) {
+    if (carried(obj)) return 'Your ';
+    if (obj?.where === OBJ_MINVENT && obj.ocarry) {
+        return `${Monnam(obj.ocarry)}'s `;
+    }
+    return 'The ';
+}
+
+function Yname2(obj) {
+    if (carried(obj)) {
+        const s = `your ${xname(obj)}`;
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    return The(xname(obj));
+}
+
+async function You_see(line) {
+    if (Blind()) await pline(`You sense ${line}`);
+    else await pline(`You see ${line}`);
+}
+
+function useupall_burn(otmp) {
+    if (!otmp) return;
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+    otmp.quan = 0;
+    otmp.where = OBJ_FREE;
+}
+
+/**
+ * C ref: timeout.c burn_away_slime — clear Slimed TIMEOUT with message.
+ */
+export async function burn_away_slime() {
+    const u = game.u || {};
+    if (u.Slimed) {
+        await make_slimed(0, 'The slime that covers you is burned away!');
+    }
+}
+
+/**
+ * C ref: timeout.c begin_burn — start BURN_OBJECT timer + LS_OBJECT light.
+ * Silent. Named omit: update_inventory redraw.
+ */
+export function begin_burn(obj, already_lit) {
+    if (!obj) return;
+    let radius = 3;
+    let turns = 0;
+    let do_timer = true;
+
+    if ((obj.age | 0) === 0 && (obj.otyp | 0) !== MAGIC_LAMP
+        && !artifact_light(obj)) {
+        return;
+    }
+
+    switch (obj.otyp | 0) {
+    case MAGIC_LAMP:
+        obj.lamplit = 1;
+        do_timer = false;
+        break;
+    case POT_OIL:
+        turns = obj.age | 0;
+        if (obj.odiluted) turns = Math.trunc((3 * turns + 2) / 4);
+        radius = 1;
+        break;
+    case BRASS_LANTERN:
+    case OIL_LAMP:
+        if ((obj.age | 0) > 150) turns = (obj.age | 0) - 150;
+        else if ((obj.age | 0) > 100) turns = (obj.age | 0) - 100;
+        else if ((obj.age | 0) > 50) turns = (obj.age | 0) - 50;
+        else if ((obj.age | 0) > 25) turns = (obj.age | 0) - 25;
+        else turns = obj.age | 0;
+        break;
+    case CANDELABRUM_OF_INVOCATION:
+    case TALLOW_CANDLE:
+    case WAX_CANDLE:
+        if ((obj.age | 0) > 75) turns = (obj.age | 0) - 75;
+        else if ((obj.age | 0) > 15) turns = (obj.age | 0) - 15;
+        else turns = obj.age | 0;
+        radius = candle_light_range(obj);
+        break;
+    default:
+        if (artifact_light(obj)) {
+            obj.lamplit = 1;
+            do_timer = false;
+            radius = arti_light_radius(obj);
+        } else {
+            turns = obj.age | 0;
+        }
+        break;
+    }
+
+    if (do_timer) {
+        if (start_timer(turns, TIMER_OBJECT, BURN_OBJECT, obj)) {
+            obj.lamplit = 1;
+            obj.age = (obj.age | 0) - turns;
+            // update_inventory deferred
+        } else {
+            obj.lamplit = 0;
+        }
+    } else if (carried(obj) && !already_lit) {
+        // update_inventory deferred
+    }
+
+    if (obj.lamplit && !already_lit) {
+        const loc = get_obj_location(obj, CONTAINED_TOO | BURIED_TOO);
+        if (loc) new_light_source(loc.x, loc.y, radius, LS_OBJECT, obj);
+    }
+}
+
+/**
+ * C ref: timeout.c end_burn — snuff or timer-less light off.
+ * timer_attached TRUE → stop_timer (+ cleanup_burn via mkobj).
+ */
+export function end_burn(obj, timer_attached) {
+    if (!obj?.lamplit) return;
+    if ((obj.otyp | 0) === MAGIC_LAMP || artifact_light(obj)) {
+        timer_attached = false;
+    }
+    if (!timer_attached) {
+        del_light_source(LS_OBJECT, obj);
+        obj.lamplit = 0;
+        return;
+    }
+    stop_timer(BURN_OBJECT, obj);
+}
+
+/**
+ * C ref: timeout.c burn_object — BURN_OBJECT timer callback.
+ * Envelope: fuel milestones + burn-out useup; away-timeout catch-up.
+ * Named omit: maybe_unhide_at polish; update_inventory redraw.
+ */
+export async function burn_object(obj, timeout) {
+    if (!obj) return;
+    const moves = game.moves | 0;
+    const menorah = (obj.otyp | 0) === CANDELABRUM_OF_INVOCATION;
+    const many = menorah ? (obj.spe | 0) > 1 : (obj.quan | 0) > 1;
+
+    if ((timeout | 0) !== moves) {
+        const how_long = moves - (timeout | 0);
+        if (how_long >= (obj.age | 0)) {
+            obj.age = 0;
+            end_burn(obj, false);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj);
+            } else if (Is_candle(obj) || (obj.otyp | 0) === POT_OIL) {
+                obj_extract_self(obj);
+                delobj(obj);
+            }
+        } else {
+            obj.age = (obj.age | 0) - how_long;
+            begin_burn(obj, true);
+        }
+        return;
+    }
+
+    const loc = get_obj_location(obj, 0);
+    const canseeit = !Blind() && !!loc && cansee(loc.x, loc.y);
+    const whose = Shk_Your(obj);
+    const bytouch = obj.where === OBJ_INVENT
+        && (obj.otyp | 0) !== BRASS_LANTERN;
+    let need_newsym = false;
+
+    switch (obj.otyp | 0) {
+    case POT_OIL:
+        if (canseeit) {
+            if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                await pline(`${whose}potion of oil has burnt away.`);
+            } else if (obj.where === OBJ_FLOOR) {
+                await You_see('a burning potion of oil go out.');
+                need_newsym = true;
+            }
+        }
+        end_burn(obj, false);
+        if (carried(obj)) useupall_burn(obj);
+        else {
+            if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+            obj_extract_self(obj);
+            delobj(obj);
+        }
+        obj = null;
+        break;
+
+    case BRASS_LANTERN:
+    case OIL_LAMP: {
+        const age = obj.age | 0;
+        if (age === 150 || age === 100 || age === 50) {
+            if (canseeit) {
+                if ((obj.otyp | 0) === BRASS_LANTERN) {
+                    if (obj.where === OBJ_INVENT) {
+                        await pline('Your lantern is getting dim.');
+                    } else if (obj.where === OBJ_FLOOR) {
+                        await You_see('a lantern getting dim.');
+                    } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
+                        await pline(
+                            `${Monnam(obj.ocarry)}'s lantern is getting dim.`,
+                        );
+                    }
+                } else {
+                    const considerably = age === 50 ? ' considerably' : '';
+                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                        await pline(
+                            `${Yname2(obj)} flickers${considerably}.`,
+                        );
+                    } else if (obj.where === OBJ_FLOOR) {
+                        await You_see(
+                            `${an(xname(obj))} flicker${considerably}.`,
+                        );
+                    }
+                }
+            }
+        } else if (age === 25) {
+            if (canseeit) {
+                if ((obj.otyp | 0) === BRASS_LANTERN) {
+                    if (obj.where === OBJ_INVENT) {
+                        await pline('Your lantern is getting dim.');
+                    } else if (obj.where === OBJ_FLOOR) {
+                        await You_see('a lantern getting dim.');
+                    }
+                } else if (obj.where === OBJ_INVENT
+                    || obj.where === OBJ_MINVENT) {
+                    await pline(`${Yname2(obj)} seems about to go out.`);
+                } else if (obj.where === OBJ_FLOOR) {
+                    await You_see(`${an(xname(obj))} about to go out.`);
+                }
+            }
+        } else if (age === 0) {
+            if (canseeit || bytouch) {
+                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                    if ((obj.otyp | 0) === BRASS_LANTERN) {
+                        await pline(`${whose}lantern has run out of power.`);
+                    } else {
+                        await pline(`${Yname2(obj)} has gone out.`);
+                    }
+                } else if (obj.where === OBJ_FLOOR) {
+                    if ((obj.otyp | 0) === BRASS_LANTERN) {
+                        await You_see('a lantern run out of power.');
+                    } else {
+                        await You_see(`${an(xname(obj))} go out.`);
+                    }
+                }
+            }
+            end_burn(obj, false);
+        }
+        if (obj && (obj.age | 0)) begin_burn(obj, true);
+        break;
+    }
+
+    case CANDELABRUM_OF_INVOCATION:
+    case TALLOW_CANDLE:
+    case WAX_CANDLE: {
+        const age = obj.age | 0;
+        if (age === 75) {
+            if (canseeit) {
+                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                    await pline(
+                        `${whose}${menorah ? "candelabrum's " : ''}candle${
+                            many ? 's are' : ' is'} getting short.`,
+                    );
+                } else if (obj.where === OBJ_FLOOR) {
+                    await You_see(
+                        `${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
+                        }candle${many ? 's' : ''} getting short.`,
+                    );
+                }
+            }
+        } else if (age === 15) {
+            if (canseeit) {
+                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                    await pline(
+                        `${whose}${menorah ? "candelabrum's " : ''}candle${
+                            many ? "s'" : "'s"} flame${many ? 's' : ''} flicker${
+                            many ? '' : 's'} low!`,
+                    );
+                } else if (obj.where === OBJ_FLOOR) {
+                    await You_see(
+                        `${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
+                        }candle${many ? "s'" : "'s"} flame${
+                            many ? 's' : ''} flicker low!`,
+                    );
+                }
+            }
+        } else if (age === 0) {
+            if (canseeit || bytouch) {
+                if (menorah) {
+                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                        await pline(
+                            `${whose}candelabrum's flame${
+                                many ? 's die' : ' dies'}.`,
+                        );
+                    } else if (obj.where === OBJ_FLOOR) {
+                        await You_see(
+                            `a candelabrum's flame${many ? 's' : ''} die.`,
+                        );
+                    }
+                } else {
+                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                        await pline(
+                            `${Yname2(obj)} ${many ? 'are' : 'is'} consumed!`,
+                        );
+                    } else if (obj.where === OBJ_FLOOR) {
+                        await You_see(
+                            `${many ? 'some ' : ''}${
+                                many ? xname(obj) : an(xname(obj))
+                            } consumed!`,
+                        );
+                        need_newsym = true;
+                    }
+                    const u = game.u || {};
+                    const hallu = !!(u.Hallucination
+                        || ((u.HHallucination | 0) & TIMEOUT));
+                    const msg = hallu
+                        ? (many ? 'They shriek!' : 'It shrieks!')
+                        : Blind() ? ''
+                            : (many ? 'Their flames die.' : 'Its flame dies.');
+                    if (msg) await pline(msg);
+                }
+            }
+            end_burn(obj, false);
+            if (menorah) {
+                obj.spe = 0;
+                obj.owt = weight(obj);
+            } else if (carried(obj)) {
+                useupall_burn(obj);
+                obj = null;
+            } else {
+                const onfloor = obj.where === OBJ_FLOOR;
+                if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+                obj_extract_self(obj);
+                void onfloor;
+                delobj(obj);
+                obj = null;
+            }
+        }
+        if (obj && (obj.age | 0)) begin_burn(obj, true);
+        break;
+    }
+
+    default:
+        break;
+    }
+    if (need_newsym && loc) newsym(loc.x, loc.y);
 }

@@ -15,7 +15,7 @@ import {
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, nothing_happens, nothing_seems_to_happen,
-    FACE, TIMEOUT, BLINDED, OBJ_FREE, isok, SDOOR, SCORR,
+    FACE, TIMEOUT, BLINDED, OBJ_FREE, OBJ_INVENT, isok, SDOOR, SCORR,
     COLNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     ACCESSIBLE, IS_STWALL, IS_DOOR, TELEDS_NO_FLAGS, INTRINSIC,
@@ -24,7 +24,7 @@ import {
 } from './const.js';
 import { pick_lock } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
-import { m_at, dist2, setmangry, seemimic } from './mon.js';
+import { m_at, dist2, seemimic } from './mon.js';
 import { compactify_invlets, makeknown, near_capacity } from './invent.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import {
@@ -44,8 +44,9 @@ import { teleds } from './teleport.js';
 import { morehungry, use_tin_opener } from './eat.js';
 import { yn_function } from './getline.js';
 import { costly_alteration } from './shk.js';
-import { zappable } from './zap.js';
+import { zappable, release_hold } from './zap.js';
 import { explode } from './explode.js';
+import { flash_hits_mon } from './uhitm.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -83,6 +84,8 @@ const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
 const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
+const CANDELABRUM_OF_INVOCATION =
+    objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const LENSES = objectNames.indexOf('LENSES');
 const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
@@ -732,19 +735,13 @@ function consume_obj_charge(obj, _maybe_unpaid) {
     obj.spe = (obj.spe | 0) - 1;
 }
 
-/** C mondata.c resists_blnd subset — already-blind / noeyes; arti deferred. */
-function resists_blnd_mon(mtmp) {
-    if (!mtmp) return true;
-    if (!haseyes(mtmp.data)) return true;
-    if (!mtmp.mcansee || (mtmp.mblinded | 0)) return true;
-    return false;
-}
-
 /**
- * C zap.c bhit FLASHED_LIGHT — first non-minvis mon stops the beam.
- * Named omissions: tmp_at flash glyph; transient_light; iron bars.
+ * C zap.c bhit FLASHED_LIGHT — first non-minvis mon stops the beam;
+ * minvis calls flash_hits_mon and continues (C zap.c bhit).
+ * Named omissions: tmp_at flash glyph; transient_light; iron bars;
+ * M_AP_OBJECT skip.
  */
-function bhit_flashed_light(ddx, ddy, range) {
+async function bhit_flashed_light(ddx, ddy, range, obj) {
     const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
     bhitpos.x = game.u?.ux | 0;
     bhitpos.y = game.u?.uy | 0;
@@ -765,8 +762,11 @@ function bhit_flashed_light(ddx, ddy, range) {
         if (mtmp) {
             game.notonhead = (x !== (mtmp.mx | 0) || y !== (mtmp.my | 0));
             if (mtmp.minvis) {
-                // C continues after flash_hits_mon for minvis — call deferred
-                // (no RNG when flash deferred on continue path without call)
+                if (obj) {
+                    obj.ox = game.u.ux | 0;
+                    obj.oy = game.u.uy | 0;
+                    await flash_hits_mon(mtmp, obj);
+                }
             } else {
                 return mtmp;
             }
@@ -781,60 +781,12 @@ function bhit_flashed_light(ddx, ddy, range) {
 }
 
 /**
- * C uhitm.c flash_hits_mon subset — blind + rn2(4) monflee + mblinded rnd.
- * Named omissions: mimic wakeup/seemimic; gremlin light_hits; resists_blnd
- * arti shieldeff; lit-message variants; display_nhwindow; see_monster_closeup.
- */
-async function flash_hits_mon(mtmp, otmp) {
-    if (!mtmp || game.notonhead) return 0;
-    const mx = mtmp.mx | 0;
-    const my = mtmp.my | 0;
-    const useeit = canseemon(mtmp);
-    let res = 0;
-
-    // M_AP_* mimic reveal deferred
-
-    if (mtmp.msleeping && haseyes(mtmp.data)) {
-        mtmp.msleeping = 0;
-        if (useeit) {
-            await pline(`The flash awakens ${mon_nam(mtmp)}.`);
-            res = 1;
-        }
-    } else if (mtmp.data?.mlet !== 'S_LIGHT') {
-        if (!resists_blnd_mon(mtmp)) {
-            const tmp = dist2(otmp.ox | 0, otmp.oy | 0, mx, my);
-            if (useeit) {
-                await pline(`${Monnam(mtmp)} is blinded by the flash!`);
-                res = 1;
-            }
-            // gremlin deferred
-            if ((mtmp.mhp | 0) > 0) {
-                if (!game.context?.mon_moving) {
-                    setmangry(mtmp, true);
-                }
-                if (tmp < 9 && !mtmp.isshk && rn2(4)) {
-                    await monflee(mtmp, rn2(4) ? rnd(100) : 0, false, true);
-                }
-                mtmp.mcansee = 0;
-                mtmp.mblinded = tmp < 3 ? 0 : rnd(1 + ((50 / tmp) | 0));
-            }
-        } else if (useeit && game.flags?.verbose !== false) {
-            const lit = !!game.level?.at(mx, my)?.lit;
-            if (lit) {
-                await pline(`The flash of light shines on ${mon_nam(mtmp)}.`);
-            } else {
-                await pline(`${Monnam(mtmp)} is illuminated.`);
-            }
-        }
-    }
-    return res & 1;
-}
-
-/**
  * C apply.c do_blinding_ray — FLASHED_LIGHT bhit + flash_hits_mon.
  */
 async function do_blinding_ray(obj) {
-    const mtmp = bhit_flashed_light(game.u.dx | 0, game.u.dy | 0, COLNO);
+    const mtmp = await bhit_flashed_light(
+        game.u.dx | 0, game.u.dy | 0, COLNO, obj,
+    );
     obj.ox = game.u.ux | 0;
     obj.oy = game.u.uy | 0;
     if (mtmp) {
@@ -1089,9 +1041,9 @@ async function broken_wand_explode(obj, dmg, expltype) {
  * WAN_CREATE_MONSTER makemon + dig shop pay_for_damage (D-0950);
  * strike/cancel/poly/tele/undead adjacent bhitm/bhitpile/zapyourself
  * + WAN_LIGHT litroom (D-0952).
- * Named omit: release_hold WAN_OPENING; ParanoidBreakwand getlin "yes";
+ * Named omit: ParanoidBreakwand getlin "yes";
  * check_unpaid bill polish; ICE spot_stop_timers; HOLE goto_level;
- * flash_hits; revive container/buried polish.
+ * revive container/buried polish.
  * @returns {number} ECMD_*
  */
 async function do_break_wand(obj) {
@@ -1151,9 +1103,8 @@ async function do_break_wand(obj) {
 
     switch (obj.otyp) {
     case WAN_OPENING:
-        // release_hold deferred — fall through to nothing for non-stuck
         if (u.ustuck) {
-            // release_hold deferred
+            await release_hold();
             if (obj.dknown) makeknown(WAN_OPENING);
             await discard_broken_wand();
             return ECMD_TIME;
@@ -1325,7 +1276,7 @@ async function do_break_wand(obj) {
  * Named omissions: retouch_object; flip_through_book; flip_coin; jelly;
  * whip/grapple/blindfold/lenses; use_stone; use_pole; traps;
  * oil; BoT; Medusa/nymph mirror arms; camera closeup; most non-instrument
- * tools; break-wand release_hold / flash_hits polish.
+ * tools; break-wand release_hold / flash_hits (D-0979).
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
 export async function doapply() {
@@ -1827,4 +1778,61 @@ export async function jump(magic) {
     game.nomovemsg = '';
     morehungry(rnd(25));
     return ECMD_TIME;
+}
+
+/**
+ * C ref: apply.c catch_lit — fire-damage ignition of light sources.
+ * Named omissions: shop check_unpaid / SetVoice verbalize / bill_dummy;
+ * set_msg_xy floor msg cursor.
+ * @returns {Promise<boolean>}
+ */
+export async function catch_lit(obj) {
+    if (!obj || obj.lamplit) return false;
+    const {
+        ignitable, age_is_relative, get_obj_location, begin_burn,
+    } = await import('./timeout.js');
+    if (!ignitable(obj)) return false;
+    const loc = get_obj_location(obj, 0);
+    if (!loc) return false;
+
+    const t = obj.otyp | 0;
+    if (((t === MAGIC_LAMP || t === CANDELABRUM_OF_INVOCATION)
+            && (obj.spe | 0) === 0)
+        || (age_is_relative(obj) && (obj.age | 0) === 0)
+        || t === BRASS_LANTERN) {
+        return false;
+    }
+    if (t === CANDELABRUM_OF_INVOCATION && obj.cursed) return false;
+    if ((t === OIL_LAMP || t === MAGIC_LAMP) && obj.cursed && !rn2(2)) {
+        return false;
+    }
+
+    const u = game.u || {};
+    const Blind = !!((u.HBlind | 0) || (u.EBlind | 0) || u.Blind
+        || ((u.HBlinded | 0) & TIMEOUT) || (u.EBlinded | 0));
+    const invent = obj.where === OBJ_INVENT
+        || (game.invent || []).includes(obj);
+    if (invent || cansee(loc.x, loc.y)) {
+        // set_msg_xy deferred
+        const nm = invent
+            ? (() => {
+                const s = `your ${xname(obj)}`;
+                return s.charAt(0).toUpperCase() + s.slice(1);
+            })()
+            : (() => {
+                const s = xname(obj);
+                return s.charAt(0).toUpperCase() + s.slice(1);
+            })();
+        const verb = Blind ? 'feel' : 'catch';
+        const tensed = ((obj.quan | 0) !== 1)
+            ? verb
+            : (/[sxz]$/.test(verb) || /(?:ch|sh)$/.test(verb)
+                ? `${verb}es`
+                : `${verb}s`);
+        await pline(`${nm} ${tensed} ${Blind ? 'warm.' : 'light!'}`);
+    }
+    if (t === POT_OIL) makeknown(obj.otyp);
+    // shop unpaid bill deferred (check_unpaid / verbalize / bill_dummy)
+    begin_burn(obj, false);
+    return true;
 }

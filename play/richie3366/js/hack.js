@@ -21,6 +21,8 @@ import {
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
     INTRINSIC, UNCHANGING,
     In_mines, ACH_TOWN, NO_PART,
+    NO_KILLER_PREFIX, IS_SINK, W_ARTI, I_SPECIAL, TIMEOUT, FROMOUTSIDE,
+    FROMFORM, P_NONE,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry, morehungry } from './eat.js';
@@ -29,9 +31,10 @@ import { recalc_block_point } from './vision.js';
 import { is_hider, throws_rocks, noncorporeal, metallivorous, mons } from './monsters.js';
 import { objects_at, obj_extract_self, place_object, delobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
+import { WEAPON_CLASS, TOOL_CLASS } from './objects.js';
 import { xname } from './objnam.js';
-import { A_STR, A_CON, exercise } from './attrib.js';
-import { rn2, rnd } from './rng.js';
+import { A_STR, A_CON, A_DEX, acurr, exercise } from './attrib.js';
+import { rn2, rnd, rn1 } from './rng.js';
 import { midnight } from './calendar.js';
 import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
@@ -1477,4 +1480,120 @@ export async function still_chewing(x, y) {
     if (dmgtxt) await shkMod.pay_for_damage(dmgtxt, false);
     game.context.digging = {};
     return 0;
+}
+
+const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
+const LEVITATION_BOOTS = objectNames.indexOf('LEVITATION_BOOTS');
+
+/** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE. */
+function is_weptool_hack(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill;
+    return sk != null && sk !== P_NONE;
+}
+
+/**
+ * C ref: trap.c selftouch — cockatrice-corpse / twoweapon petrify deferred
+ * (same envelope as stair-fall / music; no unbound RNG here).
+ */
+async function selftouch_sink(_arg) {
+    /* no-op until touch_petrifies + instapetrify wired */
+}
+
+/**
+ * C ref: hack.c dosinkfall — land on sink while levitating/flying.
+ * Branch envelope: innate/blocked wobble vs flight control vs crash
+ * (rn1 dmg + floor weapons + exercise); stop_donning; strip arti/timeout
+ * lev + RIN_LEVITATION / LEVITATION_BOOTS; float_vs_flight.
+ * Named omissions: full selftouch petrify; Boots_off LEVITATION float_down
+ * side-effect (HLevitation++ bracket still prevents mid-strip land).
+ */
+export async function dosinkfall() {
+    const fell_on_sink = 'fell onto a sink';
+    const u = game.u || (game.u = {});
+    let lev_boots = !!(u.uarmf && (u.uarmf.otyp | 0) === LEVITATION_BOOTS);
+    const innate_lev = ((u.HLevitation | 0) & (FROMOUTSIDE | FROMFORM)) !== 0;
+    /* chained to buried iron ball blocking lev — BLevitation == I_SPECIAL */
+    const blockd_lev = ((u.BLevitation | 0) === I_SPECIAL);
+    const ufall = (!innate_lev && !blockd_lev
+        && !((u.HFlying | 0) || (u.EFlying | 0) || u.Flying)); /* BFlying */
+
+    if (!ufall) {
+        await pline((innate_lev || blockd_lev)
+            ? 'You wobble unsteadily for a moment.'
+            : 'You gain control of your flight.');
+    } else {
+        const save_ELev = u.ELevitation | 0;
+        const save_HLev = u.HLevitation | 0;
+        /* fake removal so fatal disclosure is right; rings/boots still worn */
+        u.ELevitation = 0;
+        u.HLevitation = 0;
+        await pline('You crash to the floor!');
+        const dmg = rn1(8, 25 - (acurr(A_CON) | 0));
+        losehp(maybe_half_phys(dmg), fell_on_sink, NO_KILLER_PREFIX);
+        await finish_maybe_wail();
+        if (game._losehp_needs_done) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return;
+        }
+        exercise(A_DEX, false);
+        await selftouch_sink('Falling, you');
+        const { doname } = await import('./objnam.js');
+        for (let obj = objects_at(u.ux | 0, u.uy | 0); obj; obj = obj.nexthere) {
+            if (obj.oclass === WEAPON_CLASS || is_weptool_hack(obj)) {
+                await pline(`You fell on ${doname(obj)}.`);
+                losehp(
+                    maybe_half_phys(rnd(3)),
+                    fell_on_sink,
+                    NO_KILLER_PREFIX,
+                );
+                await finish_maybe_wail();
+                if (game._losehp_needs_done) {
+                    const { finish_losehp_done } = await import('./end.js');
+                    await finish_losehp_done();
+                    return;
+                }
+                exercise(A_CON, false);
+            }
+        }
+        u.ELevitation = save_ELev;
+        u.HLevitation = save_HLev;
+    }
+
+    /*
+     * Interrupt multi-turn putting on/taking off of armor (teleport onto
+     * sink while busy). Also when lev boots will be stripped without fall.
+     */
+    if (ufall || lev_boots) {
+        const { stop_donning } = await import('./do_wear.js');
+        await stop_donning(lev_boots ? u.uarmf : null);
+        lev_boots = !!(u.uarmf && (u.uarmf.otyp | 0) === LEVITATION_BOOTS);
+    }
+
+    /* remove worn levitation items */
+    u.ELevitation = (u.ELevitation | 0) & ~W_ARTI;
+    u.HLevitation = (u.HLevitation | 0) & ~(I_SPECIAL | TIMEOUT);
+    u.HLevitation = (u.HLevitation | 0) + 1; /* keep Levitation true during Ring/Boots_off */
+    const {
+        Ring_off, Boots_off, off_msg,
+    } = await import('./do_wear.js');
+    if (u.uleft && (u.uleft.otyp | 0) === RIN_LEVITATION) {
+        const obj = u.uleft;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (u.uright && (u.uright.otyp | 0) === RIN_LEVITATION) {
+        const obj = u.uright;
+        await Ring_off(obj);
+        await off_msg(obj);
+    }
+    if (lev_boots) {
+        const obj = u.uarmf;
+        await Boots_off();
+        await off_msg(obj);
+    }
+    u.HLevitation = (u.HLevitation | 0) - 1;
+    const { float_vs_flight } = await import('./polyself.js');
+    float_vs_flight();
 }

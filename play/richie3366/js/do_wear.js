@@ -6,27 +6,32 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, mark_topline_prompt,
-    newsym, see_monsters,
+    newsym, see_monsters, urgent_pline,
 } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, the, xname, xprname } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, otyp_is_charged } from './objnam.js';
 import { find_ac } from './u_init.js';
-import { change_luck, Fast, Very_fast } from './attrib.js';
+import {
+    A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
+} from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object } from './artifact.js';
-import { welded } from './wield.js';
-import { makeknown } from './invent.js';
+import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
+import { makeknown, observe_object } from './invent.js';
+import { obj_resists } from './dogmove.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
     W_QUIVER, W_BALL, W_CHAIN, LEFT_RING, RIGHT_RING, W_ART,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
-    TIMEOUT, BLINDED, FAST, TELEPAT, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
+    TIMEOUT, BLINDED, FAST, TELEPAT, STEALTH, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
     DISPLACED, INVIS, SEE_INVIS, LEVITATION, PROT_FROM_SHAPE_CHANGERS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
-    BOLT_LIM, LEFT_HANDED, GLIB,
+    BOLT_LIM, LEFT_HANDED, GLIB, FROMOUTSIDE,
+    ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
 } from './const.js';
+import { x_monnam } from './do_name.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs,
@@ -39,7 +44,7 @@ import {
 import { erode_obj } from './trap.js';
 import { rn2, rnd } from './rng.js';
 import { vision_recalc, set_mimic_blocking } from './vision.js';
-import { restartcham } from './mon.js';
+import { restartcham, rescham } from './mon.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
@@ -61,6 +66,8 @@ const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
 const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
 const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
+const ELVEN_BOOTS = objectNames.indexOf('ELVEN_BOOTS');
+const ELVEN_CLOAK = objectNames.indexOf('ELVEN_CLOAK');
 const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
 const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
 const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
@@ -82,6 +89,7 @@ const RIN_SEE_INVISIBLE = objectNames.indexOf('RIN_SEE_INVISIBLE');
 const RIN_INVISIBILITY = objectNames.indexOf('RIN_INVISIBILITY');
 const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
 const RIN_WARNING = objectNames.indexOf('RIN_WARNING');
+const RIN_STEALTH = objectNames.indexOf('RIN_STEALTH');
 const RIN_GAIN_STRENGTH = objectNames.indexOf('RIN_GAIN_STRENGTH');
 const RIN_GAIN_CONSTITUTION = objectNames.indexOf('RIN_GAIN_CONSTITUTION');
 const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
@@ -132,7 +140,7 @@ function is_boots(obj) {
 }
 
 /** C ref: do_wear.c off_msg */
-async function off_msg(otmp) {
+export async function off_msg(otmp) {
     if (game.flags?.verbose !== false) {
         await pline(`You were wearing ${doname(otmp)}.`);
     }
@@ -259,7 +267,7 @@ function confer_oc_oprop(obj, mask, on) {
     if (!u.uprops[p]) u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
     if (on) u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) | mask;
     else u.uprops[p].extrinsic = (u.uprops[p].extrinsic | 0) & ~mask;
-    // C youprop.h EBlinded/EFast/ETelepat ≡ uprops[].extrinsic — flat readers.
+    // C youprop.h EBlinded/EFast/ETelepat/EStealth ≡ uprops[].extrinsic.
     if (p === BLINDED) {
         if (on) u.EBlinded = (u.EBlinded | 0) | mask;
         else u.EBlinded = (u.EBlinded | 0) & ~mask;
@@ -269,6 +277,13 @@ function confer_oc_oprop(obj, mask, on) {
     } else if (p === TELEPAT) {
         if (on) u.ETelepat = (u.ETelepat | 0) | mask;
         else u.ETelepat = (u.ETelepat | 0) & ~mask;
+    } else if (p === STEALTH) {
+        if (on) u.EStealth = (u.EStealth | 0) | mask;
+        else u.EStealth = (u.EStealth | 0) & ~mask;
+    } else if (p === LEVITATION) {
+        // C youprop.h ELevitation ≡ uprops[LEVITATION].extrinsic (D-0976)
+        if (on) u.ELevitation = (u.ELevitation | 0) | mask;
+        else u.ELevitation = (u.ELevitation | 0) & ~mask;
     }
 }
 
@@ -552,8 +567,32 @@ export function Helmet_off() {
     return 0;
 }
 
-export function Cloak_off() {
+/**
+ * C ref: do_wear.c Cloak_off — setworn then ELVEN toggle_stealth /
+ * DISPLACEMENT toggle_displacement. Named omissions: mummy wrapping /
+ * invisibility / alchemy-smock acid arms.
+ */
+export async function Cloak_off() {
+    const u = game.u || {};
+    const otmp = u.uarmc;
+    if (!otmp) {
+        clear_worn(W_ARMC);
+        return 0;
+    }
+    const otyp = otmp.otyp | 0;
+    const oprop = game.objects?.[otyp]?.oc_oprop | 0;
+    const oldprop = (u.uprops?.[oprop]?.extrinsic | 0) & ~WORN_CLOAK;
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARMC;
+    }
     clear_worn(W_ARMC);
+    if (otyp === ELVEN_CLOAK) {
+        await toggle_stealth(otmp, oldprop, false);
+    } else if (otyp === CLOAK_OF_DISPLACEMENT) {
+        await toggle_displacement(otmp, oldprop, false);
+    }
+    // MUMMY_WRAPPING / CLOAK_OF_INVISIBILITY / ALCHEMY_SMOCK deferred
     return 0;
 }
 export function Shield_off() {
@@ -564,8 +603,33 @@ export function Gloves_off() {
     clear_worn(W_ARMG);
     return 0;
 }
-export function Boots_off() {
+/**
+ * C ref: do_wear.c Boots_off — setworn then ELVEN toggle_stealth.
+ * Named omissions: SPEED slow-down; water-walking spoteffects;
+ * FUMBLE clear; LEVITATION float_down.
+ */
+export async function Boots_off() {
+    const u = game.u || {};
+    const otmp = u.uarmf;
+    if (!otmp) {
+        clear_worn(W_ARMF);
+        return 0;
+    }
+    const otyp = otmp.otyp | 0;
+    const oprop = game.objects?.[otyp]?.oc_oprop | 0;
+    const oldprop = (u.uprops?.[oprop]?.extrinsic | 0) & ~WORN_BOOTS;
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARMF;
+    }
     clear_worn(W_ARMF);
+    if (otyp === ELVEN_BOOTS) {
+        await toggle_stealth(otmp, oldprop, false);
+    }
+    // SPEED / WATER_WALKING / FUMBLE / LEVITATION deferred
+    if (game.context?.takeoff) {
+        game.context.takeoff.cancelled_don = false;
+    }
     return 0;
 }
 function Shirt_off() {
@@ -598,6 +662,45 @@ async function Helmet_on() {
     find_ac();
     return 0;
 }
+/**
+ * C ref: do_wear.c toggle_stealth — discover + feedback when extrinsic
+ * stealth state changes (ring / elven cloak / elven boots). Riding
+ * blocks stealth via BStealth elsewhere; message still names steed.
+ */
+export async function toggle_stealth(obj, oldprop, on) {
+    if (on ? game._initial_don : game.context?.takeoff?.cancelled_don) {
+        return;
+    }
+    const u = game.u || {};
+    const hStealth = (u.HStealth | 0)
+        | (u.uprops?.[STEALTH]?.intrinsic | 0);
+    const bStealth = (u.BStealth | 0)
+        | (u.uprops?.[STEALTH]?.blocked | 0);
+    if (!oldprop && !hStealth && !bStealth) {
+        if ((obj.otyp | 0) === RIN_STEALTH) learnring(obj, true);
+        else makeknown(obj.otyp);
+        if (on) {
+            if (!is_boots(obj)) await pline('You move very quietly.');
+            else if (Levitation_dw() || Flying_dw()) {
+                await pline('You float imperceptibly.');
+            } else {
+                await pline('You walk very quietly.');
+            }
+        } else {
+            const riding = !!u.usteed;
+            const steedBit = riding
+                ? x_monnam(
+                    u.usteed, ARTICLE_YOUR, null,
+                    SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION, false,
+                )
+                : '';
+            await pline(
+                `You ${riding ? 'and ' : 'sure'}${steedBit} are noisy.`,
+            );
+        }
+    }
+}
+
 /**
  * C ref: do_wear.c toggle_displacement — discover + You_feel when state
  * changes and hero can see/sense self. Timed-displacement (obj null) and
@@ -635,9 +738,9 @@ function hero_Invisible() {
 
 /**
  * C ref: do_wear.c Cloak_on — PROTECTION makeknown; DISPLACEMENT
- * toggle_displacement (D-0783). Named omissions: ELVEN stealth,
- * MUMMY_WRAPPING / INVISIBILITY / OILSKIN / ALCHEMY_SMOCK bodies;
- * Cloak_off; update_inventory.
+ * toggle_displacement; ELVEN_CLOAK toggle_stealth (D-0970). Named
+ * omissions: MUMMY_WRAPPING / INVISIBILITY / OILSKIN / ALCHEMY_SMOCK;
+ * update_inventory.
  */
 async function Cloak_on() {
     const o = game.u?.uarmc;
@@ -649,10 +752,12 @@ async function Cloak_on() {
 
     if (o.otyp === CLOAK_OF_PROTECTION) {
         makeknown(o.otyp);
+    } else if (o.otyp === ELVEN_CLOAK) {
+        await toggle_stealth(o, oldprop, true);
     } else if (o.otyp === CLOAK_OF_DISPLACEMENT) {
         await toggle_displacement(o, oldprop, true);
     }
-    // ELVEN / MUMMY / INVIS / OILSKIN / ALCHEMY deferred
+    // MUMMY / INVIS / OILSKIN / ALCHEMY deferred
     // C Cloak_on: known=1 for status-line AC; no find_ac here (D-0810).
     // Delay-0 displacement You_feel --More-- must show pre-cloak uac.
     if (!o.known) o.known = 1;
@@ -702,9 +807,9 @@ async function Gloves_on() {
 }
 /**
  * C ref: do_wear.c Boots_on — FUMBLE_BOOTS incr_itimeout; SPEED_BOOTS
- * makeknown→exercise(A_WIS) + You_feel speed up (D-0744).
- * Named omissions: water-walking/elven/levitation cases; update_inventory;
- * float_up/spoteffects; Boots_off SPEED slow-down.
+ * makeknown→exercise(A_WIS) + You_feel speed up (D-0744); ELVEN_BOOTS
+ * toggle_stealth (D-0970). Named omissions: water-walking/levitation;
+ * update_inventory; Boots_off SPEED slow-down.
  */
 async function Boots_on() {
     const o = game.u?.uarmf;
@@ -737,8 +842,10 @@ async function Boots_on() {
             const more = (oldprop || hFast) ? ' a bit more' : '';
             await You_feel(`yourself speed up${more}.`);
         }
+    } else if (o.otyp === ELVEN_BOOTS) {
+        await toggle_stealth(o, oldprop, true);
     }
-    // ELVEN/WATER_WALKING/LEVITATION cases deferred
+    // WATER_WALKING / LEVITATION cases deferred
     if (!o.known) o.known = 1;
     find_ac();
     return 0;
@@ -754,8 +861,7 @@ async function Shirt_on() {
  * C ref: do_wear.c set_wear — side-effects of already-worn gear.
  * Called from moveloop_preamble (!resuming) after ini_inv slots are set;
  * also poly_obj path when a worn item transforms (obj != null).
- * Named omissions: Ring_on learnring/attrib/float bodies; gi.initial_don
- * only used by C toggle_stealth/displacement (Ring_on/cloak still deferred);
+ * Named omissions: initial_don skips stealth/displacement msgs;
  * Blindf_on Punished set_bc; Amulet_on exotic bodies beyond RESTFUL_SLEEP.
  * @param {object|null} [obj=null] Null → all worn slots; else that object only.
  */
@@ -768,7 +874,12 @@ export async function set_wear(obj = null) {
     if ((all ? u.ublindf : obj === u.ublindf) && u.ublindf) {
         await Blindf_on(u.ublindf);
     }
-    // Ring_on(uright/uleft) deferred — learnring / attrib / stealth messages
+    if ((all ? u.uright : obj === u.uright) && u.uright) {
+        await Ring_on(u.uright);
+    }
+    if ((all ? u.uleft : obj === u.uleft) && u.uleft) {
+        await Ring_on(u.uleft);
+    }
     if ((all ? u.uamul : obj === u.uamul) && u.uamul) {
         await Amulet_on(u.uamul);
     }
@@ -842,11 +953,11 @@ async function armoroff(otmp) {
     // stale-botl until allmain once-per-input find_ac).
     const u = game.u || {};
     if (otmp === u.uarm) await Armor_off();
-    else if (otmp === u.uarmc) Cloak_off();
+    else if (otmp === u.uarmc) await Cloak_off();
     else if (otmp === u.uarmh) Helmet_off();
     else if (otmp === u.uarms) Shield_off();
     else if (otmp === u.uarmg) Gloves_off();
-    else if (otmp === u.uarmf) Boots_off();
+    else if (otmp === u.uarmf) await Boots_off();
     else if (otmp === u.uarmu) Shirt_off();
     else {
         otmp.owornmask = (otmp.owornmask || 0) & ~W_ARMOR;
@@ -1428,9 +1539,14 @@ async function accessory_or_armor_on(obj) {
 
     // Accessory
     if (ring) {
+        // C: Ring_on expects ring already worn as uleft/uright
         setworn(obj, mask);
-        // Ring_on learnring / attrib deltas deferred; oc_oprop via setworn
-        await on_msg(obj);
+        await Ring_on(obj);
+        // C: is_worn — levitation at sink may have removed the ring
+        if ((obj.owornmask | 0) & (W_ARMOR | W_RING | W_AMUL | W_TOOL
+            | W_WEAPONS /* | W_SADDLE */)) {
+            await on_msg(obj);
+        }
     } else if (amulet) {
         await Amulet_on(obj);
     } else if (eyewear) {
@@ -1544,15 +1660,154 @@ function Protection_from_shape_changers_dw() {
         || (u.uprops?.[PROT_FROM_SHAPE_CHANGERS]?.extrinsic | 0));
 }
 
+/** C youprop.h Levitation — (H||E) && !B. */
+function Levitation_dw() {
+    const u = game.u || {};
+    if (u.Levitation) return true;
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/** C youprop.h Flying — (H||E) && !B; steed-flyer arm deferred. */
+function Flying_dw() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    return !!(((u.HFlying | 0) || (u.EFlying | 0))
+        && !(u.BFlying | 0));
+}
+
+/**
+ * C ref: do_wear.c learnring — discover type / known enchantment when seen.
+ * Named omit: update_inventory (perm invent redraw).
+ */
+function learnring(ring, observed) {
+    if (!ring) return;
+    const ringtype = ring.otyp | 0;
+    const oc = game.objects?.[ringtype];
+    if (observed) {
+        if (oc?.oc_name_known) observe_object(ring);
+        else if (ring.dknown) makeknown(ringtype);
+    }
+    if (ring.dknown && oc?.oc_name_known) {
+        if (otyp_is_charged(ringtype) || oc.oc_charged) ring.known = 1;
+        // update_inventory deferred
+    }
+}
+
+/**
+ * C ref: do_wear.c adjust_attrib — ABON delta; learnring when ACURR changes
+ * or attribute is not at extreme.
+ */
+function adjust_attrib(obj, which, val) {
+    const u = game.u || (game.u = {});
+    if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+    if (!u.abon.a) u.abon.a = [0, 0, 0, 0, 0, 0];
+    const old_attrib = acurr(which);
+    u.abon.a[which] = (u.abon.a[which] | 0) + (val | 0);
+    const observable = old_attrib !== acurr(which);
+    if (observable || !extremeattr(which)) learnring(obj, observable);
+    if (game.flags) game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+}
+
+/**
+ * C ref: do_wear.c Ring_on — side effects after setworn into a ring slot.
+ * Branch envelope: unwield if needed; SEE_INVIS/INVIS/LEVITATION messages +
+ * float_up/spoteffects; adjust_attrib STR/CON/CHA; accuracy/damage;
+ * PROTECTION learnring+find_ac; PfSC rescham; WARNING see_monsters;
+ * RIN_STEALTH toggle_stealth (D-0970). Named omissions: none for sink
+ * fall (dosinkfall via spoteffects D-0976).
+ */
+export async function Ring_on(obj) {
+    if (!obj) return;
+    const u = game.u || (game.u = {});
+    const oprop = game.objects?.[obj.otyp]?.oc_oprop | 0;
+    let oldprop = u.uprops?.[oprop]?.extrinsic | 0;
+    // make sure ring isn't wielded
+    if (obj === u.uwep) setuwep(null);
+    else if (obj === u.uswapwep) setuswapwep(null);
+    else if (obj === u.uquiver) setuqwep(null);
+
+    if ((oldprop & W_RING) !== W_RING) oldprop &= ~W_RING;
+
+    const otyp = obj.otyp | 0;
+    switch (otyp) {
+    case RIN_STEALTH:
+        await toggle_stealth(obj, oldprop, true);
+        break;
+    case RIN_WARNING:
+        see_monsters();
+        break;
+    case RIN_SEE_INVISIBLE:
+        set_mimic_blocking();
+        see_monsters();
+        if (Invis_dw() && !oldprop && !(u.HSee_invisible | 0) && !Blind_dw()) {
+            newsym(u.ux | 0, u.uy | 0);
+            await pline('Suddenly you are transparent, but there!');
+            learnring(obj, true);
+        }
+        break;
+    case RIN_INVISIBILITY:
+        if (!oldprop && !(u.HInvis | 0) && !(u.BInvis | 0) && !Blind_dw()) {
+            learnring(obj, true);
+            newsym(u.ux | 0, u.uy | 0);
+            const { self_invis_message } = await import('./trap.js');
+            await self_invis_message();
+        }
+        break;
+    case RIN_LEVITATION:
+        if (!oldprop && !(u.HLevitation | 0)
+            && !((u.BLevitation | 0) & FROMOUTSIDE)) {
+            const { float_up } = await import('./trap.js');
+            await float_up();
+            learnring(obj, true);
+            if (Levitation_dw()) {
+                const { spoteffects } = await import('./pickup.js');
+                await spoteffects(false);
+            }
+        } else {
+            const { float_vs_flight } = await import('./polyself.js');
+            float_vs_flight();
+        }
+        break;
+    case RIN_GAIN_STRENGTH:
+        adjust_attrib(obj, A_STR, obj.spe | 0);
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        adjust_attrib(obj, A_CON, obj.spe | 0);
+        break;
+    case RIN_ADORNMENT:
+        adjust_attrib(obj, A_CHA, obj.spe | 0);
+        break;
+    case RIN_INCREASE_ACCURACY:
+        u.uhitinc = (u.uhitinc | 0) + (obj.spe | 0);
+        break;
+    case RIN_INCREASE_DAMAGE:
+        u.udaminc = (u.udaminc | 0) + (obj.spe | 0);
+        break;
+    case RIN_PROTECTION_FROM_SHAPE_CHAN:
+        rescham();
+        break;
+    case RIN_PROTECTION: {
+        const observable = (obj.spe | 0) !== 0;
+        learnring(obj, observable);
+        if (obj.spe) find_ac();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 /**
  * C ref: do_wear.c Ring_off_or_gone — clear ring slot + otyp side effects.
  * Branch envelope: setworn clear; SEE_INVIS/INVIS messages + set_mimic_blocking;
- * LEVITATION float_vs_flight (float_down deferred); accuracy/damage;
- * PROTECTION find_ac; PfSC restartcham; WARNING see_monsters.
- * Named omissions: toggle_stealth; learnring polish; adjust_attrib STR/CON/CHA;
- * float_down body; sink-fall death from Ring_gone callers beyond setworn.
+ * LEVITATION float_down; accuracy/damage; PROTECTION find_ac; PfSC restartcham;
+ * WARNING see_monsters; adjust_attrib STR/CON/CHA; learnring;
+ * RIN_STEALTH toggle_stealth (D-0970). Named omissions: none for sink
+ * fall (dosinkfall via spoteffects D-0976).
  * @param {object} obj
- * @param {boolean} gone TRUE → destroy/eat path (same clear as setworn null)
+ * @param {boolean} gone TRUE → destroy/eat path (setnotworn ≡ clear slots)
  */
 export async function Ring_off_or_gone(obj, gone) {
     if (!obj) return;
@@ -1574,6 +1829,10 @@ export async function Ring_off_or_gone(obj, gone) {
 
     const otyp = obj.otyp | 0;
     switch (otyp) {
+    case RIN_STEALTH:
+        // C: toggle_stealth(obj, (EStealth & ~mask), FALSE)
+        await toggle_stealth(obj, (u.EStealth | 0) & ~mask, false);
+        break;
     case RIN_WARNING:
         see_monsters();
         break;
@@ -1585,7 +1844,7 @@ export async function Ring_off_or_gone(obj, gone) {
         if (Invisible_dw() && !Blind_dw()) {
             newsym(u.ux | 0, u.uy | 0);
             await pline('Suddenly you cannot see yourself.');
-            // learnring deferred
+            learnring(obj, true);
         }
         break;
     case RIN_INVISIBILITY:
@@ -1594,30 +1853,42 @@ export async function Ring_off_or_gone(obj, gone) {
             await pline(
                 `Your body seems to unfade${See_invisible_dw() ? ' completely' : '..'}.`,
             );
+            learnring(obj, true);
         }
         break;
-    case RIN_LEVITATION: {
-        // float_down deferred — float_vs_flight covers trapped/fly block
-        const { float_vs_flight } = await import('./polyself.js');
-        float_vs_flight();
+    case RIN_LEVITATION:
+        if (!((u.BLevitation | 0) & FROMOUTSIDE)) {
+            const { float_down } = await import('./trap.js');
+            await float_down(0, 0);
+            if (!Levitation_dw()) learnring(obj, true);
+        } else {
+            const { float_vs_flight } = await import('./polyself.js');
+            float_vs_flight();
+        }
         break;
-    }
     case RIN_INCREASE_ACCURACY:
         u.uhitinc = (u.uhitinc | 0) - (obj.spe | 0);
         break;
     case RIN_INCREASE_DAMAGE:
         u.udaminc = (u.udaminc | 0) - (obj.spe | 0);
         break;
-    case RIN_PROTECTION:
+    case RIN_PROTECTION: {
+        const observable = (obj.spe | 0) !== 0;
+        learnring(obj, observable);
         if (obj.spe) find_ac();
         break;
+    }
     case RIN_PROTECTION_FROM_SHAPE_CHAN:
         if (!Protection_from_shape_changers_dw()) restartcham();
         break;
     case RIN_GAIN_STRENGTH:
+        adjust_attrib(obj, A_STR, -(obj.spe | 0));
+        break;
     case RIN_GAIN_CONSTITUTION:
+        adjust_attrib(obj, A_CON, -(obj.spe | 0));
+        break;
     case RIN_ADORNMENT:
-        // adjust_attrib deferred
+        adjust_attrib(obj, A_CHA, -(obj.spe | 0));
         break;
     default:
         break;
@@ -1625,10 +1896,230 @@ export async function Ring_off_or_gone(obj, gone) {
 }
 
 /**
+ * C ref: do_wear.c Ring_off — Ring_off_or_gone(obj, FALSE).
+ */
+export async function Ring_off(obj) {
+    await Ring_off_or_gone(obj, false);
+}
+
+/**
  * C ref: do_wear.c Ring_gone — Ring_off_or_gone(obj, TRUE).
  */
 export async function Ring_gone(obj) {
     await Ring_off_or_gone(obj, true);
+}
+
+/**
+ * C ref: do_wear.c cancel_don — clear afternmv / multi / takeoff delay.
+ * Applies to donning and doffing (C comment).
+ */
+function cancel_don() {
+    const af = game.afternmv;
+    if (!game.context) game.context = {};
+    if (!game.context.takeoff) game.context.takeoff = {};
+    game.context.takeoff.cancelled_don = (af === Cloak_on
+        || af === Armor_on
+        || af === Shirt_on
+        || af === Helmet_on
+        || af === Gloves_on
+        || af === Boots_on
+        || af === Shield_on);
+    game.afternmv = null;
+    game.nomovemsg = null;
+    game.multi = 0;
+    game.context.takeoff.delay = 0;
+    game.context.takeoff.what = 0;
+}
+
+/**
+ * C ref: do_wear.c doffing — armor currently being taken off via afternmv
+ * or takeoff.what. Accessory takeoff.what arms deferred.
+ */
+function doffing(otmp) {
+    if (!otmp) return false;
+    const u = game.u || {};
+    const what = game.context?.takeoff?.what | 0;
+    const af = game.afternmv;
+    if (otmp === u.uarm) return af === Armor_off || what === W_ARM;
+    if (otmp === u.uarmu) return af === Shirt_off || what === W_ARMU;
+    if (otmp === u.uarmc) return af === Cloak_off || what === W_ARMC;
+    if (otmp === u.uarmf) return af === Boots_off || what === W_ARMF;
+    if (otmp === u.uarmh) return af === Helmet_off || what === W_ARMH;
+    if (otmp === u.uarmg) return af === Gloves_off || what === W_ARMG;
+    if (otmp === u.uarms) return af === Shield_off || what === W_ARMS;
+    return false;
+}
+
+/**
+ * C ref: do_wear.c donning — put-on or take-off in progress for otmp.
+ */
+function donning(otmp) {
+    if (!otmp) return false;
+    if (doffing(otmp)) return true;
+    const u = game.u || {};
+    const af = game.afternmv;
+    if (otmp === u.uarm) return af === Armor_on;
+    if (otmp === u.uarmu) return af === Shirt_on;
+    if (otmp === u.uarmc) return af === Cloak_on;
+    if (otmp === u.uarmf) return af === Boots_on;
+    if (otmp === u.uarmh) return af === Helmet_on;
+    if (otmp === u.uarmg) return af === Gloves_on;
+    if (otmp === u.uarms) return af === Shield_on;
+    return false;
+}
+
+/**
+ * C ref: do_wear.c stop_donning — interrupt multi-turn armor don/doff.
+ * Called from hack.c dosinkfall (and steal). Named omissions: full
+ * remove_worn_item armor prop polish beyond setworn clear; accessory
+ * takeoff.what-only arms; thesimpleoname vs doname wording.
+ * @param {object|null} stolenobj no mesg when already doffing this
+ * @returns {Promise<number>} 0, or -multi when silently stopping doff
+ */
+export async function stop_donning(stolenobj) {
+    let otmp = null;
+    for (const o of game.invent || []) {
+        if (((o.owornmask | 0) & W_ARMOR) && donning(o)) {
+            otmp = o;
+            break;
+        }
+    }
+    if (!otmp) return 0;
+
+    const putting_on = !doffing(otmp);
+    cancel_don();
+    // don't want *_on/*_off via unmul — action isn't completing
+    game.afternmv = null;
+    let result = 0;
+    let buf = '';
+    if (putting_on || otmp !== stolenobj) {
+        const { thesimpleoname } = await import('./objnam.js');
+        buf = `You stop ${putting_on ? 'putting on' : 'taking off'} ${thesimpleoname(otmp)}.`;
+    } else {
+        result = -((game.multi | 0)); // C: before unmul; multi already 0 via cancel_don
+    }
+    await unmul(buf);
+    if (putting_on) {
+        // C: remove_worn_item(otmp, FALSE) — clear slot; setworn handles props
+        const mask = (otmp.owornmask | 0) & W_ARMOR;
+        if (mask) setworn(null, mask);
+    }
+    return result;
+}
+
+/**
+ * C ref: invent.c useup — invent consume one (no obj_resists). Local for
+ * wornarm_destroyed; floor path not needed for disintegrate_arm.
+ */
+function invent_useup(otmp) {
+    if (!otmp) return;
+    if ((otmp.quan || 1) > 1) {
+        otmp.quan--;
+        return;
+    }
+    const inv = game.invent || [];
+    const idx = inv.indexOf(otmp);
+    if (idx >= 0) inv.splice(idx, 1);
+    otmp.quan = 0;
+    otmp.where = 0; // OBJ_FREE
+}
+
+/**
+ * C ref: do_wear.c maybe_destroy_armor — match atmp, obj_resists(0,90).
+ * @returns {object|null}
+ */
+function maybe_destroy_armor(armor, atmp, resistedRef) {
+    if (armor && (!atmp || atmp === armor)
+        && ((resistedRef.v = obj_resists(armor, 0, 90)) === false)) {
+        armor.in_use = 1;
+        return armor;
+    }
+    return null;
+}
+
+/**
+ * C ref: do_wear.c wornarm_destroyed — *_off then invent useup.
+ * Named omissions: cancel_don when donning; lava dunk side-effect free.
+ */
+async function wornarm_destroyed(wornarm) {
+    if (!wornarm) return;
+    const u = game.u || {};
+    const wornoid = wornarm.o_id;
+    // cancel_don deferred
+    if (wornarm === u.uarmc) await Cloak_off();
+    else if (wornarm === u.uarm) await Armor_off();
+    else if (wornarm === u.uarmu) Shirt_off();
+    else if (wornarm === u.uarmh) Helmet_off();
+    else if (wornarm === u.uarmg) Gloves_off();
+    else if (wornarm === u.uarmf) await Boots_off();
+    else if (wornarm === u.uarms) Shield_off();
+
+    for (const invobj of game.invent || []) {
+        if (invobj === wornarm && invobj.o_id === wornoid) {
+            invent_useup(wornarm);
+            break;
+        }
+    }
+}
+
+/**
+ * C ref: do_wear.c disintegrate_arm — destroy one worn armor piece
+ * (god_zaps_you / dragon breath / destroy-armor scroll).
+ * Named omissions: end_burn lamplit DSM; selftouch after gloves;
+ * cancel_don; cloak/suit name polish beyond armor_doff_simple_name.
+ * @param {object|null} atmp specific piece or null for any
+ * @returns {Promise<number>} 1 if destroyed, else 0
+ */
+export async function disintegrate_arm(atmp) {
+    const u = game.u || {};
+    let otmp = null;
+    const resistedc = { v: false };
+    const resistedsuit = { v: false };
+    const resisted = { v: false };
+    let losing_gloves = false;
+
+    if ((otmp = maybe_destroy_armor(u.uarmc, atmp, resistedc))) {
+        await urgent_pline(
+            `Your ${armor_doff_simple_name(otmp)} crumbles and turns to dust!`,
+        );
+    } else if (!resistedc.v
+        && (otmp = maybe_destroy_armor(u.uarm, atmp, resistedsuit))) {
+        const suit = armor_doff_simple_name(otmp);
+        // end_burn deferred
+        await urgent_pline(
+            `Your ${suit} ${vtense(suit, 'turn')} to dust and `
+            + `${vtense(suit, 'fall')} to the ground!`,
+        );
+    } else if (!resistedc.v && !resistedsuit.v
+        && (otmp = maybe_destroy_armor(u.uarmu, atmp, resisted))) {
+        await urgent_pline(
+            'Your shirt crumbles into tiny threads and falls apart!',
+        );
+    } else if ((otmp = maybe_destroy_armor(u.uarmh, atmp, resisted))) {
+        await urgent_pline(
+            `Your ${armor_doff_simple_name(otmp)} turns to dust and is blown away!`,
+        );
+    } else if ((otmp = maybe_destroy_armor(u.uarmg, atmp, resisted))) {
+        await urgent_pline(
+            `Your ${armor_doff_simple_name(otmp)} vanish!`,
+        );
+        losing_gloves = true;
+    } else if ((otmp = maybe_destroy_armor(u.uarmf, atmp, resisted))) {
+        await urgent_pline(
+            `Your ${armor_doff_simple_name(otmp)} disintegrate!`,
+        );
+    } else if ((otmp = maybe_destroy_armor(u.uarms, atmp, resisted))) {
+        await urgent_pline(
+            `Your ${armor_doff_simple_name(otmp)} crumbles away!`,
+        );
+    } else {
+        return 0;
+    }
+
+    await wornarm_destroyed(otmp);
+    void losing_gloves; // selftouch deferred
+    await stop_occupation();
+    return 1;
 }
 
 /**

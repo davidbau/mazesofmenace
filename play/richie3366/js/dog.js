@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { makemon, set_malign } from './makemon.js';
-import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic } from './monsters.js';
+import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic, haseyes } from './monsters.js';
 import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import {
@@ -15,12 +15,13 @@ import {
     PM_RANGER,
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
-import { christen_monst } from './do_name.js';
+import { christen_monst, Monnam } from './do_name.js';
 import { monnear, m_at } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
-import { newsym } from './display.js';
+import { newsym, pline, canspotmon } from './display.js';
 import { hero_conflict } from './mondata.js';
+import { cansee } from './vision.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -367,6 +368,77 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
         mtmp.mhp = Math.min(max, (mtmp.mhp | 0) + heal);
     }
     mtmp.mlstmv = game.moves | 0;
+}
+
+/**
+ * C ref: dog.c wary_dog — pet revive / lifesave tameness gate.
+ * Named omit: m_unleash body; dismount_steed DISMOUNT_THROWN; pline_mon SetVoice.
+ */
+export async function wary_dog(mtmp, was_dead) {
+    if (!mtmp) return;
+    const quietly = !!was_dead;
+    mtmp.meating = 0; // finish_meating subset
+
+    if (!mtmp.mtame) return;
+    const edog = !mtmp.isminion ? (mtmp.edog || mtmp.mextra?.edog) : null;
+
+    if (edog && (edog.mhpmax_penalty | 0)) {
+        mtmp.mhpmax = (mtmp.mhpmax | 0) + (edog.mhpmax_penalty | 0);
+        mtmp.mhp = (mtmp.mhp | 0) + (edog.mhpmax_penalty | 0);
+        edog.mhpmax_penalty = 0;
+    }
+
+    if (edog && ((edog.killed_by_u | 0) === 1 || (edog.abuse | 0) > 2)) {
+        mtmp.mpeaceful = 0;
+        mtmp.mtame = 0;
+        if ((edog.abuse | 0) >= 0 && (edog.abuse | 0) < 10) {
+            if (!rn2((edog.abuse | 0) + 1)) mtmp.mpeaceful = 1;
+        }
+        if (!quietly && cansee(mtmp.mx | 0, mtmp.my | 0)) {
+            if (haseyes(game.youmonst?.data)) {
+                if (haseyes(mtmp.data)) {
+                    await pline(
+                        `${Monnam(mtmp)} ${mtmp.mpeaceful ? 'seems unable' : 'refuses'} to look you in the eye.`,
+                    );
+                } else {
+                    await pline(`${Monnam(mtmp)} avoids your gaze.`);
+                }
+            }
+        }
+    } else {
+        mtmp.mtame = rn2((mtmp.mtame | 0) + 1);
+        if (!mtmp.mtame) mtmp.mpeaceful = rn2(2);
+    }
+
+    if (!mtmp.mtame) {
+        if (!quietly && canspotmon(mtmp)) {
+            await pline(
+                `${Monnam(mtmp)} ${mtmp.mpeaceful ? 'is no longer tame' : 'has become feral'}.`,
+            );
+        }
+        newsym(mtmp.mx | 0, mtmp.my | 0);
+        if (mtmp.mleashed) mtmp.mleashed = 0; // m_unleash deferred
+        if (game.u?.usteed === mtmp) game.u.usteed = null; // dismount deferred
+    } else if (edog) {
+        edog.revivals = (edog.revivals | 0) + 1;
+        edog.killed_by_u = 0;
+        edog.abuse = 0;
+        if (!edog.ogoal) edog.ogoal = { x: -1, y: -1 };
+        else {
+            edog.ogoal.x = -1;
+            edog.ogoal.y = -1;
+        }
+        const moves = game.moves ?? 1;
+        if (was_dead || (edog.hungrytime | 0) < moves + 500) {
+            edog.hungrytime = moves + 500;
+        }
+        if (was_dead) {
+            edog.droptime = 0;
+            edog.dropdist = 10000;
+            edog.whistletime = 0;
+            edog.apport = 5;
+        }
+    }
 }
 
 /**

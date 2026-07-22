@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
-    canseemon, canspotmon,
+    canseemon, canspotmon, nh_delay_output,
 } from './display.js';
 import { cansee } from './vision.js';
 import { rn2, rnd } from './rng.js';
@@ -20,9 +20,10 @@ import {
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
     ACCFOOD, HMON_THROWN, engulfing_u, STRAT_WAITMASK,
-    M_AP_TYPE, M_AP_MONSTER,
+    M_AP_TYPE, M_AP_MONSTER, M_AP_NOTHING,
     BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
-    ismnum,
+    ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA,
+    HURTLING, FORCEBUNGLE,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -37,12 +38,16 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { xname, singular, an, the, vtense, doname } from './objnam.js';
-import { m_at, wakeup } from './mon.js';
-import { mon_nam } from './do_name.js';
-import { is_domestic, nohands, M1_NOTAKE } from './monsters.js';
+import { m_at, wakeup, seemimic } from './mon.js';
+import { mon_nam, Monnam } from './do_name.js';
+import { is_domestic, nohands, M1_NOTAKE, MZ_HUGE } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon } from './uhitm.js';
 import { potionbreathe } from './potion.js';
+import { goodpos, rloc_to } from './teleport.js';
+import {
+    mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
+} from './trap.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -1026,4 +1031,114 @@ export function walk_path(src, dest, check_proc, arg) {
     dest.x = prev_x;
     dest.y = prev_y;
     return false;
+}
+
+function sgn_hurtle(n) {
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+/**
+ * C ref: dothrow.c will_hurtle — size/stuck/trap + goodpos gate.
+ */
+function will_hurtle(mon, x, y) {
+    if (!isok(x, y)) return false;
+    if ((mon.data?.msize | 0) >= MZ_HUGE
+        || mon === game.u?.ustuck || (mon.mtrapped | 0)) {
+        return false;
+    }
+    return goodpos(x, y, mon, MM_IGNOREWATER | MM_IGNORELAVA);
+}
+
+/**
+ * C ref: dothrow.c mhurtle_step — move along hurtle path (thin).
+ * Named omit: steed u_on_newpos; set_apparxy; waterwall stop; bump
+ * petrify / hero touch; m_in_out_region.
+ */
+async function mhurtle_step(mon, x, y) {
+    if (!isok(x, y)) return false;
+    if (will_hurtle(mon, x, y)) {
+        if (mon !== game.u?.usteed) {
+            rloc_to(mon, x, y);
+        } else {
+            // steed hurtle → move hero; thin: rloc steed only named omit
+            rloc_to(mon, x, y);
+        }
+        flush_screen(1);
+        await nh_delay_output();
+        const res = await mintrap(mon, HURTLING);
+        if (res === Trap_Killed_Mon || res === Trap_Caught_Mon
+            || res === Trap_Moved_Mon) {
+            return false;
+        }
+        return true;
+    }
+    const mtmp = m_at(x, y);
+    if (mtmp && mtmp !== mon) {
+        if (canseemon(mon) || canseemon(mtmp)) {
+            await pline(`${Monnam(mon)} bumps into ${mon_nam(mtmp)}.`);
+        }
+        await wakeup(mtmp, !game.context?.mon_moving);
+        // touch_petrifies arms deferred
+    } else if (u_at(x, y)) {
+        await pline(`${Monnam(mon)} bumps into you.`);
+        // hero petrify / poly touch deferred
+    }
+    return false;
+}
+
+/**
+ * C ref: dothrow.c mhurtle — knock monster through air for range steps.
+ * Named omit: NODIAG grid-bug; minliquid after path; full mhurtle_step
+ * petrify/steed vision.
+ */
+export async function mhurtle(mon, dx, dy, range) {
+    if (!mon) return;
+    await wakeup(mon, !game.context?.mon_moving);
+    mon.movement = 0;
+    mon.mstun = 1;
+
+    if ((mon.data?.msize | 0) >= MZ_HUGE
+        || mon === game.u?.ustuck || (mon.mtrapped | 0)) {
+        if (canseemon(mon)) {
+            await pline(`${Monnam(mon)} doesn't budge!`);
+        }
+        return;
+    }
+
+    dx = sgn_hurtle(dx);
+    dy = sgn_hurtle(dy);
+    if (!(range | 0) || (!dx && !dy)) return;
+
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        newsym(mon.mx | 0, mon.my | 0);
+    }
+    if (M_AP_TYPE(mon) !== M_AP_NOTHING) seemimic(mon);
+
+    const mc = { x: mon.mx | 0, y: mon.my | 0 };
+    const cc = {
+        x: (mon.mx | 0) + dx * (range | 0),
+        y: (mon.my | 0) + dy * (range | 0),
+    };
+    // walk_path expects sync check_proc — drive steps manually for async
+    let curx = mc.x;
+    let cury = mc.y;
+    const destx = cc.x;
+    const desty = cc.y;
+    let steps = Math.max(Math.abs(destx - curx), Math.abs(desty - cury));
+    for (let i = 0; i < steps; i++) {
+        const nx = curx + dx;
+        const ny = cury + dy;
+        const ok = await mhurtle_step(mon, nx, ny);
+        if (!ok || (mon.mhp | 0) < 1) break;
+        curx = mon.mx | 0;
+        cury = mon.my | 0;
+        if (curx !== nx || cury !== ny) break;
+    }
+    if ((mon.mhp | 0) > 0) {
+        if (t_at(mon.mx | 0, mon.my | 0)) {
+            await mintrap(mon, FORCEBUNGLE);
+        }
+        // minliquid deferred
+    }
 }

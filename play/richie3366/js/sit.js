@@ -1,30 +1,38 @@
-// sit.js — #sit command (floor / fountain / OBJ_AT subset) + attrcurse.
-// C ref: sit.c dosit / attrcurse; dungeon.c surface (fountain branch).
+// sit.js — #sit command (floor / fountain / OBJ_AT subset) + attrcurse /
+// rndcurse.
+// C ref: sit.c dosit / attrcurse / rndcurse; dungeon.c surface (fountain
+// branch).
 //
 // Branch envelope: reachable floor (Levitation only), OBJ_AT picnic body
 // (dragon/towel/slithy/sit+comfort/squishy/cream-pie), default having-fun;
-// attrcurse rnd(11) INTRINSIC strip (D-0945).
+// attrcurse rnd(11) INTRINSIC strip (D-0945); rndcurse invent + Magicbane
+// / Antimagic / Half_spell_damage / SPFX_INTEL resist / steed saddle
+// (D-0969).
 // Deferred: steed name, hider, can_reach_floor full, ustuck, uteetering/
 // uescaped_shaft gate, traps, water/gremlin, sink/altar/grave/stairs/
-// ladder/lava/ice/drawbridge/throne, lay_an_egg, money_cnt meager coil.
+// ladder/lava/ice/drawbridge/throne, lay_an_egg, money_cnt meager coil;
+// shieldeff; update_inventory redraw; Hallucination hcolor synonyms;
+// Yobjnam2 shk_your/pname polish.
 // D-0956: set_mimic_blocking on SEE_INVIS attrcurse arm.
 
 import { game } from './gstate.js';
 import { pline, You_feel, newsym, see_monsters } from './display.js';
 import { set_mimic_blocking } from './vision.js';
-import { rnd } from './rng.js';
+import { rnd, rn2 } from './rng.js';
 import {
     ECMD_OK, ECMD_TIME,
     IS_FOUNTAIN, IS_AIR, IS_ALTAR, IS_GRAVE, IS_ROOM, IS_WALL, IS_DOOR,
     CLOUD,
-    INTRINSIC, TIMEOUT,
+    INTRINSIC, TIMEOUT, W_SADDLE,
     FIRE_RES, COLD_RES, POISON_RES, TELEPAT, TELEPORT, INVIS, SEE_INVIS,
     FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
 } from './const.js';
-import { objects_at, delobj } from './mkobj.js';
+import { objects_at, delobj, curse, unbless } from './mkobj.js';
 import { objectNames, COIN_CLASS } from './objects.js';
-import { xname, the } from './objnam.js';
+import { xname, the, The, vtense } from './objnam.js';
 import { amorphous, mons, M1_SLITHY } from './monsters.js';
+import { get_artifact, SPFX_INTEL } from './artifact.js';
+import { ART_MAGICBANE } from './generated/artifacts_data.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -52,12 +60,132 @@ function See_invisible() {
         || u.See_invisible);
 }
 
+/** C youprop.h Antimagic. */
+function Antimagic() {
+    const u = game.u || {};
+    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+}
+
+/** C youprop.h Half_spell_damage. */
+function Half_spell_damage() {
+    const u = game.u || {};
+    return !!(u.Half_spell_damage || u.HHalf_spell_damage
+        || u.EHalf_spell_damage);
+}
+
 /** C youprop.h Hallucination. */
 function Hallucination() {
     const u = game.u || {};
     if (u.Halluc_resistance) return false;
     return !!((u.Hallucination)
         || ((u.HHallucination | 0) & TIMEOUT));
+}
+
+/** C ref: obj.h u_wield_art — is_art(uwep, art). */
+function u_wield_art(art) {
+    const uwep = game.u?.uwep;
+    return !!(uwep && (uwep.oartifact | 0) === (art | 0));
+}
+
+/** C ref: worn.c which_armor — first minvent obj with owornmask bit. */
+function which_armor(mtmp, mask) {
+    for (const o of mtmp?.minvent || []) {
+        if ((o.owornmask || 0) & mask) return o;
+    }
+    return null;
+}
+
+/** C ref: potion.c hcolor — Hallucination synonym deferred. */
+function hcolor(colorword) {
+    return colorword || 'odd';
+}
+
+/** C ref: objnam.c Tobjnam — The(xname) + otense verb. */
+function Tobjnam(otmp, verb) {
+    const nam = The(xname(otmp));
+    if (!verb) return nam;
+    return `${nam} ${vtense(xname(otmp), verb)}`;
+}
+
+/** C ref: objnam.c Yobjnam2 — "Your <xname> <verb>". */
+function Yobjnam2(obj, verb) {
+    const nam = xname(obj);
+    return `Your ${nam} ${vtense(nam, verb)}`;
+}
+
+/**
+ * C ref: sit.c rndcurse — curse random invent (and maybe steed saddle).
+ * Branch envelope: Magicbane absorb; Antimagic shield (flash deferred);
+ * invent non-COIN sample; SPFX_INTEL resist; bless→unbless else curse;
+ * steed W_SADDLE 1/4.
+ * Named omissions: shieldeff; update_inventory redraw; Hallucination
+ * hcolor; Yobjnam2 article polish.
+ */
+export async function rndcurse() {
+    const u = game.u || (game.u = {});
+
+    if (u_wield_art(ART_MAGICBANE) && rn2(20)) {
+        // C: You(mal_aura, "the magic-absorbing blade")
+        await You_feel('a malignant aura surround the magic-absorbing blade.');
+        return;
+    }
+
+    if (Antimagic()) {
+        // shieldeff(u.ux, u.uy) deferred
+    }
+
+    await You_feel('a malignant aura surround you.');
+
+    const invent = game.invent || [];
+    let nobj = 0;
+    for (const otmp of invent) {
+        if (otmp.oclass === COIN_CLASS) continue;
+        nobj++;
+    }
+    let cnt = rnd(6 / ((Antimagic() ? 1 : 0) + (Half_spell_damage() ? 1 : 0) + 1));
+    if (nobj) {
+        for (; cnt > 0; cnt--) {
+            let onum = rnd(nobj);
+            let otmp = null;
+            for (const cand of invent) {
+                if (cand.oclass === COIN_CLASS) continue;
+                if (--onum === 0) {
+                    otmp = cand;
+                    break;
+                }
+            }
+            if (!otmp || otmp.cursed) continue;
+
+            if (otmp.oartifact) {
+                const oart = get_artifact(otmp);
+                if (oart && ((oart.spfx | 0) & SPFX_INTEL) && rn2(10) < 8) {
+                    await pline(`${Tobjnam(otmp, 'resist')}!`);
+                    continue;
+                }
+            }
+
+            if (otmp.blessed) unbless(otmp);
+            else curse(otmp);
+        }
+        // update_inventory deferred
+    }
+
+    // steed saddle as extended invent
+    if (u.usteed && !rn2(4)) {
+        const otmp = which_armor(u.usteed, W_SADDLE);
+        if (otmp && !otmp.cursed) {
+            if (otmp.blessed) unbless(otmp);
+            else curse(otmp);
+            if (!Blind()) {
+                await pline(
+                    `${Yobjnam2(otmp, 'glow')} ${hcolor(otmp.cursed ? 'black' : 'brown')}.`,
+                );
+                otmp.bknown = Hallucination() ? 0 : 1;
+            } else {
+                otmp.bknown = 0;
+            }
+        }
+    }
 }
 
 /**

@@ -28,7 +28,7 @@ import {
     MON_DETACH,
 } from './const.js';
 import {
-    verysmall, G_FREQ, G_NOCORPSE, is_neuter, nonliving,
+    verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames,
     is_animal, M1_SEE_INVIS,
 } from './monsters.js';
@@ -500,7 +500,13 @@ export function make_corpse(mtmp) {
     if ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE) return null;
 
     corpstatflags |= CORPSTAT_INIT;
-    const keep = !!(mtmp.mtame || mtmp.isshk);
+    // C: KEEPTRAITS — shk/tame/unique/reviver/quest-leader/seduce
+    const keep = !!(mtmp.isshk || mtmp.mtame
+        || ((mdat?.geno | 0) & G_UNIQ)
+        || (mdat && (is_rider(mdat) || mdat.mlet === 'S_TROLL'))
+        || ((mtmp.m_id | 0) === (game.quest_status?.leader_m_id | 0)
+            && (game.quest_status?.leader_m_id | 0))
+        || dmgtype(mdat, AD_SEDU) || dmgtype(mdat, AD_SSEX));
     const obj = mkcorpstat(CORPSE, keep ? mtmp : null, mdat, x, y, corpstatflags);
     if (obj) {
         stackobj(obj);

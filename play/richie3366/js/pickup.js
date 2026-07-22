@@ -11,7 +11,7 @@ import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
     let_to_name, DEF_INV_ORDER, prinv, near_capacity,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava, in_rooms } from './hack.js';
+import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall } from './hack.js';
 import { flush_screen, pline, newsym, docrt, bot } from './display.js';
 import { addinv } from './u_init.js';
 import { an, doname, xname, cxname, the as theArt } from './objnam.js';
@@ -19,7 +19,7 @@ import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, is_pit,
     STONE, ICE, DRAWBRIDGE_UP,
-    IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL,
+    IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
     Has_contents, Is_container,
     SORTLOOT_PACK, SORTLOOT_LOOT,
@@ -664,19 +664,28 @@ export async function pooleffects(newspot) {
 
 /**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: pooleffects; check_special_room; when
- * !in_steed_dismounting — non-pit pickup then dotrap then pit pickup.
- * Deferred: recursion guards, sink fall, levitation timeout, Warning ice,
- * hidden monster surprise.
+ * Ported envelope: pooleffects; check_special_room; IS_SINK+Levitation
+ * dosinkfall (D-0976); when !in_steed_dismounting — non-pit pickup then
+ * dotrap then pit pickup.
+ * Deferred: recursion guards, levitation timeout adjust, Warning ice,
+ * hidden monster surprise, switch_terrain.
  */
 export async function spoteffects(pick) {
     if (await pooleffects(true)) return;
 
     await check_special_room(false);
 
+    const u = game.u;
+    if (u) {
+        const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ;
+        if (IS_SINK(typ) && Levitation_pe()) {
+            await dosinkfall();
+            if (game.program_state?.gameover) return;
+        }
+    }
+
     // C: entire pickup/dotrap block gated on !gi.in_steed_dismounting
     if (game.in_steed_dismounting) return;
-    const u = game.u;
     if (!u) return;
 
     const trap = t_at(u.ux, u.uy);
@@ -684,6 +693,14 @@ export async function spoteffects(pick) {
     if (pick && !pit) await pickup(1);
     if (trap) await dotrap(trap, NO_TRAP_FLAGS);
     if (pick && pit) await pickup(1);
+}
+
+/** C youprop.h Levitation — (H||E) && !B. */
+function Levitation_pe() {
+    const u = game.u || {};
+    if (u.Levitation) return true;
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
 }
 
 /**

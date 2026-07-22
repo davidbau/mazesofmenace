@@ -643,6 +643,25 @@ function golemhp(type) {
     }
 }
 
+/**
+ * C ref: makemon.c monhp_per_lvl — HP gain/loss per drained level.
+ * Named omit: is_golem / high-mlevel / adult-dragon arms (ordinary d8 / lvl0 d4).
+ */
+export function monhp_per_lvl(mon) {
+    const ptr = mon?.data;
+    if (!ptr) return rnd(8);
+    if (is_golem(ptr)) {
+        const lev = (ptr.mlevel | 0) || 1;
+        return Math.trunc(golemhp(ptr.mndx | 0) / lev);
+    }
+    if ((ptr.mlevel | 0) > 49) return 4 + rnd(4);
+    if (ptr.mlet === 'S_DRAGON' && (ptr.mndx | 0) >= pm('GRAY_DRAGON')) {
+        return 4 + rn2(5);
+    }
+    if (!(mon.m_lev | 0)) return rnd(4);
+    return rnd(8);
+}
+
 // C ref: makemon.c newmonhp()
 // After rolling HP, if result equals basehp (all 1s / rnd(4)=1), boost +1 so
 // level-0 and level-1 monsters always start with mhpmax >= 2.

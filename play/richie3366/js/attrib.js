@@ -114,6 +114,30 @@ export function acurr(i) {
     return result;
 }
 
+/**
+ * C ref: attrib.c extremeattr — ACURR at min or max (ring +0 vs capped).
+ * Named omit: Fixed_abil / racial MINATTR/MAXATTR (C also ignores those).
+ */
+export function extremeattr(attrindx) {
+    const u = game.u || {};
+    let lolimit = 3;
+    let hilimit = 25;
+    const curval = acurr(attrindx);
+    if ((attrindx | 0) === A_STR) {
+        hilimit = STR19(25); // 125
+        if (u.uarmg && (u.uarmg.otyp | 0) === GAUNTLETS_OF_POWER) {
+            lolimit = hilimit;
+        }
+    } else if ((attrindx | 0) === A_CON) {
+        // ART_OGRESMASHER → lolimit = hilimit deferred (acurr also defers)
+    } else if ((attrindx | 0) === A_INT || (attrindx | 0) === A_WIS) {
+        if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
+            hilimit = lolimit = 6;
+        }
+    }
+    return curval === lolimit || curval === hilimit;
+}
+
 // C ref: attrib.c acurrstr() — map encoded STR to 3..25 for formulas
 export function acurrstr() {
     const str = acurr(A_STR);

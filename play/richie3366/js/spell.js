@@ -12,8 +12,8 @@
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps; directional weffects;
-// spell_backfire; amulet drain; CQ_REPEAT; cursed_book rndcurse/
-// shieldeff polish; In_W_tower in aggravate.
+// spell_backfire; amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
+// In_W_tower in aggravate.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
@@ -35,6 +35,7 @@ import { trycall } from './do_name.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
+import { rndcurse } from './sit.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -333,8 +334,7 @@ async function take_gold() {
 
 /**
  * C ref: spell.c cursed_book — rn2(oc_level) effect; TRUE → destroy book.
- * Named omissions: shieldeff flash; rndcurse body (default stub burns
- * Magicbane rn2(20) only); body_part(FACE) → "face".
+ * Named omissions: shieldeff flash; body_part(FACE) → "face".
  * @returns {Promise<boolean>}
  */
 async function cursed_book(bp) {
@@ -396,9 +396,8 @@ async function cursed_book(bp) {
         return true;
     }
     default:
-        // rndcurse body deferred (spellbook oc_level ≤7 never hits default
-        // via rn2(lev); keep message for completeness)
-        await pline('You feel a malignant aura surround you.');
+        // C: rndcurse() — sit.c malignant-aura invent curse
+        await rndcurse();
         break;
     }
     return false;

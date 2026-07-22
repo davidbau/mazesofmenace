@@ -2910,6 +2910,12 @@ export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 export function ONAME(obj) { return obj?.oextra?.oname || ''; }
 export function has_oname(obj) { return !!obj?.oextra?.oname; }
 export function OMONST(obj) { return obj?.oextra?.omonst; }
+/** C: has_omonst(o) — oextra && OMONST(o) */
+export function has_omonst(obj) { return !!(obj?.oextra && obj.oextra.omonst); }
+/** C: OMID(o) — monster id linking corpse↔ghost (0 = unset) */
+export function OMID(obj) { return obj?.oextra?.omid | 0; }
+/** C: has_omid(o) — oextra && OMID(o) nonzero */
+export function has_omid(obj) { return !!(obj?.oextra && (obj.oextra.omid | 0)); }
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 

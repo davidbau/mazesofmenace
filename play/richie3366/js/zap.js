@@ -10,7 +10,8 @@
 // directional getdir ('.' = self) → confdir + zapyourself SPE_HEALING /
 // SPE_EXTRA_HEALING / WAN_SLEEP / SPE_SLEEP / WAN_DEATH /
 // SPE_FINGER_OF_DEATH / WAN_POLYMORPH / WAN_STRIKING / WAN_CANCELLATION /
-// WAN_TELEPORTATION / WAN_UNDEAD_TURNING / WAN_LIGHT;
+// WAN_TELEPORTATION / WAN_UNDEAD_TURNING / WAN_LIGHT /
+// WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN (D-0974);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (zhitm damage types + bounce +
 // Reflecting); IMMEDIATE weffects → bhit(rn1(8,6)) + bhito WAN_POLYMORPH
@@ -18,26 +19,33 @@
 // strike/cancel/poly/tele/undead(+unturn_dead); RAY WAN_DIGGING/SPE_DIG
 // → zap_dig (dig.c).
 // Named omissions: zap_updown/uswallow full; bhitm slow/speed/locking/
-// probing/opening/healing; zap_map; spell ubuzz; mon_reflects;
-// fireball/Hallucination hdmgtype rn2; zap_over_floor ice melt/fountain/
-// WEB/POOL→PIT/cold freeze; burn_floor_objects after fire door;
-// map_invisible/unmap during buzz; backfire body; other NODIR; wrest
-// pline; check_capacity; check_unpaid; update_inventory; shieldeff/
-// monstunseesu; setworn EReflecting bits; ureflects W_WEP/W_AMUL/W_ARM/
-// silver-dragon arms beyond shield makeknown; create_polymon after
-// poly_zapped; do_osshock shop bill; invent/worn poly_obj arms;
-// boxlock on Is_box; blank_novel / corpse revive→rot timer; revive
-// container/buried/cant_revive/omonst/ghost/shop stolen_value;
-// defended(); resists_magm body; ignite_items body; burnarmor worn
-// erode ported (D-0741); acid_damage/erode_armor; death-breath
-// disintegrate_arm; potionbreathe invis flash (D-0741);
-// inventory_resistance_check; destroy_items elec body; ugolemeffects;
-// burn_away_slime; spell_damage_bonus / Knight questart double;
-// Rider/Death specials; disintegrate_mon; fire completelyburns
-// XKILL_NOCORPSE; mon_reflects; flash_hits WAN_LIGHT bhitm.
+// probing; zap_map; spell ubuzz; mon_reflects;
+// Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
+// backfire body; other NODIR; wrest pline; check_capacity;
+// check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
+// EReflecting bits; ureflects W_WEP/W_AMUL/W_ARM/silver-dragon arms
+// beyond shield makeknown; create_polymon after poly_zapped;
+// do_osshock shop bill; invent/worn poly_obj arms; floor boxlock;
+// blank_novel / corpse revive→rot timer; shop stolen_value;
+// cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
+// body; ignite_items body; burnarmor worn erode ported (D-0741);
+// acid_damage/erode_armor; death-breath disintegrate_arm;
+// potionbreathe invis flash (D-0741); inventory_resistance_check;
+// destroy_items elec body; ugolemeffects; burn_away_slime;
+// spell_damage_bonus / Knight questart double; Rider/Death specials;
+// disintegrate_mon; fire completelyburns XKILL_NOCORPSE; mon_reflects;
+// flash_hits WAN_LIGHT bhitm (D-0979); openholding/openfalling +
+// Punished/boxlock_invent/SPE_KNOCK hurtle/saddle (D-0981);
+// montraits/omonst/ghost recorporealize (D-0982);
+// trap_ice_effects; Underwater/utrap lava arms.
+// explode AD_FIRE mon/hero combat: D-0968 (explode.js).
+// explode AD_COLD/ELEC mon/hero combat: D-0971 (explode.js).
+// explode AD_MAGM/DISN/DRST/ACID mon/hero combat: D-0973 (explode.js).
 // Shop door/bars destroy + dobuzz pay_for_damage: D-0948.
 // Break-wand adjacent bhit + cancel helpers: D-0952.
 // unturn_dead invent revive + hero_breaks + worn ABON: D-0955.
+// revive container/buried + cant_revive + OBJ_BURIED extract: D-0964.
+// ice melt / burn_floor_objects / fireball trail+explode: D-0965.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -50,42 +58,60 @@ import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown, encumber_msg } from './invent.js';
-import { doname, xname, vtense, The, an } from './objnam.js';
+import { doname, xname, distant_name, vtense, The, an, An } from './objnam.js';
+import { fix_wall_spines } from './mklev.js';
 import {
     A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise,
 } from './attrib.js';
 import { findit } from './detect.js';
 import {
     confdir, fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
-    in_rooms, dissolve_bars, stop_occupation,
+    is_lava, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
     MR_POISON, MR_ACID, is_undead, is_vampshifter, monsterNames, mons,
+    G_UNIQ, is_rider, is_swimmer, mindless, MZ_MEDIUM,
 } from './monsters.js';
-import { m_at, wakeup, seemimic, dead_species, normal_shape } from './mon.js';
+import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham } from './mon.js';
 import { find_mac, monkilled } from './mhitm.js';
 import { more_experienced } from './exper.js';
 import { obj_resists } from './dogmove.js';
-import { zap_dig, fracture_rock, break_statue } from './dig.js';
-import { killed, xkilled } from './uhitm.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from './dig.js';
+import {
+    killed, xkilled, flash_hits_mon, m_is_steadfast,
+} from './uhitm.js';
+import { mon_nam, Monnam, christen_monst, hliquid } from './do_name.js';
 import { finish_losehp_done } from './end.js';
-import { burnarmor } from './trap.js';
+import {
+    burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap,
+    NO_TRAP_FLAGS, ignite_items, openholdingtrap, openfallingtrap,
+} from './trap.js';
 import { potionbreathe, make_stunned } from './potion.js';
+import { burn_away_slime } from './timeout.js';
 import { create_gas_cloud } from './region.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { recalc_block_point } from './vision.js';
-import { picking_at, reset_pick } from './lock.js';
-import { monflee } from './monmove.js';
-import { newcham, makemon } from './makemon.js';
+import { picking_at, reset_pick, boxlock_invent } from './lock.js';
+import { monflee, sticks } from './monmove.js';
+import { digests, set_ustuck, unstuck, expels } from './mhitu.js';
+import { newcham, makemon, monhp_per_lvl, neweshk, add_to_minv } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize } from './polyself.js';
 import { costly_alteration } from './shk.js';
+import { dryup } from './fountain.js';
+import { explode } from './explode.js';
+import { unpunish } from './read.js';
+import { which_armor } from './worn.js';
+import { mhurtle, hero_breaks, breaks } from './dothrow.js';
+import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import {
     mkobj, delobj, objects_at, replace_object, rnd_class, weight, splitobj,
-    oc_merge_of, uncurse, attach_egg_hatch_timeout,
+    oc_merge_of, uncurse, attach_egg_hatch_timeout, obj_extract_self,
+    eaten_stat, start_timer, spot_stop_timers, spot_time_left,
+    obj_ice_effects, place_object, stackobj,
+    get_mtraits, free_omonst, free_omid,
 } from './mkobj.js';
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
@@ -97,19 +123,29 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
     DISP_BEAM, DISP_CHANGE, DISP_END,
-    OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, Has_contents, ZAPPED_WAND, NOTELL, TELL,
+    OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
+    Has_contents, ZAPPED_WAND, NOTELL, TELL,
     STRAT_WAITMASK,
-    POOL, Is_waterlevel, Is_rogue_level, AD_RBRE, UNCHANGING,
+    POOL, MOAT, WATER, ICE, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
+    DRAWBRIDGE_DOWN, ICED_POOL, ICED_MOAT, DB_ICE, DB_UNDER, DB_FLOOR,
+    Is_waterlevel, Is_rogue_level, Is_airlevel, AD_RBRE, UNCHANGING,
     PLNMSG_ENVELOPED_IN_GAS, PLNMSG_OBJ_GLOWS, IRONBARS, SDOOR, SHOPBASE,
     SHOP_DOOR_COST,
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_UNCURS, COST_UNBLSS,
     TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd,
     M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, NON_PM, ismnum,
-    W_RING, W_ARMG, W_ARMH, W_ARMOR,
-    NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, IS_POOL,
+    W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE,
+    NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
+    IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
+    CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
+    OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
+    WEB, PIT, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
+    TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, COLNO, ROWNO,
+    IS_ALTAR, IS_STWALL, Is_earthlevel, IS_AIR, CLOUD,
+    MM_NOTAIL, MM_ADJACENTOK, NATTK,
 } from './const.js';
-import { hero_breaks, breaks } from './dothrow.js';
 
+const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
@@ -141,6 +177,13 @@ const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
 const WAN_UNDEAD_TURNING = objectNames.indexOf('WAN_UNDEAD_TURNING');
 const SPE_TURN_UNDEAD = objectNames.indexOf('SPE_TURN_UNDEAD');
+const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
+const SPE_KNOCK = objectNames.indexOf('SPE_KNOCK');
+const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
+const WAN_COLD = objectNames.indexOf('WAN_COLD');
+const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
+const FIRE_HORN = objectNames.indexOf('FIRE_HORN');
+const FROST_HORN = objectNames.indexOf('FROST_HORN');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
@@ -156,6 +199,16 @@ const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const CORPSE = objectNames.indexOf('CORPSE');
 const EGG = objectNames.indexOf('EGG');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
+const PM_GUARD = monsterNames.indexOf('PM_GUARD');
+const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+const PM_ANGEL = monsterNames.indexOf('PM_ANGEL');
+const PM_HUMAN_ZOMBIE = monsterNames.indexOf('PM_HUMAN_ZOMBIE');
+const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
 const RIN_GAIN_STRENGTH = objectNames.indexOf('RIN_GAIN_STRENGTH');
 const RIN_GAIN_CONSTITUTION = objectNames.indexOf('RIN_GAIN_CONSTITUTION');
 const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
@@ -164,7 +217,6 @@ const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
 const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
 const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
-const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
 const PM_KNIGHT = monsterNames.indexOf('PM_KNIGHT');
 const NC_VIA_WAND_OR_SPELL = 0x02;
@@ -298,7 +350,7 @@ function BZ_U_WAND(bztyp) {
  * Empty slots match C; Hallucination suppress deferred (caller passes
  * fltyp already via zaptype).
  */
-function flash_str(fltyp) {
+export function flash_str(fltyp) {
     const names = [
         'magic missile', 'bolt of fire', 'bolt of cold', 'sleep ray',
         'death ray', 'bolt of lightning', '', '', '', '',
@@ -313,13 +365,177 @@ function flash_str(fltyp) {
 }
 
 /**
- * C ref: zap.c zap_over_floor — floor effects for buzz trail.
- * Envelope: ZT_FIRE is_pool → create_gas_cloud(rnd(5)) + Norep hissing
- * gas / uneventful (+ POOL rangemod); ZT_POISON_GAS ZAP_POS →
- * create_gas_cloud(1,8); ZT_LIGHTNING/ZT_ACID IRONBARS dissolve + shop
- * bars; SDOOR reveal; closed_door destroy + shop door; ignoremon wakeup.
- * Named omit: WEB burn, ice melt, fountain steam, POOL→ROOM+maketrap PIT,
- * cold freeze, burn_floor_objects.
+ * C ref: invent.c useupf — consume numused from floor pile (shop bill deferred).
+ */
+function useupf(obj, numused) {
+    if (!obj) return;
+    let victim = obj;
+    const n = numused | 0;
+    if ((obj.quan || 1) > n) {
+        victim = splitobj(obj, n) || obj;
+    }
+    delobj(victim);
+}
+
+/** C ref: pline.c You — prefix "You ". */
+async function You(rest) {
+    await pline(`You ${rest}`);
+}
+
+/** C ref: dbridge.c / rm.h is_ice — ICE or drawbridge-under DB_ICE. */
+export function is_ice(x, y) {
+    if (!isok(x, y)) return false;
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return false;
+    if ((lev.typ | 0) === ICE) return true;
+    return (lev.typ | 0) === DRAWBRIDGE_UP
+        && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
+}
+
+/** C ref: dbridge.c is_moat — juiblex swamp deferred. */
+function is_moat(x, y) {
+    if (!isok(x, y)) return false;
+    return (game.level?.at?.(x, y)?.typ | 0) === MOAT;
+}
+
+/**
+ * C ref: zap.c burn_floor_objects — burn scrolls/spellbooks/slime glob
+ * on floor; return count destroyed. ignite_items still stub (D-0965).
+ * give_feedback pline arm (D-0975); zap_over_floor still uses FALSE + smoke.
+ */
+export async function burn_floor_objects(x, y, give_feedback, u_caused) {
+    let cnt = 0;
+    let obj = objects_at(x, y);
+    while (obj) {
+        const obj2 = obj.nexthere;
+        const oclass = obj.oclass | 0;
+        if (oclass === SCROLL_CLASS || oclass === SPBOOK_CLASS
+            || (oclass === FOOD_CLASS
+                && (obj.otyp | 0) === GLOB_OF_GREEN_SLIME)) {
+            if ((obj.otyp | 0) === SCR_FIRE || (obj.otyp | 0) === SPE_FIREBALL
+                || obj_resists(obj, 2, 100)) {
+                obj = obj2;
+                continue;
+            }
+            const scrquan = obj.quan || 1;
+            let delquan = 0;
+            for (let i = scrquan; i > 0; i--) {
+                if (!rn2(3)) delquan++;
+            }
+            if (delquan) {
+                // C: save name before potential delobj()
+                let buf1 = '';
+                let buf2 = '';
+                if (give_feedback) {
+                    const saveQuan = obj.quan;
+                    obj.quan = 1;
+                    buf1 = u_at(x, y) ? xname(obj) : distant_name(obj, xname);
+                    obj.quan = 2;
+                    buf2 = u_at(x, y) ? xname(obj) : distant_name(obj, xname);
+                    obj.quan = saveQuan;
+                }
+                if (u_caused) {
+                    useupf(obj, delquan);
+                } else if (delquan < scrquan) {
+                    obj.quan = scrquan - delquan;
+                    obj.owt = weight(obj);
+                } else {
+                    delobj(obj);
+                }
+                cnt += delquan;
+                if (give_feedback) {
+                    if (delquan > 1) {
+                        await pline(`${delquan} ${buf2} burn.`);
+                    } else {
+                        await pline(`${An(buf1)} burns.`);
+                    }
+                }
+            }
+        }
+        obj = obj2;
+    }
+    await ignite_items(objects_at(x, y));
+    return cnt;
+}
+
+/**
+ * C ref: zap.c melt_ice — ICE/DB_ICE → pool/moat; stop melt timer;
+ * obj_ice_effects + unearth_objs; Norep; hero spoteffects / mon
+ * minliquid. Named omit: trap_ice_effects; Underwater vision;
+ * boulder_hits_pool body (D-0965/D-0967).
+ */
+export async function melt_ice(x, y, msg) {
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return;
+    if (!msg) msg = 'The ice crackles and melts.';
+    if ((lev.typ | 0) === DRAWBRIDGE_UP || (lev.typ | 0) === DRAWBRIDGE_DOWN) {
+        lev.drawbridgemask = (lev.drawbridgemask | 0) & ~DB_ICE;
+    } else {
+        // lev.typ == ICE
+        lev.typ = ((lev.icedpool | 0) === ICED_POOL) ? POOL : MOAT;
+        lev.icedpool = 0;
+    }
+    spot_stop_timers(x, y, MELT_ICE_AWAY);
+    // trap_ice_effects deferred
+    obj_ice_effects(x, y, false);
+    unearth_objs(x, y);
+    if (game.u?.Underwater) {
+        // vision_recalc(1) deferred
+    }
+    newsym(x, y);
+    if (cansee(x, y) || u_at(x, y)) await Norep(msg);
+    // boulder settle / boulder_hits_pool deferred
+    if (u_at(x, y)) {
+        // spoteffects(TRUE) deferred — drown/notice objects
+    } else if (is_pool(x, y)) {
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            const { minliquid } = await import('./mon.js');
+            await minliquid(mtmp);
+        }
+    }
+}
+
+/**
+ * C ref: zap.c start_melt_ice_timeout — usually queue MELT_ICE_AWAY;
+ * sometimes leave ice permanent when when > MAX_ICE_TIME.
+ */
+export function start_melt_ice_timeout(x, y, min_time) {
+    const MIN_ICE_TIME = 50;
+    const MAX_ICE_TIME = 2000;
+    let when = min_time | 0;
+    if (when < MIN_ICE_TIME - 1) when = MIN_ICE_TIME - 1;
+    while (++when <= MAX_ICE_TIME) {
+        if (!rn2((MAX_ICE_TIME - when) + MIN_ICE_TIME)) break;
+    }
+    if (when <= MAX_ICE_TIME) {
+        const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
+        start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, where);
+    }
+}
+
+/**
+ * C ref: zap.c melt_ice_away — TIMER_LEVEL callback; mon_moving so melt
+ * does not credit hero.
+ */
+export async function melt_ice_away(where) {
+    const save = game.context?.mon_moving;
+    if (!game.context) game.context = {};
+    game.context.mon_moving = true;
+    const y = (where | 0) & 0xffff;
+    const x = ((where | 0) >> 16) & 0xffff;
+    await melt_ice(x, y, 'Some ice melts away.');
+    game.context.mon_moving = save;
+}
+
+/**
+ * C ref: zap.c zap_over_floor — floor effects for buzz trail / explode.
+ * Envelope (D-0948/D-0965/D-0967): ZT_FIRE WEB/ice melt/pool evaporate+PIT/
+ * fountain dryup; ZT_COLD freeze pool/lava + bury_objs + ice firm-up +
+ * obj_ice_effects; ZT_POISON_GAS cloud; ZT_LIGHTNING/ZT_ACID IRONBARS;
+ * SDOOR; closed_door shop; fire burn_floor_objects; ignoremon wakeup;
+ * lavawall→wall + fix_wall_spines (D-0975).
+ * Named omit: Underwater/utrap lava arms; dotrap polish.
  */
 /**
  * C ref: zap.c zap_over_floor — also called from explode.c explode.
@@ -333,10 +549,20 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
     let rangemod = 0;
     let exploding_wand_typ = explodingWand | 0;
     const see_it = cansee(x, y);
+    const lavawall = (loc.typ | 0) === LAVAWALL;
 
     switch (damgtype) {
     case ZT_FIRE: {
-        if (is_pool(x, y)) {
+        let t = t_at(x, y);
+        if (t && (t.ttyp | 0) === WEB) {
+            if (see_it) await Norep('A web bursts into flames!');
+            delfloortrap(t);
+            t = null;
+            if (see_it) newsym(x, y);
+        }
+        if (is_ice(x, y)) {
+            await melt_ice(x, y, null);
+        } else if (is_pool(x, y)) {
             const u = game.u || {};
             const on_water_level = !!Is_waterlevel(u.uz);
             let msggiven = false;
@@ -354,18 +580,120 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
             }
 
             if ((loc.typ | 0) !== POOL) {
-                const seePool = cansee(x, y);
                 if (on_water_level) {
-                    msgtxt = (seePool || !Deaf()) ? 'Some water boils.' : null;
-                } else if (seePool) {
+                    msgtxt = (see_it || !Deaf()) ? 'Some water boils.' : null;
+                } else if (see_it) {
                     msgtxt = 'Some water evaporates.';
                 }
             } else {
-                // C: POOL → ROOM + maketrap(PIT) + see_it evaporate — deferred;
-                // still apply rangemod so buzz length matches.
                 rangemod -= 3;
+                loc.typ = ROOM;
+                loc.flags = 0;
+                t = maketrap(x, y, PIT);
+                if (see_it) msgtxt = 'The water evaporates.';
             }
             if (msgtxt && !msggiven) await Norep(msgtxt);
+
+            if ((loc.typ | 0) === ROOM) {
+                const mon = m_at(x, y);
+                if (mon && is_swimmer(mon.data) && mon.mundetected) {
+                    mon.mundetected = 0;
+                }
+                newsym(x, y);
+                if (t) {
+                    if (u_at(x, y)) await dotrap(t, NO_TRAP_FLAGS);
+                    else if (mon) await mintrap(mon, NO_TRAP_FLAGS);
+                }
+            }
+        } else if (IS_FOUNTAIN(loc.typ)) {
+            create_gas_cloud(x, y, rnd(3), 0);
+            if (see_it) await pline('Steam billows from the fountain.');
+            rangemod -= 1;
+            await dryup(x, y, (type | 0) > 0);
+        }
+        break;
+    }
+    case ZT_COLD: {
+        if (is_pool(x, y) || is_lava(x, y) || lavawall) {
+            const lava = is_lava(x, y) || lavawall;
+            const moat = is_moat(x, y);
+            const chance = Math.max(
+                2,
+                5 + ((game.level?.flags?.temperature | 0) * 10),
+            );
+
+            if (IS_WATERWALL(loc.typ) || (lavawall && rn2(chance))) {
+                if (see_it) {
+                    await pline(
+                        `The ${hliquid(lavawall ? 'lava' : 'water')} `
+                        + 'freezes for a moment.',
+                    );
+                } else {
+                    await You_hear('a soft crackling.');
+                }
+                rangemod -= 1000;
+            } else {
+                const buf = waterbody_name(x, y);
+                rangemod -= 3;
+                if ((loc.typ | 0) === DRAWBRIDGE_UP) {
+                    loc.drawbridgemask = (loc.drawbridgemask | 0) & ~DB_UNDER;
+                    loc.drawbridgemask |= lava ? DB_FLOOR : DB_ICE;
+                } else {
+                    loc.icedpool = lava
+                        ? 0
+                        : ((loc.typ | 0) === POOL ? ICED_POOL : ICED_MOAT);
+                    if (lavawall) {
+                        const up = isok(x, y - 1)
+                            && IS_WALL(game.level?.at?.(x, y - 1)?.typ);
+                        const dn = isok(x, y + 1)
+                            && IS_WALL(game.level?.at?.(x, y + 1)?.typ);
+                        loc.typ = (up || dn) ? VWALL : HWALL;
+                        // C: fix_wall_spines(max(0,x-1)..min(COLNO-1,x+1), …)
+                        fix_wall_spines(
+                            Math.max(0, x - 1),
+                            Math.max(0, y - 1),
+                            Math.min(COLNO - 1, x + 1),
+                            Math.min(ROWNO - 1, y + 1),
+                        );
+                    } else {
+                        loc.typ = lava ? ROOM : ICE;
+                    }
+                }
+                await bury_objs(x, y);
+                if (see_it) {
+                    if (lava) {
+                        await Norep(
+                            `The ${hliquid('lava')} cools and solidifies.`,
+                        );
+                    } else if (moat) {
+                        await Norep(`The ${buf} is bridged with ice!`);
+                    } else {
+                        await Norep(`The ${hliquid('water')} freezes.`);
+                    }
+                    newsym(x, y);
+                } else if (!lava) {
+                    await You_hear('a crackling sound.');
+                }
+                if (u_at(x, y)) {
+                    // uinwater / utrap lava arms deferred
+                } else {
+                    const mon = m_at(x, y);
+                    if (mon && is_swimmer(mon.data) && mon.mundetected) {
+                        mon.mundetected = 0;
+                        newsym(x, y);
+                    }
+                }
+                if (!lava) {
+                    start_melt_ice_timeout(x, y, 0);
+                    obj_ice_effects(x, y, true);
+                }
+            }
+        } else if (is_ice(x, y)) {
+            const melt_time = spot_time_left(x, y, MELT_ICE_AWAY);
+            if (melt_time !== 0) {
+                spot_stop_timers(x, y, MELT_ICE_AWAY);
+                start_melt_ice_timeout(x, y, melt_time);
+            }
         }
         break;
     }
@@ -520,7 +848,14 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         }
     }
 
-    // burn_floor_objects deferred
+    // C: OBJ_AT + ZT_FIRE → burn_floor_objects; smoke if couldsee
+    if (objects_at(x, y) && damgtype === ZT_FIRE) {
+        if (await burn_floor_objects(x, y, false, (type | 0) > 0)
+            && couldsee(x, y)) {
+            newsym(x, y);
+            await You(`${!Blind() ? 'see a puff' : 'smell a whiff'} of smoke.`);
+        }
+    }
     if (!ignoremon) {
         const mon = m_at(x, y);
         if (mon) await wakeup(mon, (type | 0) >= 0);
@@ -882,11 +1217,6 @@ export async function destroy_items(mon, dmgtyp, dmg_in) {
     return dmg_out;
 }
 
-/** C ref: zap.c ignite_items — body deferred (RNG gate still called). */
-function ignite_items(_objchn) {
-    // oil lamp / candle ignition deferred
-}
-
 /**
  * C ref: zap.c resist — alev by oclass; if resisted halve damage; apply
  * remaining damage and kill when fatal.
@@ -959,7 +1289,7 @@ async function zhitm(mon, type, nd, ootmp) {
         if (await burnarmor(mon)) {
             if (!rn2(3)) {
                 tmp += await destroy_items(mon, AD_FIRE, orig_dmg);
-                ignite_items(mon.minvent);
+                await ignite_items(mon.minvent);
             }
         }
         break;
@@ -1044,8 +1374,8 @@ async function zhitm(mon, type, nd, ootmp) {
  * C ref: zap.c zhitu — hero hit by ray (wand/spell/breath).
  * Envelope: ZT_MAGIC_MISSILE..ZT_LIGHTNING damage + ZT_FIRE burnarmor/
  * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp.
- * Named omissions: shieldeff/monstunseesu/ugolemeffects; burn_away_slime;
- * death/disintegrate arms; poison/acid; ignite_items body; killer buzzer
+ * Named omissions: shieldeff/monstunseesu/ugolemeffects;
+ * death/disintegrate arms; poison/acid; killer buzzer
  * verb polish.
  */
 async function zhitu(type, nd, fltxt, _sx, _sy) {
@@ -1070,7 +1400,7 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
         } else {
             dam = orig_dam;
         }
-        // burn_away_slime deferred
+        await burn_away_slime();
         if (await burnarmor(game.youmonst || { _youmonst: true })) {
             if (!rn2(3)) {
                 await destroy_items(
@@ -1079,7 +1409,7 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
                     orig_dam,
                 );
             }
-            if (!rn2(3)) ignite_items(game.invent);
+            if (!rn2(3)) await ignite_items(game.invent);
         }
         break;
     case ZT_COLD:
@@ -1168,12 +1498,13 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
 
 /**
  * C ref: zap.c dobuzz — wand/spell/breath ray + DISP_BEAM + zhitm/zhitu.
- * Envelope: type<0 newsym; rn1(7,7) range; zap_over_floor trail (gas
- * deferred until after hit/reflect); mon/hero zap_hit; type<0 dead →
- * monkilled(…, AD_RBRE) else xkilled/killed; shopdamage → pay_for_damage
- * (D-0948). Named omit: fireball; mon_reflects; map_invisible; Hallu
- * hdmgtype; disintegrate_mon; fire completelyburns XKILL_NOCORPSE;
- * steed redirect.
+ * Envelope: type<0 newsym; rn1(7,7) range; fireball skips trail
+ * zap_over_floor then explode(d(12,6)) (D-0965); gas deferred until
+ * after hit/reflect; mon/hero zap_hit; type<0 dead → monkilled(…,
+ * AD_RBRE) else xkilled/killed; shopdamage → pay_for_damage (D-0948).
+ * Named omit: mon_reflects; map_invisible; Hallu hdmgtype;
+ * disintegrate_mon; fire completelyburns XKILL_NOCORPSE; steed
+ * redirect; AD_MAGM..ACID explode combat → explode.js (D-0973).
  */
 export async function dobuzz(
     type, nd, sx0, sy0, dx0, dy0, sayhit, _saymiss, forcemiss,
@@ -1182,6 +1513,8 @@ export async function dobuzz(
     const damgtype = fltyp % 10;
     // C: Hallucination ? rn2(6) : damgtype — Hallu path deferred
     const hdmgtype = damgtype;
+    // C: fireball = (type == ZT_SPELL(ZT_FIRE))
+    const fireball = (type | 0) === (ZT_SPELL_0 + ZT_FIRE);
     let sx = sx0;
     let sy = sy0;
     let dx = dx0;
@@ -1194,6 +1527,7 @@ export async function dobuzz(
     let range = rn1(7, 7);
     if (dx === 0 && dy === 0) range = 1;
     const shopdamage = { v: false };
+    let fireball_type = type | 0;
 
     // C: tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype))
     tmp_at(DISP_BEAM, zapdir_to_glyph(dx, dy, hdmgtype));
@@ -1206,6 +1540,7 @@ export async function dobuzz(
             const loc = game.level?.at?.(sx, sy);
             const typ = loc?.typ;
             let do_bounce = false;
+            let fireball_break = false;
 
             if (!isok(sx, sy) || typ === STONE) {
                 do_bounce = true;
@@ -1226,9 +1561,9 @@ export async function dobuzz(
                 game.bhitpos.y = sy;
 
                 let gas_hit = damgtype === ZT_POISON_GAS;
-                // fireballs skip; poison gas defers zap_over_floor until
-                // after hit/reflect so reflection can cancel the cloud.
-                if (!gas_hit) {
+                // fireballs only damage when they explode; poison gas
+                // defers zap_over_floor until after hit/reflect.
+                if (!fireball && !gas_hit) {
                     range += await zap_over_floor(
                         sx, sy, type, shopdamage, true, 0,
                     );
@@ -1236,13 +1571,16 @@ export async function dobuzz(
 
                 // Prior wand path: closed door absorb pline (C uses
                 // zap_over_floor rangemod; keep message for screen PASS).
-                if ((type | 0) >= 0 && closed_door(sx, sy)) {
+                if (!fireball && (type | 0) >= 0 && closed_door(sx, sy)) {
                     await pline('The door absorbs your bolt!');
                     range += -1000;
                 }
 
                 let mon = m_at(sx, sy);
                 if (mon) {
+                    if (fireball) {
+                        fireball_break = true;
+                    } else {
                     if ((type | 0) >= 0 && mon.mstrategy != null) {
                         mon.mstrategy &= ~STRAT_WAITMASK;
                     }
@@ -1281,6 +1619,7 @@ export async function dobuzz(
                             }
                         }
                         range -= 2;
+                    }
                     }
                 } else if (u_at(sx, sy) && range >= 0) {
                     nomul(0);
@@ -1322,24 +1661,47 @@ export async function dobuzz(
                 }
             }
 
+            if (fireball_break) break;
+
             if (do_bounce) {
                 // C: bounce_dir always runs once in make_bounce; pline only when
                 // (--range > 0 && cansee previous). Cardinal bounce uses no rn2.
                 const bchance = (!isok(sx, sy) || typ === STONE) ? 10 : 75;
-                if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))) {
-                    await pline(`The ${flash_str(fltyp)} bounces!`);
+                if ((--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))
+                    || fireball) {
+                    if (Is_airlevel(game.u?.uz)) {
+                        await pline(
+                            `The ${flash_str(fltyp)} vanishes into the aether!`,
+                        );
+                        // C: type = ZT_WAND(ZT_FIRE); fireball flag stays
+                        if (fireball) fireball_type = ZT_FIRE;
+                        break;
+                    } else if (fireball) {
+                        sx = lsx;
+                        sy = lsy;
+                        break;
+                    } else {
+                        await pline(`The ${flash_str(fltyp)} bounces!`);
+                    }
                 }
-                const bd = bounce_dir(sx, sy, dx, dy, bchance);
-                dx = bd.dx;
-                dy = bd.dy;
-                // C: tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype))
-                tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
+                if (!fireball) {
+                    const bd = bounce_dir(sx, sy, dx, dy, bchance);
+                    dx = bd.dx;
+                    dy = bd.dy;
+                    // C: tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype))
+                    tmp_at(DISP_CHANGE, zapdir_to_glyph(dx, dy, hdmgtype));
+                } else {
+                    break;
+                }
             }
         }
     } finally {
         tmp_at(DISP_END, 0);
     }
-    // fireball explode deferred
+    // C: fireball → explode(sx, sy, type, d(12,6), 0, EXPL_FIERY)
+    if (fireball) {
+        await explode(sx, sy, fireball_type, d(12, 6), 0, EXPL_FIERY);
+    }
     if (shopdamage.v) {
         const { pay_for_damage } = await import('./shk.js');
         const dmgstr = damgtype === ZT_FIRE ? 'burn away'
@@ -1351,8 +1713,8 @@ export async function dobuzz(
     }
 }
 
-/** C ref: zap.c ubuzz */
-async function ubuzz(type, nd) {
+/** C ref: zap.c ubuzz — exported for music fire/frost horn (D-0974). */
+export async function ubuzz(type, nd) {
     const u = game.u;
     await dobuzz(type, nd, u.ux, u.uy, u.dx, u.dy, true, false, false);
 }
@@ -1540,6 +1902,74 @@ export function learnwand(obj) {
 }
 
 /**
+ * C ref: hacklib.c s_suffix — possessive for saddle drop msg.
+ */
+function s_suffix_zap(s) {
+    if (!s) return s;
+    if (s === 'it' || s === 'It') return 'its';
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('ch') || s.endsWith('sh')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/** C ref: dungeon.c surface — floor/ground stand-in for saddle drop. */
+function surface_zap(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ ?? 0;
+    if (IS_FOUNTAIN(typ)) return 'fountain';
+    if (IS_ALTAR(typ)) return 'altar';
+    if (IS_WALL(typ) || IS_STWALL(typ)) return 'wall';
+    if (IS_DOOR(typ)) return 'doorway';
+    if (IS_ROOM(typ) && !Is_earthlevel(game.u?.uz)) return 'floor';
+    if (IS_AIR(typ)) return typ === CLOUD ? 'cloud' : 'air';
+    return 'ground';
+}
+
+/**
+ * C ref: zap.c release_hold — free hero from ustuck / uswallow / sticks.
+ * Named omit: status UHold botl polish only (set_ustuck already sets botl).
+ */
+export async function release_hold() {
+    const u = game.u || {};
+    const mtmp = u.ustuck;
+    if (!mtmp) {
+        // impossible("release_hold when not held?")
+        return;
+    }
+    if (u.uswallow) {
+        if (digests(mtmp.data)) {
+            if (!Blind()) {
+                await pline(`${Monnam(mtmp)} opens its mouth!`);
+            } else {
+                await You_feel('a sudden rush of air!');
+            }
+        }
+        await expels(mtmp, mtmp.data, true);
+    } else if (sticks(game.youmonst?.data)) {
+        set_ustuck(null);
+        await You(`release ${mon_nam(mtmp)}.`);
+    } else {
+        await unstuck(u.ustuck);
+        let relbuf;
+        if (!nohands(mtmp.data)) {
+            // C: s_suffix(mon_nam) + " grasp"
+            const nam = mon_nam(mtmp);
+            const poss = (!nam) ? nam
+                : (nam === 'it' || nam === 'It') ? 'its'
+                    : (nam.endsWith('s') || nam.endsWith('z') || nam.endsWith('x')
+                        || nam.endsWith('ch') || nam.endsWith('sh'))
+                        ? `${nam}'` : `${nam}'s`;
+            relbuf = `from ${poss} grasp`;
+        } else {
+            relbuf = `by ${mon_nam(mtmp)}`;
+        }
+        await You(`are released ${relbuf}.`);
+    }
+}
+
+/**
  * C ref: zap.c zapnodir — NODIR wand effects.
  * Branch envelope: WAN_SECRET_DOOR_DETECTION → findit only.
  */
@@ -1599,40 +2029,306 @@ function revive_egg(obj) {
     }
 }
 
+/** C ref: mondata.h is_reviver — rider or troll. */
+function is_reviver(ptr) {
+    return !!(ptr && (is_rider(ptr) || ptr.mlet === 'S_TROLL'));
+}
+
+/** C ref: mondata.h unique_corpstat — G_UNIQ. */
+function unique_corpstat(ptr) {
+    return !!((ptr?.geno | 0) & G_UNIQ);
+}
+
+const AD_SEDU = 22;
+const AD_SSEX = 35;
+const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+
+/** C ref: mondata.h dmgtype — any mattk slot matches adtyp. */
+function dmgtype_zap(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < NATTK; i++) {
+        if ((slots[i]?.adtyp | 0) === adtyp) return true;
+    }
+    return false;
+}
+
+/** C: SYSOPT_SEDUCE — runtime seduce option (default on when unset). */
+function SYSOPT_SEDUCE_zap() {
+    return game.sysopt?.seduce !== false;
+}
+
 /**
- * C ref: zap.c revive — invent/minvent/floor envelope for unturn_dead.
- * Named omit: nested containers; buried zombie dig-out; cant_revive
- * zombie/doppel; montraits/omonst; ghost recorporealization; shop
- * stolen_value; oeaten/oname; Rider delobj_core force.
+ * C ref: zap.c montraits — revive from corpse/statue omonst traits.
+ * Used by revive() and animate_statue(). Named omit: full replshk bill_p;
+ * worm light-source swap.
+ * @returns {object|null}
+ */
+function montraits(obj, cc, adjacentok) {
+    let mtmp = null;
+    const mtmp2 = has_omonst(obj) ? get_mtraits(obj, true) : null;
+    if (!mtmp2) return null;
+
+    mtmp2.data = mons(mtmp2.mnum | 0);
+    if ((mtmp2.mhpmax | 0) > 0 || is_rider(mtmp2.data)) {
+        let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH
+            | MM_NOTAIL | MM_NOMSG;
+        if (adjacentok) mmflags |= MM_ADJACENTOK;
+        mtmp = makemon(mtmp2.data, cc.x | 0, cc.y | 0, mmflags);
+    }
+    if (!mtmp) {
+        // mtmp2 was a copy — drop
+        return null;
+    }
+
+    // heal / restore drained levels (rnd burns)
+    if ((mtmp.m_lev | 0) < (mtmp.data?.mlevel | 0)) {
+        const ltmp = rnd((mtmp.data.mlevel | 0) + 1);
+        if (ltmp > (mtmp.m_lev | 0)) {
+            while ((mtmp.m_lev | 0) < ltmp) {
+                mtmp.m_lev = (mtmp.m_lev | 0) + 1;
+                mtmp.mhpmax = (mtmp.mhpmax | 0) + monhp_per_lvl(mtmp);
+            }
+            mtmp2.m_lev = mtmp.m_lev;
+        }
+    }
+    if ((mtmp.mhpmax | 0) > (mtmp2.mhpmax | 0)) mtmp2.mhpmax = mtmp.mhpmax;
+    mtmp2.mhp = mtmp2.mhpmax | 0;
+
+    mtmp2.minvent = mtmp.minvent;
+    if (mtmp.m_id) {
+        mtmp2.m_id = mtmp.m_id;
+        if (game.quest_status?.leader_is_dead
+            && (mtmp2.m_id | 0) === (game.quest_status.leader_m_id | 0)) {
+            game.quest_status.leader_is_dead = false;
+        }
+    }
+    mtmp2.mx = mtmp.mx;
+    mtmp2.my = mtmp.my;
+    mtmp2.mux = mtmp.mux;
+    mtmp2.muy = mtmp.muy;
+    mtmp2.mw = mtmp.mw;
+    mtmp2.wormno = mtmp.wormno;
+    mtmp2.misc_worn_check = mtmp.misc_worn_check;
+    mtmp2.weapon_check = mtmp.weapon_check;
+    mtmp2.mtrapseen = mtmp.mtrapseen;
+    mtmp2.mflee = mtmp.mflee;
+    mtmp2.mburied = mtmp.mburied;
+    mtmp2.mundetected = mtmp.mundetected;
+    mtmp2.mfleetim = mtmp.mfleetim;
+    mtmp2.mlstmv = mtmp.mlstmv;
+    mtmp2.m_ap_type = mtmp.m_ap_type;
+
+    mtmp2.mrevived = 1;
+    mtmp2.mavenge = 0;
+    mtmp2.meating = 0;
+    mtmp2.mleashed = 0;
+    mtmp2.mtrapped = 0;
+    mtmp2.msleeping = 0;
+    mtmp2.mfrozen = 0;
+    mtmp2.mcanmove = 1;
+    if (!dmgtype_zap(mtmp2.data, AD_SEDU)
+        && (!SYSOPT_SEDUCE_zap() || !dmgtype_zap(mtmp2.data, AD_SSEX))) {
+        mtmp2.mcan = 0;
+    }
+    mtmp2.mcansee = 1;
+    mtmp2.mblinded = 0;
+    mtmp2.mstun = 0;
+    mtmp2.mconf = 0;
+
+    if (mtmp2.isshk) {
+        neweshk(mtmp);
+        const src = ESHK(mtmp2);
+        const dst = ESHK(mtmp);
+        if (src && dst) Object.assign(dst, src);
+        mtmp.isshk = 1;
+    }
+    replmon(mtmp, mtmp2);
+    newsym(mtmp2.mx | 0, mtmp2.my | 0);
+    restore_cham(mtmp2);
+    return mtmp2;
+}
+
+/**
+ * C ref: read.c cant_revive — remap guard/cleric/angel(/shopkeeper create)
+ * /worm-tail/unique to zombie or doppelganger.
+ * @param {{ mtype: number }} box inout mtype
+ * @returns {boolean}
+ */
+function cant_revive(box, revival, from_obj) {
+    let mtype = box.mtype | 0;
+    if (mtype === PM_GUARD
+        || (mtype === PM_SHOPKEEPER && !revival)
+        || mtype === PM_HIGH_CLERIC
+        || mtype === PM_ALIGNED_CLERIC
+        || mtype === PM_ANGEL) {
+        box.mtype = PM_HUMAN_ZOMBIE;
+        return true;
+    }
+    if (mtype === PM_LONG_WORM_TAIL) {
+        box.mtype = PM_LONG_WORM;
+        return true;
+    }
+    if (unique_corpstat(mons(mtype))
+        && (!from_obj || !OMONST(from_obj))) {
+        box.mtype = PM_DOPPELGANGER;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: zap.c get_obj_location — invent/floor/minvent + buried/contained
+ * when locflags request.
+ * @returns {{ x: number, y: number }|null}
+ */
+function get_obj_location_zap(obj, locflags = 0) {
+    if (!obj) return null;
+    switch (obj.where) {
+    case OBJ_INVENT:
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    case OBJ_FLOOR:
+        return { x: obj.ox | 0, y: obj.oy | 0 };
+    case OBJ_MINVENT:
+        if (obj.ocarry && (obj.ocarry.mx | 0)) {
+            return { x: obj.ocarry.mx | 0, y: obj.ocarry.my | 0 };
+        }
+        break;
+    case OBJ_BURIED:
+        if (locflags & BURIED_TOO) {
+            return { x: obj.ox | 0, y: obj.oy | 0 };
+        }
+        break;
+    case OBJ_CONTAINED:
+        if (locflags & CONTAINED_TOO) {
+            return get_obj_location_zap(obj.ocontainer, locflags);
+        }
+        break;
+    default:
+        break;
+    }
+    return null;
+}
+
+/**
+ * C ref: zap.c get_container_location — outermost container where + nesting.
+ * @returns {{ carrier: object|null, loc: number, nesting: number }}
+ */
+function get_container_location(obj) {
+    let nesting = 0;
+    let cur = obj;
+    while (cur && cur.where === OBJ_CONTAINED) {
+        nesting += 1;
+        cur = cur.ocontainer;
+    }
+    if (!cur) return { carrier: null, loc: 0, nesting };
+    const loc = cur.where | 0;
+    const carrier = loc === OBJ_MINVENT ? (cur.ocarry || null) : null;
+    return { carrier, loc, nesting };
+}
+
+/** C ref: zap.c zombie_can_dig — ROOM/CORR/GRAVE and no trap. */
+function zombie_can_dig(x, y) {
+    if (!isok(x, y)) return false;
+    if (t_at(x, y)) return false;
+    const typ = game.level?.at?.(x, y)?.typ | 0;
+    return typ === ROOM || typ === CORR || typ === GRAVE;
+}
+
+/** Thin obfree after extract — drop refs for GC. */
+function obfree_corpse(obj) {
+    if (!obj) return;
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+    if (obj.oextra) {
+        delete obj.oextra.omonst;
+        delete obj.oextra.omid;
+        delete obj.oextra.oname;
+    }
+}
+
+/**
+ * C ref: zap.c revive — invent/minvent/floor + container/buried +
+ * cant_revive zombie/doppel + montraits/omonst + ghost recorporealize.
+ * Named omit: shop stolen_value; cant_finish_meal; Rider delobj_core force;
+ * animate_statue caller of montraits.
  * @returns {Promise<object|null>} revived monst or null
  */
 async function revive(corpse, by_hero) {
     if (!corpse || (corpse.otyp | 0) !== CORPSE) return null;
-    const montype = corpse.corpsenm | 0;
+    let montype = corpse.corpsenm | 0;
     if (!ismnum(montype)) return null;
+
+    const mptr0 = mons(montype);
+    // Buried auto-reviver (troll/Rider) digs out like a zombie
+    const is_zomb = !!(mptr0 && (mptr0.mlet === 'S_ZOMBIE'
+        || (corpse.where === OBJ_BURIED && is_reviver(mptr0))));
 
     let x = 0;
     let y = 0;
-    if (corpse.where === OBJ_INVENT
-        || (game.invent || []).includes(corpse)) {
-        x = game.u?.ux | 0;
-        y = game.u?.uy | 0;
-    } else if (corpse.where === OBJ_MINVENT && corpse.ocarry) {
-        x = corpse.ocarry.mx | 0;
-        y = corpse.ocarry.my | 0;
-    } else if (corpse.where === OBJ_FLOOR) {
-        x = corpse.ox | 0;
-        y = corpse.oy | 0;
+    let container = null;
+    let container_nesting = 0;
+
+    if (corpse.where !== OBJ_CONTAINED) {
+        const locflags = is_zomb ? BURIED_TOO : 0;
+        // invent may lack where — treat invent membership as OBJ_INVENT
+        if (corpse.where === OBJ_INVENT
+            || (game.invent || []).includes(corpse)) {
+            x = game.u?.ux | 0;
+            y = game.u?.uy | 0;
+        } else {
+            const loc = get_obj_location_zap(corpse, locflags);
+            if (loc) {
+                x = loc.x;
+                y = loc.y;
+            }
+        }
     } else {
-        // contained / buried / free — deferred
+        container = corpse.ocontainer;
+        const info = get_container_location(container);
+        container_nesting = info.nesting | 0;
+        switch (info.loc) {
+        case OBJ_MINVENT:
+            if (info.carrier) {
+                x = info.carrier.mx | 0;
+                y = info.carrier.my | 0;
+            }
+            break;
+        case OBJ_INVENT:
+            x = game.u?.ux | 0;
+            y = game.u?.uy | 0;
+            break;
+        case OBJ_FLOOR: {
+            const loc = get_obj_location_zap(corpse, CONTAINED_TOO);
+            if (loc) {
+                x = loc.x;
+                y = loc.y;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    if (x) {
+        corpse.ox = x;
+        corpse.oy = y;
+    }
+
+    if (!x
+        || (container && (container.olocked
+            || container_nesting > 2
+            || (container.otyp | 0) === STATUE
+            || ((container.otyp | 0) === BAG_OF_HOLDING && rn2(40))))
+        || (is_zomb && corpse.where === OBJ_BURIED
+            && !zombie_can_dig(x, y))) {
         return null;
     }
-    if (!x) return null;
-    corpse.ox = x;
-    corpse.oy = y;
 
-    const mptr = mons(montype);
+    let mptr = mons(montype);
     if (!mptr) return null;
+
     if (corpse.norevive
         || (mptr.mlet === 'S_EEL'
             && !IS_POOL(game.level?.at?.(x, y)?.typ ?? 0))) {
@@ -1650,9 +2346,38 @@ async function revive(corpse, by_hero) {
         y = xy.y;
     }
 
-    const mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
-    // cant_revive / montraits deferred → plain makemon of corpse species
-    const mtmp = makemon(mptr, x, y, mmflags);
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
+    const cgend = (corpse.spe | 0) & CORPSTAT_GENDER;
+    if (cgend === CORPSTAT_MALE) mmflags |= MM_MALE;
+    else if (cgend === CORPSTAT_FEMALE) mmflags |= MM_FEMALE;
+
+    let mtmp = null;
+    const montypeBox = { mtype: montype };
+    if (cant_revive(montypeBox, true, corpse)) {
+        montype = montypeBox.mtype;
+        mtmp = makemon(mons(montype), x, y, mmflags);
+        if (mtmp) {
+            if (has_omid(corpse)) free_omid(corpse);
+            if (has_omonst(corpse)) free_omonst(corpse);
+            if ((mtmp.cham | 0) === PM_DOPPELGANGER) {
+                newcham(mtmp, mptr, 0);
+            } else if (mtmp.data?.mlet === 'S_ZOMBIE') {
+                mtmp.mhp = mtmp.mhpmax = 100;
+                // C: mon_adjust_speed(mtmp, 2, NULL) — MFAST, no msg
+                mtmp.permspeed = MFAST;
+                mtmp.mspeed = MFAST;
+            }
+        }
+    } else if (has_omonst(corpse)) {
+        xy.x = x;
+        xy.y = y;
+        mtmp = montraits(corpse, xy, false);
+        if (mtmp && mtmp.mtame && !mtmp.isminion) {
+            await wary_dog(mtmp, true);
+        }
+    } else {
+        mtmp = makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
+    }
     if (!mtmp) return null;
 
     if (mtmp.mundetected) {
@@ -1688,6 +2413,38 @@ async function revive(corpse, by_hero) {
         // shop stolen_value deferred
     }
 
+    // C: recorporealization of an active ghost via OMID
+    if (has_omid(used)) {
+        const mid = OMID(used);
+        const ghost = find_mid(mid, 0);
+        if (ghost && (ghost.data?.mndx | 0) === PM_GHOST) {
+            if (canseemon(ghost)) {
+                await pline(
+                    `${Monnam(ghost)} is suddenly drawn into its former body!`,
+                );
+            }
+            while (ghost.minvent) {
+                const otmp = ghost.minvent;
+                obj_extract_self(otmp);
+                add_to_minv(mtmp, otmp);
+            }
+            if (ghost.mtame && !mtmp.mtame) {
+                if (await tamedog(mtmp, null, false)) {
+                    mtmp.mtame = ghost.mtame;
+                }
+            }
+            mtmp.mconf = 1;
+            mongone(ghost);
+        }
+        free_omid(used);
+    }
+
+    if (has_oname(used) && !unique_corpstat(mtmp.data)) {
+        christen_monst(mtmp, ONAME(used));
+    }
+    if (used.oeaten) {
+        mtmp.mhp = eaten_stat(mtmp.mhp | 0, used);
+    }
     mtmp.mrevived = 1;
 
     switch (used.where) {
@@ -1700,8 +2457,20 @@ async function revive(corpse, by_hero) {
     case OBJ_MINVENT:
         m_useup(used.ocarry, used);
         break;
+    case OBJ_CONTAINED:
+        obj_extract_self(used);
+        obfree_corpse(used);
+        break;
+    case OBJ_BURIED:
+        if (is_zomb) {
+            obj_extract_self(used);
+            obfree_corpse(used);
+            break;
+        }
+        // C panics for non-zombie buried — leave corpse
+        break;
     default:
-        delobj(used);
+        // C panics; do not invent delobj RNG burn
         break;
     }
     return mtmp;
@@ -2014,9 +2783,11 @@ async function miss_msg(str, mtmp) {
  * C ref: zap.c bhitm — monster hit by wand/spell effect.
  * Envelope (break-wand / IMMEDIATE): WAN_STRIKING, WAN_UNDEAD_TURNING
  * (damage; invent unturn_dead deferred), WAN_POLYMORPH, WAN_CANCELLATION,
- * WAN_TELEPORTATION, WAN_LIGHT (flash_hits deferred → no-op).
- * Named omit: slow/speed/locking/probing/opening/healing/make-invis;
- * long-worm mcorpsenm polish; Knight questart double; spell_damage_bonus.
+ * WAN_TELEPORTATION, WAN_LIGHT (flash_hits_mon), WAN_OPENING/SPE_KNOCK
+ * (release_hold; openholding/openfalling; SPE_KNOCK mhurtle; saddle).
+ * Named omit: slow/speed/locking/probing; long-worm mcorpsenm polish;
+ * Knight questart double; spell_damage_bonus; mhurtle petrify/steed;
+ * that_is_a_mimic box_or_door.
  * @returns {Promise<number>} 0 (non-stopping for bhit range)
  */
 export async function bhitm(mtmp, otmp) {
@@ -2127,7 +2898,81 @@ export async function bhitm(mtmp, otmp) {
         learn_it = canspotmon(mtmp);
         break;
     case WAN_LIGHT:
-        // flash_hits_mon deferred (camera path has a local copy)
+        // C: broken-wand / IMMEDIATE light flash on monster
+        if (await flash_hits_mon(mtmp, otmp)) {
+            learn_it = true;
+            reveal_invis = true;
+        }
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        if (disguised_mimic) {
+            // that_is_a_mimic box_or_door deferred → seemimic
+            seemimic(mtmp);
+        }
+        wake = false; // don't want immediate counterattack
+        if (mtmp === game.u?.ustuck) {
+            await release_hold();
+            learn_it = true;
+        } else {
+            const hold = await openholdingtrap(mtmp);
+            if (hold.happened) {
+                if (hold.noticed) learn_it = true;
+                break;
+            }
+            const fall = await openfallingtrap(mtmp, true);
+            if (fall.happened) {
+                if (fall.noticed) learn_it = true;
+                break;
+            }
+            if (otyp === SPE_KNOCK) {
+                wake = true;
+                if ((mtmp.data?.msize | 0) < MZ_HUMAN
+                    && !m_is_steadfast(mtmp)) {
+                    if (canseemon(mtmp)) {
+                        await pline(`${Monnam(mtmp)} is knocked back!`);
+                    }
+                    await mhurtle(
+                        mtmp,
+                        (mtmp.mx | 0) - (game.u?.ux | 0),
+                        (mtmp.my | 0) - (game.u?.uy | 0),
+                        rnd(2),
+                    );
+                } else if (canseemon(mtmp)) {
+                    await pline(`${Monnam(mtmp)} doesn't budge.`);
+                }
+                if ((mtmp.mhp | 0) > 0) {
+                    await wakeup(mtmp, !mindless(mtmp.data));
+                    await abuse_dog(mtmp);
+                }
+            } else {
+                const saddle = which_armor(mtmp, W_SADDLE);
+                if (saddle) {
+                    let buf = `${s_suffix_zap(Monnam(mtmp))} ${
+                        distant_name(saddle, xname)}`;
+                    const mx = mtmp.mx | 0;
+                    const my = mtmp.my | 0;
+                    if (cansee(mx, my)) {
+                        if (!canspotmon(mtmp)) {
+                            buf = An(distant_name(saddle, xname));
+                        }
+                        await pline(
+                            `${buf} falls to the ${surface_zap(mx, my)}.`,
+                        );
+                    } else if (canspotmon(mtmp)) {
+                        await pline(`${buf} falls off.`);
+                    }
+                    // C: mdrop_obj — extract worn saddle to floor
+                    obj_extract_self(saddle);
+                    saddle.owornmask = 0;
+                    mtmp.misc_worn_check =
+                        (mtmp.misc_worn_check || 0) & ~W_SADDLE;
+                    place_object(saddle, mx, my);
+                    stackobj(saddle);
+                    newsym(mx, my);
+                }
+            }
+        }
         break;
     default:
         break;
@@ -2146,7 +2991,9 @@ export async function bhitm(mtmp, otmp) {
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
  * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH / WAN_POLYMORPH /
  * SPE_POLYMORPH / WAN_STRIKING / WAN_CANCELLATION / WAN_TELEPORTATION /
- * WAN_UNDEAD_TURNING / WAN_LIGHT; other otyps named in C-JS-MAP.
+ * WAN_UNDEAD_TURNING / WAN_LIGHT / WAN_OPENING / SPE_KNOCK;
+ * WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN;
+ * other otyps named in C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
  * @returns {number} damage (0 for healing/sleep/death/poly)
  */
@@ -2272,6 +3119,67 @@ export async function zapyourself(obj, ordinary) {
         // broken wand: lightdamage + flashburn deferred → no hero dmg
         damage = 0;
         break;
+
+    case WAN_OPENING:
+    case SPE_KNOCK: {
+        if (game.u?.ustuck) {
+            await release_hold();
+            learn_it = true;
+        }
+        if (game.u?.uball) {
+            // C: Punished ≡ uball
+            learn_it = true;
+            unpunish();
+        }
+        // invent is hit iff hero doesn't escape from a trap
+        const hold = (game.u?.utrap | 0)
+            ? await openholdingtrap(game.youmonst || { _youmonst: true })
+            : { happened: false, noticed: false };
+        if (hold.noticed) learn_it = true;
+        if (!(game.u?.utrap | 0) || !hold.happened) {
+            await boxlock_invent(obj);
+            const fall = await openfallingtrap(
+                game.youmonst || { _youmonst: true },
+                true,
+            );
+            if (fall.noticed) learn_it = true;
+        }
+        break;
+    }
+
+    case WAN_FIRE:
+    case FIRE_HORN: {
+        // C zap.c zapyourself — music fire horn self-blast (D-0974)
+        learn_it = true;
+        const orig_dmg = d(12, 6);
+        if (Fire_resistance()) {
+            // shieldeff / monstseesu / ugolemeffects deferred
+            await You_feel('rather warm.');
+        } else {
+            await pline("You've set yourself afire!");
+            damage = orig_dmg;
+        }
+        await burn_away_slime();
+        await burnarmor(game.youmonst || { _youmonst: true });
+        await destroy_items(game.youmonst || { _youmonst: true }, AD_FIRE, orig_dmg);
+        await ignite_items(game.invent);
+        break;
+    }
+
+    case WAN_COLD:
+    case SPE_CONE_OF_COLD:
+    case FROST_HORN: {
+        learn_it = true;
+        const orig_dmg = d(12, 6);
+        if (Cold_resistance()) {
+            await You_feel('a little chill.');
+        } else {
+            await pline('You imitate a popsicle!');
+            damage = orig_dmg;
+        }
+        await destroy_items(game.youmonst || { _youmonst: true }, AD_COLD, orig_dmg);
+        break;
+    }
 
     default:
         // Other zapyourself cases deferred

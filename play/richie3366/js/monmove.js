@@ -1312,7 +1312,7 @@ function m_balks_at_approaching(oldappr, mtmp, pdist) {
 /**
  * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
  */
-function sticks(ptr) {
+export function sticks(ptr) {
     const atks = ptr?.mattk || [];
     let hasWrap = false;
     let hasEngl = false;

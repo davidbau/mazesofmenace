@@ -25,7 +25,7 @@ import {
 import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
-import { PM_ROGUE } from './generated/monsters_data.js';
+import { PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
 import { m_at } from './mon.js';
 import { getdir_cmdassist } from './dothrow.js';
 import { b_trapped } from './trap.js';
@@ -37,6 +37,12 @@ const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const CHEST = objectNames.indexOf('CHEST');
+const WAN_LOCKING = objectNames.indexOf('WAN_LOCKING');
+const SPE_WIZARD_LOCK = objectNames.indexOf('SPE_WIZARD_LOCK');
+const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
+const SPE_KNOCK = objectNames.indexOf('SPE_KNOCK');
+const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
+const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 
 // C: PICKLOCK_* return codes
 const PICKLOCK_LEARNED_SOMETHING = -1;
@@ -720,6 +726,56 @@ function simple_typename(otyp) {
 function Is_box(obj) {
     const n = objectNames[obj?.otyp];
     return n === 'LARGE_BOX' || n === 'CHEST';
+}
+
+/**
+ * C ref: lock.c boxlock — wand/spell lock/unlock on a box.
+ * @returns {Promise<boolean>} true if something happened
+ */
+export async function boxlock(obj, otmp) {
+    if (!obj || !otmp || !Is_box(obj)) return false;
+    let res = false;
+    switch (otmp.otyp | 0) {
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK:
+        if (!obj.olocked) {
+            await pline('Klunk!');
+            obj.olocked = 1;
+            obj.obroken = 0;
+            obj.lknown = Role_if(PM_WIZARD) ? 1 : 0;
+            res = true;
+        }
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        if (obj.olocked) {
+            await pline('Klick!');
+            obj.olocked = 0;
+            res = true;
+            obj.lknown = Role_if(PM_WIZARD) ? 1 : 0;
+        } else {
+            obj.obroken = 0; // silently fix if broken
+        }
+        break;
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH:
+        if (game.xlock?.box === obj) reset_pick();
+        break;
+    default:
+        break;
+    }
+    return res;
+}
+
+/**
+ * C ref: zap.c boxlock_invent — (un)lock all carried boxes.
+ * Named omit: update_inventory UI refresh (lknown may change).
+ */
+export async function boxlock_invent(obj) {
+    if (!obj) return;
+    for (const otmp of [...(game.invent || [])]) {
+        if (Is_box(otmp)) await boxlock(otmp, obj);
+    }
 }
 
 /** C ref: obj.h is_weptool */

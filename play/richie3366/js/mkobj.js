@@ -25,8 +25,12 @@ import {
     objectNames,
 } from './objects.js';
 // objectNames used for known-flag heuristic (oc_uses_known not in table yet)
-import { rndmonnum, rndmonnum_adj } from './makemon.js';
-import { undead_to_corpse, can_be_hatched, dead_species } from './mon.js';
+import {
+    rndmonnum, rndmonnum_adj,
+} from './makemon.js';
+import {
+    undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
+} from './mon.js';
 import { nartifact_exist, mk_artifact } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
@@ -36,21 +40,24 @@ import { PM_SAMURAI } from './generated/monsters_data.js';
 import { otyp_uses_known, distant_name, doname } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
-    ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT,
-    HATCH_EGG, MAX_EGG_HATCH_TIME,
+    ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL,
+    MELT_ICE_AWAY, HATCH_EGG, BURN_OBJECT, MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED, OBJ_MIGRATING,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
-    Is_rogue_level,
+    Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
+    LS_OBJECT, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
+import { del_light_source } from './light.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
+const ROT_ICE_ADJUSTMENT = 2; // mkobj.c — rotting on ice takes 2× as long
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const ELVEN_SHIELD = objectNames.indexOf('ELVEN_SHIELD');
 const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
@@ -213,7 +220,7 @@ export function weight(obj) {
  * C ref: eat.c eaten_stat — scale base by oeaten/obj_nutrition (min 1).
  * Nutrition: CORPSE → mons.cnutrit; else objects.oc_nutrition / food table.
  */
-function eaten_stat(base, obj) {
+export function eaten_stat(base, obj) {
     let full_amount;
     if (obj.otyp === CORPSE) {
         full_amount = mons(obj.corpsenm)?.cnutrit ?? 0;
@@ -311,6 +318,12 @@ export function bless(otmp) {
     if (!otmp) return;
     otmp.blessed = true;
     otmp.cursed = false;
+}
+
+/** C ref: mkobj.c unbless — clear blessed only. */
+export function unbless(otmp) {
+    if (!otmp) return;
+    otmp.blessed = false;
 }
 
 /**
@@ -544,12 +557,13 @@ function special_corpse(num) {
 }
 
 /**
- * C ref: timeout.c timer queue (gt.timer_base) — object timers only.
+ * C ref: timeout.c timer queue (gt.timer_base) — object + level timers.
  * start_timer inserts by absolute timeout (moves+when); run_timers fires
  * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
  * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533) but hatch_egg
- * callback deferred; REVIVE_MON / ZOMBIFY_MON / burn / fig / melt deferred
- * (no-op fire clears the queue entry).
+ * callback deferred; TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away (D-0965);
+ * REVIVE_MON / ZOMBIFY_MON / burn / fig deferred (no-op fire clears the
+ * queue entry).
  */
 function timer_base() {
     if (!game._timer_base) game._timer_base = null;
@@ -577,7 +591,8 @@ export function obj_stop_timers(obj) {
 
 /**
  * C ref: timeout.c stop_timer — remove one (action,obj) timer; return
- * remaining turns (timeout − moves), or 0 if none. cleanup_burn deferred.
+ * remaining turns (timeout − moves), or 0 if none. BURN_OBJECT runs
+ * cleanup_burn (restore age, del LS_OBJECT, clear lamplit).
  */
 export function stop_timer(action, obj) {
     if (!obj) return 0;
@@ -591,7 +606,14 @@ export function stop_timer(action, obj) {
             if (prev) prev.next = next;
             else g._timer_base = next;
             obj.timed = Math.max(0, (obj.timed | 0) - 1);
-            return (curr.timeout | 0) - moves;
+            const expire = curr.timeout | 0;
+            // C: timeout_funcs[BURN_OBJECT].cleanup = cleanup_burn
+            if (action === BURN_OBJECT && obj.lamplit) {
+                del_light_source(LS_OBJECT, obj);
+                obj.age = (obj.age | 0) + (expire - moves);
+                obj.lamplit = 0;
+            }
+            return expire - moves;
         }
         prev = curr;
         curr = next;
@@ -600,16 +622,23 @@ export function stop_timer(action, obj) {
 }
 
 /**
- * C ref: timeout.c start_timer — queue object timer; timeout = moves+when.
- * Duplicate (same obj + action) aborted like C (no second insert).
+ * C ref: timeout.c start_timer — queue timer; timeout = moves+when.
+ * TIMER_OBJECT: arg is obj (duplicate same obj+action aborted).
+ * TIMER_LEVEL: arg is packed a_long (or `{ a_long }`); used for
+ * MELT_ICE_AWAY spot timers (D-0965).
  */
-export function start_timer(when, kind, action, obj) {
-    if (!obj) return 0;
+export function start_timer(when, kind, action, arg) {
+    const isObj = (kind | 0) === TIMER_OBJECT;
+    if (isObj && !arg) return 0;
+    const obj = isObj ? arg : null;
+    const a_long = isObj
+        ? 0
+        : (typeof arg === 'number' ? (arg | 0) : (arg?.a_long | 0));
     const g = timer_base();
     for (let dup = g._timer_base; dup; dup = dup.next) {
-        if (dup.kind === kind && dup.action === action && dup.obj === obj) {
-            return 0;
-        }
+        if ((dup.kind | 0) !== (kind | 0) || dup.action !== action) continue;
+        if (isObj && dup.obj === obj) return 0;
+        if (!isObj && (dup.a_long | 0) === a_long) return 0;
     }
     const moves = game.moves | 0;
     const gnu = {
@@ -618,6 +647,7 @@ export function start_timer(when, kind, action, obj) {
         kind: kind | 0,
         action: action | 0,
         obj,
+        a_long,
     };
     let prev = null;
     let curr = g._timer_base;
@@ -628,8 +658,48 @@ export function start_timer(when, kind, action, obj) {
     gnu.next = curr;
     if (prev) prev.next = gnu;
     else g._timer_base = gnu;
-    if (kind === TIMER_OBJECT) obj.timed = (obj.timed | 0) + 1;
+    if (isObj) obj.timed = (obj.timed | 0) + 1;
     return when;
+}
+
+/**
+ * C ref: timeout.c spot_time_left — remaining turns for a TIMER_LEVEL
+ * action at (x,y), or 0 if none.
+ */
+export function spot_time_left(x, y, action) {
+    const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
+    const moves = game.moves | 0;
+    for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
+        if ((curr.kind | 0) === TIMER_LEVEL
+            && curr.action === action
+            && (curr.a_long | 0) === where) {
+            return ((curr.timeout | 0) - moves) | 0;
+        }
+    }
+    return 0;
+}
+
+/**
+ * C ref: timeout.c spot_stop_timers — remove TIMER_LEVEL timers for
+ * action at (x,y).
+ */
+export function spot_stop_timers(x, y, action) {
+    const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
+    const g = timer_base();
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr) {
+        const next = curr.next;
+        if ((curr.kind | 0) === TIMER_LEVEL
+            && curr.action === action
+            && (curr.a_long | 0) === where) {
+            if (prev) prev.next = next;
+            else g._timer_base = next;
+        } else {
+            prev = curr;
+        }
+        curr = next;
+    }
 }
 
 /**
@@ -677,6 +747,9 @@ async function rot_corpse(obj) {
 /**
  * C ref: timeout.c run_timers — fire due timers at start of list.
  * Called from nh_timeout after intrinsic TIMEOUT handling.
+ * Envelope: ROT_CORPSE; ROT_ORGANIC (dig.c); TIMER_LEVEL MELT_ICE_AWAY
+ * (D-0965/D-0967); BURN_OBJECT (D-0978). Named omit: REVIVE_MON /
+ * ZOMBIFY_MON / hatch.
  */
 export async function run_timers() {
     const g = timer_base();
@@ -689,8 +762,18 @@ export async function run_timers() {
         }
         if (curr.action === ROT_CORPSE) {
             await rot_corpse(curr.obj);
+        } else if (curr.action === ROT_ORGANIC) {
+            const { rot_organic } = await import('./dig.js');
+            await rot_organic(curr.obj);
+        } else if (curr.action === MELT_ICE_AWAY
+            && (curr.kind | 0) === TIMER_LEVEL) {
+            const { melt_ice_away } = await import('./zap.js');
+            await melt_ice_away(curr.a_long | 0);
+        } else if (curr.action === BURN_OBJECT && curr.obj) {
+            const { burn_object } = await import('./timeout.js');
+            await burn_object(curr.obj, curr.timeout | 0);
         }
-        // REVIVE_MON / ZOMBIFY_MON / BURN_OBJECT / … deferred — entry dropped
+        // REVIVE_MON / ZOMBIFY_MON / hatch deferred — entry dropped
     }
 }
 
@@ -1205,6 +1288,8 @@ export function place_object(otmp, x, y) {
     }
     // C block_point is incremental; JS rebuilds via does_block after place
     if (firstBoulder) recalc_block_point(x, y);
+    // C: if (otmp->timed) obj_timer_checks(otmp, x, y, 0);
+    if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
 }
 
 /**
@@ -1335,6 +1420,93 @@ export function add_to_buried(obj) {
     game.level.buriedobjlist = obj;
 }
 
+/** C ref: dbridge.c / rm.h is_ice — ICE or drawbridge-under DB_ICE. */
+function is_ice_at(x, y) {
+    if (!isok(x, y)) return false;
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return false;
+    if ((lev.typ | 0) === ICE) return true;
+    return (lev.typ | 0) === DRAWBRIDGE_UP
+        && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
+}
+
+/**
+ * C ref: mkobj.c obj_timer_checks — stretch/shrink CORPSE rot/revive timers
+ * on/off ice. force: 0 = check, <0 force off, >0 force on.
+ */
+export function obj_timer_checks(otmp, x, y, force = 0) {
+    if (!otmp) return;
+    let tleft = 0;
+    let action = ROT_CORPSE;
+    let restart_timer = false;
+    const on_floor = otmp.where === OBJ_FLOOR;
+    const buried = otmp.where === OBJ_BURIED;
+
+    if (otmp.otyp === CORPSE && (on_floor || buried) && is_ice_at(x, y)) {
+        tleft = stop_timer(action, otmp);
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_timer(action, otmp);
+        }
+        if (tleft !== 0) {
+            otmp.on_ice = 1;
+            tleft *= ROT_ICE_ADJUSTMENT;
+            restart_timer = true;
+            const age = (game.moves | 0) - (otmp.age | 0);
+            otmp.age = (game.moves | 0) - (age * ROT_ICE_ADJUSTMENT);
+        }
+    } else if ((force | 0) < 0
+        || (otmp.otyp === CORPSE && otmp.on_ice
+            && !((on_floor || buried) && is_ice_at(x, y)))) {
+        tleft = stop_timer(action, otmp);
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_timer(action, otmp);
+        }
+        if (tleft !== 0) {
+            otmp.on_ice = 0;
+            tleft = (tleft / ROT_ICE_ADJUSTMENT) | 0;
+            restart_timer = true;
+            const age = (game.moves | 0) - (otmp.age | 0);
+            otmp.age = (otmp.age | 0)
+                + (((age * (ROT_ICE_ADJUSTMENT - 1)) / ROT_ICE_ADJUSTMENT) | 0);
+        }
+    }
+    if (restart_timer) {
+        start_timer(tleft, TIMER_OBJECT, action, otmp);
+    }
+}
+
+/**
+ * C ref: mkobj.c obj_ice_effects — recheck floor (+ optional buried) timers
+ * when ice appears/vanishes at <x,y>.
+ */
+export function obj_ice_effects(x, y, do_buried) {
+    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+        if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
+    }
+    if (do_buried) {
+        for (let otmp = game.level?.buriedobjlist; otmp; otmp = otmp.nobj) {
+            if ((otmp.ox | 0) === (x | 0) && (otmp.oy | 0) === (y | 0)) {
+                if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: mkobj.c peek_at_iced_corpse_age — effective age if lifted off ice.
+ */
+export function peek_at_iced_corpse_age(otmp) {
+    if (!otmp) return 0;
+    let retval = otmp.age | 0;
+    if (otmp.otyp === CORPSE && otmp.on_ice) {
+        const age = (game.moves | 0) - (otmp.age | 0);
+        retval += (((age * (ROT_ICE_ADJUSTMENT - 1)) / ROT_ICE_ADJUSTMENT) | 0);
+    }
+    return retval;
+}
+
 /**
  * C ref: mkobj.c add_to_migration — OBJ_FREE → migrating_objs chain.
  * Named omit: maybe_reset_pick (lock context); unpaid panic (caller
@@ -1422,6 +1594,7 @@ export function obj_extract_self(obj) {
         const ox = obj.ox | 0;
         const oy = obj.oy | 0;
         const wasBoulder = obj.otyp === BOULDER;
+        const wasTimed = !!(obj.timed | 0);
         const key = `${ox},${oy}`;
         if (game._objects_at) {
             let head = game._objects_at.get(key) || null;
@@ -1448,6 +1621,12 @@ export function obj_extract_self(obj) {
         }
         // C remove_object: boulder → recalc_block_point
         if (wasBoulder) recalc_block_point(ox, oy);
+        obj.nobj = null;
+        obj.nexthere = null;
+        obj.where = OBJ_FREE;
+        // C remove_object: if (otmp->timed) obj_timer_checks(otmp, x, y, 0)
+        if (wasTimed) obj_timer_checks(obj, ox, oy, 0);
+        return;
     } else if (obj.where === OBJ_MINVENT || obj.where === 'MINVENT') {
         // C: extract_nobj(obj, &obj->ocarry->minvent); clear ocarry
         const mon = obj.ocarry;
@@ -1481,6 +1660,21 @@ export function obj_extract_self(obj) {
             cont.owt = weight(cont);
         }
         obj.ocontainer = null;
+    } else if (obj.where === OBJ_BURIED) {
+        // C: extract_nobj(obj, &svl.level.buriedobjlist)
+        const lvl = game.level;
+        if (lvl) {
+            if (lvl.buriedobjlist === obj) {
+                lvl.buriedobjlist = obj.nobj || null;
+            } else {
+                for (let p = lvl.buriedobjlist; p; p = p.nobj) {
+                    if (p.nobj === obj) {
+                        p.nobj = obj.nobj || null;
+                        break;
+                    }
+                }
+            }
+        }
     }
     obj.nobj = null;
     obj.nexthere = null;
@@ -1551,11 +1745,22 @@ export function mkgold(amount, x, y) {
 }
 
 // C ref: mkobj.c mkcorpstat()
-export function mkcorpstat(objtype, _mtmp, ptr, x, y, corpstatflags) {
+export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
     const init = !!(corpstatflags & 8); // CORPSTAT_INIT
     const otmp = (x || y) ? mksobj_at(objtype, x, y, init, false) : mksobj(objtype, init, false);
-    if (otmp) otmp.spe = (corpstatflags & 0x07); // CORPSTAT_SPE_VAL
-    if (ptr != null && otmp) {
+    if (!otmp) return otmp;
+    otmp.spe = (corpstatflags & 0x07); // CORPSTAT_SPE_VAL
+    // C: otmp->norevive = gm.mkcorpstat_norevive
+    if (game.mkcorpstat_norevive) otmp.norevive = 1;
+
+    // C: when mtmp non-null — save_mtraits + ptr default + cancelled norevive
+    if (mtmp) {
+        save_mtraits(otmp, mtmp);
+        if (ptr == null) ptr = mtmp.data;
+        if (mtmp.mcan && ptr && !is_rider(ptr)) otmp.norevive = 1;
+    }
+
+    if (ptr != null) {
         // Override random corpsenm — ptr may be mndx number or mons struct
         const mndx = typeof ptr === 'number' ? ptr : (ptr.mndx ?? NON_PM);
         const old_corpsenm = otmp.corpsenm;
@@ -1569,6 +1774,128 @@ export function mkcorpstat(objtype, _mtmp, ptr, x, y, corpstatflags) {
         }
     }
     return otmp;
+}
+
+/**
+ * C ref: mkobj.c newoextra — allocate oextra bag on obj.
+ */
+function newoextra(obj) {
+    if (!obj.oextra) obj.oextra = {};
+    return obj.oextra;
+}
+
+/**
+ * C ref: mkobj.c newomonst — attach empty monst shell for saved traits.
+ */
+export function newomonst(otmp) {
+    if (!otmp) return;
+    newoextra(otmp);
+    if (!otmp.oextra.omonst) otmp.oextra.omonst = {};
+}
+
+/**
+ * C ref: mkobj.c free_omonst — drop saved traits monst.
+ */
+export function free_omonst(otmp) {
+    if (otmp?.oextra?.omonst) {
+        otmp.oextra.omonst = null;
+        delete otmp.oextra.omonst;
+    }
+}
+
+/**
+ * C ref: mkobj.c newomid — ensure oextra; OMID starts 0 until assigned.
+ */
+export function newomid(otmp) {
+    if (!otmp) return;
+    newoextra(otmp);
+    if (otmp.oextra.omid == null) otmp.oextra.omid = 0;
+}
+
+/**
+ * C ref: mkobj.c free_omid — clear corpse↔ghost link.
+ */
+export function free_omid(otmp) {
+    if (otmp?.oextra) otmp.oextra.omid = 0;
+}
+
+/**
+ * C ref: mkobj.c obj_attach_mid — lasting association corpse↔ghost m_id.
+ */
+export function obj_attach_mid(obj, mid) {
+    if (!mid || !obj) return null;
+    newomid(obj);
+    obj.oextra.omid = mid | 0;
+    return obj;
+}
+
+/**
+ * C ref: mkobj.c save_mtraits — snapshot live monst onto corpse/statue omonst.
+ * Named omit: forget_temple_entry for ispriest (EPRI still copied).
+ */
+export function save_mtraits(obj, mtmp) {
+    if (!obj || !mtmp) return obj;
+    // forget_temple_entry(mtmp) deferred for ispriest
+    if (!has_omonst(obj)) newomonst(obj);
+    if (!has_omonst(obj)) return obj;
+
+    const baselevel = mtmp.data?.mlevel | 0;
+    const mtmp2 = OMONST(obj);
+    // C: *mtmp2 = *mtmp then invalidate pointers
+    const keys = Object.keys(mtmp);
+    for (const k of keys) {
+        if (k === 'mextra' || k === 'nmon' || k === 'data'
+            || k === 'minvent' || k === 'mw' || k === 'edog') continue;
+        mtmp2[k] = mtmp[k];
+    }
+    mtmp2.mextra = null;
+    mtmp2.mnum = mtmp.data?.mndx ?? mtmp.mnum ?? 0;
+    mtmp2.nmon = null;
+    mtmp2.data = null;
+    mtmp2.minvent = null;
+    mtmp2.mw = null;
+    mtmp2.wormno = 0;
+    if (mtmp.mextra || mtmp.edog) copy_mextra(mtmp2, mtmp);
+    if ((mtmp2.mhpmax | 0) <= baselevel) mtmp2.mhpmax = baselevel + 1;
+    if ((mtmp2.mhp | 0) > (mtmp2.mhpmax | 0)) mtmp2.mhp = mtmp2.mhpmax | 0;
+    if ((mtmp2.mhp | 0) < 1) mtmp2.mhp = 0;
+    mtmp2.mstate = (mtmp2.mstate | 0) & ~MON_DETACH;
+    return obj;
+}
+
+/**
+ * C ref: mkobj.c get_mtraits — pointer into omonst or deep copy.
+ * Never insert non-copy result into fmon.
+ */
+export function get_mtraits(obj, copyof) {
+    if (!has_omonst(obj)) return null;
+    const mtmp = OMONST(obj);
+    if (!mtmp) return null;
+    if (copyof) {
+        const mnew = {};
+        for (const k of Object.keys(mtmp)) {
+            if (k === 'mextra' || k === 'edog') continue;
+            mnew[k] = mtmp[k];
+        }
+        mnew.mextra = null;
+        if (mtmp.mextra || mtmp.edog) copy_mextra(mnew, mtmp);
+        mnew.data = mons(mnew.mnum | 0);
+        return mnew;
+    }
+    mtmp.data = mons(mtmp.mnum | 0);
+    return mtmp;
+}
+
+/**
+ * C ref: mkobj.c corpse_revive_type — corpsenm or omonst.mnum.
+ */
+export function corpse_revive_type(obj) {
+    let revivetype = obj?.corpsenm | 0;
+    if (has_omonst(obj)) {
+        const mtmp = get_mtraits(obj, false);
+        if (mtmp) revivetype = mtmp.mnum | 0;
+    }
+    return revivetype;
 }
 
 export { O as OBJ };

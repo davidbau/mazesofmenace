@@ -603,7 +603,7 @@ function dmgtype(ptr, adtyp) {
 /**
  * C ref: mondata.h digests — AT_ENGL + AD_DGST (purple worm / trapper).
  */
-function digests(ptr) {
+export function digests(ptr) {
     const slots = ptr?.mattk;
     if (!slots) return false;
     for (const a of slots) {
@@ -667,7 +667,7 @@ function failed_grab(_magr, mattk) {
 /**
  * C ref: mon.c set_ustuck — bind / clear hero grabber; clears swallow on null.
  */
-function set_ustuck(mtmp) {
+export function set_ustuck(mtmp) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
@@ -683,7 +683,7 @@ function set_ustuck(mtmp) {
  * Swallowed exit: vision_full_recalc + docrt (Hallu display RNG; D-0838).
  * Named omissions: Punished placebc.
  */
-async function unstuck(mtmp) {
+export async function unstuck(mtmp) {
     const u = game.u || {};
     if (u.ustuck !== mtmp) return;
     const ptr = mtmp.data;
@@ -708,7 +708,7 @@ async function unstuck(mtmp) {
 /**
  * C ref: mhitu.c expels — unstuck + mnexto; spoteffects / um_dist deferred.
  */
-async function expels(mtmp, mdat, message) {
+export async function expels(mtmp, mdat, message) {
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
     if (message) {

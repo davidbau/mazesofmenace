@@ -2162,8 +2162,8 @@ async function accessory_has_effect(otmp) {
  * (default oc_oprop FROMOUTSIDE + see-invis/invis/levitation/PfSC arms;
  * adorn/gain-str/con/increase/protection/free-action; amulet change/
  * unchanging/strangle choke/restful; sustain/life/fly/reflect no-ops).
- * Named omissions: sink-fall death beyond Ring_gone; learnring;
- * float_down in Ring_off; restartcham polish beyond restartcham helper.
+ * Named omissions: sink-fall death beyond Ring_gone;
+ * restartcham polish beyond restartcham helper.
  */
 async function eataccessory(otmp) {
     const u = game.u || (game.u = {});
@@ -2351,7 +2351,7 @@ async function eataccessory(otmp) {
  * carried useup else useupf.
  * Named omissions: SCR_MAIL ifdef;
  * artifact_light in uwepgone; sink-fall death beyond Ring_gone;
- * float_down / learnring / adjust_attrib in Ring_off_or_gone.
+ * sink-fall death polish beyond Ring_gone.
  */
 async function eatspecial() {
     const otmp = game.context?.victual?.piece;

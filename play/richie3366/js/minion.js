@@ -1,21 +1,23 @@
 // minion.js — Demon/angel summon helpers (partial).
-// C ref: minion.c msummon / ndemon / dlord / dprince / monster_census;
-//         mondata.c msummon_environ.
+// C ref: minion.c msummon / ndemon / dlord / dprince / monster_census /
+//         lminion / summon_minion; mondata.c msummon_environ.
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
-import { pline, canseemon } from './display.js';
+import { pline, canseemon, verbalize, You_feel } from './display.js';
 import { Monnam } from './do_name.js';
 import { an } from './objnam.js';
-import { makemon, mkclass_aligned, newemin } from './makemon.js';
+import { makemon, mkclass, mkclass_aligned, newemin } from './makemon.js';
 import {
-    mons, is_demon, is_ndemon, is_dlord, is_dprince, G_UNIQ,
+    mons, is_demon, is_ndemon, is_dlord, is_dprince, is_lord, G_UNIQ,
 } from './monsters.js';
 import {
-    NON_PM, A_NONE, G_GONE, MM_EMIN, MM_NOMSG, GEHENNOM, In_endgame,
+    NON_PM, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, G_GONE, MM_EMIN, MM_NOMSG,
+    GEHENNOM, In_endgame, STRAT_APPEARMSG,
 } from './const.js';
 import { ART_DEMONBANE } from './generated/artifacts_data.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { align_gname } from './roles.js';
 
 const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
 const PM_BONE_DEVIL = monsterNames.indexOf('PM_BONE_DEVIL');
@@ -40,10 +42,29 @@ const PM_DUST_VORTEX = monsterNames.indexOf('PM_DUST_VORTEX');
 const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
 const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
 const PM_YELLOW_LIGHT = monsterNames.indexOf('PM_YELLOW_LIGHT');
+const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const PM_GUARD = monsterNames.indexOf('PM_GUARD');
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+
+/** C: minion.c elementals[] — four basic elementals. */
+const ELEMENTALS = [
+    PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL,
+    PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL,
+];
 
 function sgn(n) {
     const x = n | 0;
     return (x > 0) - (x < 0);
+}
+
+/** C ref: hacklib.c s_suffix — possessive for Deaf booming-voice feel. */
+function s_suffix(s) {
+    const str = String(s || '');
+    if (str === 'it') return 'its';
+    if (str === 'you') return 'your';
+    if (str.endsWith('s')) return `${str}'`;
+    return `${str}'s`;
 }
 
 /** C ref: dungeon.h Inhell — In_hell(&u.uz) / Gehennom. */
@@ -134,6 +155,91 @@ function Amonnam(mtmp) {
 export function ndemon(atyp) {
     const ptr = mkclass_aligned('S_DEMON', 0, atyp);
     return (ptr && is_ndemon(ptr)) ? (ptr.mndx | 0) : NON_PM;
+}
+
+/**
+ * C ref: minion.c lminion — mkclass(S_ANGEL) that is not a lord.
+ * @returns {number} mndx or NON_PM
+ */
+export function lminion() {
+    for (let tryct = 0; tryct < 20; tryct++) {
+        const ptr = mkclass('S_ANGEL', 0);
+        if (ptr && !is_lord(ptr)) return ptr.mndx | 0;
+    }
+    return NON_PM;
+}
+
+/**
+ * C ref: minion.c summon_minion — hostile minion for divine wrath.
+ * Named omissions: SetVoice pitch; full EMIN polish beyond min_align;
+ * Deaf You_feel path uses s_suffix of align_gname.
+ * @param {number} alignment
+ * @param {boolean} talk
+ */
+export async function summon_minion(alignment, talk) {
+    let mnum;
+    switch (alignment | 0) {
+    case A_LAWFUL:
+        mnum = lminion();
+        break;
+    case A_NEUTRAL:
+        mnum = ELEMENTALS[rn2(ELEMENTALS.length)];
+        break;
+    case A_CHAOTIC:
+    case A_NONE:
+        mnum = ndemon(alignment);
+        break;
+    default:
+        mnum = ndemon(A_NONE);
+        break;
+    }
+
+    let mon = null;
+    if (mnum === NON_PM) {
+        mon = null;
+    } else if (mnum === PM_ANGEL) {
+        mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            mon.isminion = 1;
+            if (!mon.mextra) mon.mextra = {};
+            if (!mon.mextra.emin) newemin(mon);
+            mon.mextra.emin.min_align = alignment;
+            mon.mextra.emin.renegade = false;
+        }
+    } else if (mnum !== PM_SHOPKEEPER && mnum !== PM_GUARD
+        && mnum !== PM_ALIGNED_CLERIC && mnum !== PM_HIGH_CLERIC) {
+        mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            mon.isminion = 1;
+            if (!mon.mextra) mon.mextra = {};
+            if (!mon.mextra.emin) newemin(mon);
+            mon.mextra.emin.min_align = alignment;
+            mon.mextra.emin.renegade = false;
+        }
+    } else {
+        mon = makemon(mons(mnum), game.u?.ux, game.u?.uy, MM_NOMSG);
+    }
+
+    if (mon) {
+        if (talk) {
+            const gname = align_gname(game.urole, alignment);
+            const deaf = !!(game.u?.Deaf || (game.u?.HDeaf | 0)
+                || (game.u?.EDeaf | 0) || game.u?.uroleplay?.deaf);
+            if (!deaf) {
+                await pline(`The voice of ${gname} booms:`);
+            } else {
+                await You_feel(`${s_suffix(gname)} booming voice:`);
+            }
+            // SetVoice deferred
+            await verbalize('Thou shalt pay for thine indiscretion!');
+            if (canseemon(mon)) {
+                await pline(`${Amonnam(mon)} appears before you.`);
+            }
+            mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_APPEARMSG;
+        }
+        mon.mpeaceful = false;
+        // don't call set_malign(); player was naughty
+    }
 }
 
 /** C ref: minion.c dlord — rn1 among juiblex..yeenoghu, else ndemon. */

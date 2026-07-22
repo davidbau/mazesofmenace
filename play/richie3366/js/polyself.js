@@ -674,7 +674,7 @@ async function break_armor() {
                 const how = verysmall(uptr) ? 'slide' : 'are pushed';
                 await pline(`Your boots ${how} off your feet!`);
             }
-            Boots_off();
+            await Boots_off();
             await dropx(boots);
         }
     }
