@@ -282,7 +282,7 @@ header.post-header-small::after {
 
 <h2>Massive Code is an Interpretability Problem</h2>
 
-<p>NetHack 5.0 is 442,901 lines of C and Lua accumulated over forty-six years. A serious port will contain more code than any one person can carefully review. Is it possible to do high-quality software engineering without reading the code?</p>
+<p>NetHack 5.0 is 442,901 lines of C and Lua accumulated over more than four decades. A serious port will contain more code than any one person can carefully review. Is it possible to do high-quality software engineering without reading the code?</p>
 
 <p>The lack of code review is an emblematic AI interpretability problem.</p>
 
@@ -316,11 +316,11 @@ The saddled pony bites the kobold zombie.  &#9474;  The kobold zombie is destroy
     <img src="img/leaderboard-0714.png" alt="The agentic category of the Teleport leaderboard, with xeophon boxed in red and lockwo boxed in blue">
 </figure>
 
-<p>The contest judges only the player-visible outputs, but you can get some insight from the score breakdown.  The colored number is the score from public sessions, and the gray number is the score from secret sessions that contestants cannot see. Xeophon scores far higher, but there is a huge gap between the public score (nearly perfect) and the secret score.  Lockwo scores far lower, but there is a much smaller gap between the public score and secret score. I found the lockwo results remarkable. To understand the difference, it is worth doing a short code review of the two contestants.</p>
+<p>The contest judges only the player-visible outputs, but you can get some insight from the score breakdown.  The colored number is the score from public sessions, and the gray number is the score from secret sessions that contestants cannot see. Xeophon scores far higher, but there is a huge gap between the public score (nearly perfect) and the secret score.  Lockwo scores far lower, but there is a much smaller gap between the public score and secret score. I found the lockwo results amazing. To understand the difference, it is worth doing a short code review of the two contestants.</p>
 
 <h2>Reviewing Xeophon&rsquo;s Pony Attack Code</h2>
 
-<p><a href="https://github.com/xeophon/teleport-contest">Xeophon</a> is a prolific Codex agent run by <a href="https://florianbrand.com/">Florian Brand</a>. Let us follow the code that produces the two screens above.</p>
+<p><a href="https://github.com/xeophon/teleport-contest">Xeophon</a> is a remarkably prolific Codex agent run by <a href="https://florianbrand.com/">Florian Brand</a>. Let us follow the code that produces the two screens above.</p>
 
 <p>A pony can make more than one attack in a turn. In this case an earlier attack has already been resolved, and the program is preparing the pony&rsquo;s second attack. NetHack&rsquo;s messages sometimes pause at a <code>--More--</code> prompt, so the JavaScript port has to save its place and resume after the player presses another key. Xeophon begins that continuation with this condition:</p>
 
@@ -362,11 +362,9 @@ The saddled pony bites the kobold zombie.  &#9474;  The kobold zombie is destroy
 
 <p>At two points the program draws random numbers, but it does not do anything with them. It never subtracts damage from the zombie&rsquo;s hit points, and it never changes the pony. Finally it removes the zombie directly from the monster list. The zombie&rsquo;s hit points are not consulted before it disappears.</p>
 
-<p>Why would anybody write code like this? Because it passes the test. The replay checks that random-number calls occur at the right points, so Xeophon makes the two calls. The message is correct. With the zombie removed, the map is perfectly correct. This exact second-attack pony kill occurs only once in the published sessions, so a path tailored to this event can collect the screen point without implementing any general rule.</p>
-
 <p>The dice are rolled for their count, not their consequences.</p>
 
-<p>No human reviewer would accept this as a general implementation of pet combat. But finding it required looking in the right place. In five weeks, Xeophon produced about 130,000 surviving lines of JavaScript over more than 1,400 commits&mdash;roughly 3,500 lines on an active day, without counting the code it wrote and later replaced.</p>
+<p>Why would anybody write code like this? Because it passes the test! Of course no human reviewer would accept this as a general implementation of pet combat. But finding it required looking in the right place. In five weeks, Xeophon produced about 130,000 surviving lines of JavaScript over more than 1,400 commits&mdash;roughly 3,500 lines on an active day, without counting the code it wrote and later replaced.</p>
 
 <p>The strange pony code is easy to reject once we have found it. The problem is finding it among the other 130,000 lines. At this rate, careful line-by-line review is no longer the main way a human can understand the result.</p>
 
