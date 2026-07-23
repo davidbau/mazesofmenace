@@ -15,11 +15,17 @@ import {
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     In_quest,
+    ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
+    ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
+    HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
+    MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR,
+    TRAPPED_CHEST,
 } from './const.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_CYAN, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BLUE, CLR_RED,
-    CLR_ORANGE, CLR_GREEN, DEC_TO_UNICODE, ATR_INVERSE,
+    CLR_ORANGE, CLR_GREEN, CLR_MAGENTA, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA,
+    DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { monster_by_pmidx, infravisible } from './makemon.js';
 import { objects } from './mkobj.js';
@@ -706,6 +712,45 @@ export function covers_objects(loc) {
         || typ === LAVAPOOL || typ === LAVAWALL;
 }
 
+// Glyph (sym char + color) for a seen trap.  C ref: display.h
+// trap_to_glyph(trap) -> cmap_to_glyph(trap_to_defsym(ttyp)); rm.h
+// trap_to_defsym(t) = S_arrow_trap + (t) - 1.  The sym char and color come
+// from drawing.c defsyms[] (defsym.h PCHAR entries), keyed here by ttyp
+// (ARROW_TRAP..TRAPPED_CHEST = 1..25).  HI_METAL=CLR_CYAN, HI_ZAP=CLR_BRIGHT_BLUE.
+const trap_defsym = {
+    [ARROW_TRAP]: { ch: '^', color: CLR_CYAN },            // HI_METAL
+    [DART_TRAP]: { ch: '^', color: CLR_CYAN },             // HI_METAL
+    [ROCKTRAP]: { ch: '^', color: CLR_GRAY },              // falling rock trap
+    [SQKY_BOARD]: { ch: '^', color: CLR_BROWN },
+    [BEAR_TRAP]: { ch: '^', color: CLR_CYAN },             // HI_METAL
+    [LANDMINE]: { ch: '^', color: CLR_RED },               // land mine
+    [ROLLING_BOULDER_TRAP]: { ch: '^', color: CLR_GRAY },
+    [SLP_GAS_TRAP]: { ch: '^', color: CLR_BRIGHT_BLUE },   // HI_ZAP (sleeping gas)
+    [RUST_TRAP]: { ch: '^', color: CLR_BLUE },
+    [FIRE_TRAP]: { ch: '^', color: CLR_ORANGE },
+    [PIT]: { ch: '^', color: CLR_BLACK },
+    [SPIKED_PIT]: { ch: '^', color: CLR_BLACK },
+    [HOLE]: { ch: '^', color: CLR_BROWN },
+    [TRAPDOOR]: { ch: '^', color: CLR_BROWN },             // trap door
+    [TELEP_TRAP]: { ch: '^', color: CLR_MAGENTA },         // teleportation trap
+    [LEVEL_TELEP]: { ch: '^', color: CLR_MAGENTA },        // level teleporter
+    [MAGIC_PORTAL]: { ch: '^', color: CLR_BRIGHT_MAGENTA },
+    [WEB]: { ch: '"', color: CLR_GRAY },
+    [STATUE_TRAP]: { ch: '^', color: CLR_GRAY },
+    [MAGIC_TRAP]: { ch: '^', color: CLR_BRIGHT_BLUE },     // HI_ZAP
+    [ANTI_MAGIC]: { ch: '^', color: CLR_BRIGHT_BLUE },     // HI_ZAP (anti magic trap)
+    [POLY_TRAP]: { ch: '^', color: CLR_BRIGHT_GREEN },     // polymorph trap
+    [VIBRATING_SQUARE]: { ch: '~', color: CLR_MAGENTA },
+    [TRAPPED_DOOR]: { ch: '^', color: CLR_ORANGE },
+    [TRAPPED_CHEST]: { ch: '^', color: CLR_ORANGE },
+};
+function trap_glyph(trap) {
+    const d = trap_defsym[trap.ttyp];
+    // Unknown ttyp: fall back to the arrow-trap sym/color (defsyms[] default).
+    if (!d) return { ch: '^', color: CLR_CYAN, dec: false };
+    return { ch: d.ch, color: d.color, dec: false };
+}
+
 // The "background" glyph for a cell: the topmost non-monster thing the
 // hero would remember.  C ref: display.c _map_location —
 // priority object > trap > engraving > terrain.
@@ -721,7 +766,7 @@ export function background_glyph(loc, x, y) {
     }
     const trap = game.level?.traps?.find((t) => t.tx === x && t.ty === y);
     if (trap?.tseen && !covers_objects(loc))
-        return { ch: '^', color: CLR_BLUE, dec: false };
+        return trap_glyph(trap);
     // C ref: _map_location — a revealed engraving on engraving-showing terrain
     // is drawn above the bare terrain.
     if (spot_shows_engravings(loc)) {

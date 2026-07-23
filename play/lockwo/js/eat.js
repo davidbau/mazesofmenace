@@ -515,7 +515,10 @@ async function fprefx(otmp) {
     const taste = otmp.cursed ? (Halluc ? 'grody!' : 'terrible!')
         : ration ? 'bland.'
         : (Halluc ? 'gnarly!' : 'delicious!');
-    await pline(`This ${objName(otmp)} is ${taste}`);
+    // C ref: pline() -> vpline -> update_topl: the give_feedback line pages via
+    // the topline NEED_MORE state machine ("...is delicious!--More--") so the
+    // following fortune-cookie readout fires its own --More-- frame.
+    await update_topl(`This ${objName(otmp)} is ${taste}`);
 }
 
 // C ref: eat.c fpostfx(otmp) — post-consumption effects for non-corpse food.
@@ -531,9 +534,12 @@ async function fpostfx(otmp) {
         // "It reads:" then the rumor (skipped when blind/fainted, in which case
         // outrumor returned '' with no RNG).
         if (line) {
-            await pline('This cookie has a scrap of paper inside.');
-            await pline('It reads:');
-            await pline(line);
+            // C ref: outrumor() -> pline() -> update_topl for each line so the
+            // BY_COOKIE readout pages ("scrap of paper...It reads:--More--")
+            // instead of clobbering the topline in one dumb overwrite.
+            await update_topl('This cookie has a scrap of paper inside.');
+            await update_topl('It reads:');
+            await update_topl(line);
         }
         // C: if (!Blind) if (!u.uconduct.literate++) livelog(...). No RNG.
         if (!game.u?.Blind) {

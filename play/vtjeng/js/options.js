@@ -281,6 +281,8 @@ function defaultResult() {
         iflags: {
             wc_color: true,
             wc_inverse: true,
+            // optlist.h: use_darkgray is opt_out and defaults On.
+            wc2_darkgray: true,
             wc_hilite_pet: false,
             hilite_pile: false,
             wc2_hitpointbar: false,
@@ -490,10 +492,16 @@ function booleanValue(value, negated, optionName, lineNumber) {
     const normalized = value.toLowerCase();
     if ('true'.startsWith(normalized)
         || 'yes'.startsWith(normalized)
-        || normalized === 'on' || normalized === '1') return true;
+        || normalized === 'on'
+        // options.c optfn_boolean() accepts digit-leading strings according
+        // to atoi(), including spellings such as "01" and "1suffix".
+        || (/^[0-9]/u.test(normalized)
+            && Number.parseInt(normalized, 10) === 1)) return true;
     if ('false'.startsWith(normalized)
         || 'no'.startsWith(normalized)
-        || normalized === 'off' || normalized === '0') return false;
+        || normalized === 'off'
+        || (/^[0-9]/u.test(normalized)
+            && Number.parseInt(normalized, 10) === 0)) return false;
     optionError(lineNumber, `'${value}' is not valid for ${optionName}`);
 }
 
@@ -1036,6 +1044,12 @@ function statusConditionNames(rawConditions, lineNumber) {
     const selected = new Set();
     for (const rawCondition of String(rawConditions).split(/[+&]/u)) {
         const token = menuHeadingToken(rawCondition);
+        if (!token) {
+            optionError(
+                lineNumber,
+                `unknown status condition '${rawCondition}'`,
+            );
+        }
         const canonical = STATUS_HILITE_CONDITIONS[token];
         const alias = STATUS_CONDITION_ALIASES[token];
         // botl.c accumulates every alias whose name shares this prefix.  In
@@ -1636,6 +1650,8 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
         result.iflags.wc_color = enabled;
     } else if (name === 'use_inverse') {
         result.iflags.wc_inverse = enabled;
+    } else if (name === 'use_darkgray') {
+        result.iflags.wc2_darkgray = enabled;
     } else if (name === 'hilite_pet') {
         result.iflags.wc_hilite_pet = enabled;
         if (enabled && result.iflags.wc2_petattr === ATR_NONE) {
@@ -1684,8 +1700,9 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
 // otherwise they fall through to the intentionally opaque compound-option
 // preservation path and create stray string-valued flags.
 const HANDLED_BOOLEAN_OPTIONS = new Set([
-    'female', 'male', 'autopickup', 'color', 'use_inverse', 'hilite_pet',
-    'hilite_pile', 'hitpointbar', 'legacy', 'tutorial', 'splash_screen',
+    'female', 'male', 'autopickup', 'color', 'use_darkgray', 'use_inverse',
+    'hilite_pet', 'hilite_pile', 'hitpointbar', 'legacy', 'tutorial',
+    'splash_screen',
     'status_updates', 'accessiblemsg', 'mention_map', 'spot_monsters',
     'menu_overlay', 'eight_bit_tty', 'customcolors', 'customsymbols',
     'pushweapon', 'rest_on_space', 'showexp', 'time', 'verbose',

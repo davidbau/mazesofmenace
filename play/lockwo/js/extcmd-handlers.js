@@ -1357,6 +1357,7 @@ const HANDLERS = {
     dip: dodip,
     offer: dosacrifice,
     genocided: dogenocided,
+    wizgenesis: wiz_genesis,
 };
 
 // C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).
