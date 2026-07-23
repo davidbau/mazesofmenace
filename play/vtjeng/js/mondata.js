@@ -4,18 +4,222 @@
 // src/mon.c undead_to_corpse(), can_be_hatched(), dead_species().
 
 import {
+    A_CHA,
+    ALL_TRAPS,
     FEMALE,
     G_GENOD,
     MALE,
     NEUTRAL,
+    NO_TRAP,
     NUM_MGENDERS,
 } from './const.js';
+import { effective_attribute } from './attrib.js';
 import { game } from './gstate.js';
 import * as M from './monsters.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { roles } from './roles.js';
 
-const M2_JEWELS = 0x20000000;
+function hasAttackType(species, attackType) {
+    return Boolean(species?.mattk?.some(
+        (attack) => attack.aatyp === attackType,
+    ));
+}
+
+function hasDamageType(species, damageType) {
+    return Boolean(species?.mattk?.some(
+        (attack) => attack.adtyp === damageType,
+    ));
+}
+
+// C refs: mondata.c attacktype(), noattacks(), dmgtype(); mondata.h's
+// movement-facing permonst predicates. Keep these as direct catalog queries:
+// callers decide how a capability interacts with level and monster state.
+export function attacktype(species, attackType) {
+    return hasAttackType(species, attackType);
+}
+
+export function attacktype_fordmg(species, attackType, damageType) {
+    return Boolean(species?.mattk?.some(
+        (attack) => attack.aatyp === attackType
+            && (damageType === M.AD_ANY || attack.adtyp === damageType),
+    ));
+}
+
+export function noattacks(species) {
+    return !species?.mattk?.some(
+        (attack) => attack.aatyp && attack.aatyp !== M.AT_BOOM,
+    );
+}
+
+export function dmgtype(species, damageType) {
+    return hasDamageType(species, damageType);
+}
+
+function flag1(species, mask) {
+    return Boolean(species && ((species.mflags1 ?? 0) & mask));
+}
+
+function flag2(species, mask) {
+    return Boolean(species && ((species.mflags2 ?? 0) & mask));
+}
+
+function flag3(species, mask) {
+    return Boolean(species && ((species.mflags3 ?? 0) & mask));
+}
+
+export function verysmall(species) {
+    return Number.isInteger(species?.msize) && species.msize < M.MZ_SMALL;
+}
+
+export function bigmonst(species) {
+    return Number.isInteger(species?.msize) && species.msize >= M.MZ_LARGE;
+}
+
+export function is_flyer(species) { return flag1(species, M.M1_FLY); }
+export function is_floater(species) {
+    return species?.mlet === M.S_EYE || species?.mlet === M.S_LIGHT;
+}
+export function is_clinger(species) { return flag1(species, M.M1_CLING); }
+export function is_swimmer(species) { return flag1(species, M.M1_SWIM); }
+export function breathless(species) { return flag1(species, M.M1_BREATHLESS); }
+export function amphibious(species) { return flag1(species, M.M1_AMPHIBIOUS); }
+export function passes_walls(species) { return flag1(species, M.M1_WALLWALK); }
+export function amorphous(species) { return flag1(species, M.M1_AMORPHOUS); }
+export function noncorporeal(species) { return species?.mlet === M.S_GHOST; }
+export function tunnels(species) { return flag1(species, M.M1_TUNNEL); }
+export function needspick(species) { return flag1(species, M.M1_NEEDPICK); }
+export function hides_under(species) { return flag1(species, M.M1_CONCEAL); }
+export function is_hider(species) { return flag1(species, M.M1_HIDE); }
+export function haseyes(species) { return !flag1(species, M.M1_NOEYES); }
+export function nohands(species) { return flag1(species, M.M1_NOHANDS); }
+export function nolimbs(species) {
+    return species != null
+        && ((species.mflags1 ?? 0) & M.M1_NOLIMBS) === M.M1_NOLIMBS;
+}
+export function notake(species) { return flag1(species, M.M1_NOTAKE); }
+export function has_head(species) { return !flag1(species, M.M1_NOHEAD); }
+export function unsolid(species) { return flag1(species, M.M1_UNSOLID); }
+export function mindless(species) { return flag1(species, M.M1_MINDLESS); }
+export function is_animal(species) { return flag1(species, M.M1_ANIMAL); }
+export function slithy(species) { return flag1(species, M.M1_SLITHY); }
+export function regenerates(species) { return flag1(species, M.M1_REGEN); }
+export function perceives(species) { return flag1(species, M.M1_SEE_INVIS); }
+export function can_teleport(species) { return flag1(species, M.M1_TPORT); }
+export function carnivorous(species) { return flag1(species, M.M1_CARNIVORE); }
+export function herbivorous(species) { return flag1(species, M.M1_HERBIVORE); }
+export function metallivorous(species) {
+    return flag1(species, M.M1_METALLIVORE);
+}
+
+export function is_undead(species) { return flag2(species, M.M2_UNDEAD); }
+export function is_were(species) { return flag2(species, M.M2_WERE); }
+export function is_demon(species) { return flag2(species, M.M2_DEMON); }
+export function is_lord(species) { return flag2(species, M.M2_LORD); }
+export function is_prince(species) { return flag2(species, M.M2_PRINCE); }
+export function is_dlord(species) {
+    return is_demon(species) && is_lord(species);
+}
+export function is_dprince(species) {
+    return is_demon(species) && is_prince(species);
+}
+export function is_human(species) { return flag2(species, M.M2_HUMAN); }
+export function is_giant(species) { return flag2(species, M.M2_GIANT); }
+export function is_domestic(species) { return flag2(species, M.M2_DOMESTIC); }
+export function is_wanderer(species) { return flag2(species, M.M2_WANDER); }
+export function strongmonst(species) { return flag2(species, M.M2_STRONG); }
+export function throws_rocks(species) { return flag2(species, M.M2_ROCKTHROW); }
+export function is_minion(species) { return flag2(species, M.M2_MINION); }
+export function likes_gold(species) { return flag2(species, M.M2_GREEDY); }
+export function likes_gems(species) { return flag2(species, M.M2_JEWELS); }
+export function likes_objs(species) {
+    return flag2(species, M.M2_COLLECT) || attacktype(species, M.AT_WEAP);
+}
+export function likes_magic(species) { return flag2(species, M.M2_MAGIC); }
+export function is_covetous(species) { return flag3(species, M.M3_COVETOUS); }
+export function is_displacer(species) { return flag3(species, M.M3_DISPLACES); }
+
+export function is_golem(species) { return species?.mlet === M.S_GOLEM; }
+export function nonliving(species) {
+    return is_undead(species)
+        || species?.pmidx === M.PM_MANES
+        || is_golem(species)
+        || species?.mlet === M.S_VORTEX;
+}
+export function webmaker(species) {
+    return species?.pmidx === M.PM_CAVE_SPIDER
+        || species?.pmidx === M.PM_GIANT_SPIDER;
+}
+
+export function is_whirly(species) {
+    return species?.mlet === M.S_VORTEX
+        || species?.pmidx === M.PM_AIR_ELEMENTAL;
+}
+
+export function likes_lava(species) {
+    return species?.pmidx === M.PM_FIRE_ELEMENTAL
+        || species?.pmidx === M.PM_SALAMANDER;
+}
+
+// C refs: mondata.h hates_silver(), mondata.c mon_hates_silver(), and
+// monmove.h is_vampshifter(). A shapechanger's current cham field matters
+// even when its present species would not otherwise hate silver.
+export function is_vampshifter(monster) {
+    return monster?.cham === M.PM_VAMPIRE
+        || monster?.cham === M.PM_VAMPIRE_LEADER
+        || monster?.cham === M.PM_VLAD_THE_IMPALER;
+}
+
+export function hates_silver(species) {
+    return is_were(species)
+        || species?.mlet === M.S_VAMPIRE
+        || is_demon(species)
+        || species?.pmidx === M.PM_SHADE
+        || (species?.mlet === M.S_IMP && species?.pmidx !== M.PM_TENGU);
+}
+
+export function mon_hates_silver(monster) {
+    return is_vampshifter(monster) || hates_silver(monster?.data);
+}
+
+// C ref: mondata.c resist_conflict(). Keep the unbounded lower end of the
+// source chance: sufficiently strong monsters always resist a weak hero.
+export function resist_conflict(monster, state = game, random = { rnd }) {
+    if (typeof random.rnd !== 'function')
+        throw new TypeError('resist_conflict random injection requires rnd');
+    const resistChance = Math.min(
+        19,
+        effective_attribute(state, A_CHA)
+            - Math.trunc(monster.m_lev ?? 0)
+            + Math.trunc(state.u?.ulevel ?? 0),
+    );
+    return random.rnd(20) > resistChance;
+}
+
+// C ref: mondata.c mon_knows_traps(). The two sentinels retain their source
+// meanings; ordinary trap types map to bit positions starting at one.
+export function mon_knows_traps(monster, trapType) {
+    if (trapType === ALL_TRAPS) return Boolean(monster.mtrapseen);
+    if (trapType === NO_TRAP) return !monster.mtrapseen;
+    return Boolean((monster.mtrapseen ?? 0) & (1 << (trapType - 1)));
+}
+
+// C ref: mondata.c passes_bars(). This combines shape, size, attack, and diet
+// capabilities; no single flag is a sufficient substitute.
+export function passes_bars(species) {
+    return passes_walls(species) || amorphous(species) || unsolid(species)
+        || is_whirly(species) || verysmall(species)
+        || dmgtype(species, M.AD_RUST) || dmgtype(species, M.AD_CORR)
+        || metallivorous(species) || (slithy(species) && !bigmonst(species));
+}
+
+// C ref: mondata.c sticks(). A wrapping attack sticks unless it is the
+// engulfing form; explicit sticky damage and hug attacks always do.
+export function sticks(species) {
+    return hasDamageType(species, M.AD_STCK)
+        || (hasDamageType(species, M.AD_WRAP)
+            && !hasAttackType(species, M.AT_ENGL))
+        || hasAttackType(species, M.AT_HUGS);
+}
 
 const pair = (little, big) => Object.freeze([little, big]);
 const alternateName = (name, mnum, gender = NEUTRAL) => Object.freeze({
@@ -382,7 +586,8 @@ export function is_rider(ptr) {
 
 // C ref: mondata.h is_unicorn() and likes_gems().
 export function is_unicorn(ptr) {
-    return ptr?.mlet === M.S_UNICORN && Boolean(ptr.mflags2 & M2_JEWELS);
+    return ptr?.mlet === M.S_UNICORN
+        && Boolean(ptr.mflags2 & M.M2_JEWELS);
 }
 
 // C ref: mondata.h is_reviver().

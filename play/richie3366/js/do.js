@@ -10,7 +10,7 @@ import { rn2, rnd } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
-    W_ARMOR, W_ACCESSORY, W_SADDLE, LOST_DROPPED,
+    W_ARMOR, W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, LOST_DROPPED,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
@@ -78,6 +78,7 @@ import { Fumbling } from './attrib.js';
 import {
     welded, setuwep, setuswapwep, setuqwep,
 } from './wield.js';
+import { setworn } from './do_wear.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { PM_TOURIST, PM_ROGUE } from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
@@ -176,19 +177,32 @@ function Doname2(obj) {
 async function There(line) {
     await pline(`There ${line}`);
 }
-/** C worn.c setnotworn — clear hero worn slots pointing at obj. */
+/**
+ * C worn.c setnotworn — clear hero worn slots pointing at obj and
+ * uprops[oc_oprop].extrinsic (via setworn). Does not find_ac.
+ */
 function setnotworn(obj) {
     if (!obj) return;
     const u = game.u || {};
+    const mask = obj.owornmask || 0;
     if (u.uwep === obj) setuwep(null);
     if (u.uquiver === obj) setuqwep(null);
     if (u.uswapwep === obj) setuswapwep(null);
-    for (const k of [
-        'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
-        'uleft', 'uright', 'uamul', 'ublindf',
-    ]) {
-        if (u[k] === obj) u[k] = null;
+    // Armor/accessory/ball/chain: setworn clears slot + oc_oprop extrinsic
+    // (e.g. ELVEN_CLOAK → EStealth). Slot-pointer-only clear left EStealth
+    // stuck after tutorial invent stash (seed0009 death attrs).
+    const propMask = mask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_BALL | W_CHAIN);
+    if (propMask) {
+        setworn(null, propMask);
+    } else {
+        for (const k of [
+            'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+            'uleft', 'uright', 'uamul', 'ublindf',
+        ]) {
+            if (u[k] === obj) u[k] = null;
+        }
     }
+    obj.owornmask = 0;
 }
 /** C hack.h distu — squared distance from hero. */
 function distu(x, y) {
@@ -681,32 +695,21 @@ async function familiar_level_msg() {
 
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
- * Stash invent (preserve owornmask as restore flag) and clear worn slots
- * so find_ac → base 10. Named omissions: u/disco/mvitals/spl_book backup;
- * leave-tutorial restore path.
+ * Stash invent (preserve owornmask as restore flag) via setnotworn+freeinv
+ * so extrinsics clear and find_ac → base 10. Named omissions: u/disco/
+ * mvitals/spl_book backup; leave-tutorial restore path.
  */
 function tutorial_enter_gamestate() {
     if (game.gmst_stored) return;
     game.gmst_moves = game.moves | 0;
     const stash = [];
     const inv = game.invent || [];
-    const u = game.u || {};
     while (inv.length) {
         const otmp = inv[0];
         const wornmask = otmp.owornmask || 0;
-        // C: setnotworn(otmp) — clear slots; does NOT call find_ac
-        if (wornmask) {
-            otmp.owornmask = 0;
-            for (const slot of [
-                'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
-                'uleft', 'uright', 'uamul', 'ublindf',
-            ]) {
-                if (u[slot] === otmp) u[slot] = null;
-            }
-            if (u.uwep === otmp) u.uwep = null;
-            if (u.uswapwep === otmp) u.uswapwep = null;
-            if (u.uqwep === otmp) u.uqwep = null;
-        }
+        // C nhl_gamestate: setnotworn(otmp); freeinv(otmp);
+        // otmp->owornmask = wornmask (restore flag, not currently worn)
+        setnotworn(otmp);
         inv.shift();
         otmp.owornmask = wornmask;
         stash.push(otmp);

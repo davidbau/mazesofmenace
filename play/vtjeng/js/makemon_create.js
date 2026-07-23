@@ -12,6 +12,7 @@ import {
     AM_LAWFUL,
     AM_NEUTRAL,
     BLCORNER,
+    BLINDED,
     COLNO,
     CROSSWALL,
     DOOR,
@@ -341,6 +342,7 @@ import {
 } from './objects.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { enexto_core, goodpos } from './teleport.js';
+import { cansee } from './vision.js';
 import {
     S_altar,
     S_dnstair,
@@ -419,6 +421,9 @@ const M2_STRONG = 0x04000000;
 const MR_STONE = 0x80;
 const MZ_LARGE = 3;
 const MZ_HUGE = 4;
+// include/monflag.h random-generation group flags.
+const G_LGROUP = 0x0040;
+const G_SGROUP = 0x0080;
 
 // makemon.c set_mimic_sym() source tables. The first two entries deliberately
 // make furniture twice as likely as each ordinary object class.
@@ -842,6 +847,16 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
     }
     const initialDungeonLevel = isInitialDungeonLevel(state);
     const tutorialLevel = isTutorialLevel(state);
+    const runtimeRandomCall = initialDungeonLevel
+        && !state.in_mklev
+        && randomCoordinates
+        && !ptr
+        && mmflags === 0;
+    const runtimeGroupCall = initialDungeonLevel
+        && !state.in_mklev
+        && !randomCoordinates
+        && Boolean(ptr)
+        && mmflags === MM_NOGRP;
     if (!initialDungeonLevel && !tutorialLevel) {
         throw new UnsupportedMonsterCreationError(
             'outside initial dungeon level',
@@ -856,7 +871,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             'unsupported tutorial monster creation',
         );
     }
-    if (randomCoordinates && !state.in_mklev) {
+    if (randomCoordinates && !state.in_mklev && !runtimeRandomCall) {
         throw new UnsupportedMonsterCreationError(
             'random coordinates outside mklev',
         );
@@ -881,8 +896,12 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             'shopkeeper creation outside shkinit',
         );
     }
-    if (!state.in_mklev && !startingPetCall)
+    if (!state.in_mklev
+        && !startingPetCall
+        && !runtimeRandomCall
+        && !runtimeGroupCall) {
         throw new UnsupportedMonsterCreationError('outside mklev');
+    }
     if (state.in_mklev && (mmflags & MM_EDOG)) {
         throw new UnsupportedMonsterCreationError(
             'edog creation during mklev',
@@ -894,7 +913,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             `non-accessible location <${x},${y}>`,
         );
     }
-    if (!ptr && !(mmflags & MM_NOGRP))
+    if (!ptr && !(mmflags & MM_NOGRP) && !runtimeRandomCall)
         throw new UnsupportedMonsterCreationError('random monster groups');
     if (!Array.isArray(state.mons) || !Array.isArray(state.mvitals))
         throw new Error('makemon requires initialized monster globals');
@@ -932,11 +951,16 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
     }
 }
 
-// C ref: makemon.c makemon_rnd_goodpos(). The initial-level loader skips the
-// source's visibility pass and stair fallback, so after 50 sampled pairs it
-// performs one x-major scan from the last sampled offsets.
+function heroIsBlind(state) {
+    const blind = state.u?.uprops?.[BLINDED];
+    return Boolean((blind?.intrinsic || blind?.extrinsic) && !blind?.blocked);
+}
+
+// C ref: makemon.c makemon_rnd_goodpos(). Level generation skips the
+// visibility pass and stair fallback. Runtime generation first avoids every
+// square in sight, then relaxes that constraint while retaining goodpos().
 function makemon_rnd_goodpos(ptr, gpflags, normalized) {
-    const { random } = normalized;
+    const { random, state } = normalized;
     const fakemon = ptr ? newMonster({ data: ptr }) : null;
     let nx;
     let ny;
@@ -946,22 +970,59 @@ function makemon_rnd_goodpos(ptr, gpflags, normalized) {
     do {
         nx = random.rn1(COLNO - 3, 2);
         ny = random.rn2(ROWNO);
-        good = goodpos(nx, ny, fakemon, gpflags | GP_AVOID_MONPOS, normalized);
+        good = !state.in_mklev && cansee(nx, ny, state)
+            ? false
+            : goodpos(
+                nx,
+                ny,
+                fakemon,
+                gpflags | GP_AVOID_MONPOS,
+                normalized,
+            );
     } while (++tryct < 50 && !good);
 
     if (good) return { x: nx, y: ny };
 
     const xofs = nx;
     const yofs = ny;
-    for (let dx = 0; dx < COLNO; ++dx) {
-        for (let dy = 0; dy < ROWNO; ++dy) {
-            nx = ((dx + xofs) % (COLNO - 1)) + 1;
-            ny = ((dy + yofs) % (ROWNO - 1)) + 1;
+    const firstScanStage = state.in_mklev || heroIsBlind(state) ? 1 : 0;
+    let scanFlags = gpflags | GP_AVOID_MONPOS;
+    for (let scanStage = firstScanStage; scanStage < 2; ++scanStage) {
+        const visibleSquaresAllowed = scanStage === 1;
+        // C clears GP_CHECKSCARY for the sighted unseen scan and deliberately
+        // keeps it cleared for both the stair fallback and final visible scan.
+        if (!visibleSquaresAllowed) scanFlags &= ~GP_CHECKSCARY;
+        for (let dx = 0; dx < COLNO; ++dx) {
+            for (let dy = 0; dy < ROWNO; ++dy) {
+                nx = ((dx + xofs) % (COLNO - 1)) + 1;
+                ny = ((dy + yofs) % (ROWNO - 1)) + 1;
+                if (!visibleSquaresAllowed && cansee(nx, ny, state)) continue;
+                if (goodpos(
+                    nx,
+                    ny,
+                    fakemon,
+                    scanFlags,
+                    normalized,
+                )) {
+                    return { x: nx, y: ny };
+                }
+            }
+        }
+        if (!visibleSquaresAllowed && (!ptr || ptr.mmove)) {
+            for (let stairway = state.stairs; stairway;
+                stairway = stairway.next) {
+                if (stairway.tolev?.dnum === state.u.uz.dnum
+                    && random.rn2(2) === 0) {
+                    nx = stairway.sx;
+                    ny = stairway.sy;
+                    break;
+                }
+            }
             if (goodpos(
                 nx,
                 ny,
                 fakemon,
-                gpflags | GP_AVOID_MONPOS,
+                scanFlags,
                 normalized,
             )) {
                 return { x: nx, y: ny };
@@ -969,6 +1030,47 @@ function makemon_rnd_goodpos(ptr, gpflags, normalized) {
         }
     }
     return null;
+}
+
+// C ref: makemon.c m_initgrp(). Runtime random generation can create a small
+// or large hostile group before the original monster receives inventory.
+function initializeMonsterGroup(monster, countBound, mmflags, normalized) {
+    const { random, state } = normalized;
+    const divisor = state.u.ulevel < 3 ? 4 : state.u.ulevel < 5 ? 2 : 1;
+    let count = Math.trunc(random.rnd(countBound) / divisor);
+    if (!count) count = 1;
+    let coordinate = { x: monster.mx, y: monster.my };
+
+    while (count-- > 0) {
+        if (peace_minded(monster.data, normalized)) continue;
+        const nextCoordinate = enexto_core(
+            coordinate.x,
+            coordinate.y,
+            monster.data,
+            GP_CHECKSCARY | mmflags,
+            normalized,
+        ) ?? enexto_core(
+            coordinate.x,
+            coordinate.y,
+            monster.data,
+            mmflags,
+            normalized,
+        );
+        if (!nextCoordinate) continue;
+        coordinate = nextCoordinate;
+        const groupMonster = makemon(
+            monster.data,
+            coordinate.x,
+            coordinate.y,
+            mmflags | MM_NOGRP,
+            normalized,
+        );
+        if (groupMonster) {
+            groupMonster.mpeaceful = false;
+            groupMonster.mavenge = false;
+            set_malign(groupMonster, state);
+        }
+    }
 }
 
 function addFreshMonsterObject(monster, obj, normalized) {
@@ -2015,7 +2117,10 @@ export function restore_waiting_vampire(monster, rawEnv = {}) {
 // C ref: makemon.c makemon(). This implements the level-one, explicit-square
 // call shapes needed by fill_ordinary_room(), the Ghost, Cloud, Garden, and
 // Storeroom themed fills, dog.c:makedog(), plus the level-generation random
-// coordinate shape needed by temporary Statuary monsters.
+// coordinate shape needed by temporary Statuary monsters. Outside mklev(), it
+// also admits the exact initial-D:1 random-generation call
+// makemon(NULL, 0, 0, NO_MM_FLAGS) and that call's explicit-coordinate,
+// MM_NOGRP recursive group members.
 //
 // After supported-call validation, source no-creation outcomes return null:
 // generation is disabled, the square is occupied, selection has no candidate,
@@ -2059,9 +2164,19 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
 
     const anymon = !ptr;
     if (anymon) {
-        ptr = rndmonst(normalized);
-        if (!ptr) return null;
-        assertSupportedSpecies(ptr);
+        let attempts = 0;
+        do {
+            ptr = rndmonst(normalized);
+            if (!ptr) return null;
+            assertSupportedSpecies(ptr);
+        } while (++attempts <= 50
+            && !goodpos(
+                x,
+                y,
+                newMonster({ data: ptr }),
+                gpflags,
+                normalized,
+            ));
     }
     const mndx = ptr.pmidx;
     let allowMinvent = !(mmflags & NO_MINVENT);
@@ -2150,6 +2265,19 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     }
     set_malign(monster, state);
 
+    if (anymon && !(mmflags & MM_NOGRP)) {
+        if ((ptr.geno & G_SGROUP) && random.rn2(2)) {
+            initializeMonsterGroup(monster, 3, mmflags, normalized);
+        } else if (ptr.geno & G_LGROUP) {
+            initializeMonsterGroup(
+                monster,
+                random.rn2(3) ? 10 : 3,
+                mmflags,
+                normalized,
+            );
+        }
+    }
+
     if (allowMinvent) {
         if (isArmed(ptr)) m_initweap(monster, normalized);
         m_initinv(monster, normalized);
@@ -2165,6 +2293,11 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         if (monster.minvent) discard_minvent(monster, true, normalized);
         monster.minvent = null;
     }
+
+    // C ref: makemon.c makemon(). Runtime creation refreshes the final square
+    // after inventory and group creation. Appearance messages and occupation
+    // interruption remain with their future command/UI owners.
+    if (!state.in_mklev) redrawSquare(monster.mx, monster.my, normalized);
 
     return monster;
 }
