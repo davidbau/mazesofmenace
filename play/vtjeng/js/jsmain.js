@@ -171,6 +171,8 @@ export class NethackGame {
         this._animFramesByStep = [];
         this._pendingAnimFrames = [];
         this._lastRngIdx = 0;
+        this._themeroomSelectionCollector
+            = opts.themeroomSelectionCollector ?? null;
     }
 
     // Universal animation-frame hook.  Call once per intermediate
@@ -257,6 +259,14 @@ export class NethackGame {
         g.context = { move: 0 };
         g.program_state = {};
         g.moves = 0;
+        g._commandDispatchCount = 0;
+        if (this._themeroomSelectionCollector) {
+            // The collector is the single owner of this diagnostic state.
+            // Level-generation producers can append through its narrow seam,
+            // while this NethackGame retains the segment-local snapshot API.
+            g._themeroomSelectionCollector
+                = this._themeroomSelectionCollector;
+        }
         g.gp = {
             plnamelen: 0,
             // C ref: decl.h instance_globals_p; dog.c:pet_type().
@@ -353,6 +363,21 @@ export class NethackGame {
     // for steps that didn't animate.  SUPPLEMENTAL metric — not part
     // of the official ranking; see API.md.
     getAnimationFramesByStep() { return this._animFramesByStep; }
+    getThemeroomSelections() {
+        return this._themeroomSelectionCollector?.snapshot() ?? null;
+    }
+}
+
+function createThemeroomSelectionCollector() {
+    const selections = [];
+    return Object.freeze({
+        record(kind, id) {
+            selections.push(Object.freeze({ kind, id }));
+        },
+        snapshot() {
+            return selections.map((entry) => ({ ...entry }));
+        },
+    });
 }
 
 // ── Per-segment runner — the contest contract ──
@@ -376,7 +401,12 @@ export class NethackGame {
 // getRngLog() / getCursors() / getAnimationFramesByStep() cover ONLY
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
-export async function runSegment(input) {
+// The optional second argument enables local diagnostics and is never part of
+// a replay recipe or the judge contract.
+export async function runSegment(
+    input,
+    { traceThemeroomSelections = false } = {},
+) {
     const { seed, datetime, nethackrc, recorderIsDst, storage } = input;
     const moves = input.moves || '';
 
@@ -386,6 +416,9 @@ export async function runSegment(input) {
         nethackrc,
         recorderIsDst,
         storage,
+        themeroomSelectionCollector: traceThemeroomSelections
+            ? createThemeroomSelectionCollector()
+            : null,
     });
 
     const display = new GameDisplay(null);

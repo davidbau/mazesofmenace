@@ -1780,6 +1780,27 @@ function _hpBarOwner() {
     return { kind: 'hitpoint-bar' };
 }
 
+function _writeCapturedHighlight(row, start, text, owner) {
+    let column = start;
+    for (let index = 0; index < text.length;) {
+        const spaces = text[index] === ' ';
+        let end = index + 1;
+        while (end < text.length && (text[end] === ' ') === spaces) ++end;
+        const run = text.slice(index, end);
+        // record-session.mjs compresses every maximal run of at least five
+        // literal spaces into cursor-forward movement.  A compressed run was
+        // never written into the recorder shadow grid, so it retains terminal
+        // defaults even when the surrounding bytes were highlighted.
+        column = row.write(
+            column,
+            run,
+            spaces && run.length >= 5 ? null : owner,
+        );
+        index = end;
+    }
+    return column;
+}
+
 function _writeSeparatedFields(row, start, entries) {
     let column = start;
     for (const { field, text } of entries) {
@@ -1838,18 +1859,9 @@ function _statusLine1Layout(includeAlignment = true) {
         }
         row.write(0, '[');
         const bar = _statusHitpointBarTitle();
-        // record-session.mjs ports the recorder harness's ANSI compression:
-        // a run of at least five literal spaces becomes a cursor-forward
-        // escape. Such skipped cells remain at terminal defaults even when
-        // the C tty emitted the spaces inside the highlighted bar. Preserve
-        // shorter padding runs because the harness leaves those bytes intact.
         const highlighted = bar.slice(0, barLength);
-        const visibleLength = highlighted.trimEnd().length;
-        const paddingLength = highlighted.length - visibleLength;
-        const capturedLength = paddingLength >= 5
-            ? visibleLength : highlighted.length;
-        row.write(1, bar.slice(0, capturedLength), _hpBarOwner());
-        row.write(1 + capturedLength, bar.slice(capturedLength));
+        _writeCapturedHighlight(row, 1, highlighted, _hpBarOwner());
+        row.write(1 + highlighted.length, bar.slice(highlighted.length));
         row.write(1 + STATUS_HP_BAR_WIDTH, ']');
         column = STATUS_HP_BAR_WIDTH + 2;
     } else {
@@ -2368,11 +2380,28 @@ function _buildScreenOutput() {
 
     // Render into the canonical terminal grid.
     if (display.grid) {
+        const msg = game._pending_message || '';
+        let skippedMessageCells = null;
+        for (let c = 0; c < Math.min(msg.length, display.cols); ++c) {
+            if (msg[c] === '\0') {
+                skippedMessageCells ??= [];
+                skippedMessageCells[c] = { ...display.grid[0][c] };
+            }
+        }
         display.clearScreen();
         // Message line
-        const msg = game._pending_message || '';
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-            display.setCell(c, 0, msg[c], NO_COLOR, 0);
+        for (let c = 0; c < Math.min(msg.length, display.cols); c++) {
+            // Recorder patch 006 ignores signed high-bit TTY bytes after the
+            // source cursor has advanced. tty_message.js represents each such
+            // byte as NUL, so restore the physical cell which clearScreen()
+            // temporarily erased instead of projecting the marker.
+            if (msg[c] === '\0') {
+                const cell = skippedMessageCells[c];
+                display.setCell(c, 0, cell.ch, cell.color, cell.attr);
+            } else {
+                display.setCell(c, 0, msg[c], NO_COLOR, 0);
+            }
+        }
         // Map — write characters to grid (DEC → Unicode for browser display)
         const browserGlyphs = Boolean(display.spans);
         for (let offset = 0; offset < viewport.height; ++offset) {
