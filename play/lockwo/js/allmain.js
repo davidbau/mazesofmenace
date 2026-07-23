@@ -322,6 +322,17 @@ async function moveloop_preamble_messages() {
         g.u.uluck = (g.u.uluck || 0) - 1; // change_luck(-1)
     }
 
+    // C ref: allmain.c moveloop_preamble() — right after the moon-phase/Friday
+    // messages, a discover-mode (playmode:explore, the `discover` macro =
+    // flags.explore) game announces "You are in non-scoring explore/discovery
+    // mode."  Our options parser stores the play-mode as flags.playmode ===
+    // 'explore' (see bones.js is_discover), so accept either spelling.  No luck
+    // side effect.
+    const f = g.flags || {};
+    if (f.explore || f.discover || f.playmode === 'explore') {
+        msgs.push('You are in non-scoring explore/discovery mode.');
+    }
+
     if (msgs.length === 0) return false;
 
     // Each preamble message can't share the top line with the one before it

@@ -12,13 +12,13 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee } from './vision.js';
 import { m_at, newsym } from './display.js';
-import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE,
+import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
          CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE } from './const.js';
 import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
 import { mkcorpstat, mkobj_at, CORPSE, place_object } from './mkobj.js';
-import { mon_nocorpse } from './makemon.js';
+import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
@@ -102,9 +102,13 @@ export async function do_attack(mtmp) {
             // (shk dopay() path omitted — not reachable here.)
             if (mtmp.mtame) // see 'additional considerations' in C
                 monflee(mtmp, rnd(6), false, false);
-            // "You stop.  <Monnam> is in the way!" — only when running; the
-            // starter sessions step one square at a time so context.run is 0
-            // and no message is produced, but the structure is preserved.
+            // C ref: uhitm.c:495-499 — You("stop.  %s is in the way!", buf) where
+            // buf = highc(y_monnam(mtmp)).  This message is ALWAYS emitted here
+            // (not only while running); the following end_running(TRUE) is a
+            // no-op for the single-step commands the corpus uses.
+            const buf = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, 0, false);
+            const { pline } = await import('./display.js');
+            await pline(`You stop.  ${buf.charAt(0).toUpperCase()}${buf.slice(1)} is in the way!`);
             return true;
         } else if (mtmp.mfrozen || helpless(mtmp)
                    || (movement_rate(mtmp) === 0 && rn2(6))) {
@@ -740,6 +744,19 @@ export function corpse_chance(mon) {
 export function make_corpse(mon, x, y) {
     const mndx = mon.data?.pmidx;
     if (mndx == null) return;
+    // C ref: mon.c make_corpse() — zombies, mummies and vampires are handled by
+    // their own switch cases BEFORE the default G_NOCORPSE guard: they always
+    // leave a corpse of their base living species (undead_to_corpse), and it is
+    // an *old* corpse (age -= TAINT_AGE+1).  Their undead form carries G_NOCORPSE
+    // (that flag only blocks *random* corpse generation), so without this branch
+    // the corpse — and its next_ident/rndmonnum/gender/timeout RNG — was skipped.
+    const base = undead_to_corpse(mndx);
+    if (base !== mndx) {
+        const obj = mkcorpstat(CORPSE, mon, base, x, y, CORPSTAT_INIT | CORPSTAT_NONE);
+        if (obj != null)
+            obj.age = (obj.age ?? Math.max(game.moves ?? 1, 1)) - (TAINT_AGE + 1);
+        return obj;
+    }
     // C ref: mon.c:893 make_corpse default path — a G_NOCORPSE species (grid
     // bug, gas spore, …) returns NULL with NO mksobj rolls.  corpse_chance()
     // still rolled its rn2 in the caller; only the corpse object is suppressed.

@@ -17,7 +17,7 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
     COLNO, ROWNO, STONE, VWALL, HWALL, DBWALL, TREE, SDOOR, POOL, MOAT, WATER,
-    LAVAPOOL, IRONBARS, DOOR, CORR, ROOM, STAIRS, FOUNTAIN, THRONE, ALTAR, ICE,
+    LAVAPOOL, LAVAWALL, IRONBARS, DOOR, CORR, ROOM, STAIRS, FOUNTAIN, THRONE, ALTAR, ICE,
     MAX_TYPE, INVALID_TYPE, NO_ROOM, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     W_NONDIGGABLE, LA_DOWN, ENGRAVE, BURN, NON_PM,
     MAGIC_PORTAL, WEB, TRAPDOOR, SQKY_BOARD, SLP_GAS_TRAP,
@@ -86,7 +86,7 @@ function chr2typ(ch) {
     case '_': return ALTAR;
     case 'I': return ICE;
     case '"': return IRONBARS;
-    case 'Z': return ROOM;   // 'Z' renders as ROOM floor in this map fragment
+    case 'Z': return LAVAWALL;   // C ref: nhlua.c char2typ — 'Z' -> LAVAWALL (wall of lava)
     case 'F': return TREE;   // 'F' is a tree in tut-1 (forest decoration)
     default: return ROOM;
     }
@@ -591,13 +591,16 @@ export function genTutorialLevel() {
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     set_wall_state();
 
-    // C ref: a lit room reveals its bounding walls on entry.  The JS vision
-    // (vision.js) only marks a wall/door IN_SIGHT when the wall cell ITSELF is
-    // lit AND the adjacent floor toward the hero is lit, so light every wall /
-    // door / secret-door cell that borders a lit ROOM/CORR/DOOR cell.  This
-    // makes the room walls render (matching C) without affecting PRNG.
-    for (let y = 1; y < ROWNO - 1; y++) {
-        for (let x = 1; x < COLNO - 1; x++) {
+    // C ref: sp_lev.c lspo_region — des.region(selection, "lit") grows the lit
+    // selection by 1 in all directions (selection_do_grow(W_ANY)) BEFORE
+    // sel_set_lit, so the 1-cell ring bounding the lit area (including the
+    // level's edge rows/cols) is lit too.  The JS vision (vision.js) only marks
+    // a wall/door IN_SIGHT when the wall cell ITSELF is lit AND the adjacent
+    // floor toward the hero is lit, so light every wall / door / secret-door
+    // cell that borders a lit ROOM/CORR/DOOR cell — spanning the full map so the
+    // bottom/right border walls (y=ROWNO-1, x=COLNO-1) light too.  No PRNG.
+    for (let y = 1; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
             const loc = lvl.at(x, y);
             if (!loc) continue;
             const t = loc.typ;

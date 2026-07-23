@@ -30,10 +30,10 @@ import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
-         SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, isok, IS_DOOR,
+         SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
          TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL,
          A_STR, A_DEX, A_CON, Is_rogue_level,
@@ -71,6 +71,28 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
 }
+
+// C ref: cmd.c extcmdlist[] — each command's default key.  A nethackrc
+// BIND=key:command entry replaces Cmd.commands[key] with the named command; our
+// dispatcher keys on each command's default character, so a bound key is
+// translated to the command's default key (below) before dispatch.  Ctrl-keys
+// are their literal control code.
+const CMD_DEFAULT_KEY = {
+    apply: 'a', attributes: '\x18', autopickup: '@', call: 'C', cast: 'Z',
+    chronicle: 'v', close: 'c', down: '>', drop: 'd', droptype: 'D',
+    eat: 'e', engrave: 'E', fight: 'F', fire: 'f', glance: ';', help: '?',
+    inventory: 'i', inventtype: 'I', kick: '\x04', known: '\\', knownclass: '`',
+    look: ':', open: 'o', options: 'O', overview: '\x0f', pay: 'p',
+    perminv: '|', pickup: ',', prevmsg: '\x10', puton: 'P', quaff: 'q',
+    quiver: 'Q', read: 'r', redraw: '\x12', remove: 'R', repeat: '\x01',
+    reqmenu: 'm', retravel: '\x1f', run: 'G', rush: 'g', save: 'S',
+    search: 's', seeall: '*', seeamulet: '"', seearmor: '[', seerings: '=',
+    seetools: '(', seeweapon: ')', shell: '!', showgold: '$', showspells: '+',
+    showtrap: '^', suspend: '\x1a', swap: 'x', takeoff: 'T', takeoffall: 'A',
+    teleport: '\x14', terrain: '\x7f', throw: 't', travel: '_', twoweapon: 'X',
+    up: '<', versionshort: 'V', wait: '.', wear: 'W', whatdoes: '&',
+    whatis: '/', wield: 'w', zap: 'z',
+};
 
 // C ref: cmd.c reset_commands() — with number_pad off the movement keys bind
 // three ways per direction: the plain letter -> walk (do_move, run==0), the
@@ -221,7 +243,18 @@ export async function rhack(key) {
         }
     }
 
-    const ch = String.fromCharCode(key);
+    let ch = String.fromCharCode(key);
+
+    // C ref: cmd.c parsebindings() — a nethackrc BIND=key:command entry rebinds
+    // `key` to run `command`.  Translate a custom-bound key to that command's
+    // default key so the existing (default-key) dispatch below handles it.
+    if (game.keybind && Object.prototype.hasOwnProperty.call(game.keybind, ch)) {
+        const dflt = CMD_DEFAULT_KEY[game.keybind[ch]];
+        if (dflt !== undefined) {
+            ch = dflt;
+            key = ch.charCodeAt(0);
+        }
+    }
 
     // A paged ^X attributes window consumes space/return to advance pages and
     // dismiss after the last; ESC cancels.  C ref: process_menu_window().
@@ -417,6 +450,12 @@ export async function rhack(key) {
         // Prompts "For what do you wish?", parses via readobjnam(), creates the
         // wished object, then rolls u.ublesscnt += rn1(100,50).
         await wiz_wish();
+        game.context.move = 0;
+    } else if (key === 127) { // <del> / '\177' — #terrain (cmd.c doterrain)
+        // C ref: cmd.c command list — '\177' (<del>/<rubout>) is bound to the
+        // "terrain" command (doterrain, IFBURIED|GENERALCMD|AUTOCOMPLETE): show
+        // the known map without monsters/objects/traps.  ECMD_OK (no game time).
+        await doterrain();
         game.context.move = 0;
     } else if (ch === 'W') {
         // C ref: cmd.c keymap 'W' = dowear (do_wear.c).  Prompts for armor to
@@ -1462,6 +1501,26 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // ── push a boulder ──  C ref: hack.c test_move() DO_MOVE branch -> moverock().
+    // A boulder sits on an otherwise-passable square, so blocksMove() below would
+    // wrongly let the hero step onto it.  Instead, C tries to roll the boulder one
+    // square further in the move direction; if it can't move, test_move returns
+    // FALSE and the hero stays put (no turn elapses).  Only reached when the hero
+    // does not pass through walls (the corpus heroes never do).
+    {
+        const bobj = boulder_at(newx, newy);
+        if (bobj) {
+            const pushed = await moverock(bobj, newx, newy, dx, dy);
+            if (pushed < 0) {
+                // Boulder couldn't be pushed: hero stays put, no turn elapses.
+                game.context.move = 0;
+                return;
+            }
+            // Boulder rolled away -> fall through to the normal move onto its old
+            // square (blocksMove sees plain floor/corridor there now).
+        }
+    }
+
     if (blocksMove(newx, newy)) {
         // Can't move there.  C ref: hack.c test_move() DO_MOVE else-branch — a
         // blocked move announces the obstacle when flags.mention_walls is set
@@ -1635,6 +1694,93 @@ function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 // Minimal climb_pit placeholder — the contest hero never reaches the
 // RNG-bearing climb path at a diverging point; struggle in place.
 async function climb_pit_min() { /* no RNG; position unchanged */ }
+
+// C ref: mkobj.c sobj_at(BOULDER, x, y) — the topmost boulder lying on the floor
+// at (x,y), or null.  BOULDER otyp is 474 (mkobj.js).  vobj_at-style scan of the
+// flat level object list, returning the last (top-of-pile) match.
+function boulder_at(x, y) {
+    let found = null;
+    for (const o of (game.level?.objects || []))
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === 474)
+            found = o;
+    return found;
+}
+
+// C ref: mondata.h throws_rocks(ptr) == (mons[].mflags2 & M2_ROCKTHROW).  Only
+// giant-kin (giants, ettin, titan, minotaur) and the Cyclops throw/lift rocks,
+// so a hero polymorphed into one of those forms pushes a boulder with "little"
+// rather than "great" effort.  Ordinary heroes are never in this set, so the
+// word is "great" for every recorded session.  pmidx values match u.umonnum
+// (== PM_* monster index); same set as monmove.js's ROCKTHROW_PMIDX.
+const ROCKTHROW_MONS = new Set([169, 170, 171, 172, 173, 174, 175, 176, 177, 359]);
+function hero_throws_rocks() { return ROCKTHROW_MONS.has(game.u?.umonnum); }
+
+// C ref: objnam.c the(xname(otmp)) for a lone boulder — "the boulder".  Built
+// from the object type's base name so it stays correct for any pushable object
+// (boulders never take a shuffled appearance and always have quan 1 on the map).
+function the_pushable_name(otmp) {
+    return `the ${OBJECTS[otmp.otyp]?.name || 'boulder'}`;
+}
+
+// C ref: hack.c moverock() — the hero, moving in direction (dx,dy), tries to
+// push the boulder at (sx,sy) one square further to (rx,ry).  Returns 0 when the
+// boulder rolled (or the hero may still advance), -1 when it is stuck and the
+// hero must stay put.  Only the on-foot, sighted common case is exercised by the
+// corpus; the swallowing-trap / pool / mounted variants are guarded out of the
+// success path so no boulder is ever left in an inconsistent map state.
+async function moverock(otmp, sx, sy, dx, dy) {
+    const u = game.u;
+    const rx = u.ux + 2 * dx; // boulder destination
+    const ry = u.uy + 2 * dy;
+    game.multi = 0; // C nomul(0)
+
+    // Levitation: no leverage to push.  (verysmall/steed variants omitted — no
+    // tiny-form or mounted hero pushes a boulder in the corpus.)
+    if (u?.uprops?.Levitation) {
+        await pline(`You don't have enough leverage to push ${the_pushable_name(otmp)}.`);
+        return -1;
+    }
+
+    const dloc = game.level?.at(rx, ry);
+    const dtyp = dloc ? dloc.typ : STONE;
+    const isPoolLava = dtyp === POOL || dtyp === MOAT || dtyp === WATER
+                    || dtyp === LAVAPOOL;
+    const closedDoor = dloc && IS_DOOR(dtyp)
+                    && (dloc.doormask & (D_CLOSED | D_LOCKED));
+    // C: destination must be a real, open, boulder-free square.  A diagonal push
+    // is refused into a doored doorway (unless doorless).
+    const canRoll = isok(rx, ry) && !IS_ROCK(dtyp) && dtyp !== IRONBARS
+        && (!IS_DOOR(dtyp) || !(dx && dy) || doorless_door(rx, ry))
+        && !boulder_at(rx, ry)
+        && !closedDoor && !isPoolLava
+        && !m_at(rx, ry)      // a monster on the far side blocks the push
+        && !trap_at(rx, ry);  // keep the boulder off any trap (conservative)
+
+    if (canRoll) {
+        // C ref: hack.c moverock() — the "With <little|great> effort you move
+        // <the boulder>." line, suppressed (via the static lastmovetime) when the
+        // hero pushed the same boulder within the last two turns so a run of
+        // pushes doesn't spam it.
+        if (!u.usteed) {
+            const lmt = game._boulder_lastmovetime;
+            if (lmt == null || game.moves > lmt + 2 || game.moves < lmt)
+                await pline(`With ${hero_throws_rocks() ? 'little' : 'great'} effort `
+                          + `you move ${the_pushable_name(otmp)}.`);
+            game._boulder_lastmovetime = game.moves;
+        }
+        // C: movobj(otmp, rx, ry) relinks the boulder and redraws both squares.
+        otmp.ox = rx;
+        otmp.oy = ry;
+        newsym(rx, ry);
+        newsym(sx, sy);
+        return 0;
+    }
+
+    // C ref: hack.c moverock() nopushmsg: — the boulder is wedged and won't budge.
+    if (game.flags?.verbose !== false)
+        await pline(`You try to move ${the_pushable_name(otmp)}, but in vain.`);
+    return -1;
+}
 
 // C ref: hack.c domove_core() -> spoteffects(TRUE) -> pickup(1).  pickup(1)
 // runs at the tail of EVERY move that relocates the hero (plain step, run,
@@ -1897,9 +2043,14 @@ async function domove_swap_with_pet(mtmp, x, y) {
 
     // C: You("%s %s.", mpeaceful ? "swap places with" : "frighten",
     //        x_monnam(mtmp, ARTICLE_YOUR, ..., SUPPRESS_SADDLE, FALSE));
+    // C's You() -> pline() -> update_topl() sets tty_toplin = 1, so a later
+    // same-turn message (e.g. the displaced pet dropping an item during its own
+    // move) concatenates onto this line ("You swap places with Slasher.  Slasher
+    // drops a food ration.").  Our pline() stub doesn't set that state, so route
+    // the swap line through update_topl() to keep the concatenation faithful.
     const verb = mtmp.mpeaceful ? 'swap places with' : 'frighten';
     const who = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, /*SUPPRESS_SADDLE*/ 0, false);
-    await pline(`You ${verb} ${who}.`);
+    await update_topl(`You ${verb} ${who}.`);
 
     // (minliquid/mintrap on the pet's new square: the hero's old square is dry
     //  floor in the starter sessions, so no trap/liquid effect.)

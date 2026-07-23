@@ -786,6 +786,15 @@ function find_mac_mon(mon) {
     return mon?.data?.ac ?? 10;
 }
 
+// C ref: mondata.h nonliving(ptr) = is_undead || PM_MANES || weirdnonliving
+// (golem / S_VORTEX).  These are "destroyed" rather than "killed" by monkilled().
+// Elementals are LIVING in C, so they are "killed".  The pets/quadrupeds that
+// die on traps here are living, so this returns false for them.
+function nonliving_mm(mtmp) {
+    const name = mtmp?.data?.name || '';
+    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghoul\b|\bghost\b|\blich\b|\bvampire\b|golem\b|\bvortex\b|\bshade\b|\bmanes\b/.test(name);
+}
+
 // C ref: trap.c thitm(tlev, mon, obj, d_override, nocorpse) — a trap missile
 // (or falling rock) strikes a monster.  When d_override is non-zero (the
 // rock-trap / rolling-boulder path) the accuracy roll (rnd(20)) is skipped and
@@ -818,7 +827,15 @@ async function mon_thitm(tlev, mon, obj, d_override, nocorpse) {
             mon.mhp -= dam;
             if (mon.mhp <= 0) {
                 const xx = mon.mx, yy = mon.my;
-                mon_kill_leaving(mon, nocorpse);           // monkilled -> mondied
+                // C: thitm() calls monkilled(mon, "", AD_PHYS/-AD_RBRE), which
+                // prints "<Mon> is killed!" ("destroyed" for nonliving) when the
+                // death is visible — fltxt="" is non-NULL, so the message always
+                // shows on a seen kill.  Routed through update_topl so it appends
+                // to a still-pending topline (e.g. a pet's "<pet> falls into a
+                // pit!  <pet> is killed!").
+                if (cansee(mon.mx, mon.my))
+                    await pline_mon(mon, `${Monnam(mon)} is ${nonliving_mm(mon) ? 'destroyed' : 'killed'}!`);
+                mon_kill_leaving(mon, nocorpse);           // mondied -> mondead
                 if (DEADMONSTER(mon)) { newsym(xx, yy); trapkilled = true; }
             }
         } else {
@@ -1042,6 +1059,47 @@ async function mon_trapeffect(mtmp, trap) {
             seetrap(trap);
         }
         const trapkilled = await mon_thitm(isdart ? 7 : 8, mtmp, otmp, 0, false);
+        return trapkilled ? Trap_Killed_Mon
+            : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+    }
+    case PIT:
+    case SPIKED_PIT: {
+        // C ref: trapeffect_pit() monster branch (trap.c:1965).  A grounded,
+        // solid monster that walks onto a pit falls in: "<Mon> falls into a
+        // pit!" (a_your keyed on trap->madeby_u, routed through update_topl so
+        // it appends to a still-pending topline), seetrap, then a forced
+        // thitm(0, mon, NULL, rnd(spiked ? 10 : 6), FALSE) resolves the fall
+        // damage — a low-HP victim (e.g. a little dog) is killed outright,
+        // yielding "<Mon> is killed!" appended on the same line and a corpse.
+        // Flyers/floaters were already filtered by the check_in_air gate in
+        // mon_mintrap, so the !grounded escape branch and the Sokoban/FORCETRAP
+        // inescapable variants can't fire for the grounded quadrupeds that step
+        // onto pits in these sessions.
+        const mptr = mtmp.data;
+        let relevant_spikes = trap.ttyp === SPIKED_PIT;
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        // grounded(ptr) = !is_flyer && !is_floater && !is_clinger (clingers are
+        // not placed this shallow, so treated as grounded).  Airborne monsters
+        // were already returned by mon_mintrap's check_in_air gate.
+        const grounded = !is_flyer(mptr) && !is_floater(mptr);
+        if (!grounded)
+            return Trap_Effect_Finished; /* avoids trap (non-Sokoban, no FORCETRAP) */
+        if (!passes_walls(mptr))
+            mtmp.mtrapped = 1;
+        if (in_sight) {
+            const a_your = trap.madeby_u ? 'your' : 'a';
+            await pline_mon(mtmp, `${Monnam(mtmp)} falls into ${a_your} pit!`);
+            const { seetrap } = await import('./trap.js');
+            seetrap(trap);
+        }
+        // mselftouch (petrification while falling) requires a wielded/worn
+        // cockatrice corpse — none for the pets/quadrupeds here, so no RNG.
+        // wearing_iron_shoes (would clear relevant_spikes) is likewise never
+        // true for these victims.
+        let trapkilled = false;
+        if (DEADMONSTER(mtmp)
+            || await mon_thitm(0, mtmp, null, rnd(relevant_spikes ? 10 : 6), false))
+            trapkilled = true;
         return trapkilled ? Trap_Killed_Mon
             : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
     }
@@ -2237,6 +2295,12 @@ const MON_HITU_ATTACKS = {
     // S_RODENT rats — single AT_BITE / AD_PHYS, 1d3 (NOT the generic 1d4).
     'sewer rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
     'giant rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
+    // S_LIZARD family (include/monsters.h): a single AT_BITE / AD_PHYS whose
+    // dice differ from the generic 1d4 — the newt bites for 1d2 and the gecko
+    // for 1d3, so a wrong die changes the rolled value even at aligned RNG
+    // (RND(x) modulo differs) — seed0002 newt = 1d2.
+    'newt': [MA(AT_BITE, AD_PHYS, 1, 2)],
+    'gecko': [MA(AT_BITE, AD_PHYS, 1, 3)],
     // S_DOG family (include/monsters.h): a single AT_BITE whose dice vary per
     // species — the generic fallback below is 1d4, but the jackal (1d2), fox
     // (1d3), little dog/dog (1d6) and large dog (2d4) differ, so name them here.
@@ -2708,7 +2772,11 @@ async function thitu(tlev, dam, otmp) {
     const terse = Blind() || !verbose;
     if (uac + tlev <= dieroll) {
         if (terse) await update_topl('It misses.');
-        else if (uac + tlev <= dieroll - 2) await update_topl(`The ${onm} misses you.`);
+        // C ref: mthrowu.c thitu() miss branch — for a single (quan==1) thrown
+        // object, onm = an(name) -> "a dart"; the message is
+        // pline("%s %s you.", upstart(onmbuf), vtense(onmbuf, "miss")) ->
+        // "A dart misses you." (not "The dart ...").
+        else if (uac + tlev <= dieroll - 2) await update_topl(`${upstart_mm(an_name(onm))} misses you.`);
         else await update_topl(`You are almost hit by ${an_name(onm)}.`);
         return 0;
     }
@@ -2737,6 +2805,10 @@ function mshot_xname(otmp) {
 // C ref: objnam.c an() — prefix the appropriate indefinite article.
 function an_name(s) {
     return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`;
+}
+// C ref: hacklib.c upstart() — capitalize the first letter of a string.
+function upstart_mm(s) {
+    return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
 // C ref: mthrowu.c m_throw() — fly the single missile from (x,y) toward the

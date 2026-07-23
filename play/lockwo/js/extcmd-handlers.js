@@ -917,20 +917,25 @@ function draw_corner_window(lines, maxcol, morestr, curPad) {
 function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers) {
     const name = `the ${box_basename(box.otyp)}`;
     const title = `Do what with ${name}?`;
+    // C ref: menuselector = flags.lootabc ? abc_chars : lootchars.  With the
+    // 'lootabc' option on, the entries are lettered a/b/c/d/e in place of the
+    // mnemonic o/i/b/r/s.  a.a_int (1..8) indexes the selector; element [0]
+    // ('_') is a skipped placeholder.
+    const sel = game?.flags?.lootabc ? '_:abcdenq' : '_:oibrsnq';
     const lines = [{ text: title, attr: ATR_INVERSE }, { text: '' }];
-    lines.push({ text: `: - Look inside ${name}` });
-    if (outokay) lines.push({ text: 'o - take something out' });
-    if (inokay) lines.push({ text: 'i - put something in' });
-    if (outokay) lines.push({ text: `b - ${inokay ? 'both; ' : ''}take out, then put in` });
+    lines.push({ text: `${sel[1]} - Look inside ${name}` });
+    if (outokay) lines.push({ text: `${sel[2]} - take something out` });
+    if (inokay) lines.push({ text: `${sel[3]} - put something in` });
+    if (outokay) lines.push({ text: `${sel[4]} - ${inokay ? 'both; ' : ''}take out, then put in` });
     if (inokay) {
-        lines.push({ text: `r - ${outokay ? 'both reversed; ' : ''}put in, then take out` });
-        lines.push({ text: `s - stash one item into ${name}` });
+        lines.push({ text: `${sel[5]} - ${outokay ? 'both reversed; ' : ''}put in, then take out` });
+        lines.push({ text: `${sel[6]} - stash one item into ${name}` });
     }
     lines.push({ text: '' }); // C: add_menu_str(win, "") — blank separator
-    if (more_containers) lines.push({ text: 'n - loot next container' });
+    if (more_containers) lines.push({ text: `${sel[7]} - loot next container` });
     // The 'q' entry is the pre-selected PICK_ONE default (no next container),
     // so process_menu_window renders its selection indicator '*' (count == -1).
-    lines.push({ text: `q * ${alreadyused ? 'done' : 'do nothing'}` });
+    lines.push({ text: `${sel[8]} * ${alreadyused ? 'done' : 'do nothing'}` });
     // add_menu width convention: cw.maxcol = max(str.length + 2), vs "(end) ".
     let maxcol = '(end) '.length;
     for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 2);

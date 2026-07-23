@@ -16,7 +16,7 @@
 import { game } from './gstate.js';
 import { domove, blocksMove } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
-import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n } from './display.js';
+import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph } from './display.js';
 import { obj_doname, whatis_pick_inventory } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc } from './vision.js';
@@ -25,7 +25,7 @@ import { is_safemon, canspotmon } from './uhitm.js';
 import { dist2 } from './hacklib.js';
 import { roles, races } from './role.js';
 import { DATABASE_ENTRIES } from './data_base_data.js';
-import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE } from './terminal.js';
+import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE, CLR_WHITE } from './terminal.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
@@ -948,6 +948,161 @@ export async function do_farlook() {
     const disp = game.nhDisplay;
     if (disp?.setCursor) disp.setCursor(cc.x - 1, cc.y + 1);
     game.context.move = 0;
+}
+
+// ── #terrain command — cmd.c doterrain() / detect.c reveal_terrain() ───────
+//
+// The #terrain command (default-bound to <del> / '\177') shows the known map
+// with monsters, objects and traps stripped so the underlying terrain is
+// visible, then lets the player browse it with getpos()'s autodescribe cursor.
+// In normal play (not explore/wizard mode) it first offers a three-entry
+// "View which?" PICK_ONE menu whose first item (bare terrain) is preselected.
+
+// TER_* subset bits (detect.c / include/hack.h).
+const TER_MAP = 0x01, TER_TRP = 0x02, TER_OBJ = 0x04;
+
+// The three normal-play "View which?" entries; 'a' is the preselected default
+// (rendered with a '*' marker instead of the '-' of the unselected entries).
+const TERRAIN_MENU_ITEMS = [
+    { ch: 'a', sel: true,  desc: 'known map without monsters, objects, and traps' },
+    { ch: 'b', sel: false, desc: 'known map without monsters and objects' },
+    { ch: 'c', sel: false, desc: 'known map without monsters' },
+];
+
+// Render the "View which?" PICK_ONE menu as a tty corner overlay (the map
+// shows through the columns left of offx).  Mirrors render_whatis_menu /
+// process_menu_window: title (inverse) on row 0, a blank separator, the item
+// lines, then the "(end)" morestr with the cursor parked after it.  A selected
+// PICK_ONE default renders its marker column as '*' (tty tty_print_glyph:
+// n==2 && selected => '*').
+function render_terrain_menu() {
+    const disp = game.nhDisplay;
+    if (!disp?.setCell) return;
+    const cols = disp.cols || 80;
+
+    const lines = [];
+    lines.push({ text: 'View which?', attr: ATR_INVERSE });
+    lines.push({ text: '' });
+    for (const it of TERRAIN_MENU_ITEMS)
+        lines.push({ text: `${it.ch} ${it.sel ? '*' : '-'} ${it.desc}` });
+
+    let maxcols = 0;
+    for (const l of lines) maxcols = Math.max(maxcols, l.text.length + 2);
+
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcols - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx + 1;
+
+    const blankCols = (row) => {
+        for (let c = offx; c < cols; c++) disp.setCell(c, row, ' ', NO_COLOR, 0);
+    };
+    for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0);
+
+    for (let i = 0; i < lines.length; i++) {
+        blankCols(i);
+        if (lines[i].text) disp.putstr(textCol, i, lines[i].text, NO_COLOR, lines[i].attr || 0);
+    }
+    const moreRow = lines.length;
+    blankCols(moreRow);
+    disp.putstr(textCol, moreRow, '(end)', NO_COLOR, 0);
+    disp.setCursor(textCol + 6, moreRow);
+}
+
+// Display the "View which?" menu and read a PICK_ONE selection.  Returns the
+// chosen a_int (1..3), or -1 if cancelled.  C select_menu(PICK_ONE): a
+// <space>/<return> confirms the preselected entry (n==1 => which==1); a direct
+// accelerator picks that entry; ESC cancels.
+async function terrain_menu() {
+    render_terrain_menu();
+    for (;;) {
+        const k = await nhgetch();
+        if (k === 27) return -1;                        // ESC: cancel
+        if (k === 32 || k === 13 || k === 10) return 1; // confirm preselected
+        const ch = String.fromCharCode(k);
+        if (ch === 'a') return 1;
+        if (ch === 'b') return 2;
+        if (ch === 'c') return 3;
+        // invalid key: PICK_ONE stays open (the menu is still on the grid).
+    }
+}
+
+// C ref: cmd.c doterrain().  recalc_mapseen() has no display effect for our
+// model, so it is skipped; the normal-play menu selects a TER_* subset and
+// hands off to reveal_terrain().  Returns ECMD_OK (no game time).
+export async function doterrain() {
+    const which = await terrain_menu();
+    if (which < 0) return 0; // ESC-cancelled: no display change
+    let subset = TER_MAP;
+    if (which === 2) subset = TER_MAP | TER_TRP;
+    else if (which === 3) subset = TER_MAP | TER_TRP | TER_OBJ;
+    await reveal_terrain(subset);
+    return 0;
+}
+
+// C ref: detect.c reveal_terrain(which_subset).  Redraw the known map with
+// monsters (and, per subset, objects/traps) stripped so the underlying terrain
+// shows through, pline the "Showing ... only..." banner, then browse the result
+// with getpos()'s autodescribe.  Afterwards map_redisplay() restores the real
+// map; docrt()'s internal cls() flushes WIN_MESSAGE (firing --More-- for any
+// still-pending topline such as getpos's "Done.").
+export async function reveal_terrain(which_subset) {
+    const u = game.u;
+    // C: (Hallucination || Stunned || Confusion) && !full => "You are too
+    // disoriented for this."  None of the recorded uses are impaired, so the
+    // normal branch is the only one modelled.
+    const keep_traps = (which_subset & TER_TRP) !== 0;
+    const keep_objs = (which_subset & TER_OBJ) !== 0;
+
+    // Paint the terrain-only glyph for every cell into the display buffer.
+    // C reveal_terrain_getglyph strips monsters/objects from the remembered
+    // glyph and normalizes S_darkroom->S_room and S_litcorr->S_corr; for the
+    // exercised TER_MAP subset this reduces to the bare remembered terrain
+    // background of each seen cell (unseen cells show default_glyph = S_stone).
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            const isHero = u && x === u.ux && y === u.uy;
+            if (!loc.remembered_glyph && !isHero) {
+                show_glyph_cell(x, y, ' ', NO_COLOR, false); // never-seen: blank
+                continue;
+            }
+            const bg = terrain_background_glyph(loc, x, y);
+            let color = bg.color;
+            // S_litcorr -> S_corr: a lit corridor ('#', CLR_WHITE) drops to the
+            // plain corridor color in the terrain view.
+            if (bg.ch === '#' && color === CLR_WHITE) color = NO_COLOR;
+            show_glyph_cell(x, y, bg.ch, color, bg.dec);
+        }
+    }
+    await flush_screen(1);
+
+    // C: Strcpy(buf, "known terrain"); + keep_* suffixes.  Only "known terrain"
+    // is exercised, but build the suffixes faithfully for generalization.
+    let buf = 'known terrain';
+    if (keep_traps) buf += keep_objs ? ', traps' : ' and traps';
+    if (keep_objs) buf += keep_traps ? ', and objects' : ' and objects';
+    // pline("Showing %s only...", buf) — leaves the topline NEED_MORE; getpos's
+    // first-use tip flushes it with --More-- before drawing the tip window.
+    await getpos_render(`Showing ${buf} only...`, u.ux, u.uy);
+    game._toplin = 1;
+    game._toplines = `Showing ${buf} only...`;
+
+    // browse_map(which_subset, "anything of interest") = getpos autodescribe,
+    // force=FALSE, flags.verbose (default on) => the verbose cursor prompt.
+    const verbose = game.flags?.verbose !== false;
+    await getpos('anything of interest', u.ux, u.uy, null, /*force=*/false, verbose);
+
+    // map_redisplay(): docrt() redraws the real map.  cls() inside docrt calls
+    // display_nhwindow(WIN_MESSAGE,...) which fires more() when the topline is
+    // still NEED_MORE (getpos left "Done." pending after a <space> quit).
+    if (game._pending_message) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+    await docrt();
+    await flush_screen(1);
 }
 
 // ── '/' whatis command — pager.c do_look(mode=0) ──────────────────────────

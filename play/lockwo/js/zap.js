@@ -26,6 +26,10 @@ import { can_make_bones } from './bones.js';
 // = 370, WAN_DEATH = 432.
 const SPE_FINGER_OF_DEATH = 370;
 const WAN_DEATH = 432;
+// C ref: objects.h — WAN_SLEEP / SPE_SLEEP fire a sleep ray; zapping at self
+// puts the hero to sleep.  (JS objects table: WAN_SLEEP 431, SPE_SLEEP 369.)
+const WAN_SLEEP = 431;
+const SPE_SLEEP = 369;
 
 // Object-type numbers that unconditionally resist (never rolled).
 // C ref: zap.c obj_resists().  AMULET_OF_YENDOR / SPE_BOOK_OF_THE_DEAD /
@@ -845,8 +849,31 @@ async function zap_getdir() {
 // wand of death at himself with '.'.  Returns the physical damage for the caller
 // to feed to losehp(); WAN_DEATH runs done(DIED) directly and returns 0.
 async function zapyourself(obj, ordinary) {
+    let learn_it = false;
     let damage = 0;
     switch (obj.otyp) {
+    case WAN_SLEEP:
+    case SPE_SLEEP:
+        // C ref: zap.c zapyourself() WAN_SLEEP/SPE_SLEEP.  learn_it discovers the
+        // wand type at the tail (learnwand -> makeknown, credit_hero rn2(19) when
+        // first known).  monstseesu/monstunseesu only toggle a monster-memory flag
+        // (no RNG).  With no sleep resistance the ordinary self-zap prints
+        // pline_The("sleep ray hits you!") and collapses the hero via
+        // fall_asleep(-rnd(50), TRUE) — the rnd(50) is the RNG-relevant draw.
+        // pline_The/You route through vpline -> update_topl, which arms the
+        // topline NEED_MORE state so the message combines with (and later pages
+        // via --More--) the pet-move messages produced during the sleep turns.
+        learn_it = true;
+        if (Sleep_resistance()) {
+            await update_topl("You don't feel sleepy!");
+        } else {
+            if (ordinary)
+                await update_topl('The sleep ray hits you!');
+            else
+                await update_topl('You fall asleep!');
+            fall_asleep(-rnd(50), true);
+        }
+        break;
     case WAN_DEATH:
     case SPE_FINGER_OF_DEATH:
         // nonliving()/is_demon(): the human hero is living and not a demon, so
@@ -875,7 +902,30 @@ async function zapyourself(obj, ordinary) {
     default:
         break;
     }
+    // C ref: zap.c zapyourself() tail — discover the wand type if its effect
+    // was observable and the wand itself has been seen.
+    if (learn_it) learnwand(obj);
     return damage;
+}
+
+// C ref: youprop.h Sleep_resistance — intrinsic/extrinsic sleep immunity.  The
+// contest Healer has none; kept as a helper so the WAN_SLEEP branch mirrors C.
+function Sleep_resistance() { return (game.u?.uprops?.SleepResistance || 0) > 0; }
+
+// C ref: timeout.c fall_asleep(how_long, wakeup_msg) — the hero collapses
+// helpless for |how_long| turns (how_long < 0).  nomul(how_long) sets the
+// negative multi the moveloop counts back up; u.usleep marks the hero Unaware
+// (gethungry then burns nutrition at 1/10 via rn2(10)); nomovemsg is announced
+// by unmul() when the countdown reaches 0.  The disabled Hear_again block and
+// stop_occupation() draw no RNG (no occupation is active on the zap path).
+function fall_asleep(how_long, wakeup_msg) {
+    if ((game.multi ?? 0) < how_long) return;   // nomul(how_long)
+    game.multi = how_long;
+    if (game.context)
+        game.context.travel = game.context.travel1 = game.context.mv = 0;
+    game.multi_reason = 'sleeping';
+    if (game.u) game.u.usleep = game.moves ?? 1;
+    game.nomovemsg = wakeup_msg ? 'You wake up.' : 'You can move again.';
 }
 
 // C ref: end.c done(DIED) / really_done(DIED), reached from zapyourself()'s

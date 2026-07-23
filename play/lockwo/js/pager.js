@@ -17,6 +17,7 @@ import { nhgetch } from './input.js';
 import { render_map_to_grid, pline, topl_more, flush_screen } from './display.js';
 import { renderWindowScreen, dismiss_invent_screen } from './invent.js';
 import { doextversion } from './version.js';
+import { option_help_lines } from './options.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { HELP, SHELP, HISTORY, OPTIONFILE, OPTMENUHELP, USAGEHELP, LICENSE }
     from './pager_data.js';
@@ -90,7 +91,7 @@ const HELP_MENU_ITEMS = [
     { text: 'Concise history of NetHack.', fn: dohistory },
     { text: 'Info on a character in the game display.', fn: null },
     { text: 'Info on what a given key does.', fn: dowhatdoes },
-    { text: 'List of game options.', fn: null },
+    { text: 'List of game options.', fn: option_help },
     { text: 'Longer explanation of game options.', fn: dispfile_optionfile },
     { text: "Using the '#optionsfull' or 'm O' command to set options.", fn: dispfile_optmenu },
     { text: 'Full list of keyboard commands.', fn: null },
@@ -105,6 +106,8 @@ const HELP_MENU_ITEMS = [
 // C ref: pager.c hmenu_doextversion()/dispfile_*()/dohistory() — thin wrappers
 // that each display one help/data file (or the version info) full-screen.
 async function hmenu_doextversion() { await doextversion(); }
+// C ref: options.c option_help() — full-screen text window listing all options.
+async function option_help() { await display_text_window(option_help_lines()); }
 async function dispfile_help() { await display_file(HELP); }
 async function dispfile_shelp() { await display_file(SHELP); }
 async function dohistory() { await display_file(HISTORY); }

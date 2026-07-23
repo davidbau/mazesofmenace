@@ -221,6 +221,36 @@ export function vobj_at(x, y) {
     return top;
 }
 
+// C ref: display.h obj_is_piletop(obj) — the topmost floor object at (x,y) is a
+// "pile top" when there is at least one more object beneath it in the tile's
+// nexthere chain, with the boulder exception: a boulder hides the pile beneath
+// it (so it is only a pile top when the object directly under it is also a
+// boulder).  A pile-top object glyph carries MG_OBJPILE, which the tty draws in
+// reverse video when iflags.hilite_pile (and use_inverse) are set.  `top` must
+// be the topmost object at its tile (as returned by vobj_at).
+function obj_is_piletop(top) {
+    if (!top || top.where !== 'floor') return false;
+    const objs = game.level?.objects;
+    if (!objs) return false;
+    let beneath = null;
+    for (const o of objs) {
+        if (o.where === 'floor' && o.ox === top.ox && o.oy === top.oy && o !== top)
+            beneath = o; // last-seen colocated non-top object == directly beneath the top
+    }
+    if (!beneath) return false;
+    if (top.otyp === BOULDER_OTYP && beneath.otyp !== BOULDER_OTYP) return false;
+    return true;
+}
+
+// C ref: win/tty/wintty.c tty_print_glyph — a pile-top object glyph (MG_OBJPILE)
+// is drawn with ATR_INVERSE when iflags.hilite_pile && iflags.use_inverse.
+// use_inverse defaults On (only toggled via the Advanced options which the
+// recorded sessions never touch), so an unset flag counts as on.
+function pile_attr(pile) {
+    return (pile && game.flags?.hilite_pile && game.flags?.use_inverse !== false)
+        ? ATR_INVERSE : 0;
+}
+
 // Monster at (x, y).  C ref: rm.h m_at(x,y) = svl.level.monsters[x][y].
 // A ridden steed has been removed from the map grid (remove_monster in
 // mount_steed) but remains in the fmon chain, so it must NOT be reported by the
@@ -762,7 +792,14 @@ export function background_glyph(loc, x, y) {
     // object when !covers_objects.
     if (obj && !covers_objects(loc)) {
         const og = object_glyph(obj);
-        if (og) return og;
+        if (og) {
+            // C ref: display.h obj_to_glyph — a stack of 2+ floor objects makes
+            // the top glyph a pile-top glyph (MG_OBJPILE), highlighted by the tty
+            // when hilite_pile is on.  Same sym/color as the plain object glyph;
+            // only the pile flag (rendered as ATR_INVERSE) is added.
+            if (obj_is_piletop(obj)) og.pile = true;
+            return og;
+        }
     }
     const trap = game.level?.traps?.find((t) => t.tx === x && t.ty === y);
     if (trap?.tseen && !covers_objects(loc))
@@ -805,7 +842,7 @@ export function newsym(x, y) {
         const hg = hero_glyph();
         show_glyph_cell(x, y, hg.ch, hg.color, false);
         const bg = background_glyph(loc, x, y);
-        loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec };
+        loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
         return;
     }
 
@@ -828,7 +865,7 @@ export function newsym(x, y) {
         const bg = background_glyph(loc, x, y);
         // Remember the background (not the monster — monsters move).
         if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec };
+            loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
         }
         // A visible monster takes precedence over the background.  C ref:
         // display.c newsym -> mon_visible(mon): an mundetected hider (e.g. a
@@ -844,7 +881,7 @@ export function newsym(x, y) {
             const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
         } else {
-            show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
+            show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
         }
     } else {
         // Can't physically see <x,y>.  C ref: display.c newsym "Can't see the
@@ -872,9 +909,12 @@ export function newsym(x, y) {
                 && loc.remembered_glyph.color === CLR_WHITE) {
                 loc.remembered_glyph.color = NO_COLOR;
             }
-            // Out of sight but remembered — show remembered background.
+            // Out of sight but remembered — show remembered background.  A
+            // remembered pile-top keeps its MG_OBJPILE highlight (drawn via the
+            // current hilite_pile setting), matching C's stored pile-top glyph.
             show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+                loc.remembered_glyph.color, loc.remembered_glyph.decgfx,
+                pile_attr(loc.remembered_glyph.pile));
         } else {
             // C ref: display.c newsym show_mem — an out-of-sight cell with
             // nothing remembered shows lev->glyph, which for an unmapped square

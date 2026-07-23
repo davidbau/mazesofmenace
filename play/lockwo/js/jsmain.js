@@ -216,6 +216,10 @@ export class NethackGame {
         // wizard ..." (insight.c:3485).
         if (g.flags.debug) g.plname = 'wizard';
         g.iflags = { ...opts.iflags };
+        // C ref: cmd.c parsebindings()/reset_commands() — custom key bindings
+        // from nethackrc BIND= lines (key char -> command name).  cmd.js rhack()
+        // remaps a bound key to the command's default key before dispatch.
+        g.keybind = opts.keybind || {};
         // symset selects the drawing glyph table; DECgraphics uses VT100
         // line-drawing for walls/floor, otherwise the default ASCII symbols.
         g.symset = opts.symset || '';

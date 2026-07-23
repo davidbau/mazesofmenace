@@ -314,7 +314,11 @@ function obj_absorb(potmp, pobj) { if (pobj) pobj.obj = null; return potmp?.obj 
 function pudding_merge_message(_otmp, _obj) {}
 function maybereleaseobuf(_str) {}
 function dupstr(s) { return String(s ?? ''); }
-function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false }); }
+// C ref: objnam.c cxname_singular() == xname_flags(obj, CXN_SINGULAR).  xname
+// never prepends the BUC word ("blessed"/"uncursed"/"cursed") — that belongs to
+// doname() alone — so a BUC-known object still reads e.g. "ring of see invisible"
+// here (used by loot_xname, the itemactions title/label, and data.base lookups).
+function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 function xname(obj) { observe_object(obj); return simple_obj_name(obj); }
 function yname(obj) { return simple_obj_name(obj); }
 function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
@@ -1277,6 +1281,16 @@ function simple_obj_name(obj, opts = {}) {
     let base = objectBaseName(obj);
     if (obj.corpsenm != null && obj.otyp === TIN) base = `tin of ${base}`;
     let prefix = buc ? bucPrefix(obj) : '';
+    // C ref: objnam.c doname_base — a lockable box (chest/large box/ice box)
+    // whose lock state is known (lknown, set once the hero loots/kicks/forces
+    // it) shows "broken "/"locked "/"unlocked "; a box with a known trap shows
+    // "trapped " first.  These follow the BUC prefix and precede the base name,
+    // so a freshly-seen (lknown==0) box is still just "a chest".
+    if (Is_box(obj)) {
+        if (obj.otrapped && obj.tknown && obj.dknown) prefix += 'trapped ';
+        if (obj.lknown)
+            prefix += obj.obroken ? 'broken ' : obj.olocked ? 'locked ' : 'unlocked ';
+    }
     // C ref: objnam.c doname_base RING_CLASS — a known charged ring appends its
     // enchantment as a signed prefix ("%+d "), so "+1 ", "+0 ", "-2 " all show
     // (there is no spe != 0 guard).  Non-charged rings (e.g. see invisible) and
@@ -1498,8 +1512,12 @@ function inventoryRows(lets = null) {
     const rows = [];
     const inv = [...inventoryArray()].filter((obj) => !lets || String(lets).includes(obj.invlet));
     if (!inv.length) return [];
+    // C ref: invent.c display_pickinv() — iterate flags.inv_order (def_inv_order,
+    // which already leads with COIN_CLASS) exactly once per class.  classOrder()
+    // already begins with COIN_CLASS, so it must NOT be prepended again or gold
+    // renders twice ("Coins / $ - N gold pieces" duplicated).
     const order = classOrder();
-    for (const oclass of [COIN_CLASS, ...order]) {
+    for (const oclass of order) {
         const items = inv.filter((obj) => obj.oclass === oclass).sort(compareInvlet);
         if (!items.length) continue;
         rows.push([let_to_name(oclass, false, false), ...items.map((obj) => {
@@ -2542,6 +2560,16 @@ for (let otyp = 101; otyp <= 120; otyp++) ARMOR_OC_DELAY.set(otyp, 5);
 // C ref: include/objects.h BOOTS() — every boots otyp (163..172) has oc_delay 2,
 // so putting on / taking off any footwear is a 2-turn dressing maneuver.
 for (let otyp = LOW_BOOTS; otyp <= LEVITATION_BOOTS; otyp++) ARMOR_OC_DELAY.set(otyp, 2);
+// C ref: include/objects.h HELM() — every helmet otyp (89..100) has oc_delay 1
+// EXCEPT the fedora (92) and dented pot (95), whose HELM() delay field is 0.  So
+// donning/doffing any helmet is a 1-turn "dressing maneuver" occupation (showing
+// "You finish your dressing maneuver." rather than an instant "You are now
+// wearing …").  This covers the orcish helm (90), elven leather helm (89),
+// dwarvish iron helm (91), cornuthaum, dunce cap, helm of brilliance/caution/
+// opposite-alignment/telepathy, in addition to the plain helmet (97) above.
+for (let otyp = 89; otyp <= 100; otyp++) ARMOR_OC_DELAY.set(otyp, 1);
+ARMOR_OC_DELAY.set(FEDORA, 0);   // fedora: HELM() delay field 0
+ARMOR_OC_DELAY.set(95, 0);       // dented pot (no named otyp constant here): delay 0
 
 // C ref: objclass.h is_cloak/is_suit/is_helmet/... — classify a piece of armor
 // by the slot it occupies, returning its WA_* mask (0 if not wearable armor).
@@ -4473,33 +4501,53 @@ function renderItemActionsMenu(otmp, entries) {
     const title = `Do what with ${the_obj(otmp)}?`;
     const itemLines = entries.map((e) => `${e.accel} - ${e.label}`);
     const lines = [title, '', ...itemLines, '(end)'];
-    // offx = max(10, cols - (maxcol+1) - 1); maxcol = widest line + 2.
+    // C ref: win/tty/wintty.c tty_end_menu — cw->maxcol = widest entry's
+    // strlen()+2 ("extra space at beg & end"); tty_display_nhwindow NHW_MENU then
+    // sets the window offset offx = max(10, cols - maxcol - 1), collapsing to a
+    // full-screen menu (offx 0) when it would be 10.
     let maxcol = 0;
     for (const ln of lines) maxcol = Math.max(maxcol, ln.length + 2);
     if (maxcol > 80) maxcol = 80;
     const cols = display.cols ?? 80;
-    let offx = Math.max(10, cols - (maxcol + 1) - 1);
+    let offx = Math.max(10, cols - maxcol - 1);
     if (offx === 10) offx = 0;
+    // C ref: process_menu_window draws each row as tty_curs(win,1,r) + a leading
+    // putchar(' ') then the entry text, so the text starts at screen column
+    // offx+1 (the leading space occupies offx).
+    const textx = offx + 1;
 
     display.clearScreen();
     render_map_to_grid();
-    // Blank the menu's column band for every row it occupies (the menu window is
-    // cleared; the map shows through only OUTSIDE it).
+    // C ref: process_menu_window's cl_end() blanks [offx, cols) on every menu row
+    // (the leading-space column included); the map shows through only to the LEFT.
     for (let r = 0; r < lines.length && r < 22; r++)
         for (let c = offx; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
-    // Row 0: the query title, drawn ATR_INVERSE (C end_menu prompt highlight).
-    for (let c = 0; c < title.length && offx + c < 80; c++)
-        display.setCell(offx + c, row, title[c], NO_COLOR, ATR_INVERSE);
+    // Row 0: the query title, drawn with the menu prompt style (= menu_headings,
+    // ATR_INVERSE).
+    for (let c = 0; c < title.length && textx + c < 80; c++)
+        display.setCell(textx + c, row, title[c], NO_COLOR, ATR_INVERSE);
     row++;
-    display.putstr(offx, row++, '', NO_COLOR, 0); // blank separator row
-    for (const ln of itemLines) display.putstr(offx, row++, ln, NO_COLOR, 0);
+    display.putstr(textx, row++, '', NO_COLOR, 0); // blank separator row
+    for (const ln of itemLines) display.putstr(textx, row++, ln, NO_COLOR, 0);
     const endRow = row;
-    display.putstr(offx, row, '(end)', NO_COLOR, 0);
-    putStatusLines(display);
-    // C tty parks the cursor just past the "(end)" prompt (offx + 5 + 1).
-    display.setCursor(offx + '(end)'.length + 1, endRow);
+    display.putstr(textx, row, '(end)', NO_COLOR, 0);
+    // C ref: win/tty/wintty.c erase_menu_or_text — dismissing the full-screen
+    // (offx==0) inventory menu that preceded this submenu ran docrt(), whose cls()
+    // blanked the status window and only set disp.botlx (no bot() has redrawn it),
+    // so the status lines stay blank until a turn passes.  An overlay-menu
+    // (offx>0) dismiss used docorner() and left the status intact.
+    if (game._botl_blanked) {
+        for (let c = 0; c < cols; c++) {
+            display.setCell(c, 22, ' ', NO_COLOR, 0);
+            display.setCell(c, 23, ' ', NO_COLOR, 0);
+        }
+    } else {
+        putStatusLines(display);
+    }
+    // C tty parks the cursor just past the "(end)" prompt (textx + 5 + 1).
+    display.setCursor(textx + '(end)'.length + 1, endRow);
     game._modal_screen = 'itemactions';
 }
 
@@ -4648,6 +4696,11 @@ function renderInventoryMenu(rows) {
     const totalRows = display.rows ?? 24;
     const perPage = totalRows - 1; // 23 content lines, footer on the last row
     const multipage = lines.length > perPage;
+    // C ref: win/tty/wintty.c — a paged menu is a full-screen window (offx==0);
+    // dismissing it runs docrt(), which blanks the status window (see
+    // renderItemActionsMenu).  A single-page menu is an overlay (offx>0) whose
+    // dismiss uses docorner() and leaves the status intact.
+    game._botl_blanked = multipage;
     if (multipage) {
         // Full-screen paged menu: page 1 = first perPage lines, footer "(N of M)".
         const pages = Math.ceil(lines.length / perPage);
