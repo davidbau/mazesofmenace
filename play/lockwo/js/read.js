@@ -14,7 +14,8 @@ import { do_mapping } from './detect.js';
 import { study_book } from './spell.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
          objects } from './mkobj.js';
-import { A_WIS } from './const.js';
+import { A_WIS, CORR, Is_rogue_level, Is_waterlevel } from './const.js';
+import { Blind } from './vision.js';
 
 const ECMD_CANCEL = 0;
 const ECMD_OK = 0;
@@ -22,6 +23,7 @@ const ECMD_TIME = 1;
 
 const SCR_MAGIC_MAPPING = 337;
 const SCR_IDENTIFY = 336;
+const SCR_LIGHT = 332;
 
 // C ref: topl.c — within a single turn, consecutive plines concatenate on the
 // top line (separated by two spaces) until it would overflow.  pline() itself
@@ -83,6 +85,15 @@ async function seffects(sobj) {
         await pline_append('A map coalesces in your mind!');
         await do_mapping();
         break;
+    case SCR_LIGHT:
+        // C ref: read.c seffect_light — non-confused, non-blind: mark known and
+        // light the area (litroom).  lightdamage only rolls RNG when the hero is
+        // a gremlin (not exercised), so the read consumes no extra PRNG here.
+        if (!Confused()) {
+            if (!Blind()) game.known = true;
+            await litroom(!sobj.cursed, sobj);
+        }
+        break;
     case SCR_IDENTIFY:
         await seffect_identify(sobj);
         return true; // seffect_identify uses up the scroll itself
@@ -102,6 +113,26 @@ async function seffects(sobj) {
         break;
     }
     return false;
+}
+
+// C ref: read.c litroom(on, obj) — the scroll-of-light "on" path (blessed or
+// uncursed).  Not swallowed, not blind, not a rogue-level corridor: announce
+// "A lit field surrounds you!" (the no-op swallowed/underwater/water-level
+// forms print "briefly").  C then lights every couldsee cell within radius
+// (do_clear_area + set_lit) and forces a redraw; that DISPLAY effect — most
+// visibly the transient lighting of nearby corridor cells, which C re-darkens
+// again as the hero moves out of line-of-sight — is a deep vision-parity dance
+// and is not modeled here (rooms the hero is standing in are already lit).  No
+// RNG either way.  The rogue-level whole-room relight and cursed-darkening
+// paths are not exercised by the covered starts.
+async function litroom(on, obj) {
+    if (!on) return; // cursed-scroll darkening not exercised
+    const u = game.u;
+    const no_op = !!(u?.uswallow || u?.uprops?.Underwater || Is_waterlevel(u?.uz));
+    const loc0 = game.level?.at(u.ux, u.uy);
+    if (!u?.uswallow && !Blind()
+        && !(Is_rogue_level(u.uz) && loc0?.typ === CORR))
+        await pline_append(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
 }
 
 // C ref: read.c seffect_identify() — the scroll-of-identify effect.  The scroll

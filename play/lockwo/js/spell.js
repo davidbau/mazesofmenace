@@ -57,8 +57,16 @@ const ECMD_OK = 0;
 const ECMD_FAIL = 0;
 const ECMD_TIME = 1;
 
+// C ref: include/objects.h — the healing spellbook otyps.  These must match the
+// real objects[] indices (see mkobj.js SPE_* table); a wrong value both mis-keys
+// the applySpell() switch and drops/misapplies the "healing spell" caster bonus
+// in percent_success().
 const SPE_HEALING = 373;
-const SPE_EXTRA_HEALING = 374; // (not used by covered sessions; kept for parity)
+const SPE_CURE_BLINDNESS = 377;
+const SPE_CURE_SICKNESS = 385;
+const SPE_EXTRA_HEALING = 390;
+const SPE_RESTORE_ABILITY = 391;
+const SPE_REMOVE_CURSE = 394;
 
 // spl_book lives on the game object: an array of { sp_id, sp_lev, sp_know }.
 function spl_book() {
@@ -225,10 +233,12 @@ function percent_success(spell) {
         if (uarmf && is_metallic_obj(uarmf)) splcaster += UARMFBON;
     }
     if (otyp === sp.spec) splcaster += sp.sbon;
-    // healing-spell bonus (SPE_HEALING 373, EXTRA_HEALING 374, CURE_BLINDNESS 388,
-    // CURE_SICKNESS 385, RESTORE_ABILITY 391, REMOVE_CURSE 394).
-    if (otyp === 373 || otyp === 374 || otyp === 388 || otyp === 385
-        || otyp === 391 || otyp === 394)
+    // C ref: spell.c percent_success — the "healing spell" caster bonus applies
+    // to the healing family (healing, extra healing, cure blindness, cure
+    // sickness, restore ability, remove curse) but NOT to stone to flesh.
+    if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING
+        || otyp === SPE_CURE_BLINDNESS || otyp === SPE_CURE_SICKNESS
+        || otyp === SPE_RESTORE_ABILITY || otyp === SPE_REMOVE_CURSE)
         splcaster += special;
     if (splcaster > 20) splcaster = 20;
 

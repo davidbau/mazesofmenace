@@ -94,12 +94,12 @@ const HELP_MENU_ITEMS = [
     { text: 'List of game options.', fn: option_help },
     { text: 'Longer explanation of game options.', fn: dispfile_optionfile },
     { text: "Using the '#optionsfull' or 'm O' command to set options.", fn: dispfile_optmenu },
-    { text: 'Full list of keyboard commands.', fn: null },
+    { text: 'Full list of keyboard commands.', fn: dokeylist },
     { text: 'List of extended commands.', fn: null },
-    { text: 'List menu control keys.', fn: null },
+    { text: 'List menu control keys.', fn: domenucontrols },
     { text: "Description of NetHack's command line.", fn: dispfile_usagehelp },
     { text: 'The NetHack license.', fn: dispfile_license },
-    { text: 'Support information.', fn: null },
+    { text: 'Support information.', fn: docontact },
     { text: 'List of wizard-mode commands.', fn: null, wizonly: true },
 ];
 
@@ -115,6 +115,23 @@ async function dispfile_optionfile() { await display_file(OPTIONFILE); }
 async function dispfile_optmenu() { await display_file(OPTMENUHELP); }
 async function dispfile_usagehelp() { await display_file(USAGEHELP); }
 async function dispfile_license() { await display_file(LICENSE); }
+
+// C ref: pager.c docontact() — "Support information." full-screen text window.
+// The sysopt.support / SYSCF-WIZARDS branches print a "local support" line only
+// when the build's sysconf sets them; this build sets neither, so only the
+// development-team lines show.  DEVTEAM_EMAIL / DEVTEAM_URL are build-constant
+// macros from include/hack.h.
+const DEVTEAM_EMAIL = 'devteam@nethack.org';
+const DEVTEAM_URL = 'https://www.nethack.org/';
+async function docontact() {
+    await display_text_window([
+        'To contact the NetHack development team directly,',
+        `see the 'Contact' form on our website or email <${DEVTEAM_EMAIL}>.`,
+        '',
+        'For more information on NetHack, or to report a bug,',
+        `visit our website "${DEVTEAM_URL}".`,
+    ]);
+}
 
 // ---------------------------------------------------------------------------
 // dowhatdoes() — the "Info on what a given key does" help choice ('?f'), also
@@ -233,6 +250,219 @@ async function dowhatdoes() {
         await pline(`No such command '${visctrl(uq)}', char code ${uq} (0${uq.toString(8).padStart(3, '0')} or 0x${uq.toString(16).padStart(2, '0')}).`);
     }
     return 0; // ECMD_OK
+}
+
+// ---------------------------------------------------------------------------
+// dokeylist() — "Full list of keyboard commands." ('?k').  C ref: cmd.c
+// dokeylist(): a full-screen NHW_TEXT window that lists every key and the
+// command bound to it (like dat/hh but generated from the live key bindings),
+// grouped into Directional keys / Miscellaneous keys / Menu control keys /
+// General commands / Game commands (/ Debug mode commands in wizard mode).
+//
+// The listing is entirely build-constant here: it derives from the command
+// table (cmd_data.js EXTCMD_TABLE == cmd.c extcmdlist[]) and the default key
+// bindings that cmd.c commands_init()/reset_commands() install.  No RNG and no
+// game state (other than wizard mode) affect it.
+
+// ANSI control / meta transforms (cmd.c C()/M() macros).
+function ctrlKey(ch) { return ch.charCodeAt(0) & 0x1f; }
+function metaKey(ch) { return (typeof ch === 'string' ? ch.charCodeAt(0) : ch) | 0x80; }
+function padRight(s, n) { return s.length >= n ? s : s + ' '.repeat(n - s.length); }
+function padLeft(s, n) { return s.length >= n ? s : ' '.repeat(n - s.length) + s; }
+// The command's raw C flag expression is kept verbatim in cmd_data.js, so a
+// flag test is a substring match on that expression.
+function cmdHasFlag(e, f) { return !!e.flags && e.flags.includes(f); }
+
+// cmd.c reset_commands() movement layout: sdir[] = "hykulnjb><"; the first 8
+// chars are the direction keys W,NW,N,NE,E,SE,S,SW.
+const DIRCHARS = 'hykulnjb';
+
+// Build the default key -> command map exactly as cmd.c installs it:
+//   commands_init(): bind every extcmdlist entry with a non-zero default key
+//   (later duplicates overwrite the binding), then the explicit bind_key()
+//   overrides; reset_commands(): the movement keys (h/y/k/u/l/n/j/b and their
+//   Shift and Ctrl forms) are then rebound to movement commands, overwriting
+//   whatever those keys held.
+function buildKeymap() {
+    const map = new Map(); // key code -> extcmd entry
+    for (const e of EXTCMD_TABLE) if (e.key) map.set(e.key, e);
+    const byTxt = (t) => EXTCMD_TABLE.find((e) => e.txt === t);
+    const overrides = [
+        [ctrlKey('l'), 'redraw'], ['h'.charCodeAt(0), 'help'],
+        ['j'.charCodeAt(0), 'jump'], ['k'.charCodeAt(0), 'kick'],
+        ['l'.charCodeAt(0), 'loot'], [ctrlKey('n'), 'annotate'],
+        ['N'.charCodeAt(0), 'name'], ['u'.charCodeAt(0), 'untrap'],
+        ['5'.charCodeAt(0), 'run'], [metaKey('5'), 'rush'],
+        ['-'.charCodeAt(0), 'fight'], [metaKey('O'), 'overview'],
+        [metaKey('2'), 'twoweapon'], [metaKey('N'), 'name'],
+    ];
+    for (const [k, t] of overrides) { const e = byTxt(t); if (e) map.set(k, e); }
+    // Movement rebind (MOVEMENTCMD) overwrites the 24 movement keys.
+    const moveMarker = { txt: '', desc: '', flags: 'MOVEMENTCMD' };
+    for (const ch of DIRCHARS) {
+        const lc = ch.charCodeAt(0);
+        map.set(lc, moveMarker);                              // walk
+        map.set(ch.toUpperCase().charCodeAt(0), moveMarker);  // run (Shift)
+        map.set(lc & 0x1f, moveMarker);                       // rush (Ctrl)
+    }
+    return map;
+}
+
+// cmd.c keylist_func_has_key(): TRUE if extcmd is bound to some key that is
+// not already flagged used.
+function keylistFuncHasKey(keymap, extcmd, keysAlreadyUsed) {
+    for (let i = 0; i < 256; i++) {
+        if (keysAlreadyUsed[i]) continue;
+        if (keymap.get(i) === extcmd) return true;
+    }
+    return false;
+}
+
+// cmd.c keylist_putcmds(): list (or, when docount, count) commands whose flags
+// satisfy incl/excl.  Keyed commands come first (ascending key), then keyless
+// commands in table order.  Mutates keysUsed only on the emit pass.
+function keylistPutcmds(lines, keymap, keysUsed, docount, incl, excl) {
+    const keysAlreadyUsed = keysUsed.slice();
+    let count = 0;
+    const inclOk = (e) => !incl.length || incl.some((f) => cmdHasFlag(e, f));
+    const exclBad = (e) => excl.length && excl.some((f) => cmdHasFlag(e, f));
+    for (let i = 0; i < 256; i++) {
+        if (keysUsed[i]) continue;
+        if (i === 0x20) continue; // ' ' unbound unless rest_on_space (default off)
+        const b = keymap.get(i);
+        if (b) {
+            if (!inclOk(b) || exclBad(b)) continue;
+            if (docount) { count++; continue; }
+            lines.push(padRight(key2txt(i), 7) + ' ' + padRight(b.txt, 13) + ' ' + b.desc);
+            keysUsed[i] = true;
+        }
+    }
+    for (const e of EXTCMD_TABLE) {
+        if (!inclOk(e) || exclBad(e)) continue;
+        if (keylistFuncHasKey(keymap, e, keysAlreadyUsed)) continue;
+        if (docount) { count++; continue; }
+        lines.push('#' + padRight(e.txt, 20) + ' ' + e.desc);
+    }
+    return count;
+}
+
+// options.c default_menu_cmd_info[] with the default menu command keys (the
+// MENU_* constant chars) and options.c show_menu_controls(win, TRUE) layout.
+const MENU_CMD_INFO = [
+    ['>', 'Go to next page'], ['<', 'Go to previous page'],
+    ['^', 'Go to first page'], ['|', 'Go to last page'],
+    ['.', 'Select all items in entire menu'], ['@', 'Invert selection for all items'],
+    ['-', 'Unselect all items in entire menu'], [',', 'Select all items on current page'],
+    ['~', "Invert current page's selections"], ['\\', 'Unselect all items on current page'],
+    [':', 'Search and invert matching items'],
+];
+const MENU_CTRL_HARDCODED = [
+    ['Return', 'Accept current choice(s) and dismiss menu'],
+    ['Enter', 'Same as Return'],
+    ['Space', 'If not on last page, advance one page;'],
+    ['     ', 'when on last page, treat like Return'],
+    ['Escape', 'Cancel menu without making any choice(s)'],
+];
+
+async function dokeylist() {
+    const wizard = !!game.flags?.debug;
+    const keymap = buildKeymap();
+    const lines = [];
+    const dc = (i) => DIRCHARS[i];
+
+    lines.push('');
+    lines.push(padLeft('', 7) + ' ' + '    Full Current Key Bindings List');
+    lines.push(padLeft('', 7) + ' ' + '(also commands with no key assignment)');
+
+    // Directional keys — show_direction_keys(win, '.', FALSE).
+    lines.push('');
+    lines.push('Directional keys:');
+    lines.push('          ' + dc(1) + '  ' + dc(2) + '  ' + dc(3));
+    lines.push('           \\ | / ');
+    lines.push('          ' + dc(0) + '- . -' + dc(4));
+    lines.push('           / | \\ ');
+    lines.push('          ' + dc(7) + '  ' + dc(6) + '  ' + dc(5));
+    lines.push('');
+    lines.push('Ctrl+<direction> will run in specified direction until something very');
+    lines.push(padLeft('', 7) + ' ' + 'interesting is seen.');
+    lines.push('Shift+<direction> will run in specified direction until you encounter');
+    lines.push(padLeft('', 7) + ' ' + 'an obstacle.');
+
+    // Miscellaneous keys — misc_keys[] (only <esc> for !num_pad) + the SIGINT
+    // line for ^C.
+    lines.push('');
+    lines.push('Miscellaneous keys:');
+    lines.push(padRight(key2txt(0o33), 7) + ' ' + 'cancel current prompt or pending prefix');
+    lines.push(padRight(key2txt(ctrlKey('c')), 7) + ' interrupt: break out of NetHack (SIGINT)');
+
+    // Menu control keys — show_menu_controls(win, TRUE).
+    lines.push('');
+    lines.push('Menu control keys:');
+    for (const [k, d] of MENU_CMD_INFO)
+        lines.push(padRight(visctrl(k.charCodeAt(0)), 7) + ' ' + d);
+    for (const [k, d] of MENU_CTRL_HARDCODED)
+        lines.push('' + padRight(k, 7) + ' ' + d);
+
+    // keys_used: ^C reserved (NO_SIGNAL) + <esc> (the one active misc_key).
+    const keysUsed = new Array(256).fill(false);
+    keysUsed[ctrlKey('c')] = true;
+    keysUsed[0o33] = true;
+
+    const IGNORE = ['WIZMODECMD', 'INTERNALCMD', 'MOVEMENTCMD'];
+    if (keylistPutcmds(lines, keymap, keysUsed, true, ['GENERALCMD'], IGNORE)) {
+        lines.push('');
+        lines.push('General commands:');
+        keylistPutcmds(lines, keymap, keysUsed, false, ['GENERALCMD'], IGNORE);
+    }
+    if (keylistPutcmds(lines, keymap, keysUsed, true, [], ['GENERALCMD', ...IGNORE])) {
+        lines.push('');
+        lines.push('Game commands:');
+        keylistPutcmds(lines, keymap, keysUsed, false, [], ['GENERALCMD', ...IGNORE]);
+    }
+    if (wizard && keylistPutcmds(lines, keymap, keysUsed, true, ['WIZMODECMD'], ['INTERNALCMD'])) {
+        lines.push('');
+        lines.push('Debug mode commands:');
+        keylistPutcmds(lines, keymap, keysUsed, false, ['WIZMODECMD'], ['INTERNALCMD']);
+    }
+
+    await display_text_window(lines);
+}
+
+// domenucontrols() — "List menu control keys." ('?l').  C ref: pager.c
+// domenucontrols() -> options.c show_menu_controls(win, FALSE): a two-column
+// "Whole Menu / Current Page" table of the default menu command keys, then the
+// hardcoded Return/Enter/Space/Escape entries.  All keys are the get_menu_cmd_key
+// defaults (the MENU_* constant chars); has_menu_shift is off for tty so the
+// "Pan view" rows are omitted.
+async function domenucontrols() {
+    const lines = [];
+    const mcFmt = (a, b, c) => padLeft(a, 8) + '     ' + padRight(b, 6) + ' ' + c;
+    const mcAlt = (a, b, c) => padLeft(a, 9) + '  ' + padRight(b, 6) + ' ' + c;
+    const vc = (ch) => visctrl(ch.charCodeAt(0));
+
+    lines.push('Menu control keys:');
+    lines.push('');
+    lines.push(mcAlt('', 'Whole', 'Current'));
+    lines.push(mcAlt('', ' Menu', ' Page'));
+    lines.push(mcFmt('Select', vc('.'), vc(',')));
+    lines.push(mcFmt('Invert', vc('@'), vc('~')));
+    lines.push(mcFmt('Deselect', vc('-'), vc('\\')));
+    lines.push('');
+    lines.push(mcFmt('Go to', vc('>'), 'Next page'));
+    lines.push(mcFmt('', vc('<'), 'Previous page'));
+    lines.push(mcFmt('', vc('^'), 'First page'));
+    lines.push(mcFmt('', vc('|'), 'Last page'));
+    lines.push('');
+    lines.push(mcFmt('Search', vc(':'),
+        'Exter a target string and invert all matching entries'));
+    lines.push('');
+    // hardcoded[]: fmt "%9s  %-8s %s"; first row prefixed "Other ", then blank.
+    let arg = 'Other ';
+    for (const [k, d] of MENU_CTRL_HARDCODED) {
+        lines.push(padLeft(arg, 9) + '  ' + padRight(k, 8) + ' ' + d);
+        arg = '';
+    }
+    await display_text_window(lines);
 }
 
 // Build the visible menu item list for this run (skip the wizard-mode-only

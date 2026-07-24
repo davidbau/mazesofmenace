@@ -276,6 +276,39 @@ async function done(how) {
         }
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
+
+        // C ref: end.c really_done() — normal-game (non-wizard/explore) death
+        // tail.  After the bones check, display_nhwindow(WIN_MESSAGE, FALSE)
+        // pages the still-unseen "You die..." top line with --More--, then
+        // disclose() offers the end-of-game disclosure prompts.  In
+        // wizard/explore mode the paranoid "Die?" query above already paged the
+        // death line, and those recordings stop before disclosure, so this tail
+        // is scoped to the normal game modes.
+        if (!wizard && !discover) {
+            if (game._toplin === 1) { // display_nhwindow(WIN_MESSAGE): more()
+                await d.topl_more();
+                game._toplin = 0;
+                game._pending_message = '';
+            }
+            await disclose(how);
+        }
+    }
+}
+
+// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  Only the
+// first query ("Do you want your possessions identified?") is reached by the
+// covered normal-game death: the recorded player runs out of input at that
+// prompt, so the remaining attribute/vanquished/genocided/conduct/overview
+// queries are not yet ported.  On a plain HP-loss death nothing was confiscated
+// (taken == FALSE), so the wording is the "possessions identified?" form; with
+// the default flags.end_disclose, should_query_disclose_option('i') asks with
+// defquery 'n' and ynqchars, giving "... [ynq] (n)".
+async function disclose(_how) {
+    const d = await deps();
+    const inv = Array.isArray(game.invent) ? game.invent
+        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+    if (inv.length) {
+        await d.y_n('Do you want your possessions identified?', 'ynq\x1b', 'n');
     }
 }
 

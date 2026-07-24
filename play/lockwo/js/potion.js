@@ -19,7 +19,7 @@ import { A_STR, A_DEX, A_CON, A_WIS, IS_FOUNTAIN, IS_SINK } from './const.js';
 import { fruitname } from './objnam.js';
 import { newuhs } from './eat.js';
 import { Blind, vision_recalc } from './vision.js';
-import { dipfountain } from './fountain.js';
+import { dipfountain, drinkfountain } from './fountain.js';
 
 // C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
 // hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
@@ -407,14 +407,29 @@ async function dopotion(otmp) {
     return ECMD_TIME;
 }
 
-// C ref: potion.c dodrink — the 'q' command.  The fountain / sink / underwater
-// pre-checks don't apply on the covered open-room starts, so we go straight to
-// the getobj prompt.
+// C ref: potion.c dodrink — the 'q' command.  Before prompting for an inventory
+// potion, an unprefixed quaff (no 'm' menu-request) checks for a fountain / sink
+// / surrounding water at the hero's square and offers to drink from it.
 export async function dodrink() {
-    if (game.u?.Strangled) {
+    const u = game.u;
+    if (u?.Strangled) {
         await pline("If you can't breathe air, how can you drink liquid?");
         return ECMD_OK;
     }
+
+    // C ref: potion.c dodrink — preceding 'q' with 'm' (menu_requested) skips
+    // the fountain / sink / surrounding-water prompts; standing on a reachable
+    // (not levitating / swallowed) fountain otherwise offers to drink from it.
+    if (!game.iflags?.menu_requested
+        && IS_FOUNTAIN(game.level?.at(u.ux, u.uy)?.typ)
+        && dip_can_reach_floor()) {
+        if (await y_n('Drink from the fountain?') === 'y') {
+            await drinkfountain();
+            return ECMD_TIME;
+        }
+    }
+    // (the kitchen-sink and Underwater quaff prompts are not reached by the
+    // covered sessions, whose only fountain-quaff is this water-demon fountain.)
 
     const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
     if (!otmp)

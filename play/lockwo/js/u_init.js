@@ -7,11 +7,14 @@ import { addinv as invent_addinv } from './invent.js';
 import { initialspell, num_spells, skill_based_spellbook_id } from './spell.js';
 import {
     ARMOR_CLASS,
+    BAG_OF_HOLDING,
     COIN_CLASS,
     FOOD_CLASS,
     GEM_CLASS,
     GOLD_PIECE,
+    LARGE_BOX,
     MAGIC_MARKER,
+    STATUE,
     POTION_CLASS,
     RING_CLASS,
     SCROLL_CLASS,
@@ -645,7 +648,7 @@ const RACE_ATTRMAX = {
 function race_attrmin() {
     return RACE_ATTRMIN[current_race_mnum()] || HUMAN_ATTRMIN;
 }
-function race_attrmax() {
+export function race_attrmax() {
     return RACE_ATTRMAX[current_race_mnum()] || HUMAN_ATTRMAX;
 }
 
@@ -911,6 +914,14 @@ function ini_inv_adjust_obj(trop, obj) {
         obj.quan = game.u?.umoney0 ?? 0;
     } else {
         obj.known = obj.dknown = obj.bknown = obj.rknown = 1;
+        // C ref: u_init.c ini_inv_adjust_obj — starting containers/statues have
+        // their contents and lock state known (and are never trapped), so they
+        // display "empty" once created with no contents.
+        if ((obj.otyp >= LARGE_BOX && obj.otyp <= BAG_OF_HOLDING)
+            || obj.otyp === STATUE) {
+            obj.cknown = obj.lknown = 1;
+            obj.otrapped = 0;
+        }
         obj.cursed = false;
         if (obj.opoisoned && ((game.u?.ualign?.type ?? 0) !== A_CHAOTIC))
             obj.opoisoned = 0;

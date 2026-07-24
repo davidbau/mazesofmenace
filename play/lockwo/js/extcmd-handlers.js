@@ -15,12 +15,13 @@ import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
+    addinv, prinv, let_to_name,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
 import { create_particular_monster } from './makemon.js';
 import { newsym } from './display.js';
-import { STATUE, objects, place_object, weight } from './mkobj.js';
+import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
 import { delobj, stackobj } from './invent.js';
 import { exercise } from './attrib.js';
 import { rn2 } from './rng.js';
@@ -1009,11 +1010,252 @@ async function use_container(box, more_containers) {
         c = (ch === '\x1b') ? 'q' : ch;
         break;
     }
-    // Only the look-inside path is modelled; other selections elapse no time
-    // beyond what looking inside already charged.
+    // Map the chosen accelerator back to the canonical loot action.  The menu is
+    // rendered with the same accelerators (lootabc's a/b/c/d/e or the mnemonic
+    // o/i/b/r/s), and the picked slot maps to lootchars[slot].  C ref: pickup.c
+    // in_or_out_menu() return -> use_container() c.
+    const sel = game?.flags?.lootabc ? '_:abcdenq' : '_:oibrsnq';
+    const lootchars = '_:oibrsnq';
+    const idx = sel.indexOf(c);
+    const action = idx >= 1 ? lootchars[idx] : 'q';
+    // loot_out: 'o' (take out), 'b'/'r' (both) — only the take-out portion is
+    // modelled; the put-in half stays a no-op.  C ref: use_container() loot_out.
+    const loot_out = (action === 'o' || action === 'b' || action === 'r');
+    if (loot_out && box.cobj && box.cobj.length) {
+        if (await menu_loot_out(box)) used = 1;
+    }
     delete game._modal_screen;
-    void c;
     return used ? 1 : 0;
+}
+
+// C ref: options.c def_inv_order[] — the default packorder (sortpack) sequence
+// used to group objects by class in loot/inventory menus.
+const DEFAULT_INV_ORDER = [12, 5, 2, 3, 7, 9, 10, 8, 4, 11, 6, 13, 14, 15, 16];
+
+// process_menu_window auto-accelerator advance: 'a'..'z' then 'A'..'Z'.
+function nextMenuCh(ch) {
+    if (ch === 'z') return 'A';
+    if (ch === 'Z') return 'a';
+    return String.fromCharCode(ch.charCodeAt(0) + 1);
+}
+
+// A PICK_ANY menu item line: "<accel> <sel> <text>", where the selection
+// indicator is '-' (off) or '+' (on; C uses '#' for a counted pick, not reached
+// here).  C ref: wintty.c tty_add_menu "%c - " + set_item_state.
+function menuItemLine(it) {
+    return `${it.letter} ${it.selected ? '+' : '-'} ${it.desc}`;
+}
+
+// C ref: mkobj.c add_to_container() merges compatible stacks as items are placed;
+// the JS container fill leaves them separate.  Fold mergeable stacks (e.g. two
+// gold piles) so the item menu and take-out messages present one stack per type.
+function consolidate_container(box) {
+    const src = box.cobj || [];
+    const out = [];
+    for (const o of src) {
+        let hit = null;
+        for (const s of out) if (mergable(s, o)) { hit = s; break; }
+        if (hit) { hit.quan = (hit.quan || 1) + (o.quan || 1); hit.owt = weight(hit); }
+        else out.push(o);
+    }
+    box.cobj = out;
+}
+
+// Shared PICK_ANY selection loop for the loot menus.  Renders the current
+// selection state, reads one key, applies a menu command (invert/select/deselect
+// all) or toggles the matching accelerator, and repeats until <return>/space
+// (confirm) or ESC (cancel).  Returns the selected items, or null on cancel.
+// C ref: wintty.c process_menu_window() + set_all/unset_all/invert_all with the
+// default menuinvertmode 1 (SKIPINVERT entries never bulk-select, only deselect).
+async function run_pickany_menu(items, buildLines) {
+    // menuitem_invert_test(mode 0) under menuinvertmode 1: non-SKIPINVERT items
+    // always toggle; SKIPINVERT items toggle only when already selected.
+    const invert_ok = (it) => !it.skipinvert || it.selected;
+    for (;;) {
+        const lines = buildLines();
+        let maxcol = '(end) '.length;
+        for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 2);
+        draw_corner_window(lines, maxcol, '(end)', 1);
+        const key = await nhgetch();
+        if (key === 27) return null;             // ESC: cancel
+        if (key === 13 || key === 10) break;     // <return>: confirm
+        const ch = String.fromCharCode(key);
+        if (ch === ' ') break;                   // single-page: space confirms
+        if (ch === '@') {                        // menu_invert_all
+            for (const it of items) if (invert_ok(it)) it.selected = !it.selected;
+            continue;
+        }
+        if (ch === '.') {                        // menu_select_all
+            for (const it of items) if (!it.skipinvert) it.selected = true;
+            continue;
+        }
+        if (ch === '-') {                        // menu_deselect_all
+            for (const it of items) it.selected = false;
+            continue;
+        }
+        const hit = items.find((it) => it.letter === ch);
+        if (hit) hit.selected = !hit.selected;   // accelerator toggle
+        // any other key: ignored (PICK_ANY keeps waiting)
+    }
+    return items.filter((it) => it.selected);
+}
+
+// C ref: pickup.c query_category() for menustyle:Full — the "Take out what type
+// of objects?" class-filter menu.  Returns the picked tokens ('A' auto, 'ALL'
+// all-types, or oclass numbers / 'B'/'C'/'U'/'X' BUC classes), or null on ESC.
+async function query_category_take_out(box) {
+    const cobj = box.cobj || [];
+    const order = game?.flags?.inv_order || DEFAULT_INV_ORDER;
+    const presentClasses = order.filter((oc) => cobj.some((o) => o.oclass === oc));
+    const ccount = presentClasses.length;
+    const show_a = ccount > 1; // ALL_TYPES entry only when >1 class
+
+    // C count_buc(): gold counts as Uncursed (or Unknown when goldX), other
+    // items by bknown/blessed/cursed.
+    const goldX = !!(game?.flags?.goldX);
+    const bucCount = (type) => {
+        let n = 0;
+        for (const o of cobj) {
+            if (o.oclass === COIN_CLASS) { if (type === (goldX ? 'X' : 'U')) n++; continue; }
+            const actual = !o.bknown ? 'X' : o.blessed ? 'B' : o.cursed ? 'C' : 'U';
+            if (actual === type) n++;
+        }
+        return n;
+    };
+    const do_blessed = bucCount('B') > 0, do_cursed = bucCount('C') > 0;
+    const do_uncursed = bucCount('U') > 0, do_unknown = bucCount('X') > 0;
+    const anyBUC = do_blessed || do_cursed || do_uncursed || do_unknown;
+
+    const items = []; // {letter, token, skipinvert, selected, desc}
+    items.push({ letter: 'A', token: 'A', skipinvert: true, selected: false,
+                 desc: 'Auto-select every relevant item' });
+    if (show_a) items.push({ letter: 'a', token: 'ALL', skipinvert: true, selected: false,
+                             desc: 'All types' });
+    let invlet = 'b';
+    for (const oc of presentClasses) {
+        items.push({ letter: invlet, token: oc, skipinvert: false, selected: false,
+                     desc: let_to_name(oc, false, false) });
+        invlet = nextMenuCh(invlet);
+    }
+    if (do_blessed) items.push({ letter: 'B', token: 'B', skipinvert: true, selected: false, desc: 'Items known to be Blessed' });
+    if (do_cursed) items.push({ letter: 'C', token: 'C', skipinvert: true, selected: false, desc: 'Items known to be Cursed' });
+    if (do_uncursed) items.push({ letter: 'U', token: 'U', skipinvert: true, selected: false, desc: 'Items known to be Uncursed' });
+    if (do_unknown) items.push({ letter: 'X', token: 'X', skipinvert: true, selected: false, desc: 'Items of unknown Bless/Curse status' });
+
+    const buildLines = () => {
+        const lines = [{ text: 'Take out what type of objects?', attr: ATR_INVERSE }, { text: '' }];
+        let k = 0;
+        lines.push({ text: menuItemLine(items[k++]) }); // 'A'
+        // The hint always shows (cmdassist defaults On); C: A_first_hint/cmdassist.
+        lines.push({ text: '    (ignored unless some other choices are also picked)' });
+        lines.push({ text: '' });
+        if (show_a) lines.push({ text: menuItemLine(items[k++]) });         // 'a'
+        for (let c = 0; c < presentClasses.length; c++) lines.push({ text: menuItemLine(items[k++]) });
+        if (anyBUC) lines.push({ text: '' });                              // blank before B/C/U/X
+        for (; k < items.length; k++) lines.push({ text: menuItemLine(items[k]) });
+        return lines;
+    };
+
+    const picked = await run_pickany_menu(items, buildLines);
+    if (picked === null) return null;
+    return picked.map((it) => it.token);
+}
+
+// C ref: pickup.c query_objlist() (via menu_loot) — the "Take out what?" item
+// menu, grouped by class with inverse headings.  Gold takes the '$' accelerator;
+// the rest auto-letter a,b,c...  Returns the chosen objects (menu order), or null
+// on ESC.
+async function query_objlist_take_out(box, allow) {
+    const cobj = box.cobj || [];
+    const order = game?.flags?.inv_order || DEFAULT_INV_ORDER;
+    const items = [];      // {letter, obj, selected, skipinvert, desc}
+    const linePlan = [];   // {type:'header'|'item', ...}
+    let menu_ch = 'a', first = true;
+    for (const oc of order) {
+        const group = cobj.filter((o) => o.oclass === oc && allow(o));
+        if (!group.length) continue;
+        linePlan.push({ type: 'header', text: let_to_name(oc, false, false) });
+        for (const o of group) {
+            let letter;
+            if (first && oc === COIN_CLASS) letter = '$';        // C: first && COIN -> '$'
+            else { letter = menu_ch; menu_ch = nextMenuCh(menu_ch); }
+            first = false;
+            const it = { letter, obj: o, selected: false, skipinvert: false, desc: obj_doname(o) };
+            items.push(it);
+            linePlan.push({ type: 'item', item: it });
+        }
+    }
+    const buildLines = () => {
+        const lines = [{ text: 'Take out what?', attr: ATR_INVERSE }, { text: '' }];
+        for (const p of linePlan) {
+            if (p.type === 'header') lines.push({ text: p.text, attr: ATR_INVERSE });
+            else lines.push({ text: menuItemLine(p.item) });
+        }
+        return lines;
+    };
+    const picked = await run_pickany_menu(items, buildLines);
+    if (picked === null) return null;
+    return picked.map((it) => it.obj);
+}
+
+// C ref: pickup.c menu_loot(retry=0, put_in=FALSE) for menustyle:Full — pick the
+// object classes ("Take out what type of objects?"), then the items ("Take out
+// what?"), then out_container() each.  Returns the number removed (>0 => a turn
+// elapsed).
+async function menu_loot_out(box) {
+    consolidate_container(box);
+
+    const picks = await query_category_take_out(box);
+    if (!picks || picks.length === 0) return 0;
+
+    let autopick = false, all_categories = false;
+    const validClasses = new Set();
+    for (const p of picks) {
+        if (p === 'A') autopick = true;
+        else if (p === 'ALL') all_categories = true;
+        else if (typeof p === 'number') validClasses.add(p);
+        // 'B'/'C'/'U'/'X' BUC filters are not reached by the recorded sessions;
+        // treat them as no additional class filter (fall through to item menu).
+    }
+    const allow = (autopick || all_categories)
+        ? () => true
+        : (o) => validClasses.has(o.oclass);
+
+    let chosen;
+    if (autopick) {
+        chosen = (box.cobj || []).filter(allow);
+    } else {
+        chosen = await query_objlist_take_out(box, allow);
+        if (chosen === null) return 0; // ESC cancelled
+    }
+    if (!chosen.length) return 0;
+
+    // Take-out messages page with --More-- over the MAP (not the menu), so drop
+    // the corner-menu overlay and start the topline fresh.  C ref: out_container
+    // -> pickup_prinv -> prinv -> pline (update_topl accumulation + more()).
+    delete game._modal_screen;
+    game._pending_message = '';
+    game._toplin = 0;
+    let n = 0;
+    for (const obj of chosen) {
+        const i = (box.cobj || []).indexOf(obj);
+        if (i < 0) continue;
+        const count = obj.quan;
+        box.cobj.splice(i, 1);
+        obj.where = 'free';
+        box.owt = weight(box);
+        const otmp = addinv(obj);
+        // No encumbrance change here, so pickup_prinv's load prefix is absent.
+        // prinv() formats "<letter> - <name>." into _pending_message; capture it
+        // and feed update_topl so successive lines accumulate / page correctly.
+        const acc = game._pending_message;
+        prinv(null, otmp, count);
+        const line = game._pending_message;
+        game._pending_message = acc;
+        await update_topl(line);
+        n++;
+    }
+    return n;
 }
 
 // C ref: lock.c autokey(opening=TRUE) — pick an unlocking tool from inventory:

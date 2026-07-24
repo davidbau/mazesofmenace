@@ -2993,29 +2993,67 @@ function select_rwep(mtmp) {
     return null;
 }
 
+const WAN_STRIKING_OTYP = 416; // objects[].oc_name index for wand of striking
+
 // C ref: mthrowu.c m_lined_up()/linedup() — is the hero on a straight row,
-// column, or diagonal from the monster (within BOLT_LIM), with no wall between?
-// C ref: mthrowu.c m_lined_up()/linedup(mux,muy, mx,my, 2).  The hero isn't
-// polymorphed here so the rn2(25) concealment roll is skipped (no RNG).  Beyond
-// the geometric alignment, C requires line of sight from the monster to the
-// hero's *believed* position: clear_path() (or couldsee() when the believed
-// spot is the hero's real square).  Without this gate the kobold would loose
-// darts through the corridor wall a couple turns too early.  No boulders lie on
-// the line in the owned sessions, so the boulderhandling==2 rn2(2+spots) branch
-// is unreached (a clean FALSE on a blocked path).
+// column, or diagonal from the monster (within BOLT_LIM), with a usable line?
+// Beyond the geometric alignment, C requires line of sight from the monster to
+// the hero's *believed* position: clear_path() (or couldsee() when the believed
+// spot is the hero's real square).  When that LOS is blocked ONLY by boulders,
+// linedup still lets the shot through with probability rn2(2 + boulderspots).
+// C ref: mthrowu.c m_lined_up(&youmonst, mtmp) -> linedup(mux, muy, mx, my,
+// boulderhandling).  The hero is the target; boulderhandling is 2 ("conditionally
+// block") unless the monster throws rocks or carries a wand of striking, in which
+// case boulders are ignored (1).  (The Upolyd concealment rn2(25) guard has no
+// effect for a non-polymorphed hero and is omitted.)
 function m_lined_up(mtmp) {
     const u = game.u;
     const tx = mtmp.mux ?? u.ux, ty = mtmp.muy ?? u.uy;
-    const dx = tx - mtmp.mx, dy = ty - mtmp.my;
-    if (dx === 0 && dy === 0) return false;
-    if (!(dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy))) return false;
-    const dist = Math.max(Math.abs(dx), Math.abs(dy));
-    if (!(dist >= 1 && dist < BOLT_LIM)) return false;
-    // line of sight check (linedup):
-    const seesTarget = (tx === u.ux && ty === u.uy)
-        ? couldsee(mtmp.mx, mtmp.my)
-        : clear_path(tx, ty, mtmp.mx, mtmp.my);
-    return !!seesTarget;
+    const ignore_boulders = throws_rocks_pm(mtmp.data)
+        || !!m_carrying(mtmp, WAN_STRIKING_OTYP);
+    return linedup(tx, ty, mtmp.mx, mtmp.my, ignore_boulders ? 1 : 2);
+}
+
+// C ref: mthrowu.c linedup(ax,ay, bx,by, boulderhandling).  (ax,ay)=target,
+// (bx,by)=shooter.  Requires a straight orthogonal/diagonal line within BOLT_LIM.
+// With a clear line of sight it returns TRUE and rolls nothing.  Otherwise, when
+// boulderhandling != 0, it walks the line from the shooter toward the target:
+// blocking terrain fails outright, while a line obstructed only by boulders is
+// accepted with probability governed by rn2(2 + boulderspots) — the roll the C
+// recorder emits once a pushed boulder ends up between a monster and the hero
+// (boulderhandling 1 = always accept, e.g. rock-throwers).
+function linedup(ax, ay, bx, by, boulderhandling) {
+    const u = game.u;
+    const tbx = ax - bx, tby = ay - by;
+    if (tbx === 0 && tby === 0) return false; // displacement puts target on shooter
+    if (!((tbx === 0 || tby === 0 || Math.abs(tbx) === Math.abs(tby))
+          && distmin(tbx, tby, 0, 0) < BOLT_LIM))
+        return false;
+    const clear = (ax === u.ux && ay === u.uy)
+        ? couldsee(bx, by)
+        : clear_path(ax, ay, bx, by);
+    if (clear) return true;
+    if (boulderhandling === 0) return false;
+    const dx = sgn(ax - bx), dy = sgn(ay - by);
+    let boulderspots = 0, cx = bx, cy = by;
+    do {
+        cx += dx; cy += dy; // guaranteed to converge on (ax,ay)
+        if (blocking_terrain(cx, cy)) return false;
+        if (sobj_at_boulder(cx, cy)) boulderspots++;
+    } while (cx !== ax || cy !== ay);
+    if (boulderhandling === 1 || rn2(2 + boulderspots) < 2) return true;
+    return false;
+}
+
+// C ref: mthrowu.c blocking_terrain(x,y) — a square that stops a thrown/zapped
+// line: off-map, obstructed (rock/wall/tree/...), or a closed/locked door.  (The
+// water-wall / lava-wall cases exist only on the water & plane special levels,
+// which the scored dungeon never reaches, so those two typ checks are omitted.)
+function blocking_terrain(x, y) {
+    if (!isok(x, y)) return true;
+    if (IS_OBSTRUCTED(terrainTyp(x, y))) return true;
+    if (closed_door_at(x, y)) return true;
+    return false;
 }
 
 // C ref: mthrowu.c URETREATING(x,y) — the hero moved away from (x,y) this turn.

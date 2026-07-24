@@ -25,6 +25,7 @@ import { rnd, rn1, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { pline, flush_screen, newsym, update_topl } from './display.js';
 import { m_at } from './display.js';
+import { vision_recalc } from './vision.js';
 import { x_monnam } from './uhitm.js';
 import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
 
@@ -68,14 +69,28 @@ function Monnam_steed(mtmp) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// C ref: hack.c losehp() — for a non-polymorphed hero this simply subtracts
-// the damage from u.uhp (no RNG).  Death handling is not exercised here.
-function losehp(n) {
+// C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the damage
+// from u.uhp (no RNG).  When the blow drops HP below 1 the hero dies: You("die...")
+// is a pline that follows the still-unacknowledged "You slip..." top line, so the
+// tty pages the slip message with --More-- (topl.c more()) before showing
+// "You die...", then done(DIED) runs the end-of-game sequence.
+async function losehp(n) {
     const u = game.u;
     if (!u) return;
     u.uhp -= n;
-    if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
-    if (u.uhp < 1) u.uhp = 0; // death not modelled for the ride sessions
+    if (u.uhp > u.uhpmax) {
+        u.uhpmax = u.uhp;
+        return;
+    }
+    if (u.uhp < 1) {
+        u.uhp = 0;
+        // C pline() marks the top line NEED_MORE; mirror it so update_topl pages
+        // the "You slip..." line before printing "You die...".
+        game._toplin = 1; // TOPLIN_NEED_MORE
+        await update_topl('You die...');
+        const { done, DIED } = await import('./end.js');
+        await done(DIED);
+    }
 }
 
 // C ref: steed.c mount_steed() — start riding the given monster.  Returns true
@@ -113,7 +128,7 @@ export async function mount_steed(mtmp, force) {
         // (Levitation is false here, so the normal "slip" branch applies.)
         await pline(`You slip while trying to get on ${mon_nam(mtmp)}.`);
         // losehp(Maybe_Half_Phys(rn1(5, 10)), ...) — rn1(5,10) == rn2(5)+10.
-        losehp(rn1(5, 10));
+        await losehp(rn1(5, 10));
         return false;
     }
 
@@ -150,8 +165,16 @@ export async function mount_steed(mtmp, force) {
 
     // Redraw the hero's old tile (now vacated) and the new tile (steed glyph
     // drawn via display.js's mounted-hero handling, which keys off u.usteed).
+    // C ref: steed.c mount_steed -> teleds(steed->mx,my,ALLOW_DRAG), whose tail
+    // (teleport.c) does newsym(old) + see_monsters() + vision_full_recalc=1 +
+    // vision_recalc(0): moving the hero to the steed's square must recompute
+    // line-of-sight from the new position (e.g. a doorway in the room wall that
+    // only comes into view once the hero shifts over onto the steed).  Mirrors
+    // the identical teleds tail already used by hack.js jump().
     newsym(ux0, uy0);
     newsym(nux, nuy);
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
     return true;
 }
 
@@ -296,6 +319,12 @@ async function dismount_steed_bychoice() {
     newsym(ux0, uy0);
     newsym(u.ux, u.uy);
     newsym(mtmp.mx, mtmp.my);
+    // C ref: dismount_steed -> teleds(cc, ALLOW_DRAG) tail sets
+    // vision_full_recalc=1 + vision_recalc(0): relocating the hero to the
+    // landing square recomputes line-of-sight (e.g. the west wall of the room
+    // the hero steps into).
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
 }
 
 // C ref: steed.c doride() — the #ride command.  With no current steed, read a

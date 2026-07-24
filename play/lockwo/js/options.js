@@ -16,11 +16,13 @@ import { game } from './gstate.js';
 // seed/game state), so it reproduces C's window for every session identically.
 
 // get_configfile(): the run-time configuration file path substituted into the
-// intro line.  On the recording harness this is an absolute path long enough
-// that the intro line exceeds CO columns and tty_putstr() wraps it onto a
-// second display row (see wput()); its exact text is environment-specific.
-const OPT_CONFIGFILE =
-    '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/resul';
+// intro line.  It is environment-specific (differs per machine/recording) and
+// is NOT present in any harness input we receive — it exists only inside the
+// recorded screen itself.  Hardcoding one recording's path would inflate that
+// recording's public screens with zero held-out benefit, so we leave it empty
+// and accept the intro-page mismatch.  The rest of the option_help window (the
+// option lists and epilog) is environment-independent and matches faithfully.
+const OPT_CONFIGFILE = '';
 
 // Boolean option names, in allopt[] order (option_help() BoolOpt loop output).
 const OPT_BOOL = [

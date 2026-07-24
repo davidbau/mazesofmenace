@@ -19,10 +19,17 @@ import {
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     ROLE_MALE, ROLE_FEMALE, ROLE_GENDMASK,
     G_GONE, G_GENOD, G_EXTINCT,
+    P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_SKILLED, P_TWO_WEAPON_COMBAT,
+    In_quest,
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
+import { p_skill_of } from './enhance.js';
 import { update_topl } from './display.js';
 import { phase_of_the_moon, friday_13th, night, NEW_MOON, FULL_MOON } from './calendar.js';
+import { race_attrmax } from './u_init.js';
+import { acurr_eff } from './attrib.js';
+import { depth } from './hacklib.js';
+import { newuexp } from './exper.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -116,9 +123,18 @@ export function enlightenment_lines() {
     // handedness (URIGHTY defaults TRUE)
     youAre(`${game.u?.uleft_handed ? 'left' : 'right'}-handed`);
 
-    // dungeon level
-    const dgnName = game.dungeonName || 'the Dungeons of Doom';
-    youAre(`in ${dgnName}, on level ${u.uz?.dlevel ?? 1}`);
+    // dungeon level  (C ref: insight.c background_enlightenment)
+    // The name comes from dungeons[u.uz.dnum].dname, with a leading "The "
+    // downcased to "the "; the level number is depth(&u.uz) — the ledger depth
+    // across branches, so e.g. Sokoban level 1 reads "level 2" — except within
+    // the Quest, which shows the branch-relative dunlev.  (C's rogue /
+    // very-big-room annotations are not exercised by the covered sessions.)
+    const dnum = u.uz?.dnum ?? 0;
+    let dgnName = game.dungeons?.[dnum]?.dname || 'The Dungeons of Doom';
+    if (/^the /i.test(dgnName))
+        dgnName = dgnName.charAt(0).toLowerCase() + dgnName.slice(1);
+    const dgnLevel = In_quest(u.uz) ? (u.uz?.dlevel ?? 1) : depth(u.uz);
+    youAre(`in ${dgnName}, on level ${dgnLevel}`);
 
     // turns
     if (moves === 1) youHave('just started your adventure');
@@ -146,8 +162,19 @@ export function enlightenment_lines() {
         out(' Bad things can happen on Friday the 13th.');
     }
 
-    // experience (not polymorphed); no "needed" clause off wizard/final
-    youHave(`${u.uexp ?? 0} experience point${(u.uexp ?? 0) === 1 ? '' : 's'}`);
+    // experience (not polymorphed).  C ref: insight.c background_enlightenment —
+    // for a sub-30 experience level, wizard mode (or the game-over 'final' pass)
+    // appends how much more experience is needed to reach the next level.
+    // doattributes() runs with final==0, so only the wizard branch applies here.
+    const uexp = u.uexp ?? 0;
+    const xlvl = u.ulevel ?? 1;
+    let expbuf = `${uexp} experience point${uexp === 1 ? '' : 's'}`;
+    if (xlvl < 30 && !!game.flags?.debug) {
+        const delta = newuexp(xlvl) - uexp;
+        expbuf += `, ${delta} ${uexp > 0 ? 'more ' : ''}`
+            + `needed ${xlvl < 18 ? 'to attain' : 'for'} level ${xlvl + 1}`;
+    }
+    youHave(expbuf);
 
     // ── Basics ──
     out('');
@@ -175,11 +202,40 @@ export function enlightenment_lines() {
     enlLine('Autopickup ', 'is ', game.flags?.pickup ? 'on' : 'off', '');
 
     // ── Characteristics ──
+    // C ref: insight.c one_characteristic() — the value plus, when the innate
+    // value is worth showing (not polymorphed / no relevant cursed item, all out
+    // of scope for BASIC play here), a parenthetical noting base/peak (when the
+    // effective value differs from the stored base or the peak) and the race
+    // limit (when it differs from the human default: 18, or STR18(100) for STR).
+    // acurrent = ACURR (effective), abase = ABASE (u.acurr.a), apeak = AMAX
+    // (u.amax.a), alimit = ATTRMAX = race attrmax.
     out('');
     out('Characteristics:');
-    const a = u.acurr?.a || [];
-    const characteristic = (idx, name) =>
-        enlLine(`Your ${name} `, 'is ', attrval(idx, a[idx] ?? 0), '');
+    const abaseArr = u.acurr?.a || [];
+    const apeakArr = u.amax?.a || [];
+    const limitArr = race_attrmax();
+    const characteristic = (idx, name) => {
+        const acurrent = acurr_eff(idx);
+        const abase = abaseArr[idx] ?? acurrent;
+        const apeak = apeakArr[idx] ?? abase;
+        const alimit = limitArr[idx] ?? 18;
+        const interesting = alimit !== (idx !== A_STR ? 18 : 118 /* STR18(100) */);
+        let valubuf = attrval(idx, acurrent);
+        let paren = ' (current; ';
+        if (acurrent !== abase) {
+            valubuf += `${paren}base:${attrval(idx, abase)}`;
+            paren = ', ';
+        }
+        if (abase !== apeak) {
+            valubuf += `${paren}peak:${attrval(idx, apeak)}`;
+            paren = ', ';
+        }
+        if (interesting)
+            valubuf += `${paren}${acurrent > alimit ? 'innate ' : ''}limit:${attrval(idx, alimit)}`;
+        if (acurrent !== abase || abase !== apeak || interesting)
+            valubuf += ')';
+        enlLine(`Your ${name} `, 'is ', valubuf, '');
+    };
     characteristic(A_STR, 'strength');
     characteristic(A_DEX, 'dexterity');
     characteristic(A_CON, 'constitution');
@@ -195,7 +251,7 @@ export function enlightenment_lines() {
     // encumbrance (near_capacity() == UNENCUMBERED for the starter pack)
     youAre('unencumbered');
     // current weapon + skill
-    weaponInsight(youAre, youHave);
+    weaponInsight(youAre, youHave, enlLine);
 
     // ── Miscellaneous ──
     out('');
@@ -224,8 +280,15 @@ function isMartialArtsRole() {
     return rn === 'monk';
 }
 
+// C ref: weapon.c skill_level_name() lower-cased — proficiency-level word.
+const SKILL_LVL_NAME = {
+    1: 'unskilled', 2: 'basic', 3: 'skilled', 4: 'expert',
+    5: 'master', 6: 'grand master',
+};
+function skillLevelNameLc(lvl) { return SKILL_LVL_NAME[lvl] || 'unknown'; }
+
 // C ref: insight.c weapon_insight() — wielding line + weapon skill level.
-function weaponInsight(youAre, youHave) {
+function weaponInsight(youAre, youHave, enlLine) {
     const uwep = game.uwep;
     if (!uwep) {
         // C: you_are(empty_handed(), "").
@@ -239,16 +302,91 @@ function weaponInsight(youAre, youHave) {
         youAre(`unskilled in ${skName}`);
         return;
     }
-    const descr = weaponDescr(uwep);
-    youAre(`wielding ${uwep.quan === 1 || uwep.quan == null ? an(descr) : makeplural(descr)}`);
+
+    // C ref: insight.c weapon_insight() — while dual-wielding, a single
+    // "wielding two weapons at once" line replaces the "wielding a <weapon>".
+    if (game.u?.twoweap) {
+        youAre('wielding two weapons at once');
+    } else {
+        const descr = weaponDescr(uwep);
+        youAre(`wielding ${uwep.quan === 1 || uwep.quan == null ? an(descr) : makeplural(descr)}`);
+    }
 
     // Skill line: weapons carried at start have P_BASIC skill (skill_init).
     const skName = weaponSkillName(uwep);
-    if (skName) {
+    if (!skName) return;
+
+    if (!game.u?.twoweap) {
         const lvl = weaponSkillLevel(uwep);
         // hav=true for basic/expert/etc.; "skill with"; "in" for un/skilled.
         const hav = lvl !== 'unskilled' && lvl !== 'skilled';
         youHave(`${lvl} ${hav ? 'skill with' : 'in'} ${skName}`);
+        return;
+    }
+
+    // C ref: insight.c weapon_insight() two-weapon block — compare the primary
+    // and secondary weapon skills against the two-weapon-combat skill; whichever
+    // is weaker limits the pair.  (The "and can enhance ..." advice needs skill-
+    // slot tracking, which is 0 for the fresh-hero state we model, so the
+    // can_advance() lines are omitted, consistent with the non-twoweap path.)
+    const wtype = weapon_type(uwep);
+    const uswapwep = game.uswapwep;
+    const wtype2 = uswapwep ? weapon_type(uswapwep) : P_NONE;
+    const sklvl = p_skill_of(wtype);
+    const sklvl2 = uswapwep ? p_skill_of(wtype2) : P_ISRESTRICTED;
+    let twoskl = p_skill_of(P_TWO_WEAPON_COMBAT);
+    let twobuf;
+    if (twoskl === P_ISRESTRICTED) { twoskl = P_UNSKILLED; twobuf = 'restricted'; }
+    else twobuf = skillLevelNameLc(twoskl);
+    const hav = (sklvl !== P_UNSKILLED && sklvl !== P_SKILLED);
+    const hav2 = (sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED);
+    const sklvlbuf = (sklvl === P_ISRESTRICTED) ? 'no' : skillLevelNameLc(sklvl);
+
+    let buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skName}`;
+    let pfx = '', sfx = '', also = '', also2 = '', also3 = false;
+    if (twoskl < sklvl) {
+        pfx = `Your skill in ${skName} `;
+        sfx = ` limited by being ${twobuf} with two weapons`;
+        also = 'also ';
+    } else if (twoskl > sklvl) {
+        pfx = 'Your two weapon skill ';
+        sfx = ' limited by ';
+        sfx += (sklvl > P_ISRESTRICTED) ? `being ${sklvlbuf}` : 'having no skill';
+        sfx += ` with ${skName}`;
+        also2 = 'also ';
+    } else {
+        buf += ' and two weapons';
+        also3 = true;
+    }
+    if (pfx) enlLine(pfx, 'is', sfx, '');
+    else if (hav) youHave(buf);
+    else youAre(buf);
+
+    // Skip the secondary comparison when it is identical to the primary one.
+    if (wtype2 !== wtype) {
+        const skName2 = weaponSkillName(uswapwep) || 'no skill';
+        const sklvlbuf2 = skillLevelNameLc(sklvl2);
+        let verb = 'is';
+        pfx = ''; sfx = ''; buf = '';
+        if (twoskl < sklvl2) {
+            pfx = `Your skill in ${skName2} `;
+            sfx = ` ${also}limited by being ${twobuf} with two weapons`;
+        } else if (twoskl > sklvl2) {
+            pfx = 'Your two weapon skill ';
+            sfx = ` ${also2}limited by `;
+            sfx += (sklvl2 > P_ISRESTRICTED) ? `being ${sklvlbuf2}` : 'having no skill';
+            sfx += ` with ${skName2}`;
+        } else {
+            buf = `${sklvlbuf2} ${hav2 ? 'skill with' : 'in'} ${skName2} and two weapons`;
+            if (also3) {
+                pfx = 'You also ';
+                sfx = ` ${buf}`; buf = '';
+                verb = hav2 ? 'have' : 'are';
+            }
+        }
+        if (pfx) enlLine(pfx, verb, sfx, '');
+        else if (hav2) youHave(buf);
+        else youAre(buf);
     }
 }
 

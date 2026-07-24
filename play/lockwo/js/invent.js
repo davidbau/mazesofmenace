@@ -72,6 +72,7 @@ import {
     IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
     TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
     POOL, MOAT, WATER,
+    IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
 } from './const.js';
 
 const LEASH = 236;
@@ -239,6 +240,7 @@ function Role_if(pm) {
     const m = game.urole?.mnum ?? game.u?.umonnum;
     return m === pm;
 }
+const PM_HEALER = 3;
 const PM_CLERIC = 6;
 const PM_MONK = 5;
 const PM_WIZARD = 12;
@@ -325,7 +327,7 @@ function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantit
 function simpleonames(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 function distant_name(obj, fn = doname) { return fn(obj); }
 function short_oname(obj) { return simple_obj_name(obj, { quantity: false }); }
-function doname(obj) { observe_object(obj); return simple_obj_name(obj); }
+function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }); }
 function doname_with_price(obj) { return doname(obj); }
 // C ref: invent.c doname() — full floor-object name (with quantity/article) for
 // the "You see here ..." auto-announcement after a step.  Exported for cmd.js.
@@ -1240,7 +1242,7 @@ function bucPrefix(obj) {
     // every role), "uncursed" is omitted for a fully-identified charged item:
     // knowing the exact charges/+N of a charged, non-armor, non-ring item that
     // isn't flagged blessed/cursed means it must be uncursed, so the word is
-    // unnecessary (e.g. "a magic marker (0:19)", "a wand of sleep (0:8)").  The
+    // unnecessary (e.g. "a magic marker (0:19)", "a wand of sleep (0:7)").  The
     // exceptions (Amulet of Yendor, its fake, and a Cleric who senses BUC) keep
     // the word.  Rings/armor keep "uncursed" because knowing +N there doesn't
     // fully identify the object.
@@ -1252,9 +1254,10 @@ function bucPrefix(obj) {
     // faithful render, but C's recorded frame is from its own diverged state, so
     // the surviving match was luck.  Until that session's real divergence is
     // ported, scope the suppression to the roles whose corpus exercises it — the
-    // Monk's starting magic marker and the Wizard's starting wand/marker — which
-    // preserves the Tourist floor.
-    if ((Role_if(PM_MONK) || Role_if(PM_WIZARD)) && obj.known && is_oc_charged(obj)
+    // Healer's starting wand of sleep, the Monk's starting magic marker, and the
+    // Wizard's starting wand/marker — which preserves the Tourist floor.
+    if ((Role_if(PM_HEALER) || Role_if(PM_MONK) || Role_if(PM_WIZARD))
+        && obj.known && is_oc_charged(obj)
         && obj.oclass !== ARMOR_CLASS && obj.oclass !== RING_CLASS
         && obj.otyp !== FAKE_AMULET_OF_YENDOR_OTYP
         && obj.otyp !== AMULET_OF_YENDOR
@@ -1273,14 +1276,28 @@ function charge_suffix(obj) {
     return '';
 }
 
+// C ref: objnam.c doname_base — the "empty " prefix, added (after the article,
+// before the BUC word) only in the doname family, never in xname/cxname.  A
+// bag of tricks / horn of plenty reads empty while its charge count is unknown
+// (spe==0 && !known); any other container or a statue reads empty when its
+// contents are known (cknown) and it has none.
+function empty_prefix(obj) {
+    if (!obj || !obj.cknown) return '';
+    const baglike = obj.otyp === BAG_OF_TRICKS || obj.otyp === HORN_OF_PLENTY;
+    const isEmpty = baglike
+        ? (obj.spe === 0 && !obj.known)
+        : ((Is_container(obj) || obj.otyp === STATUE) && !Has_contents(obj));
+    return isEmpty ? 'empty ' : '';
+}
+
 function simple_obj_name(obj, opts = {}) {
-    const { article = true, quantity = true, buc = true } = opts;
+    const { article = true, quantity = true, buc = true, empty = false } = opts;
     if (!obj) return 'nothing';
     if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)
         return objectBaseName(obj);
     let base = objectBaseName(obj);
     if (obj.corpsenm != null && obj.otyp === TIN) base = `tin of ${base}`;
-    let prefix = buc ? bucPrefix(obj) : '';
+    let prefix = (empty ? empty_prefix(obj) : '') + (buc ? bucPrefix(obj) : '');
     // C ref: objnam.c doname_base — a lockable box (chest/large box/ice box)
     // whose lock state is known (lknown, set once the hero loots/kicks/forces
     // it) shows "broken "/"locked "/"unlocked "; a box with a known trap shows
@@ -1361,23 +1378,33 @@ function worn_status_suffix(obj) {
     if (!obj) return '';
     const m = obj.owornmask || 0;
     if (m & QW_WEP) {
-        // C ref: objnam.c doname_base — alternate "(wielded)" phrasing for
-        // non-weapons and for wielded ammo/missiles: a WEAPON_CLASS object uses
-        // the ammo/missile test, anything else (tools that aren't weptools, and
-        // non-weapon objects like a wielded spellbook) uses !is_weptool.
+        // C ref: objnam.c doname_base — the primary weapon slot.  When it is the
+        // actively dual-wielded primary (obj == uwep && u.twoweap) it reads
+        // "wielded in right hand" to contrast with the secondary's "left hand".
+        const twoweap_primary = (obj === game.uwep && !!game.u?.twoweap);
+        // Alternate "(wielded)" phrasing for non-weapons and for wielded
+        // ammo/missiles: a WEAPON_CLASS object uses the ammo/missile test,
+        // anything else (tools that aren't weptools, and non-weapon objects like
+        // a wielded spellbook) uses !is_weptool.  Suppressed while dual-wielding.
         const altPhrasing = (obj.oclass === WEAPON_CLASS)
             ? (is_ammo(obj) || is_missile(obj))
             : !is_weptool(obj);
-        if ((obj.quan !== 1 || altPhrasing) && !(obj === game.uwep && game.u?.twoweap))
+        if ((obj.quan !== 1 || altPhrasing) && !twoweap_primary)
             return ' (wielded)';
         // C ref: objnam.c doname_base — a bimanual weapon reads "in hands"
         // (makeplural of body_part(HAND)); otherwise "in right hand" (URIGHTY
         // defaults TRUE, i.e. right-handed).
         const hand = bimanual(obj) ? makeplural(body_part(6)) : `right ${body_part(6)}`;
-        return ` (weapon in ${hand})`;
+        return ` (${twoweap_primary ? 'wielded in' : 'weapon in'} ${hand})`;
     }
-    if (m & QW_SWAPWEP)
+    if (m & QW_SWAPWEP) {
+        // C ref: objnam.c doname_base — the secondary weapon slot.  While
+        // dual-wielding it is "wielded in left hand" (URIGHTY -> left), otherwise
+        // it is the idle "alternate weapon; not wielded".
+        if (game.u?.twoweap)
+            return ` (wielded in left ${body_part(6)})`;
         return ` (alternate weapon${plur(obj.quan)}; not wielded)`;
+    }
     if (m & QW_QUIVER) {
         // C ref: doname_base() quiver phrasing.  Bow ammo (the arrow family,
         // skill -P_BOW) reads "in quiver"; other small ammo "in quiver pouch";
@@ -1410,7 +1437,7 @@ export function doname_invent(obj) {
     observe_object(obj);
     const oc = obj.oclass;
     if (oc !== WEAPON_CLASS && oc !== ARMOR_CLASS)
-        return simple_obj_name(obj) + worn_status_suffix(obj);
+        return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj);
 
     const jname = Japanese_item_name(obj.otyp);
     let base = jname || objectBaseName(obj);
@@ -1595,10 +1622,17 @@ export function renderWindowScreen(lines, opts = {}) {
     if (!display?.clearScreen) return;
     const menu = !!opts.menu;
     const textCol = menu ? 1 : 0;
+    // C ref: win/tty/wintty.c process_menu_window()/process_text_window() — the
+    // per-line output loop advances with `++ttyDisplay->curx < ttyDisplay->cols`,
+    // so it stops before the final terminal column: a menu/text window never
+    // writes the last column (cols-1), truncating any line that would reach it.
+    const cols = display.cols ?? 80;
+    const maxLen = (cols - 1) - textCol;
     display.clearScreen();
     let row = 0;
     for (const ln of lines) {
-        const text = typeof ln === 'string' ? ln : (ln.text || '');
+        let text = typeof ln === 'string' ? ln : (ln.text || '');
+        if (maxLen >= 0 && text.length > maxLen) text = text.slice(0, maxLen);
         const attr = typeof ln === 'string' ? ATR_NONE : (ln.attr || ATR_NONE);
         display.putstr(textCol, row++, text, NO_COLOR, attr);
     }
@@ -3809,19 +3843,28 @@ const GETPOS_TIP_LINES = [
     'and pressing ? will show the key help.',
 ];
 
-// Render the getpos tip as a tty text window.  C ref: win/tty/wintty.c
-// process_text_window for a PARTIAL-width window (offx==10): the window is an
-// overlay, NOT a full-screen clear.  process_text_window walks only the text
-// rows (rows 0..maxrow) and for each one does cl_end() from the window's left
-// edge (offx) before drawing the line; rows BELOW the text are never touched,
-// so the map shows through there (faithful to the recorded C frames where the
-// portion of the room below "(end)" stays visible).  The leading message line
-// (WIN_MESSAGE / row 0) is fully cleared when the text window is raised.
+// Render the getpos tip as a tty overlay window.  C ref: win/tty/wintty.c
+// tty_display_nhwindow() — the tip is an NHW_MENU-typed window (offx != 0), so
+// its corner offset is computed from the widest line: maxcol = max(len)+2
+// (add_menu_str reserves 2 columns) and
+//   offx = min(min(82, cols/2), cols - maxcol - 1).
+// It then goes through process_text_window (it carries cw->data), which for a
+// PARTIAL-width window walks only the text rows (0..maxrow): each row does
+// cl_end() from the window's left column (offx) then, with H2344_BROKEN, writes
+// a leading blank at offx and the item text at offx+1 — so column offx is
+// blanked (the map does NOT show through there), and columns to its left do.
+// Rows BELOW the "(end)" line are never touched, so the map shows through there
+// (faithful to the recorded frames where the room below "(end)" stays visible).
+// The leading message line (WIN_MESSAGE / row 0) is fully cleared when raised.
 function renderGetposTip() {
     const display = game.nhDisplay;
     if (!display?.clearScreen || !display.setCell) return;
-    const offx = 10;
     const cols = display.cols ?? 80;
+    let maxcol = 0;
+    for (const ln of GETPOS_TIP_LINES) if (ln.length + 2 > maxcol) maxcol = ln.length + 2;
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx + 1;         // leading blank at offx, item text at offx+1
     // Lay the live map (+ status lines) back down so it shows through below the
     // text window, exactly as the tty leaves the prior frame on screen.
     display.clearScreen();
@@ -3831,14 +3874,14 @@ function renderGetposTip() {
     const blankFromOffx = (r) => { for (let c = offx; c < cols; c++) display.setCell(c, r, ' ', NO_COLOR, 0); };
     let row = 0;
     for (const ln of GETPOS_TIP_LINES) {
-        blankFromOffx(row);           // cl_end() from window left edge for this text row
-        if (ln) display.putstr(offx, row, ln, NO_COLOR, ATR_NONE);
+        blankFromOffx(row);           // cl_end() from window left edge (offx)
+        if (ln) display.putstr(textCol, row, ln, NO_COLOR, ATR_NONE);
         row++;
     }
     blankFromOffx(row);
-    display.putstr(offx, row, '(end)', NO_COLOR, ATR_NONE);
-    // Cursor parks one column past "(end) " (offx + len("(end)") + 1 == 16).
-    display.setCursor(offx + '(end)'.length + 1, row);
+    display.putstr(textCol, row, '(end)', NO_COLOR, ATR_NONE);
+    // Cursor parks one column past "(end) " (textCol + len("(end)") + 1 == 16).
+    display.setCursor(textCol + '(end)'.length + 1, row);
     game._modal_screen = 'textwin';
 }
 
@@ -4873,10 +4916,21 @@ export function dfeature_at(x, y, buf = '') {
         if (s.sx === x && s.sy === y) feature = stairs_description(s, true);
     if (!feature) {
         // C ref: invent.c dfeature_at — terrain features named via defsyms
-        // explanations.  Doors/altars still fall through to loc.typName below.
+        // explanations.  Altars still fall through to loc.typName below.
         const loc = game.level?.at?.(x, y);
         const ltyp = loc?.typ;
-        if (IS_FOUNTAIN(ltyp)) feature = 'fountain';
+        // C ref: invent.c dfeature_at IS_DOOR branch — describe a door by its
+        // doormask (exact-value switch, as in C): a doorway (D_NODOOR), open
+        // door (D_ISOPEN), broken door (D_BROKEN), else closed door.
+        if (IS_DOOR(ltyp)) {
+            switch (loc.doormask) {
+            case D_NODOOR: feature = 'doorway'; break;
+            case D_ISOPEN: feature = 'open door'; break;
+            case D_BROKEN: feature = 'broken door'; break;
+            default: feature = 'closed door'; break;
+            }
+        }
+        else if (IS_FOUNTAIN(ltyp)) feature = 'fountain';
         else if (IS_THRONE(ltyp)) feature = 'opulent throne';
         else if (ltyp === LAVAPOOL || ltyp === LAVAWALL) feature = 'molten lava';
         else if (ltyp === ICE) feature = 'ice';
@@ -4891,6 +4945,53 @@ export function dfeature_at(x, y, buf = '') {
     }
     if (Array.isArray(buf)) buf[0] = feature || '';
     return feature;
+}
+
+// C ref: mkmaze.c waterbody_name() — the non-hallucinating name of a body of
+// water at (x,y).  Only the ordinary dungeon variants describe_decor() needs
+// are modelled (special-level "shallow sea"/"swamp"/"pond" and hallucinated
+// liquids are not); a plain POOL is "pool of water", a MOAT is a "moat".
+function decor_waterbody_name(ltyp) {
+    if (ltyp === MOAT) return 'moat';
+    if (ltyp === WATER) return 'water';
+    return 'pool of water';
+}
+
+// C ref: pickup.c describe_decor() — the 'mention_decor' option.  When the hero
+// walks onto a dungeon feature (door/water/fountain/altar/stairs/&c.) that is
+// not covered by an object, announce it even though nothing was picked up.
+// mention_decor is turned on only by the tutorial (dat/tut-1.lua), so this is a
+// no-op elsewhere.  Prints "There is <a feature> here." (flags.verbose is the
+// default) and records iflags.prev_decor so the same terrain type isn't
+// re-announced on the next consecutive step (furniture is exempt from that
+// de-duplication, matching IS_FURNITURE).  Returns TRUE like the C routine.
+export async function describe_decor() {
+    const x = game.u?.ux, y = game.u?.uy;
+    const loc = game.level?.at?.(x, y);
+    // C SURFACE_AT(x,y): the surface terrain; == levl[][].typ off a drawbridge
+    // (the only drawbridge-up case is not reached on the mention_decor level).
+    const ltyp = loc ? loc.typ : STONE;
+    let dfeature = dfeature_at(x, y);
+    const doorhere = !!dfeature && (dfeature === 'open door' || dfeature === 'doorway');
+    const waterhere = !!dfeature && dfeature === 'pool of water';
+    // C: "we don't mention 'ordinary' doors but do mention broken ones (and
+    // closed ones, which will only happen for Passes_walls)".  Underwater and
+    // the ice-over-pool transition also suppress the feature.
+    if (doorhere || game.Underwater) dfeature = null;
+
+    const prevDecor = game.iflags?.prev_decor ?? STONE;
+    if (ltyp === prevDecor && !IS_FURNITURE(ltyp)) {
+        /* same terrain as last mentioned and not furniture -> stay silent */
+    } else if (dfeature) {
+        if (waterhere) dfeature = decor_waterbody_name(ltyp);
+        // C: an() unless it's "swamp" or the ice descriptions (which self-name).
+        if (dfeature !== 'swamp' && ltyp !== ICE) dfeature = an(dfeature);
+        // flags.verbose defaults on: "There is <feature> here."
+        await pline(`There is ${dfeature} here.`);
+    }
+    game.iflags = game.iflags || {};
+    game.iflags.prev_decor = game.flags?.mention_decor ? ltyp : STONE;
+    return true;
 }
 
 // Floor objects at (x,y), topmost first.  C ref: svl.level.objects[x][y] is a

@@ -15,7 +15,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
-         renderWindowScreen, ECMD_NOTHANDLED } from './invent.js';
+         renderWindowScreen, ECMD_NOTHANDLED, describe_decor } from './invent.js';
 import { WEAPON_CLASS, objects as OBJECTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
@@ -35,7 +35,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
-         TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL,
+         TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, IS_POOL, IS_LAVA,
          A_STR, A_DEX, A_CON, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT } from './const.js';
@@ -1766,11 +1766,23 @@ async function moverock(otmp, sx, sy, dx, dy) {
             if (lmt == null || game.moves > lmt + 2 || game.moves < lmt)
                 await pline(`With ${hero_throws_rocks() ? 'little' : 'great'} effort `
                           + `you move ${the_pushable_name(otmp)}.`);
+            // C ref: hack.c dopush() — `if (!easypush) exercise(A_STR, TRUE);`.
+            // A non-rock-thrower trains Str (rn2(19) inside exercise) on EVERY
+            // push, independent of whether the effort message printed.
+            if (!hero_throws_rocks()) exercise(A_STR, true);
             game._boulder_lastmovetime = game.moves;
         }
         // C: movobj(otmp, rx, ry) relinks the boulder and redraws both squares.
         otmp.ox = rx;
         otmp.oy = ry;
+        // C ref: mkobj.c place_object() block_point(rx,ry) / remove_object()
+        // recalc_block_point(sx,sy) — a boulder blocks light, so relocating it
+        // must update the vision map: the destination becomes opaque and the
+        // vacated square becomes transparent again (unless the terrain blocks).
+        // Without this a monster's clear_path() to the hero would ignore the
+        // boulder and skip linedup()'s rn2(2+boulderspots) roll.
+        recalc_block_point(rx, ry);
+        recalc_block_point(sx, sy);
         newsym(rx, ry);
         newsym(sx, sy);
         return 0;
@@ -1796,6 +1808,20 @@ async function pickup_after_move(x, y) {
     const ctx = game.context || {};
     const hasObj = (game.level?.objects || []).some(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    // C ref: hack.c spoteffects() -> pickup(1) -> describe_decor() (pickup.c),
+    // and check_here() -> describe_decor(): with the 'mention_decor' option on,
+    // an unobscured dungeon feature under the hero is announced ("There is a
+    // broken door here.") before objects are looked at / picked up.  A move that
+    // lands the hero IN a pool/lava is short-circuited by pooleffects(TRUE)
+    // BEFORE pickup() runs (spoteffects goto spotdone), so those are not
+    // announced.  mention_decor is only set by the tutorial, so this is inert
+    // elsewhere; the tutorial hero always sinks, so the pool/lava skip matches
+    // C (a hero held above liquid by Lev/Fly/Wwalk is out of scope here).
+    if (game.flags?.mention_decor) {
+        const loc = game.level?.at?.(x, y);
+        const inLiquid = !!loc && (IS_POOL(loc.typ) || IS_LAVA(loc.typ));
+        if (!inLiquid) await describe_decor();
+    }
     // C ref: pickup.c pickup() — "if there's anything here, stop running":
     //   if (OBJ_AT(u.ux,u.uy) && svc.context.run && svc.context.run != 8
     //       && !svc.context.nopick) nomul(0);
