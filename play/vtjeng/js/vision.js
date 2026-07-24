@@ -3,15 +3,17 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
+import { on_level } from './dungeon.js';
 import { do_light_sources } from './light.js';
 import { BOULDER } from './objects.js';
 import { visible_region_at } from './region.js';
 import { m_at } from './monst.js';
 import {
-    BLINDED, COLNO, COULD_SEE, IN_SIGHT, ROWNO, DOOR, SDOOR, POOL,
+    BLINDED, CLOUD, COLNO, COULD_SEE, DB_MOAT, DB_UNDER, DRAWBRIDGE_UP,
+    IN_SIGHT, LAVAWALL, MOAT, ROWNO, DOOR, SDOOR, POOL, WATER,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, SEE_INVIS,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
@@ -29,12 +31,12 @@ function heroIsBlind(hero) {
         && !blindness?.blocked;
 }
 
-// C ref: vision.c seenv_matrix
-const seenv_matrix = [
-    [SV2, SV1, SV0],
-    [SV3, 0,   SV7],
-    [SV4, SV5, SV6],
-];
+// C ref: display.c seenv_matrix, shared with vision.c.
+export const seenv_matrix = Object.freeze([
+    Object.freeze([SV2, SV1, SV0]),
+    Object.freeze([SV3, SVALL, SV7]),
+    Object.freeze([SV4, SV5, SV6]),
+]);
 
 // Circle data for range limits (C vision.c:27-70)
 const circle_data = [
@@ -120,10 +122,58 @@ function blocksVisionAt(x, y) {
         const mask = loc.flags || loc.doormask || 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
-    if (level.objects?.[x]?.[y]?.otyp === BOULDER) return true;
+    const drawbridgeMask = loc.flags || loc.drawbridgemask || 0;
+    const moat = !on_level(game.u?.uz, game.juiblex_level)
+        && (typ === MOAT
+            || (typ === DRAWBRIDGE_UP
+                && (drawbridgeMask & DB_UNDER) === DB_MOAT));
+    if (typ === CLOUD || typ === WATER || typ === LAVAWALL
+        || (game.u?.uinwater && moat)) {
+        return true;
+    }
+    for (let object = level.objects?.[x]?.[y] ?? null;
+        object;
+        object = object.nexthere) {
+        if (object.otyp === BOULDER) return true;
+    }
     if (mimicBlocksLight(x, y)) return true;
     if (visible_region_at(x, y, game)) return true;
     return false;
+}
+
+// C ref: vision.c does_block(). The level and vision arrays are game-global
+// singletons in both implementations.
+export function does_block(x, y, _location = null, state = game) {
+    if (state !== game)
+        throw new Error('does_block requires the active game state');
+    return blocksVisionAt(x, y);
+}
+
+function rebuildVisionPoint(x, y, state) {
+    if (state !== game)
+        throw new Error('vision point mutation requires the active game state');
+    const affectedCurrentVision = Boolean(state.viz_array?.[y]?.[x]);
+    const oldVisionMin = state._viz_rmin;
+    const oldVisionMax = state._viz_rmax;
+    vision_reset();
+    state._viz_rmin = oldVisionMin;
+    state._viz_rmax = oldVisionMax;
+    if (affectedCurrentVision) state.vision_full_recalc = 1;
+}
+
+// C refs: vision.c block_point(), unblock_point(), recalc_block_point().
+// The JS owner rebuilds the compact transparency index as a unit; preserving
+// the prior display bounds gives the same subsequent vision_recalc() contract.
+export function block_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
+}
+
+export function unblock_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
+}
+
+export function recalc_block_point(x, y, state = game) {
+    rebuildVisionPoint(x, y, state);
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -631,12 +681,27 @@ export function couldsee(x, y, state = game) {
 }
 
 export function init_vision_globals() {
+    // A runSegment() call is a new NetHack process.  C's file-static vision
+    // buffers therefore begin zeroed for every segment; clear the module
+    // buffers explicitly so a prior game cannot redraw stale visible cells
+    // while initializing a blind hero.
+    for (let row = 0; row < ROWNO; ++row) {
+        cs_buf0[row].fill(0);
+        cs_buf1[row].fill(0);
+    }
+    cs_rmin0.fill(COLNO);
+    cs_rmax0.fill(0);
+    cs_rmin1.fill(COLNO);
+    cs_rmax1.fill(0);
     game.viz_array = cs_buf0;
     game.active_buf = 0;
+    game.vision_full_recalc = 0;
     game.vis_step = 0;
     game.vis_start_col = 0;
     game.vis_start_row = 0;
     game.cs_rows = null;
     game.cs_left = null;
     game.cs_right = null;
+    game._viz_rmin = null;
+    game._viz_rmax = null;
 }
