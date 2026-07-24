@@ -13,12 +13,22 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init, str2role, str2align, str2race, roles, races } from './role.js';
+import { aligns } from './role_data.js';
+import { reset_mvitals } from './makemon.js';
 import { newhp, newpw } from './exper.js';
-import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize } from './fastforward.js';
+import { u_init_inventory } from './u_init.js';
+import { makedog } from './dog.js';
+import { init_attr, vary_init_attr } from './attrib.js';
+import { com_pager } from './pager.js';
+import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step } from './fastforward.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+
+    // src/allmain.c:780 — seed mvitals from each species' G_NOCORPSE bit,
+    // before init_objects(). propagate() and uncommon() both read this.
+    reset_mvitals();
 
     // src/allmain.c newgame() -> src/o_init.c init_objects().
     // The first 199 PRNG calls of every game, now real rather than replayed.
@@ -31,7 +41,12 @@ export async function newgame() {
     {
         const ir = str2role(g.rc?.opts?.role);
         const ia = str2align(g.rc?.opts?.align);
-        role_init(ir < 0 ? 0 : ir, ia < 0 ? 1 : ia);
+        /* C keeps the resolved choice in flags.initalign; u_init_misc() reads
+           it back to set u.ualign.type. Chargen picking (M2.6) will replace the
+           default with pick_align()'s result. */
+        g.flags.initrole = ir < 0 ? 0 : ir;
+        g.flags.initalign = ia < 0 ? 1 : ia;
+        role_init(g.flags.initrole, g.flags.initalign);
     }
 
     // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua.
@@ -55,6 +70,20 @@ export async function newgame() {
         g.u.ulevel = 0;
         g.u.uhp = g.u.uhpmax = newhp();
         g.u.uen = g.u.uenmax = newpw();
+
+        // src/u_init.c:1000-1007 — u_init_misc() finishes by setting ulevel and
+        // alignment, and it runs BEFORE mklev() (src/allmain.c:794 vs :807).
+        // This is not cosmetic: rndmonst_adj()'s monmax_difficulty() is
+        // (depth + u.ulevel) / 2, so leaving ulevel at 0 through level
+        // generation halves the eligible monster set and changes how many
+        // times rndmonst_adj() draws. adj_lev() reads it too.
+        g.u.ulevel = g.u.ulevelmax = 1;
+        g.u.ualign = {
+            type: aligns[g.flags.initalign].value,
+            record: 0,
+            abuse: 0,
+        };
+        g.u.uhave = {};
     }
 
     // Fast-forward through what is still replayed: u_init_misc.
@@ -79,13 +108,34 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Room filling now happens inside makelevel(), as it does in C.
-    // mineralize is still replayed.
-    // fill now happens inside makelevel(); mineralize still replayed
-    fastforward_fill_mineralize();
+    // Room filling and mineralize both run for real inside mklev() now, as
+    // they do in C (src/mklev.c:1550 calls mineralize from
+    // level_finalize_topology). Nothing is replayed between mklev and u_init.
 
-    // Fast-forward through post-mklev startup RNG calls.
-    // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
+    // src/allmain.c:808-816 — the order here is load-bearing: the hero is
+    // placed, then the pet is made, and only then does u_init compute the
+    // starting inventory. makedog() draws (pet_type plus a whole
+    // collect_coords ring shuffle from enexto), so putting it on the wrong
+    // side of u_init shifts everything after it.
+    u_on_upstairs();
+
+    makedog();
+
+    // src/u_init.c:1374 — role inventory, race extras and starting gold.
+    u_init_inventory();
+
+    // src/u_init.c:1385 — attributes, straight after the inventory.
+    init_attr(75);
+    vary_init_attr();
+
+    // src/allmain.c:831 — the legacy blurb. It draws because com_pager()
+    // creates its own Lua state, and every Lua state costs nhlib.lua's
+    // shuffle(align). `legacy` is opt_out (initval On), so it fires unless
+    // the rc says `!legacy`.
+    if (g.flags.legacy !== false)
+        com_pager(g.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
+
+    // Fast-forward what is still replayed: allmain.c moveloop_preamble().
     fastforward_post_mklev();
 
     // Hardcoded player state for seed8000 Tourist.
@@ -96,17 +146,11 @@ export async function newgame() {
     g.u.uen = 2; g.u.uenmax = 2;
     g.u.uac = 10; g.u.uexp = 0;
     g.u.ualign = { type: 0, record: 0 };
-    g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
-    g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
     g.moves = 1;
     g.urole = { name: { m: 'Tourist', f: 'Tourist' }, rank: { m: 'Rambler', f: 'Rambler' } };
     g.urace = { adj: 'human' };
     g.flags.female = true;
     g.plname = g.plname || 'Contestant';
-
-    // C ref: allmain.c newgame() → u_on_upstairs()
-    // Places hero on upstair, or special stair, or random room position.
-    u_on_upstairs();
 
     // Initial display
     init_vision_globals();

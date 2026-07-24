@@ -108,9 +108,14 @@ export function encodeBonesLevel() {
     for (const mon of level.monsters || []) {
         mon.mlstmv = 0;
         updateMonsterTrack(mon);
-        mon.mtame = 0;
-        mon.pet = false;
-        mon.mpeaceful = 0;
+        // C ref: bones.c savebones() — only tame monsters are stripped of
+        // tameness/peacefulness; other monsters keep their saved state and
+        // getbones()/getlev() recompute it against the next hero at load time.
+        if (mon.mtame || mon.pet) {
+            mon.mtame = 0;
+            mon.pet = false;
+            mon.mpeaceful = 0;
+        }
     }
     level.objects ??= [];
     const heroStatue = game._death_bones_body === 'statue' ? findHeroDeathStatue(level, ux, uy) : null;

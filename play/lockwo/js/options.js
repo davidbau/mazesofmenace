@@ -243,6 +243,38 @@ function txt2key(txt) {
     return txt[0];
 }
 
+// C ref: options.c sym_val() — reduce a SYMBOLS= value string to the single
+// display character it names.  Only the common forms actually reachable from
+// a config file are handled: a bare character, or a single-quoted character
+// (optionally backslash-escaped).
+function symVal(strval) {
+    if (!strval) return '';
+    if (strval.length <= 1) return strval;
+    if (strval[0] === "'") {
+        const close = strval.lastIndexOf("'");
+        let inner = close > 0 ? strval.slice(1, close) : strval.slice(1);
+        if (inner[0] === '\\' && inner.length >= 2) return inner[1];
+        return inner[0] || '';
+    }
+    return strval[0];
+}
+
+// C ref: symbols.c parsesymbols() — parse "S_name:char[,S_name2:char2,...]"
+// from a SYMBOLS= line and record each cmap symbol's display-character
+// override.  display.js consults this map when rendering terrain glyphs.
+function parseSymbols(str, result) {
+    for (const elem of str.split(',')) {
+        const s = elem.trim();
+        if (!s) continue;
+        const idx = s.indexOf(':');
+        if (idx < 0) continue;
+        const name = s.slice(0, idx).trim();
+        const val = symVal(s.slice(idx + 1).trim());
+        if (!name || !val) continue;
+        result.symoverride[name] = val;
+    }
+}
+
 // C ref: options.c parsebindings() — parse "key:command[,key2:command2,...]"
 // from a BIND= line and record each key -> command-name mapping.  cmd.js maps
 // the command name to that command's default key at dispatch time.
@@ -262,7 +294,7 @@ function parseBindings(str, result) {
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
-        flags: {}, iflags: {}, keybind: {},
+        flags: {}, iflags: {}, keybind: {}, symoverride: {},
     };
     if (!rc) return result;
 
@@ -275,6 +307,13 @@ export function parseNethackrc(rc) {
         const bindMatch = line.match(/^BIND\w*=(.+)/i);
         if (bindMatch) {
             parseBindings(bindMatch[1], result);
+            continue;
+        }
+
+        // C ref: cfgfiles.c config_line_stmt[] "SYMBOLS" -> parsesymbols().
+        const symMatch = line.match(/^SYMBOLS=(.+)/i);
+        if (symMatch) {
+            parseSymbols(symMatch[1], result);
             continue;
         }
 

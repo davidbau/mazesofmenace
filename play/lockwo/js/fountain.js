@@ -15,7 +15,7 @@ import { exercise } from './attrib.js';
 import { newuhs } from './eat.js';
 import { Blind } from './vision.js';
 import { depth } from './hacklib.js';
-import { makemon, name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { x_monnam } from './uhitm.js';
 import {
     ER_NOTHING, ER_DESTROYED, F_LOOTED, F_WARNED,
@@ -233,18 +233,35 @@ function level_difficulty() {
 }
 
 // C ref: fountain.c dowaterdemon() — unless the species is extinct/genocided,
-// makemon a water demon at the hero's square (MM_NOMSG).  A byyou spawn places
-// it on a free square next to the hero (enexto); we create it faithfully so the
-// gender/inventory/saddle RNG is spent, print "You unleash a water demon!", then
-// spend the survival-wish roll (rnd(100)); the wish and mintrap follow-ups are
-// unreached at this depth's low roll.
+// makemon a water demon at the hero's square (MM_NOMSG).  Since the hero
+// occupies that square, makemon.c's byyou && !in_mklev branch fires first:
+// enexto_core finds the nearest free square (collect_coords ring-shuffle RNG)
+// before any of the gender/inventory/saddle RNG, and place_monster() puts the
+// demon there — so we resolve that spot ourselves (enexto_spawn), then create
+// and place the monster there, print "You unleash a water demon!", then spend
+// the survival-wish roll (rnd(100)); the wish and mintrap follow-ups are
+// unreached at this depth's low roll.  The water demon is armed (is_armed_pm),
+// so C's makemon() runs the full m_initweap/m_initinv RNG chain (weapon,
+// defensive item, saddle) — request the full-fidelity path (normally scoped to
+// Big Room / shop stocking) for just this makemon() call.
 async function dowaterdemon() {
     const u = game.u;
     const pmidx = name_to_pmidx('water demon');
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return;
-    const mtmp = makemon(ptr, u.ux, u.uy, 0 /* MM_NOMSG */);
+    const spot = enexto_spawn(u.ux, u.uy, ptr);
+    if (!spot) return;
+    const was_full = game._full_mon_gen;
+    game._full_mon_gen = true;
+    let mtmp;
+    try {
+        mtmp = makemon(ptr, spot.x, spot.y, 0 /* MM_NOMSG */);
+    } finally {
+        game._full_mon_gen = was_full;
+    }
     if (mtmp) {
+        placeOnLevel(mtmp, spot.x, spot.y);
+        newsym(spot.x, spot.y);
         if (!Blind())
             await update_topl(`You unleash ${x_monnam(mtmp, 2 /*ARTICLE_A*/, null, 0, false)}!`);
         else

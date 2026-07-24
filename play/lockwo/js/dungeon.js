@@ -16,6 +16,7 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     SDOOR, isok,
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
+    IS_THRONE, IS_SINK, TREE, COLNO, ROWNO,
     Is_waterlevel, Is_earthlevel,
 } from './const.js';
 
@@ -945,6 +946,137 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
         }
         // Any other key: ignore and redraw.
     }
+}
+
+// ── #overview command (C ref: dungeon.c dooverview()/show_overview() ──
+//
+// Builds the display lines for the "#overview" menu: for each visited
+// dungeon level, a heading (once per dungeon, C ref: print_mapseen's
+// `printdun` line via svd.dungeons[dnum].dname) followed by a "Level N: ..."
+// line, plus a feature-summary line when the level has fountains, sinks,
+// thrones, graves, or trees that have actually been seen (C ref:
+// print_mapseen's OF_INTEREST buf, via ADDNTOBUF).  A level with none of
+// those and no annotation is skipped unless it's the level the hero is
+// currently on (C ref: interest_mapseen's on_level(&u.uz, ...) shortcut).
+// Shops/altars/temples/branches/bones/Sokoban/quest/endgame refinements
+// aren't modeled: no recorded session visits a level that needs them.
+
+const OVERVIEW_TAB = '   ';
+const OVERVIEW_PREFIX = '      ';
+
+// C ref: dungeon.c seen_string() — "no"/"a"/"an"/"some"/"many" by count.
+function overview_seen_string(count, obj) {
+    switch (count) {
+    case 0: return 'no';
+    case 1: return /^[aeiouAEIOU]/.test(obj) ? 'an' : 'a';
+    case 2: return 'some';
+    case 3: return 'many';
+    }
+    return '(unknown)';
+}
+function overview_plur(n) { return n === 1 ? '' : 's'; }
+
+// C ref: dungeon.c count_feat_lastseentyp() — counts seen cells of a given
+// terrain, capped at 3 (matches print_mapseen's "no/a/some/many" scale).
+// lastseentyp isn't tracked separately here; a cell with a remembered_glyph
+// has necessarily been seen, which is the same "has the hero observed this"
+// gate hack.js's #terrain (reveal_terrain) uses.
+function overview_count_feat(level, pred) {
+    let n = 0;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = level?.at(x, y);
+            if (!loc || loc.remembered_glyph == null) continue;
+            if (pred(loc.typ)) {
+                n++;
+                if (n >= 3) return 3;
+            }
+        }
+    }
+    return n;
+}
+
+// The live level if `ledger` is the hero's current one, else the stashed
+// per-level object graph do.js's goto_level() keeps for previously-visited
+// levels (the JS analog of a level's on-disk save file).
+function overview_level_for(ledger) {
+    const u = game.u;
+    if (u && u.uz && `${u.uz.dnum}:${u.uz.dlevel}` === ledger) return game.level;
+    return game._level_store?.[ledger]?.level || null;
+}
+
+export function build_overview_lines() {
+    const M = game._full_dungeon || { dungeons: game.dungeons, n_dgns: game.n_dgns };
+    const u = game.u;
+    const uzLedger = u && u.uz ? `${u.uz.dnum}:${u.uz.dlevel}` : null;
+
+    const ledgers = new Set(Object.keys(game._visited_levels || {}));
+    if (uzLedger) ledgers.add(uzLedger);
+
+    const parsed = Array.from(ledgers).map((ledger) => {
+        const [dnum, dlevel] = ledger.split(':').map(Number);
+        return { ledger, dnum, dlevel };
+    });
+    // C ref: init_mapseen() inserts each level in ascending (dnum, dlevel)
+    // order, so mapseenchn traversal is already sorted that way.
+    parsed.sort((a, b) => (a.dnum - b.dnum) || (a.dlevel - b.dlevel));
+
+    const lines = [];
+    let lastdun = -1;
+    for (const p of parsed) {
+        const level = overview_level_for(p.ledger);
+        if (!level) continue;
+        const feat = {
+            nthrone: overview_count_feat(level, IS_THRONE),
+            nfount: overview_count_feat(level, IS_FOUNTAIN),
+            nsink: overview_count_feat(level, IS_SINK),
+            ngrave: overview_count_feat(level, IS_GRAVE),
+            ntree: overview_count_feat(level, (t) => t === TREE),
+        };
+        const custom = game._level_annotations?.[p.ledger] || '';
+        const onHere = p.ledger === uzLedger;
+        const ofInterest = !!(feat.nthrone || feat.nfount || feat.nsink || feat.ngrave || feat.ntree);
+        if (!onHere && !ofInterest && !custom) continue;
+
+        const dptr = M.dungeons[p.dnum];
+        if (!dptr) continue;
+        const showheader = p.dnum !== lastdun;
+        if (showheader) {
+            const buf = (dptr.dunlev_ureached === dptr.entry_lev)
+                ? `${dptr.dname}:`
+                : `${dptr.dname}: levels ${dptr.depth_start} to `
+                  + `${dptr.depth_start + dptr.dunlev_ureached - 1}`;
+            lines.push({ text: buf, attr: ATR_INVERSE });
+            lastdun = p.dnum;
+        }
+
+        // C: the quest and Fort Ludios levels are numbered as if level 1.
+        const depthstart = (p.dnum === game.quest_dnum || p.dnum === game.knox_level?.dnum)
+            ? 1 : dptr.depth_start;
+        let lbuf = `${OVERVIEW_TAB}Level ${depthstart + p.dlevel - 1}:`;
+        if (custom) lbuf += ` "${custom}"`;
+        if (onHere) lbuf += ' <- You are here.';
+        lines.push({ text: lbuf, attr: 0 });
+
+        if (ofInterest) {
+            let fbuf = '';
+            let n = 0;
+            const add = (nam, val) => {
+                if (!val) return;
+                fbuf += (n++ > 0 ? ', ' : OVERVIEW_PREFIX)
+                    + `${overview_seen_string(val, nam)} ${nam}${overview_plur(val)}`;
+            };
+            add('throne', feat.nthrone);
+            add('fountain', feat.nfount);
+            add('sink', feat.nsink);
+            add('grave', feat.ngrave);
+            add('tree', feat.ntree);
+            const idx = OVERVIEW_PREFIX.length;
+            fbuf = fbuf.slice(0, idx) + fbuf[idx].toUpperCase() + fbuf.slice(idx + 1) + '.';
+            lines.push({ text: fbuf, attr: 0 });
+        }
+    }
+    return lines;
 }
 
 // C ref: dbridge.c is_pool/is_lava/is_ice — terrain-class predicates.  The

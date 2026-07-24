@@ -29,7 +29,7 @@ import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
-import { vision_reset, vision_recalc } from './vision.js';
+import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
 
@@ -301,6 +301,8 @@ function u_collide_m(mtmp) {
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
     const u = g.u;
+    g._goto_familiar = false;
+    g._goto_familiar_msg = null;
 
     const up = depth_of_level(newlevel) < depth_of_level(u.uz);
     const newdungeon = u.uz.dnum !== newlevel.dnum;
@@ -400,6 +402,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // factors it into fastforward_fill_mineralize().
             await fastforward_fill_mineralize();
         }
+        // C ref: do.c goto_level() `familiar = bones_include_name(svp.plname)` —
+        // only ever set on this first-visit/mklev() branch.  bones_include_name()
+        // does a prefix match of the player's name against every cemetery entry
+        // savebones() attached to the level; the JS harness's bones storage (see
+        // bones.js) is scoped to this one save-slot/character, so any blob that
+        // successfully grafts here (g._bones_loaded) was necessarily written by
+        // this same character's own earlier death — the name match is guaranteed.
+        g._goto_familiar = g._bones_loaded;
     } else {
         // C ref: do.c goto_level() "returning to previously visited level;
         // reload it" -> reseed_random() (a no-op in this build:
@@ -451,6 +461,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await docrt();
     await flush_screen(-1);
 
+    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` draws
+    // its rn2(4) right here, BEFORE the Tourist reward-XP block below (which
+    // can itself draw RNG via newexplevel()/pluslvl() on a level-up).  The
+    // resolved text is stashed rather than shown immediately: the deferred
+    // "materialize on a different level!" arrival message (emitted by
+    // goto_level()'s caller, after this function returns — see the wiz_level_tele
+    // / run_deferred_lvltport callers) must appear FIRST on screen, exactly as
+    // C's maybe_lvltport_feedback() (called earlier, before this point) does.
+    // Drawing the rn2(4) here and displaying the text later keeps both the RNG
+    // stream position AND the on-screen message order faithful to C.
+    g._goto_familiar_msg = g._goto_familiar ? resolve_familiar_msg() : null;
+
     // C ref: do.c goto_level() — on first entry to a level ("if (new)"), a
     // Tourist gains reward-experience scaled by the level's difficulty:
     //   if (Role_if(PM_TOURIST)) { more_experienced(level_difficulty(), 0);
@@ -468,6 +490,35 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // The on-foot transit message + its --More-- frame were already delivered
     // above (before the level switch) so that the captured frame shows the OLD
     // level, exactly as the deferred-docrt() tty does.
+}
+
+// ── familiar_level_msg (C ref: do.c familiar_level_msg) ──
+// Draws the rn2(4) that picks one of three random flavor lines (or no message
+// at all) for a freshly bones-loaded, name-matching level.  The Hallucination
+// variant swaps in a joke set, and the "This place %s familiar..." / "Whoa!
+// Everything %s different." lines fill in "looks" or "seems" depending on
+// Blind, exactly as C's Sprintf(buf, mesg, ...) does.  Returns the resolved
+// string (or null for the 1-in-4 "no message" roll) — called from inside
+// goto_level() so the rn2(4) lands at the same point in the RNG stream as C;
+// the caller displays the text once it is safe to (see goto_level()).
+const FAM_MSGS = [
+    "You have a sense of deja vu.",
+    "You feel like you've been here before.",
+    'This place %s familiar...',
+    null,
+];
+const HALU_FAM_MSGS = [
+    'Whoa!  Everything %s different.',
+    'You are surrounded by twisty little passages, all alike.',
+    "Gee, this %s like uncle Conan's place...",
+    null,
+];
+function resolve_familiar_msg() {
+    const which = rn2(4);
+    let mesg = (game.u?.uhallu ? HALU_FAM_MSGS : FAM_MSGS)[which];
+    if (mesg && mesg.includes('%s'))
+        mesg = mesg.replace('%s', Blind() ? 'seems' : 'looks');
+    return mesg;
 }
 
 // ── getlev_restore (C ref: restore.c getlev(), goto_level() reload path) ──
@@ -619,8 +670,17 @@ export async function wiz_level_tele(readLevel) {
         if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
             return 0;
         await goto_level(newlevel, false, false, false);
+        // C ref: win/tty/topl.c update_topl() — the arrival message goes through
+        // the real append-or-flush topline logic (not the simple pline()), since
+        // a familiar-level message right below it may need to share the line
+        // (or force its own --More--), exactly like C's pline() calls both do.
         if (game.flags?.verbose !== false)
-            await pline('You materialize on a different level!');
+            await update_topl('You materialize on a different level!');
+        // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
+        // right after the deferred arrival message and before the quest/endgame
+        // arrival checks.  The rn2(4) was already drawn inside goto_level();
+        // this only displays the resolved text.
+        if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
         // C ref: do.c goto_level() arrival block — In_quest(&u.uz) -> onquest():
         // the quest home level's first-time arrival message.  Delivered after
         // the "You materialize..." topline so its window flushes that topline
@@ -660,9 +720,16 @@ export async function wiz_level_tele(readLevel) {
     // C ref: teleport.c level_tele() -> schedule_goto(..., "You materialize on
     // a different level!"); the deferred top-line message is delivered after
     // goto_level()'s docrt() (via maybe_lvltport_feedback).  Only shown when
-    // flags.verbose (the default).
+    // flags.verbose (the default).  update_topl() (not the simple pline()) so a
+    // familiar-level message right after it can share the line or force its own
+    // --More--, matching C's pline()/update_topl() for both messages.
     if (game.flags?.verbose !== false)
-        await pline('You materialize on a different level!');
+        await update_topl('You materialize on a different level!');
+    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
+    // right after the deferred arrival message and before the quest/endgame
+    // arrival checks.  The rn2(4) was already drawn inside goto_level(); this
+    // only displays the resolved text.
+    if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
     await onquest();
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
@@ -800,7 +867,13 @@ export async function run_deferred_lvltport() {
     if (!pend) return;
     game._lvltport_dest = null;
     await goto_level(pend.newlevel, false, false, false);
-    if (pend.post_msg) await pline(pend.post_msg);
+    // update_topl() (not the simple pline()) so a familiar-level message right
+    // after this one can share the line or force its own --More--, matching
+    // C's pline()/update_topl() for both messages.
+    if (pend.post_msg) await update_topl(pend.post_msg);
+    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();`.  The
+    // rn2(4) was already drawn inside goto_level(); this only shows the text.
+    if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
 }
 
 // C ref: dungeon.c Is_botlevel — is <lev> the bottom level of its dungeon?

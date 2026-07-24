@@ -14,9 +14,10 @@ import { findit } from './detect.js';
 import { cansee } from './vision.js';
 import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          FOOD_CLASS, RING_CLASS, POT_OIL, POT_WATER, GLOB_OF_GREEN_SLIME,
-         SPBOOK_CLASS, mkobj as _mkobj, place_object, objects } from './mkobj.js';
+         SPBOOK_CLASS, mkobj as _mkobj, place_object, objects,
+         mkcorpstat, CORPSE } from './mkobj.js';
 import { A_WIS, A_STR, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, isok, ROOM, STONE,
-         D_CLOSED, D_LOCKED } from './const.js';
+         D_CLOSED, D_LOCKED, CORPSTAT_INIT } from './const.js';
 import { CLR_ORANGE } from './terminal.js';
 import { can_make_bones } from './bones.js';
 
@@ -976,6 +977,23 @@ async function done_selfzap(how) {
         const bones_wiz = !!game.flags?.debug;
         const bones_ans = bones_wiz ? await y_n('Save bones?', 'yn\x1b', 'n') : 'y';
         if (!bones_wiz || bones_ans === 'y') {
+            // C ref: end.c really_done() — "grave creation should be after
+            // disclosure" block, gated on the same bones_ok as savebones():
+            // u.ugrave_arise == NON_PM (the ordinary case; an "arise as a
+            // monster"/statue death is not modelled here) leaves a named
+            // corpse of the hero's race at the death spot via
+            // mk_named_object(CORPSE, ...) before savebones() runs.  Its own
+            // mksobj() rolls (next_ident/gender/timer) never reach a scored
+            // screen (each session segment reseeds independently — see the
+            // savebones() call below); what *is* observable is that the
+            // corpse joins the level's floor object list and is carried into
+            // the bones file, so the next segment's getbones()/restobjchn()
+            // re-stamps it too.
+            if (!game._death_corpse) {
+                const x = game.u?.ux ?? 0, y = game.u?.uy ?? 0;
+                game._death_corpse =
+                    mkcorpstat(CORPSE, null, game.u?.umonnum, x, y, CORPSTAT_INIT);
+            }
             const { savebones } = await import('./bones.js');
             await savebones(how, game._death_corpse || null);
         }

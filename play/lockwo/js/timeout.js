@@ -8,17 +8,21 @@
 
 import { game } from './gstate.js';
 import { heal_legs } from './trap.js';
+import { run_object_timers } from './mkobj.js';
 
 export async function nh_timeout() {
     const u = game.u;
-    if (!u) return;
 
     // C ref: timeout.c WOUNDED_LEGS case (timeout.c:774) — heal_legs(0) when the
     // wounded-legs timer runs out.  The JS stores the remaining turns directly in
     // u.HWounded_legs (set_wounded_legs), so decrement it and heal at 0.
-    if ((u.HWounded_legs || 0) > 0) {
+    if (u && (u.HWounded_legs || 0) > 0) {
         u.HWounded_legs -= 1;
         if (u.HWounded_legs === 0)
             await heal_legs(0);
     }
+
+    // C ref: timeout.c nh_timeout() ends with run_timers() — expire any object
+    // timer (here: ROT_CORPSE) whose scheduled turn has arrived.
+    run_object_timers();
 }

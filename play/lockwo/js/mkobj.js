@@ -1066,7 +1066,10 @@ function special_corpse(corpsenm) {
 function start_timer(when, kind, action, obj) {
     if (obj && kind === TIMER_OBJECT) {
         obj.timed = true;
-        obj.timer = { when, kind, action };
+        // C ref: timeout.c start_timer() — gnu->timeout = svm.moves + when
+        // (the caller's `when` is turns-from-now; the timer fires at that
+        // absolute turn).
+        obj.timer = { when: (game.moves ?? 0) + when, kind, action };
     }
     return true;
 }
@@ -1075,6 +1078,24 @@ function obj_stop_timers(obj) {
     if (!obj) return;
     obj.timed = false;
     delete obj.timer;
+}
+
+// C ref: timeout.c run_timers() — dispatch expired TIMER_OBJECT timers.  Only
+// ROT_CORPSE on a floor object is modelled (dig.c rot_corpse() -> rot_organic()
+// silently frees the object for the common on-floor case; no message, no RNG).
+// Other timer kinds/locations (REVIVE_MON, ZOMBIFY_MON, carried/buried objects)
+// are outside the sessions this contest exercises and are left unfired.
+export function run_object_timers() {
+    const moves = game.moves ?? 0;
+    const objs = game.level?.objects;
+    if (!Array.isArray(objs)) return;
+    for (let i = objs.length - 1; i >= 0; i--) {
+        const obj = objs[i];
+        if (obj.timed && obj.timer && obj.timer.action === ROT_CORPSE
+            && obj.timer.when <= moves) {
+            objs.splice(i, 1);
+        }
+    }
 }
 
 function rider_revival_time(body, retry = false) {

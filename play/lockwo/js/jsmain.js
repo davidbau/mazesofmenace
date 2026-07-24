@@ -206,7 +206,7 @@ export class NethackGame {
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
         g.plname = opts.name || '';
-        g.flags = { verbose: true, invlet_constant: true, ...opts.flags };
+        g.flags = { verbose: true, invlet_constant: true, dark_room: true, ...opts.flags };
         // C ref: options.c set_playmode() — when wizard (debug) mode is requested
         // (OPTIONS=playmode:debug) and authorize_wizard_mode() succeeds (the
         // contest sysconf carries WIZARDS=*, so it always does), the player name
@@ -223,6 +223,10 @@ export class NethackGame {
         // symset selects the drawing glyph table; DECgraphics uses VT100
         // line-drawing for walls/floor, otherwise the default ASCII symbols.
         g.symset = opts.symset || '';
+        // C ref: symbols.c parsesymbols()/update_ov_primary_symset() — a
+        // SYMBOLS= rc line overrides one cmap glyph's display character,
+        // independent of (and layered on top of) the base symset.
+        g.symoverride = opts.symoverride || {};
         const optsel = initialSelectionFromOptions(opts);
         g.initrole = optsel.role;
         g.initrace = optsel.race;

@@ -2090,7 +2090,14 @@ function flip_level(flp) {
 }
 
 // allow_flips per bigrm variant (3 = H+V default; noflip variants override).
-const BIGRM_ALLOW_FLIPS = { 11: 0 /*noflip*/, 12: 2 /*noflipy -> &= ~1*/ };
+// C ref: each bigrm-N.lua's des.level_flags(...) call.  "noflip" clears both
+// bits (0); "noflipy" clears bit 1 only (2); bigrm-7/8 declare no flip
+// restriction at all, so they keep the default 3.
+const BIGRM_ALLOW_FLIPS = {
+    1: 0 /*noflip*/, 2: 0 /*noflip*/, 3: 0 /*noflip*/, 4: 0 /*noflip*/,
+    5: 0 /*noflip*/, 6: 0 /*noflip*/, 9: 0 /*noflip*/, 10: 0 /*noflip*/,
+    11: 0 /*noflip*/, 12: 2 /*noflipy -> &= ~1*/, 13: 0 /*noflip*/,
+};
 
 const BIGRM_VARIANTS = {
     1: async () => {

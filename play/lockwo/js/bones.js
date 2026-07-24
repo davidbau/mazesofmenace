@@ -215,7 +215,11 @@ async function bones_getlev(blob) {
         m.m_id = next_ident();
         if (Array.isArray(m.minvent)) for (const o of m.minvent) stamp_obj(o);
     }
-    for (const o of level.buriedobjlist || []) stamp_obj(o);
+    // C ref: restore.c getlev() -> restore_buried_uchain()/buriedobjlist chain.
+    // The JS level graph names this array `buriedobjs` (see mklev.js bury()),
+    // not `buriedobjlist` — this was reading the wrong field and silently
+    // skipping every buried object's re-stamp.
+    for (const o of level.buriedobjs || []) stamp_obj(o);
     return { level, stairs: bundle.stairs };
 }
 
@@ -350,6 +354,44 @@ export async function savebones(how = 0, corpse = null) {
             toMon: (m, o) => { if (o) (m.minvent = m.minvent || []).push(o); },
         };
         drop_upon_death(null, null, x, y, hooks);
+
+        // C ref: bones.c:481-500 — makemon(&mons[PM_GHOST], u.ux, u.uy, MM_NONAME)
+        // + christen_monst(mtmp, svp.plname): a ghost bearing the dead hero's own
+        // name is left at the death spot and joins the level's monster chain (so
+        // the next segment's getbones()/restmonchn() re-stamps it too).  Its own
+        // makemon() RNG (m_id/gender/inventory rolls) is not reproduced: bones.js's
+        // header note established these draws never reach a scored screen (each
+        // segment reseeds independently, and nothing later in THIS segment's death
+        // sequence is RNG-sensitive) — only the ghost's *presence* in the saved
+        // monster list is observable, via the next segment's restore-time stamp
+        // count.  Stats are assigned directly, matching C's bones.c:506-511
+        // post-creation overrides (m_lev/mhp/mhpmax/female/msleeping) rather than
+        // makemon()'s own rolls.
+        {
+            const { monster_by_pmidx } = await import('./makemon.js');
+            const { next_ident } = await import('./mkobj.js');
+            const PM_GHOST = 287;
+            const gdata = monster_by_pmidx(PM_GHOST);
+            if (gdata && g.level) {
+                const plname = g.flags?.debug ? 'wizard' : (g.plname || 'Hero');
+                (g.level.monsters = g.level.monsters || []).push({
+                    data: gdata,
+                    mx: x, my: y,
+                    m_id: next_ident(),
+                    mgivenname: plname,
+                    m_lev: g.u?.ulevel || 1,
+                    mhp: g.u?.uhpmax ?? 1,
+                    mhpmax: g.u?.uhpmax ?? 1,
+                    female: !!g.flags?.female,
+                    msleeping: 1,
+                    mtame: 0,
+                    mpeaceful: 0,
+                    minvis: 1,
+                    mcanmove: 1,
+                    mcansee: 1,
+                });
+            }
+        }
 
         // C ref: bones.c:508-514 — un-tame the level's monsters (they forget the
         // dead hero) and, bones.c:544-547, strip trap "made by you".

@@ -3,12 +3,13 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
+import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
@@ -3243,6 +3244,7 @@ function clearActiveDelayedOccupations(options = {}) {
     game._pick_dig_occupation = null;
     game._queued_pick_dig_apply_letter = null;
     game._apply_pick_dig_letter = null;
+    game._pick_dig_reapply_letter = null;
     game._tin_opening_occupation = null;
     game._tin_finish_after_turn = null;
     game._tin_opened_pending = null;
@@ -3633,21 +3635,58 @@ function pickDigItemWielded(item) {
     return !!(item && (item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')));
 }
 
-function pickDigAbilityBonus() {
-    const str = game.u?.acurr?.a?.[A_STR] ?? 10;
-    if (str < 6) return -2;
-    if (str < 8) return -1;
-    if (str < 17) return 0;
-    if (str < 69) return 1;
-    if (str < 118) return 2;
-    return 3;
+function pickDigRemoveTrap(trap) {
+    if (!trap || !game.level?.traps) return;
+    game.level.traps = game.level.traps.filter(candidate => candidate !== trap);
+    newsym(trap.tx, trap.ty);
 }
 
-function pickDigErosionPenalty(item) {
-    return Math.max(item?.oeroded || 0, item?.oeroded2 || 0, item?.erosion || 0);
+function pickDigDropItem(item) {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    item.wielded = false;
+    item.alternate = false;
+    item.line = `${item.letter || '?'} - ${inventoryItemName(item)}`;
+    game.inventory = (game.inventory || []).filter(candidate => candidate !== item);
+    item.ox = ux;
+    item.oy = uy;
+    game.level.objects ??= [];
+    game.level.objects.push(item);
+    newsym(ux, uy);
 }
 
-async function processPickDigOccupation() {
+function pickDigHeroWearsBoots() {
+    return (game.inventory || []).some(invItem =>
+        invItem.cls === 'armor' && (invItem.worn || invItem.line?.includes('being worn'))
+        && /boots|shoes/i.test(inventoryItemName(invItem)));
+}
+
+// C ref: dig.c:dig() — while trapped in a bear trap, swinging the pick
+// either mangles the hero's foot or destroys the trap.
+function pickDigBearTrapChopResult(item, trap) {
+    const fumbling = !!(game.u?.fumbling || game.u?._fumblingTimeout
+        || (game.u?._statusSuffix || '').includes('Fumbling'));
+    if (rnl(7) > (fumbling ? 1 : 4)) {
+        let dmg = rnd(6) + digDbon(); // dmgval(pick-axe vs person) is a d6
+        if (dmg < 1) dmg = 1;
+        else if (pickDigHeroWearsBoots()) dmg = Math.floor((dmg + 1) / 2);
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - dmg);
+            if ((game.u.uhp || 0) <= 0)
+                game._death_cause = `chopping off ${game.flags?.female ? 'her' : 'his'} own foot`;
+        }
+        return { message: 'You hit yourself in the foot.', more: false };
+    }
+    pickDigRemoveTrap(trap);
+    if (game.u) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+    return { message: `You destroy the bear trap with your ${inventoryItemName(item)}.`, more: false };
+}
+
+// C ref: dig.c:dig() — the pick-axe digging occupation tick.
+export async function processPickDigOccupation() {
     const dig = game._pick_dig_occupation;
     if (!dig) return;
     if (game._message_more && !game._process_time_with_more) return;
@@ -3655,77 +3694,162 @@ async function processPickDigOccupation() {
         || game._attack_resume_after_more || game._pickup_resume_after_more || game._queued_dead_monsters?.length) return;
 
     const item = (game.inventory || []).find(invItem => invItem.letter === dig.itemLetter);
-    const ux = game.u?.ux || 0;
-    const uy = game.u?.uy || 0;
-    const outOfReach = dig.down
-        ? (dig.x || 0) !== ux || (dig.y || 0) !== uy
-        : Math.max(Math.abs((dig.x || 0) - ux), Math.abs((dig.y || 0) - uy)) > 1;
-    if (!pickDigItemWielded(item) || outOfReach) {
+    if (digOccupationAborted(dig, item, pickDigItemWielded(item))) {
         game._pick_dig_occupation = null;
         return;
     }
 
-    dig.effort = (dig.effort || 0) + 10 + rn2(5) + pickDigAbilityBonus()
-        + (item?.spe || 0) - pickDigErosionPenalty(item) + (game.u?.udaminc || 0);
-    if ((game.urace?.noun || game._startup_race) === 'dwarf') dig.effort *= 2;
+    if (dig.down) {
+        const dcresult = digCheckHero(game.u?.ux || 0, game.u?.uy || 0);
+        if (digCheckFailed(dcresult)) {
+            game._pick_dig_occupation = null;
+            addToplineMessage(digCheckFailMessage(dcresult, item));
+            return;
+        }
+        dig._dig_check = dcresult;
+    } else {
+        const hardMessage = digHardnessBlockMessage(item, dig.x, dig.y);
+        if (hardMessage) {
+            game._pick_dig_occupation = null;
+            addToplineMessage(hardMessage);
+            return;
+        }
+    }
+
+    const fumble = digFumblingResult(item);
+    if (fumble) {
+        game._pick_dig_occupation = null;
+        if (fumble.dropItem) pickDigDropItem(item);
+        if (fumble.wake) wakeNearbyForDig();
+        addToplineMessage(fumble.message);
+        return;
+    }
+
+    dig.effort = (dig.effort || 0) + digEffortIncrement(item);
 
     if (dig.down) {
         const trap = pickDigTrapAt(dig.x, dig.y);
         let result = null;
         if (dig.effort > 250 || trap?.ttyp === HOLE) {
             game._pick_dig_occupation = null;
+            finishDigContext({ downwardHole: true });
             result = await finishPickDigDownwardHole();
         } else if (dig.effort > 50 && !(trap && (trap.ttyp === TRAPDOOR || trap.ttyp === PIT || trap.ttyp === SPIKED_PIT))) {
-            game._pick_dig_occupation = null;
-            result = await finishPickDigDownwardPit();
+            if (trap && (trap.ttyp === LANDMINE || (trap.ttyp === BEAR_TRAP && !game.u?.utrap))) {
+                game._pick_dig_occupation = null;
+                finishDigContext({ downwardHole: true });
+                result = await triggerPickDigTrapUnderHero(trap);
+            } else if (trap && trap.ttyp === BEAR_TRAP && game.u?.utrap) {
+                game._pick_dig_occupation = null;
+                dig.effort = 0;
+                result = pickDigBearTrapChopResult(item, trap);
+            } else if (trap && dig._dig_check === 'passed_destroy_trap') {
+                game._pick_dig_occupation = null;
+                dig.effort = 0;
+                pickDigRemoveTrap(trap);
+                const tname = TRAP_NAMES[trap.ttyp] || 'trap';
+                const named = trap.tseen ? `the ${tname}` : (/^[aeiou]/.test(tname) ? `an ${tname}` : `a ${tname}`);
+                result = { message: `You destroy ${named} with your ${inventoryItemName(item)}.`, more: false };
+            } else {
+                game._pick_dig_occupation = null;
+                finishDigContext();
+                result = await finishPickDigDownwardPit();
+            }
         }
         if (result?.message) {
             addToplineMessage(result.message);
             if (result.more) game._message_more = 1;
         }
+        if (result?.heroResult) applyLifeSavingOrFatalCommandMode(result.heroResult);
         return;
     }
 
-    const statue = pickDigStatueAt(dig.x, dig.y);
-    if (!statue) {
-        game._pick_dig_occupation = null;
-        return;
-    }
+    // C ref: dig.c:dig() !down — wall/door/tree/rock/statue/boulder targets.
+    const digTarget = digTypeOf(item, dig.x, dig.y);
+    const loc = game.level?.at?.(dig.x, dig.y);
 
     if (dig.effort > 100) {
         game._pick_dig_occupation = null;
-        const trap = pickDigStatueTrapAt(dig.x, dig.y);
-        let animated = false;
-        if (trap) {
-            const message = await activateStatueTrap(trap, dig.x, dig.y, { shatter: true });
-            if (message) {
-                addToplineMessage(message);
-                animated = true;
+        if (digTarget === DIGTYP_STATUE && pickDigStatueAt(dig.x, dig.y)) {
+            finishDigContext();
+            const trap = pickDigStatueTrapAt(dig.x, dig.y);
+            let animated = false;
+            if (trap) {
+                const message = await activateStatueTrap(trap, dig.x, dig.y, { shatter: true });
+                if (message) {
+                    addToplineMessage(message);
+                    animated = true;
+                }
             }
+            if (!animated) {
+                const currentStatue = pickDigStatueAt(dig.x, dig.y);
+                if (currentStatue) breakStatueObject(currentStatue, dig.x, dig.y);
+                addToplineMessage('The statue shatters.');
+            }
+            return;
         }
-        if (!animated) {
-            const currentStatue = pickDigStatueAt(dig.x, dig.y);
-            if (currentStatue) breakStatueObject(currentStatue, dig.x, dig.y);
-            addToplineMessage('The statue shatters.');
+        if (digTarget === DIGTYP_BOULDER && digBoulderAt(dig.x, dig.y)) {
+            finishDigContext();
+            fractureDigBoulder(digBoulderAt(dig.x, dig.y));
+            addToplineMessage('The boulder falls apart.');
+            return;
         }
+        const finished = finishWallDigTerrain(item, dig.x, dig.y);
+        finishDigContext();
+        if (!finished) return; // statue or boulder got taken
+        const messages = [finished.message];
+        if (finished.shopWallDamage || finished.shopDoorDamage)
+            billDigShopTerrainDamage(dig.x, dig.y,
+                { wall: finished.shopWallDamage, door: finished.shopDoorDamage }, messages);
+        if (digTarget === DIGTYP_TREE
+            && ((game.urace?.noun || game._startup_race) === 'elf'
+                || (game.urole?.name?.m || game._startup_role) === 'Ranger')
+            && game.u?.ualign) {
+            game.u.ualign.record = (game.u.ualign.record || 0) - 1;
+        }
+        addToplineMessage(messages.filter(Boolean).join('  '));
         return;
     }
 
+    if ((IS_WALL(loc?.typ) || digTarget === DIGTYP_DOOR) && inShopBaseAt(dig.x, dig.y)) {
+        game._pick_dig_occupation = null;
+        addToplineMessage(`This ${loc?.typ === DOOR ? 'door' : 'wall'} seems too hard to ${digVerb(item)}.`);
+        return;
+    }
+    if (digTarget === DIGTYP_UNDIGGABLE || (digTarget === DIGTYP_ROCK && !IS_OBSTRUCTED(loc?.typ))) {
+        game._pick_dig_occupation = null;
+        return; // statue or boulder got taken
+    }
     if (!dig.didMessage) {
         dig.didMessage = true;
-        addToplineMessage('You hit the statue with all your might.');
+        addToplineMessage(`You hit the ${digTargetName(digTarget)} with all your might.`);
+        wakeNearbyForDig();
     }
 }
 
-function maybePromptQueuedPickDigApply() {
+// C ref: dig.c:use_pick_axe() — after wielding the tool, C queued a CANNED
+// doapply + invlet (cmdq_add_ec/cmdq_add_key); rhack pops the canned command
+// once the wield turn has passed, re-applying the now-wielded pick, which
+// only builds the direction prompt (no rng).  tty_yn_function() shows a
+// --More-- over the unacknowledged "You now wield" message first; the prompt
+// itself appears when that --More-- is dismissed (cmd.js 'pickDigReapplyMore').
+async function maybePromptQueuedPickDigApply() {
     const letter = game._queued_pick_dig_apply_letter;
-    if (!letter || game._command_mode || game._pending_message || game._message_more || game._pending_time_passed) return;
+    if (!letter || game._command_mode || game._pending_time_passed) return;
     const item = (game.inventory || []).find(invItem => invItem.letter === letter);
-    game._queued_pick_dig_apply_letter = null;
     if (!item || !pickDigItemWielded(item)) return;
+    game._queued_pick_dig_apply_letter = null;
+    if (game._pending_message) {
+        game._pick_dig_reapply_letter = letter;
+        game._command_mode = 'pickDigReapplyMore';
+        game._message_more = 1;
+        await flush_screen(1);
+        return;
+    }
     game._apply_pick_dig_letter = letter;
     game._command_mode = 'applyPickDigDirection';
-    addToplineMessage('In what direction do you want to dig?');
+    addToplineMessage(pickDigDirectionPrompt(item));
+    await flush_screen(1);
 }
 
 async function processTinOpeningTurn() {
@@ -15729,6 +15853,11 @@ export async function moveloop_core() {
         const earlyPickLock = g._pick_lock_occupation && !g._process_time_with_more;
         const earlyPickDig = g._pick_dig_occupation && !g._process_time_with_more;
         const earlyTinOpening = g._tin_opening_occupation && !g._process_time_with_more;
+        // Snapshot for the post-tick re-arm below: when the dig occupation
+        // ends this pass, C still charges the turn (allmain.c:483 sets
+        // svc.context.move = 1 before every occupation call), so one final
+        // bookkeeping turn must follow the last tick.
+        const hadPickDigOccupation = !!g._pick_dig_occupation;
         if (earlyForceLock) processForceLockOccupation();
         if (earlyPickLock) processPickLockOccupation();
         if (earlyPickDig) await processPickDigOccupation();
@@ -16055,6 +16184,12 @@ export async function moveloop_core() {
         }
         if (g._pick_dig_occupation && !g._message_more)
             g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
+        else if (hadPickDigOccupation && !g._pick_dig_occupation && !g._message_more)
+            // The dig occupation ended this pass (wall opened, stairs refused,
+            // dig_check abort): C charges the turn anyway (allmain.c:483 sets
+            // svc.context.move = 1 before every occupation call), so run one
+            // final bookkeeping turn after the last tick.
+            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
         if (g._tin_opening_occupation && !g._message_more)
             g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
         if (!earlyForceLock
@@ -16112,7 +16247,15 @@ export async function moveloop_core() {
             else if (!g._pet_message_resume && !completedTurnTailMore) g._pending_time_passed++;
             g._turn_tail_topline_more = 0;
             const swapMoreBeforeTimeDebit = /^You swap places with\b/.test(g._pending_message || '');
-            g._resume_time_after_more = completedTurnTailMore || swapMoreBeforeTimeDebit ? 0 : 1;
+            // C ref: allmain.c moveloop_core() — when the dig occupation ended
+            // this pass after the monster turn completed (its --More-- comes
+            // from the completion message), the pending time is a NEW turn:
+            // it must decrement u.umovement again or the no-hero-movement
+            // gate keeps the next turn tail from ever running.  A turn that
+            // was interrupted mid-monster-turn resumes without the debit.
+            const digEndedAfterCompletedTurn = turnAdvanced
+                && hadPickDigOccupation && !g._pick_dig_occupation;
+            g._resume_time_after_more = completedTurnTailMore || swapMoreBeforeTimeDebit || digEndedAfterCompletedTurn ? 0 : 1;
             if (g._continue_monsters_after_more && !g._pet_inventory_resume
                 && !g._monster_resume_index && !g._monster_resume_same_index
                 && !g._attack_resume_after_more && !g._pickup_resume_after_more) {
@@ -16505,6 +16648,7 @@ export async function moveloop_core() {
         if (!g._ball_drag_travel_delay_restore && g.u)
             g.u.umovement = (g.u.umovement || 0) + NORMAL_SPEED;
     }
+    await maybePromptQueuedPickDigApply();
 	    await rhack(0);
     if (g._turn_tail_preserve_message_after_rhack) {
         const preservedMessage = g._turn_tail_preserve_message_after_rhack;
@@ -16592,7 +16736,6 @@ export async function moveloop_core() {
         g._topline_after_more_fumble_turn_message_starts = 0;
         g._topline_after_more_fumble_message_roll = 0;
     }
-    maybePromptQueuedPickDigApply();
 
     if (g.context?.move) {
         if (!g.u?.umoved && g.u) {
@@ -16642,4 +16785,5 @@ export const __allmainTestHooks = {
     monsterSleepGasTrapEffectForTest: monsterSleepGasTrapEffect,
     monsterSqueakyBoardTrapEffectForTest: monsterSqueakyBoardTrapEffect,
     maybeSpinMonsterWebForTest: maybeSpinMonsterWeb,
+    maybePromptQueuedPickDigApplyForTest: maybePromptQueuedPickDigApply,
 };

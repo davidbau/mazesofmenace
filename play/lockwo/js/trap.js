@@ -5,8 +5,8 @@
 
 import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
-import { newsym, pline } from './display.js';
-import { body_part } from './invent.js';
+import { newsym, pline, m_at, update_topl } from './display.js';
+import { body_part, near_capacity } from './invent.js';
 import { exercise } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
@@ -16,6 +16,8 @@ import {
     MAX_ERODE,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
+    IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
+    Is_rogue_level, SLT_ENCUMBER, STONE,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER,
@@ -746,24 +748,189 @@ export async function dotrap(trap, trflags = 0) {
 // C ref: include/trap.h is_pit(ttyp) — PIT or SPIKED_PIT.
 function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 
+// C ref: dbridge.c is_pool(x,y) — POOL/MOAT/WATER.  IS_POOL(typ) (the range
+// macro, POOL..DRAWBRIDGE_UP) coincides with this for every terrain the
+// corpus ever generates (no drawbridges), so it's reused directly.
+function isPoolAt(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && IS_POOL(loc.typ);
+}
+
+// C ref: mkobj.c sobj_at(otyp, x, y) — floor object lookup (matches cmd.js
+// boulder_at's flat game.level.objects scan).
+function sobj_at_floor(otyp, x, y) {
+    let found = null;
+    for (const o of (game.level?.objects || []))
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === otyp)
+            found = o;
+    return found;
+}
+
+// C ref: pager.c waterbody_name(x,y) — non-hallucinating water-body name; the
+// special-level and hallucination variants aren't reached by the corpus.
+function waterbody_name(x, y) {
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return 'wall of water';
+    if (typ === LAVAWALL) return 'wall of lava';
+    return 'pool of water';
+}
+
+// C ref: hack.c doorless_door() — a doorway that lacks its door (NODOOR or
+// BROKEN); all rogue-level doors are treated as doored.
+function doorless_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    if (Is_rogue_level(game.u?.uz)) return false;
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: teleport.c goodpos(x,y,&youmonst,0), specialized for a hero with no
+// Swimming/Amphibious/Levitation/Flying/water-or-lava-walking (the only case
+// the corpus reaches): a pool or lava square is never "good", nor is a
+// monster-occupied, boulder-covered, or inaccessible one.
+function goodpos_for_hero(x, y) {
+    if (!isok(x, y)) return false;
+    if (m_at(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    if (IS_POOL(typ) || IS_LAVA(typ)) return false;
+    if (!ACCESSIBLE(typ)) return false;
+    if (sobj_at_floor(BOULDER, x, y)) return false;
+    return true;
+}
+
+// C ref: hack.c crawl_destination(x,y) — used by drown() to check whether the
+// hero can crawl from water to <x,y>.  The diagonal squeeze-through check
+// (bad_rock/cant_squeeze_thru) isn't reached by the corpus (the hero is a
+// normal, unencumbered human), so a diagonal step is allowed once the door
+// restriction clears.
+function crawl_destination(x, y) {
+    if (!goodpos_for_hero(x, y)) return false;
+    const u = game.u;
+    if (x === u.ux || y === u.uy) return true; // orthogonal: unrestricted
+    const loc = game.level?.at(x, y);
+    if (loc && IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
+    return true;
+}
+
+// C ref: trap.c rnd_nextto_goodpos(&x,&y,&youmonst) — shuffle the 8 compass
+// directions (Fisher-Yates, matching C's dirs[] shuffle exactly so the PRNG
+// stream lines up) and return the first neighbor that passes
+// crawl_destination(), or null if none do.
+const CRAWL_XDIR = [-1, -1, 0, 1, 1, 1, 0, -1];
+const CRAWL_YDIR = [0, -1, -1, -1, 0, 1, 1, 1];
+function rnd_nextto_goodpos_hero(x0, y0) {
+    const dirs = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (let i = N_DIRS; i > 0; i--) {
+        const j = rn2(i);
+        const k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    for (let i = 0; i < N_DIRS; i++) {
+        const nx = x0 + CRAWL_XDIR[dirs[i]];
+        const ny = y0 + CRAWL_YDIR[dirs[i]];
+        if (crawl_destination(nx, ny)) return { x: nx, y: ny };
+    }
+    return null;
+}
+
+// C ref: trap.c emergency_disrobe() — sheds items until unencumbered enough to
+// crawl out.  The corpus hero is always unencumbered at this point in the
+// tutorial (near_capacity() == UNENCUMBERED), so the shedding loop never
+// actually runs; that loop itself isn't modelled.
+function emergency_disrobe_min() {
+    return near_capacity() <= SLT_ENCUMBER;
+}
+
+// C ref: teleport.c teleds(nux,nuy,flags) — relocate the hero.  Punished/
+// swallowed/vault-guard handling isn't reached by the corpus (a fresh
+// Tenderfoot crawling out of a tutorial pool), so only the position update,
+// vision refresh, and the re-entrant spoteffects(TRUE) at the new spot are
+// modelled.
+async function teleds_min(nux, nuy, pickupFn) {
+    const u = game.u;
+    const { vision_recalc } = await import('./vision.js');
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx;
+    u.uy0 = oldy;
+    u.ux = nux;
+    u.uy = nuy;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(nux, nuy);
+    await spoteffects(pickupFn);
+}
+
+// C ref: trap.c drown() — the hero falls into water.  Swimming/Amphibious/
+// Breathless/steed/teleport-intrinsic/the death loop aren't reached by the
+// corpus (a non-swimming Tenderfoot who successfully crawls out on the first
+// attempt), so only that successful-crawl-out path is modelled.
+async function drown(pickupFn) {
+    const u = game.u;
+    const loc = game.level?.at(u.ux, u.uy);
+    const isSolid = !!loc && loc.typ === WATER; // is_waterwall(u.ux,u.uy)
+    await update_topl(`You ${isSolid ? 'plunge' : 'fall'} into the ${waterbody_name(u.ux, u.uy)}!`);
+    if (!isSolid) await update_topl('You sink like a rock.');
+
+    const spot = rnd_nextto_goodpos_hero(u.ux, u.uy);
+    if (spot) {
+        const succ = emergency_disrobe_min();
+        await update_topl('You try to crawl out of the water.');
+        if (succ) {
+            await update_topl('Pheew!  That was close.');
+            await teleds_min(spot.x, spot.y, pickupFn);
+            return true;
+        }
+        await update_topl('But in vain.');
+    }
+    // The repeated-drowning/death loop isn't reached by the corpus.
+    return true;
+}
+
+// C ref: hack.c pooleffects(newspot) — entering/leaving water or lava.  Only
+// the "hero (no steed, no Levitation/Flying) walks onto a plain pool" branch
+// is modelled; leaving water, lava, and the steed/Wwalking paths aren't
+// reached by the corpus.
+async function pooleffects_enter(pickupFn) {
+    const u = game.u;
+    if (u.ustuck || u.uprops?.Levitation || u.uprops?.Flying) return false;
+    if (u.usteed) return false;
+    const loc = game.level?.at(u.ux, u.uy);
+    const typ = loc ? loc.typ : STONE;
+    if (!isPoolAt(u.ux, u.uy) || IS_LAVA(typ)) return false;
+    return drown(pickupFn);
+}
+
 // C ref: hack.c spoteffects() — run the per-square effects after the hero
-// arrives on a new tile.  The full C routine also handles pools/lava, special
-// rooms, sinks and ice; none of those consume PRNG in the owned sessions, so
-// this port covers the pickup/trap ordering (the part that matters):
+// arrives on a new tile.  pooleffects(TRUE) runs FIRST; if it reports the
+// hero fell in and was relocated, the rest of spoteffects (pickup/trap) is
+// skipped for this square, matching C's `goto spotdone`.  The full C routine
+// also handles special rooms, sinks and ice; none of those consume PRNG in
+// the owned sessions, so this port covers the pool/pickup/trap ordering (the
+// part that matters):
 //
+//   if (pooleffects(TRUE)) goto spotdone;
 //   pit = (trap && is_pit(trap->ttyp));
 //   if (pick && !pit) pickup(1);     // pickup BEFORE a non-pit trap
 //   if (trap) dotrap(trap, ...);
 //   if (pick && pit) pickup(1);      // pickup AFTER a pit trap
 //
-// `pickupFn` is the caller's pickup(1) (cmd.js pickup_after_move); it is
-// optional so older call sites (with no auto-pickup) still trigger traps.
+// `pickupFn` is the caller's pickup(1) (cmd.js pickup_after_move), called
+// with the CURRENT hero position (not fixed coordinates) so a re-entrant
+// call from teleds_min() picks up at the square the hero actually lands on;
+// it is optional so older call sites (with no auto-pickup) still trigger
+// traps.
 export async function spoteffects(pickupFn) {
     const u = game.u;
     if (!u) return;
+    if (await pooleffects_enter(pickupFn)) return;
     const trap = t_at(u.ux, u.uy);
     const pit = !!(trap && is_pit_ttyp(trap.ttyp));
-    if (pickupFn && !pit) await pickupFn();
+    if (pickupFn && !pit) await pickupFn(u.ux, u.uy);
     if (trap) await dotrap(trap, 0);
-    if (pickupFn && pit) await pickupFn();
+    if (pickupFn && pit) await pickupFn(u.ux, u.uy);
 }

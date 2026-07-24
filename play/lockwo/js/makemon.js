@@ -1145,7 +1145,7 @@ const M2_PRINCE_NAMES = new Set([
     'gnome ruler', 'dwarf ruler', 'ogre tyrant',
 ]);
 const M2_NASTY_NAMES = new Set([
-    'Elvenking',
+    'Elvenking', 'water demon',
 ]);
 function m_initweap_bias(ptr) {
     const n = ptr?.name;
@@ -1519,6 +1519,12 @@ function m_initinv_full(mtmp) {
             mksobj(265 /*CORPSE*/, true, false);     // cat corpse inside
         }
         break;
+    case 12: { // S_LEPRECHAUN — mkmonmoney(d(level_difficulty(), 30))
+        const amt = d(level_difficulty_ext(), 30);
+        if (amt > 0) mksobj(437 /*GOLD_PIECE*/, false, false); // next_ident rnd(2)
+        mtmp._hasgold = true;
+        break;
+    }
     default: break;
     }
     if (mm === PM_SOLDIER_JS && rn2(13)) return;
@@ -1776,11 +1782,13 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             }
         }
         const canHideUnder = hasObj && (hasNonCoin || coinQuan >= 10);
-        // Gated to quest-level generation (like peace_minded_bigrm / the eel
-        // sleep roll): the ordinary level-gen path keeps the prior conservative
-        // behavior (concealing hiders there shifted seed4500's post-divergence
-        // frames).  Within a quest home the siege snakes hide under their drops.
-        if (game._quest_gen && mm_hides_under_pm(ptr) && canHideUnder && !nonPitTrap
+        // Gated to quest- and Big-Room-generation (like peace_minded_bigrm /
+        // the eel sleep roll): the ordinary level-gen path keeps the prior
+        // conservative behavior (concealing hiders there shifted seed4500's
+        // post-divergence frames).  Within a quest home or a Big Room,
+        // spiders and snakes hide under the object they just dropped.
+        if ((game._quest_gen || game._bigrm_gen) && mm_hides_under_pm(ptr)
+            && canHideUnder && !nonPitTrap
             && !mm_is_pool(x, y) && !mm_is_lava(x, y)) {
             mtmp.mundetected = 1;
         }
@@ -2036,7 +2044,7 @@ function peace_minded_spawn(ptr) {
 
 // Place a spawned monster on the live level so the renderer and subsequent
 // monster turns see it.  C ref: mon.c place_monster + makemon's fmon insert.
-function placeOnLevel(mtmp, x, y) {
+export function placeOnLevel(mtmp, x, y) {
     mtmp.mx = x; mtmp.my = y;
     if (!game.level.monsters) game.level.monsters = [];
     if (!game.level.monsters.includes(mtmp)) game.level.monsters.push(mtmp);

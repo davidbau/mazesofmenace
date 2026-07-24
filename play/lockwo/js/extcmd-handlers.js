@@ -22,6 +22,7 @@ import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
 import { create_particular_monster } from './makemon.js';
 import { newsym } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { delobj, stackobj } from './invent.js';
 import { exercise } from './attrib.js';
 import { rn2 } from './rng.js';
@@ -41,6 +42,7 @@ import { dogenocided } from './insight.js';
 import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
+import { build_overview_lines } from './dungeon.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -844,28 +846,46 @@ async function docallcmd() {
     return 0;
 }
 
-// LARGE_BOX..CHEST are the floor containers the recorded sessions touch.
-const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216;
+// LARGE_BOX..BAG_OF_TRICKS is the full Is_container() range (objclass.h).
+const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216,
+      BAG_OF_TRICKS_OTYP = 220;
 // Unlocking tools (objclass.h otyp values from mkobj.js).
 const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
 const PM_ROGUE = 8;
-function is_box_otyp(otyp) { return otyp === LARGE_BOX_OTYP || otyp === CHEST_OTYP || otyp === ICE_BOX_OTYP; }
+// C ref: objclass.h Is_container(o) — any #loot-able floor container
+// (large box, chest, ice box, sack, oilskin sack, bag of holding/tricks).
+function is_container_otyp(otyp) { return otyp >= LARGE_BOX_OTYP && otyp <= BAG_OF_TRICKS_OTYP; }
+// C ref: objclass.h Is_box(o) — large box / chest only: the two *lockable*
+// containers.  Narrower than is_container_otyp; #force only recognizes these.
+function is_lockbox_otyp(otyp) { return otyp === LARGE_BOX_OTYP || otyp === CHEST_OTYP; }
 // C ref: attrib.h ACURR(x) — current attribute value.
 function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
+// C ref: objnam.c minimal_xname()/OBJ_DESCR — bare (article-less, BUC-less)
+// type name: the real name once identified (oc_name_known), else the shared
+// unidentified appearance ("bag" for sack/oilskin sack/bag of holding/tricks
+// before they're told apart; large box/chest/ice box have no separate
+// description and so are name-known from the start).
 function box_basename(otyp) {
-    return otyp === CHEST_OTYP ? 'chest' : otyp === ICE_BOX_OTYP ? 'ice box' : 'large box';
+    const ocl = objects[otyp];
+    if (!ocl) return 'large box';
+    if (ocl.oc_name_known) return ocl.name;
+    const idx = ocl.oc_descr_idx != null ? ocl.oc_descr_idx : otyp;
+    return DESCR_BY_OTYP[idx] ?? ocl.name;
 }
 
-// Return the floor box at the hero's square (first container in the object
-// chain), or null.  C ref: container_at()/do_loot_cont() iterate the floor
-// object list at (u.ux, u.uy).
-function floor_box_here() {
+function floor_obj_here(pred) {
     const u = game.u;
     if (!u) return null;
     const objs = (game.level?.objects || []).filter(
-        (o) => o.where === 'floor' && o.ox === u.ux && o.oy === u.uy && is_box_otyp(o.otyp));
+        (o) => o.where === 'floor' && o.ox === u.ux && o.oy === u.uy && pred(o.otyp));
     return objs.length ? objs[0] : null;
 }
+// Return the floor container at the hero's square (first container in the
+// object chain), or null.  C ref: container_at()/do_loot_cont() iterate the
+// floor object list at (u.ux, u.uy), testing Is_container().
+function floor_box_here() { return floor_obj_here(is_container_otyp); }
+// C ref: lock.c doforce() — scans for Is_box() (large box/chest) only.
+function floor_lockbox_here() { return floor_obj_here(is_lockbox_otyp); }
 
 // Status-line text for the modal container renders (mirrors invent.js's
 // putStatusLines: statusLine1Text carries cursor-forward escapes that must be
@@ -990,14 +1010,18 @@ function render_container_contents(box) {
 async function use_container(box, more_containers) {
     let used = 0;
     box.lknown = 1;
-    const outokay = !!(box.cobj && box.cobj.length);
+    // C ref: use_container() outmaybe = outokay || !cknown — the take-out
+    // choices ('o'/'b') still appear for a container whose contents aren't
+    // known yet, even if it turns out to be empty; only a container already
+    // known-empty (cknown && !Has_contents) hides them.
+    const outmaybe = !!(box.cobj && box.cobj.length) || !box.cknown;
     const inv = Array.isArray(game.invent) ? game.invent : [];
     // inokay: hero carries anything besides the container itself (the box is on
     // the floor, so any inventory qualifies).
     const inokay = inv.length > 0;
     let c = 'q';
     for (;;) { // repeats iff ':' (look inside) gets chosen
-        render_in_or_out_menu(box, outokay, inokay, used !== 0, !!more_containers);
+        render_in_or_out_menu(box, outmaybe, inokay, used !== 0, !!more_containers);
         const key = await nhgetch();
         const ch = (key === 27) ? '\x1b' : String.fromCharCode(key);
         if (ch === ':') {
@@ -1021,8 +1045,17 @@ async function use_container(box, more_containers) {
     // loot_out: 'o' (take out), 'b'/'r' (both) — only the take-out portion is
     // modelled; the put-in half stays a no-op.  C ref: use_container() loot_out.
     const loot_out = (action === 'o' || action === 'b' || action === 'r');
-    if (loot_out && box.cobj && box.cobj.length) {
-        if (await menu_loot_out(box)) used = 1;
+    if (loot_out) {
+        if (box.cobj && box.cobj.length) {
+            if (await menu_loot_out(box)) used = 1;
+        } else {
+            // C ref: use_container() — Has_contents() false: pline1(emptymsg)
+            // ("The <box> is empty."); gaining that info costs a turn the first
+            // time (cknown was false), then cknown is set.
+            if (!box.cknown) used = 1;
+            await pline(`The ${box_basename(box.otyp)} is empty.`);
+            box.cknown = 1;
+        }
     }
     delete game._modal_screen;
     return used ? 1 : 0;
@@ -1413,7 +1446,7 @@ async function doforce() {
         await pline("You can't force anything without a proper weapon.");
         return 0;
     }
-    const box = floor_box_here();
+    const box = floor_lockbox_here();
     if (!box) {
         await pline('You decide not to force the issue.');
         return 1;
@@ -1581,6 +1614,51 @@ export async function forcelock() {
     return 0;
 }
 
+// ── #overview (C ref: dungeon.c dooverview()/show_overview(), win/tty/wintty.c
+// process_menu_window's H2344_BROKEN corner-menu layout) ──
+//
+// Renders the plain-text (non-selectable) overview menu at the corner offset,
+// waits for the dismissal key, then restores the screen the menu covered.
+function render_overview_menu(lines) {
+    const disp = game?.nhDisplay;
+    if (!disp?.setCell) return;
+    const cols = disp.cols || 80;
+    let maxcol = '(end) '.length;
+    for (const l of lines) maxcol = Math.max(maxcol, l.text.length + 2);
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx + 1;
+    // The message window (row 0) is cleared in full when the menu is raised.
+    for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0);
+    const moreRow = lines.length;
+    for (let r = 0; r <= moreRow; r++) {
+        for (let c = offx; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+    }
+    for (let r = 0; r < lines.length; r++) {
+        disp.putstr(textCol, r, lines[r].text, NO_COLOR, lines[r].attr || 0);
+    }
+    disp.putstr(textCol, moreRow, '(end)', NO_COLOR, 0);
+    // C dmore: cursor parked at offx + strlen("(end) ") + 2 = textCol + 6.
+    disp.setCursor(textCol + 6, moreRow);
+}
+
+// C ref: dungeon.c dooverview() -> show_overview(0, 0) -> select_menu(win,
+// PICK_NONE, ...): a plain display, dismissed by ESC/space/return (tty
+// dismissal keys for a finished, non-counting menu).  Afterwards
+// tty_dismiss_nhwindow()'s corner-menu path (docorner) repaints the area the
+// menu covered with the real map/status; flush_screen(1) reproduces that.
+export async function dooverview() {
+    const lines = build_overview_lines();
+    if (!lines.length) return 0;
+    render_overview_menu(lines);
+    for (;;) {
+        const key = await nhgetch();
+        if (key === 27 || key === 13 || key === 10 || key === 32) break;
+    }
+    await flush_screen(1);
+    return 0;
+}
+
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
 // a no-op (no message), which keeps RNG/state untouched.
 const HANDLERS = {
@@ -1605,6 +1683,7 @@ const HANDLERS = {
     offer: dosacrifice,
     genocided: dogenocided,
     wizgenesis: wiz_genesis,
+    overview: dooverview,
 };
 
 // C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).

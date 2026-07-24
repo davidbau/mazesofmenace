@@ -119,12 +119,11 @@ async function seffects(sobj) {
 // uncursed).  Not swallowed, not blind, not a rogue-level corridor: announce
 // "A lit field surrounds you!" (the no-op swallowed/underwater/water-level
 // forms print "briefly").  C then lights every couldsee cell within radius
-// (do_clear_area + set_lit) and forces a redraw; that DISPLAY effect — most
-// visibly the transient lighting of nearby corridor cells, which C re-darkens
-// again as the hero moves out of line-of-sight — is a deep vision-parity dance
-// and is not modeled here (rooms the hero is standing in are already lit).  No
-// RNG either way.  The rogue-level whole-room relight and cursed-darkening
-// paths are not exercised by the covered starts.
+// (do_clear_area + set_lit, 9 for a blessed scroll else 5) and forces a
+// redraw (vision_recalc) so newly-lit corridor cells outside the hero's own
+// room become visible immediately.  No RNG either way.  The rogue-level
+// whole-room relight, Sunsword-invoke, and cursed-darkening paths are not
+// exercised by the covered starts.
 async function litroom(on, obj) {
     if (!on) return; // cursed-scroll darkening not exercised
     const u = game.u;
@@ -133,6 +132,16 @@ async function litroom(on, obj) {
     if (!u?.uswallow && !Blind()
         && !(Is_rogue_level(u.uz) && loc0?.typ === CORR))
         await pline_append(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
+
+    if (no_op || Is_rogue_level(u.uz)) return;
+
+    const blessed_effect = !!(obj?.oclass === SCROLL_CLASS && obj.blessed);
+    const { do_clear_area, vision_recalc } = await import('./vision.js');
+    do_clear_area(u.ux, u.uy, blessed_effect ? 9 : 5, (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (loc) loc.lit = 1;
+    });
+    if (!Blind()) vision_recalc(0);
 }
 
 // C ref: read.c seffect_identify() — the scroll-of-identify effect.  The scroll

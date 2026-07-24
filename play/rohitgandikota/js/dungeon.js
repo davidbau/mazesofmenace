@@ -533,10 +533,57 @@ export function init_dungeons() {
         }
     }
 
+    /* src/dungeon.c:1132-1160 — resolve the named special levels so callers can
+       test `on_level(&u.uz, &oracle_level)` the way C does. */
+    game.special_levels = {};
+    for (const [name, key] of LEVEL_MAP) {
+        const x = find_level(name);
+        if (x) game.special_levels[key] = { ...x.dlevel };
+    }
+    game.oracle_level = game.special_levels.oracle_level ?? null;
+
+    /* src/dungeon.c:1164-1168 — "I hate hardwiring these names. :-(" */
+    game.quest_dnum = dname_to_dnum('The Quest');
+    game.sokoban_dnum = dname_to_dnum('Sokoban');
+    game.mines_dnum = dname_to_dnum('The Gnomish Mines');
+    game.tower_dnum = dname_to_dnum("Vlad's Tower");
+    game.tutorial_dnum = dname_to_dnum('The Tutorial');
+
     init_castle_tune();
 
     game.proto_dungeon = pd;
     return pd;
+}
+
+// src/dungeon.c:707 level_map[] — special level name to its d_level global.
+const LEVEL_MAP = [
+    ['air', 'air_level'], ['asmodeus', 'asmodeus_level'],
+    ['astral', 'astral_level'], ['baalz', 'baalzebub_level'],
+    ['bigrm', 'bigroom_level'], ['castle', 'stronghold_level'],
+    ['earth', 'earth_level'], ['fakewiz1', 'portal_level'],
+    ['fire', 'fire_level'], ['juiblex', 'juiblex_level'],
+    ['knox', 'knox_level'], ['medusa', 'medusa_level'],
+    ['oracle', 'oracle_level'], ['orcus', 'orcus_level'],
+    ['rogue', 'rogue_level'], ['sanctum', 'sanctum_level'],
+    ['valley', 'valley_level'], ['water', 'water_level'],
+    ['wizard1', 'wiz1_level'], ['wizard2', 'wiz2_level'],
+    ['wizard3', 'wiz3_level'], ['minend', 'mineend_level'],
+    ['soko1', 'sokoend_level'],
+];
+
+// src/dungeon.c:566 find_level() — locate a special level by its proto name.
+function find_level(nam) {
+    return game.sp_levchn.find(
+        lev => (lev.proto ?? lev.name ?? '').toLowerCase() === nam.toLowerCase())
+        ?? null;
+}
+
+// src/dungeon.c:596 dname_to_dnum()
+function dname_to_dnum(nam) {
+    const i = game.dungeons.findIndex(d => d.dname === nam);
+    if (i < 0)
+        throw new Error(`dname_to_dnum: unknown dungeon "${nam}"`);
+    return i;
 }
 
 // src/dungeon.c:540 add_level() — insert into the special-level chain in level

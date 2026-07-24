@@ -19,6 +19,7 @@ import { datFileLines as bundledDatFileLines } from './dat_files.js';
 import { TRIBUTE_DEATH_QUOTES, TRIBUTE_NOVEL_TITLES } from './tribute.js';
 import { advanceFireBreathRay, applyFireRayFountainTerrain, applyFireRayIceTerrain, applyFireRayWaterTerrain, burnFireRayWebTrap, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
+import { DIGTYP_STATUE, beginDigOccupation, digActionMessage, digDbon, digSurfaceText, digUpGrave, digVerbing, downDigStartBlock, fillHoleType, pickDigDirectionPrompt, planHorizontalDig, shopWallDamageCost } from './dig.js';
 import {
     applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
     clearCorpseTimeout, corpseName, freezeObjectInIcebox,
@@ -32,6 +33,8 @@ import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
 import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
 import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, monsterIsMetallivore, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore } from './metallivore.js';
+import { castSpellDirectionalEffect, castSpellNodirEffect, spellCastNeedsDirection } from './spell.js';
+import { altarAlignAt, heroOnAltar, isHighAltarAt, offerAmulet, offerCorpse } from './offer.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -586,6 +589,71 @@ function untrapHoldingTrapActionName(trap) {
 
 function untrapHoldingTrapContainerPrompt(trap, count) {
     return `There ${untrapContainerCountPhrase(count)} and ${untrapHoldingTrapPromptName(trap)} here.  ${untrapHoldingTrapActionName(trap)}? [ynq] (q)`;
+}
+
+// C ref: src/pager.c:doidtrap() — the '^'/#showtrap command.
+// C ref: include/defsym.h trap explanations via trap.c:trapname(ttyp, FALSE).
+function showtrapTrapName(ttyp) {
+    switch (ttyp) {
+    case ARROW_TRAP: return 'arrow trap';
+    case DART_TRAP: return 'dart trap';
+    case ROCKTRAP: return 'falling rock trap';
+    case SQKY_BOARD: return 'squeaky board';
+    case BEAR_TRAP: return 'bear trap';
+    case LANDMINE: return 'land mine';
+    case ROLLING_BOULDER_TRAP: return 'rolling boulder trap';
+    case SLP_GAS_TRAP: return 'sleeping gas trap';
+    case RUST_TRAP: return 'rust trap';
+    case FIRE_TRAP: return 'fire trap';
+    case PIT: return 'pit';
+    case SPIKED_PIT: return 'spiked pit';
+    case HOLE: return 'hole';
+    case TRAPDOOR: return 'trap door';
+    case TELEP_TRAP: return 'teleportation trap';
+    case LEVEL_TELEP: return 'level teleporter';
+    case MAGIC_PORTAL: return 'magic portal';
+    case WEB: return 'web';
+    case STATUE_TRAP: return 'statue trap';
+    case MAGIC_TRAP: return 'magic trap';
+    case ANTI_MAGIC: return 'anti-magic field';
+    case POLY_TRAP: return 'polymorph trap';
+    case VIBRATING_SQUARE: return 'vibrating square';
+    default: return 'trap';
+    }
+}
+
+// C ref: src/pager.c:doidtrap() — "That is a <trap>[ set/dug/woven by you]."
+function showtrapTrapMessage(trap) {
+    const name = showtrapTrapName(trap.ttyp);
+    const howMade = !trap.madeby_u ? ''
+        : trap.ttyp === WEB ? ' woven'
+            : (trap.ttyp === HOLE || trap.ttyp === PIT) ? ' dug'
+                : ' set';
+    return `That is ${indefiniteArticle(name)} ${name}${howMade}${trap.madeby_u ? ' by you' : ''}.`;
+}
+
+// C ref: src/detect.c:trapped_chest_at() — known-trapped box on the map.
+function showtrapTrappedChestAt(x, y) {
+    return (game.level?.objects || []).find(obj =>
+        obj.ox === x && obj.oy === y && obj.otrapped && obj.tknown
+        && (obj.otyp === CHEST || obj.otyp === LARGE_BOX
+            || obj.kind === 'chest' || obj.kind === 'large box'));
+}
+
+// C ref: src/version.c:doversion() — the 'V'/#versionshort one-line banner.
+const VERSION_SHORT_LINE = 'MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00.';
+
+// C ref: src/cmd.c:do_repeat() — the ^A/#repeat command; replays the last
+// stored repeatable command (movement, search, or rest) without prompting.
+async function repeatLastCommand() {
+    const key = game._repeat_last_key;
+    if (!key || game._in_doagain) {
+        await setMessage('There is no command available to repeat.');
+        return;
+    }
+    game._in_doagain = 1;
+    await rhack(key);
+    game._in_doagain = 0;
 }
 
 function untrapFloorReachMessage(trap, dir, boxes = []) {
@@ -6456,6 +6524,89 @@ function downwardDigBoulderResult(x, y, trap) {
     return { message: 'KADOOM!  The boulder falls in!', more: false };
 }
 
+// C ref: dig.c:use_pick_axe2() — starting a downward dig inside a shop
+// triggers shopdig(0) and bills SHOP_PIT_COST of floor damage.
+function pickDigShopFloorMessages() {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const roomnos = shopRoomnosAt(x, y, SHOPBASE);
+    if (!roomnos.length) return [];
+    const messages = [];
+    const shkp = shopkeeperForRoomno(roomnos[0]);
+    if (shopkeeperInHisShop(shkp) && !heroIsDeaf()) {
+        const name = shopkeeperDisplayName(shkp);
+        if (game.u?.utrap && (game.u.utraptype === TT_PIT || game.u.utraptype === 'pit')) {
+            messages.push(`${name} says: "Be careful, ${game.flags?.female ? 'madam' : 'sir'}, or you might fall through the floor."`);
+        } else {
+            messages.push(`${name} says: "${game.flags?.female ? 'Madam' : 'Sir'}, do not damage the floor here!"`);
+        }
+    }
+    if ((game.urole?.name?.m || game._startup_role) === 'Knight' && game.u?.ualign) {
+        messages.push('You feel like a common thief.');
+        const alignType = Number(game.u.ualign.type ?? 0);
+        game.u.ualign.record = (game.u.ualign.record || 0) - Math.sign(alignType);
+    }
+    addShopTerrainDamage(x, y, 100); // C ref: hack.h SHOP_PIT_COST
+    return messages;
+}
+
+// C ref: dig.c:digactualhole() PIT at hero — fall in unless levitating.
+function applyDigPitHeroTrap() {
+    if (!game.u) return;
+    if (!(game.u.levitating || game.u.flying)) {
+        game.u.utrap = rn1(4, 2);
+        game.u.utraptype = 'pit';
+    } else {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+}
+
+// C ref: dig.c:digactualhole() PIT shop accounting — a pit that replaces a
+// shop door is paid for immediately; other shop floor pits are billed.
+function applyDigPitShopDamage(x, y, wasShopDoor, messages) {
+    if (wasShopDoor) payForCurrentShopTerrainDamage('ruin', messages);
+    else addShopTerrainDamage(x, y, 100); // C ref: hack.h SHOP_PIT_COST
+}
+
+// C ref: dig.c:dighole() — grave, fountain and liquid-fill branches shared
+// by the pit and hole outcomes.  Returns null when plain digging proceeds.
+async function digholeSpecialTerrainResult(x, y, trap) {
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ === GRAVE) {
+        const pit = await maketrap(x, y, PIT);
+        if (!pit) return { message: '', more: false };
+        pit.madeby_u = true;
+        pit.tseen = true;
+        applyDigPitHeroTrap();
+        const messages = [`You dig a pit in the ${digSurfaceText(x, y)}.`, 'The grave falls into the pit!'];
+        messages.push(...await digUpGrave(x, y));
+        wakeNearbyMonstersAt(x, y, (game.u?.ulevel || 1) * 20);
+        return { message: trapMessage(...messages), more: messages.length > 1 };
+    }
+    if (loc?.typ === FOUNTAIN) {
+        loc.fountainWarned = true; // SET_FOUNTAIN_WARNED forces dryup
+        const dry = dryupFountainResultAt(x, y);
+        const messages = ['Water sprays all over you.'];
+        if (dry.dried) messages.push('The fountain dries up!');
+        else if (dry.trickle) messages.push(dry.trickle);
+        else if (dry.warning) messages.push(dry.warning);
+        return { message: trapMessage(...messages), more: messages.length > 1 };
+    }
+    const fillType = fillHoleType(x, y, false);
+    if (fillType !== ROOM) {
+        const messages = [];
+        const liquidFlow = earthquakeLiquidFlow(x, y, fillType, trap, messages,
+            { fillMessage: `As you dig, the hole fills with ${fillType === LAVAPOOL ? 'lava' : 'water'}!` });
+        return {
+            message: trapMessage(...messages),
+            more: messages.length > 1 || !!liquidFlow?.heroResult?.more,
+            heroResult: liquidFlow?.heroResult || null,
+        };
+    }
+    return null;
+}
+
 async function digDownwardPitResult(options = {}) {
     const current = game.u?.uz || { dnum: 0, dlevel: 1 };
     if (Is_airlevel(current) || Is_waterlevel(current))
@@ -6469,20 +6620,20 @@ async function digDownwardPitResult(options = {}) {
     if (boulderResult) return boulderResult;
     if (isBuriedBallTrapActive()) buriedBallToPunishment();
 
+    const special = await digholeSpecialTerrainResult(x, y, trap);
+    if (special) return special;
+
+    const wasShopDoor = game.level?.at?.(x, y)?.typ === DOOR
+        && shopRoomnosAt(x, y, SHOPBASE).length > 0;
     const pit = await maketrap(x, y, PIT);
     if (!pit) return { message: '', more: false };
     pit.madeby_u = true;
     pit.tseen = true;
-    if (game.u) {
-        if (!(game.u.levitating || game.u.flying)) {
-            game.u.utrap = rn1(4, 2);
-            game.u.utraptype = 'pit';
-        } else {
-            game.u.utrap = 0;
-            game.u.utraptype = null;
-        }
-    }
-    return { message: 'You dig a pit in the floor.', more: false };
+    applyDigPitHeroTrap();
+    const messages = [`You dig a pit in the ${digSurfaceText(x, y)}.`];
+    applyDigPitShopDamage(x, y, wasShopDoor, messages);
+    wakeNearbyMonstersAt(x, y, (game.u?.ulevel || 1) * 20);
+    return { message: trapMessage(...messages), more: messages.length > 1 };
 }
 
 async function digDownwardHoleResult(options = {}) {
@@ -6502,6 +6653,9 @@ async function digDownwardHoleResult(options = {}) {
     if (boulderResult) return boulderResult;
     if (isBuriedBallTrapActive()) buriedBallToPunishment();
 
+    const special = await digholeSpecialTerrainResult(x, y, existingTrap);
+    if (special) return special;
+
     const trap = await maketrap(x, y, HOLE);
     if (!trap) return { message: '', more: false };
     trap.madeby_u = true;
@@ -6514,12 +6668,18 @@ async function digDownwardHoleResult(options = {}) {
     const target = dugHoleFallTarget();
     const noFall = game.u?.levitating || game.u?.flying || game.u?.ustuck || !target;
     if (noFall) {
+        if (!shopRoomnosAt(x, y, SHOPBASE).length)
+            payForCurrentShopTerrainDamage('dig into', messages);
         const dropTarget = sitFallTargetLevel(trap) || target;
         const impact = impactDropFloorObjects(x, y, trap, { targetLevel: dropTarget });
         if (impact.message) messages.push(impact.message);
-        return { message: trapMessage(...messages), more: false };
+        return { message: trapMessage(...messages), more: messages.length > 1 };
     }
 
+    // C: in a shop the keeper may snatch the pack (shopdig(1), not ported);
+    // otherwise earlier hero-caused damage is settled before falling.
+    if (!shopRoomnosAt(x, y, SHOPBASE).length)
+        payForCurrentShopTerrainDamage('dig into', messages);
     messages.push('You fall through...');
     const impact = impactDropFloorObjects(x, y, trap, { targetLevel: target, withHero: true });
     if (impact.message) messages.push(impact.message);
@@ -6993,6 +7153,25 @@ export async function finishPickDigDownwardPit() {
 
 export async function finishPickDigDownwardHole() {
     return digDownwardHoleResult({ pick: true });
+}
+
+// C ref: dig.c:dig() — digging down onto a set land mine or bear trap
+// springs it (dotrap FORCETRAP) and ends the dig.
+export async function triggerPickDigTrapUnderHero(trap) {
+    if (!trap) return null;
+    if (trap.ttyp === LANDMINE)
+        return await finishHeroDartTrapResult(heroLandmineResult(trap, '', { forceTrap: true }));
+    if (trap.ttyp === BEAR_TRAP)
+        return await finishHeroDartTrapResult(heroBearTrapResult(trap, ''));
+    return null;
+}
+
+// C ref: dig.c:dig() !down completion — bill and immediately settle shop
+// wall/door damage broken through by the pick.
+export function billDigShopTerrainDamage(x, y, { wall = false, door = false } = {}, messages = []) {
+    if (wall) addShopTerrainDamage(x, y, shopWallDamageCost());
+    if (door) addShopTerrainDamage(x, y, SHOP_DOOR_COST);
+    if (wall || door) payForCurrentShopTerrainDamage(wall ? 'damage' : 'break', messages);
 }
 
 export async function finishLevelTeleport(targetLevel, options = {}) {
@@ -9459,7 +9638,13 @@ function spellMenuLines(prompt = 'Choose which spell to cast', includeSort = fal
     }
     if (includeSort && spellbooks.length > 1) rows.push([row++, left, '+ - [sort spells]']);
     rows.push([row, left, '(end)']);
-    return rows;
+    // C ref: wintty.c tty_display_nhwindow() NHW_MENU — the menu window is
+    // placed at offx = max(10, cols - maxcol - 1) (= left - 1 here) with a
+    // one-cell margin before the first text column, and its whole rectangle
+    // (offx..78 on every menu row) is cleared, erasing the map beneath.
+    const windowClears = [];
+    for (let r = 0; r <= row; r++) windowClears.push([r, left - 1, ' '.repeat(79 - (left - 1))]);
+    return [...windowClears, ...rows];
 }
 
 function currentSkillLines() {
@@ -59357,6 +59542,95 @@ async function moveHero(dx, dy) {
 	    }
 	}
 
+// C ref: src/pray.c:dosacrifice() — the #offer extended command. The
+// non-altar message must stay byte-identical to the original stub; the
+// on-altar flow mirrors C's floorfood("sacrifice", 1) prompt order
+// (floor corpse first, then inventory food/amulets).
+async function beginOfferCommand() {
+    if (!heroOnAltar()) {
+        await setMessage('You are not on an altar.');
+        game._command_mode = null;
+        return;
+    }
+    if (heroIsConfused() || heroIsStunned()) {
+        await setMessage('You are too impaired to perform the rite.');
+        game._command_mode = null;
+        return;
+    }
+    const floorCorpse = (game.level?.objects || []).find(obj =>
+        !obj.hidden
+        && obj.ox === game.u?.ux && obj.oy === game.u?.uy
+        && (obj.otyp === 'corpse' || obj.otyp === CORPSE));
+    if (floorCorpse) {
+        const name = pickupObjectName(floorCorpse);
+        const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
+        game._offer_floor_object = floorCorpse;
+        await setMessage((floorCorpse.quan || 1) > 1
+            ? `There are ${floorCorpse.quan} ${floorCorpse.plural || `${name}s`} here; sacrifice one? [ynq] (n)`
+            : `There is ${article} ${name} here; sacrifice it? [ynq] (n)`);
+        game._command_mode = 'offerFloorObject';
+        return;
+    }
+    await promptOfferInventoryObject(false);
+}
+
+// C ref: src/eat.c:offer_ok() — food and amulet classes fill the prompt;
+// getobj reports "You don't have anything [else] to sacrifice." when empty.
+async function promptOfferInventoryObject(declinedFloor) {
+    const letters = inventoryLetters(item =>
+        item.cls === 'food' || item.otyp === FOOD_CLASS
+        || item.otyp === 'corpse' || item.otyp === CORPSE
+        || item.cls === 'amulet');
+    if (!letters) {
+        await setMessage(`You don't have anything ${declinedFloor ? 'else ' : ''}to sacrifice.`);
+        game._command_mode = null;
+        return;
+    }
+    await setMessage(`What do you want to sacrifice? [${inventoryLetterMenu(letters)} or ?*]`);
+    game._command_mode = 'offerObject';
+}
+
+// C ref: src/pray.c:dosacrifice() dispatch on the chosen object and
+// consume_offering()'s useup()/useupf() — the offering leaves play only
+// when offer.js reports consumption.
+async function finishOfferObject(obj, { floor = false } = {}) {
+    if (!obj) {
+        game._command_mode = null;
+        return;
+    }
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const highaltar = isHighAltarAt(ux, uy);
+    const altaralign = altarAlignAt(ux, uy);
+    let result;
+    const kindName = String(obj.kind || obj.actualKind || '').toLowerCase();
+    if (obj.realAmuletOfYendor || obj.cls === 'amulet' || kindName.includes('amulet')) {
+        if (obj.realAmuletOfYendor || kindName === 'amulet of yendor') obj.realAmuletOfYendor = true;
+        result = offerAmulet(obj, { highaltar, altaralign });
+    } else if (obj.otyp === 'corpse' || obj.otyp === CORPSE) {
+        result = offerCorpse(obj, { highaltar, altaralign });
+    } else if (obj.cls === 'food' || obj.otyp === FOOD_CLASS) {
+        // C ref: src/eat.c:floorfood() tail — non-corpse food rejected
+        await setMessage("You can't sacrifice that!");
+        game._command_mode = null;
+        return;
+    } else {
+        result = { messages: ['Nothing happens.'], consumed: false, timeUsed: true };
+    }
+    if (result.consumed) {
+        if (floor) {
+            game.level.objects = (game.level.objects || []).filter(candidate => candidate !== obj);
+        } else {
+            removeInventoryItem(obj);
+        }
+    }
+    if (result.newsym || result.consumed) newsym(ux, uy);
+    if (result.messages.length)
+        await setMessage(result.messages.join('  '), result.messages.length > 1);
+    game._command_mode = null;
+    if (result.timeUsed !== false) game.context.move = 1;
+}
+
 export async function rhack(_cmd) {
     game.context = game.context || {};
     game.context.move = 0;
@@ -60143,12 +60417,52 @@ export async function rhack(_cmd) {
         return;
     }
 
+// C ref: nhlua.c:nhl_gamestate() (save side), reached via do.c:goto_level()
+// -> nhlua.c:tutorial(TRUE) -> nhlib.lua:tutorial_enter(): entering the
+// tutorial unwears the entire inventory and moves it out of the hero's
+// pack, then clears the spellbook; the stash is restored on tutorial
+// exit (gamestate(true)). The hero's displayed AC catches up here, at
+// the first tutorial engraving read boundary.
+function tutorialEnterStash() {
+    if (!game.u || game._tutorial_stash) return;
+    const wornKinds = [];
+    for (const item of game.inventory || []) {
+        if (isWornArmorItem(item)) {
+            game.u.uac = (game.u.uac ?? 10) + wornArmorAcValueGreatestErosion(item);
+            wornKinds.push(armorKind(item));
+        }
+        if (item.worn || item.owornmask || item.wielded || item.alternate) {
+            item._tutorial_wear_state = {
+                worn: !!item.worn,
+                owornmask: item.owornmask || 0,
+                wielded: !!item.wielded,
+                alternate: !!item.alternate,
+            };
+            item.worn = false;
+            item.owornmask = 0;
+            item.wielded = false;
+            item.alternate = false;
+        }
+    }
+    game._tutorial_stash = {
+        inventory: game.inventory || [],
+        spells: game._known_spells || [],
+    };
+    game.inventory = [];
+    game._known_spells = [];
+    for (const kind of wornKinds) {
+        if (kind === 'speed boots' || isBlueDragonArmorKind(kind)) syncHeroSpeedState();
+        updateGauntletsOfPowerStrength(kind, false);
+    }
+    updateReflectionFromInventory();
+}
+
     if (game._command_mode === 'tutorialReadMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._pending_message = '';
             game._message_more = 0;
             game._command_mode = null;
-            if (game._tutorial_active) game.u.uac = 10;
+            if (game._tutorial_active) tutorialEnterStash();
         }
         return;
     }
@@ -60778,6 +61092,30 @@ export async function rhack(_cmd) {
         return;
     }
 
+    // C ref: tty topl.c:tty_yn_function() — the canned re-apply's getdir()
+    // prompt was gated behind a --More-- on the unacknowledged "You now
+    // wield" message; dismissing it reveals the prompt (no time elapses).
+    // Non-dismiss keys are no-ops while the --More-- is pending.
+    if (game._command_mode === 'pickDigReapplyMore') {
+        if (ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._dismissed_more_this_command = 1;
+        game._pending_message = '';
+        game._message_more = 0;
+        game._keep_pending_message = 0;
+        game._command_mode = null;
+        const letter = game._pick_dig_reapply_letter;
+        game._pick_dig_reapply_letter = null;
+        const item = (game.inventory || []).find(invItem => invItem.letter === letter);
+        if (!item) return;
+        game._apply_pick_dig_letter = letter;
+        await setMessage(pickDigDirectionPrompt(item));
+        game._command_mode = 'applyPickDigDirection';
+        return;
+    }
+
     if (
         game._pending_message && game._message_more
 	        && !(game._running_continuation && game._process_time_with_more)
@@ -60822,6 +61160,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'wizIntrinsicMore'
 	        && game._command_mode !== 'terrainKnownDoneMore'
 		        && game._command_mode !== 'whatDoesIntro'
+		        && game._command_mode !== 'exploreModeMore'
 		    ) {
 		        if (ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
 		            game._keep_pending_message = 1;
@@ -63265,6 +63604,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'prayerArrogantMore'
         && game._command_mode !== 'terrainKnownDoneMore'
         && game._command_mode !== 'whatDoesIntro'
+        && game._command_mode !== 'exploreModeMore'
     ) {
         const welcome = game._welcome_message;
         game._pending_message = '';
@@ -65728,6 +66068,9 @@ export async function rhack(_cmd) {
                 item.kind = 'digging';
                 item.line = `${item.letter} - a wand of digging${wandChargeSuffix(item)}`;
                 const mazeDig = !!game.level?.flags?.is_maze_lev && !Is_earthlevel(game.u?.uz);
+                const digMessages = [];
+                let digShopDoor = false;
+                let digShopWall = false;
                 let x = (game.u?.ux || 0) + dir.dx;
                 let y = (game.u?.uy || 0) + dir.dy;
                 while (--digdepth >= 0) {
@@ -65738,7 +66081,14 @@ export async function rhack(_cmd) {
                         && (loc.wall_info & W_NONDIGGABLE);
                     if ((loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) || loc.typ === SDOOR) {
                         if (nondiggable) break;
-                        loc.typ = DOOR;
+                        // C ref: dig.c:zap_dig() — razed doors are announced
+                        // and shop doors are billed.
+                        if (shopRoomnosAt(x, y, SHOPBASE).length) {
+                            addShopTerrainDamage(x, y, SHOP_DOOR_COST);
+                            digShopDoor = true;
+                        }
+                        if (loc.typ === SDOOR) loc.typ = DOOR;
+                        else if (couldsee(x, y)) digMessages.push('The door is razed!');
                         loc.doormask = D_NODOOR;
                         loc.flags = 0;
                         digdepth -= 2;
@@ -65747,6 +66097,10 @@ export async function rhack(_cmd) {
                     } else if (mazeDig) {
                         if (IS_WALL(loc.typ) || IS_TREE(loc.typ)) {
                             if (!nondiggable) {
+                                if (shopRoomnosAt(x, y, SHOPBASE).length) {
+                                    addShopTerrainDamage(x, y, 200); // SHOP_WALL_COST
+                                    digShopWall = true;
+                                }
                                 loc.typ = IS_TREE(loc.typ) ? ROOM : ROOM;
                                 loc.flags = 0;
                                 newsym(x, y);
@@ -65763,6 +66117,10 @@ export async function rhack(_cmd) {
                     } else if (IS_OBSTRUCTED(loc.typ)) {
                         if (nondiggable) break;
                         if (IS_WALL(loc.typ) || loc.typ === SDOOR) {
+                            if (shopRoomnosAt(x, y, SHOPBASE).length) {
+                                addShopTerrainDamage(x, y, 200); // SHOP_WALL_COST
+                                digShopWall = true;
+                            }
                             loc.typ = game.level?.flags?.is_cavernous_lev && !game.level?.flags?.has_town
                                 ? CORR
                                 : DOOR;
@@ -65786,7 +66144,10 @@ export async function rhack(_cmd) {
                         break;
                     }
                 }
-                await setMessage('');
+                // C ref: dig.c:zap_dig() — shop damage is settled after the ray.
+                if (digShopDoor || digShopWall)
+                    payForCurrentShopTerrainDamage(digShopDoor ? 'destroy' : 'dig into', digMessages);
+                await setMessage(digMessages.join('  '), digMessages.length > 1);
                 game._keep_pending_message = 0;
                 game._command_mode = null;
                 game.context.move = 1;
@@ -65885,6 +66246,553 @@ export async function rhack(_cmd) {
         return;
     }
 
+    // --- Player spell effect plumbing -------------------------------------
+    // C ref: src/spell.c:spelleffects()/spelleffects_check(); effect bodies
+    // live in js/spell.js and receive these cmd.js internals via deps.
+    function spellRoleSkillLevel(spell) {
+        const roleName = game.urole?.name?.m || game._startup_role || '';
+        const skillName = spell?.category || spell?.skill || SPELL_CATEGORIES[spell?.name] || 'enchantment';
+        return ROLE_INITIAL_SPELL_SKILLS[roleName]?.[skillName] || P_UNSKILLED;
+    }
+
+    function spellLoseHeroHp(damage, cause) {
+        if (!game.u || !damage) return false;
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        if ((game.u.uhp || 0) > 0) return false;
+        game._death_cause = cause;
+        return true;
+    }
+
+    // C ref: potion.c:healup() — hp (and max via nxtra), optional blind cure.
+    function spellHealHero(amount, nxtra = 0, { cureBlind = false } = {}) {
+        if (!game.u) return '';
+        if (amount) {
+            game.u.uhp = (game.u.uhp || 1) + amount;
+            if (game.u.uhp > (game.u.uhpmax || game.u.uhp)) {
+                game.u.uhpmax = (game.u.uhpmax || game.u.uhp) + nxtra;
+                game.u.uhp = game.u.uhpmax;
+                if (game.u.uhp > (game.u.uhppeak || 0)) game.u.uhppeak = game.u.uhpmax;
+            }
+        }
+        if (cureBlind) return spellCureHeroBlindness();
+        return '';
+    }
+
+    // C ref: potion.c:healup(0, 0, FALSE, TRUE) — clears creamed/blind/deaf.
+    function spellCureHeroBlindness() {
+        const wasBlind = heroIsBlind();
+        if (game.u) {
+            game.u.ucreamed = 0;
+            game.u.blind = false;
+            game.u._blindTimeout = 0;
+            game.u.deaf = false;
+            game.u._deafTimeout = 0;
+        }
+        removeHeroStatusSuffix('Blind');
+        removeHeroStatusSuffix('Deaf');
+        if (!wasBlind) return '';
+        vision_recalc(0);
+        game._redraw_level_after_more = 1;
+        return heroIsHallucinating() ? 'Far out!  Everything is all cosmic again!' : 'You can see again.';
+    }
+
+    // C ref: lock.c:boxlock() over the hero's inventory (boxlock_invent()).
+    function spellBoxlockInventory(lock) {
+        const messages = [];
+        const wizard = (game.urole?.name?.m || game._startup_role || '') === 'Wizard';
+        for (const item of game.inventory || []) {
+            const kind = String(item?.kind || item?.actualKind || '').toLowerCase();
+            if (!/(?:large box|chest|ice box)\b/.test(kind) && item?.cls !== 'box') continue;
+            if (lock && !(item.olocked || item.locked)) {
+                item.olocked = 1;
+                item.locked = true;
+                item.obroken = 0;
+                item.lknown = wizard ? 1 : 0;
+                messages.push('Klunk!');
+            } else if (!lock && (item.olocked || item.locked)) {
+                item.olocked = 0;
+                item.locked = false;
+                item.lknown = wizard ? 1 : 0;
+                messages.push('Klick!');
+            } else if (!lock) {
+                item.obroken = 0; // C: silently fix if broken
+            }
+        }
+        return messages;
+    }
+
+    // C ref: hack.c:release_hold() (message-free common case).
+    function spellReleaseHeroHold() {
+        if (!game.u?.ustuck) return;
+        game.u.ustuck = null;
+    }
+
+    function spellHeroIsPunished() {
+        return !!(game.u?.uball || game.u?.uchain || game.u?.upunished || game._punished);
+    }
+
+    // C ref: zap.c:openholdingtrap()/closeholdingtrap()/openfallingtrap()
+    // hero and monster cases — trap release is only partially modeled.
+    function spellOpenHeroHoldingTrap() {
+        if (!game.u?.utrap) return false;
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+        return true;
+    }
+
+    function spellCloseHeroHoldingTrap() {
+        return false;
+    }
+
+    function spellOpenHeroFallingTrap() {
+        return false;
+    }
+
+    function spellOpenMonsterHoldingTrap() {
+        return false;
+    }
+
+    function spellCloseMonsterHoldingTrap() {
+        return false;
+    }
+
+    // C ref: zap.c:resist() helper — hero spell vs monster magic resistance.
+    function spellMonsterResistsMagm(mon) {
+        return monsterMagicResistance(mon) >= 90 || monsterHasMagicResistanceForPolymorph(mon);
+    }
+
+    function spellMonsterTheName(mon, capitalized = false) {
+        const name = (mon?.isshk && mon?.shknam) || mon?.givenName || null;
+        const base = name || `the ${mon?.data?.name || 'monster'}`;
+        return capitalized ? base.charAt(0).toUpperCase() + base.slice(1) : base;
+    }
+
+    function spellMonsterIsUndead(mon) {
+        const data = mon?.data || {};
+        const mlet = String(mon?.mlet || data.mlet || '');
+        return !!(mon?.undead || data.undead || mon?.vampshifter || data.vampshifter
+            || /^[ZMVWL']$/.test(mlet)
+            || /zombie|mummy|vampire|ghost|lich|skeleton|wraith|ghoul/i.test(String(data.name || '')));
+    }
+
+    function spellMonsterIsRider(mon) {
+        return !!(mon?.rider || mon?.data?.rider
+            || ['death', 'pestilence', 'famine'].includes(String(mon?.data?.name || '').toLowerCase()));
+    }
+
+    // C ref: zap.c:cancel_monst() monster branch.
+    function spellCancelMonster(mon, seen, messages) {
+        if (monsterResistsEffect(mon, game.u?.ulevel || 1)) return;
+        const wasInvis = !!mon.minvis;
+        mon.mspec_used = 0;
+        mon.minvis = 0;
+        if (seen && wasInvis) messages.push(`${spellMonsterTheName(mon, true)} is no longer invisible.`);
+    }
+
+    // C ref: zap.c:cancel_monst() hero branch (subset: form + item buc/spe).
+    function spellCancelHeroSelf() {
+        for (const item of game.inventory || []) {
+            if (!item) continue;
+            if (item.blessed) item.blessed = false;
+            if (item.cursed) item.cursed = false;
+            if (item.cls === 'wand' || item.wandIndex != null) {
+                if ((item.spe ?? 0) >= 0 && item.kind !== 'cancellation') item.spe = -1;
+            } else if (item.cls === 'scroll' && item.kind !== 'cancellation') {
+                item.kind = 'blank paper';
+                item.actualKind = 'scroll of blank paper';
+                item.spe = 0;
+            } else if (item.cls === 'spellbook' && item.otyp !== SPE_HEALING) {
+                item.kind = 'spellbook of blank paper';
+                item.spellName = '';
+                item.spe = 0;
+            } else if (item.cls === 'potion') {
+                item.actualKind = 'potion of water';
+                item.kind = 'water';
+                item.spe = 0;
+            } else if (item.spe) {
+                item.spe = 0;
+            }
+            refreshInventoryLineAfterBucChange(item);
+        }
+    }
+
+    // C ref: zap.c:mhurtle() (simplified: slide through free squares).
+    function spellMonsterHurtle(mon, dx, dy, dist) {
+        for (let i = 0; i < (dist || 0); i++) {
+            const nx = mon.mx + dx;
+            const ny = mon.my + dy;
+            if (nx < 1 || nx >= COLNO || ny < 0 || ny >= ROWNO) break;
+            const loc = game.level?.at(nx, ny);
+            if (!loc || IS_OBSTRUCTED(loc.typ)) break;
+            if ((game.level?.monsters || []).some(other => other !== mon && !other.dead && other.mx === nx && other.my === ny)) break;
+            if (game.u?.ux === nx && game.u?.uy === ny) break;
+            mon.mx = nx;
+            mon.my = ny;
+        }
+        newsym(mon.mx, mon.my);
+    }
+
+    // C ref: mon.c:wakeup() (simplified).
+    function spellWakeupMonster(mon) {
+        mon.msleeping = 0;
+    }
+
+    // C ref: dog.c:abuse_dog() (tameness loss and yelp roll; sounds omitted).
+    function spellAbuseDog(mon) {
+        if (!(mon?.mtame || 0)) return;
+        mon.mtame--;
+        if (mon.mtame && rn2(mon.mtame)) {
+            // C yelp() — sound only
+        } else {
+            // C growl() — sound only
+        }
+    }
+
+    // C ref: mhitm.c:slept_monst() — a sleeping holder releases its grip.
+    function spellSleptMonster(mon) {
+        if (mon === game.u?.ustuck && !game.u?.uswallow) {
+            game.u.ustuck = null;
+        }
+    }
+
+    // C ref: zap.c killed-monster tail for hero rays (mirrors the wand path).
+    function spellKillBeamMonster(mon, messages) {
+        rn2(6); // C make_corpse() desecrate roll inside xkilled()
+        const corpseData = mon.data?.corpse || mon.data;
+        const dropCorpse = monsterCorpseDropSucceeds(mon, mon.data);
+        dropMonsterInventoryRaw(mon, messages);
+        game.level.monsters = (game.level?.monsters || []).filter(candidate => candidate !== mon);
+        mon.dead = true;
+        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+            createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
+        recordVanquished(mon, true);
+        newsym(mon.mx, mon.my);
+        messages.push(`You kill the ${mon.data?.name || 'monster'}!`);
+    }
+
+    // C ref: lock.c:doorlock() — knock/wizard lock/force bolt vs (secret) doors.
+    function spellDoorlock(spellName, x, y) {
+        const loc = game.level?.at(x, y);
+        if (!loc) return '';
+        const blind = heroIsBlind();
+        const visible = !blind && couldsee(x, y);
+        if (loc.typ === SDOOR) {
+            if (spellName === 'wizard lock') return '';
+            loc.typ = DOOR;
+            loc.doormask = D_CLOSED | (loc.doormask & D_TRAPPED);
+            newsym(x, y);
+            if (spellName === 'knock') return visible ? 'A door appears in the wall!' : '';
+            // force bolt continues to door handling below
+        }
+        if (loc.typ !== DOOR) return '';
+        if (spellName === 'wizard lock') {
+            let message = '';
+            switch (loc.doormask & ~D_TRAPPED) {
+            case D_CLOSED: message = 'The door locks!'; break;
+            case D_ISOPEN: message = 'The door swings shut, and locks!'; break;
+            case D_BROKEN: message = 'The broken door reassembles and locks!'; break;
+            case D_NODOOR: message = 'A cloud of dust springs up and assembles itself into a door!'; break;
+            default: return '';
+            }
+            loc.doormask = D_LOCKED | (loc.doormask & D_TRAPPED);
+            newsym(x, y);
+            return message;
+        }
+        if (spellName === 'knock') {
+            if (loc.doormask & D_LOCKED) {
+                loc.doormask = D_CLOSED | (loc.doormask & D_TRAPPED);
+                return 'The door unlocks!';
+            }
+            return '';
+        }
+        // C: force bolt smashes closed/locked doors.
+        if (loc.doormask & (D_LOCKED | D_CLOSED)) {
+            loc.doormask = D_BROKEN;
+            newsym(x, y);
+            if (visible) return 'The door crashes open!';
+            if (!heroIsDeaf()) return 'You hear a crashing sound.';
+        }
+        return '';
+    }
+
+    function spellHeroWearsHardHelmet() {
+        const helmet = wornEarthHelmet();
+        return !!(helmet && hardEarthHelmet(helmet));
+    }
+
+    // C ref: teleport.c teleok/uhave checks are upstream; dbldam for Knight.
+    function spellHeroIsKnightWithQuestArtifact() {
+        return (game.urole?.name?.m || game._startup_role || '') === 'Knight' && !!game.u?.uhave?.questart;
+    }
+
+    function spellHeroHasDrainResistance() {
+        const form = game.u?._polyself_form;
+        return !!(game.u?.drainResistance || game.u?.Drain_resistance
+            || form?.drainResistance || form?.resistsDrain);
+    }
+
+    function spellHeroBlockedInvisByMummyWrapping() {
+        return !!mummyWrappingWorn();
+    }
+
+    function mummyWrappingWorn() {
+        return (game.inventory || []).find(item =>
+            (item.worn || item.line?.includes('being worn'))
+            && String(item.kind || item.actualKind || '').toLowerCase() === 'mummy wrapping') || null;
+    }
+
+    function spellHeroIsSlimed() {
+        return !!(game.u?.slimed || (game.u?._slimedTimeout || 0) > 0
+            || (game.u?._statusSuffix || '').includes('Slime'));
+    }
+
+    function spellClearHeroSlime() {
+        if (!game.u) return;
+        game.u.slimed = false;
+        game.u._slimedTimeout = 0;
+        removeHeroStatusSuffix('Slime');
+    }
+
+    // C ref: dog.c:pet_type() — role pet, else preference, else coin flip.
+    function spellRolePetTypeName() {
+        const roleName = game.urole?.name?.m || game._startup_role || '';
+        if (roleName === 'Knight') return 'pony';
+        if (game.preferred_pet === 'c') return 'kitten';
+        if (game.preferred_pet === 'd') return 'little dog';
+        return rn2(2) ? 'kitten' : 'little dog';
+    }
+
+    // C ref: makemon.c:rndmonst_adj() (simplified to common candidates).
+    function spellRndmonstAdj(minAdj, maxAdj) {
+        const base = level_difficulty(game.u?.uz || { dnum: 0, dlevel: 1 });
+        const min = Math.max(0, base - 2 + minAdj);
+        const max = base + 2 + maxAdj;
+        const candidates = RNDMONST_COMMON_MONSTERS
+            .filter(([, , mlevel]) => (mlevel ?? 0) >= min && (mlevel ?? 0) <= max)
+            .map(([name]) => name);
+        if (!candidates.length) return null;
+        return monsterByRndName(candidates[rn2(candidates.length)]);
+    }
+
+    function spellHeroBlocksClairvoyance() {
+        const roleName = game.urole?.name?.m || game._startup_role || '';
+        if (roleName === 'Wizard') return false;
+        return (game.inventory || []).some(item =>
+            (item.worn || item.line?.includes('being worn'))
+            && String(item.kind || item.actualKind || '').toLowerCase() === 'cornuthaum');
+    }
+
+    // C ref: detect.c:do_vicinity_map() — reveal the 19x11 area around hero.
+    function spellClairvoyanceMapEffect(blessed) {
+        const ux = game.u?.ux || 0;
+        const uy = game.u?.uy || 0;
+        for (let x = Math.max(1, ux - 9); x <= Math.min(COLNO - 1, ux + 10); x++) {
+            for (let y = Math.max(0, uy - 5); y <= Math.min(ROWNO - 1, uy + 6); y++) {
+                const loc = game.level?.at(x, y);
+                if (!loc) continue;
+                loc.seenv = true;
+                if (blessed) {
+                    for (const obj of game.level?.objects || []) {
+                        if (obj.ox === x && obj.oy === y && !obj.hidden) obj.seen = true;
+                    }
+                }
+                newsym(x, y);
+            }
+        }
+    }
+
+    // C ref: spell.c:cast_protection() atmosphere word.
+    function spellHeroProtectionAtmosphere() {
+        if (game.u?.uinwater) return 'water';
+        const loc = game.level?.at(game.u?.ux || 0, game.u?.uy || 0);
+        if (loc?.typ === CLOUD) return 'cloud';
+        if (IS_TREE(loc?.typ)) return 'vegetation';
+        if (IS_STWALL(loc?.typ)) return 'stone';
+        return 'air';
+    }
+
+    // C ref: read.c:seffect_magic_mapping() spell branch (never cursed).
+    function spellMagicMappingSpellEffect() {
+        if (game.level?.flags?.nommap) {
+            addHeroConfusion(rnd(30));
+            return { messages: ['Your head spins as something blocks the spell!'] };
+        }
+        revealLevelMap({});
+        return { messages: ['A map coalesces in your mind!'] };
+    }
+
+    function spellUnfixableTroubleCount() {
+        return 0; // C unfixable_trouble_count(FALSE): no modeled unfixable troubles
+    }
+
+    const SPELL_EFFECT_DEPS = {
+        spellRoleSkillLevel,
+        loseHeroHp: spellLoseHeroHp,
+        healHero: spellHealHero,
+        cureHeroBlindness: spellCureHeroBlindness,
+        boxlockInventory: spellBoxlockInventory,
+        releaseHeroHold: spellReleaseHeroHold,
+        heroIsPunished: spellHeroIsPunished,
+        openHeroHoldingTrap: spellOpenHeroHoldingTrap,
+        closeHeroHoldingTrap: spellCloseHeroHoldingTrap,
+        openHeroFallingTrap: spellOpenHeroFallingTrap,
+        openMonsterHoldingTrap: spellOpenMonsterHoldingTrap,
+        closeMonsterHoldingTrap: spellCloseMonsterHoldingTrap,
+        monsterResistsMagm: spellMonsterResistsMagm,
+        monsterTheName: spellMonsterTheName,
+        monsterIsUndead: spellMonsterIsUndead,
+        monsterIsRider: spellMonsterIsRider,
+        cancelMonster: spellCancelMonster,
+        cancelHeroSelf: spellCancelHeroSelf,
+        monsterHurtle: spellMonsterHurtle,
+        wakeupMonster: spellWakeupMonster,
+        abuseDog: spellAbuseDog,
+        sleptMonster: spellSleptMonster,
+        killSpellBeamMonster: spellKillBeamMonster,
+        spellDoorlock,
+        heroWearsHardHelmet: spellHeroWearsHardHelmet,
+        heroIsKnightWithQuestArtifact: spellHeroIsKnightWithQuestArtifact,
+        heroHasDrainResistance: spellHeroHasDrainResistance,
+        heroBlockedInvisByMummyWrapping: spellHeroBlockedInvisByMummyWrapping,
+        mummyWrappingName: () => pickupObjectName(mummyWrappingWorn() || { kind: 'mummy wrapping' }),
+        heroBlocksInvis: () => !!mummyWrappingWorn(),
+        heroIsSlimed: spellHeroIsSlimed,
+        clearHeroSlime: spellClearHeroSlime,
+        rolePetTypeName: spellRolePetTypeName,
+        rndmonstAdj: spellRndmonstAdj,
+        heroBlocksClairvoyance: spellHeroBlocksClairvoyance,
+        clairvoyanceMapEffect: spellClairvoyanceMapEffect,
+        heroProtectionAtmosphere: spellHeroProtectionAtmosphere,
+        magicMappingSpellEffect: spellMagicMappingSpellEffect,
+        unfixableTroubleCount: spellUnfixableTroubleCount,
+        // Pre-existing helpers handed through unchanged.
+        movementDirection,
+        heroIsStunned,
+        heroIsConfused,
+        heroIsHallucinating,
+        heroIsBlind,
+        heroIsDeaf,
+        heroHasAntimagic,
+        heroHasSleepResistance,
+        maybeHalfPhysicalDamage,
+        exerciseAttribute,
+        syncHeroSpeedState,
+        unpunishHero,
+        breakBuriedBallChain,
+        polymorphSelfZapResult,
+        polymorphSpellDirection,
+        stoneToFleshInventoryEffect,
+        stoneToFleshFloorEffect,
+        zapDigDownwardResult,
+        zapDigFallingRockMessage,
+        placeRockAtHero,
+        visibleMonsterForScroll,
+        monsterResistsEffect,
+        monsterResistsSleepEffect,
+        monsterReflectionSource,
+        recordMonsterReflectionDiscovery,
+        monsterPossessiveName,
+        clearMonsterTrack,
+        floorStatueAt,
+        breakStatueObject,
+        activateStatueTrap,
+        statueStrikeBreakResult,
+        lightScrollLitroom,
+        foodDetectionScrollEffect,
+        collectDetectedObjects,
+        markDetectedObjects,
+        isGoldObject,
+        removeCurseFeelingMessage,
+        removeCurseActiveTarget,
+        normalizeUncursedWaterPotion,
+        costlyUncurseWater,
+        refreshInventoryLineAfterBucChange,
+        tameMonsterWithScroll,
+        addHeroConfusion,
+        clearHeroConfusion,
+        addHeroStatusSuffix,
+        heroIsSick,
+        heroIsVomiting,
+        clearHeroSickness,
+        clearHeroVomiting,
+        unidentifiedInventoryItems,
+        identifyInventoryItem,
+        unturnDeadHeroInventory: unturnDeadHeroInventoryFromBook,
+        addHeroStun,
+        loseExperienceLevel,
+        dropRockAt: (x, y) => placeRockAtHero(),
+    };
+
+    // Shared tail for castSpell/spellDirection results (js/spell.js).
+    async function finishSpellEffectResult(spell, result) {
+        game._command_mode = null;
+        game.context.move = 1;
+        const messages = [...(result?.messages || [])];
+        if (result?.invalidDirection) messages.unshift('What a strange direction!', 'The magical energy is released!');
+        else if (result?.released) messages.unshift('The magical energy is released!');
+
+        if (result?.castFallback) {
+            await setMessage(`You cast ${spell?.name || 'a spell'}.`);
+            return;
+        }
+        if (result?.startJump) {
+            // C ref: apply.c:jump() — position prompt, then the jump itself.
+            game._jump_magic = result.startJump;
+            if (!game._jump_tip_seen) {
+                await setMessage('Where do you want to jump?', true);
+                game._command_mode = 'jumpIntroMore';
+            } else {
+                await setMessage('Where do you want to jump?');
+                game._farlook_x = game.u?.ux || 0;
+                game._farlook_y = game.u?.uy || 0;
+                game._getpos_prompt_cursor = initialJumpPromptCursor();
+                game._command_mode = 'jumpCursor';
+            }
+            game.context.move = 0;
+            return;
+        }
+        if (result?.teleportSelf) {
+            // C ref: teleport.c:scrolltele(NULL) — tele() for the spell.
+            if (heroNoTeleportLevel() && !game.flags?.debug) {
+                await setMessage('A mysterious force prevents you from teleporting!');
+                return;
+            }
+            if ((heroHasAmuletOfYendor() || heroOnWizardTowerLevel()) && !rn2(3)) {
+                await setMessage('You feel disoriented for a moment.');
+                return;
+            }
+            if ((heroHasTeleportControl() && !heroIsStunned()) || game.flags?.debug) {
+                startControlledTeleportPrompt();
+                await setMessage('Where do you want to be teleported?');
+                game.context.move = 0;
+                return;
+            }
+            const materialize = safeTeleportHeroSameLevel();
+            await setMessage(materialize || '');
+            return;
+        }
+        if (result?.identifiedItems) {
+            const identified = result.identifiedItems || [];
+            if (identified.length) messages.push(...identified.map(invItem => `${invItem.line}.`));
+            else messages.push('You have already identified all of your possessions.');
+        }
+        if (result?.detectMonstersMore) {
+            await setMessage(messages.join('  '), true);
+            game._command_mode = 'spellDetectMonstersMore';
+            game.context.move = 0;
+            return;
+        }
+        if (result?.sleepTurns) game.context.move = result.sleepTurns;
+        if (messages.length) await setMessage(messages.join('  '), result?.more || messages.length > 1);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 1;
+        }
+        if (result?.polyResult) applyLifeSavingOrFatalCommandMode(result.polyResult);
+        else if (result?.fatal) applyLifeSavingOrFatalCommandMode(result);
+    }
+
     if (game._command_mode === 'castSpell') {
         if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
             game._command_mode = null;
@@ -65896,15 +66804,53 @@ export async function rhack(_cmd) {
         const spell = (game._spell_menu_spells || []).find(item => item.letter === ch);
         if (!spell) return;
         game._casting_spell = spell;
-        const failureRoll = rnd(100); // C spelleffects_check: spell failure roll.
         const energy = spell.level * 5;
+        // C ref: spell.c:spelleffects_check() — these gates precede the
+        // failure roll; failing them consumes neither rnd(100) nor time.
+        if ((game.u?.uhunger ?? 900) <= 10 && spell.name !== 'detect food') {
+            game._casting_spell = null;
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._overlay_hide_status_only = 0;
+            await setMessage('You are too hungry to cast that spell.');
+            game._command_mode = null;
+            return;
+        }
+        if ((game.u?.acurr?.a?.[A_STR] ?? 10) < 4 && spell.name !== 'restore ability') {
+            game._casting_spell = null;
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._overlay_hide_status_only = 0;
+            await setMessage('You lack the strength to cast spells.');
+            game._command_mode = null;
+            return;
+        }
+        let drainPrefix = '';
+        if (heroHasAmuletOfYendor() && (game.u?.uen || 0) >= energy) {
+            // C: the Amulet drains extra energy once per cast attempt.
+            game.u.uen = Math.max(0, (game.u.uen || 0) - rnd(2 * energy));
+            drainPrefix = 'You feel the amulet draining your energy away.  ';
+        }
+        if (energy > (game.u?.uen || 0)) {
+            game._casting_spell = null;
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._overlay_hide_status_only = 0;
+            const suffix = ((game.u?.uen || 0) < (game.u?.uenmax || 0)) ? '' : ' yet';
+            await setMessage(`${drainPrefix}You don't have enough energy to cast that spell${suffix}.`);
+            game._command_mode = null;
+            if (drainPrefix) game.context.move = 1; // C ECMD_TIME via the drain
+            return;
+        }
+        // C: confused heroes always fail, without consuming the rnd(100).
+        const failureRoll = heroIsConfused() ? 101 : rnd(100); // C spelleffects_check: spell failure roll.
         if (failureRoll > (spell.successChance ?? 100)) {
             game.u.uen = Math.max(0, (game.u.uen || 0) - Math.trunc(energy / 2));
             game._casting_spell = null;
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
             game._overlay_hide_status_only = 0;
-            await setMessage('You fail to cast the spell correctly.');
+            await setMessage(`${drainPrefix}You fail to cast the spell correctly.`);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -65914,45 +66860,95 @@ export async function rhack(_cmd) {
         mksobj(SPE_HEALING, false, false); // C pseudo spell object; init=false only consumes next_ident().
         game._overlay_lines = null;
         game._overlay_hide_status = 0;
-        await setMessage('In what direction?');
-        game._command_mode = 'spellDirection';
+        // C spell.c:spelleffects(): only oc_dir != NODIR spells get getdir().
+        if (spellCastNeedsDirection(spell)) {
+            if (drainPrefix) game._pending_message_prefix = drainPrefix.trim();
+            await setMessage(`${drainPrefix}In what direction?`);
+            game._command_mode = 'spellDirection';
+            return;
+        }
+        const result = await castSpellNodirEffect(spell, SPELL_EFFECT_DEPS);
+        if (drainPrefix && (result?.messages || []).length) result.messages.unshift(drainPrefix.trim());
+        await finishSpellEffectResult(spell, result);
         return;
     }
 
     if (game._command_mode === 'spellDirection') {
         const spell = game._casting_spell;
         game._casting_spell = null;
-        if (spell?.name === 'stone to flesh') {
-            if (ch === '.') {
-                const result = await stoneToFleshInventoryEffect();
-                if (result.messages.length) await setMessage(result.messages.join('  '));
-                else {
-                    game._pending_message = '';
-                    game._message_more = 0;
-                    game._keep_pending_message = 1;
-                }
-            } else if (ch === '>') {
-                const result = await stoneToFleshFloorEffect();
-                if (result.messages.length) await setMessage(result.messages.join('  '));
-                else await setMessage(`You cast ${spell?.name || 'a spell'}.`);
-            } else {
-                await setMessage(`You cast ${spell?.name || 'a spell'}.`);
+        const result = await castSpellDirectionalEffect(spell, ch, SPELL_EFFECT_DEPS);
+        await finishSpellEffectResult(spell, result);
+        return;
+    }
+
+    if (game._command_mode === 'spellDetectMonstersMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            if (!game._farlook_tip_seen) {
+                game._farlook_tip_seen = 1;
+                setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
+                game._command_mode = 'spellDetectMonstersTip';
+                return;
             }
-        } else if (spell?.name === 'polymorph') {
-            if (!(await polymorphSpellDirection(ch)))
-                await setMessage(`You cast ${spell?.name || 'a spell'}.`);
-        } else if (spell?.category === 'healing') {
-            game.u.uhp = Math.min(game.u.uhpmax || game.u.uhp || 1, (game.u.uhp || 1) + d(6, 4));
-            await setMessage('You feel better.');
-        } else if (spell?.name === 'force bolt') {
-            const dir = movementDirection(ch);
-            const result = dir ? await strikeStatueAlongLine(dir) : null;
-            await setMessage(result?.hit ? (result.message || '') : `You cast ${spell?.name || 'a spell'}.`);
-        } else {
-            await setMessage(`You cast ${spell?.name || 'a spell'}.`);
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._spell_detect_x = game.u?.ux ?? 1;
+            game._spell_detect_y = game.u?.uy ?? 0;
+            await setMessage("(For instructions type a '?')  Move cursor to monster of interest:");
+            game._command_mode = 'spellDetectMonstersPos';
         }
-        game._command_mode = null;
-        game.context.move = 1;
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'spellDetectMonstersTip') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._spell_detect_x = game.u?.ux ?? 1;
+            game._spell_detect_y = game.u?.uy ?? 0;
+            await setMessage("(For instructions type a '?')  Move cursor to monster of interest:");
+            game._command_mode = 'spellDetectMonstersPos';
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'spellDetectMonstersPos') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage('Done.', true);
+            game._command_mode = 'spellDetectMonstersDoneMore';
+            game._keep_pending_message = 1;
+            return;
+        }
+        const dir = movementDirection(ch);
+        if (dir) {
+            const steps = ch !== ch.toLowerCase() ? 8 : 1;
+            game._spell_detect_x = Math.max(1, Math.min(COLNO - 1, (game._spell_detect_x || game.u?.ux || 1) + dir.dx * steps));
+            game._spell_detect_y = Math.max(0, Math.min(ROWNO - 1, (game._spell_detect_y || game.u?.uy || 0) + dir.dy * steps));
+        }
+        const monster = (game.level?.monsters || [])
+            .find(mon => mon.mx === game._spell_detect_x && mon.my === game._spell_detect_y);
+        if (monster) {
+            const prefix = monster.pet || monster.mpeaceful ? 'peaceful ' : '';
+            const name = monster.isshk && monster.shknam ? monster.shknam : monster.data?.name || 'monster';
+            const suffix = monster.appearObj != null || monster.appearGlyph ? ', mimicking something' : '';
+            await setMessage(`${prefix}${name}${suffix}`);
+        } else {
+            await setMessage('unexplored area');
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'spellDetectMonstersDoneMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._detect_monsters_display = 0;
+            await setMessage('Done.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        game._keep_pending_message = 1;
         return;
     }
 
@@ -68662,14 +69658,20 @@ export async function rhack(_cmd) {
         }
         if (isPickDigItem(item)) {
             if (!itemIsWielded(item)) {
-                const line = wieldItemForApply(item);
+                // C ref: dig.c:use_pick_axe() — obj != uwep: wield_tool()
+                // prints "You now wield %s." (wield.c:744 doname), queues a
+                // CANNED re-apply (cmdq_add_ec(doapply)+cmdq_add_key(invlet))
+                // and returns ECMD_TIME: the wield itself consumes the turn.
+                // allmain.js:maybePromptQueuedPickDigApply() is the canned
+                // re-apply; it runs after the turn passes.
+                wieldItemForApply(item);
                 game._queued_pick_dig_apply_letter = item.letter;
-                await setMessage(`${line}.`);
+                await setMessage(`You now wield ${inventoryItemName(item)}.`);
                 game.context.move = 1;
                 return;
             }
             game._apply_pick_dig_letter = item.letter;
-            await setMessage('In what direction do you want to dig?');
+            await setMessage(pickDigDirectionPrompt(item));
             game._command_mode = 'applyPickDigDirection';
             return;
         }
@@ -68937,33 +69939,40 @@ export async function rhack(_cmd) {
         const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_pick_dig_letter);
         game._apply_pick_dig_letter = null;
         game._command_mode = null;
-        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
-            await setMessage('Never mind.');
-            return;
-        }
+        // C ref: cmd.c:getdir() — quitchars (" \r\n\033") cancel silently;
+        // use_pick_axe() returns ECMD_CANCEL with no message and no time.
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') return;
         const dir = figurineApplyDirection(ch);
         if (!dir) return;
         if (!item || !isPickDigItem(item) || !itemIsWielded(item)) return;
+        // C ref: dig.c:use_pick_axe2() — swinging up at the ceiling
         if (dir.dz < 0) {
             await setMessage(game.u?.levitating ? "You don't have enough leverage." : "You can't reach the ceiling.");
             game.context.move = 1;
             return;
         }
+        // C ref: dig.c:use_pick_axe2() — downward digging
         if (dir.dz > 0) {
-            game._pick_dig_occupation = {
-                itemLetter: item.letter,
-                x: game.u?.ux || 0,
-                y: game.u?.uy || 0,
-                down: true,
-                effort: 0,
-            };
-            await setMessage('You start digging downward.');
+            const blocked = downDigStartBlock(item);
+            if (blocked) {
+                if (blocked.wipeEngraving) wipe_engr_at(game.u?.ux || 0, game.u?.uy || 0, blocked.wipeEngraving, false);
+                await setMessage(blocked.message);
+                game.context.move = 1;
+                return;
+            }
+            const continuing = beginDigOccupation(item, game.u?.ux || 0, game.u?.uy || 0, true);
+            const shopMessages = pickDigShopFloorMessages();
+            const startMessage = continuing
+                ? `You continue ${digVerbing(item)} downward.`
+                : `You start ${digVerbing(item)} downward.`;
+            await setMessage([startMessage, ...shopMessages].join('  '));
             game.context.move = 1;
             game._process_time_with_more = 1;
             return;
         }
         if (!dir.dx && !dir.dy) {
-            const damage = Math.max(1, rnd(2) + (item?.spe || 0));
+            // C ref: dig.c:use_pick_axe2() — self-hit includes dbon()
+            const damage = Math.max(1, rnd(2) + digDbon() + (item?.spe || 0));
             if (game.u) {
                 game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
                 if ((game.u.uhp || 0) <= 0) game._death_cause = `hit ${game.flags?.female ? 'herself' : 'himself'} with a pick-axe`;
@@ -68973,24 +69982,43 @@ export async function rhack(_cmd) {
             return;
         }
 
+        // C ref: dig.c:use_pick_axe2() — horizontal swing.  Attacking an
+        // adjacent monster with the pick (do_attack) is not yet wired.
         const x = (game.u?.ux || 0) + dir.dx;
         const y = (game.u?.uy || 0) + dir.dy;
-        if (floorStatueAt(x, y)) {
-            game._pick_dig_occupation = {
-                itemLetter: item.letter,
-                x,
-                y,
-                effort: 0,
-                didMessage: false,
-            };
+        const plan = planHorizontalDig(item, x, y);
+        if (plan.kind === 'clash') {
+            await setMessage('Clash!');
+            game.context.move = 1;
+            return;
+        }
+        if (plan.kind === 'undiggable') {
+            const messages = [plan.extraMessage, plan.message].filter(Boolean);
+            if (plan.webTurns) {
+                game._helpless_time = Math.max(game._helpless_time || 0, plan.webTurns);
+                game._nomove_message = plan.nomoveMessage;
+            }
+            if (plan.selfDamage && game.u) {
+                game.u.uhp = Math.max(0, (game.u.uhp || 1) - plan.selfDamage);
+                if ((game.u.uhp || 0) <= 0) game._death_cause = 'axing a hard object';
+            }
+            if (plan.wake) wakeNearbyMonstersAt(game.u?.ux || 0, game.u?.uy || 0, (game.u?.ulevel || 1) * 20);
+            await setMessage(messages.join('  '));
+            game.context.move = 1;
+            return;
+        }
+        if (plan.digTarget === DIGTYP_STATUE) {
+            beginDigOccupation(item, x, y, false);
+            game._pick_dig_occupation.didMessage = false;
             await setMessage('You start chipping the statue.');
             game.context.move = 1;
             game._process_time_with_more = 1;
             return;
         }
-
-        await setMessage(`You swing your ${pickupObjectName(item)} through thin air.`);
+        const continuing = beginDigOccupation(item, x, y, false);
+        await setMessage(digActionMessage(plan.digTarget, continuing));
         game.context.move = 1;
+        game._process_time_with_more = 1;
         return;
     }
 
@@ -71699,6 +72727,55 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'offerFloorObject') {
+        const floorCorpse = game._offer_floor_object;
+        if (ch === 'q' || ch === '\x1b') {
+            game._offer_floor_object = null;
+            game._command_mode = null;
+            return;
+        }
+        if (ch === 'y' && floorCorpse) {
+            game._offer_floor_object = null;
+            await finishOfferObject(floorCorpse, { floor: true });
+            return;
+        }
+        if (ch === 'n' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._offer_floor_object = null;
+            await promptOfferInventoryObject(true);
+            return;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'offerObject') {
+        if (ch === '\x1b') {
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '\r' || ch === '\n' || ch === ' ') {
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (!item) {
+            await setMessage("You don't have that object.", true);
+            game._command_mode = 'offerInvalidMore';
+            return;
+        }
+        await finishOfferObject(item);
+        return;
+    }
+
+    if (game._command_mode === 'offerInvalidMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await promptOfferInventoryObject(false);
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
     if (game._command_mode === 'dipObject') {
         if (ch === '\x1b') {
             game._keep_pending_message = 1;
@@ -72083,11 +73160,15 @@ export async function rhack(_cmd) {
             if (command === 's' && !game.flags?.debug) command = 'sit';
             if (command === 'si') command = 'sit';
             if (command === 'cha') command = 'chat';
+            if (['hi', 'his', 'hist', 'histo', 'histor'].includes(command)) command = 'history';
             if (game.flags?.debug && command.startsWith('wizw') && 'wizwhere'.startsWith(command))
                 command = 'wizwhere';
 
             game._extended_command = '';
             game._extended_display_command = '';
+            // C ref: src/cmd.c:rhack() — a new extended command replaces the
+            // repeat queue; do_repeat itself is never stored in it.
+            if (command !== 'repeat') game._repeat_last_key = null;
             if (command === 'wizwhere' && game.flags?.debug) {
                 showWizWherePage(0);
                 return;
@@ -72158,8 +73239,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'offer') {
-                await setMessage('You are not on an altar.');
-                game._command_mode = null;
+                await beginOfferCommand();
                 return;
             }
             if (command === 'overview') {
@@ -72234,6 +73314,20 @@ export async function rhack(_cmd) {
                 game._command_mode = 'versionInfo';
                 return;
             }
+            if (command === 'history') {
+                // C ref: src/pager.c:dohistory() — display_file(HISTORY, TRUE).
+                game._help_pager_name = 'history';
+                game._help_pager_page = 0;
+                setOverlay(dataPagerLines('history', 0), 24, true);
+                game._command_mode = 'helpPager';
+                return;
+            }
+            if (command === 'repeat') {
+                // C ref: src/cmd.c:do_repeat() — same command as ^A.
+                game._command_mode = null;
+                await repeatLastCommand();
+                return;
+            }
 	            if (command === 'pray') {
 	                await setMessage('Are you sure you want to pray? [yn] (n)');
 	                game._command_mode = 'prayConfirm';
@@ -72264,6 +73358,7 @@ export async function rhack(_cmd) {
 	                return;
 	            }
 	            if (command === 'jump') {
+	                game._jump_magic = 0; // physical jump: knight-move only
 	                if (!game._jump_tip_seen) {
 	                    await setMessage('Where do you want to jump?', true);
                     game._command_mode = 'jumpIntroMore';
@@ -72558,6 +73653,8 @@ export async function rhack(_cmd) {
                         : ['co', 'con', 'cond', 'condu', 'conduc', 'conduct'].includes(partial) ? 'conduct'
                     : ['f', 'fo', 'for', 'forc'].includes(partial) ? 'force'
                     : ['he', 'her', 'here', 'herec', 'herecm', 'herecmd', 'herecmdm', 'herecmdme', 'herecmdmen'].includes(partial) ? 'herecmdmenu'
+                    : ['hi', 'his', 'hist', 'histo', 'histor'].includes(partial) ? 'history'
+                    : ['rep', 'repe', 'repea'].includes(partial) ? 'repeat'
                     : ['tu', 'tur'].includes(partial) ? 'turn'
                     : ['u', 'un', 'unt', 'untr', 'untra'].includes(partial) ? 'untrap'
                     : (partial === 'p' && !game.flags?.debug) || ['pr', 'pra'].includes(partial) ? 'pray'
@@ -72645,6 +73742,7 @@ export async function rhack(_cmd) {
         if (ch === '\x1b') {
             game._pending_message = '';
             game._message_more = 0;
+            game._jump_magic = 0;
             game._command_mode = null;
             return;
         }
@@ -72674,7 +73772,9 @@ export async function rhack(_cmd) {
                 !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === midX && obj.oy === midY);
             const blockedJump = !midLoc || IS_OBSTRUCTED(midLoc.typ) || midBoulder
                 || (midLoc.typ === DOOR && (midLoc.doormask & (D_CLOSED | D_LOCKED)));
-            const validJump = loc && !IS_OBSTRUCTED(loc.typ) && dx * dx + dy * dy === 5 && !blockedJump;
+            const magicJumpRange = (game._jump_magic || 0) ? 6 + 3 * (game._jump_magic || 0) : 0;
+            const validJumpDistance = magicJumpRange ? dx * dx + dy * dy <= magicJumpRange : dx * dx + dy * dy === 5;
+            const validJump = loc && !IS_OBSTRUCTED(loc.typ) && validJumpDistance && !blockedJump;
             await setMessage(validJump ? terrain : `${terrain} (invalid target)`);
             return;
         }
@@ -72702,7 +73802,8 @@ export async function rhack(_cmd) {
             const dx = Math.abs(targetX - (game.u?.ux || 0));
             const dy = Math.abs(targetY - (game.u?.uy || 0));
             const loc = game.level?.at(targetX, targetY);
-            const knightJump = dx * dx + dy * dy === 5;
+            const magicJumpRange = (game._jump_magic || 0) ? 6 + 3 * (game._jump_magic || 0) : 0;
+            const knightJump = magicJumpRange ? dx * dx + dy * dy <= magicJumpRange : dx * dx + dy * dy === 5;
             const stepX = Math.sign(targetX - (game.u?.ux || 0));
             const stepY = Math.sign(targetY - (game.u?.uy || 0));
             const midX = (game.u?.ux || 0) + (dx > dy ? stepX : 0);
@@ -72728,6 +73829,7 @@ export async function rhack(_cmd) {
             vision_recalc(0);
             rnd(25);
             game._jump_delay_turn = 1;
+            game._jump_magic = 0;
             game.context.move = 1;
             game._process_command_time_now = 1;
             game._command_mode = null;
@@ -73209,6 +74311,75 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'showtrapDirection') {
+        game._command_mode = null;
+        if (ch === '\x1b') {
+            await setMessage('');
+            return;
+        }
+        let showDir = ch === '.' ? { dx: 0, dy: 0, dz: 0 }
+            : ch === '<' ? { dx: 0, dy: 0, dz: -1 }
+                : ch === '>' ? { dx: 0, dy: 0, dz: 1 }
+                    : null;
+        if (!showDir) {
+            const moveDir = movementDirection(ch);
+            if (moveDir) showDir = { ...moveDir, dz: 0 };
+        }
+        if (!showDir) {
+            setOverlay(CMDASSIST_DIRECTION_LINES, 24, true);
+            game._cmdassist_cancel_message = '';
+            game._command_mode = 'cmdassistMore';
+            return;
+        }
+        const showX = (game.u?.ux || 0) + showDir.dx;
+        const showY = (game.u?.uy || 0) + showDir.dy;
+        const trappedChest = showtrapTrappedChestAt(showX, showY);
+        const showLoc = game.level?.at?.(showX, showY);
+        const trappedDoor = !trappedChest && showLoc?.typ === DOOR && (showLoc.doormask & D_TRAPPED);
+        if (trappedChest || trappedDoor) {
+            await setMessage(`That is a trapped ${trappedChest ? 'chest' : 'door'}.`);
+            return;
+        }
+        const seenTrap = (game.level?.traps || []).find(trap =>
+            trap.tx === showX && trap.ty === showY && trap.tseen);
+        if (seenTrap
+            && !(showDir.dz < 0 && is_hole(seenTrap.ttyp))
+            && !(showDir.dz > 0 && seenTrap.ttyp === ROCKTRAP)) {
+            await setMessage(showtrapTrapMessage(seenTrap));
+            return;
+        }
+        await setMessage("I can't see a trap there.");
+        return;
+    }
+
+    if (game._command_mode === 'exploreModeMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage('Do you want to enter explore mode? [yn] (n)');
+            game._command_mode = 'exploreModeConfirm';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'exploreModeConfirm') {
+        game._command_mode = null;
+        if (ch === 'y') {
+            game.flags = game.flags || {};
+            game.flags.explore = true;
+            game.flags.debug = false;
+            await setMessage('You are now in non-scoring explore mode.');
+            return;
+        }
+        if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(`Continuing with ${game._explore_old_mode || 'normal game'}.`);
+            return;
+        }
+        game._command_mode = 'exploreModeConfirm';
         game._keep_pending_message = 1;
         return;
     }
@@ -76521,6 +77692,48 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (ch === '^') {
+        // C ref: src/pager.c:doidtrap() — describe an adjacent, discovered trap.
+        await setMessage('In what direction?');
+        game._command_mode = 'showtrapDirection';
+        return;
+    }
+
+    if (ch === 'X') {
+        // C ref: src/cmd.c:enter_explore_mode() — one-way switch, no time.
+        if (game.flags?.explore) {
+            await setMessage('You are already in explore mode.');
+            return;
+        }
+        game._explore_old_mode = game.flags?.debug ? 'debug mode' : 'normal game';
+        await setMessage(`Beware!  From explore mode there will be no return to ${game._explore_old_mode},`, true);
+        game._command_mode = 'exploreModeMore';
+        return;
+    }
+
+    if (ch === 'V') {
+        // C ref: src/version.c:doversion() — 'm' prefix shows full version.
+        if (requestMenuPrefix) {
+            game._move_nopick_prefix = 0;
+            if (!game._lua_version_info_initialized) {
+                rn2(3);
+                rn2(2);
+                game._lua_version_info_initialized = 1;
+            }
+            setOverlay(VERSION_PAGE_1, 24, true);
+            game._command_mode = 'versionInfo';
+            return;
+        }
+        await setMessage(VERSION_SHORT_LINE);
+        return;
+    }
+
+    if (ch === '\x01') {
+        // C ref: src/cmd.c:do_repeat() — re-execute the previous command.
+        await repeatLastCommand();
+        return;
+    }
+
     if (ch === ',') {
         if (polyselfNoHands()) {
             await setMessage('You are physically incapable of picking anything up.');
@@ -76986,6 +78199,7 @@ export async function rhack(_cmd) {
     const dir = movementDirection(moveCh);
 
     if (dir) {
+        game._repeat_last_key = ch;
         if ((game.u?._statusSuffix || '').includes('Overloaded') && game.u?._monsterMove === 0) {
             await setMessage('You collapse under your load.');
             game.context.move = 1;
@@ -77116,6 +78330,7 @@ export async function rhack(_cmd) {
 
     if (ch === '.') {
 
+        game._repeat_last_key = ch;
         const count = game._count_prefix ? Number(game._count_prefix) || 1 : 0;
         const countMessage = game._count_prefix ? `Count: ${game._count_prefix}` : '';
         const forcedWait = !!game._move_nopick_prefix;
@@ -77157,6 +78372,7 @@ export async function rhack(_cmd) {
 
     if (ch === 's') {
 
+        game._repeat_last_key = ch;
         game._run_key = null;
         game._run_steps_remaining = 0;
         const count = game._count_prefix ? Number(game._count_prefix) || 1 : 0;
@@ -77275,6 +78491,7 @@ export async function rhack(_cmd) {
         return;
     }
     await setMessage(`Unknown command '${visibleKey(ch)}'.`);
+    game._repeat_last_key = null;
     if ((game.u?._statusSuffix || '').includes('Hallu') && !game._swallow_overlay_active
         && !game._hallu_refreshed_this_command) {
         game._display_hallucinated_redraw = 1;

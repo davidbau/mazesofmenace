@@ -186,7 +186,15 @@ function _statusLine1() {
     const name = game.plname || 'Hero';
     const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
     const title = `${name} the ${role}`;
-    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
+    /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
+       (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
+       status line prints them in. This used to read a[0..5] straight through,
+       which only worked while the values were a hardcoded array already
+       written in display order. */
+    const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
+    const at = (i) => u.acurr?.a?.[i] ?? '?';
+    const stats = `St:${at(A_STR)} Dx:${at(A_DEX)} Co:${at(A_CON)} `
+                + `In:${at(A_INT)} Wi:${at(A_WIS)} Ch:${at(A_CHA)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column

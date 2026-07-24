@@ -16,7 +16,7 @@
 import { game } from './gstate.js';
 import { domove, blocksMove } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
-import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph } from './display.js';
+import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
 import { obj_doname, whatis_pick_inventory } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc } from './vision.js';
@@ -486,18 +486,10 @@ function self_lookat() {
     return `${raceAdj} ${pm} called ${plname}`;
 }
 
-// C ref: getpos.c getpos() else-branch — terrain symbol matching.  A key that
-// is not a movement/pick/special key but DOES match a non-skipped cmap symbol
-// (defsym.h: walls/room/corr/door are skipped) triggers a map scan; when no
-// such feature exists "Can't find dungeon feature '%c'." is shown.  The
-// recorded teleport session searches '0' (defsym.h PCHAR(82,'0',S_ss1)), an
-// effect glyph that is never placed as static terrain, so the scan never finds
-// it.  We classify the special-effect / beam / zap symbols that match a cmap
-// entry yet are never present on a static map, so the search always reports
-// "Can't find ...".  (Static-terrain symbols like '<','>','{','_' are not in
-// this set; they fall through to "Unknown direction", which no session hits.)
-const GP_FEATURE_SYMS = new Set(['0', '$', '!', '*', ')', '(']);
-function getpos_is_feature_sym(ch) { return GP_FEATURE_SYMS.has(ch); }
+// C ref: getpos.c getpos() else-branch — terrain symbol matching (see
+// display.js getpos_is_feature_sym/getpos_find_feature for the shared table
+// and map scan; factored out there so invent.js's dotravel() getpos() can
+// use the same logic without an import cycle through hack.js).
 
 // C ref: include/hack.h distu(x,y) = dist2(x,y,u.ux,u.uy).
 function distu(x, y) { return dist2(x, y, game.u.ux, game.u.uy); }
@@ -888,7 +880,12 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
         const isQuit = (ch === ' ' || ch === '\r' || ch === '\n' || k === 27);
         if (!isQuit) {
             if (getpos_is_feature_sym(ch)) {
-                // matched a cmap feature symbol but no such feature exists
+                // matched a cmap feature symbol: scan the map for it first.
+                const found = getpos_find_feature(ch, cx, cy);
+                if (found) {
+                    cx = found.x; cy = found.y;
+                    continue; // silent jump; auto_describe fires next loop
+                }
                 await getpos_render(`Can't find dungeon feature '${ch}'.`, cx, cy);
                 msgGiven = true;
                 continue;

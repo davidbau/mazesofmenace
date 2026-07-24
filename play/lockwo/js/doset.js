@@ -429,10 +429,20 @@ function renderPickupMenu(selected, clearAll) {
     const offx = pickupMenuOffx(lines);
     const morestr = '(end) ';
     if (clearAll) {
-        // When the pickup menu follows the full-screen "Options" (doset_simple)
-        // menu, tty repaints from a cleared screen: every column left of the
-        // overlay and every row below the menu body is blank.
+        // C ref: tty_select_menu() dismisses the parent full-screen Options
+        // window (erase_menu_or_text -> docrt()+flush_screen(1)) right after
+        // the pick loop finishes, BEFORE the pickup_types compound handler
+        // runs choose_classes_menu() — so the map/status are freshly restored
+        // underneath, then this corner-overlay submenu only repaints its own
+        // columns (offx..), leaving the restored map visible to the left.
+        // bot() isn't invoked again by the submenu's own display path, so the
+        // status rows stay blank (matches runFruitHandler's step-237 finding).
         d.clearScreen();
+        render_map_to_grid();
+        for (let c = 0; c < COLS; c++) {
+            d.setCell(c, 22, ' ', NO_COLOR, 0);
+            d.setCell(c, 23, ' ', NO_COLOR, 0);
+        }
     } else {
         // Overlay over the map+status (doset/#optionsfull path): only wipe the
         // top-line columns left of the overlay so a stale toggle message doesn't

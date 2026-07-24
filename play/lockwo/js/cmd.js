@@ -35,10 +35,10 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
-         TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, IS_POOL, IS_LAVA,
+         TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, IS_POOL, IS_LAVA,
          A_STR, A_DEX, A_CON, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
-         PIT, SPIKED_PIT } from './const.js';
+         PIT, SPIKED_PIT, TIP_SWIM } from './const.js';
 import { exercise } from './attrib.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { HEADSTONE } from './const.js';
@@ -115,6 +115,92 @@ export function blocksMove(x, y) {
     if (loc.typ === STONE) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return false;
+}
+
+// C ref: dbridge.c is_pool(x,y) — POOL/MOAT/WATER (the Juiblex-moat nuance is
+// omitted; not reached by the corpus).
+function isPoolTerrain(x, y) {
+    if (!isok(x, y)) return false;
+    const t = game.level?.at(x, y)?.typ;
+    return t === POOL || t === MOAT || t === WATER;
+}
+
+// C ref: hack.c u_simple_floortyp(x,y) — simplified floor liquid/solid state
+// used by swim_move_danger() to detect a dry<->wet terrain transition.  A
+// levitating/flying hero never touches the liquid below (Underwater and the
+// water-level nuance aren't reached by the corpus).
+function u_simple_floortyp(x, y) {
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    const u = game.u;
+    const airborne = !!(u?.uprops?.Levitation || u?.uprops?.Flying);
+    if (typ === WATER) return WATER; // wall of water: fly/lev doesn't matter
+    if (typ === LAVAWALL) return LAVAWALL; // wall of lava: fly/lev doesn't matter
+    if (!airborne) {
+        if (isPoolTerrain(x, y)) return POOL;
+        if (IS_LAVA(typ)) return LAVAPOOL;
+    }
+    return ROOM;
+}
+
+// C ref: pager.c waterbody_name(x,y) — non-hallucinating water-body name; the
+// special-level and hallucination variants aren't reached by the corpus.
+function waterbody_name(x, y) {
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return 'wall of water';
+    if (typ === LAVAWALL) return 'wall of lava';
+    return 'pool of water';
+}
+
+// C ref: hack.c handle_tip(TIP_SWIM) — the first time paranoid_confirm:swim
+// blocks a step into water/lava, remind the player of the 'm' prefix (tracked
+// so it only shows once, via the same game._tips_shown bitmask
+// handle_getpos_tip() in invent.js uses for TIP_GETPOS).
+async function handle_swim_tip() {
+    if (game._tips_shown && (game._tips_shown & (1 << TIP_SWIM))) return;
+    game._tips_shown = (game._tips_shown || 0) | (1 << TIP_SWIM);
+    const { update_topl } = await import('./display.js');
+    await update_topl(`(Tip: use 'm' prefix to step in if you really want to.)`);
+}
+
+// C ref: hack.c swim_move_danger(x,y) — is it dangerous/unwanted for the hero
+// to step onto (x,y) due to water or lava?  A dry<->wet transition onto a
+// *seen*, unimpaired square blocks the move with a message unless the 'm'
+// (nopick) prefix was used — matching the on-by-default paranoid_confirm:swim.
+// Water-walking/lava-walking boots and Underwater are never worn/reached by
+// the corpus, so those branches just don't fire.
+async function swim_move_danger(x, y) {
+    const u = game.u;
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    const newtyp = u_simple_floortyp(x, y);
+    const liquidWall = (newtyp === WATER) || (newtyp === LAVAWALL);
+    if (u.uprops?.Underwater && (isPoolTerrain(x, y) || newtyp === WATER))
+        return false;
+    const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+    const confused = (u.uprops?.Confusion || 0) > 0;
+    const seenv = loc ? (loc.seenv || 0) : 0;
+    const pool = isPoolTerrain(x, y);
+    const lava = IS_LAVA(typ);
+    if (newtyp !== u_simple_floortyp(u.ux, u.uy) && !stunned && !confused && seenv
+        && (pool || lava || liquidWall)) {
+        const curTyp = game.level?.at(u.ux, u.uy)?.typ ?? STONE;
+        if (pool || (lava && !IS_LAVA(curTyp)) || liquidWall) {
+            if (game.context?.nopick) {
+                game._tips_shown = (game._tips_shown || 0) | (1 << TIP_SWIM);
+                return false;
+            }
+            // ParanoidSwim (paranoid_confirm:swim) is on by default.
+            const { update_topl } = await import('./display.js');
+            await update_topl(`You avoid stepping into the ${waterbody_name(x, y)}.`);
+            await handle_swim_tip();
+            return true;
+        }
+    }
     return false;
 }
 
@@ -626,6 +712,11 @@ export async function rhack(key) {
             game.context.move = 0;
         }
     } else if (isMovementKey(ch)) {
+        // C ref: cmd.c set_move_cmd() — the 'm' (reqmenu) prefix disables
+        // autopickup AND (via swim_move_danger) lets the hero intentionally
+        // step into water/lava for this one move.
+        game.context.nopick = game.iflags?.menu_requested ? 1 : 0;
+        game.iflags && (game.iflags.menu_requested = false);
         // domove() sets game.context.move itself: 1 when the hero actually
         // moves (time passes), 0 when the move is blocked (bump a wall — no
         // turn elapses).  C ref: hack.c domove() / rhack().  Do NOT override
@@ -1541,6 +1632,15 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // ── avoid stepping into water/lava (paranoid_confirm:swim) ──  C ref:
+    // hack.c domove() -> swim_move_danger(x,y), checked right after test_move()
+    // succeeds and before the hero actually relocates.
+    if (await swim_move_danger(newx, newy)) {
+        game.context.move = 0;
+        game.multi = 0; // C nomul(0)
+        return;
+    }
+
     // The move actually happens -> a game turn elapses.  C ref: hack.c domove
     // sets svc.context.move=1 on a successful step.
     game.context.move = 1;
@@ -1579,10 +1679,13 @@ export async function domove(dx, dy) {
 
     // C ref: hack.c domove_core() -> spoteffects(TRUE).  spoteffects() runs
     // pickup(1) before a non-pit trap (and after a pit trap), then dotrap().
-    // Passing pickup_after_move as the callback preserves that C ordering so a
-    // floor pile is announced ("Things that are here:" --More--) before a dart
-    // trap fires on the same square.
-    await spoteffects(() => pickup_after_move(newx, newy));
+    // Passing pickup_after_move as the callback (called with the CURRENT
+    // hero position, not these fixed newx/newy) preserves that C ordering so
+    // a floor pile is announced ("Things that are here:" --More--) before a
+    // dart trap fires on the same square — and so a fall-into-water/crawl-out
+    // re-entry (pooleffects -> drown -> teleds -> spoteffects again) picks up
+    // at the square the hero actually lands on, not the one it fell into.
+    await spoteffects(pickup_after_move);
 }
 
 // C ref: drawing.c defsyms[].explanation (the short "desc" field) for the

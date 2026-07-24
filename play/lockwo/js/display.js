@@ -584,7 +584,16 @@ function known_branch_stairs(sway) {
         && sway.u_traversed);
 }
 
-function terrain_glyph(loc, x, y) {
+// C ref: symbols.c update_ov_primary_symset() — a SYMBOLS= rc line replaces
+// just the display character for one cmap symbol; the symbol's base color is
+// untouched.  Overrides parsed from the rc are always plain literal
+// characters (no high bit), so they never need DEC-font translation.
+function symOverrideChar(name) {
+    const ov = game.symoverride;
+    return ov && ov[name] ? ov[name] : null;
+}
+
+export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = useDECgraphics();
     switch (typ) {
@@ -654,8 +663,12 @@ function terrain_glyph(loc, x, y) {
     // CLR_BLUE, S_water CLR_BRIGHT_BLUE, S_lava CLR_RED, S_lavawall CLR_ORANGE,
     // S_ice CLR_CYAN.
     case POOL:
-    case MOAT:      return dec ? { ch: '`', color: CLR_BLUE, dec: false }
-                               : { ch: '}', color: CLR_BLUE, dec: false };
+    case MOAT: {
+        const ov = symOverrideChar('S_pool');
+        if (ov) return { ch: ov, color: CLR_BLUE, dec: false };
+        return dec ? { ch: '`', color: CLR_BLUE, dec: false }
+                   : { ch: '}', color: CLR_BLUE, dec: false };
+    }
     case WATER:     return dec ? { ch: '`', color: CLR_BRIGHT_BLUE, dec: false }
                                : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
     case LAVAPOOL:  return dec ? { ch: '`', color: CLR_RED, dec: false }
@@ -672,7 +685,7 @@ function terrain_glyph(loc, x, y) {
     // default (non-DEC) symset draws a tree as '#'.
     case TREE:      return dec ? { ch: 'g', color: CLR_GREEN, dec: false }
                                : { ch: '#', color: CLR_GREEN, dec: false };
-    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case FOUNTAIN:  return { ch: symOverrideChar('S_fountain') || '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: defsym.h PCHAR(36, '{', S_sink, CLR_WHITE).
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
@@ -774,11 +787,67 @@ const trap_defsym = {
     [TRAPPED_DOOR]: { ch: '^', color: CLR_ORANGE },
     [TRAPPED_CHEST]: { ch: '^', color: CLR_ORANGE },
 };
-function trap_glyph(trap) {
+export function trap_glyph(trap) {
     const d = trap_defsym[trap.ttyp];
     // Unknown ttyp: fall back to the arrow-trap sym/color (defsyms[] default).
     if (!d) return { ch: '^', color: CLR_CYAN, dec: false };
     return { ch: d.ch, color: d.color, dec: false };
+}
+
+// C ref: getpos.c getpos() else-branch — terrain symbol matching.  A key that
+// is not a movement/pick/special key but DOES match a non-skipped cmap symbol
+// (defsym.h: walls/room/corr/door are skipped) triggers a map scan; when no
+// such feature exists "Can't find dungeon feature '%c'." is shown; a key that
+// matches no cmap symbol at all falls through to "Unknown direction".
+// GP_FEATURE_SYMS covers both kinds of matchable symbol: the transient
+// special-effect/beam/zap glyphs (defsym.h S_ss1 '0', S_goodpos '$',
+// S_flashbeam/S_ss4 '!'/'*', S_boomleft/right ')'/'(') that are never placed
+// as static terrain (so the scan always reports "Can't find ..."), plus the
+// static terrain/furniture/trap symbols (stairs/ladders '<'/'>', altar '_',
+// grave '|', throne '\\', sink/fountain '{', pool/water/lava '}', ice '.',
+// iron bars/tree/cloud '#', web '"', vibrating square/generic trap '~'/'^')
+// that getpos_find_feature actually scans the map for.
+const GP_FEATURE_SYMS = new Set([
+    '0', '$', '!', '*', ')', '(',
+    '<', '>', '_', '|', '\\', '{', '}', '.', '#', '"', '~', '^',
+]);
+export function getpos_is_feature_sym(ch) { return GP_FEATURE_SYMS.has(ch); }
+
+// C ref: rm.h is_cmap_wall/is_cmap_room/is_cmap_corr/is_cmap_door + getpos.c's
+// explicit S_ndoor skip — the terrain classes getpos's feature search never
+// matches against (walls, room floor, corridors, every doorway variant).
+const GP_EXCLUDED_TYP = new Set([
+    STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
+    TUWALL, TDWALL, TLWALL, TRWALL, SDOOR, ROOM, CORR, SCORR, DOOR,
+]);
+
+// C ref: getpos.c getpos() else-branch feature search — scans outward from
+// the cursor (just past the current spot to the bottom-right, then wrapping
+// from the top-left back to the current spot) for a map cell whose
+// remembered/displayed terrain or trap glyph matches the pressed key.  Object
+// piles are never matched: in C they use a separate glyph namespace (SYM_OC)
+// that glyph_is_cmap() rejects outright, regardless of the object's printed
+// character.  Returns the first {x,y} match, or null if the feature is
+// nowhere on the (explored) map.
+export function getpos_find_feature(ch, cx, cy) {
+    const tryCell = (tx, ty) => {
+        const loc = game.level?.at(tx, ty);
+        if (!loc || !(loc.seenv || loc.remembered_glyph)) return false;
+        if (!GP_EXCLUDED_TYP.has(loc.typ) && terrain_glyph(loc, tx, ty).ch === ch)
+            return true;
+        const trap = game.level?.traps?.find((t) => t.tx === tx && t.ty === ty);
+        if (trap?.tseen && trap_glyph(trap).ch === ch) return true;
+        return false;
+    };
+    for (let ty = cy; ty <= ROWNO - 1; ty++) {
+        const loX = (ty === cy) ? cx + 1 : 1;
+        for (let tx = loX; tx <= COLNO - 1; tx++) if (tryCell(tx, ty)) return { x: tx, y: ty };
+    }
+    for (let ty = 0; ty <= cy; ty++) {
+        const hiX = (ty === cy) ? cx : COLNO - 1;
+        for (let tx = 1; tx <= hiX; tx++) if (tryCell(tx, ty)) return { x: tx, y: ty };
+    }
+    return null;
 }
 
 // The "background" glyph for a cell: the topmost non-monster thing the
@@ -900,11 +969,17 @@ export function newsym(x, y) {
         } else if (loc.remembered_glyph) {
             // C ref: display.c newsym else-branch (~1087) — a cell out of sight
             // remembered as a lit corridor (S_litcorr) re-darkens to S_corr when
-            // it is no longer waslit ("Darkened while out of the hero's sight").
-            // Our litcorr glyph is '#' with CLR_WHITE; the dark corridor is '#'
-            // with NO_COLOR.  Mutate the remembered glyph so subsequent redraws
-            // stay consistent (C overwrites lev->glyph likewise).
-            if (loc.typ === CORR && !loc.waslit
+            // `!lev->waslit || (flags.dark_room && iflags.use_color)`.  The
+            // dark_room option (dark_room [true] in doset.js) defaults on for
+            // every covered session, so out-of-sight lit corridors re-darken
+            // on EVERY redraw regardless of waslit, not only once waslit itself
+            // flips false (that only happens via a separate couldsee-gated
+            // branch in vision_recalc that a permanently-lit corridor cell
+            // never takes).  Our litcorr glyph is '#' with CLR_WHITE; the dark
+            // corridor is '#' with NO_COLOR.  Mutate the remembered glyph so
+            // subsequent redraws stay consistent (C overwrites lev->glyph
+            // likewise).
+            if (loc.typ === CORR && (!loc.waslit || game.flags?.dark_room)
                 && loc.remembered_glyph.ch === '#'
                 && loc.remembered_glyph.color === CLR_WHITE) {
                 loc.remembered_glyph.color = NO_COLOR;

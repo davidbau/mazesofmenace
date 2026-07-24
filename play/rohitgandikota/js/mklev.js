@@ -7,8 +7,19 @@
 
 import { game } from './gstate.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { mkobj, mksobj, next_ident, blessorcurse } from './mkobj.js';
-import { rndmonnum } from './makemon.js';
+import {
+    mkobj, mksobj, next_ident, blessorcurse, special_corpse, start_corpse_timeout,
+} from './mkobj.js';
+import {
+    rndmonnum, makemon, mkclass, monsndx, level_difficulty, MM_NOGRP, NO_MM_FLAGS,
+} from './makemon.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { random_engraving, wipeout_text } from './engrave.js';
+
+// include/permonst.h / include/hack.h:1189-1193, 1404
+const NON_PM = -1;
+const CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07;
+const TAINT_AGE = 50;
 // Object type and object class constants come from js/objects_data.js, which
 // is generated from the C. They used to be hardcoded literals here and 21 of
 // the 23 object constants and 7 of the 8 class constants were wrong — e.g.
@@ -86,32 +97,17 @@ const YLIM = 3;
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
 
-// Trap constants
-const NO_TRAP = 0;
-const TRAPNUM = 26;
-const ARROW_TRAP = 1;
-const DART_TRAP = 2;
-const ROCKTRAP = 3;
-const SLP_GAS_TRAP = 6;
-const ROLLING_BOULDER_TRAP = 7;
-const RUST_TRAP = 4;
-const SQKY_BOARD = 5;
-const FIRE_TRAP = 8;
-const PIT = 9;
-const SPIKED_PIT = 10;
-const HOLE = 11;
-const TRAPDOOR = 14;
-const TELEP_TRAP = 15;
-const LEVEL_TELEP = 16;
-const WEB = 17;
-const STATUE_TRAP = 18;
-const MAGIC_TRAP = 19;
-const LANDMINE = 20;
-const POLY_TRAP = 21;
-const VIBRATING_SQUARE = 22;
-const TRAPPED_DOOR = 23;
-const TRAPPED_CHEST = 24;
-const MAGIC_PORTAL = 25;
+// Trap constants come from js/const.js, which mirrors include/trap.h. They used
+// to be hand-written here and 18 of the 25 were wrong: SQKY_BOARD was 5 (really
+// BEAR_TRAP's value, so every bear trap was mistaken for a squeaky board and
+// skipped mktrap_victim), LANDMINE was 20, PIT was 9. BEAR_TRAP was absent.
+import {
+    NO_TRAP, TRAPNUM, ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP,
+    LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
+    SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB,
+    STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE,
+    TRAPPED_DOOR, TRAPPED_CHEST,
+} from './const.js';
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
@@ -197,12 +193,8 @@ export function u_on_upstairs() {
 // oinit stub (level-dependent object probability reset)
 function oinit() { /* no-op for contest */ }
 
-// level_difficulty stub
-function level_difficulty() {
-    const uz = game.u?.uz;
-    const d = depth_of_level(uz);
-    return d;
-}
+/* level_difficulty() now comes from js/makemon.js, which is where src/dungeon.c
+   puts it; the local copy here duplicated it. */
 
 // ============================================================
 // Stub functions for object/monster/trap creation
@@ -236,7 +228,14 @@ function mkgold(amount, x, y) {
     next_ident();
 }
 
-function place_object(otmp, x, y) { /* stub */ }
+// src/mkobj.c place_object() / add_to_buried() — neither draws.
+function place_object(otmp, x, y) {
+    otmp.ox = x; otmp.oy = y;
+    (game.level.objects ||= []).push(otmp);
+}
+function add_to_buried(otmp) {
+    (game.level.buriedobjs ||= []).push(otmp);
+}
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
 function weight(otmp) { return otmp?.owt || 1; }
@@ -247,35 +246,28 @@ function sobj_at(otyp, x, y) { return false; }
 function set_corpsenm(otmp, pm) { /* stub */ }
 
 // mkcorpstat stub
-function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
-    // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
-    // For STATUE: mksobj(STATUE, false, false) then set corpse identity.
-    // RNG: next_ident from mksobj
-    const otmp = mksobj(objtyp, false, false);
-    if (pm === null) {
-        // rndmonnum — pick random monster
-        rndmonnum();
+// src/mkobj.c:2060 mkcorpstat() — make a corpse or statue.
+//
+// `pm` is a monster index or null. The species draw is NOT conditional on pm:
+// mksobj() picks a random one internally whenever init is set, and mkcorpstat
+// then overwrites it. Gating the draw on `pm === null`, as this used to, loses
+// a whole rndmonst_adj() block from the stream.
+function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
+    const init = (corpstatflags & CORPSTAT_INIT) !== 0;
+    const otmp = mksobj_at(objtyp, x, y, init, false);
+
+    otmp.spe = (corpstatflags & CORPSTAT_SPE_VAL);
+
+    if (pm !== null && pm !== undefined && pm !== NON_PM) {
+        const old_corpsenm = otmp.corpsenm;
+        otmp.corpsenm = pm;
+        if (otmp.otyp === CORPSE
+            && (special_corpse(old_corpsenm) || special_corpse(otmp.corpsenm)))
+            start_corpse_timeout(otmp);
     }
     return otmp;
 }
 
-
-// makemon stub
-async function makemon(mdat, x, y, mmflags) {
-    // C: makemon consumes RNG for monster HP, inventory, etc.
-    // For fill_ordinary_room: makemon(null, ...) = random monster
-    if (mdat === null) {
-        // rndmonst_adj + selection
-        rn2(398);
-    }
-    // newmonhp
-    const hp = rnd(8);
-    // m_initinv — monster inventory
-    // For random monsters this varies widely. Since fill_ordinary_room
-    // and mineralize calls are in fastforward, this stub won't be called
-    // for those. It's only needed if mklev structural code calls makemon.
-    return { mx: x, my: y, mhp: hp, msleeping: 0, mpeaceful: 0 };
-}
 
 // maketrap stub
 async function maketrap(x, y, typ) {
@@ -292,23 +284,6 @@ function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
 function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = GRAVE;
-}
-
-// random_engraving stub — consumes rn2 for text selection
-function random_engraving() {
-    // C: reads from engrave data file, consumes rn2 for selection
-    const idx = rn2(48); // approximate: rn2(num_engravings)
-    return { text: 'placeholder', pristine: 'placeholder' };
-}
-
-// wipeout_text stub — consumes rn2 for character corruption
-function wipeout_text(text) {
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] !== ' ') {
-            rn2(1 + 27 / (text.length - i));
-        }
-    }
-    return text;
 }
 
 // in_rooms stub
@@ -328,14 +303,9 @@ function getbones() {
 }
 
 // C ref: allmain.c l_nhcore_init()
-export function l_nhcore_init() {
-    const align = [0, 0, 0]; // A_LAWFUL, A_NEUTRAL, A_CHAOTIC
-    for (let i = align.length; i > 1; i--) {
-        const j = rn2(i);
-        [align[i - 1], align[j]] = [align[j], align[i - 1]];
-    }
-    game.splev_align = align;
-}
+/* l_nhcore_init() lives in js/nhlua.js now, where src/nhlua.c has it. Re-export
+   so mklev.js's existing callers and importers keep working. */
+export { l_nhcore_init } from './nhlua.js';
 
 // C ref: mklev.c mklev()
 export async function mklev() {
@@ -1344,9 +1314,10 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        // human corpse — consume rn2 for mkclass + mkcorpstat
-                        rn2(398); // mkclass(S_HUMAN)
-                        mkcorpstat(CORPSE, null, 0, xx, yy + dy, 1);
+                        /* src/mklev.c — a dead adventurer behind the bars */
+                        const ptr = mkclass(MONSYMS.S_HUMAN, 0);
+                        mkcorpstat(CORPSE, null, ptr ? monsndx(ptr) : NON_PM,
+                                   xx, yy + dy, CORPSTAT_INIT);
                     }
                 }
                 if (!g.level.flags.noteleport) {
@@ -1533,46 +1504,61 @@ function find_okay_roompos(croom, crd) {
     return true;
 }
 
+// src/mklev.c:1813 mktrap_victim() — a corpse and some gear on top of a trap.
+//
+// Every otyp and PM_ index here used to be a hand-written literal, and every
+// one of them was wrong (ARROW was 349, real value 18; PM_ELF was 18, which is
+// ARROW). They now come from the generated tables. See CLAUDE.md.
 function mktrap_victim(trap) {
-    const lvl = game.u?.uz?.dlevel ?? 1;
+    const lvl = level_difficulty();
     const kind = trap.ttyp;
     const x = trap.tx, y = trap.ty;
-    // Object based on trap type
+
+    /* Not all trap types drop an item; only the ones that kill in a way
+       that is obvious after the fact. */
     switch (kind) {
-    case ARROW_TRAP: mksobj(349, true, false); break; // ARROW
-    case DART_TRAP: mksobj(353, true, false); break; // DART
-    case ROCKTRAP: mksobj(ROCK, true, false); break;
+    case ARROW_TRAP: mksobj(ONAMES.ARROW, true, false); break;
+    case DART_TRAP: mksobj(ONAMES.DART, true, false); break;
+    case ROCKTRAP: mksobj(ONAMES.ROCK, true, false); break;
     default: break;
     }
-    // Random items on victim
+
+    /* Place a random possession: weapon, tool, food or gem. */
     do {
-        const cls = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
-        const otmp = mkobj(cls, false);
+        const poss_class = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
+        const otmp = mkobj(poss_class, false);
         curse(otmp);
+        /* 20% chance of placing an additional item, recursively */
     } while (!rn2(5));
-    // Victim type
-    const PM_ELF = 18, PM_DWARF = 19, PM_ORC = 20, PM_GNOME = 21, PM_HUMAN = 22;
-    const PM_ARCHEOLOGIST = 305, PM_WIZARD = 321;
+
+    /* Place a corpse. */
     let victim_mnum;
     switch (rn2(15)) {
     case 0:
-        victim_mnum = PM_ELF;
-        if (kind === SLP_GAS_TRAP && !(lvl <= 2 && rn2(2))) victim_mnum = PM_HUMAN;
+        /* elf corpses are the rarest as they're the most useful */
+        victim_mnum = PMNAMES.PM_ELF;
+        if (kind === SLP_GAS_TRAP && !(lvl <= 2 && rn2(2)))
+            victim_mnum = PMNAMES.PM_HUMAN;
         break;
-    case 1: case 2: victim_mnum = PM_DWARF; break;
-    case 3: case 4: case 5: victim_mnum = PM_ORC; break;
+    case 1: case 2: victim_mnum = PMNAMES.PM_DWARF; break;
+    case 3: case 4: case 5: victim_mnum = PMNAMES.PM_ORC; break;
     case 6: case 7: case 8: case 9:
-        victim_mnum = PM_GNOME;
+        victim_mnum = PMNAMES.PM_GNOME;
         if (!rn2(10)) {
-            const otmp = mksobj(rn2(4) ? 370 : 371, true, false); // TALLOW_CANDLE / WAX_CANDLE
+            const otmp = mksobj(rn2(4) ? ONAMES.TALLOW_CANDLE
+                                       : ONAMES.WAX_CANDLE, true, false);
+            otmp.quan = 1;
             curse(otmp);
         }
         break;
-    default: victim_mnum = PM_HUMAN; break;
+    default: victim_mnum = PMNAMES.PM_HUMAN; break;
     }
-    if (victim_mnum === PM_HUMAN && rn2(25))
-        victim_mnum = rn1(PM_WIZARD - PM_ARCHEOLOGIST, PM_ARCHEOLOGIST);
-    mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    /* PM_HUMAN is a placeholder; usually swap in a fake player monster */
+    if (victim_mnum === PMNAMES.PM_HUMAN && rn2(25))
+        victim_mnum = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST,
+                          PMNAMES.PM_ARCHEOLOGIST);
+    const otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, CORPSTAT_INIT);
+    otmp.age -= (TAINT_AGE + 1); /* died too long ago to safely eat */
 }
 
 async function mktrap_room(croom) {
@@ -1646,7 +1632,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     const pos = { x: 0, y: 0 };
     // Sleeping monster (33%)
     if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, 2); // MM_NOGRP
+        makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps
     const u_depth = g.u?.uz?.dlevel ?? 1;
@@ -1682,13 +1668,18 @@ async function fill_ordinary_room(croom, bonus_items) {
     // Bonus items
     let skip_chests = false;
     if (bonus_items && somexyspace(croom, pos)) {
-        const branchp = is_branchlev();
-        const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
-        if (branchp) {
-            // Mines entrance bonus food
+        const uz_branch = is_branchlev();
+        /* src/mklev.c:1028-1031 — the food bonus is for the *Mines entrance*
+           specifically, not for any branch level. Testing only `uz_branch`
+           took this arm on dlvl 1, which drew rn2(5) where C draws the
+           supply-chest rn2(3). */
+        if (uz_branch && g.u.uz.dnum !== g.mines_dnum
+            && (uz_branch.end1.dnum === g.mines_dnum
+                || uz_branch.end2.dnum === g.mines_dnum)) {
             mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
                 pos.x, pos.y, true, false);
-        } else if (g.u?.uz?.dnum === 0 && (g.u?.uz?.dlevel ?? 1) < oracle_dlevel && rn2(3)) {
+        } else if (g.u.uz.dnum === g.oracle_level.dnum
+                   && g.u.uz.dlevel < g.oracle_level.dlevel && rn2(3)) {
             // Supply chest
             const supply_chest = mksobj_at(rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false);
             if (supply_chest) {
@@ -1795,12 +1786,23 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 && n([1,1]) && n([-1,1])) {
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
+                    otmp.ox = x; otmp.oy = y;
                     otmp.quan = 1 + rnd(goldprob * 3);
+                    /* src/mklev.c:1519 — buried or on the floor; the draw
+                       happens either way */
+                    if (!rn2(3)) add_to_buried(otmp);
+                    else place_object(otmp, x, y);
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
-                        mkobj(GEM_CLASS, false);
+                        const otmp = mkobj(GEM_CLASS, false);
+                        /* a rock is discarded outright and draws nothing more */
+                        if (otmp.otyp === ONAMES.ROCK)
+                            continue;
+                        otmp.ox = x; otmp.oy = y;
+                        if (!rn2(3)) add_to_buried(otmp);
+                        else place_object(otmp, x, y);
                     }
                 }
             }
@@ -1867,7 +1869,8 @@ function set_wall_state() { /* no-op for contest */ }
 
 function level_finalize_topology() {
     bound_digging();
-    // mineralize is consumed by fastforward_fill_mineralize
+    // src/mklev.c:1550 — mineralize() runs here, while in_mklev is still set.
+    mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;

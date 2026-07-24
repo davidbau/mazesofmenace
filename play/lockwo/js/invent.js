@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, update_topl } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, update_topl, getpos_is_feature_sym, getpos_find_feature } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -1392,17 +1392,19 @@ function worn_status_suffix(obj) {
         if ((obj.quan !== 1 || altPhrasing) && !twoweap_primary)
             return ' (wielded)';
         // C ref: objnam.c doname_base — a bimanual weapon reads "in hands"
-        // (makeplural of body_part(HAND)); otherwise "in right hand" (URIGHTY
-        // defaults TRUE, i.e. right-handed).
-        const hand = bimanual(obj) ? makeplural(body_part(6)) : `right ${body_part(6)}`;
+        // (makeplural of body_part(HAND)); otherwise "in right hand"/"in left
+        // hand" per URIGHTY (u.uhandedness, rn2(10) at chargen).
+        const hand = bimanual(obj) ? makeplural(body_part(6))
+            : `${game.u?.uleft_handed ? 'left' : 'right'} ${body_part(6)}`;
         return ` (${twoweap_primary ? 'wielded in' : 'weapon in'} ${hand})`;
     }
     if (m & QW_SWAPWEP) {
         // C ref: objnam.c doname_base — the secondary weapon slot.  While
-        // dual-wielding it is "wielded in left hand" (URIGHTY -> left), otherwise
-        // it is the idle "alternate weapon; not wielded".
+        // dual-wielding it is in the hand opposite the primary (URIGHTY ->
+        // left, ULEFTY -> right); otherwise it is the idle "alternate
+        // weapon; not wielded".
         if (game.u?.twoweap)
-            return ` (wielded in left ${body_part(6)})`;
+            return ` (wielded in ${game.u?.uleft_handed ? 'right' : 'left'} ${body_part(6)})`;
         return ` (alternate weapon${plur(obj.quan)}; not wielded)`;
     }
     if (m & QW_QUIVER) {
@@ -3959,9 +3961,23 @@ async function getpos(goal) {
             game._pending_message = '';
             continue;
         }
-        // C getpos(): an unrecognized key that isn't a movement/command prints
-        // "Unknown direction: '%s' (use 'h', 'j', 'k', 'l' or '.')." (the no-
-        // diagonals variant, since travel uses the basic move set in the hint).
+        // C ref: getpos.c getpos() else-branch — a key that matches a cmap
+        // feature symbol (defsym.h, excluding walls/room/corr/door) triggers a
+        // map scan: silently jump the cursor there, or "Can't find dungeon
+        // feature '%c'." when the feature is nowhere on the (explored) map.
+        if (getpos_is_feature_sym(ch)) {
+            const found = getpos_find_feature(ch, cx, cy);
+            if (found) {
+                cx = found.x; cy = found.y;
+                game._pending_message = '';
+                continue;
+            }
+            game._pending_message = `Can't find dungeon feature '${ch}'.`;
+            continue;
+        }
+        // An unrecognized key that isn't a movement/command prints "Unknown
+        // direction: '%s' (use 'h', 'j', 'k', 'l' or '.')." (the no-diagonals
+        // variant, since travel uses the basic move set in the hint).
         game._pending_message = `Unknown direction: '${visctrl_key(ch)}' (use 'h', 'j', 'k', 'l' or '.').`;
     }
 }

@@ -775,6 +775,25 @@ export function couldsee(x, y) {
     return !!(game.viz_array?.[y]?.[x] & COULD_SEE);
 }
 
+// C ref: vision.c do_clear_area(scol, srow, range, func, arg) — hero-centered
+// case only (the view_from() branch for a non-hero-centered source is unused
+// by any covered caller, e.g. litroom's scroll/wand of light always centers
+// on the hero).  Applies func(x, y) to every couldsee() cell within the
+// circle of the given range around (scol, srow).
+export function do_clear_area(scol, srow, range, func) {
+    if (scol !== game.u?.ux || srow !== game.u?.uy || range < 1) return;
+    const limits = circle_data.slice(circle_start[range]);
+    const maxY = Math.min(srow + range, ROWNO - 1);
+    const minY = Math.max(srow - range, 0);
+    for (let y = minY; y <= maxY; y++) {
+        const offset = limits[Math.abs(y - srow)];
+        const minX = Math.max(scol - offset, 1);
+        const maxX = Math.min(scol + offset, COLNO - 1);
+        for (let x = minX; x <= maxX; x++)
+            if (couldsee(x, y)) func(x, y);
+    }
+}
+
 export function init_vision_globals() {
     game.viz_array = cs_buf0;
     game.active_buf = 0;

@@ -8,25 +8,97 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { mons as MONS_INIT, PMNAMES, NUMMONS } from './monst_data.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import {
+    mons as MONS_INIT, PMNAMES, NUMMONS, MONSYMS, MSOUND, ATTKS, MFLAGS,
+    MMFLAGS, LIMITS, STRAT,
+} from './monst_data.js';
+import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { depth } from './dungeon.js';
+import { next_ident, mksobj, mkobj } from './mkobj.js';
+import { sgn, isok } from './hacklib.js';
+import { ACCESSIBLE, POOL, LAVAPOOL } from './const.js';
+import { enexto_core } from './teleport.js';
+
+// include/hack.h:1174-1175
+const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
 
 // include/permonst.h:15,23
 const NON_PM = -1;
 const LOW_PM = NON_PM + 1;                 /* first monster in mons[] */
 const SPECIAL_PM = PMNAMES.PM_LONG_WORM_TAIL;  /* [normal] < ~ < [special] */
 
-// include/monflag.h
-const G_FREQ = 0x0007, G_NOGEN = 0x0200, G_HELL = 0x0400,
-      G_NOHELL = 0x0800, G_UNIQ = 0x1000;
-const G_GENOD = 0x0100, G_EXTINCT = 0x0080;   /* G_GONE = both */
+// include/monflag.h — taken from the generated table, never written out by
+// hand. There are two disjoint G_ families: the `geno` field bits (G_FREQ ..
+// G_UNIQ) and the mvitals.mvflags bits (G_GENOD 0x02, G_EXTINCT 0x01). They
+// overlap numerically — 0x0080 is G_SGROUP in the first family — so a
+// hand-copied constant from the wrong family reads as a real flag and fails
+// silently. See CLAUDE.md on hardcoded constants.
+const {
+    G_FREQ, G_NOGEN, G_HELL, G_NOHELL, G_UNIQ, G_SGROUP, G_LGROUP, G_IGNORE,
+    G_GENOD, G_EXTINCT, G_NOCORPSE,
+    M2_MALE, M2_FEMALE, M2_NEUTER, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
+    M2_GREEDY, M2_DOMESTIC, M2_STRONG,
+    M3_WAITFORU, M3_CLOSE, M3_COVETOUS,
+} = MFLAGS;
 const G_GONE = G_GENOD | G_EXTINCT;
+
+const { S_GOLEM, S_DRAGON, S_MIMIC, S_SPIDER, S_SNAKE, S_LIGHT, S_ELEMENTAL,
+        S_EEL, S_LEPRECHAUN, S_JABBERWOCK, S_NYMPH, S_ORC, S_UNICORN, S_BAT,
+        S_HUMAN, S_GIANT, S_WRAITH, S_LICH, S_MUMMY, S_QUANTMECH,
+        S_DEMON, S_GNOME, S_ANGEL, S_HUMANOID, S_KOP, S_OGRE, S_TROLL,
+        S_KOBOLD, S_CENTAUR, S_ZOMBIE, S_LIZARD } = MONSYMS;
+const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST } = MSOUND;
+const { AT_WEAP, AD_ANY } = ATTKS;
 
 // include/global.h:411, include/align.h:22
 const ALIGNWEIGHT = 4;
 const A_NEUTRAL = 0;
 const AM_NONE = 0, AM_LAWFUL = 4, AM_NEUTRAL = 2, AM_CHAOTIC = 1;
+
+// include/global.h — MAXMONNO, the default per-species birth limit.
+const { MAXMONNO, MAXMCLASSES, A_NONE } = LIMITS;
+
+// include/hack.h — mmflags, makemon()'s behaviour switches. Re-exported so
+// callers name them instead of writing bit literals.
+export const {
+    NO_MM_FLAGS, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_IGNOREWATER,
+    MM_ADJACENTOK, MM_ANGRY, MM_NONAME, MM_EGD, MM_EPRI, MM_ESHK, MM_EMIN,
+    MM_EDOG, MM_ASLEEP, MM_NOGRP, MM_NOTAIL, MM_MALE, MM_FEMALE, MM_NOMSG,
+    MM_MINVIS,
+} = MMFLAGS;
+
+// include/mondata.h predicates, one line each as in C.
+const is_golem = (ptr) => ptr.mlet === S_GOLEM;
+export const is_male = (ptr) => (ptr.mflags2 & M2_MALE) !== 0;
+export const is_female = (ptr) => (ptr.mflags2 & M2_FEMALE) !== 0;
+export const is_neuter = (ptr) => (ptr.mflags2 & M2_NEUTER) !== 0;
+const always_hostile = (ptr) => (ptr.mflags2 & M2_HOSTILE) !== 0;
+const always_peaceful = (ptr) => (ptr.mflags2 & M2_PEACEFUL) !== 0;
+const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
+const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
+const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
+const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
+const race_peaceful = (ptr) => (ptr.mflags2 & (game.urace?.lovemask ?? 0)) !== 0;
+const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
+const is_unicorn = (ptr) => ptr.mlet === S_UNICORN && likes_gems(ptr);
+const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
+const is_ndemon = (ptr) =>
+    is_demon(ptr) && (ptr.mflags2 & (MFLAGS.M2_LORD | MFLAGS.M2_PRINCE)) === 0;
+const is_shapeshifter = (ptr) => (ptr.mflags2 & MFLAGS.M2_SHAPESHIFTER) !== 0;
+const verysmall = (ptr) => ptr.msize < 1;        /* MZ_SMALL */
+const nohands = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
+const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
+const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
+const { STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG } = STRAT;
+const { M3_WAITMASK } = MFLAGS;
+export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
+                       || ptr.pmidx === PMNAMES.PM_FAMINE
+                       || ptr.pmidx === PMNAMES.PM_PESTILENCE;
+// src/mondata.c attacktype_fordmg() — is_armed(ptr) is attacktype(ptr, AT_WEAP)
+const attacktype = (ptr, atyp) =>
+    ptr.mattk.some(a => a[0] === atyp);
+const is_armed = (ptr) => attacktype(ptr, AT_WEAP);
 
 // include/monst.h:259-265
 const monmax_difficulty = (levdif) => Math.trunc((levdif + (game.u?.ulevel ?? 0)) / 2);
@@ -147,6 +219,131 @@ export function rndmonst() {
     return rndmonst_adj(0, 0);
 }
 
+// src/makemon.c:1755 mongen_order / mclass_maxf, built once per game.
+//
+// C sorts mongen_order with qsort() on (difficulty | mlet << 8). mons[] is
+// already grouped by class and ascending in difficulty within a class, so the
+// sort is very nearly the identity; JS's sort is stable, which keeps ties in
+// their mons[] order — the same thing an already-sorted input gives qsort.
+let mongen_order = null;
+let mclass_maxf = null;
+
+function init_mongen_order() {
+    if (mongen_order)
+        return;
+    mongen_order = [];
+    mclass_maxf = new Array(MAXMCLASSES).fill(0);
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        mongen_order[i] = i;
+        const mlet = game.mons[i].mlet;
+        const freq = game.mons[i].geno & G_FREQ;
+        if (freq > mclass_maxf[mlet])
+            mclass_maxf[mlet] = freq;
+    }
+    const key = (i) => (game.mons[i].difficulty | (game.mons[i].mlet << 8));
+    const head = mongen_order.slice(0, SPECIAL_PM).sort((a, b) => key(a) - key(b));
+    for (let i = 0; i < SPECIAL_PM; i++)
+        mongen_order[i] = head[i];
+}
+
+export function reset_mongen_order() {
+    mongen_order = null;
+    mclass_maxf = null;
+}
+
+const MONSi = (i) => mongen_order[i];
+
+// src/makemon.c:1839 mk_gen_ok()
+function mk_gen_ok(mndx, mvflagsmask, genomask) {
+    const ptr = game.mons[mndx];
+    if (game.mvitals[mndx].mvflags & mvflagsmask)
+        return false;
+    if (ptr.geno & genomask)
+        return false;
+    if (is_placeholder(ptr))
+        return false;
+    return true;
+}
+
+// include/mondata.h:147 — corpses of zombies and mummies use these as stand-ins.
+const is_placeholder = (ptr) =>
+    ptr.pmidx === PMNAMES.PM_ORC || ptr.pmidx === PMNAMES.PM_GIANT
+    || ptr.pmidx === PMNAMES.PM_ELF || ptr.pmidx === PMNAMES.PM_HUMAN;
+
+// src/makemon.c:1879 mkclass_aligned() — one of the several types in a class.
+//
+// The rn2(9) inside the candidate loop fires once per candidate considered, so
+// the draw count depends on how many monsters share the class and pass the
+// alignment filter. The rn2(2) early-break and the final rnd(num) are the other
+// two draws.
+export function mkclass_aligned(klass, spc, atyp) {
+    let first, last, num = 0, k;
+    const nums = new Array(SPECIAL_PM + 1).fill(0);
+    const maxmlev = level_difficulty() >> 1;
+    const gehennom = Inhell();
+    let mv_mask, gn_mask;
+
+    if (klass < 1 || klass >= MAXMCLASSES)
+        return null;
+
+    init_mongen_order();
+    const zero_freq_for_entire_class = (mclass_maxf[klass] === 0);
+
+    /* Assumption #1: monsters of a class are contiguous in mons[]. */
+    for (first = LOW_PM; first < SPECIAL_PM; first++)
+        if (game.mons[MONSi(first)].mlet === klass)
+            break;
+    if (first === SPECIAL_PM)
+        return null;
+
+    mv_mask = G_GONE;
+    if ((spc & G_IGNORE) !== 0) {
+        mv_mask = 0;
+        spc &= ~G_IGNORE;
+    }
+
+    /* Assumption #2: they are in ascending order of strength. */
+    for (last = first;
+         last < SPECIAL_PM && game.mons[MONSi(last)].mlet === klass;
+         last++) {
+        if (atyp !== A_NONE && sgn(game.mons[MONSi(last)].maligntyp) !== sgn(atyp))
+            continue;
+
+        gn_mask = (G_NOGEN | G_UNIQ);
+        if (rn2(9) || klass === S_LICH)
+            gn_mask |= (gehennom ? G_NOHELL : G_HELL);
+        gn_mask &= ~spc;
+
+        if (mk_gen_ok(MONSi(last), mv_mask, gn_mask)) {
+            if (num && montoostrong(MONSi(last), maxmlev)
+                && game.mons[MONSi(last)].difficulty
+                   > game.mons[MONSi(last - 1)].difficulty
+                && rn2(2))
+                break;
+            if ((k = (game.mons[MONSi(last)].geno & G_FREQ)) > 0
+                || (k = (zero_freq_for_entire_class ? 1 : 0)) > 0) {
+                /* skew towards lower value monsters at lower exp levels */
+                nums[MONSi(last)] = k + 1
+                    - (adj_lev(game.mons[MONSi(last)]) > (game.u.ulevel * 2) ? 1 : 0);
+                num += nums[MONSi(last)];
+            }
+        }
+    }
+    if (!num)
+        return null;
+
+    for (num = rnd(num); first < last; first++)
+        if ((num -= nums[MONSi(first)]) <= 0)
+            break;
+
+    return nums[MONSi(first)] ? game.mons[MONSi(first)] : null;
+}
+
+// src/makemon.c:1872 mkclass()
+export function mkclass(klass, spc) {
+    return mkclass_aligned(klass, spc, A_NONE);
+}
+
 // src/mkobj.c:395 rndmonnum_adj() — Plan A is a level-appropriate common
 // monster; the fallback paths are not ported yet.
 export function rndmonnum_adj(minadj, maxadj) {
@@ -168,6 +365,974 @@ export function monsndx(ptr) {
         : game.mons.indexOf(ptr);
 }
 
+// src/allmain.c:780 — newgame() seeds every mvitals entry from the species'
+// permanent G_NOCORPSE bit. mvflags and geno share the 0x0010 bit but nothing
+// else, so this does not collide with G_GENOD|G_EXTINCT.
 export function reset_mvitals() {
-    game.mvitals = Array.from({ length: NUMMONS + 1 }, () => ({ mvflags: 0, born: 0, died: 0 }));
+    game.mvitals = Array.from({ length: NUMMONS + 1 }, (_, i) => ({
+        mvflags: (MONS_INIT[i]?.geno ?? 0) & G_NOCORPSE,
+        born: 0,
+        died: 0,
+    }));
+}
+
+// src/makemon.c:1542 mbirth_limit()
+function mbirth_limit(mndx) {
+    return mndx === PMNAMES.PM_NAZGUL ? 9
+         : mndx === PMNAMES.PM_ERINYS ? 3
+         : MAXMONNO;
+}
+
+// src/makemon.c:959 propagate() — birth accounting. Draws nothing, but it is
+// what eventually sets G_EXTINCT, and G_EXTINCT is what removes a species from
+// rndmonst_adj()'s eligible set. Skipping it keeps uniques eligible forever and
+// silently changes the draw count of every later rndmonst_adj().
+function propagate(mndx, tally, ghostly) {
+    const mv = game.mvitals[mndx];
+    const lim = mbirth_limit(mndx);
+    const gone = (mv.mvflags & G_GONE) !== 0;
+    const result = (mv.born < lim && !gone);
+
+    /* if it's unique, don't ever make it again */
+    if ((game.mons[mndx].geno & G_UNIQ) !== 0 && mndx !== PMNAMES.PM_HIGH_CLERIC)
+        mv.mvflags |= G_EXTINCT;
+
+    if (mv.born < 255 && tally && (!ghostly || result))
+        mv.born++;
+    if (mv.born >= lim
+        && !(game.mons[mndx].geno & G_NOGEN)
+        && !(mv.mvflags & G_EXTINCT))
+        mv.mvflags |= G_EXTINCT;
+
+    return result;
+}
+
+// src/makemon.c:2016 adj_lev() — the monster's effective level.
+//
+// Depends on u.ulevel, which C sets to 1 inside u_init_misc() *before* mklev()
+// runs. Getting that ordering wrong shifts every monster's level and therefore
+// newmonhp()'s dice.
+export function adj_lev(ptr) {
+    let tmp, tmp2;
+
+    if (ptr.pmidx === PMNAMES.PM_WIZARD_OF_YENDOR) {
+        tmp = ptr.mlevel + game.mvitals[PMNAMES.PM_WIZARD_OF_YENDOR].died;
+        if (tmp > 49)
+            tmp = 49;
+        return tmp;
+    }
+
+    if ((tmp = ptr.mlevel) > 49)
+        return 50; /* "special" demons/devils */
+    tmp2 = (level_difficulty() - tmp);
+    if (tmp2 < 0)
+        tmp--; /* if mlevel > u.uz decrement tmp */
+    else
+        tmp += Math.trunc(tmp2 / 5); /* else increment 1 per five diff */
+
+    tmp2 = (game.u.ulevel - ptr.mlevel); /* adjust vs. the player */
+    if (tmp2 > 0)
+        tmp += Math.trunc(tmp2 / 4);
+
+    tmp2 = Math.trunc((3 * ptr.mlevel) / 2); /* crude upper limit */
+    if (tmp2 > 49)
+        tmp2 = 49;
+    return (tmp > tmp2) ? tmp2 : (tmp > 0 ? tmp : 0);
+}
+
+// src/makemon.c:2233 golemhp()
+function golemhp(type) {
+    const P = PMNAMES;
+    switch (type) {
+    case P.PM_STRAW_GOLEM:   return 20;
+    case P.PM_PAPER_GOLEM:   return 20;
+    case P.PM_ROPE_GOLEM:    return 30;
+    case P.PM_LEATHER_GOLEM: return 40;
+    case P.PM_GOLD_GOLEM:    return 60;
+    case P.PM_WOOD_GOLEM:    return 50;
+    case P.PM_FLESH_GOLEM:   return 40;
+    case P.PM_CLAY_GOLEM:    return 70;
+    case P.PM_STONE_GOLEM:   return 100;
+    case P.PM_GLASS_GOLEM:   return 80;
+    case P.PM_IRON_GOLEM:    return 120;
+    default:                 return 0;
+    }
+}
+
+function In_endgame() {
+    return game.dungeons?.[game.u?.uz?.dnum]?.dname === 'The Elemental Planes';
+}
+
+function is_home_elemental(/* ptr */) {
+    /* only true in the endgame planes, which no public session reaches */
+    return false;
+}
+
+// src/makemon.c:1012 newmonhp() — the monster's level and hit points.
+export function newmonhp(mon, mndx) {
+    const ptr = game.mons[mndx];
+    let basehp = 0;
+
+    mon.m_lev = adj_lev(ptr);
+    if (is_golem(ptr)) {
+        mon.mhpmax = mon.mhp = golemhp(mndx);
+    } else if (is_rider(ptr)) {
+        basehp = 10;
+        mon.mhpmax = mon.mhp = d(basehp, 8);
+    } else if (ptr.mlevel > 49) {
+        mon.mhpmax = mon.mhp = 2 * (ptr.mlevel - 6);
+        mon.m_lev = Math.trunc(mon.mhp / 4);
+    } else if (ptr.mlet === S_DRAGON && mndx >= PMNAMES.PM_GRAY_DRAGON) {
+        basehp = mon.m_lev;
+        mon.mhpmax = mon.mhp = In_endgame() ? (8 * basehp)
+                             : (4 * basehp + d(basehp, 4));
+    } else if (!mon.m_lev) {
+        basehp = 1;
+        mon.mhpmax = mon.mhp = rnd(4);
+    } else {
+        basehp = mon.m_lev;
+        mon.mhpmax = mon.mhp = d(basehp, 8);
+        if (is_home_elemental(ptr))
+            mon.mhpmax = (mon.mhp *= 3);
+    }
+
+    /* if d(X,8) rolled a 1 all X times, give a boost */
+    if (mon.mhpmax === basehp) {
+        mon.mhpmax += 1;
+        mon.mhp = mon.mhpmax;
+    }
+}
+
+// src/makemon.c:1573 peace_minded()
+//
+// Most monsters return before drawing anything; the two rn2() calls at the end
+// only fire for co-aligned non-minions, which is why a level's worth of
+// monsters usually shows no peace_minded entries in the log at all.
+export function peace_minded(ptr) {
+    const mal = ptr.maligntyp, ual = game.u.ualign.type;
+
+    if (always_peaceful(ptr))
+        return true;
+    if (always_hostile(ptr))
+        return false;
+    if (ptr.msound === MS_LEADER || ptr.msound === MS_GUARDIAN)
+        return true;
+    if (ptr.msound === MS_NEMESIS)
+        return false;
+    if (ptr.pmidx === PMNAMES.PM_ERINYS)
+        return !game.u.ualign.abuse;
+
+    if (race_peaceful(ptr))
+        return true;
+    if (race_hostile(ptr))
+        return false;
+
+    /* hostile if its alignment differs from the player's */
+    if (sgn(mal) !== sgn(ual))
+        return false;
+
+    /* negative monster hostile to player with Amulet */
+    if (mal < A_NEUTRAL && game.u.uhave?.amulet)
+        return false;
+
+    /* minions are hostile to players that have strayed at all */
+    if (is_minion(ptr))
+        return game.u.ualign.record >= 0;
+
+    const rec = game.u.ualign.record;
+    return !!rn2(16 + (rec < -15 ? -15 : rec)) && !!rn2(2 + Math.abs(mal));
+}
+
+// src/makemon.c:900 mongets() — create otyp and hand it to the monster.
+// The blessing/curse fixups below need object subsystems that are not ported;
+// none of them draw, so the RNG stream is unaffected by their absence.
+export function mongets(mtmp, otyp) {
+    if (!otyp)
+        return null;
+    const otmp = mksobj(otyp, true, false);
+    if (otmp)
+        mpickobj(mtmp, otmp);
+    return otmp;
+}
+
+// src/mon.c mpickobj() — returns true when otmp was freed by merging.
+function mpickobj(mtmp, otmp) {
+    if (!mtmp.minvent) mtmp.minvent = [];
+    mtmp.minvent.push(otmp);
+    return false;
+}
+
+// src/makemon.c:589 m_initinv() — species-specific starting inventory.
+//
+// PORTED: the generic tail (the three draws every monster makes) and the
+// branches that need nothing beyond mksobj(). The mlet switch's remaining arms
+// are noted where they belong; each is reached only by a species that cannot
+// yet be generated, and reaching one is recorded rather than approximated.
+function m_initinv(mtmp) {
+    const ptr = mtmp.data;
+
+    switch (ptr.mlet) {
+    case S_NYMPH:
+        if (!rn2(2))
+            mongets(mtmp, ONAMES.MIRROR);
+        if (!rn2(2))
+            mongets(mtmp, ONAMES.POT_OBJECT_DETECTION);
+        break;
+    case S_MUMMY:
+        if (rn2(7))
+            mongets(mtmp, ONAMES.MUMMY_WRAPPING);
+        break;
+    case S_LEPRECHAUN:
+        mkmonmoney(mtmp, d(level_difficulty(), 30));
+        break;
+    case S_HUMAN:
+    case S_GIANT:
+    case S_WRAITH:
+    case S_LICH:
+    case S_QUANTMECH:
+    case S_DEMON:
+    case S_GNOME:
+        /* src/makemon.c:601-711 — mercenaries, shopkeepers, priests, giants,
+           Nazgul, liches, Schroedinger's box, devils, and mine candles. Each
+           arm needs a subsystem that is not ported (mkmonmoney variants,
+           curse(), rnd_class(), containers). None can be generated yet. */
+        note_unported(`m_initinv mlet=${ptr.mlet}`);
+        break;
+    default:
+        break;
+    }
+
+    /* ordinary soldiers rarely have access to magic (or gold :-) */
+    if (ptr.pmidx === PMNAMES.PM_SOLDIER && rn2(13))
+        return;
+
+    /* src/makemon.c:826-831 — the generic tail. These two draws happen for
+       every monster regardless of species, and are the only RNG most
+       level-generated monsters spend here. */
+    if (mtmp.m_lev > rn2(50))
+        mongets(mtmp, rnd_defensive_item(mtmp));
+    if (mtmp.m_lev > rn2(100))
+        mongets(mtmp, rnd_misc_item(mtmp));
+    if (likes_gold(ptr) && !findgold(mtmp.minvent) && !rn2(5))
+        mkmonmoney(mtmp, d(level_difficulty(), mtmp.minvent?.length ? 5 : 10));
+}
+
+// src/muse.c rnd_defensive_item() / rnd_misc_item() — both return 0 for
+// monsters that cannot use items, and 0 makes mongets() a no-op that draws
+// nothing. Everything above that gate is unported; note_unported() records a
+// reach so it shows up in tooling instead of quietly skewing the stream.
+function rnd_defensive_item(mtmp) {
+    if (!is_mplayer_or_user(mtmp))
+        return 0;
+    note_unported('rnd_defensive_item');
+    return 0;
+}
+
+function rnd_misc_item(mtmp) {
+    if (!is_mplayer_or_user(mtmp))
+        return 0;
+    note_unported('rnd_misc_item');
+    return 0;
+}
+
+/* src/muse.c gates both item pickers behind these tests; a monster failing
+   them returns 0 without drawing. */
+function is_mplayer_or_user(mtmp) {
+    const ptr = mtmp.data;
+    return !(ptr.mflags1 & (MFLAGS.M1_ANIMAL | MFLAGS.M1_MINDLESS))
+        && ptr.mlet !== S_GNOME
+        && (ptr.mflags2 & M2_STRONG) !== 0;
+}
+
+function findgold(minvent) {
+    return (minvent || []).some(o => o.oclass === OCLASSES.COIN_CLASS);
+}
+
+// src/mon.c mkmonmoney()
+function mkmonmoney(mtmp, amount) {
+    mtmp.mgold = (mtmp.mgold || 0) + amount;
+}
+
+// Reached-but-unported sites, surfaced by tooling rather than papered over
+// with an invented draw. See docs/plan/STATUS.md.
+function note_unported(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
+// src/mon.c m_at() / MON_AT(). C keeps svl.level.monsters[x][y] for the
+// positional lookup and the fmon chain for iteration; js/game.js already owns
+// `level.monsters` as the chain, so the grid lives alongside it as `monAt`.
+function m_at(x, y) {
+    return game.level?.monAt?.get(`${x},${y}`) ?? null;
+}
+
+// src/mon.c place_monster()
+function place_monster(mtmp, x, y) {
+    mtmp.mx = x;
+    mtmp.my = y;
+    (game.level.monAt ||= new Map()).set(`${x},${y}`, mtmp);
+    (game.level.monsters ||= []).push(mtmp);
+}
+
+// src/teleport.c goodpos() — can this monster stand here?
+//
+// The only draw is the S_EEL rn2(13). Everything else is terrain and occupancy,
+// so a wrong answer costs a whole extra rndmonst() block (9 draws) rather than
+// a single call — which is exactly how a mis-ported goodpos announces itself.
+function goodpos(x, y, ptr, gpflags = 0) {
+    const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
+
+    if (!isok(x, y))
+        return false;
+
+    if (game.u.ux === x && game.u.uy === y)
+        return false;
+    if (m_at(x, y))
+        return false;
+
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return false;
+
+    if (ptr) {
+        if (loc.typ === POOL && !ignorewater) {
+            return is_swimmer(ptr);
+        } else if (ptr.mlet === S_EEL && rn2(13) && !ignorewater) {
+            return false;
+        } else if (loc.typ === LAVAPOOL) {
+            return false;
+        }
+        if (passes_walls(ptr) && may_passwall(x, y))
+            return true;
+    }
+    if (!ACCESSIBLE(loc.typ))
+        return false;
+    /* src/teleport.c also rejects boulder squares for non-rock-throwers;
+       sobj_at() is not ported, so that rejection cannot be evaluated yet. */
+    return true;
+}
+
+const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
+const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
+const may_passwall = () => false;   /* needs level.flags.noteleport wall data */
+
+// src/quest.c quest_info() — the quest leader/nemesis for the hero's role.
+// Both are G_NOGEN, so neither can appear from rndmonst(); the lookups exist so
+// the gender branches read as C does.
+const quest_info_leader = () => pmIndexOf(game.urole?.ldrnum);
+const quest_info_nemesis = () => pmIndexOf(game.urole?.neminum);
+function pmIndexOf(name) {
+    if (typeof name === 'number') return name;
+    return (name && PMNAMES[name] !== undefined) ? PMNAMES[name] : NON_PM;
+}
+
+// src/align.c set_malign() — recomputes malign from peacefulness. No draw.
+function set_malign(mtmp) {
+    const mal = mtmp.data.maligntyp;
+    const coaligned = (sgn(mal) === sgn(game.u.ualign.type));
+
+    if (mtmp.data.msound === MS_LEADER) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE_VALUE) {
+        mtmp.malign = mtmp.mpeaceful ? 0 : 20;
+    } else if (coaligned) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5 - absmal, 1)
+                                     : Math.max(5 - absmal, 1);
+    } else {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? 0 : Math.max(20 - absmal, 6);
+    }
+}
+const A_NONE_VALUE = -128;   /* include/align.h A_NONE */
+
+// src/mkobj.c mkobj_at() — used by the S_SPIDER/S_SNAKE arm of makemon().
+function mkobj_at(oclass, x, y, artif) {
+    const otmp = mkobj(oclass, artif);
+    otmp.ox = x; otmp.oy = y;
+    (game.level.objects ||= []).push(otmp);
+    return otmp;
+}
+
+// src/mon.c hideunder() — positional only during mklev (seeit is 0), no draw.
+function hideunder(mtmp) {
+    mtmp.mundetected = 0;
+}
+
+// The remaining makemon() callees all draw, and none can be reached by a
+// monster that rndmonst() can currently produce. Each records itself rather
+// than inventing a draw, so `game.unported` names the exact next thing to port.
+function set_mimic_sym(mtmp) { note_unported('set_mimic_sym'); }
+function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
+function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
+function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
+
+// src/worn.c m_dowear() — walks the monster's inventory looking for armor to
+// put on. A monster with nothing to wear draws nothing, which is the case for
+// every monster level generation currently produces.
+function m_dowear(mtmp, creation) {
+    const ptr = mtmp.data;
+    if (verysmall(ptr) || nohands(ptr) || is_animal(ptr))
+        return;
+    if (mindless(ptr)
+        && (!creation || (ptr.mlet !== S_MUMMY
+                          && ptr.pmidx !== PMNAMES.PM_SKELETON)))
+        return;
+    if (!mtmp.minvent || mtmp.minvent.length === 0)
+        return;   /* nothing to wear, nothing to draw */
+    note_unported('m_dowear with inventory');
+}
+
+// include/mondata.h — the predicates m_initweap() branches on.
+const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
+const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
+const is_dwarf = (ptr) => (ptr.mflags2 & MFLAGS.M2_DWARF) !== 0;
+const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
+const extra_nasty = (ptr) => (ptr.mflags2 & MFLAGS.M2_NASTY) !== 0;
+const strongmonst = (ptr) => (ptr.mflags2 & M2_STRONG) !== 0;
+const is_lord = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
+const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;
+
+// src/quest.c — true when this monster stands in for the given role's quest
+// guardian. Every such species is G_NOGEN, so rndmonst() cannot produce one.
+const quest_mon_represents_role = () => false;
+
+// src/makemon.c:481 m_initthrow() — a stack of missiles.
+function m_initthrow(mtmp, otyp, oquan) {
+    const otmp = mksobj(otyp, true, false);
+    otmp.quan = rn1(oquan, 3);
+    if (otyp === ONAMES.ORCISH_ARROW)
+        otmp.opoisoned = true;
+    mpickobj(mtmp, otmp);
+}
+
+// src/muse.c rnd_offensive_item() — same gate as the defensive and misc
+// pickers: a monster that cannot use items returns 0 without drawing.
+function rnd_offensive_item(mtmp) {
+    if (!is_mplayer_or_user(mtmp))
+        return 0;
+    note_unported('rnd_offensive_item');
+    return 0;
+}
+
+// src/makemon.c:400 m_initweap() — species-specific weapons and armour.
+//
+// A long switch, but the RNG matters at every arm: the `default` case draws
+// rnd(14 - 2*bias) for ordinary monsters, so `bias` — which is
+// is_lord + 2*is_prince + extra_nasty — changes the argument, not just the
+// branch taken.
+function m_initweap(mtmp) {
+    const ptr = mtmp.data;
+    const mm = monsndx(ptr);
+    const P = PMNAMES, O = ONAMES;
+    let otmp, bias, w1, w2;
+
+    if (game.level?.flags?.is_rogue_level)
+        return;
+
+    switch (ptr.mlet) {
+    case S_GIANT:
+        if (rn2(2))
+            mongets(mtmp, (mm !== P.PM_ETTIN) ? O.BOULDER : O.CLUB);
+        if ((mm !== P.PM_ETTIN) && !rn2(5))
+            mongets(mtmp, rn2(2) ? O.TWO_HANDED_SWORD : O.BATTLE_AXE);
+        break;
+
+    case S_HUMAN:
+        if (is_mercenary(ptr)) {
+            w1 = w2 = 0;
+            switch (mm) {
+            case P.PM_WATCHMAN:
+            case P.PM_SOLDIER:
+                if (!rn2(3)) {
+                    do {
+                        w1 = rn1(O.BEC_DE_CORBIN - O.PARTISAN + 1, O.PARTISAN);
+                    } while (game.objects[w1].oc_subtyp !== SKILLS.P_POLEARMS);
+                    w2 = rn2(2) ? O.DAGGER : O.KNIFE;
+                } else {
+                    w1 = rn2(2) ? O.SPEAR : O.SHORT_SWORD;
+                }
+                break;
+            case P.PM_SERGEANT:
+                w1 = rn2(2) ? O.FLAIL : O.MACE;
+                break;
+            case P.PM_LIEUTENANT:
+                w1 = rn2(2) ? O.BROADSWORD : O.LONG_SWORD;
+                break;
+            case P.PM_CAPTAIN:
+            case P.PM_WATCH_CAPTAIN:
+                w1 = rn2(2) ? O.LONG_SWORD : O.SILVER_SABER;
+                break;
+            default:
+                if (!rn2(4)) w1 = O.DAGGER;
+                if (!rn2(7)) w2 = O.SPEAR;
+                break;
+            }
+            if (w1) mongets(mtmp, w1);
+            if (!w2 && w1 !== O.DAGGER && !rn2(4)) w2 = O.KNIFE;
+            if (w2) mongets(mtmp, w2);
+        } else if (is_elf(ptr)) {
+            if (rn2(2))
+                mongets(mtmp, rn2(2) ? O.ELVEN_MITHRIL_COAT : O.ELVEN_CLOAK);
+            if (rn2(2)) mongets(mtmp, O.ELVEN_LEATHER_HELM);
+            else if (!rn2(4)) mongets(mtmp, O.ELVEN_BOOTS);
+            if (rn2(2)) mongets(mtmp, O.ELVEN_DAGGER);
+            switch (rn2(3)) {
+            case 0:
+                if (!rn2(4)) mongets(mtmp, O.ELVEN_SHIELD);
+                if (rn2(3)) mongets(mtmp, O.ELVEN_SHORT_SWORD);
+                mongets(mtmp, O.ELVEN_BOW);
+                m_initthrow(mtmp, O.ELVEN_ARROW, 12);
+                break;
+            case 1:
+                mongets(mtmp, O.ELVEN_BROADSWORD);
+                if (rn2(2)) mongets(mtmp, O.ELVEN_SHIELD);
+                break;
+            case 2:
+                if (rn2(2)) {
+                    mongets(mtmp, O.ELVEN_SPEAR);
+                    mongets(mtmp, O.ELVEN_SHIELD);
+                }
+                break;
+            default:
+                break;
+            }
+            if (mm === P.PM_ELVEN_MONARCH) {
+                if (rn2(3)) mongets(mtmp, O.PICK_AXE);
+                if (!rn2(50)) mongets(mtmp, O.CRYSTAL_BALL);
+            }
+        } else if (ptr.msound === MS_PRIEST
+                   || quest_mon_represents_role(ptr, P.PM_CLERIC)) {
+            otmp = mksobj(O.MACE, false, false);
+            otmp.spe = rnd(3);
+            if (!rn2(2)) { otmp.cursed = 1; otmp.blessed = 0; }
+            mpickobj(mtmp, otmp);
+        } else if (mm === P.PM_NINJA) {
+            mongets(mtmp, rn2(4) ? O.SHURIKEN : O.DART);
+            mongets(mtmp, rn2(4) ? O.SHORT_SWORD : O.AXE);
+        } else if (ptr.msound === MS_GUARDIAN) {
+            switch (mm) {
+            case P.PM_STUDENT: case P.PM_ATTENDANT: case P.PM_ABBOT:
+            case P.PM_ACOLYTE: case P.PM_GUIDE: case P.PM_APPRENTICE:
+                if (rn2(2)) mongets(mtmp, rn2(3) ? O.DAGGER : O.KNIFE);
+                if (rn2(5))
+                    mongets(mtmp, rn2(3) ? O.LEATHER_JACKET : O.LEATHER_CLOAK);
+                if (rn2(3)) mongets(mtmp, rn2(3) ? O.LOW_BOOTS : O.HIGH_BOOTS);
+                if (rn2(3)) mongets(mtmp, O.POT_HEALING);
+                break;
+            case P.PM_CHIEFTAIN: case P.PM_PAGE: case P.PM_ROSHI:
+            case P.PM_WARRIOR:
+                mongets(mtmp, rn2(3) ? O.LONG_SWORD : O.SHORT_SWORD);
+                mongets(mtmp, rn2(3) ? O.CHAIN_MAIL : O.LEATHER_ARMOR);
+                if (rn2(2)) mongets(mtmp, rn2(2) ? O.LOW_BOOTS : O.HIGH_BOOTS);
+                if (!rn2(3)) mongets(mtmp, O.LEATHER_CLOAK);
+                if (!rn2(3)) {
+                    mongets(mtmp, O.BOW);
+                    m_initthrow(mtmp, O.ARROW, 12);
+                }
+                break;
+            case P.PM_HUNTER:
+                mongets(mtmp, rn2(3) ? O.SHORT_SWORD : O.DAGGER);
+                if (rn2(2))
+                    mongets(mtmp, rn2(2) ? O.LEATHER_JACKET : O.LEATHER_ARMOR);
+                mongets(mtmp, O.BOW);
+                m_initthrow(mtmp, O.ARROW, 12);
+                break;
+            case P.PM_THUG:
+                mongets(mtmp, O.CLUB);
+                mongets(mtmp, rn2(3) ? O.DAGGER : O.KNIFE);
+                if (rn2(2)) mongets(mtmp, O.LEATHER_GLOVES);
+                mongets(mtmp, rn2(2) ? O.LEATHER_JACKET : O.LEATHER_ARMOR);
+                break;
+            case P.PM_NEANDERTHAL:
+                mongets(mtmp, O.CLUB);
+                mongets(mtmp, O.LEATHER_ARMOR);
+                break;
+            default:
+                break;
+            }
+        }
+        break;
+
+    case S_ANGEL:
+        if (humanoid(ptr)) {
+            const typ = rn2(3) ? O.LONG_SWORD : O.SILVER_MACE;
+            otmp = mksobj(typ, false, false);
+            if ((!rn2(20) || is_lord(ptr))
+                && sgn(ptr.maligntyp) === 1 /* A_LAWFUL */)
+                note_unported('oname (Sunsword/Demonbane)');
+            otmp.blessed = 1; otmp.cursed = 0;
+            otmp.oerodeproof = true;
+            otmp.spe = rn2(4);
+            if (typ === O.SILVER_MACE) otmp.spe += 3;
+            mpickobj(mtmp, otmp);
+
+            otmp = mksobj(!rn2(4) || is_lord(ptr) ? O.SHIELD_OF_REFLECTION
+                                                  : O.LARGE_SHIELD,
+                          false, false);
+            otmp.oerodeproof = true;
+            otmp.spe = 0;
+            mpickobj(mtmp, otmp);
+        }
+        break;
+
+    case S_HUMANOID:
+        if (mm === P.PM_HOBBIT) {
+            switch (rn2(3)) {
+            case 0: mongets(mtmp, O.DAGGER); break;
+            case 1: mongets(mtmp, O.ELVEN_DAGGER); break;
+            case 2:
+                mongets(mtmp, O.SLING);
+                m_initthrow(mtmp, !rn2(4) ? O.FLINT : O.ROCK, 6);
+                break;
+            default: break;
+            }
+            if (!rn2(10)) mongets(mtmp, O.ELVEN_MITHRIL_COAT);
+            if (!rn2(10)) mongets(mtmp, O.DWARVISH_CLOAK);
+        } else if (is_dwarf(ptr)) {
+            if (rn2(7)) mongets(mtmp, O.DWARVISH_CLOAK);
+            if (rn2(7)) mongets(mtmp, O.IRON_SHOES);
+            if (!rn2(4)) {
+                mongets(mtmp, O.DWARVISH_SHORT_SWORD);
+                if (rn2(2)) {
+                    mongets(mtmp, O.DWARVISH_MATTOCK);
+                } else {
+                    mongets(mtmp, rn2(2) ? O.AXE : O.DWARVISH_SPEAR);
+                    mongets(mtmp, O.DWARVISH_ROUNDSHIELD);
+                }
+                mongets(mtmp, O.DWARVISH_IRON_HELM);
+                if (!rn2(3)) mongets(mtmp, O.DWARVISH_MITHRIL_COAT);
+            } else {
+                mongets(mtmp, !rn2(3) ? O.PICK_AXE : O.DAGGER);
+            }
+        }
+        break;
+
+    case S_KOP:
+        if (!rn2(4)) m_initthrow(mtmp, O.CREAM_PIE, 2);
+        if (!rn2(3)) mongets(mtmp, rn2(2) ? O.CLUB : O.RUBBER_HOSE);
+        break;
+
+    case S_ORC: {
+        if (rn2(2)) mongets(mtmp, O.ORCISH_HELM);
+        const which = (mm !== P.PM_ORC_CAPTAIN) ? mm
+                    : rn2(2) ? P.PM_MORDOR_ORC : P.PM_URUK_HAI;
+        switch (which) {
+        case P.PM_MORDOR_ORC:
+            if (!rn2(3)) mongets(mtmp, O.SCIMITAR);
+            if (!rn2(3)) mongets(mtmp, O.ORCISH_SHIELD);
+            if (!rn2(3)) mongets(mtmp, O.KNIFE);
+            if (!rn2(3)) mongets(mtmp, O.ORCISH_CHAIN_MAIL);
+            break;
+        case P.PM_URUK_HAI:
+            if (!rn2(3)) mongets(mtmp, O.ORCISH_CLOAK);
+            if (!rn2(3)) mongets(mtmp, O.ORCISH_SHORT_SWORD);
+            if (!rn2(3)) mongets(mtmp, O.IRON_SHOES);
+            if (!rn2(3)) {
+                mongets(mtmp, O.ORCISH_BOW);
+                m_initthrow(mtmp, O.ORCISH_ARROW, 12);
+            }
+            if (!rn2(3)) mongets(mtmp, O.URUK_HAI_SHIELD);
+            break;
+        default:
+            if (mm !== P.PM_ORC_SHAMAN && rn2(2))
+                mongets(mtmp, (mm === P.PM_GOBLIN || rn2(2) === 0)
+                              ? O.ORCISH_DAGGER : O.SCIMITAR);
+            break;
+        }
+        break;
+    }
+
+    case S_OGRE:
+        if (!rn2(mm === P.PM_OGRE_TYRANT ? 3
+                 : mm === P.PM_OGRE_LEADER ? 6 : 12))
+            mongets(mtmp, O.BATTLE_AXE);
+        else
+            mongets(mtmp, O.CLUB);
+        break;
+
+    case S_TROLL:
+        if (!rn2(2))
+            switch (rn2(4)) {
+            case 0: mongets(mtmp, O.RANSEUR); break;
+            case 1: mongets(mtmp, O.PARTISAN); break;
+            case 2: mongets(mtmp, O.GLAIVE); break;
+            case 3: mongets(mtmp, O.SPETUM); break;
+            default: break;
+            }
+        break;
+
+    case S_KOBOLD:
+        if (!rn2(4)) m_initthrow(mtmp, O.DART, 12);
+        break;
+
+    case S_CENTAUR:
+        if (rn2(2)) {
+            if (mm === P.PM_FOREST_CENTAUR) {
+                mongets(mtmp, O.BOW);
+                m_initthrow(mtmp, O.ARROW, 12);
+            } else {
+                mongets(mtmp, O.CROSSBOW);
+                m_initthrow(mtmp, O.CROSSBOW_BOLT, 12);
+            }
+        }
+        break;
+
+    case S_WRAITH:
+        mongets(mtmp, O.KNIFE);
+        mongets(mtmp, O.LONG_SWORD);
+        break;
+
+    case S_ZOMBIE:
+        if (!rn2(4)) mongets(mtmp, O.LEATHER_ARMOR);
+        if (!rn2(4)) mongets(mtmp, rn2(3) ? O.KNIFE : O.SHORT_SWORD);
+        break;
+
+    case S_LIZARD:
+        if (mm === P.PM_SALAMANDER)
+            mongets(mtmp, rn2(7) ? O.SPEAR : rn2(3) ? O.TRIDENT : O.STILETTO);
+        break;
+
+    case S_DEMON:
+        switch (mm) {
+        case P.PM_BALROG:
+            mongets(mtmp, O.BULLWHIP);
+            mongets(mtmp, O.BROADSWORD);
+            break;
+        case P.PM_ORCUS: mongets(mtmp, O.WAN_DEATH); break;
+        case P.PM_HORNED_DEVIL:
+            mongets(mtmp, rn2(4) ? O.TRIDENT : O.BULLWHIP);
+            break;
+        case P.PM_DISPATER: mongets(mtmp, O.WAN_STRIKING); break;
+        case P.PM_YEENOGHU: mongets(mtmp, O.FLAIL); break;
+        default: break;
+        }
+        /* djinn and mail daemons stop here so they leave nothing behind */
+        if (!is_demon(ptr))
+            break;
+        /* FALLTHRU */
+    default:
+        /* the general case: `bias` changes rnd()'s argument, not just the
+           branch, so getting it wrong changes the value as well as the pick */
+        bias = (is_lord(ptr) ? 1 : 0) + (is_prince(ptr) ? 2 : 0)
+             + (extra_nasty(ptr) ? 1 : 0);
+        switch (rnd(14 - (2 * bias))) {
+        case 1:
+            if (strongmonst(ptr)) mongets(mtmp, O.BATTLE_AXE);
+            else m_initthrow(mtmp, O.DART, 12);
+            break;
+        case 2:
+            if (strongmonst(ptr)) {
+                mongets(mtmp, O.TWO_HANDED_SWORD);
+            } else {
+                mongets(mtmp, O.CROSSBOW);
+                m_initthrow(mtmp, O.CROSSBOW_BOLT, 12);
+            }
+            break;
+        case 3:
+            mongets(mtmp, O.BOW);
+            m_initthrow(mtmp, O.ARROW, 12);
+            break;
+        case 4:
+            if (strongmonst(ptr)) mongets(mtmp, O.LONG_SWORD);
+            else m_initthrow(mtmp, O.DAGGER, 3);
+            break;
+        case 5:
+            if (strongmonst(ptr)) mongets(mtmp, O.LUCERN_HAMMER);
+            else mongets(mtmp, O.AKLYS);
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+
+    if (mtmp.m_lev > rn2(75))
+        mongets(mtmp, rnd_offensive_item(mtmp));
+}
+
+// src/makemon.c:1180 makemon()
+//
+// The RNG order for the common level-generation case — makemon(NULL, x, y,
+// MM_NOGRP) from fill_ordinary_room — is exactly:
+//   rndmonst()  ->  next_ident()  ->  newmonhp()  ->  [rn2(2) gender]
+//   ->  [peace_minded]  ->  m_initinv()  ->  rn2(100) saddle
+// Verified against seed8000 calls 1428-1441.
+export function makemon(ptr, x, y, mmflags) {
+    let mndx, mitem;
+    const anymon = !ptr;
+    const allow_minvent = ((mmflags & NO_MINVENT) === 0);
+    const countbirth = ((mmflags & MM_NOCOUNTBIRTH) === 0);
+
+    if (game.iflags?.debug_mongen || (!game.level?.flags?.rndmongen && !ptr))
+        return null;
+
+    /* src/makemon.c:1210 — when the caller asks for the hero's own square
+       outside level generation, find a nearby spot instead. enexto_core()
+       shuffles collect_coords()' rings, which is a substantial draw. */
+    const byyou = (x === game.u.ux && y === game.u.uy);
+    if (byyou && !game.in_mklev) {
+        const cc = { x: 0, y: 0 };
+        const gpflags = GP_CHECKSCARY | GP_AVOID_MONPOS;
+        if (!enexto_core(cc, game.u.ux, game.u.uy, ptr, gpflags, goodpos)
+            && !enexto_core(cc, game.u.ux, game.u.uy, ptr,
+                            gpflags & ~GP_CHECKSCARY, goodpos))
+            return null;
+        x = cc.x; y = cc.y;
+    }
+
+    if (!isok(x, y))
+        return null;
+
+    if (ptr) {
+        mndx = monsndx(ptr);
+        if (game.mvitals[mndx].mvflags & G_GENOD)
+            return null;
+    } else {
+        /* make a random (common) monster that can survive here */
+        let tryct = 0;
+        do {
+            if (!(ptr = rndmonst()))
+                return null;
+        } while (++tryct <= 50 && !goodpos(x, y, ptr));
+        mndx = monsndx(ptr);
+    }
+    propagate(mndx, countbirth, false);
+
+    const mtmp = {
+        mx: 0, my: 0, m_lev: 0, mhp: 0, mhpmax: 0,
+        female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
+        minvent: null, mgold: 0, data: ptr, mnum: mndx,
+        cham: NON_PM, mstrategy: 0,
+    };
+    if (mmflags & MM_ASLEEP)
+        mtmp.msleeping = 1;
+    mtmp.m_id = next_ident();
+
+    /* set up level and hit points */
+    newmonhp(mtmp, mndx);
+
+    const femaleok = (!is_male(ptr) && !is_neuter(ptr));
+    const maleok = (!is_female(ptr) && !is_neuter(ptr));
+    if (is_female(ptr) || ((mmflags & MM_FEMALE) !== 0 && femaleok))
+        mtmp.female = 1;
+    else if (is_male(ptr) || ((mmflags & MM_MALE) !== 0 && maleok))
+        mtmp.female = 0;
+    else if (ptr.msound === MS_LEADER && quest_info_leader() === mndx)
+        mtmp.female = game.quest_ldrgend;
+    else if (ptr.msound === MS_NEMESIS && quest_info_nemesis() === mndx)
+        mtmp.female = game.quest_nemgend;
+    else
+        mtmp.female = femaleok ? rn2(2) : 0;
+
+    place_monster(mtmp, x, y);
+    mtmp.mcansee = mtmp.mcanmove = true;
+    mtmp.mgenmklev = game.in_mklev;
+    mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : peace_minded(ptr);
+
+    switch (ptr.mlet) {
+    case S_MIMIC:
+        set_mimic_sym(mtmp);
+        break;
+    case S_SPIDER:
+    case S_SNAKE:
+        if (game.in_mklev) {
+            if (x && y)
+                mkobj_at(RANDOM_CLASS, x, y, true);
+            hideunder(mtmp);
+        }
+        break;
+    case S_LIGHT:
+    case S_ELEMENTAL:
+        if (mndx === PMNAMES.PM_STALKER || mndx === PMNAMES.PM_BLACK_LIGHT) {
+            mtmp.perminvis = true;
+            mtmp.minvis = true;
+        }
+        break;
+    case S_EEL:
+        if (game.in_mklev)
+            hideunder(mtmp);
+        break;
+    case S_LEPRECHAUN:
+        mtmp.msleeping = 1;
+        break;
+    case S_JABBERWOCK:
+    case S_NYMPH:
+        if (rn2(5) && !game.u.uhave?.amulet)
+            mtmp.msleeping = 1;
+        break;
+    case S_ORC:
+        if (game.urace?.mnum === 'PM_ELF')
+            mtmp.mpeaceful = false;
+        break;
+    case S_UNICORN:
+        if (is_unicorn(ptr) && sgn(game.u.ualign.type) === sgn(ptr.maligntyp))
+            mtmp.mpeaceful = true;
+        break;
+    case S_BAT:
+        /* Inhell only; mon_adjust_speed draws nothing */
+        break;
+    default:
+        break;
+    }
+
+    mitem = 0; /* STRANGE_OBJECT */
+    if (mndx === PMNAMES.PM_VLAD_THE_IMPALER)
+        mitem = ONAMES.CANDELABRUM_OF_INVOCATION;
+    else if (mndx === PMNAMES.PM_CROESUS)
+        mitem = ONAMES.TWO_HANDED_SWORD;
+    else if (ptr.msound === MS_NEMESIS)
+        mitem = ONAMES.BELL_OF_OPENING;
+    else if (mndx === PMNAMES.PM_PESTILENCE)
+        mitem = ONAMES.POT_SICKNESS;
+
+    /* pm_to_cham()/newcham() and the Wizard-of-Yendor branch sit here in C;
+       every species that reaches them is G_NOGEN or G_UNIQ and so cannot be
+       produced by rndmonst() during ordinary level generation. */
+    if (is_shapeshifter(ptr) || mndx === PMNAMES.PM_WIZARD_OF_YENDOR)
+        note_unported(`makemon shapechanger/wizard mndx=${mndx}`);
+
+    if (mitem && allow_minvent)
+        mongets(mtmp, mitem);
+
+    if (game.in_mklev) {
+        if ((is_ndemon(ptr) || mndx === PMNAMES.PM_WUMPUS
+             || mndx === PMNAMES.PM_LONG_WORM || mndx === PMNAMES.PM_GIANT_EEL)
+            && !game.u.uhave?.amulet && rn2(5))
+            mtmp.msleeping = true;
+    }
+
+    set_malign(mtmp);
+
+    if (anymon && !(mmflags & MM_NOGRP)) {
+        if ((ptr.geno & G_SGROUP) && rn2(2)) {
+            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        } else if (ptr.geno & G_LGROUP) {
+            if (rn2(3))
+                m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+            else
+                m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+        }
+    }
+
+    if (allow_minvent) {
+        if (is_armed(ptr))
+            m_initweap(mtmp);
+        m_initinv(mtmp);
+        m_dowear(mtmp, true);
+
+        if (!rn2(100) && is_domestic(ptr) && can_saddle(mtmp))
+            note_unported('put_saddle_on_mon');
+    }
+
+    if (ptr.mflags3 && !(mmflags & MM_NOWAIT)) {
+        if (ptr.mflags3 & M3_WAITFORU)
+            mtmp.mstrategy |= STRAT_WAITFORU;
+        if (ptr.mflags3 & M3_CLOSE)
+            mtmp.mstrategy |= STRAT_CLOSE;
+        if (ptr.mflags3 & (M3_WAITMASK | M3_COVETOUS))
+            mtmp.mstrategy |= STRAT_APPEARMSG;
+    }
+
+    return mtmp;
 }
