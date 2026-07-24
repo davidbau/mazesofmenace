@@ -1,9 +1,11 @@
-// Startup accessibility notices.
+// Accessibility notices for startup scans and turn-time glyph updates.
 // C refs: allmain.c:newgame(); cmd.c:dolookaround();
-// hack.c:notice_all_mons(); getpos.c:coord_desc().
+// hack.c:notice_all_mons(); getpos.c:coord_desc(); display.c:show_glyph();
+// pager.c:do_screen_description(), look_at_monster(), object_from_map().
 
 import {
     ALTAR,
+    AIR,
     AM_CHAOTIC,
     AM_LAWFUL,
     AM_MASK,
@@ -11,8 +13,19 @@ import {
     AM_SANCTUM,
     BLINDED,
     COLNO,
+    CLOUD,
     COULD_SEE,
     CORR,
+    DB_DIR,
+    DB_EAST,
+    DB_FLOOR,
+    DB_ICE,
+    DB_LAVA,
+    DB_MOAT,
+    DB_NORTH,
+    DB_SOUTH,
+    DB_UNDER,
+    DB_WEST,
     DBWALL,
     DOOR,
     DRAWBRIDGE_DOWN,
@@ -30,10 +43,13 @@ import {
     IRONBARS,
     INFRAVISION,
     IS_POOL,
+    IS_ROOM,
+    IS_WALL,
     LADDER,
     LAVAPOOL,
     LAVAWALL,
     M_AP_FURNITURE,
+    M_AP_F_DKNOWN,
     M_AP_OBJECT,
     M_AP_TYPMASK,
     MOAT,
@@ -45,6 +61,7 @@ import {
     SDOOR,
     SINK,
     STAIRS,
+    STONE,
     STRAT_WAITMASK,
     THRONE,
     TREE,
@@ -60,14 +77,34 @@ import {
     D_CLOSED,
     D_ISOPEN,
     D_LOCKED,
+    D_TRAPPED,
     LA_DOWN,
+    OBJ_FREE,
+    OBJ_FLOOR,
     isok,
 } from './const.js';
 import { cansee } from './vision.js';
 import { engr_at } from './engrave.js';
 import { t_at } from './trap.js';
 import { visible_region_at } from './region.js';
-import { rndmonnam } from './do_name.js';
+import { hliquid, rndmonnam } from './do_name.js';
+import {
+    fruit_from_indx,
+    makeplural,
+    matching_artifact_fruit,
+    makesingular,
+} from './fruit.js';
+import { m_at } from './monst.js';
+import { dealloc_obj, mkobj, mksobj } from './obj.js';
+import { objectGenerationEnv } from './object_generation.js';
+import { observe_object } from './o_init.js';
+import { obj_stop_timers } from './timeout.js';
+import {
+    hides_under,
+    is_clinger,
+    is_flyer,
+    is_hider,
+} from './mondata.js';
 import {
     AMULET_CLASS,
     ARMOR_CLASS,
@@ -78,11 +115,17 @@ import {
     COIN_CLASS,
     CORPSE,
     FOOD_CLASS,
+    FIRST_REAL_GEM,
+    FIRST_SPELL,
     GEM_CLASS,
     GLASS,
     ILLOBJ_CLASS,
     IRON,
     LIQUID,
+    LAST_GLASS_GEM,
+    LAST_SPELL,
+    LEASH,
+    MINERAL,
     OBJ_DESCR,
     OBJ_NAME,
     POTION_CLASS,
@@ -90,8 +133,10 @@ import {
     RING_CLASS,
     ROCK_CLASS,
     SCROLL_CLASS,
+    SLIME_MOLD,
     SPBOOK_CLASS,
     STATUE,
+    STRANGE_OBJECT,
     TOOL_CLASS,
     DRAGON_HIDE,
     TALLOW_CANDLE,
@@ -102,7 +147,12 @@ import {
     WEAPON_CLASS,
     WOOD,
 } from './objects.js';
-import { M1_MINDLESS } from './monsters.js';
+import {
+    M1_MINDLESS,
+    PM_SAMURAI,
+    S_EEL,
+    S_MIMIC,
+} from './monsters.js';
 import {
     S_air,
     S_altar,
@@ -253,6 +303,10 @@ function sameGlyphIdentity(left, right) {
     return left.a11yKind === right.a11yKind && left.ch === right.ch;
 }
 
+// Complete buffered-display subset of a levl location replayed around queued
+// notice frames. Capture, restore, and delta application use every entry;
+// reconciliation compares the display values, including selected nested
+// disp_glyph fields, but deliberately excludes the gnew dirty bit.
 const GLYPH_BUFFER_FIELDS = Object.freeze([
     'disp_ch',
     'disp_color',
@@ -280,24 +334,32 @@ function clonePresentation(glyph) {
     return clone;
 }
 
+function glyphBufferIndex(x, y) {
+    return y * COLNO + x;
+}
+
+function captureBufferedLocation(location) {
+    return {
+        disp_ch: location.disp_ch,
+        disp_color: location.disp_color,
+        disp_decgfx: location.disp_decgfx,
+        disp_attr: location.disp_attr,
+        disp_browser_ch: location.disp_browser_ch,
+        disp_browser_color: location.disp_browser_color,
+        disp_browser_attr: location.disp_browser_attr,
+        disp_glyph: clonePresentation(location.disp_glyph),
+        gnew: location.gnew,
+    };
+}
+
 function captureGlyphBuffer(state) {
-    const snapshot = [];
+    const snapshot = new Array(COLNO * ROWNO);
     for (let x = 1; x < COLNO; ++x) {
-        snapshot[x] = [];
         for (let y = 0; y < ROWNO; ++y) {
             const location = state.level?.at(x, y);
             if (!location) continue;
-            snapshot[x][y] = {
-                disp_ch: location.disp_ch,
-                disp_color: location.disp_color,
-                disp_decgfx: location.disp_decgfx,
-                disp_attr: location.disp_attr,
-                disp_browser_ch: location.disp_browser_ch,
-                disp_browser_color: location.disp_browser_color,
-                disp_browser_attr: location.disp_browser_attr,
-                disp_glyph: clonePresentation(location.disp_glyph),
-                gnew: location.gnew,
-            };
+            snapshot[glyphBufferIndex(x, y)]
+                = captureBufferedLocation(location);
         }
     }
     return snapshot;
@@ -317,6 +379,9 @@ function sameBufferedPresentation(left, right) {
             if (leftGlyph !== rightGlyph) return false;
             continue;
         }
+        // a11ySubject may point at mutable monster or object state, so comparing
+        // it would make frame equality depend on later mutations. a11yIdentity
+        // carries the stable logical distinction needed for reconciliation.
         const scalarMatch = [
             'ch',
             'color',
@@ -342,29 +407,102 @@ function sameBufferedPresentation(left, right) {
     return true;
 }
 
-function restoreGlyphBuffer(state, snapshot, cleanAgainst = null) {
+function restoreGlyphBuffer(state, snapshot) {
     for (let x = 1; x < COLNO; ++x) {
         for (let y = 0; y < ROWNO; ++y) {
             const location = state.level?.at(x, y);
-            const saved = snapshot?.[x]?.[y];
+            const saved = snapshot?.[glyphBufferIndex(x, y)];
             if (!location || !saved) continue;
             for (const field of GLYPH_BUFFER_FIELDS) {
                 location[field] = field === 'disp_glyph'
                     ? clonePresentation(saved[field])
                     : saved[field];
             }
-            if (cleanAgainst
-                && sameBufferedPresentation(saved, cleanAgainst[x]?.[y])) {
+        }
+    }
+}
+
+function applyGlyphFrameChanges(state, changes, dirty) {
+    for (const [index, saved] of changes ?? []) {
+        const y = Math.trunc(index / COLNO);
+        const x = index - y * COLNO;
+        const location = state.level?.at(x, y);
+        if (!location) continue;
+        for (const field of GLYPH_BUFFER_FIELDS) {
+            location[field] = field === 'disp_glyph'
+                ? clonePresentation(saved[field])
+                : saved[field];
+        }
+        if (saved.gnew) dirty.add(index);
+        else dirty.delete(index);
+    }
+}
+
+function dirtyGlyphBufferCells(snapshot) {
+    const dirty = new Set();
+    for (let index = 0; index < snapshot.length; ++index) {
+        if (snapshot[index]?.gnew) dirty.add(index);
+    }
+    return dirty;
+}
+
+function markGlyphFrameFlushed(state, dirty) {
+    for (const index of dirty) {
+        const y = Math.trunc(index / COLNO);
+        const x = index - y * COLNO;
+        const location = state.level?.at(x, y);
+        if (location) location.gnew = 0;
+    }
+    dirty.clear();
+}
+
+function materializeGlyphFrame(notices, throughIndex) {
+    const snapshot = [...notices[0].glyphFrame.base];
+    for (let index = 1; index <= throughIndex; ++index) {
+        for (const [cell, saved] of notices[index].glyphFrame.changes)
+            snapshot[cell] = saved;
+    }
+    return snapshot;
+}
+
+// Final restoration and dirty-bit reconciliation are separate state rules:
+// a cell already flushed by the last source-ordered notice stays clean only
+// when its final presentation is the same as that flushed presentation.
+function reconcileFinalGlyphBuffer(state, finalBuffer, flushedBuffer) {
+    for (let x = 1; x < COLNO; ++x) {
+        for (let y = 0; y < ROWNO; ++y) {
+            const index = glyphBufferIndex(x, y);
+            const location = state.level?.at(x, y);
+            if (location
+                && sameBufferedPresentation(
+                    finalBuffer[index],
+                    flushedBuffer[index],
+                )) {
                 location.gnew = 0;
             }
         }
     }
 }
 
+// Called by display.js:show_glyph_cell(), the local display.c:show_glyph()
+// boundary, after the buffered cell has been installed. Once a notice sequence
+// starts, retain only cells mutated since its preceding source-order pline
+// instead of another full map.
+export function noteGlyphBufferMutation(x, y, state) {
+    const tracker = state._glyphNoticeFrameTracker;
+    if (!tracker || state._emittingGlyphUpdateNotices) return;
+    const location = state.level?.at(x, y);
+    if (!location) return;
+    tracker.pending.set(
+        glyphBufferIndex(x, y),
+        captureBufferedLocation(location),
+    );
+}
+
 // C ref: display.c show_glyph(). The caller invokes this after installing the
 // presentation, matching show_glyph()'s gbuf update before
-// do_screen_description() and pline_xy(). Saving that buffer preserves an
-// intermediate disguise even though JavaScript performs message I/O later.
+// do_screen_description() and pline_xy(). The first notice saves one complete
+// frame; subsequent notices retain only intervening cell mutations.
 export function queueGlyphUpdateNotice(
     x,
     y,
@@ -402,6 +540,15 @@ export function queueGlyphUpdateNotice(
 
     const description = describeGlyphUpdate(current, x, y, state);
     if (!description) return false;
+    let glyphFrame;
+    const frameTracker = state._glyphNoticeFrameTracker;
+    if (frameTracker) {
+        glyphFrame = { changes: frameTracker.pending };
+        frameTracker.pending = new Map();
+    } else {
+        glyphFrame = { base: captureGlyphBuffer(state) };
+        state._glyphNoticeFrameTracker = { pending: new Map() };
+    }
     const notice = {
         x,
         y,
@@ -414,7 +561,7 @@ export function queueGlyphUpdateNotice(
             state,
             true,
         ),
-        glyphBuffer: captureGlyphBuffer(state),
+        glyphFrame,
     };
     (state._glyphUpdateNotices ??= []).push(notice);
     return true;
@@ -432,16 +579,31 @@ export async function emitGlyphUpdateNotices(state, env = {}) {
     if (!pending.length) return [];
 
     const finalBuffer = captureGlyphBuffer(state);
-    let lastFlushedBuffer = null;
+    state._glyphNoticeFrameTracker = null;
+    let lastFlushedIndex = -1;
+    const dirty = dirtyGlyphBufferCells(pending[0].glyphFrame.base);
     state._emittingGlyphUpdateNotices = true;
     try {
-        for (const notice of pending) {
-            restoreGlyphBuffer(state, notice.glyphBuffer);
+        restoreGlyphBuffer(state, pending[0].glyphFrame.base);
+        for (let index = 0; index < pending.length; ++index) {
+            const notice = pending[index];
+            if (index)
+                applyGlyphFrameChanges(state, notice.glyphFrame.changes, dirty);
             await pline(notice.message, state);
-            lastFlushedBuffer = notice.glyphBuffer;
+            lastFlushedIndex = index;
+            // ttyPline() normally performed this flush itself. Keep injected
+            // callbacks and subsequent sparse frames source-equivalent too.
+            markGlyphFrameFlushed(state, dirty);
         }
     } finally {
-        restoreGlyphBuffer(state, finalBuffer, lastFlushedBuffer);
+        restoreGlyphBuffer(state, finalBuffer);
+        if (lastFlushedIndex >= 0) {
+            reconcileFinalGlyphBuffer(
+                state,
+                finalBuffer,
+                materializeGlyphFrame(pending, lastFlushedIndex),
+            );
+        }
         state._emittingGlyphUpdateNotices = false;
     }
     return pending.map((notice) => notice.message);
@@ -595,10 +757,180 @@ function heroHallucinating(state) {
         && !propertyActive(state.u, HALLUC_RES);
 }
 
+function monsterSurfaceDescription(monster, state) {
+    const x = monster.mx;
+    const y = monster.my;
+    const location = state.level?.at(x, y);
+    if (!location) return 'floor';
+    const typ = surfaceType(location);
+    if (typ === AIR || typ === CLOUD) {
+        if (sameLevel(state.u?.uz, state.water_level)) return 'air bubble';
+        return typ === CLOUD ? 'cloud' : 'air';
+    }
+    if ([POOL, MOAT, WATER].includes(typ))
+        return state.u?.uinwater
+            && !sameLevel(state.u?.uz, state.water_level)
+            ? 'bottom' : hliquid('water', { state });
+    if (typ === ICE) return 'ice';
+    if ([LAVAPOOL, LAVAWALL].includes(typ))
+        return hliquid('lava', { state });
+    if (typ === DRAWBRIDGE_DOWN) return 'bridge';
+    if (typ === ALTAR) return 'altar';
+    if (typ === GRAVE) return 'headstone';
+    if (typ === FOUNTAIN) return 'fountain';
+    if ([STAIRS, LADDER].includes(typ)) return 'stairs';
+    if (IS_WALL(typ) || typ === SDOOR) return 'wall';
+    if (typ === DOOR) return 'doorway';
+    return IS_ROOM(typ) && !sameLevel(state.u?.uz, state.earth_level)
+        ? 'floor' : 'ground';
+}
+
+// Distinguish three buffered-subject states. Present null or non-object
+// metadata blocks inference. With hero memory, absent remembered data or a
+// remembered glyph without the sidecar permits the legacy mimic fallback. A
+// live glyph in no-memory mode never falls back because it is the current
+// display source.
+function bufferedGlyphSubjectAt(monster, state) {
+    const location = state.level?.at(
+        monster.mx,
+        monster.my,
+    );
+    const glyph = state.level?.flags?.hero_memory === false
+        ? location?.disp_glyph : location?.remembered_glyph;
+    return {
+        hasSubject: Boolean(glyph)
+            && Object.hasOwn(glyph, 'a11ySubject'),
+        subject: glyph?.a11ySubject ?? null,
+    };
+}
+
+function bufferedObjectSubjectAt(monster, state) {
+    const bufferedGlyph = bufferedGlyphSubjectAt(monster, state);
+    const buffered = bufferedGlyph.subject;
+    if (buffered?.type === 'object') return buffered;
+    if (bufferedGlyph.hasSubject) return null;
+    if (state.level?.flags?.hero_memory === false) return null;
+
+    // display_monster() sends a zeroobj through obj_to_glyph(). Gems and
+    // ordinary spellbooks satisfy obj_is_generic() by type, but zeroobj's
+    // class is zero, so their buffered glyph decodes as STRANGE_OBJECT.
+    const mappearance = monster.mappearance;
+    const zeroClassGeneric = (mappearance >= FIRST_REAL_GEM
+            && mappearance <= LAST_GLASS_GEM)
+        || (mappearance >= FIRST_SPELL && mappearance <= LAST_SPELL);
+    const otyp = zeroClassGeneric ? STRANGE_OBJECT : mappearance;
+    return {
+        type: 'object',
+        generic: false,
+        otyp,
+        oclass: state.objects?.[otyp]?.oc_class,
+        corpsenm: monster.mextra?.mcorpsenm,
+    };
+}
+
+// describe is synchronous and may return derived data but must not retain its
+// argument. Synthetic objects are deallocated as soon as it returns; live
+// objects remain owned by the level.
+function withBufferedObject(subject, x, y, state, describe) {
+    const resolved = objectFromBufferedGlyph(subject, x, y, state);
+    try {
+        return describe(resolved.object);
+    } finally {
+        if (resolved.ownership === 'synthetic') {
+            resolved.object.where = OBJ_FREE;
+            dealloc_obj(resolved.object, resolved.env);
+        }
+    }
+}
+
+function simpleObjectName(object, state) {
+    const name = minimalObjectBaseName(object, state);
+    return Math.trunc(object.quan ?? 1) === 1
+        ? name : pluralObjectName(object, name);
+}
+
+function hiddenObjectPhrase(object, state) {
+    const name = simpleObjectName(object, state);
+    if (Math.trunc(object.quan ?? 1) !== 1) return name;
+    // C ref: objnam.c just_an() suppresses an added article for every name
+    // beginning with "the ", not only for artifact-named fruit.
+    return /^the /iu.test(name)
+        ? name : `${indefiniteArticle(name)} ${name}`;
+}
+
+function monsterHiddenDescription(monster, state) {
+    let suffix = '';
+    const appearance = monster.m_ap_type & M_AP_TYPMASK;
+    if (appearance === M_AP_FURNITURE) {
+        const what = furnitureDescription(monster.mappearance) ?? 'something';
+        suffix = `, mimicking ${indefiniteArticle(what)} ${what}`;
+    } else if (appearance === M_AP_OBJECT) {
+        const subject = bufferedObjectSubjectAt(monster, state);
+        if (subject) {
+            const what = withBufferedObject(
+                subject,
+                monster.mx,
+                monster.my,
+                state,
+                (object) => hiddenObjectPhrase(object, state),
+            );
+            suffix = `, mimicking ${what}`;
+        } else {
+            suffix = ', mimicking something';
+        }
+    } else if (!appearance && monster.mundetected) {
+        suffix = ', hiding';
+        if (hides_under(monster.data)) {
+            const buffered = bufferedGlyphSubjectAt(monster, state);
+            const what = buffered.subject?.type === 'object'
+                ? withBufferedObject(
+                    buffered.subject,
+                    monster.mx,
+                    monster.my,
+                    state,
+                    (object) => hiddenObjectPhrase(object, state),
+                )
+                : buffered.hasSubject
+                    || state.level?.flags?.hero_memory === false
+                    ? null
+                    : state.level?.objects?.[monster.mx]?.[monster.my]
+                        ? hiddenObjectPhrase(
+                            state.level.objects[monster.mx][monster.my],
+                            state,
+                        )
+                        : null;
+            suffix += what ? ` under ${what}` : ' under something';
+        } else if (is_hider(monster.data)) {
+            const ceiling = (is_clinger(monster.data)
+                    && monster.data?.mlet !== S_MIMIC)
+                || is_flyer(monster.data);
+            suffix += ceiling
+                ? ' on the ceiling'
+                : ` on the ${monsterSurfaceDescription(monster, state)}`;
+        } else if (monster.data?.mlet === S_EEL
+            && [POOL, MOAT, WATER].includes(
+                state.level?.at(monster.mx, monster.my)?.typ,
+            )) {
+            suffix += ' in murky water';
+        }
+    }
+
+    const region = visible_region_at(monster.mx, monster.my, state);
+    if (region) {
+        suffix += `, in a cloud of ${
+            region.glyph === S_poisoncloud ? 'poison gas' : 'vapor'
+        }`;
+    }
+    return suffix;
+}
+
 // C ref: pager.c look_at_monster() and do_name.c distant_monnam(). The
 // optional species is the actual buffered monster glyph (including a
 // monster-shaped mimic appearance); hallucination replaces the name through
-// rndmonnam() but retains invisible and mobility suffixes.
+// rndmonnam() but retains invisible and mobility suffixes. env.state is
+// required for full pager semantics: hero status and equipment, visibility,
+// terrain, regions, catalog state, and display RNG all affect the result.
+// Omitting it intentionally exposes only the reduced naming behavior.
 export function describeMonster(monster, env = {}) {
     const state = env.state;
     const hallucinating = env.hallucinating
@@ -638,6 +970,12 @@ export function describeMonster(monster, env = {}) {
             text += `, trapped in ${indefiniteArticle(description)} ${description}`;
             trap.tseen = true;
         }
+    }
+    if (state
+        && (monster.mundetected
+            || (monster.m_ap_type & M_AP_TYPMASK)
+            || visible_region_at(monster.mx, monster.my, state))) {
+        text += monsterHiddenDescription(monster, state);
     }
     return text;
 }
@@ -704,41 +1042,127 @@ function furnitureIsInteresting(symbol) {
     ].includes(symbol);
 }
 
-function doorDescription(location) {
+function drawbridgeMask(location) {
+    return location?.flags || location?.drawbridgemask || 0;
+}
+
+function isDrawbridge(location) {
+    return [DRAWBRIDGE_UP, DRAWBRIDGE_DOWN].includes(location?.typ);
+}
+
+function isDrawbridgeWall(x, y, state) {
+    if (!isok(x, y)) return false;
+    const location = state.level?.at(x, y);
+    if (![DOOR, DBWALL].includes(location?.typ)) return false;
+    for (const [dx, dy, direction] of [
+        [1, 0, DB_WEST],
+        [-1, 0, DB_EAST],
+        [0, -1, DB_SOUTH],
+        [0, 1, DB_NORTH],
+    ]) {
+        if (!isok(x + dx, y + dy)) continue;
+        const neighbor = state.level?.at(x + dx, y + dy);
+        if (isDrawbridge(neighbor)
+            && (drawbridgeMask(neighbor) & DB_DIR) === direction) return true;
+    }
+    return false;
+}
+
+function doorDescription(location, x, y, state) {
+    if (isDrawbridgeWall(x, y, state))
+        return 'open drawbridge portcullis';
     const mask = location.flags || location.doormask || 0;
-    if (!mask || (mask & D_BROKEN)) return 'doorway';
+    if ((mask & ~D_TRAPPED) === D_BROKEN) return 'broken door';
+    if (!mask) return 'doorway';
     if (mask & D_ISOPEN) return 'open door';
     if (mask & (D_CLOSED | D_LOCKED)) return 'closed door';
     return 'doorway';
 }
 
-function altarDescription(location) {
+function sameLevel(left, right) {
+    return Boolean(left && right
+        && left.dnum === right.dnum
+        && left.dlevel === right.dlevel);
+}
+
+function adjacentToHero(x, y, state) {
+    const dx = x - (state.u?.ux ?? 0);
+    const dy = y - (state.u?.uy ?? 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+function surfaceType(location) {
+    if (location?.typ !== DRAWBRIDGE_UP) return location?.typ;
+    switch (drawbridgeMask(location) & DB_UNDER) {
+    case DB_ICE: return ICE;
+    case DB_LAVA: return LAVAPOOL;
+    case DB_MOAT: return MOAT;
+    case DB_FLOOR:
+    default:
+        return STONE;
+    }
+}
+
+function altarDescription(location, x, y, state) {
     const mask = location.altarmask ?? location.flags ?? 0;
-    const alignment = (mask & AM_MASK) === AM_LAWFUL ? 'lawful'
+    const hiddenAstralAlignment = (mask & AM_SANCTUM)
+        && sameLevel(state.u?.uz, state.astral_level)
+        && !adjacentToHero(x, y, state);
+    const alignment = hiddenAstralAlignment ? 'aligned'
+        : (mask & AM_MASK) === AM_LAWFUL ? 'lawful'
         : (mask & AM_MASK) === AM_NEUTRAL ? 'neutral'
             : (mask & AM_MASK) === AM_CHAOTIC ? 'chaotic' : 'unaligned';
     return `${alignment} ${mask & AM_SANCTUM ? 'high ' : ''}altar`;
 }
 
-function terrainDescription(location) {
+function waterbodyDescription(x, y, state) {
+    const location = state.level?.at(x, y);
+    const typ = surfaceType(location);
+    const liquid = (preferred) => hliquid(preferred, { state });
+    if (typ === LAVAPOOL) return `molten ${liquid('lava')}`;
+    if (typ === ICE) {
+        return heroHallucinating(state)
+            && !state.program_state?.gameover
+            ? `frozen ${liquid('water')}` : 'ice';
+    }
+    if (typ === POOL) return `pool of ${liquid('water')}`;
+    if (typ === MOAT) {
+        if (heroHallucinating(state) && !state.program_state?.gameover)
+            return `deep ${liquid('water')}`;
+        if (sameLevel(state.u?.uz, state.medusa_level)) return 'shallow sea';
+        if (sameLevel(state.u?.uz, state.juiblex_level)) return 'swamp';
+        if (state.urole?.mnum === PM_SAMURAI
+            && sameLevel(state.u?.uz, state.qstart_level)) return 'pond';
+        return 'moat';
+    }
+    if (typ === WATER) {
+        return sameLevel(state.u?.uz, state.water_level)
+            ? 'limitless water' : `wall of ${liquid('water')}`;
+    }
+    if (typ === LAVAWALL) return `wall of ${liquid('lava')}`;
+    return 'water';
+}
+
+function terrainDescription(location, x, y, state) {
     switch (location.typ) {
-    case DOOR: return doorDescription(location);
+    case DOOR: return doorDescription(location, x, y, state);
     case STAIRS: return location.ladder & LA_DOWN
         ? 'staircase down' : 'staircase up';
     case LADDER: return location.ladder & LA_DOWN ? 'ladder down' : 'ladder up';
-    case ALTAR: return altarDescription(location);
+    case ALTAR: return altarDescription(location, x, y, state);
     case GRAVE: return 'grave';
     case THRONE: return 'opulent throne';
     case SINK: return 'sink';
     case FOUNTAIN: return 'fountain';
     case DRAWBRIDGE_DOWN: return 'lowered drawbridge';
     case DRAWBRIDGE_UP: return 'raised drawbridge';
-    case POOL: return 'pool of water';
-    case MOAT: return 'moat';
-    case ICE: return 'ice';
-    case LAVAPOOL: return 'molten lava';
-    case LAVAWALL: return 'wall of lava';
-    case WATER: return 'wall of water';
+    case POOL:
+    case MOAT:
+    case ICE:
+    case LAVAPOOL:
+    case LAVAWALL:
+    case WATER:
+        return waterbodyDescription(x, y, state);
     case IRONBARS: return 'iron bars';
     case TREE: return 'tree';
     case CORR: return 'corridor';
@@ -749,15 +1173,18 @@ function terrainDescription(location) {
 function cmapDescription(symbol, x, y, state) {
     const location = state.level?.at(x, y);
     if (symbol === S_altar && location?.typ === ALTAR)
-        return altarDescription(location);
-    if ([S_ndoor, S_vodoor, S_hodoor, S_vcdoor, S_hcdoor].includes(
-        symbol,
-    ) && location?.typ === DOOR) {
-        return doorDescription(location);
+        return altarDescription(location, x, y, state);
+    if (symbol === S_ndoor
+        && [DOOR, DBWALL].includes(location?.typ)) {
+        return doorDescription(location, x, y, state);
     }
-    if (symbol === S_pool
-        && [POOL, MOAT].includes(location?.typ)) {
-        return terrainDescription(location);
+    if ([S_vodoor, S_hodoor, S_vcdoor, S_hcdoor].includes(symbol)
+        && location?.typ === DOOR) {
+        return [S_vodoor, S_hodoor].includes(symbol)
+            ? 'open door' : 'closed door';
+    }
+    if ([S_pool, S_water, S_lava, S_lavawall, S_ice].includes(symbol)) {
+        return waterbodyDescription(x, y, state);
     }
     const furniture = furnitureDescription(symbol);
     if (furniture) return furniture;
@@ -769,14 +1196,15 @@ function cmapDescription(symbol, x, y, state) {
     case S_stone: return 'dark part of a room';
     case S_corr: return 'corridor';
     case S_litcorr: return 'lit corridor';
-    case S_pool: return 'pool';
-    case S_ice: return 'ice';
-    case S_lava: return 'molten lava';
-    case S_lavawall: return 'wall of lava';
+    case S_pool:
+    case S_ice:
+    case S_lava:
+    case S_lavawall:
+    case S_water:
+        return waterbodyDescription(x, y, state);
     case S_air: return 'air';
-    case S_cloud: return 'cloud';
-    case S_water: return location?.typ === WATER
-        ? 'wall of water' : 'water';
+    case S_cloud: return sameLevel(state.u?.uz, state.air_level)
+        ? 'cloudy area' : 'fog/vapor cloud';
     case S_poisoncloud: return 'poison cloud';
     default: return null;
     }
@@ -785,10 +1213,14 @@ function cmapDescription(symbol, x, y, state) {
 function objectBaseName(object, state) {
     const type = state.objects?.[object.otyp];
     if (!type) return 'strange object';
+    if (object.otyp === SLIME_MOLD)
+        return fruit_from_indx(object.spe, state)?.fname ?? 'fruit';
     const identifiableWithoutCloseLook = object.oclass === COIN_CLASS
         || object.otyp === BOULDER
         || object.otyp === CORPSE
         || object.otyp === STATUE;
+    if (!object.dknown && object.oclass === GEM_CLASS)
+        return type.oc_material === MINERAL ? 'stone' : 'gem';
     if (!object.dknown && !identifiableWithoutCloseLook)
         return OBJECT_CLASS_NAMES[object.oclass] ?? 'object';
 
@@ -814,7 +1246,11 @@ function objectBaseName(object, state) {
     case AMULET_CLASS:
         return nameKnown ? actual : appearance ? `${appearance} amulet` : 'amulet';
     case GEM_CLASS:
-        return nameKnown ? actual : appearance ?? 'gem';
+        if (nameKnown) return actual;
+        if (!appearance) return 'gem';
+        return object.otyp >= FIRST_REAL_GEM
+            && object.otyp <= LAST_GLASS_GEM
+            ? `${appearance} gem` : `${appearance} stone`;
     case FOOD_CLASS:
         if (object.otyp === CORPSE && state.mons?.[object.corpsenm])
             return `${state.mons[object.corpsenm].pmnames?.[2] ?? 'monster'} corpse`;
@@ -828,6 +1264,23 @@ function objectBaseName(object, state) {
     default:
         return nameKnown || !appearance ? actual : appearance;
     }
+}
+
+// C ref: objnam.c minimal_xname(). Hidden-monster descriptions deliberately
+// suppress corpse and statue species while retaining a slime mold's fruit.
+function minimalObjectBaseName(object, state) {
+    if (object.otyp === CORPSE || object.otyp === STATUE) {
+        const type = state.objects?.[object.otyp];
+        return OBJ_NAME(type, state)
+            ?? (object.otyp === CORPSE ? 'corpse' : 'statue');
+    }
+    return objectBaseName(object, state);
+}
+
+function pluralObjectName(object, name) {
+    return makeplural(
+        object.otyp === SLIME_MOLD ? makesingular(name) : name,
+    );
 }
 
 function objectDamageModifiers(object, type) {
@@ -860,10 +1313,97 @@ function objectDamageModifiers(object, type) {
     return result;
 }
 
-function pluralize(text) {
-    if (/(?:s|x|z|ch|sh)$/iu.test(text)) return `${text}es`;
-    if (/[^aeiou]y$/iu.test(text)) return `${text.slice(0, -1)}ies`;
-    return `${text}s`;
+// pager.c:object_from_map() matches live floor and buried objects by otyp only;
+// the buffered corpse species or other instance fields do not refine lookup.
+function objectMatchesBufferedObjectType(object, subject) {
+    if (!object) return false;
+    // Generic glyphs encode their class in glyph_to_obj(), and no live
+    // object uses those reserved pre-FIRST_OBJECT type slots.
+    if (subject.generic) return false;
+    return object.otyp === subject.otyp;
+}
+
+function observeBufferedObject(object, synthetic, x, y, state) {
+    const dx = x - state.u.ux;
+    const dy = y - state.u.uy;
+    if (dx * dx + dy * dy <= 2
+        && !heroIsBlind(state)
+        && !heroHallucinating(state)
+        && (synthetic || object.where === OBJ_FLOOR)
+        && !state.iflags?.terrainmode) {
+        observe_object(object, state);
+    }
+}
+
+// C ref: pager.c object_from_map(). The rendered object used to choose a
+// glyph is not necessarily the semantic object being described: hallucination
+// and object-shaped mimics reconstruct from buffered identity and map state.
+// The ownership tag mirrors object_from_map()'s fakeobj return and lets
+// withBufferedObject() clean up synthetic results instead of treating them as
+// linked game state.
+function objectFromBufferedGlyph(subject, x, y, state) {
+    let object = state.level?.objects?.[x]?.[y] ?? null;
+    while (object && !objectMatchesBufferedObjectType(object, subject))
+        object = object.nexthere;
+    if (!object) {
+        for (let buried = state.level?.buriedobjlist
+                ?? state.buriedobjlist ?? null;
+            buried;
+            buried = buried.nobj) {
+            if (buried.ox === x && buried.oy === y
+                && objectMatchesBufferedObjectType(buried, subject)) {
+                object = buried;
+                break;
+            }
+        }
+    }
+
+    const monster = m_at(x, y, state);
+    const mimicMatches = Boolean(
+        monster
+        && (monster.m_ap_type & M_AP_TYPMASK) === M_AP_OBJECT
+        && !subject.generic
+        && monster.mappearance === subject.otyp,
+    );
+    const mimicCorpsenm = mimicMatches
+        && Number.isInteger(monster.mextra?.mcorpsenm)
+        && monster.mextra.mcorpsenm >= 0
+        ? monster.mextra.mcorpsenm
+        : null;
+    if (mimicMatches) object = null;
+    if (object) {
+        observeBufferedObject(object, false, x, y, state);
+        return { object, ownership: 'live' };
+    }
+
+    const env = objectGenerationEnv({ state });
+    object = subject.generic
+        ? mkobj(subject.oclass, false, env)
+        : mksobj(subject.otyp, false, false, env);
+    if (object.timed) obj_stop_timers(object, state, env);
+    if (object.oclass === COIN_CLASS) object.quan = 2;
+    else if (object.otyp === SLIME_MOLD)
+        object.spe = state.context?.current_fruit ?? 0;
+    if (mimicCorpsenm != null) {
+        if (object.otyp === SLIME_MOLD)
+            object.spe = mimicCorpsenm;
+        else
+            object.corpsenm = mimicCorpsenm;
+    } else if ((object.otyp === CORPSE || object.otyp === STATUE)
+               && subject.corpsenm != null) {
+        object.corpsenm = subject.corpsenm;
+    }
+    if (object.otyp === LEASH) object.leashmon = 0;
+    object.where = OBJ_FLOOR;
+    object.ox = x;
+    object.oy = y;
+    observeBufferedObject(object, true, x, y, state);
+    if (mimicMatches
+        && (object.dknown || (monster.m_ap_type & M_AP_F_DKNOWN))) {
+        monster.m_ap_type |= M_AP_F_DKNOWN;
+        observe_object(object, state);
+    }
+    return { object, ownership: 'synthetic', env };
 }
 
 function describeObject(object, state) {
@@ -876,13 +1416,24 @@ function describeObject(object, state) {
     const type = state.objects?.[object.otyp];
     const modifiers = `${object.greased ? 'greased ' : ''}`
         + objectDamageModifiers(object, type);
-    const base = `${modifiers}${objectBaseName(object, state)}`;
+    const name = objectBaseName(object, state);
+    const base = `${modifiers}${name}`;
     if (quantity !== 1) {
-        return `${vagueQuantity ? 'some' : quantity} ${pluralize(base)}`;
+        const plural = `${modifiers}${pluralObjectName(object, name)}`;
+        return `${vagueQuantity ? 'some' : quantity} ${plural}`;
     }
+    const artifactFruit = object.otyp === SLIME_MOLD
+        ? matching_artifact_fruit(name, state) : null;
+    if (artifactFruit?.forceThe)
+        return `the ${modifiers}${name.replace(/^the /iu, '')}`;
+    if (artifactFruit) return base;
     return `${indefiniteArticle(base)} ${base}`;
 }
 
+// Stateful pager.c:do_screen_description() boundary. Object reconstruction can
+// consume gameplay RNG and update discoveries; hallucinated descriptions can
+// consume display RNG. queueGlyphUpdateNotice() must call this exactly once
+// while queuing and cache the resulting notice text for later emission.
 function describeGlyphUpdate(glyph, x, y, state) {
     const subject = glyph?.a11ySubject;
     switch (subject?.type) {
@@ -892,7 +1443,13 @@ function describeGlyphUpdate(glyph, x, y, state) {
             species: subject.species,
         });
     case 'object':
-        return describeObject(subject.object, state);
+        return withBufferedObject(
+            subject,
+            x,
+            y,
+            state,
+            (object) => describeObject(object, state),
+        );
     case 'trap':
         return TRAP_DESCRIPTIONS[subject.trap?.ttyp]
             ?? TRAP_DESCRIPTIONS[subject.ttyp]
@@ -945,7 +1502,7 @@ function visibleSubjectAt(x, y, state) {
         if (engraving?.erevealed
             && [ROOM, ICE, CORR].includes(location.typ)) return 'engraving';
     }
-    return terrainDescription(location);
+    return terrainDescription(location, x, y, state);
 }
 
 export function collectLookaroundMessages(state) {
