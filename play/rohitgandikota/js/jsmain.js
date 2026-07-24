@@ -199,10 +199,14 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, nethackrc, storage } = input;
+    const { seed, datetime, nethackrc, storage } = input;
     const moves = input.moves || '';
 
-    const nhGame = new NethackGame({ seed, nethackrc, storage });
+    // datetime must be threaded through: src/calendar.c reads it for moon
+    // phase, Friday-the-13th luck, night/midnight and shopkeeper greetings,
+    // and js/calendar.js throws rather than silently falling back to the host
+    // clock if it is missing.
+    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };

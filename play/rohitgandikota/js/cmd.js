@@ -11,6 +11,9 @@ import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
+import { dosearch } from './detect.js';
+import { dolook, ECMD_TIME } from './invent.js';
+import { dovspell } from './spell.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -21,6 +24,17 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
 }
+
+// Keys src/cmd.c dispatches to real commands that this port has not reached
+// yet. Listed explicitly so the set shrinks visibly as commands land, rather
+// than hiding behind a catch-all.
+const KNOWN_UNPORTED = new Set([
+    'i',      // ddoinv       — inventory menu
+    '\\',    // dodiscovered — discoveries
+    '\x18',   // doattributes — ^X
+    '\x1b',   // ESC          — dismiss / cancel
+    ' ',      // dismiss --More--
+]);
 
 // C ref: hack.c — check if a cell blocks movement
 function blocksMove(x, y) {
@@ -38,6 +52,9 @@ export async function rhack(key) {
         // Read key from input
         await flush_screen(1);
         key = await nhgetch();
+        // The boundary frame has now been captured with the previous
+        // command's message on it, so it is safe to clear for this command.
+        game._pending_message = '';
     }
 
     const ch = String.fromCharCode(key);
@@ -45,8 +62,24 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if (ch === 's') {
+        // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
+        game.context.move = (dosearch() ? 1 : 0);
+    } else if (ch === '+') {
+        // src/cmd.c cmdlist — '+' is dovspell.
+        game.context.move = (dovspell() === ECMD_TIME ? 1 : 0);
+    } else if (ch === ':') {
+        // src/cmd.c cmdlist — ':' is dolook. It returns ECMD_OK when not
+        // blind, so looking does not consume a turn.
+        game.context.move = (dolook() === ECMD_TIME ? 1 : 0);
+    } else if (KNOWN_UNPORTED.has(ch)) {
+        // C recognises these keys and does real work for them; we have not
+        // ported that work yet. Emitting "Unknown command" here would be
+        // actively wrong — C never says that for these — so produce no
+        // message and consume no turn until the real command lands.
+        game.context.move = 0;
     } else {
-        // Unknown command
+        // src/cmd.c rhack() — genuinely unrecognised key.
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
