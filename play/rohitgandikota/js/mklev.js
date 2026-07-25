@@ -258,9 +258,18 @@ function mkobj_at(oclass, x, y, artif) {
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
 // src/mkobj.c place_object() / add_to_buried() — neither draws.
+// src/mkobj.c place_object() — C PREPENDS to fobj:
+//
+//     otmp->nobj = fobj;
+//     fobj = otmp;
+//
+// so the level's object list is newest-first, and anything that walks it in
+// order sees the most recently created object first. dog_goal()'s search walks
+// it calling dogfood() on each, and dogfood() draws, so the order is part of the
+// PRNG contract. Same mistake place_monster() used to have with fmon.
 function place_object(otmp, x, y) {
     otmp.ox = x; otmp.oy = y;
-    (game.level.objects ||= []).push(otmp);
+    (game.level.objects ||= []).unshift(otmp);
 }
 function add_to_buried(otmp) {
     (game.level.buriedobjs ||= []).push(otmp);

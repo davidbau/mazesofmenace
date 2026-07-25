@@ -1,7 +1,6 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
@@ -36,13 +35,12 @@ function init_sound_disp_gamewindows() {
 
 // include/you.h:441-442
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
-import { mcalcmove, mcalcdistress, movemon } from './mon.js';
+import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { dosounds } from './sounds.js';
 import { gethungry } from './eat.js';
 import { makemon, NO_MM_FLAGS } from './makemon.js';
 import { depth } from './dungeon.js';
 import { rnd } from './rng.js';
-import { fastforward_post_mklev } from './fastforward.js';
 import { find_ac } from './do_wear.js';
 
 // C ref: allmain.c newgame()
@@ -206,8 +204,27 @@ export async function newgame() {
     if (g.flags.legacy !== false)
         await com_pager(g.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
 
-    // Fast-forward what is still replayed: allmain.c moveloop_preamble().
-    fastforward_post_mklev();
+    // src/allmain.c:71-83 moveloop_preamble(), new-game branch. This was the
+    // last thing js/fastforward.js replayed, and replaying it skipped the line
+    // that matters most here:
+    //
+    //     svc.context.rndencode = rnd(9000);
+    //     set_wear((struct obj *) 0);
+    //     reset_justpicked(gi.invent);
+    //     (void) pickup(1);
+    //     svc.context.seer_turn = (long) rnd(30);
+    //     u.umovement = NORMAL_SPEED;      <-- never happened while replayed
+    //     initrack();
+    //
+    // Without the hero's initial movement points, moveloop_core's
+    // hero-can't-move loop starts at -NORMAL_SPEED instead of 0 and runs its
+    // new-turn block twice per command, advancing the turn counter twice.
+    g.context.rndencode = rnd(9000);
+    /* set_wear() and pickup(1) draw only when there is something to wear or
+       pick up at the starting square; neither is ported. */
+    note_unported_main('moveloop_preamble set_wear/pickup');
+    g.context.seer_turn = rnd(30);
+    g.u.umovement = NORMAL_SPEED;
 
     // src/allmain.c:453 — moveloop_preamble() calls find_ac(). Until it does,
     // u.uac is still the 0 it was born with, which is why the status line under
@@ -298,26 +315,48 @@ export async function moveloop_core() {
     const g = game;
 
     if (g.context?.move) {
-        /* src/allmain.c:233 — allot movement to every monster */
-        movemon();
-        mcalcdistress();
-        for (const mtmp of g.level?.monsters || [])
-            mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
+        /* src/allmain.c:205 — actual time passed */
+        g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
 
-        /* src/allmain.c:239 — placed after allotment, so a new monster
-           effectively loses its first turn */
-        maybe_generate_rnd_mon();
+        do {                       /* src/allmain.c:207 hero-can't-move loop */
+            let monscanmove;
 
-        u_calc_moveamt();
+            /* src/allmain.c:211 — monsters keep taking turns until none of
+               them has movement left, or until the hero has banked enough to
+               act. This inner loop is the whole reason a pet gets to move at
+               all: movement is allotted below, so a single movemon() call per
+               command would always find every monster still at zero. */
+            do {
+                monscanmove = movemon();
+                if (g.u.umovement >= NORMAL_SPEED)
+                    break;         /* it's now your turn */
+            } while (monscanmove);
 
-        g.moves = (g.moves || 1) + 1;
+            if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
+                /* src/allmain.c:222 — both hero and monsters are out of
+                   steam this round, so set up a new turn */
+                mcalcdistress();
 
-        dosounds();
-        gethungry();
+                /* src/allmain.c:232 — reallocate movement rations */
+                for (const mtmp of g.level?.monsters || [])
+                    mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
 
-        /* src/allmain.c:360 */
-        if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
-            rnd(3);                             /* u_wipe_engr(rnd(3)) */
+                /* src/allmain.c:238 — after allotment, so a new monster
+                   effectively loses its first turn */
+                maybe_generate_rnd_mon();
+
+                u_calc_moveamt();
+
+                g.moves = (g.moves || 1) + 1;
+
+                dosounds();
+                gethungry();
+
+                /* src/allmain.c:360 */
+                if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
+                    rnd(3);                             /* u_wipe_engr(rnd(3)) */
+            }
+        } while (g.u.umovement < NORMAL_SPEED);
     }
 
     // Vision + display
@@ -346,4 +385,8 @@ export async function moveloop(resuming) {
         await moveloop_core();
         if (game.program_state?.gameover) break;
     }
+}
+
+function note_unported_main(what) {
+    (game.unported ||= new Set()).add(what);
 }
