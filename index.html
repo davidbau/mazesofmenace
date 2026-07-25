@@ -310,86 +310,8 @@ footer a { color: var(--color-text-muted); }
 </header>
 
 <section id="leaderboard">
-    <section class="news-feed" aria-label="News feed">
-        <h3>News</h3>
-        <article class="news-item news-item-link">
-            <a href="/hunting-zombies/" class="news-item-link-wrap">
-                <time datetime="2026-07-16">July 16, 2026</time>
-                <p>
-                    <strong>Hunting Zombies:</strong>
-                    a code review of two contest entries finds a zombie that
-                    vanishes without ever being killed &mdash; what one pony
-                    fight reveals about testing, hidden state, and large-scale
-                    AI coding, and the oracle technique lockwo uses to keep its
-                    port honest. <span class="news-arrow" aria-hidden="true">&rarr;</span>
-                </p>
-            </a>
-        </article>
-        <details class="news-older">
-            <summary>Older news</summary>
-            <article class="news-item news-item-link">
-                <a href="/first-mimic/" class="news-item-link-wrap">
-                    <time datetime="2026-05-21">May 21, 2026</time>
-                    <p>
-                        <strong>The First Mimic:</strong>
-                        a brief report from Berkeley on serteal&rsquo;s near-perfect
-                        transpilation score, the first in the qualifying round, and
-                        the unofficial trophy he took home. The contest remains
-                        wide open. <span class="news-arrow" aria-hidden="true">&rarr;</span>
-                    </p>
-                </a>
-            </article>
-            <article class="news-item">
-                <time datetime="2026-05-12">May 12, 2026</time>
-                <p>
-                    <strong>Several teleport-contest bugs fixed</strong>
-                    thanks to careful reports from
-                    <a href="https://github.com/xeophon">@xeophon</a>
-                    (<a href="https://github.com/davidbau/teleport-contest/issues/5">#5</a>)
-                    and <a href="https://github.com/serteal">@serteal</a>
-                    (<a href="https://github.com/davidbau/teleport-contest/issues/6">#6</a>):
-                    the public session corpus is back in sync between contest
-                    and judge (38 files re-recorded), <code>seed0030</code>'s
-                    seg-0 character mismatch is fixed, and the scorer now
-                    requires the cursor to land in the recorded position for a
-                    screen to count as matched. Pull the latest template and
-                    re-run <code>bash frozen/score.sh</code> to pick up the
-                    corrections.
-                </p>
-            </article>
-            <article class="news-item">
-                <time datetime="2026-05-09">May 9, 2026</time>
-                <p>
-                    <strong>Contest updates:</strong> several improvements. Forks
-                    now declare a category &mdash; <em>agentic</em>,
-                    <em>transpiled</em>, or <em>other</em> &mdash; by running
-                    <code>set-category.sh</code> once before it will be scored.
-                    Animation-frame parity is scored as a supplemental metric,
-                    supported by a new API. <a href="/play/">/play/&lt;owner&gt;/</a>
-                    now supports saving, loading, and an in-browser options editor
-                    at <a href="/nethackrc/">/nethackrc/</a>, and the persistence
-                    API was simplified to a single <code>opts.storage</code> handle
-                    so save/restore survives a browser reload. (serteal&rsquo;s
-                    port hasn&rsquo;t regressed; their sessions just need a small
-                    migration to fit the new API.) The corpus was re-recorded with
-                    instrumentation fixes. Phase 2 is clarified as a test of
-                    maintainability.
-                </p>
-            </article>
-            <article class="news-item">
-                <time datetime="2026-05-08">May 8, 2026</time>
-                <p>
-                    <strong>serteal</strong> has submitted the first transpiled solution &mdash;
-                    an Emscripten compilation of the C source into a JavaScript emulation of
-                    the C state machine, including a simulated C heap. Click serteal&rsquo;s
-                    name to inspect the JavaScript, and <strong>Play</strong> to play the
-                    working game in the browser. It is not yet a readable JS port, and there
-                    is still plenty of time to write one! <em>Can you build a port that beats
-                    the transpiler in Phase 2?</em>
-                </p>
-            </article>
-        </details>
-    </section>
+    <section class="news-feed" aria-label="News feed" data-news data-heading="h3"></section>
+    <script src="/assets/news.js"></script>
     <h2>Leaderboard</h2>
     <p class="lb-meta">
         Re-scored every two hours &middot;
