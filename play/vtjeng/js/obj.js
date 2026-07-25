@@ -35,13 +35,12 @@ import {
     ROWNO,
     SPINACH_TIN,
     TIMER_OBJECT,
-    W_ARM,
 } from './const.js';
-import { ART_SUNSWORD } from './artifacts.js';
 import { noveltitle } from './do_name.js';
 import { depth, level_difficulty, on_level } from './dungeon.js';
 import { set_tin_variety } from './eat.js';
 import { game } from './gstate.js';
+import { obj_sheds_light } from './light.js';
 import { rndmonnum } from './makemon.js';
 import {
     can_be_hatched,
@@ -109,8 +108,6 @@ import {
     GLOB_OF_GREEN_SLIME,
     GLASS,
     GOLD_PIECE,
-    GOLD_DRAGON_SCALE_MAIL,
-    GOLD_DRAGON_SCALES,
     HEAVY_IRON_BALL,
     HELM_OF_OPPOSITE_ALIGNMENT,
     HORN_OF_PLENTY,
@@ -436,16 +433,130 @@ export function clear_splitobjs(state = game) {
     state.context.objsplit.child_oid = 0;
 }
 
-// C ref: mkobj.c next_ident(). Object and monster ids share context.ident.
-export function next_ident(env = {}) {
-    const normalized = objectEnv(env);
-    const context = normalized.state.context;
+// C ref: shk.c oid_price_adjustment(), called by mkobj.c nextoid().
+function oidPriceAdjustment(obj, oid, state) {
+    const type = objectType(obj, state);
+    const identityKnown = obj.dknown && type.oc_name_known;
+    const glassGem = obj.oclass === GEM_CLASS
+        && type.oc_material === GLASS;
+    return !identityKnown && !glassGem && oid % 4 === 0 ? 1 : 0;
+}
+
+function initializedIdentContext(state) {
+    const context = state?.context;
     if (!context
         || !Number.isInteger(context.ident)
         || context.ident <= 0
         || context.ident > 0xffff_ffff) {
         throw new Error('next_ident requires initialized nonzero context.ident');
     }
+    return context;
+}
+
+function nextSplitOid(source, child, normalized) {
+    const context = initializedIdentContext(normalized.state);
+    const adjustment = oidPriceAdjustment(
+        source,
+        source.o_id,
+        normalized.state,
+    );
+    let oid = (context.ident - 1) >>> 0;
+    let tries = 256;
+    do {
+        oid = (oid + 1) >>> 0;
+        if (!oid) oid = 1;
+    } while (oidPriceAdjustment(child, oid, normalized.state) !== adjustment
+        && --tries >= 0);
+    context.ident = oid;
+    next_ident(normalized);
+    return oid;
+}
+
+// C ref: mkobj.c copy_oextra(). C copies the inline monster structure while
+// retaining its pointer fields, then separately copies mextra and clears nmon.
+export function copy_oextra(target, source) {
+    if (!target || !source || !source.oextra) return target;
+
+    target.oextra ??= {};
+    const sourceExtra = source.oextra;
+    if (sourceExtra.oname)
+        target.oextra.oname = String(sourceExtra.oname);
+    if (sourceExtra.omonst) {
+        const sourceMonster = sourceExtra.omonst;
+        target.oextra.omonst = {
+            ...sourceMonster,
+            nmon: null,
+            mtrack: Array.isArray(sourceMonster.mtrack)
+                ? sourceMonster.mtrack.map((point) => ({ ...point }))
+                : sourceMonster.mtrack,
+            mextra: sourceMonster.mextra
+                ? structuredClone(sourceMonster.mextra)
+                : null,
+        };
+    }
+    if (sourceExtra.omailcmd)
+        target.oextra.omailcmd = String(sourceExtra.omailcmd);
+    if (sourceExtra.omid != null)
+        target.oextra.omid = sourceExtra.omid;
+    return target;
+}
+
+// C ref: mkobj.c splitobj(). The child follows its parent in both ownership
+// chains, receives a price-compatible object id, and clears transient worn,
+// light, timer, Lua, and pickup state.
+export function splitobj(obj, quantity, env = {}) {
+    const normalized = objectEnv(env);
+    quantity = Math.trunc(quantity);
+    if (!obj || typeof obj !== 'object')
+        throw new TypeError('splitobj requires an object');
+    if (obj.cobj || quantity <= 0 || Math.trunc(obj.quan) <= quantity) {
+        throw new RangeError(
+            `splitobj requires 0 < quantity < ${obj.quan} `
+            + 'and an empty object',
+        );
+    }
+    const splitLight = obj_sheds_light(obj);
+    if (obj.unpaid) requiredHook(normalized, 'splitBill', obj);
+    if (obj.timed) requiredHook(normalized, 'splitObjectTimers', obj);
+    if (splitLight) requiredHook(normalized, 'splitObjectLight', obj);
+
+    const child = newObject({
+        ...obj,
+        oextra: null,
+    });
+    child.o_id = nextSplitOid(obj, child, normalized);
+    child.timed = 0;
+    child.lamplit = false;
+    child.owornmask = 0;
+    obj.quan -= quantity;
+    obj.owt = weight(obj, normalized);
+    child.quan = quantity;
+    child.owt = weight(child, normalized);
+    child.lua_ref_cnt = 0;
+    child.pickup_prev = false;
+
+    normalized.state.context.objsplit ??= {};
+    normalized.state.context.objsplit.parent_oid = obj.o_id;
+    normalized.state.context.objsplit.child_oid = child.o_id;
+    obj.nobj = child;
+    if (obj.where === OBJ_FLOOR) obj.nexthere = child;
+    if (child.where === OBJ_LUAFREE) child.where = OBJ_FREE;
+
+    if (obj.unpaid)
+        normalized.hooks.splitBill(obj, child, normalized);
+    copy_oextra(child, obj);
+    if (child.oextra?.omid != null) delete child.oextra.omid;
+    if (obj.timed)
+        normalized.hooks.splitObjectTimers(obj, child, normalized);
+    if (splitLight)
+        normalized.hooks.splitObjectLight(obj, child, normalized);
+    return child;
+}
+
+// C ref: mkobj.c next_ident(). Object and monster ids share context.ident.
+export function next_ident(env = {}) {
+    const normalized = objectEnv(env);
+    const context = initializedIdentContext(normalized.state);
     const result = context.ident >>> 0;
     context.ident = (result + normalized.random.rnd(2)) >>> 0;
     if (!context.ident)
@@ -459,24 +570,6 @@ function lifecycleEnv(env = {}) {
         state: env.state ?? game,
         hooks: env.hooks ?? {},
     };
-}
-
-// C refs: obj.h ignitable(), artifact.c artifact_light(), and
-// light.c obj_sheds_light().
-function objectShedsLight(obj) {
-    if (!obj.lamplit) return false;
-    const ignitable = obj.otyp === BRASS_LANTERN
-        || obj.otyp === OIL_LAMP
-        || (obj.otyp === MAGIC_LAMP && obj.spe > 0)
-        || obj.otyp === CANDELABRUM_OF_INVOCATION
-        || obj.otyp === TALLOW_CANDLE
-        || obj.otyp === WAX_CANDLE
-        || obj.otyp === POT_OIL;
-    const artifactLight = ((obj.otyp === GOLD_DRAGON_SCALE_MAIL
-                            || obj.otyp === GOLD_DRAGON_SCALES)
-                           && Boolean(obj.owornmask & W_ARM))
-        || obj.oartifact === ART_SUNSWORD;
-    return ignitable || artifactLight;
 }
 
 // C ref: mkobj.c dealloc_obj(). JS collapses C's deferred OBJ_DELETED queue
@@ -506,7 +599,7 @@ export function dealloc_obj(obj, env = {}) {
     }
     // A burn timer can own and remove the light source, so recheck after all
     // object timers have stopped, matching dealloc_obj()'s source order.
-    if (objectShedsLight(obj)) {
+    if (obj_sheds_light(obj)) {
         const deleteLight = requiredHook(
             normalized,
             'deleteObjectLightSource',
@@ -578,7 +671,7 @@ export function erosionMatters(obj, state = game) {
         || (obj.oclass === TOOL_CLASS && isWeptool(obj, state));
 }
 
-function isFlammable(obj, state) {
+export function isFlammable(obj, state = game) {
     const type = objectType(obj, state);
     if (isCandle(obj)) return false;
     if (type.oc_oprop === FIRE_RES || obj.otyp === WAN_FIRE) return false;
@@ -586,27 +679,27 @@ function isFlammable(obj, state) {
         || type.oc_material === PLASTIC;
 }
 
-function isRottable(obj, state) {
+export function isRottable(obj, state = game) {
     const material = objectType(obj, state).oc_material;
     return (material <= WOOD && material !== LIQUID)
         || material === DRAGON_HIDE;
 }
 
-function isRustprone(obj, state) {
+export function isRustprone(obj, state = game) {
     return objectType(obj, state).oc_material === IRON;
 }
 
-function isCorrodeable(obj, state) {
+export function isCorrodeable(obj, state = game) {
     const material = objectType(obj, state).oc_material;
     return material === COPPER || material === IRON;
 }
 
-function isCrackable(obj, state) {
+export function isCrackable(obj, state = game) {
     return objectType(obj, state).oc_material === GLASS
         && obj.oclass === ARMOR_CLASS;
 }
 
-function isDamageable(obj, state) {
+export function isDamageable(obj, state = game) {
     return isRustprone(obj, state)
         || isFlammable(obj, state)
         || isRottable(obj, state)

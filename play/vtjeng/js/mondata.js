@@ -6,16 +6,23 @@
 import {
     A_CHA,
     ALL_TRAPS,
+    ACID_RES,
     FEMALE,
     G_GENOD,
     MALE,
     NEUTRAL,
     NO_TRAP,
     NUM_MGENDERS,
+    POISON_RES,
+    W_ACCESSORY,
+    W_ARMC,
+    W_ARMOR,
+    W_WEP,
 } from './const.js';
 import { effective_attribute } from './attrib.js';
 import { game } from './gstate.js';
 import * as M from './monsters.js';
+import { ALCHEMY_SMOCK } from './objects.js';
 import { rn2, rnd } from './rng.js';
 import { roles } from './roles.js';
 
@@ -99,12 +106,18 @@ export function nolimbs(species) {
 export function notake(species) { return flag1(species, M.M1_NOTAKE); }
 export function has_head(species) { return !flag1(species, M.M1_NOHEAD); }
 export function unsolid(species) { return flag1(species, M.M1_UNSOLID); }
+export function thick_skinned(species) {
+    return flag1(species, M.M1_THICK_HIDE);
+}
 export function mindless(species) { return flag1(species, M.M1_MINDLESS); }
+export function humanoid(species) { return flag1(species, M.M1_HUMANOID); }
 export function is_animal(species) { return flag1(species, M.M1_ANIMAL); }
 export function slithy(species) { return flag1(species, M.M1_SLITHY); }
 export function regenerates(species) { return flag1(species, M.M1_REGEN); }
 export function perceives(species) { return flag1(species, M.M1_SEE_INVIS); }
 export function can_teleport(species) { return flag1(species, M.M1_TPORT); }
+export function acidic(species) { return flag1(species, M.M1_ACID); }
+export function poisonous(species) { return flag1(species, M.M1_POIS); }
 export function carnivorous(species) { return flag1(species, M.M1_CARNIVORE); }
 export function herbivorous(species) { return flag1(species, M.M1_HERBIVORE); }
 export function metallivorous(species) {
@@ -114,6 +127,10 @@ export function metallivorous(species) {
 export function is_undead(species) { return flag2(species, M.M2_UNDEAD); }
 export function is_were(species) { return flag2(species, M.M2_WERE); }
 export function is_demon(species) { return flag2(species, M.M2_DEMON); }
+export function is_elf(species) { return flag2(species, M.M2_ELF); }
+export function is_dwarf(species) { return flag2(species, M.M2_DWARF); }
+export function is_gnome(species) { return flag2(species, M.M2_GNOME); }
+export function is_orc(species) { return flag2(species, M.M2_ORC); }
 export function is_lord(species) { return flag2(species, M.M2_LORD); }
 export function is_prince(species) { return flag2(species, M.M2_PRINCE); }
 export function is_dlord(species) {
@@ -160,6 +177,50 @@ export function likes_lava(species) {
         || species?.pmidx === M.PM_SALAMANDER;
 }
 
+export function flaming(species) {
+    return species?.pmidx === M.PM_FIRE_VORTEX
+        || species?.pmidx === M.PM_FLAMING_SPHERE
+        || likes_lava(species);
+}
+
+export function likes_fire(species) {
+    return species?.pmidx === M.PM_FIRE_VORTEX
+        || species?.pmidx === M.PM_FLAMING_SPHERE
+        || likes_lava(species);
+}
+
+export function touch_petrifies(species) {
+    return species?.pmidx === M.PM_COCKATRICE
+        || species?.pmidx === M.PM_CHICKATRICE;
+}
+
+export function flesh_petrifies(species) {
+    return touch_petrifies(species)
+        || species?.pmidx === M.PM_MEDUSA;
+}
+
+export function slimeproof(species) {
+    return species?.pmidx === M.PM_GREEN_SLIME
+        || flaming(species)
+        || noncorporeal(species);
+}
+
+// C ref: mondata.h vegan(). This is a species diet predicate; hero conduct
+// code layers vegetarian() on top of it.
+export function vegan(species) {
+    return species?.mlet === M.S_BLOB
+        || species?.mlet === M.S_JELLY
+        || species?.mlet === M.S_FUNGUS
+        || species?.mlet === M.S_VORTEX
+        || species?.mlet === M.S_LIGHT
+        || (species?.mlet === M.S_ELEMENTAL
+            && species?.pmidx !== M.PM_STALKER)
+        || (species?.mlet === M.S_GOLEM
+            && species?.pmidx !== M.PM_FLESH_GOLEM
+            && species?.pmidx !== M.PM_LEATHER_GOLEM)
+        || noncorporeal(species);
+}
+
 // C refs: mondata.h hates_silver(), mondata.c mon_hates_silver(), and
 // monmove.h is_vampshifter(). A shapechanger's current cham field matters
 // even when its present species would not otherwise hate silver.
@@ -179,6 +240,64 @@ export function hates_silver(species) {
 
 export function mon_hates_silver(monster) {
     return is_vampshifter(monster) || hates_silver(monster?.data);
+}
+
+function monsterArtifactDefense(monster, obj, field, damageType, state) {
+    if (!obj?.oartifact) return false;
+    const artifact = state.artilist?.[obj.oartifact];
+    if (!artifact) {
+        throw new Error(
+            `Resists_Elem requires artifact ${obj.oartifact} data`,
+        );
+    }
+    return artifact[field]?.adtyp === damageType;
+}
+
+// C ref: mondata.c Resists_Elem(), elemental-property monster arm. Hero
+// properties and the three non-elemental delegation cases have separate
+// consumers and are outside this monster predicate.
+export function monster_resists_element(monster, property, state = game) {
+    if (!Number.isInteger(property) || property < 1 || property > 8)
+        throw new RangeError(`invalid elemental resistance ${property}`);
+
+    const resistanceMask = 1 << (property - 1);
+    const resistanceBits = (monster.data?.mresists ?? 0)
+        | (monster.mextrinsics ?? 0)
+        | (monster.mintrinsics ?? 0);
+    if (resistanceBits & resistanceMask) return true;
+
+    const damageType = property + 1;
+    if (monsterArtifactDefense(
+        monster,
+        monster.mw,
+        'defn',
+        damageType,
+        state,
+    )) {
+        return true;
+    }
+
+    const slotmask = W_ARMOR | W_ACCESSORY | W_WEP;
+    for (let obj = monster.minvent; obj; obj = obj.nobj) {
+        const wornProperty = Boolean(
+            (obj.owornmask & slotmask)
+            && state.objects?.[obj.otyp]?.oc_oprop === property,
+        );
+        const smockResistance = (obj.owornmask & W_ARMC) === W_ARMC
+            && obj.otyp === ALCHEMY_SMOCK
+            && (property === POISON_RES || property === ACID_RES);
+        if (wornProperty || smockResistance
+            || monsterArtifactDefense(
+                monster,
+                obj,
+                'cary',
+                damageType,
+                state,
+            )) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // C ref: mondata.c resist_conflict(). Keep the unbounded lower end of the
@@ -582,6 +701,101 @@ export function is_rider(ptr) {
     return index === M.PM_DEATH
         || index === M.PM_FAMINE
         || index === M.PM_PESTILENCE;
+}
+
+function isMindFlayer(species) {
+    return species?.pmidx === M.PM_MIND_FLAYER
+        || species?.pmidx === M.PM_MASTER_MIND_FLAYER;
+}
+
+function isLongWorm(species) {
+    return species?.pmidx === M.PM_BABY_LONG_WORM
+        || species?.pmidx === M.PM_LONG_WORM
+        || species?.pmidx === M.PM_LONG_WORM_TAIL;
+}
+
+// C ref: mondata.c same_race(). Growth-family comparison is intentionally
+// directional: after direct race/class checks, walk both directions from the
+// first species before applying the handful of exceptional families.
+export function same_race(first, second) {
+    if (!first || !second) return false;
+    if (first === second
+        || (Number.isInteger(first.pmidx)
+            && first.pmidx === second.pmidx)) {
+        return true;
+    }
+    if (is_human(first)) return is_human(second);
+    if (is_elf(first)) return is_elf(second);
+    if (is_dwarf(first)) return is_dwarf(second);
+    if (is_gnome(first)) return is_gnome(second);
+    if (is_orc(first)) return is_orc(second);
+    if (is_giant(first)) return is_giant(second);
+    if (is_golem(first)) return is_golem(second);
+    if (isMindFlayer(first)) return isMindFlayer(second);
+
+    const firstKobold = first.mlet === M.S_KOBOLD
+        || first.pmidx === M.PM_KOBOLD_ZOMBIE
+        || first.pmidx === M.PM_KOBOLD_MUMMY;
+    if (firstKobold) {
+        return second.mlet === M.S_KOBOLD
+            || second.pmidx === M.PM_KOBOLD_ZOMBIE
+            || second.pmidx === M.PM_KOBOLD_MUMMY;
+    }
+    if (first.mlet === M.S_OGRE) return second.mlet === M.S_OGRE;
+    if (first.mlet === M.S_NYMPH) return second.mlet === M.S_NYMPH;
+    if (first.mlet === M.S_CENTAUR) return second.mlet === M.S_CENTAUR;
+    if (is_unicorn(first)) return is_unicorn(second);
+    if (first.mlet === M.S_DRAGON) return second.mlet === M.S_DRAGON;
+    if (first.mlet === M.S_NAGA) return second.mlet === M.S_NAGA;
+    if (is_rider(first)) return is_rider(second);
+    if (is_minion(first)) return is_minion(second);
+    if (first.pmidx === M.PM_TENGU || second.pmidx === M.PM_TENGU)
+        return false;
+    if (first.mlet === M.S_IMP) return second.mlet === M.S_IMP;
+    if (second.mlet === M.S_IMP) return false;
+    if (is_demon(first)) return is_demon(second);
+    if (is_undead(first)) {
+        if ([
+            M.S_ZOMBIE,
+            M.S_MUMMY,
+            M.S_VAMPIRE,
+            M.S_LICH,
+            M.S_WRAITH,
+            M.S_GHOST,
+        ].includes(first.mlet)) {
+            return second.mlet === first.mlet;
+        }
+    } else if (is_undead(second)) {
+        return false;
+    }
+
+    if (first.mlet === second.mlet) {
+        const secondIndex = second.pmidx;
+        let previous = first.pmidx;
+        for (let next = big_to_little(previous);
+            next !== previous;
+            previous = next, next = big_to_little(next)) {
+            if (next === secondIndex) return true;
+        }
+        previous = first.pmidx;
+        for (let next = little_to_big(previous);
+            next !== previous;
+            previous = next, next = little_to_big(next)) {
+            if (next === secondIndex) return true;
+        }
+    }
+    if (first.pmidx === M.PM_GARGOYLE
+        || first.pmidx === M.PM_WINGED_GARGOYLE) {
+        return second.pmidx === M.PM_GARGOYLE
+            || second.pmidx === M.PM_WINGED_GARGOYLE;
+    }
+    if (first.pmidx === M.PM_KILLER_BEE
+        || first.pmidx === M.PM_QUEEN_BEE) {
+        return second.pmidx === M.PM_KILLER_BEE
+            || second.pmidx === M.PM_QUEEN_BEE;
+    }
+    if (isLongWorm(first)) return isLongWorm(second);
+    return false;
 }
 
 // C ref: mondata.h is_unicorn() and likes_gems().
