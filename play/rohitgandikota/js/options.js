@@ -228,3 +228,20 @@ export async function ask_do_tutorial() {
         if (answered) return answered === 'y';
     }
 }
+
+// src/options.c:10134 set_playmode() — wizard mode renames the hero.
+//
+// OPTIONS=playmode:debug reaches here and overwrites plname with "wizard",
+// which the status line then shows capitalised. A session whose rc sets
+// name:Something AND playmode:debug displays "Wizard", not "Something", so
+// honouring only the name option puts the wrong string on every frame.
+export function set_playmode() {
+    if (game.wizard) {
+        /* authorize_wizard_mode() checks the system's WIZARDS list; the
+           recorder builds with wizard mode available, which is how these
+           sessions were recorded at all. */
+        game.plname = 'wizard';
+        game.plnamelen = game.plname.length;
+        game.discover = !game.wizard;
+    }
+}

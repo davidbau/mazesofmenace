@@ -222,11 +222,34 @@ function render_map_row(y) {
     return output;
 }
 
+// src/botl.c:20 get_strength_str() — Strength above 18 prints as 18/xx.
+//
+// include/attrib.h:36-37: STR18(x) is 18+x and STR19(x) is 100+x, so a stored
+// 19 means 18/01 and a stored 119 means 19. Printing the raw number showed
+// "St:19" where C shows "St:18/01" — the value was right, the rendering wasn't.
+function get_strength_str() {
+    const STR18 = (x) => 18 + x;
+    const st = game.u.acurr?.a?.[0] ?? 0;   /* A_STR */
+
+    if (st > 18) {
+        if (st > STR18(100))
+            return String(st - 100);
+        else if (st < STR18(100))
+            return `18/${String(st - 18).padStart(2, '0')}`;
+        else
+            return '18/**';
+    }
+    return String(st);
+}
+
 // ── Status lines ──
 function _statusLine1() {
     const u = game.u;
     if (!u) return '';
-    const name = game.plname || 'Hero';
+    /* src/botl.c:989 — the status line capitalises the first letter of the
+       name; svp.plname itself is left as the player typed it. */
+    const rawname = game.plname || 'Hero';
+    const name = rawname.charAt(0).toUpperCase() + rawname.slice(1);
     /* src/botl.c rank() — the status line shows the RANK for the hero's
        experience level, not the role name. This read urole.rank.m, which only
        worked against the stub role record that used to be installed here. */
@@ -239,7 +262,7 @@ function _statusLine1() {
        written in display order. */
     const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
     const at = (i) => u.acurr?.a?.[i] ?? '?';
-    const stats = `St:${at(A_STR)} Dx:${at(A_DEX)} Co:${at(A_CON)} `
+    const stats = `St:${get_strength_str()} Dx:${at(A_DEX)} Co:${at(A_CON)} `
                 + `In:${at(A_INT)} Wi:${at(A_WIS)} Ch:${at(A_CHA)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats

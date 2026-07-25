@@ -110,6 +110,11 @@ export class NethackGame {
            Defaulting it here made player_selection() skip askname and read the
            name's letters as answers to the "[ynaq]" prompt instead. */
         g.plname = optValue(rc, 'name') || '';
+        /* src/options.c — OPTIONS=playmode:debug turns on wizard mode, and
+           set_playmode() below renames the hero to "wizard". */
+        const playmode = optValue(rc, 'playmode');
+        g.wizard = (playmode === 'debug');
+        g.discover = (playmode === 'explore');
         /* src/optlist.h — both are opt_out with initval On, so they are set
            unless the rc negates them. implicit_uncursed decides whether
            doname() prints "uncursed" on a charged, identified item. */

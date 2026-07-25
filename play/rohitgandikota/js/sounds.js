@@ -9,6 +9,9 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { ECMD_OK } from './const.js';
+import { getdir } from './cmd.js';
+import { m_at } from './mon.js';
 
 // src/sounds.c:202 dosounds()
 export function dosounds() {
@@ -54,5 +57,39 @@ export function dosounds() {
 }
 
 function note_unported(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
+// src/sounds.c:1257 dochat() — the 'c' command.
+//
+// Its one input read is getdir("Talk to whom?"), so chatting costs TWO keys:
+// the command and the direction. Leaving it unhandled ran the direction key as
+// a movement command, the same failure that made an unhandled 'f' walk the hero
+// a square east.
+//
+// The early exits above getdir — polymorphed mute, strangled, swallowed,
+// underwater, standing on shop merchandise — all return before reading
+// anything, and none is reachable for an ordinary hero on an ordinary level.
+export async function dochat() {
+    if (!await getdir('Talk to whom? (in what direction)'))
+        return ECMD_OK; /* ECMD_CANCEL */
+
+    /* src/sounds.c — chatting downward, at yourself, or at empty air all
+       return without a turn; only domonnoise() on a real monster can take one,
+       and that needs the monster-sound tables. */
+    if (game.u.dz)
+        return ECMD_OK;
+    if (game.u.dx === 0 && game.u.dy === 0)
+        return ECMD_OK;
+
+    const mtmp = m_at(game.u.ux + game.u.dx, game.u.uy + game.u.dy);
+    if (!mtmp)
+        return ECMD_OK; /* "talking to thin air" */
+
+    note_unported_sounds('dochat:domonnoise');
+    return ECMD_OK;
+}
+
+function note_unported_sounds(what) {
     (game.unported ||= new Set()).add(what);
 }

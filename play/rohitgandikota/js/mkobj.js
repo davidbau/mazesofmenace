@@ -25,7 +25,7 @@
 
 import { game } from './gstate.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
-import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
+import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
     rndmonnum, level_difficulty, is_male, is_female, is_neuter, is_rider,
 } from './makemon.js';
@@ -132,6 +132,15 @@ export function mkobj(oclass, artif) {
         i = game.bases[oclass];
         while ((prob -= objects[i].oc_prob) > 0)
             ++i;
+    }
+
+    /* src/mkobj.c:295 — C's probtype guard. It resets i when the walk lands
+       outside the class, which changes WHICH object is returned, so leaving it
+       out is not merely dropping a diagnostic. If it ever fires, oc_prob or
+       oclass_prob_totals is wrong. */
+    if (objects[i].oc_class !== oclass || !obj_descr_name(i)) {
+        note_unported_obj(`probtype error oclass=${oclass} i=${i}`);
+        i = game.bases[oclass];
     }
 
     return mksobj(i, true, artif);
@@ -874,6 +883,39 @@ function g_at(x, y) {
 // The g_at() merge matters for the stream: when gold is already on the square
 // the existing pile absorbs the amount and no object is created, so there is no
 // next_ident(). A vault fills four distinct squares, so it makes four.
+// src/mkobj.c mksobj_at() — make it, then PUT IT ON THE FLOOR. Returning the
+// object without place_object() meant nothing ever reached level.objects, so
+// every floor object the level generator produced vanished on creation: the
+// pet's search box was always empty and objects the screens expect to see were
+// never drawn.
+export function mksobj_at(otyp, x, y, init, artif) {
+    const otmp = mksobj(otyp, init, artif);
+    place_object(otmp, x, y);
+    return otmp;
+}
+
+// src/mkobj.c mkobj_at()
+export function mkobj_at(oclass, x, y, artif) {
+    const otmp = mkobj(oclass, artif);
+    place_object(otmp, x, y);
+    return otmp;
+}
+
+// src/mkobj.c place_object() — C PREPENDS to fobj:
+//
+//     otmp->nobj = fobj;
+//     fobj = otmp;
+//
+// so the level's object list is newest-first, and anything that walks it in
+// order sees the most recently created object first. dog_goal()'s search walks
+// it calling dogfood() on each, and dogfood() draws, so the order is part of
+// the PRNG contract.
+export function place_object(otmp, x, y) {
+    otmp.ox = x;
+    otmp.oy = y;
+    (game.level.objects ||= []).unshift(otmp);
+}
+
 export function mkgold(amount, x, y) {
     let gold = g_at(x, y);
 
@@ -884,10 +926,12 @@ export function mkgold(amount, x, y) {
     if (gold) {
         gold.quan += amount;
     } else {
-        gold = mksobj(ONAMES.GOLD_PIECE, true, false);
-        gold.ox = x; gold.oy = y;
+        /* C calls mksobj_at(), which routes through place_object() and so
+           PREPENDS. Building the object by hand and pushing put gold at the
+           wrong end of the list, and dog_goal() walks that list in order
+           calling dogfood(), which draws. */
+        gold = mksobj_at(ONAMES.GOLD_PIECE, x, y, true, false);
         gold.quan = amount;
-        (game.level.objects ||= []).push(gold);
     }
     return gold;
 }
@@ -939,6 +983,12 @@ export function start_corpse_timeout(body) {
             }
     }
     body.rot_when = when;
+}
+
+// include/objclass.h OBJ_NAME() — obj_descr[].oc_name; a null name marks a
+// table slot that is not a real object.
+function obj_descr_name(i) {
+    return obj_descr[game.objects[i].oc_name_idx]?.oc_name ?? null;
 }
 
 function note_unported_obj(what) {

@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import { doname } from './objnam.js';
 import { OCLASSES } from './objects_data.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { nhgetch } from './input.js';
 import { pline } from './display.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
@@ -83,4 +84,54 @@ export function display_inventory() {
                        invlet: o.invlet });
     }
     return out;
+}
+
+// src/decl.c:96 quitchars — the keys that abandon a prompt.
+const quitchars = ' \r\n\x1b';
+
+// src/invent.c:1752 getobj() — ask which carried object a command applies to.
+//
+// The whole point of porting this is key consumption. C reads ONE key here for
+// the inventory letter, and a command that skips it leaves that letter to run
+// as a command instead — the same failure that made 'f' walk the hero a square
+// east before dofire was ported. 'e', 'a', 'r', 'd', 't' and 'w' together
+// account for over a thousand keystrokes across the public corpus, every one of
+// them currently mis-consumed.
+//
+// C loops until it gets something usable, so an invalid letter costs another
+// key; that loop is ported. The count, menu and hands branches need input paths
+// this port does not have and are recorded rather than guessed, because each
+// consumes a DIFFERENT number of keys and inventing one is worse than none.
+export async function getobj(word, obj_ok_func, ctrlflags) {
+    for (;;) {
+        const ilet = String.fromCharCode(await nhgetch());
+
+        if (ilet >= '0' && ilet <= '9') {
+            /* get_count() keeps reading digits and then a letter */
+            note_unported_invent('getobj:count');
+            return null;
+        }
+        if (quitchars.includes(ilet))
+            return null;                       /* Never mind */
+        if (ilet === '-') {
+            /* HANDS_SYM — "your hands" as the object */
+            note_unported_invent('getobj:hands');
+            return null;
+        }
+        if (ilet === '?' || ilet === '*') {
+            /* display_pickinv() opens a menu and reads its own keys */
+            note_unported_invent('getobj:menu');
+            return null;
+        }
+
+        const otmp = (game.invent || []).find(o => o.invlet === ilet);
+        if (otmp)
+            return otmp;
+
+        /* C re-prompts on an unrecognised letter, which costs another key. */
+    }
+}
+
+function note_unported_invent(what) {
+    (game.unported ||= new Set()).add(what);
 }

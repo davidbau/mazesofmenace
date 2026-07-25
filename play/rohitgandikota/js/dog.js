@@ -184,7 +184,7 @@ const resists_ston   = (mon) => { note_unported('resists_ston'); return false; }
 const resists_acid   = (mon) => { note_unported('resists_acid'); return false; };
 
 // src/dogmove.c could_reach_item()
-function could_reach_item(mon, nx, ny) {
+export function could_reach_item(mon, nx, ny) {
     if ((!is_pool(nx, ny) || is_swimmer(game.mons[mon.mnum]))
         && (!is_lava(nx, ny) || likes_lava(game.mons[mon.mnum]))
         && (!sobj_at(ONAMES.BOULDER, nx, ny) || throws_rocks(game.mons[mon.mnum])))

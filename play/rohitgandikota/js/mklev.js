@@ -15,7 +15,7 @@ import {
 } from './makemon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room } from './sp_lev.js';
-import { mkgold } from './mkobj.js';
+import { mkgold, place_object, mkobj_at, mksobj_at } from './mkobj.js';
 
 function note_unported_lev(what) {
     (game.unported ||= new Set()).add(what);
@@ -96,7 +96,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { themerooms, themeroom_fills } from './themerms_data.js';
 import { make_engr_at, wipe_engr_at, engr_at, del_engr } from './engrave.js';
 import { get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
-import { DUST, HEADSTONE } from './const.js';
+import { DUST, HEADSTONE, OBJ_CONTAINED } from './const.js';
 import { hole_destination } from './trap.js';
 import { Can_fall_thru } from './dungeon.js';
 import { lspo_map, lspo_region, sp_lev_wire } from './sp_lev.js';
@@ -246,47 +246,38 @@ let _nextObjId = 1;
 
 
 
-// src/mkobj.c mksobj_at() — make it, then PUT IT ON THE FLOOR. Returning the
-// object without place_object() meant nothing ever reached level.objects, so
-// every floor object the level generator produced vanished on creation: the
-// pet's search box was always empty and objects the screens expect to see were
-// never drawn.
-function mksobj_at(otyp, x, y, init, artif) {
-    const otmp = mksobj(otyp, init, artif);
-    place_object(otmp, x, y);
-    return otmp;
-}
-
-// src/mkobj.c mkobj_at()
-function mkobj_at(oclass, x, y, artif) {
-    const otmp = mkobj(oclass, artif);
-    place_object(otmp, x, y);
-    return otmp;
-}
-
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
-// src/mkobj.c place_object() / add_to_buried() — neither draws.
-// src/mkobj.c place_object() — C PREPENDS to fobj:
-//
-//     otmp->nobj = fobj;
-//     fobj = otmp;
-//
-// so the level's object list is newest-first, and anything that walks it in
-// order sees the most recently created object first. dog_goal()'s search walks
-// it calling dogfood() on each, and dogfood() draws, so the order is part of the
-// PRNG contract. Same mistake place_monster() used to have with fmon.
-function place_object(otmp, x, y) {
-    otmp.ox = x; otmp.oy = y;
-    (game.level.objects ||= []).unshift(otmp);
-}
 function add_to_buried(otmp) {
     (game.level.buriedobjs ||= []).push(otmp);
 }
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
 function weight(otmp) { return otmp?.owt || 1; }
-function add_to_container(container, otmp) { /* stub */ }
+// src/mkobj.c add_to_container() — link the object into the container's cobj
+// chain. C PREPENDS here too. Discarding the object (as the stub did) lost
+// every item the supply chest was filled with; the fill loop's draws were
+// correct, the results were thrown away.
+function add_to_container(container, obj) {
+    /* merged() can stack identical items instead of adding a new entry; it
+       needs the object-merge rules, and the supply chest fill deliberately
+       rerolls until it gets a noncursed item, so distinct items are the
+       common case. */
+    for (const otmp of (container.cobj || [])) {
+        if (merged_p(otmp, obj))
+            return otmp;
+    }
+
+    obj.where = OBJ_CONTAINED;
+    obj.ocontainer = container;
+    (container.cobj ||= []).unshift(obj);
+    return obj;
+}
+
+function merged_p(otmp, obj) {
+    note_unported_lev('merged');
+    return false;
+}
 function sobj_at(otyp, x, y) { return false; }
 
 // set_corpsenm stub
@@ -1364,6 +1355,33 @@ function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
 function somexy(croom, c) {
+    /* src/mkroom.c:744 — an IRREGULAR room is not a rectangle, so a raw
+       somex/somey can land outside it. C rejects those and redraws, up to 100
+       times, then falls back to an exhaustive scan that draws nothing. Missing
+       this branch meant we accepted the first draw and placed things outside
+       the room, and it cost draws too: every rejected try in C is another
+       somex/somey pair. */
+    if (croom.irregular) {
+        const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
+        let try_cnt = 0;
+
+        while (try_cnt++ < 100) {
+            c.x = somex(croom);
+            c.y = somey(croom);
+            const loc = game.level.at(c.x, c.y);
+            if (loc && !loc.edge && loc.roomno === i)
+                return true;
+        }
+        /* try harder; exhaustively search until one is found */
+        for (c.x = croom.lx; c.x <= croom.hx; c.x++)
+            for (c.y = croom.ly; c.y <= croom.hy; c.y++) {
+                const loc = game.level.at(c.x, c.y);
+                if (loc && !loc.edge && loc.roomno === i)
+                    return true;
+            }
+        return false;
+    }
+
     if (!croom.nsubrooms) {
         c.x = somex(croom);
         c.y = somey(croom);
@@ -1950,8 +1968,10 @@ async function fill_ordinary_room(croom, bonus_items) {
                     const otmp = mksobj(otyp, true, false);
                     if (otmp && otyp === POT_HEALING && rn2(2)) {
                         otmp.quan = 2;
+                        otmp.owt = weight(otmp);
                     }
                     cursed_item = otmp?.cursed ?? false;
+                    add_to_container(supply_chest, otmp);
                     if (++tryct2 >= 50) break;
                 } while (cursed_item || !rn2(5));
                 if (rn2(3)) {
@@ -1961,12 +1981,28 @@ async function fill_ordinary_room(croom, bonus_items) {
                     const oclass = extra_classes[rn2(extra_classes.length)];
                     let otmp = mkobj(oclass, false);
                     if (oclass === SPBOOK_no_NOVEL && otmp) {
-                        const depth = g.u?.uz?.dlevel ?? 1;
-                        const maxpass = (depth > 2) ? 2 : 3;
-                        for (let pass = 1; pass <= maxpass; pass++) {
-                            mkobj(oclass, false);
+                        const dpth = depth_of_level(g.u.uz);
+                        const maxpass = (dpth > 2) ? 2 : 3;
+
+                        /* bias towards lower level by generating again and
+                           taking the LOWER-level book. Drawing both and
+                           keeping the first spends the same RNG but leaves a
+                           different book in the chest — oc_level only started
+                           resolving once objclass.h's #define aliases were
+                           emitted. */
+                        for (let pass = 1; pass <= maxpass; ++pass) {
+                            const otmp2 = mkobj(oclass, false);
+
+                            if (game.objects[otmp.otyp].oc_level
+                                <= game.objects[otmp2.otyp].oc_level) {
+                                dealloc_obj(otmp2);
+                            } else {
+                                dealloc_obj(otmp);
+                                otmp = otmp2;
+                            }
                         }
                     }
+                    add_to_container(supply_chest, otmp);
                 }
             }
             skip_chests = true;
@@ -1977,8 +2013,7 @@ async function fill_ordinary_room(croom, bonus_items) {
         mksobj_at(rn2(3) ? LARGE_BOX : CHEST, pos.x, pos.y, true, false);
     }
     // Graffiti
-    const depth = g.u?.uz?.dlevel ?? 1;
-    if (!rn2(27 + 3 * Math.abs(depth))) {
+    if (!rn2(27 + 3 * Math.abs(depth_of_level(g.u.uz)))) {
         const { text: engrText } = random_engraving();
         if (engrText) {
             do {

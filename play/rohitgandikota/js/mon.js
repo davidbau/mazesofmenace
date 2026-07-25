@@ -231,13 +231,13 @@ export function mfndpos(mon, data, flag) {
 }
 
 /* src/mon.c m_at() */
-function m_at(x, y) {
+export function m_at(x, y) {
     return (game.level?.monsters || []).find(m => m.mx === x && m.my === y
                                                   && m.mhp > 0) || null;
 }
 
 /* src/trap.c t_at() */
-function t_at(x, y) {
+export function t_at(x, y) {
     return (game.level?.traps || []).find(t => t.tx === x && t.ty === y) || null;
 }
 
@@ -419,7 +419,7 @@ function zombie_maker(mon) {
 const zombie_form = (d) => NON_PM;
 
 // src/mon.c curr_mon_load() — total weight the monster is already carrying.
-function curr_mon_load(mtmp) {
+export function curr_mon_load(mtmp) {
     let curload = 0;
 
     for (const obj of (mtmp.minvent || [])) {
@@ -432,7 +432,7 @@ function curr_mon_load(mtmp) {
 
 // src/mon.c max_mon_load() — human capacity scaled by the monster's weight, or
 // by its size when it has no corpse weight, then halved unless strong.
-function max_mon_load(mtmp) {
+export function max_mon_load(mtmp) {
     const mdat = game.mons[mtmp.mnum];
     let maxload;
 

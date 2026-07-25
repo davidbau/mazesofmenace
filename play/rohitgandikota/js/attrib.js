@@ -174,17 +174,28 @@ export function adjabil(oldlevel, newlevel) {
 export const Fast = () => !!game.u.intrinsic?.HFast;
 export const Very_fast = () => false;
 
+// include/attrib.h:25 ACURRSTR / ACURR(). Exceptional Strength is stored above
+// 18 as 18/xx, and acurrstr() folds that back to a plain number.
+export function ACURR(i) {
+    return game.u.acurr.a[i];
+}
+
+export function acurrstr() {
+    const str = ACURR(A_STR);
+
+    if (str <= 18)
+        return str;
+    if (str <= 121)
+        return 19 + Math.trunc((str - 18) / 2); /* 18/01..18/99 -> 19..69 */
+    return str - 100;
+}
+
 // src/attrib.c:486 AVAL — tune value for exercise gains.
 const AVAL = 50;
 
 // include/attrib.h:23 AEXE(x)
 const AEXE = (i) => game.u.aexe.a[i];
 const setAEXE = (i, v) => { game.u.aexe.a[i] = v; };
-
-// include/attrib.h:24 ACURR(x). acurr() applies ABON and ATEMP on top of the
-// base; neither is set before the subsystems that grant them are ported, so
-// this reads the base the same way ABASE does until then.
-const ACURR = (i) => game.u.acurr.a[i];
 
 // src/attrib.c:490 exercise() — accumulate exercise or abuse of an attribute.
 //

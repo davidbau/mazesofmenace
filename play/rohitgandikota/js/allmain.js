@@ -7,11 +7,14 @@ import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { exerchk } from './attrib.js';
 import { init_uhunger } from './eat.js';
-import { ask_do_tutorial } from './options.js';
+import { settrack, initrack } from './track.js';
+import { ask_do_tutorial, set_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline } from './display.js';
+import {
+    docrt, cls, bot, flush_screen, pline, TOPLINE_EMPTY,
+} from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -72,6 +75,11 @@ export async function newgame() {
         if (ir < 0 || ira < 0 || ig < 0 || ia < 0)
             await player_selection();
     }
+
+    /* src/options.c set_playmode() — called from the port's startup code
+       before the game proper. It renames the hero in wizard mode, so it has to
+       run before anything prints plname. */
+    set_playmode();
 
     // src/allmain.c:780 — seed mvitals from each species' G_NOCORPSE bit,
     // before init_objects(). propagate() and uncommon() both read this.
@@ -195,6 +203,13 @@ export async function newgame() {
     init_vision_globals();
     vision_reset();
     vision_recalc(0);
+    /* src/allmain.c:756 display_nhwindow(WIN_MESSAGE, FALSE) — the NON-blocking
+       arm, which win/tty/wintty.c:1879 shows sets toplin back to TOPLINE_EMPTY.
+       C clears the flag on a normal cycle and leaves it set only where it then
+       blocks. Our pline() sets it and nothing cleared it, so after the first
+       message of the game it stayed set forever. */
+    g._toplin = TOPLINE_EMPTY;
+
     await cls();
     await docrt();
     await flush_screen(1);
@@ -353,6 +368,9 @@ export async function moveloop_core() {
                 maybe_generate_rnd_mon();
 
                 u_calc_moveamt();
+                /* src/allmain.c:242 — record the square the hero just left, so
+                   a monster that cannot see the hero has a trail to follow. */
+                settrack();
 
                 g.moves = (g.moves || 1) + 1;
 

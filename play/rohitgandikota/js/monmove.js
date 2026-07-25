@@ -8,12 +8,28 @@
 import { game } from './gstate.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
-import { dog_move } from './dog.js';
-import { mfndpos, mon_allowflags } from './mon.js';
+import { dog_move, could_reach_item } from './dog.js';
+import {
+    mfndpos, mon_allowflags, can_carry, t_at, m_at,
+    curr_mon_load, max_mon_load,
+} from './mon.js';
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
-import { OCLASSES } from './objects_data.js';
-import { couldsee } from './vision.js';
-import { ALLOW_U, COULD_SEE, A_LAWFUL, BOLT_LIM, IS_ALTAR } from './const.js';
+import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
+import { couldsee, cansee } from './vision.js';
+import { gettrack } from './track.js';
+import { distmin } from './hacklib.js';
+import { acurrstr } from './attrib.js';
+
+// include/mondata.h throws_rocks()
+const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
+
+// src/mondata.c:623 can_track() — Excalibur or eyes.
+const can_track = (ptr) => haseyes(ptr);
+const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
+import {
+    ALLOW_U, COULD_SEE, A_LAWFUL, BOLT_LIM, IS_ALTAR, COLNO, ROWNO, A_STR,
+    ALL_TRAPS, NO_TRAP,
+} from './const.js';
 import { is_rider } from './makemon.js';
 
 // src/priest.c:9 ALGN_SINNED — worse than strayed (-1..-3).
@@ -75,6 +91,233 @@ function inhistemple(mtmp) {
     note_unported('inhistemple');
     return false;
 }
+
+// include/mondata.h:115 is_wanderer()
+const is_wanderer = (ptr) => (ptr.mflags2 & MFLAGS.M2_WANDER) !== 0;
+
+// src/steal.c:45 findgold() — the first gold stack in a chain.
+function findgold(chain) {
+    for (const obj of (chain || []))
+        if (obj.oclass === OCLASSES.COIN_CLASS)
+            return obj;
+    return null;
+}
+
+// src/monmove.c leppie_avoidance() — a leprechaun richer than the hero keeps
+// its distance instead of closing in.
+function leppie_avoidance(mtmp) {
+    if (mtmp.mnum !== PMNAMES.PM_LEPRECHAUN)
+        return false;
+
+    const lepgold = findgold(mtmp.minvent);
+    if (!lepgold)
+        return false;
+    const ygold = findgold(game.invent);
+    return lepgold.quan > (ygold ? ygold.quan : 0);
+}
+
+// src/mthrowu.c:1398 lined_up() — needs m_lined_up's line-of-fire geometry.
+// It only ever suppresses the item search for a monster already in position to
+// shoot, and it draws nothing.
+function lined_up(mtmp) {
+    note_unported('lined_up');
+    return false;
+}
+
+// src/monmove.c:1330 m_search_items() — look for an object worth walking to,
+// and REWRITE the goal to it. One draw, the rn2(25) that usually makes a
+// monster ignore merchandise inside a shop.
+//
+// goal is {x,y} and st is {mmoved, appr} because C passes all four by pointer
+// and the caller depends on every one of them coming back changed.
+function m_search_items(mtmp, goal, st) {
+    let minr = SQSRCHRADIUS; /* not too far away */
+    const omx = mtmp.mx, omy = mtmp.my;
+    const ptr = game.mons[mtmp.mnum];
+
+    /* cut down the search radius if it thinks character is closer. */
+    if (distmin(mtmp.mux, mtmp.muy, omx, omy) < SQSRCHRADIUS && !mtmp.mpeaceful)
+        minr--;
+    /* guards shouldn't get too distracted */
+    if (!mtmp.mpeaceful && is_mercenary(ptr))
+        minr = 1;
+
+    /* in shop, usually skip. in_rooms(SHOPBASE) needs the shop subsystem; no
+       shop exists on a level before it lands, so the rn2(25) is not reachable
+       yet and recording it keeps the gap visible. */
+    if (in_shop(omx, omy)) {
+        note_unported('m_search_items:shop');
+    } else {
+        /* distmin() gives a rectangular area */
+        const hmx = Math.min(COLNO - 1, omx + minr);
+        const hmy = Math.min(ROWNO - 1, omy + minr);
+        const lmx = Math.max(1, omx - minr);
+        const lmy = Math.max(0, omy - minr);
+
+        for (let xx = lmx; xx <= hmx; xx++) {
+            for (let yy = lmy; yy <= hmy; yy++) {
+                /* no object here */
+                if (!OBJ_AT(xx, yy))
+                    continue;
+                /* found an object closer already */
+                if (minr < distmin(omx, omy, xx, yy))
+                    continue;
+                if (!could_reach_item(mtmp, xx, yy))
+                    continue;
+                /* hiders avoid hero's line of sight */
+                if (hides_under(ptr) && cansee(xx, yy))
+                    continue;
+                /* don't get stuck circling an object underneath an immobile
+                   or hidden monster */
+                const mtoo = m_at(xx, yy);
+                if (mtoo && (mtoo.mundetected
+                             || (mtoo.mappearance && !mtoo.iswiz)
+                             || !game.mons[mtoo.mnum].mmove))
+                    continue;
+                /* Don't get stuck circling an Elbereth */
+                if (onscary(xx, yy, mtmp))
+                    continue;
+                /* ignore obj if there's a trap and monster knows it */
+                const ttmp = t_at(xx, yy);
+                if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
+                    if (goal.x === xx && goal.y === yy) {
+                        goal.x = mtmp.mux;
+                        goal.y = mtmp.muy;
+                    }
+                    continue;
+                }
+
+                /* look through the items on this location */
+                for (const otmp of objects_at(xx, yy)) {
+                    /* monsters may pick rocks up, but won't go out of their
+                       way to grab them */
+                    if (otmp.otyp === ONAMES.ROCK)
+                        continue;
+
+                    if (((mon_would_take_item(mtmp, otmp)
+                          && (can_carry(mtmp, otmp) > 0))
+                         || mon_would_consume_item(mtmp, otmp))) {
+                        minr = distmin(omx, omy, xx, yy);
+                        goal.x = otmp.ox;
+                        goal.y = otmp.oy;
+                        if (goal.x === omx && goal.y === omy) {
+                            st.mmoved = MMOVE_DONE; /* actually unnecessary */
+                            return true;
+                        }
+                        /* found an item of interest; skip the rest of the pile */
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /* finish_search */
+    if (minr < SQSRCHRADIUS && st.appr === -1) {
+        if (distmin(omx, omy, mtmp.mux, mtmp.muy) <= 3) {
+            goal.x = mtmp.mux;
+            goal.y = mtmp.muy;
+        } else {
+            st.appr = 1;
+        }
+    }
+    return false;
+}
+
+const SQSRCHRADIUS = 5;
+const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
+
+function objects_at(x, y) {
+    return (game.level?.objects || []).filter(o => o.ox === x && o.oy === y);
+}
+
+/* include/mondata.h:143-146 and friends — what a monster is willing to pick up.
+   likes_objs counts an armed monster as a collector. */
+const mindless    = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
+const is_animal   = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
+const likes_gold  = (ptr) => (ptr.mflags2 & MFLAGS.M2_GREEDY) !== 0;
+const likes_gems  = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
+const likes_magic = (ptr) => (ptr.mflags2 & MFLAGS.M2_MAGIC) !== 0;
+const is_armed    = (ptr) => ptr.mattk.some(a => a[0] === ATTKS.AT_WEAP);
+const likes_objs  = (ptr) => (ptr.mflags2 & MFLAGS.M2_COLLECT) !== 0 || is_armed(ptr);
+const is_unicorn  = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
+const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
+                              || ptr.pmidx === PMNAMES.PM_CHICKATRICE;
+
+// src/monmove.c:991 — the object classes a collector and a magic-user want.
+const practical = [OCLASSES.WEAPON_CLASS, OCLASSES.ARMOR_CLASS,
+                   OCLASSES.GEM_CLASS, OCLASSES.FOOD_CLASS];
+const magical = [OCLASSES.AMULET_CLASS, OCLASSES.POTION_CLASS,
+                 OCLASSES.SCROLL_CLASS, OCLASSES.WAND_CLASS,
+                 OCLASSES.RING_CLASS, OCLASSES.SPBOOK_CLASS];
+
+// src/mondata.c:1617 mon_knows_traps() — mtrapseen is a bitmask of trap types
+// the monster has learned, with bit (ttyp - 1) per type.
+function mon_knows_traps(mtmp, ttyp) {
+    if (ttyp === ALL_TRAPS)
+        return !!mtmp.mtrapseen;
+    else if (ttyp === NO_TRAP)
+        return !mtmp.mtrapseen;
+    else
+        return ((mtmp.mtrapseen ?? 0) & (1 << (ttyp - 1))) !== 0;
+}
+
+// src/monmove.c mon_would_take_item() — each class of taker has its own load
+// ceiling, so a heavily-laden monster stops being interested rather than being
+// refused later by can_carry().
+function mon_would_take_item(mtmp, otmp) {
+    const ptr = game.mons[mtmp.mnum];
+    const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
+
+    if (otmp === game.u.uball || otmp === game.u.uchain)
+        return false;
+    if (mtmp.mtame && otmp.cursed)
+        return false; /* note: will get overridden if mtmp will eat otmp */
+    if (is_unicorn(ptr)
+        && game.objects[otmp.otyp].oc_material !== MATERIALS.GEMSTONE)
+        return false;
+    if (!mindless(ptr) && !is_animal(ptr) && pctload < 75
+        && searches_for_item(mtmp, otmp))
+        return true;
+    if (likes_gold(ptr) && otmp.otyp === ONAMES.GOLD_PIECE && pctload < 95)
+        return true;
+    if (likes_gems(ptr) && otmp.oclass === OCLASSES.GEM_CLASS
+        && game.objects[otmp.otyp].oc_material !== MATERIALS.MINERAL
+        && pctload < 85)
+        return true;
+    if (likes_objs(ptr) && practical.includes(otmp.oclass) && pctload < 75)
+        return true;
+    if (likes_magic(ptr) && magical.includes(otmp.oclass) && pctload < 85)
+        return true;
+    if (throws_rocks(ptr) && otmp.otyp === ONAMES.BOULDER && pctload < 50)
+        return true;
+    if (mtmp.mnum === PMNAMES.PM_GELATINOUS_CUBE
+        && otmp.oclass !== OCLASSES.ROCK_CLASS
+        && otmp.oclass !== OCLASSES.BALL_CLASS
+        && !(otmp.otyp === ONAMES.CORPSE
+             && touch_petrifies(game.mons[otmp.corpsenm])))
+        return true;
+
+    return false;
+}
+
+/* src/muse.c:2706 searches_for_item() needs the whole monster item-use
+   subsystem. Its caller gates it behind !mindless && !is_animal, so no animal
+   or mindless monster — which is most of an early level — can reach it. */
+function searches_for_item(mon, obj) {
+    note_unported('searches_for_item');
+    return false;
+}
+
+/* src/mon.c mon_would_consume_item() needs the monster eating code. */
+function mon_would_consume_item(mtmp, otmp) {
+    note_unported('mon_would_consume_item');
+    return false;
+}
+
+/* in_rooms(SHOPBASE) needs the shop subsystem; no shop exists on a level
+   before it lands. */
+function in_shop(x, y) { return false; }
 
 // src/monmove.c:76 mon_track_add() — push a coordinate onto the monster's
 // memory of where it has just been. m_move() consults it to avoid pacing back
@@ -285,18 +528,47 @@ export function dochug(mtmp) {
     set_apparxy(mtmp);
 
     /* src/monmove.c:791 */
-    distfleeck(mtmp);
+    let { nearby, scared } = distfleeck(mtmp);
 
-    /* src/monmove.c:1773 — m_move() dispatches a tame monster to dog_move()
-       before it reaches mfndpos(). */
-    const status = mtmp.mtame ? dog_move(mtmp, 0) : m_move(mtmp, 0);
+    const mdat = game.mons[mtmp.mnum];
+    let status = 0;
 
-    /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so every
-       monster that takes a turn spends TWO rn2(5) draws, not one. Calling it
-       once made our turn cost half of C's, which read as though half our
-       monsters were never acting. */
-    if (status !== MMOVE_DIED)
-        distfleeck(mtmp);
+    /* src/monmove.c:882 — a monster only gets to move if it passes this. Each
+       arm that draws does so ONLY because the arms before it were false, so
+       dropping the whole condition (as we did) loses a draw on any turn a
+       wandering or blinded monster takes a step. */
+    if (!nearby || mtmp.mflee || scared || mtmp.mconf || mtmp.mstun
+        || (mtmp.minvis && !rn2(3))
+        || (mdat.mlet === MONSYMS.S_LEPRECHAUN && !findgold(game.invent)
+            && (findgold(mtmp.minvent) || rn2(2)))
+        || (is_wanderer(mdat) && !rn2(4))
+        || (game.u.uprops?.CONFLICT && !mtmp.iswiz)
+        || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
+
+        /* Possibly cast an undirected spell if not attacking you. castmu()
+           needs the spell tables; a monster with no AT_MAGC attack never
+           reaches it, which is every monster on an early level. */
+        if (!mtmp.mspec_used
+            && dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= 49) {
+            for (const a of mdat.mattk) {
+                if (a[0] === ATTKS.AT_MAGC
+                    && (a[1] === ATTKS.AD_SPEL || a[1] === ATTKS.AD_CLRC)) {
+                    note_unported('castmu');
+                    break;
+                }
+            }
+        }
+
+        /* src/monmove.c:1773 — m_move() dispatches a tame monster to
+           dog_move() before it reaches mfndpos(). */
+        if (!status)
+            status = mtmp.mtame ? dog_move(mtmp, 0) : m_move(mtmp, 0);
+
+        /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
+           every monster that takes a turn spends TWO rn2(5) draws, not one. */
+        if (status !== MMOVE_DIED)
+            ({ nearby, scared } = distfleeck(mtmp));
+    }
 
     return status;
 }
@@ -318,29 +590,73 @@ export function m_move(mtmp, after) {
     if (mtmp.mconf) {
         appr = 0;
     } else {
-        const should_see = (dist2(omx, omy, ggx, ggy) <= 36);
+        /* src/monmove.c:1861 — all three terms matter. Ours had only the
+           distance one, which made should_see true far too often and skipped
+           the gettrack branch below; that branch changes the GOAL, so the
+           monster walked somewhere else while drawing the same numbers. */
+        const here = game.level.at(omx, omy);
+        const there = game.level.at(ggx, ggy);
+        const should_see = (couldsee(omx, omy)
+                            && (there?.lit || !here?.lit)
+                            && (dist2(omx, omy, ggx, ggy) <= 36));
 
         if (!mtmp.mcansee
-            || (mtmp.mpeaceful && !mtmp.isshk)
-            || ((ptr.mlet === MONSYMS.S_BAT || ptr.mlet === MONSYMS.S_LIGHT)
-                && !rn2(3)))
+            || (should_see && game.u.uprops?.INVIS
+                && !perceives(ptr) && rn2(11))
+            || (mtmp.mpeaceful && !mtmp.isshk) /* allow shks to follow */
+            || ((mtmp.mnum === PMNAMES.PM_STALKER
+                 || ptr.mlet === MONSYMS.S_BAT
+                 || ptr.mlet === MONSYMS.S_LIGHT) && !rn2(3)))
             appr = 0;
 
-        /* leppie_avoidance and gettrack change appr/the goal without drawing;
-           neither is ported. */
-        note_unported('m_move leppie/gettrack');
+        /* leppie_avoidance needs the leprechaun gold logic; it only ever turns
+           appr from 1 to -1 and draws nothing. */
+        if (appr === 1 && leppie_avoidance(mtmp))
+            appr = -1;
 
         /* src/monmove.c:1878 — hostiles with a ranged option keep their
            distance. This changes appr, and appr decides which candidate square
            wins, so getting it wrong moves a monster to a different legal square
            while drawing exactly the same numbers. */
         appr = m_balks_at_approaching(appr, mtmp);
+
+        if (!should_see && can_track(ptr)) {
+            const cp = gettrack(omx, omy);
+            if (cp) {
+                ggx = cp.x;
+                ggy = cp.y;
+            }
+        }
     }
 
     /* src/monmove.c:1891 — the pickup branch. The rn2(10) fires for every
        PEACEFUL monster whether or not it then picks anything up. */
+    let getitems = false;
     if ((!mtmp.mpeaceful || !rn2(10))) {
-        note_unported('m_move ranged/pickup branch');
+        const in_line = lined_up(mtmp)
+            && (distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
+                <= (throws_rocks(game.mons[game.u.umonnum]) ? 20
+                                                            : (acurrstr() / 2 + 1)));
+
+        if (appr !== 1 || !in_line) {
+            /* Monsters in combat won't pick stuff up, avoiding the situation
+             * where you toss arrows at it and it has nothing better to do
+             * than pick the arrows up.
+             */
+            getitems = true;
+        }
+    }
+
+    if (getitems) {
+        const goal = { x: ggx, y: ggy };
+        /* C declares mmoved = 0 at the top of m_move, well before this; ours
+           is declared further down, and m_search_items only writes it on the
+           path where the caller returns immediately. */
+        const st = { mmoved: MMOVE_NOTHING, appr };
+        if (m_search_items(mtmp, goal, st)) {
+            return MMOVE_DONE; /* C returns postmov(...) */
+        }
+        ggx = goal.x; ggy = goal.y; appr = st.appr;
     }
 
     const flag = mon_allowflags(mtmp);
