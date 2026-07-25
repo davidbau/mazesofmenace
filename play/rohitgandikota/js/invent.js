@@ -3,7 +3,10 @@
 
 import { game } from './gstate.js';
 import { doname } from './objnam.js';
-import { OCLASSES } from './objects_data.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { MONSYMS, NUMMONS } from './monst_data.js';
+import { erosion_matters } from './mkobj.js';
+import { is_rider } from './makemon.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { pline } from './display.js';
@@ -131,6 +134,355 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         /* C re-prompts on an unrecognised letter, which costs another key. */
     }
 }
+
+// src/invent.c:1466 sobj_at() — try to find a particular type of object at
+// designated map location.
+//
+// C walks svl.level.objects[x][y] through ->nexthere. This port keeps one flat
+// list that place_object() PREPENDS to, so filtering it in order yields the
+// same relative order the per-square chain would.
+//
+// It was stubbed to a bare `false` in two files. Everything that asks "is there
+// a boulder here" (mfndpos' Sokoban arm, a pet's dig check) or "is there a
+// scroll of scare monster here" (onscary) got NO from a function that had never
+// looked, which is a wrong answer rather than a missing one.
+export function sobj_at(otyp, x, y) {
+    for (const otmp of (game.level.objects || []))
+        if (otmp.ox === x && otmp.oy === y && otmp.otyp === otyp)
+            return otmp;
+
+    return null;
+}
+
+// src/mkobj.c weight() — how heavy is this stack, right now.
+//
+// Needed by merged(), which is the most-reached unported path in the whole
+// port: tools/generalize.mjs finds it in 58% of random games.
+//
+// **5.0 delta**: coins used to weigh 0 for quantities 1..49. They now always
+// weigh at least 1 unit. Writing this from 3.6 memory gives every early gold
+// pile the wrong weight.
+export function weight(obj) {
+    let wt = game.objects[obj.otyp].oc_weight; /* weight of 1 'otyp' */
+
+    if (obj.quan < 1)
+        return 0;                       /* impossible("Calculating weight...") */
+
+    /* globs manage their own owt in mksobj/obj_absorb/shrink_glob */
+    if (obj.globby)
+        return obj.owt;
+
+    if (Is_container(obj) || obj.otyp === ONAMES.STATUE) {
+        if (obj.otyp === ONAMES.STATUE && ismnum(obj.corpsenm)) {
+            const msize = game.mons[obj.corpsenm].msize;   /* 0..7 */
+            const minwt = (msize + msize + 1) * 100;
+
+            /* default statue weight is 1.5 times corpse weight */
+            wt = Math.trunc(3 * game.mons[obj.corpsenm].cwt / 2);
+            if (wt < minwt)
+                wt = minwt;
+            wt *= obj.quan;             /* no effect; statues don't stack */
+        }
+
+        let cwt = 0;
+        for (const contents of (obj.cobj || []))
+            cwt += weight(contents);
+
+        if (obj.otyp === ONAMES.BAG_OF_HOLDING)
+            cwt = obj.cursed ? (cwt * 2)
+                : obj.blessed ? Math.trunc((cwt + 3) / 4)
+                    : Math.trunc((cwt + 1) / 2); /* uncursed */
+
+        return wt + cwt;
+    }
+    if (obj.otyp === ONAMES.CORPSE && ismnum(obj.corpsenm)) {
+        const long_wt = obj.quan * game.mons[obj.corpsenm].cwt;
+
+        wt = (long_wt > LARGEST_INT) ? LARGEST_INT : long_wt;
+        if (obj.oeaten)
+            wt = eaten_stat(wt, obj);
+        return wt;
+    } else if (obj.oclass === OCLASSES.FOOD_CLASS && obj.oeaten) {
+        return eaten_stat(obj.quan * wt, obj);
+    } else if (obj.oclass === OCLASSES.COIN_CLASS) {
+        /* 5.0: always weigh at least 1 unit; used to yield 0 for 1..49 */
+        wt = Math.trunc((obj.quan + 50) / 100);
+        return Math.max(wt, 1);
+    } else if (obj.otyp === ONAMES.HEAVY_IRON_BALL && obj.owt !== 0) {
+        return obj.owt;                 /* kludge for "very" heavy iron ball */
+    } else if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION && obj.spe) {
+        return wt + obj.spe * game.objects[ONAMES.TALLOW_CANDLE].oc_weight;
+    }
+    return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
+}
+
+// include/obj.h:337 Is_container()
+const Is_container = (o) => o.otyp >= ONAMES.LARGE_BOX
+                         && o.otyp <= ONAMES.BAG_OF_TRICKS;
+
+// include/monst.h:285 ismnum()
+//
+// Must bound on NUMMONS, not game.mons.length. tools/gen-monst.mjs appends the
+// zeroed terminator back after counting (C indexes mons[NUMMONS] deliberately),
+// so mons.length is NUMMONS + 1 and a length bound accepts corpsenm == NUMMONS,
+// which C rejects. weight() would then read the terminator's cwt of 0 instead
+// of falling through to the generic quan * oc_weight.
+const ismnum = (x) => x >= LOW_PM && x < NUMMONS;
+
+const LOW_PM = 0, LARGEST_INT = 32767;
+
+// src/eat.c:3788 eaten_stat() — scale a stat by how much of the food is left.
+//
+// The zero case is 0, not "divide by 1". Guarding the denominator instead of
+// the whole expression returns base * uneaten there, which is wrong and large.
+function eaten_stat(base, obj) {
+    /* get full_amount first; obj_nutrition() might modify obj->oeaten */
+    const full_amount = obj_nutrition(obj);
+    let uneaten_amt = obj.oeaten;
+
+    if (uneaten_amt > full_amount)
+        uneaten_amt = full_amount;      /* impossible(...) in C */
+
+    base = full_amount
+        ? Math.trunc(base * uneaten_amt / full_amount)
+        : 0;
+    return (base < 1) ? 1 : base;
+}
+
+// src/eat.c obj_nutrition()
+function obj_nutrition(otmp) {
+    return (otmp.otyp === ONAMES.CORPSE) ? game.mons[otmp.corpsenm].cnutrit
+         : otmp.globby ? otmp.owt
+         : game.objects[otmp.otyp].oc_nutrition;
+}
+
+// src/invent.c mergable() — may `obj` be folded into the `otmp` stack?
+//
+// Pure predicate, no draws. The arms needing subsystems we lack (erosion_matters
+// on unported eroded state, same_price for shops, safe_oname for named objects)
+// are the LAST few; everything before them is decided here.
+export function mergable(otmp, obj) {
+    /* fail if already the same object, if different types, if either is
+       explicitly marked to prevent merge, or if not mergable in general */
+    if (obj === otmp || obj.otyp !== otmp.otyp
+        || obj.nomerge || otmp.nomerge || !game.objects[obj.otyp].oc_merge)
+        return false;
+
+    /* coins of the same kind will always merge */
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return true;
+
+    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
+        return false;
+
+    if (obj.how_lost === LOST_EXPLODING || otmp.how_lost === LOST_EXPLODING)
+        return false;
+    if (otmp.how_lost !== LOST_NONE && (obj.how_lost !== otmp.how_lost))
+        return false;
+
+    if (obj.globby)
+        return true;
+
+    if (!!obj.unpaid !== !!otmp.unpaid || (obj.spe | 0) !== (otmp.spe | 0)
+        || !!obj.no_charge !== !!otmp.no_charge
+        || !!obj.obroken !== !!otmp.obroken
+        || !!obj.otrapped !== !!otmp.otrapped
+        || !!obj.lamplit !== !!otmp.lamplit)
+        return false;
+
+    if (obj.oclass === OCLASSES.FOOD_CLASS
+        && ((obj.oeaten | 0) !== (otmp.oeaten | 0)
+            || !!obj.orotten !== !!otmp.orotten))
+        return false;
+
+    if (!!obj.dknown !== !!otmp.dknown
+        || (!!obj.bknown !== !!otmp.bknown && !Role_if(PM_CLERIC)
+            && (Blind() || Hallucination()))
+        || (obj.oeroded | 0) !== (otmp.oeroded | 0)
+        || (obj.oeroded2 | 0) !== (otmp.oeroded2 | 0)
+        || !!obj.greased !== !!otmp.greased)
+        return false;
+
+    if (erosion_matters(obj, game.objects)
+        && (!!obj.oerodeproof !== !!otmp.oerodeproof
+            || (!!obj.rknown !== !!otmp.rknown && (Blind() || Hallucination()))))
+        return false;
+
+    if (obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.EGG
+        || obj.otyp === ONAMES.TIN) {
+        if (obj.corpsenm !== otmp.corpsenm)
+            return false;
+    }
+
+    /* hatching eggs don't merge; ditto for revivable corpses */
+    if ((obj.otyp === ONAMES.EGG && (obj.timed || otmp.timed))
+        || (obj.otyp === ONAMES.CORPSE && otmp.corpsenm >= LOW_PM
+            && is_reviver(game.mons[otmp.corpsenm])))
+        return false;
+
+    /* allow candle merging only if their ages are close; see begin_burn()
+       for a reference for the magic "25" */
+    if (Is_candle(obj)
+        && Math.trunc((obj.age | 0) / 25) !== Math.trunc((otmp.age | 0) / 25))
+        return false;
+
+    /* burning potions of oil never merge */
+    if (obj.otyp === ONAMES.POT_OIL && obj.lamplit)
+        return false;
+
+    if (obj.unpaid) {
+        note_unported_invent('mergable:same_price');   /* shop pricing */
+        return false;
+    }
+
+    /* some additional information is always incompatible */
+    if (obj.omonst || obj.omid || otmp.omonst || otmp.omid)
+        return false;
+
+    /* if they have names, make sure they're the same */
+    const objname = obj.oname || '', otmpname = otmp.oname || '';
+    if ((objname.length !== otmpname.length
+         && ((objname.length && otmpname.length) || obj.otyp === ONAMES.CORPSE))
+        || (objname.length && otmpname.length
+            && objname.slice(0, objname.length)
+               !== otmpname.slice(0, objname.length)))
+        return false;
+
+    /* if one has an attached mail command, other must have same command */
+    if (!obj.omailcmd ? !!otmp.omailcmd
+                      : (!otmp.omailcmd || obj.omailcmd !== otmp.omailcmd))
+        return false;
+
+    /* should be moot since matching artifacts wouldn't be unique */
+    if ((obj.oartifact | 0) !== (otmp.oartifact | 0))
+        return false;
+
+    if (!!obj.known !== !!otmp.known && (Blind() || Hallucination()))
+        return false;
+
+    return true;
+}
+
+// src/invent.c merged() — fold *pobj into *potmp. Returns 1 on success.
+//
+// Both arguments are pointers-to-pointers in C because otmp can be REPLACED by
+// oname(); the JS equivalent is a one-element holder so the caller sees it.
+export function merged(potmp, pobj) {
+    const otmp = potmp.o, obj = pobj.o;
+
+    if (mergable(otmp, obj)) {
+        /* Approximate age. Not done when lit: the burn would have to be
+           stopped on both, merged, then restarted. */
+        if (!obj.lamplit && !obj.globby)
+            otmp.age = Math.trunc(((otmp.age | 0) * otmp.quan
+                                   + (obj.age | 0) * obj.quan)
+                                  / (otmp.quan + obj.quan));
+
+        if (!otmp.globby)
+            otmp.quan += obj.quan;
+        /* temporary special case for gold objects!!!! */
+        if (otmp.oclass === OCLASSES.COIN_CLASS) {
+            otmp.owt = weight(otmp);
+            otmp.bknown = 0;
+        } else if (!Is_pudding(otmp)) {
+            otmp.owt = weight(otmp);
+        }
+        if (!otmp.oname && obj.oname)
+            otmp.oname = obj.oname;     /* oname(..., ONAME_SKIP_INVUPD) */
+
+        obj_extract_self(obj);
+
+        if (obj.pickup_prev && otmp.where === OBJ_INVENT)
+            otmp.pickup_prev = 1;
+
+        if (obj.lamplit || obj.timed)
+            note_unported_invent('merged:light_sources_and_timers');
+
+        /* objects can be identified by comparing them */
+        if (!!obj.known !== !!otmp.known)
+            otmp.known = 1;
+        if (!!obj.rknown !== !!otmp.rknown)
+            otmp.rknown = 1;
+        if (!!obj.bknown !== !!otmp.bknown)
+            otmp.bknown = 1;
+
+        if (obj.owornmask && carried(otmp))
+            note_unported_invent('merged:worn_stack');
+
+        if (obj.bypass)
+            otmp.bypass = 1;
+
+        if (obj.globby) {
+            note_unported_invent('merged:obj_absorb');
+            return 1;
+        }
+
+        /* "You learn more about your items by comparing them." needs the
+           discovery messages; the identification above already happened. */
+        return 1;
+    }
+    return 0;
+}
+
+// src/mkobj.c obj_extract_self() — unlink the object from wherever it lives.
+export function obj_extract_self(obj) {
+    switch (obj.where) {
+    case OBJ_FREE:
+        break;
+    case OBJ_CONTAINED: {
+        const c = obj.ocontainer;
+        if (c && c.cobj) {
+            const i = c.cobj.indexOf(obj);
+            if (i >= 0) c.cobj.splice(i, 1);
+            c.owt = weight(c);          /* container_weight() */
+        }
+        obj.ocontainer = null;
+        break;
+    }
+    case OBJ_MINVENT: {
+        const m = obj.ocarry;
+        if (m && m.minvent) {
+            const i = m.minvent.indexOf(obj);
+            if (i >= 0) m.minvent.splice(i, 1);
+        }
+        obj.ocarry = null;
+        break;
+    }
+    case OBJ_INVENT:
+        note_unported_invent('obj_extract_self:freeinv');
+        break;
+    default: {   /* OBJ_FLOOR — remove_object() */
+        const objs = game.level?.objects;
+        if (objs) {
+            const i = objs.indexOf(obj);
+            if (i >= 0) objs.splice(i, 1);
+        }
+        break;
+    }
+    }
+    obj.where = OBJ_FREE;
+}
+
+// include/obj.h — obj->where values, and the two how_lost values mergable reads.
+const OBJ_FREE = 0, OBJ_FLOOR = 1, OBJ_CONTAINED = 2, OBJ_INVENT = 3,
+      OBJ_MINVENT = 4;
+const LOST_NONE = 0, LOST_EXPLODING = 1, LOST_THROWN = 2;
+
+const Is_candle = (o) => o.otyp === ONAMES.TALLOW_CANDLE
+                      || o.otyp === ONAMES.WAX_CANDLE;
+const Is_pudding = (o) => !!o.globby;
+// include/mondata.h:170 is_reviver()
+const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TROLL);
+
+/* Blind/Hallucination/Role_if and erosion_matters need property and shop state
+   that is not ported; all three only ever make mergable STRICTER, so a false
+   here can merge two stacks C would keep apart in those rare states. */
+function Blind() { return false; }
+function Hallucination() { return false; }
+function Role_if(role) { return false; }
+/* erosion_matters() is fully ported in js/mkobj.js (its C home is
+   src/mkobj.c); it was stubbed here by mistake. */
+const PM_CLERIC = 0;
 
 function note_unported_invent(what) {
     (game.unported ||= new Set()).add(what);

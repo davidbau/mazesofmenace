@@ -8,6 +8,7 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
+import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     mons as MONS_INIT, PMNAMES, NUMMONS, MONSYMS, MSOUND, ATTKS, MFLAGS,
@@ -776,21 +777,9 @@ function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
 function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
 function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
 
-// src/worn.c m_dowear() — walks the monster's inventory looking for armor to
-// put on. A monster with nothing to wear draws nothing, which is the case for
-// every monster level generation currently produces.
-function m_dowear(mtmp, creation) {
-    const ptr = mtmp.data;
-    if (verysmall(ptr) || nohands(ptr) || is_animal(ptr))
-        return;
-    if (mindless(ptr)
-        && (!creation || (ptr.mlet !== S_MUMMY
-                          && ptr.pmidx !== PMNAMES.PM_SKELETON)))
-        return;
-    if (!mtmp.minvent || mtmp.minvent.length === 0)
-        return;   /* nothing to wear, nothing to draw */
-    note_unported('m_dowear with inventory');
-}
+/* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
+   that stood here short-circuited on an empty minvent and recorded otherwise;
+   the real one does the slot walk. */
 
 // include/mondata.h — the predicates m_initweap() branches on.
 const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;

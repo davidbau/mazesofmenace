@@ -42,6 +42,9 @@ function mk_knox_portal(x, y) {
     note_unported_lev('mk_knox_portal placement');
 }
 import { random_engraving, wipeout_text } from './engrave.js';
+import { merged, weight } from './invent.js';
+import { themeroom_fill_contents } from './themerms.js';
+import { mkroom_table } from './sp_lev.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
 const NON_PM = -1;
@@ -253,7 +256,6 @@ function add_to_buried(otmp) {
 }
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
-function weight(otmp) { return otmp?.owt || 1; }
 // src/mkobj.c add_to_container() — link the object into the container's cobj
 // chain. C PREPENDS here too. Discarding the object (as the stub did) lost
 // every item the supply chest was filled with; the fill loop's draws were
@@ -274,11 +276,11 @@ function add_to_container(container, obj) {
     return obj;
 }
 
+/* src/invent.c merged() takes struct obj ** for both, because otmp can be
+   replaced by oname(). js/invent.js keeps that with one-element holders. */
 function merged_p(otmp, obj) {
-    note_unported_lev('merged');
-    return false;
+    return merged({ o: otmp }, { o: obj }) !== 0;
 }
-function sobj_at(otyp, x, y) { return false; }
 
 // set_corpsenm stub
 function set_corpsenm(otmp, pm) { /* stub */ }
@@ -623,7 +625,7 @@ function ROOM_IS_FILLABLE(croom) {
         && croom.needfill === FILL_NORMAL;
 }
 
-sp_lev_wire(add_room, add_door);
+sp_lev_wire(add_room, add_door, somexy);
 
 // C ref: mklev.c makerooms()
 async function makerooms() {
@@ -772,7 +774,14 @@ function themeroom_fill(rm) {
             pick = fill;
     }
     if (!pick) return;
-    note_unported_lev(`themeroom_fill ${pick.name}`);
+
+    /* dat/themerms.lua — the chosen fill's own contents. All fifteen are
+       transcribed in js/themerms.js. */
+    const contents = themeroom_fill_contents[pick.name];
+    if (contents)
+        contents(mkroom_table(rm));     /* sp_lev.c:5704 — Lua sees a table */
+    else
+        note_unported_lev(`themeroom_fill ${pick.name}`);
 }
 
 // The `contents` function of each shaped room, transcribed from themerms.lua.
@@ -1354,7 +1363,7 @@ function makecorridors() {
 function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
-function somexy(croom, c) {
+export function somexy(croom, c) {
     /* src/mkroom.c:744 — an IRREGULAR room is not a rectangle, so a raw
        somex/somey can land outside it. C rejects those and redraws, up to 100
        times, then falls back to an exhaustive scan that draws nothing. Missing

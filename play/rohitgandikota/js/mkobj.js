@@ -519,7 +519,7 @@ const is_weptool = (o, objs) =>
     o.oclass === TOOL_CLASS && objs[o.otyp].oc_subtyp !== P_NONE;
 
 // src/mkobj.c erosion_matters()
-function erosion_matters(otmp, objects) {
+export function erosion_matters(otmp, objects) {
     switch (otmp.oclass) {
     case TOOL_CLASS:
         return is_weptool(otmp, objects);

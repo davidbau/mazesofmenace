@@ -7,11 +7,20 @@
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { bad_rock, may_dig, may_passwall } from './hack.js';
+import { which_armor } from './worn.js';
+import { obj_resists } from './zap.js';
+import { mksobj_at } from './mkobj.js';
+import { newsym } from './display.js';
 import { rn2 } from './rng.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
-import { ONAMES, OCLASSES } from './objects_data.js';
+import {
+    bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
+} from './mondata.js';
+import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
+import { touch_petrifies, mon_hates_silver } from './dog.js';
 import { is_rider } from './makemon.js';
-import { MAX_CARR_CAP, WT_HUMAN } from './const.js';
+import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MFLAGS.MZ_MEDIUM;
@@ -115,11 +124,28 @@ export function mfndpos(mon, data, flag) {
     let wantpool = (mdat.mlet === MONSYMS.S_EEL);
     const poolok = is_swimmer(mdat) && !wantpool;
     const lavaok = likes_lava(mdat);
+    let rockok = false, treeok = false, mw_tmp;
     let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
 
-    /* ALLOW_DIG needs m_carrying()/MON_WEP, which need monster inventory. */
-    if (flag & ALLOW_DIG)
-        note_unported_mon('mfndpos ALLOW_DIG');
+    if (flag & ALLOW_DIG) {
+        /* need to be specific about what can currently be dug */
+        if (!needspick(mdat)) {
+            rockok = treeok = true;
+        } else if ((mw_tmp = MON_WEP(mon)) && mw_tmp.cursed
+                   && mon.weapon_check === NO_WEAPON_WANTED) {
+            rockok = is_pick(mw_tmp);
+            treeok = is_axe(mw_tmp);
+        } else {
+            rockok = !!(m_carrying(mon, ONAMES.PICK_AXE)
+                        || (m_carrying(mon, ONAMES.DWARVISH_MATTOCK)
+                            && !which_armor(mon, W_ARMS)));
+            treeok = !!(m_carrying(mon, ONAMES.AXE)
+                        || (m_carrying(mon, ONAMES.BATTLE_AXE)
+                            && !which_armor(mon, W_ARMS)));
+        }
+        if (rockok || treeok)
+            thrudoor = true;
+    }
 
     for (;;) {                                  /* nexttry: */
         if (mon.mconf) {
@@ -140,9 +166,10 @@ export function mfndpos(mon, data, flag) {
                 if (!loc) continue;
                 const ntyp = loc.typ;
 
-                if (IS_OBSTRUCTED(ntyp))
-                    continue;                   /* may_passwall/may_dig need
-                                                   the dig subsystem */
+                if (IS_OBSTRUCTED(ntyp)
+                    && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
+                    && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny)))
+                    continue;
                 if (IS_WATERWALL(ntyp) && !is_swimmer(mdat))
                     continue;
                 if (ntyp === IRONBARS && !(flag & ALLOW_BARS))
@@ -247,16 +274,150 @@ export function t_at(x, y) {
     return (game.level?.traps || []).find(t => t.tx === x && t.ty === y) || null;
 }
 
-// src/hack.c:939 bad_rock() — is this square one a monster cannot walk through?
-// The Sokoban boulder case needs sobj_at, which is not ported; no public
-// session reaches Sokoban.
-function bad_rock(mdat, x, y) {
-    const t = game.level?.at(x, y)?.typ;
-    if (t === undefined) return true;
-    return IS_OBSTRUCTED(t)
-        && (!tunnels(mdat) || needspick(mdat))
-        && !passes_walls(mdat);
+
+// src/mon.c healmon() — heal a monster, raising mhpmax only past `overheal`.
+export function healmon(mtmp, amt, overheal) {
+    const oldhp = mtmp.mhp;
+
+    if (mtmp.mhp + amt > mtmp.mhpmax + overheal) {
+        mtmp.mhpmax += overheal;
+        mtmp.mhp = mtmp.mhpmax;
+    } else {
+        mtmp.mhp += amt;
+        if (mtmp.mhp > mtmp.mhpmax)
+            mtmp.mhpmax = mtmp.mhp;
+    }
+    return mtmp.mhp - oldhp;
 }
+
+// src/mon.c m_consume_obj() — the monster swallows otmp.
+//
+// Every arm past delobj() is gated on a corpse, glob, egg or container
+// predicate. For the metal object meatmetal() feeds it none of them can be
+// true, so this is the whole function on that path rather than a reduction of
+// it; the guards are the C's own, evaluated, not assumed.
+function m_consume_obj(mtmp, otmp) {
+    const ispet = mtmp.mtame;
+
+    /* non-pet: Heal up to the object's weight in hp */
+    if (!ispet && mtmp.mhp < mtmp.mhpmax)
+        healmon(mtmp, game.objects[otmp.otyp].oc_weight, 0);
+
+    if (otmp.cobj && otmp.cobj.length) {
+        note_unported_mon('m_consume_obj:meatbox');
+        return;
+    }
+
+    const corpsenm = (otmp.otyp === ONAMES.CORPSE) ? otmp.corpsenm : NON_PM;
+    if (corpsenm !== NON_PM || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME
+        || otmp.otyp === ONAMES.EGG || otmp.otyp === ONAMES.CARROT) {
+        /* polyfood/mlevelgain/mhealup/mstoning and their newcham, grow_up,
+           monstone and mon_givit consequences; all draw. */
+        note_unported_mon('m_consume_obj:corpse_effects');
+        return;
+    }
+
+    delobj(otmp); /* munch */
+}
+
+// src/mkobj.c delobj() — take the object off the floor and free it.
+function delobj(obj) {
+    const objs = game.level?.objects;
+    if (!objs) return;
+    const i = objs.indexOf(obj);
+    if (i >= 0) objs.splice(i, 1);
+}
+
+// src/mon.c:1465 meatmetal() — a rock mole or similar eats the topmost metal
+// object it is standing on.
+//
+// Reached from m_move()'s post-move block. Its rn2(100) is obj_resists', and
+// it is the first call seed0030 diverges on.
+export function meatmetal(mtmp) {
+    /* If a pet, eating is handled separately, in dog.c */
+    if (mtmp.mtame)
+        return 0;
+
+    /* Eats topmost metal object if it is there */
+    for (const otmp of (game.level?.objects || [])
+                         .filter(o => o.ox === mtmp.mx && o.oy === mtmp.my)) {
+        /* Don't eat indigestible/choking/inappropriate objects */
+        if ((game.mons[mtmp.mnum].pmidx === PMNAMES.PM_RUST_MONSTER
+             && !is_rustprone(otmp))
+            || (otmp.otyp === ONAMES.AMULET_OF_STRANGULATION
+                || otmp.otyp === ONAMES.RIN_SLOW_DIGESTION)
+            || (otmp.opoisoned && !resists_poison(mtmp)))
+            continue;
+        if (is_metallic(otmp) && !obj_resists(otmp, 5, 95)
+            && touch_artifact(otmp, mtmp)) {
+            if (game.mons[mtmp.mnum].pmidx === PMNAMES.PM_RUST_MONSTER
+                && otmp.oerodeproof) {
+                /* The object's rustproofing is gone now */
+                otmp.oerodeproof = 0;
+                mtmp.mstun = 1;
+                /* "%s spits %s out in disgust!" */
+            } else {
+                /* "%s eats %s!" / You_hear("a crunching sound.") */
+                mtmp.meating = Math.trunc(otmp.owt / 2) + 1;
+                m_consume_obj(mtmp, otmp);
+                if (DEADMONSTER(mtmp))
+                    return 2;
+                /* Left behind a pile? */
+                if (rnd(25) < 3)
+                    mksobj_at(ONAMES.ROCK, mtmp.mx, mtmp.my, true, false);
+                newsym(mtmp.mx, mtmp.my);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// include/objclass.h:194,200 is_metallic() / is_rustprone()
+const is_metallic = (otmp) => game.objects[otmp.otyp].oc_material >= MATERIALS.IRON
+                           && game.objects[otmp.otyp].oc_material <= MATERIALS.MITHRIL;
+const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
+
+/* src/mondata.c resists_poison() needs the resistance tables. */
+function resists_poison(mon) {
+    note_unported_mon('resists_poison');
+    return false;
+}
+
+/* src/artifact.c touch_artifact() — TRUE for anything that is not an artifact,
+   which is every object a rock mole meets on an early level. */
+function touch_artifact(otmp, mon) {
+    if (otmp.oartifact) {
+        note_unported_mon('touch_artifact');
+        return true;
+    }
+    return true;
+}
+
+// src/mon.c m_carrying() — the monster's object of this type, or null.
+//
+// This lived in monmove.js and returned a bare {} placeholder. Every caller so
+// far only tested truth, but mfndpos' dig arm reads the object itself, so the
+// dummy would have been a silent wrong answer the moment it was used.
+export function m_carrying(mtmp, type) {
+    for (const otmp of (mtmp.minvent || []))
+        if (otmp.otyp === type)
+            return otmp;
+
+    return null;
+}
+
+// include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
+const MON_WEP = (mon) => mon.mw || null;
+const NO_WEAPON_WANTED = 0;
+
+// include/obj.h:217,220 is_axe() / is_pick()
+const is_pick = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
+                           || otmp.oclass === OCLASSES.TOOL_CLASS)
+                          && game.objects[otmp.otyp].oc_skill === P_PICK_AXE;
+const is_axe  = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
+                           || otmp.oclass === OCLASSES.TOOL_CLASS)
+                          && game.objects[otmp.otyp].oc_skill === P_AXE;
 
 // src/hack.c:953 cant_squeeze_thru() — 0 means it CAN squeeze. A small monster
 // slips between two walls diagonally; a big one does not.
@@ -275,15 +436,13 @@ function cant_squeeze_thru(mon) {
 }
 
 /* include/mondata.h */
-const bigmonst     = (d) => d.msize >= MFLAGS.MZ_LARGE;
-const amorphous    = (d) => (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0;
+
+
 /* include/mondata.h:57 — vortices and the air elemental, by symbol not flag */
-const is_whirly    = (d) => d.mlet === MONSYMS.S_VORTEX
-                         || d.pmidx === PMNAMES.PM_AIR_ELEMENTAL;
+
 /* include/mondata.h:31 — ghosts */
-const noncorporeal = (d) => d.mlet === MONSYMS.S_GHOST;
-const slithy       = (d) => (d.mflags1 & MFLAGS.M1_SLITHY) !== 0;
-const needspick    = (d) => (d.mflags1 & MFLAGS.M1_NEEDPICK) !== 0;
+
+
 
 function note_unported_mon(what) {
     (game.unported ||= new Set()).add(what);
@@ -355,16 +514,12 @@ export function mon_allowflags(mtmp) {
 }
 
 /* include/mondata.h — the body-plan predicates mon_allowflags consults. */
-const nohands    = (d) => (d.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
-const verysmall  = (d) => d.msize < MFLAGS.MZ_SMALL;
-const is_giant   = (d) => (d.mflags2 & MFLAGS.M2_GIANT) !== 0;
-const tunnels    = (d) => (d.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
-const passes_walls = (d) => (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
-const throws_rocks = (d) => (d.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
-const passes_bars  = (d) => (d.mflags1 & MFLAGS.M1_UNSOLID) !== 0
-                         || (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0
-                         || (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0
-                         || d.msize <= MFLAGS.MZ_SMALL;
+
+
+
+
+
+
 
 // src/mon.c:2428 mm_aggression() — may `magr` attack `mdef`?
 export function mm_aggression(magr, mdef) {
@@ -407,7 +562,7 @@ export function mm_displacement(magr, mdef) {
 }
 
 /* include/mondata.h */
-const is_displacer = (d) => (d.mflags3 & MFLAGS.M3_DISPLACES) !== 0;
+
 // src/mon.c:362 zombie_maker() — by CLASS, not by flag. There is no
 // M3_ZOMBIFIER; reading one gave undefined and the predicate was always false.
 function zombie_maker(mon) {
@@ -521,10 +676,36 @@ export function can_carry(mtmp, otmp) {
    can_touch_safely() covers cockatrice corpses and acidic items for a monster
    without the matching resistance; neither can be on a floor before the corpse
    and resistance code lands. */
-const notake = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOTAKE) !== 0;
-const strongmonst = (ptr) => (ptr.mflags2 & MFLAGS.M2_STRONG) !== 0;
 
+
+// src/mon.c can_touch_safely() — would picking this up hurt the monster?
+//
+// Stubbed to TRUE, it let monsters pick up silver they hate and corpses that
+// petrify them, which changes what can_carry() allows and therefore which
+// square m_search_items() steers them to.
 function can_touch_safely(mtmp, otmp) {
-    note_unported_mon('can_touch_safely');
+    const otyp = otmp.otyp;
+    const mdat = game.mons[mtmp.mnum];
+
+    if (otyp === ONAMES.CORPSE && touch_petrifies(game.mons[otmp.corpsenm])
+        && !(mtmp.misc_worn_check & W_ARMG) && !resists_ston(mtmp))
+        return false;
+    if (otyp === ONAMES.CORPSE && is_rider(game.mons[otmp.corpsenm]))
+        return false;
+    if (game.objects[otyp].oc_material === MATERIALS.SILVER
+        && mon_hates_silver(mtmp)
+        && (otyp !== ONAMES.BELL_OF_OPENING || !is_covetous(mdat)))
+        return false;
+    /* touch_artifact() needs the artifact tables; no monster on an early level
+       carries one, and it is the only remaining arm. */
+    note_unported_mon('can_touch_safely:touch_artifact');
     return true;
+}
+
+// include/mondata.h is_covetous()
+
+/* src/mondata.c resists_ston() needs the resistance tables. */
+function resists_ston(mon) {
+    note_unported_mon('resists_ston');
+    return false;
 }

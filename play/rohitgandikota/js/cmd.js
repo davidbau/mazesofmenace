@@ -6,6 +6,8 @@
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { wiz_level_change } from './wizcmds.js';
+import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
 import {
@@ -23,7 +25,8 @@ import { dothrow } from './dothrow.js';
 import { getpos } from './getpos.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt } from './display.js';
+import { newsym, flush_screen, pline, docrt, _buildScreenOutput,
+         TOPLINE_SPECIAL_PROMPT } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED, IS_DOOR } from './const.js';
@@ -45,12 +48,20 @@ function isMovementKey(ch) {
 // yet. Listed explicitly so the set shrinks visibly as commands land, rather
 // than hiding behind a catch-all.
 const KNOWN_UNPORTED = new Set([
-    /* ESC and space reach the main prompt only when no window is open — a
-       window consumes its own dismissing key inside display_nhwindow(). C
-       treats both as no-ops here and prints nothing, so they must NOT fall
-       through to the "Unknown command" branch. */
+    /* ESC reaches the main prompt only when no window is open — a window
+       consumes its own dismissing key inside display_nhwindow(). C's parse()
+       treats it as a count cancel and prints nothing.
+
+       SPACE used to be listed here on the same reasoning, and that was wrong.
+       src/cmd.c:2818 skips binding it:
+
+           if (key == ' ' && !flags.rest_on_space)
+               continue;
+
+       so with rest_on_space off — the default — space is bound to nothing and
+       falls through to "Unknown command ' '." C really does print that, on
+       seed0030's very first keystroke among others. */
     '\x1b',
-    ' ',
 ]);
 
 // C ref: hack.c — check if a cell blocks movement
@@ -149,29 +160,124 @@ function note_unported_cmd(what) {
 // which keys are consumed. Consumption is what matters here: a command line
 // left unread turns its own letters into commands, which is what "#jump\n"
 // was doing — j and u moved the hero and the rest were swallowed.
-export async function getlin(query) {
+export async function getlin(query, hook) {
+    /* C tracks two things: obufp, the buffer, and bufp, the insertion point
+       inside it. They come apart under NEWAUTOCOMP (win/tty/getline.c:11,
+       always defined) because a completion extends the buffer while leaving
+       "pointer and cursor ... where they were". Modelling only the buffer put
+       our cursor at the end of the expansion; C leaves it after the typed
+       characters, which is a cursor-only mismatch on an otherwise exact
+       screen. */
     let buf = '';
+    let pos = 0;
 
     for (;;) {
+        /* win/tty/getline.c hooked_tty_getlin():
+         *
+         *     custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query);
+         *     for (;;) {
+         *         Strcat(strcat(strcpy(gt.toplines, query), " "), obufp);
+         *         term_curs_set(1);
+         *         c = pgetchar();
+         *
+         * The top line is rewritten to "<query> <buf>" before EVERY key and
+         * the cursor parks just past it. Reading the keys without painting
+         * any of that left the prompt invisible: seed0360's '#' never
+         * appeared and the cursor sat out on the map.
+         */
+        game._pending_message = `${query} ${buf}`;
+        game._toplin = TOPLINE_SPECIAL_PROMPT;
+        _buildScreenOutput();
+        const display = game?.nhDisplay;
+        if (display) {
+            const CO = display.cols ?? 80;
+            display.setCursor(Math.min(query.length + 1 + pos, CO - 1), 0);
+        }
+
         const c = String.fromCharCode(await nhgetch());
 
-        if (c === '\x1b') {                 /* ESC abandons the line */
+        if (c === '\x1b') {
+            /* ESC with text typed clears the line and keeps reading; only ESC
+               on an empty line abandons. Returning immediately either way ate
+               a key the C spends going round again. */
+            if (buf !== '') {
+                buf = '';               /* obufp[0] = '\0'; bufp = obufp; */
+                pos = 0;
+                continue;
+            }
             return '\x1b';
         } else if (c === '\n' || c === '\r') {
+            /* NEWAUTOCOMP does NOT truncate here, so a completed name is
+               returned whole even though the cursor sat mid-string. */
             break;
         } else if (c === '\b' || c === '\x7f') {
-            buf = buf.slice(0, -1);
-        } else if (c >= ' ' && c !== '\x7f') {
-            buf += c;
+            /*  bufp--; ... *bufp = 0;  — back up and drop the rest. */
+            if (pos > 0) {
+                pos--;
+                buf = buf.slice(0, pos);
+            }
+            /* else tty_nhbell() */
+        } else if (c >= ' ' && c !== '\x7f' && pos < COLNO) {
+            /*  *bufp = c; bufp[1] = 0;  — the new character REPLACES whatever
+                the previous completion had put after the cursor. */
+            buf = buf.slice(0, pos) + c;
+            pos++;
+            if (hook) {
+                const completed = hook(buf);
+                if (completed !== null)
+                    buf = completed;    /* pointer and cursor left where they were */
+            }
         }
     }
     return buf;
 }
 
+// src/cmd.c extcmds_match() — the indices of the extended commands matching
+// findstr, filtered exactly as the C filters them.
+export function extcmds_match(findstr, ecmflags) {
+    const F = EXTCMD_FLAGS;
+    const ignoreac = (ecmflags & F.ECM_IGNOREAC) !== 0;
+    const exactmatch = (ecmflags & F.ECM_EXACTMATCH) !== 0;
+    const no1charcmd = (ecmflags & F.ECM_NO1CHARCMD) !== 0;
+    const out = [];
+
+    for (let i = 0; i < extcmdlist.length; i++) {
+        const e = extcmdlist[i];
+        if (e.flags & (F.CMD_NOT_AVAILABLE | F.INTERNALCMD))
+            continue;
+        if (!game.wizard && (e.flags & F.WIZMODECMD))
+            continue;
+        if (!ignoreac && !(e.flags & F.AUTOCOMPLETE))
+            continue;
+        if (no1charcmd && e.ef_txt.length === 1)
+            continue;
+        if (findstr === null || findstr === undefined) {
+            out.push(i);
+        } else if (exactmatch) {
+            if (findstr.toLowerCase() === e.ef_txt.toLowerCase())
+                out.push(i);
+        } else {
+            if (e.ef_txt.slice(0, findstr.length).toLowerCase()
+                === findstr.toLowerCase())
+                out.push(i);
+        }
+    }
+    return out;
+}
+
+// win/tty/getline.c ext_cmd_getlin_hook() — expand the typed prefix as soon as
+// exactly one command still matches, which is how "#j\n" runs #jump.
+function ext_cmd_getlin_hook(base) {
+    const matches = extcmds_match(base, EXTCMD_FLAGS.ECM_NOFLAGS);
+
+    return matches.length === 1 ? extcmdlist[matches[0]].ef_txt : null;
+}
+
 // win/tty/getline.c:292 tty_get_ext_cmd() — read an extended command name and
 // match it against extcmdlist.
 async function get_ext_cmd() {
-    const buf = (await getlin('#')).trim();
+    /* C passes the completion hook unless replaying with in_doagain. */
+    const buf = (await getlin('#', ext_cmd_getlin_hook)).trim();
 
     if (buf === '' || buf === '\x1b')
         return null;
@@ -232,6 +338,8 @@ export async function doextcmd() {
        the ones whose absence puts the whole session out of step. */
     if (name === 'jump')
         return await dojump();
+    if (name === 'levelchange')
+        return await wiz_level_change();
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;

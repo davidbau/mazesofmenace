@@ -632,3 +632,8 @@ function Is_stronghold(lev) {
               && lev.dnum === game.stronghold_level.dnum
               && lev.dlevel === game.stronghold_level.dlevel);
 }
+
+// include/dungeon.h:139 In_sokoban()
+export function In_sokoban(lev) {
+    return lev.dnum === game.sokoban_dnum;
+}

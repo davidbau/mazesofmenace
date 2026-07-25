@@ -4,6 +4,8 @@
 import { game } from './gstate.js';
 import { aligns } from './role_data.js';
 import { rnd, rn1 } from './rng.js';
+import { ACURR } from './attrib.js';
+import { A_CON, A_WIS } from './const.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
@@ -51,20 +53,56 @@ export function newhp() {
             game.u.ualign.record = urole.initrecord;
         }
     } else {
-        let hprnd, hpfix;
+        /* src/attrib.c:1098 — TWO separate rnd() calls, one for the role and
+           one for the race, each skipped when its lornd/hirnd is 0. This used
+           to be a single rn1(role+race, fix), which is a different number of
+           draws as well as a different distribution: rn1(a+b, f) spends one
+           call, C spends up to two.
+
+           The Constitution bonus below was missing entirely. */
+        let conplus;
+
         if (game.u.ulevel < urole.xlev) {
-            hprnd = urole.hpadv[LORND] + urace.hpadv[LORND];
-            hpfix = urole.hpadv[LOFIX] + urace.hpadv[LOFIX];
+            hp = urole.hpadv[LOFIX] + urace.hpadv[LOFIX];
+            if (urole.hpadv[LORND] > 0)
+                hp += rnd(urole.hpadv[LORND]);
+            if (urace.hpadv[LORND] > 0)
+                hp += rnd(urace.hpadv[LORND]);
         } else {
-            hprnd = urole.hpadv[HIRND] + urace.hpadv[HIRND];
-            hpfix = urole.hpadv[HIFIX] + urace.hpadv[HIFIX];
+            hp = urole.hpadv[HIFIX] + urace.hpadv[HIFIX];
+            if (urole.hpadv[HIRND] > 0)
+                hp += rnd(urole.hpadv[HIRND]);
+            if (urace.hpadv[HIRND] > 0)
+                hp += rnd(urace.hpadv[HIRND]);
         }
-        hp = rn1(hprnd, hpfix);
+        const con = ACURR(A_CON);
+        if (con <= 3)        conplus = -2;
+        else if (con <= 6)   conplus = -1;
+        else if (con <= 14)  conplus = 0;
+        else if (con <= 16)  conplus = 1;
+        else if (con === 17) conplus = 2;
+        else if (con === 18) conplus = 3;
+        else                 conplus = 4;
+        hp += conplus;
     }
     if (hp <= 0)
         hp = 1;
+    if (game.u.ulevel < MAXULEV) {
+        /* remember increment; future level drain could take it away again */
+        (game.u.uhpinc ||= [])[game.u.ulevel] = hp;
+    } else {
+        /* after level 30, throttle hit point gains from extra experience */
+        let lim = 5 - Math.trunc(game.u.uhpmax / 300);
+
+        lim = Math.max(lim, 1);
+        if (hp > lim)
+            hp = lim;
+    }
     return hp;
 }
+
+// include/global.h:413 MAXULEV
+const MAXULEV = 30;
 
 // src/exper.c:45 newpw() — spell power / energy points for a new level.
 export function newpw() {
@@ -78,7 +116,7 @@ export function newpw() {
         if (urace.enadv[INRND] > 0)
             en += rnd(urace.enadv[INRND]);
     } else {
-        enrnd = Math.trunc(game.u.acurr_wis / 2);
+        enrnd = Math.trunc(ACURR(A_WIS) / 2);
         if (game.u.ulevel < urole.xlev) {
             enrnd += urole.enadv[LORND] + urace.enadv[LORND];
             enfix = urole.enadv[LOFIX] + urace.enadv[LOFIX];
@@ -90,5 +128,16 @@ export function newpw() {
     }
     if (en <= 0)
         en = 1;
+    if (game.u.ulevel < MAXULEV) {
+        /* remember increment; future level drain could take it away again */
+        (game.u.ueninc ||= [])[game.u.ulevel] = en;
+    } else {
+        /* after level 30, throttle energy gains from extra experience */
+        let lim = 4 - Math.trunc(game.u.uenmax / 200);
+
+        lim = Math.max(lim, 1);
+        if (en > lim)
+            en = lim;
+    }
     return en;
 }

@@ -6,6 +6,9 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
+import { sobj_at } from './invent.js';
+import { m_carrying, meatmetal } from './mon.js';
+import { metallivorous, corpse_eater } from './mondata.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
 import {
@@ -166,10 +169,6 @@ function linedup(ax, ay, bx, by, boulderhandling) {
     return false;
 }
 
-// src/mon.c m_carrying() — does the monster hold one of this type?
-function m_carrying(mtmp, type) {
-    return (mtmp.minvent || []).some(o => o.otyp === type) ? {} : null;
-}
 
 // src/monmove.c:1330 m_search_items() — look for an object worth walking to,
 // and REWRITE the goal to it. One draw, the rn2(25) that usually makes a
@@ -356,12 +355,6 @@ function searches_for_item(mon, obj) {
     return false;
 }
 
-// include/mondata.h:243 corpse_eater()
-const corpse_eater = (ptr) => ptr.pmidx === PMNAMES.PM_PURPLE_WORM
-                           || ptr.pmidx === PMNAMES.PM_BABY_PURPLE_WORM
-                           || ptr.pmidx === PMNAMES.PM_GHOUL
-                           || ptr.pmidx === PMNAMES.PM_PIRANHA;
-
 // src/monmove.c:1036 mon_would_consume_item() — would this monster eat the
 // object rather than carry it? m_search_items() treats that as a reason to walk
 // to it, so a wrong answer changes the pet's goal.
@@ -452,10 +445,13 @@ export function onscary(x, y, mtmp) {
             || is_vampshifter(mtmp)))
         return true;
 
-    /* sobj_at(SCR_SCARE_MONSTER) and sengr_at("Elbereth") both need parts of
-       the object and engraving code that are absent, so neither can be
-       answered yet. Both would return TRUE only in rare states. */
-    note_unported('onscary:scare_monster_and_elbereth');
+    /* the scare monster scroll doesn't have any of the below
+     * restrictions, being its own source of power */
+    if (sobj_at(ONAMES.SCR_SCARE_MONSTER, x, y))
+        return true;
+
+    /* sengr_at("Elbereth") needs the engraving code, which is absent. */
+    note_unported('onscary:elbereth');
     return false;
 }
 
@@ -724,7 +720,8 @@ export function m_move(mtmp, after) {
            path where the caller returns immediately. */
         const st = { mmoved: MMOVE_NOTHING, appr };
         if (m_search_items(mtmp, goal, st)) {
-            return MMOVE_DONE; /* C returns postmov(...) */
+            /* src/monmove.c:1799 — C returns through postmov() here too. */
+            return postmov(mtmp, ptr, omx, omy, MMOVE_DONE);
         }
         ggx = goal.x; ggy = goal.y; appr = st.appr;
     }
@@ -781,6 +778,39 @@ export function m_move(mtmp, after) {
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+    }
+
+    return postmov(mtmp, ptr, omx, omy, mmoved);
+}
+
+// src/monmove.c:1455 postmov() — everything a monster does after arriving.
+//
+// This is a SEPARATE FUNCTION in C, not the tail of m_move, and m_move returns
+// through it from five different places (:1773, :1799, :1823, :1847, :1907).
+// Writing it as a tail meant every early return skipped it, which is why
+// wiring meatmetal() in changed nothing: the block was there but unreachable
+// on the paths that mattered. :1773 is the pet path, so dog_move()'s result
+// goes through here too.
+function postmov(mtmp, ptr, omx, omy, mmoved) {
+    if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
+        if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+            /* Maybe a rock mole just ate some metal object */
+            if (metallivorous(ptr)) {
+                if (meatmetal(mtmp) === 2)
+                    return MMOVE_DIED; /* it died */
+            }
+
+            /* Maybe a cube ate just about anything */
+            if (ptr.pmidx === PMNAMES.PM_GELATINOUS_CUBE)
+                note_unported('postmov:meatobj');
+
+            /* Maybe a purple worm ate a corpse */
+            if (corpse_eater(ptr))
+                note_unported('postmov:meatcorpse');
+
+            /* mpickstuff() draws; it is the one that affects the most turns. */
+            note_unported('postmov:mpickstuff');
+        }
     }
     return mmoved;
 }

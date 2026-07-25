@@ -10,6 +10,8 @@
 // from enexto() to place it.
 
 import { game } from './gstate.js';
+import { sobj_at } from './invent.js';
+import { may_dig } from './hack.js';
 import { obj_resists } from './zap.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at,
@@ -120,7 +122,7 @@ const likes_lava   = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
 const ismnum = (x) => x >= 0 && x < NUMMONS;
 
 // include/mondata.h:200-203
-const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
+export const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
                               || ptr.pmidx === PMNAMES.PM_CHICKATRICE;
 const flesh_petrifies = (pm) => touch_petrifies(pm)
                              || pm.pmidx === PMNAMES.PM_MEDUSA;
@@ -179,7 +181,7 @@ function find_pmmonst(pm) {
 }
 
 // src/mondata.c:517 mon_hates_silver() / :524 hates_silver()
-function mon_hates_silver(mon) {
+export function mon_hates_silver(mon) {
     return is_vampshifter(mon) || hates_silver(game.mons[mon.mnum]);
 }
 
@@ -240,23 +242,7 @@ const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
 const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 const tunnels      = (ptr) => (ptr.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
 
-// src/detect.c sobj_at() — a specific object type on the floor here.
-function sobj_at(otyp, x, y) {
-    return (game.level?.objects || [])
-        .some(o => o.ox === x && o.oy === y && o.otyp === otyp);
-}
 
-// src/hack.c:922 may_dig() — intended to be called only on ROCKs or TREEs. A
-// non-diggable wall or tree cannot be tunnelled through, which is what stops
-// can_reach_location() routing a pet's path through solid rock.
-function may_dig(x, y) {
-    const lev = game.level.at(x, y);
-    if (!lev)
-        return false;
-
-    return !((IS_STWALL(lev.typ) || IS_TREE(lev.typ))
-             && (lev.wall_info & W_NONDIGGABLE));
-}
 
 // include/vision.h:42 m_cansee(mtmp, x2, y2) = clear_path(mx, my, x2, y2)
 function m_cansee(mon, x, y) {

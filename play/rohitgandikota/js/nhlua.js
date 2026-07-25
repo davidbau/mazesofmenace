@@ -57,3 +57,25 @@ export function l_nhcore_init() {
 export function percent(threshold) {
     return rn2(100) < threshold;
 }
+
+// src/nhlua.c:940 nhl_random() — nh.random(a) is rn2(a), nh.random(a,b) is
+// a + rn2(b).
+export function nh_random(a, b) {
+    return (b === undefined) ? rn2(a) : a + rn2(b);
+}
+
+// dat/nhlib.lua:29 d() — dice. math.random(1, faces) goes through the shim as
+// nh.random(1, faces), i.e. 1 + rn2(faces), so d(5,5) is FIVE draws and d(3)
+// is one.
+//
+// Lua evaluates a numeric-for's bound once, so `for i = 1, d(5,5)` spends its
+// five draws before the body runs at all, not once per iteration.
+export function lua_d(dice, faces) {
+    if (faces === undefined)
+        return nh_random(1, dice);      /* 1-arg: `dice` is the face count */
+
+    let sum = 0;
+    for (let i = 1; i <= dice; i++)
+        sum += nh_random(1, faces);
+    return sum;
+}

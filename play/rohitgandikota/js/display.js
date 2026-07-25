@@ -2,17 +2,23 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { term_start_color } from './tty/termcap.js';
 import { rank } from './botl.js';
 import { cansee } from './vision.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SDOOR,
+    D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SDOOR, ICE,
+    IRONBARS, TREE, LADDER, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+    AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN,
 } from './const.js';
+import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
 import { def_monsyms, def_oc_syms } from './drawing_data.js';
-import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, DEC_TO_UNICODE } from './terminal.js';
+import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+         CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, DEC_TO_UNICODE } from './terminal.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -53,9 +59,13 @@ function terrain_glyph(loc, x, y) {
     // this keeps the floor glyph: substituting a literal '.' cost 24 screens.
     case DOOR:
         if (loc.doormask & D_ISOPEN)
-            return loc.horizontal
-                ? { ch: '-', color: CLR_BROWN, dec: false }
-                : { ch: '|', color: CLR_BROWN, dec: false };
+            /* dat/symbols, "start: DECgraphics":
+             *     S_vodoor: \xe1   # meta-a, checkerboard
+             *     S_hodoor: \xe1   # meta-a, checkerboard
+             * Both open-door orientations are the SAME DEC glyph, so the
+             * defsym.h '-' / '|' pair never reaches a DECgraphics screen.
+             * horizontal is irrelevant here. */
+            return { ch: 'a', color: CLR_BROWN, dec: true };
         if (loc.doormask & (D_CLOSED | D_LOCKED))
             return { ch: '+', color: CLR_BROWN, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // S_ndoor
@@ -78,6 +88,42 @@ function terrain_glyph(loc, x, y) {
     case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
     // src/display.c:2304 — a SECRET door looks exactly like the wall it hides
     // in, so it falls through to the HWALL/VWALL case.
+    /* The rest of the terrain, from include/defsym.h with dat/symbols'
+       "start: DECgraphics" overrides applied. Where a DEC entry exists it
+       wins; where none does, defsym.h's ASCII character stands (fountain,
+       sink, throne, grave and the stairs have no DEC entry).
+
+       None of these had a case at all, so every one fell through to the
+       default and drew as blank. */
+    case IRONBARS:  return { ch: '|', color: HI_METAL, dec: true };   // \xfc
+    case TREE:      return { ch: 'g', color: CLR_GREEN, dec: true };  // \xe7
+    case LADDER:
+        /* src/display.c:2352 — the direction comes from the square's own
+           `ladder` field, not from a level-wide coordinate:
+               idx = (ptr->ladder & LA_DOWN) ? S_dnladder : S_upladder;
+           defsym.h:122-123 gives '<' / '>', both CLR_BROWN, overridden by
+           dat/symbols to \xf9 / \xfa. The known_branch_stairs() arm needs the
+           branch-discovery state and is not reachable yet. */
+        return (loc.ladder & LA_DOWN)
+            ? { ch: 'z', color: CLR_BROWN, dec: true }
+            : { ch: 'y', color: CLR_BROWN, dec: true };
+    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true };   // \xfb
+    case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
+    case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
+    case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
+    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case POOL:
+    case MOAT:      return { ch: '`', color: CLR_BLUE, dec: true };   // \xe0
+    case WATER:     return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true };
+    case LAVAPOOL:  return { ch: '`', color: CLR_RED, dec: true };
+    case LAVAWALL:  return { ch: '`', color: CLR_ORANGE, dec: true };
+    case ICE:       return { ch: '~', color: CLR_CYAN, dec: true };   // \xfe
+    case DRAWBRIDGE_DOWN:                                  /* S_[vh]odbridge */
+        return { ch: '~', color: CLR_BROWN, dec: true };
+    case DRAWBRIDGE_UP:                                    /* S_[vh]cdbridge */
+        return { ch: '#', color: CLR_BROWN, dec: false };
+    case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false };
+    case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false };
     case SDOOR:     return loc.horizontal
                         ? { ch: 'q', color: NO_COLOR, dec: true }   // ─
                         : { ch: 'x', color: NO_COLOR, dec: true };  // │
@@ -135,7 +181,21 @@ export function newsym(x, y) {
         }
     }
 
-    const tg = terrain_glyph(loc, x, y);
+    /* src/display.c:422 map_location():
+     *
+     *     if (spot_shows_engravings(x, y)
+     *         && (ep = engr_at(x, y)) != 0 && !covers_traps(x, y)) {
+     *         if (cansee(x, y)) ep->erevealed = 1;
+     *         map_engraving(ep, 0);
+     *     } else {
+     *         map_background(x, y, 0);
+     *     }
+     *
+     * An engraving REPLACES the background glyph. We generate engravings
+     * (js/engrave.js) but drew the plain floor over them, so seed0105's very
+     * first frame was one cell wrong and every one of its 30 steps failed.
+     */
+    const tg = engraving_glyph(loc, x, y) || terrain_glyph(loc, x, y);
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
@@ -147,6 +207,29 @@ export function newsym(x, y) {
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
     }
+}
+
+
+// include/engrave.h:50 spot_shows_engravings(), include/display.h:633
+// engraving_to_glyph() -> engraving_to_defsym(), include/defsym.h:114,118.
+//
+// S_engroom and S_engrcorr are both CLR_BRIGHT_BLUE; only the character
+// differs, and it is picked from the terrain the engraving sits on.
+function engraving_glyph(loc, x, y) {
+    const typ = loc?.typ;
+    if (!(typ === CORR || typ === ICE || typ === ROOM))
+        return null;
+
+    const ep = engr_at(x, y);
+    if (!ep)
+        return null;
+
+    /* covers_traps() needs the trap-covering objects; nothing generated on an
+       early level covers an engraving. */
+    if (cansee(x, y))
+        ep.erevealed = 1;
+
+    return { ch: typ === CORR ? '#' : '`', color: CLR_BRIGHT_BLUE, dec: false };
 }
 
 // ── docrt ──
@@ -188,7 +271,7 @@ function render_map_row(y) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = game.level.at(x, y);
         const ch = loc?.disp_ch ?? ' ';
-        const color = loc?.disp_color ?? NO_COLOR;
+        const color = term_start_color(loc?.disp_color ?? NO_COLOR);
         const dec = !!loc?.disp_decgfx;
 
         if (ch === ' ') {
@@ -317,7 +400,7 @@ export function serialize_terminal_grid(display) {
 }
 
 // ── Build screen output ──
-function _buildScreenOutput() {
+export function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
 
@@ -349,7 +432,9 @@ function _buildScreenOutput() {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
                 const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
-                display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                display.setCell(x - 1, y + 1, ch,
+                                term_start_color(loc.disp_color ?? NO_COLOR),
+                                loc.disp_attr ?? 0);
             }
         }
         // Status lines
@@ -385,7 +470,8 @@ export async function bot() {
 
 // include/wintty.h:85 — toplin states. NEED_MORE is 1 and NON_EMPTY is 2, the
 // opposite of what their order in the header suggests.
-export const TOPLINE_EMPTY = 0, TOPLINE_NEED_MORE = 1, TOPLINE_NON_EMPTY = 2;
+export const TOPLINE_EMPTY = 0, TOPLINE_NEED_MORE = 1, TOPLINE_NON_EMPTY = 2,
+             TOPLINE_SPECIAL_PROMPT = 3;
 
 const defmorestr = '--More--';
 
@@ -424,15 +510,62 @@ export async function more() {
 
     const display = game?.nhDisplay;
     const msg = game._pending_message || '';
+    /* cury must outlive the paint block: tty_clear_nhwindow() erases through
+       cw->cury, and that is set here by the same test that wraps the suffix. */
+    let row = 0;
     if (display) {
         const CO = display.cols ?? 80;
-        let col = msg.length, row = 0;
+        let col = msg.length;
         if (col >= CO - 8) { col = 0; row = 1; }
         for (let i = 0; i < defmorestr.length && col + i < CO; i++)
             display.setCell(col + i, row, defmorestr[i], NO_COLOR, 0);
         display.setCursor(Math.min(col + defmorestr.length, CO - 1), row);
     }
     await nhgetch();
-    game._toplin = TOPLINE_EMPTY;
+
+    /* win/tty/wintty.c tty_display_nhwindow(), NHW_MESSAGE:
+     *
+     *     more();
+     *     ttyDisplay->toplin = TOPLINE_NEED_MORE;   / * more resets this * /
+     *     tty_clear_nhwindow(window);
+     *
+     * The reassignment looks redundant and is not: tty_clear_nhwindow() only
+     * does its home()/cl_end() when toplin != TOPLINE_EMPTY, and more() has
+     * just set it to EMPTY. Forcing it back is what makes the erase happen.
+     *
+     * Clearing only _pending_message left the text already painted into the
+     * grid, so whatever drew next landed on top of it: seed0360's tutorial
+     * prompt starts at column 21 and the first 21 columns still read
+     * "Hello wizard, welcom".
+     */
+    game._toplin = TOPLINE_NEED_MORE;
     game._pending_message = '';
+    tty_clear_nhwindow_message(row);
+    game._toplin = TOPLINE_EMPTY;
+}
+
+// win/tty/wintty.c tty_clear_nhwindow(), the NHW_MESSAGE arm:
+//
+//     if (ttyDisplay->toplin != TOPLINE_EMPTY) {
+//         home(); cl_end();
+//         if (cw->cury) docorner(1, cw->cury + 1, 0);
+//         cw->curx = cw->cury = 0;
+//         ttyDisplay->toplin = TOPLINE_EMPTY;
+//     }
+//
+// cl_end() erases to end of line, so the row becomes blanks rather than
+// keeping stale glyphs. cury is non-zero only when the message wrapped, which
+// for more() means the "--More--" suffix went to row 1.
+function tty_clear_nhwindow_message(cury) {
+    if (game._toplin === TOPLINE_EMPTY)
+        return;
+
+    const display = game?.nhDisplay;
+    if (display) {
+        const CO = display.cols ?? 80;
+        for (let r = 0; r <= (cury || 0); r++)
+            for (let c = 0; c < CO; c++)
+                display.setCell(c, r, ' ', NO_COLOR, 0);
+    }
+    game._toplin = TOPLINE_EMPTY;
 }

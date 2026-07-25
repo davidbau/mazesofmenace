@@ -25,7 +25,7 @@ function greatest_erosion(obj) {
 
 // include/hack.h:1526 ARM_BONUS(). include/objclass.h:102 aliases a_ac onto
 // the oc_oc1 union member, which is the name the generated table carries.
-function ARM_BONUS(obj) {
+export function ARM_BONUS(obj) {
     const a_ac = objects[obj.otyp].oc_oc1;
     return a_ac + (obj.spe || 0) - Math.min(greatest_erosion(obj), a_ac);
 }

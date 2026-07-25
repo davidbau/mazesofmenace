@@ -18,6 +18,7 @@
 // everything after it.
 
 import { game } from './gstate.js';
+import { mergable } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
@@ -180,29 +181,10 @@ function ini_inv_adjust_obj(trop, obj) {
 // The BUC and enchantment tests matter for the inventory frame: five separate
 // FOOD_RATION objects merge into one "6 uncursed food rations" line, but a
 // blessed and an uncursed stack of the same otyp would not.
-function mergable(otmp, obj) {
-    const ocl = game.objects[obj.otyp];
-    if (obj === otmp || obj.otyp !== otmp.otyp || !ocl.oc_merge)
-        return false;
-    if (obj.oclass === COIN_CLASS)
-        return true;
-    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
-        return false;
-    if (obj.spe !== otmp.spe || !!obj.otrapped !== !!otmp.otrapped
-        || !!obj.lamplit !== !!otmp.lamplit)
-        return false;
-    if (obj.oclass === FOOD_CLASS
-        && ((obj.oeaten || 0) !== (otmp.oeaten || 0)))
-        return false;
-    if (!!obj.dknown !== !!otmp.dknown
-        || (obj.oeroded || 0) !== (otmp.oeroded || 0)
-        || (obj.oeroded2 || 0) !== (otmp.oeroded2 || 0)
-        || !!obj.greased !== !!otmp.greased)
-        return false;
-    if (obj.corpsenm !== otmp.corpsenm)
-        return false;
-    return true;
-}
+/* The real mergable() now lives in js/invent.js, its C home (src/invent.c).
+   The abbreviated copy that stood here checked nine of its twenty conditions
+   and, being the more permissive of the two, would fold starting-inventory
+   stacks that C keeps apart. */
 
 // src/invent.c:230 assigninvlet() — sequential from lastinvnr, gold gets '$'.
 const GOLD_SYM = '$';
