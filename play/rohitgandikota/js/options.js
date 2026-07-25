@@ -3,6 +3,15 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
+import { nhgetch } from './input.js';
+import { more, TOPLINE_NEED_MORE } from './display.js';
+import {
+    NHW_MENU, ATR_NONE,
+    tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
+    tty_add_menu_str, tty_end_menu, tty_display_nhwindow,
+} from './tty/wintty.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD } from './const.js';
+import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
 
 // src/options.c:489 parseoptions()
@@ -81,6 +90,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
 
     if (opt.type === 'BoolOpt') {
         result.opts[opt.name] = !negated;
+        (result.optSetInConfig ||= {})[opt.name] = true;
     } else {
         result.opts[opt.name] = negated ? null : value;
     }
@@ -161,3 +171,60 @@ export function optValue(result, name) {
 }
 
 export { allopt, findOption };
+
+// src/options.c:430 ask_do_tutorial()
+//
+// NetHack 5.0 asks every new game whether the player wants the tutorial, unless
+// the config file settled it. 32 of the 44 public sessions never mention
+// `tutorial` in their rc, so they all see this menu — and its keystroke is part
+// of their recorded input.
+//
+// The loop repeats until the player picks an entry: <space> or <return> selects
+// nothing, and the second and later passes add a "(Please choose 'y' or 'n'.)"
+// line.
+export async function ask_do_tutorial() {
+    let dotut = !!game.flags?.tutorial;
+
+    /* opt_set_in_config[opt_tutorial] — did the rc mention it at all? */
+    if (game.rc?.optSetInConfig?.tutorial)
+        return dotut;
+
+    /* win/tty/wintty.c:1921 — displaying a menu while the top line is still
+       unacknowledged runs more() FIRST, which consumes the key meant for it. */
+    if (game._toplin === TOPLINE_NEED_MORE)
+        await more();
+
+    let pass = 0;
+    for (;;) {
+        const win = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+        tty_add_menu(win, null, 'y'.charCodeAt(0), 'y', 0, ATR_NONE, NO_COLOR,
+                     'Yes, do a tutorial', MENU_ITEMFLAGS_NONE);
+        tty_add_menu(win, null, 'n'.charCodeAt(0), 'n', 0, ATR_NONE, NO_COLOR,
+                     'No, just start play', MENU_ITEMFLAGS_NONE);
+
+        tty_add_menu_str(win, '');
+        tty_add_menu_str(win,
+            'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
+        if (pass++)
+            tty_add_menu_str(win, "(Please choose 'y' or 'n'.)");
+
+        tty_end_menu(win, 'Do you want a tutorial?');
+        tty_display_nhwindow(win);
+
+        /* select_menu(win, PICK_ONE) — returns as soon as a selector is typed */
+        let answered = null;
+        for (;;) {
+            const c = String.fromCharCode(await nhgetch());
+            if (c === '\x1b') { answered = 'esc'; break; }
+            if (c === 'y' || c === 'n') { answered = c; break; }
+            /* space and return select nothing, so the menu is rebuilt */
+            if (c === ' ' || c === '\r' || c === '\n') break;
+        }
+        tty_destroy_nhwindow(win);
+
+        if (answered === 'esc') return false;
+        if (answered) return answered === 'y';
+    }
+}

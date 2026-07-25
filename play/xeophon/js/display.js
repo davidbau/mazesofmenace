@@ -372,9 +372,12 @@ function terrainGlyph(loc, x, y) {
             : { ch: '.', color: NO_COLOR, dec: false };
     case STAIRS:
         if (isRogueLevel()) return { ch: '%', color: loc.stairColor ?? NO_COLOR, dec: false };
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: loc.stairColor ?? ((game.u?.uz?.dlevel ?? 1) === 1 ? CLR_YELLOW : NO_COLOR), dec: false };
-        return { ch: '>', color: loc.stairColor ?? NO_COLOR, dec: false };
+        // C ref: display.c mapglyph — stair direction comes from the tile's
+        // own ladder field (LA_DOWN -> '>', otherwise '<'), not from the
+        // level's single upstair pointer.
+        if ((loc.ladder ?? 0) === 2)
+            return { ch: '>', color: loc.stairColor ?? NO_COLOR, dec: false };
+        return { ch: '<', color: loc.stairColor ?? ((game.u?.uz?.dlevel ?? 1) === 1 ? CLR_YELLOW : NO_COLOR), dec: false };
     case FOUNTAIN: return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK: return { ch: '{', color: CLR_WHITE, dec: false };
     case IRONBARS: return game.symset === 'DECgraphics'
@@ -469,6 +472,21 @@ function warningSourceCount() {
 
 function warnsOfMonsters() {
     return !!(game.u?.warning || game.u?.HWarning || game.u?.warn_of_monsters || warningSourceCount() > 0);
+}
+
+// C ref: src/allmain.c:452-458 — see_objects() (which observes nearby floor
+// objects, revealing their appearance colors) only runs while hallucinating
+// or when the hero has unblind telepathy, Warning, Warn_of_mon, or a visible
+// region (the region case is not modeled).
+function seeObjectsActive() {
+    const suffix = game.u?._statusSuffix || '';
+    if (suffix.includes('Hallu')) return true;
+    if (!game.u?.blind && (telepathySourceCount() > 0
+        || game.u?.telepathy || game.u?.telepathetic || game.u?.HTelepat)) return true;
+    if (warnsOfMonsters()) return true;
+    if (game.u?.HWarn_of_mon || game.u?.EWarn_of_mon || game.u?.Warn_of_mon
+        || game.u?.warnOfMonsterSpecies || game.u?.warn_of_monster_species) return true;
+    return false;
 }
 
 export function sensesTelepathically(mon) {
@@ -665,7 +683,7 @@ const MONSTER_COLORS = {
     dog: CLR_WHITE,
     'large dog': CLR_WHITE,
 };
-function monsterGlyph(mon, detected = false) {
+export function monsterGlyph(mon, detected = false) {
     if (!detected && mon.appearGlyph) return { ch: mon.appearGlyph, color: mon.appearColor ?? NO_COLOR, dec: false };
     if (!detected && mon.appearObj != null) return { ch: '(', color: mon.appearColor ?? CLR_BROWN, dec: false };
     if (hallucinatesDisplay()) {
@@ -923,8 +941,12 @@ export function newsym(x, y) {
         return;
     }
 
+    // C ref: display.c _map_location — an engraving is only shown once
+    // revealed (ep->erevealed); unrevealed engravings fall through to the
+    // background glyph.  Engravings written by the hero have no flag and
+    // always show.
     const engr = engravingAt(x, y);
-    if (engr && loc.typ !== GRAVE) {
+    if (engr && engr.erevealed !== false && loc.typ !== GRAVE) {
         show_glyph_cell(x, y, loc.typ === CORR ? '#' : '`', CLR_BRIGHT_BLUE, false);
         return;
     }
@@ -1195,7 +1217,7 @@ function drawGrid() {
                 }
                 if ((game.flags?.lit_corridor || loc?._litScrollWhite) && loc?.typ === CORR && ch === '#' && !(game.viz_array?.[y]?.[x] & IN_SIGHT)) color = NO_COLOR;
                 const visibleObj = ch === '!' || ch === '*' ? objectAt(x, y) : null;
-                if (visibleObj?._appearance_color != null) {
+                if (visibleObj?._appearance_color != null && seeObjectsActive()) {
                     const dx = x - (game.u?.ux ?? 0);
                     const dy = y - (game.u?.uy ?? 0);
                     if (dx * dx + dy * dy <= 6) visibleObj.dknown = true;

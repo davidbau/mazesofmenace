@@ -11,13 +11,22 @@
 
 import { game } from './gstate.js';
 import { obj_resists } from './zap.js';
-import { mfndpos, mon_allowflags } from './mon.js';
-import { COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, ALLOW_M, ALLOW_U } from './const.js';
-import { OCLASSES } from './objects_data.js';
-import { MFLAGS } from './monst_data.js';
+import { mfndpos, mon_allowflags, is_pool, is_lava, can_carry } from './mon.js';
+import {
+    COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, ALLOW_M, ALLOW_U,
+    IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, isok,
+} from './const.js';
+import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
+import { MFLAGS, MONSYMS, NUMMONS } from './monst_data.js';
+
+const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2 } from './rng.js';
+import { dist2 } from './hacklib.js';
+import { couldsee } from './vision.js';
 import { PMNAMES } from './monst_data.js';
-import { makemon, MM_EDOG, NO_MINVENT } from './makemon.js';
+import {
+    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider,
+} from './makemon.js';
 
 const NON_PM = -1;
 
@@ -77,6 +86,165 @@ function initedog(mtmp) {
 export const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3, APPORT = 4,
              POISON = 5, UNDEF = 6, TABU = 7;
 
+/* include/mondata.h and include/objclass.h — the predicates dogfood() sorts
+   with. None of them draws; they only decide which branch is taken, and a wrong
+   branch changes how far the caller's loop runs before it breaks. */
+const carnivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_CARNIVORE) !== 0;
+const herbivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;
+const metallivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_METALLIVORE) !== 0;
+const haseyes      = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
+const humanoid     = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
+const acidic       = (ptr) => (ptr.mflags1 & MFLAGS.M1_ACID) !== 0;
+const poisonous    = (ptr) => (ptr.mflags1 & MFLAGS.M1_POIS) !== 0;
+const is_undead    = (ptr) => (ptr.mflags2 & MFLAGS.M2_UNDEAD) !== 0;
+const is_elf       = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
+const noncorporeal = (ptr) => ptr.mlet === MONSYMS.S_GHOST;
+// include/monst.h:217 is_vampshifter() — a monster, not a permonst.
+const is_vampshifter = (mon) =>
+    mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
+    || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
+/* include/mondata.h:59,190 — both are explicit species lists, not flag tests.
+   There is no M1_FIRE_RES; fire resistance lives in mresists as MR_FIRE, and
+   guessing a flag here silently made every monster flaming. */
+const flaming      = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
+                           || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+                           || ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
+                           || ptr.pmidx === PMNAMES.PM_SALAMANDER;
+const likes_lava   = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
+                           || ptr.pmidx === PMNAMES.PM_SALAMANDER;
+
+// include/monst.h:285 ismnum()
+const ismnum = (x) => x >= 0 && x < NUMMONS;
+
+// include/mondata.h:200-203
+const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
+                              || ptr.pmidx === PMNAMES.PM_CHICKATRICE;
+const flesh_petrifies = (pm) => touch_petrifies(pm)
+                             || pm.pmidx === PMNAMES.PM_MEDUSA;
+
+// include/mondata.h:75
+const slimeproof = (ptr) => ptr.pmidx === PMNAMES.PM_GREEN_SLIME
+                         || flaming(ptr) || noncorporeal(ptr);
+
+// include/mondata.h:196
+const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
+                         || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+                         || likes_lava(ptr);
+
+// include/mondata.h:232
+const vegan = (ptr) =>
+    ptr.mlet === MONSYMS.S_BLOB || ptr.mlet === MONSYMS.S_JELLY
+    || ptr.mlet === MONSYMS.S_FUNGUS || ptr.mlet === MONSYMS.S_VORTEX
+    || ptr.mlet === MONSYMS.S_LIGHT
+    || (ptr.mlet === MONSYMS.S_ELEMENTAL && ptr.pmidx !== PMNAMES.PM_STALKER)
+    || (ptr.mlet === MONSYMS.S_GOLEM && ptr.pmidx !== PMNAMES.PM_FLESH_GOLEM
+        && ptr.pmidx !== PMNAMES.PM_LEATHER_GOLEM)
+    || noncorporeal(ptr);
+
+// include/objclass.h:193-200. WOOD, IRON and MITHRIL are material ordinals.
+const is_organic   = (otmp) => game.objects[otmp.otyp].oc_material <= WOOD;
+const is_metallic  = (otmp) => game.objects[otmp.otyp].oc_material >= IRON
+                            && game.objects[otmp.otyp].oc_material <= MITHRIL;
+const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
+
+/* The remaining tests reach subsystems that are absent. Each is only reachable
+   through a corpse, egg or tin, none of which exists before the death-drop and
+   cooking code lands, so recording keeps the gap visible without inventing a
+   branch. */
+function peek_at_iced_corpse_age(obj) {
+    note_unported('peek_at_iced_corpse_age');
+    return obj.age ?? 0;
+}
+
+function stale_egg(obj) {
+    note_unported('stale_egg');
+    return false;
+}
+
+function polyfood(obj) {
+    note_unported('polyfood');
+    return false;
+}
+
+function same_race(pm1, pm2) {
+    note_unported('same_race');
+    return pm1 === pm2;
+}
+
+function find_pmmonst(pm) {
+    return (game.level?.monsters || []).find(m => m.mnum === pm) || null;
+}
+
+function mon_hates_silver(mon) {
+    note_unported('mon_hates_silver');
+    return false;
+}
+
+const resists_ston   = (mon) => { note_unported('resists_ston'); return false; };
+const resists_acid   = (mon) => { note_unported('resists_acid'); return false; };
+
+// src/dogmove.c could_reach_item()
+function could_reach_item(mon, nx, ny) {
+    if ((!is_pool(nx, ny) || is_swimmer(game.mons[mon.mnum]))
+        && (!is_lava(nx, ny) || likes_lava(game.mons[mon.mnum]))
+        && (!sobj_at(ONAMES.BOULDER, nx, ny) || throws_rocks(game.mons[mon.mnum])))
+        return true;
+    return false;
+}
+
+// src/dogmove.c can_reach_location() — a recursive walk toward <fx,fy> that
+// only ever steps strictly closer, so it terminates.
+function can_reach_location(mon, mx, my, fx, fy) {
+    if (mx === fx && my === fy)
+        return true;
+    if (!isok(mx, my))
+        return false; /* should not happen */
+
+    const dist = dist2(mx, my, fx, fy);
+    for (let i = mx - 1; i <= mx + 1; i++) {
+        for (let j = my - 1; j <= my + 1; j++) {
+            if (!isok(i, j))
+                continue;
+            if (dist2(i, j, fx, fy) >= dist)
+                continue;
+            const loc = game.level.at(i, j);
+            if (IS_OBSTRUCTED(loc.typ) && !passes_walls(game.mons[mon.mnum])
+                && (!may_dig(i, j) || !tunnels(game.mons[mon.mnum])))
+                continue;
+            if (IS_DOOR(loc.typ) && (loc.doormask & (D_CLOSED | D_LOCKED)))
+                continue;
+            if (!could_reach_item(mon, i, j))
+                continue;
+            if (can_reach_location(mon, i, j, fx, fy))
+                return true;
+        }
+    }
+    return false;
+}
+
+const is_swimmer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
+const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
+const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
+const tunnels      = (ptr) => (ptr.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
+
+// src/detect.c sobj_at() — a specific object type on the floor here.
+function sobj_at(otyp, x, y) {
+    return (game.level?.objects || [])
+        .some(o => o.ox === x && o.oy === y && o.otyp === otyp);
+}
+
+/* src/dig.c may_dig() and src/mon.c m_cansee() are not ported; both only narrow
+   which square is chosen and neither draws. */
+function may_dig(x, y) {
+    note_unported('may_dig');
+    return true;
+}
+
+function m_cansee(mon, x, y) {
+    note_unported('m_cansee');
+    return true;
+}
+
 // src/dog.c:995 dogfood() — only the part that draws is ported.
 //
 // The second test is the one that matters for the stream:
@@ -94,11 +262,135 @@ export function dogfood(mon, obj) {
     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95))
         return obj.cursed ? TABU : APPORT;
 
-    /* The classification that follows draws nothing: it is a switch on
-       oclass and a set of predicate tests. Not ported yet — reaching it is
-       recorded so the gap is visible rather than guessed at. */
-    note_unported('dogfood classification');
-    return UNDEF;
+    const mptr = game.mons[mon.mnum];
+    const carni = carnivorous(mptr), herbi = herbivorous(mptr);
+    let fx;
+
+    switch (obj.oclass) {
+    case OCLASSES.FOOD_CLASS: {
+        fx = (obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.TIN
+              || obj.otyp === ONAMES.EGG)
+             /* corpsenm might be NON_PM (special tin, unhatchable egg) */
+             ? obj.corpsenm
+             : NON_PM;
+        /* mons[NUMMONS] is a valid array entry, though not a valid monster;
+           predicate tests against it will fail */
+        const fptr = game.mons[ismnum(fx) ? fx : NUMMONS];
+
+        if (obj.otyp === ONAMES.CORPSE && is_rider(fptr))
+            return TABU;
+        if ((obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.EGG)
+            && flesh_petrifies(fptr) /* c*ckatrice or Medusa */
+            && !resists_ston(mon))
+            return POISON;
+        if (obj.otyp === ONAMES.LUMP_OF_ROYAL_JELLY
+            && mon.mnum === PMNAMES.PM_KILLER_BEE) {
+            /* if there's a queen bee on the level, don't eat royal jelly;
+               if there isn't, do eat it and grow into a queen */
+            return !find_pmmonst(PMNAMES.PM_QUEEN_BEE) ? DOGFOOD : TABU;
+        }
+        if (!carni && !herbi)
+            return obj.cursed ? UNDEF : APPORT;
+
+        /* a starving pet will eat almost anything */
+        const starving = !!(mon.mtame && !mon.isminion && mon.edog?.mhpmax_penalty);
+        /* even carnivores will eat carrots if they're temporarily blind */
+        const mblind = (!mon.mcansee && haseyes(mptr));
+
+        /* ghouls prefer old corpses and unhatchable eggs, yum! */
+        if (mon.mnum === PMNAMES.PM_GHOUL) {
+            if (obj.otyp === ONAMES.CORPSE)
+                return (peek_at_iced_corpse_age(obj) + 50 <= game.moves
+                        && !(fx === PMNAMES.PM_LIZARD || fx === PMNAMES.PM_LICHEN))
+                       ? DOGFOOD
+                       : (starving && !vegan(fptr)) ? ACCFOOD
+                       : POISON;
+            if (obj.otyp === ONAMES.EGG)
+                return stale_egg(obj) ? CADAVER : starving ? ACCFOOD : POISON;
+            return TABU;
+        }
+
+        switch (obj.otyp) {
+        case ONAMES.TRIPE_RATION:
+        case ONAMES.MEATBALL:
+        case ONAMES.MEAT_RING:
+        case ONAMES.MEAT_STICK:
+        case ONAMES.ENORMOUS_MEATBALL:
+            return carni ? DOGFOOD : MANFOOD;
+        case ONAMES.EGG:
+            if (obj.corpsenm === PMNAMES.PM_PYROLISK && !likes_fire(mptr))
+                return POISON;
+            return carni ? CADAVER : MANFOOD;
+        case ONAMES.CORPSE:
+            if ((peek_at_iced_corpse_age(obj) + 50 <= game.moves
+                 && !(fx === PMNAMES.PM_LIZARD || fx === PMNAMES.PM_LICHEN)
+                 && mptr.mlet !== MONSYMS.S_FUNGUS)
+                || (acidic(fptr) && !resists_acid(mon))
+                || (poisonous(fptr) && !resists_poison(mon)))
+                return POISON;
+            /* avoid polymorph unless starving or abused */
+            else if (polyfood(obj) && mon.mtame > 1 && !starving)
+                return MANFOOD;
+            else if (vegan(fptr))
+                return herbi ? CADAVER : MANFOOD;
+            /* most humanoids avoid cannibalism unless starving; arbitrary:
+               elves won't eat other elves even then */
+            else if (humanoid(mptr) && same_race(mptr, fptr)
+                     && (!is_undead(mptr) && fptr.mlet !== MONSYMS.S_KOBOLD
+                         && fptr.mlet !== MONSYMS.S_ORC
+                         && fptr.mlet !== MONSYMS.S_OGRE))
+                return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
+            else
+                return carni ? CADAVER : MANFOOD;
+        case ONAMES.GLOB_OF_GREEN_SLIME: /* other globs use the default case */
+            /* turning into slime is preferable to starvation */
+            return (starving || slimeproof(mptr)) ? ACCFOOD : POISON;
+        case ONAMES.CLOVE_OF_GARLIC:
+            return (is_undead(mptr) || is_vampshifter(mon)) ? TABU
+                   : (herbi || starving) ? ACCFOOD
+                   : MANFOOD;
+        case ONAMES.TIN:
+            return metallivorous(mptr) ? ACCFOOD : MANFOOD;
+        case ONAMES.APPLE:
+            return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case ONAMES.CARROT:
+            return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case ONAMES.BANANA:
+            /* monkeys and apes (tamable) plus sasquatch prefer these,
+               yetis will only eat them if starving */
+            return (mptr.mlet === MONSYMS.S_YETI && herbi) ? DOGFOOD
+                   : (herbi || starving) ? ACCFOOD
+                   : MANFOOD;
+        default:
+            if (starving)
+                return ACCFOOD;
+            return (obj.otyp > ONAMES.SLIME_MOLD) ? (carni ? ACCFOOD : MANFOOD)
+                                                  : (herbi ? ACCFOOD : MANFOOD);
+        }
+    }
+    case OCLASSES.ROCK_CLASS:
+        return UNDEF;
+    default:
+        if (obj.otyp === ONAMES.AMULET_OF_STRANGULATION
+            || obj.otyp === ONAMES.RIN_SLOW_DIGESTION)
+            return TABU;
+        if (mon_hates_silver(mon)
+            && game.objects[obj.otyp].oc_material === SILVER)
+            return TABU;
+        if (mon.mnum === PMNAMES.PM_GELATINOUS_CUBE && is_organic(obj))
+            return ACCFOOD;
+        if (metallivorous(mptr) && is_metallic(obj)
+            && (is_rustprone(obj) || mon.mnum !== PMNAMES.PM_RUST_MONSTER)) {
+            /* Non-rustproofed ferrous-based metals are preferred. */
+            return (is_rustprone(obj) && !obj.oerodeproof) ? DOGFOOD : ACCFOOD;
+        }
+        if (!obj.cursed
+            && obj.oclass !== OCLASSES.BALL_CLASS
+            && obj.oclass !== OCLASSES.CHAIN_CLASS)
+            return APPORT;
+        /* FALLTHRU to ROCK_CLASS's UNDEF */
+        return UNDEF;
+    }
 }
 
 /* src/artifact.c is not ported; no session generates a quest artifact this
@@ -131,7 +423,20 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     const min_y = Math.max(omy - SQSRCHRADIUS, 0);
     const max_y = Math.min(omy + SQSRCHRADIUS, ROWNO - 1);
 
+    /* src/dogmove.c — gg.gtyp/gg.gx/gg.gy, the goal chosen so far. C suppresses
+       a 'used before set' warning by zeroing the coordinates. */
     let gtyp = UNDEF;
+    let gx = 0, gy = 0;
+
+    /* #define DDIST(x, y) (dist2(x, y, omx, omy)) */
+    const DDIST = (x, y) => dist2(x, y, omx, omy);
+
+    /* src/dogmove.c — both gate the APPORT branch. couldsee() is real, so use
+       it; droppables() needs monster inventory, and a pet carrying nothing is
+       the reachable state until that lands. */
+    const in_masters_sight = couldsee(omx, omy);
+    const dog_has_minvent = false; /* droppables(mtmp) != 0 */
+
     for (const obj of (game.level.objects || [])) {
         const nx = obj.ox, ny = obj.oy;
         if (nx >= min_x && nx <= max_x && ny >= min_y && ny <= max_y) {
@@ -139,11 +444,26 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
             /* skip inferior goals */
             if (otyp > gtyp || otyp === UNDEF)
                 continue;
-            /* the branches past here need cursed_object_at(),
-               could_reach_item(), can_reach_location() and m_cansee(); the
-               APPORT one draws rn2(8) and then can_carry(). */
-            note_unported('dog_goal goal selection');
-            break;
+            if (!could_reach_item(mtmp, nx, ny)
+                || !can_reach_location(mtmp, mtmp.mx, mtmp.my, nx, ny))
+                continue;
+            if (otyp < MANFOOD) {
+                if (otyp < gtyp || DDIST(nx, ny) < DDIST(gx, gy)) {
+                    gx = nx;
+                    gy = ny;
+                    gtyp = otyp;
+                }
+            } else if (gtyp === UNDEF && in_masters_sight
+                       && !dog_has_minvent
+                       && (!game.level.at(omx, omy)?.lit
+                           || game.level.at(game.u.ux, game.u.uy)?.lit)
+                       && (otyp === MANFOOD || m_cansee(mtmp, nx, ny))
+                       && mtmp.edog?.apport > rn2(8)
+                       && can_carry(mtmp, obj) > 0) {
+                gx = nx;
+                gy = ny;
+                gtyp = APPORT;
+            }
         }
     }
 
@@ -294,8 +614,11 @@ export function dog_move(mtmp, after) {
         mtmp.mtrack.unshift({ x: omx, y: omy });
         if (mtmp.mtrack.length > MTSZ) mtmp.mtrack.length = MTSZ;
 
-        mtmp.mx = nix;
-        mtmp.my = niy;
+        /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
+           the move. Writing mx/my alone leaves m_at() answering with the old
+           square. */
+        remove_monster(omx, omy);
+        place_monster(mtmp, nix, niy);
         return MMOVE_MOVED;
     }
     return MMOVE_NOTHING;

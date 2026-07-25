@@ -26,12 +26,21 @@ import {
     isok,
 } from './const.js';
 import { flush_screen, newsym } from './display.js';
+import { can_reach_floor, read_engr_at } from './engrave.js';
 import { game } from './gstate.js';
+import {
+    disturb_buried_zombies,
+    hero_tread_disturbs_buried_zombies,
+    maybe_smudge_engr,
+    switch_terrain_for_legal_move,
+} from './hack.js';
 import { nhgetch } from './input.js';
 import { is_hider, noattacks } from './mondata.js';
 import { m_at } from './monst.js';
 import { onscary } from './monmove.js';
+import { look_here_single_object } from './invent.js';
 import { in_out_region } from './region.js';
+import { check_special_room_state } from './rooms.js';
 import { canSpotMonster } from './startup_a11y.js';
 import {
     clearTtyMessageWindow,
@@ -384,9 +393,29 @@ export async function domove(state = game) {
     u.uy = newy;
     u.umoved = true;
 
+    if (hero_tread_disturbs_buried_zombies(state))
+        disturb_buried_zombies(newx, newy, state);
+
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+    switch_terrain_for_legal_move(state);
+    check_special_room_state(false, state);
+    await read_engr_at(newx, newy, state, {
+        pline: ttyPline,
+        canReachFloor: can_reach_floor,
+    });
+    const floorObject = state.level?.objects?.[newx]?.[newy] ?? null;
+    if (floorObject && !floorObject.nexthere) {
+        // C ref: domove() -> spoteffects(TRUE) -> pickup(1) -> check_here()
+        // -> invent.c look_here().
+        await look_here_single_object(
+            floorObject,
+            state,
+            { message: ttyPline },
+        );
+    }
+    maybe_smudge_engr(oldx, oldy, newx, newy, state);
     state.domoveAttempting = 0;
 }
 

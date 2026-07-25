@@ -4708,7 +4708,10 @@ export function object_display(otmp) {
     if (otyp === BRASS_LANTERN || otyp === OIL_LAMP || otyp === MAGIC_LAMP)
         return { glyph: '(', color: displayColor ?? CLR_YELLOW };
     if (otyp === CRYSTAL_BALL) return { glyph: '(', color: displayColor ?? CLR_BRIGHT_CYAN };
-    if (otyp === TOOL_CLASS || otyp === TIN_WHISTLE || otyp === TALLOW_CANDLE || otyp === WAX_CANDLE
+    // C ref: objects.h — tallow/wax candles are WAX, colored CLR_WHITE.
+    if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE)
+        return { glyph: '(', color: displayColor ?? CLR_WHITE };
+    if (otyp === TOOL_CLASS || otyp === TIN_WHISTLE
         || otyp === EXPENSIVE_CAMERA || otyp === TINNING_KIT || otyp === CAN_OF_GREASE
         || otyp === MAGIC_FLUTE || otyp === FROST_HORN || otyp === FIRE_HORN
         || otyp === HORN_OF_PLENTY || otyp === MAGIC_HARP || otyp === DRUM_OF_EARTHQUAKE
@@ -18290,6 +18293,13 @@ export async function make_sokoban1_level() {
             trap.tx = point.x;
             trap.ty = point.y;
         }
+        // C ref: sp_lev.c flip_level — engravings are transposed too.
+        for (const engr of g.level.engravings || []) {
+            const point = { x: engr.x, y: engr.y };
+            flipPoint(point);
+            engr.x = point.x;
+            engr.y = point.y;
+        }
         for (let stair = g.stairs; stair; stair = stair.next) {
             const point = { x: stair.sx, y: stair.sy };
             flipPoint(point);
@@ -20108,6 +20118,16 @@ function make_sokoban_reward_objects(variant) {
     const scroll = mksobj(SCR_SCARE_MONSTER, true, false);
     Object.assign(scroll, { ox: pt.x, oy: pt.y, hidden: true, blessed: false, cursed: true });
     game.level.objects.push(scroll);
+
+    // C ref: dat/soko1-1.lua + soko1-2.lua des.engraving({ coord = pt,
+    // type = "burn", text = "Elbereth" }) — the prize square carries an
+    // Elbereth engraving.  It stays unrevealed (no display) until the
+    // hero sees the spot or it is mapped (display.c _map_location only
+    // shows engravings with ep->erevealed set).
+    make_engr_at(pt.x, pt.y, 'Elbereth', false, 0, BURN);
+    const prizeEngraving = (game.level?.engravings || [])
+        .find(engr => engr.x === pt.x && engr.y === pt.y);
+    if (prizeEngraving) prizeEngraving.erevealed = false;
 }
 
 async function fill_sokoban_zoo(variant, flips = {}, height = 0) {

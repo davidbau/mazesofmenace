@@ -196,7 +196,17 @@ export function lspo_map(mf, contents) {
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
             const loc = game.level.at(x, y);
             if (!loc) continue;
+            /* C's rm struct overloads ONE field: doormask, wall_info, ladder,
+               drawbridgemask and altarmask are all #define'd to flags
+               (include/rm.h:213-217). So `levl[x][y].flags = 0` clears every
+               one of them. In JS they are separate properties and have to be
+               cleared individually. */
             loc.flags = 0;
+            loc.doormask = 0;
+            loc.wall_info = 0;
+            loc.ladder = 0;
+            loc.drawbridgemask = 0;
+            loc.altarmask = 0;
             loc.horizontal = false;
             loc.roomno = NO_ROOM;
             loc.edge = 0;

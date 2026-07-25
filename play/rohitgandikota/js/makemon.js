@@ -666,17 +666,21 @@ function m_at(x, y) {
     return game.level?.monAt?.get(`${x},${y}`) ?? null;
 }
 
-// src/mon.c place_monster()
-function place_monster(mtmp, x, y) {
+// src/steed.c:898 place_monster() — position plus the positional grid. The
+// impossible() diagnostics are omitted; they report corruption and draw nothing.
+export function place_monster(mtmp, x, y) {
     mtmp.mx = x;
     mtmp.my = y;
     (game.level.monAt ||= new Map()).set(`${x},${y}`, mtmp);
-    /* src/makemon.c:1252 — C prepends: `mtmp->nmon = fmon; fmon = mtmp;`
-       so the fmon chain is newest-first, and every iteration over it (movemon,
-       the mcalcmove allotment loop) visits monsters in reverse creation order.
-       Appending here would allot movement in the wrong order and shift which
-       monsters can act next turn. */
-    (game.level.monsters ||= []).unshift(mtmp);
+}
+
+// include/rm.h:534 remove_monster() — clears the grid slot only. A mover that
+// writes mx/my directly instead of pairing these two leaves the grid pointing
+// at the monster's old square, and since m_at() is what mfndpos() counts with,
+// the monster then sees the wrong number of free squares and draws rn2 on a
+// different modulus.
+export function remove_monster(x, y) {
+    game.level.monAt?.delete(`${x},${y}`);
 }
 
 // src/teleport.c goodpos() — can this monster stand here?
@@ -1216,6 +1220,10 @@ export function makemon(ptr, x, y, mmflags) {
     };
     if (mmflags & MM_ASLEEP)
         mtmp.msleeping = 1;
+    /* src/makemon.c:1249 — C prepends to fmon here, not in place_monster(), so
+       the chain is newest-first and every iteration over it (movemon, the
+       mcalcmove allotment loop) visits monsters in reverse creation order. */
+    (game.level.monsters ||= []).unshift(mtmp);
     mtmp.m_id = next_ident();
 
     /* set up level and hit points */

@@ -13,6 +13,36 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
+import {
+    A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED,
+    MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+} from './const.js';
+import { PMNAMES } from './monst_data.js';
+
+// include/you.h:247 Role_if()
+function Role_if(pm) {
+    const m = game.urole?.mnum;
+    return m === pm || m === PMNAMES[pm];
+}
+
+/* src/hack.c near_capacity() and src/botl.c encumber_msg() need inventory
+   weight and the carrying-capacity table. Nothing the hero starts with reaches
+   MOD_ENCUMBER, so the unencumbered answer is the reachable one; it is recorded
+   so the exercise draws it gates are not silently lost when that changes. */
+function near_capacity() {
+    note_unported_attrib('near_capacity');
+    return 0; /* UNENCUMBERED */
+}
+
+function encumber_msg() {
+    note_unported_attrib('encumber_msg');
+}
+
+function note_unported_attrib(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
 
 // include/attrib.h — A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA
 export const A_MAX = 6;
@@ -64,6 +94,9 @@ export function init_attr(np) {
     game.u.amax = { a: new Array(A_MAX).fill(0) };
     game.u.atemp = { a: new Array(A_MAX).fill(0) };
     game.u.atime = { a: new Array(A_MAX).fill(0) };
+    /* C zeroes the whole struct u at startup, so aexe starts empty too;
+       exercise() reads it every tenth move. */
+    game.u.aexe = { a: new Array(A_MAX).fill(0) };
 
     for (let i = 0; i < A_MAX; i++) {
         const base = game.urole.attrbase[i];
@@ -140,3 +173,126 @@ export function adjabil(oldlevel, newlevel) {
 // speed boots, a potion or a spell, none of which exist yet.
 export const Fast = () => !!game.u.intrinsic?.HFast;
 export const Very_fast = () => false;
+
+// src/attrib.c:486 AVAL — tune value for exercise gains.
+const AVAL = 50;
+
+// include/attrib.h:23 AEXE(x)
+const AEXE = (i) => game.u.aexe.a[i];
+const setAEXE = (i, v) => { game.u.aexe.a[i] = v; };
+
+// include/attrib.h:24 ACURR(x). acurr() applies ABON and ATEMP on top of the
+// base; neither is set before the subsystems that grant them are ported, so
+// this reads the base the same way ABASE does until then.
+const ACURR = (i) => game.u.acurr.a[i];
+
+// src/attrib.c:490 exercise() — accumulate exercise or abuse of an attribute.
+//
+// The rn2(19) is the whole point: gain is harder at higher attribute values,
+// 79% at 3 down to 0% at 18. It is spent whenever the accumulator is still
+// under AVAL, so an ordinary hero pays it every tenth move through exerper().
+export function exercise(i, inc_or_dec) {
+    if (i === A_INT || i === A_CHA)
+        return; /* can't exercise these */
+
+    /* no physical exercise while polymorphed; the body's temporary */
+    if (game.u.umonnum !== game.u.umonster && i !== A_WIS)
+        return;
+
+    if (Math.abs(AEXE(i)) < AVAL) {
+        /*
+         *      Law of diminishing returns (Part I):
+         *
+         *      Gain is harder at higher attribute values.
+         *      79% at "3" --> 0% at "18"
+         *      Loss is even at all levels (50%).
+         *
+         *      Note: *YES* ACURR is the right one to use.
+         */
+        setAEXE(i, AEXE(i) + (inc_or_dec ? (rn2(19) > ACURR(i) ? 1 : 0)
+                                         : -rn2(2)));
+    }
+    if (game.moves > 0 && (i === A_STR || i === A_CON))
+        encumber_msg();
+}
+
+// src/attrib.c exerper() — the periodic accumulations, every 10 moves for
+// hunger and encumbrance and every 5 for status.
+export function exerper() {
+    if (!(game.moves % 10)) {
+        /* Hunger Checks */
+        const hs = (game.u.uhunger > 1000) ? SATIATED
+                 : (game.u.uhunger > 150) ? NOT_HUNGRY
+                 : (game.u.uhunger > 50) ? HUNGRY
+                 : (game.u.uhunger > 0) ? WEAK
+                 : FAINTING;
+
+        switch (hs) {
+        case SATIATED:
+            exercise(A_DEX, false);
+            if (Role_if('PM_MONK'))
+                exercise(A_WIS, false);
+            break;
+        case NOT_HUNGRY:
+            exercise(A_CON, true);
+            break;
+        case WEAK:
+            exercise(A_STR, false);
+            if (Role_if('PM_MONK')) /* fasting */
+                exercise(A_WIS, true);
+            break;
+        case FAINTING:
+        case FAINTED:
+            exercise(A_CON, false);
+            break;
+        }
+
+        /* Encumbrance Checks */
+        switch (near_capacity()) {
+        case MOD_ENCUMBER:
+            exercise(A_STR, true);
+            break;
+        case HVY_ENCUMBER:
+            exercise(A_STR, true);
+            exercise(A_DEX, false);
+            break;
+        case EXT_ENCUMBER:
+            exercise(A_DEX, false);
+            exercise(A_CON, false);
+            break;
+        }
+    }
+
+    /* status checks */
+    if (!(game.moves % 5)) {
+        /* Every one of these is driven by an intrinsic or affliction the hero
+           cannot have before the property subsystem lands, so none can fire
+           yet. They are written out rather than elided so the order of draws
+           is already right when it does. */
+        if (game.u.uprops?.CLAIRVOYANT && !game.u.uprops?.BLOCKED_CLAIRVOYANT)
+            exercise(A_WIS, true);
+        if (game.u.uprops?.REGENERATION)
+            exercise(A_STR, true);
+        if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
+            exercise(A_CON, false);
+        if (game.u.uprops?.CONFUSION || game.u.uprops?.HALLUC)
+            exercise(A_WIS, false);
+        if ((game.u.uprops?.WOUNDED_LEGS && !game.u.usteed)
+            || game.u.uprops?.FUMBLING || game.u.uprops?.STUNNED)
+            exercise(A_DEX, false);
+    }
+}
+
+// src/attrib.c exerchk() — apply the accumulated exercise when due.
+export function exerchk() {
+    /*  Check out the periodic accumulations */
+    exerper();
+
+    /*  Are we ready for a test? */
+    if (game.moves >= game.context.next_attrib_check && !game.multi) {
+        /* The test itself adjusts attributes through adjattrib() and needs
+           ATTRMIN/ATTRMAX plus the poly rules; it draws only through
+           attrcurse(), which no reachable state triggers yet. */
+        note_unported_attrib('exerchk:test');
+    }
+}

@@ -246,13 +246,22 @@ let _nextObjId = 1;
 
 
 
+// src/mkobj.c mksobj_at() — make it, then PUT IT ON THE FLOOR. Returning the
+// object without place_object() meant nothing ever reached level.objects, so
+// every floor object the level generator produced vanished on creation: the
+// pet's search box was always empty and objects the screens expect to see were
+// never drawn.
 function mksobj_at(otyp, x, y, init, artif) {
-    return mksobj(otyp, init, artif);
+    const otmp = mksobj(otyp, init, artif);
+    place_object(otmp, x, y);
+    return otmp;
 }
 
-
+// src/mkobj.c mkobj_at()
 function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
+    const otmp = mkobj(oclass, artif);
+    place_object(otmp, x, y);
+    return otmp;
 }
 
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
@@ -1203,25 +1212,25 @@ function dosdoor(x, y, aroom, type) {
     loc.typ = type;
     if (type === DOOR) {
         if (!rn2(3)) {
-            if (!rn2(5)) loc.flags = D_ISOPEN;
-            else if (!rn2(6)) loc.flags = D_LOCKED;
-            else loc.flags = D_CLOSED;
-            if (loc.flags !== D_ISOPEN && !shdoor
+            if (!rn2(5)) loc.doormask = D_ISOPEN;
+            else if (!rn2(6)) loc.doormask = D_LOCKED;
+            else loc.doormask = D_CLOSED;
+            if (loc.doormask !== D_ISOPEN && !shdoor
                 && level_difficulty() >= 5 && !rn2(25))
-                loc.flags |= D_TRAPPED;
+                loc.doormask |= D_TRAPPED;
         } else {
-            loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
+            loc.doormask = shdoor ? D_ISOPEN : D_NODOOR;
         }
-        if (loc.flags & D_TRAPPED) {
+        if (loc.doormask & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
-                loc.flags = D_NODOOR;
+                loc.doormask = D_NODOOR;
             }
         }
     } else {
-        if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
-        else loc.flags = D_CLOSED;
+        if (shdoor || !rn2(5)) loc.doormask = D_LOCKED;
+        else loc.doormask = D_CLOSED;
         if (!shdoor && level_difficulty() >= 4 && !rn2(20))
-            loc.flags |= D_TRAPPED;
+            loc.doormask |= D_TRAPPED;
     }
     add_door(x, y, aroom);
 }
@@ -1371,10 +1380,20 @@ function somexy(croom, c) {
     return false;
 }
 
+// src/mklev.c:1806 occupied() — a TRAP occupies a square too, and leaving that
+// out made somexyspace() accept squares C rejects, so every retry after the
+// first trap on a level landed somewhere different.
 function occupied(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
+    if (t_at_lev(x, y)) return true;
     return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
+    /* invocation_pos() is only meaningful on the invocation level */
+}
+
+/* src/trap.c t_at() */
+function t_at_lev(x, y) {
+    return (game.level?.traps || []).some(t => t.tx === x && t.ty === y);
 }
 
 function somexyspace(croom, c) {
@@ -1830,7 +1849,11 @@ function mkaltar(croom) {
     if (!loc) return;
     loc.typ = ALTAR;
     const al = rn2(A_LAWFUL + 2) - 1;
-    loc.flags = Align2amask(al);
+    /* include/rm.h:214 — an altar's alignment lives in altarmask, which is the
+       same storage as flags. Name it as C does so a reader looking for
+       altarmask finds it. */
+    loc.altarmask = Align2amask(al);
+    loc.flags = loc.altarmask;
 }
 
 function mkgrave_room(croom) {

@@ -19,8 +19,11 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
+import { skill_tables } from './skills_data.js';
+import { ART_SNICKERSNEE } from './artilist_data.js';
+import { P_NONE } from './const.js';
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
 import { discover_object } from './o_init.js';
@@ -42,6 +45,36 @@ const {
 const A_CHAOTIC = -1;   /* include/align.h */
 
 // Objects a random starting item must never be. src/u_init.c:1117-1160.
+// src/u_init.c skills_for_role() — the current role's weapon/spell table.
+function skills_for_role() {
+    const mnum = game.urole?.mnum;
+    for (const pm of Object.keys(skill_tables))
+        if (mnum === pm || mnum === PMNAMES[pm])
+            return skill_tables[pm];
+    return null; /* C panics here */
+}
+
+// src/spell.c spell_skilltype() — oc_skill is #defined to oc_subtyp.
+function spell_skilltype(booktype) {
+    return game.objects[booktype].oc_subtyp;
+}
+
+// src/u_init.c restricted_spell_discipline() — true when the role may not train
+// this spellbook's school at all. ini_inv_mkobj_filter() refuses such books, so
+// a table row missing here changes how many times it retries.
+function restricted_spell_discipline(otyp) {
+    const skills = skills_for_role();
+    const this_skill = spell_skilltype(otyp);
+
+    for (const [skill] of skills || []) {
+        if (skill === P_NONE)
+            break;
+        if (skill === this_skill)
+            return false;
+    }
+    return true;
+}
+
 function ini_inv_rejects(obj, got_level1_spellbook) {
     const o = obj.otyp;
     const objects = game.objects;
@@ -52,6 +85,9 @@ function ini_inv_rejects(obj, got_level1_spellbook) {
         || o === game.nocreate || o === game.nocreate2
         || o === game.nocreate3 || o === game.nocreate4
         || o === ONAMES.RIN_LEVITATION
+        /* the 'useless' items, src/u_init.c:1136 */
+        || o === ONAMES.POT_HALLUCINATION
+        || o === ONAMES.POT_ACID
         || o === ONAMES.SCR_AMNESIA
         || o === ONAMES.SCR_FIRE
         || o === ONAMES.SCR_BLANK_PAPER
@@ -63,7 +99,8 @@ function ini_inv_rejects(obj, got_level1_spellbook) {
         || (o === ONAMES.SCR_ENCHANT_WEAPON && roleIs('PM_MONK'))
         || (o === ONAMES.SPE_FORCE_BOLT && roleIs('PM_WIZARD'))
         || (obj.oclass === SPBOOK_CLASS
-            && objects[o].oc_level > (got_level1_spellbook ? 3 : 1))
+            && (objects[o].oc_level > (got_level1_spellbook ? 3 : 1)
+                || restricted_spell_discipline(o)))
         || o === ONAMES.SPE_NOVEL;
 }
 
@@ -208,19 +245,93 @@ function addinv(obj) {
     return obj;
 }
 
-// src/o_init.c knows_object() / knows_class() — mark discoveries. No draw, but
-// this is what the `\` discoveries window reads back.
-export function knows_object(otyp) {
-    game.objects[otyp].oc_name_known = 1;
-    (game.disco ||= []);
-    if (!game.disco.includes(otyp)) game.disco.push(otyp);
+// include/you.h:247,297 Role_if() / Race_if(). The role tables store mnum as a
+// number, so accept either the PM_ name or the number a caller already resolved.
+function Role_if(pm) {
+    const m = game.urole?.mnum;
+    return m === pm || m === PMNAMES[pm];
 }
 
-export function knows_class(oclass) {
+function Race_if(pm) {
+    const m = game.urace?.mnum;
+    return m === pm || m === PMNAMES[pm];
+}
+
+// src/artifact.c:2808 is_art()
+function is_art(obj, art) {
+    return !!(obj && obj.oartifact === art);
+}
+
+/* include/obj.h:228-241 — the weapon-shape predicates knows_class() filters
+   with. oc_skill is negated for thrown weapons, which is what makes is_ammo a
+   range test against -P_CROSSBOW..-P_BOW rather than a list. */
+const is_pole = (otmp) =>
+    (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.TOOL_CLASS)
+    && (game.objects[otmp.otyp].oc_skill === SKILLS.P_POLEARMS
+        || game.objects[otmp.otyp].oc_skill === SKILLS.P_LANCE
+        || is_art(otmp, ART_SNICKERSNEE));
+
+const is_spear = (otmp) =>
+    otmp.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[otmp.otyp].oc_skill === SKILLS.P_SPEAR;
+
+const is_launcher = (otmp) =>
+    otmp.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[otmp.otyp].oc_skill >= SKILLS.P_BOW
+    && game.objects[otmp.otyp].oc_skill <= SKILLS.P_CROSSBOW;
+
+const is_ammo = (otmp) =>
+    (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.GEM_CLASS)
+    && game.objects[otmp.otyp].oc_skill >= -SKILLS.P_CROSSBOW
+    && game.objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW;
+
+// src/u_init.c knows_object()
+export function knows_object(obj, override_pauper) {
+    if (game.u.uroleplay?.pauper && !override_pauper)
+        return;
+    /* mark as known, but not yet encountered */
+    discover_object(obj, true, false, false);
+}
+
+// src/u_init.c knows_class() — pre-identify a whole class, minus the pieces a
+// role has no business recognising. The exceptions are not cosmetic: each one
+// leaves an object undiscovered, and discover_object() writes the discovery
+// list that the C prints and prices from.
+export function knows_class(sym) {
     const objects = game.objects;
-    for (let i = game.bases[oclass];
-         i < objects.length && objects[i].oc_class === oclass; i++)
-        objects[i].oc_known_class = 1;
+
+    if (game.u.uroleplay?.pauper)
+        return;
+
+    /* C builds a dummy obj so the obj.h macros can be used on it */
+    const odummy = { oclass: sym, otyp: 0 };
+    const o = odummy;
+
+    for (let ct = game.bases[sym]; ct < game.bases[sym + 1]; ct++) {
+        /* not flagged as magic but shouldn't be pre-discovered
+           (small shields look the same as two types of magical shield;
+           cornuthaum / dunce cap look the same as each other) */
+        if (ct === ONAMES.CORNUTHAUM || ct === ONAMES.DUNCE_CAP
+            || ct === ONAMES.SMALL_SHIELD)
+            continue;
+        if (sym === OCLASSES.WEAPON_CLASS) {
+            odummy.otyp = ct; /* update 'o' */
+            /* arbitrary: only knights and samurai recognize polearms */
+            if ((!Role_if('PM_KNIGHT') && !Role_if('PM_SAMURAI')) && is_pole(o))
+                continue;
+            /* rangers know all launchers (bows, &c), ammo (arrows, &c),
+               and spears regardless of race/species, but not other weapons */
+            if (Role_if('PM_RANGER')
+                && (!is_launcher(o) && !is_ammo(o) && !is_spear(o)))
+                continue;
+            /* rogues know daggers, regardless of racial variations */
+            if (Role_if('PM_ROGUE') && (objects[ct].oc_skill !== SKILLS.P_DAGGER))
+                continue;
+        }
+
+        if (objects[ct].oc_class === sym && !objects[ct].oc_magic)
+            knows_object(ct, false);
+    }
 }
 
 // src/u_init.c:1174 ini_inv()

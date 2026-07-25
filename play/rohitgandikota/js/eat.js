@@ -7,6 +7,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { NOT_HUNGRY } from './const.js';
 
 // src/eat.c:3170 gethungry()
 export function gethungry() {
@@ -26,4 +27,16 @@ export function gethungry() {
 
     if (u.uhunger !== undefined)
         u.uhunger--;
+}
+
+// src/eat.c:126 init_uhunger() — the hero starts well fed.
+//
+// exerper() reads uhunger every tenth move to decide which attribute to
+// exercise, and each branch spends a different draw: NOT_HUNGRY exercises
+// Constitution with rn2(19), while SATIATED and FAINTING both decrement with
+// rn2(2). Leaving uhunger unset made every comparison fall through to FAINTING
+// and drew the wrong one.
+export function init_uhunger() {
+    game.u.uhunger = 900;
+    game.u.uhs = NOT_HUNGRY;
 }

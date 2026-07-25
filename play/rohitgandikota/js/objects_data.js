@@ -48,7 +48,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -83,7 +91,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -118,7 +134,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -153,7 +177,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -188,7 +220,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -223,7 +263,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -258,7 +306,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -293,7 +349,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -328,7 +392,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -363,7 +435,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -398,7 +478,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -433,7 +521,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -468,7 +564,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -503,7 +607,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -538,7 +650,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -573,7 +693,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -608,7 +736,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -643,7 +779,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -678,7 +822,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -20,
+  "oc_armcat": -20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -713,7 +865,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -20,
+  "oc_armcat": -20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -748,7 +908,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -20,
+  "oc_armcat": -20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -783,7 +951,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -20,
+  "oc_armcat": -20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -818,7 +994,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -20,
+  "oc_armcat": -20,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -853,7 +1037,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -22,
+  "oc_armcat": -22,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -888,7 +1080,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -23,
+  "oc_armcat": -23,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -923,7 +1123,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -24,
+  "oc_armcat": -24,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -958,7 +1166,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -25,
+  "oc_armcat": -25,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -993,7 +1209,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1028,7 +1252,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1063,7 +1295,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1098,7 +1338,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1133,7 +1381,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1168,7 +1424,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 17,
+  "oc_armcat": 17,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1203,7 +1467,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 18,
+  "oc_armcat": 18,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1238,7 +1510,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1273,7 +1553,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1308,7 +1596,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1343,7 +1639,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1378,7 +1682,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1413,7 +1725,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1448,7 +1768,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1483,7 +1811,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1518,7 +1854,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1553,7 +1897,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1588,7 +1940,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1623,7 +1983,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1658,7 +2026,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1693,7 +2069,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1728,7 +2112,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1763,7 +2155,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1798,7 +2198,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 9,
+  "oc_armcat": 9,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1833,7 +2241,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 9,
+  "oc_armcat": 9,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1868,7 +2284,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 6,
+  "oc_armcat": 6,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1903,7 +2327,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 6,
+  "oc_armcat": 6,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1938,7 +2370,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 7,
+  "oc_armcat": 7,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -1973,7 +2413,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 8,
+  "oc_armcat": 8,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2008,7 +2456,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 7,
+  "oc_armcat": 7,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2043,7 +2499,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 8,
+  "oc_armcat": 8,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2078,7 +2542,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 6,
+  "oc_armcat": 6,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2113,7 +2585,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2148,7 +2628,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2183,7 +2671,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2218,7 +2714,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2253,7 +2757,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2288,7 +2800,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2323,7 +2843,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2358,7 +2886,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2393,7 +2929,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2428,7 +2972,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2463,7 +3015,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2498,7 +3058,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 16,
+  "oc_armcat": 16,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2533,7 +3101,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": -1,
+  "a_ac": -1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2568,7 +3144,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 19,
+  "oc_armcat": 19,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2603,7 +3187,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 11,
+  "oc_armcat": 11,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2638,7 +3230,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 11,
+  "oc_armcat": 11,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2673,7 +3273,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 12,
+  "oc_armcat": 12,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2708,7 +3316,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 14,
+  "oc_armcat": 14,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2743,7 +3359,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 10,
+  "oc_armcat": 10,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2778,7 +3402,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 26,
+  "oc_armcat": 26,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2813,7 +3445,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 15,
+  "oc_armcat": 15,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2848,7 +3488,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 10,
+  "oc_armcat": 10,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2883,7 +3531,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 13,
+  "oc_armcat": 13,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2918,7 +3574,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 26,
+  "oc_armcat": 26,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2953,7 +3617,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 20,
+  "oc_armcat": 20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -2988,7 +3660,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 20,
+  "oc_armcat": 20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3023,7 +3703,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 20,
+  "oc_armcat": 20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3058,7 +3746,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 20,
+  "oc_armcat": 20,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3093,7 +3789,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 21,
+  "oc_armcat": 21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3128,7 +3832,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 22,
+  "oc_armcat": 22,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3163,7 +3875,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3198,7 +3918,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3233,7 +3961,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3268,7 +4004,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3303,7 +4047,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -3338,7 +4090,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3373,7 +4133,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3408,7 +4176,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3443,7 +4219,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3478,7 +4262,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3513,7 +4305,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3548,7 +4348,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 2,
+  "oc_armcat": 2,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3583,7 +4391,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3618,7 +4434,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3653,7 +4477,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3688,7 +4520,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3723,7 +4563,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3758,7 +4606,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3793,7 +4649,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3828,7 +4692,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3863,7 +4735,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3898,7 +4778,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 9,
+  "a_ac": 9,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3933,7 +4821,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -3968,7 +4864,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4003,7 +4907,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4038,7 +4950,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4073,7 +4993,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4108,7 +5036,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4143,7 +5079,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4178,7 +5122,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4213,7 +5165,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4248,7 +5208,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4283,7 +5251,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 7,
+  "a_ac": 7,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -4318,7 +5294,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 7,
+  "a_ac": 7,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -4353,7 +5337,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 6,
+  "a_ac": 6,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4388,7 +5380,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 6,
+  "a_ac": 6,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4423,7 +5423,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 6,
+  "a_ac": 6,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4458,7 +5466,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 6,
+  "a_ac": 6,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -4493,7 +5509,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 5,
+  "a_ac": 5,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -4528,7 +5552,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 5,
+  "a_ac": 5,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4563,7 +5595,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 4,
+  "a_ac": 4,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4598,7 +5638,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 4,
+  "a_ac": 4,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4633,7 +5681,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4668,7 +5724,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4703,7 +5767,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4738,7 +5810,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4773,7 +5853,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4808,7 +5896,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 6,
+  "oc_armcat": 6,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4843,7 +5939,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 6,
+  "oc_armcat": 6,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -4878,7 +5982,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4913,7 +6025,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4948,7 +6068,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -4983,7 +6111,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5018,7 +6154,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -5053,7 +6197,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -5088,7 +6240,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5123,7 +6283,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5158,7 +6326,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 3,
+  "a_ac": 3,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -5193,7 +6369,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5228,7 +6412,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5263,7 +6455,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 5,
+  "oc_armcat": 5,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -5298,7 +6498,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5333,7 +6541,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5368,7 +6584,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5403,7 +6627,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5438,7 +6670,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5473,7 +6713,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5508,7 +6756,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5543,7 +6799,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5578,7 +6842,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 1,
+  "oc_armcat": 1,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5613,7 +6885,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5648,7 +6928,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5683,7 +6971,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5718,7 +7014,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 3,
+  "oc_armcat": 3,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5753,7 +7057,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5788,7 +7100,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5823,7 +7143,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 2,
+  "a_ac": 2,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5858,7 +7186,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5893,7 +7229,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5928,7 +7272,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5963,7 +7315,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -5998,7 +7358,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6033,7 +7401,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6068,7 +7444,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6103,7 +7487,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6138,7 +7530,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6173,7 +7573,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6208,7 +7616,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6243,7 +7659,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6278,7 +7702,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6313,7 +7745,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6348,7 +7788,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6383,7 +7831,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6418,7 +7874,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6453,7 +7917,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6488,7 +7960,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6523,7 +8003,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6558,7 +8046,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6593,7 +8089,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6628,7 +8132,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6663,7 +8175,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6698,7 +8218,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6733,7 +8261,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6768,7 +8304,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6803,7 +8347,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6838,7 +8390,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6873,7 +8433,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6908,7 +8476,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6943,7 +8519,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -6978,7 +8562,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7013,7 +8605,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7048,7 +8648,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7083,7 +8691,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7118,7 +8734,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7153,7 +8777,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7188,7 +8820,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7223,7 +8863,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7258,7 +8906,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7293,7 +8949,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7328,7 +8992,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7363,7 +9035,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7398,7 +9078,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7433,7 +9121,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7468,7 +9164,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7503,7 +9207,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7538,7 +9250,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7573,7 +9293,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7608,7 +9336,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7643,7 +9379,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7678,7 +9422,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7713,7 +9465,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7748,7 +9508,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7783,7 +9551,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7818,7 +9594,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7853,7 +9637,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7888,7 +9680,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7923,7 +9723,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7958,7 +9766,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -7993,7 +9809,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8028,7 +9852,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8063,7 +9895,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8098,7 +9938,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8133,7 +9981,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8168,7 +10024,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8203,7 +10067,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8238,7 +10110,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8273,7 +10153,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8308,7 +10196,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8343,7 +10239,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8378,7 +10282,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8413,7 +10325,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8448,7 +10368,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8483,7 +10411,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8518,7 +10454,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8553,7 +10497,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8588,7 +10540,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8623,7 +10583,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8658,7 +10626,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8693,7 +10669,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8728,7 +10712,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8763,7 +10755,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8798,7 +10798,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8833,7 +10841,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8868,7 +10884,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8903,7 +10927,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8938,7 +10970,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -8973,7 +11013,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9008,7 +11056,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9043,7 +11099,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9078,7 +11142,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9113,7 +11185,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 4,
+  "oc_armcat": 4,
+  "oc_hitbon": 4,
+  "a_ac": 4,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9148,7 +11228,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 13,
+  "oc_armcat": 13,
+  "oc_hitbon": 4,
+  "a_ac": 4,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9183,7 +11271,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 27,
+  "oc_armcat": 27,
+  "oc_hitbon": 1,
+  "a_ac": 1,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9218,7 +11314,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9253,7 +11357,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9288,7 +11400,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9323,7 +11443,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9358,7 +11486,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9393,7 +11529,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9428,7 +11572,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9463,7 +11615,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9498,7 +11658,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9533,7 +11701,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9568,7 +11744,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9603,7 +11787,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9638,7 +11830,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9673,7 +11873,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9708,7 +11916,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9743,7 +11959,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9778,7 +12002,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9813,7 +12045,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9848,7 +12088,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9883,7 +12131,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9918,7 +12174,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9953,7 +12217,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -9988,7 +12260,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10023,7 +12303,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10058,7 +12346,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10093,7 +12389,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10128,7 +12432,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10163,7 +12475,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10198,7 +12518,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10233,7 +12561,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10268,7 +12604,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10303,7 +12647,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10338,7 +12690,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10373,7 +12733,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10408,7 +12776,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10443,7 +12819,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10478,7 +12862,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10513,7 +12905,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10548,7 +12948,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10583,7 +12991,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10618,7 +13034,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10653,7 +13077,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10688,7 +13120,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10723,7 +13163,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10758,7 +13206,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10793,7 +13249,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10828,7 +13292,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10863,7 +13335,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10898,7 +13378,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10933,7 +13421,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -10968,7 +13464,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11003,7 +13507,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11038,7 +13550,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11073,7 +13593,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11108,7 +13636,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11143,7 +13679,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11178,7 +13722,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11213,7 +13765,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11248,7 +13808,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11283,7 +13851,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11318,7 +13894,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11353,7 +13937,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11388,7 +13980,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11423,7 +14023,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11458,7 +14066,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11493,7 +14109,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11528,7 +14152,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11563,7 +14195,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11598,7 +14238,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11633,7 +14281,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11668,7 +14324,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11703,7 +14367,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11738,7 +14410,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11773,7 +14453,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11808,7 +14496,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11843,7 +14539,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11878,7 +14582,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11913,7 +14625,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11948,7 +14668,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -11983,7 +14711,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12018,7 +14754,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12053,7 +14797,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12088,7 +14840,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12123,7 +14883,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12158,7 +14926,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12193,7 +14969,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12228,7 +15012,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12263,7 +15055,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12298,7 +15098,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12333,7 +15141,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12368,7 +15184,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12403,7 +15227,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12438,7 +15270,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12473,7 +15313,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12508,7 +15356,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12543,7 +15399,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12578,7 +15442,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12613,7 +15485,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12648,7 +15528,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12683,7 +15571,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12718,7 +15614,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12753,7 +15657,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12788,7 +15700,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12823,7 +15743,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -12858,7 +15786,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 34,
+  "oc_armcat": 34,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 5,
+  "oc_level": 5
  },
  {
   "oc_name_idx": 0,
@@ -12893,7 +15829,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -12928,7 +15872,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -12963,7 +15915,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -12998,7 +15958,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 31,
+  "oc_armcat": 31,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13033,7 +16001,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 7,
+  "oc_level": 7
  },
  {
   "oc_name_idx": 0,
@@ -13068,7 +16044,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13103,7 +16087,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13138,7 +16130,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13173,7 +16173,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 34,
+  "oc_armcat": 34,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13208,7 +16216,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13243,7 +16259,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 31,
+  "oc_armcat": 31,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -13278,7 +16302,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13313,7 +16345,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13348,7 +16388,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 31,
+  "oc_armcat": 31,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13383,7 +16431,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 34,
+  "oc_armcat": 34,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13418,7 +16474,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 32,
+  "oc_armcat": 32,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13453,7 +16517,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -13488,7 +16560,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 31,
+  "oc_armcat": 31,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13523,7 +16603,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13558,7 +16646,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13593,7 +16689,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 31,
+  "oc_armcat": 31,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 5,
+  "oc_level": 5
  },
  {
   "oc_name_idx": 0,
@@ -13628,7 +16732,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 33,
+  "oc_armcat": 33,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13663,7 +16775,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13698,7 +16818,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 33,
+  "oc_armcat": 33,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -13733,7 +16861,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13768,7 +16904,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -13803,7 +16947,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 33,
+  "oc_armcat": 33,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -13838,7 +16990,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 4,
+  "oc_level": 4
  },
  {
   "oc_name_idx": 0,
@@ -13873,7 +17033,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 32,
+  "oc_armcat": 32,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13908,7 +17076,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 5,
+  "oc_level": 5
  },
  {
   "oc_name_idx": 0,
@@ -13943,7 +17119,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 30,
+  "oc_armcat": 30,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -13978,7 +17162,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 32,
+  "oc_armcat": 32,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 6,
+  "oc_level": 6
  },
  {
   "oc_name_idx": 0,
@@ -14013,7 +17205,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 34,
+  "oc_armcat": 34,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 6,
+  "oc_level": 6
  },
  {
   "oc_name_idx": 0,
@@ -14048,7 +17248,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 33,
+  "oc_armcat": 33,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 6,
+  "oc_level": 6
  },
  {
   "oc_name_idx": 0,
@@ -14083,7 +17291,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 32,
+  "oc_armcat": 32,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 6,
+  "oc_level": 6
  },
  {
   "oc_name_idx": 0,
@@ -14118,7 +17334,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 34,
+  "oc_armcat": 34,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 7,
+  "oc_level": 7
  },
  {
   "oc_name_idx": 0,
@@ -14153,7 +17377,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 32,
+  "oc_armcat": 32,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -14188,7 +17420,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 33,
+  "oc_armcat": 33,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -14223,7 +17463,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 29,
+  "oc_armcat": 29,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 3,
+  "oc_level": 3
  },
  {
   "oc_name_idx": 0,
@@ -14258,7 +17506,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 28,
+  "oc_armcat": 28,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 2,
+  "oc_level": 2
  },
  {
   "oc_name_idx": 0,
@@ -14293,7 +17549,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14328,7 +17592,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 1,
+  "oc_level": 1
  },
  {
   "oc_name_idx": 0,
@@ -14363,7 +17635,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 7,
+  "oc_level": 7
  },
  {
   "oc_name_idx": 0,
@@ -14398,7 +17678,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14433,7 +17721,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14468,7 +17764,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14503,7 +17807,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14538,7 +17850,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14573,7 +17893,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14608,7 +17936,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14643,7 +17979,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14678,7 +18022,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14713,7 +18065,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14748,7 +18108,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14783,7 +18151,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14818,7 +18194,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14853,7 +18237,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14888,7 +18280,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14923,7 +18323,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14958,7 +18366,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -14993,7 +18409,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15028,7 +18452,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15063,7 +18495,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15098,7 +18538,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15133,7 +18581,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15168,7 +18624,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15203,7 +18667,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15238,7 +18710,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15273,7 +18753,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15308,7 +18796,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15343,7 +18839,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15378,7 +18882,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15413,7 +18925,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15448,7 +18968,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15483,7 +19011,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15518,7 +19054,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15553,7 +19097,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15588,7 +19140,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15623,7 +19183,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15658,7 +19226,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15693,7 +19269,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15728,7 +19312,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15763,7 +19355,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15798,7 +19398,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15833,7 +19441,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15868,7 +19484,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15903,7 +19527,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15938,7 +19570,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -15973,7 +19613,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16008,7 +19656,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16043,7 +19699,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16078,7 +19742,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16113,7 +19785,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16148,7 +19828,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16183,7 +19871,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16218,7 +19914,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16253,7 +19957,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16288,7 +20000,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16323,7 +20043,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16358,7 +20086,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16393,7 +20129,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16428,7 +20172,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16463,7 +20215,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16498,7 +20258,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16533,7 +20301,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16568,7 +20344,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16603,7 +20387,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16638,7 +20430,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": -21,
+  "oc_armcat": -21,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16673,7 +20473,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 1,
+  "oc_bulky": 1,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16708,7 +20516,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16743,7 +20559,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16778,7 +20602,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16813,7 +20645,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16848,7 +20688,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  },
  {
   "oc_name_idx": 0,
@@ -16883,7 +20731,15 @@ export const objects = [
   "oc_sell_minseen": -1,
   "oc_sell_maxseen": 0,
   "oc_buy_minseen": -1,
-  "oc_buy_maxseen": 0
+  "oc_buy_maxseen": 0,
+  "oc_bimanual": 0,
+  "oc_bulky": 0,
+  "oc_skill": 0,
+  "oc_armcat": 0,
+  "oc_hitbon": 0,
+  "a_ac": 0,
+  "a_can": 0,
+  "oc_level": 0
  }
 ];
 
@@ -19339,6 +23195,33 @@ export const OCLASSES = {
  "CHAIN_CLASS": 16,
  "VENOM_CLASS": 17,
  "MAXOCLASSES": 18
+};
+
+// include/objclass.h enum obj_material_types — oc_material ordinals. The
+// is_organic / is_metallic / is_rustprone macros are range tests against these.
+export const MATERIALS = {
+ "NO_MATERIAL": 0,
+ "LIQUID": 1,
+ "WAX": 2,
+ "VEGGY": 3,
+ "FLESH": 4,
+ "PAPER": 5,
+ "CLOTH": 6,
+ "LEATHER": 7,
+ "WOOD": 8,
+ "BONE": 9,
+ "DRAGON_HIDE": 10,
+ "IRON": 11,
+ "METAL": 12,
+ "COPPER": 13,
+ "SILVER": 14,
+ "GOLD": 15,
+ "PLATINUM": 16,
+ "MITHRIL": 17,
+ "PLASTIC": 18,
+ "GLASS": 19,
+ "GEMSTONE": 20,
+ "MINERAL": 21
 };
 
 // include/skills.h — P_* weapon/spell skill constants. oc_skill (oc_subtyp)

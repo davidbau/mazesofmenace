@@ -8,13 +8,19 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
 import { is_rider } from './makemon.js';
+import { MAX_CARR_CAP, WT_HUMAN } from './const.js';
+
+// include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
+const MZ_HUMAN = MFLAGS.MZ_MEDIUM;
+
 import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS,
          D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
          ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
          ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR,
-         UNLOCKDOOR, BUSTDOOR } from './const.js';
+         UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM } from './const.js';
 
 // include/permonst.h:80
 export const NORMAL_SPEED = 12;
@@ -169,16 +175,32 @@ export function mfndpos(mon, data, flag) {
                     } else {
                         const mtmp2 = m_at(nx, ny);
                         if (mtmp2) {
-                            /* mm_aggression()/mm_displacement() decide whether
-                               one monster may attack or swap with another. */
-                            note_unported_mon('mfndpos monster-at-target');
-                            continue;
+                            const mmflag = flag | mm_aggression(mon, mtmp2);
+
+                            if (mmflag & ALLOW_M) {
+                                info |= ALLOW_M;
+                                if (mtmp2.mtame) {
+                                    if (!(mmflag & ALLOW_TM))
+                                        continue;
+                                    info |= ALLOW_TM;
+                                }
+                            } else {
+                                flag &= ~ALLOW_MDISP; /* depends on defender */
+                                const mmflag2 = flag | mm_displacement(mon, mtmp2);
+                                if (!(mmflag2 & ALLOW_MDISP))
+                                    continue;
+                                info |= ALLOW_MDISP;
+                            }
                         }
                     }
 
-                    /* diagonal tight squeeze */
+                    /* diagonal tight squeeze — all THREE tests must hold.
+                       Omitting cant_squeeze_thru() blocked every diagonal
+                       between two walls, which cost real candidate squares:
+                       seed8000 had cnt 5 where C had 8. */
                     if (nx !== x && ny !== y
-                        && bad_rock(mdat, x, ny) && bad_rock(mdat, nx, y))
+                        && bad_rock(mdat, x, ny) && bad_rock(mdat, nx, y)
+                        && cant_squeeze_thru(mon))
                         continue;
 
                     const ttmp = t_at(nx, ny);
@@ -219,12 +241,43 @@ function t_at(x, y) {
     return (game.level?.traps || []).find(t => t.tx === x && t.ty === y) || null;
 }
 
-/* include/mondata.h — bad_rock() is the squeeze test; without the polymorph
-   and giant cases it is just "is this square wall-like". */
+// src/hack.c:939 bad_rock() — is this square one a monster cannot walk through?
+// The Sokoban boulder case needs sobj_at, which is not ported; no public
+// session reaches Sokoban.
 function bad_rock(mdat, x, y) {
     const t = game.level?.at(x, y)?.typ;
-    return t === undefined || IS_OBSTRUCTED(t);
+    if (t === undefined) return true;
+    return IS_OBSTRUCTED(t)
+        && (!tunnels(mdat) || needspick(mdat))
+        && !passes_walls(mdat);
 }
+
+// src/hack.c:953 cant_squeeze_thru() — 0 means it CAN squeeze. A small monster
+// slips between two walls diagonally; a big one does not.
+function cant_squeeze_thru(mon) {
+    const ptr = mon.data;
+
+    if (passes_walls(ptr))
+        return 0;
+    if (bigmonst(ptr)
+        && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
+             || slithy(ptr)))
+        return 1;
+    /* curr_mon_load() needs monster inventory; nothing carries anything yet,
+       so the WT_TOOMUCH_DIAGONAL test cannot fire. */
+    return 0;
+}
+
+/* include/mondata.h */
+const bigmonst     = (d) => d.msize >= MFLAGS.MZ_LARGE;
+const amorphous    = (d) => (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0;
+/* include/mondata.h:57 — vortices and the air elemental, by symbol not flag */
+const is_whirly    = (d) => d.mlet === MONSYMS.S_VORTEX
+                         || d.pmidx === PMNAMES.PM_AIR_ELEMENTAL;
+/* include/mondata.h:31 — ghosts */
+const noncorporeal = (d) => d.mlet === MONSYMS.S_GHOST;
+const slithy       = (d) => (d.mflags1 & MFLAGS.M1_SLITHY) !== 0;
+const needspick    = (d) => (d.mflags1 & MFLAGS.M1_NEEDPICK) !== 0;
 
 function note_unported_mon(what) {
     (game.unported ||= new Set()).add(what);
@@ -252,11 +305,11 @@ function likes_lava(ptr) {
 }
 
 // include/rm.h:129-130
-function is_pool(x, y) {
+export function is_pool(x, y) {
     const t = game.level?.at(x, y)?.typ;
     return t !== undefined && t >= POOL && t <= DRAWBRIDGE_UP;
 }
-function is_lava(x, y) {
+export function is_lava(x, y) {
     const t = game.level?.at(x, y)?.typ;
     return t === LAVAPOOL || t === LAVAWALL;
 }
@@ -306,3 +359,166 @@ const passes_bars  = (d) => (d.mflags1 & MFLAGS.M1_UNSOLID) !== 0
                          || (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0
                          || (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0
                          || d.msize <= MFLAGS.MZ_SMALL;
+
+// src/mon.c:2428 mm_aggression() — may `magr` attack `mdef`?
+export function mm_aggression(magr, mdef) {
+    const mndx = magr.data?.pmidx;
+
+    /* pets never fight each other */
+    if (magr.mtame && mdef.mtame)
+        return 0;
+
+    /* purple worms eat shriekers */
+    if ((mndx === PMNAMES.PM_PURPLE_WORM || mndx === PMNAMES.PM_BABY_PURPLE_WORM)
+        && mdef.data?.pmidx === PMNAMES.PM_SHRIEKER)
+        return ALLOW_M | ALLOW_TM;
+
+    return mm_2way_aggression(magr, mdef) | mm_2way_aggression(mdef, magr);
+}
+
+// src/mon.c mm_2way_aggression() — the zombie-maker case is the only one that
+// fires outside the Wizard's tower, and it needs zombie_form(), which is part
+// of the death-drop tables rather than anything in the move loop.
+function mm_2way_aggression(magr, mdef) {
+    if (zombie_maker(magr) && zombie_form(mdef.data) !== NON_PM) {
+        if (magr.mgenmklev && mdef.mgenmklev)
+            return 0;
+        return ALLOW_M | ALLOW_TM;
+    }
+    return 0;
+}
+
+// src/mon.c:2451 mm_displacement() — may `magr` barge past `mdef`?
+export function mm_displacement(magr, mdef) {
+    const pa = magr.data, pd = mdef.data;
+
+    if (is_displacer(pa) && (!is_displacer(pd) || magr.m_lev > mdef.m_lev)
+        && !(magr.mx !== mdef.mx && magr.my !== mdef.my && NODIAG(pd))
+        && !mdef.mtrapped
+        && (is_rider(pa) || pa.msize >= pd.msize))
+        return ALLOW_MDISP;
+    return 0;
+}
+
+/* include/mondata.h */
+const is_displacer = (d) => (d.mflags3 & MFLAGS.M3_DISPLACES) !== 0;
+// src/mon.c:362 zombie_maker() — by CLASS, not by flag. There is no
+// M3_ZOMBIFIER; reading one gave undefined and the predicate was always false.
+function zombie_maker(mon) {
+    const pm = mon.data;
+    if (mon.mcan) return false;
+    if (pm.mlet === MONSYMS.S_ZOMBIE)
+        return pm.pmidx !== PMNAMES.PM_GHOUL && pm.pmidx !== PMNAMES.PM_SKELETON;
+    if (pm.mlet === MONSYMS.S_LICH)
+        return true;
+    return false;
+}
+/* src/zombify.c zombie_form() — needs the zombie table; nothing in the corpus
+   generates a zombifier this early, and the call is gated behind
+   zombie_maker() above. */
+const zombie_form = (d) => NON_PM;
+
+// src/mon.c curr_mon_load() — total weight the monster is already carrying.
+function curr_mon_load(mtmp) {
+    let curload = 0;
+
+    for (const obj of (mtmp.minvent || [])) {
+        if (obj.otyp !== ONAMES.BOULDER || !throws_rocks(game.mons[mtmp.mnum]))
+            curload += obj.owt;
+    }
+
+    return curload;
+}
+
+// src/mon.c max_mon_load() — human capacity scaled by the monster's weight, or
+// by its size when it has no corpse weight, then halved unless strong.
+function max_mon_load(mtmp) {
+    const mdat = game.mons[mtmp.mnum];
+    let maxload;
+
+    if (!mdat.cwt)
+        maxload = Math.trunc((MAX_CARR_CAP * mdat.msize) / MZ_HUMAN);
+    else if (!strongmonst(mdat) || (strongmonst(mdat) && mdat.cwt > WT_HUMAN))
+        maxload = Math.trunc((MAX_CARR_CAP * mdat.cwt) / WT_HUMAN);
+    else
+        maxload = MAX_CARR_CAP; /* strong monsters w/cwt <= WT_HUMAN */
+
+    if (!strongmonst(mdat))
+        maxload = Math.trunc(maxload / 2);
+
+    if (maxload < 1)
+        maxload = 1;
+
+    return maxload;
+}
+
+// src/mon.c:1990 can_carry() — how many of otmp the monster could pick up.
+// dog_goal()'s APPORT branch tests this AFTER spending its rn2(8), so a wrong
+// answer here changes the goal but not the draw count.
+export function can_carry(mtmp, otmp) {
+    const otyp = otmp.otyp;
+    const newload = otmp.owt;
+    const mdat = game.mons[mtmp.mnum];
+
+    if (notake(mdat))
+        return 0; /* can't carry anything */
+
+    if (!can_touch_safely(mtmp, otmp))
+        return 0;
+
+    /* hostile monsters who like gold will pick up the whole stack;
+       tame monsters with hands will pick up the partial stack */
+    const iquan = otmp.quan;
+
+    /* monsters without hands can't pick up multiple objects at once
+       unless they have an engulfing attack */
+    if (iquan > 1) {
+        let glomper = false;
+
+        if (mdat.mlet === MONSYMS.S_DRAGON
+            && (otmp.oclass === OCLASSES.COIN_CLASS
+                || otmp.oclass === OCLASSES.GEM_CLASS))
+            glomper = true;
+        else
+            for (const atk of mdat.mattk)
+                if (atk[0] === ATTKS.AT_ENGL) {
+                    glomper = true;
+                    break;
+                }
+        if ((mdat.mflags1 & MFLAGS.M1_NOHANDS) && !glomper)
+            return 1;
+    }
+
+    /* steeds don't pick up stuff (to avoid shop abuse) */
+    if (mtmp === game.u.usteed)
+        return 0;
+    if (mtmp.isshk)
+        return iquan; /* no limit */
+    if (mtmp.mpeaceful && !mtmp.mtame)
+        return 0;
+
+    /* special--boulder throwers carry unlimited amounts of boulders */
+    if (throws_rocks(mdat) && otyp === ONAMES.BOULDER)
+        return iquan;
+
+    /* nymphs deal in stolen merchandise, but not boulders or statues */
+    if (mdat.mlet === MONSYMS.S_NYMPH)
+        return (otmp.oclass === OCLASSES.ROCK_CLASS) ? 0 : iquan;
+
+    if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp))
+        return 0;
+
+    return iquan;
+}
+
+/* include/mondata.h and src/mon.c — the two predicates can_carry gates on.
+   can_touch_safely() covers cockatrice corpses and acidic items for a monster
+   without the matching resistance; neither can be on a floor before the corpse
+   and resistance code lands. */
+const notake = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOTAKE) !== 0;
+const strongmonst = (ptr) => (ptr.mflags2 & MFLAGS.M2_STRONG) !== 0;
+
+function can_touch_safely(mtmp, otmp) {
+    note_unported_mon('can_touch_safely');
+    return true;
+}

@@ -12,7 +12,7 @@
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core } from './allmain.js';
+import { newgame, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { parseNethackrc, optValue } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
@@ -151,6 +151,12 @@ export class NethackGame {
 
         // Run game startup
         await newgame();
+
+        /* src/allmain.c moveloop() — the tutorial query sits between
+           moveloop_preamble() and the first moveloop_core(). This driver calls
+           moveloop_core() directly rather than moveloop(), so the query has to
+           be invoked here or it never runs. */
+        await maybe_do_tutorial();
     }
 
     _installCaptureHook() {

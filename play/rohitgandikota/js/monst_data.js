@@ -9,7 +9,7 @@
 //
 // pmnames is [male, female, neutral] — a null means "use the neutral form".
 //
-// 383 monsters.
+// 384 monsters.
 
 export const mons = [
  {
@@ -24523,6 +24523,29 @@ export const mons = [
   "mflags3": 512,
   "difficulty": 8,
   "mcolor": 15
+ },
+ {
+  "pmnames": [],
+  "pmidx": 0,
+  "mlet": 0,
+  "mlevel": 0,
+  "mmove": 0,
+  "ac": 0,
+  "mr": 0,
+  "maligntyp": 0,
+  "geno": 0,
+  "mattk": [],
+  "cwt": 0,
+  "cnutrit": 0,
+  "msound": 0,
+  "msize": 0,
+  "mresists": 0,
+  "mconveys": 0,
+  "mflags1": 0,
+  "mflags2": 0,
+  "mflags3": 0,
+  "difficulty": 0,
+  "mcolor": 0
  }
 ];
 

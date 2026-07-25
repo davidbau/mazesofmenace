@@ -36,10 +36,6 @@ export function enableDisplayRngLog(enabled = true) { _displayRngLogEnabled = !!
 function logRng(name, args, value) {
     if (!_rngLogEnabled) return;
     _rngLog.push(`${name}(${args})=${value}`);
-    if (process.env.RNG_TRACE_MATCH && `${name}(${args})=${value}` === process.env.RNG_TRACE_MATCH) {
-        const st = new Error().stack.split('\n').slice(2, 8).join('|');
-        _rngLog.push(`  TRACE ${st}`);
-    }
 }
 
 function RND(x) {

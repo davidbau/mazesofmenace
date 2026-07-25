@@ -4,8 +4,11 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT } from './const.js';
+import { rn2, rn1 } from './rng.js';
+import { exerchk } from './attrib.js';
+import { init_uhunger } from './eat.js';
+import { ask_do_tutorial } from './options.js';
+import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline } from './display.js';
@@ -182,6 +185,10 @@ export async function newgame() {
     // makes u_calc_moveamt() draw every turn thereafter.
     adjabil(0, 1);
 
+    /* src/u_init.c:1002 — init_uhunger() sits between adjabil() and the spell
+       book clear. exerper() consults uhunger every tenth move. */
+    init_uhunger();
+
     // src/allmain.c:816-818 — docrt(); flush_screen(1); bot(); all run BEFORE
     // u_init_skills_discoveries() and the legacy pager, which is why the legacy
     // window is drawn over a map and a status line rather than a blank screen.
@@ -352,11 +359,35 @@ export async function moveloop_core() {
                 dosounds();
                 gethungry();
 
+                /* src/allmain.c:354 — age_spells() then exerchk(). exerchk
+                   runs exerper(), which every tenth move exercises whichever
+                   attribute the hunger and encumbrance state calls for, and
+                   each of those spends an rn2(19). */
+                exerchk();
+
                 /* src/allmain.c:360 */
                 if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
                     rnd(3);                             /* u_wipe_engr(rnd(3)) */
             }
         } while (g.u.umovement < NORMAL_SPEED);
+    }
+
+    /******************************************/
+    /* once-per-hero-took-time things go here  */
+    /******************************************/
+
+    g.hero_seq = (g.hero_seq || 0) + 1; /* moves*8 + n for n == 1..7 */
+
+    /* src/allmain.c:409 — the clairvoyance counter is maintained even when no
+       clairvoyance takes place, so this rn1 is spent roughly every 30 turns of
+       any game, not only by a hero carrying the Amulet. */
+    if (g.moves >= g.context.seer_turn) {
+        if ((g.u.uhave?.amulet || g.u.uprops?.CLAIRVOYANT) && !In_endgame(g.u.uz)
+            && !g.u.uprops?.BLOCKED_CLAIRVOYANT)
+            note_unported_main('do_vicinity_map');
+        /* we maintain this counter even when clairvoyance isn't
+           taking place; on average, go again 30 turns from now */
+        g.context.seer_turn = g.moves + rn1(31, 15); /*15..45*/
     }
 
     // Vision + display
@@ -381,6 +412,14 @@ export async function moveloop(resuming) {
     await docrt();
     await flush_screen(1);
 
+    /* src/allmain.c moveloop() — three lines in C, and this is the middle one.
+       NetHack 5.0 asks every new game whether the player wants the tutorial
+       unless the config settled it; 32 of the 44 public sessions never mention
+       `tutorial` in their rc, so they all see the menu and spend a keystroke on
+       it. Answering yes then builds the tut-1 level. */
+    if (!resuming)
+        await maybe_do_tutorial();
+
     for (;;) {
         await moveloop_core();
         if (game.program_state?.gameover) break;
@@ -389,4 +428,14 @@ export async function moveloop(resuming) {
 
 function note_unported_main(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/allmain.c maybe_do_tutorial()
+export async function maybe_do_tutorial() {
+    if (await ask_do_tutorial()) {
+        /* schedule_goto(tut-1) + deferred_goto() builds the tutorial level.
+           Not ported: the special-level loader for tut-1, and goto_level's
+           save/restore of the level being left. */
+        note_unported_main('tutorial level (tut-1)');
+    }
 }

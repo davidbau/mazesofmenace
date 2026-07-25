@@ -3,10 +3,10 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
+import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -13971,7 +13971,11 @@ function travelLocInteresting(x, y, gloc) {
     if (!loc) return false;
     const mon = (game.level?.monsters || []).find(candidate =>
         candidate.mx === x && candidate.my === y && !candidate.dead);
-    const monShown = !!(mon && loc.disp_ch === (mon.data?.mlet?.[0] || mon.data?.glyph || '?'));
+    // C ref: a spot whose display is the monster's glyph no longer shows its
+    // terrain glyph (mlet may be a class name like "lizard", so use the
+    // display glyph, not mlet[0]).
+    const monGlyph = mon ? monsterGlyph(mon).ch : null;
+    const monShown = !!(mon && monGlyph && loc.disp_ch === monGlyph);
     if (gloc === GLOC_MONS)
         return monShown && mon.data?.name !== 'long worm tail' && !mon.data?.longWormTail;
     let obj = null;
@@ -18316,6 +18320,10 @@ async function finishTakeOffEquipment(item, options = {}) {
             game._pending_message_visual_override = options.visualPromptOverride;
             game._pending_message_visual_override_base = message;
         }
+    } else if (options.keepPromptWhenSilent) {
+        // C ref: off_msg() is verbose-only (do_wear.c:1048); with it
+        // suppressed the takeoff prompt stays on the top line.
+        game._keep_pending_message = 1;
     }
     game.context.move = result.move ?? 1;
     if (result.more) game._process_time_with_more = 1;
@@ -29633,8 +29641,15 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
     game._eating_fullwarn = 0;
     game._eating_nomovemsg = '';
 
+    // C ref: eat.c do_eat — the command turn only runs first-bite feedback
+    // (fprefx) and start_eating(); the first nutrition bite lands on the
+    // first occupation turn (eatfood() increments victual.usedtime from
+    // the following turn on), so multi-turn meals bite one turn later
+    // than the command.  Only foods that finish immediately take their
+    // bite on the command turn.
+    const finishesImmediately = reqtime <= 1 || biteNutrition <= 0;
     let nutritionOutcome = { messages: [], prompt: false };
-    if (biteNutrition > 0) {
+    if (biteNutrition > 0 && finishesImmediately) {
         nutritionOutcome = addDelayedFoodBiteNutrition(biteHunger, {
             remainingAfterBite: Math.max(0, reqtime - 1),
             food: touched,
@@ -29696,7 +29711,12 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
         };
     }
 
-    game._eating_turns_remaining = reqtime;
+    // C ref: eat.c eatfood — the occupation bites while
+    // victual.usedtime <= victual.reqtime and finishes (done_eating) on
+    // the turn after the last bite, so the armed counter holds one turn
+    // more than the bite count (the final bookkeeping turn is charged by
+    // the moveloop re-arm; see hadEatingOccupation in allmain.js).
+    game._eating_turns_remaining = reqtime + 1;
     game._eating_finish_message = `You finish eating the ${finishName}.`;
     if (floorObject) {
         game._eating_floor_object = touched;
@@ -41559,6 +41579,11 @@ function syncHeroEncumbranceStatus(level) {
 // C ref: encumber_msg() (pickup.c:1978) — when the encumbrance tier changed
 // since the last check, print the report and flag the status line.
 function encumberMsg() {
+    // While polymorphed, encumbrance follows the transformation-time fallout
+    // (do_wear.c off paths); capacity scales with the new form's body weight
+    // (hack.c weight_cap:4303-4311), which the generic inventory-weight math
+    // does not model, so leave the status as the polyself path set it.
+    if (game.u?._polyself_form) return '';
     const newcap = heroEncumbranceForWeight(heroCarriedWeight());
     const oldcap = game._encumbrance_level ?? 0;
     game._encumbrance_level = newcap;
@@ -41567,11 +41592,40 @@ function encumberMsg() {
     return newcap > oldcap ? encumberIncreaseMessage(newcap) : encumberDecreaseMessage(newcap);
 }
 
-function heroCarryCapacity() {
+// C ref: src/hack.c:4295-4342 weight_cap() — base capacity is
+// 25*(Str+Con)+50; while polymorphed it scales with the new form's body
+// weight (a nymph form maxes it out), then clamps to MAX_CARR_CAP;
+// levitation or the air level also maxes it out.
+export function heroCarryCapacity() {
     const stats = game.u?.acurr?.a || [];
-    const normalCapacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
-    return Is_airlevel(game.u?.uz) || game.u?.levitating ? 1000 : normalCapacity;
+    let capacity = 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50;
+    // C ref: src/hack.c:4313-4323 — the Upolyd branch of weight_cap().
+    const form = game.u?._polyself_form;
+    if (form) {
+        const formCwt = polyselfFormBodyWeight(form);
+        if (form.mlet === 'n') capacity = MAX_CARR_CAP;
+        else if (!form.strong || formCwt > WT_HUMAN)
+            capacity = Math.trunc((capacity * formCwt) / WT_HUMAN);
+    }
+    const normalCapacity = Math.min(MAX_CARR_CAP, capacity);
+    return Is_airlevel(game.u?.uz) || game.u?.levitating ? MAX_CARR_CAP : normalCapacity;
 }
+
+// Body weight (monst.c cwt) of the hero's polyself form.  Human weight is
+// the default so unlisted forms keep the base capacity (weight.h:27-29).
+function polyselfFormBodyWeight(form) {
+    const name = String(form?.name || '').toLowerCase();
+    if (/^baby .*dragon$/.test(name)) return WT_BABY_DRAGON;
+    if (/(?:^| )dragon$/.test(name)) return WT_DRAGON;
+    return POLYSELF_FORM_BODY_WEIGHTS.get(name) ?? WT_HUMAN;
+}
+const POLYSELF_FORM_BODY_WEIGHTS = new Map([
+    // C ref: include/monsters.h SIZ() first field (cwt).
+    ['flesh golem', 1400], ['clay golem', 1550], ['stone golem', 1900],
+    ['iron golem', 2000], ['wood golem', 900], ['leather golem', 800],
+    ['rope golem', 450], ['gold golem', 450], ['glass golem', 1800],
+    ['skeleton', 300],
+]);
 
 const PICKUP_BURDEN_LEVELS = {
     unencumbered: 0,
@@ -45493,6 +45547,19 @@ export function pickupObjectName(obj) {
     return named(obj.kind || (obj.otyp != null ? String(obj.otyp) : 'object'));
 }
 
+// C ref: doname() for a lockable box — lock-state prefix when lknown
+// ("locked"/"unlocked"/"broken") and contents count when cknown
+// (objnam.c:1359-1379).
+function lockableBoxDoname(box) {
+    const base = (box?.otyp === LARGE_BOX || box?.kind === 'large box') ? 'large box' : 'chest';
+    const lockPrefix = box?.lknown
+        ? (box.obroken ? 'broken ' : (box.locked || box.olocked) ? 'locked ' : 'unlocked ')
+        : '';
+    const count = box?.cknown ? (box.contents || []).length : 0;
+    const suffix = box?.cknown && count > 0 ? ` containing ${count} item${count === 1 ? '' : 's'}` : '';
+    return `${/^[aeiou]/i.test(lockPrefix + base) ? 'an' : 'a'} ${lockPrefix}${base}${suffix}`;
+}
+
 // C ref: display_pickinv() sorts inventory by inv_order class rank
 // (options.c:118-121 def_inv_order).
 function containerSortRank(item) {
@@ -45747,12 +45814,28 @@ function clearIceBoxActionState() {
     game._icebox_action_container = null;
 }
 
-// C ref: display_pickinv() with a query title (invent.c:3057+) — the
-// container "Put in what?" picker is the standard full-screen inventory
-// menu (reverse-video section headers, +/- selection markers, "(N of M)"
-// pagination) headed by the prompt; 21 content rows fit under the title
-// and blank line.
-function putInInventoryOverlayLines(entries, title, page = 0, selected = null) {
+// C ref: tty_display_nhwindow() NHW_MENU placement (win/tty/wintty.c:1908-1941)
+// — a menu whose window fits on the display (maxrow < 24) is drawn as a
+// "corner" window overlapping the map's right side instead of a cleared
+// full screen: offx = min(cols / 2, cols - maxcol - 1) (H2344_BROKEN is always
+// defined in wintty.c), each menu row is cleared from offx to end-of-line
+// (process_menu_window(), wintty.c:1427-1431), and a plain space precedes the
+// text at offx.  maxcol is the widest menu string plus padding plus the
+// morestr (tty_end_menu(), wintty.c:2716-2762).
+export function cornerMenuGeometry(itemTexts, morestr, cols = 80, rows = 24) {
+    let maxcol = morestr.length;
+    for (const text of itemTexts) maxcol = Math.max(maxcol, String(text).length + 2);
+    const offx = Math.max(0, Math.min(Math.min(82, Math.trunc(cols / 2)), cols - maxcol - 1));
+    const maxrow = itemTexts.length + 1;
+    return { offx, maxrow, fullScreen: maxrow >= rows };
+}
+
+// C ref: query_objlist() with a query title (pickup.c:1025) — the container
+// "Put in what?" picker is an NHW_MENU corner window (reverse-video prompt
+// and section headers, +/- selection markers, "(N of M)" pagination);
+// 21 content rows fit under the title and blank line before the window
+// reaches full-screen height (ttyDisplay->rows - 3, see cornerMenuGeometry).
+export function putInInventoryOverlayLines(entries, title, page = 0, selected = null) {
     const sectionName = item => item.section || ({
         coin: 'Coins', amulet: 'Amulets', weapon: 'Weapons', armor: 'Armor', food: 'Comestibles',
         scroll: 'Scrolls', spellbook: 'Spellbooks', potion: 'Potions',
@@ -45792,10 +45875,17 @@ function putInInventoryOverlayLines(entries, title, page = 0, selected = null) {
     const pageRows = contentRows.slice(start, start + 21);
     const totalPages = Math.max(1, Math.ceil(contentRows.length / 21));
     const footer = totalPages > 1 ? `(${page + 1} of ${totalPages})` : '(end)';
-    const rows = [[0, 1, title, 1], [1, 1, '']];
-    for (const [text, attr] of pageRows) rows.push([rows.length, 1, text, attr]);
-    rows.push([rows.length, 1, footer]);
-    return rows;
+    // C ref: tty_end_menu() (wintty.c:2740-2762) — the morestr counts toward
+    // the window width including its trailing space ("(end) ", "(x of y) ").
+    const { offx, fullScreen } = cornerMenuGeometry([title, '', ...pageRows.map(([text]) => text)], `${footer} `);
+    // C ref: tty_display_nhwindow() (wintty.c:1924-1936) — a menu that reaches
+    // display height is forced to offx 0 over a cleared screen.
+    const effectiveOffx = fullScreen ? 0 : offx;
+    const col = effectiveOffx + 1;
+    const rows = [[0, col, title, 1], [1, col, '']];
+    for (const [text, attr] of pageRows) rows.push([rows.length, col, text, attr]);
+    rows.push([rows.length, col, footer]);
+    return { rows, offx: effectiveOffx, fullScreen };
 }
 
 function iceBoxPutTypeChoices(putItems) {
@@ -45905,18 +45995,24 @@ function beginContainerPutIn(container) {
     return true;
 }
 
+// C ref: tty_display_nhwindow() (wintty.c:1924-1941) — the menu window is
+// only promoted to a cleared full screen when it reaches display height;
+// smaller menus keep the map visible left of and below the corner window.
+function setPutInMenuOverlay(entries, title, selected) {
+    const { rows, offx, fullScreen } = putInInventoryOverlayLines(entries, title, 0, selected);
+    setOverlay(rows, fullScreen ? 24 : rows.length, fullScreen, fullScreen ? null : offx);
+}
+
 function drawIceBoxPutObjectMenu() {
     const entries = game._icebox_put_entries || [];
     const selected = new Set(game._icebox_put_selected || []);
-    const rows = putInInventoryOverlayLines(entries, 'Put in what?', 0, selected);
-    setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
+    setPutInMenuOverlay(entries, 'Put in what?', selected);
 }
 
 function drawContainerPutObjectMenu() {
     const entries = game._container_put_entries || [];
     const selected = new Set(game._container_put_selected || []);
-    const rows = putInInventoryOverlayLines(entries, 'Put in what?', 0, selected);
-    setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
+    setPutInMenuOverlay(entries, 'Put in what?', selected);
 }
 
 function articlelessObjectName(item) {
@@ -46427,7 +46523,12 @@ function addContainerTakeoutObjectToInventory(container, obj, options = {}) {
         return line;
     }
     prepareContainerTakeoutObject(container, obj);
-    const letter = options.inventoryLetter || nextInventoryLetter();
+    // C ref: assigninvlet() keeps an object's existing invlet when it is
+    // valid and not used by another inventory item (invent.c:746-754).
+    const reclaimedLetter = obj.letter && /^[a-zA-Z]$/.test(obj.letter)
+        && !(game.inventory || []).some(invItem => invItem !== obj && invItem.letter === obj.letter)
+        ? obj.letter : null;
+    const letter = options.inventoryLetter || reclaimedLetter || nextInventoryLetter();
     Object.assign(obj, {
         cls: obj.cls || (obj.otyp === GEM_CLASS ? 'gem'
             : obj.otyp === SCROLL_CLASS ? 'scroll'
@@ -60577,7 +60678,7 @@ export async function rhack(_cmd) {
         return;
     }
 
-    if (!game._running_continuation && !game._command_mode && !game._travel_keys?.length && !game._travel_dynamic_target
+    if (!game._running_continuation && !game._command_mode && !game._travel_step_active && !game._travel_keys?.length && !game._travel_dynamic_target
         && game._pending_message && !game._message_more
         && !/^[1-9]$/.test(ch) && !preservePendingForKey) {
         const clearedPendingMessage = game._pending_message;
@@ -65855,7 +65956,7 @@ function tutorialEnterStash() {
             && isWornArmorItem(item)
             && /\bshield\b/i.test(String(item.kind || item.actualKind || inventoryItemName(item)))
             ? takeOffPrompt : '';
-        await finishTakeOffEquipment(item, { visualPromptOverride });
+        await finishTakeOffEquipment(item, { visualPromptOverride, keepPromptWhenSilent: !!takeOffPrompt });
         return;
     }
 
@@ -65891,7 +65992,11 @@ function tutorialEnterStash() {
                 game._call_potion_record_discovery = 0;
                 game._command_mode = 'callPotionAfterMore';
             }
-            await setMessage(`This tastes like ${currentFruitJuiceName()}.`, true);
+            // C ref: dopotion() — the flavor message gets a --More-- only when
+            // the getlin for the trycall forces one (win/tty/getline.c:53);
+            // a discovered fruit juice potion gets no trycall (potion.c:633-636).
+            await setMessage(`This tastes like ${currentFruitJuiceName()}.`, game._command_mode === 'callPotionAfterMore');
+            if (game._command_mode !== 'callPotionAfterMore') game.context.move = 1;
             return;
         }
         if (potionName.includes('sickness')) {
@@ -70195,9 +70300,12 @@ function tutorialEnterStash() {
                 : name.includes('key') ? 75 + dex
                 : 4 * dex + (rogue ? 25 : 0);
             if (tool?.cursed) chance = Math.trunc(chance / 2);
+            // C ref: lock_action() (lock.c:41-63) — locking when currently
+            // unlocked, unlocking otherwise; a lock pick always picks.
+            const locking = !(chest.locked || chest.olocked);
             const action = name.includes('lock pick') || name.includes('credit card')
                 ? 'picking the lock'
-                : chest.kind === 'chest' || chest.otyp === CHEST ? 'unlocking the chest' : 'unlocking the box';
+                : `${locking ? 'locking' : 'unlocking'} the ${chest.kind === 'chest' || chest.otyp === CHEST ? 'chest' : 'box'}`;
             game._pick_lock_occupation = { chest, chance, action, usedtime: 0 };
             game.context.move = 1;
             game._process_time_with_more = 1;
@@ -71503,10 +71611,9 @@ function tutorialEnterStash() {
                     ? game._goldCount || 0
                     : item.quan || 1,
             }));
-            const rows = putInInventoryOverlayLines(entries, 'Put in what?');
             game._bag_put_entries = entries;
             game._bag_put_selected = [];
-            setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
+            setPutInMenuOverlay(entries, 'Put in what?', new Set());
             game._command_mode = 'bagPutObject';
             return;
         }
@@ -71529,15 +71636,7 @@ function tutorialEnterStash() {
                 if (selected.has(entry.letter)) selected.delete(entry.letter);
                 else selected.add(entry.letter);
                 game._bag_put_selected = [...selected];
-                game._overlay_lines = (game._overlay_lines || []).map(line => {
-                    const rowEntry = entries.find(item => item.row === line[0]);
-                    if (!rowEntry || line[1] !== 40) return line;
-                    const marker = selected.has(rowEntry.letter) ? '+' : '-';
-                    const label = rowEntry.letter === '$'
-                        ? `${rowEntry.amount} gold piece${rowEntry.amount === 1 ? '' : 's'}`
-                        : inventoryItemName(rowEntry.item);
-                    return [line[0], line[1], ` ${rowEntry.letter} ${marker} ${label}`.padEnd(40, ' '), line[3]];
-                });
+                setPutInMenuOverlay(entries, 'Put in what?', selected);
                 return;
             }
             if (ch === '\r' || ch === '\n' || ch === ' ') {
@@ -72369,20 +72468,29 @@ function tutorialEnterStash() {
         if (!dir) {
             if (ch === '.') {
                 // C ref: pick_lock() container branch (lock.c:433-470) —
-                // "There is <a box> here; <verb> <it|its lock>? [ynq] (q)".
+                // "There is <a box> here; <verb> <it|its lock>? [ynq] (q)";
+                // the box name follows doname() (lock state when lknown,
+                // contents count when cknown, objnam.c:1359-1379).
                 const box = (game.level?.objects || []).find(obj =>
                     !obj.hidden
                     && (obj.otyp === CHEST || obj.otyp === LARGE_BOX || obj.kind === 'chest' || obj.kind === 'large box')
                     && obj.ox === (game.u?.ux || 0) && obj.oy === (game.u?.uy || 0));
-                if (box && !box.obroken && (box.locked || box.olocked)) {
-                    box.lknown = true;
-                    const boxName = (box.otyp === LARGE_BOX || box.kind === 'large box') ? 'large box' : 'chest';
+                if (box && !box.obroken) {
                     const toolName = item ? inventoryItemName(item).toLowerCase() : 'lock pick';
-                    const verb = toolName.includes('lock pick') ? 'pick its lock' : 'unlock it';
-                    game._locked_container_unlock_target = { chest: box, tool: item };
-                    await setMessage(`There is a ${boxName} here; ${verb}? [ynq] (q)`);
-                    game._command_mode = 'unlockContainerPrompt';
-                    return;
+                    const unlocked = !(box.locked || box.olocked);
+                    if (unlocked || toolName.includes('key') || toolName.includes('credit card')) {
+                        // C ref: pick_lock() builds the prompt before setting
+                        // lknown (lock.c:457-459), so the first prompt names a
+                        // plain "a large box".
+                        const boxName = lockableBoxDoname(box);
+                        box.lknown = true;
+                        const verb = unlocked || !toolName.includes('lock pick') ? 'it' : 'its lock';
+                        const action = unlocked ? 'lock' : toolName.includes('lock pick') ? 'pick' : 'unlock';
+                        game._locked_container_unlock_target = { chest: box, tool: item };
+                        await setMessage(`There is ${boxName} here; ${action} ${verb}? [ynq] (q)`);
+                        game._command_mode = 'unlockContainerPrompt';
+                        return;
+                    }
                 }
             }
             return;
@@ -74369,6 +74477,9 @@ function tutorialEnterStash() {
             }
             if (command === 'wizmap' && game.flags?.debug) {
                 for (const trap of game.level?.traps || []) trap.tseen = true;
+                // C ref: wizcmds.c wiz_map — map_engraving(ep, TRUE) for
+                // every engraving on the level before do_mapping().
+                for (const engr of game.level?.engravings || []) engr.erevealed = true;
                 revealLevelMap();
                 exerciseAttribute(A_WIS, true);
                 game._revealing_level_map = 1;
