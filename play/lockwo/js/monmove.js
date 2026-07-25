@@ -1841,6 +1841,12 @@ function is_orc(mdat) {
     return n === 'orc mummy' || n === 'orc zombie';
 }
 
+// C ref: mondata.c is_demon(ptr) — (mlet == S_DEMON), defsym.h S_DEMON == 56.
+const S_DEMON = 56;
+function is_demon(mdat) {
+    return !!mdat && mdat.mcls === S_DEMON;
+}
+
 // C ref: mondata.c noattacks(ptr) — TRUE when the monster has no attacks.
 // Every monster our sessions drive into mattacku has at least one attack, so
 // this is FALSE; kept as a guard mirroring the C control flow.
@@ -2561,6 +2567,27 @@ async function mattacku(mtmp, mdat) {
     if (mtmp.mtrapped) tmp -= 2;
     if (tmp <= 0) tmp = 1;
 
+    // C ref mhitu.c:718 — a non-cancelled, non-shapechanged demon rolls its
+    // "summon more demons" gate EVERY combat turn (summonmu -> is_demon), even
+    // when the roll doesn't fire; this always consumes an rn2 before the
+    // attack loop, shifting every later roll in the turn if skipped (seed0006
+    // water demon step-103 bite dice).  mtmp.cham is never populated by this
+    // port (no chameleon-shapechanger monster reaches combat here), so treat
+    // it as always NON_PM (-1, "not currently shapechanged").
+    const cham = mtmp.cham ?? -1;
+    if (cham === -1 && !mtmp.mcan && !range2 && is_demon(mdat)) {
+        // summonmu(mtmp): the two demon species exempted from summoning
+        // (Balrog / incubus-succubus "amorous demon") aren't in the melee
+        // sessions this port drives, so only the roll itself is needed here.
+        const inhell = (u.uz?.dnum ?? 0) === (game.gehennom_dnum ?? 5);
+        if (!rn2(inhell ? 10 : 16)) {
+            // msummon(mtmp): rare demon-summon consequence, not modeled —
+            // an honest divergence rather than a silent RNG desync.
+        }
+        // is_were(mdat) branch not modeled: no were-creature reaches
+        // mattacku in this port yet, so it would be dead code.
+    }
+
     // C ref mhitu.c:758 — unlike defensive items, a monster won't both use an
     // offensive item AND melee: if it finds one, it uses it and its turn ends.
     if (find_offensive(mtmp)) {
@@ -2742,23 +2769,26 @@ async function m_throw_venom(mtmp, sx, sy, dx, dy, range, otmp) {
 // roll lands in the next recorded step, exactly as C records it).
 //
 // Object metadata for the thrown weapons the sessions use (objects.h WEAPON()):
-//   orcish dagger / "crude dagger": oc_wsdam 3, oc_hitbon 2, oclass WEAPON.
+//   dagger: oc_wsdam 4, oc_hitbon 2.  orcish dagger / "crude dagger": oc_wsdam
+//   3, oc_hitbon 2, oclass WEAPON.
+const DAGGER_OTYP = 34;
 const ORCISH_DAGGER_OTYP = 36;
 const DART_OTYP = 24; // include/objects.h WEAPON("dart"): otyp 24, oc_skill -P_DART
 const WEAPON_CLASS_MM = 2; // mkobj.js WEAPON_CLASS (dart/dagger oclass)
 function thrown_wsdam(otyp) {
-    // C ref: objects.h WEAPON() oc_wsdam (small-monster damage die).  Orcish
-    // dagger sdam 3; dart sdam 3.  A launcher wielded as a club (bow/elven bow/
-    // orcish bow/yumi/sling/crossbow) has oc_wsdam 2 — the gnome that hurled
-    // its potion then bashes the hero with its bow (dmgval rnd(2)).  (Other
-    // otyps fall back to a clean default of 1.)
+    // C ref: objects.h WEAPON() oc_wsdam (small-monster damage die).  Plain
+    // dagger sdam 4; orcish dagger sdam 3; dart sdam 3.  A launcher wielded as
+    // a club (bow/elven bow/orcish bow/yumi/sling/crossbow) has oc_wsdam 2 —
+    // the gnome that hurled its potion then bashes the hero with its bow
+    // (dmgval rnd(2)).  (Other otyps fall back to a clean default of 1.)
+    if (otyp === DAGGER_OTYP) return 4;
     if (otyp === ORCISH_DAGGER_OTYP) return 3;
     if (otyp === DART_OTYP) return 3;
     if (otyp >= 83 && otyp <= 88) return 2; // BOW..CROSSBOW launchers
     return 1;
 }
 function thrown_hitbon(otyp) {
-    if (otyp === ORCISH_DAGGER_OTYP) return 2;
+    if (otyp === DAGGER_OTYP || otyp === ORCISH_DAGGER_OTYP) return 2;
     if (otyp === DART_OTYP) return 0; // dart oc_hitbon 0
     return 0;
 }

@@ -1404,8 +1404,19 @@ const DEFMORESTR = '--More--';
 const CO = 80;
 
 export async function topl_more() {
+    await topl_more_ext('');
+}
+
+// C ref: win/tty/getline.c xwaitforspace(s) — like topl_more(), but also
+// accepts the chars in `extraChars` as dismiss keys (win/tty/wintty.c
+// tty_message_menu() sets ttyDisplay->dismiss_more to a single such char, the
+// selected item's own invlet, so pressing it at the --More-- both dismisses
+// and picks that item).  Any other key rings the bell and leaves --More-- up.
+// Returns the key code that ended the wait (so callers can tell the extra
+// dismiss key apart from a plain space/return/escape).
+export async function topl_more_ext(extraChars) {
     const disp = game?.nhDisplay;
-    if (!disp?.setCell) return;
+    if (!disp?.setCell) return 0;
     // Re-render the current frame (message + map + status) to the grid.
     _buildScreenOutput();
 
@@ -1424,10 +1435,11 @@ export async function topl_more() {
         disp.setCell(curx + i, cury, DEFMORESTR[i], NO_COLOR, 0);
     disp.setCursor(Math.min(curx + DEFMORESTR.length, CO - 1), cury);
 
-    // xwaitforspace: read keys until space / return / escape.
+    // xwaitforspace: read keys until space / return / escape / an extra char.
     for (;;) {
         const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+        if (c === 32 || c === 13 || c === 10 || c === 27) return c;
+        if (extraChars && extraChars.includes(String.fromCharCode(c))) return c;
     }
 }
 

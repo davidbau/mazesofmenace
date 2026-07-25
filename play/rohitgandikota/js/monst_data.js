@@ -25212,6 +25212,14 @@ export const ATTKS = {
 
 // include/monflag.h — M1_/M2_/M3_ permonst flag bits and G_* generation bits.
 export const MFLAGS = {
+ "MR_FIRE": 1,
+ "MR_COLD": 2,
+ "MR_SLEEP": 4,
+ "MR_DISINT": 8,
+ "MR_ELEC": 16,
+ "MR_POISON": 32,
+ "MR_ACID": 64,
+ "MR_STONE": 128,
  "M1_FLY": 1,
  "M1_SWIM": 2,
  "M1_AMORPHOUS": 4,

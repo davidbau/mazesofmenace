@@ -6,14 +6,16 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
-import { role_init, str2role, str2align, str2race, str2gend, roles, races } from './role.js';
-import { aligns } from './role_data.js';
+import { role_init, str2role, str2align, str2race, str2gend, roles, races,
+         Hello, align_str } from './role.js';
+import { aligns, genders } from './role_data.js';
 import { reset_mvitals } from './makemon.js';
 import { newhp, newpw } from './exper.js';
 import { u_init_inventory, u_init_skills_discoveries } from './u_init.js';
@@ -109,6 +111,9 @@ export async function newgame() {
         g.urole = roles[g.flags.initrole];
         g.urace = races[g.flags.initrace];
         g.u.ulevel = 0;
+        /* C's `u` is a static struct, so u.ualign exists before newhp() writes
+           into it at src/attrib.c:1091. */
+        g.u.ualign = { type: 0, record: 0, abuse: 0 };
         g.u.uhp = g.u.uhpmax = newhp();
         g.u.uen = g.u.uenmax = newpw();
 
@@ -122,11 +127,7 @@ export async function newgame() {
         // starts from mons[u.umonnum].ac, so a hero without it has no base AC.
         g.u.umonnum = g.u.umonster = g.urole.mnum;
         g.u.ulevel = g.u.ulevelmax = 1;
-        g.u.ualign = {
-            type: aligns[g.flags.initalign].value,
-            record: 0,
-            abuse: 0,
-        };
+        /* type and record were filled by newhp() above, where C sets them. */
         // src/u_init.c:1006 — ualignbase[A_CURRENT] and [A_ORIGINAL] track the
         // alignment the hero started with; convert_arg()'s %d, %G and %a all
         // read [A_ORIGINAL], so the legacy text needs it.
@@ -223,16 +224,34 @@ export async function newgame() {
     // real records from js/role_data.js carry name, rank, noun, adj and the
     // attrmin/attrmax the ^X window needs.
     g._goldCount = g.u.umoney0;
-    g.u.uhp = 10; g.u.uhpmax = 10;      /* newhp() needs the role hp tables */
-    g.u.uen = 2; g.u.uenmax = 2;
+    /* uhp/uen were hardcoded to 10 and 2 here, overwriting what newhp() and
+       newpw() had already computed from the role and race hp tables a few
+       dozen lines above. The status line reads them directly, so every
+       session showed a Tourist's numbers. */
     g.u.uexp = 0;
     g.flags.female = (str2gend(g.rc?.opts?.gender) === 1);
     g.plname = g.plname || 'Contestant';
 
-    // Welcome message
-    const alignName = 'neutral';
-    const genderAdj = g.flags?.female ? 'female' : 'male';
-    await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
+    // src/allmain.c welcome() — the new-game branch. The alignment, the race
+    // adjective and the role name were all hardcoded here ("neutral", "human",
+    // and an unconditional "Aloha", which is the TOURIST greeting), so this
+    // line was wrong in every session that was not a neutral human Tourist.
+    //
+    // The gender word is conditional: C prints it only when the role has no
+    // separate female name AND allows both genders, so a Valkyrie or a
+    // Priestess does not get one.
+    {
+        const currentgend = g.flags.female ? 1 : 0;
+        let buf = ` ${align_str(g.u.ualignbase[A_CURRENT])}`;
+        if (!g.urole.name.f
+            && (g.urole.allow & ROLE_GENDMASK) === (ROLE_MALE | ROLE_FEMALE))
+            buf += ` ${genders[currentgend].adj}`;
+        buf += ` ${g.urace.adj} `
+             + ((currentgend && g.urole.name.f) ? g.urole.name.f
+                                                : g.urole.name.m);
+        await pline(`${Hello(null)} ${g.plname}, welcome to NetHack! `
+                    + ` You are a${buf}.`);
+    }
 }
 
 // src/allmain.c:118 u_calc_moveamt()

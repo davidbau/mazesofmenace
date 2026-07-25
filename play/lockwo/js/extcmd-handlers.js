@@ -15,7 +15,7 @@ import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
-    addinv, prinv, let_to_name,
+    addinv, prinv, let_to_name, report_merge_discovery,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
@@ -24,6 +24,7 @@ import { newsym } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { delobj, stackobj } from './invent.js';
+import { count_unpaid } from './invent.js';
 import { exercise } from './attrib.js';
 import { rn2 } from './rng.js';
 import { A_STR, A_DEX } from './const.js';
@@ -43,6 +44,7 @@ import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
 import { build_overview_lines } from './dungeon.js';
+import { doextversion } from './version.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -632,7 +634,7 @@ async function makewish() {
     }
 
     // hold the wished object (addinv).  drop_fmt/hold_msg as in C makewish.
-    hold_another_object(result, 'Oops!  %s to the floor!', null, null);
+    await hold_another_object(result, 'Oops!  %s to the floor!', null, null);
 
     // u.ublesscnt += rn1(100, 50);  /* the gods take notice */
     const u = game.u;
@@ -1141,7 +1143,6 @@ async function query_category_take_out(box) {
     const order = game?.flags?.inv_order || DEFAULT_INV_ORDER;
     const presentClasses = order.filter((oc) => cobj.some((o) => o.oclass === oc));
     const ccount = presentClasses.length;
-    const show_a = ccount > 1; // ALL_TYPES entry only when >1 class
 
     // C count_buc(): gold counts as Uncursed (or Unknown when goldX), other
     // items by bknown/blessed/cursed.
@@ -1158,6 +1159,16 @@ async function query_category_take_out(box) {
     const do_blessed = bucCount('B') > 0, do_cursed = bucCount('C') > 0;
     const do_uncursed = bucCount('U') > 0, do_unknown = bucCount('X') > 0;
     const anyBUC = do_blessed || do_cursed || do_uncursed || do_unknown;
+    const num_buc_types = [do_blessed, do_cursed, do_uncursed, do_unknown].filter(Boolean).length;
+
+    // C query_category(): "no point in actually showing a menu for a single
+    // category" — when the container holds exactly one object class (and no
+    // unpaid items / ambiguous BUC split), silently pick that class without
+    // drawing the type-selection menu at all.
+    if (ccount === 1 && count_unpaid(cobj) === 0 && num_buc_types <= 1) {
+        return [presentClasses[0]];
+    }
+    const show_a = ccount > 1; // ALL_TYPES entry only when >1 class
 
     const items = []; // {letter, token, skipinvert, selected, desc}
     items.push({ letter: 'A', token: 'A', skipinvert: true, selected: false,
@@ -1200,23 +1211,29 @@ async function query_category_take_out(box) {
 // on ESC.
 async function query_objlist_take_out(box, allow) {
     const cobj = box.cobj || [];
-    const order = game?.flags?.inv_order || DEFAULT_INV_ORDER;
     const items = [];      // {letter, obj, selected, skipinvert, desc}
     const linePlan = [];   // {type:'header'|'item', ...}
     let menu_ch = 'a', first = true;
-    for (const oc of order) {
-        const group = cobj.filter((o) => o.oclass === oc && allow(o));
-        if (!group.length) continue;
-        linePlan.push({ type: 'header', text: let_to_name(oc, false, false) });
-        for (const o of group) {
-            let letter;
-            if (first && oc === COIN_CLASS) letter = '$';        // C: first && COIN -> '$'
-            else { letter = menu_ch; menu_ch = nextMenuCh(menu_ch); }
-            first = false;
-            const it = { letter, obj: o, selected: false, skipinvert: false, desc: obj_doname(o) };
-            items.push(it);
-            linePlan.push({ type: 'item', item: it });
+    // C ref: pickup.c query_objlist() sortflags = INVORDER_SORT with the
+    // default sortloot='loot'/sortpack=on options -> sortloot(SORTLOOT_LOOT |
+    // SORTLOOT_PACK) — group by class in packorder, alphabetized within class
+    // (not raw cobj/creation order).
+    const sorted = sortloot(cobj, SORTLOOT_LOOT | SORTLOOT_PACK, false, allow);
+    let curClass = null;
+    for (const sli of sorted) {
+        if (!sli.obj) break;
+        const o = sli.obj;
+        if (o.oclass !== curClass) {
+            curClass = o.oclass;
+            linePlan.push({ type: 'header', text: let_to_name(curClass, false, false) });
         }
+        let letter;
+        if (first && o.oclass === COIN_CLASS) letter = '$';        // C: first && COIN -> '$'
+        else { letter = menu_ch; menu_ch = nextMenuCh(menu_ch); }
+        first = false;
+        const it = { letter, obj: o, selected: false, skipinvert: false, desc: obj_doname(o) };
+        items.push(it);
+        linePlan.push({ type: 'item', item: it });
     }
     const buildLines = () => {
         const lines = [{ text: 'Take out what?', attr: ATR_INVERSE }, { text: '' }];
@@ -1278,6 +1295,7 @@ async function menu_loot_out(box) {
         obj.where = 'free';
         box.owt = weight(box);
         const otmp = addinv(obj);
+        await report_merge_discovery();
         // No encumbrance change here, so pickup_prinv's load prefix is absent.
         // prinv() formats "<letter> - <name>." into _pending_message; capture it
         // and feed update_topl so successive lines accumulate / page correctly.
@@ -1684,6 +1702,7 @@ const HANDLERS = {
     genocided: dogenocided,
     wizgenesis: wiz_genesis,
     overview: dooverview,
+    version: doextversion,
 };
 
 // C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).

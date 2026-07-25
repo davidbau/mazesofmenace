@@ -587,3 +587,26 @@ export function gendmenu_letters() {
 export function algnmenu_letters() {
     return menu_letters(aligns.slice(0, ROLE_ALIGNS).map(a => a.adj));
 }
+
+// src/role.c:2119 Hello() — the greeting is role-specific, and it is what the
+// welcome line opens with. Only these four roles differ from "Hello".
+export function Hello(mtmp) {
+    switch (game.urole?.mnum) {
+    case PMNAMES.PM_KNIGHT:   return 'Salutations';   /* Olde English */
+    case PMNAMES.PM_SAMURAI:  return 'Konnichi wa';   /* Japanese */
+    case PMNAMES.PM_TOURIST:  return 'Aloha';         /* Hawaiian */
+    case PMNAMES.PM_VALKYRIE: return 'Velkommen';     /* Norse */
+    default:                  return 'Hello';
+    }
+}
+
+// src/insight.c align_str()
+export function align_str(alignment) {
+    switch (alignment) {
+    case  1: return 'lawful';
+    case  0: return 'neutral';
+    case -1: return 'chaotic';
+    case -128: return 'unaligned';
+    default: return 'unknown';
+    }
+}

@@ -5,20 +5,21 @@
 
 import { game } from './gstate.js';
 import { rnd, rn2 } from './rng.js';
-import { pline, topl_more, update_topl } from './display.js';
+import { pline, topl_more, update_topl, newsym } from './display.js';
 import { getobj, makeknown, useup, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack, trycall } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
 import { study_book } from './spell.js';
-import { erode_obj, obj_erode_type } from './trap.js';
+import { erode_obj, obj_erode_type, goodpos_for_hero, t_at, spoteffects } from './trap.js';
 import { find_ac } from './u_init.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
          SCR_DESTROY_ARMOR, SCR_REMOVE_CURSE, objects } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, CORR, Is_rogue_level, Is_waterlevel,
-         ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED } from './const.js';
-import { Blind } from './vision.js';
+         ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED,
+         COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
+import { Blind, vision_recalc } from './vision.js';
 
 const ECMD_CANCEL = 0;
 const ECMD_OK = 0;
@@ -112,17 +113,87 @@ async function seffects(sobj) {
     case SCR_TELEPORTATION:
         // C ref: read.c seffect_teleportation — a confused or cursed scroll does
         // a level teleport (level_tele); an ordinary one does an in-level
-        // teleport (scrolltele, not exercised).  level_tele sets gk.known.
+        // teleport (teleport.c scrolltele).  level_tele sets gk.known.
         if (Confused() || sobj.cursed) {
             const { level_tele } = await import('./do.js');
             const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
             await level_tele((q) => hooked_tty_getlin(q, null));
+        } else {
+            // C ref: teleport.c scrolltele() — a Teleport_control hero (or a
+            // blessed scroll), while not Stunned, instead gets a controlled
+            // getpos() teleport.  Not exercised by the covered starts (no
+            // Teleport_control intrinsic, no blessed teleportation scroll
+            // read), so only the uncontrolled safe_teleds() path is ported.
+            const stunned = (game.u?.uprops?.Stun || 0) > 0;
+            const controlled = ((game.u?.uprops?.Teleport_control || 0) > 0
+                || sobj.blessed) && !stunned;
+            if (!controlled) {
+                // "for scroll, discover it regardless of destination" —
+                // learnscroll(scroll) always fires before safe_teleds().
+                game.known = true;
+                await safe_teleds_hero();
+            }
         }
-        // (uncursed, unconfused scrolltele is not exercised: no-op)
         break;
     default:
         // Uncovered scroll effects: no-op (object still consumed by doread).
         break;
+    }
+    return false;
+}
+
+// C ref: teleport.c teleok(x,y,trapok) — hero-only subset.  The special-level
+// region checks (tele_jump_ok/in_out_region) are no-ops on an ordinary dungeon
+// level, so only the trap guard and goodpos() remain.
+function teleok_hero(x, y, trapok) {
+    if (!trapok) {
+        const trap = t_at(x, y);
+        if (trap) {
+            const u = game.u;
+            const airborne = !!(u?.uprops?.Levitation || u?.uprops?.Flying);
+            const ok = trap.ttyp === VIBRATING_SQUARE
+                || ((is_pit(trap.ttyp) || is_hole(trap.ttyp)) && airborne);
+            if (!ok) return false;
+        }
+    }
+    return goodpos_for_hero(x, y);
+}
+
+// C ref: teleport.c teleds(nux,nuy,TELEDS_TELEPORT) — hero-only subset (no
+// Punished ball&chain, vault guard, swallowed-monster, or hidden-mimic unwind:
+// none of those occur on the covered starts).  Relocates the hero, redraws the
+// vacated square, recalculates vision, announces the materialize message
+// (after the vision recalc, so a paged --More-- shows the new map, matching
+// the C comment on this ordering), then runs spoteffects() at the new spot.
+async function teleds_hero(nux, nuy) {
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx; u.uy0 = oldy;
+    u.ux = nux; u.uy = nuy;
+    newsym(oldx, oldy);
+    newsym(nux, nuy);
+    vision_recalc(0);
+    if (game.flags?.verbose !== false) {
+        const where = (nux === oldx && nuy === oldy) ? 'the same' : 'a different';
+        await update_topl(`You materialize in ${where} location!`);
+    }
+    // (switch_terrain() on a terrain-type change and the vault-guard alarm
+    // are not exercised by the covered starts.)
+    await spoteffects(null);
+}
+
+// C ref: teleport.c safe_teleds(TELEDS_TELEPORT) — hero-only subset: the
+// initial "completely random, up to 40 tries" loop.  An ordinary dungeon level
+// has plenty of open floor, so the covered starts always land within those 40
+// tries; the ring-expanding collect_coords() fallback is not exercised.
+async function safe_teleds_hero() {
+    for (let tcnt = 0; tcnt < 40; tcnt++) {
+        const nux = rnd(COLNO - 1);
+        const nuy = rn2(ROWNO);
+        if (teleok_hero(nux, nuy, false)) {
+            await teleds_hero(nux, nuy);
+            return true;
+        }
     }
     return false;
 }

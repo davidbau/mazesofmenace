@@ -938,7 +938,7 @@ function doorless_door(x, y) {
 // Swimming/Amphibious/Levitation/Flying/water-or-lava-walking (the only case
 // the corpus reaches): a pool or lava square is never "good", nor is a
 // monster-occupied, boulder-covered, or inaccessible one.
-function goodpos_for_hero(x, y) {
+export function goodpos_for_hero(x, y) {
     if (!isok(x, y)) return false;
     if (m_at(x, y)) return false;
     const loc = game.level?.at(x, y);

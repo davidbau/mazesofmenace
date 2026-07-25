@@ -17,6 +17,7 @@ import { Blind } from './vision.js';
 import { depth } from './hacklib.js';
 import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { x_monnam } from './uhitm.js';
+import { monster_detect } from './hack.js';
 import {
     ER_NOTHING, ER_DESTROYED, F_LOOTED, F_WARNED,
     FOUNTAIN, ROOM, A_WIS, A_CON, IS_FOUNTAIN,
@@ -128,10 +129,11 @@ export async function dipfountain(obj) {
 // fate = rnd(30) selects the outcome.  The blessed-fountain (mgkftn) restore /
 // gain-ability branch is only reachable on a blessedftn square (never true for
 // the covered fountains).  Branches that drive unmodeled subsystems (vomit,
-// enlightenment, poison, monster detection, gushing) emit their observable
-// framing while still spending their leading RNG so the PRNG stays faithful;
-// the reached outcome here is the water demon (fate 23).  Always ends with
-// dryup(), which has a 1-in-3 chance of drying the fountain to floor.
+// enlightenment, poison, gushing) emit their observable framing while still
+// spending their leading RNG so the PRNG stays faithful; the reached outcomes
+// are the water demon (fate 23) and monster detection (fate 26, via hack.js
+// monster_detect()).  Always ends with dryup(), which has a 1-in-3 chance of
+// drying the fountain to floor.
 export async function drinkfountain() {
     const u = game.u;
     const loc = game.level?.at(u.ux, u.uy);
@@ -199,8 +201,8 @@ export async function drinkfountain() {
             exercise(A_WIS, true);
             break;
         case 26: /* See Monsters */
-            // monster_detect() not modeled; framing only.
-            await update_topl(`The ${hliquid('water')} tastes like nothing.`);
+            if (await monster_detect(null, 0))
+                await update_topl(`The ${hliquid('water')} tastes like nothing.`);
             exercise(A_WIS, true);
             break;
         case 27: /* Find a gem in the sparkling waters. */

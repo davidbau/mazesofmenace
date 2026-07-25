@@ -124,9 +124,15 @@ export class NethackGame {
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
         g.context = { move: 0 };
         g.program_state = {};
-        g.moves = 1;
+        /* src/decl.c — svm.moves starts at 0 and moveloop() advances it. Several
+           things in u_init read `moves == 0` to mean "this is character
+           creation"; newhp()'s alignment-record assignment is one. It was
+           hardcoded to 1 here, so that branch could never run. */
+        g.moves = 0;
 
-        // TODO: Map role/race/gender/align from opts to role data
+        /* Placeholders until allmain.c's u_init_misc() installs the real
+           records. Nothing should read these — allmain.js:109 overwrites both
+           from roles[]/races[] before any draw depends on them. */
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
         g.urace = { adj: 'human' };
 

@@ -20,6 +20,7 @@ import { DEADMONSTER } from './mon.js';
 import { mkcorpstat, mkobj, CORPSE, FIGURINE, place_object } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
+import { gethungry } from './allmain.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
 
@@ -144,12 +145,14 @@ function movement_rate(mtmp) {
 //   swing], then the kill aftermath (xkilled rn2(6); corpse_chance rn2(2);
 //   make_corpse -> mkcorpstat -> mksobj corpse next_ident/rndmonnum/gender).
 // C ref: hack.c overexertion() — "combat increases metabolism".  Called by
-// do_attack() before the swing.  Always rolls gethungry() (one rn2(20)); the
-// overexert_hp() HP-drain branch only triggers when heavily encumbered
+// do_attack() before the swing.  Always calls the real gethungry() (the same
+// per-turn function allmain.js's moveloop calls) — an EXTRA nutrition burn on
+// top of the once-per-turn drain, so an attack turn costs 2 hunger instead of
+// 1.  the overexert_hp() HP-drain branch only triggers when heavily encumbered
 // (near_capacity() >= HVY_ENCUMBER) on non-third turns, which never holds for
-// the unencumbered starter hero, so only the gethungry roll fires here.
+// the unencumbered starter hero, so only the gethungry call fires here.
 function overexertion() {
-    rn2(20); // gethungry() accessorytime (eat.c:3191)
+    gethungry(); // hack.c:3056 — "consume extra nutrition during combat"
     // near_capacity() == UNENCUMBERED (< HVY_ENCUMBER) -> no overexert_hp().
     return false; // gm.multi >= 0 (hero didn't faint)
 }

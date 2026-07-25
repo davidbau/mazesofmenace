@@ -920,14 +920,17 @@ export async function moveloop_turn() {
 // cases only bite the starter hero via near_capacity()>SLT_ENCUMBER (Stressed+)
 // — rings/regeneration/conflict are all absent.  newuhs() recomputes u.uhs (no
 // HUNGRY/WEAK threshold is crossed by the covered sessions, so no message).
-function gethungry() {
+// Exported: hack.c overexertion() ("combat increases metabolism") calls this
+// SAME function once per melee attack, in addition to the once-per-turn call
+// below — uhitm.js's overexertion() imports it to stay faithful.
+export function gethungry() {
     const u = game.u;
     if (!u || u.uinvulnerable) return;
     const unaware = !!(u.usleep || u.uunconscious || u.ufrozen);
     const consume = unaware ? (rn2(10) === 0) : true;
     if (consume) u.uhunger = (u.uhunger ?? 900) - 1;
     const accessorytime = rn2(20);
-    if ((accessorytime & 1) && (game._curcap || 0) > 1 /* SLT_ENCUMBER */)
+    if ((accessorytime & 1) && near_capacity() > 1 /* SLT_ENCUMBER */)
         u.uhunger = (u.uhunger ?? 900) - 1;
     // C ref: eat.c newuhs(TRUE) — SATIATED(0)/NOT_HUNGRY(1)/HUNGRY(2)/WEAK(3)/
     // FAINTING(4) from u.uhunger thresholds (see eat.js newuhs for the full port

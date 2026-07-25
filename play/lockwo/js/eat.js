@@ -621,13 +621,17 @@ async function eatcorpse_cmd(otmp) {
         if (violated_vegetarian()) await update_topl('You feel guilty.');
     }
 
-    // rot: rotted = (moves - age) / (10 + rn2(20)); cursed +2, blessed -2.
+    // C ref: eat.c:1884 if (!nonrotting_corpse(mnum)) { rotted = (moves - age)
+    // / (10 + rn2(20)); cursed +2, blessed -2. }  Lizard/lichen/Rider/acid-blob
+    // corpses never rot, so C skips this whole block (no rn2(20) roll).
+    const nonrotting = nonrotting_corpse(mnum);
     let rotted = 0;
-    // nonrotting_corpse(mnum) is false for a goblin -> roll the rot divisor.
     const age = otmp.age ?? moves;
-    rotted = Math.trunc((moves - age) / (10 + rn2(20)));   // eat.c:1887
-    if (otmp.cursed) rotted += 2;
-    else if (otmp.blessed) rotted -= 2;
+    if (!nonrotting) {
+        rotted = Math.trunc((moves - age) / (10 + rn2(20)));   // eat.c:1887
+        if (otmp.cursed) rotted += 2;
+        else if (otmp.blessed) rotted -= 2;
+    }
 
     const acidic = ACIDIC_EAT.has(spName);
     const poisonous = POISON_EAT.has(spName);
@@ -676,8 +680,7 @@ async function eatcorpse_cmd(otmp) {
     // corpse keeps its remaining oeaten.
     let oeaten = otmp.oeaten ? otmp.oeaten : mon_cnutrit(mnum);
 
-    // rot-away gate: if (!tp && !nonrotting && (orotten || !rn2(7)))
-    const nonrotting = false; // goblin corpse rots normally
+    // rot-away gate: if (!tp && !nonrotting_corpse(mnum) && (orotten || !rn2(7)))
     let usedUp = false;
     if (!tp && !nonrotting && (otmp.orotten || !rn2(7))) {   // eat.c:1949
         // rottenfood()/cnutrit==0 branches: for a fresh, nourishing goblin the

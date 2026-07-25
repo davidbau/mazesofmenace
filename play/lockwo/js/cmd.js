@@ -1566,14 +1566,30 @@ export async function domove(dx, dy) {
                 game.context.move = (u.umoved || odr === 2) ? 1 : 0;
                 return;
             }
-            // Running (autoopen disabled) into an orthogonal closed door with
-            // normal senses: announce it and stop without taking a turn.
-            // C ref: hack.c test_move() else-if (x==ux||y==uy) -> pline("That
-            // door is closed.").  (The blind/stunned/fumbling "bump" branch is
-            // not exercised by these recordings.)  Diagonal running into a
-            // closed door (x!=ux && y!=uy) prints nothing and just stops.
-            if (newx === u.ux || newy === u.uy)
+            // Running (autoopen disabled) into an orthogonal closed door:
+            // C ref: hack.c test_move() else-if (x==ux||y==uy).  A hero who is
+            // Blind, Stunned, Fumbling, or has ACURR(A_DEX) < 10 bumps into the
+            // door instead of just noticing it's closed; unlike the plain
+            // "closed" stop, the bump consumes the move (C sets
+            // context.door_opened = context.move = TRUE and calls nomul(0)).
+            // Diagonal running into a closed door (x!=ux && y!=uy) prints
+            // nothing and just stops, matching neither sub-branch.
+            if (newx === u.ux || newy === u.uy) {
+                const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+                const fumbling = !!(u.HFumbling || u.EFumbling);
+                if (Blind() || stunned || ACURR(A_DEX) < 10 || fumbling) {
+                    if (u.usteed) {
+                        await pline(`You can't lead ${mon_nam(u.usteed)} through that closed door.`);
+                    } else {
+                        await pline('Ouch!  You bump into a door.');
+                        exercise(A_DEX, false);
+                    }
+                    game.multi = 0; // C nomul(0)
+                    game.context.move = 1; // C: context.door_opened = context.move = TRUE
+                    return;
+                }
                 await pline('That door is closed.');
+            }
             game.context.move = 0;
             return;
         }

@@ -783,7 +783,7 @@ async function getpos_render(message, cx, cy) {
 // `validfn(x,y)` flags invalid targets with a "(invalid target)" suffix.
 // `force` selects the wizard-teleport / #jump behavior (unknown keys keep the
 // loop alive) vs the ';' farlook behavior (unknown keys finish).
-async function getpos(goalText, startx, starty, validfn, force = false, verbose = false, travelMode = false) {
+async function getpos(goalText, startx, starty, validfn, force = false, verbose = false, travelMode = false, detectMode = false) {
     const u = game.u;
     let cx = startx, cy = starty;
 
@@ -831,6 +831,18 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
         let desc;
         if (u && x === u.ux && y === u.uy) {
             desc = self_lookat();
+        } else if (detectMode) {
+            // C ref: pager.c do_screen_description(), reached via 'need_to_look'
+            // once a monster's class symbol matches: falls through to lookat()'s
+            // look_at_monster() for the full tame/peaceful-prefixed identity
+            // (matches auto_describe's actual observed output — a named/peaceful
+            // shopkeeper reads "peaceful Adjama", not a generic class string).
+            // A non-monster cell always reads as the freshly-cls()'d blank glyph
+            // (GLYPH_UNEXPLORED — monster_detect's repaint doesn't touch the
+            // hero's remembered terrain, only the live display buffer), i.e.
+            // "unexplored area" regardless of what's actually there.
+            const mtmp = m_at(x, y);
+            desc = mtmp ? look_at_monster_desc(mtmp) : 'unexplored area';
         } else {
             // C ref: pager.c lookat() dispatch — when the cell's displayed glyph
             // is a floor object (e.g. a STATUE drawn as the petrified monster's
@@ -1121,6 +1133,59 @@ export async function reveal_terrain(which_subset) {
     }
     await docrt();
     await flush_screen(1);
+}
+
+// C ref: detect.c monster_detect(otmp, mclass) — crystal ball / fountain /
+// potion "sense the presence of monsters" effect.  Only the otmp==null,
+// mclass==0 case (the fountain's "See Monsters" quaff outcome) is reached;
+// the crystal-ball class filter and the cursed-item wake-helpless branch are
+// not modelled.  cls()+unconstrain_map() reduce, for our display model, to
+// blanking every map cell before drawing just the detected monsters (their
+// ordinary class glyph/color — mon_to_glyph/pet_to_glyph render identically
+// on a plain terminal) plus the hero's own glyph (display_self(), hero is
+// never swallowed here).  Since otmp is always null, the blessed "persistent
+// detection" branch never applies; browse_map(TER_DETECT|TER_MON, "monster of
+// interest") always runs, then map_redisplay() (docrt) restores the real map.
+export async function monster_detect(otmp, mclass) {
+    const u = game.u;
+    const mons = (game.level?.monsters || []).filter(
+        (m) => !(m.mhp != null && m.mhp <= 0));
+    if (!mons.length) {
+        await update_topl('You feel threatened.');
+        return true;
+    }
+
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
+    for (const m of mons) {
+        // C ref: mon_to_glyph/pet_to_glyph(mon) = what_mon(monsndx(mon->data)) —
+        // detection dispatches on the monster's own species, NOT its display
+        // glyph (unlike a normal map draw, which shows a mimic's disguise via
+        // monster_glyph()'s m_ap_type check): detecting a mimic reveals its
+        // true class letter.
+        const d = m.data || {};
+        if (mclass && d.mlet !== mclass) continue;
+        show_glyph_cell(m.mx, m.my, d.mlet || '?',
+            (d.mcolor != null) ? d.mcolor : NO_COLOR, false);
+    }
+    if (u?.ux > 0) show_glyph_cell(u.ux, u.uy, '@', CLR_WHITE, false);
+    await flush_screen(1);
+
+    await update_topl('You sense the presence of monsters.');
+
+    const verbose = game.flags?.verbose !== false;
+    await getpos('monster of interest', u.ux, u.uy, null, /*force=*/false,
+                 verbose, /*travelMode=*/false, /*detectMode=*/true);
+
+    if (game._pending_message) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+    await docrt();
+    await flush_screen(1);
+    return false;
 }
 
 // ── '/' whatis command — pager.c do_look(mode=0) ──────────────────────────
@@ -1722,6 +1787,39 @@ function upstart(s) {
     return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
+// C ref: defsym.h FURNSYMS explanation text (PCHAR2's 4th/"desc" field) for
+// the 6 furniture appearances makemon.js's FURNSYMS table can assign a mimic
+// (S_upstair/S_dnstair/S_altar/S_grave/S_throne/S_sink).
+const FURNITURE_EXPLANATION = {
+    25: 'staircase up',
+    26: 'staircase down',
+    33: 'altar',
+    34: 'grave',
+    35: 'opulent throne',
+    36: 'sink',
+};
+
+// C ref: pager.c mhidden_description() — the ", mimicking X" suffix
+// look_at_monster() appends whenever M_AP_TYPE(mtmp) is set (mundetected
+// hiders' ", hiding"/etc suffix isn't reached by the sessions modelled here).
+// For M_AP_FURNITURE it's always defsyms[mappearance].explanation.  For
+// M_AP_OBJECT, C's object_from_map() only names a REAL floor object standing
+// under the disguised mimic — _map_location maps what's actually there (the
+// mimic's fake appearance is display-only, never written to the remembered
+// glyph) — same object look_at_object_here's vobj_at/covers_objects check
+// finds; a mimic on otherwise bare/unseen floor falls back to "something".
+function mon_hidden_suffix(mtmp) {
+    if (mtmp.m_ap_type === 'furniture') {
+        const what = FURNITURE_EXPLANATION[mtmp.mappearance] || 'something';
+        return `, mimicking ${an(what)}`;
+    }
+    if (mtmp.m_ap_type === 'obj') {
+        const objname = look_at_object_here(mtmp.mx, mtmp.my);
+        return `, mimicking ${objname || 'something'}`;
+    }
+    return '';
+}
+
 // C ref: pager.c look_at_monster() — the health/tame/peaceful-prefixed monster
 // name.  monhealthdescr is disabled in C (#if 0), so only the tame/peaceful
 // adjective + distant_monnam (bare monster type name) matter for the sessions
@@ -1732,7 +1830,7 @@ function look_at_monster_desc(mtmp) {
     const given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
     const name = given || mtmp.data?.name || mtmp.data?.pmname || 'monster';
     const adj = mtmp.mtame ? 'tame ' : (mtmp.mpeaceful ? 'peaceful ' : '');
-    return `${adj}${name}`;
+    return `${adj}${name}${mon_hidden_suffix(mtmp)}`;
 }
 
 // C ref: pager.c look_all() — list monsters (do_mons) or objects (!do_mons) in

@@ -2,6 +2,7 @@
 // C ref: src/exper.c
 
 import { game } from './gstate.js';
+import { aligns } from './role_data.js';
 import { rnd, rn1 } from './rng.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
@@ -41,6 +42,14 @@ export function newhp() {
             hp += rnd(urole.hpadv[INRND]);
         if (urace.hpadv[INRND] > 0)
             hp += rnd(urace.hpadv[INRND]);
+        /* src/attrib.c:1091 — the initial hero's alignment record is set HERE,
+           not in u_init, and it is the role's initrecord rather than zero.
+           peace_minded() reads it as rn2(16 + u.ualign.record), so a Healer
+           whose record is 0 instead of 10 draws rn2(16) where C draws rn2(26). */
+        if (game.moves === 0) {
+            game.u.ualign.type = aligns[game.flags.initalign].value;
+            game.u.ualign.record = urole.initrecord;
+        }
     } else {
         let hprnd, hpfix;
         if (game.u.ulevel < urole.xlev) {

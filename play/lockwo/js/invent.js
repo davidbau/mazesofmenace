@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, update_topl } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -1310,7 +1310,11 @@ function simple_obj_name(obj, opts = {}) {
     if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)
         return objectBaseName(obj);
     let base = objectBaseName(obj);
-    if (obj.corpsenm != null && obj.otyp === TIN) base = `tin of ${base}`;
+    // C ref: objnam.c xname_flags "if (typ == TIN && known) tin_details(...)" —
+    // the species-derived "tin of X" wording only appears once the tin's
+    // specific contents are identified; an unopened, unidentified tin is
+    // just "a tin".
+    if (obj.corpsenm != null && obj.otyp === TIN && obj.known) base = `tin of ${base}`;
     let prefix = (empty ? empty_prefix(obj) : '') + (buc ? bucPrefix(obj) : '');
     // C ref: objnam.c doname_base — a lockable box (chest/large box/ice box)
     // whose lock state is known (lknown, set once the hero loots/kicks/forces
@@ -2151,6 +2155,16 @@ export function merge_choice(objlist, obj) {
     return null;
 }
 
+// C ref: invent.c merged():856-942 — objects can be identified by comparing
+// them (unless Blind, handled in mergable()); an item becomes identified in a
+// dimension if either object was previously identified there. When that
+// reveals new information (and the merge isn't a thrown item, which would be
+// too spammy), C prints "You learn more about your items by comparing them."
+// via pline(), which can block on --More--. Rather than making merged() (and
+// its whole synchronous call chain, including character-generation's ini_inv
+// loop) async just for this rare message, stash the fact that a discovery
+// happened; the few call sites that can actually surface it to the player
+// (interactive pickup/#adjust) check and emit it right after merging.
 export function merged(potmp, pobj) {
     const otmp = potmp?.obj ?? potmp;
     const obj = pobj?.obj ?? pobj;
@@ -2163,9 +2177,33 @@ export function merged(potmp, pobj) {
     if (!has_oname(otmp) && has_oname(obj)) setONAME(otmp, ONAME(obj));
     if (obj.pickup_prev && otmp.where === OBJ_INVENT) otmp.pickup_prev = 1;
     if (obj.bypass) otmp.bypass = 1;
+
+    let discovered = false;
+    if (obj.known !== otmp.known) { otmp.known = 1; discovered = true; }
+    if (obj.rknown !== otmp.rknown) {
+        otmp.rknown = 1;
+        if (otmp.oerodeproof) discovered = true;
+    }
+    if (obj.bknown !== otmp.bknown) {
+        otmp.bknown = 1;
+        if (!Role_if(PM_CLERIC)) discovered = true;
+    }
+    if (discovered && otmp.where === OBJ_INVENT
+        && obj.how_lost !== LOST_THROWN && otmp.how_lost !== LOST_THROWN) {
+        game._merge_discovery_pending = true;
+    }
+
     removeObjectFromAllInventories(obj);
     if (pobj && typeof pobj === 'object' && 'obj' in pobj) pobj.obj = null;
     return 1;
+}
+
+// Consume the merged()-set discovery flag (if any) and page the C
+// "You learn more about your items by comparing them." message.
+export async function report_merge_discovery() {
+    if (!game._merge_discovery_pending) return;
+    game._merge_discovery_pending = false;
+    await update_topl('You learn more about your items by comparing them.');
 }
 
 export function addinv_core1(obj) {
@@ -2252,7 +2290,7 @@ export function carry_obj_effects(obj) {
     carry_obj_effects_message(obj);
 }
 
-export function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
+export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     observe_object(obj);
     // C ref: invent.c hold_another_object — when the object is an artifact it
     // is briefly placed on the floor and touch_artifact() is consulted, which
@@ -2273,6 +2311,7 @@ export function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     // "object made it into inventory" path.
     const oquan = obj?.quan;
     obj = addinv_core0(obj, null, false);
+    await report_merge_discovery();
     // C: `if (hold_msg || drop_fmt) prinv(hold_msg, obj, oquan);` — makewish
     // passes a non-NULL drop_fmt with a NULL hold_msg, so prinv runs with a
     // null prefix and prints the default "o - a silver wand." line.
@@ -2470,6 +2509,31 @@ async function getobj_menu(lets, allowed) {
         // show the whole pack.  display_pickinv() sets game._modal_screen and
         // positions the cursor exactly like C's NHW_MENU.
         const choices = allowed ? lets : null;
+
+        // C ref: invent.c display_pickinv() — when exactly one item qualifies
+        // (and force_invmenu/menu_requested aren't set), skip the boxed
+        // candidate menu entirely and use message_menu(): a one-line
+        // "letter - description." forced onto its own --More-- prompt.
+        // Pressing the item's own invlet there both dismisses and selects it;
+        // ESC cancels; any other quitchar (space/return) dismisses with no
+        // pick, so the caller re-prompts "What do you want to <word>?".
+        const invArr = inventoryArray();
+        const n = choices != null ? choices.length
+            : (invArr.length === 0 ? 0 : invArr.length === 1 ? 1 : 2);
+        if (n === 1 && !game.iflags?.force_invmenu && !game.iflags?.menu_requested) {
+            const invlet = choices ? choices[0] : invArr[0]?.invlet;
+            const otmp = invArr.find(o => o.invlet === invlet);
+            if (otmp) {
+                game._pending_message = xprname(otmp, null, invlet, true, 0, 0);
+                const c = await topl_more_ext(String(invlet));
+                game._pending_message = '';
+                game._toplin = 0;
+                if (c === 27) return '\x1b';
+                if (String.fromCharCode(c) === invlet) return invlet;
+                return '\0';
+            }
+        }
+
         display_pickinv(choices, null, null, false, true, null);
         // The menu lines drive which letters are selectable; outside-of-menu
         // letters ring the bell.  Build the selectable set from the rows shown.
@@ -3727,7 +3791,7 @@ async function throw_obj(obj, dir) {
         otmp.owornmask = 0;
         mkobj_place_object(otmp, land.x, land.y);
         otmp.where = OBJ_FLOOR;
-        otmp.how_lost = 'thrown';
+        otmp.how_lost = LOST_THROWN;
         newsym(land.x, land.y);
     }
     return ECMD_TIME;
@@ -3982,12 +4046,24 @@ export async function pick_one_obj(obj) {
     const held = addinv(obj);
     // pickup_prinv(held, count, "lifting") with no encumbrance change => prinv
     // with a NULL prefix, i.e. the bare "<letter> - <name>." pickup line.
-    prinv(null, held, quan);
-    // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a following
-    // same-turn message (e.g. a monster opening a door -> "You hear a door
-    // open.") accumulates onto the pickup line via update_topl() instead of
-    // replacing it (matches the wield/wear prinv paths).
-    game._toplin = 1;
+    if (game._merge_discovery_pending) {
+        // A merge inside addinv() above discovered new BUC/id info; page the
+        // "You learn more..." message first, then route the pickup line
+        // through update_topl() so it pages/accumulates after it correctly.
+        await report_merge_discovery();
+        const acc = game._pending_message;
+        prinv(null, held, quan);
+        const line = game._pending_message;
+        game._pending_message = acc;
+        await update_topl(line);
+    } else {
+        // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a following
+        // same-turn message (e.g. a monster opening a door -> "You hear a door
+        // open.") accumulates onto the pickup line via update_topl() instead of
+        // replacing it (matches the wield/wear prinv paths).
+        prinv(null, held, quan);
+        game._toplin = 1;
+    }
     return held;
 }
 
@@ -4633,11 +4709,17 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
         if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
 
     // Interactive PICK_ONE menu loop.  C ref: display_pickinv + select_menu.
+    let page = 0;
     for (;;) {
-        renderInventoryMenu(rows);
+        const info = renderInventoryMenu(rows, page);
         const c = await nhgetch();
-        // ESC cancels; space/return commit-with-nothing (dismiss).  C
-        // process_menu_window(): on the last page, space finishes the menu.
+        // C ref: process_menu_window() case ' '/MENU_NEXT_PAGE — space advances
+        // to the next page; only on the last page does space finish the menu.
+        if (c === 32 && info.multipage && page < info.pages - 1) {
+            page++;
+            continue;
+        }
+        // ESC cancels; space/return commit-with-nothing (dismiss).
         if (c === 27 || c === 32 || c === 13 || c === 10) {
             await dismiss_invent_screen();
             return ECMD_OK;
@@ -4655,10 +4737,9 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
 // Render the selectable inventory.  When the content fits one page it is a tty
 // overlay (offx computed from the widest line, "(end)" footer); when it overflows
 // it becomes a full-screen paged menu with an "(N of M)" footer.  C ref:
-// win/tty/wintty.c finalize NHW_MENU + process_menu_window paging.  Only the
-// first page is rendered/needed by the exercising sessions (the selection is on
-// page 1); paging keys would advance via the same blocking loop if reached.
-function renderInventoryMenu(rows) {
+// win/tty/wintty.c finalize NHW_MENU + process_menu_window paging.  Returns
+// {multipage, pages} so callers can drive the space-advances-page loop.
+function renderInventoryMenu(rows, page = 0) {
     // Flatten rows into menu lines, tagging class headers (ATR_INVERSE).
     const lines = [];
     for (const group of rows) {
@@ -4667,7 +4748,7 @@ function renderInventoryMenu(rows) {
         for (const it of items) lines.push({ text: ` ${it}`, attr: 0 });
     }
     const display = game.nhDisplay;
-    if (!display?.clearScreen) return;
+    if (!display?.clearScreen) return { multipage: false, pages: 1 };
     const totalRows = display.rows ?? 24;
     const perPage = totalRows - 1; // 23 content lines, footer on the last row
     const multipage = lines.length > perPage;
@@ -4677,17 +4758,21 @@ function renderInventoryMenu(rows) {
     // dismiss uses docorner() and leaves the status intact.
     game._botl_blanked = multipage;
     if (multipage) {
-        // Full-screen paged menu: page 1 = first perPage lines, footer "(N of M)".
+        // Full-screen paged menu: footer "(N of M)".
         const pages = Math.ceil(lines.length / perPage);
-        const page = lines.slice(0, perPage);
+        const curPage = Math.max(0, Math.min(page, pages - 1));
+        const pageLines = lines.slice(curPage * perPage, curPage * perPage + perPage);
         display.clearScreen();
         let row = 0;
-        for (const ln of page) {
+        for (const ln of pageLines) {
             display.putstr(0, row, ln.text, NO_COLOR, ln.attr || 0);
             row++;
         }
-        const footer = `(1 of ${pages})`;
-        const footerRow = perPage; // row 23
+        const footer = `(${curPage + 1} of ${pages})`;
+        // C ref: win/tty/wintty.c process_menu_window — the footer/morestr sits
+        // right after the current page's own content (tty_curs(..., page_lines)),
+        // not a fixed row; a short last page places it above row 23.
+        const footerRow = pageLines.length;
         // C ref: win/tty/wintty.c process_menu_window/dmore — the menu "(N of M)"
         // morestr is indented one column (like the menu item lines), unlike a
         // full-screen text window's "--More--" which starts at column 0.
@@ -4695,10 +4780,11 @@ function renderInventoryMenu(rows) {
         display.putstr(footerCol, footerRow, footer, NO_COLOR, 0);
         display.setCursor(footerCol + footer.length, footerRow);
         game._modal_screen = 'invent';
-        return;
+        return { multipage: true, pages };
     }
     // Single page: overlay via the existing renderer (map shows through).
     renderMenuScreen(rows, null);
+    return { multipage: false, pages: 1 };
 }
 
 export async function ddoinv(getDir = null) {
@@ -4718,9 +4804,14 @@ export async function whatis_pick_inventory() {
     }
     const byLet = new Map();
     for (const obj of inventoryArray()) byLet.set(obj.invlet, obj);
+    let page = 0;
     for (;;) {
-        renderInventoryMenu(rows);
+        const info = renderInventoryMenu(rows, page);
         const c = await nhgetch();
+        if (c === 32 && info.multipage && page < info.pages - 1) {
+            page++;
+            continue;
+        }
         if (c === 27 || c === 32 || c === 13 || c === 10) {
             await dismiss_invent_screen();
             return null;
@@ -5319,7 +5410,16 @@ export async function doorganize_core(obj) {
         }
 
         reorder_invent();
-        prinv(action, result, 0);
+        if (game._merge_discovery_pending) {
+            await report_merge_discovery();
+            const acc = game._pending_message;
+            prinv(action, result, 0);
+            const line = game._pending_message;
+            game._pending_message = acc;
+            await update_topl(line);
+        } else {
+            prinv(action, result, 0);
+        }
         update_inventory();
         return ECMD_OK;
     }

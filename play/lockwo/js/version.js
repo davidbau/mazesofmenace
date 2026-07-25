@@ -1,4 +1,7 @@
 // version.js — Build version info
+import { game } from './gstate.js';
+import { rn2 } from './rng.js';
+
 export const VERSION = '0.1.0';
 export const BUILD_DATE = '2026-04-18';
 export const COMMIT = 'contest-skeleton';
@@ -52,11 +55,24 @@ export const VERSION_INFO_LINES = [
     '     included in all copies or substantial portions of the Software."',
 ];
 
+// C ref: nhlua.c get_lua_version() — the first time any code needs the Lua
+// interpreter's version/copyright text (insert_rtoption() while paging the
+// version-info lines), it lazily creates a Lua state via nhl_init(), which
+// loads nhlib.lua; that file's top-level `align = {...}; shuffle(align)`
+// draws rn2(3) then rn2(2).  get_lua_version() caches the result in a
+// process-global (gl.lua_ver), so this only happens once per game.
+function ensure_lua_version_loaded() {
+    if (game.luaVersionCached) return;
+    game.luaVersionCached = true;
+    rn2(3); rn2(2); // nhlib.lua top-level shuffle(align)
+}
+
 // C ref: version.c doextversion().  Displays the version-info text window.
 // Returns ECMD_OK (no game time).  Delegated to the shared full-screen text
 // pager in pager.js (dynamic import avoids a load-time cycle between the two
 // modules).
 export async function doextversion() {
+    ensure_lua_version_loaded();
     const { display_text_window } = await import('./pager.js');
     await display_text_window(VERSION_INFO_LINES);
     return 0; // ECMD_OK
