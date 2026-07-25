@@ -72,10 +72,16 @@ export function movemon() {
     return somebody_can_move;
 }
 
+// src/mon.c:1214 movemon_singlemon()
 function movemon_singlemon(mtmp) {
-    /* A monster only acts once it has banked NORMAL_SPEED of movement. */
-    if (!(mtmp.movement >= NORMAL_SPEED))
-        return mtmp.movement > 0;
+    /* A monster only acts once it has banked NORMAL_SPEED of movement.
+       src/mon.c:1251 returns FALSE here — NOT "has any movement left". The
+       return value becomes somebody_can_move, which drives moveloop_core's
+       `do { movemon() } while (monscanmove)` loop, so reporting TRUE for a
+       monster that merely has some leftover movement runs the whole loop again
+       and hands every monster an extra turn. */
+    if (mtmp.movement < NORMAL_SPEED)
+        return false;
     mtmp.movement -= NORMAL_SPEED;
     dochug(mtmp);
     return mtmp.movement >= NORMAL_SPEED;

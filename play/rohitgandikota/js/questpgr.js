@@ -19,6 +19,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhl_init } from './nhlua.js';
 import { questtext } from './quest_data.js';
+import { genders } from './role_data.js';
 import { rank_of } from './botl.js';
 import { an, An, makeplural } from './objnam.js';
 import { s_suffix } from './hacklib.js';
@@ -132,9 +133,40 @@ function convert_arg(c) {
     cvt_buf = String(str ?? '');
 }
 
-// src/questpgr.c:190 qtext_pronoun() — only reached from the %dh/%di/%dj forms.
+// src/questpgr.c:199 qtext_pronoun() — the %dh/%di/%dj forms and their leader,
+// nemesis and artifact variants.
+//
+//   who:   'd' deity, 'l' leader, 'n' nemesis, 'o' artifact
+//   which: 'h'|'i'|'j' for subject/object/possessive, uppercase to capitalise
+//
+// An invalid subject yields the neuter, singular result — index 2 — which is
+// what makes the default arm safe.
 function qtext_pronoun(who, which) {
-    note_unported('qtext_pronoun');
+    let pnoun;
+    const lwhich = which.toLowerCase(); /* H,I,J -> h,i,j */
+
+    /* For %o, treat all artifacts as neuter; some have plural names, which
+       genders[] does not handle. The plural test needs makesingular(), so a
+       plural artifact name is recorded rather than guessed. */
+    if (who === 'o') {
+        note_unported('qtext_pronoun:artifact plural test');
+        pnoun = (lwhich === 'h') ? 'they'
+              : (lwhich === 'i') ? 'them'
+              : (lwhich === 'j') ? 'their' : '?';
+    } else {
+        const godgend = (who === 'd') ? (game.quest_godgend ?? 2)
+                      : (who === 'l') ? (game.quest_ldrgend ?? 2)
+                      : (who === 'n') ? (game.quest_nemgend ?? 2)
+                      : 2; /* default to neuter */
+        const g = genders[godgend] || genders[2];
+        pnoun = (lwhich === 'h') ? g.he
+              : (lwhich === 'i') ? g.him
+              : (lwhich === 'j') ? g.his : '?';
+    }
+    cvt_buf = pnoun;
+    /* capitalize for H,I,J */
+    if (lwhich !== which)
+        cvt_buf = cvt_buf.charAt(0).toUpperCase() + cvt_buf.slice(1);
     return cvt_buf;
 }
 

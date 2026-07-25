@@ -541,3 +541,58 @@ export function init_vision_globals() {
     game.cs_left = null;
     game.cs_right = null;
 }
+
+// src/vision.c:1612 clear_path() — is there an unobstructed straight line from
+// <col1,row1> to <col2,row2>?
+//
+// C implements this as four quadrant macros (q1_path..q4_path), each a
+// Bresenham walk that bails the moment it crosses a square that is not clear.
+// They differ only in which way x and y step, and in whether dx/dy are measured
+// forwards or backwards; the loops are otherwise identical, including the
+// detail that they run for (major - 1) steps so the ENDPOINTS are never tested.
+//
+// Draws nothing. It is m_cansee() (include/vision.h:42) and it gates find_targ,
+// which decides how many targets a pet scores — and score_targ DOES draw. So a
+// clear_path that says "visible" where C says "blocked" spends extra rnd(5)s.
+export function clear_path(col1, row1, col2, row2) {
+    const is_clear = (row, col) => !!(viz_clear[row] && viz_clear[row][col]);
+
+    /* Walk `major` steps, stepping the minor axis when the error term says so.
+       sx/sy are the per-axis directions; dx/dy are already absolute. */
+    const walk = (x, y, dx, dy, sx, sy) => {
+        let err, k;
+        const dxs = dx << 1, dys = dy << 1;
+
+        if (dy > dx) {
+            err = dxs - dy;
+            for (k = dy - 1; k; k--) {
+                if (err >= 0) { x += sx; err -= dys; }
+                y += sy;
+                err += dxs;
+                if (!is_clear(y, x))
+                    return 0; /* blocked */
+            }
+        } else {
+            err = dys - dx;
+            for (k = dx - 1; k; k--) {
+                if (err >= 0) { y += sy; err -= dxs; }
+                x += sx;
+                err += dys;
+                if (!is_clear(y, x))
+                    return 0; /* blocked */
+            }
+        }
+        return 1;
+    };
+
+    if (col1 < col2) {
+        if (row1 > row2)                     /* quadrant I: right and up */
+            return !!walk(col1, row1, col2 - col1, row1 - row2, 1, -1);
+        return !!walk(col1, row1, col2 - col1, row2 - row1, 1, 1); /* IV */
+    }
+    if (row1 > row2)                         /* quadrant II: left and up */
+        return !!walk(col1, row1, col1 - col2, row1 - row2, -1, -1);
+    if (row1 === row2 && col1 === col2)
+        return true;
+    return !!walk(col1, row1, col1 - col2, row2 - row1, -1, 1); /* III */
+}

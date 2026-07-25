@@ -335,6 +335,13 @@ function render_page(cw, page, display) {
            attributes menu's text starts at column 1 when offx is 0. A TEXT
            window only indents when it is actually inset. */
         let col = cw.offx + ((cw.type === NHW_MENU) ? 1 : (cw.offx ? 1 : 0));
+        /* win/tty/wintty.c positions with tty_curs(window, 1, n), and window
+           column 1 is ABSOLUTE column offx — so the leading space a menu emits
+           lands ON offx and the text starts at offx + 1. Starting the paint at
+           offx + 1 left column offx untouched, which is why the map bled
+           through beside the legacy window on 32 of the 44 sessions. */
+        for (let c = cw.offx; c < col; c++)
+            display.setCell(c, row, ' ', NO_COLOR, 0);
         const attr = term_attr((cw.attrs || [])[start + n] | 0);
         for (let i = 0; i < line.length && col < COLS; i++, col++)
             display.setCell(col, row, line[i], NO_COLOR, attr);
@@ -365,6 +372,10 @@ function render_page(cw, page, display) {
        offx + 1. */
     tty_curs_base(cw.offx + ((cw.type === NHW_TEXT) ? 1 : 2), footerRow);
     let col = cw.offx + ((cw.type === NHW_TEXT) ? 0 : 1);
+    /* Same as the content rows: a menu's prompt starts at offx + 1, so column
+       offx itself must still be cleared or the map bleeds through beside it. */
+    for (let c = cw.offx; c < col; c++)
+        display.setCell(c, footerRow, ' ', NO_COLOR, 0);
     for (let i = 0; i < morestr.length && col < COLS; i++, col++)
         display.setCell(col, footerRow, morestr[i], NO_COLOR, 0);
     for (let c = col; c < COLS; c++)

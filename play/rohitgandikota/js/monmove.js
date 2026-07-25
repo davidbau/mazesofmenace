@@ -8,14 +8,16 @@
 import { game } from './gstate.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
-import { dog_move, could_reach_item } from './dog.js';
+import {
+    dog_move, could_reach_item, dogfood, MANFOOD, ACCFOOD,
+} from './dog.js';
 import {
     mfndpos, mon_allowflags, can_carry, t_at, m_at,
     curr_mon_load, max_mon_load,
 } from './mon.js';
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
-import { couldsee, cansee } from './vision.js';
+import { couldsee, cansee, clear_path } from './vision.js';
 import { gettrack } from './track.js';
 import { distmin } from './hacklib.js';
 import { acurrstr } from './attrib.js';
@@ -119,9 +121,54 @@ function leppie_avoidance(mtmp) {
 // src/mthrowu.c:1398 lined_up() — needs m_lined_up's line-of-fire geometry.
 // It only ever suppresses the item search for a monster already in position to
 // shoot, and it draws nothing.
+// src/mthrowu.c:1398 lined_up() = m_lined_up(&youmonst, mtmp)
+//
+// The hero-concealment arm draws rn2(25) but is gated on Upolyd, which no
+// recorded session reaches. Everything else is geometry, now that clear_path
+// exists to answer linedup()'s line-of-sight test.
 function lined_up(mtmp) {
-    note_unported('lined_up');
+    const tx = mtmp.mux, ty = mtmp.muy;
+    const ignore_boulders = throws_rocks(game.mons[mtmp.mnum])
+                         || m_carrying(mtmp, ONAMES.WAN_STRIKING);
+
+    if (game.u.umonnum !== game.u.umonster) {
+        /* Upolyd: the concealment test draws rn2(25) */
+        note_unported('m_lined_up:polyd concealment');
+        return false;
+    }
+
+    return linedup(tx, ty, mtmp.mx, mtmp.my, ignore_boulders ? 1 : 2);
+}
+
+// src/mthrowu.c linedup() — a straight orthogonal or diagonal line within
+// BOLT_LIM, with a clear path along it. The boulder-tolerant modes walk the
+// line counting boulders; mode 2 then draws rn2(2 + boulderspots).
+function linedup(ax, ay, bx, by, boulderhandling) {
+    const tbx = ax - bx, tby = ay - by;
+
+    /* displacement can make a monster think you are at its own location */
+    if (!tbx && !tby)
+        return false;
+
+    if ((!tbx || !tby || Math.abs(tbx) === Math.abs(tby))
+        && distmin(tbx, tby, 0, 0) < BOLT_LIM) {
+        if (game.u.ux === ax && game.u.uy === ay
+            ? couldsee(bx, by)
+            : clear_path(ax, ay, bx, by))
+            return true;
+        if (boulderhandling === 0)
+            return false;
+        /* not line of sight, but might still be lined up if the only things
+           in the way are boulders */
+        note_unported('linedup:boulder walk');
+        return false;
+    }
     return false;
+}
+
+// src/mon.c m_carrying() — does the monster hold one of this type?
+function m_carrying(mtmp, type) {
+    return (mtmp.minvent || []).some(o => o.otyp === type) ? {} : null;
 }
 
 // src/monmove.c:1330 m_search_items() — look for an object worth walking to,
@@ -309,9 +356,32 @@ function searches_for_item(mon, obj) {
     return false;
 }
 
-/* src/mon.c mon_would_consume_item() needs the monster eating code. */
+// include/mondata.h:243 corpse_eater()
+const corpse_eater = (ptr) => ptr.pmidx === PMNAMES.PM_PURPLE_WORM
+                           || ptr.pmidx === PMNAMES.PM_BABY_PURPLE_WORM
+                           || ptr.pmidx === PMNAMES.PM_GHOUL
+                           || ptr.pmidx === PMNAMES.PM_PIRANHA;
+
+// src/monmove.c:1036 mon_would_consume_item() — would this monster eat the
+// object rather than carry it? m_search_items() treats that as a reason to walk
+// to it, so a wrong answer changes the pet's goal.
+//
+// The second arm calls dogfood(), which DRAWS an rn2(100) through obj_resists.
+// Stubbing this to false skipped that draw for every tame monster considering
+// an object it might eat.
 function mon_would_consume_item(mtmp, otmp) {
-    note_unported('mon_would_consume_item');
+    if (otmp.otyp === ONAMES.CORPSE
+        && !touch_petrifies(game.mons[otmp.corpsenm])
+        && corpse_eater(game.mons[mtmp.mnum]))
+        return true;
+
+    if (mtmp.mtame && mtmp.edog) { /* has_edog(): not guardian angel */
+        const ftyp = dogfood(mtmp, otmp);
+        if (ftyp < MANFOOD
+            && (ftyp < ACCFOOD || mtmp.edog.hungrytime <= game.moves))
+            return true;
+    }
+
     return false;
 }
 

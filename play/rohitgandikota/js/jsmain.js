@@ -161,7 +161,9 @@ export class NethackGame {
            moveloop_preamble() and the first moveloop_core(). This driver calls
            moveloop_core() directly rather than moveloop(), so the query has to
            be invoked here or it never runs. */
+        if (process.env.NHTRACE) process.stdout.write('P3 after newgame n=' + ((g.invent||[]).length) + ' sameObj=' + (g === game) + String.fromCharCode(10));
         await maybe_do_tutorial();
+        if (process.env.NHTRACE) process.stdout.write('P4 after tutorial n=' + ((g.invent||[]).length) + String.fromCharCode(10));
     }
 
     _installCaptureHook() {
