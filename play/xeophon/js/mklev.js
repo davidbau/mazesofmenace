@@ -639,7 +639,9 @@ const LEVEL_ONE_COMMON_MONSTERS = [
     { name: 'goblin', mlet: S_ORC, mlevel: 0, mmove: 6, genoFreq: 2, maligntyp: -3, hostile: false, neuter: false, armed: true, attack: { dice: 1, sides: 4, verb: 'hits' } },
     { name: 'sewer rat', mlet: S_RODENT, mlevel: 0, mmove: 12, mac: 7, genoFreq: 1, maligntyp: 0, hostile: true, neuter: false, verysmall: true, nohands: true, attack: { dice: 1, sides: 3, verb: 'bites' } },
     { name: 'grid bug', mlet: S_XAN, mlevel: 0, mmove: 12, mac: 9, genoFreq: 3, maligntyp: 0, hostile: true, neuter: false, verysmall: true, noCorpse: true, nohands: true, attack: { dice: 1, sides: 1, verb: 'bites', adtyp: 'elec' } },
-    { name: 'lichen', mlet: S_FUNGUS, mlevel: 0, mmove: 1, mac: 9, genoFreq: 4, maligntyp: 0, hostile: true, neuter: true, mindless: true, noeyes: true, nohands: true, color: CLR_BRIGHT_GREEN, xpAttackBonus: 3 },
+    { name: 'lichen', mlet: S_FUNGUS, mlevel: 0, mmove: 1, mac: 9, genoFreq: 4, maligntyp: 0, hostile: true, neuter: true, mindless: true, noeyes: true, nohands: true, color: CLR_BRIGHT_GREEN, xpAttackBonus: 3,
+        // C ref: include/monsters.h:1615 — ATTK(AT_TUCH, AD_STCK, 0, 0).
+        attack: { dice: 0, sides: 0, verb: 'touches you', adtyp: 'stck' } },
     { name: 'kobold zombie', mlet: S_ZOMBIE, mlevel: 0, mmove: 6, genoFreq: 1, maligntyp: -2, hostile: true, neuter: false, mindless: true, corpse: { name: 'kobold', mlet: S_KOBOLD, mlevel: 0, mmove: 6, genoFreq: 1, maligntyp: -2, hostile: true, neuter: false, armed: true } },
     { name: 'newt', mlet: S_LIZARD, mlevel: 0, mmove: 6, genoFreq: 5, maligntyp: 0, hostile: true, neuter: false, verysmall: true, nohands: true, swimmer: true, color: CLR_YELLOW },
 ];
@@ -5840,6 +5842,8 @@ function monsterFromRndMeta(row) {
     if (name === 'lichen') {
         ptr.mac = 9;
         ptr.xpAttackBonus = 3;
+        // C ref: include/monsters.h:1615 — ATTK(AT_TUCH, AD_STCK, 0, 0).
+        ptr.attack = { dice: 0, sides: 0, verb: 'touches you', adtyp: 'stck' };
     }
     if (name === 'pony') ptr.mac = 6;
     if (name === 'horse') ptr.mac = 5;
@@ -6575,7 +6579,8 @@ function m_initmercinv(ptr) {
     }
     if (ptr.name === 'soldier' && rn2(13)) return;
 
-    const monLevel = ptr.hpLevel ?? ptr.mlevel ?? 0;
+    // C ref: makemon.c m_initinv() tail gates on mtmp->m_lev (adj_lev).
+    const monLevel = ptr.hpLevel ?? adjustedMonsterLevel(ptr);
     if (monLevel > rn2(50)) {
         const defensiveItem = rnd_defensive_item(game._mongets_target || ptr);
         if (defensiveItem) mongets(defensiveItem);
@@ -16813,6 +16818,9 @@ function minetn6At(x, y) { return game.level.at(minetn6X(x), minetn6Y(y)); }
 function minetn6SetTerrain(x, y, ch) {
     const loc = minetn6At(x, y);
     if (!loc) return;
+    // C ref: nhlua.c char2typ — 'x' is MAX_TYPE ("see-through"); the map
+    // loader skips it (sp_lev.c:6278), leaving the mines-fill tile in place.
+    if (ch === 'x') return;
     loc.flags = 0;
     loc.roomno = 0;
     loc.edge = 0;
@@ -16824,7 +16832,7 @@ function minetn6SetTerrain(x, y, ch) {
         loc.typ = DOOR;
         loc.doormask = D_NODOOR;
     } else {
-        loc.typ = ch === 'x' ? STONE : SPECIAL_TERRAIN[ch] ?? STONE;
+        loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
     }
 }
 
@@ -17848,10 +17856,13 @@ async function make_minetn6_level() {
             minetn6X(0), minetn6Y(0), minetn6X(38), minetn6Y(18));
         place_lregion(dlx, dly, dhx, dhy, dnlx, dnly, dnhx, dnhy, LR_DOWNSTAIR, null);
     }
-    level_finalize_topology({ mineralizeLevel: false });
+    // C ref: mklev.c makelevel/mklev — for special levels the rooms are
+    // filled (shop stocking included) while gi.in_mklev is still TRUE;
+    // level_finalize_topology() (which clears in_mklev) runs afterwards.
     for (const croom of g.level.rooms || []) {
         if (croom?.hx > 0) await fill_special_room(croom);
     }
+    level_finalize_topology({ mineralizeLevel: false });
     g._level_populated = true;
 }
 

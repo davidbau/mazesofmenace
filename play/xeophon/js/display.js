@@ -1462,6 +1462,7 @@ function drawGrid() {
                    || game._command_mode === 'levelChangeText'
                    || game._command_mode === 'optionsFruit'
                    || game._command_mode === 'vaultGuardName'
+                   || game._command_mode === 'genocideText'
                    || displayMessage.startsWith('Count: ')) {
             if (displayMessage.startsWith('Count: ')) d.setCursor(displayMessage.length, 0);
             else {
@@ -1477,6 +1478,7 @@ function drawGrid() {
                     : game._command_mode === 'levelChangeText' ? game._level_change_text
                     : game._command_mode === 'optionsFruit' ? game._options_fruit_text
                     : game._command_mode === 'vaultGuardName' ? game._vault_guard_name
+                    : game._command_mode === 'genocideText' ? game._genocide_input
                     : '';
                 d.setCursor(displayMessage.length + (entry ? 0 : 1), 0);
             }

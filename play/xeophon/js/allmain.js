@@ -5793,6 +5793,15 @@ export async function processMonsterTurns() {
 		                            if (deferHitEffects) {
 		                                game._monster_hit_effects_after_more = (game._monster_hit_effects_after_more || 0) + 1;
 		                            } else {
+		                                // C ref: src/uhitm.c:3306-3333 mhitm_ad_stck — a sticky
+		                                // touch rolls the magic-cancellation check (rn2(10))
+		                                // and grabs the hero unless it is thwarted.
+		                                if (attack.adtyp === 'stck') {
+		                                    const stckNegation = (game.inventory || []).reduce((best, item) =>
+		                                        item.worn ? Math.max(best, ARMOR_MAGIC_NEGATION[item.kind] || 0) : best, 0);
+		                                    if (rn2(10) >= 3 * stckNegation && !game.u?.ustuck)
+		                                        game.u.ustuck = mon;
+		                                }
 		                                rn2(3);
 		                                rn2(6);
 		                            }

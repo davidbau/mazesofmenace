@@ -72,13 +72,7 @@ export class GameDisplay {
     // Display methods
     setCell(col, row, ch, color, attr) { return this.terminal.setCell(col, row, ch, color, attr); }
     putstr(col, row, str, color, attr) { return this.terminal.putstr(col, row, str, color, attr); }
-    setCursor(col, row) {
-        if (process.env.CURSOR_TRACE) {
-            const st = new Error().stack.split('\n').slice(2, 5).join('|');
-            console.error(`SETCURSOR ${col},${row} :: ${st}`);
-        }
-        return this.terminal.setCursor(col, row);
-    }
+    setCursor(col, row) { return this.terminal.setCursor(col, row); }
     clearScreen() { return this.terminal.clearScreen(); }
     clearRow(row) { return this.terminal.clearRow(row); }
     scrollUp() { return this.terminal.scrollUp(); }

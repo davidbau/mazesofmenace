@@ -8748,6 +8748,14 @@ const LOOT_CHEST_MENU_LINES = [
     [9, 38, 'q * do nothing'],
     [10, 38, '(end)'],
 ];
+
+// C ref: in_or_out_menu() titles and entries use the container's actual
+// name (pickup.c:3407-3442) — "large box" for a large box.
+function lootChestMenuLines(boxName) {
+    if (boxName === 'chest') return LOOT_CHEST_MENU_LINES;
+    return LOOT_CHEST_MENU_LINES.map(([row, col, text, attr]) =>
+        [row, col, String(text).replaceAll('chest', boxName), attr]);
+}
 const LOOT_LARGE_BOX_ABC_MENU_LINES = [
     [0, 38, 'Do what with the large box?', 1],
     [2, 38, ': - Look inside the large box'],
@@ -10887,7 +10895,9 @@ function dipItemDescription(item, shortened = false) {
     }
     if (quan > 1)
         baseName = `${quan} ${item.plural || (baseName.endsWith('s') ? baseName : `${baseName}s`)}`;
-    const spe = item.spe == null || quan > 1 ? '' : `${item.spe >= 0 ? '+' : ''}${item.spe} `;
+    // C ref: doname() shows enchantment ("+0") for weapons and armor but
+    // never for potions (objnam.c doname POTION_CLASS, objnam.c:832-848).
+    const spe = item.spe == null || quan > 1 || isPotionObject(item) ? '' : `${item.spe >= 0 ? '+' : ''}${item.spe} `;
     return `${buc}${rust}${spe}${baseName}${worn}`;
 }
 
@@ -14059,6 +14069,35 @@ function travelDoorWithDoor(x, y) {
     return loc?.typ === DOOR && !!(loc.doormask & ~(D_NODOOR | D_BROKEN));
 }
 
+// C ref: src/hack.c:1375-1378 — closed doors and boulders usually cause a
+// delay when traveled through, so paths out of such a tile are deferred
+// (the could_move_onto_boulder exception for giants/tiny polyforms is not
+// modeled).
+function travelDelayOutOf(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return !!game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+}
+
+// C ref: src/hack.c:1181-1200 — travel (context.run = 8) avoids known traps
+// and known pools/lava unless the hero can safely cross them.
+function travelAvoidsTile(x, y) {
+    if ((game.level?.traps || []).some(trap => trap.tx === x && trap.ty === y && trap.tseen))
+        return true;
+    const loc = game.level?.at(x, y);
+    if (!loc?.seenv) return false;
+    if (loc.typ !== POOL && loc.typ !== MOAT && loc.typ !== LAVAPOOL
+        && loc.typ !== LAVAWALL && loc.typ !== WATER)
+        return false;
+    if (loc.typ === LAVAWALL || loc.typ === WATER) return true;
+    if (game.u?.levitation || game.u?.levitating || game.u?.Levitation
+        || game.u?.flying || game.u?.Flying)
+        return false;
+    if ((loc.typ === POOL || loc.typ === MOAT) && heroHasWaterWalking())
+        return false;
+    return true;
+}
+
 // C ref: src/lock.c:779-923 doopen_indir() — the door cases of the 'o'
 // (open) command.  Confusion or Stunned use a turn even when nothing gets
 // opened (lock.c:823-826); the drawbridge and lootable-container cases of
@@ -14150,35 +14189,51 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
     let heroY = startY;
 
     while (heroX !== targetX || heroY !== targetY) {
-        const seen = new Set([`${targetX},${targetY}`]);
-        const queue = [{ x: targetX, y: targetY }];
+        // C ref: src/hack.c:1316-1449 — breadth-first search from the target
+        // back to the hero, one radius per wave; expansion out of closed
+        // doors and boulders is deferred three radii (hack.c:1375-1394), and
+        // known traps and pools/lava are never pathed through
+        // (hack.c:1181-1200).
+        const reached = new Map([[`${targetX},${targetY}`, 0]]);
+        let wave = [{ x: targetX, y: targetY }];
+        let radius = 1;
         let nextKey = null;
-        for (let qi = 0; qi < queue.length && !nextKey; qi++) {
-            const cur = queue[qi];
-            for (const key of dirs) {
-                const x = cur.x + DIR_DX[key];
-                const y = cur.y + DIR_DY[key];
-                const id = `${x},${y}`;
-                // C ref: src/hack.c:1139-1150,1208-1214 — no diagonal moves
-                // into or out of an intact doorway (the block_door/block_entry
-                // squeeze exceptions are not modeled).
-                if (DIR_DX[key] && DIR_DY[key]
-                    && (travelDoorWithDoor(cur.x, cur.y) || travelDoorWithDoor(x, y)))
+        while (wave.length && !nextKey) {
+            const nextWave = [];
+            for (const cur of wave) {
+                if (nextKey) break;
+                if (travelDelayOutOf(cur.x, cur.y)
+                    && (reached.get(`${cur.x},${cur.y}`) ?? 0) > radius - 3) {
+                    nextWave.push(cur);
                     continue;
-                if (x === heroX && y === heroY) {
-                    const dx = cur.x - heroX;
-                    const dy = cur.y - heroY;
-                    nextKey = Object.keys(DIR_DX).find(dir => DIR_DX[dir] === dx && DIR_DY[dir] === dy) || null;
-                    break;
                 }
-                if (seen.has(id)) continue;
-                const loc = game.level?.at(x, y);
-                if (!loc || IS_OBSTRUCTED(loc.typ)) continue;
-                if (!(loc.waslit || loc.seenv)) continue;
-                if (game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y)) continue;
-                seen.add(id);
-                queue.push({ x, y });
+                for (const key of dirs) {
+                    const x = cur.x + DIR_DX[key];
+                    const y = cur.y + DIR_DY[key];
+                    const id = `${x},${y}`;
+                    // C ref: src/hack.c:1139-1150,1208-1214 — no diagonal moves
+                    // into or out of an intact doorway (the block_door/block_entry
+                    // squeeze exceptions are not modeled).
+                    if (DIR_DX[key] && DIR_DY[key]
+                        && (travelDoorWithDoor(cur.x, cur.y) || travelDoorWithDoor(x, y)))
+                        continue;
+                    if (x === heroX && y === heroY) {
+                        const dx = cur.x - heroX;
+                        const dy = cur.y - heroY;
+                        nextKey = Object.keys(DIR_DX).find(dir => DIR_DX[dir] === dx && DIR_DY[dir] === dy) || null;
+                        break;
+                    }
+                    if (reached.has(id)) continue;
+                    const loc = game.level?.at(x, y);
+                    if (!loc || IS_OBSTRUCTED(loc.typ)) continue;
+                    if (!(loc.waslit || loc.seenv)) continue;
+                    if (travelAvoidsTile(x, y)) continue;
+                    reached.set(id, radius);
+                    nextWave.push({ x, y });
+                }
             }
+            wave = nextWave;
+            radius++;
         }
         if (!nextKey) break;
         const nextX = heroX + DIR_DX[nextKey];
@@ -14201,6 +14256,11 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
                     const x = cur.x + DIR_DX[key];
                     const y = cur.y + DIR_DY[key];
                     if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO || !couldsee(x, y)) continue;
+                    // C ref: src/hack.c:1139-1150,1208-1214 — no diagonal
+                    // moves into or out of an intact doorway.
+                    if (DIR_DX[key] && DIR_DY[key]
+                        && (travelDoorWithDoor(cur.x, cur.y) || travelDoorWithDoor(x, y)))
+                        continue;
                     const loc = game.level?.at(x, y);
                     const blocked = !loc || IS_OBSTRUCTED(loc.typ)
                         || game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
@@ -14212,6 +14272,7 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
                         continue;
                     }
                     if (!(loc.seenv || (!game.u?.blind && couldsee(x, y))) || travel[x][y]) continue;
+                    if (travelAvoidsTile(x, y)) continue;
                     travel[x][y] = radius;
                     next.push({ x, y });
                 }
@@ -14276,6 +14337,7 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
                     const loc = game.level?.at(x, y);
                     if (!loc || IS_OBSTRUCTED(loc.typ)) continue;
                     if (!(loc.seenv || (!game.u?.blind && couldsee(x, y)))) continue;
+                    if (travelAvoidsTile(x, y)) continue;
                     if (game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y)) continue;
                     seen.add(id);
                     queue.push({ x, y });
@@ -18004,14 +18066,17 @@ async function takeOffFacewear(item) {
     item.worn = false;
     item.owornmask = 0;
     item.line = `${item.letter || '?'} - ${baseName}`;
+    // C ref: off_msg() only prints "You were wearing ..." with verbose
+    // (do_wear.c:1048); the blindness change reports are unconditional.
+    const wornMessage = game.flags?.verbose !== false ? `You were wearing ${baseName}.` : '';
     if (facewearCausesBlindness(item) && game.u) {
         setBlindfoldedState(false);
         const stillBlind = (game.u._blindTimeout || 0) > 0 || (game.u.ucreamed || 0) > 0;
         game.u.blind = stillBlind;
         await docrt();
-        return { messages: [`You were wearing ${baseName}.`, stillBlind ? 'You still cannot see.' : 'You can see again.'] };
+        return { messages: [wornMessage, stillBlind ? 'You still cannot see.' : 'You can see again.'].filter(Boolean) };
     }
-    return { messages: [`You were wearing ${baseName}.`] };
+    return { messages: [wornMessage].filter(Boolean) };
 }
 
 async function takeOffEquipment(item, options = {}) {
@@ -18031,6 +18096,9 @@ async function takeOffEquipment(item, options = {}) {
     if (facewearOff) return { ...facewearOff, move: 1 };
 
     const baseName = equipmentBaseName(item);
+    // C ref: off_msg() only prints "You were wearing ..." with verbose
+    // (do_wear.c:1048).
+    const wornOffMessages = game.flags?.verbose !== false ? [`You were wearing ${baseName}.`] : [];
     if (wornRingItem(item) || isWornMeatRingItem(item)) {
         const messageName = wornRingOffMessageName(item, baseName);
         item.worn = false;
@@ -18038,13 +18106,13 @@ async function takeOffEquipment(item, options = {}) {
         item.wornMask = 0;
         item._wornMask = 0;
         item.line = `${item.letter || '?'} - ${baseName}`;
-        return { messages: [`You were wearing ${messageName}.`], move: 1 };
+        return { messages: game.flags?.verbose !== false ? [`You were wearing ${messageName}.`] : [], move: 1 };
     }
     if (isWornAmuletItem(item)) {
         item.worn = false;
         item.owornmask = 0;
         item.line = `${item.letter || '?'} - ${baseName}`;
-        return { messages: [`You were wearing ${baseName}.`], move: 1 };
+        return { messages: wornOffMessages, move: 1 };
     }
 
     const acBonus = (ARMOR_AC_BONUS[String(item.kind || '').toLowerCase()] ?? 0) + (item.spe ?? 0);
@@ -18077,7 +18145,7 @@ async function takeOffEquipment(item, options = {}) {
         syncHeroSpeedState();
     updateGauntletsOfPowerStrength(kind, false);
     updateWornDisplacement();
-    const messages = [`You were wearing ${baseName}.`];
+    const messages = [...wornOffMessages];
     const gloveFallout = slot === 'gloves' ? takeOffGlovesPetrifyingSelfTouchMessages(item) : [];
     messages.push(...gloveFallout);
     return {
@@ -20232,16 +20300,24 @@ function alchemyAffectedPotionCount(target, source, resultName) {
     return rnd(amount - 6) + 6;
 }
 
-function potionStackNameForAlchemyMessage(item) {
-    const name = alchemyPotionName(item) || potionDipKind(item) || 'unknown';
-    return (item?.quan || 1) > 1 ? `potions of ${name}` : `potion of ${name}`;
+// C ref: simpleonames() in potion_dip() (potion.c:2534) — a potion stack is
+// named by type only when the type is discovered or the object is known;
+// otherwise it is named by its randomized appearance ("yellow potion").
+function dipVisiblePotionStackName(item) {
+    const identity = alchemyPotionName(item);
+    const typeKnown = item?.known === true || (identity && potionDiscoveryKnown(identity));
+    const base = typeKnown ? `potion of ${identity}` : `${potionCallAppearance(item)} potion`;
+    if ((item?.quan || 1) <= 1) return base;
+    return base.replace(/^potion /, 'potions ').replace(/ potion$/, ' potions');
 }
 
 function potionAlchemyMixMessage(target, source, splitFromStack) {
     const prefix = splitFromStack ? `${target.quan} of the` : 'The';
     const verb = (target.quan || 1) > 1 ? 'mix' : 'mixes';
     const sourcePrefix = (source?.quan || 1) > 1 ? 'one of ' : '';
-    return `${prefix} ${potionStackNameForAlchemyMessage(target)} ${verb} with ${sourcePrefix}${potionStackNameForAlchemyMessage(source)}...`;
+    // C ref: potion_dip() — "[N of ]the <obj(s)> mix(es) with [one of] the
+    // <potion>..." (potion.c:2533-2536).
+    return `${prefix} ${dipVisiblePotionStackName(target)} ${verb} with ${sourcePrefix}the ${(source?.quan || 1) > 1 ? dipVisiblePotionStackName(source) : dipVisiblePotionStackName({ ...source, quan: 1 })}...`;
 }
 
 function heroWornAlchemySmockItem() {
@@ -28129,6 +28205,19 @@ function dipPotionIntoPotion(target, potion) {
     } else if (!game.u?.blind) {
         messages.push(`The mixture looks ${alchemyResultAppearance(finalName)}.`);
     }
+    // C ref: potion_dip() ends with freeinv() + hold_potion() (potion.c:2579-2581),
+    // which re-adds the mixture to inventory and prints its inventory line
+    // ("r - a diluted potion of booze."); the name follows doname() rules —
+    // type when discovered/known, appearance otherwise (objnam.c:835-848).
+    const affectedQuan = affected.quan || 1;
+    const resultTypeKnown = affected.known === true || potionDiscoveryKnown(finalName);
+    const resultBase = resultTypeKnown ? `potion of ${finalName}` : `${alchemyResultAppearance(finalName)} potion`;
+    const resultPlural = resultBase.replace(/^potion /, 'potions ').replace(/ potion$/, ' potions');
+    const resultDiluted = affected.odiluted ? 'diluted ' : '';
+    const resultPhrase = affectedQuan > 1
+        ? `${affectedQuan} ${resultDiluted}${resultPlural}`
+        : `a ${resultDiluted}${resultBase}`;
+    messages.push(`${affected.letter} - ${resultPhrase}.`);
     return handledDipMessages(messages);
 }
 
@@ -28456,7 +28545,18 @@ function dipObjectIntoWaterPotion(target, potion) {
     if ((effect === 'bless' || effect === 'curse') && target.unpaid && isWaterPotion(target))
         alterShopBillCostIfHigher(target);
     consumeDipPotion(potion);
-    return messages.filter(Boolean);
+    const filtered = messages.filter(Boolean);
+    // C ref: poof() runs trycall() for the used-up water potion when its type
+    // is still undiscovered (potion.c:2413-2417), prompting "Call a
+    // <appearance> potion:" once the glow message is dismissed.
+    if (potion.dknown !== false && !potionDiscoveryKnown('water')
+        && !game._called_potions?.[potionCallAppearance(potion)]) {
+        game._call_potion_appearance = potionCallAppearance(potion);
+        game._call_potion_text = '';
+        game._call_potion_record_discovery = 1;
+        filtered.callPotionAfterMore = true;
+    }
+    return filtered;
 }
 
 function dipWeaponIntoOilPotion(target, potion) {
@@ -40165,6 +40265,9 @@ function mergePickedObjectIntoInventory(source, target) {
         copyObjectInstanceNameForMerge(target, source);
     }
     target.quan = targetCount + pickedCount;
+    // C ref: addinv_core0() sets pickup_prev on the resulting stack whenever
+    // an object is added to inventory (invent.c:1142).
+    target.pickup_prev = 1;
     if (source.plural && !target.plural) target.plural = source.plural;
     if (source.known !== target.known) target.known = true;
     if (source.bknown !== target.bknown && game._startup_role !== 'Priest') target.bknown = true;
@@ -40345,6 +40448,9 @@ export const __shopBillingTestHooks = {
     beginDroppedPaidObjectSale,
     beginShopFloorContainerPutSale,
     collectPayableShopDebts,
+    endGenocidePromptForTest: endGenocidePrompt,
+    genocideListLinesForTest: genocideListLines,
+    getobjPromptLettersForTest: getobjPromptLetters,
     finishRobbedOnlyShopPayment,
     finishShopPaymentSelection,
     findPickedObjectInventoryMergeTarget,
@@ -41422,6 +41528,43 @@ function heroCarriedWeight() {
         weight += globObjectWeight(item);
     }
     return weight;
+}
+
+// C ref: encumber_msg() (pickup.c:1978) — the encumbrance tier names shown
+// on the status line (botl.c:12-13).
+const ENCUMBER_STATUS_BY_LEVEL = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+const ENCUMBER_ALL_STATUS = ['Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+
+// C ref: encumber_msg() increased-load messages (pickup.c:1985-1997).
+function encumberIncreaseMessage(level) {
+    return level === 1 ? 'Your movements are slowed slightly because of your load.'
+        : level === 2 ? 'You rebalance your load.  Movement is difficult.'
+            : level === 3 ? 'You stagger under your heavy load.  Movement is very hard.'
+                : `You ${level === 4 ? 'can barely' : "can't even"} move a handspan with this load!`;
+}
+
+// C ref: encumber_msg() decreased-load messages (pickup.c:1999-2010).
+function encumberDecreaseMessage(level) {
+    return level === 0 ? 'Your movements are now unencumbered.'
+        : level === 1 ? 'Your movements are only slowed slightly by your load.'
+            : level === 2 ? 'You rebalance your load.  Movement is still difficult.'
+                : 'You stagger under your load.  Movement is still very hard.';
+}
+
+function syncHeroEncumbranceStatus(level) {
+    for (const status of ENCUMBER_ALL_STATUS) removeHeroStatusSuffix(status);
+    if (level > 0) addHeroStatusSuffix(ENCUMBER_STATUS_BY_LEVEL[level] || 'Burdened');
+}
+
+// C ref: encumber_msg() (pickup.c:1978) — when the encumbrance tier changed
+// since the last check, print the report and flag the status line.
+function encumberMsg() {
+    const newcap = heroEncumbranceForWeight(heroCarriedWeight());
+    const oldcap = game._encumbrance_level ?? 0;
+    game._encumbrance_level = newcap;
+    syncHeroEncumbranceStatus(newcap);
+    if (newcap === oldcap) return '';
+    return newcap > oldcap ? encumberIncreaseMessage(newcap) : encumberDecreaseMessage(newcap);
 }
 
 function heroCarryCapacity() {
@@ -45350,12 +45493,23 @@ export function pickupObjectName(obj) {
     return named(obj.kind || (obj.otyp != null ? String(obj.otyp) : 'object'));
 }
 
+// C ref: display_pickinv() sorts inventory by inv_order class rank
+// (options.c:118-121 def_inv_order).
 function containerSortRank(item) {
     if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') return 0;
-    if (item.otyp === SCROLL_CLASS || item.cls === 'scroll' || item.glyph === '?') return 1;
-    if (item.cls === 'spellbook' || item.glyph === '+') return 2;
-    if (item.otyp === GEM_CLASS || item.cls === 'gem' || item.glyph === '*') return 3;
-    return 4;
+    if (item.cls === 'amulet' || item.otyp === AMULET_CLASS || item.glyph === '"') return 1;
+    if (item.cls === 'weapon' || item.otyp === WEAPON_CLASS || item.glyph === ')') return 2;
+    if (item.cls === 'armor' || item.otyp === ARMOR_CLASS || item.glyph === '[') return 3;
+    if (item.otyp === FOOD_CLASS || item.cls === 'food' || item.glyph === '%' || item.otyp === 'corpse' || item.otyp === CORPSE) return 4;
+    if (item.otyp === SCROLL_CLASS || item.cls === 'scroll' || item.glyph === '?') return 5;
+    if (item.cls === 'spellbook' || item.glyph === '+') return 6;
+    if (item.otyp === POTION_CLASS || item.cls === 'potion' || item.glyph === '!') return 7;
+    if (item.otyp === RING_CLASS || item.cls === 'ring' || item.glyph === '=') return 8;
+    if (item.otyp === WAND_CLASS || item.cls === 'wand' || item.glyph === '/') return 9;
+    if (item.otyp === TOOL_CLASS || item.cls === 'tool' || item.glyph === '(') return 10;
+    if (item.otyp === GEM_CLASS || item.cls === 'gem' || item.glyph === '*') return 11;
+    if (isBoulderObject(item) || item.otyp === STATUE || item.cls === 'rock' || item.glyph === '`') return 12;
+    return 13;
 }
 
 function containerLootSortKey(item) {
@@ -45593,6 +45747,57 @@ function clearIceBoxActionState() {
     game._icebox_action_container = null;
 }
 
+// C ref: display_pickinv() with a query title (invent.c:3057+) — the
+// container "Put in what?" picker is the standard full-screen inventory
+// menu (reverse-video section headers, +/- selection markers, "(N of M)"
+// pagination) headed by the prompt; 21 content rows fit under the title
+// and blank line.
+function putInInventoryOverlayLines(entries, title, page = 0, selected = null) {
+    const sectionName = item => item.section || ({
+        coin: 'Coins', amulet: 'Amulets', weapon: 'Weapons', armor: 'Armor', food: 'Comestibles',
+        scroll: 'Scrolls', spellbook: 'Spellbooks', potion: 'Potions',
+        ring: 'Rings', wand: 'Wands', tool: 'Tools', gem: 'Gems/Stones', rock: 'Boulders/Statues',
+    })[item.cls] || (item.otyp === SCROLL_CLASS ? 'Scrolls'
+        : item.otyp === POTION_CLASS ? 'Potions'
+            : item.otyp === WAND_CLASS ? 'Wands'
+                : item.otyp === FOOD_CLASS ? 'Comestibles'
+                    : item.otyp === TOOL_CLASS || item.otyp === MIRROR || item.otyp === EXPENSIVE_CAMERA || item.otyp === STETHOSCOPE || item.otyp === MAGIC_MARKER ? 'Tools'
+                        : item.otyp === RING_CLASS ? 'Rings'
+                            : isBoulderObject(item) || item.otyp === STATUE ? 'Boulders/Statues'
+                                : item.otyp === GEM_CLASS ? 'Gems/Stones' : 'Other Items');
+    const sectionOrder = [
+        'Coins', 'Amulets', 'Weapons', 'Armor', 'Comestibles', 'Scrolls',
+        'Spellbooks', 'Potions', 'Rings', 'Wands', 'Tools', 'Gems/Stones',
+        'Boulders/Statues', 'Other Items',
+    ];
+    const contentRows = [];
+    let lastSection = '';
+    for (const entry of [...entries].sort((a, b) => {
+        const sectionDiff = sectionOrder.indexOf(sectionName(a.item)) - sectionOrder.indexOf(sectionName(b.item));
+        return sectionDiff || String(a.letter || '').localeCompare(String(b.letter || ''));
+    })) {
+        const section = sectionName(entry.item);
+        if (section !== lastSection) {
+            contentRows.push([section, 1]);
+            lastSection = section;
+        }
+        const label = entry.letter === '$'
+            ? `${entry.amount} gold piece${entry.amount === 1 ? '' : 's'}`
+            : normalInventoryLine(entry.item).replace(/^[a-zA-Z$] - /, '');
+        const marker = selected ? (selected.has(entry.letter) ? '+ ' : '- ') : '';
+        contentRows.push([`${entry.letter} ${marker}${label}`, 0]);
+    }
+    if (!contentRows.length) contentRows.push(['You are not carrying anything.', 0]);
+    const start = page * 21;
+    const pageRows = contentRows.slice(start, start + 21);
+    const totalPages = Math.max(1, Math.ceil(contentRows.length / 21));
+    const footer = totalPages > 1 ? `(${page + 1} of ${totalPages})` : '(end)';
+    const rows = [[0, 1, title, 1], [1, 1, '']];
+    for (const [text, attr] of pageRows) rows.push([rows.length, 1, text, attr]);
+    rows.push([rows.length, 1, footer]);
+    return rows;
+}
+
 function iceBoxPutTypeChoices(putItems) {
     const classTypes = iceBoxPutClassTypes();
     const presentTypes = classTypes.filter(type => putItems.some(entry => entry.category === type.key));
@@ -45619,6 +45824,20 @@ function iceBoxPutTypeChoices(putItems) {
             letter: 'P',
             label: `Just picked up: ${game._goldCount} gold piece${game._goldCount === 1 ? '' : 's'}`,
         });
+    // C ref: query_category() offers a 'P' entry for items with pickup_prev
+    // (pickup.c:1436-1444) — "Just picked up: <doname>" for one, "Items you
+    // just picked up" for several.
+    const justPickedItems = putItems.filter(({ item }) => item?.pickup_prev && item.letter !== '$');
+    if (justPickedItems.length === 1) {
+        const name = inventoryItemName(justPickedItems[0].item);
+        extraChoices.push({
+            key: 'justpicked',
+            letter: 'P',
+            label: `Just picked up: ${name}`,
+        });
+    } else if (justPickedItems.length > 1) {
+        extraChoices.push({ key: 'justpicked', letter: 'P', label: 'Items you just picked up' });
+    }
     if (extraChoices.length) row++;
     for (const choice of extraChoices) choices.push({ ...choice, row: row++ });
     return choices;
@@ -45689,53 +45908,15 @@ function beginContainerPutIn(container) {
 function drawIceBoxPutObjectMenu() {
     const entries = game._icebox_put_entries || [];
     const selected = new Set(game._icebox_put_selected || []);
-    const rows = [[0, 41, 'Put in what?', 1]];
-    let row = 2;
-    let lastCategory = '';
-    for (const entry of entries) {
-        if (entry.category !== lastCategory) {
-            const type = iceBoxPutClassTypes().find(type => type.key === entry.category);
-            rows.push([row, 34, '┌─────']);
-            rows.push([row, 40, ' '.repeat(40)]);
-            rows.push([row++, 41, type?.label || 'Other Items', 1]);
-            lastCategory = entry.category;
-        }
-        entry.row = row;
-        const label = entry.letter === '$'
-            ? `${entry.amount} gold piece${entry.amount === 1 ? '' : 's'}`
-            : inventoryItemName(entry.item);
-        rows.push([row, 34, '│']);
-        rows.push([row++, 40, ` ${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${label}`.padEnd(40, ' ')]);
-    }
-    rows.push([row, 34, '│']);
-    rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
-    setOverlay(rows, 2, false, 0);
+    const rows = putInInventoryOverlayLines(entries, 'Put in what?', 0, selected);
+    setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
 }
 
 function drawContainerPutObjectMenu() {
     const entries = game._container_put_entries || [];
     const selected = new Set(game._container_put_selected || []);
-    const rows = [[0, 41, 'Put in what?', 1]];
-    let row = 2;
-    let lastCategory = '';
-    for (const entry of entries) {
-        if (entry.category !== lastCategory) {
-            const type = iceBoxPutClassTypes().find(type => type.key === entry.category);
-            rows.push([row, 34, '┌─────']);
-            rows.push([row, 40, ' '.repeat(40)]);
-            rows.push([row++, 41, type?.label || 'Other Items', 1]);
-            lastCategory = entry.category;
-        }
-        entry.row = row;
-        const label = entry.letter === '$'
-            ? `${entry.amount} gold piece${entry.amount === 1 ? '' : 's'}`
-            : inventoryItemName(entry.item);
-        rows.push([row, 34, '│']);
-        rows.push([row++, 40, ` ${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${label}`.padEnd(40, ' ')]);
-    }
-    rows.push([row, 34, '│']);
-    rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
-    setOverlay(rows, 2, false, 0);
+    const rows = putInInventoryOverlayLines(entries, 'Put in what?', 0, selected);
+    setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
 }
 
 function articlelessObjectName(item) {
@@ -46180,8 +46361,10 @@ function beginIceBoxTakeout(iceBox) {
         }));
         const rows = [[0, 41, 'Take out what?', 1], [2, 41, typeEntries[0].label, 1]];
         let row = 3;
-        for (const entry of entries)
-            rows.push([row++, 41, `${entry.letter} - ${pickupObjectPhrase(entry.item)}`]);
+        for (const entry of entries) {
+            const name = normalInventoryLine(entry.item).replace(/^[a-zA-Z$?] - /, '');
+            rows.push([row++, 41, `${entry.letter} - ${name}`]);
+        }
         rows.push([row, 41, '(end)']);
         game._loot_takeout_container = iceBox;
         game._loot_takeout_entries = entries;
@@ -58288,6 +58471,18 @@ async function moveHero(dx, dy) {
     const targetBoulder = game.level?.objects?.find(obj =>
         !obj.transientProjectile && obj.ox === newx && obj.oy === newy && obj.otyp === BOULDER);
 
+    // C ref: src/hack.c:1216-1221 — while running (run >= 2; travel sets
+    // run = 8, cmd.c:5366) moving into a boulder is blocked, silently unless
+    // mention_walls is on.
+    if (!swallowedMove && targetBoulder && game._travel_step_active
+        && !game.u?.blind && !(game.u?._statusSuffix || '').includes('Hallu')) {
+        if (game.flags?.mention_walls) await setMessage('A boulder blocks your path.');
+        game._travel_keys = [];
+        game._travel_dynamic_target = null;
+        game.context.move = 1;
+        return;
+    }
+
     if (!swallowedMove && isBuriedBallTrapActive()) {
         const found = findBuriedBallNear(oldx, oldy);
         if (found && (newx - found.x) ** 2 + (newy - found.y) ** 2 <= 2) {
@@ -58396,6 +58591,7 @@ async function moveHero(dx, dy) {
             return;
         }
         const pushTrap = boulderFillTrapAt(pushx, pushy);
+        if (globalThis.__DBG_BOULDER && pushTrap) console.error(`BOULDERPLUG step~? trap=${JSON.stringify(pushTrap)} dest=${pushx},${pushy} alltraps=${JSON.stringify((game.level?.traps||[]).map(t=>[t.ttyp,t.tx,t.ty]))}`);
         if (pushTrap && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(pushTrap.ttyp)) {
             // C ref: moverock_core() trap-destination plug cases (hack.c:530-566) —
             // dopush() is skipped, so no exercise(A_STR) roll and no "With great
@@ -58870,7 +59066,9 @@ async function moveHero(dx, dy) {
                     game._bare_hands_bashing_started = 1;
                     messages.push('You begin bashing monsters with your bare hands.  You miss it.');
                 } else {
-                    messages.push(`You miss ${targetPhrase}.`);
+                    // C ref: src/uhitm.c:5208-5211 missum() — the named miss
+                    // requires canspotmon() and flags.verbose, else "miss it".
+                    messages.push(`You miss ${targetSpotted && game.flags?.verbose !== false ? targetPhrase : 'it'}.`);
                 }
                 if (attackIndex === 0 && (mon.mhp || 1) > 0) rn2(3);
                 continue;
@@ -59208,6 +59406,16 @@ async function moveHero(dx, dy) {
         dropMonsterInventory(mon, messages);
         const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
         await setMessage(messages.join('  '), potionCallPrompt || (killedPet && messages.length > 1));
+        // C ref: src/mon.c:3438-3466 unstuck() — a stuck holder/engulfer/
+        // sticker releases the hero when it dies and rolls mspec_used.
+        if (mon === game.u?.ustuck) {
+            game.u.ustuck = null;
+            if (!mon.mspec_used
+                && (mon.data?.attack?.adtyp === 'stck'
+                    || (mon.data?.attacks || []).some(a => a?.adtyp === 'stck' || a?.aatyp === 'engl' || a?.aatyp === 'hugs')
+                    || mon.data?.attack?.aatyp === 'engl' || mon.data?.attack?.aatyp === 'hugs'))
+                mon.mspec_used = rnd(2);
+        }
         const treasureDrop = !rn2(6);
 
         const corpseData = data.corpse
@@ -59274,7 +59482,10 @@ async function moveHero(dx, dy) {
             return;
         }
         if (oldx === newx || oldy === newy) await setMessage('That door is closed.');
-        game.context.move = 0;
+        // C ref: src/hack.c:1112-1136 — bumping a closed door is free, except
+        // that dotravel_target always returns ECMD_TIME (cmd.c:5376), so a
+        // failed first move of a travel command still uses a turn.
+        game.context.move = game._travel_command_first_step ? 1 : 0;
         return;
     }
 
@@ -59289,7 +59500,8 @@ async function moveHero(dx, dy) {
             return;
         }
         await setMessage('That door is closed.');
-        game.context.move = 0;
+        // C ref: src/hack.c:1112-1136 + cmd.c:5376 — see above.
+        game.context.move = game._travel_command_first_step ? 1 : 0;
         return;
     }
 
@@ -59310,7 +59522,8 @@ async function moveHero(dx, dy) {
         }
         if (!autoopen) {
             await setMessage('That door is closed.');
-            game.context.move = 0;
+            // C ref: src/hack.c:1112-1136 + cmd.c:5376 — see above.
+            game.context.move = game._travel_command_first_step ? 1 : 0;
             return;
         }
     }
@@ -59838,7 +60051,10 @@ async function moveHero(dx, dy) {
     const ballHere = game.u?.uball?.ox === newx && game.u?.uball?.oy === newy ? game.u.uball : null;
     const objHere = objectsHere[0];
     const trapHere = steppedTrap;
-    const continuingTravel = !!game._travel_keys?.length;
+    // C ref: src/pickup.c:701-709 — travel (svc.context.nopick) skips
+    // check_here entirely, so no "You see here" feedback on any travel step,
+    // including the last one.
+    const continuingTravel = !!game._travel_keys?.length || !!game._travel_step_active;
     const oldRoomno = oldLoc?.roomno || 0;
     const newRoomno = target?.roomno || 0;
     const templeEntry = prepareUntendedTempleEntry(newRoomno, oldRoomno);
@@ -63628,9 +63844,9 @@ function tutorialEnterStash() {
                 game._queued_message_more_line_after_more = '';
 
                 if (game._burden_after_more) {
+                    const burdenLevel = game._burden_after_more === true ? 1 : game._burden_after_more;
                     game._burden_after_more = 0;
-                    if (game.u && !(game.u._statusSuffix || '').includes('Burdened'))
-                        game.u._statusSuffix = `${game.u._statusSuffix || ''} Burdened`;
+                    syncHeroEncumbranceStatus(burdenLevel);
                 }
                 if (game._wish_notice_after_more) {
                     game._wish_notice_after_more = 0;
@@ -65471,7 +65687,10 @@ function tutorialEnterStash() {
                 game.context.move = 1;
                 return;
             }
-            await setMessage(`You are now wearing ${baseName}.`);
+            // C ref: on_msg() only prints "You are now wearing ..." with
+            // verbose (do_wear.c:88); without it the prompt line stays up.
+            if (game.flags?.verbose !== false) await setMessage(`You are now wearing ${baseName}.`);
+            else game._keep_pending_message = 1;
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -65950,7 +66169,10 @@ function tutorialEnterStash() {
                 game.context.move = 2;
                 return;
             }
-            await setMessage(`You are now wearing ${baseName}.`);
+            // C ref: on_msg() only prints "You are now wearing ..." with
+            // verbose (do_wear.c:88); without it the prompt line stays up.
+            if (game.flags?.verbose !== false) await setMessage(`You are now wearing ${baseName}.`);
+            else game._keep_pending_message = 1;
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -67893,6 +68115,9 @@ function tutorialEnterStash() {
             return;
         }
         if (item) recordLiterateConduct();
+        // C ref: doread() clears the just-picked-up state of the scroll being
+        // read (read.c:362).
+        if (item) item.pickup_prev = 0;
         if (isScroll && isBlankScrollItem(item)) {
             item.known = true;
             item.actualKind = 'scroll of blank paper';
@@ -70434,6 +70659,7 @@ function tutorialEnterStash() {
             return;
         }
         if (/lock pick|credit card|key/.test(name)) {
+            game._apply_lockpick_item = item;
             await setMessage('In what direction?');
             game._command_mode = 'applyLockPickDirection';
             return;
@@ -71266,7 +71492,8 @@ function tutorialEnterStash() {
                 if (selected.has('cursed') && bucCategory === 'cursed') return true;
                 if (selected.has('uncursed') && bucCategory === 'uncursed') return true;
                 return selected.has('unknown') && bucCategory === 'unknown'
-                    || selected.has('justpicked') && item.letter === '$' && game._just_picked_gold;
+                    || selected.has('justpicked')
+                    && (item.pickup_prev || (item.letter === '$' && game._just_picked_gold));
             });
             const entries = items.map(({ item, category }) => ({
                 item,
@@ -71276,29 +71503,10 @@ function tutorialEnterStash() {
                     ? game._goldCount || 0
                     : item.quan || 1,
             }));
-            const rows = [[0, 41, 'Put in what?', 1]];
-            let row = 2;
-            let lastCategory = '';
-            for (const entry of entries) {
-                if (entry.category !== lastCategory) {
-                    const type = BAG_PUT_CLASS_TYPES.find(type => type.key === entry.category);
-                    rows.push([row, 34, '┌─────']);
-                    rows.push([row, 40, ' '.repeat(40)]);
-                    rows.push([row++, 41, type?.label || 'Other Items', 1]);
-                    lastCategory = entry.category;
-                }
-                entry.row = row;
-                const label = entry.letter === '$'
-                    ? `${entry.amount} gold piece${entry.amount === 1 ? '' : 's'}`
-                    : inventoryItemName(entry.item);
-                rows.push([row, 34, '│']);
-                rows.push([row++, 40, ` ${entry.letter} - ${label}`.padEnd(40, ' ')]);
-            }
-            rows.push([row, 34, '│']);
-            rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
+            const rows = putInInventoryOverlayLines(entries, 'Put in what?');
             game._bag_put_entries = entries;
             game._bag_put_selected = [];
-            setOverlay(rows, 2, false, 0);
+            setOverlay(rows, 24, rows.length >= 24, rows.length >= 24 ? null : 0);
             game._command_mode = 'bagPutObject';
             return;
         }
@@ -71782,7 +71990,7 @@ function tutorialEnterStash() {
                 await setWishResultMessage(wishedItem._wish_disappear_message);
                 return;
             }
-            const item = Object.assign({ quan: 1 }, wishedItem);
+            const item = Object.assign({ quan: 1, pickup_prev: 1 }, wishedItem);
             recordWishConduct();
             if (item._artifact_wish_name) wishedQuan = 1;
             if (item._artifact_wish_name || item.artifact) addConductCount('wisharti');
@@ -71849,36 +72057,17 @@ function tutorialEnterStash() {
             game.inventory.push(item);
             maybeAttachCarriedFigurineTimeout(item);
             game._pet_food_scan_inventory = game.inventory;
-            let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
-            for (const invItem of game.inventory || []) {
-                if (isGoldObject(invItem)) continue;
-                if (invItem === item && wishObjectMetadataForItem(invItem)?.unitWeight != null) {
-                    carriedWeight += finalWishedWeight;
-                    continue;
-                }
-                if (invItem.globby) {
-                    carriedWeight += (invItem.owt ?? 20) * (invItem.quan || 1);
-                    continue;
-                }
-                if (invItem.otyp === 'corpse' || invItem.otyp === CORPSE) {
-                    const corpseName = invItem.corpsenm?.name || objectKindKey(invItem).replace(/\s+corpses?$/, '');
-                    carriedWeight += (CORPSE_WEIGHTS.get(corpseName) ?? invItem.owt ?? 1) * (invItem.quan || 1);
-                    continue;
-                }
-                const kind = String(invItem.kind || invItem.actualKind || invItem.spellName || invItem.spell?.name || '').toLowerCase();
-                const cls = invItem.cls || (invItem.otyp === RING_CLASS ? 'ring'
-                    : invItem.otyp === SCROLL_CLASS ? 'scroll'
-                        : invItem.otyp === POTION_CLASS ? 'potion'
-                            : invItem.otyp === WAND_CLASS ? 'wand'
-                                : invItem.otyp === GEM_CLASS ? 'gem' : '');
-                carriedWeight += (OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? invItem.owt ?? 0) * (invItem.quan || 1);
-            }
-            const stats = game.u?.acurr?.a || [];
-            const capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
-            if (carriedWeight > capacity && !(game.u?._statusSuffix || '').includes('Burdened')) {
+            // C ref: hold_another_object() → addinv() → encumber_msg()
+            // (invent.c:1285, pickup.c:1978) — after the wish lands, crossing
+            // a capacity tier prints the encumbrance report after a --More--.
+            const encumbrance = heroEncumbranceForWeight(heroCarriedWeight());
+            const alreadyEncumbered = ENCUMBER_ALL_STATUS
+                .some(status => (game.u?._statusSuffix || '').includes(status));
+            if (encumbrance > 0 && !alreadyEncumbered) {
                 item.owt = finalWishedWeight;
-                game._burden_after_more = 1;
-                game._queued_message_after_more = 'Your movements are slowed slightly because of your load.';
+                game._encumbrance_level = encumbrance;
+                game._burden_after_more = encumbrance;
+                game._queued_message_after_more = encumberIncreaseMessage(encumbrance);
                 game._wish_notice_after_more = 1;
                 await setWishResultMessage(`${item.line}.`, true);
                 return;
@@ -72024,6 +72213,10 @@ function tutorialEnterStash() {
                 return;
             }
             game.context.move = 1;
+            // C ref: drop() ends with encumber_msg() (do.c:842) — when
+            // shedding the load crosses a capacity tier, that is the report.
+            const encumbranceMessage = encumberMsg();
+            if (encumbranceMessage) dropMessages.push(encumbranceMessage);
             if (dropMessages.length) {
                 await setMessage(dropMessages.join('  '), dropMessages.length > 1);
             } else {
@@ -72171,7 +72364,29 @@ function tutorialEnterStash() {
     if (game._command_mode === 'applyLockPickDirection') {
         const dir = movementDirection(ch);
         game._command_mode = null;
-        if (!dir) return;
+        const item = game._apply_lockpick_item;
+        game._apply_lockpick_item = null;
+        if (!dir) {
+            if (ch === '.') {
+                // C ref: pick_lock() container branch (lock.c:433-470) —
+                // "There is <a box> here; <verb> <it|its lock>? [ynq] (q)".
+                const box = (game.level?.objects || []).find(obj =>
+                    !obj.hidden
+                    && (obj.otyp === CHEST || obj.otyp === LARGE_BOX || obj.kind === 'chest' || obj.kind === 'large box')
+                    && obj.ox === (game.u?.ux || 0) && obj.oy === (game.u?.uy || 0));
+                if (box && !box.obroken && (box.locked || box.olocked)) {
+                    box.lknown = true;
+                    const boxName = (box.otyp === LARGE_BOX || box.kind === 'large box') ? 'large box' : 'chest';
+                    const toolName = item ? inventoryItemName(item).toLowerCase() : 'lock pick';
+                    const verb = toolName.includes('lock pick') ? 'pick its lock' : 'unlock it';
+                    game._locked_container_unlock_target = { chest: box, tool: item };
+                    await setMessage(`There is a ${boxName} here; ${verb}? [ynq] (q)`);
+                    game._command_mode = 'unlockContainerPrompt';
+                    return;
+                }
+            }
+            return;
+        }
         const loc = game.level?.at((game.u?.ux || 0) + dir.dx, (game.u?.uy || 0) + dir.dy);
         if (loc?.typ === DOOR && (loc.doormask & D_ISOPEN)) {
             await setMessage('You cannot lock an open door.');
@@ -72984,9 +73199,12 @@ function tutorialEnterStash() {
                         rows.push([row++, 41, entry.label, 1]);
                         lastLabel = entry.label;
                     }
+                    // C ref: display_pickinv() shows the full doname() line
+                    // (BUC prefix, worn suffixes) with the picker's letter.
+                    const name = normalInventoryLine(entry.item).replace(/^[a-zA-Z$?] - /, '');
                     const text = entry.letter === '$'
                         ? `${entry.letter} - ${entry.item.quan || 1} gold piece${(entry.item.quan || 1) === 1 ? '' : 's'}`
-                        : `${entry.letter} - ${pickupObjectPhrase(entry.item)}`;
+                        : `${entry.letter} - ${name}`;
                     rows.push([row++, 41, text]);
                 }
                 rows.push([row, 41, '(end)']);
@@ -73052,7 +73270,7 @@ function tutorialEnterStash() {
                 }
                 const text = entry.letter === '$'
                     ? `${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${entry.item.quan || 1} gold piece${(entry.item.quan || 1) === 1 ? '' : 's'}`
-                    : `${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${pickupObjectPhrase(entry.item)}`;
+                    : `${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${normalInventoryLine(entry.item).replace(/^[a-zA-Z$?] - /, '')}`;
                 rows.push([row++, 41, text]);
             }
             rows.push([row, 41, '(end)']);
@@ -73509,11 +73727,67 @@ function tutorialEnterStash() {
                 game._command_mode = 'dipOilSource';
                 return;
             }
-            await setMessage(`Dip ${article}${description} into the fountain? [yn] (n)`);
-            game._command_mode = 'dipConfirm';
+            // C ref: dodip() (potion.c:2310-2351) — the "Dip <obj> into the
+            // fountain?" question is only asked when the hero is on one;
+            // otherwise the prompt is for a potion to dip into, listing all
+            // carried potions including the dipped one (drink_ok, potion.c:2383).
+            const hereTyp = game.level?.at(game.u?.ux || 0, game.u?.uy || 0)?.typ;
+            if (hereTyp === FOUNTAIN) {
+                await setMessage(`Dip ${article}${description} into the fountain? [yn] (n)`);
+                game._command_mode = 'dipConfirm';
+                return;
+            }
+            const shortest = (item.quan || 1) > 1 ? 'them' : 'it';
+            const sourceLetters = (game.inventory || [])
+                .filter(invItem => isPotionObject(invItem))
+                .map(invItem => invItem.letter).filter(Boolean).sort().join('');
+            await setMessage(`What do you want to dip ${shortest} into? [${inventoryLetterMenu(sourceLetters)} or ?*]`);
+            game._command_mode = 'dipPotionSource';
             return;
         }
         game._command_mode = null;
+        return;
+    }
+
+    if (game._command_mode === 'dipPotionSource') {
+        const target = game._dip_item || (game.inventory || []).find(invItem => invItem.letter === game._dip_object);
+        const potion = (game.inventory || []).find(invItem => invItem.letter === ch);
+        game._dip_object = '';
+        game._dip_item = null;
+        game._command_mode = null;
+        if (target && potion && isPotionObject(potion)) {
+            if (potion === target && (potion.quan || 1) === 1) {
+                // C ref: potion_dip() self-dip guard (potion.c:2545)
+                await setMessage('That is a potion bottle, not a Klein bottle!');
+                return;
+            }
+            const messages = dipObjectIntoPotion(target, potion);
+            // C ref: update_topl (win/tty/topl.c:251) — each dip message gets
+            // its own --More-- unless it fits on the line with the previous.
+            const sequence = toplineMessageSequence(messages);
+            const needTryCall = !!messages.callPotionAfterMore;
+            if (!sequence.length) {
+                await setMessage(messages.handled ? '' : 'Interesting...');
+            } else {
+                await setMessage(sequence[0].text, sequence.length > 1 || !!messages.more || needTryCall);
+                if (sequence.length > 1) {
+                    game._queued_messages_after_more ??= [];
+                    game._queued_messages_after_more.push(...sequence.slice(1));
+                }
+            }
+            if (needTryCall) {
+                // C ref: poof() → trycall() happens before the dip command
+                // completes, so the turn is charged when the "Call a potion:"
+                // prompt is answered, not now (potion.c:2413-2417).
+                game._command_mode = 'callPotionAfterMore';
+                game.context.move = 0;
+                return;
+            }
+            game.context.move = 1;
+            if (applyLifeSavingOrFatalCommandMode(messages)) return;
+            return;
+        }
+        await setMessage('Never mind.');
         return;
     }
 
@@ -74204,7 +74478,7 @@ function tutorialEnterStash() {
                 else if (chest) {
                     game._floor_container_object = chest;
                     const largeBox = chest.kind === 'large box' || chest.otyp === LARGE_BOX;
-                    setOverlay(largeBox && game.flags?.lootabc ? LOOT_LARGE_BOX_ABC_MENU_LINES : LOOT_CHEST_MENU_LINES,
+                    setOverlay(largeBox && game.flags?.lootabc ? LOOT_LARGE_BOX_ABC_MENU_LINES : lootChestMenuLines(largeBox ? 'large box' : 'chest'),
                         11, false, largeBox && game.flags?.lootabc ? 37 : null);
                     game._command_mode = 'lootMenu';
                     return;
@@ -76278,8 +76552,10 @@ function tutorialEnterStash() {
             game._keep_pending_message = 0;
             game._travel_keys = [];
             game._travel_step_active = 1;
+            game._travel_command_first_step = 1;
             await rhack(keys[0]);
             game._travel_step_active = 0;
+            game._travel_command_first_step = 0;
             return;
         }
         if (pickTravelTarget && !game._travel_target) {
@@ -76302,8 +76578,10 @@ function tutorialEnterStash() {
             }
             game._travel_keys = travelStopsAfterOneStep(target.x, target.y) ? [] : keys.slice(1);
             game._travel_step_active = 1;
+            game._travel_command_first_step = 1;
             await rhack(keys[0]);
             game._travel_step_active = 0;
+            game._travel_command_first_step = 0;
             if (game._travel_previous_target
                 && (game.u?.ux || 0) === game._travel_previous_target.x
                 && (game.u?.uy || 0) === game._travel_previous_target.y)
@@ -76332,8 +76610,10 @@ function tutorialEnterStash() {
             game._travel_target_description = '';
             game._travel_keys = travelStopsAfterOneStep(target.x, target.y) ? [] : keys.slice(1);
             game._travel_step_active = 1;
+            game._travel_command_first_step = 1;
             await rhack(keys[0]);
             game._travel_step_active = 0;
+            game._travel_command_first_step = 0;
             if (game._travel_previous_target
                 && (game.u?.ux || 0) === game._travel_previous_target.x
                 && (game.u?.uy || 0) === game._travel_previous_target.y)
@@ -78764,7 +79044,17 @@ function tutorialEnterStash() {
             deliverQueuedImpactDroppedObjects(game.u?.uz);
             vision_reset();
             game._redraw_level_after_more = 1;
-            await setMessage(fallDownStairs ? 'You fall down the stairs.' : 'You descend the stairs.', true);
+            // C ref: src/do.c:1797-1800 — the ordinary "You descend the
+            // stairs." is verbose-only; the fall-down message (do.c:1782)
+            // is not.
+            if (fallDownStairs || game.flags?.verbose !== false) {
+                await setMessage(fallDownStairs ? 'You fall down the stairs.' : 'You descend the stairs.', true);
+            } else {
+                game._redraw_level_after_more = 0;
+                vision_recalc(0);
+                await docrt();
+                await bot();
+            }
             game.context.move = 1;
             return;
         }
@@ -78805,7 +79095,16 @@ function tutorialEnterStash() {
         game._utrack = [];
         vision_reset();
         game._redraw_level_after_more = 1;
-        await setMessage(fallDownStairs ? 'You fall down the stairs.' : 'You descend the stairs.', true);
+        // C ref: src/do.c:1797-1800 — the ordinary "You descend the stairs."
+        // is verbose-only; the fall-down message (do.c:1782) is not.
+        if (fallDownStairs || game.flags?.verbose !== false) {
+            await setMessage(fallDownStairs ? 'You fall down the stairs.' : 'You descend the stairs.', true);
+        } else {
+            game._redraw_level_after_more = 0;
+            vision_recalc(0);
+            await docrt();
+            await bot();
+        }
         game.context.move = 1;
         return;
     }
