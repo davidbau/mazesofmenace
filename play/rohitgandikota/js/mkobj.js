@@ -31,6 +31,11 @@ import {
 } from './makemon.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 
+// include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
+// A NEGATED class, not an index past the real ones. It is the one caller-facing
+// value mkobj() accepts that is not a real oclass.
+const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
+
 // include/permonst.h
 const NON_PM = -1;
 // include/hack.h:1189-1200 — corpse/statue gender is stored in obj.spe.
@@ -116,12 +121,18 @@ export function mkobj(oclass, artif) {
         oclass = iprobs[idx][1];
     }
 
-    /* SPBOOK_no_NOVEL takes the rnd_class() path in C; ordinary classes walk
-       the per-class probability total. */
-    prob = rnd(game.oclass_prob_totals[oclass]);
-    i = game.bases[oclass];
-    while ((prob -= objects[i].oc_prob) > 0)
-        ++i;
+    /* src/mkobj.c:285 — SPBOOK_no_NOVEL draws differently: rnd_class() over the
+       spellbooks stopping at SPE_BLANK_PAPER, which excludes SPE_NOVEL. That
+       range sums to 999 where the full SPBOOK_CLASS total is 1000. */
+    if (oclass === SPBOOK_no_NOVEL) {
+        i = rnd_class(game.bases[OCLASSES.SPBOOK_CLASS], ONAMES.SPE_BLANK_PAPER);
+        oclass = OCLASSES.SPBOOK_CLASS;     /* for the sanity check below */
+    } else {
+        prob = rnd(game.oclass_prob_totals[oclass]);
+        i = game.bases[oclass];
+        while ((prob -= objects[i].oc_prob) > 0)
+            ++i;
+    }
 
     return mksobj(i, true, artif);
 }

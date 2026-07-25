@@ -5,8 +5,10 @@
 // and wipeout_text(), which mklev.c calls when it decorates a room. Both are
 // heavy PRNG consumers and were previously a single invented rn2(48).
 
+import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
+import { DUST, BURN, HEADSTONE, ENGR_BLOOD } from './const.js';
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -108,4 +110,54 @@ export function random_engraving() {
 
     const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
     return { text, pristine };
+}
+
+// ---------------------------------------------------------------------------
+// The level's engraving list. src/engrave.c keeps it as svl.level.lev_engr, a
+// linked list; a plain array is the same thing for our purposes because the
+// only ordering that matters is "the one at these coordinates".
+// ---------------------------------------------------------------------------
+
+// src/engrave.c engr_at()
+export function engr_at(x, y) {
+    return (game.level?.lev_engr || []).find(e => e.x === x && e.y === y) || null;
+}
+
+// src/engrave.c del_engr()
+export function del_engr(ep) {
+    const list = game.level?.lev_engr;
+    if (!list) return;
+    const i = list.indexOf(ep);
+    if (i >= 0) list.splice(i, 1);
+}
+
+// src/engrave.c make_engr_at() — replaces any engraving already there.
+// Draws nothing.
+export function make_engr_at(x, y, text, epoch, engr_type) {
+    const old = engr_at(x, y);
+    if (old) del_engr(old);
+    (game.level.lev_engr ||= []).push({
+        x, y, engr_txt: String(text), engr_type,
+        engr_time: epoch, nowipeout: false,
+    });
+}
+
+// src/engrave.c wipe_engr_at() — age an engraving by rubbing out `cnt` of its
+// characters.
+//
+// A DUST or ENGR_BLOOD engraving erodes by the full count; anything else first
+// rolls `cnt = rn2(1 + 50 / (cnt + 1)) ? 0 : 1`, so it usually erodes nothing
+// and that roll is itself a draw. makeniche() only ever writes DUST, so the
+// level generator takes the first path.
+export function wipe_engr_at(x, y, cnt, magical) {
+    const ep = engr_at(x, y);
+    if (!ep || ep.engr_type === HEADSTONE || ep.nowipeout) return;
+    if (ep.engr_type === BURN && !(magical && !rn2(2))) return;
+
+    if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD)
+        cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+
+    ep.engr_txt = wipeout_text(ep.engr_txt, cnt, 0);
+    ep.engr_txt = ep.engr_txt.replace(/^ +/, '');
+    if (!ep.engr_txt) del_engr(ep);
 }

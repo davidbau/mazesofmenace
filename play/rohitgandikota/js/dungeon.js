@@ -600,3 +600,35 @@ export {
     level_range, init_level, possible_places, pick_level, place_level,
     init_dungeon_dungeons,
 };
+
+// src/dungeon.c Can_dig_down() — whether the floor here gives way.
+export function Can_dig_down(lev) {
+    return !game.level?.flags?.hardfloor
+        && !Is_botlevel(lev)
+        && !Invocation_lev(lev);
+}
+
+// src/dungeon.c Can_fall_thru()
+export function Can_fall_thru(lev) {
+    return Can_dig_down(lev) || Is_stronghold(lev);
+}
+
+// include/dungeon.h:126 Is_botlevel(x) — the bottom level of its dungeon.
+function Is_botlevel(lev) {
+    return lev && game.dungeons?.[lev.dnum]
+        && lev.dlevel === (game.dungeons[lev.dnum].dunlev_ureached
+                           ?? game.dungeons[lev.dnum].num_dunlevs);
+}
+
+// include/dungeon.h Invocation_lev(x) / Is_stronghold(x) — both name levels
+// that only exist deep in Gehennom, so neither is reachable at the depths any
+// public session gets to.
+function Invocation_lev(lev) {
+    return !!(game.inv_pos && lev && lev.dnum === game.inv_pos.dnum
+              && lev.dlevel === game.inv_pos.dlevel);
+}
+function Is_stronghold(lev) {
+    return !!(game.stronghold_level && lev
+              && lev.dnum === game.stronghold_level.dnum
+              && lev.dlevel === game.stronghold_level.dlevel);
+}

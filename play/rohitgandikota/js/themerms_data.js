@@ -110,6 +110,10 @@ export const themerooms = [
      "|......|",
      "|......|",
      "--------"
+    ],
+    "filler": [
+     1,
+     1
     ]
    }
   ]
@@ -133,6 +137,10 @@ export const themerooms = [
      "|......|",
      "|......|",
      "--------"
+    ],
+    "filler": [
+     5,
+     1
     ]
    }
   ]
@@ -156,6 +164,10 @@ export const themerooms = [
      "xxx|...|",
      "xxx|...|",
      "xxx-----"
+    ],
+    "filler": [
+     1,
+     1
     ]
    }
   ]
@@ -179,6 +191,10 @@ export const themerooms = [
      "|...|xxx",
      "|...|xxx",
      "-----xxx"
+    ],
+    "filler": [
+     1,
+     1
     ]
    }
   ]
@@ -227,6 +243,10 @@ export const themerooms = [
      "--...--",
      "x--.--x",
      "xx---xx"
+    ],
+    "filler": [
+     3,
+     3
     ]
    }
   ]
@@ -251,6 +271,10 @@ export const themerooms = [
      "--.....--",
      "x--...--x",
      "xx-----xx"
+    ],
+    "filler": [
+     4,
+     4
     ]
    }
   ]
@@ -277,6 +301,10 @@ export const themerooms = [
      "x-.......-x",
      "x---...---x",
      "xxx-----xxx"
+    ],
+    "filler": [
+     5,
+     5
     ]
    }
   ]
@@ -300,6 +328,10 @@ export const themerooms = [
      "|.........|",
      "|.........|",
      "-----------"
+    ],
+    "filler": [
+     5,
+     5
     ]
    }
   ]
@@ -326,6 +358,10 @@ export const themerooms = [
      "|...|xxx",
      "|...|xxx",
      "-----xxx"
+    ],
+    "filler": [
+     2,
+     2
     ]
    }
   ]
@@ -349,6 +385,10 @@ export const themerooms = [
      "xxx|...|xxx",
      "xxx|...|xxx",
      "xxx-----xxx"
+    ],
+    "filler": [
+     2,
+     2
     ]
    }
   ]
@@ -375,6 +415,10 @@ export const themerooms = [
      "xxx|...|",
      "xxx|...|",
      "xxx-----"
+    ],
+    "filler": [
+     5,
+     5
     ]
    }
   ]
@@ -401,6 +445,10 @@ export const themerooms = [
      "xxx|...|",
      "xxx|...|",
      "xxx-----"
+    ],
+    "filler": [
+     2,
+     2
     ]
    }
   ]
@@ -424,6 +472,10 @@ export const themerooms = [
      "|......|xxx",
      "|......|xxx",
      "--------xxx"
+    ],
+    "filler": [
+     5,
+     5
     ]
    }
   ]
@@ -450,6 +502,10 @@ export const themerooms = [
      "|...|xxx",
      "|...|xxx",
      "-----xxx"
+    ],
+    "filler": [
+     5,
+     5
     ]
    }
   ]
@@ -473,6 +529,10 @@ export const themerooms = [
      "xxx|......|",
      "xxx|......|",
      "xxx--------"
+    ],
+    "filler": [
+     2,
+     2
     ]
    }
   ]
@@ -499,6 +559,10 @@ export const themerooms = [
      "xxx|...|xxx",
      "xxx|...|xxx",
      "xxx-----xxx"
+    ],
+    "filler": [
+     6,
+     6
     ]
    }
   ]
@@ -525,6 +589,10 @@ export const themerooms = [
      "|...---...|",
      "|...|x|...|",
      "-----x-----"
+    ],
+    "filler": [
+     6,
+     6
     ]
    }
   ]
@@ -600,7 +668,8 @@ export const themeroom_fills = [
   "name": "Garden",
   "frequency": 1,
   "mindiff": null,
-  "maxdiff": null
+  "maxdiff": null,
+  "eligible": "return rm.lit == true;"
  },
  {
   "index": 7,
@@ -635,7 +704,8 @@ export const themeroom_fills = [
   "name": "Light source",
   "frequency": 1,
   "mindiff": null,
-  "maxdiff": null
+  "maxdiff": null,
+  "eligible": "return rm.lit == false;"
  },
  {
   "index": 12,

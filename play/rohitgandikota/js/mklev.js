@@ -93,7 +93,15 @@ const {
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { themerooms } from './themerms_data.js';
+import { themerooms, themeroom_fills } from './themerms_data.js';
+import { make_engr_at, wipe_engr_at, engr_at, del_engr } from './engrave.js';
+import { get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
+import { DUST, HEADSTONE } from './const.js';
+import { hole_destination } from './trap.js';
+import { Can_fall_thru } from './dungeon.js';
+import { lspo_map, lspo_region, sp_lev_wire } from './sp_lev.js';
+import { percent } from './nhlua.js';
+import { lua_shuffle } from './nhlua.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -112,10 +120,13 @@ import {
 
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
-const SPBOOK_no_NOVEL = 11;
+// include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
+// It is the NEGATED class, -10, not a class index one past the real ones. Hard
+// coding 11 made it WAND_CLASS, so the supply chest's bonus items generated
+// wands where C generates spellbooks, in 3 of the 10 table slots.
+const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
 
 // Supply chest items
-const DUST = 3;
 const MARK = 6;
 
 const XLIM = 4;
@@ -326,9 +337,17 @@ async function maketrap(x, y, typ) {
     case ROLLING_BOULDER_TRAP:
         note_unported_lev('mkroll_launch');
         break;
+    case PIT:
+    case SPIKED_PIT:
+        trap.conjoined = 0;
+        /* FALLTHRU */
     case HOLE:
     case TRAPDOOR:
-        note_unported_lev('hole_destination');
+        /* src/trap.c:521 — only a HOLE or TRAPDOOR picks a destination, but
+           the pit cases fall through to here, so the is_hole() test is what
+           gates the draw, not the case label. */
+        if (is_hole(typ))
+            hole_destination(trap.dst);
         break;
     default:
         break;
@@ -337,11 +356,30 @@ async function maketrap(x, y, typ) {
 }
 
 // engrave stubs
-function make_engr_at(x, y, text, pristine, epoch, engr_type) { /* stub */ }
-function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
-function make_grave(x, y, text) {
+// src/mklev.c:728 trap_engravings[TRAPNUM] — only three traps leave a warning
+// scratched in the dust next to their niche.
+const trap_engravings = [];
+trap_engravings[TRAPDOOR] = 'Vlad was here';
+trap_engravings[TELEP_TRAP] = 'ad aerarium';
+trap_engravings[LEVEL_TELEP] = 'ad aerarium';
+// src/trap.c t_at() — the trap on a square, if any.
+function t_at(x, y) {
+    return (game.level?.traps || []).find(t => t.tx === x && t.ty === y) || null;
+}
+
+// src/engrave.c:1687 make_grave() — a grave only goes on plain room floor with
+// no trap, and an unnamed one draws its epitaph from dat/epitaph.
+function make_grave(x, y, str) {
     const loc = game.level?.at(x, y);
-    if (loc) loc.typ = GRAVE;
+    if (!loc) return;
+    if ((loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y))
+        return;
+    loc.typ = GRAVE;
+    const old = engr_at(x, y);
+    if (old) del_engr(old);
+    if (!str)
+        str = get_rnd_text('epitaph', rn2, MD_PAD_RUMORS);
+    make_engr_at(x, y, str, 0, HEADSTONE);
 }
 
 // in_rooms stub
@@ -576,6 +614,8 @@ function ROOM_IS_FILLABLE(croom) {
         && croom.needfill === FILL_NORMAL;
 }
 
+sp_lev_wire(add_room, add_door);
+
 // C ref: mklev.c makerooms()
 async function makerooms() {
     const g = game;
@@ -592,8 +632,16 @@ async function makerooms() {
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
         } else {
-            // Themed room selection (reservoir sampling)
-            if (!(await themerooms_generate(difficulty))) {
+            /* src/mklev.c:415 — gi.in_mk_themerooms is TRUE for the whole
+               themerooms_generate() call, INCLUDING the create_room() the
+               `default` room reaches through des.room(). It is what makes
+               check_room() give up on the first obstruction instead of
+               shrinking and retrying, and what makes lspo_map() re-roll its
+               placement. It was read in four places and never set. */
+            g.in_mk_themerooms = true;
+            const made = await themerooms_generate(difficulty);
+            g.in_mk_themerooms = false;
+            if (!made) {
                 if (themeroom_tries++ > 10
                     || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
                     break;
@@ -638,11 +686,16 @@ async function themerooms_generate(difficulty) {
     }
     if (!pick) return false;
 
-    if (pick.name !== 'default') {
-        /* the shaped rooms are not ported; what follows is the `default`
-           sequence, which is wrong for them but keeps the level buildable */
+    game.themeroom_failed = false;
+
+    /* A room with a des.map is a SHAPE: lspo_map places and stamps it, then its
+       own contents run. Everything else falls through to the `default` room. */
+    const mf = pick.maps && pick.maps[0];
+    if (mf && themeroom_contents(pick, mf))
+        return !game.themeroom_failed;
+
+    if (pick.name !== 'default')
         note_unported_lev(`themeroom ${pick.name}`);
-    }
 
     /* sp_lev.c:2811 — the rtype chance roll */
     rn2(100);
@@ -657,6 +710,88 @@ async function themerooms_generate(difficulty) {
         }
     }
     return ok;
+}
+
+// dat/themerms.lua:880 filler_region() — every shaped room ends with this.
+//
+//   if (percent(30)) then rmtyp = "themed"; func = themeroom_fill; end
+//   des.region({ region={x,y,x,y}, type=rmtyp, irregular=true,
+//                filled=1, contents = func });
+function filler_region(x, y) {
+    let rmtyp = OROOM;
+    let func = null;
+    if (percent(30)) {
+        rmtyp = THEMEROOM;
+        func = themeroom_fill;
+    }
+    lspo_region(x, y, rmtyp, true, FILL_NORMAL, func);
+}
+
+// dat/themerms.lua:890 is_eligible(room, mkrm) — for a FILL the room is passed
+// in, so a fill may accept or refuse it, and that changes how many draws the
+// reservoir sample below makes.
+//
+// Only two fills carry a predicate and both test the room's lit state. The
+// generator captures the Lua source of each one rather than a flag, so an
+// unrecognised predicate is reported instead of being assumed true.
+function fill_eligible(fill, rm, difficulty) {
+    if (fill.mindiff != null && difficulty < fill.mindiff) return false;
+    if (fill.maxdiff != null && difficulty > fill.maxdiff) return false;
+    if (rm != null && fill.eligible) {
+        if (fill.eligible === 'return rm.lit == true;') return !!rm.rlit;
+        if (fill.eligible === 'return rm.lit == false;') return !rm.rlit;
+        note_unported_lev(`fill eligible ${fill.name}`);
+        return true;
+    }
+    return true;
+}
+
+// dat/themerms.lua:1009 themeroom_fill() — a second reservoir sample, this one
+// over the 15 themeroom_fills, then the chosen fill's own contents.
+//
+// The sample is ported; the contents are not. Each fill places monsters,
+// objects or terrain with draws of its own, and they are 15 separate functions.
+function themeroom_fill(rm) {
+    const difficulty = depth_of_level(game.u?.uz);
+    let pick = null;
+    let total_frequency = 0;
+    for (const fill of themeroom_fills) {
+        if (!fill_eligible(fill, rm, difficulty)) continue;
+        const this_frequency = fill.frequency ?? 1;
+        total_frequency += this_frequency;
+        if (this_frequency > 0 && rn2(total_frequency) < this_frequency)
+            pick = fill;
+    }
+    if (!pick) return;
+    note_unported_lev(`themeroom_fill ${pick.name}`);
+}
+
+// The `contents` function of each shaped room, transcribed from themerms.lua.
+// Seventeen of the nineteen are a bare filler_region(a,b) and come straight
+// from the generated table; the two that are not are spelled out here.
+// Returns false for a room whose contents are not ported, so the caller can
+// fall back rather than emit a wrong stream.
+function themeroom_contents(pick, mf) {
+    if (pick.name === 'Blocked center') {
+        // themerms.lua:535 — this room has its own gate BEFORE filler_region,
+        // and shuffle() adds an rn2(2) whenever the gate passes.
+        lspo_map(mf, () => {
+            if (percent(30)) {
+                const terr = ['-', 'P'];
+                lua_shuffle(terr);
+                note_unported_lev('des.replace_terrain');
+            }
+            filler_region(1, 1);
+        });
+        return true;
+    }
+    if (mf.filler) {
+        const [fx, fy] = mf.filler;
+        lspo_map(mf, () => filler_region(fx, fy));
+        return true;
+    }
+    /* 'Water-surrounded vault' places objects and monsters; not ported. */
+    return false;
 }
 
 // C ref: sp_lev.c check_room()
@@ -791,7 +926,7 @@ function create_vault() {
 }
 
 // C ref: mklev.c add_room()
-function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
+export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     const g = game;
     const croom = {
         lx: lowx, ly: lowy, hx: hix, hy: hiy,
@@ -1086,7 +1221,7 @@ function dodoor(x, y, aroom) {
     dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
-function add_door(x, y, aroom) {
+export function add_door(x, y, aroom) {
     const g = game;
     if (!g.level.doors) g.level.doors = [];
     for (let i = 0; i < aroom.doorct; i++) {
@@ -1374,8 +1509,20 @@ async function makeniche(trap_type) {
             rm.typ = SCORR;
             if (trap_type) {
                 let actualTrap = trap_type;
-                if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
-                await maketrap(xx, yy + dy, actualTrap);
+                if (is_hole(actualTrap) && !Can_fall_thru(g.u.uz))
+                    actualTrap = ROCKTRAP;
+                const ttmp = await maketrap(xx, yy + dy, actualTrap);
+                if (ttmp) {
+                    if (actualTrap !== ROCKTRAP) ttmp.once = 1;
+                    /* src/mklev.c:767 — "ad aerarium" is eleven characters,
+                       and wipe_engr_at() rubs out five of them: two draws per
+                       character, three when it has a rubout substitute. */
+                    if (trap_engravings[actualTrap]) {
+                        make_engr_at(xx, yy - dy,
+                                     trap_engravings[actualTrap], 0, DUST);
+                        wipe_engr_at(xx, yy - dy, 5, false);
+                    }
+                }
             }
             dosdoor(xx, yy, aroom, SDOOR);
         } else {
@@ -1678,8 +1825,10 @@ function mkaltar(croom) {
 }
 
 function mkgrave_room(croom) {
-    if (croom.rtype !== OROOM) return;
+    /* src/mklev.c mkgrave() — `dobell` is an INITIALISER, so its rn2(10) is
+       drawn before the rtype test, not after it. */
     const dobell = !rn2(10);
+    if (croom.rtype !== OROOM) return;
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);

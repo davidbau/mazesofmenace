@@ -50,3 +50,10 @@ export function nhl_init() {
 export function l_nhcore_init() {
     game.splev_align = nhl_init();
 }
+
+// dat/nhlib.lua:43 percent() — `math.random(0, 99) < threshold`, and the
+// math.random shim turns that two-argument form into nh.random(0, 100), i.e.
+// exactly one rn2(100). It is the gate on nearly every themeroom decoration.
+export function percent(threshold) {
+    return rn2(100) < threshold;
+}
