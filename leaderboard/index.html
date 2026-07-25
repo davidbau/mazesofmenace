@@ -133,6 +133,13 @@ tr:hover td { background: var(--color-row-hover); }
 }
 .lb-btn.play   { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent-dark); }
 .lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
+.lb-btn.play.disabled {
+    background: transparent;
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 .lb-btn.tests  { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
 .lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
 td.you-cta { text-align: center; font-style: italic; }
@@ -699,11 +706,15 @@ async function loadLeaderboard() {
 
                 const playUrl   = '/play/' + team.name + '/';
                 const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
+                const playableOk = !(playability && playability.playable === false);
+                const playCell = playableOk
+                    ? `<a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a>`
+                    : `<span class="lb-btn play disabled" title="Play disabled: this build does not currently pass the browser playability check${playability && playability.ms_per_move ? ` (${playability.ms_per_move.toFixed(0)} ms/move vs ${playability.threshold_ms_per_move} ms threshold)` : ''}">Play</span>`;
 
                 tr.innerHTML = `
                     <td class="rank">${i + 1}</td>
                     <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
-                    <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+                    <td class="action">${playCell}</td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
                     <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
                         <span class="${pctClass(combinedPct)}">${fmt(pubPoints)}</span>
