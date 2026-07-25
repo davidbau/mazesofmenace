@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -3329,6 +3329,15 @@ const LUCKSTONE = 10127;
 const TOUCHSTONE = FLINT_STONE;
 const BLINDFOLD = 10113;
 const SKELETON_KEY = 220;
+// C ref: objects.h — wishable names without their own cmd.js otyp yet.
+// ELVEN_DAGGER/ATHAME/BUGLE/CREDIT_CARD reuse mklev.js's values (already in
+// its SPECIFIC_WEAPONS/otyp tables); SILVER_DAGGER/LEATHER_DRUM are JS-local.
+const ELVEN_DAGGER = 10123;
+const ATHAME = 10094;
+const BUGLE = 10052;
+const CREDIT_CARD = 10129;
+const SILVER_DAGGER = 10219;
+const LEATHER_DRUM = 10220;
 const MIRROR = 10006;
 const CREAM_PIE = 10081;
 const LUMP_OF_ROYAL_JELLY = 10089;
@@ -3563,6 +3572,14 @@ const WISH_BASE_OBJECTS = new Map([
     ['darts', { otyp: DART, cls: 'weapon', glyph: ')', kind: 'dart', plural: 'darts' }],
     ['dagger', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
     ['daggers', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
+    // C ref: objects.h WEAPON entries for the rest of the dagger family;
+    // appearances from objects.h descriptions (runed/crude dagger), like C's
+    // doname before the type is discovered.
+    ['elven dagger', { otyp: ELVEN_DAGGER, cls: 'weapon', glyph: ')', kind: 'runed dagger', actualKind: 'elven dagger', known: false, plural: 'runed daggers' }],
+    ['orcish dagger', { otyp: ORCISH_DAGGER, cls: 'weapon', glyph: ')', kind: 'crude dagger', actualKind: 'orcish dagger', known: false, plural: 'crude daggers' }],
+    ['silver dagger', { otyp: SILVER_DAGGER, cls: 'weapon', glyph: ')', kind: 'silver dagger', actualKind: 'silver dagger', plural: 'silver daggers' }],
+    ['athame', { otyp: ATHAME, cls: 'weapon', glyph: ')', kind: 'athame', actualKind: 'athame', plural: 'athames' }],
+    ['stiletto', { otyp: STILETTO, cls: 'weapon', glyph: ')', kind: 'stiletto', actualKind: 'stiletto', plural: 'stilettos' }],
     ['knife', { otyp: KNIFE, cls: 'weapon', glyph: ')', kind: 'knife', actualKind: 'knife' }],
     ['short sword', { otyp: SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'short sword', actualKind: 'short sword', owt: 30 }],
     ['elven short sword', { otyp: ELVEN_SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'runed short sword', actualKind: 'elven short sword', known: false, owt: 30 }],
@@ -3643,6 +3660,10 @@ const WISH_BASE_OBJECTS = new Map([
     ['stethoscope', { otyp: STETHOSCOPE, cls: 'tool', glyph: '(', kind: 'stethoscope' }],
     ['magic marker', { otyp: MAGIC_MARKER, cls: 'tool', glyph: '(', kind: 'magic marker', actualKind: 'magic marker', plural: 'magic markers' }],
     ['lock pick', { otyp: LOCK_PICK, cls: 'tool', glyph: '(', kind: 'lock pick', actualKind: 'lock pick' }],
+    // C ref: objects.h TOOL("skeleton key", "key", ...) — shows as "key" until
+    // the type is discovered, like C's doname.
+    ['skeleton key', { otyp: SKELETON_KEY, cls: 'tool', glyph: '(', kind: 'key', actualKind: 'skeleton key', known: false, plural: 'keys' }],
+    ['credit card', { otyp: CREDIT_CARD, cls: 'tool', glyph: '(', kind: 'credit card', actualKind: 'credit card', plural: 'credit cards' }],
     ['wooden harp', { otyp: WOODEN_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'wooden harp', known: false }],
     ['magic flute', { otyp: MAGIC_FLUTE, cls: 'tool', glyph: '(', kind: 'flute', actualKind: 'magic flute', known: false, plural: 'magic flutes' }],
     ['frost horn', { otyp: FROST_HORN, cls: 'tool', glyph: '(', kind: 'horn', actualKind: 'frost horn', known: false, plural: 'frost horns' }],
@@ -3650,6 +3671,11 @@ const WISH_BASE_OBJECTS = new Map([
     ['horn of plenty', { otyp: HORN_OF_PLENTY, cls: 'tool', glyph: '(', kind: 'horn', actualKind: 'horn of plenty', known: false, plural: 'horns of plenty' }],
     ['magic harp', { otyp: MAGIC_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'magic harp', known: false, plural: 'magic harps' }],
     ['drum of earthquake', { otyp: DRUM_OF_EARTHQUAKE, cls: 'tool', glyph: '(', kind: 'drum', actualKind: 'drum of earthquake', known: false, plural: 'drums of earthquake' }],
+    // C ref: objects.h TOOL("bell", NoDes, ...)/TOOL("bugle", NoDes, ...) —
+    // no shuffled appearance; TOOL("leather drum", "drum", ...) shows "drum".
+    ['bell', { otyp: BELL, cls: 'tool', glyph: '(', kind: 'bell', actualKind: 'bell', plural: 'bells' }],
+    ['bugle', { otyp: BUGLE, cls: 'tool', glyph: '(', kind: 'bugle', actualKind: 'bugle', plural: 'bugles' }],
+    ['leather drum', { otyp: LEATHER_DRUM, cls: 'tool', glyph: '(', kind: 'drum', actualKind: 'leather drum', known: false, plural: 'drums' }],
     ['mirror', { otyp: MIRROR, cls: 'tool', glyph: '(', kind: 'looking glass', actualKind: 'mirror' }],
     ['expensive camera', { otyp: EXPENSIVE_CAMERA, cls: 'tool', glyph: '(', kind: 'expensive camera', actualKind: 'expensive camera', plural: 'expensive cameras' }],
     ['tinning kit', { otyp: TINNING_KIT, cls: 'tool', glyph: '(', kind: 'tinning kit', actualKind: 'tinning kit', plural: 'tinning kits' }],
@@ -3729,6 +3755,11 @@ const WIZARD_ONLY_WISH_NAMEDESC_BOUNDS = new Map([
 ]);
 const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['dart', 61], ['darts', 61], ['dagger', 31], ['daggers', 31],
+    // C ref: objnam.c rnd_otyp_by_namedesc — oc_prob + xtra(1) per match:
+    // elven dagger 10+1, orcish dagger 12+1, silver dagger 3+1,
+    // athame 0+1, stiletto 5+1.
+    ['elven dagger', 11], ['orcish dagger', 13], ['silver dagger', 4],
+    ['athame', 1], ['stiletto', 6],
     ['knife', 21], ['short sword', 9], ['elven short sword', 3],
     ['orcish short sword', 4], ['dwarvish short sword', 3],
     ['scimitar', 16], ['broadsword', 9], ['elven broadsword', 5],
@@ -3753,6 +3784,10 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['tallow candle', 21], ['tallow candles', 21],
     ['wax candle', 6], ['wax candles', 6], ['stethoscope', 26],
     ['magic marker', 16], ['lock pick', 61], ['wooden harp', 5],
+    // C ref: objnam.c rnd_otyp_by_namedesc — skeleton key 80+1,
+    // credit card 15+1, bell 2+1, bugle 4+1, leather drum 4+1.
+    ['skeleton key', 81], ['credit card', 16], ['bell', 3],
+    ['bugle', 5], ['leather drum', 5],
     ['magic flute', 3], ['frost horn', 3], ['fire horn', 3],
     ['horn of plenty', 3], ['magic harp', 3], ['drum of earthquake', 3],
     ['mirror', 46], ['expensive camera', 16],
@@ -3874,12 +3909,20 @@ const WISH_TOOL_APPEARANCES = new Map([
     ['tooled horn', 'horn'], ['frost horn', 'horn'], ['fire horn', 'horn'],
     ['horn of plenty', 'horn'], ['wooden harp', 'harp'],
     ['magic harp', 'harp'], ['drum of earthquake', 'drum'],
+    // C ref: objects.h — TOOL("tin whistle", "whistle") and
+    // TOOL("magic whistle", "whistle") appearances.
+    ['tin whistle', 'whistle'], ['magic whistle', 'whistle'],
+    ['leather drum', 'drum'],
 ]);
 const WISH_TOOL_OTYPES = new Map([
     ['horn of plenty', HORN_OF_PLENTY],
 ]);
 const WISH_TOOL_NAMEDESC_BOUNDS = new Map([
+    // C ref: objnam.c rnd_otyp_by_namedesc — oc_prob + xtra(1) per match:
+    // saddle 5+1, tin whistle 100+1, magic whistle 30+1, wooden flute 4+1.
     ['magic harp', 3], ['leash', 66], ['lenses', 6],
+    ['saddle', 6], ['tin whistle', 101], ['magic whistle', 31],
+    ['wooden flute', 5],
 ]);
 const WISH_OBJECT_RANGES = new Map([
     ['bag', [
@@ -3901,6 +3944,20 @@ const WISH_OBJECT_RANGES = new Map([
         ['frost horn', 2],
         ['fire horn', 2],
         ['horn of plenty', 2],
+    ]],
+    // C ref: objects.h shared tool descriptions that rnd_otyp_by_namedesc
+    // matches for bare appearance wishes (raw oc_prob values; the +1 per
+    // candidate is added by wishedObjectRangeName).
+    ['harp', [
+        ['wooden harp', 4],
+        ['magic harp', 2],
+    ]],
+    ['drum', [
+        ['leather drum', 4],
+        ['drum of earthquake', 2],
+    ]],
+    ['key', [
+        ['skeleton key', 80],
     ]],
     ['shield', [
         ['small shield', 6],
@@ -5180,6 +5237,94 @@ function cAtoiLikeLevel(text) {
     const second = raw[1] || '';
     const hasNumericPrefix = /\d/.test(first) || (first === '-' && /\d/.test(second));
     return { value, hasNumericPrefix };
+}
+
+// C ref: dungeon.c:2087 dlev_in_current_branch — within same branch, or else
+// main dungeon <-> gehennom (medusa_level is in the main dungeon,
+// valley_level is in gehennom).
+function levelPortInCurrentBranch(dlev) {
+    const current = game.u?.uz;
+    if (!current || !dlev) return false;
+    const valley = specialLevel('valley');
+    const medusa = specialLevel('medusa');
+    return dlev.dnum === current.dnum
+        || !!(valley && medusa
+            && ((current.dnum === valley.dnum && dlev.dnum === medusa.dnum)
+                || (current.dnum === medusa.dnum && dlev.dnum === valley.dnum)));
+}
+
+// C ref: dungeon.c:2139-2143 — either wizard mode or else seen and not
+// forgotten ((svl.level_info[idx].flags & VISITED) == VISITED); the JS tracks
+// visited levels as the current level plus the saved-levels map.
+function levelPortVisited(dlev) {
+    const current = game.u?.uz;
+    if (current?.dnum === dlev.dnum && current?.dlevel === dlev.dlevel) return true;
+    return !!game._saved_levels?.has?.(`${dlev.dnum}:${dlev.dlevel}`);
+}
+
+// C ref: dungeon.c:311 find_branch(s, NULL) — find the branch that links the
+// named dungeon (support for level tport by name).
+function levelPortBranchByName(nam) {
+    const wanted = String(nam).toLowerCase();
+    for (const branch of game.branches || []) {
+        const dnam = String(game.dungeons?.[branch.end2?.dnum]?.name || '').toLowerCase();
+        if (dnam === wanted || (dnam.startsWith('the ') && dnam.slice(4) === wanted)) return branch;
+    }
+    return null;
+}
+
+// C ref: dungeon.c:2098 lev_by_name — take one word and try to match it to a
+// level; recognized levels are as shown by print_dungeon().  Returns the
+// target depth, or 0 when the name resolves to no reachable level.
+export function levByName(nam) {
+    let name = String(nam || '');
+    let dlev = null;
+    let resolved = false;
+    const wizard = !!game.flags?.debug;
+
+    // look at the player's custom level annotations first (find_mapseen_by_str)
+    for (const [key, annotation] of game._level_annotations || []) {
+        if (String(annotation).toLowerCase() === name.toLowerCase()) {
+            const [dnum, dlevel] = String(key).split(':').map(Number);
+            dlev = { dnum, dlevel };
+            resolved = true;
+            break;
+        }
+    }
+    if (!resolved) {
+        // allow strings like "the oracle level" to find "oracle"
+        if (/^the /i.test(name)) name = name.slice(4);
+        const levelSuffix = name.toLowerCase().indexOf(' level');
+        if (levelSuffix >= 0 && levelSuffix === name.length - 6) name = name.slice(0, levelSuffix);
+        // hell is the old name, and wouldn't match; gehennom would match its
+        // branch, yielding the castle level instead of valley of the dead
+        if (/^(?:gehennom|hell)$/i.test(name)) name = In_V_tower(game.u?.uz) ? " to Vlad's tower" : 'valley';
+        // Oracle says "welcome to Delphi" so recognize that name too
+        else if (/^delphi$/i.test(name)) name = 'oracle';
+
+        const slev = game.specialLevels?.find(level => String(level.name).toLowerCase() === name.toLowerCase());
+        if (slev) {
+            dlev = { dnum: slev.dnum, dlevel: slev.dlevel };
+            resolved = true;
+        }
+    }
+
+    if (resolved) {
+        if (levelPortInCurrentBranch(dlev) && (wizard || levelPortVisited(dlev))) return depth_of_level(dlev);
+        return 0;
+    }
+
+    // not a specific level; try branch names
+    let branch = levelPortBranchByName(name);
+    if (!branch) {
+        const toIndex = name.toLowerCase().indexOf(' to ');
+        if (toIndex >= 0) branch = levelPortBranchByName(name.slice(toIndex + 4)); // "<branch> to Xyzzy"
+    }
+    if (branch && (wizard || (levelPortVisited(branch.end1) && levelPortVisited(branch.end2)))) {
+        const end = branch.end1?.dnum === game.u?.uz?.dnum ? branch.end1 : branch.end2;
+        if (levelPortInCurrentBranch(end)) return depth_of_level(end);
+    }
+    return 0;
 }
 
 async function randomLevelTeleportFromPrompt() {
@@ -13796,6 +13941,199 @@ function doorDescription(loc) {
     return 'doorway';
 }
 
+// C ref: src/getpos.c:331-334 IS_UNEXPLORED_LOC — in bounds, the remembered
+// glyph is unexplored and the spot was never seen.
+function travelUnexploredLoc(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.seenv) return false;
+    return !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ';
+}
+
+// C ref: src/getpos.c:437-507 gather_locs_interesting — whether the glyph
+// displayed at (x, y) is interesting for the given gloc class.  A spot whose
+// display is taken over by a monster, an object, a known trap or an
+// engraving no longer shows its terrain glyph, so it only qualifies for the
+// matching class (the default getloc_filter is GFILTER_NONE: no view/area
+// restriction).
+function travelLocInteresting(x, y, gloc) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate.mx === x && candidate.my === y && !candidate.dead);
+    const monShown = !!(mon && loc.disp_ch === (mon.data?.mlet?.[0] || mon.data?.glyph || '?'));
+    if (gloc === GLOC_MONS)
+        return monShown && mon.data?.name !== 'long worm tail' && !mon.data?.longWormTail;
+    let obj = null;
+    const objects = game.level?.objects || [];
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const candidate = objects[i];
+        if (!candidate.hidden && candidate.ox === x && candidate.oy === y) {
+            obj = candidate;
+            break;
+        }
+    }
+    const objShown = !!(obj && loc.disp_ch === (obj.glyph || '?'));
+    if (gloc === GLOC_OBJS)
+        return objShown && obj.otyp !== BOULDER && obj.otyp !== ROCK;
+    const covered = monShown || objShown
+        || (game.level?.traps || []).some(trap => trap.tx === x && trap.ty === y && trap.tseen)
+        || (game.level?.engravings || []).some(engraving => engraving.x === x && engraving.y === y);
+    const terrainShown = !covered
+        && !!(loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' ');
+    if (!terrainShown) return false;
+    if (gloc === GLOC_DOOR)
+        return loc.typ === DOOR || loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN;
+    if (gloc === GLOC_EXPLORE)
+        return (loc.typ === DOOR || loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN
+            || loc.typ === ROOM || loc.typ === CORR)
+            && (travelUnexploredLoc(x + 1, y) || travelUnexploredLoc(x - 1, y)
+                || travelUnexploredLoc(x, y + 1) || travelUnexploredLoc(x, y - 1));
+    return false;
+}
+
+// C ref: src/getpos.c:511-554 gather_locs — the hero's own spot is always
+// included and sorts first, then every interesting spot ordered by
+// cmp_coord_distu (getpos.c:311-329): Chebyshev distance from the hero,
+// ties broken by y, then x.
+function gatherTravelLocs(gloc) {
+    const heroX = game.u?.ux || 0;
+    const heroY = game.u?.uy || 0;
+    const locs = [];
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if ((x === heroX && y === heroY) || travelLocInteresting(x, y, gloc))
+                locs.push({ x, y });
+    locs.sort((a, b) => {
+        const distA = Math.max(Math.abs(a.x - heroX), Math.abs(a.y - heroY));
+        const distB = Math.max(Math.abs(b.x - heroX), Math.abs(b.y - heroY));
+        if (distA !== distB) return distA - distB;
+        return a.y !== b.y ? a.y - b.y : a.x - b.x;
+    });
+    return locs;
+}
+
+// C ref: src/getpos.c:639-662 auto_describe() for the travel cursor: show
+// what is under the cursor, flag unreachable spots (getpos.c:657-658 ->
+// hack.c:1526 is_valid_travelpt), and remember the pending travel target.
+// Shared by cursor movement and the mMoOdDxX jumps.
+async function setTravelCursorTarget(targetX, targetY) {
+    game._farlook_x = targetX;
+    game._farlook_y = targetY;
+    const loc = game.level?.at(targetX, targetY);
+    const terrain = loc?.typ === STONE
+        && (loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' '
+            || game._travel_previous_target) ? 'stone'
+        : !loc || (!loc.seenv && !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ') ? 'unexplored area'
+        : loc?.typ === CLOUD ? 'fog/vapor cloud'
+        : loc?.typ === ROOM && !(game.viz_array?.[targetY]?.[targetX] & IN_SIGHT) ? 'dark part of a room'
+        : (loc.disp_ch || ' ') === ' ' ? 'dark part of a room'
+        : loc.typ === DOOR ? doorDescription(loc)
+        : loc?.typ === CORR ? 'corridor'
+            : loc?.typ === ROOM || loc?.typ === STAIRS ? 'floor of a room'
+                : loc?.typ === MOAT ? 'moat'
+                    : loc?.typ === TREE ? 'tree'
+                        : loc?.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
+    const keys = travelPathKeys(targetX, targetY);
+    if (!keys[0]) {
+        game._travel_target = null;
+        game._travel_target_description = '';
+        game._travel_no_path_target = { x: targetX, y: targetY, message: `${terrain} (no travel path)` };
+        game._travel_prompt_current = 0;
+        await setMessage(`${terrain} (no travel path)`);
+        game._cursor_override = [targetX - 1, targetY + 1];
+        return;
+    }
+    game._travel_target = { x: targetX, y: targetY };
+    game._travel_target_description = terrain;
+    game._travel_no_path_target = null;
+    game._travel_prompt_current = 0;
+    await setMessage(terrain);
+    game._cursor_override = [targetX - 1, targetY + 1];
+}
+
+// C ref: src/hack.c:4062-4074 doorless_door — a door tile still holding its
+// door (anything but D_NODOOR/D_BROKEN) blocks diagonal travel moves.
+function travelDoorWithDoor(x, y) {
+    const loc = game.level?.at(x, y);
+    return loc?.typ === DOOR && !!(loc.doormask & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: src/lock.c:779-923 doopen_indir() — the door cases of the 'o'
+// (open) command.  Confusion or Stunned use a turn even when nothing gets
+// opened (lock.c:823-826); the drawbridge and lootable-container cases of
+// lock.c:841-852 are not handled here.
+async function doOpenDoorInDirection(dx, dy) {
+    const x = (game.u?.ux || 0) + dx;
+    const y = (game.u?.uy || 0) + dy;
+    const loc = game.level?.at(x, y);
+    if ((game.u?._statusSuffix || '').includes('Conf')
+        || (game.u?._confusionTimeout || 0) > 0 || game.u?.stunned)
+        game.context.move = 1;
+    if (!loc || loc.typ !== DOOR) {
+        await setMessage(`You ${game.u?.blind ? 'feel' : 'see'} no door there.`);
+        return;
+    }
+    newsym(x, y);
+    if (!(loc.doormask & D_CLOSED)) {
+        // C ref: src/lock.c:855-875 — doormask is matched exactly and anything
+        // else is locked (the autounlock follow-ups of lock.c:876-894 are off
+        // by default and not implemented).
+        await setMessage(loc.doormask === D_BROKEN ? 'This door is broken.'
+            : loc.doormask === D_NODOOR ? 'This doorway has no door.'
+            : loc.doormask === D_ISOPEN ? 'This door is already open.'
+            : 'This door is locked.');
+        return;
+    }
+    // C ref: src/lock.c:904 — rnl(20) against the average of STR/DEX/CON.
+    const stats = game.u?.acurr?.a || [];
+    const rawStr = stats[0] ?? 10;
+    const str = rawStr <= 18 ? rawStr : rawStr <= 121 ? 19 + Math.trunc(rawStr / 50) : Math.min(rawStr, 125) - 100;
+    const openTarget = Math.trunc((str + (stats[3] ?? 10) + (stats[4] ?? 10)) / 3);
+    if (rnl(20) < openTarget) {
+        if (loc.doormask & D_TRAPPED) {
+            // C ref: src/lock.c:907-911 — a trapped door is destroyed by its
+            // booby trap (trap.c:6694 b_trapped) instead of opening.
+            const explosion = applyBoobyTrapExplosion({ item: 'door', bodypart: true });
+            loc.doormask = D_NODOOR;
+            vision_reset();
+            newsym(x, y);
+            vision_recalc(0);
+            addShopTerrainDamage(x, y, 0);
+            await setMessage(['The door opens.', explosion.message].filter(Boolean).join('  '),
+                !!explosion.more || !!explosion.fatal);
+            game.context.move = 1;
+            if (explosion.fatal || explosion.lifeSaving) applyLifeSavingOrFatalCommandMode(explosion);
+            return;
+        }
+        loc.doormask = D_ISOPEN;
+        vision_reset();
+        newsym(x, y);
+        vision_recalc(0);
+        await setMessage('The door opens.');
+    } else {
+        exerciseAttribute(A_STR, true);
+        await setMessage('The door resists!');
+    }
+    game.context.move = 1;
+}
+
+// C ref: src/hack.c:1271-1288 — when travel starts with the target one step
+// away, findtravelpath tries the direct move first; when that move is
+// illegal (e.g. diagonal out of an intact doorway, hack.c:1208-1214) it has
+// already called end_running(FALSE), which cancels multi
+// (hack.c:4156-4157), so travel ends after a single path step instead of
+// walking the whole path.  A target still holding its door fails
+// crawl_destination (hack.c:4095) and keeps normal multi-step travel.
+function travelStopsAfterOneStep(targetX, targetY) {
+    const heroX = game.u?.ux || 0;
+    const heroY = game.u?.uy || 0;
+    if (Math.max(Math.abs(targetX - heroX), Math.abs(targetY - heroY)) !== 1) return false;
+    if (targetX === heroX || targetY === heroY) return false; /* orthogonal: direct move is fine */
+    if (travelDoorWithDoor(targetX, targetY)) return false; /* crawl_destination rejects door targets */
+    return travelDoorWithDoor(heroX, heroY); /* test_move rejects diagonal out of a doorway */
+}
+
 export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = false, allowGuess = false, allowBlockedTarget = false) {
     const startX = game.u?.ux || 0;
     const startY = game.u?.uy || 0;
@@ -13821,6 +14159,12 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
                 const x = cur.x + DIR_DX[key];
                 const y = cur.y + DIR_DY[key];
                 const id = `${x},${y}`;
+                // C ref: src/hack.c:1139-1150,1208-1214 — no diagonal moves
+                // into or out of an intact doorway (the block_door/block_entry
+                // squeeze exceptions are not modeled).
+                if (DIR_DX[key] && DIR_DY[key]
+                    && (travelDoorWithDoor(cur.x, cur.y) || travelDoorWithDoor(x, y)))
+                    continue;
                 if (x === heroX && y === heroY) {
                     const dx = cur.x - heroX;
                     const dy = cur.y - heroY;
@@ -13916,6 +14260,11 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
                 for (const key of dirs) {
                     const x = cur.x + DIR_DX[key];
                     const y = cur.y + DIR_DY[key];
+                    // C ref: src/hack.c:1139-1150,1208-1214 — no diagonal
+                    // moves into or out of an intact doorway.
+                    if (DIR_DX[key] && DIR_DY[key]
+                        && (travelDoorWithDoor(cur.x, cur.y) || travelDoorWithDoor(x, y)))
+                        continue;
                     if (x === startX && y === startY) {
                         const dx = cur.x - startX;
                         const dy = cur.y - startY;
@@ -13935,16 +14284,10 @@ export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = fals
         }
     }
 
-    let checkX = startX;
-    let checkY = startY;
-    for (const key of keys) {
-        checkX += DIR_DX[key];
-        checkY += DIR_DY[key];
-        const occupied = game.level?.monsters?.find(mon => mon.mx === checkX && mon.my === checkY);
-        const peaceful = occupied?.pet || occupied?.mpeaceful;
-        if (occupied && (!ignorePeacefulNearTarget || !peaceful)
-            && Math.max(Math.abs(targetX - checkX), Math.abs(targetY - checkY)) <= 2) return [];
-    }
+    // C ref: src/hack.c:1526-1544 is_valid_travelpt + 1266-1420
+    // findtravelpath — path validity never considers monsters standing on or
+    // near the path (test_move has no monster case); travel stops when it
+    // meets a monster instead.
     return keys;
 }
 function landingSpot() {
@@ -15906,6 +16249,82 @@ function becomeMonster(name) {
 
 function godsNoticeWish() {
     game.u.ublesscnt = (game.u.ublesscnt || 0) + rn2(100) + 50;
+}
+
+// C ref: invent.c mergable()/merged() — a wished potion that stacks with an
+// existing one merges into it (hold_another_object observes the new object
+// first, invent.c:1217, maximizing mergeability); when the two stacks differ
+// in type/BUC knowledge the combined stack is learned "by comparing them"
+// (invent.c:862-875, message at invent.c:941).
+function wishedPotionMergeTypeKey(item) {
+    if (item?.potionIndex != null) return `index:${item.potionIndex}`;
+    const kind = String(item?.actualKind || item?.kind || '')
+        .replace(/^potion of /, '').toLowerCase();
+    if (kind === 'water' || kind === 'holy water' || kind === 'unholy water') return 'water';
+    return '';
+}
+
+function wishedPotionKindIsTypeName(item) {
+    if (item?.potionIndex == null) {
+        const kind = String(item?.kind || '').toLowerCase();
+        return kind === 'water' || kind === 'holy water' || kind === 'unholy water';
+    }
+    const typeName = String(IDENTIFIED_POTION_NAMES[item.potionIndex] || '').toLowerCase();
+    const kind = String(item?.kind || '').replace(/^potion of /, '').toLowerCase();
+    return !!typeName && kind === typeName;
+}
+
+function findWishedPotionInventoryMergeTarget(item) {
+    if (item?.cls !== 'potion' || item.artifact || item.nomerge) return null;
+    const sourceType = wishedPotionMergeTypeKey(item);
+    if (!sourceType) return null;
+    for (const target of game.inventory || []) {
+        if (target === item || target.artifact || target.nomerge) continue;
+        if (target.cls !== 'potion') continue;
+        if (wishedPotionMergeTypeKey(target) !== sourceType) continue;
+        // C ref: invent.c mergable — BUC, spe, dilution and grease must match.
+        if (!!target.blessed !== !!item.blessed || !!target.cursed !== !!item.cursed) continue;
+        if ((target.spe ?? 0) !== (item.spe ?? 0)) continue;
+        if ((target.odiluted ?? false) !== (item.odiluted ?? false)) continue;
+        if ((target.greased ?? false) !== (item.greased ?? false)) continue;
+        if (!objectInstanceNamesMergeCompatible(target, item)) continue;
+        return target;
+    }
+    return null;
+}
+
+function mergeWishedPotionIntoInventory(item, target) {
+    // C ref: invent.c merged() — knowledge carries over to the combined stack.
+    let discovered = false;
+    if (wishedPotionKindIsTypeName(item) !== wishedPotionKindIsTypeName(target)) {
+        const typeName = target.potionIndex != null
+            ? IDENTIFIED_POTION_NAMES[target.potionIndex]
+            : String(target.actualKind || target.kind || '').replace(/^potion of /, '');
+        if (typeName) target.kind = typeName;
+        target.known = true;
+        discovered = true;
+    }
+    const isPriest = (game._startup_role || game.urole?.name?.m) === 'Priest';
+    if ((item.bknown === true) !== (target.bknown === true) && !isPriest) {
+        target.bknown = true;
+        discovered = true;
+    }
+    const addedQuan = Math.max(1, Math.trunc(Number(item.quan || 1)));
+    target.quan = Math.max(1, Math.trunc(Number(target.quan || 1))) + addedQuan;
+    const unitWeight = target.quan > addedQuan && Number.isFinite(Number(target.owt))
+        ? Number(target.owt) / (target.quan - addedQuan)
+        : 20;
+    target.owt = Math.max(1, Math.round(unitWeight * target.quan));
+    target.line = normalInventoryLine({ ...target, line: '' });
+    // C ref: invent.c prinv (via hold_another_object) — the landing line shows
+    // the wished-for quantity of the combined stack, without a period.
+    const bucPrefix = target.bknown === true
+        ? (target.blessed ? 'blessed ' : target.cursed ? 'cursed ' : 'uncursed ')
+        : '';
+    const visibleName = pickupObjectName({ ...target, quan: addedQuan });
+    const phrase = addedQuan > 1 ? `${addedQuan} ${bucPrefix}${visibleName}`
+        : `${/^[aeiou]/i.test(`${bucPrefix}${visibleName}`) ? 'an' : 'a'} ${bucPrefix}${visibleName}`;
+    return { target, discovered, landing: `${target.letter} - ${phrase}` };
 }
 
 function wishedInventoryPhrase(item, wishedQuan = 1) {
@@ -33392,14 +33811,23 @@ function markMonsterGenocided(name) {
 }
 
 function genocideListLines() {
-    const names = genocidedMonsterNames();
-    if (!names.length) return [[0, 41, 'You have never genocided any monsters.'], [1, 40, '--More--']];
-    const rows = [[0, 34, 'Genocided monster types:']];
-    let row = 1;
+    // C ref: list_genocided() (insight.c:3072-3115) — "Genocided species:"
+    // header, blank line, entries sorted by monster level high-to-low with the
+    // mons[] index as tiebreak (vanqsort_cmp default VANQ_MLVL_MNDX,
+    // insight.c:2632-2637,2711-2712), blank line, "N species genocided." footer.
+    const names = [...genocidedMonsterNames()].sort((nameA, nameB) => {
+        const monA = VANQUISHED_MONSTER_DATA.get(nameA) || { mlevel: 0, index: 9999 };
+        const monB = VANQUISHED_MONSTER_DATA.get(nameB) || { mlevel: 0, index: 9999 };
+        return (monB.mlevel - monA.mlevel) || (monA.index - monB.index) || nameA.localeCompare(nameB);
+    });
+    const rows = [[0, 41, 'Genocided species:'], [1, 41, '']];
+    let row = 2;
     for (const name of names)
-        rows.push([row++, 41, pluralizeMonsterName(name)]);
-    rows.push([Math.min(row, 23), 40, '--More--']);
-    return rows.slice(0, 24);
+        rows.push([row++, 41, ` ${pluralizeMonsterName(name)}`]);
+    rows.push([row++, 41, '']);
+    rows.push([row++, 41, `${names.length} species genocided.`]);
+    rows.push([row, 41, '--More--']);
+    return rows;
 }
 
 function monsterGenocideCurrentName(mon) {
@@ -33704,6 +34132,10 @@ async function createCursedGenocideMonsters(data, messages) {
     for (let i = rn1(3, 4); i > 0; i--) {
         const mon = await makemon(data, game.u?.ux || 0, game.u?.uy || 0, NO_MINVENT | MM_NOMSG);
         if (!mon) break;
+        // C ref: makemon() → place_monster() makes the new monster visible on
+        // the map immediately (makemon.c:1295); refresh its cell here since
+        // the JS display cache is newsym-driven.
+        newsym(mon.mx, mon.my);
         cnt++;
     }
     messages.push(cnt ? `Sent in ${cnt > 1 ? `some ${pluralizeMonsterName(data.name)}` : /^[aeiou]/i.test(data.name) ? `an ${data.name}` : `a ${data.name}`}.` : 'Nothing happens.');
@@ -33736,17 +34168,48 @@ function genocideRetryHint(pending) {
         : " [enter the name of a type of monster, or '?']";
 }
 
+// C ref: update_topl (win/tty/topl.c:251) appends a new message to the
+// current top line with two spaces when the combined text fits
+// (len + 3 < CO - 8) and inserts --More-- before replacing it otherwise;
+// "You die" messages always get a line of their own.
+function toplineMessageSequence(messages) {
+    const sequence = [];
+    let line = '';
+    for (const msg of messages) {
+        const text = String(msg || '');
+        if (!text) continue;
+        if (line && text.length + line.length + 3 < 72 && !text.startsWith('You die')) {
+            line = `${line}  ${text}`;
+        } else {
+            if (line) sequence.push({ text: line, more: true });
+            line = text;
+        }
+    }
+    if (line) sequence.push({ text: line, more: false });
+    return sequence;
+}
+
 async function endGenocidePrompt(messages = [], more = false) {
+    const pending = game._genocide_pending;
     game._genocide_pending = null;
     game._genocide_input = '';
     game._command_mode = null;
-    if (messages.length) await setMessage(messages.join('  '), more);
-    else {
+    const sequence = toplineMessageSequence(messages);
+    if (sequence.length) {
+        await setMessage(sequence[0].text, sequence.length > 1 || more);
+        if (sequence.length > 1) {
+            game._queued_messages_after_more ??= [];
+            game._queued_messages_after_more.push(...sequence.slice(1));
+        }
+    } else {
         game._pending_message = '';
         game._message_more = 0;
     }
     if (applyLifeSavingOrFatalCommandMode(messages)) return;
     if (armHeroGenocideDeathPrompt()) return;
+    // C ref: doread() runs learnscroll() after seffects() returns (read.c:635-641);
+    // discovering the scroll type exercises wisdom (o_init.c:483 via makeknown).
+    if (pending?.learnedNewType) exerciseAttribute(A_WIS, true);
     game.context.move = 1;
 }
 
@@ -33792,7 +34255,13 @@ async function finishGenocideInput(raw) {
     }
     if (input === '?' || input === "'?'") {
         game._genocide_input = '';
-        setOverlay(genocideListLines(), 24, false, 39);
+        // C ref: list_genocided('g', FALSE) reports via pline() when there is
+        // nothing to list (insight.c:3122-3125).
+        if (!genocidedMonsterNames().length) {
+            await setMessage('No creatures have been genocided yet.');
+            return;
+        }
+        setOverlay(genocideListLines(), 24, false, 40);
         game._command_mode = 'genocideHelp';
         return;
     }
@@ -40140,11 +40609,23 @@ function earthBoulderPitHoleEffects(obj, x, y, messages, verb = 'fall', {
         game.u.utrap = 0;
         game.u.utraptype = null;
     }
+    // C ref: flooreffects() -> useupf() -> delobj() -> obj_resists(obj, 0, 0)
+    // (do.c:266, invent.c:1446) — consumed when the plugging boulder is used up.
+    rn2(100);
     messages.push(...buryObjectsAt(x, y, { ignore: obj }));
     if (buriedDebt) messages.push(buriedDebt);
     if (usedUpShopBillOnDestroy) markObjectShopBillUsedUp(obj);
     newsym(x, y);
     return true;
+}
+
+// C ref: moverock_core() HOLE/TRAPDOOR plug message (hack.c:546-558) — a
+// pushed boulder plugs a hole or trap door outright instead of going through
+// flooreffects(), so the message differs from earthBoulderPitMessage().
+function pushedBoulderHolePlugMessage(trap, x, y) {
+    if (game.u?.blind) return 'Kerplunk!  You no longer feel the boulder.';
+    const trapdoor = trap?.ttyp === TRAPDOOR;
+    return `The boulder ${trapdoor ? 'triggers' : 'falls into'} and plugs a ${trapdoor ? 'trap door' : 'hole'} in the ${sitSurfaceName(game.level?.at(x, y))}!`;
 }
 
 function earthFloorLiquidType(loc) {
@@ -44208,16 +44689,38 @@ function applyWishedInstanceName(item, name) {
 function makeWishedBaseObject(baseObject, metadata) {
     const forceBagOfTricksTool = !!metadata?.forceBagOfTricksTool;
     if (forceBagOfTricksTool) game._mkobj_force_bag_of_tricks = true;
+    // C ref: objects.h WEAPON("silver dagger", NoDes, ...) is SILVER, so
+    // mksobj_init's trailing mkobj_erosions (mkobj.c:1172) rolls nothing for
+    // it (may_generate_eroded rejects non-damageable materials, mkobj.c:183).
+    // Route through the generic WEAPON_CLASS init with erosion rolls off.
+    const silverWeapon = baseObject.otyp === SILVER_DAGGER;
+    if (silverWeapon) game._mkobj_weapon_erodible = false;
     try {
-        return mksobj(baseObject.otyp, true, false);
+        return mksobj(silverWeapon ? WEAPON_CLASS : baseObject.otyp, true, false);
     } finally {
         if (forceBagOfTricksTool) game._mkobj_force_bag_of_tricks = false;
+        if (silverWeapon) game._mkobj_weapon_erodible = true;
     }
 }
+
+// C ref: objnam.c rnd_otyp_by_namedesc — bare wishes for a shared objects.h
+// description match every object with that description and roll
+// rn2(sum(oc_prob + xtra(1))). Armor category ranges have no such C match;
+// they keep their legacy weighted pick.
+const WISH_RANGE_NAMEDESC_MATCHED = new Set(['bag', 'lamp', 'candle', 'horn', 'harp', 'drum', 'key']);
 
 function wishedObjectRangeName(lowerName) {
     const range = WISH_OBJECT_RANGES.get(lowerName);
     if (!range) return '';
+    if (WISH_RANGE_NAMEDESC_MATCHED.has(lowerName)) {
+        const total = range.reduce((sum, [, prob]) => sum + prob + 1, 0);
+        let roll = rn2(total);
+        for (const [name, prob] of range) {
+            roll -= prob + 1;
+            if (roll < 0) return name;
+        }
+        return range[0]?.[0] || '';
+    }
     const total = range.reduce((sum, [, prob]) => sum + prob, 0);
     if (total <= 0) return range[rn2(range.length)]?.[0] || '';
     let roll = rnd(total);
@@ -44459,6 +44962,13 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         const oilPotion = potionName === 'oil';
         const potionIndex = appearanceIndex >= 0 ? appearanceIndex : IDENTIFIED_POTION_NAMES.indexOf(potionName);
         if (potionIndex >= 0 && !spellingAlias.skipNamedesc) rn2(POTION_WISH_PROBS[potionIndex] + 1);
+        // C ref: readobjnam() "potion of water" falls through to
+        // rnd_otyp_by_namedesc("water", POTION_CLASS, 1), which matches
+        // POT_WATER uniquely and rolls rn2(oc_prob + xtra_prob) = rn2(80 + 1)
+        // (objnam.c:3522, objects.h POT_WATER prob 80); "[un]holy water"
+        // takes the direct typ=POT_WATER shortcut (objnam.c:4489) with no roll.
+        if (waterPotion && !holyWater && !unholyWater && potionIndex < 0
+            && !spellingAlias.skipNamedesc) rn2(80 + 1);
         const otmp = mksobj(waterPotion ? POT_WATER : oilPotion ? POT_OIL : potionIndex >= 0 ? POTION_WISH_BASE + potionIndex : POTION_CLASS, true, false);
         if (oilPotion && otmp.age == null) otmp.age = 400;
         const appearance = potionIndex >= 0 ? game._object_descriptions?.potions?.[potionIndex]?.description : '';
@@ -44710,19 +45220,33 @@ export function pickupObjectName(obj) {
         if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
         if (obj.kind?.startsWith?.('potion:')) return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, obj.singular || `potion of ${obj.kind.slice(7)}`)));
         const rawKind = String(obj.kind || '').replace(/^potion of /, '');
-        if (rawKind === 'water' && (obj.blessed || obj.cursed)) {
-            const kind = obj.blessed ? 'holy water' : 'unholy water';
-            return named((obj.quan || 1) > 1 ? `potions of ${kind}` : `potion of ${kind}`);
+        if (rawKind === 'water') {
+            // C ref: objnam.c doname POTION_CLASS (objnam.c:835-848) — the
+            // "potion of [un]holy water" name requires the type to be known
+            // (nn: the water type discovered, or the item not explicitly
+            // unidentified like a wished-for one) and the BUC state known
+            // (bknown); an unrecognized water potion is just its fixed
+            // "clear" appearance (objects.h:1177).
+            if (obj.known !== false || potionDiscoveryKnown('water')) {
+                const holy = obj.bknown === true && (obj.blessed || obj.cursed);
+                const kind = holy ? (obj.blessed ? 'holy water' : 'unholy water') : 'water';
+                return named((obj.quan || 1) > 1 ? `potions of ${kind}` : `potion of ${kind}`);
+            }
+            return named((obj.quan || 1) > 1 ? 'clear potions' : 'clear potion');
         }
         if (obj.kind === 'holy water' || obj.kind === 'unholy water')
             return named((obj.quan || 1) > 1 ? `potions of ${obj.kind}` : `potion of ${obj.kind}`);
-        if (obj.kind?.endsWith?.(' potion')) return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, obj.kind)));
+        if (obj.kind?.endsWith?.(' potion'))
+            return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj,
+                // C ref: objnam.c doname — appearance-named potions pluralize
+                // via makeplural ("2 orange potions").
+                (obj.quan || 1) > 1 ? obj.kind.replace(/ potion$/, ' potions') : obj.kind)));
         if (obj.kind) {
             const name = obj.kind.replace(/^potion of /, '');
             return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, (obj.quan || 1) > 1 ? `potions of ${name}` : `potion of ${name}`)));
         }
         const appearance = game._object_descriptions?.potions?.[obj.potionIndex]?.description || 'clear';
-        return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, `${appearance} potion`)));
+        return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, (obj.quan || 1) > 1 ? `${appearance} potions` : `${appearance} potion`)));
     }
     if (obj.otyp === WAND_CLASS || obj.cls === 'wand') {
         if (obj.known === false) {
@@ -53461,10 +53985,62 @@ function movementTeleportTrapResult(trap, options = {}) {
     return { message: materialize || 'You shudder for a moment.', more: true };
 }
 
+// C ref: immune_to_trap() hero cases (trap.c:2796-2934) — whether a discovered
+// trap clearly cannot harm the hero; the paranoid_confirmation:trap prompt
+// (hack.c:2552-2579, enabled by default at options.c:7173) skips those.
+function heroClearlyImmuneToTrapType(ttyp) {
+    const form = polyselfForm() || {};
+    const polyd = !!game.u?._polyself_form;
+    const formName = String(form.name || '').toLowerCase();
+    if (ttyp === VIBRATING_SQUARE) return true; // trap.c:2926-2928
+    if (ttyp === SLP_GAS_TRAP) // trap.c:2828-2835
+        return !!(form.breathless || form.nonliving);
+    if (ttyp === LEVEL_TELEP || ttyp === TELEP_TRAP) // trap.c:2836-2843
+        return !!(In_endgame(game.u?.uz) || heroHasAmuletOfYendor());
+    if (ttyp === WEB) // trap.c:2856-2861
+        return polyd && !!(form.webmaker || form.amorphous || form.unsolid
+            || WEBMAKER_FORM_NAMES.has(formName) || WEB_WHIRLY_FORM_NAMES.has(formName)
+            || WEB_FLAMING_FORM_NAMES.has(formName) || formName === 'gelatinous cube');
+    if (ttyp === RUST_TRAP) // trap.c:2878-2892 — harmless without worn rustprone gear
+        return !(game.inventory || []).some(item =>
+            (isWornArmorItem(item) || item.wielded)
+            && /^(?:iron|steel)\b/.test(String(item.material || item.oc_material || '').toLowerCase().replace(/_/g, ' ')));
+    if (ttyp === BEAR_TRAP || ttyp === SQKY_BOARD || ttyp === LANDMINE
+        || ttyp === ROLLING_BOULDER_TRAP || ttyp === HOLE || ttyp === TRAPDOOR
+        || ttyp === PIT || ttyp === SPIKED_PIT) {
+        // trap.c:2803-2827 — ground-based traps evaded by levitation/flying
+        if (ttyp === BEAR_TRAP && polyd
+            && (form.small || form.verysmall || form.amorphous || form.unsolid
+                || WEB_WHIRLY_FORM_NAMES.has(formName)))
+            return true;
+        if (In_sokoban(game.u?.uz)) {
+            if (ttyp === PIT || ttyp === SPIKED_PIT || ttyp === HOLE || ttyp === TRAPDOOR) return false;
+            if (ttyp === ROLLING_BOULDER_TRAP) return true;
+        }
+        return !!(game.u?.levitating || game.u?.levitation || game.u?.Levitation
+            || game.u?.flying);
+    }
+    return false;
+}
+
+// C ref: into_vs_onto() (trap.c:5375-5387) — preposition for trap prompts.
+function intoVsOntoTrapType(ttyp) {
+    return [BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB]
+        .includes(ttyp);
+}
+
+// C ref: avoid_trap_andor_region() trap branch (hack.c:2552-2579).
+function heroMustConfirmTrapStep(x, y, nopick = 0) {
+    if (nopick && !game._running_continuation) return false; // 'm' prefix
+    if (heroIsConfused() || heroIsStunned()) return false;
+    const trap = heroTrapAt(x, y);
+    if (!trap?.tseen) return false;
+    return !heroClearlyImmuneToTrapType(trap.ttyp);
+}
+
 function movementMagicTrapResult(trap) {
     if (!trap) return null;
-    if (movementTrapAlreadySeen(trap) && sitTrapEscapeAllowed(trap) && !rn2(5))
-        return { message: movementTrapEscapeMessage(trap), more: false };
+    // C ref: the dotrap() escape roll lives in magicTrapResult (trap.c:3035-3044).
     const result = magicTrapResult(trap);
     return {
         ...result,
@@ -56466,7 +57042,8 @@ async function sitTriggerTrap(trap) {
         return true;
     }
     if (trap.ttyp === MAGIC_TRAP) {
-        trap.tseen = true;
+        // C ref: dosit() -> dotrap(trap, VIASITTING) (sit.c:503); magicTrapResult
+        // performs the already-seen escape roll and seetrap() itself.
         const result = magicTrapResult(trap);
         const messages = [prefix];
         if (result.message) messages.push(result.message);
@@ -57524,7 +58101,12 @@ function deathScoreLines() {
 }
 
 function magicTrapResult(trap) {
-    trap.tseen = true;
+    // C ref: dotrap() already-seen escape roll (trap.c:3035-3044), consumed
+    // before trapeffect_magic_trap's rn2(30) (trap.c:2300) for every hero
+    // dotrap trigger (movement, sitting, deferred object-list landings).
+    if (movementTrapAlreadySeen(trap) && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+    trap.tseen = true; // C ref: seetrap() in trapeffect_magic_trap (trap.c:2299)
     if (!rn2(30)) {
         game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
         const damage = rnd(10);
@@ -57813,6 +58395,49 @@ async function moveHero(dx, dy) {
             game.context.move = 0;
             return;
         }
+        const pushTrap = boulderFillTrapAt(pushx, pushy);
+        if (pushTrap && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(pushTrap.ttyp)) {
+            // C ref: moverock_core() trap-destination plug cases (hack.c:530-566) —
+            // dopush() is skipped, so no exercise(A_STR) roll and no "With great
+            // effort" message; useupf() -> delobj() rolls obj_resists(,0,0)'s
+            // rn2(100) for the consumed boulder (invent.c:1446), and bury_objs()
+            // rolls it again per buried object (dig.c:2007).
+            let plugMessage = '';
+            if (pushTrap.ttyp === HOLE || pushTrap.ttyp === TRAPDOOR) {
+                plugMessage = pushedBoulderHolePlugMessage(pushTrap, pushx, pushy);
+                deleteBoulderFillFloorTrap(pushTrap, pushx, pushy);
+                // C ref: useupf() -> delobj() -> obj_resists(obj, 0, 0)
+                // (hack.c:560, invent.c:1446) — the plugging boulder is used up.
+                rn2(100);
+                removeFloorObject(targetBoulder);
+                const buryMessages = buryObjectsAt(pushx, pushy, { ignore: targetBoulder });
+                plugMessage = [plugMessage, ...buryMessages].filter(Boolean).join('  ');
+            } else {
+                const pitMessages = [];
+                if (earthFloorEffects(targetBoulder, pushx, pushy, pitMessages, 'fall'))
+                    removeFloorObject(targetBoulder);
+                plugMessage = pitMessages.filter(Boolean).join('  ');
+            }
+            vision_reset();
+            game.u.ux0 = oldx;
+            game.u.uy0 = oldy;
+            game.u.ux = newx;
+            game.u.uy = newy;
+            game.u.umoved = true;
+            game.context.move = 1;
+            game._run_stop_now = 1;
+            game._run_steps_remaining = 0;
+            newsym(oldx, oldy);
+            newsym(newx, newy);
+            newsym(pushx, pushy);
+            vision_recalc(0);
+            if (plugMessage) await setMessage(plugMessage);
+            else {
+                game._pending_message = '';
+                game._keep_pending_message = 0;
+            }
+            return;
+        }
         const pushTurn = game.moves || 1;
         if (game._bldrpush_object !== targetBoulder) {
             game._bldrpush_object = targetBoulder;
@@ -58023,6 +58648,18 @@ async function moveHero(dx, dy) {
     if (mon && game._running_continuation) {
         game._run_steps_remaining = 0;
         game.context.move = 0;
+        return;
+    }
+    // C ref: src/hack.c:2761-2775 — while running (travel sets run = 8,
+    // cmd.c:5366), a visible non-safe monster in the way stops the move
+    // without an attack; the travel command still uses a turn
+    // (cmd.c:5376 returns ECMD_TIME).
+    if (mon && game._travel_step_active && !mon.mpeaceful && !mon.pet
+        && !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && couldsee(newx, newy)) {
+        game._travel_keys = [];
+        game._travel_dynamic_target = null;
+        game.context.move = 1;
         return;
     }
     let forcedPeacefulAttack = false;
@@ -58659,7 +59296,11 @@ async function moveHero(dx, dy) {
     if (target?.typ === DOOR && (target.doormask & (D_CLOSED | D_LOCKED))) {
         const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
         const confused = (game.u?._statusSuffix || '').includes('Conf') || (game.u?._confusionTimeout || 0) > 0;
-        const autoopen = game.flags?.autoopen !== false && !confused && !game.u?.stunned && !game.u?.fumbling;
+        // C ref: src/hack.c:1097-1098 — auto-open on bump is suppressed while
+        // running (svc.context.run; travel sets run = 8 at cmd.c:5366).
+        const autoopen = game.flags?.autoopen !== false
+            && !game._travel_step_active && !game._running_continuation && !game._initial_run_command
+            && !confused && !game.u?.stunned && !game.u?.fumbling;
         if (!autoopen && (oldx === newx || oldy === newy)
             && (game.u?.blind || game.u?.stunned || dex < 10 || game.u?.fumbling)) {
             await setMessage('Ouch!  You bump into a door.');
@@ -58770,6 +59411,18 @@ async function moveHero(dx, dy) {
             game._hallu_refresh_after_topline_more = 1;
             game._swim_tip_shown = 1;
         }
+        game.context.move = 0;
+        return;
+    }
+
+    // C ref: avoid_trap_andor_region() (hack.c:2552-2579) — with the default-on
+    // paranoid_confirmation:trap option (options.c:7173), stepping onto a
+    // discovered trap that can harm the hero asks for confirmation first.
+    if (!swallowedMove && !game._confirmed_trap_step && heroMustConfirmTrapStep(newx, newy, nopick)) {
+        const trap = heroTrapAt(newx, newy);
+        game._pending_trap_step = { dx, dy, nopick };
+        await setMessage(`Really ${movementTrapLocomotion()} ${intoVsOntoTrapType(trap?.ttyp) ? 'into' : 'onto'} that ${TRAP_NAMES[trap?.ttyp] || 'trap'}? [yn] (n)`);
+        game._command_mode = 'confirmTrapStep';
         game.context.move = 0;
         return;
     }
@@ -62909,6 +63562,9 @@ function tutorialEnterStash() {
                     game._wish_dust_item = null;
                     game._command_mode = 'wizardWish';
                 }
+                if (next.genocideClassPrompt) {
+                    game._command_mode = 'genocideText';
+                }
                 if (next.text === 'You die...' || next.text === 'You die.') {
                     if (!game._pending_time_passed) game._death_current_move = 0;
                     game._pending_time_passed = 0;
@@ -64200,6 +64856,26 @@ function tutorialEnterStash() {
             return;
         }
         game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'confirmTrapStep') {
+        // C ref: declined paranoid_confirmation:trap just cancels the move
+        // (hack.c:2575-2579); confirmed re-runs it past the prompt.
+        const pending = game._pending_trap_step || {};
+        game._pending_trap_step = null;
+        game._command_mode = null;
+        if (ch === 'y') {
+            game._move_nopick_prefix = pending.nopick || 0;
+            game._confirmed_trap_step = 1;
+            try {
+                await moveHero(pending.dx || 0, pending.dy || 0);
+            } finally {
+                game._confirmed_trap_step = 0;
+            }
+        } else {
+            game.context.move = 0;
+        }
         return;
     }
 
@@ -67155,7 +67831,7 @@ function tutorialEnterStash() {
     if (game._command_mode === 'readInvalidMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             const letters = inventoryLetters(item => item.cls === 'scroll' || item.cls === 'spellbook' || item.otyp === SCROLL_CLASS) || 'gh';
-            await setMessage(`What do you want to read? [${letters} or ?*]`);
+            await setMessage(`What do you want to read? [${getobjPromptLetters(letters)} or ?*]`);
             game._command_mode = 'readObject';
             return;
         }
@@ -67170,7 +67846,7 @@ function tutorialEnterStash() {
             game._message_more = 0;
             game._command_mode = 'readObject';
         } else if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            await setMessage(`What do you want to read? [${letters || 'gh'} or ?*]`);
+            await setMessage(`What do you want to read? [${getobjPromptLetters(letters || 'gh')} or ?*]`);
             game._command_mode = 'readObject';
             return;
         } else {
@@ -67391,18 +68067,35 @@ function tutorialEnterStash() {
                 else genocideMonsterType(target, messages, { killPlayer: true, cause: 'genocidal confusion' });
                 await setMessage(messages.join('  '), true);
                 if (armHeroGenocideDeathPrompt()) return;
+                // C ref: doread() runs learnscroll() after seffects() returns
+                // (read.c:635-641); discovering the scroll type exercises
+                // wisdom (o_init.c:483 via makeknown).
+                if (!alreadyKnown) exerciseAttribute(A_WIS, true);
                 game._command_mode = null;
                 game.context.move = 1;
                 return;
             }
             game._genocide_pending = {
-                messages,
+                messages: [],
                 cursed: !!item.cursed,
                 classMode: !!item.blessed,
+                learnedNewType: !alreadyKnown,
             };
             game._genocide_input = '';
-            await setMessage([...messages, genocidePrompt(game._genocide_pending)].join('  '), false);
-            game._command_mode = 'genocideText';
+            // C ref: doread() plines the disappearance, then seffect_genocide()
+            // plines the discovery message; each gets its own --More-- because
+            // the next message does not fit on the top line (update_topl,
+            // win/tty/topl.c:251), and tty_getlin forces --More-- before the
+            // class prompt (win/tty/getline.c:53).
+            await setMessage(messages[0], true);
+            game._queued_messages_after_more ??= [];
+            for (const text of messages.slice(1))
+                game._queued_messages_after_more.push({ text, more: true });
+            game._queued_messages_after_more.push({
+                text: genocidePrompt(game._genocide_pending),
+                more: false,
+                genocideClassPrompt: true,
+            });
             game.context.move = 0;
             return;
         }
@@ -71089,12 +71782,7 @@ function tutorialEnterStash() {
                 await setWishResultMessage(wishedItem._wish_disappear_message);
                 return;
             }
-            let letter = nextInventoryLetter();
-            if (game.u?.uball && game.u?.uchain && letter === 'n'
-                && !(game.inventory || []).some(invItem => invItem.letter === 'n')) {
-                letter = nextInventoryLetter();
-            }
-            const item = Object.assign({ letter, quan: 1 }, wishedItem);
+            const item = Object.assign({ quan: 1 }, wishedItem);
             recordWishConduct();
             if (item._artifact_wish_name) wishedQuan = 1;
             if (item._artifact_wish_name || item.artifact) addConductCount('wisharti');
@@ -71119,6 +71807,29 @@ function tutorialEnterStash() {
             delete item._wish_tin_requested_variety;
             delete item._wish_glob_size;
             delete item._wish_glob_default_count;
+            // C ref: invent.c addinv via hold_another_object — a wished potion
+            // that stacks with an existing one merges into it (zap.c makewish
+            // -> hold_another_object -> addinv -> merged) before the landing
+            // message; type/BUC knowledge gaps are learned by comparison.
+            const mergeTarget = findWishedPotionInventoryMergeTarget(item);
+            if (mergeTarget) {
+                const merged = mergeWishedPotionIntoInventory(item, mergeTarget);
+                game._pet_food_scan_inventory = game.inventory;
+                godsNoticeWish();
+                if (merged.discovered) {
+                    game._queued_message_after_more = merged.landing;
+                    await setWishResultMessage('You learn more about your items by comparing them.', true);
+                } else {
+                    await setWishResultMessage(merged.landing);
+                }
+                return;
+            }
+            let letter = nextInventoryLetter();
+            if (game.u?.uball && game.u?.uchain && letter === 'n'
+                && !(game.inventory || []).some(invItem => invItem.letter === 'n')) {
+                letter = nextInventoryLetter();
+            }
+            item.letter = letter;
             const bucPrefix = knownBlessCursePrefix(item);
             const baseVisibleName = game.u?.blind && item.cls === 'potion' ? 'potion'
                 : game.u?.blind && item.cls === 'ring' ? 'ring'
@@ -71441,6 +72152,7 @@ function tutorialEnterStash() {
             return;
         }
         game._command_mode = null;
+        await doOpenDoorInDirection(dir.dx, dir.dy);
         return;
     }
 
@@ -72485,7 +73197,10 @@ function tutorialEnterStash() {
                 game._command_mode = 'levelTeleportMenu';
                 return;
             }
-            const { value: target, hasNumericPrefix } = cAtoiLikeLevel(text);
+            // C ref: teleport.c:1248 — (newlev = lev_by_name(buf)) == 0 && (newlev = atoi(buf))
+            const nameTarget = levByName(text);
+            const { value: atoiTarget, hasNumericPrefix } = cAtoiLikeLevel(text);
+            const target = nameTarget || atoiTarget;
             if (target || hasNumericPrefix) {
                 if (questDownBlocked() && target > (game.u?.uz?.dlevel || 0)) {
                     clearLevelTeleportTextPrompt();
@@ -73288,7 +74003,7 @@ function tutorialEnterStash() {
                 }
                 else {
                     const lines = genocideListLines();
-                    setOverlay(lines, Math.max(...lines.map(([row]) => row)) + 1, false, 39);
+                    setOverlay(lines, Math.max(...lines.map(([row]) => row)) + 1, false, 40);
                     game._command_mode = 'simpleOverlay';
                 }
                 return;
@@ -74768,8 +75483,26 @@ function tutorialEnterStash() {
             game.context.move = 1;
             return;
         }
-        rn2(2);
-        await setMessage('You kick at empty space.');
+        // C ref: src/dokick.c:863-878 kick_dumb() — DEX exercise, then the
+        // "kick at empty space" vs "Dumb move!" roll is rn2(3) (skipped for
+        // martial roles or DEX >= 16), with wounded legs on the dumb move.
+        exerciseAttribute(A_DEX, false);
+        const kickStats = game.u?.acurr?.a || [];
+        const martialKickDumb = role === 'Monk' || role === 'Samurai';
+        if (martialKickDumb || (kickStats[A_DEX] ?? 10) >= 16 || rn2(3)) {
+            await setMessage('You kick at empty space.');
+            // (C feel_location(x, y) when blind: no effect while sighted.)
+        } else {
+            await setMessage('Dumb move!  You strain a muscle.');
+            exerciseAttribute(A_STR, false);
+            const woundDuration = 5 + rnd(5);
+            if (!game.u._woundedLegTurns && !game.u._woundedDexPenalty && game.u?.acurr?.a) {
+                game.u.acurr.a[A_DEX] = Math.max(3, (game.u.acurr.a[A_DEX] || 9) - 1);
+                game.u._woundedDexPenalty = 1;
+            }
+            game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, woundDuration);
+            game.u._woundedLegSide = 'right';
+        }
         game._command_mode = null;
         game.context.move = 1;
         return;
@@ -75354,7 +76087,7 @@ function tutorialEnterStash() {
     }
 
     if (game._command_mode === 'travelIntroMore') {
-        if (ch === ' ' || ch === '\x1b') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._travel_tip_seen = 1;
             setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
             game._command_mode = 'travelTip';
@@ -75368,7 +76101,12 @@ function tutorialEnterStash() {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
-            await setMessage("(For instructions type a '?')  Move cursor to the desired destination:");
+            // C ref: src/getpos.c:843-847,860-864 — the instructions line only
+            // appears with flags.verbose; the goal message always follows the
+            // tip window.
+            await setMessage(game.flags?.verbose === false
+                ? 'Move cursor to the desired destination:'
+                : "(For instructions type a '?')  Move cursor to the desired destination:");
             game._travel_prompt_current = 0;
             game._command_mode = 'travelCursor';
         }
@@ -75539,7 +76277,9 @@ function tutorialEnterStash() {
             game._pending_message = '';
             game._keep_pending_message = 0;
             game._travel_keys = [];
+            game._travel_step_active = 1;
             await rhack(keys[0]);
+            game._travel_step_active = 0;
             return;
         }
         if (pickTravelTarget && !game._travel_target) {
@@ -75560,8 +76300,10 @@ function tutorialEnterStash() {
                 await setMessage('unexplored area (no travel path)');
                 return;
             }
-            game._travel_keys = keys.slice(1);
+            game._travel_keys = travelStopsAfterOneStep(target.x, target.y) ? [] : keys.slice(1);
+            game._travel_step_active = 1;
             await rhack(keys[0]);
+            game._travel_step_active = 0;
             if (game._travel_previous_target
                 && (game.u?.ux || 0) === game._travel_previous_target.x
                 && (game.u?.uy || 0) === game._travel_previous_target.y)
@@ -75588,8 +76330,10 @@ function tutorialEnterStash() {
                 game._travel_keep_message = targetDescription;
             }
             game._travel_target_description = '';
-            game._travel_keys = keys.slice(1);
+            game._travel_keys = travelStopsAfterOneStep(target.x, target.y) ? [] : keys.slice(1);
+            game._travel_step_active = 1;
             await rhack(keys[0]);
+            game._travel_step_active = 0;
             if (game._travel_previous_target
                 && (game.u?.ux || 0) === game._travel_previous_target.x
                 && (game.u?.uy || 0) === game._travel_previous_target.y)
@@ -75606,40 +76350,31 @@ function tutorialEnterStash() {
                 dir.dx * steps,
                 dir.dy * steps,
             );
-            game._farlook_x = cursor.x;
-            game._farlook_y = cursor.y;
-            const targetX = game._farlook_x;
-            const targetY = game._farlook_y;
-            const loc = game.level?.at(targetX, targetY);
-            const terrain = loc?.typ === STONE
-                && (loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' '
-                    || game._travel_previous_target) ? 'stone'
-                : !loc || (!loc.seenv && !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ') ? 'unexplored area'
-                : loc?.typ === CLOUD ? 'fog/vapor cloud'
-                : loc?.typ === ROOM && !(game.viz_array?.[targetY]?.[targetX] & IN_SIGHT) ? 'dark part of a room'
-                : (loc.disp_ch || ' ') === ' ' ? 'dark part of a room'
-                : loc.typ === DOOR ? doorDescription(loc)
-                : loc?.typ === CORR ? 'corridor'
-                    : loc?.typ === ROOM || loc?.typ === STAIRS ? 'floor of a room'
-                        : loc?.typ === MOAT ? 'moat'
-                            : loc?.typ === TREE ? 'tree'
-                            : loc?.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
-            const keys = travelPathKeys(targetX, targetY);
-            if (!keys[0]) {
-                game._travel_target = null;
-                game._travel_target_description = '';
-                game._travel_no_path_target = { x: targetX, y: targetY, message: `${terrain} (no travel path)` };
-                game._travel_prompt_current = 0;
-                await setMessage(`${terrain} (no travel path)`);
-                game._cursor_override = [targetX - 1, targetY + 1];
-                return;
+            await setTravelCursorTarget(cursor.x, cursor.y);
+            return;
+        }
+        // C ref: src/getpos.c:1011-1038 — 'm|M', 'o|O', 'd|D', 'x|X' move the
+        // cursor to the next/previous gathered monster/object/door/
+        // exploration-frontier spot; the lists are gathered lazily once per
+        // getpos session (getpos.c:1026-1029) and lowercase keys step forward
+        // through the distance-sorted list, uppercase backward
+        // (getpos.c:1030-1035).
+        const glocKey = 'mMoOdDxX'.indexOf(ch);
+        if (glocKey >= 0) {
+            const gloc = glocKey >> 1;
+            const glocState = game._travel_gloc ??= { garr: [null, null, null, null], gidx: [0, 0, 0, 0] };
+            if (!glocState.garr[gloc]) {
+                glocState.garr[gloc] = gatherTravelLocs(gloc);
+                glocState.gidx[gloc] = 0; /* garr[][0] is hero's spot */
             }
-            game._travel_target = { x: targetX, y: targetY };
-            game._travel_target_description = terrain;
-            game._travel_no_path_target = null;
-            game._travel_prompt_current = 0;
-            await setMessage(terrain);
-            game._cursor_override = [targetX - 1, targetY + 1];
+            const locs = glocState.garr[gloc];
+            if (!(glocKey & 1)) {
+                glocState.gidx[gloc] = (glocState.gidx[gloc] + 1) % locs.length;
+            } else if (--glocState.gidx[gloc] < 0) {
+                glocState.gidx[gloc] = locs.length - 1;
+            }
+            const target = locs[glocState.gidx[gloc]];
+            await setTravelCursorTarget(target.x, target.y);
             return;
         }
 	        if (typeof ch === 'string' && ch.length === 1) {
@@ -75887,7 +76622,7 @@ function tutorialEnterStash() {
             return;
         }
         const letters = inventoryLetters(item => item.cls === 'scroll' || item.cls === 'spellbook' || item.otyp === SCROLL_CLASS) || 'gh';
-        await setMessage(`What do you want to read? [${letters} or ?*]`);
+        await setMessage(`What do you want to read? [${getobjPromptLetters(letters)} or ?*]`);
         game._command_mode = 'readObject';
         return;
     }
@@ -77343,9 +78078,14 @@ function tutorialEnterStash() {
         const travelStartLoc = game.level?.at(travelCursorStart.x, travelCursorStart.y);
         if (!travelStartLoc || IS_OBSTRUCTED(travelStartLoc.typ))
             travelCursorStart = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
-        if (game._travel_tip_seen || game.flags?.tutorial === false) {
+        // C ref: src/getpos.c:838 — handle_tip(TIP_GETPOS) fires once per game
+        // on the first getpos of any kind; it is gated on OPTIONS=tips
+        // (default on), not on the tutorial option.
+        if (getposTipSeen() || game.flags?.tips === false) {
             game._travel_tip_seen = 1;
-            const prompt = game.flags?.tutorial === false
+            // C ref: src/getpos.c:843-847 — the instructions line is gated on
+            // flags.verbose.
+            const prompt = game.flags?.verbose === false
                 ? 'Where do you want to travel to?'
                 : "Where do you want to travel to?  (For instructions type a '?')";
             await setMessage(prompt);
@@ -77356,6 +78096,7 @@ function tutorialEnterStash() {
             game._travel_prompt_current = 1;
             game._travel_target_description = '';
             game._travel_dot_confirms = 1;
+            game._travel_gloc = null;
             game._command_mode = 'travelCursor';
             return;
         }
@@ -77367,6 +78108,7 @@ function tutorialEnterStash() {
         game._travel_prompt_message = prompt;
         game._travel_prompt_current = 1;
         game._travel_target_description = '';
+        game._travel_gloc = null;
         game._command_mode = 'travelIntroMore';
         return;
     }

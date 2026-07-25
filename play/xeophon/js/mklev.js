@@ -860,8 +860,10 @@ const SHOPKEEPER_NAME_LISTS = [
     HEALTH_FOOD_SHOPKEEPER_NAMES,
     LIGHT_SHOPKEEPER_NAMES,
 ];
-const WATCHMAN = { name: 'watchman', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, hpLevel: 9, difficulty: 8, mmove: 10, maligntyp: -2, mercenary: true, armed: true, alwaysPeaceful: true };
-const WATCH_CAPTAIN = { name: 'watch captain', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, hpLevel: 11, difficulty: 12, mmove: 10, maligntyp: -4, mercenary: true, armed: true, alwaysPeaceful: true };
+// C ref: makemon.c newmonhp/adj_lev — no static hpLevel; makemon falls back
+// to adjustedMonsterLevel() (C adj_lev) so HP dice match creation depth.
+const WATCHMAN = { name: 'watchman', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, difficulty: 8, mmove: 10, maligntyp: -2, mercenary: true, armed: true, alwaysPeaceful: true };
+const WATCH_CAPTAIN = { name: 'watch captain', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, difficulty: 12, mmove: 10, maligntyp: -4, mercenary: true, armed: true, alwaysPeaceful: true };
 
 const GIANT_MIMIC = { name: 'giant mimic', mlet: S_MIMIC, mlevel: 9, mac: 7, mmove: 3, maligntyp: 0, hostile: true, neuter: false, attack: { dice: 3, sides: 6, verb: 'hits' } };
 const GHOST = { name: 'ghost', mlet: 'ghost', glyph: ' ', color: CLR_GRAY, mlevel: 10, mmove: 3, maligntyp: -5, neuter: false, noCorpse: true, alwaysHostile: true };
@@ -4164,7 +4166,9 @@ export function mksobj(otyp, init, artif) {
             : rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
         otmp.age = game.moves || 1;
         startCorpseTimeout(otmp);
-    } else if (otyp === STATUE) {
+    } else if (otyp === STATUE || otyp === FIGURINE) {
+        // C ref: mkobj.c mksobj "regardless of init" shared STATUE/FIGURINE case
+        // (mkobj.c:1211-1223): random corpse type if unset, then gender in spe.
         if (!otmp.corpsenm) otmp.corpsenm = rndmonnum();
         otmp.spe = otmp.corpsenm.neuter ? CORPSTAT_NEUTER
             : otmp.corpsenm.female ? CORPSTAT_FEMALE
@@ -4391,6 +4395,14 @@ function mksobj_init(otmp, otyp, artif) {
     } else if (otyp === CRYSTAL_BALL) {
         otmp.spe = rn1(5, 3);
         blessorcurse(otmp, 2);
+    } else if (otyp === FIGURINE) {
+        // C ref: mkobj.c mksobj_init TOOL_CLASS FIGURINE case (mkobj.c:1040-1047):
+        // slightly harder monsters, then blessorcurse(4).
+        let tryct = 0;
+        do {
+            otmp.corpsenm = rndmonst_adj(5, 10);
+        } while (otmp.corpsenm?.mlet === 'human' && tryct++ < 30);
+        blessorcurse(otmp, 4);
     } else if (otyp === TOOL_CLASS) {
         const roll = game._mkobj_tool_roll || 0;
         game._mkobj_tool_roll = 0;
@@ -17190,10 +17202,15 @@ async function splevTrap(croom) {
     if (!pos) return;
     let kind;
     do {
-        kind = traptype_rnd(true);
+        // C ref: sp_lev.c create_trap / mklev.c mktrap — des.trap defaults to
+        // spider_on_web=1, so mktrapflags lacks MKTRAP_NOSPIDERONWEB and
+        // traptype_rnd() rejects WEB below level 7 (mklev.c:1975).
+        kind = traptype_rnd();
     } while (kind === NO_TRAP);
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
+    // C ref: mklev.c:2104 — a web created with spider_on_web gets a spider.
+    if (kind === WEB) await makemon(monsterByRndName('giant spider'), pos.x, pos.y, 0);
     const lvl = level_difficulty();
     if (game.in_mklev && kind !== NO_TRAP
         && lvl <= rnd(4)
@@ -17226,8 +17243,6 @@ async function make_minetn1_level() {
     }
 
     minetn1LightRegion(1, 1, 35, 17, true);
-    place_lregion(1, 3, 21, 19, minetn1X(0), minetn1Y(1), minetn1X(36), minetn1Y(17), LR_UPSTAIR, null);
-    place_lregion(57, 3, 75, 19, minetn1X(0), minetn1Y(1), minetn1X(36), minetn1Y(17), LR_DOWNSTAIR, null);
 
     minetn1At(16, 9).typ = FOUNTAIN;
     minetn1At(25, 9).typ = FOUNTAIN;
@@ -17312,10 +17327,21 @@ async function make_minetn1_level() {
         await minetn1Monster(rn2(100) < 90 ? 'hill orc' : 'goblin', null, 0);
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
-    flipSpecialLevelRnd(MINETN1_XSTART, MINETN1_YSTART,
+    const flips = flipSpecialLevelRnd(MINETN1_XSTART, MINETN1_YSTART,
         MINETN1_XSTART + MINETN1_ROWS[0].length - 1,
         MINETN1_YSTART + MINETN1_ROWS.length - 1);
     recount_level_features();
+    // C ref: mkmaze.c fixup_special — des.levregion stair placement is
+    // deferred until after the script ran and the level was flipped
+    // (flip_lregions, sp_lev.c:698).
+    {
+        const [ulx, uly, uhx, uhy] = flipLevregionCoords(flips, 1, 3, 21, 19);
+        const [nlx, nly, nhx, nhy] = flipLevregionCoords(flips,
+            minetn1X(0), minetn1Y(1), minetn1X(36), minetn1Y(17));
+        place_lregion(ulx, uly, uhx, uhy, nlx, nly, nhx, nhy, LR_UPSTAIR, null);
+        const [dlx, dly, dhx, dhy] = flipLevregionCoords(flips, 57, 3, 75, 19);
+        place_lregion(dlx, dly, dhx, dhy, nlx, nly, nhx, nhy, LR_DOWNSTAIR, null);
+    }
     level_finalize_topology({ mineralizeLevel: false });
     g._level_populated = true;
 }
@@ -17586,6 +17612,156 @@ async function make_minetn4_level() {
     g._level_populated = true;
 }
 
+// C ref: sp_lev.c flip_lregions — transpose a levregion in/exclude area with
+// the level flip (FlipX/FlipY over the flip bounds), keeping x1 <= x2,
+// y1 <= y2. Returns [lx, ly, hx, hy].
+function flipLevregionCoords(flips, lx, ly, hx, hy) {
+    let nx1 = lx, nx2 = hx, ny1 = ly, ny2 = hy;
+    if (flips?.flipX) { nx1 = flips.xmin + flips.xmax - hx; nx2 = flips.xmin + flips.xmax - lx; }
+    if (flips?.flipY) { ny1 = flips.ymin + flips.ymax - hy; ny2 = flips.ymin + flips.ymax - ly; }
+    return [Math.min(nx1, nx2), Math.min(ny1, ny2), Math.max(nx1, nx2), Math.max(ny1, ny2)];
+}
+
+// ── ensure_way_out port (C ref: sp_lev.c:5146-5260, "inaccessibles" flag) ──
+
+// C ref: sp_lev.c floodfillchk_match_accessible() — ACCESSIBLE(typ) is
+// typ >= DOOR (rm.h:125); SDOOR and SCORR also match.
+function wayOutAccessible(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    return loc.typ >= DOOR || loc.typ === SDOOR || loc.typ === SCORR;
+}
+
+// C ref: selvar.c selection_floodfill() — 8-way floodfill through accessible
+// tiles; the seed point itself is added unconditionally (when isok()).
+function wayOutFloodfill(sel, sx, sy) {
+    const stack = [[sx, sy]];
+    const queued = new Set([`${sx},${sy}`]);
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        if (isok(x, y)) sel.add(`${x},${y}`);
+        for (let dx = -1; dx <= 1; dx++)
+            for (let dy = -1; dy <= 1; dy++) {
+                if (!dx && !dy) continue;
+                const nx = x + dx, ny = y + dy, key = `${nx},${ny}`;
+                if (isok(nx, ny) && wayOutAccessible(nx, ny)
+                    && !sel.has(key) && !queued.has(key)) {
+                    queued.add(key);
+                    stack.push([nx, ny]);
+                }
+            }
+    }
+}
+
+// C ref: selvar.c selection_rndcoord() — x-major scan of the selection's
+// bounding box, c = rn2(count), pick the c-th set point.
+function wayOutSelRndcoord(sel, removeit) {
+    if (!sel.size) return { x: -1, y: -1 };
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    for (const key of sel) {
+        const [x, y] = key.split(',').map(Number);
+        lx = Math.min(lx, x); ly = Math.min(ly, y);
+        hx = Math.max(hx, x); hy = Math.max(hy, y);
+    }
+    let c = rn2(sel.size);
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const key = `${x},${y}`;
+            if (!sel.has(key)) continue;
+            if (!c) {
+                if (removeit) sel.delete(key);
+                return { x, y };
+            }
+            c--;
+        }
+    return { x: -1, y: -1 };
+}
+
+// C ref: sp_lev.c generate_way_out_method() — try SDOOR, then hole/trapdoor,
+// then an escape item, to connect an inaccessible region.
+async function generateWayOutMethod(nx, ny, ov) {
+    const ov2 = new Set();
+    wayOutFloodfill(ov2, nx, ny);
+
+    /* try to make a secret door */
+    const ov3 = new Set(ov2);
+    for (let pt = wayOutSelRndcoord(ov3, true); pt.x >= 0; pt = wayOutSelRndcoord(ov3, true)) {
+        const { x, y } = pt;
+        let made = false;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const ax = x + dx, ay = y + dy, bx = x + 2 * dx, by = y + 2 * dy;
+            const bloc = game.level.at(bx, by);
+            if (isok(ax, ay) && !ov.has(`${ax},${ay}`)
+                && IS_WALL(game.level.at(ax, ay)?.typ)
+                && isok(bx, by) && ov.has(`${bx},${by}`) && bloc && bloc.typ >= DOOR) {
+                game.level.at(ax, ay).typ = SDOOR;
+                made = true;
+                break;
+            }
+        }
+        if (made) return true;
+    }
+
+    /* try to make a hole or a trapdoor */
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+    if (canFallThru) {
+        const ov4 = new Set(ov2);
+        for (let pt = wayOutSelRndcoord(ov4, true); pt.x >= 0; pt = wayOutSelRndcoord(ov4, true)) {
+            const trap = await maketrap(pt.x, pt.y, rn2(2) ? HOLE : TRAPDOOR);
+            if (trap) return true;
+        }
+    }
+
+    /* generate one of the escape items */
+    // C ref: sp_lev.c escapeitems[] — RIN_TELEPORTATION has no JS otyp yet;
+    // mkobj(RING_CLASS) stands in (unreachable while Can_fall_thru is true).
+    const pt = wayOutSelRndcoord(ov2, false);
+    if (pt.x >= 0) {
+        const pick = [PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING,
+            WAN_TELEPORTATION, SCR_TELEPORTATION, RING_CLASS][rn2(6)];
+        if (pick === RING_CLASS) {
+            const ring = mkobj(RING_CLASS, false);
+            if (ring) { ring.ox = pt.x; ring.oy = pt.y; game.level.objects.push(ring); }
+        } else {
+            mksobj_at(pick, pt.x, pt.y, true, false);
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: sp_lev.c ensure_way_out() — connect any accessible region that is
+// unreachable from the level's stairs/holes (runs when the special level
+// script used the "inaccessibles" level flag).
+async function ensureWayOut() {
+    const ov = new Set();
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.tolev?.dnum === (game.u?.uz?.dnum ?? 0))
+            wayOutFloodfill(ov, stway.sx, stway.sy);
+    }
+    for (const trap of game.level.traps || []) {
+        if ((undestroyable_trap(trap.ttyp) || is_hole(trap.ttyp))
+            && !ov.has(`${trap.tx},${trap.ty}`))
+            wayOutFloodfill(ov, trap.tx, trap.ty);
+    }
+    for (;;) {
+        let found = null;
+        outer:
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level.at(x, y);
+                if (loc && loc.typ >= DOOR && !ov.has(`${x},${y}`)) {
+                    found = { x, y };
+                    break outer;
+                }
+            }
+        if (!found) return;
+        if (await generateWayOutMethod(found.x, found.y, ov))
+            wayOutFloodfill(ov, found.x, found.y);
+    }
+}
+
 async function make_minetn6_level() {
     const g = game;
     clear_level_structures();
@@ -17602,9 +17778,6 @@ async function make_minetn6_level() {
         for (let x = 0; x < row.length; x++) minetn6SetTerrain(x, y, row[x]);
     }
     minetn6LightRegion(0, 0, 39, 19, true);
-
-    place_lregion(1, 3, 21, 19, minetn6X(1), minetn6Y(0), minetn6X(39), minetn6Y(18), LR_UPSTAIR, null);
-    place_lregion(60, 3, 75, 19, minetn6X(0), minetn6Y(0), minetn6X(38), minetn6Y(18), LR_DOWNSTAIR, null);
 
     minetn6LightRegion(13, 7, 14, 8, false);
     minetn6AddRoom(9, 9, 11, 11, CANDLESHOP, 1);
@@ -17653,11 +17826,28 @@ async function make_minetn6_level() {
     await minetn6Monster('watch captain', null, null, 1);
     await minetn6Monster('watch captain', null, null, 1);
 
+    // C ref: sp_lev.c:6026 — minetn-6.lua uses level_flags "inaccessibles",
+    // so ensure_way_out() runs after the script, before wallification.
+    await ensureWayOut();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
-    flipSpecialLevelRnd(MINETN6_XSTART, MINETN6_YSTART,
+    const flips = flipSpecialLevelRnd(MINETN6_XSTART, MINETN6_YSTART,
         MINETN6_XSTART + MINETN6_ROWS[0].length - 1,
         MINETN6_YSTART + MINETN6_ROWS.length - 1);
     recount_level_features();
+    // C ref: mkmaze.c fixup_special — des.levregion stair placement is
+    // deferred until after the script ran and the level was flipped
+    // (flip_lregions, sp_lev.c:698), so the priest/door/monster rolls
+    // (e.g. priestini, priest.c:229) come first.
+    {
+        const [ulx, uly, uhx, uhy] = flipLevregionCoords(flips, 1, 3, 21, 19);
+        const [unlx, unly, unhx, unhy] = flipLevregionCoords(flips,
+            minetn6X(1), minetn6Y(0), minetn6X(39), minetn6Y(18));
+        place_lregion(ulx, uly, uhx, uhy, unlx, unly, unhx, unhy, LR_UPSTAIR, null);
+        const [dlx, dly, dhx, dhy] = flipLevregionCoords(flips, 60, 3, 75, 19);
+        const [dnlx, dnly, dnhx, dnhy] = flipLevregionCoords(flips,
+            minetn6X(0), minetn6Y(0), minetn6X(38), minetn6Y(18));
+        place_lregion(dlx, dly, dhx, dhy, dnlx, dnly, dnhx, dnhy, LR_DOWNSTAIR, null);
+    }
     level_finalize_topology({ mineralizeLevel: false });
     for (const croom of g.level.rooms || []) {
         if (croom?.hx > 0) await fill_special_room(croom);
@@ -18021,6 +18211,9 @@ export async function make_sokoban1_level() {
     for (const [x, y] of boulders) {
         const boulder = mksobj_at(BOULDER, SOKO_XSTART + x, SOKO_YSTART + y, true, false);
         boulder.color = NO_COLOR;
+        // C ref: detect.c premap_detect — sokoban levels are "premapped",
+        // so every boulder is map_object()ed at level load and stays drawn.
+        boulder.seen = true;
     }
 
     const landing = variant === 1 ? [11, 7] : [11, 7];
@@ -18266,6 +18459,9 @@ async function make_sokoban2_level() {
     for (const [x, y] of layout.boulders) {
         const boulder = mksobj_at(BOULDER, start.x + x, start.y + y, true, false);
         boulder.color = NO_COLOR;
+        // C ref: detect.c premap_detect — sokoban levels are "premapped",
+        // so every boulder is map_object()ed at level load and stays drawn.
+        boulder.seen = true;
     }
     for (const [typ, x, y] of layout.traps) {
         const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);
@@ -18354,6 +18550,9 @@ async function make_sokoban3_level() {
     for (const [x, y] of layout.boulders) {
         const boulder = mksobj_at(BOULDER, start.x + x, start.y + y, true, false);
         boulder.color = NO_COLOR;
+        // C ref: detect.c premap_detect — sokoban levels are "premapped",
+        // so every boulder is map_object()ed at level load and stays drawn.
+        boulder.seen = true;
     }
     for (const [typ, x, y] of layout.traps) {
         const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);
@@ -18434,6 +18633,9 @@ async function make_sokoban4_level() {
     for (const [x, y] of layout.boulders) {
         const boulder = mksobj_at(BOULDER, start.x + x, start.y + y, true, false);
         boulder.color = NO_COLOR;
+        // C ref: detect.c premap_detect — sokoban levels are "premapped",
+        // so every boulder is map_object()ed at level load and stays drawn.
+        boulder.seen = true;
     }
     for (const [typ, x, y] of layout.traps) {
         const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);

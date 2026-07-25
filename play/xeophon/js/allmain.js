@@ -16332,7 +16332,11 @@ export async function moveloop_core() {
             if (g._travel_dynamic_target?.allowBlockedTarget
                 && (!nextLoc || IS_OBSTRUCTED(nextLoc.typ)))
                 g._suppress_obstructed_message_once = 1;
+            // C ref: src/cmd.c:5364-5368 — travel runs with context.run = 8;
+            // mark the step so door bumps don't auto-open (hack.c:1097).
+            g._travel_step_active = 1;
             await rhack(key);
+            g._travel_step_active = 0;
             if (g._travel_previous_target
                 && (g.u?.ux || 0) === g._travel_previous_target.x
                 && (g.u?.uy || 0) === g._travel_previous_target.y)
