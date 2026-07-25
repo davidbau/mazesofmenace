@@ -739,6 +739,19 @@ async function eatcorpse_cmd(otmp) {
     else if (oeaten >= reqtime) nmod = -Math.trunc(oeaten / reqtime);
     else nmod = reqtime % oeaten;
 
+    // C ref: eat.c start_eating() calls bite() once, synchronously, BEFORE
+    // entering the eatfood() occupation loop — this is the meal's first bite,
+    // delivered on the same turn eating starts (not deferred to the next
+    // turn).  bite()'s nmod<0 branch is unconditional, so this first call
+    // always delivers -nmod nutrition; the nmod>0 branch checks
+    // usedtime%nmod with usedtime still 0 (the ++usedtime happens after
+    // bite() returns), i.e. 0%nmod===0, so it's a no-op here and needs no
+    // separate call.
+    if (nmod < 0) {
+        lesshungry_eat(-nmod);
+        oeaten += nmod;
+    }
+
     game.context = game.context || {};
     game.context.victual = {
         piece: otmp,

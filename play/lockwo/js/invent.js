@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, update_topl, getpos_is_feature_sym, getpos_find_feature } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, update_topl } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -57,6 +57,7 @@ import {
     place_object as mkobj_place_object,
 } from './mkobj.js';
 
+import { getpos, getpos_render } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
 import { enlightenment_lines } from './insight.js';
@@ -321,7 +322,9 @@ function dupstr(s) { return String(s ?? ''); }
 // doname() alone — so a BUC-known object still reads e.g. "ring of see invisible"
 // here (used by loot_xname, the itemactions title/label, and data.base lookups).
 function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
-function xname(obj) { observe_object(obj); return simple_obj_name(obj); }
+// C ref: objnam.c xname() — the bare object name: no "a"/"an" article and no
+// BUC word (unlike doname()), but still quantity-aware for stackable types.
+export function xname(obj) { observe_object(obj); return simple_obj_name(obj, { article: false, buc: false }); }
 function yname(obj) { return simple_obj_name(obj); }
 function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
 function simpleonames(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
@@ -397,7 +400,18 @@ export async function docall(obj) {
     if (!obj?.dknown) return;          // probably blind
     await flush_screen(1);
     // getlin is about to overwrite the top-line message, so page it first.
-    if (game._pending_message) await topl_more();
+    // Some callers route their taste/feel message through a plain assignment
+    // that (unlike real pline()) never sets toplin NEED_MORE, so check the
+    // pending text itself rather than relying solely on hooked_tty_getlin's
+    // own toplin check below — and clear both here so that check (C ref:
+    // win/tty/getline.c hooked_tty_getlin():53-54) doesn't page a second time
+    // for callers (e.g. read.js's update_topl-based messages) that already
+    // left toplin NEED_MORE set.
+    if (game._pending_message) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
     const qbuf = `Call ${docall_xname(obj)}:`;
     const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
     const raw = await hooked_tty_getlin(qbuf, null);
@@ -1314,6 +1328,18 @@ function simple_obj_name(obj, opts = {}) {
     // unidentified rings get no prefix.
     if (obj.oclass === RING_CLASS && obj.known && is_oc_charged(obj))
         prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
+    // C ref: objnam.c xname_flags WEAPON_CLASS — "poisoned " is part of the
+    // bare xname (both xname() and doname() show it), unlike erosion words
+    // and the enchantment number, which objnam.c only adds in doname_base
+    // on top of xname's result — i.e. only for the full doname() rendering,
+    // not the bare xname()/cxname() one (gated the same as the BUC prefix).
+    if (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS || is_weptool(obj)) {
+        if (obj.opoisoned) prefix += 'poisoned ';
+    }
+    if (buc && (obj.oclass === WEAPON_CLASS || obj.oclass === ARMOR_CLASS || is_weptool(obj))) {
+        prefix += add_erosion_words(obj);
+        if (obj.known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
+    }
     const chg = charge_suffix(obj);
     if (quantity && (obj.quan || 1) > 1 && !pair_of(obj))
         return `${obj.quan} ${prefix}${makeplural(base)}${chg}${oname_suffix(obj)}`;
@@ -1988,6 +2014,11 @@ export function inuse_classify(sort_item, obj) {
 }
 
 export function loot_classify(sort_item, obj) {
+    // C ref: invent.c loot_classify() — "observe_object(obj); /* xname(obj)
+    // does this; we want it sooner */" runs before 'seen' (dknown) is read,
+    // so a freshly created object (e.g. a just-landed trap missile) is
+    // already dknown by the time its discovery bucket is computed here.
+    observe_object(obj);
     const defOrder = [COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS,
         POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS,
         TOOL_CLASS, WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS,
@@ -3829,177 +3860,37 @@ async function doswapweapon_inline() {
     }
 }
 
-// ── Travel command (_) and the getpos() cursor selector ───────────────────
+// ── Travel command (_) ──────────────────────────────────────────────────
 //
-// C ref: hack.c handle_tip(TIP_GETPOS) -> dat/nhcore.lua show_getpos_tip().
-// The tip is shown the first time getpos() runs, tracked by svc.context.tips.
-const TIP_GETPOS = 3;
-const GETPOS_TIP_LINES = [
-    'Tip: Farlooking or selecting a map location',
-    '',
-    'You are now in a "farlook" mode - the movement keys move the cursor,',
-    'not your character.  Game time does not advance.  This mode is used',
-    'to look around the map, or to select a location on it.',
-    '',
-    'When in this mode, you can press ESC to return to normal game mode,',
-    'and pressing ? will show the key help.',
-];
-
-// Render the getpos tip as a tty overlay window.  C ref: win/tty/wintty.c
-// tty_display_nhwindow() — the tip is an NHW_MENU-typed window (offx != 0), so
-// its corner offset is computed from the widest line: maxcol = max(len)+2
-// (add_menu_str reserves 2 columns) and
-//   offx = min(min(82, cols/2), cols - maxcol - 1).
-// It then goes through process_text_window (it carries cw->data), which for a
-// PARTIAL-width window walks only the text rows (0..maxrow): each row does
-// cl_end() from the window's left column (offx) then, with H2344_BROKEN, writes
-// a leading blank at offx and the item text at offx+1 — so column offx is
-// blanked (the map does NOT show through there), and columns to its left do.
-// Rows BELOW the "(end)" line are never touched, so the map shows through there
-// (faithful to the recorded frames where the room below "(end)" stays visible).
-// The leading message line (WIN_MESSAGE / row 0) is fully cleared when raised.
-function renderGetposTip() {
-    const display = game.nhDisplay;
-    if (!display?.clearScreen || !display.setCell) return;
-    const cols = display.cols ?? 80;
-    let maxcol = 0;
-    for (const ln of GETPOS_TIP_LINES) if (ln.length + 2 > maxcol) maxcol = ln.length + 2;
-    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
-    if (offx < 0) offx = 0;
-    const textCol = offx + 1;         // leading blank at offx, item text at offx+1
-    // Lay the live map (+ status lines) back down so it shows through below the
-    // text window, exactly as the tty leaves the prior frame on screen.
-    display.clearScreen();
-    render_map_to_grid();
-    // WIN_MESSAGE (row 0) is cleared in full when a text window is displayed.
-    for (let c = 0; c < cols; c++) display.setCell(c, 0, ' ', NO_COLOR, 0);
-    const blankFromOffx = (r) => { for (let c = offx; c < cols; c++) display.setCell(c, r, ' ', NO_COLOR, 0); };
-    let row = 0;
-    for (const ln of GETPOS_TIP_LINES) {
-        blankFromOffx(row);           // cl_end() from window left edge (offx)
-        if (ln) display.putstr(textCol, row, ln, NO_COLOR, ATR_NONE);
-        row++;
-    }
-    blankFromOffx(row);
-    display.putstr(textCol, row, '(end)', NO_COLOR, ATR_NONE);
-    // Cursor parks one column past "(end) " (textCol + len("(end)") + 1 == 16).
-    display.setCursor(textCol + '(end)'.length + 1, row);
-    game._modal_screen = 'textwin';
-}
-
-// C ref: hack.c handle_tip() — show TIP_GETPOS once.  Returns true if shown
-// (the caller then re-issues the "Move cursor to ..." goal prompt).  Showing the
-// text window first flushes the pending "Where do you want to travel to?"
-// message with --More-- (topl_more), captured as its own frame.
-async function handle_getpos_tip() {
-    if (game._tips_shown && (game._tips_shown & (1 << TIP_GETPOS))) return false;
-    game._tips_shown = (game._tips_shown || 0) | (1 << TIP_GETPOS);
-    // Raising the text window pages off the pending topline message.
-    await topl_more();
-    // Display the tip and wait for a quitchar (space/return/ESC); other keys
-    // ring the bell and keep the window up.  C: process_text_window -> dmore ->
-    // xwaitforspace(quitchars).  renderGetposTip writes the window directly to
-    // the grid; the modal flag (set inside it) then suppresses moveloop redraws.
-    for (;;) {
-        renderGetposTip();
-        const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) break;
-        // non-quitchar: bell, keep waiting (re-render is identical).
-    }
-    delete game._modal_screen;
-    return true;
-}
-
-// Render the getpos cursor frame: the topline message, the live map, and the
-// cursor parked on the map at (cx,cy).  C ref: getpos() curs(WIN_MAP,...) +
-// flush_screen(0).  Map cell (x,y) maps to grid column x-1, row y+1.
-async function renderGetposCursor(cx, cy) {
-    // Build the frame (topline message + map + status) BEFORE setting the modal
-    // flag, since flush_screen() is a no-op while a modal screen is active.
-    await flush_screen(1);
-    game._modal_screen = 'topl';
-    if (game.nhDisplay?.setCursor)
-        game.nhDisplay.setCursor(cx - 1, cy + 1);
-}
-
-// C ref: getpos() — the cursor-driven location selector.  Ports the subset the
-// recorded travel session exercises: show the tip + goal prompt, then read keys,
-// rejecting non-direction keys with "Unknown direction: ...", and cancelling on
-// ESC.  Returns {x,y} on a pick or null on cancel.  No RNG.
-async function getpos(goal) {
-    let cx = game.u.ux, cy = game.u.uy;
-
-    const tipShown = await handle_getpos_tip();
-    // C: if verbose, "(For instructions type a '?')"; then the goal prompt.
-    // When the tip was shown it overwrote the prompt window, so the goal prompt
-    // is (re)issued; both plines land on the same topline (concatenated).
-    let prompt = "(For instructions type a '?')";
-    if (tipShown) prompt += `  Move cursor to ${goal}:`;
-    game._pending_message = prompt;
-
-    const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
-    const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
-
-    for (;;) {
-        await renderGetposCursor(cx, cy);
-        const c = await nhgetch();
-        delete game._modal_screen;
-        const ch = String.fromCharCode(c);
-        if (c === 27) { game._pending_message = ''; return null; } // ESC: cancel
-        if (ch === '.' || ch === ',' || ch === ';' || ch === ':' || c === 13 || c === 10) {
-            game._pending_message = '';
-            return { x: cx, y: cy }; // pick current location
-        }
-        const lc = ch.toLowerCase();
-        if (lc in DX) {
-            const fast = (ch >= 'A' && ch <= 'Z');
-            const step = fast ? 8 : 1;
-            let nx = cx + DX[lc] * step, ny = cy + DY[lc] * step;
-            if (nx < 1) nx = 1; if (nx > 79) nx = 79;
-            if (ny < 0) ny = 0; if (ny > 20) ny = 20;
-            cx = nx; cy = ny;
-            game._pending_message = '';
-            continue;
-        }
-        // C ref: getpos.c getpos() else-branch — a key that matches a cmap
-        // feature symbol (defsym.h, excluding walls/room/corr/door) triggers a
-        // map scan: silently jump the cursor there, or "Can't find dungeon
-        // feature '%c'." when the feature is nowhere on the (explored) map.
-        if (getpos_is_feature_sym(ch)) {
-            const found = getpos_find_feature(ch, cx, cy);
-            if (found) {
-                cx = found.x; cy = found.y;
-                game._pending_message = '';
-                continue;
-            }
-            game._pending_message = `Can't find dungeon feature '${ch}'.`;
-            continue;
-        }
-        // An unrecognized key that isn't a movement/command prints "Unknown
-        // direction: '%s' (use 'h', 'j', 'k', 'l' or '.')." (the no-diagonals
-        // variant, since travel uses the basic move set in the hint).
-        game._pending_message = `Unknown direction: '${visctrl_key(ch)}' (use 'h', 'j', 'k', 'l' or '.').`;
-    }
-}
-
-// C ref: cmd.c visctrl() — printable form of a key (control chars as ^X).
-function visctrl_key(ch) {
-    const code = ch.charCodeAt(0);
-    if (code < 32) return '^' + String.fromCharCode(code + 64);
-    if (code === 127) return '^?';
-    return ch;
-}
-
-// C ref: cmd.c dotravel() — the '_' command.  Prompt for a destination via
-// getpos; on cancel, no time passes.  Reaching a destination (dotravel_target /
-// the travel walk) is not exercised by the recorded session (it cancels with
-// ESC), so only the cancel path is modeled.
+// C ref: cmd.c dotravel().  Prompts for a destination via the shared
+// getpos() cursor selector (hack.js — also used by #jump/farlook/#terrain),
+// in travel mode so auto-describe flags cells with no travel path.  On
+// cancel (ESC), no time passes.  Reaching a destination (dotravel_target /
+// the actual travel walk via findtravelpath) is not ported — picking a
+// destination is a no-op (no time), matching the ESC-cancel behavior for
+// sessions that pick rather than cancel.
 export async function dotravel() {
-    game._pending_message = 'Where do you want to travel to?';
-    const cc = await getpos('the desired destination');
+    const u = game.u;
+    await pline('Where do you want to travel to?');
+    // C ref: getpos.c getpos() -> handle_tip(TIP_GETPOS): the first-ever
+    // getpos() call pages this pending line with --More-- before showing the
+    // farlook tip; on later calls (tip already shown) the tip is skipped and
+    // the cursor frame goes straight onto the map at the hero (mirrors
+    // dojump()'s identical pre-getpos() paging, since the shared getpos()
+    // itself only auto-pages a pending line for verbose callers).
+    const TIP_GETPOS = 1 << 4;
+    const tipPending = !((game.context?.tips || 0) & TIP_GETPOS);
+    if (tipPending) {
+        await topl_more();
+    } else {
+        await getpos_render('Where do you want to travel to?', u.ux, u.uy);
+    }
+    // C ref: options.c NHOPTB(verbose, ...) defaults On — getpos() prints the
+    // "(For instructions type a '?')" line unless a session explicitly turns
+    // verbose off (none of these do).
+    const cc = await getpos('the desired destination', u.ux, u.uy, null,
+                            /*force=*/true, /*verbose=*/true, /*travelMode=*/true);
     if (!cc) return ECMD_CANCEL; // ESC -> cancelled, no time
-    // Destination chosen: the travel walk would begin here; not reached by the
-    // recorded session.  Fall back to no-op (no time) to stay RNG-safe.
     return ECMD_OK;
 }
 
@@ -4121,11 +4012,21 @@ async function pickup_menu(here) {
     let li = 0;
     const nextLetter = () => (li < 26 ? String.fromCharCode(97 + li++)
         : String.fromCharCode(65 + (li++ - 26)));
-    for (const oclass of [COIN_CLASS, ...order]) {
+    // C ref: options.c def_inv_order[] already leads with COIN_CLASS, so
+    // classOrder() alone covers it (no separate COIN_CLASS prepend needed).
+    for (const oclass of order) {
         const items = here.filter((o) => o.oclass === oclass);
         if (!items.length) continue;
+        // C ref: pickup.c query_objlist() -> invent.c sortloot() — the default
+        // 'sortloot' option ('l') alphabetizes same-class piles (via
+        // loot_xname) rather than showing raw floor-chain order, so a freshly
+        // landed "poisoned dart" sorts after a plain "dart" pile.
+        const sorted = sortloot(items, SORTLOOT_LOOT).map((sli) => sli.obj).filter(Boolean);
         const g = { header: let_to_name(oclass, false, false), items: [] };
-        for (const o of items) g.items.push({ obj: o, letter: nextLetter() });
+        // C ref: pickup.c query_objlist() — the first (only) coin stack's
+        // selector is always '$' (GOLD_SYM), never a lettered accelerator.
+        for (const o of sorted)
+            g.items.push({ obj: o, letter: oclass === COIN_CLASS ? GOLD_SYM : nextLetter() });
         groups.push(g);
     }
     // selected[invlet] = true
@@ -4141,8 +4042,12 @@ async function pickup_menu(here) {
         let totalRows = 2; // prompt + blank
         for (const g of groups) totalRows += 1 + g.items.length;
         totalRows += 1; // (end)
+        // C ref: win/tty/wintty.c process_menu_window() writes a leading
+        // blank column at cw->offx (cl_end() then putchar(' ')) before each
+        // line's text, one column left of where the text itself starts —
+        // clear that padding column too, or the map bleeds through there.
         for (let r = 0; r < totalRows && r < 22; r++)
-            for (let c = MENU_OFFX; c < cols; c++)
+            for (let c = MENU_OFFX - 1; c < cols; c++)
                 display.setCell(c, r, ' ', NO_COLOR, 0);
         let row = 0;
         display.putstr(MENU_OFFX, row++, 'Pick up what?', NO_COLOR, ATR_INVERSE);
@@ -4175,6 +4080,17 @@ async function pickup_menu(here) {
         if (c === 13 || c === 10) { confirmed = true; break; }        // confirm
         if (letterMap.has(ch)) {
             if (selected.get(ch)) selected.delete(ch); else selected.set(ch, true);
+            continue;
+        }
+        // C ref: win/tty/wintty.c MENU_SELECT_ALL ('.') / MENU_UNSELECT_ALL
+        // ('-') / MENU_INVERT_ALL ('@') -> set_all_on_page()/
+        // unset_all_on_page()/invert_all(): mark every item on the (only)
+        // page selected / deselected / toggled.
+        if (ch === '.') { for (const let_ of letterMap.keys()) selected.set(let_, true); continue; }
+        if (ch === '-') { selected.clear(); continue; }
+        if (ch === '@') {
+            for (const let_ of letterMap.keys())
+                if (selected.get(let_)) selected.delete(let_); else selected.set(let_, true);
             continue;
         }
         // space/other paging keys: single page -> treated as confirm-of-page.

@@ -12,19 +12,63 @@ import { docrt, cls, bot, flush_screen, pline } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
-import { role_init, str2role, str2align, str2race, roles, races } from './role.js';
+import { role_init, str2role, str2align, str2race, str2gend, roles, races } from './role.js';
 import { aligns } from './role_data.js';
 import { reset_mvitals } from './makemon.js';
 import { newhp, newpw } from './exper.js';
-import { u_init_inventory } from './u_init.js';
+import { u_init_inventory, u_init_skills_discoveries } from './u_init.js';
 import { makedog } from './dog.js';
-import { init_attr, vary_init_attr } from './attrib.js';
-import { com_pager } from './pager.js';
-import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step } from './fastforward.js';
+import { init_attr, vary_init_attr, adjabil, Fast, Very_fast } from './attrib.js';
+import { com_pager } from './questpgr.js';
+import { player_selection, tty_init_nhwindows } from './plselect.js';
+import { adjust_menu_promptstyle, ATR_INVERSE } from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
+
+// src/allmain.c:698 init_sound_disp_gamewindows() — only the part that matters
+// before character selection: creating WIN_INVEN pushes iflags.menu_headings
+// into the tty's menu prompt style.
+function init_sound_disp_gamewindows() {
+    /* src/options.c:7188 — the default heading style */
+    adjust_menu_promptstyle({ color: NO_COLOR, attr: ATR_INVERSE });
+}
+
+// include/you.h:441-442
+const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
+import { mcalcmove, mcalcdistress, movemon } from './mon.js';
+import { dosounds } from './sounds.js';
+import { gethungry } from './eat.js';
+import { makemon, NO_MM_FLAGS } from './makemon.js';
+import { depth } from './dungeon.js';
+import { rnd } from './rng.js';
+import { fastforward_post_mklev } from './fastforward.js';
+import { find_ac } from './do_wear.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+
+    // src/allmain.c — character selection runs BEFORE newgame(), driven by
+    // the session's own keystrokes when the rc pins nothing. It draws only
+    // through plsel_startmenu()'s rigid_role_checks(); see js/plselect.js.
+    {
+        // win/tty/wintty.c tty_init_nhwindows() — the banner, before anything.
+        tty_init_nhwindows();
+        // src/allmain.c:698 init_sound_disp_gamewindows(): unixmain.c runs it
+        // BEFORE player_selection(), which is why the chargen menu titles are
+        // already wearing iflags.menu_headings (ATR_INVERSE) rather than the
+        // plain style tty_menu_promptstyle starts out with.
+        init_sound_disp_gamewindows();
+        const ir = str2role(g.rc?.opts?.role);
+        const ira = str2race(g.rc?.opts?.race);
+        const ig = str2gend(g.rc?.opts?.gender);
+        const ia = str2align(g.rc?.opts?.align);
+        g.flags.initrole = ir;
+        g.flags.initrace = ira;
+        g.flags.initgend = ig;
+        g.flags.initalign = ia;
+        if (ir < 0 || ira < 0 || ig < 0 || ia < 0)
+            await player_selection();
+    }
 
     // src/allmain.c:780 — seed mvitals from each species' G_NOCORPSE bit,
     // before init_objects(). propagate() and uncommon() both read this.
@@ -39,13 +83,12 @@ export async function newgame() {
     // fixed, and spins randrole() when the role has no lawful god (Priest).
     // Runs after o_init and before the nhlib.lua align shuffle.
     {
-        const ir = str2role(g.rc?.opts?.role);
-        const ia = str2align(g.rc?.opts?.align);
-        /* C keeps the resolved choice in flags.initalign; u_init_misc() reads
-           it back to set u.ualign.type. Chargen picking (M2.6) will replace the
-           default with pick_align()'s result. */
-        g.flags.initrole = ir < 0 ? 0 : ir;
-        g.flags.initalign = ia < 0 ? 1 : ia;
+        /* flags.init* are resolved above, either from the rc or by
+           player_selection(). Fall back only when neither supplied one. */
+        if (g.flags.initrole < 0) g.flags.initrole = 0;
+        if (g.flags.initrace < 0) g.flags.initrace = 0;
+        if (g.flags.initgend < 0) g.flags.initgend = 0;
+        if (g.flags.initalign < 0) g.flags.initalign = 1;
         role_init(g.flags.initrole, g.flags.initalign);
     }
 
@@ -63,10 +106,8 @@ export async function newgame() {
     // newhp() draws nothing at level 0 because every role and race has
     // hpadv.inrnd == 0; newpw() draws rnd(enadv.inrnd) per role and race.
     {
-        const ir = str2role(g.rc?.opts?.role);
-        const iraces = str2race(g.rc?.opts?.race);
-        g.urole = roles[ir < 0 ? 0 : ir];
-        g.urace = races[iraces < 0 ? 0 : iraces];
+        g.urole = roles[g.flags.initrole];
+        g.urace = races[g.flags.initrace];
         g.u.ulevel = 0;
         g.u.uhp = g.u.uhpmax = newhp();
         g.u.uen = g.u.uenmax = newpw();
@@ -77,18 +118,27 @@ export async function newgame() {
         // (depth + u.ulevel) / 2, so leaving ulevel at 0 through level
         // generation halves the eligible monster set and changes how many
         // times rndmonst_adj() draws. adj_lev() reads it too.
+        // src/u_init.c:991 — u.umonnum = u.umonster = urole.mnum. find_ac()
+        // starts from mons[u.umonnum].ac, so a hero without it has no base AC.
+        g.u.umonnum = g.u.umonster = g.urole.mnum;
         g.u.ulevel = g.u.ulevelmax = 1;
         g.u.ualign = {
             type: aligns[g.flags.initalign].value,
             record: 0,
             abuse: 0,
         };
+        // src/u_init.c:1006 — ualignbase[A_CURRENT] and [A_ORIGINAL] track the
+        // alignment the hero started with; convert_arg()'s %d, %G and %a all
+        // read [A_ORIGINAL], so the legacy text needs it.
+        g.u.ualignbase = [g.u.ualign.type, g.u.ualign.type];
         g.u.uhave = {};
+
+        // src/u_init.c:1028 — the last call u_init_misc() makes, and the last
+        // thing js/fastforward.js was replaying before mklev(). ^X reports it
+        // as "You are left-handed", so it is directly visible in a frame.
+        g.u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
     }
 
-    // Fast-forward through what is still replayed: u_init_misc.
-    // Must run AFTER the dungeon init, matching C's order in the stream.
-    fastforward_pre_mklev();
 
     // src/mklev.c:376 nhl_init() — mklev creates a SECOND Lua state for
     // themerooms, which loads dat/nhlib.lua again and so re-runs its
@@ -128,31 +178,14 @@ export async function newgame() {
     init_attr(75);
     vary_init_attr();
 
-    // src/allmain.c:831 — the legacy blurb. It draws because com_pager()
-    // creates its own Lua state, and every Lua state costs nhlib.lua's
-    // shuffle(align). `legacy` is opt_out (initval On), so it fires unless
-    // the rc says `!legacy`.
-    if (g.flags.legacy !== false)
-        com_pager(g.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
+    // src/u_init.c — the hero reaches experience level 1, which grants the
+    // role's and race's level-1 intrinsics. Draws nothing itself, but Fast
+    // makes u_calc_moveamt() draw every turn thereafter.
+    adjabil(0, 1);
 
-    // Fast-forward what is still replayed: allmain.c moveloop_preamble().
-    fastforward_post_mklev();
-
-    // Hardcoded player state for seed8000 Tourist.
-    // Contestants: port u_init to compute these from game PRNG.
-    g._goldCount = 757;
-    g.u.ulevel = 1;
-    g.u.uhp = 10; g.u.uhpmax = 10;
-    g.u.uen = 2; g.u.uenmax = 2;
-    g.u.uac = 10; g.u.uexp = 0;
-    g.u.ualign = { type: 0, record: 0 };
-    g.moves = 1;
-    g.urole = { name: { m: 'Tourist', f: 'Tourist' }, rank: { m: 'Rambler', f: 'Rambler' } };
-    g.urace = { adj: 'human' };
-    g.flags.female = true;
-    g.plname = g.plname || 'Contestant';
-
-    // Initial display
+    // src/allmain.c:816-818 — docrt(); flush_screen(1); bot(); all run BEFORE
+    // u_init_skills_discoveries() and the legacy pager, which is why the legacy
+    // window is drawn over a map and a status line rather than a blank screen.
     init_vision_globals();
     vision_reset();
     vision_recalc(0);
@@ -161,19 +194,112 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
+    // src/allmain.c:824 — u_init_skills_discoveries(): the hero already knows
+    // what came in their own pack. This is what fills the `\\` window.
+    u_init_skills_discoveries();
+
+    // src/allmain.c:831 — the legacy blurb. It draws because com_pager()
+    // creates its own Lua state, and every Lua state costs nhlib.lua's
+    // shuffle(align). `legacy` is opt_out (initval On), so it fires unless
+    // the rc says `!legacy`.
+    if (g.flags.legacy !== false)
+        await com_pager(g.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
+
+    // Fast-forward what is still replayed: allmain.c moveloop_preamble().
+    fastforward_post_mklev();
+
+    // src/allmain.c:453 — moveloop_preamble() calls find_ac(). Until it does,
+    // u.uac is still the 0 it was born with, which is why the status line under
+    // the legacy window reads AC:0 even for a hero already wearing armour.
+    find_ac();
+
+    // Remaining hardcoded player state. u_init now computes the inventory,
+    // gold, attributes, alignment and handedness for real; what is left is
+    // the derived stats that need subsystems this port does not have.
+    //
+    // urole/urace used to be overwritten here with stub objects, and
+    // u.ualign with { type: 0 } — which silently reset a chaotic hero to
+    // neutral AFTER u_init had computed the right value. Both are gone; the
+    // real records from js/role_data.js carry name, rank, noun, adj and the
+    // attrmin/attrmax the ^X window needs.
+    g._goldCount = g.u.umoney0;
+    g.u.uhp = 10; g.u.uhpmax = 10;      /* newhp() needs the role hp tables */
+    g.u.uen = 2; g.u.uenmax = 2;
+    g.u.uexp = 0;
+    g.flags.female = (str2gend(g.rc?.opts?.gender) === 1);
+    g.plname = g.plname || 'Contestant';
+
     // Welcome message
     const alignName = 'neutral';
     const genderAdj = g.flags?.female ? 'female' : 'male';
     await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
 }
 
+// src/allmain.c:118 u_calc_moveamt()
+//
+// The only draw is the free-action roll, and it only happens for a hero with
+// speed. Samurai and Monk have intrinsic Fast from experience level 1, so for
+// them this fires every turn; a Tourist never reaches it.
+function u_calc_moveamt() {
+    let moveamt = 12;                 /* youmonst.data->mmove */
+
+    if (Very_fast()) {
+        if (rn2(3) !== 0) moveamt += 12;
+    } else if (Fast()) {
+        if (rn2(3) === 0) moveamt += 12;
+    }
+    /* the encumbrance switch scales moveamt but draws nothing */
+    game.u.umovement = (game.u.umovement || 0) + moveamt;
+    if (game.u.umovement < 0) game.u.umovement = 0;
+}
+
+// src/allmain.c:158 maybe_generate_rnd_mon()
+function maybe_generate_rnd_mon() {
+    const stronghold = game.special_levels?.stronghold_level;
+    const deep = stronghold && depth(game.u.uz) > depth(stronghold);
+    if (!rn2(game.u.uevent?.udemigod ? 25 : deep ? 50 : 70))
+        makemon(null, 0, 0, NO_MM_FLAGS);
+}
+
 // C ref: allmain.c moveloop_core()
+//
+// The per-turn PRNG sequence, in C's order:
+//
+//   movemon()                      one distfleeck rn2(5) per waking monster
+//   mcalcdistress()                nothing while no monster is afflicted
+//   mcalcmove(mtmp, TRUE) x N      one rn2(12) per monster, unconditionally
+//   maybe_generate_rnd_mon()       rn2(70) on an ordinary early level
+//   dosounds()                     rn2(400) if fountains, rn2(300) if sinks
+//   gethungry()                    rn2(20)
+//   u_wipe_engr gate               rn2(40 + ACURR(A_DEX) * 3)
+//
+// The last one is a useful self-check: seed8000 records rn2(82), and 82 is
+// 40 + 14 * 3, so it only comes out right if the hero's Dexterity does.
 export async function moveloop_core() {
     const g = game;
 
-    // Fast-forward per-step RNG (monster movement, regen, sounds, hunger)
-    const stepNum = (g.moves || 1) - 1;
-    fastforward_step(stepNum);
+    if (g.context?.move) {
+        /* src/allmain.c:233 — allot movement to every monster */
+        movemon();
+        mcalcdistress();
+        for (const mtmp of g.level?.monsters || [])
+            mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);
+
+        /* src/allmain.c:239 — placed after allotment, so a new monster
+           effectively loses its first turn */
+        maybe_generate_rnd_mon();
+
+        u_calc_moveamt();
+
+        g.moves = (g.moves || 1) + 1;
+
+        dosounds();
+        gethungry();
+
+        /* src/allmain.c:360 */
+        if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
+            rnd(3);                             /* u_wipe_engr(rnd(3)) */
+    }
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -189,11 +315,6 @@ export async function moveloop_core() {
     // before dispatching, so each message survives exactly until the frame
     // that displays it has been captured.
     await rhack(0);
-
-    // Advance turn
-    if (g.context?.move) {
-        g.moves = (g.moves || 1) + 1;
-    }
 }
 
 // C ref: allmain.c moveloop()

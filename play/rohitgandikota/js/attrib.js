@@ -12,6 +12,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { role_abil, race_abil } from './role_data.js';
 
 // include/attrib.h — A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA
 export const A_MAX = 6;
@@ -114,3 +115,28 @@ function adjattrib(ndx, incr, msgflg) {
     }
     return true;
 }
+
+// src/attrib.c:990 adjabil() — grant the intrinsics a role or race has earned
+// by reaching `newlevel`. Draws nothing, but what it sets decides whether
+// u_calc_moveamt() draws: Fast costs an rn2(3) every single turn.
+export function adjabil(oldlevel, newlevel) {
+    const u = game.u;
+    u.intrinsic ||= {};
+
+    const grant = (table) => {
+        for (const [ulevel, ability] of table) {
+            if (ulevel > oldlevel && ulevel <= newlevel)
+                u.intrinsic[ability] = true;
+            else if (ulevel > newlevel && ulevel <= oldlevel)
+                delete u.intrinsic[ability];
+        }
+    };
+
+    grant(role_abil(game.flags.initrole ?? 0));
+    grant(race_abil(game.flags.initrace ?? 0));
+}
+
+// include/youprop.h — Fast is the intrinsic; Very_fast additionally needs
+// speed boots, a potion or a spell, none of which exist yet.
+export const Fast = () => !!game.u.intrinsic?.HFast;
+export const Very_fast = () => false;

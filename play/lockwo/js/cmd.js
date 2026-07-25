@@ -2104,10 +2104,15 @@ async function look_here_after_move(x, y, _pickedSome = false) {
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     if (objs.length === 0) return;
     if (objs.length === 1) {
-        // C ref: look_here() single-object case prints "You see here <obj>."
+        // C ref: look_here() single-object case: You("%s here %s.", verb, ...)
+        // -> pline() -> update_topl().  When autopickup just lifted another
+        // object here (pick_one_obj left toplin==NEED_MORE), this line
+        // accumulates onto that pickup line via the CO-8 rule instead of
+        // replacing it — e.g. "$ - 7 gold pieces (19 in total).  You see here
+        // a food ration." on one topline.
         const o = objs[0];
         const name = await objDoname(o);
-        await pline(`You see here ${name}.`);
+        await update_topl(`You see here ${name}.`);
         return;
     }
     // Multiple objects: delegate to invent.js look_here(), which renders the

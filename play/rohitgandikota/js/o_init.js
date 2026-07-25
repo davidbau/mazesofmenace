@@ -11,6 +11,8 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { obj_typename, OBJ_DESCR as objDescrOf } from './objnam.js';
+import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import {
     objects as OBJECTS_INIT, obj_descr as OBJ_DESCR_INIT,
     NUM_OBJECTS, ONAMES, OCLASSES,
@@ -298,4 +300,114 @@ export function init_objects() {
     shuffle_all();
 
     objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
+}
+
+// ---------------------------------------------------------------------------
+// Discoveries
+// ---------------------------------------------------------------------------
+
+// src/o_init.c:599 — flags.discosort selects the order; 'o' is the default and
+// the only one the corpus uses.
+const disco_order_let = 'osca';
+const disco_orders_descr = [
+    'by order of discovery within each class',
+    'sortloot order (by class with some sub-class groupings)',
+    'alphabetical within each class',
+    'alphabetical across all classes',
+];
+
+// src/o_init.c:520 discover_object()
+//
+// svd.disco[] is NOT a flat list: it is indexed by object class, filled from
+// svb.bases[class] upward, so discoveries stay grouped by class in the order
+// they were made. dodiscovered() walks it that way.
+export function discover_object(oindx, mark_as_known, mark_as_encountered,
+                                credit_hero) {
+    const objects = game.objects;
+    if (oindx < 1)                    /* FIRST_OBJECT */
+        return;
+
+    if ((!objects[oindx].oc_name_known && mark_as_known)
+        || (!objects[oindx].oc_encountered && mark_as_encountered)) {
+        const acls = objects[oindx].oc_class;
+        game.disco ||= [];
+
+        let dindx = game.bases[acls];
+        for (; game.disco[dindx]; dindx++)
+            if (game.disco[dindx] === oindx)
+                break;
+        game.disco[dindx] = oindx;
+
+        if (mark_as_encountered)
+            objects[oindx].oc_encountered = 1;
+        if (!objects[oindx].oc_name_known && mark_as_known)
+            objects[oindx].oc_name_known = 1;
+    }
+}
+
+// src/o_init.c:660 interesting_to_discover()
+function interesting_to_discover(i) {
+    const o = game.objects[i];
+    return !!o.oc_uname
+        || ((o.oc_name_known || o.oc_encountered) && objDescrOf(o) !== null);
+}
+
+// src/o_init.c:686 dodiscovered() — build the discoveries text.
+//
+// Returns the lines rather than pushing them into a window, so the caller
+// decides which window type to use. The header uses flags.inv_order for the
+// class sequence, and each class heading is let_to_name(oclass).
+export function dodiscovered() {
+    const objects = game.objects;
+    const sortindx = Math.max(0, disco_order_let.indexOf(game.flags?.discosort || 'o'));
+    const lines = [];
+
+    /* src/o_init.c passes iflags.menu_headings.attr for the class headings,
+       which defaults to ATR_INVERSE (src/options.c:7188). Lines carry
+       [text, attr] so the window layer can render them. */
+    lines.push(['Discoveries, ' + disco_orders_descr[sortindx], ATR_NONE]);
+    lines.push(['', ATR_NONE]);
+
+    let ct = 0;
+    for (const oclass of inv_order()) {
+        let prev_class = -1;
+        for (let i = game.bases[oclass];
+             i < objects.length && objects[i].oc_class === oclass; i++) {
+            const dis = game.disco?.[i];
+            if (dis && interesting_to_discover(dis)) {
+                ct++;
+                if (oclass !== prev_class) {
+                    lines.push([let_to_name(oclass), ATR_INVERSE]);
+                    prev_class = oclass;
+                }
+                lines.push([(objects[dis].oc_encountered ? '  ' : '* ')
+                            + obj_typename(dis), ATR_NONE]);
+            }
+        }
+    }
+    return ct ? lines : null;
+}
+
+// src/decl.c flags.inv_order — the default packorder.
+function inv_order() {
+    const O = OCLASSES;
+    return [O.COIN_CLASS, O.AMULET_CLASS, O.WEAPON_CLASS, O.ARMOR_CLASS,
+            O.FOOD_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS, O.POTION_CLASS,
+            O.RING_CLASS, O.WAND_CLASS, O.TOOL_CLASS, O.GEM_CLASS,
+            O.ROCK_CLASS, O.BALL_CLASS, O.CHAIN_CLASS, O.VENOM_CLASS];
+}
+
+// src/objnam.c let_to_name() — the plural class heading used in menus.
+const CLASS_NAMES = {
+    COIN_CLASS: 'Coins', AMULET_CLASS: 'Amulets', WEAPON_CLASS: 'Weapons',
+    ARMOR_CLASS: 'Armor', FOOD_CLASS: 'Comestibles', SCROLL_CLASS: 'Scrolls',
+    SPBOOK_CLASS: 'Spellbooks', POTION_CLASS: 'Potions', RING_CLASS: 'Rings',
+    WAND_CLASS: 'Wands', TOOL_CLASS: 'Tools', GEM_CLASS: 'Gems or Stones',
+    ROCK_CLASS: 'Boulders/Statues', BALL_CLASS: 'Iron Balls',
+    CHAIN_CLASS: 'Chains', VENOM_CLASS: 'Venoms',
+};
+function let_to_name(oclass) {
+    for (const [k, v] of Object.entries(OCLASSES))
+        if (v === oclass && CLASS_NAMES[k]) return CLASS_NAMES[k];
+    return '';
 }

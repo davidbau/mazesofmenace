@@ -58,16 +58,16 @@ export const roles = [
         "filecode": "Arc",
         "homebase": "the College of Archeology",
         "intermed": "the Tomb of the Toltec Kings",
-        "mnum": "PM_ARCHEOLOGIST",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_LORD_CARNARVON",
-        "guardnum": "PM_STUDENT",
-        "neminum": "PM_MINION_OF_HUHETOTL",
-        "enemy1num": "NON_PM",
-        "enemy2num": "PM_HUMAN_MUMMY",
-        "enemy1sym": "S_SNAKE",
-        "enemy2sym": "S_MUMMY",
-        "questarti": "ART_ORB_OF_DETECTION",
+        "mnum": 331,
+        "petnum": -1,
+        "ldrnum": 344,
+        "guardnum": 369,
+        "neminum": 357,
+        "enemy1num": -1,
+        "enemy2num": 192,
+        "enemy1sym": 45,
+        "enemy2sym": 39,
+        "questarti": 21,
         "allow": 12398,
         "attrbase": [
             7,
@@ -107,8 +107,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 2,
         "spelarmr": 10,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_MAGIC_MAPPING",
+        "spelstat": 1,
+        "spelspec": 396,
         "spelsbon": -4
     },
     {
@@ -160,16 +160,16 @@ export const roles = [
         "filecode": "Bar",
         "homebase": "the Camp of the Duali Tribe",
         "intermed": "the Duali Oasis",
-        "mnum": "PM_BARBARIAN",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_PELIAS",
-        "guardnum": "PM_CHIEFTAIN",
-        "neminum": "PM_THOTH_AMON",
-        "enemy1num": "PM_OGRE",
-        "enemy2num": "PM_TROLL",
-        "enemy1sym": "S_OGRE",
-        "enemy2sym": "S_TROLL",
-        "questarti": "ART_HEART_OF_AHRIMAN",
+        "mnum": 332,
+        "petnum": -1,
+        "ldrnum": 345,
+        "guardnum": 370,
+        "neminum": 358,
+        "enemy1num": 203,
+        "enemy2num": 220,
+        "enemy1sym": 41,
+        "enemy2sym": 46,
+        "questarti": 22,
         "allow": 12427,
         "attrbase": [
             16,
@@ -209,8 +209,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 0,
         "spelarmr": 8,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_HASTE_SELF",
+        "spelstat": 1,
+        "spelspec": 388,
         "spelsbon": -4
     },
     {
@@ -262,16 +262,16 @@ export const roles = [
         "filecode": "Cav",
         "homebase": "the Caves of the Ancestors",
         "intermed": "the Dragon's Lair",
-        "mnum": "PM_CAVE_DWELLER",
-        "petnum": "PM_LITTLE_DOG",
-        "ldrnum": "PM_SHAMAN_KARNOV",
-        "guardnum": "PM_NEANDERTHAL",
-        "neminum": "PM_CHROMATIC_DRAGON",
-        "enemy1num": "PM_BUGBEAR",
-        "enemy2num": "PM_HILL_GIANT",
-        "enemy1sym": "S_HUMANOID",
-        "enemy2sym": "S_GIANT",
-        "questarti": "ART_SCEPTRE_OF_MIGHT",
+        "mnum": 333,
+        "petnum": 16,
+        "ldrnum": 346,
+        "guardnum": 371,
+        "neminum": 359,
+        "enemy1num": 45,
+        "enemy2num": 171,
+        "enemy1sym": 8,
+        "enemy2sym": 34,
+        "questarti": 23,
         "allow": 12398,
         "attrbase": [
             10,
@@ -311,8 +311,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 1,
         "spelarmr": 8,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_DIG",
+        "spelstat": 1,
+        "spelspec": 366,
         "spelsbon": -4
     },
     {
@@ -364,16 +364,16 @@ export const roles = [
         "filecode": "Hea",
         "homebase": "the Temple of Epidaurus",
         "intermed": "the Temple of Coeus",
-        "mnum": "PM_HEALER",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_HIPPOCRATES",
-        "guardnum": "PM_ATTENDANT",
-        "neminum": "PM_CYCLOPS",
-        "enemy1num": "PM_GIANT_RAT",
-        "enemy2num": "PM_SNAKE",
-        "enemy1sym": "S_RODENT",
-        "enemy2sym": "S_YETI",
-        "questarti": "ART_STAFF_OF_AESCULAPIUS",
+        "mnum": 334,
+        "petnum": -1,
+        "ldrnum": 347,
+        "guardnum": 372,
+        "neminum": 360,
+        "enemy1num": 89,
+        "enemy2num": 215,
+        "enemy1sym": 18,
+        "enemy2sym": 51,
+        "questarti": 24,
         "allow": 12362,
         "attrbase": [
             7,
@@ -413,8 +413,8 @@ export const roles = [
         "spelheal": -3,
         "spelshld": 2,
         "spelarmr": 10,
-        "spelstat": "A_WIS",
-        "spelspec": "SPE_CURE_SICKNESS",
+        "spelstat": 2,
+        "spelspec": 386,
         "spelsbon": -4
     },
     {
@@ -466,16 +466,16 @@ export const roles = [
         "filecode": "Kni",
         "homebase": "Camelot Castle",
         "intermed": "the Isle of Glass",
-        "mnum": "PM_KNIGHT",
-        "petnum": "PM_PONY",
-        "ldrnum": "PM_KING_ARTHUR",
-        "guardnum": "PM_PAGE",
-        "neminum": "PM_IXOTH",
-        "enemy1num": "PM_QUASIT",
-        "enemy2num": "PM_OCHRE_JELLY",
-        "enemy1sym": "S_IMP",
-        "enemy2sym": "S_JELLY",
-        "questarti": "ART_MAGIC_MIRROR_OF_MERLIN",
+        "mnum": 335,
+        "petnum": 100,
+        "ldrnum": 348,
+        "guardnum": 373,
+        "neminum": 361,
+        "enemy1num": 54,
+        "enemy2num": 58,
+        "enemy1sym": 9,
+        "enemy2sym": 10,
+        "questarti": 25,
         "allow": 12300,
         "attrbase": [
             13,
@@ -515,8 +515,8 @@ export const roles = [
         "spelheal": -2,
         "spelshld": 0,
         "spelarmr": 9,
-        "spelstat": "A_WIS",
-        "spelspec": "SPE_TURN_UNDEAD",
+        "spelstat": 2,
+        "spelspec": 398,
         "spelsbon": -4
     },
     {
@@ -568,16 +568,16 @@ export const roles = [
         "filecode": "Mon",
         "homebase": "the Monastery of Chan-Sune",
         "intermed": "the Monastery of the Earth-Lord",
-        "mnum": "PM_MONK",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_GRAND_MASTER",
-        "guardnum": "PM_ABBOT",
-        "neminum": "PM_MASTER_KAEN",
-        "enemy1num": "PM_EARTH_ELEMENTAL",
-        "enemy2num": "PM_XORN",
-        "enemy1sym": "S_ELEMENTAL",
-        "enemy2sym": "S_XORN",
-        "questarti": "ART_EYES_OF_THE_OVERWORLD",
+        "mnum": 336,
+        "petnum": -1,
+        "ldrnum": 349,
+        "guardnum": 374,
+        "neminum": 362,
+        "enemy1num": 156,
+        "enemy2num": 232,
+        "enemy1sym": 31,
+        "enemy2sym": 50,
+        "questarti": 26,
         "allow": 12303,
         "attrbase": [
             10,
@@ -617,8 +617,8 @@ export const roles = [
         "spelheal": -2,
         "spelshld": 2,
         "spelarmr": 20,
-        "spelstat": "A_WIS",
-        "spelspec": "SPE_RESTORE_ABILITY",
+        "spelstat": 2,
+        "spelspec": 392,
         "spelsbon": -4
     },
     {
@@ -670,16 +670,16 @@ export const roles = [
         "filecode": "Pri",
         "homebase": "the Great Temple",
         "intermed": "the Temple of Nalzok",
-        "mnum": "PM_CLERIC",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_ARCH_PRIEST",
-        "guardnum": "PM_ACOLYTE",
-        "neminum": "PM_NALZOK",
-        "enemy1num": "PM_HUMAN_ZOMBIE",
-        "enemy2num": "PM_WRAITH",
-        "enemy1sym": "S_ZOMBIE",
-        "enemy2sym": "S_WRAITH",
-        "questarti": "ART_MITRE_OF_HOLINESS",
+        "mnum": 337,
+        "petnum": -1,
+        "ldrnum": 350,
+        "guardnum": 375,
+        "neminum": 363,
+        "enemy1num": 244,
+        "enemy2num": 230,
+        "enemy1sym": 52,
+        "enemy2sym": 49,
+        "questarti": 27,
         "allow": 12319,
         "attrbase": [
             7,
@@ -719,8 +719,8 @@ export const roles = [
         "spelheal": -2,
         "spelshld": 2,
         "spelarmr": 10,
-        "spelstat": "A_WIS",
-        "spelspec": "SPE_REMOVE_CURSE",
+        "spelstat": 2,
+        "spelspec": 395,
         "spelsbon": -4
     },
     {
@@ -772,16 +772,16 @@ export const roles = [
         "filecode": "Rog",
         "homebase": "the Thieves' Guild Hall",
         "intermed": "the Assassins' Guild Hall",
-        "mnum": "PM_ROGUE",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_MASTER_OF_THIEVES",
-        "guardnum": "PM_THUG",
-        "neminum": "PM_MASTER_ASSASSIN",
-        "enemy1num": "PM_LEPRECHAUN",
-        "enemy2num": "PM_GUARDIAN_NAGA",
-        "enemy1sym": "S_NYMPH",
-        "enemy2sym": "S_NAGA",
-        "questarti": "ART_MASTER_KEY_OF_THIEVERY",
+        "mnum": 339,
+        "petnum": -1,
+        "ldrnum": 352,
+        "guardnum": 377,
+        "neminum": 365,
+        "enemy1num": 63,
+        "enemy2num": 202,
+        "enemy1sym": 14,
+        "enemy2sym": 40,
+        "questarti": 29,
         "allow": 12425,
         "attrbase": [
             7,
@@ -821,8 +821,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 1,
         "spelarmr": 9,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_DETECT_TREASURE",
+        "spelstat": 1,
+        "spelspec": 394,
         "spelsbon": -4
     },
     {
@@ -874,16 +874,16 @@ export const roles = [
         "filecode": "Ran",
         "homebase": "Orion's camp",
         "intermed": "the cave of the wumpus",
-        "mnum": "PM_RANGER",
-        "petnum": "PM_LITTLE_DOG",
-        "ldrnum": "PM_ORION",
-        "guardnum": "PM_HUNTER",
-        "neminum": "PM_SCORPIUS",
-        "enemy1num": "PM_FOREST_CENTAUR",
-        "enemy2num": "PM_SCORPION",
-        "enemy1sym": "S_CENTAUR",
-        "enemy2sym": "S_SPIDER",
-        "questarti": "ART_LONGBOW_OF_DIANA",
+        "mnum": 338,
+        "petnum": 16,
+        "ldrnum": 351,
+        "guardnum": 376,
+        "neminum": 364,
+        "enemy1num": 131,
+        "enemy2num": 97,
+        "enemy1sym": 29,
+        "enemy2sym": 19,
+        "questarti": 28,
         "allow": 12507,
         "attrbase": [
             13,
@@ -923,8 +923,8 @@ export const roles = [
         "spelheal": 2,
         "spelshld": 1,
         "spelarmr": 10,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_INVISIBILITY",
+        "spelstat": 1,
+        "spelspec": 393,
         "spelsbon": -4
     },
     {
@@ -976,16 +976,16 @@ export const roles = [
         "filecode": "Sam",
         "homebase": "the Castle of the Taro Clan",
         "intermed": "the Shogun's Castle",
-        "mnum": "PM_SAMURAI",
-        "petnum": "PM_LITTLE_DOG",
-        "ldrnum": "PM_LORD_SATO",
-        "guardnum": "PM_ROSHI",
-        "neminum": "PM_ASHIKAGA_TAKAUJI",
-        "enemy1num": "PM_WOLF",
-        "enemy2num": "PM_STALKER",
-        "enemy1sym": "S_DOG",
-        "enemy2sym": "S_ELEMENTAL",
-        "questarti": "ART_TSURUGI_OF_MURAMASA",
+        "mnum": 340,
+        "petnum": 16,
+        "ldrnum": 353,
+        "guardnum": 379,
+        "neminum": 366,
+        "enemy1num": 20,
+        "enemy2num": 153,
+        "enemy1sym": 4,
+        "enemy2sym": 31,
+        "questarti": 30,
         "allow": 12300,
         "attrbase": [
             10,
@@ -1025,8 +1025,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 0,
         "spelarmr": 8,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_CLAIRVOYANCE",
+        "spelstat": 1,
+        "spelspec": 385,
         "spelsbon": -4
     },
     {
@@ -1078,16 +1078,16 @@ export const roles = [
         "filecode": "Tou",
         "homebase": "Ankh-Morpork",
         "intermed": "the Thieves' Guild Hall",
-        "mnum": "PM_TOURIST",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_TWOFLOWER",
-        "guardnum": "PM_GUIDE",
-        "neminum": "PM_MASTER_OF_THIEVES",
-        "enemy1num": "PM_GIANT_SPIDER",
-        "enemy2num": "PM_FOREST_CENTAUR",
-        "enemy1sym": "S_SPIDER",
-        "enemy2sym": "S_CENTAUR",
-        "questarti": "ART_YENDORIAN_EXPRESS_CARD",
+        "mnum": 341,
+        "petnum": -1,
+        "ldrnum": 354,
+        "guardnum": 380,
+        "neminum": 352,
+        "enemy1num": 96,
+        "enemy2num": 131,
+        "enemy1sym": 19,
+        "enemy2sym": 29,
+        "questarti": 31,
         "allow": 12298,
         "attrbase": [
             7,
@@ -1127,8 +1127,8 @@ export const roles = [
         "spelheal": 1,
         "spelshld": 2,
         "spelarmr": 10,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_CHARM_MONSTER",
+        "spelstat": 1,
+        "spelspec": 387,
         "spelsbon": -4
     },
     {
@@ -1180,16 +1180,16 @@ export const roles = [
         "filecode": "Val",
         "homebase": "the Shrine of Destiny",
         "intermed": "the cave of Surtur",
-        "mnum": "PM_VALKYRIE",
-        "petnum": "NON_PM",
-        "ldrnum": "PM_NORN",
-        "guardnum": "PM_WARRIOR",
-        "neminum": "PM_LORD_SURTUR",
-        "enemy1num": "PM_FIRE_ANT",
-        "enemy2num": "PM_FIRE_GIANT",
-        "enemy1sym": "S_ANT",
-        "enemy2sym": "S_GIANT",
-        "questarti": "ART_ORB_OF_FATE",
+        "mnum": 342,
+        "petnum": -1,
+        "ldrnum": 355,
+        "guardnum": 381,
+        "neminum": 367,
+        "enemy1num": 3,
+        "enemy2num": 172,
+        "enemy1sym": 1,
+        "enemy2sym": 34,
+        "questarti": 32,
         "allow": 8238,
         "attrbase": [
             10,
@@ -1229,8 +1229,8 @@ export const roles = [
         "spelheal": -2,
         "spelshld": 0,
         "spelarmr": 9,
-        "spelstat": "A_WIS",
-        "spelspec": "SPE_CONE_OF_COLD",
+        "spelstat": 2,
+        "spelspec": 369,
         "spelsbon": -4
     },
     {
@@ -1282,16 +1282,16 @@ export const roles = [
         "filecode": "Wiz",
         "homebase": "the Lonely Tower",
         "intermed": "the Tower of Darkness",
-        "mnum": "PM_WIZARD",
-        "petnum": "PM_KITTEN",
-        "ldrnum": "PM_NEFERET_THE_GREEN",
-        "guardnum": "PM_APPRENTICE",
-        "neminum": "PM_DARK_ONE",
-        "enemy1num": "PM_VAMPIRE_BAT",
-        "enemy2num": "PM_XORN",
-        "enemy1sym": "S_BAT",
-        "enemy2sym": "S_WRAITH",
-        "questarti": "ART_EYE_OF_THE_AETHIOPICA",
+        "mnum": 343,
+        "petnum": 32,
+        "ldrnum": 356,
+        "guardnum": 382,
+        "neminum": 368,
+        "enemy1num": 129,
+        "enemy2num": 232,
+        "enemy1sym": 28,
+        "enemy2sym": 49,
+        "questarti": 33,
         "allow": 12507,
         "attrbase": [
             7,
@@ -1331,8 +1331,8 @@ export const roles = [
         "spelheal": 0,
         "spelshld": 3,
         "spelarmr": 10,
-        "spelstat": "A_INT",
-        "spelspec": "SPE_MAGIC_MISSILE",
+        "spelstat": 1,
+        "spelspec": 367,
         "spelsbon": -4
     }
 ];
@@ -1347,9 +1347,9 @@ export const races = [
             "m": "man",
             "f": "woman"
         },
-        "mnum": "PM_HUMAN",
-        "mummynum": "PM_HUMAN_MUMMY",
-        "zombienum": "PM_HUMAN_ZOMBIE",
+        "mnum": 260,
+        "mummynum": 192,
+        "zombienum": 244,
         "allow": 12303,
         "selfmask": 8,
         "lovemask": 0,
@@ -1396,9 +1396,9 @@ export const races = [
             "m": 0,
             "f": null
         },
-        "mnum": "PM_ELF",
-        "mummynum": "PM_ELF_MUMMY",
-        "zombienum": "PM_ELF_ZOMBIE",
+        "mnum": 264,
+        "mummynum": 191,
+        "zombienum": 243,
         "allow": 12305,
         "selfmask": 16,
         "lovemask": 16,
@@ -1445,9 +1445,9 @@ export const races = [
             "m": 0,
             "f": null
         },
-        "mnum": "PM_DWARF",
-        "mummynum": "PM_DWARF_MUMMY",
-        "zombienum": "PM_DWARF_ZOMBIE",
+        "mnum": 44,
+        "mummynum": 190,
+        "zombienum": 242,
         "allow": 12324,
         "selfmask": 32,
         "lovemask": 96,
@@ -1494,9 +1494,9 @@ export const races = [
             "m": 0,
             "f": null
         },
-        "mnum": "PM_GNOME",
-        "mummynum": "PM_GNOME_MUMMY",
-        "zombienum": "PM_GNOME_ZOMBIE",
+        "mnum": 165,
+        "mummynum": 188,
+        "zombienum": 240,
         "allow": 12354,
         "selfmask": 64,
         "lovemask": 96,
@@ -1543,9 +1543,9 @@ export const races = [
             "m": 0,
             "f": null
         },
-        "mnum": "PM_ORC",
-        "mummynum": "PM_ORC_MUMMY",
-        "zombienum": "PM_ORC_ZOMBIE",
+        "mnum": 72,
+        "mummynum": 189,
+        "zombienum": 241,
         "allow": 12417,
         "selfmask": 128,
         "lovemask": 0,
@@ -1650,6 +1650,217 @@ export const aligns = [
         "value": -128
     }
 ];
+
+// src/attrib.c:23 struct innate — [experience level, intrinsic] per role and
+// race. Keys are the C table names (arc_abil, sam_abil, elf_abil, ...).
+export const INNATE = {
+ "arc_abil": [
+  [
+   1,
+   "HSearching"
+  ],
+  [
+   5,
+   "HStealth"
+  ],
+  [
+   10,
+   "HFast"
+  ]
+ ],
+ "bar_abil": [
+  [
+   1,
+   "HPoison_resistance"
+  ],
+  [
+   7,
+   "HFast"
+  ],
+  [
+   15,
+   "HStealth"
+  ]
+ ],
+ "cav_abil": [
+  [
+   7,
+   "HFast"
+  ],
+  [
+   15,
+   "HWarning"
+  ]
+ ],
+ "hea_abil": [
+  [
+   1,
+   "HPoison_resistance"
+  ],
+  [
+   15,
+   "HWarning"
+  ]
+ ],
+ "kni_abil": [
+  [
+   7,
+   "HFast"
+  ]
+ ],
+ "mon_abil": [
+  [
+   1,
+   "HFast"
+  ],
+  [
+   1,
+   "HSleep_resistance"
+  ],
+  [
+   1,
+   "HSee_invisible"
+  ],
+  [
+   3,
+   "HPoison_resistance"
+  ],
+  [
+   5,
+   "HStealth"
+  ],
+  [
+   7,
+   "HWarning"
+  ],
+  [
+   9,
+   "HSearching"
+  ],
+  [
+   11,
+   "HFire_resistance"
+  ],
+  [
+   13,
+   "HCold_resistance"
+  ],
+  [
+   15,
+   "HShock_resistance"
+  ],
+  [
+   17,
+   "HTeleport_control"
+  ]
+ ],
+ "pri_abil": [
+  [
+   15,
+   "HWarning"
+  ],
+  [
+   20,
+   "HFire_resistance"
+  ]
+ ],
+ "ran_abil": [
+  [
+   1,
+   "HSearching"
+  ],
+  [
+   7,
+   "HStealth"
+  ],
+  [
+   15,
+   "HSee_invisible"
+  ]
+ ],
+ "rog_abil": [
+  [
+   1,
+   "HStealth"
+  ],
+  [
+   10,
+   "HSearching"
+  ]
+ ],
+ "sam_abil": [
+  [
+   1,
+   "HFast"
+  ],
+  [
+   15,
+   "HStealth"
+  ]
+ ],
+ "tou_abil": [
+  [
+   10,
+   "HSearching"
+  ],
+  [
+   20,
+   "HPoison_resistance"
+  ]
+ ],
+ "val_abil": [
+  [
+   1,
+   "HCold_resistance"
+  ],
+  [
+   3,
+   "HStealth"
+  ],
+  [
+   7,
+   "HFast"
+  ]
+ ],
+ "wiz_abil": [
+  [
+   15,
+   "HWarning"
+  ],
+  [
+   17,
+   "HTeleport_control"
+  ]
+ ],
+ "dwa_abil": [],
+ "elf_abil": [],
+ "gno_abil": [],
+ "orc_abil": [],
+ "hum_abil": []
+};
+
+// src/attrib.c role_abil() — the table for a role.
+//
+// Keyed by NAME, not by position: roles[] lists Rogue before Ranger, while the
+// abil tables are alphabetical (ran_abil then rog_abil), so an index-based map
+// silently swaps their intrinsics.
+const ROLE_ABIL_BY_NAME = {
+    Archeologist: 'arc_abil', Barbarian: 'bar_abil', Caveman: 'cav_abil',
+    Healer: 'hea_abil', Knight: 'kni_abil', Monk: 'mon_abil',
+    Priest: 'pri_abil', Ranger: 'ran_abil', Rogue: 'rog_abil',
+    Samurai: 'sam_abil', Tourist: 'tou_abil', Valkyrie: 'val_abil',
+    Wizard: 'wiz_abil',
+};
+export function role_abil(rolenum) {
+    const nm = roles[rolenum]?.name?.m;
+    return INNATE[ROLE_ABIL_BY_NAME[nm]] || [];
+}
+
+// src/attrib.c adjabil() — the race table; only elves and orcs have one.
+export function race_abil(racenum) {
+    const noun = races[racenum]?.noun;
+    return INNATE[{ elf: 'elf_abil', orc: 'orc_abil' }[noun]] || [];
+}
 
 // src/role.c str2role() matches on the role name, case-insensitively.
 export function findRole(name) {

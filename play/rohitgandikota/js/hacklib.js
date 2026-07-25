@@ -37,3 +37,11 @@ export function depth(uz) {
 }
 
 // C ref: rn2(x) already in rng.js — re-export not needed
+
+// src/hacklib.c s_suffix() — the possessive form.
+export function s_suffix(s) {
+    if (s.toLowerCase() === 'it') return s + 's';
+    if (s.toLowerCase() === 'you') return s + 'r';
+    if (s.endsWith('s')) return s + "'";
+    return s + "'s";
+}

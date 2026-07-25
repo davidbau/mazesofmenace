@@ -6,14 +6,15 @@
 import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
 import { newsym, pline, m_at, update_topl } from './display.js';
-import { body_part, near_capacity } from './invent.js';
+import { body_part, near_capacity, update_inventory, delobj } from './invent.js';
 import { exercise } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
     RUST_TRAP, BEAR_TRAP, DART_TRAP, MAGIC_TRAP, PIT, SPIKED_PIT,
     TT_BEARTRAP, A_DEX, A_MAX, FOOT, LEG, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
-    MAX_ERODE,
+    MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
+    EF_PAY, EF_DESTROY,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
@@ -373,6 +374,152 @@ export function water_damage(obj, ostr, force) {
     default:
         return erode_obj_rust(obj, ostr);
     }
+}
+
+// ── erode_obj (general) ───────────────────────────────────────────────────
+// C ref: objclass.h material predicates for the other 4 erosion types (IRON's
+// is_rustprone is already defined above).  Scoped to worn armor: destroy_arm()
+// (the only caller) never passes anything else, so the WAN_FIRE/candle carve-
+// outs in C's is_flammable (armor is never one of those otypes) are omitted.
+const MAT_LIQUID = 1, MAT_WOOD = 8, MAT_DRAGON_HIDE = 10, MAT_COPPER = 13,
+    MAT_PLASTIC = 18, MAT_GLASS = 19;
+function is_flammable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_PLASTIC;
+}
+function is_rottable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_DRAGON_HIDE;
+}
+function is_corrodeable(obj) {
+    const mat = objects[obj?.otyp]?.material;
+    return mat === MAT_COPPER || mat === MAT_IRON;
+}
+function is_crackable(obj) {
+    return objects[obj?.otyp]?.material === MAT_GLASS && obj?.oclass === ARMOR_CLASS;
+}
+
+// C ref: do_wear.c obj_erode_type() — which erosion type (if any) applies to
+// a piece of gear, by material.  Order matters: flammable is checked first.
+export function obj_erode_type(obj) {
+    if (is_flammable(obj)) return ERODE_BURN;
+    if (is_rustprone(obj)) return ERODE_RUST;
+    if (is_crackable(obj)) return ERODE_CRACK;
+    if (is_rottable(obj)) return ERODE_ROT;
+    if (is_corrodeable(obj)) return ERODE_CORRODE;
+    return ERODE_NONE;
+}
+
+// C ref: zap.c inventory_resistance_check(dmgtyp) — chance a carried
+// protective item (e.g. a fire-resistant cloak) shields another item.  Not
+// modeled: no covered hero carries such gear, so this always takes C's own
+// "prob == 0" fast path and (like C) consumes no RNG.
+function inventory_resistance_check(_dmgtyp) { return false; }
+
+// C ref: mkobj.c costly_alteration(obj, alter_type) — shop billing for a
+// damaged item.  A no-op for anything not flagged unpaid (no RNG either way);
+// shop billing itself isn't modeled.
+function costly_alteration(_obj, _alter_type) {}
+
+// C ref: objnam.c vtense(subj, verb) — 3rd-person-singular conjugation of
+// `verb`, unless `subj` is a plural-shaped noun ("gloves", "boots", ending in
+// 's' but not "us"/"ss").  Scoped to the plain armor-name strings erode_obj
+// passes here (no "a "/"an " article, no "of"-clause subjects).
+function vtense_sing(verb) {
+    const last = verb[verb.length - 1]?.toLowerCase();
+    const prev = verb.length >= 2 ? verb[verb.length - 2].toLowerCase() : '';
+    if (verb.toLowerCase() === 'are') return 'is';
+    if (verb.toLowerCase() === 'have') return verb.slice(0, -2) + 's';
+    if (last === 'z' || last === 'x' || last === 's'
+        || (verb.length >= 2 && last === 'h' && (prev === 'c' || prev === 's'))
+        || (verb.length === 2 && last === 'o'))
+        return verb + 'es';
+    if (last === 'y' && !'aeiou'.includes(prev))
+        return verb.slice(0, -1) + 'ies';
+    return verb + 's';
+}
+function vtense(subj, verb) {
+    if (subj && !/^(a |an )/i.test(subj)) {
+        const last = subj[subj.length - 1]?.toLowerCase();
+        const prev = subj.length >= 2 ? subj[subj.length - 2].toLowerCase() : '';
+        if (last === 's' && subj.length > 1 && prev !== 'u' && prev !== 's')
+            return verb; // plural-shaped noun ("gloves", "boots"): unchanged
+    }
+    return vtense_sing(verb);
+}
+
+// Unwear a destroyed armor piece: clear whichever hero armor slot references
+// it and its owornmask.  C's remove_worn_item()/Cloak_off()/&c also recompute
+// AC and drop any granted intrinsic; not modeled (erosion reaching an already
+// fully-eroded piece isn't exercised by the covered starts).
+function unwear_armor(otmp) {
+    for (const slot of ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu'])
+        if (game[slot] === otmp) game[slot] = null;
+    otmp.owornmask = 0;
+}
+
+const ERODE_ACTION = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
+
+// C ref: trap.c erode_obj(otmp, ostr, type, ef_flags).  Scoped to hero-worn
+// armor (destroy_arm's only call site): the monster-carried/floor-object
+// (vismon/visobj) branches of the C function are never reached and omitted.
+export async function erode_obj(otmp, ostr, type, ef_flags) {
+    if (!otmp) return ER_NOTHING;
+
+    let vulnerable;
+    switch (type) {
+    case ERODE_BURN:
+        if (inventory_resistance_check('FIRE')) return ER_NOTHING;
+        vulnerable = is_flammable(otmp);
+        break;
+    case ERODE_RUST:
+        vulnerable = is_rustprone(otmp);
+        break;
+    case ERODE_ROT:
+        vulnerable = is_rottable(otmp);
+        break;
+    case ERODE_CORRODE:
+        if (inventory_resistance_check('ACID')) return ER_NOTHING;
+        vulnerable = is_corrodeable(otmp);
+        break;
+    case ERODE_CRACK:
+        vulnerable = is_crackable(otmp);
+        break;
+    default:
+        return ER_NOTHING;
+    }
+    const is_primary = type !== ERODE_ROT && type !== ERODE_CORRODE;
+    const erosion = is_primary ? (otmp.oeroded || 0) : (otmp.oeroded2 || 0);
+
+    if (!erosion_matters(otmp)) {
+        return ER_NOTHING;
+    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        return ER_NOTHING;
+    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        // C: blessed objects get a luck-modulated saving roll (rnl(4)); it
+        // must fire here (when reached) to stay in sync with C.
+        if (otmp.oerodeproof) {
+            otmp.rknown = true;
+            update_inventory();
+        }
+        return ER_NOTHING;
+    } else if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? ' completely' : erosion ? ' further' : '';
+        await update_topl(`Your ${ostr} ${vtense(ostr, ERODE_ACTION[type])}${adverb}!`);
+        if (ef_flags & EF_PAY) costly_alteration(otmp, type);
+        if (is_primary) otmp.oeroded = erosion + 1; else otmp.oeroded2 = erosion + 1;
+        update_inventory();
+        return ER_DAMAGED;
+    } else if (ef_flags & EF_DESTROY) {
+        otmp.in_use = 1;
+        const actbuf = (type === ERODE_CRACK) ? 'shatters' : `${vtense(ostr, ERODE_ACTION[type])} away`;
+        await update_topl(`Your ${ostr} ${actbuf}!`);
+        if (ef_flags & EF_PAY) costly_alteration(otmp, type);
+        if (otmp.owornmask) unwear_armor(otmp);
+        delobj(otmp);
+        return ER_DESTROYED;
+    }
+    return ER_NOTHING;
 }
 
 // ── dotrap / trap effect dispatch ─────────────────────────────────────────

@@ -20,6 +20,7 @@ const MAXPCHARS = 105; // from symbols.js
 
 import { COMMIT_NUMBER, TELEPORT_BUILD_DATE } from './version.js';
 // No imports from non-constant files — const.js is a leaf in the DAG
+import { MFLAGS } from './monst_data.js';
 import { game } from './gstate.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 
@@ -1334,6 +1335,16 @@ export const UTOTYPE_FALLING = 0x02;
 export const UTOTYPE_PORTAL = 0x04;
 export const UTOTYPE_RMPORTAL = 0x10;
 export const UTOTYPE_DEFERRED = 0x20;
+// include/monflag.h:187 — the race bits in a role's `allow` mask are the
+// M2_ species flags under another name.
+// include/monflag.h:141 — the monster's name is a proper name, so it takes
+// no "the" prefix.
+export const M2_PNAME = MFLAGS.M2_PNAME;
+export const MH_HUMAN = MFLAGS.M2_HUMAN;
+export const MH_ELF = MFLAGS.M2_ELF;
+export const MH_DWARF = MFLAGS.M2_DWARF;
+export const MH_GNOME = MFLAGS.M2_GNOME;
+export const MH_ORC = MFLAGS.M2_ORC;
 export const ROLE_RACEMASK = 0x0ff8;
 export const ROLE_GENDMASK = 0xf000;
 export const ROLE_MALE = 0x1000;

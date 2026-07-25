@@ -8,6 +8,9 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { phase_of_the_moon, night, FULL_MOON } from './calendar.js';
+import { VAULT } from './const.js';
+import { GOLD_PIECE } from './mkobj.js';
+import { DEADMONSTER } from './mon.js';
 
 // C ref: sounds.c dosounds().  Deaf/acoustics/swallow/underwater short-circuit
 // before any roll.  Each `level.flags.*` clause rolls rn2(N) when the feature
@@ -81,7 +84,40 @@ export function dosounds() {
     if (lf.has_court && !rn2(200)) { return; }
     // C ref: sounds.c:230-237 — swamp ambient, via You1() not You_hear1().
     if (lf.has_swamp && !rn2(200)) { You1(SWAMP_MSG[rn2(2) + hallu]); return; }
-    if (lf.has_vault && !rn2(200)) { return; }
+    // C ref: sounds.c:238-273 — vault ambient.  gd_sound() gates the rn2(2)
+    // message roll; g_at/vault_occupied here always report false because the
+    // hero-room-membership list (u.urooms) and the vault-guard subsystem
+    // (isgd) aren't tracked by this port, matching an empty urooms / no
+    // guard on the level.
+    if (lf.has_vault && !rn2(200)) {
+        const sroom = game.level?.rooms?.find((r) => r.rtype === VAULT);
+        if (!sroom) { lf.has_vault = 0; return; }
+        if (gd_sound()) {
+            switch (rn2(2) + hallu) {
+            case 1: {
+                let gold_in_vault = false;
+                for (let vx = sroom.lx; vx <= sroom.hx && !gold_in_vault; vx++)
+                    for (let vy = sroom.ly; vy <= sroom.hy; vy++)
+                        if (gold_at(vx, vy)) { gold_in_vault = true; break; }
+                if (!vault_occupied()) {
+                    You_hear1(gold_in_vault ? 'someone counting gold coins.'
+                                            : 'someone searching.');
+                    break;
+                }
+                // FALLTHROUGH — hero occupies the vault room; structurally
+                // unreachable since vault_occupied() always reports false.
+            }
+            /* falls through */
+            case 0:
+                You_hear1('the footsteps of a guard on patrol.');
+                break;
+            case 2:
+                You_hear1('Ebenezer Scrooge!');
+                break;
+            }
+        }
+        return;
+    }
     if (lf.has_beehive && !rn2(200)) { return; }
     if (lf.has_morgue && !rn2(200)) { return; }
     // C ref: sounds.c:286-307 — barracks ambient.  The rn2(3) message roll only
@@ -98,6 +134,31 @@ export function dosounds() {
     // every turn.  get_iter_mons(oracle_sound) (the body) is RNG-inert, so only
     // the probe itself matters for parity.
     if (Is_oracle_level(g.u?.uz) && !rn2(400)) { return; }
+}
+
+// C ref: vault.c gd_sound() = !(vault_occupied(u.urooms) || findgd()).
+function gd_sound() { return !(vault_occupied() || findgd()); }
+// C ref: vault.c vault_occupied(u.urooms) — is the hero currently standing in
+// a vault room?  u.urooms (the hero's per-room membership list) isn't
+// tracked by this port, so this always evaluates false (matching an empty
+// array — the same simplification dosounds() uses for u.ushops elsewhere).
+function vault_occupied() { return false; }
+// C ref: vault.c findgd() — is a vault guard monster on this level (placed or
+// migrating in)?  No monster ever carries isgd (the vault-guard subsystem
+// isn't ported), so this always evaluates false.
+function findgd() {
+    for (const m of game.level?.monsters || [])
+        if (!DEADMONSTER(m) && m.isgd) return true;
+    return false;
+}
+// C ref: mkobj.c sobj_at(GOLD_PIECE, x, y) — is there floor gold at (x,y)?
+function gold_at(x, y) {
+    const objs = game.level?.objects;
+    if (!objs) return false;
+    for (const o of objs)
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === GOLD_PIECE)
+            return true;
+    return false;
 }
 
 // C ref: dungeon.h Is_oracle_level(x) = Lcheck(x, &oracle_level) — true when the

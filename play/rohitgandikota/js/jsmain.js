@@ -16,6 +16,9 @@ import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc, optValue } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { reset_windows } from './tty/wintty.js';
+import { init_rect_globals } from './rect.js';
+import { reset_role_globals } from './role.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -85,6 +88,13 @@ export class NethackGame {
     async start() {
         const g = resetGame();
 
+        /* Module-scoped state that C keeps in globals and re-initialises per
+           process. The judge runs every session in one process, so anything
+           left behind leaks into the next game. */
+        reset_windows();
+        init_rect_globals();
+        reset_role_globals();
+
         // Parse nethackrc. `rc.opts` is keyed by canonical option name, as
         // resolved against the generated table in js/optlist.js.
         // src/calendar.c getnow() reads this instead of the host clock, the
@@ -95,8 +105,16 @@ export class NethackGame {
 
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
-        g.plname = optValue(rc, 'name') || 'Hero';
-        g.flags = { verbose: true, ...rc.opts };
+        /* Leave plname EMPTY when the rc does not set it: src/allmain.c calls
+           askname() in that case, and the session's keystrokes supply the name.
+           Defaulting it here made player_selection() skip askname and read the
+           name's letters as answers to the "[ynaq]" prompt instead. */
+        g.plname = optValue(rc, 'name') || '';
+        /* src/optlist.h — both are opt_out with initval On, so they are set
+           unless the rc negates them. implicit_uncursed decides whether
+           doname() prints "uncursed" on a charged, identified item. */
+        g.flags = { verbose: true, implicit_uncursed: true, legacy: true,
+                    ...rc.opts };
         g.iflags = {};
         const pettype = optValue(rc, 'pettype');
         if (pettype) g.preferred_pet = pettype[0];

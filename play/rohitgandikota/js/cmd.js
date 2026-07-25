@@ -6,13 +6,22 @@
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { dodiscovered } from './o_init.js';
+import { enlightenment } from './insight.js';
+import {
+    tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
+    tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+    NHW_TEXT, NHW_MENU, ATR_NONE,
+} from './tty/wintty.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD } from './const.js';
+import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline } from './display.js';
+import { newsym, flush_screen, pline, docrt } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
 import { dosearch } from './detect.js';
-import { dolook, ECMD_TIME } from './invent.js';
+import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell } from './spell.js';
 
 // Direction deltas: y u k
@@ -29,11 +38,12 @@ function isMovementKey(ch) {
 // yet. Listed explicitly so the set shrinks visibly as commands land, rather
 // than hiding behind a catch-all.
 const KNOWN_UNPORTED = new Set([
-    'i',      // ddoinv       — inventory menu
-    '\\',    // dodiscovered — discoveries
-    '\x18',   // doattributes — ^X
-    '\x1b',   // ESC          — dismiss / cancel
-    ' ',      // dismiss --More--
+    /* ESC and space reach the main prompt only when no window is open — a
+       window consumes its own dismissing key inside display_nhwindow(). C
+       treats both as no-ops here and prints nothing, so they must NOT fall
+       through to the "Unknown command" branch. */
+    '\x1b',
+    ' ',
 ]);
 
 // C ref: hack.c — check if a cell blocks movement
@@ -68,6 +78,18 @@ export async function rhack(key) {
     } else if (ch === '+') {
         // src/cmd.c cmdlist — '+' is dovspell.
         game.context.move = (dovspell() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'i') {
+        // src/cmd.c cmdlist — 'i' is ddoinv, which returns ECMD_OK.
+        game.context.move = 0;
+        await show_inventory();
+    } else if (ch === '\x18') {
+        // src/cmd.c cmdlist — ^X is doattributes, which returns ECMD_OK.
+        game.context.move = 0;
+        await show_attributes();
+    } else if (ch === '\\') {
+        // src/cmd.c cmdlist — '\\' is dodiscovered, which returns ECMD_OK.
+        game.context.move = 0;
+        await show_discoveries();
     } else if (ch === ':') {
         // src/cmd.c cmdlist — ':' is dolook. It returns ECMD_OK when not
         // blind, so looking does not consume a turn.
@@ -108,4 +130,85 @@ async function domove(dx, dy) {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+}
+
+
+// src/o_init.c dodiscovered() feeds an NHW_TEXT window, which js/tty/wintty.js
+// lays out. The window stays up until a key dismisses it, so the frame captured
+// at the NEXT nhgetch() is the one showing it.
+let open_window = null;
+
+// C's display_nhwindow(win, TRUE) BLOCKS inside the window: wintty.c's dmore()
+// waits for a key while the window is on screen, so the frame the recorder
+// captures at that nhgetch() is the window itself. Returning to the move loop
+// instead would let its flush_screen() redraw the map over it before the next
+// capture, which is exactly what a first attempt at this did.
+async function show_discoveries() {
+    const lines = dodiscovered();
+    if (!lines) {
+        await pline("You haven't discovered anything yet...");
+        return;
+    }
+    const win = tty_create_nhwindow(NHW_TEXT);
+    for (const [text, attr] of lines)
+        tty_putstr(win, attr, text);
+    tty_display_nhwindow(win);      /* draws the page and parks the cursor */
+
+    /* dmore(): block here until the player dismisses the window */
+    await nhgetch();
+
+    tty_destroy_nhwindow(win);
+    await docrt();                  /* restore the map underneath */
+}
+
+
+// src/insight.c doattributes() -> enlightenment(BASICENLIGHTENMENT, 0).
+//
+// The window is an NHW_MENU (create_nhwindow(NHW_MENU) with start_menu, so
+// en_via_menu is set and every line goes through add_menu_str). Its 34 lines
+// exceed the screen, which collapses offx to 0 and makes it page: the player
+// gets "(1 of 2)", presses a key, gets "(2 of 2)", presses again.
+async function show_attributes() {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const l of enlightenment())
+        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, l,
+                     MENU_ITEMFLAGS_NONE);
+    tty_end_menu(win, null);
+    tty_display_nhwindow(win);
+
+    /* dmore() blocks once per page */
+    await nhgetch();
+    while (tty_next_page(win))
+        await nhgetch();
+
+    tty_destroy_nhwindow(win);
+    await docrt();
+}
+
+
+// src/invent.c display_inventory() -> an NHW_MENU. Its longest line decides
+// offx: 80 - (maxcol) - 1, and js/tty/wintty.js adds the +2 for the leading
+// and trailing space. seed8000 records the window at column 32 with the cursor
+// at [38,20].
+async function show_inventory() {
+    const items = display_inventory();
+    if (!items.length) {
+        await pline('Not carrying anything.');
+        return;
+    }
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const it of items)
+        tty_add_menu(win, null, it.heading ? 0 : 1, it.invlet || 0, 0,
+                     it.attr, NO_COLOR, it.str, MENU_ITEMFLAGS_NONE);
+    tty_end_menu(win, null);
+    tty_display_nhwindow(win);
+
+    await nhgetch();
+    while (tty_next_page(win))
+        await nhgetch();
+
+    tty_destroy_nhwindow(win);
+    await docrt();
 }

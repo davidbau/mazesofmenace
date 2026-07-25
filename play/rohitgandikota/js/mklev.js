@@ -14,6 +14,33 @@ import {
     rndmonnum, makemon, mkclass, monsndx, level_difficulty, MM_NOGRP, NO_MM_FLAGS,
 } from './makemon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
+import { fill_special_room } from './sp_lev.js';
+import { mkgold } from './mkobj.js';
+
+function note_unported_lev(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
+// src/mklev.c:821 makevtele()
+async function makevtele() {
+    await makeniche(TELEP_TRAP);
+}
+
+// src/mklev.c mk_knox_portal() — the Fort Ludios branch. The rn2(3) fires
+// whenever the branch's source end has not been placed yet, which on an
+// ordinary early level it has not.
+function mk_knox_portal(x, y) {
+    const br = (game.branches || []).find(b => b.name === 'Fort Ludios');
+    if (!br) return;
+    const knox = game.special_levels?.knox_level;
+    const source = (knox && br.end1.dnum === knox.dnum
+                    && br.end1.dlevel === knox.dlevel) ? br.end2 : br.end1;
+    if (source !== br.end2 && is_branchlev())
+        return;   /* disallow Knox on a level that already has a branch */
+    if (source.dnum < game.n_dgns || rn2(3))
+        return;
+    note_unported_lev('mk_knox_portal placement');
+}
 import { random_engraving, wipeout_text } from './engrave.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
@@ -66,6 +93,7 @@ const {
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
+import { themerooms } from './themerms_data.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -216,17 +244,7 @@ function mkobj_at(oclass, x, y, artif) {
     return mkobj(oclass, artif);
 }
 
-function mkgold(amount, x, y) {
-    // C ref: mkobj.c mkgold()
-    if (amount <= 0) {
-        // C ref: mkobj.c:2008-2010
-        const depthVal = depth_of_level(game.u?.uz);
-        const mul = rnd(Math.trunc(30 / Math.max(12 - depthVal, 2)));
-        amount = 1 + rnd(level_difficulty() + 2) * mul;
-    }
-    // mksobj_at(GOLD_PIECE) calls next_ident
-    next_ident();
-}
+/* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
 // src/mkobj.c place_object() / add_to_buried() — neither draws.
 function place_object(otmp, x, y) {
@@ -270,11 +288,51 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
 
 
 // maketrap stub
+// src/trap.c:3083 choose_trapnote() — a squeaky board picks an unused musical
+// note. The draw's ARGUMENT is the count of notes still free on this level, so
+// it shrinks as boards accumulate: rn2(12), then rn2(11), and so on.
+function choose_trapnote(ttmp) {
+    const tavail = new Array(12).fill(0);
+    for (const t of game.level.traps || [])
+        if (t.ttyp === SQKY_BOARD && t !== ttmp)
+            tavail[t.tnote] = 1;
+    const tpick = [];
+    for (let k = 0; k < 12; ++k)
+        if (tavail[k] === 0)
+            tpick.push(k);
+    return tpick.length > 0 ? tpick[rn2(tpick.length)] : rn2(12);
+}
+
+// src/trap.c:490 maketrap()
 async function maketrap(x, y, typ) {
-    const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
+    const trap = {
+        ttyp: typ, tx: x, ty: y,
+        tseen: (typ === HOLE),          /* unhideable_trap() */
+        once: 0, madeby_u: 0,
+        launch: { x: -1, y: -1 },
+        dst: { dnum: -1, dlevel: -1 },
+    };
     if (!game.level) return trap;
     if (!game.level.traps) game.level.traps = [];
     game.level.traps.push(trap);
+
+    switch (typ) {
+    case SQKY_BOARD:
+        trap.tnote = choose_trapnote(trap);
+        break;
+    case STATUE_TRAP:
+        note_unported_lev('mk_trap_statue');
+        break;
+    case ROLLING_BOULDER_TRAP:
+        note_unported_lev('mkroll_launch');
+        break;
+    case HOLE:
+    case TRAPDOOR:
+        note_unported_lev('hole_destination');
+        break;
+    default:
+        break;
+    }
     return trap;
 }
 
@@ -425,23 +483,52 @@ async function makelevel() {
 
     // Branch check
     const branchp = is_branchlev();
+    /* src/mklev.c:1306 — minimum number of rooms needed before a special room
+       is allowed. A vault bumps it, because the vault itself counts as a room
+       but must not make a shop eligible. */
+    let room_threshold = branchp ? 4 : 3;
 
     makecorridors();
     await make_niches();
 
-    // Vault creation (simplified for contest)
-    if (g.vault_x !== -1) {
+    // src/mklev.c:1317 — a secret treasure vault, not connected to anything.
+    //
+    // The retry path is where four sessions diverged. When the first
+    // check_room() fails, C calls create_vault(), which loops up to 100 times
+    // on rnd_rect() — and with only one free rectangle left that is 100
+    // consecutive rn2(1) calls with nothing between them, because a vault sets
+    // dx = dy = 1 rather than rolling them.
+    if (g.vault_x !== -1) {   /* do_vault() */
         const vw = { v: 1 }, vh = { v: 1 };
+        /* C passes &gv.vault_x, and a FAILED check_room still writes through
+           it, so the retry starts from the moved coordinates. */
         const vx = { v: g.vault_x }, vy = { v: g.vault_y };
-        if (check_room(vx, vw, vy, vh, true)) {
+        let ok = check_room(vx, vw, vy, vh, true);
+        g.vault_x = vx.v; g.vault_y = vy.v;
+
+        if (!ok && rnd_rect() && create_vault()) {
+            const nr = g.level.rooms[g.level.nroom];
+            vx.v = g.vault_x = nr.lx;
+            vy.v = g.vault_y = nr.ly;
+            ok = check_room(vx, vw, vy, vh, true);
+            g.vault_x = vx.v; g.vault_y = vy.v;
+            if (!ok) nr.hx = -1;
+        }
+
+        if (ok) {   /* fill_vault: */
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
-            g.level.flags.has_vault = true;
+            g.level.flags.has_vault = 1;
+            room_threshold++;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
-            if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
-            if (!is_branchlev()) rn2(3);
-            if (!rn2(3)) await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified
+            if (vaultRoom) {
+                vaultRoom.needfill = FILL_NORMAL;
+                /* fills the vault with gold: one rn1(depth*100, 51) and one
+                   next_ident per square */
+                fill_special_room(vaultRoom);
+            }
+            mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
+            if (!g.level.flags.noteleport && !rn2(3))
+                await makevtele();
         }
     }
 
@@ -474,6 +561,12 @@ async function makelevel() {
         if (fillable)
             --bonus_item_room_countdown;
     }
+
+    /* src/mklev.c:1415 — fill all special rooms now, regardless of whether
+       this is a special level, a proto level or an ordinary one. This is a
+       SECOND fill_special_room() call site; the vault above is the first. */
+    for (let i = 0; i < g.level.nroom; i++)
+        fill_special_room(g.level.rooms[i]);
 }
 
 // src/mklev.c:929 ROOM_IS_FILLABLE
@@ -509,71 +602,51 @@ async function makerooms() {
     }
 }
 
-// Themed room metadata — must match C's themerms.lua frequency table exactly.
-// Generated from themeroom_meta.js (31 rooms).
-const THEMEROOM_META = [
-    { name: 'default', frequency: 1000 },
-    { name: 'Fake Delphi', frequency: 1 },
-    { name: 'Room in a room', frequency: 1 },
-    { name: 'Huge room with another room inside', frequency: 1 },
-    { name: 'Nesting rooms', frequency: 1 },
-    { name: 'Default room with themed fill', frequency: 6 },
-    { name: 'Unlit room with themed fill', frequency: 2 },
-    { name: 'Room with both normal contents and themed fill', frequency: 2 },
-    { name: 'Pillars', frequency: 1 },
-    { name: 'Mausoleum', frequency: 1 },
-    { name: 'Random dungeon feature', frequency: 1 },
-    { name: 'L-shaped', frequency: 1 },
-    { name: 'L-shaped, rot 1', frequency: 1 },
-    { name: 'L-shaped, rot 2', frequency: 1 },
-    { name: 'L-shaped, rot 3', frequency: 1 },
-    { name: 'Blocked center', frequency: 1 },
-    { name: 'Circular, small', frequency: 1 },
-    { name: 'Circular, medium', frequency: 1 },
-    { name: 'Circular, big', frequency: 1 },
-    { name: 'T-shaped', frequency: 1 },
-    { name: 'T-shaped, rot 1', frequency: 1 },
-    { name: 'T-shaped, rot 2', frequency: 1 },
-    { name: 'T-shaped, rot 3', frequency: 1 },
-    { name: 'S-shaped', frequency: 1 },
-    { name: 'S-shaped, rot 1', frequency: 1 },
-    { name: 'Z-shaped', frequency: 1 },
-    { name: 'Z-shaped, rot 1', frequency: 1 },
-    { name: 'Cross', frequency: 1 },
-    { name: 'Four-leaf clover', frequency: 1 },
-    { name: 'Water-surrounded vault', frequency: 1 },
-    { name: 'Twin businesses', frequency: 1, mindiff: 4 },
-];
-
+// dat/themerms.lua is_eligible() — mindiff/maxdiff gate which entries take
+// part in the reservoir sample, so the level's difficulty changes the draw
+// count as well as the outcome.
 function is_themeroom_eligible(room, difficulty) {
     if (room.mindiff != null && difficulty < room.mindiff) return false;
     if (room.maxdiff != null && difficulty > room.maxdiff) return false;
     return true;
 }
 
-// C ref: themerms.lua themerooms_generate()
-// Reservoir sampling picks one themed room. For seed8000 level 1,
-// 'ordinary' always wins (frequency 1000 vs others ~1-10).
+// dat/themerms.lua themerooms_generate() — reservoir sampling over the eligible
+// entries, one rn2(running_total) per entry.
+//
+// `default` (frequency 1000 of 1036) is the only entry whose contents are
+// ported. It is `des.room({ type = "ordinary", filled = 1 })`, which reaches
+// sp_lev.c:2811 —
+//
+//     rtype = (!r->chance || rn2(100) < r->chance) ? r->rtype : OROOM;
+//
+// so one rn2(100), then create_room().
+//
+// The other 30 are SHAPED rooms: `des.map({ map = [[...]] })` stamped by
+// lspo_map(), whose placement draws are rn2(COLNO - 1 - wid) and
+// rn2(ROWNO - hei) from the map's own dimensions. Seven sessions diverge here
+// and the map data they need is in js/themerms_data.js — see STATUS.md.
 async function themerooms_generate(difficulty) {
     let pick = null;
     let total_frequency = 0;
-    for (const meta of THEMEROOM_META) {
+    for (const meta of themerooms) {
         if (!is_themeroom_eligible(meta, difficulty)) continue;
-        const this_frequency = meta.frequency || 1;
+        const this_frequency = meta.frequency ?? 1;
         total_frequency += this_frequency;
-        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
+        if (this_frequency > 0 && rn2(total_frequency) < this_frequency)
             pick = meta;
-        }
     }
     if (!pick) return false;
-    // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
-    const chance = 100;
-    if (pick.name !== 'ordinary') {
-        // Themed room — not expected for seed8000, but handle RNG correctly
-        rn2(100); // chance check (build_room)
+
+    if (pick.name !== 'default') {
+        /* the shaped rooms are not ported; what follows is the `default`
+           sequence, which is wrong for them but keeps the level buildable */
+        note_unported_lev(`themeroom ${pick.name}`);
     }
-    // All themed rooms go through create_room for placement
+
+    /* sp_lev.c:2811 — the rtype chance roll */
+    rn2(100);
+
     const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
     if (ok) {
         // C ref: sp_lev.c:2824 — build_room calls topologize after create_room

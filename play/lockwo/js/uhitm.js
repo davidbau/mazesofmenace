@@ -17,7 +17,7 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
 import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
-import { mkcorpstat, mkobj_at, CORPSE, place_object } from './mkobj.js';
+import { mkcorpstat, mkobj, CORPSE, FIGURINE, place_object } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 
@@ -591,9 +591,27 @@ async function killed(mon) {
         return t != null && ACCESSIBLE(t);
     })();
     if (dropTreasure) {
-        // mkobj(RANDOM_CLASS, TRUE) — not reached for the modelled kills (rn2(6)
-        // is non-zero in the recorded traces); kept faithful for completeness.
-        mkobj_at(0 /*RANDOM_CLASS*/, x, y, true);
+        // mkobj(RANDOM_CLASS, TRUE): the item's own rolls (class, type,
+        // enchant, erosion, …) always fire before its fate is decided.
+        const otmp = mkobj(0 /*RANDOM_CLASS*/, true);
+        const otyp = otmp.otyp;
+        // C ref: mon.c:3600 xkilled() — "don't create large objects from
+        // small monsters": mdat->msize < MZ_HUMAN && otyp != FIGURINE &&
+        // (owt>30 || oc_big) routes to delobj() instead of placing it.  (The
+        // objects[] table here doesn't carry oc_big, so only the weight leg
+        // of that OR is checked — every otyp big enough to matter is also
+        // over the 30-unit threshold.)  delobj_core() always rolls
+        // obj_resists(obj,0,0)'s rn2(100) (the Amulet/invocation-tool guard)
+        // even though an ordinary item never resists — skipping that roll
+        // (as a bare place always would) desyncs every RNG draw after it,
+        // including corpse_chance() below.
+        if ((mon.data?.msize ?? 2 /* MZ_HUMAN */) < 2 && otyp !== FIGURINE
+            && (otmp.owt || 0) > 30) {
+            const { delobj } = await import('./invent.js');
+            delobj(otmp);
+        } else {
+            place_object(otmp, x, y);
+        }
     }
     if (corpse_chance(mon) && accessible) {
         make_corpse(mon, x, y);

@@ -23,6 +23,15 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
+import { discover_object } from './o_init.js';
+import {
+    OBJ_DESCR, ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS,
+    ARM_CLOAK, ARM_SHIRT,
+} from './objnam.js';
+
+// include/prop.h:101-107 — worn-equipment slot masks.
+const W_ARM = 0x01, W_ARMC = 0x02, W_ARMH = 0x04, W_ARMS = 0x08,
+      W_ARMG = 0x10, W_ARMF = 0x20, W_ARMU = 0x40;
 
 const {
     WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS, TOOL_CLASS, GEM_CLASS,
@@ -129,9 +138,73 @@ function ini_inv_adjust_obj(trop, obj) {
     return stop;
 }
 
-// src/invent.c addinv() — no draw; the hero's pack is a plain list here.
+// src/invent.c:1268 mergable() — can `obj` be folded into `otmp`?
+//
+// The BUC and enchantment tests matter for the inventory frame: five separate
+// FOOD_RATION objects merge into one "6 uncursed food rations" line, but a
+// blessed and an uncursed stack of the same otyp would not.
+function mergable(otmp, obj) {
+    const ocl = game.objects[obj.otyp];
+    if (obj === otmp || obj.otyp !== otmp.otyp || !ocl.oc_merge)
+        return false;
+    if (obj.oclass === COIN_CLASS)
+        return true;
+    if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
+        return false;
+    if (obj.spe !== otmp.spe || !!obj.otrapped !== !!otmp.otrapped
+        || !!obj.lamplit !== !!otmp.lamplit)
+        return false;
+    if (obj.oclass === FOOD_CLASS
+        && ((obj.oeaten || 0) !== (otmp.oeaten || 0)))
+        return false;
+    if (!!obj.dknown !== !!otmp.dknown
+        || (obj.oeroded || 0) !== (otmp.oeroded || 0)
+        || (obj.oeroded2 || 0) !== (otmp.oeroded2 || 0)
+        || !!obj.greased !== !!otmp.greased)
+        return false;
+    if (obj.corpsenm !== otmp.corpsenm)
+        return false;
+    return true;
+}
+
+// src/invent.c:230 assigninvlet() — sequential from lastinvnr, gold gets '$'.
+const GOLD_SYM = '$';
+function assigninvlet(otmp) {
+    if (otmp.oclass === COIN_CLASS) {
+        otmp.invlet = GOLD_SYM;
+        return;
+    }
+    const inuse = new Array(52).fill(false);
+    for (const o of game.invent || []) {
+        if (o === otmp) continue;
+        const c = o.invlet;
+        if (c >= 'a' && c <= 'z') inuse[c.charCodeAt(0) - 97] = true;
+        else if (c >= 'A' && c <= 'Z') inuse[c.charCodeAt(0) - 65 + 26] = true;
+    }
+    let i;
+    const last = game.lastinvnr ?? -1;
+    for (i = last + 1; i !== last; i++) {
+        if (i === 52) { i = -1; continue; }
+        if (!inuse[i]) break;
+    }
+    otmp.invlet = inuse[i] ? '#'
+                : (i < 26) ? String.fromCharCode(97 + i)
+                           : String.fromCharCode(65 + i - 26);
+    game.lastinvnr = i;
+}
+
+// src/invent.c:600 addinv() — merge into an existing stack if possible,
+// otherwise take the next inventory letter.
 function addinv(obj) {
-    (game.invent ||= []).push(obj);
+    game.invent ||= [];
+    for (const otmp of game.invent) {
+        if (mergable(otmp, obj)) {
+            otmp.quan += obj.quan;
+            return otmp;
+        }
+    }
+    assigninvlet(obj);
+    game.invent.push(obj);
     return obj;
 }
 
@@ -342,4 +415,64 @@ function raceMnum() {
     const m = game.urace?.mnum;
     if (typeof m === 'number') return m;
     return (m && PMNAMES[m] !== undefined) ? PMNAMES[m] : -1;
+}
+
+// src/u_init.c:1256 ini_inv_use_obj() — the side effects of starting with an
+// item: the hero already knows what it is.
+//
+// The gate is `OBJ_DESCR(objects[otyp]) && obj->known`. Only object types that
+// HAVE a randomised appearance get discovered — a food ration has no
+// description to learn, a scroll of magic mapping does. obj->known is set by
+// ini_inv_adjust_obj() for types whose oc_uses_known is set.
+export function ini_inv_use_obj(obj) {
+    if (OBJ_DESCR(game.objects[obj.otyp]) && obj.known)
+        discover_object(obj.otyp, true, true, false);
+    if (obj.otyp === ONAMES.OIL_LAMP)
+        discover_object(ONAMES.POT_OIL, true, true, false);
+    /* src/u_init.c:1264 — the hero puts on what they can. No draw, but it is
+       directly visible: ^X reports "You are not wearing any armor" when every
+       slot is empty, and a Tourist's Hawaiian shirt is what suppresses it. */
+    if (obj.oclass === ARMOR_CLASS) {
+        const cat = game.objects[obj.otyp].oc_subtyp;
+        const slot =
+            cat === ARM_SHIELD ? W_ARMS : cat === ARM_HELM ? W_ARMH
+          : cat === ARM_GLOVES ? W_ARMG : cat === ARM_SHIRT ? W_ARMU
+          : cat === ARM_CLOAK ? W_ARMC : cat === ARM_BOOTS ? W_ARMF
+          : cat === ARM_SUIT ? W_ARM : 0;
+        if (slot && !(worn_slots() & slot))
+            obj.owornmask = slot;
+    }
+    obj.owornmask ||= 0;
+    ini_inv_wield(obj);
+}
+
+// src/u_init.c:1281 — a Tourist's darts go into the quiver, which is what
+// makes the inventory line read "(at the ready)".
+function ini_inv_wield(obj) {
+    const ocl = game.objects[obj.otyp];
+    if (obj.oclass !== WEAPON_CLASS) return;
+    /* is_ammo/is_missile: thrown weapons carry a negated skill */
+    const sk = ocl.oc_subtyp;
+    if (sk < 0) {
+        if (!game.u.uquiver) { obj.owornmask |= W_QUIVER; game.u.uquiver = obj; }
+    } else if (!game.u.uwep) {
+        obj.owornmask |= W_WEP; game.u.uwep = obj;
+    }
+}
+
+// include/prop.h — quiver and wielded slots.
+const W_QUIVER = 0x0800, W_WEP = 0x0100;
+
+// src/worn.c — which slots are currently filled.
+function worn_slots() {
+    let mask = 0;
+    for (const o of game.invent || [])
+        mask |= (o.owornmask || 0);
+    return mask;
+}
+
+// src/u_init.c:1246 u_init_skills_discoveries()
+export function u_init_skills_discoveries() {
+    for (const otmp of game.invent || [])
+        ini_inv_use_obj(otmp);
 }

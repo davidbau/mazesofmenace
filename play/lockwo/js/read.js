@@ -6,15 +6,18 @@
 import { game } from './gstate.js';
 import { rnd, rn2 } from './rng.js';
 import { pline, topl_more, update_topl } from './display.js';
-import { getobj, makeknown, useup, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
-         GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack } from './invent.js';
+import { getobj, makeknown, useup, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
+         GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack, trycall } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
 import { study_book } from './spell.js';
+import { erode_obj, obj_erode_type } from './trap.js';
+import { find_ac } from './u_init.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
-         objects } from './mkobj.js';
-import { A_WIS, CORR, Is_rogue_level, Is_waterlevel } from './const.js';
+         SCR_DESTROY_ARMOR, SCR_REMOVE_CURSE, objects } from './mkobj.js';
+import { A_WIS, A_STR, A_CON, CORR, Is_rogue_level, Is_waterlevel,
+         ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED } from './const.js';
 import { Blind } from './vision.js';
 
 const ECMD_CANCEL = 0;
@@ -50,6 +53,10 @@ function scroll_is_magic(otyp) { return !NONMAGIC_SCROLLS.has(otyp); }
 // C ref: youprop.h Confusion — the hero's confusion timer (uprops[CONFUSION]),
 // as read by the status line's "Conf" indicator (display.js).
 function Confused() { return (game.u?.uprops?.Confusion || 0) > 0; }
+
+// C ref: youprop.h Hallucination — the hero's hallucination timer (uhallu),
+// as read by u_init.js/potion.js's Hallucination() convention.
+function Hallucination() { return !!game.u?.uhallu; }
 
 // C ref: mondata.c can_chant(&youmonst) — whether the hero can speak the words
 // (for casting / reading aloud).  FALSE only when strangled, silent, headless,
@@ -97,6 +104,11 @@ async function seffects(sobj) {
     case SCR_IDENTIFY:
         await seffect_identify(sobj);
         return true; // seffect_identify uses up the scroll itself
+    case SCR_DESTROY_ARMOR:
+        return await seffect_destroy_armor(sobj);
+    case SCR_REMOVE_CURSE:
+        await seffect_remove_curse(sobj);
+        break;
     case SCR_TELEPORTATION:
         // C ref: read.c seffect_teleportation — a confused or cursed scroll does
         // a level teleport (level_tele); an ordinary one does an in-level
@@ -142,6 +154,127 @@ async function litroom(on, obj) {
         if (loc) loc.lit = 1;
     });
     if (!Blind()) vision_recalc(0);
+}
+
+// C ref: read.c seffect_remove_curse() — scroll of remove curse (and the
+// identical spellbook-cast effect).  You_feel() always fires first; a cursed
+// scroll then just disintegrates (pline_The), skipping the whole per-item
+// bless/curse invent loop below it in C.  That invent loop (uncursed: bless
+// worn gear / loadstone / in-use leash; confused: rncurse everything), the
+// riding steed's saddle special case, and the trailing Punished/buried-ball
+// follow-ups are not exercised by the covered (uncursed-inventory, unmounted,
+// unpunished) starts, so only the cursed-scroll branch is ported here.
+async function seffect_remove_curse(sobj) {
+    const confused = Confused();
+    const hallu = Hallucination();
+    const feel = !hallu
+        ? (!confused ? 'like someone is helping you.' : 'like you need some help.')
+        : (!confused ? 'in touch with the Universal Oneness.' : 'the power of the Force against you!');
+    await update_topl(`You feel ${feel}`);
+    if (sobj.cursed)
+        await update_topl('The scroll disintegrates.');
+}
+
+// C ref: potion.c strange_feeling(obj, txt) — the generic "nothing visible
+// happened" scroll/potion feedback.  flags.beginner is never set for the
+// covered non-tutorial starts, so the txt branch always applies; useup()
+// happens here (mirroring C's `*sobjp = 0` at each call site).
+async function strange_feeling(obj, txt) {
+    await pline_append(txt || 'You have a strange feeling for a moment, then it passes.');
+    if (obj) useup(obj);
+}
+
+// C ref: do_wear.c some_armor(&youmonst) — picks a "representative" worn
+// armor piece (cloak/suit/shirt first, each of helm/gloves/boots/shield with a
+// 1-in-4 chance to override).  seffect_destroy_armor calls this unconditionally
+// for its RNG side effects even on paths that don't use the result.
+function some_armor() {
+    let otmph = game.uarmc || game.uarm || game.uarmu || null;
+    for (const slot of ['uarmh', 'uarmg', 'uarmf', 'uarms']) {
+        const otmp = game[slot];
+        if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    }
+    return otmph;
+}
+
+// C ref: do_wear.c count_worn_armor() — number of armor pieces worn.
+function count_worn_armor() {
+    let n = 0;
+    for (const slot of ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu'])
+        if (game[slot]) ++n;
+    return n;
+}
+
+// C ref: do_wear.c destroy_arm() — the uncursed/unblessed scroll-of-destroy-
+// armor effect: erode rn2(4)+1 random worn armor pieces (whatever material
+// each happens to be), stopping early if one is fully destroyed.  Returns
+// whether anything was actually damaged.
+async function destroy_arm() {
+    const armors = ['uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu']
+        .map((slot) => game[slot]).filter(Boolean);
+    if (!armors.length) return false;
+
+    const hits = rn2(4) + 1;
+    let ret = false;
+    for (let i = 0; i < hits; i++) {
+        const otmp = armors[rn2(armors.length)];
+        if (!otmp.oerodeproof) {
+            const erosion = obj_erode_type(otmp);
+            if (erosion !== ERODE_NONE) {
+                const r = await erode_obj(otmp, xname(otmp), erosion, EF_PAY | EF_DESTROY);
+                if (r !== ER_NOTHING) ret = true;
+                if (r === ER_DESTROYED) break;
+            }
+        }
+    }
+    // C ref: allmain.c moveloop_core() — find_ac() runs once per player input
+    // (not from erode_obj itself), so an eroded piece's AC penalty shows up
+    // starting with the NEXT screen, not mid-turn between destroy_arm's hits.
+    if (ret) find_ac();
+    return ret;
+}
+
+// C ref: read.c seffect_destroy_armor() — scroll of destroy armor.  Returns
+// true if the scroll was consumed here (strange_feeling's useup); false to
+// let doread()'s generic makeknown/useup path handle it (the destroy_arm
+// success case, matching C's fall-through that only sets gk.known).
+async function seffect_destroy_armor(sobj) {
+    const otmp = some_armor(); // C computes this unconditionally (RNG side effects)
+    const confused = Confused();
+
+    if (confused) {
+        if (!otmp) {
+            await strange_feeling(sobj, 'Your bones itch.');
+            exercise(A_STR, false);
+            exercise(A_CON, false);
+            return true;
+        }
+        // p_glow2 + oerodeproof-toggle branch: not exercised by the covered
+        // (non-confused) starts.
+        return false;
+    }
+
+    if (sobj.cursed) {
+        // both cursed-scroll sub-branches (armor-also-cursed vibrate/stun, and
+        // disintegrate_arm) are not exercised by the covered (uncursed-scroll)
+        // starts.
+        return false;
+    }
+
+    const gets_choice = !!(otmp && sobj.blessed && count_worn_armor() > 1);
+    if (gets_choice || sobj.blessed) {
+        // blessed-scroll armor-choice + disintegrate_arm/disintegrate_cursed_armor
+        // branches: not exercised by the covered (unblessed-scroll) starts.
+        return false;
+    }
+    if (!(await destroy_arm())) {
+        await strange_feeling(sobj, 'Your skin itches.');
+        exercise(A_STR, false);
+        exercise(A_CON, false);
+        return true;
+    }
+    game.known = true;
+    return false;
 }
 
 // C ref: read.c seffect_identify() — the scroll-of-identify effect.  The scroll
@@ -205,6 +338,7 @@ function more_experienced(exper, rexp) {
 // read it.  Only the scroll and spellbook branches are ported; exotic readables
 // (cookies, shirts, cards, ...) are not exercised.
 export async function doread() {
+    game.known = false; // C ref: read.c doread — gk.known = FALSE, reset per read
     const scroll = await getobj('read', read_ok, GETOBJ_PROMPT);
     if (!scroll)
         return ECMD_CANCEL;
@@ -223,18 +357,26 @@ export async function doread() {
 
     scroll.in_use = true;
     if (otyp !== SCR_BLANK_PAPER) {
+        // C ref: read.c doread — nodisappear: a few scroll feedback messages
+        // describe something happening to the scroll itself (SCR_FIRE, and a
+        // cursed SCR_REMOVE_CURSE which disintegrates instead), so those skip
+        // "...it disappears." in favor of a plain "You read the scroll."
+        const nodisappear = (otyp === SCR_REMOVE_CURSE && scroll.cursed);
         // Not blind on the covered starts.
-        await pline('As you read the scroll, it disappears.');
+        await pline(nodisappear ? 'You read the scroll.' : 'As you read the scroll, it disappears.');
+        // C: pline() -> update_topl() always marks the topline NEED_MORE;
+        // this plain pline() is a simplified stand-in that skips that side
+        // effect, so any same-turn follow-up message (confused-garble, or a
+        // scroll effect's own feedback routed through update_topl) must set
+        // it explicitly to get C's real concatenate-or-page behavior.
+        game._toplin = 1;
         // C ref: read.c doread — a confused hero garbles the words.  This
         // pline follows the "disappears" line on the same turn; when the two
         // don't fit on one top line, "...disappears." is paged with --More--
         // (its own captured frame) before the confused line replaces it.
-        // Route through update_topl (marking the prior line NEED_MORE) so that
-        // paging happens exactly as C's topl.c does.  Hallucination ("Being so
-        // trippy, you screw up...") is not exercised.
+        // Hallucination ("Being so trippy, you screw up...") is not exercised.
         if (Confused()) {
             const silently = !can_chant();
-            game._toplin = 1;
             await update_topl(
                 `Being confused, you ${silently ? 'misunderstand' : 'mispronounce'} the magic words...`);
         }
@@ -242,10 +384,17 @@ export async function doread() {
 
     if (!(await seffects(scroll))) {
         if (!objects[otyp]?.oc_name_known) {
-            // C ref: read.c doread -> learnscroll -> learnscrolltyp():
-            // makeknown() + more_experienced(0, 10) (score-only, no RNG).
-            if (game.known) { makeknown(otyp); more_experienced(0, 10); }
-            // trycall(scroll): naming prompt, not modeled.
+            if (game.known) {
+                // C ref: read.c doread -> learnscroll -> learnscrolltyp():
+                // makeknown() + more_experienced(0, 10) (score-only, no RNG).
+                makeknown(otyp);
+                more_experienced(0, 10);
+            } else {
+                // C ref: do.c trycall(scroll) — offer to name this unidentified
+                // scroll appearance ("Call a scroll labeled ...:"), paging the
+                // still-pending effect message with --More-- first.
+                await trycall(scroll);
+            }
         }
         scroll.in_use = false;
         if (otyp !== SCR_BLANK_PAPER)

@@ -671,7 +671,12 @@ function place_monster(mtmp, x, y) {
     mtmp.mx = x;
     mtmp.my = y;
     (game.level.monAt ||= new Map()).set(`${x},${y}`, mtmp);
-    (game.level.monsters ||= []).push(mtmp);
+    /* src/makemon.c:1252 — C prepends: `mtmp->nmon = fmon; fmon = mtmp;`
+       so the fmon chain is newest-first, and every iteration over it (movemon,
+       the mcalcmove allotment loop) visits monsters in reverse creation order.
+       Appending here would allot movement in the wrong order and shift which
+       monsters can act next turn. */
+    (game.level.monsters ||= []).unshift(mtmp);
 }
 
 // src/teleport.c goodpos() — can this monster stand here?
@@ -1201,6 +1206,10 @@ export function makemon(ptr, x, y, mmflags) {
 
     const mtmp = {
         mx: 0, my: 0, m_lev: 0, mhp: 0, mhpmax: 0,
+        /* C zeroes the whole struct (cg.zeromonst); movement in particular
+           must start at 0, or movemon() lets the monster act on turn 1 when
+           C makes it wait for its first allotment. */
+        movement: 0, mspeed: 0,
         female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
         minvent: null, mgold: 0, data: ptr, mnum: mndx,
         cham: NON_PM, mstrategy: 0,

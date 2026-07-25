@@ -9,30 +9,31 @@
 // to richer monster behavior without per-seed special cases.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
     D_ISOPEN, D_NODOOR, D_TRAPPED,
     IS_OBSTRUCTED, IS_DOOR, IS_POOL, IS_LAVA, isok, OBJ_AT, is_pit,
-    IS_STWALL, IS_WALL, IS_TREE, W_NONPASSWALL, ALLOW_DIG,
+    IS_STWALL, IS_WALL, IS_TREE, IS_ROOM, W_NONPASSWALL, ALLOW_DIG,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
-    W_ARMOR, W_AMUL,
+    W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M,
 } from './const.js';
 import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART } from './mkobj.js';
 import { t_at, t_missile } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
-import { newsym, map_invisible, show_glyph_cell, object_glyph } from './display.js';
+import { newsym, map_invisible, show_glyph_cell, object_glyph, pline } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS, weight } from './mkobj.js';
 import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
+import { wipe_engr_at } from './engrave.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
 // The only NODIAG monster the contest sessions place on dlvl 1.
@@ -277,6 +278,11 @@ function online2(x0, y0, x1, y1) {
     return (!dy || !dx || dy === dx || dy === -dx);
 }
 
+// C ref: hack.h onlineu(xx,yy) = online2(xx, yy, u.ux, u.uy).
+function onlineu(x, y) {
+    return online2(x, y, game.u?.ux, game.u?.uy);
+}
+
 // C ref: shk.c inhishop — is the shopkeeper standing in his own shop room?
 // (We only model same-level shops, which is the only case in the sessions.)
 function inhishop(shkp) {
@@ -288,14 +294,104 @@ function inhishop(shkp) {
     return rmno !== 0 && rmno === eshk.shoproom;
 }
 
-// C ref: shk.c shk_move(shkp) — shopkeeper movement.  We faithfully reproduce
-// only the "stay put, no RNG" outcome (the dominant case in the recorded
-// sessions): a peaceful shopkeeper sitting near his home spot in his shop, the
-// hero neither lined up with him nor standing on the shop door, with no
-// outstanding bill/robbery/debit.  C: shk_fixes_damage() (no RNG when the shop
-// is undamaged) then `return 0`.  All other situations return -1, telling the
-// caller to fall through to the generic m_move() path (no behaviour change).
-function shk_move(shkp) {
+// C ref: monmove.c m_can_break_boulder(mtmp) — riders, or a shk/priest/quest
+// leader that hasn't used its move_special "special move" yet.  Used by
+// mon_allows_rock() (this file) to decide whether a boulder blocks mfndpos.
+// C ref: monmove.c m_break_boulder(mtmp, x, y) — the monster fractures the
+// boulder blocking its chosen square.  RNG-critical: mspec_used advances by
+// rn1(20,10) (a rider is exempt, but riders never reach move_special here).
+async function m_break_boulder(mtmp, x, y) {
+    const otmp = objectsAt(x, y).find((o) => o.otyp === ROCK_BOULDER);
+    if (!otmp) return;
+    const Deaf = !!game.u?.Deaf;
+    if (!Deaf && dist2(mtmp.mx, mtmp.my, game.u?.ux ?? 0, game.u?.uy ?? 0) < 16) {
+        await pline(`${Monnam(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
+    }
+    mtmp.mspec_used = (mtmp.mspec_used || 0) + rn1(20, 10);
+    if (cansee(x, y)) await pline('The boulder falls apart.');
+    // fracture_rock(otmp): keeps the object, changing its otyp from BOULDER to
+    // ROCK.  The unpaid/bill_dummy_object edge case (a boulder pushed onto a
+    // shop's boundary while unpaid) never arises for a shk's own move, so it
+    // is not modeled.
+    otmp.otyp = ROCK;
+}
+
+// C ref: mkobj.c sobj_at(BOULDER, x, y) list — every floor object at (x,y).
+function objectsAt(x, y) {
+    const objs = game.level?.objects;
+    if (!objs) return [];
+    return objs.filter((o) => o.where === 'floor' && o.ox === x && o.oy === y);
+}
+const ROCK_BOULDER = 474; // mkobj.js BOULDER otyp (matches sobj_at_boulder)
+
+// C ref: priest.c move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
+// omy, ggx, ggy) — shared "walk toward a fixed goal inside a room" algorithm
+// used by shk_move() (shopkeepers) and pri_move() (temple priests).  Returns
+// 1 (moved), 0 (didn't move; also the ANGRY-attack outcomes -2/1 that our
+// isshk/ispriest callers can't reach: mon_allowflags() only grants ALLOW_M to
+// *tame* monsters, so the `ninfo & ALLOW_M` / m_move_aggress branch below is
+// structurally dead for a shopkeeper or priest).
+async function move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx, omy, ggx, ggy) {
+    if (omx === ggx && omy === ggy) return 0;
+    if (mtmp.mconf) { avoid = false; appr = 0; }
+
+    let nix = omx, niy = omy, ninfo = 0;
+    // allowflags: peaceful shk/priest get no ALLOW_M/ALLOW_U (mfndpos already
+    // excludes monster/hero squares by default); ALLOW_ROCK is applied inside
+    // mfndpos directly via mon_allows_rock(), not gated through `flag` here.
+    const poss = mfndpos(mtmp, 0);
+    const cnt = poss.length;
+
+    if (mtmp.isshk && avoid && uondoor) {
+        if (!poss.some((p) => !(p.info & NOTONL))) avoid = false;
+    }
+
+    let chcnt = 0;
+    const following = !!mtmp.eshk?.following;
+    for (let i = 0; i < cnt; i++) {
+        const { x: nx, y: ny, info } = poss[i];
+        if (IS_ROOM(terrainTyp(nx, ny)) || (mtmp.isshk && (!in_his_shop || following))) {
+            if (avoid && (info & NOTONL) && !(info & ALLOW_M)) continue;
+            if ((!appr && !rn2(++chcnt))
+                || (appr && dist2(nx, ny, ggx, ggy) < dist2(nix, niy, ggx, ggy))
+                || (info & ALLOW_M)) {
+                nix = nx; niy = ny; ninfo = info;
+            }
+        }
+    }
+
+    // C ref: priest.c:93-98 — a priest that stayed put but is lined up with
+    // the hero re-runs the scan with avoid cleared.  Unreachable here (this
+    // helper is only invoked for isshk), kept for documentation parity.
+    if (mtmp.ispriest && avoid && nix === omx && niy === omy && onlineu(omx, omy)) {
+        avoid = false;
+    }
+
+    if (nix !== omx || niy !== omy) {
+        if (ninfo & ALLOW_ROCK) {
+            await m_break_boulder(mtmp, nix, niy);
+            return 1;
+        }
+        // (ninfo & ALLOW_M) attack branch: see function comment — dead code
+        // for isshk/ispriest.
+        if (MON_AT(nix, niy) || (game.u?.ux === nix && game.u?.uy === niy)) return 0;
+        mtmp.mx = nix; mtmp.my = niy;
+        newsym(omx, omy);
+        newsym(nix, niy);
+        // check_special_room(FALSE) only fires when the shk *wasn't* already
+        // in_his_shop before this move; our only caller (shk_move) requires
+        // inhishop(shkp) up front, so in_his_shop is always true here.
+        return 1;
+    }
+    return 0;
+}
+
+// C ref: shk.c shk_move(shkp) — shopkeeper movement.  Faithfully reproduces
+// the "stay put, no RNG" outcome (a peaceful shopkeeper near home, neither
+// lined up with the hero nor on the shop door, no outstanding bill) AND the
+// general case (needs to actually walk), which now delegates to the shared
+// move_special() algorithm exactly as C's shk_move() does.
+async function shk_move(shkp) {
     const eshk = shkp.eshk;
     if (!eshk) return -1;
     const omx = shkp.mx, omy = shkp.my;
@@ -315,8 +411,9 @@ function shk_move(shkp) {
     if (eshk.following) return -1;  // following the hero: not modelled here
 
     // Home target = eshk->shk; GDIST = dist2(pos, home).
-    const gtx = eshk.shk?.x, gty = eshk.shk?.y;
+    let gtx = eshk.shk?.x, gty = eshk.shk?.y;
     if (gtx == null || gty == null) return -1;
+    const satdoor = (gtx === omx && gty === omy);
 
     // C ref: shk.c — `holetime() >= 0` (a hole/trapdoor in progress) diverts the
     // shopkeeper toward the hero.  No holes in the recorded sessions; treat as
@@ -333,14 +430,23 @@ function shk_move(shkp) {
     // (((!robbed && !billct && !debit) || avoid) && GDIST(pos,home) < 3)
     const owesNothing = !eshk.robbed && !eshk.billct && !eshk.debit;
     const gdist = dist2(omx, omy, gtx, gty);
+    let appr = 1;
     if (owesNothing && gdist < 3) {
-        // if (!badinv && !onlineu(omx,omy)) return 0;  (badinv == false here)
+        // if (!badinv && !onlineu(omx,omy)) return 0;  (badinv == false here,
+        // since heroInShop is false and uondoor is false at this point)
         if (!online2(omx, omy, u.ux, u.uy))
             return 0; // stay put, no RNG — matches C exactly
+        if (satdoor) { appr = 0; gtx = 0; gty = 0; }
     }
-    // Any remaining case (shk needs to walk home, is lined up with the hero,
-    // etc.) involves move_special() RNG we don't model; defer to m_move.
-    return -1;
+    // avoid/uondoor are always false by this point: the branches above that
+    // would set them (heroInShop, uondoor) already returned -1.
+    const z = await move_special(shkp, /* in_his_shop */ true, appr,
+                                  /* uondoor */ false, /* avoid */ false,
+                                  omx, omy, gtx, gty);
+    // after_shk_move(shkp): only re-checks room occupancy when the shk's
+    // bill_p sentinel was reset AND it wasn't already in_his_shop — the
+    // latter is always true on our inhishop-gated path, so it's a no-op here.
+    return z;
 }
 
 // C ref: monmove.c set_apparxy(mtmp).  For tame monsters, monsters adjacent
@@ -449,6 +555,7 @@ export function mfndpos(mon, flag) {
             // pools / lava: ordinary land monsters avoid them
             if (IS_POOL(ntyp) || IS_LAVA(ntyp)) continue;
 
+            let info = 0;
             // hero's (apparent) position: only allowed if attacking
             if ((game.u?.ux === nx && game.u?.uy === ny)
                 || (nx === mon.mux && ny === mon.muy)) {
@@ -465,6 +572,7 @@ export function mfndpos(mon, flag) {
                 // Without ALLOW_M the square is dropped (no displace by default).
                 if (!(flag & ALLOW_M)) continue;
                 if (m_at(nx, ny)?.mtame) continue;
+                info |= ALLOW_M;
             }
             // boulder on the destination square.  C ref: mon.c mfndpos
             // (mon.c:2334-2338) — `if (checkobj && sobj_at(BOULDER, nx, ny)) {
@@ -475,13 +583,20 @@ export function mfndpos(mon, flag) {
             // a boulder and the square is dropped from the candidate list.
             // Reproducing this is required for the cnt that feeds m_move's
             // rn2(4*(cnt-j)) at monmove.c:1963.
-            if (sobj_at_boulder(nx, ny) && !mon_allows_rock(mon)) continue;
+            if (sobj_at_boulder(nx, ny)) {
+                if (!mon_allows_rock(mon)) continue;
+                info |= ALLOW_ROCK;
+            }
+            // C ref: mon.c:2339-2342 — a square in direct line with where the
+            // monster thinks the hero is gets flagged NOTONL (used by
+            // move_special's shopkeeper/priest line-of-sight avoidance);
+            // Invis is never modeled true here, so monseeu reduces to mcansee.
+            if (mon.mcansee && online2(nx, ny, mon.mux, mon.muy)) info |= NOTONL;
             // C ref: mon.c:2353 — trap handling.  A harmful trap the monster is
             // familiar with is avoided (dropped) UNLESS the caller allows traps
             // (pets pass ALLOW_TRAPS via mon_allowflags); when kept, the square is
             // flagged ALLOW_TRAPS so dog_move()/m_move() can roll the "step on it
             // anyway" chance.  Harmless traps are neither avoided nor flagged.
-            let info = 0;
             const ttmp = t_at(nx, ny);
             if (ttmp && ttmp.ttyp > 0 && ttmp.ttyp < TRAPNUM) {
                 // fixed_tele_trap()+hastrack (a hero-used fixed teleport trap) is
@@ -1244,10 +1359,22 @@ async function m_move(mtmp) {
     // returns (-1 "leave to m_move", or a moving result) fall through to the
     // generic path so the existing behaviour is preserved.
     if (mtmp.isshk) {
-        const xm = shk_move(mtmp);
-        if (xm === 0) return MMOVE_NOTHING; // C: postmov(MMOVE_NOTHING), no RNG
-        // xm === -1 ("follow hero outside shop") or unmodelled: fall through to
-        // the generic m_move path (mirrors C's `case -1: break;` continuation).
+        const xm = await shk_move(mtmp);
+        // C ref: monmove.c:1806-1823 — case -2: died; case 0/1: postmov with
+        // MMOVE_NOTHING/MMOVE_MOVED respectively; case -1: `break` out to the
+        // generic path below (mirrored by simply not returning here).
+        if (xm === -2) return MMOVE_DIED;
+        if (xm === 0) return MMOVE_NOTHING;
+        if (xm === 1) {
+            // C ref: monmove.c postmov() — mintrap() fires on the shk's new
+            // square once move_special has actually moved it.
+            const trapret = await mon_mintrap(mtmp);
+            if (trapret === Trap_Killed_Mon) {
+                if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+                return MMOVE_DIED;
+            }
+            return MMOVE_MOVED;
+        }
     }
 
     // C ref: monmove.c:1751 — hides-under early return.  A concealing monster
@@ -1582,6 +1709,12 @@ export async function dochug(mtmp) {
         // disturb consumes no RNG and the monster stays asleep -> returns 0.
         if (!disturb(mtmp)) return 0;
     }
+
+    // C ref: monmove.c:733-734 — "not frozen or sleeping: wipe out texts
+    // written in the dust".  Every monster that reaches this point erodes any
+    // engraving at its current square by one character before it moves; a
+    // no-op (no RNG) unless an engraving actually sits there.
+    wipe_engr_at(mtmp.mx, mtmp.my, 1, false);
 
     // confused monsters get unconfused with small probability
     if (mtmp.mconf && !rn2(50)) mtmp.mconf = 0;
@@ -2351,6 +2484,13 @@ const MON_HITU_ATTACKS = {
     // S_ELEMENTAL earth elemental (include/monsters.h): a single AT_CLAW /
     // AD_PHYS 4d6 attack — it "hits", not "bites" (seed4500 step-268).
     'earth elemental': [MA(AT_CLAW, AD_PHYS, 4, 6)],
+    // (major) demon "water demon" (include/monsters.h): AT_WEAP/AT_CLAW/AT_BITE,
+    // all AD_PHYS 1d3 — it is_armed (m_initweap_full may give it a weapon, e.g.
+    // a dagger stack via the S_DEMON default-bias case4), so the AT_WEAP slot
+    // must be listed first to match C's attack order (wield-then-claw within
+    // the same turn when AT_WEAP only wields, seed0006 step-103).
+    'water demon': [MA(AT_WEAP, AD_PHYS, 1, 3), MA(AT_CLAW, AD_PHYS, 1, 3),
+        MA(AT_BITE, AD_PHYS, 1, 3)],
 };
 function mon_attacks(mdat) {
     if (!mdat) return [];
@@ -2706,8 +2846,14 @@ export async function mon_wield_item(mon) {
         mon.mw = obj;                 // wield obj (setmnotwielded old is implicit)
         mon.weapon_check = NEED_WEAPON_MM;
         if (canseemon_mm(mon)) {
+            // C ref: weapon.c:892 pline_mon(mon, "%s wields %s%c", Monnam(mon),
+            // doname(obj), exclaim?'!':'.').  doname() is quantity-aware (a
+            // multi-object stack like a demon's carried daggers reads "5
+            // daggers", not "a dagger"), so use the real invent.js naming
+            // rather than the single-item mshot_xname/an_name pair.
             const { update_topl } = await import('./display.js');
-            await update_topl(`${Monnam(mon)} wields ${an_name(mshot_xname(obj))}!`);
+            const { floor_object_name } = await import('./invent.js');
+            await update_topl(`${Monnam(mon)} wields ${floor_object_name(obj)}!`);
         }
         return 1;
     }

@@ -580,9 +580,11 @@ function ini_is_ammo(obj) {
         || (sk >= -25 && sk <= -23);  // is_missile: -P_BOOMERANG .. -P_DART
 }
 
-// C ref: hack.h ARM_BONUS — a_ac + spe (no erosion at game start).
+// C ref: hack.h ARM_BONUS(obj) — a_ac + spe - min(greatest_erosion(obj), a_ac).
+function greatest_erosion(obj) { return Math.max(obj?.oeroded || 0, obj?.oeroded2 || 0); }
 function ARM_BONUS(obj) {
-    return (ARMOR_A_AC.get(obj.otyp) || 0) + (obj.spe || 0);
+    const a_ac = ARMOR_A_AC.get(obj.otyp) || 0;
+    return a_ac + (obj.spe || 0) - Math.min(greatest_erosion(obj), a_ac);
 }
 
 // C ref: do_wear.c find_ac — current armor class from worn gear.

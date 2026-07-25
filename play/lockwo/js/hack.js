@@ -460,6 +460,12 @@ const GP_CTRL_RUSH = {
              //           rush binding wins via movecmd() before redraw_cmd())
     14: 'n', // ^N southeast
     10: 'j', // ^J south  (Return / '\n')
+    // C ref: sys/share/unixtty.c setftty() — cbreak mode only clears ICANON,
+    // leaving ICRNL enabled, so the tty driver maps a raw CR (Enter, 0x0D)
+    // to NL (0x0A) before NetHack's readchar() ever sees it.  A recorded
+    // '\r' keystroke therefore reaches getpos() as Ctrl-J, i.e. rush south,
+    // same as literal '\n'.
+    13: 'j', // '\r' (Enter) — tty ICRNL maps it to ^J before the app sees it
     2: 'b',  // ^B southwest
 };
 
@@ -541,6 +547,20 @@ function terrain_description(x, y) {
     if (typ === STAIRS) return stair_descr(x, y);
     if (typ === FOUNTAIN) return 'fountain';
     return 'floor of a room';
+}
+
+// C ref: hack.c is_valid_travelpt() — the hero's own spot is always valid;
+// a cell that has never been seen (same "unexplored area" test as
+// terrain_description) has no travel path without a search.  The general
+// case — findtravelpath(TRAVP_VALID)'s BFS over explored-but-blocked cells
+// (closed doors, unreachable rooms) — is not ported; explored cells are
+// treated as reachable.
+function is_valid_travelpt(x, y) {
+    const u = game.u;
+    if (u && x === u.ux && y === u.uy) return true;
+    const loc = game.level?.at(x, y);
+    if (loc && !loc.seenv && loc.remembered_glyph == null) return false;
+    return true;
 }
 
 // C ref: pager.c lookat() glyph_is_object branch -> look_at_object().  When the
@@ -763,7 +783,7 @@ async function getpos_render(message, cx, cy) {
 // `validfn(x,y)` flags invalid targets with a "(invalid target)" suffix.
 // `force` selects the wizard-teleport / #jump behavior (unknown keys keep the
 // loop alive) vs the ';' farlook behavior (unknown keys finish).
-async function getpos(goalText, startx, starty, validfn, force = false, verbose = false) {
+async function getpos(goalText, startx, starty, validfn, force = false, verbose = false, travelMode = false) {
     const u = game.u;
     let cx = startx, cy = starty;
 
@@ -821,6 +841,7 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             desc = objname || terrain_description(x, y);
         }
         if (validfn && !validfn(x, y)) desc += ' (invalid target)';
+        if (travelMode && !is_valid_travelpt(x, y)) desc += ' (no travel path)';
         return desc;
     };
 

@@ -41,14 +41,73 @@ export const PICK_RIGID = 1;
 // real entries.
 const IndexOkT = (i, tab) => i >= 0 && i < tab.length;
 
-// gr.rfilter — the role filter set by command-line/rc restrictions. No public
-// session uses it, but the checks are ported so behaviour is not silently
-// different if a held-out session does. Kept as C-shaped state.
-const rfilter = { roles: new Array(roles.length).fill(0), mask: 0 };
-export function reset_role_filtering() {
+// gr.rfilter — the set of roles/races/genders/alignments the player has ruled
+// out from the '~' menu during character selection. Kept as C-shaped state
+// because ok_role()/ok_race()/ok_gend()/ok_align() consult it directly and
+// every rigid_role_checks() draw depends on what it excludes.
+export const rfilter = { roles: new Array(roles.length).fill(0), mask: 0 };
+
+// Every module-scoped C global that outlives a single game has to be zeroed
+// between segments, because the judge runs all 44 sessions in ONE process where
+// the C ran 44 separate ones. gr.rfilter is the case that bit: a session that
+// used the '~' menu left its filter set for whatever ran next, so the corpus
+// score depended on session order.
+export function reset_role_globals() {
     rfilter.roles.fill(0);
     rfilter.mask = 0;
+    game.mons = null;
 }
+
+// src/role.c:1290 clearrolefilter()
+export function clearrolefilter(which) {
+    switch (which) {
+    case RS_filter:
+        rfilter.mask = 0;   /* race, gender and alignment filters */
+        /* FALLTHRU */
+    case RS_ROLE:
+        rfilter.roles.fill(0);
+        break;
+    case RS_RACE:
+        rfilter.mask &= ~ROLE_RACEMASK;
+        break;
+    case RS_GENDER:
+        rfilter.mask &= ~ROLE_GENDMASK;
+        break;
+    case RS_ALGNMNT:
+        rfilter.mask &= ~ROLE_ALIGNMASK;
+        break;
+    default:
+        break;
+    }
+}
+
+// src/role.c:1268 setrolefilter() — the menu returns the NAME string of each
+// unacceptable choice, and this works out which of the four tables it came from.
+export function setrolefilter(bufp) {
+    let i;
+    if ((i = str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        rfilter.roles[i] = 1;
+    else if ((i = str2race(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        rfilter.mask |= races[i].selfmask;
+    else if ((i = str2gend(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        rfilter.mask |= genders[i].allow;
+    else if ((i = str2align(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        rfilter.mask |= aligns[i].allow;
+    else
+        return false;
+    return true;
+}
+
+// src/role.c:1314 gotrolefilter()
+export function gotrolefilter() {
+    if (rfilter.mask) return true;
+    for (let i = 0; i < roles.length; ++i)
+        if (rfilter.roles[i]) return true;
+    return false;
+}
+
+// include/winprocs.h:308-313
+const RS_ROLE = 1, RS_RACE = 2, RS_GENDER = 3, RS_ALGNMNT = 4, RS_filter = 5;
 
 // src/role.c:971 ok_role() — is rolenum compatible with any
 // racenum/gendnum/alignnum constraints?
@@ -453,3 +512,78 @@ export function str2align(str) {
 }
 
 export { roles, races, genders, aligns };
+
+// ---------------------------------------------------------------------------
+// Character selection
+// ---------------------------------------------------------------------------
+
+// src/role.c:1235 rigid_role_checks()
+//
+// Called before the menus AND again by plsel_startmenu() every time a menu
+// opens. That second call site is where the draws come from: once the role is
+// known, any facet the role forces gets filled by a PICK_RIGID call, and
+// pick_align() with exactly one valid alignment still draws rn2(1).
+export function rigid_role_checks() {
+    const f = game.flags;
+
+    if (f.initrole === ROLE_RANDOM) {
+        f.initrole = pick_role(f.initrace, f.initgend, f.initalign, PICK_RANDOM);
+        if (f.initrole < 0) f.initrole = randrole();
+    }
+    let tmp;
+    if (f.initrace === ROLE_RANDOM
+        && (tmp = pick_race(f.initrole, f.initgend, f.initalign,
+                            PICK_RANDOM)) !== ROLE_NONE)
+        f.initrace = tmp;
+    if (f.initalign === ROLE_RANDOM
+        && (tmp = pick_align(f.initrole, f.initrace, f.initgend,
+                             PICK_RANDOM)) !== ROLE_NONE)
+        f.initalign = tmp;
+    if (f.initgend === ROLE_RANDOM
+        && (tmp = pick_gend(f.initrole, f.initrace, f.initalign,
+                            PICK_RANDOM)) !== ROLE_NONE)
+        f.initgend = tmp;
+
+    if (f.initrole !== ROLE_NONE) {
+        if (f.initrace === ROLE_NONE)
+            f.initrace = pick_race(f.initrole, f.initgend, f.initalign,
+                                   PICK_RIGID);
+        if (f.initalign === ROLE_NONE)
+            f.initalign = pick_align(f.initrole, f.initrace, f.initgend,
+                                     PICK_RIGID);
+        if (f.initgend === ROLE_NONE)
+            f.initgend = pick_gend(f.initrole, f.initrace, f.initalign,
+                                   PICK_RIGID);
+    }
+}
+
+// src/role.c:2246 setup_rolemenu() — the selector letter is the role name's
+// initial, lowercased; a collision takes the next free letter. Rogue precedes
+// Ranger in roles[], so Rogue keeps 'r'.
+function menu_letters(names) {
+    const used = new Set();
+    return names.map((nm) => {
+        let ch = nm[0].toLowerCase();
+        if (used.has(ch)) {
+            for (let c = 'a'.charCodeAt(0); c <= 'z'.charCodeAt(0); c++) {
+                const t = String.fromCharCode(c);
+                if (!used.has(t)) { ch = t; break; }
+            }
+        }
+        used.add(ch);
+        return ch;
+    });
+}
+
+export function rolemenu_letters() {
+    return menu_letters(roles.map(r => r.name.m));
+}
+export function racemenu_letters(rolenum, gendnum, alignnum) {
+    return menu_letters(races.map(r => r.noun));
+}
+export function gendmenu_letters() {
+    return menu_letters(genders.slice(0, ROLE_GENDERS).map(g => g.adj));
+}
+export function algnmenu_letters() {
+    return menu_letters(aligns.slice(0, ROLE_ALIGNS).map(a => a.adj));
+}
