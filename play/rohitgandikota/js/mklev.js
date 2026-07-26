@@ -702,6 +702,13 @@ async function makelevel() {
        the fills queued. It runs AFTER every room is filled, which is the point:
        make_a_trap picks its teleport destination from the finished map. */
     post_level_generate();
+
+    /* src/mklev.c:1190 — the WHOLE-LEVEL wallification pass, run after the
+       themeroom handlers have finished. mklev.c:298 already wallifies each
+       room as it is dug, but that per-room pass cannot see walls a later room
+       or corridor put next to it, so corners between them stay HWALL/VWALL.
+       Without this, seed0004's map drew "─────" where C draws "┌───┐". */
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
 }
 
 // src/mklev.c:929 ROOM_IS_FILLABLE

@@ -23,8 +23,7 @@ import { get_shop_item } from './shknam.js';
 import { attacktype } from './mondata.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
-    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET
-} from './const.js';
+    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
 import { enexto_core } from './teleport.js';
 
 // include/hack.h:1174-1175
@@ -694,22 +693,52 @@ export function remove_monster(x, y) {
 // The only draw is the S_EEL rn2(13). Everything else is terrain and occupancy,
 // so a wrong answer costs a whole extra rndmonst() block (9 draws) rather than
 // a single call — which is exactly how a mis-ported goodpos announces itself.
-export function goodpos(x, y, ptr, gpflags = 0) {
+export function goodpos(x, y, mtmp, gpflags = 0) {
+    /* src/teleport.c:86 — C's third argument is a struct monst *, and it does
+       `mdat = mtmp->data` inside the `if (mtmp)` block. This took a permonst
+       directly, which made two of C's tests inexpressible: the identity test
+       that lets a monster be placed back at its OWN square, and the wormno
+       test that overrides it for long worms, whose every segment answers
+       m_at(). Callers now pass a monster (enexto_core builds the fakemon C
+       builds); mdat is derived here. */
+    const ptr = mtmp?.data || null;
     const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
 
     if (!isok(x, y))
         return false;
 
-    if (game.u.ux === x && game.u.uy === y)
-        return false;
-    if (m_at(x, y))
+    /* src/teleport.c:107 — the hero's own square is rejected only when
+       GP_ALLOW_U is absent, and even then not for the hero, the engulfer
+       holding you, or your steed. C's comment says why the guard exists: the
+       same function relocates engravings and objects, which CAN be
+       co-located with you. This rejected u.ux/u.uy unconditionally. */
+    if (!(gpflags & GP_ALLOW_U)) {
+        if (game.u.ux === x && game.u.uy === y
+            && ptr !== game.youmonst
+            && (ptr !== game.u.ustuck || !game.u.uswallow)
+            && (!game.u.usteed || ptr !== game.u.usteed))
+            return false;
+    }
+    /* src/teleport.c:114 — `if (MON_AT(x, y) && avoid_monpos) return FALSE;`
+       The monster test is CONDITIONAL on GP_AVOID_MONPOS. Rejecting an
+       occupied square unconditionally, as this did, makes every caller that
+       does NOT pass that flag reject squares C accepts. */
+    if (m_at(x, y) && (gpflags & GP_AVOID_MONPOS))
         return false;
 
     const loc = game.level?.at(x, y);
     if (!loc)
         return false;
 
-    if (ptr) {
+    if (mtmp) {
+        /* src/teleport.c:130 — a monster may be placed back in its own
+           location. m_at() returning the SAME monster is fine, except for a
+           long worm, where every segment answers m_at() and the head may be
+           elsewhere. */
+        const mtmp2 = m_at(x, y);
+        if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno))
+            return false;
+
         if (loc.typ === POOL && !ignorewater) {
             return is_swimmer(ptr);
         } else if (ptr.mlet === S_EEL && rn2(13) && !ignorewater) {
@@ -1303,7 +1332,12 @@ export function makemon(ptr, x, y, mmflags) {
     const byyou = (x === game.u.ux && y === game.u.uy);
     if (byyou && !game.in_mklev) {
         const cc = { x: 0, y: 0 };
-        const gpflags = GP_CHECKSCARY | GP_AVOID_MONPOS;
+        /* src/makemon.c:1162 — gpflags carries MM_IGNOREWATER THROUGH from
+           the caller's mmflags; it is not just the two GP_ bits. A caller
+           that passes MM_IGNOREWATER wants goodpos to accept water, and
+           dropping it here makes those placements scan differently. */
+        const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
+                        | GP_CHECKSCARY | GP_AVOID_MONPOS;
         if (!enexto_core(cc, game.u.ux, game.u.uy, ptr, gpflags, goodpos)
             && !enexto_core(cc, game.u.ux, game.u.uy, ptr,
                             gpflags & ~GP_CHECKSCARY, goodpos))
@@ -1324,7 +1358,7 @@ export function makemon(ptr, x, y, mmflags) {
         do {
             if (!(ptr = rndmonst()))
                 return null;
-        } while (++tryct <= 50 && !goodpos(x, y, ptr));
+        } while (++tryct <= 50 && !goodpos(x, y, { data: ptr, wormno: 0 }));
         mndx = monsndx(ptr);
     }
     propagate(mndx, countbirth, false);

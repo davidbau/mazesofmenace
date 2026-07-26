@@ -360,3 +360,9 @@ export const hates_blessings = (d) => is_undead(d) || is_demon(d);
 export function mon_hates_blessings(mon) {
     return is_vampshifter(mon) || hates_blessings(game.mons[mon.mnum]);
 }
+
+// include/mondata.h:90 carnivorous()
+export const carnivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_CARNIVORE) !== 0;
+
+// include/mondata.h:91 herbivorous()
+export const herbivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;

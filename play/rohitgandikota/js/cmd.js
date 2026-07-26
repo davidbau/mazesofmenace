@@ -18,8 +18,10 @@ import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
 import { bad_rock } from './hack.js';
 import { curr_mon_load } from './mon.js';
-import { is_pit } from './const.js';
-import { ONAMES } from './objects_data.js';
+import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE } from './const.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
+import { x_monnam } from './do_name.js';
+import { You } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
    are cycles when imported directly, so cmd.js -- which already pulls in every
@@ -48,6 +50,7 @@ import { getpos } from './getpos.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, _buildScreenOutput,
+         tty_clear_nhwindow_message,
          TOPLINE_SPECIAL_PROMPT , TOPLINE_EMPTY} from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
@@ -317,11 +320,128 @@ async function get_ext_cmd() {
     return buf;
 }
 
+/* src/potion.c drink_ok() — only potions are suggested for 'q'. The !obj arm
+   returns GETOBJ_EXCLUDE; C's EXCLUDE_NONINVENT case needs drink_ok_extra,
+   which tracks whether the hero already passed up a fountain, and is not
+   modelled. */
+function drink_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+    if (obj.oclass === OCLASSES.POTION_CLASS)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+/* src/read.c:315 read_ok() — scrolls and spellbooks. Note the else arm is
+   GETOBJ_DOWNPLAY, not GETOBJ_EXCLUDE: C distinguishes "not a sensible
+   choice" from "not allowed", and only SUGGEST puts a letter in the prompt,
+   so both keep the letter out while meaning different things to the menu. */
+function read_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+    if (obj.oclass === OCLASSES.SCROLL_CLASS
+        || obj.oclass === OCLASSES.SPBOOK_CLASS)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+/* src/invent.c:1710 any_obj_ok() — 'd' drop accepts anything in inventory. */
+function any_obj_ok(obj) {
+    if (obj)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+/* src/do_wear.c:3404 equip_ok() — the shared filter behind W, T, P and R.
+//
+   The two XORs carry the logic and neither is decorative:
+
+     removing ^ is_worn                  putting ON something already worn,
+                                         or taking OFF something not worn, is
+                                         EXCLUDE_INACCESS -- the item exists
+                                         but the action does not apply.
+     accessory ^ (oclass != ARMOR_CLASS) armor offered to 'P'/'R', or an
+                                         accessory offered to 'W'/'T', is
+                                         DOWNPLAY rather than EXCLUDE: it is
+                                         wearable, just not by this command.
+
+   The class test excludes everything but armor, rings and amulets, THEN
+   re-admits four specific otyps -- MEAT_RING, BLINDFOLD, TOWEL, LENSES --
+   which are wearable while belonging to other classes. Dropping that
+   exception list would make a blindfold unofferable to 'P'.
+
+   canwearobj (polyform restrictions) and inaccessible_equipment (cursed
+   armor covering a ring) are recorded; every other arm is real. */
+function equip_ok(obj, removing, accessory) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* ignore for putting on if already worn, or removing if not worn */
+    const is_worn = ((obj.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0);
+    if (!!removing !== is_worn)
+        return GETOBJ_EXCLUDE_INACCESS;
+
+    /* exclude most object classes outright */
+    if (obj.oclass !== OCLASSES.ARMOR_CLASS
+        && obj.oclass !== OCLASSES.RING_CLASS
+        && obj.oclass !== OCLASSES.AMULET_CLASS) {
+        /* ... except for a few wearable exceptions outside these classes */
+        if (obj.otyp !== ONAMES.MEAT_RING && obj.otyp !== ONAMES.BLINDFOLD
+            && obj.otyp !== ONAMES.TOWEL && obj.otyp !== ONAMES.LENSES)
+            return GETOBJ_EXCLUDE;
+    }
+
+    /* armor with 'P' or 'R' or accessory with 'W' or 'T' */
+    if (!!accessory !== (obj.oclass !== OCLASSES.ARMOR_CLASS))
+        return GETOBJ_DOWNPLAY;
+
+    /* armor we can't wear, e.g. from polyform */
+    if (obj.oclass === OCLASSES.ARMOR_CLASS && !removing
+        && !note_unported_cmd('equip_ok:canwearobj'))
+        return GETOBJ_DOWNPLAY;
+
+    /* removing inaccessible equipment */
+    if (removing)
+        note_unported_cmd('equip_ok:inaccessible_equipment');
+
+    /* all good to go */
+    return GETOBJ_SUGGEST;
+}
+
+/* src/do_wear.c:3451-3475 — the four getobj callbacks over equip_ok. */
+const puton_ok   = (o) => equip_ok(o, false, true);
+const remove_ok  = (o) => equip_ok(o, true,  true);
+const wear_ok    = (o) => equip_ok(o, false, false);
+const takeoff_ok = (o) => equip_ok(o, true,  false);
+
+/* src/cmd.c cmdlist — the verb and object filter each command hands getobj().
+   Read from the C, not invented: the word appears verbatim in the prompt
+   ("What do you want to drink?") and the flags decide whether '-' for hands
+   is offered. A missing filter offers the WHOLE inventory, which is what
+   js/cmd.js used to do by passing null.
+
+   'q', 'r' and 'd' carry their real filters. 'w', 'W', 'P' and 'R' all route
+   through C's equip_ok(obj, taking_off, is_accessory), which is a larger
+   function and is not ported, so they stay null and still offer the whole
+   inventory; their VERBS are correct. */
+const GETOBJ_CMD = {
+    q: { word: 'drink',   ok: drink_ok, flags: GETOBJ_NOFLAGS },
+    r: { word: 'read',    ok: read_ok,  flags: GETOBJ_PROMPT },
+    w: { word: 'wield',   ok: null,      flags: GETOBJ_PROMPT | GETOBJ_ALLOWCNT },
+    W: { word: 'wear',    ok: wear_ok,   flags: GETOBJ_NOFLAGS },
+    P: { word: 'put on',  ok: puton_ok,  flags: GETOBJ_NOFLAGS },
+    R: { word: 'remove',  ok: remove_ok, flags: GETOBJ_NOFLAGS },
+    d: { word: 'drop',    ok: any_obj_ok, flags: GETOBJ_NOFLAGS },
+};
+
 /* The commands whose first act is getobj() and which read nothing further.
    Their effects need the use/wear/drop subsystems; what is ported is the
    object prompt, because that is what decides where the next keystroke goes. */
 async function docmd_getobj(ch) {
-    const obj = await getobj(ch, null, 0);
+    const spec = GETOBJ_CMD[ch];
+    const obj = await getobj(spec ? spec.word : ch,
+                            spec ? spec.ok : null,
+                            spec ? spec.flags : 0);
 
     if (!obj)
         return ECMD_OK;   /* Never mind */
@@ -403,6 +523,10 @@ export async function rhack(key) {
         // TOPLINE_NEED_MORE with nothing behind it, and update_topl's joining
         // branch then glued the next message onto an empty string, indenting
         // it by the two spaces the join inserts.
+        /* js/display.js:606 records this same defect on seed0360: clearing
+           the text without erasing the cells leaves the old prompt painted
+           in the grid for whatever draws next to land on top of. */
+        tty_clear_nhwindow_message(game._topl_cury || 0);
         game._pending_message = '';
         game._toplin = TOPLINE_EMPTY;
     }
@@ -623,7 +747,7 @@ async function domove(dx, dy) {
     const mtmp = m_at(newx, newy);
     if (mtmp && is_safemon(mtmp)
         && !(is_hider(game.mons[mtmp.mnum]) && mtmp.mundetected)) {
-        if (!domove_swap_with_pet(mtmp, newx, newy)) {
+        if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
             game.u.ux = game.u.ux0;     /* didn't move after all */
             game.u.uy = game.u.uy0;
         }
@@ -643,7 +767,7 @@ async function domove(dx, dy) {
 // attempt used a bare `u`, which is a local inside domove and invisible from
 // module scope, so this function threw on every step onto a pet and cost 247
 // screens. It looked like a logic fault and was not.
-function domove_swap_with_pet(mtmp, x, y) {
+async function domove_swap_with_pet(mtmp, x, y) {
     let didnt_move = false;
     const mdat = game.mons[mtmp.mnum];
     const u_with_boulder = !!sobj_at(ONAMES.BOULDER, game.u.ux, game.u.uy);
@@ -692,7 +816,21 @@ function domove_swap_with_pet(mtmp, x, y) {
         place_monster(mtmp, game.u.ux0, game.u.uy0);
         newsym(x, y);
         newsym(game.u.ux0, game.u.uy0);
-        note_unported_cmd('domove_swap_with_pet:swap_message');
+        /* src/hack.c:2169 — the verb depends on PEACEFULNESS, not tameness:
+           a peaceful monster is swapped with, a hostile one is frightened.
+           The article is ARTICLE_YOUR for a tame monster, which x_monnam
+           downgrades to ARTICLE_THE for anything else, so "your little dog"
+           and "the jackal" both come out of the same call.
+
+           C's third argument is a "peaceful" adjective for peaceful non-tame
+           monsters, and its has_mgivenname/type_is_pname article choice is
+           not modelled; both are recorded inside x_monnam. */
+        await You(`${mtmp.mpeaceful ? 'swap places with' : 'frighten'} `
+                  + x_monnam(mtmp,
+                             mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                             (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
+                             0, false)
+                  + '.');
     }
     return !didnt_move;
 }

@@ -626,7 +626,7 @@ export async function more() {
 // cl_end() erases to end of line, so the row becomes blanks rather than
 // keeping stale glyphs. cury is non-zero only when the message wrapped, which
 // for more() means the "--More--" suffix went to row 1.
-function tty_clear_nhwindow_message(cury) {
+export function tty_clear_nhwindow_message(cury) {
     if (game._toplin === TOPLINE_EMPTY)
         return;
 

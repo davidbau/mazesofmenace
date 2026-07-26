@@ -13,6 +13,7 @@
 import { game } from './gstate.js';
 import { helpless } from './monst.js';
 import { You } from './pline.js';
+import { mon_nam } from './do_name.js';
 import { exclam } from './zap.js';
 import { canseemon } from './display.js';
 import { wakeup, killed, xkilled } from './mon.js';
@@ -610,7 +611,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         saved_oname: '',
     };
 
-    hmon_hitmon_do_hit(hmd, mon, obj);
+    await hmon_hitmon_do_hit(hmd, mon, obj);
     if (hmd.doreturn)
         return hmd.retval;
 
@@ -685,7 +686,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
        setmangry, which turns a peaceful monster hostile and costs alignment.
        Both are ported, so this is a real call chain. */
     if (!hmd.destroyed && !hmd.offmap) {
-        wakeup(mon, true);
+        await wakeup(mon, true);
         note_unported_uhitm('hmon_hitmon:maybe_knockback');
     }
 
@@ -717,14 +718,14 @@ function note_is_pole_unported() {
 //
 // The GEM_CLASS in the weapon test is not a mistake: gems are thrown at
 // unicorns and go through the weapon path.
-function hmon_hitmon_do_hit(hmd, mon, obj) {
+async function hmon_hitmon_do_hit(hmd, mon, obj) {
     if (!obj) {                         /* attack with bare hands */
         hmon_hitmon_barehands(hmd, mon);
     } else {
         if ((hmd.thrown === HMON_THROWN || hmd.thrown === HMON_KICKED)
             && note_stone_missile_unported(obj) && passes_rocks(hmd.mdat)) {
             note_unported_uhitm('hmon_hitmon:hit_no_harm');
-            wakeup(mon, true);
+            await wakeup(mon, true);
             hmd.doreturn = true;
             hmd.retval = true;
             return;
@@ -1005,8 +1006,8 @@ async function hmon_hitmon_msg_hit(hmd, mon, obj) {
                            || note_unported_uhitm('msg_hit:is_wet_towel'))) ? 'lash'
                   : Role_if(PMNAMES.PM_BARBARIAN) ? 'smite'
                     : 'hit';
-            note_unported_uhitm('msg_hit:mon_nam');
-            await You(`${verb} it${canseemon(mon) ? exclam(hmd.dmg) : '.'}`);
+            await You(`${verb} ${mon_nam(mon)}`
+                      + (canseemon(mon) ? exclam(hmd.dmg) : '.'));
         }
     }
 }

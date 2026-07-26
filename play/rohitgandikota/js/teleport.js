@@ -123,11 +123,14 @@ function ZAP_POS(x, y) {
 // pass re-collects and therefore re-shuffles the near rings, so its draw count
 // includes them again even though the caller skips those entries.
 export function enexto_core(cc, xx, yy, mdat, entflags, goodpos) {
+    /* src/teleport.c:118 — C builds a dummy monst and set_mon_data()s the
+       permonst into it, because goodpos() takes a monster, not a permonst. */
+    const fakemon = { data: mdat, wormno: 0 };
     const allow_xx_yy = (entflags & GP_ALLOW_XY) !== 0;
 
     const near = collect_coords(xx, yy, 3, CC_NO_FLAGS, null);
     for (const c of near) {
-        if (goodpos(c.x, c.y, mdat, entflags)) {
+        if (goodpos(c.x, c.y, fakemon, entflags)) {
             cc.x = c.x; cc.y = c.y;
             return true;
         }
@@ -135,14 +138,14 @@ export function enexto_core(cc, xx, yy, mdat, entflags, goodpos) {
 
     const all = collect_coords(xx, yy, 0, CC_NO_FLAGS, null);
     for (let i = near.length; i < all.length; ++i) {
-        if (goodpos(all[i].x, all[i].y, mdat, entflags)) {
+        if (goodpos(all[i].x, all[i].y, fakemon, entflags)) {
             cc.x = all[i].x; cc.y = all[i].y;
             return true;
         }
     }
 
     cc.x = xx; cc.y = yy;
-    return allow_xx_yy && goodpos(xx, yy, mdat, entflags);
+    return allow_xx_yy && goodpos(xx, yy, fakemon, entflags);
 }
 
 // src/teleport.c:1165 level_tele() — the controlled level teleport.

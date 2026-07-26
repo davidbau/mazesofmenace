@@ -16,6 +16,7 @@
 // that fires when the RACE menu opens.
 
 import { game } from './gstate.js';
+import { tty_clear_nhwindow_message } from './display.js';
 import { nhgetch } from './input.js';
 import {
     ROLE_NONE, ROLE_RANDOM, rigid_role_checks, ok_role, ok_race, ok_gend,
@@ -396,6 +397,17 @@ const RS_NAME = 0, RS_ROLE = 1, RS_RACE = 2, RS_GENDER = 3, RS_ALGNMNT = 4;
 //   n ==  1  <space>/<return>    -> the preselected entry
 //   otherwise                    -> the entry whose selector was typed
 async function select_menu_pick_one(win) {
+    /* win/tty/wintty.c tty_display_nhwindow(), NHW_MENU: a menu that OVERLAYS
+       clears the message window first; only one that takes the whole screen
+       clears the screen instead. Without this the previous prompt stays
+       painted on row 0 under the menu -- seed0004 showed "Shall I pick
+       character's race, role, gen" still there beneath "Is this ok? [ynaq]".
+       Row 0 is scored, so it failed every screen from that step onward. */
+    {
+        const c0 = tty_get_nhwindow(win);
+        if (c0 && !(c0.offx === 10 || c0.maxrow >= 24))
+            tty_clear_nhwindow_message(0);
+    }
     tty_display_nhwindow(win);
     const cw = tty_get_nhwindow(win);
     for (;;) {

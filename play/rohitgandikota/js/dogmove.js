@@ -31,3 +31,26 @@ export function finish_meating(mtmp) {
         newsym(mtmp.mx, mtmp.my);
     }
 }
+
+// dog_hunger() is NOT here either. js/dog.js:964 already has it, and
+// js/dog.js's dog_move calls that one. A second copy was written here and
+// removed; the two were functionally identical (mdat vs ptr, Math.trunc vs
+// |0) so dup-defs reported them as DIFFERING on formatting alone. Verified
+// the live one against the C before deleting the duplicate: the non-eater
+// arm, the mhpmax/3 penalty with its stored delta, and the DEADMONSTER check
+// inside that arm are all present.
+
+// dog_move() and its position-scoring loop are NOT here. They already exist
+// in js/dog.js (dog_move at :994, ~211 lines, 10 draws, full chcnt and
+// uncursedcnt logic) and js/monmove.js:950 calls that one.
+//
+// A duplicate dog_move plus a standalone dog_scoring_loop were written here
+// and then removed: they were less complete than the existing implementation
+// and nothing called them. ARCHITECTURALLY dog_move belongs in this file,
+// since src/dogmove.c is what it mirrors, but moving a working 211-line
+// function to satisfy that is a separate change with its own risk, and the
+// existing one is not broken by being in the wrong file.
+//
+// The real work on the dog_move divergence is DEBUGGING js/dog.js's version,
+// not writing a new one. It already draws; it draws differently from C
+// somewhere around dogmove.c:1255. See docs/plan/STATUS.md.

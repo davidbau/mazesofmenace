@@ -311,7 +311,12 @@ export async function newgame() {
        dozen lines above. The status line reads them directly, so every
        session showed a Tourist's numbers. */
     g.u.uexp = 0;
-    g.flags.female = (str2gend(g.rc?.opts?.gender) === 1);
+    /* src/u_init.c:949 — flags.female comes from flags.initgend, the facet
+       chargen actually settled on. Reading it back out of the rc option
+       instead threw away a randomly picked gender: seed0004's player answers
+       "y" to "shall I pick for you", pick_gend chooses female, and this line
+       overwrote it with male because the rc names no gender. */
+    g.flags.female = (g.flags.initgend === 1);
     g.plname = g.plname || 'Contestant';
 
     // src/allmain.c welcome() — the new-game branch. The alignment, the race
