@@ -6430,7 +6430,10 @@ const NO_RANDOM_MONSTER_ITEM_NAMES = new Set([
 ]);
 
 function noRandomMonsterItemRolls(ptr) {
-    return ptr.mindless || ptr.mlet === 'ghost' || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name);
+    // C ref: muse.c rnd_defensive_item()/rnd_misc_item() early-out —
+    // Kops (S_KOP) never get random defensive/miscellaneous items.
+    return ptr.mindless || ptr.mlet === 'ghost' || ptr.mlet === S_KOP
+        || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name);
 }
 
 export function noteleportLevelForMonster(mon) {
@@ -6786,8 +6789,10 @@ export function rlocToCoreNoMsg(mon, x, y) {
     if (tailCount) placeLongWormTailRandomly(mon, x, y, tailCount);
 }
 
-export function rlocNoMsg(mon) {
-    if (!mon?.mx) return false;
+export function rlocNoMsg(mon, { allowUnset = false } = {}) {
+    // C ref: teleport.c rloc() — migrating monsters arrive with mx == 0;
+    // callers placing one (mon_arrive, dog.c) pass allowUnset.
+    if (!mon?.mx && !allowUnset) return false;
     for (let trycount = 0; trycount < 50; trycount++) {
         // C ref: teleport.c rloc() — x = rnd(COLNO - 1), y = rn2(ROWNO).
         // The port's world coordinates are C's +1 in x (map, hero, and
@@ -11028,11 +11033,28 @@ function castleSquadmon() {
 }
 
 async function castleFillBarracksRoom(room, fillState) {
+    // C ref: mkroom.c fill_zoo() — cells adjacent to the room's door are
+    // skipped (sroom->doorct && door just outside the boundary on that side).
+    let door = null;
+    for (let x = room.lx; x <= room.hx && !door; x++)
+        for (const y of [room.ly - 1, room.hy + 1]) {
+            const loc = game.level.at(x, y);
+            if (loc?.typ === DOOR) { door = { x, y }; break; }
+        }
+    if (!door)
+        for (let y = room.ly; y <= room.hy && !door; y++)
+            for (const x of [room.lx - 1, room.hx + 1]) {
+                const loc = game.level.at(x, y);
+                if (loc?.typ === DOOR) { door = { x, y }; break; }
+            }
     for (let x = room.lx; x <= room.hx; x++)
         for (let y = room.ly; y <= room.hy; y++) {
             if (fillState.count >= fillState.limit) return;
             const loc = game.level.at(x, y);
             if (!loc || !SPACE_POS(loc.typ)) continue;
+            if (door && ((x === room.lx && door.x === x - 1) || (x === room.hx && door.x === x + 1)
+                || (y === room.ly && door.y === y - 1) || (y === room.hy && door.y === y + 1)))
+                continue;
             fillState.count++;
             const mon = await makemon(castleSquadmon(), x, y, MM_NOGRP);
             if (mon) mon.msleeping = 1;

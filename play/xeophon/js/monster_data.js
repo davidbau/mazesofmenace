@@ -457,3 +457,11 @@ export const NOLIMBS_MONSTERS = new Set([
     "pit viper", "cobra", "jellyfish", "piranha", "shark", "giant eel",
     "electric eel",
 ]);
+
+
+// Generated from nethack-c upstream include/monsters.h: monsters with
+// M2_GIANT (mondata.h:is_giant() — grants BUSTDOOR in mon_allowflags()).
+export const GIANT_M2_MONSTERS = new Set([
+    "giant", "stone giant", "hill giant", "fire giant", "frost giant",
+    "storm giant", "giant mummy", "giant zombie", "Cyclops", "Lord Surtur",
+]);

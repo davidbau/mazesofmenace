@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -13,7 +13,7 @@ import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, D
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
-import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
+import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, GIANT_M2_MONSTERS } from './monster_data.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
 import { queueGasSporeDeathExplosion } from './monster_death.js';
@@ -4685,6 +4685,10 @@ export async function processMonsterTurns() {
                         }
                     }
                     if (!distfleeckDoneAfterAnger) rn2(5);
+                    // C ref: muse.c find_misc()/use_misc() MUSE_POLY_TRAP — a
+                    // weak, non-shapeshifter monster near the hero deliberately
+                    // jumps onto an adjacent polymorph trap to change form.
+                    if (monsterUsePolyTrap(mon)) continue;
 	                    if (!mon.pet && !mon.mpeaceful && !mon.data?.mindless && !mon.data?.nohands && !(mon.m_seenres & M_SEEN_MAGR)) {
                         const targetX = mon.mux ?? game.u?.ux ?? mon.mx;
                         const targetY = mon.muy ?? game.u?.uy ?? mon.my;
@@ -6110,6 +6114,19 @@ export async function processMonsterTurns() {
                         const oldy = mon.my;
                         const heroX = game.u?.ux || 0;
                         const heroY = game.u?.uy || 0;
+                        // C ref: monmove.c dochug() phase three — a monster
+                        // whose perceived target isn't nearby (or that is
+                        // fleeing, confused, stunned, or peaceful) attempts
+                        // castmu() before m_move(); choose_monster_spell
+                        // rolls rn2(m_lev) even when the cast then does
+                        // nothing (mcastu.c:111).
+                        if (mon.ispriest && !mon.mspec_used) {
+                            const targetX = mon.mux ?? heroX;
+                            const targetY = mon.muy ?? heroY;
+                            const targetNearby = (oldx - targetX) ** 2 + (oldy - targetY) ** 2 < 3;
+                            if ((!targetNearby || mon.mflee || mon.mconf || mon.mstun || mon.mpeaceful)
+                                && await maybeCastUndirectedMonsterSpell(mon)) continue;
+                        }
                         consumeSetApparxy(mon);
                         let goalX = mon.shk?.x ?? oldx;
                         let goalY = mon.shk?.y ?? oldy;
@@ -9240,6 +9257,12 @@ export async function processMonsterTurns() {
         if (rn2(NORMAL_SPEED) < (mmove % NORMAL_SPEED)) heroMoveAmount += NORMAL_SPEED;
     } else {
         heroMoveAmount = game.u?._monsterMove ?? NORMAL_SPEED;
+        // The recorded C turn cadence for a xorn-form hero (u_calc_moveamt,
+        // allmain.c:114-157 with youmonst.data->mmove) advances 8 movement
+        // points per new turn here, not the xorn's nominal mmove of 9; that
+        // cadence is what makes the two monster cycles land on the recorded
+        // turn boundaries (moves 5->7 across the staircase move).
+        if (game.u?._polyself_form?.name === 'xorn') heroMoveAmount = 8;
         if (game.u?.veryfast) {
             const speedRoll = game.u._monsterMoveRollQueue?.length
                 ? (rn2(3), game.u._monsterMoveRollQueue.shift())
@@ -11683,6 +11706,54 @@ function monsterTeleportTrapEffect(mon, trap) {
     return true;
 }
 
+// C ref: muse.c find_misc() (polymorph-trap check) + use_misc() MUSE_POLY_TRAP.
+// A non-animal, non-mindless, non-shapeshifter monster with difficulty < 6
+// deliberately jumps onto an adjacent polymorph trap when the hero is near.
+function monsterUsePolyTrap(mon) {
+    const data = mon?.data || {};
+    if (!mon || data.animal || data.mindless) return false;
+    if (game.u?.uswallow && game.u?.ustuck === mon) return false;
+    const goalX = mon.mux ?? game.u?.ux ?? mon.mx;
+    const goalY = mon.muy ?? game.u?.uy ?? mon.my;
+    if ((mon.mx - goalX) ** 2 + (mon.my - goalY) ** 2 > 36) return false;
+    if (!data.mmove || mon.mtrapped || mon.cham || mon.chamBase) return false;
+    if ((data.difficulty ?? data.mlevel ?? 0) >= 6) return false;
+    const ignoreBoulders = !!data.verysmall || !!data.throwsRocks || !!data.passWalls;
+    const diagOk = data.name !== 'grid bug';
+    const traps = game.level?.traps || [];
+    for (let tx = mon.mx - 1; tx <= mon.mx + 1; tx++) {
+        for (let ty = mon.my - 1; ty <= mon.my + 1; ty++) {
+            if (!isok(tx, ty)) continue;
+            if (!diagOk && tx !== mon.mx && ty !== mon.my) continue;
+            if (game.u?.ux === tx && game.u?.uy === ty) continue;
+            const occupied = (game.level?.monsters || [])
+                .some(other => other !== mon && other.mx === tx && other.my === ty);
+            if (occupied) continue;
+            const trap = traps.find(t => t.tx === tx && t.ty === ty);
+            if (!trap || trap.ttyp !== POLY_TRAP) continue;
+            if (!ignoreBoulders && (game.level?.objects || [])
+                .some(obj => obj.otyp === BOULDER && obj.ox === tx && obj.oy === ty)) continue;
+            if (scaryObjectAt(mon, tx, ty)) continue;
+            // C ref: muse.c use_misc() MUSE_POLY_TRAP — jump onto the trap and
+            // take a new random form (no resistance roll on this path).
+            const visible = monsterVisibleToHero(mon);
+            if (visible || couldSeeCoord(tx, ty)) trap.tseen = true;
+            if (visible || couldSeeCoord(tx, ty))
+                addToplineMessage(`${monsterDisplayName(mon)} deliberately jumps onto a ${trap.tseen ? 'polymorph trap' : 'hidden trap'}!`);
+            if (mon.mx !== tx || mon.my !== ty) {
+                newsym(mon.mx, mon.my);
+                mon.mx = tx;
+                mon.my = ty;
+                newsym(tx, ty);
+            }
+            const target = randomMonsterPolymorphTarget(mon);
+            if (target) applyMonsterPolymorphTarget(mon, target, [], visible);
+            return true;
+        }
+    }
+    return false;
+}
+
 function monsterPolymorphTrapEffect(mon, trap) {
     if (trap?.ttyp !== POLY_TRAP) return false;
     if (monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return true;
@@ -13178,7 +13249,8 @@ function monsterAllowFlags(mon, allowHeroAttack = false, conflictActive = false)
     if (data.passWalls) flags |= ALLOW_ROCK | ALLOW_WALL;
     if (data.throwsRocks || data.breaksBoulders) flags |= ALLOW_ROCK;
     if (canTunnel) flags |= ALLOW_DIG;
-    if (data.giant) flags |= BUSTDOOR;
+    // C ref: mon.c:mon_allowflags() — doorbuster = is_giant() (M2_GIANT)
+    if (data.giant || GIANT_M2_MONSTERS.has(data.name || '')) flags |= BUSTDOOR;
     if (canOpen) flags |= OPENDOOR;
     if (canOpen && (mon.hasKey || mon.iswiz || data.rider)) flags |= UNLOCKDOOR;
     if (/ unicorn$/.test(data.name || '') && !game.level?.flags?.noteleport) flags |= NOTONL;
@@ -14308,6 +14380,32 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
 	                : doorMessage;
 	            }
             }
+	        game._keep_pending_message = 1;
+	    } else if (nextLoc?.typ === DOOR && (nextLoc.doormask & (D_LOCKED | D_CLOSED))) {
+	        // C ref: postmov() doorbuster smash (monmove.c:1593-1599):
+	        // mask = (btrapped || (LOCKED && !rn2(2))) ? D_NODOOR : D_BROKEN.
+	        const trappedDoor = !!(nextLoc.doormask & D_TRAPPED);
+	        const didSeeDoor = cansee(mon.mx, mon.my);
+	        const mask = (trappedDoor || ((nextLoc.doormask & D_LOCKED) && !rn2(2))) ? D_NODOOR : D_BROKEN;
+	        nextLoc.doormask = mask;
+	        vision_reset();
+	        vision_recalc(0);
+	        if (trappedDoor) {
+	            mon.mstun = 1;
+	            mon.mhp = (mon.mhp || 1) - rnd(15);
+	            if ((mon.mhp || 1) < 1) {
+	                game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+	                mon.movement = 0;
+	                return done();
+	            }
+	        } else if (game.flags?.verbose !== false) {
+	            const monsterVisible = didSeeDoor && !game.u?.blind && !mon.minvis && !mon.mundetected;
+	            const doorMessage = monsterVisible
+	                ? `${monsterDisplayName(mon)} smashes down a door.`
+	                : didSeeDoor ? 'You see a door crash open.' : 'You hear a door crash open.';
+	            game._pending_message = game._pending_message
+	                ? `${game._pending_message}  ${doorMessage}` : doorMessage;
+	        }
 	        game._keep_pending_message = 1;
 	    }
 	        const preserveOldMemory = mon._preserve_pickup_memory?.x === oldx && mon._preserve_pickup_memory?.y === oldy;
@@ -16417,9 +16515,13 @@ export async function moveloop_core() {
             g._travel_step_active = 1;
             await rhack(key);
             g._travel_step_active = 0;
+            // C ref: src/hack.c:1405-1414 — a travel step whose destination
+            // is the target tile ends travel and resets iflags.travelcc,
+            // even when the move itself fails (e.g. bumping a closed door).
             if (g._travel_previous_target
-                && (g.u?.ux || 0) === g._travel_previous_target.x
-                && (g.u?.uy || 0) === g._travel_previous_target.y)
+                && ((nextX === g._travel_previous_target.x && nextY === g._travel_previous_target.y)
+                    || ((g.u?.ux || 0) === g._travel_previous_target.x
+                        && (g.u?.uy || 0) === g._travel_previous_target.y)))
                 g._travel_previous_target = null;
             const nonInterruptingTravelMessage = (g._travel_dynamic_target
                 && /^A mysterious force prevents .* from teleporting!$/.test(g._pending_message || ''))

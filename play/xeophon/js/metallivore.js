@@ -58,6 +58,32 @@ const WAND_APPEARANCE_MATERIALS = new Map([
     ['curved', 'iron'], ['forked', 'wood'], ['spiked', 'iron'], ['jeweled', 'iron'],
 ]);
 
+// C ref: objects.h WAND(...) entries — true oc_material per wand kind;
+// is_metallic() (objclass.h:194) tests the true material, not the shuffled
+// appearance, so edibility (eat.c is_edible(), mon.c meatmetal()) must too.
+const WAND_KIND_MATERIALS = new Map([
+    ['light', 'glass'], ['secret door detection', 'wood'], ['enlightenment', 'glass'],
+    ['create monster', 'wood'], ['wishing', 'wood'], ['stasis', 'wood'],
+    ['nothing', 'wood'], ['striking', 'wood'], ['make invisible', 'mineral'],
+    ['slow monster', 'metal'], ['speed monster', 'copper'], ['undead turning', 'copper'],
+    ['polymorph', 'silver'], ['cancellation', 'platinum'], ['teleportation', 'metal'],
+    ['opening', 'metal'], ['locking', 'metal'], ['probing', 'metal'],
+    ['digging', 'iron'], ['magic missile', 'iron'], ['fire', 'iron'], ['cold', 'iron'],
+    ['sleep', 'iron'], ['death', 'iron'], ['lightning', 'iron'],
+]);
+const WAND_INDEX_KINDS = [...WAND_KIND_MATERIALS.keys()];
+
+// True oc_material for a wand-like object, from its true kind (not the
+// shuffled appearance). Returns '' when the true kind is unknown.
+export function wandTrueMaterial(obj) {
+    const trueKind = String(obj?.wand || '').toLowerCase()
+        || String(obj?.actualKind || '').toLowerCase().replace(/^wand of /, '')
+        || (obj?.wandIndex != null ? WAND_INDEX_KINDS[obj.wandIndex] : '');
+    return trueKind && WAND_KIND_MATERIALS.has(trueKind)
+        ? WAND_KIND_MATERIALS.get(trueKind)
+        : '';
+}
+
 const METAL_OBJECT_MATERIALS = new Map([
     ['gold piece', 'gold'], ['gold pieces', 'gold'], ['arrow', 'iron'], ['arrows', 'iron'],
     ['orcish arrow', 'iron'], ['crude arrow', 'iron'], ['silver arrow', 'silver'],
