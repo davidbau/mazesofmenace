@@ -7,6 +7,11 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
+import { STR18 } from './const.js';
+import { ACURR } from './attrib.js';
+import { A_STR, A_DEX } from './const.js';
+import { AKLYS_LIM } from './const.js';
+import { ONAMES } from './objects_data.js';
 import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
 import { OCLASSES } from './objects_data.js';
@@ -160,4 +165,56 @@ const Role_if = (pm) => game.urole?.malenum === pm || game.urole?.pmidx === pm;
 
 function note_unported_weapon(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+/* AKLYS_LIM comes from js/const.js; the table stores its SQUARE because the
+   caller compares against dist2. */
+
+/* src/weapon.c:514 arwep[] — the throw-and-return weapons. BOOMERANG is
+   commented out in the C and is left out here for the same reason. */
+const arwep = [
+    { otyp: ONAMES.AKLYS, range: AKLYS_LIM * AKLYS_LIM, retmult: 1 },
+];
+
+// src/weapon.c:520 autoreturn_weapon()
+export function autoreturn_weapon(otmp) {
+    for (const a of arwep)
+        if (otmp.otyp === a.otyp)
+            return a;
+    return null;
+}
+
+// src/weapon.c:950 abon() — the hero's to-hit bonus from Str and Dex.
+//
+// No draws; pure arithmetic, so its correctness is checked by value rather
+// than by the scoreboard. The Upolyd arm needs adj_lev and is recorded.
+//
+// Note the two comments C keeps here, both of which change the numbers: the
+// Str test is `< STR18(50)` rather than `<=`, so exactly 18/50 gives a bonus
+// of 2, and a hero below experience level 3 gets a flat +1 to make early
+// hitting easier.
+export function abon() {
+    const str = ACURR(A_STR), dex = ACURR(A_DEX);
+    let sbon;
+
+    if (game.u.umonnum !== undefined && game.u.umonnum !== game.u.umonster) {
+        note_unported_weapon('abon:Upolyd');
+        return 0;
+    }
+
+    if (str < 6)                 sbon = -2;
+    else if (str < 8)            sbon = -1;
+    else if (str < 17)           sbon = 0;
+    else if (str < STR18(50))    sbon = 1;      /* up to 18/49 */
+    else if (str < STR18(100))   sbon = 2;
+    else                         sbon = 3;
+
+    /* Game tuning kludge: make it a bit easier for a low level character */
+    sbon += (game.u.ulevel < 3) ? 1 : 0;
+
+    if (dex < 4)        return sbon - 3;
+    else if (dex < 6)   return sbon - 2;
+    else if (dex < 8)   return sbon - 1;
+    else if (dex < 14)  return sbon;
+    else                return sbon + dex - 14;
 }

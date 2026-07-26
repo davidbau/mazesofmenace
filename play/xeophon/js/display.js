@@ -823,8 +823,6 @@ export function newsym(x, y) {
 
     const canSee = !!(game.viz_array?.[y]?.[x] & COULD_SEE);
     const visible = !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
-    if (process.env.NSYMDBG_X != null && x === Number(process.env.NSYMDBG_X) && y === Number(process.env.NSYMDBG_Y))
-        console.error(`NSYMDBG (${x},${y}) hero=${game.u?.ux},${game.u?.uy} canSee=${canSee} visible=${visible} mon=${monsterAt(x, y)?.data?.name} appearGlyph=${monsterAt(x, y)?.appearGlyph} remembered_glyph=${JSON.stringify(loc.remembered_glyph)}`);
     if (visible) {
         loc.waslit = !!loc.lit;
         loc.lastseentyp = loc.typ;
@@ -919,10 +917,7 @@ export function newsym(x, y) {
             game._hilite_pet && displayedMon.pet ? 1 : 0, glyph);
         return;
     }
-    // C ref: display.c _map_location — an object-disguised monster (mimic)
-    // is only shown while its square is actually visible (canseemon);
-    // out of sight the hero's memory holds no glyph for it.
-    if (mon?.appearGlyph && remembered && visible
+    if (mon?.appearGlyph && remembered
         && Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0))) <= 2) {
         const glyph = monsterGlyph(mon);
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);

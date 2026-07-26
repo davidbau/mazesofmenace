@@ -4,8 +4,10 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
+import { sgn } from './hacklib.js';
 import { MON_WEP } from './monst.js';
-import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL } from './const.js';
+import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
+         AC_MAX } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
 import { verysmall, nohands, is_animal, mindless, slithy, cantweararm,
@@ -334,4 +336,30 @@ const MFAST = 2;   /* include/monst.h — permspeed value */
 
 function note_unported_worn(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/worn.c:717 find_mac() — a monster's armour class.
+//
+// No draws. Subtracting ARM_BONUS RAISES the AC value because the bonus is
+// positive and lower AC is better, which is C's own comment and the easiest
+// sign to get backwards.
+//
+// The amulet of guarding is a flat 2 and is deliberately NOT run through
+// ARM_BONUS, so erosion cannot reduce it.
+export function find_mac(mon) {
+    let base = game.mons[mon.mnum].ac;
+    const mwflags = mon.misc_worn_check;
+
+    for (const obj of mon.minvent || []) {
+        if (obj.owornmask & mwflags) {
+            if (obj.otyp === ONAMES.AMULET_OF_GUARDING)
+                base -= 2;      /* fixed amount, not impacted by erosion */
+            else
+                base -= ARM_BONUS(obj);
+        }
+    }
+    /* same cap as for the hero, find_ac() in do_wear.c */
+    if (Math.abs(base) > AC_MAX)
+        base = sgn(base) * AC_MAX;
+    return base;
 }

@@ -24,7 +24,7 @@
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
-import { Is_rogue_level } from './const.js';
+import { Is_rogue_level, NODIR} from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
@@ -574,7 +574,7 @@ export function mksobj_init(otmp, artif) {
 }
 
 // include/objclass.h — oc_dir value used by the wand charge formula.
-const NODIR = 1;
+/* NODIR lives in js/const.js with the rest of the oc_dir family. */
 // include/monflag.h:178
 const MZ_SMALL = 1;
 
@@ -614,7 +614,7 @@ const is_damageable = (o, objs) =>
     || is_corrodeable(o, objs) || is_crackable(o, objs);
 
 // include/obj.h:249 is_weptool() — oc_skill is oc_subtyp in the generated table
-const is_weptool = (o, objs) =>
+export const is_weptool = (o, objs) =>
     o.oclass === TOOL_CLASS && objs[o.otyp].oc_subtyp !== P_NONE;
 
 // src/mkobj.c erosion_matters()
@@ -861,7 +861,7 @@ export function rnd_class(first, last) {
     return (first === last) ? first : 0 /* STRANGE_OBJECT */;
 }
 
-const Is_mbag = (o) =>
+export const Is_mbag = (o) =>
     o.otyp === ONAMES.BAG_OF_HOLDING || o.otyp === ONAMES.BAG_OF_TRICKS;
 
 // src/mkobj.c:315 mkbox_cnts() — fill a container.

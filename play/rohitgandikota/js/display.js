@@ -639,3 +639,54 @@ function tty_clear_nhwindow_message(cury) {
     }
     game._toplin = TOPLINE_EMPTY;
 }
+
+/* ---- include/display.h vision predicates, and src/display.c is_safemon ----
+   These are macros in the C, shared by every file that includes display.h, so
+   they belong in one place rather than a private copy per module. */
+
+// include/display.h:27 _mon_visible()
+export function mon_visible(mon) {
+    /* The hero can see the monster IF it is not invisible, is not an
+       undetected hider, and neither you nor it is buried. */
+    return (!mon.minvis || game.u.uprops?.SEE_INVIS)
+        && !mon.mundetected
+        && !(mon.mburied || game.u.uburied);
+}
+
+// include/display.h:55 _sensemon() — telepathy and monster detection. Every
+// arm needs a hero property no early game has; each is recorded rather than
+// assumed, so a session that does have one reports itself.
+export function sensemon(mon) {
+    if (game.u.uswallow || game.u.uprops?.DETECT_MONSTERS
+        || game.u.uprops?.TELEPAT || game.u.uprops?.WARN_OF_MON)
+        (game.unported ||= new Set()).add('display:sensemon');
+    return false;
+}
+
+// include/display.h:117 _canseemon()
+export function canseemon(mon) {
+    if (mon.wormno)
+        (game.unported ||= new Set()).add('display:canseemon:worm_known');
+    if (game.u.uprops?.INFRAVISION)
+        (game.unported ||= new Set()).add('display:canseemon:see_with_infrared');
+    return cansee(mon.mx, mon.my) && mon_visible(mon);
+}
+
+// include/display.h:129 canspotmon()
+export function canspotmon(mon) {
+    return canseemon(mon) || sensemon(mon);
+}
+
+// src/display.c:215 is_safemon() / include/display.h:159 _is_safemon()
+//
+// Note it is mpeaceful, NOT mtame: it covers peacefuls as well as pets, which
+// is why C's comment at uhitm.c:471 says "non-pets mustn't be forced to flee".
+//
+// safe_dog defaults ON (include/optlist.h:634), so this reads !== false rather
+// than testing truthiness -- an unset option must behave as the C default.
+// See NOTES, "Default-On options: read them defensively".
+export function is_safemon(mon) {
+    return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
+              && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
+              && !game.u.uprops?.STUNNED);
+}

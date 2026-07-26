@@ -1,3 +1,4 @@
+import { NODIR, IMMEDIATE } from './const.js';
 // o_init.js — object initialisation and description shuffling.
 // C ref: src/o_init.c
 //
@@ -31,7 +32,7 @@ const {
 } = ONAMES;
 
 // include/objclass.h — oc_dir values.
-const NODIR = 1, IMMEDIATE = 2;
+/* NODIR and IMMEDIATE live in js/const.js with the oc_dir family. */
 
 // The generated table stores oc_class as the C identifier ("WEAPON_CLASS");
 // resolve to the numeric class once so the hot paths compare ints as C does.

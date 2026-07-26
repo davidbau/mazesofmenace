@@ -90,3 +90,7 @@ export function p_coaligned(priest) {
 // src/priest.c mon_aligntyp() — js/monmove.js has the copy this would import;
 // it is imported rather than restated so the two cannot drift.
 import { mon_aligntyp } from './monmove.js';
+
+/* js/monmove.js needs p_coaligned but cannot import this module without
+   closing a cycle; publish it on the shared game object instead. */
+game.p_coaligned = p_coaligned;

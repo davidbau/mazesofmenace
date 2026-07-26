@@ -6,10 +6,26 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
+import { autoreturn_weapon } from './weapon.js';
+import { MON_WEP } from './monst.js';
+import { is_launcher, is_pole } from './u_init.js';
+import { ammo_and_launcher } from './wield.js';
+import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
+    IS_OBSTRUCTED, LAVAWALL,
+    P_DAGGER, P_KNIFE,
+    AM_SHRINE, Amask2align, ROOMOFFSET
+} from './const.js';
+import { amorphous, passes_walls, is_floater, nonliving,
+         attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
+import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym } from './display.js';
 import { sobj_at } from './invent.js';
-import { m_carrying, meatmetal } from './mon.js';
+import { m_carrying, meatmetal, resists_ston } from './mon.js';
+import { acidic, slimeproof } from './dog.js';
+import { Is_mbag } from './mkobj.js';
+import { Is_container } from './obj.js';
+import { is_weptool } from './mkobj.js';
 import { metallivorous, corpse_eater } from './mondata.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
@@ -83,9 +99,76 @@ export function in_your_sanctuary(mon, x, y) {
     }
     if (game.u.ualign.record <= ALGN_SINNED) /* sinned or worse */
         return false;
-    note_unported('in_your_sanctuary:temple');
-    return false;
+    if (!game.in_rooms)
+        return false;                   /* hack.js not loaded yet */
+
+    /* C: `roomno != *in_rooms(x, y, TEMPLE)` dereferences the first char of a
+       possibly-empty string, i.e. compares against '\0'. charAt(0) on an empty
+       string gives '', and the roomno === '' guard keeps that from matching. */
+    const roomno = temple_occupied(_in_rooms(game.u.ux, game.u.uy, 0));
+    if (roomno === '' || roomno !== _in_rooms(x, y, TEMPLE).charAt(0))
+        return false;
+
+    const priest = findpriest(roomno);
+    if (!priest)
+        return false;
+
+    return has_shrine(priest) && p_coaligned(priest) && !!priest.mpeaceful;
 }
+
+/* js/hack.js publishes in_rooms on the shared game object; importing it here
+   closes a cycle, moving this function to js/priest.js regresses the corpus by
+   restructuring the module graph, and adding the import to the entry point
+   perturbs init order. All three were measured -- see STATUS. */
+const _in_rooms = (x, y, t) => game.in_rooms?.(x, y, t) ?? '';
+
+// src/priest.c temple_occupied() — the first room in `array` that is a temple.
+// C passes u.urooms; in_rooms(u.ux, u.uy, 0) is the same set computed from the
+// hero's position, which is what urooms holds.
+function temple_occupied(array) {
+    for (const ch of array || '')
+        if (game.level?.rooms?.[ch.charCodeAt(0) - ROOMOFFSET]?.rtype === TEMPLE)
+            return ch;
+    return '';
+}
+
+// src/priest.c histemple_at()
+function histemple_at(priest, x, y) {
+    const r = _in_rooms(x, y, TEMPLE);
+    return !!(priest && priest.ispriest && r
+              && priest.epri?.shroom === r.charCodeAt(0)
+              && priest.epri.shrlevel.dnum === game.u.uz.dnum
+              && priest.epri.shrlevel.dlevel === game.u.uz.dlevel);
+}
+
+// src/priest.c findpriest()
+function findpriest(roomno) {
+    for (const mtmp of game.level.monsters || []) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.ispriest && mtmp.epri?.shroom === roomno
+            && histemple_at(mtmp, mtmp.mx, mtmp.my))
+            return mtmp;
+    }
+    return null;
+}
+
+// src/priest.c has_shrine()
+function has_shrine(pri) {
+    if (!pri || !pri.ispriest)
+        return false;
+    const e = pri.epri;
+    const lev = game.level.at(e.shrpos.x, e.shrpos.y);
+    if (!lev || !IS_ALTAR(lev.typ) || !(lev.altarmask & AM_SHRINE))
+        return false;
+    return e.shralign === Amask2align(lev.altarmask & ~AM_SHRINE);
+}
+
+/* src/priest.c:370 p_coaligned(). js/priest.js owns it, but importing that
+   module here closes a cycle (see NOTES, "The module graph is load-bearing"),
+   so priest.js publishes it on the shared game object the way js/hack.js
+   publishes in_rooms. */
+const p_coaligned = (priest) => game.p_coaligned?.(priest) ?? false;
 
 /* src/shk.c inhishop() / src/priest.c inhistemple() — both need the shop and
    temple bookkeeping. No shopkeeper or priest is created on an ordinary level
@@ -164,9 +247,26 @@ function linedup(ax, ay, bx, by, boulderhandling) {
             return true;
         if (boulderhandling === 0)
             return false;
-        /* not line of sight, but might still be lined up if the only things
-           in the way are boulders */
-        note_unported('linedup:boulder walk');
+
+        /* No line of sight, but it may still be lined up if the ONLY things in
+           the way are boulders. Note the draw at the end: rn2(2 +
+           boulderspots), so more boulders make a clear shot less likely, and
+           boulderhandling == 1 skips the roll entirely. */
+        const dx = sgn(ax - bx), dy = sgn(ay - by);
+        let boulderspots = 0;
+        let cx = bx, cy = by;
+        do {
+            /* <cx,cy> is guaranteed to eventually converge with <ax,ay> */
+            cx += dx; cy += dy;
+            if (blocking_terrain(cx, cy))
+                return false;
+            if (sobj_at(ONAMES.BOULDER, cx, cy))
+                ++boulderspots;
+        } while (cx !== ax || cy !== ay);
+
+        /* reached target position without encountering an obstacle */
+        if (boulderhandling === 1 || rn2(2 + boulderspots) < 2)
+            return true;
         return false;
     }
     return false;
@@ -290,6 +390,14 @@ const likes_magic = (ptr) => (ptr.mflags2 & MFLAGS.M2_MAGIC) !== 0;
 const is_armed    = (ptr) => ptr.mattk.some(a => a[0] === ATTKS.AT_WEAP);
 const likes_objs  = (ptr) => (ptr.mflags2 & MFLAGS.M2_COLLECT) !== 0 || is_armed(ptr);
 const is_unicorn  = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
+
+/* include/obj.h:337 Is_container() and :339 Is_mbag(). Both are duplicated
+   here on purpose: js/obj.js has Is_container and js/mkobj.js has a private
+   Is_mbag, but adding an import edge to monmove.js closes a cycle (NOTES,
+   "The module graph is load-bearing"). dup-defs will flag these; the bodies
+   are transcribed from the same C macros. */
+/* Is_container comes from js/obj.js. */
+/* Is_mbag comes from js/mkobj.js. */
 const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
                               || ptr.pmidx === PMNAMES.PM_CHICKATRICE;
 
@@ -354,7 +462,86 @@ function mon_would_take_item(mtmp, otmp) {
    subsystem. Its caller gates it behind !mindless && !is_animal, so no animal
    or mindless monster — which is most of an early level — can reach it. */
 function searches_for_item(mon, obj) {
-    note_unported('searches_for_item');
+    const typ = obj.otyp;
+    const d = game.mons[mon.mnum];
+
+    /* don't let monsters interact with protected items on the floor */
+    if (obj.where === OBJ_FLOOR && obj.ox === mon.mx && obj.oy === mon.my
+        && onscary(obj.ox, obj.oy, mon))
+        return false;
+
+    if (is_animal(d) || mindless(d) || mon.mnum === PMNAMES.PM_GHOST)
+        return false;               /* don't loot bones piles */
+
+    if (typ === ONAMES.WAN_MAKE_INVISIBLE || typ === ONAMES.POT_INVISIBILITY)
+        return !mon.minvis && !mon.invis_blkd && !attacktype(d, ATTKS.AT_GAZE);
+    if (typ === ONAMES.WAN_SPEED_MONSTER || typ === ONAMES.POT_SPEED)
+        return mon.mspeed !== MFAST;
+
+    switch (obj.oclass) {
+    case OCLASSES.WAND_CLASS:
+        if (obj.spe <= 0)
+            return false;
+        if (typ === ONAMES.WAN_DIGGING)
+            return !is_floater(d);
+        if (typ === ONAMES.WAN_POLYMORPH)
+            return d.difficulty < 6;
+        if (game.objects[typ].oc_dir === RAY || typ === ONAMES.WAN_STRIKING
+            || typ === ONAMES.WAN_UNDEAD_TURNING
+            || typ === ONAMES.WAN_TELEPORTATION
+            || typ === ONAMES.WAN_CREATE_MONSTER)
+            return true;
+        break;
+    case OCLASSES.POTION_CLASS:
+        if (typ === ONAMES.POT_HEALING || typ === ONAMES.POT_EXTRA_HEALING
+            || typ === ONAMES.POT_FULL_HEALING || typ === ONAMES.POT_POLYMORPH
+            || typ === ONAMES.POT_GAIN_LEVEL || typ === ONAMES.POT_PARALYSIS
+            || typ === ONAMES.POT_SLEEPING || typ === ONAMES.POT_ACID
+            || typ === ONAMES.POT_CONFUSION)
+            return true;
+        if (typ === ONAMES.POT_BLINDNESS && !attacktype(d, ATTKS.AT_GAZE))
+            return true;
+        break;
+    case OCLASSES.SCROLL_CLASS:
+        if (typ === ONAMES.SCR_TELEPORTATION
+            || typ === ONAMES.SCR_CREATE_MONSTER
+            || typ === ONAMES.SCR_EARTH || typ === ONAMES.SCR_FIRE)
+            return true;
+        break;
+    case OCLASSES.AMULET_CLASS:
+        if (typ === ONAMES.AMULET_OF_LIFE_SAVING)
+            return !(nonliving(d) || is_vampshifter(mon));
+        if (typ === ONAMES.AMULET_OF_REFLECTION
+            || typ === ONAMES.AMULET_OF_GUARDING)
+            return true;
+        break;
+    case OCLASSES.TOOL_CLASS:
+        if (typ === ONAMES.PICK_AXE)
+            return needspick(d);
+        if (typ === ONAMES.UNICORN_HORN)
+            return !obj.cursed && !is_unicorn(d)
+                   && mon.mnum !== PMNAMES.PM_KI_RIN;
+        if (typ === ONAMES.FROST_HORN || typ === ONAMES.FIRE_HORN)
+            return obj.spe > 0 && can_blow(mon);
+        if (Is_container(obj) && !(Is_mbag(obj) && obj.cursed) && !obj.olocked)
+            return true;
+        if (typ === ONAMES.EXPENSIVE_CAMERA)
+            return obj.spe > 0;
+        break;
+    case OCLASSES.FOOD_CLASS:
+        if (typ === ONAMES.CORPSE)
+            return ((mon.misc_worn_check & W_ARMG) !== 0
+                    && touch_petrifies(game.mons[obj.corpsenm]))
+                   || (!resists_ston(mon) && cures_stoning(mon, obj, false));
+        if (typ === ONAMES.TIN)
+            return mcould_eat_tin(mon)
+                   && !resists_ston(mon) && cures_stoning(mon, obj, true);
+        if (typ === ONAMES.EGG && obj.corpsenm !== NON_PM)
+            return touch_petrifies(game.mons[obj.corpsenm]);
+        break;
+    default:
+        break;
+    }
     return false;
 }
 
@@ -607,12 +794,68 @@ export function set_apparxy(mtmp) {
         return;
     }
 
-    /* The displaced/invisible search loop draws rn2 per attempt and rejects on
-       accessible()/closed_door()/can_ooze(), none of which is ported. Guessing
-       the loop's exit would invent draws, so it is recorded instead. */
-    note_unported('set_apparxy:displaced');
-    mtmp.mux = game.u.ux;
-    mtmp.muy = game.u.uy;
+    /* src/monmove.c — without something like the following, invisibility and
+       displacement are too powerful.
+
+       This branch was recorded unported and short-circuited to the hero's
+       exact square, which spent NO draws on a path every unseen monster takes.
+       C spends one rn2(3) or rn2(4) here, then TWO rn2(2 * displ + 1) per
+       iteration of the retry loop below. */
+    const gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : false;
+
+    if (!gotu) {
+        let try_cnt = 0;
+        const ptr = game.mons[mtmp.mnum];
+
+        do {
+            if (++try_cnt > 200) {
+                mx = game.u.ux;
+                my = game.u.uy;
+                break;              /* punt */
+            }
+            mx = game.u.ux - displ + rn2(2 * displ + 1);
+            my = game.u.uy - displ + rn2(2 * displ + 1);
+        } while (!isok(mx, my)
+                 || (displ !== 2 && mx === mtmp.mx && my === mtmp.my)
+                 || ((mx !== game.u.ux || my !== game.u.uy)
+                     && !passes_walls(ptr)
+                     && !(accessible(mx, my)
+                          || (closed_door_mm(mx, my)
+                              && (can_ooze(mtmp) || can_fog(mtmp)))))
+                 || !couldsee(mx, my));
+    } else {
+        mx = game.u.ux;
+        my = game.u.uy;
+    }
+
+    mtmp.mux = mx;
+    mtmp.muy = my;
+}
+
+// src/monmove.c:2188 accessible() — uses the terrain in front of a closed
+// drawbridge, not the drawbridge itself.
+function accessible(x, y) {
+    const levtyp = game.level.at(x, y)?.typ;
+    return ACCESSIBLE(levtyp) && !closed_door_mm(x, y);
+}
+
+/* src/detect.c closed_door() — js/cmd.js has the same predicate, but importing
+   it here would close a cycle (cmd.js already imports this file). */
+function closed_door_mm(x, y) {
+    const lev = game.level.at(x, y);
+    return !!lev && lev.typ === DOOR
+        && (lev.doormask & (D_LOCKED | D_CLOSED)) !== 0;
+}
+
+// src/monmove.c:2356 can_ooze() — squeeze under a door.
+// stuff_prevents_passage() needs the inventory-bulk rules; it is recorded
+// rather than assumed, since assuming FALSE would let a laden monster ooze.
+function can_ooze(mtmp) {
+    if (!amorphous(game.mons[mtmp.mnum]))
+        return false;
+    if (mtmp.minvent && mtmp.minvent.length)
+        note_unported('can_ooze:stuff_prevents_passage');
+    return true;
 }
 
 // src/invent.c money_cnt()
@@ -727,6 +970,7 @@ export function m_move(mtmp, after) {
         return MMOVE_NOTHING;      /* do not leave hiding place */
 
     let ggx = mtmp.mux, ggy = mtmp.muy;
+    const prange = { min: 0, max: 0 };
     let appr = mtmp.mflee ? -1 : 1;
 
     if (mtmp.mconf) {
@@ -760,7 +1004,7 @@ export function m_move(mtmp, after) {
            distance. This changes appr, and appr decides which candidate square
            wins, so getting it wrong moves a monster to a different legal square
            while drawing exactly the same numbers. */
-        appr = m_balks_at_approaching(appr, mtmp);
+        appr = m_balks_at_approaching(appr, mtmp, prange);
 
         if (!should_see && can_track(ptr)) {
             const cp = gettrack(omx, omy);
@@ -813,6 +1057,17 @@ export function m_move(mtmp, after) {
     let chi = -1;
     let nix = omx, niy = omy;
     let nidist = dist2(nix, niy, ggx, ggy);
+
+    /* src/monmove.c:1936 — allow monsters to be shortsighted on some levels
+       for balance. When this fires it flips appr from 1 to 0, which switches
+       the selection below from "deterministically approach the goal" to the
+       random !rn2(++chcnt) tie-break, so it changes both the destination AND
+       the draw count. level.flags.shortsighted is only set by special levels,
+       so this is dormant on ordinary ones rather than dead. */
+    if (!mtmp.mpeaceful && game.level.flags.shortsighted
+        && nidist > (couldsee(nix, niy) ? 144 : 36) && appr === 1)
+        appr = 0;
+
     let mmoved = MMOVE_NOTHING;
 
     for (let i = 0; i < cnt; i++) {
@@ -832,6 +1087,12 @@ export function m_move(mtmp, after) {
 
         if ((appr === 1 && nearer) || (appr === -1 && !nearer)
             || (!appr && !rn2(++chcnt))
+            /* src/monmove.c:1971 — keep-your-distance, for a monster wielding
+               a throw-and-return weapon. Only reachable now that
+               m_balks_at_approaching can return -2. */
+            || (appr === -2
+                && ((ndist <= prange.min && !nearer)
+                    || (ndist >= prange.max && nearer)))
             || (mmoved === MMOVE_NOTHING)) {
             nix = nx;
             niy = ny;
@@ -955,7 +1216,7 @@ function mdistu(mtmp) {
 //
 // Draws nothing. Returns -1 to retreat, -2 for a preferred-range weapon, or the
 // caller's appr unchanged.
-function m_balks_at_approaching(oldappr, mtmp) {
+function m_balks_at_approaching(oldappr, mtmp, prange) {
     const x = mtmp.mx, y = mtmp.my, ux = mtmp.mux, uy = mtmp.muy;
     const edist = (x - ux) * (x - ux) + (y - uy) * (y - uy);
 
@@ -963,8 +1224,28 @@ function m_balks_at_approaching(oldappr, mtmp) {
     if (mtmp.mpeaceful || edist >= 5 * 5 || !m_canseeu(mtmp))
         return oldappr;
 
-    /* the launcher, polearm and throw-and-return cases all need monster
-       inventory, which nothing carries yet */
+    /* src/monmove.c — the three ranged cases, in C's order. Order matters:
+       each returns, so a monster with both a launcher and a polearm takes the
+       first arm, and only a monster with neither reaches the -2 case. */
+    const mwep = MON_WEP(mtmp);
+
+    /* has ammo + launcher */
+    if (m_has_launcher_and_ammo(mtmp))
+        return -1;
+
+    /* is using a polearm and in range */
+    if (mwep && is_pole(mwep) && edist <= MON_POLE_DIST)
+        return -1;
+
+    /* is using a throw-and-return weapon; provide min and max preferred range */
+    let arw;
+    if (mwep && (arw = autoreturn_weapon(mwep)) !== null) {
+        if (prange) {
+            prange.min = 2 * 2;
+            prange.max = arw.range;
+        }
+        return -2;
+    }
 
     /* can attack from a distance, and is hurt or has not used it */
     if (ranged_attk_available(mtmp)
@@ -997,4 +1278,85 @@ function ranged_attk_available(mtmp) {
 function DISTANCE_ATTK_TYPE(atyp) {
     return atyp === ATTKS.AT_SPIT || atyp === ATTKS.AT_BREA
         || atyp === ATTKS.AT_GAZE || atyp === ATTKS.AT_MAGC;
+}
+
+// src/mthrowu.c:58 m_has_launcher_and_ammo() — its C home is mthrowu.c, which
+// has no JS counterpart yet; move it when the monster-missile code lands.
+function m_has_launcher_and_ammo(mtmp) {
+    const mwep = MON_WEP(mtmp);
+
+    if (mwep && is_launcher(mwep)) {
+        for (const otmp of mtmp.minvent || [])
+            if (ammo_and_launcher(otmp, mwep))
+                return true;
+    }
+    return false;
+}
+
+// src/muse.c:2985 cures_stoning() — would eating this stop petrification?
+function cures_stoning(mon, obj, tinok) {
+    if (obj.otyp === ONAMES.POT_ACID)
+        return true;
+    if (obj.otyp === ONAMES.GLOB_OF_GREEN_SLIME)
+        return slimeproof(game.mons[mon.mnum]);
+    if (obj.otyp !== ONAMES.CORPSE && (obj.otyp !== ONAMES.TIN || !tinok))
+        return false;
+    /* corpse, or tin that mon can open */
+    if (obj.corpsenm === NON_PM)        /* empty/special tin */
+        return false;
+    return obj.corpsenm === PMNAMES.PM_LIZARD
+           || acidic(game.mons[obj.corpsenm]);
+}
+
+// src/muse.c:3001 mcould_eat_tin() — can this monster open a tin?
+//
+// Different from the player: the opener or blade does NOT have to be wielded,
+// and a knife counts as well as a dagger. Animals cannot, which is how a
+// monkey that steals a tin still cannot eat it.
+function mcould_eat_tin(mon) {
+    if (is_animal(game.mons[mon.mnum]))
+        return false;
+
+    const mwep = MON_WEP(mon);
+    const welded_wep = !!(mwep && mwelded(mwep));
+
+    for (const obj of mon.minvent || []) {
+        /* if stuck with a cursed weapon, don't check rest of inventory */
+        if (welded_wep && obj !== mwep)
+            continue;
+        if (obj.otyp === ONAMES.TIN_OPENER
+            || (obj.oclass === OCLASSES.WEAPON_CLASS
+                && (game.objects[obj.otyp].oc_skill === P_DAGGER
+                    || game.objects[obj.otyp].oc_skill === P_KNIFE)))
+            return true;
+    }
+    return false;
+}
+
+/* src/wield.c:63 erodeable_wep(), :68 will_weld(), :1078 mwelded(), and
+   include/obj.h:249 is_weptool(). Local rather than imported: js/wield.js and
+   js/mkobj.js both close a cycle from here (NOTES, "The module graph is
+   load-bearing"). */
+const erodeable_wep = (o) =>
+    o.oclass === OCLASSES.WEAPON_CLASS || is_weptool(o, game.objects)
+    || o.otyp === ONAMES.HEAVY_IRON_BALL || o.otyp === ONAMES.IRON_CHAIN;
+const will_weld = (o) =>
+    o.cursed && (erodeable_wep(o) || o.otyp === ONAMES.TIN_OPENER);
+const mwelded = (obj) =>
+    !!(obj && (obj.owornmask & W_WEP) && will_weld(obj));
+
+/* acidic and slimeproof come from js/dog.js. */
+
+// src/mthrowu.c:1282 blocking_terrain() — does this square stop a missile?
+//
+// is_waterwall needs the water-level terrain, which no ordinary level has, so
+// it is recorded rather than assumed false.
+function blocking_terrain(x, y) {
+    if (!isok(x, y))
+        return true;
+    const lev = game.level.at(x, y);
+    if (!lev || IS_OBSTRUCTED(lev.typ) || closed_door_mm(x, y)
+        || lev.typ === LAVAWALL)
+        return true;
+    return false;
 }

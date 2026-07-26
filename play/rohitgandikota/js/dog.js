@@ -18,7 +18,7 @@ import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives , is_domestic} from './mondata.js';
+import { perceives, is_domestic, is_undead } from './mondata.js';
 import { sobj_at, eaten_stat } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
@@ -170,9 +170,9 @@ const herbivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;
 const metallivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_METALLIVORE) !== 0;
 const haseyes      = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
 const humanoid     = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
-const acidic       = (ptr) => (ptr.mflags1 & MFLAGS.M1_ACID) !== 0;
+export const acidic = (ptr) => (ptr.mflags1 & MFLAGS.M1_ACID) !== 0;
 const poisonous    = (ptr) => (ptr.mflags1 & MFLAGS.M1_POIS) !== 0;
-const is_undead    = (ptr) => (ptr.mflags2 & MFLAGS.M2_UNDEAD) !== 0;
+/* is_undead lives in js/mondata.js, its C home (include/mondata.h:95). */
 const is_elf       = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 const noncorporeal = (ptr) => ptr.mlet === MONSYMS.S_GHOST;
 /* include/mondata.h:59,190 — both are explicit species lists, not flag tests.
@@ -195,7 +195,7 @@ const flesh_petrifies = (pm) => touch_petrifies(pm)
                              || pm.pmidx === PMNAMES.PM_MEDUSA;
 
 // include/mondata.h:75
-const slimeproof = (ptr) => ptr.pmidx === PMNAMES.PM_GREEN_SLIME
+export const slimeproof = (ptr) => ptr.pmidx === PMNAMES.PM_GREEN_SLIME
                          || flaming(ptr) || noncorporeal(ptr);
 
 // include/mondata.h:196
@@ -466,9 +466,11 @@ export function dogfood(mon, obj) {
    early, and the call draws nothing either way. */
 function is_quest_artifact(obj) { return false; }
 
-/* src/mondata.h resists_poison() */
+/* include/monst.h:277 resists_poison(). This read mon.data.mresists, but our
+   monsters carry mnum indexing game.mons rather than a data pointer, so it
+   was ALWAYS FALSE. */
 function resists_poison(mon) {
-    return !!(mon.data?.mresists & MFLAGS.MR_POISON);
+    return !!((game.mons[mon.mnum]?.mresists ?? 0) & MFLAGS.MR_POISON);
 }
 
 function note_unported(what) {

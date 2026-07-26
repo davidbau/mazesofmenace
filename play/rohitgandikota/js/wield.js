@@ -61,7 +61,7 @@ const is_ammo = (o) =>
 // include/obj.h:243 matching_launcher() and :244 ammo_and_launcher()
 const matching_launcher = (a, l) =>
     !!l && game.objects[a.otyp].oc_skill === -game.objects[l.otyp].oc_skill;
-const ammo_and_launcher = (a, l) => is_ammo(a) && matching_launcher(a, l);
+export const ammo_and_launcher = (a, l) => is_ammo(a) && matching_launcher(a, l);
 
 // src/wield.c:512 doquiver_core() — "ready" or "fire".
 export async function doquiver_core(verb) {

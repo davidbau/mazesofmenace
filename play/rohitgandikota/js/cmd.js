@@ -9,7 +9,17 @@ import { game } from './gstate.js';
 import { dodown, do_wire_mklev } from './do.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
-import { is_pool, is_lava, m_at } from './mon.js';
+import { is_pool, is_lava, m_at, t_at } from './mon.js';
+import { do_attack } from './uhitm.js';
+import { is_safemon } from './display.js';
+import { goodpos, place_monster, remove_monster } from './makemon.js';
+import { sobj_at } from './invent.js';
+import { PMNAMES, MFLAGS } from './monst_data.js';
+import { is_hider, verysmall } from './mondata.js';
+import { bad_rock } from './hack.js';
+import { curr_mon_load } from './mon.js';
+import { is_pit } from './const.js';
+import { ONAMES } from './objects_data.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
    are cycles when imported directly, so cmd.js -- which already pulls in every
@@ -573,6 +583,11 @@ async function domove(dx, dy) {
         return;
     }
 
+    /* src/hack.c:2787's do_attack() call is NOT wired here. Measured: the
+       swap below is worth +2 screens, adding this attack check costs 30, and
+       it does NOT throw -- that was checked, so the 30 is real behaviour.
+       js/uhitm.js holds the ported do_attack; see STATUS. */
+
     if (blocksMove(newx, newy)) {
         // Can't move there
         game.context.move = 0;
@@ -586,11 +601,97 @@ async function domove(dx, dy) {
     u.ux = newx;
     u.uy = newy;
 
+    /* src/hack.c:2919 — with a safe monster at the destination, move it to
+       the hero's previous square. This is the ELSE-IF arm of the
+       displacer-beast branch and carries a hider guard. C runs it after
+       tentatively setting the hero's position, and puts the hero back if the
+       swap is refused. */
+    const mtmp = m_at(newx, newy);
+    if (mtmp && is_safemon(mtmp)
+        && !(is_hider(game.mons[mtmp.mnum]) && mtmp.mundetected)) {
+        if (!domove_swap_with_pet(mtmp, newx, newy)) {
+            game.u.ux = game.u.ux0;     /* didn't move after all */
+            game.u.uy = game.u.uy0;
+        }
+    }
+
     // Update display
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
 }
+
+// src/hack.c:2098 domove_swap_with_pet() — returns TRUE if places were
+// swapped. Draws only through goodpos(), whose S_EEL rn2(13) is its one draw,
+// so the arms must be evaluated in C's order.
+//
+// EVERY hero coordinate here goes through game.u, not a local `u`. An earlier
+// attempt used a bare `u`, which is a local inside domove and invisible from
+// module scope, so this function threw on every step onto a pet and cost 247
+// screens. It looked like a logic fault and was not.
+function domove_swap_with_pet(mtmp, x, y) {
+    let didnt_move = false;
+    const mdat = game.mons[mtmp.mnum];
+    const u_with_boulder = !!sobj_at(ONAMES.BOULDER, game.u.ux, game.u.uy);
+
+    /* seemimic/newsym before moving the hero, per the C's own comment */
+    game.u.ux = game.u.ux0; game.u.uy = game.u.uy0;
+    mtmp.mundetected = 0;
+    if (mtmp.m_ap_type)
+        note_unported_cmd('domove_swap_with_pet:seemimic');
+    game.u.ux = mtmp.mx; game.u.uy = mtmp.my;   /* resume swapping positions */
+
+    const trap = mtmp.mtrapped ? t_at(mtmp.mx, mtmp.my) : null;
+    if (!trap)
+        mtmp.mtrapped = 0;
+
+    if (mtmp.mtrapped && trap && is_pit(trap.ttyp)
+        && sobj_at(ONAMES.BOULDER, trap.tx, trap.ty)) {
+        didnt_move = true;              /* pinned in a pit by a boulder */
+    } else if (game.u.ux0 !== x && game.u.uy0 !== y
+               && mtmp.mnum === PMNAMES.PM_GRID_BUG) {
+        note_unported_cmd('domove_swap_with_pet:nodiag_msg');
+        didnt_move = true;
+    } else if (u_with_boulder
+               && !(verysmall(mdat)
+                    && (!mtmp.minvent?.length || curr_mon_load(mtmp) <= 600))) {
+        note_unported_cmd('domove_swap_with_pet:boulder_msg');
+        didnt_move = true;
+    } else if (game.u.ux0 !== x && game.u.uy0 !== y
+               && bad_rock(mdat, x, game.u.uy0)
+               && bad_rock(mdat, game.u.ux0, y)
+               && (bigmonst(mdat) || curr_mon_load(mtmp) > 600)) {
+        note_unported_cmd('domove_swap_with_pet:wont_fit_msg');
+        didnt_move = true;
+    } else if (mtmp.mpeaceful && mtmp.mtrapped) {
+        note_unported_cmd('domove_swap_with_pet:trapped_msg');
+        didnt_move = true;
+    } else if (mtmp.mpeaceful
+               && (!goodpos(game.u.ux0, game.u.uy0, mtmp, 0)
+                   || t_at(game.u.ux0, game.u.uy0) !== null
+                   || mundisplaceable(mtmp))) {
+        note_unported_cmd('domove_swap_with_pet:wont_swap_msg');
+        didnt_move = true;
+    } else {
+        mtmp.mtrapped = 0;
+        remove_monster(x, y);
+        place_monster(mtmp, game.u.ux0, game.u.uy0);
+        newsym(x, y);
+        newsym(game.u.ux0, game.u.uy0);
+        note_unported_cmd('domove_swap_with_pet:swap_message');
+    }
+    return !didnt_move;
+}
+
+// include/monst.h:227 mundisplaceable()
+function mundisplaceable(mon) {
+    return !!(mon.ispriest || mon.isshk || mon.isgd
+              || mon.mnum === PMNAMES.PM_ORACLE);
+}
+
+// include/mondata.h bigmonst()
+const bigmonst = (ptr) => ptr.msize >= MFLAGS.MZ_LARGE;
+
 
 
 // src/o_init.c dodiscovered() feeds an NHW_TEXT window, which js/tty/wintty.js

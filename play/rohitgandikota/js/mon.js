@@ -37,8 +37,7 @@ import { onscary, in_your_sanctuary, m_can_break_boulder,
 import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
 import {
     bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
-    is_clinger, is_flyer, is_floater, mindless, dmgtype,
-} from './mondata.js';
+    is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, mon_hates_silver } from './dog.js';
 import { is_rider } from './makemon.js';
@@ -844,11 +843,9 @@ function can_touch_safely(mtmp, otmp) {
 
 // include/mondata.h is_covetous()
 
-/* src/mondata.c resists_ston() needs the resistance tables. */
-function resists_ston(mon) {
-    note_unported_mon('resists_ston');
-    return false;
-}
+/* resists_ston is defined at the end of this file, ported from
+   include/monst.h:279 via src/mondata.c:129. */
+
 
 // src/mon.c:2734 m_detach() — take a monster off the map.
 //
@@ -899,4 +896,21 @@ export function mongone(mdef) {
     mdef.minvent = [];
 
     m_detach(mdef, mdef.data, false);
+}
+
+/* mon_resistancebits lives in js/mondata.js, its C home. */
+
+// include/monst.h:279 resists_ston(), via src/mondata.c:129 Resists_Elem().
+//
+// Resists_Elem also scans the monster's WORN items for resistance-granting
+// armour; that arm is recorded rather than faked, since guessing it would
+// change which monsters flee a cockatrice corpse.
+//
+// This function was CALLED at js/mon.js:831 and defined nowhere. It never
+// threw only because the guard in front of it short-circuits on every path
+// the public sessions take.
+export function resists_ston(mon) {
+    if (mon.misc_worn_check)
+        (game.unported ||= new Set()).add('mon:Resists_Elem:worn');
+    return (mon_resistancebits(mon) & MFLAGS.MR_STONE) !== 0;
 }

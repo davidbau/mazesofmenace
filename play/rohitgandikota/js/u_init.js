@@ -248,7 +248,7 @@ function is_art(obj, art) {
 /* include/obj.h:228-241 — the weapon-shape predicates knows_class() filters
    with. oc_skill is negated for thrown weapons, which is what makes is_ammo a
    range test against -P_CROSSBOW..-P_BOW rather than a list. */
-const is_pole = (otmp) =>
+export const is_pole = (otmp) =>
     (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.TOOL_CLASS)
     && (game.objects[otmp.otyp].oc_skill === SKILLS.P_POLEARMS
         || game.objects[otmp.otyp].oc_skill === SKILLS.P_LANCE
@@ -258,7 +258,7 @@ const is_spear = (otmp) =>
     otmp.oclass === OCLASSES.WEAPON_CLASS
     && game.objects[otmp.otyp].oc_skill === SKILLS.P_SPEAR;
 
-const is_launcher = (otmp) =>
+export const is_launcher = (otmp) =>
     otmp.oclass === OCLASSES.WEAPON_CLASS
     && game.objects[otmp.otyp].oc_skill >= SKILLS.P_BOW
     && game.objects[otmp.otyp].oc_skill <= SKILLS.P_CROSSBOW;

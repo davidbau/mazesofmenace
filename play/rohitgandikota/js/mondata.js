@@ -8,9 +8,10 @@
 //
 // Nothing here draws.
 
-import { MFLAGS, MONSYMS, PMNAMES, ATTKS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
+import { NATTK } from './const.js';
 import { MON_WEP } from './monst.js';
 import { which_armor } from './worn.js';
 import { W_ARM, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
@@ -240,8 +241,12 @@ export function Resists_Elem(mon, propindx) {
 }
 
 // include/monst.h:270 mon_resistancebits()
-const mon_resistancebits = (mon) =>
-    (mon.data.mresists | (mon.mextrinsics ?? 0) | (mon.mintrinsics ?? 0));
+/* include/monst.h:270. This read mon.data.mresists, but our monsters carry
+   mnum indexing game.mons rather than a data pointer, so every resists_*
+   built on it was reading undefined. */
+export const mon_resistancebits = (mon) =>
+    ((game.mons[mon.mnum]?.mresists ?? 0)
+     | (mon.mextrinsics ?? 0) | (mon.mintrinsics ?? 0));
 
 // src/mondata.c:215 resists_magm() — magic (missile) resistance.
 export function resists_magm(mon) {
@@ -269,3 +274,64 @@ export const resists_ston   = (mon) => Resists_Elem(mon, STONE_RES);
 function note_unported_mondata(what) {
     (game.unported ||= new Set()).add(what);
 }
+
+/* needspick, mindless and is_animal already live above in this file. */
+
+// include/mondata.h:95 is_undead()
+export const is_undead   = (d) => (d.mflags2 & MFLAGS.M2_UNDEAD) !== 0;
+// include/mondata.h:218 weirdnonliving() — golems and vortices
+export const weirdnonliving = (d) =>
+    d.mlet === MONSYMS.S_GOLEM || d.mlet === MONSYMS.S_VORTEX;
+// include/mondata.h:219 nonliving()
+export const nonliving = (d) =>
+    is_undead(d) || d.pmidx === PMNAMES.PM_MANES || weirdnonliving(d);
+
+// src/mondata.c:41 attacktype_fordmg() — the monster's attack of a given type,
+// or null. AD_ANY matches any damage type.
+export function attacktype_fordmg(ptr, atyp, dtyp) {
+    for (let i = 0; i < NATTK; i++) {
+        const a = ptr.mattk[i];
+        if (!a)
+            continue;
+        if (a[0] === atyp && (dtyp === ATTKS.AD_ANY || a[1] === dtyp))
+            return a;
+    }
+    return null;
+}
+
+// src/mondata.c:54 attacktype() — does this monster type have such an attack?
+export function attacktype(ptr, atyp) {
+    return attacktype_fordmg(ptr, atyp, ATTKS.AD_ANY) !== null;
+}
+
+// include/mondata.h:26 breathless()
+export const breathless = (d) => (d.mflags1 & MFLAGS.M1_BREATHLESS) !== 0;
+// include/mondata.h:55 has_head() — note the sense: NOHEAD CLEAR means it has one
+export const has_head   = (d) => (d.mflags1 & MFLAGS.M1_NOHEAD) === 0;
+// include/mondata.h:62 is_silent()
+export const is_silent  = (d) => d.msound === MFLAGS.MS_SILENT;
+
+// src/mondata.c:567 can_blow() — can this monster blow a horn?
+//
+// The hero's Strangled arm is not modelled; it only applies to youmonst and a
+// monster is never that here.
+export function can_blow(mtmp) {
+    const d = game.mons[mtmp.mnum];
+
+    if ((is_silent(d) || d.msound === MFLAGS.MS_BUZZ)
+        && (breathless(d) || verysmall(d) || !has_head(d)
+            || d.mlet === MONSYMS.S_EEL))
+        return false;
+    return true;
+}
+
+// include/mondata.h:59 flaming() — an identity test against four specific
+// permonst entries, not a flag test.
+export const flaming = (d) =>
+    d.pmidx === PMNAMES.PM_FIRE_VORTEX || d.pmidx === PMNAMES.PM_FLAMING_SPHERE
+    || d.pmidx === PMNAMES.PM_FIRE_ELEMENTAL || d.pmidx === PMNAMES.PM_SALAMANDER;
+
+// include/mondata.h:38 is_hider(). C's own comment warns it is True for mimics
+// even though a hiding mimic uses M_AP_* rather than mundetected, so callers
+// pair it with a mundetected test.
+export const is_hider = (d) => (d.mflags1 & MFLAGS.M1_HIDE) !== 0;

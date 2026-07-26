@@ -2858,6 +2858,11 @@ export const NON_PM = -1;
 export const LOW_PM = 0;
 export const LEAVESTATUE = NON_PM - 1;
 export const NATTK = 6;
+
+/* include/objclass.h:73 — oc_dir, the zap style for wands and spells. */
+export const NODIR     = 1;   /* non-directional */
+export const IMMEDIATE = 2;   /* directional beam that doesn't ricochet */
+export const RAY       = 3;   /* beam that does bounce off walls */
 export const NORMAL_SPEED = 12;
 
 // ========================================================================

@@ -60791,11 +60791,15 @@ async function moveHero(dx, dy) {
 	    if (objHereMessage) {
             // C ref: the terrain-feature line and check_here()'s "You see
             // here" are separate pline() calls; update_topl()
-            // (win/tty/topl.c:250-269) inserts --More-- between them when
-            // the combination doesn't fit the message line.
+            // (win/tty/topl.c:250-269) appends the second to the top line
+            // when the combination fits, and inserts --More-- otherwise.
             if (featurePrefix) {
-                await setMessage(featurePrefix.trimEnd());
-                objHereMessage = objHereMessage.slice(featurePrefix.length);
+                const combined = `${featurePrefix.trimEnd()}  ${objHereMessage.slice(featurePrefix.length)}`;
+                if (combined.length + 3 < (game.nhDisplay?.cols || 80) - 8) objHereMessage = combined;
+                else {
+                    await setMessage(featurePrefix.trimEnd());
+                    objHereMessage = objHereMessage.slice(featurePrefix.length);
+                }
             }
 	        if (game.u?.blind) {
 	            game._blind_feel_object_after_more = objHereMessage.replace('You see here', 'You feel here');
