@@ -7,6 +7,7 @@
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { is_metallic } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
@@ -514,8 +515,6 @@ export function meatmetal(mtmp) {
 }
 
 // include/objclass.h:194,200 is_metallic() / is_rustprone()
-const is_metallic = (otmp) => game.objects[otmp.otyp].oc_material >= MATERIALS.IRON
-                           && game.objects[otmp.otyp].oc_material <= MATERIALS.MITHRIL;
 const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
 
 /* src/mondata.c resists_poison() needs the resistance tables. */

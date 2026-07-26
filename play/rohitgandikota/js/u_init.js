@@ -24,8 +24,11 @@ import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { P_NONE, W_QUIVER, W_WEP } from './const.js';
+import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP} from './const.js';
 import { Is_container } from './obj.js';
+import { skill_init } from './weapon.js';
+import { spell_skilltype, initialspell, num_spells,
+         SPELL_LEV_PW } from './spell.js';
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
 import { discover_object } from './o_init.js';
@@ -59,10 +62,6 @@ function skills_for_role() {
     return null; /* C panics here */
 }
 
-// src/spell.c spell_skilltype() — oc_skill is #defined to oc_subtyp.
-function spell_skilltype(booktype) {
-    return game.objects[booktype].oc_subtyp;
-}
 
 // src/u_init.c restricted_spell_discipline() — true when the role may not train
 // this spellbook's school at all. ini_inv_mkobj_filter() refuses such books, so
@@ -539,6 +538,11 @@ export function ini_inv_use_obj(obj) {
     }
     obj.owornmask ||= 0;
     ini_inv_wield(obj);
+
+    /* src/u_init.c:1295 — a starting spellbook is memorised. */
+    if (obj.oclass === OCLASSES.SPBOOK_CLASS
+        && obj.otyp !== ONAMES.SPE_BLANK_PAPER)
+        initialspell(obj);
 }
 
 // src/u_init.c:1281 — a Tourist's darts go into the quiver, which is what
@@ -552,6 +556,11 @@ function ini_inv_wield(obj) {
         if (!game.u.uquiver) { obj.owornmask |= W_QUIVER; game.u.uquiver = obj; }
     } else if (!game.u.uwep) {
         obj.owornmask |= W_WEP; game.u.uwep = obj;
+    } else if (!game.u.uswapwep) {
+        /* src/u_init.c:1291 — the SECOND weapon becomes the alternate. A
+           Ranger's bow lands here, and ready_ok's ammo_and_launcher test
+           reads uswapwep to decide whether the arrows are suggested. */
+        obj.owornmask |= W_SWAPWEP; game.u.uswapwep = obj;
     }
 }
 
@@ -569,4 +578,19 @@ function worn_slots() {
 export function u_init_skills_discoveries() {
     for (const otmp of game.invent || [])
         ini_inv_use_obj(otmp);
+
+    /* src/u_init.c:1404 — skill_init(skills_for_role()). Nothing here draws,
+       but u.weapon_skills is what percent_success() reads, and without it the
+       rnd(100) comparison in spelleffects_check has no input. */
+    skill_init(skills_for_role());
+
+    /* src/u_init.c:1408 — if the hero knows any spell, force starting Pw high
+       enough to cast a level 1 one. Without this a Priest's uen sits below
+       SPELL_LEV_PW(1) and spelleffects_check rejects the cast on energy
+       before ever reaching its rnd(100). */
+    if (num_spells() && (game.u.uenmax < SPELL_LEV_PW(1))) {
+        game.u.uen = game.u.uenmax = game.u.uenpeak = SPELL_LEV_PW(1);
+        (game.u.ueninc ||= [])[game.u.ulevel] = SPELL_LEV_PW(1);
+    }
 }
+

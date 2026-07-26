@@ -53,3 +53,15 @@ export function online2(x0, y0, x1, y1) {
     const dx = x0 - x1, dy = y0 - y1;
     return (!dy || !dx || dy === dx || dy === -dx);
 }
+
+// src/hacklib.c:682 isqrt() — integer square root by subtracting successive
+// odd numbers. percent_success() uses it for the too-low-level penalty.
+export function isqrt(val) {
+    let rt = 0, odd = 1;
+    while (val >= odd) {
+        val = val - odd;
+        odd = odd + 2;
+        rt = rt + 1;
+    }
+    return rt;
+}

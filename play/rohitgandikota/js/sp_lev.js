@@ -14,7 +14,7 @@ import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
-import { mkobj_at, mksobj_at, add_to_container } from './mkobj.js';
+import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
 import { OBJ_NAME } from './objnam.js';
 import { obj_resists } from './zap.js';
 import { OBJ_BURIED } from './obj.js';
@@ -298,7 +298,14 @@ export function lspo_region(dx1, dy1, rtype, irregular, needfill, contents,
        'Water-surrounded vault' asks for joined = false. */
     troom.needjoining = joined;
 
-    if (contents) contents(troom);
+    /* src/sp_lev.c:5693 — the region is PUSHED as the current room before its
+       contents run, so every des.* verb inside sees it as gc.coder->croom. */
+    create_des_coder();
+    if (contents) {
+        spo_push_room(troom);
+        contents(troom);
+        spo_endroom();
+    }
     add_doors_to_room(troom);
     return troom;
 }
@@ -799,6 +806,12 @@ export function create_object(o, croom) {
             note_unported('create_object:too deeply nested containers');
     }
 
+    /* src/sp_lev.c create_object() — a named montype is applied through
+       set_corpsenm(), which starts the corpse's rot timer (its rnz is five
+       PRNG calls). Skipping it left that timer unset and its draws unspent. */
+    if (o.corpsenm !== undefined && o.corpsenm !== NON_PM)
+        set_corpsenm(otmp, o.corpsenm);
+
     if (!(o.containment & SP_OBJ_CONTENT)) {
         if (o.buried) {
             const dealloced = { v: false };
@@ -853,6 +866,14 @@ export function lspo_object(idOrClass, x, y, opts) {
                                                : find_objtype(idOrClass);
     }
 
+    /* src/sp_lev.c lspo_object() — `montype` names the species a corpse,
+       figurine or egg came from. It is resolved WITHOUT a gender draw here,
+       unlike des.monster()'s id, and create_object hands it to set_corpsenm,
+       which is what starts a corpse's rot timer. */
+    if (opts?.montype !== undefined && opts.montype !== null)
+        o.corpsenm = (typeof opts.montype === 'number')
+                     ? opts.montype : name_to_mon(opts.montype);
+
     if (opts?.buried) o.buried = 1;
     if (opts?.lit)    o.lit = 1;
 
@@ -871,6 +892,82 @@ export function lspo_object(idOrClass, x, y, opts) {
         spo_pop_container();
     }
     return otmp;
+}
+
+// src/sp_lev.c:6334 sp_level_coder_init() / create_des_coder().
+//
+// gc.coder was never created in this port, so every `game.coder?.croom` read
+// was undefined and every des.* verb behaved as though no room were open.
+//
+// n_subroom starts at ONE, not zero, with tmproomlist[0] left NULL. That is
+// why update_croom() reads tmproomlist[n_subroom - 1] and still yields null at
+// the top level, and why spo_endroom() pops only while n_subroom > 1.
+export function create_des_coder() {
+    if (game.coder)
+        return;
+    game.coder = {
+        premapped: false, solidify: false, check_inaccessibles: false,
+        allow_flips: 3, croom: null, n_subroom: 1,
+        lvl_is_joined: false, room_stack: 0, tmproomlist: [],
+    };
+    update_croom();
+}
+
+// src/sp_lev.c:6323 update_croom() — croom is the top of the room stack.
+function update_croom() {
+    if (!game.coder)
+        return;
+    const n = game.coder.n_subroom || 0;
+    game.coder.croom = n ? (game.coder.tmproomlist[n - 1] ?? null) : null;
+}
+
+export function spo_push_room(troom) {
+    if (!game.coder)
+        return;
+    game.coder.tmproomlist[game.coder.n_subroom] = troom;
+    game.coder.n_subroom++;
+    update_croom();
+}
+
+// src/sp_lev.c spo_endroom()
+export function spo_endroom() {
+    if (!game.coder)
+        return;
+    if ((game.coder.n_subroom || 0) > 1) {
+        game.coder.n_subroom--;
+        game.coder.tmproomlist[game.coder.n_subroom] = null;
+    }
+    update_croom();
+}
+
+// src/sp_lev.c:4772 cvt_to_abscoord() and its inverse cvt_to_relcoord().
+//
+// These are the other half of croom. Every coordinate handed OUT to the level
+// Lua is made room-relative, and get_location() adds the origin back on the
+// way IN, so the Lua works in relative coordinates throughout and the round
+// trip is exact.
+//
+// Handing back ABSOLUTE coordinates is correct only while croom is null,
+// because then mx/my are xstart/ystart. Setting croom without converting
+// offsets every explicit coordinate by the room origin a second time.
+export function cvt_to_abscoord(c) {
+    if (game.coder && game.coder.croom) {
+        c.x += game.coder.croom.lx;
+        c.y += game.coder.croom.ly;
+    } else {
+        c.x += game.xstart ?? 0;
+        c.y += game.ystart ?? 0;
+    }
+}
+
+export function cvt_to_relcoord(c) {
+    if (game.coder && game.coder.croom) {
+        c.x -= game.coder.croom.lx;
+        c.y -= game.coder.croom.ly;
+    } else {
+        c.x -= game.xstart ?? 0;
+        c.y -= game.ystart ?? 0;
+    }
 }
 
 // src/sp_lev.c:3040 spo_pop_container() — close the innermost container.
@@ -1389,11 +1486,14 @@ export function lspo_room(opts, create_room_fn, topologize_fn) {
     topologize_fn(aroom);
     aroom.needfill = needfill;
 
+    /* src/sp_lev.c:4091 — lspo_room pushes the room onto the coder's stack
+       and calls update_croom(), the same mechanism lspo_region uses. C calls
+       create_des_coder() at the top of every des.* verb. */
+    create_des_coder();
     if (opts?.contents) {
-        const saved = game.coder?.croom;
-        if (game.coder) game.coder.croom = aroom;
+        spo_push_room(aroom);
         opts.contents(mkroom_table(aroom));
-        if (game.coder) game.coder.croom = saved;
+        spo_endroom();
     }
     return aroom;
 }

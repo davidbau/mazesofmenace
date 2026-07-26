@@ -189,10 +189,30 @@ export function newsym(x, y) {
                the body glyph's symbol are both '%'. */
             const oc = game.objects?.[obj.otyp];
             let color = oc?.oc_color ?? NO_COLOR;
-            if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0)
-                color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
+            let sym = def_oc_syms[obj.oclass] || '?';
 
-            show_glyph_cell(x, y, def_oc_syms[obj.oclass] || '?', color, false);
+            /* include/display.h:950 statue_to_glyph() — a STATUE becomes
+               corpsenm + GLYPH_STATUE_*_OFF, i.e. it is drawn with the
+               MONSTER's symbol and colour, not the object's. Unlike a corpse,
+               where only the colour changes because both glyphs use '%', a
+               statue's SYMBOL changes too: we were drawing '`' where C draws
+               the creature's letter. */
+            if (obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0) {
+                /* src/display.c:2829 — the statue takes the MONSTER's symbol
+                   but the STATUE OBJECT's colour:
+                       sym.symidx = mons[offset].mlet + SYM_OFF_M;
+                       obj_color(STATUE);
+                   so a grid bug statue is an 'x' in stone grey, not in the
+                   grid bug's magenta. */
+                const mptr = game.mons?.[obj.corpsenm];
+                if (mptr)
+                    sym = def_monsyms[mptr.mlet] || sym;
+                color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
+            } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
+                color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
+            }
+
+            show_glyph_cell(x, y, sym, color, false);
             return;
         }
     }

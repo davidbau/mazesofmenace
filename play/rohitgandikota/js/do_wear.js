@@ -13,7 +13,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
          W_RINGL, W_RINGR, W_AMUL, AC_MAX } from './const.js';
 import { sgn } from './hacklib.js';
 
-function worn(mask) {
+export function worn(mask) {
     return (game.invent || []).find(o => (o.owornmask & mask) !== 0) || null;
 }
 

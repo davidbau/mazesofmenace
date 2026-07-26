@@ -1,6 +1,9 @@
 import { game } from './gstate.js';
 import { ECMD_OK, ECMD_TIME } from './const.js';
-import { getobj } from './invent.js';
+import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
+         GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './invent.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { throws_rocks } from './mondata.js';
 import { getdir } from './cmd.js';
 
 // dothrow.js — throwing, firing, and the path a thrown thing takes.
@@ -36,8 +39,40 @@ export async function throw_obj(obj, shotlimit) {
 // overloaded), then getobj() takes the object letter and throw_obj() the
 // direction. Three keys in total, and leaving them unconsumed ran both as
 // commands.
+// src/dothrow.c throw_ok() — which objects getobj should suggest for 't'.
+//
+// The '-' choice is EXCLUDED outright, so the prompt has no "- " prefix the
+// way the quiver's does. A wielded single item is downplayed but still
+// selectable; coins and weapons are suggested, gems only when slinging.
+function throw_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* welded/AutoReturn/Mjollnir need the wield and artifact code */
+    if (obj.quan === 1
+        && (obj === game.u.uwep || (obj === game.u.uswapwep && game.u.twoweap)))
+        return GETOBJ_DOWNPLAY;
+
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return GETOBJ_SUGGEST;
+
+    /* uslinging() needs the wielded launcher's skill; a sling is rare enough
+       that the not-slinging arm is the one every recorded session takes. */
+    if (obj.oclass === OCLASSES.WEAPON_CLASS)
+        return GETOBJ_SUGGEST;
+
+    /* gy.youmonst.data is the hero's current form; this port keeps it as
+       u.umonnum indexing game.mons. Guarded because the boulder arm is only
+       reachable for a rock-throwing polyform. */
+    const uptr = game.mons?.[game.u?.umonnum];
+    if (uptr && throws_rocks(uptr) && obj.otyp === ONAMES.BOULDER)
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_DOWNPLAY;
+}
+
 export async function dothrow() {
-    const obj = await getobj('throw', null, 0);
+    const obj = await getobj('throw', throw_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
 
     return obj ? await throw_obj(obj, 0) : ECMD_OK;
 }

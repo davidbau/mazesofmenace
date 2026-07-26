@@ -433,6 +433,14 @@ function process_menu_window(cw, page, display) {
     /* dmore() re-homes the BASE_WINDOW cursor before writing the prompt */
     tty_curs_base(cw.offx + 2, footerRow);
     let col = cw.offx + 1;              /* dmore(): offset 2, tty_curs is 1-based */
+    /* win/tty/wintty.c process_menu_window(): every menu line is emitted as
+         tty_curs(window, 1, y); if (cw->offx) cl_end(); putchar(' ');
+       so column offx itself gets a SPACE before the text starts at offx + 1.
+       The content rows above already do this; the footer did not, so whatever
+       the menu was drawn over showed through in that one column -- the map's
+       DECgraphics horizontal beside seed0101's tutorial prompt. */
+    for (let c = cw.offx; c < col; c++)
+        display.setCell(c, footerRow, ' ', NO_COLOR, 0);
     for (let i = 0; i < morestr.length && col < COLS; i++, col++)
         display.setCell(col, footerRow, morestr[i], NO_COLOR, 0);
     for (let c = col; c < COLS; c++)

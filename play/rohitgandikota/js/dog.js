@@ -21,6 +21,7 @@ import { put_saddle_on_mon } from './steed.js';
 import { perceives , is_domestic} from './mondata.js';
 import { sobj_at } from './invent.js';
 import { may_dig } from './hack.js';
+import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
@@ -211,8 +212,6 @@ const vegan = (ptr) =>
 
 // include/objclass.h:193-200. WOOD, IRON and MITHRIL are material ordinals.
 const is_organic   = (otmp) => game.objects[otmp.otyp].oc_material <= WOOD;
-const is_metallic  = (otmp) => game.objects[otmp.otyp].oc_material >= IRON
-                            && game.objects[otmp.otyp].oc_material <= MITHRIL;
 const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
 
 /* The remaining tests reach subsystems that are absent. Each is only reachable

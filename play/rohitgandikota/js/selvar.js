@@ -21,6 +21,7 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO, ROOMOFFSET, MAX_TYPE, MATCH_WALL, IS_STWALL } from './const.js';
 import { rn2 } from './rng.js';
 import { isok } from './hacklib.js';
+import { cvt_to_relcoord } from './sp_lev.js';
 
 // src/selvar.c:15 selection_new()
 export function selection_new() {
@@ -178,8 +179,13 @@ export function selection_iterate(ov, func, arg) {
 
     for (let x = rect.lx; x <= rect.hx; x++)
         for (let y = rect.ly; y <= rect.hy; y++)
-            if (isok(x, y) && selection_getpoint(x, y, ov))
-                func(x, y, arg);
+            if (isok(x, y) && selection_getpoint(x, y, ov)) {
+                /* src/nhlsel.c:939 — the callback is handed RELATIVE
+                   coordinates; get_location() adds the room origin back. */
+                const c = { x, y };
+                cvt_to_relcoord(c);
+                func(c.x, c.y, arg);
+            }
 }
 
 // src/selvar.c:211 selection_not() — invert every square of the whole map.
@@ -263,7 +269,10 @@ export function selection_rndcoord(ov, removeit) {
                     if (!c) {
                         if (removeit)
                             selection_setpoint(dx, dy, ov, 0);
-                        return { x: dx, y: dy };
+                        /* handed to Lua, so RELATIVE — see selection_iterate */
+                        const rc = { x: dx, y: dy };
+                        cvt_to_relcoord(rc);
+                        return rc;
                     }
                     c--;
                 }

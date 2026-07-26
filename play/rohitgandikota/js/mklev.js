@@ -47,7 +47,8 @@ function mk_knox_portal(x, y) {
 import { random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
 import { themeroom_fill_contents, post_level_generate } from './themerms.js';
-import { mkroom_table } from './sp_lev.js';
+import { mkroom_table, create_des_coder, spo_push_room,
+         spo_endroom } from './sp_lev.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
 const NON_PM = -1;
@@ -789,7 +790,19 @@ async function themerooms_generate(difficulty) {
         if (aroom) {
             topologize(aroom);
             aroom.needfill = FILL_NORMAL;
-            if (contents) contents(aroom);
+            /* This is our inline equivalent of the des.room{} the themeroom
+               Lua actually writes, so it owes the same bookkeeping lspo_room
+               does: push the room as the coder's croom around the contents
+               callback (src/sp_lev.c:4091). Without it every des.* verb inside
+               a themed fill sees no open room -- create_altar took its no-room
+               branch and drew a whole-map coordinate where C draws somex/somey
+               inside the room. */
+            create_des_coder();
+            if (contents) {
+                spo_push_room(aroom);
+                contents(aroom);
+                spo_endroom();
+            }
         }
     }
     return ok;

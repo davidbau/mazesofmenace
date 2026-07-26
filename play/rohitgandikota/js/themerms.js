@@ -273,12 +273,26 @@ export function fill_buried_zombies(rm) {
         }
     }
 
+    /* dat/themerms.lua:162 —
+     *
+     *     for i = 1, (rm.width * rm.height) / 2 do
+     *        shuffle(zombifiable);
+     *        local o = des.object({ id = "corpse", montype = zombifiable[1],
+     *                             buried = true });
+     *        o:stop_timer("rot-corpse");
+     *        o:start_timer("zombify-mon", math.random(990, 1010));
+     *     end
+     *
+     * The des.object() was being skipped and only the timer's draw spent, so
+     * the corpse's own coordinate -- somex/somey inside the room, plus
+     * mksobj's draws -- never happened. */
     const n = (rm.width * rm.height) / 2;
     for (let i = 1; i <= n; i++) {
         lua_shuffle(zombifiable);
-        note_unported_themerms('des.object:buried corpse');
+        lspo_object('corpse', undefined, undefined,
+                    { montype: zombifiable[0], buried: true });
         /* o:stop_timer("rot-corpse") draws nothing */
-        nh_random(990, 21);             /* start_timer zombify-mon delay */
+        nh_random(990, 21);             /* math.random(990, 1010) */
         note_unported_themerms('start_timer:zombify-mon');
     }
 }

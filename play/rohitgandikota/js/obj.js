@@ -82,3 +82,8 @@ export const Is_candle = (o) =>
 
 // include/obj.h:334 Has_contents()
 export const Has_contents = (o) => !!(o.cobj && o.cobj.length);
+
+// include/objclass.h:194 is_metallic() — IRON through MITHRIL.
+export const is_metallic = (otmp) =>
+    game.objects[otmp.otyp].oc_material >= MATERIALS.IRON
+    && game.objects[otmp.otyp].oc_material <= MATERIALS.MITHRIL;

@@ -18,6 +18,7 @@ do_wire_mklev(mklev);
 sp_lev_wire_mon({ is_pool, is_lava, m_at });
 mklev_wire_mon({ is_pool, is_lava });
 import { wiz_level_change, wiz_level_tele } from './wizcmds.js';
+import { tty_yn_function } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
@@ -43,7 +44,8 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED, IS_DOOR } from './const.js';
 import { dosearch } from './detect.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
-import { dovspell } from './spell.js';
+import { dovspell, docast } from './spell.js';
+import { dowieldquiver } from './wield.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -121,7 +123,15 @@ function u_maybe_impaired() {
 // key IS consumed either way, so a caller that skips getdir leaves the session
 // one keystroke out of step, not merely one draw.
 export async function getdir(s) {
-    const dirsym = String.fromCharCode(await nhgetch());
+    /* src/cmd.c getdir():
+         dirsym = yn_function((s && *s != '^') ? s : "In what direction?",
+                              (char *) 0, '\0', FALSE);
+       The read was going straight to nhgetch, so the prompt never appeared;
+       routing it through tty_yn_function paints it without changing which
+       key is consumed. A caller-supplied string starting with '^' is a
+       key-hint, not a prompt, and is ignored here as C ignores it. */
+    const dirsym = await tty_yn_function(
+        (s && s[0] !== '^') ? s : 'In what direction?', null, '\0');
 
     if (dirsym === '.' || dirsym === 's') {
         game.u.dx = game.u.dy = game.u.dz = 0;
@@ -392,6 +402,12 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if (ch === 'Q') {
+        // src/cmd.c cmdlist — 'Q' is dowieldquiver.
+        game.context.move = ((await dowieldquiver()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'Z') {
+        // src/cmd.c cmdlist — 'Z' is docast.
+        game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x16') {
         // src/cmd.c:1970 — C('v') is wizlevelport / wiz_level_tele.
         game.context.move = ((await wiz_level_tele()) === ECMD_TIME ? 1 : 0);

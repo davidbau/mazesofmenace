@@ -13,6 +13,7 @@ import { is_rider } from './makemon.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { pline } from './display.js';
+import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
@@ -105,9 +106,52 @@ const quitchars = ' \r\n\x1b';
 // key; that loop is ported. The count, menu and hands branches need input paths
 // this port does not have and are recorded rather than guessed, because each
 // consumes a DIFFERENT number of keys and inventing one is worse than none.
+// include/hack.h:512 — the obj_ok callback's return values.
+export const GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
+             GETOBJ_EXCLUDE_INACCESS = -1, GETOBJ_EXCLUDE_SELECTABLE = 0,
+             GETOBJ_DOWNPLAY = 1, GETOBJ_SUGGEST = 2;
+export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
+const HANDS_SYM = '-';
+
+// src/invent.c:1830 — the letter list C puts in the prompt.
+//
+// The '-' arm appends HANDS_SYM and then A SPACE (C's own comment: "put a
+// space after the '-' in the prompt"), which is why the prompt reads
+// "[- cd or ?*]" and not "[-cd or ?*]".
+//
+// Inventory is walked in INVLET order (sortloot with SORTLOOT_INVLET), and
+// each letter is appended FIRST and then removed when the filter rejects it.
+function getobj_letters(obj_ok, ctrlflags) {
+    let buf = '';
+    const forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
+
+    if (forceprompt || !obj_ok) {
+        const v = obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE;
+        if (v === GETOBJ_SUGGEST)
+            buf += HANDS_SYM + ' ';
+    }
+
+    const sorted = [...(game.invent || [])]
+        .sort((a, b) => String(a.invlet).localeCompare(String(b.invlet)));
+
+    for (const otmp of sorted) {
+        const v = obj_ok ? obj_ok(otmp) : GETOBJ_SUGGEST;
+        if (v === GETOBJ_SUGGEST)
+            buf += otmp.invlet;
+    }
+    return buf;
+}
+
 export async function getobj(word, obj_ok_func, ctrlflags) {
+    /* src/invent.c:1919 — the prompt, then yn_function reads the key. Our
+       loop already read a key here; routing it through tty_yn_function adds
+       the paint without changing which keys are consumed. */
+    let qbuf = `What do you want to ${word}?`;
+    const lets = getobj_letters(obj_ok_func, ctrlflags | 0);
+    qbuf += lets ? ` [${lets} or ?*]` : ' [*]';
+
     for (;;) {
-        const ilet = String.fromCharCode(await nhgetch());
+        const ilet = await tty_yn_function(qbuf, null, '\0');
 
         if (ilet >= '0' && ilet <= '9') {
             /* get_count() keeps reading digits and then a letter */
@@ -478,4 +522,20 @@ const PM_CLERIC = 0;
 
 function note_unported_invent(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/invent.c xprname() — one inventory line: "b - a +1 bow".
+//
+// C's format is "%c - %.*s%s": the letter, " - ", the object's name, and a
+// suffix that is "." when the caller asked for a sentence.
+export function xprname(obj, txt, let_, dot, cost, quan) {
+    const name = txt || doname(obj);
+    return `${let_} - ${name}${dot ? '.' : ''}`;
+}
+
+// src/invent.c prinv() — print one inventory line, optionally prefixed.
+export async function prinv(prefix, obj, quan) {
+    if (!prefix) prefix = '';
+    await pline(`${prefix}${prefix ? ' ' : ''}`
+                + xprname(obj, null, obj.invlet, true, 0, quan));
 }

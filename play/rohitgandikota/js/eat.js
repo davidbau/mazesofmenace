@@ -354,3 +354,10 @@ export function maybe_finished_meal(stopping) {
     }
     return false;
 }
+
+// src/eat.c morehungry() — spend nutrition and re-evaluate the hunger state.
+// newuhs() can draw through its fainting arm, so this is not bookkeeping.
+export function morehungry(num) {
+    game.u.uhunger -= num;
+    newuhs(true);
+}

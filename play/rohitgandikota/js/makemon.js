@@ -8,6 +8,7 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
+import { rndghostname } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
@@ -1291,6 +1292,14 @@ export function makemon(ptr, x, y, mmflags) {
     mitem = 0; /* STRANGE_OBJECT */
     if (mndx === PMNAMES.PM_VLAD_THE_IMPALER)
         mitem = ONAMES.CANDELABRUM_OF_INVOCATION;
+    /* src/makemon.c:1374 — a ghost is NAMED at creation, and rndghostname()
+       draws: rn2(7) to decide between the table and the hero's own name, then
+       rn2(34) to pick from the table. The branch sits in the same else-if
+       chain as the mitem assignments, so it is exclusive with them. */
+    else if (mndx === PMNAMES.PM_GHOST && !(mmflags & MMFLAGS.MM_NONAME)) {
+        /* christen_monst() copies the name onto the monster; no draw */
+        mtmp.mname = rndghostname();
+    }
     else if (mndx === PMNAMES.PM_CROESUS)
         mitem = ONAMES.TWO_HANDED_SWORD;
     else if (ptr.msound === MS_NEMESIS)
