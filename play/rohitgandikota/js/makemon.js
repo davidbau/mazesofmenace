@@ -20,7 +20,7 @@ import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { attacktype } from './mondata.js';
+import { attacktype, is_neuter } from './mondata.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
@@ -78,7 +78,6 @@ export const {
 const is_golem = (ptr) => ptr.mlet === S_GOLEM;
 export const is_male = (ptr) => (ptr.mflags2 & M2_MALE) !== 0;
 export const is_female = (ptr) => (ptr.mflags2 & M2_FEMALE) !== 0;
-export const is_neuter = (ptr) => (ptr.mflags2 & M2_NEUTER) !== 0;
 const always_hostile = (ptr) => (ptr.mflags2 & M2_HOSTILE) !== 0;
 const always_peaceful = (ptr) => (ptr.mflags2 & M2_PEACEFUL) !== 0;
 const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
@@ -798,7 +797,7 @@ function mkobj_at(oclass, x, y, artif) {
 }
 
 // src/mon.c hideunder() — positional only during mklev (seeit is 0), no draw.
-function hideunder(mtmp) {
+export function hideunder(mtmp) {
     mtmp.mundetected = 0;
 }
 
@@ -827,7 +826,7 @@ const mimic_syms = [
 //
 // Only the arms reachable from ordinary level generation are ported; the maze,
 // Delphi and rogue-level arms are recorded rather than faked.
-function set_mimic_sym(mtmp) {
+export function set_mimic_sym(mtmp) {
     if (!mtmp)
         return;
 

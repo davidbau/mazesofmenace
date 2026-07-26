@@ -1207,8 +1207,10 @@ function disturb(mtmp) {
     return 1;
 }
 
-/* src/mon.c mdistu() — squared distance from the hero to a monster */
-function mdistu(mtmp) {
+/* src/mon.c mdistu() — squared distance from the hero to a monster.
+   Its C home is src/mon.c, so it belongs in js/mon.js; exported from here
+   for now because moving it would touch more call sites than it is worth. */
+export function mdistu(mtmp) {
     const dx = mtmp.mx - game.u.ux, dy = mtmp.my - game.u.uy;
     return dx * dx + dy * dy;
 }

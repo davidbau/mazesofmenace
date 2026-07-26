@@ -110,7 +110,7 @@ function note_unported_wield(what) {
 }
 
 // src/wield.c setuqwep() — put an object in the quiver slot.
-function setuqwep(obj) {
+export function setuqwep(obj) {
     if (game.u.uquiver)
         game.u.uquiver.owornmask &= ~W_QUIVER;
     game.u.uquiver = obj;

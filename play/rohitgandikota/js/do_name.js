@@ -9,8 +9,9 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
-         M_AP_TYPE, M_AP_MONSTER } from './const.js';
-import { humanoid, is_animal, mindless } from './mondata.js';
+         M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
+         SUPPRESS_SADDLE, has_mgivenname } from './const.js';
+import { humanoid, is_animal, mindless, pronoun_gender } from './mondata.js';
 import { canspotmon } from './display.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
@@ -111,6 +112,14 @@ function just_an(str) {
     return ('aeiou'.includes(str[0].toLowerCase()) ? 'an ' : 'a ') + str;
 }
 
+// src/do_name.c:1152 a_monnam() — ARTICLE_A.
+// The SUPPRESS_SADDLE when the monster has a given name is not decoration:
+// x_monnam appends "saddled" otherwise, and a named steed would read
+// "a saddled Fido" instead of "a Fido".
+export const a_monnam = (mtmp) =>
+    x_monnam(mtmp, ARTICLE_A, null, has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+             false);
+
 // src/do_name.c mon_nam() — ARTICLE_THE, no adjective.
 export const mon_nam = (mtmp) => x_monnam(mtmp, ARTICLE_THE, null, 0, false);
 
@@ -122,8 +131,39 @@ export const y_monnam = (mtmp) => x_monnam(mtmp, ARTICLE_YOUR, null, 0, false);
 export const Monnam  = (mtmp) => upstart(mon_nam(mtmp));
 export const YMonnam = (mtmp) => upstart(y_monnam(mtmp));
 
+// src/do_name.c:1191 mon_nam_too() — name `mon`, except that when it IS
+// `other_mon` the reflexive pronoun is used instead.
+//
+// This is what makes a monster-vs-monster message read "The jackal bites
+// itself" rather than "The jackal bites the jackal". hitmm and missmm both
+// pass the attacker as other_mon, so the case fires whenever a monster's
+// attack lands on itself (confusion, a bounced ray).
+//
+// C allocates from nextmbuf(), a rotating static buffer, because two of these
+// can be live in one pline() call; we return plain strings, so that machinery
+// has no counterpart here.
+//
+// Note the pronoun_gender() call passes PRONOUN_HALLU, so this is an RNG draw
+// while hallucinating.
+export function mon_nam_too(mon, other_mon) {
+    if (mon !== other_mon)
+        return mon_nam(mon);
+
+    switch (pronoun_gender(mon, PRONOUN_HALLU)) {
+    case 0:
+        return 'himself';
+    case 1:
+        return 'herself';
+    case 3: /* could happen when hallucinating */
+        return 'themselves';
+    default:
+    case 2:
+        return 'itself';
+    }
+}
+
 // src/hacklib.c upstart() — capitalise the first letter.
-function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+export function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 function note_do_name_unported(what) {
     (game.unported ||= new Set()).add('do_name:' + what);

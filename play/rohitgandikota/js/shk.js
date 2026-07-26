@@ -46,3 +46,19 @@ function note_unported_shk(what) {
     (game.unported ||= new Set()).add('shk:' + what);
     return false;
 }
+
+// src/shk.c costly_spot() — is (x,y) a square a shopkeeper charges for?
+//
+// The has_shop early return is ported in full and is what answers on every
+// ordinary level, which is why useupf() can call this safely today. The rest
+// needs shop_keeper(), in_rooms(), inhishop() and ESHK's shk coordinates,
+// none of which exist yet. A level that DOES have a shop records rather than
+// guessing: answering FALSE there would silently let the hero consume shop
+// goods for free.
+export function costly_spot(x, y) {
+    if (!game.level?.flags?.has_shop)
+        return false;
+
+    (game.unported ||= new Set()).add('shk:costly_spot');
+    return false;
+}

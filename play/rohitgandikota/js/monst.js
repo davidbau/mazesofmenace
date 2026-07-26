@@ -15,7 +15,8 @@ export const MON_WEP = (mon) => mon.mw || null;
 // include/monst.h:216 is_vampshifter() — takes a MONSTER, not a permonst,
 // because it reads cham (what the creature really is) rather than data (what
 // shape it currently wears).
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { M_AP_TYPE, M_AP_FURNITURE } from './const.js';
 export const is_vampshifter = (mon) =>
     mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
     || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
@@ -29,3 +30,20 @@ export const is_vampshifter = (mon) =>
 // branches -- find_roll_to_hit gives a to-hit bonus against the helpless, and
 // growl() returns silently for them.
 export const helpless = (mon) => !!(mon.msleeping || !mon.mcanmove);
+
+// include/monst.h:240 is_door_mappear() — a mimic currently imitating a closed
+// door. lookaround() needs it: a mimicking door stops a run exactly as a real
+// closed door does.
+export const is_door_mappear = (mon) =>
+    M_AP_TYPE(mon) === M_AP_FURNITURE
+    && (mon.mappearance === MONSYMS.S_hcdoor
+        || mon.mappearance === MONSYMS.S_vcdoor);
+
+// include/monst.h:255 mon_offmap() — ((mon)->mstate != MON_FLOOR).
+//
+// mstate is not tracked yet, so `| 0` makes an absent value read as MON_FLOOR
+// (0) and the monster counts as on the map. Without that coercion `undefined
+// !== 0` is true and EVERY monster reads as off-map, which would make
+// movemon skip the entire level.
+import { MON_FLOOR } from './const.js';
+export const mon_offmap = (mon) => (mon.mstate | 0) !== MON_FLOOR;

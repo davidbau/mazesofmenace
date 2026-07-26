@@ -6,10 +6,16 @@
 // risked a cycle) or kept its own copy. Neither is what the C does: mondata.h
 // is a header everybody includes.
 //
-// Nothing here draws.
+// Almost nothing here draws: the predicates are pure reads of a permonst. The
+// exception is pronoun_gender() at the bottom, which rolls rn2(4) when the
+// hero is hallucinating.
 
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
+import { Hallucination } from './youprop.js';
+import { canspotmon } from './display.js';
+import { G_UNIQ, PRONOUN_NO_IT, PRONOUN_HALLU } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_vampshifter } from './monst.js';
 import { NATTK } from './const.js';
@@ -30,6 +36,11 @@ export const needspick    = (d) => (d.mflags1 & MFLAGS.M1_NEEDPICK) !== 0;
 export const nohands    = (d) => (d.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
 export const verysmall  = (d) => d.msize < MFLAGS.MZ_SMALL;
 export const is_giant   = (d) => (d.mflags2 & MFLAGS.M2_GIANT) !== 0;
+// include/mondata.h:114 is_neuter() — was defined in js/makemon.js, which is
+// not its C home; js/role.js still carries a third private copy.
+export const is_neuter  = (ptr) => (ptr.mflags2 & MFLAGS.M2_NEUTER) !== 0;
+// include/mondata.h:135 type_is_pname() — was private to js/questpgr.js.
+export const type_is_pname = (ptr) => (ptr.mflags2 & MFLAGS.M2_PNAME) !== 0;
 export const tunnels    = (d) => (d.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
 export const passes_walls = (d) => (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 export const throws_rocks = (d) => (d.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
@@ -108,6 +119,13 @@ export const unsolid = (ptr) => (ptr.mflags1 & MFLAGS.M1_UNSOLID) !== 0;
 // distinction: a hides_under monster you cannot see still routes into
 // do_attack so the "Wait!" message prints, while a ceiling hider does not.
 export const hides_under = (ptr) => (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0;
+
+// include/mondata.h:43 ceiling_hider() — hides on the ceiling rather than
+// under something. A mimic is is_clinger but is explicitly excluded, because
+// it clings to imitate furniture rather than to hang overhead.
+export const ceiling_hider = (ptr) =>
+    is_hider(ptr) && ((is_clinger(ptr) && ptr.mlet !== MONSYMS.S_MIMIC)
+                      || is_flyer(ptr)); /* lurker above */
 
 // include/mondata.h:147 webmaker() — only the two spiders.
 export const webmaker = (ptr) => ptr.pmidx === PMNAMES.PM_CAVE_SPIDER
@@ -366,3 +384,36 @@ export const carnivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_CARNIVORE) !== 0;
 
 // include/mondata.h:91 herbivorous()
 export const herbivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;
+
+// src/mondata.c:1180 gender() — 0 male, 1 female, 2 none.
+// Unlike pronoun_gender below, this one does not care whether the hero can
+// see the monster, and it never draws.
+export function gender(mtmp) {
+    if (is_neuter(mtmp.data))
+        return 2;
+    return mtmp.female | 0;
+}
+
+// src/mondata.c:1191 pronoun_gender() — like gender(), but unseen humanoids
+// are "it" rather than "he"/"she", lower animals are "it" even when seen, and
+// hallucination can yield "they". This is the one messages use.
+//
+// The rn2(4) is the reason this is not a pure predicate. It fires ONLY under
+// PRONOUN_HALLU and only while hallucinating, so it draws nothing today, but
+// the order matters: the hallucination roll happens BEFORE the canspotmon
+// test, so a hallucinating hero draws even for a monster they cannot see.
+//
+// Returns 0 male, 1 female, 2 neuter/unseen, 3 "they" (hallucination only).
+export function pronoun_gender(mtmp, pg_flags) {
+    const override_vis = (pg_flags & PRONOUN_NO_IT) !== 0;
+    const hallu_rand = (pg_flags & PRONOUN_HALLU) !== 0;
+
+    if (hallu_rand && Hallucination())
+        return rn2(4); /* 0..3 */
+    if (!override_vis && !canspotmon(mtmp))
+        return 2;
+    if (is_neuter(mtmp.data))
+        return 2;
+    return (humanoid(mtmp.data) || (mtmp.data.geno & G_UNIQ)
+            || type_is_pname(mtmp.data)) ? (mtmp.female | 0) : 2;
+}

@@ -1,3 +1,4 @@
+import { adjabil } from './attrib.js';
 // exper.js — experience, hit points and energy.
 // C ref: src/exper.c
 
@@ -209,9 +210,11 @@ export async function pluslvl(incr) {
         if (game.u.ulevelmax < game.u.ulevel)
             game.u.ulevelmax = game.u.ulevel;
 
-        /* adjabil() grants the new intrinsics; achievements and livelog need
-           subsystems this port does not have. */
-        note_unported_exper('pluslvl:adjabil');
+        /* src/exper.c:355 — adjabil() grants the new intrinsics, and it is
+           ported in js/attrib.js; only the achievement, sound and livelog
+           calls that follow it need subsystems this port lacks. */
+        adjabil(game.u.ulevel - 1, game.u.ulevel); /* give new intrinsics */
+        note_unported_exper('pluslvl:achievements_livelog');
 
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
             game.u.ulevelpeak = game.u.ulevel;

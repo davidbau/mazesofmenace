@@ -1,3 +1,6 @@
+import { setuqwep } from './wield.js';
+import { impact_disturbs_zombies } from './hack.js';
+import { stackobj } from './invent.js';
 // do.js — commands that move the hero between levels, and the level change
 // itself.
 // C ref: src/do.c
@@ -22,6 +25,13 @@ import { rn2, rnd } from './rng.js';
    somexy cycle did, so it goes through a wire like everything else. */
 let mklev_fn = null;
 export function do_wire_mklev(fn) { mklev_fn = fn; }
+
+/* js/dokick.js holds ship_object(), which dropx() calls. It is wired rather
+   than imported: importing it here re-enters do.js during its own
+   initialisation and hits the mklev_fn dead zone above. js/cmd.js does the
+   wiring, as it already does for mklev and sp_lev. */
+let ship_object_fn = null;
+export function do_wire_dokick(fn) { ship_object_fn = fn; }
 
 function note_unported_do(what) {
     (game.unported ||= new Set()).add(what);
@@ -198,7 +208,7 @@ export function dropz(obj, with_impact) {
     if (obj === game.uwep)
         note_unported_do('dropz:setuwep');
     if (obj === game.uquiver)
-        note_unported_do('dropz:setuqwep');
+        setuqwep(null);         /* src/do.c -- ported at wield.js:113 */
     if (obj === game.uswapwep)
         note_unported_do('dropz:setuswapwep');
 
@@ -210,12 +220,12 @@ export function dropz(obj, with_impact) {
         place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
             note_unported_do('dropz:container_impact_dmg');
-        note_unported_do('dropz:impact_disturbs_zombies');
+        impact_disturbs_zombies(obj, with_impact);
         if (obj === game.uball)
             note_unported_do('dropz:drop_ball');
         else if (game.level?.flags?.has_shop)
             note_unported_do('dropz:sellobj');
-        note_unported_do('dropz:stackobj');
+        stackobj(obj);
         newsym(game.u.ux, game.u.uy);   /* remap location under self */
     }
     encumber_msg();
@@ -235,7 +245,10 @@ export function dropy(obj) {
 export function dropx(obj) {
     freeinv(obj);
     if (!game.u.uswallow) {
-        if (note_unported_do('dropx:ship_object'))
+        /* src/do.c:298 — ship_object() sends the object down a hole or
+           stairs and returns TRUE when it did, in which case dropy() must
+           not also place it. */
+        if (ship_object_fn && ship_object_fn(obj, game.u.ux, game.u.uy, false))
             return;
         if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ))
             note_unported_do('dropx:doaltarobj');   /* sets bknown */
@@ -276,7 +289,7 @@ export function drop(obj) {
         note_unported_do('drop:setuwep');
     }
     if (obj === game.uquiver)
-        note_unported_do('drop:setuqwep');
+        setuqwep(null);         /* src/do.c -- ported at wield.js:113 */
     if (obj === game.uswapwep)
         note_unported_do('drop:setuswapwep');
 

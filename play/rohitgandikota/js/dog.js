@@ -16,17 +16,18 @@ import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
    so dog_move's death return was an unbound name. */
-import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE } from './const.js';
+import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
+         NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless } from './mondata.js';
-import { sobj_at, eaten_stat } from './invent.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype } from './mondata.js';
+import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
 import { splitobj } from './mkobj.js';
-import { m_consume_obj, is_pick } from './mon.js';
+import { m_consume_obj, is_pick, check_gear_next_turn } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
@@ -42,11 +43,10 @@ import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2, rnd } from './rng.js';
 import { dist2, sgn } from './hacklib.js';
-import { couldsee, clear_path } from './vision.js';
+import { couldsee, clear_path, cansee } from './vision.js';
 import { PMNAMES } from './monst_data.js';
 import {
-    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider,
-} from './makemon.js';
+    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj } from './makemon.js';
 
 const NON_PM = -1;
 
@@ -1283,9 +1283,31 @@ export function dog_invent(mtmp, edog, udist) {
                 && could_reach_item(mtmp, obj.ox, obj.oy)) {
                 if (rn2(20) < edog.apport + 3) {
                     if (rn2(udist) || !rn2(edog.apport)) {
-                        /* splitobj() when carryamt is a partial stack, then
-                           distant_name/pline, mpickobj and mon_wield_item. */
-                        note_unported('dog_invent:pickup');
+                        /* src/dogmove.c:450 — the pet takes the object. */
+                        let otmp = obj;
+                        if (carryamt !== obj.quan)
+                            otmp = splitobj(obj, carryamt);
+                        if (cansee(omx, omy)) {
+                            /* C calls distant_name() for its SIDE EFFECTS
+                               even when the result is not printed, and does
+                               so BEFORE the extract, because the chain
+                               distant_name -> doname -> xname -> find_artifact
+                               wants otmp still on the floor. Not ported, so
+                               the side effects are recorded here rather than
+                               being silently skipped. */
+                            note_unported('dog_invent:distant_name');
+                            if (game.flags?.verbose)
+                                note_unported('dog_invent:pline_picks_up');
+                        }
+                        obj_extract_self(otmp);
+                        newsym(omx, omy);
+                        mpickobj(mtmp, otmp);
+                        if (attacktype(mtmp.data, ATTKS.AT_WEAP)
+                            && mtmp.weapon_check === NEED_WEAPON) {
+                            mtmp.weapon_check = NEED_HTH_WEAPON;
+                            note_unported('dog_invent:mon_wield_item');
+                        }
+                        check_gear_next_turn(mtmp);
                     }
                 }
             }

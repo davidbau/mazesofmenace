@@ -2,14 +2,19 @@
 // C ref: src/invent.c
 
 import { game } from './gstate.js';
+import { delobj } from './mon.js';
+import { costly_spot } from './shk.js';
+import { u_at } from './const.js';
+import { hides_under } from './mondata.js';
+import { Hallucination } from './youprop.js';
 import { doname } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MONSYMS, NUMMONS } from './monst_data.js';
-import { erosion_matters } from './mkobj.js';
+import { erosion_matters, curse, splitobj } from './mkobj.js';
 import {
     carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding,
 } from './obj.js';
-import { is_rider } from './makemon.js';
+import { is_rider, hideunder } from './makemon.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { pline } from './display.js';
@@ -196,6 +201,51 @@ export function sobj_at(otyp, x, y) {
             return otmp;
 
     return null;
+}
+
+// src/invent.c:4763 useupf() — consume `numused` of a stack lying on the FLOOR.
+//
+// The floor twin of useup(). C's comment on the split is worth keeping:
+// burn_floor_objects() holds an object pointer it tries to useupf() more than
+// once, so obj has to survive when the stack is plural.
+//
+// The shop-billing arm is gated on costly_spot(), which answers false on any
+// level without a shop, so the ordinary path is fully ported.
+export function useupf(obj, numused) {
+    const at_u = u_at(obj.ox, obj.oy);
+    let otmp;
+
+    /* burn_floor_objects() keeps an object pointer that it tries to
+     * useupf() multiple times, so obj must survive if plural */
+    if (obj.quan > numused)
+        otmp = splitobj(obj, numused);
+    else
+        otmp = obj;
+
+    if (!game.context?.mon_moving && costly_spot(otmp.ox, otmp.oy)) {
+        /* addtobill() / stolen_value() need the shop subsystem */
+        (game.unported ||= new Set()).add('useupf:shop_billing');
+    }
+    delobj(otmp);
+    if (at_u && game.u?.uundetected && hides_under(game.youmonst?.data))
+        hideunder(game.youmonst);
+}
+
+// src/invent.c:4366 stackobj() — merge a just-dropped object into any
+// compatible stack already on its square.
+//
+// C walks svl.level.objects[ox][oy] through the nexthere chain; the port keeps
+// one flat array and filters on ox/oy, so the iteration order is the array's.
+// merged() does the real work and is already ported.
+//
+// The break matters: C stops at the FIRST successful merge rather than
+// continuing, because merged() has already freed the merged-away object.
+export function stackobj(obj) {
+    for (const otmp of (game.level?.objects || []))
+        if (otmp.ox === obj.ox && otmp.oy === obj.oy
+            && otmp !== obj && merged(obj, otmp))
+            break;
+    return;
 }
 
 // src/mkobj.c weight() — how heavy is this stack, right now.
@@ -490,7 +540,7 @@ export function obj_extract_self(obj) {
         break;
     }
     case OBJ_INVENT:
-        note_unported_invent('obj_extract_self:freeinv');
+        freeinv(obj);       /* src/mkobj.c:2573 -- ported at invent.js:622 */
         break;
     default: {   /* OBJ_FLOOR — remove_object() */
         const objs = game.level?.objects;
@@ -514,7 +564,6 @@ const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TR
    that is not ported; all three only ever make mergable STRICTER, so a false
    here can merge two stacks C would keep apart in those rare states. */
 function Blind() { return false; }
-function Hallucination() { return false; }
 function Role_if(role) { return false; }
 /* erosion_matters() is fully ported in js/mkobj.js (its C home is
    src/mkobj.c); it was stubbed here by mistake. */
@@ -553,16 +602,40 @@ export async function prinv(prefix, obj, quan) {
 // is CURSED on the way out (that is how it resists being dropped), anything
 // conferring luck triggers set_moreluck, and a timed FIGURINE has its
 // transform timer stopped. The tin reference is cleared last.
+// src/artifact.c:? confers_luck() — does carrying this raise Luck?
+//
+// The oartifact test short-circuits before spec_ability(), so for any ordinary
+// object this answers FALSE without needing the artifact subsystem at all.
+// Only an actual artifact reaches spec_ability(), which needs get_artifact()
+// and the artilist; that arm records rather than guessing.
+export function confers_luck(obj) {
+    /* might as well check for this too */
+    if (obj.otyp === ONAMES.LUCKSTONE)
+        return true;
+
+    if (!obj.oartifact)
+        return false;
+
+    /* spec_ability(obj, SPFX_LUCK) — needs get_artifact() and artilist */
+    (game.unported ||= new Set()).add('invent:confers_luck:spec_ability');
+    return false;
+}
+
 function freeinv_core(obj) {
     if (obj.oclass === OCLASSES.COIN_CLASS) {
-        note_unported_invent('freeinv_core:money2mon');
+        /* src/invent.c freeinv_core() — this arm is exactly two statements in
+           5.0. The 'money2mon' gap recorded here before did not correspond to
+           anything in this function; money2mon appears nowhere in invent.c. */
+        (game.disp ||= {}).botl = true;
         return;
     }
     note_unported_invent('freeinv_core:uhave_artifacts');
 
     if (obj.otyp === ONAMES.LOADSTONE)
-        note_unported_invent('freeinv_core:curse_loadstone');
-    else if (note_unported_invent('freeinv_core:confers_luck'))
+        curse(obj);
+    else if (confers_luck(obj))
+        /* set_moreluck() needs stone_luck() and carrying(); reached only for a
+           luckstone or a luck-conferring artifact, so it records. */
         note_unported_invent('freeinv_core:set_moreluck');
     else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
         note_unported_invent('freeinv_core:stop_timer');

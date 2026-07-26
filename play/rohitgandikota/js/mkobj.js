@@ -1,3 +1,4 @@
+import { is_neuter } from './mondata.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
 //
@@ -28,7 +29,7 @@ import { Is_rogue_level, NODIR} from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
-    rndmonnum, level_difficulty, is_male, is_female, is_neuter, is_rider,
+    rndmonnum, level_difficulty, is_male, is_female, is_rider,
 } from './makemon.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.

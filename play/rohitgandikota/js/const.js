@@ -533,6 +533,7 @@ export const AMII_LOUDER_VOLUME = 80;
 // ===== monflag.h =====
 export const NEUTRAL = (FEMALE + 1);
 export const NUM_MGENDERS = (NEUTRAL + 1);
+export const G_UNIQ = 0x1000;   /* monflag.h:194 generated only once */
 export const G_KNOWN = 0x04;
 export const G_GENOD = 0x02;
 export const G_EXTINCT = 0x01;
@@ -2902,7 +2903,13 @@ export function Upolyd(player) {
 export function u_at(x, y) { return game?.u?.ux === x && game?.u?.uy === y; }
 export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x && o.oy === y) ?? false; }
 export function Has_contents(obj) { return obj?.cobj != null; }
-export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
+// include/monst.h:73 M_AP_TYPE() — ((m)->m_ap_type & M_AP_TYPMASK).
+// The mask is not decoration: m_ap_type also carries M_AP_F_DKNOWN (0x8,
+// monst.h:70) in its high bits, so dropping it makes any mimic whose
+// appearance the hero has identified read as a bogus appearance type.
+export function M_AP_TYPE(mon) { return (mon?.m_ap_type ?? 0) & M_AP_TYPMASK; }
+// include/monst.h:74 M_AP_FLAG()
+export function M_AP_FLAG(mon) { return (mon?.m_ap_type ?? 0) & ~M_AP_TYPMASK; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
 // C ref: permonst.h — ismnum(x) means x is a valid monster index.
 // JS call sites pass integer indices (for example u.ulycn, corpsenm, cham).

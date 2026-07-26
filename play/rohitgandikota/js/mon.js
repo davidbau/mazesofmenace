@@ -1,3 +1,10 @@
+import { mon_offmap } from './monst.js';
+import { dist2 } from './hacklib.js';
+import { m_dowear } from './worn.js';
+import { is_hider } from './mondata.js';
+import { ceiling_hider } from './mondata.js';
+import { sensemon } from './display.js';
+import { mdistu } from './monmove.js';
 // mon.js — monster bookkeeping.
 // C ref: src/mon.c
 //
@@ -23,7 +30,8 @@ import { newsym, canseemon, pline } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster } from './makemon.js';
-import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG } from './const.js';
+import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
+         M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
@@ -44,8 +52,8 @@ import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
     is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
-import { touch_petrifies, mon_hates_silver, could_reach_item } from './dog.js';
-import { is_rider } from './makemon.js';
+import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
+import { is_rider, set_mimic_sym, hideunder, mpickobj } from './makemon.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
@@ -117,14 +125,109 @@ function movemon_singlemon(mtmp) {
        `do { movemon() } while (monscanmove)` loop, so reporting TRUE for a
        monster that merely has some leftover movement runs the whole loop again
        and hands every monster an extra turn. */
+    /* src/mon.c:1244 — a monster that is no longer on this map does not act. */
+    if (mon_offmap(mtmp))
+        return false;
+
     if (mtmp.movement < NORMAL_SPEED)
         return false;
     mtmp.movement -= NORMAL_SPEED;
+
+    /* src/mon.c:1265 minliquid() — drowning, burning and fountain effects.
+       162 lines in minliquid_core, and every arm is gated on inpool, inlava
+       or infountain, so a monster on dry floor draws nothing and this is
+       recorded rather than ported. A monster standing in water WILL diverge. */
+    if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my))
+        (game.unported ||= new Set()).add('movemon_singlemon:minliquid');
+
+    /* src/mon.c:1268 — after losing equipment, try to put on replacement.
+       C's comment: "hostiles only try to equip things if they think hero
+       isn't nearby; if they think hero is nearby, leave the flag intact so
+       that it can be checked again on subsequent moves". Note the distance is
+       to mux/muy, where the monster BELIEVES the hero is, not u.ux/u.uy. */
+    if (mtmp.misc_worn_check & I_SPECIAL) {
+        if (mtmp.mpeaceful || mtmp.mtame
+            || dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > (3 * 3)) {
+            mtmp.misc_worn_check &= ~I_SPECIAL;
+            const oldworn = mtmp.misc_worn_check;
+            m_dowear(mtmp, false);
+            if (mtmp.misc_worn_check !== oldworn || !mtmp.mcanmove)
+                return false; /* is spending this turn equipping */
+        }
+    }
+
+    /* src/mon.c:1286 — the hider and eel arms are NOT wired here.
+       js/mon.js has restrap() ported below and it is correct in isolation,
+       but wiring these two arms measured -42 screens and -5217 RNG, so the
+       gap is recorded instead. See docs/plan/STATUS.md for the measurement
+       and the leading hypothesis (our mundetected is set more liberally than
+       C's, so hiders stop moving where C moves them). */
+    if (is_hider(mtmp.data)) {
+        if (restrap(mtmp))
+            return false;
+        if (M_AP_TYPE(mtmp) === M_AP_FURNITURE
+            || M_AP_TYPE(mtmp) === M_AP_OBJECT)
+            return false;
+        if (mtmp.mundetected)
+            return false;
+    } else if (mtmp.data.mlet === MONSYMS.S_EEL && !mtmp.mundetected
+               && (mtmp.mflee || !m_next2u(mtmp))
+               && !canseemon(mtmp) && !rn2(4)) {
+        if (hideunder(mtmp))
+            return false;
+    }
+
     dochug(mtmp);
     return mtmp.movement >= NORMAL_SPEED;
 }
 
 import { dochug } from './monmove.js';
+
+// include/you.h:560 m_next2u() — distu((m)->mx, (m)->my) <= 2.
+// Its C home is you.h; kept here because restrap() below is its only user so
+// far and js/mon.js already exports mdistu's twin.
+const m_next2u = (mtmp) => mdistu(mtmp) <= 2;
+
+// src/mon.c:961 restrap() — a hider that is not being watched hides again.
+//
+// The rn2(3) is FOURTH in the OR chain, after mcan, M_AP_TYPE and cansee, so
+// it is reached only for a hider the hero cannot currently see. That ordering
+// is the whole draw behaviour: put the roll earlier and every hider burns a
+// draw every turn.
+//
+// Called from movemon_singlemon before the monster moves; returning TRUE means
+// the monster spent its turn hiding and does not act.
+export function restrap(mtmp) {
+    let t;
+
+    if (mtmp.mcan || M_AP_TYPE(mtmp) || cansee(mtmp.mx, mtmp.my)
+        || rn2(3) || mtmp === game.u?.ustuck
+        /* can't hide while trapped except in pits */
+        || (mtmp.mtrapped && (t = t_at(mtmp.mx, mtmp.my))
+            && !is_pit(t.ttyp))
+        /* can't hide on ceiling if there isn't one */
+        || (ceiling_hider(mtmp.data) && !has_ceiling(game.u?.uz))
+        /* won't hide when adjacent to hero */
+        || (sensemon(mtmp) && m_next2u(mtmp)))
+        return false;
+
+    if (mtmp.data.mlet === MONSYMS.S_MIMIC) {
+        if (mtmp.msleeping || mtmp.mfrozen) {
+            /*
+             * The mimic needs to be awake to disguise itself
+             * as something else.
+             */
+            return false;
+        }
+        set_mimic_sym(mtmp);
+        return true;
+    } else if (game.level?.at?.(mtmp.mx, mtmp.my)?.typ === ROOM) {
+        mtmp.mundetected = 1;
+        return true;
+    }
+
+    return false;
+}
 
 // src/mon.c:2140 mfndpos() — the squares a monster may move to.
 //
@@ -468,7 +571,7 @@ export function m_consume_obj(mtmp, otmp) {
 }
 
 // src/mkobj.c delobj() — take the object off the floor and free it.
-function delobj(obj) {
+export function delobj(obj) {
     const objs = game.level?.objects;
     if (!objs) return;
     const i = objs.indexOf(obj);
@@ -537,6 +640,17 @@ function touch_artifact(otmp, mon) {
         return true;
     }
     return true;
+}
+
+// src/mon.c:5915 check_gear_next_turn() — flag the monster to reconsider its
+// equipment on its next move.
+//
+// One line, but it is the trigger for the I_SPECIAL arm in
+// movemon_singlemon() above: a monster that just picked something up sets
+// this, and next turn that arm calls m_dowear() and may spend the turn
+// equipping. C's comment: "this hides the details of that".
+export function check_gear_next_turn(mon) {
+    mon.misc_worn_check |= I_SPECIAL;
 }
 
 // src/mon.c m_carrying() — the monster's object of this type, or null.
@@ -852,9 +966,13 @@ function can_touch_safely(mtmp, otmp) {
         && mon_hates_silver(mtmp)
         && (otyp !== ONAMES.BELL_OF_OPENING || !is_covetous(mdat)))
         return false;
-    /* touch_artifact() needs the artifact tables; no monster on an early level
-       carries one, and it is the only remaining arm. */
-    note_unported_mon('can_touch_safely:touch_artifact');
+    /* touch_artifact() is ported above: it answers TRUE for anything that is
+       not an artifact, which is every object on an early level, and records
+       its own gap for a real artifact. Calling it is strictly better than
+       recording a second gap here, which was hiding the fact that the common
+       path was already answerable. */
+    if (!touch_artifact(otmp, mtmp))
+        return false;
     return true;
 }
 
@@ -1164,10 +1282,11 @@ export function mpickstuff(mtmp) {
 
         /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (mon_would_take_item(mtmp, otmp)) {
+            /* Nymphs take everything.  Most monsters don't pick up corpses. */
             if (otmp.otyp === ONAMES.CORPSE && mdat.mlet !== MONSYMS.S_NYMPH
-                && !note_unported_mon('mpickstuff:touch_petrifies')
+                && !touch_petrifies(game.mons[otmp.corpsenm])
                 && otmp.corpsenm !== PMNAMES.PM_LIZARD
-                && !note_unported_mon('mpickstuff:acidic'))
+                && !acidic(game.mons[otmp.corpsenm]))
                 continue;
             if (!can_touch_safely(mtmp, otmp))
                 continue;
@@ -1188,8 +1307,15 @@ export function mpickstuff(mtmp) {
                     note_unported_mon('mpickstuff:pline_picks_up');
             }
             obj_extract_self(otmp3);        /* remove from floor */
-            note_unported_mon('mpickstuff:mpickobj');
-            note_unported_mon('mpickstuff:check_gear_next_turn');
+            /* src/steal.c:618 mpickobj() — may merge and free otmp3.
+               js/makemon.js has a reduced version that does the essential
+               thing, moving the object into minvent. Recording instead was
+               strictly worse than calling it: obj_extract_self has already
+               taken the object off the floor, so with no call the object
+               was being LOST rather than picked up. */
+            mpickobj(mtmp, otmp3);
+            note_unported_mon('mpickobj:shop_light_thrown_arms');
+            check_gear_next_turn(mtmp);
             newsym(mtmp.mx, mtmp.my);
             return true;                    /* pick only one object */
         }

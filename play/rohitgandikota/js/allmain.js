@@ -46,9 +46,10 @@ import { settrack, initrack } from './track.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
-         FULL_MOON, NEW_MOON } from './const.js';
+         FULL_MOON, NEW_MOON, COLNO } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack } from './cmd.js';
+import { rhack, domove } from './cmd.js';
+import { lookaround, end_running } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
@@ -521,6 +522,43 @@ export async function moveloop_core() {
             g.occupation = null;
         note_unported_main('moveloop:monster_nearby');
         return;                         /* the occupation took this turn */
+    }
+
+    /* src/allmain.c:515 — the run/rush loop. While multi is positive the hero
+       keeps moving WITHOUT reading another key, which is what makes one
+       'g'+direction cover several squares instead of one.
+     *
+     *     if (gm.multi > 0) {
+     *         lookaround();
+     *         if (!gm.multi) { svc.context.move = 0; return; }
+     *         if (svc.context.mv) {
+     *             if (gm.multi < COLNO && !--gm.multi) end_running(TRUE);
+     *             domove();
+     *         } else { --gm.multi; rhack(gc.cmd_key); }
+     *     }
+     *
+     * lookaround() ends a run by calling nomul(0), which zeroes multi -- hence
+     * the !multi test immediately after. It is NOT the only exit: domove calls
+     * nomul(0) when bumping a monster, when blocked, and when stepping onto a
+     * door, and in an open room those are the only things that stop it. */
+    if ((g.multi ?? 0) > 0) {
+        await lookaround();
+        if (!g.multi) {
+            /* lookaround may clear multi */
+            g.context.move = 0;
+            return;
+        }
+        if (g.context.mv) {
+            if (g.multi < COLNO && !--g.multi)
+                end_running(true);
+            await domove();
+        } else {
+            --g.multi;
+            /* rhack(gc.cmd_key) — repeating a non-movement command needs the
+               remembered key, which this port does not track yet. */
+            note_unported_main('moveloop:multi repeat non-mv');
+        }
+        return;
     }
 
     // Read and execute one command. The frame captured inside nhgetch shows

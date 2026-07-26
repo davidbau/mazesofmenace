@@ -1,3 +1,4 @@
+import { seemimic } from './mon.js';
 // cmd.js — Command dispatch and movement.
 // C ref: cmd.c rhack(), hack.c domove().
 //
@@ -8,7 +9,8 @@
 import { game } from './gstate.js';
 import { dodrop } from './do.js';
 import { any_obj_ok } from './invent.js';
-import { dodown, do_wire_mklev } from './do.js';
+import { dodown, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
+import { dokick_wire, ship_object } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at } from './mon.js';
@@ -18,7 +20,7 @@ import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock } from './hack.js';
+import { bad_rock, nomul } from './hack.js';
 import { curr_mon_load } from './mon.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
@@ -31,6 +33,8 @@ import { You } from './pline.js';
 do_wire_mklev(mklev);
 sp_lev_wire_mon({ is_pool, is_lava, m_at });
 mklev_wire_mon({ is_pool, is_lava });
+dokick_wire({ stairway_at, t_at });
+do_wire_dokick(ship_object);
 import { wiz_level_change, wiz_level_tele } from './wizcmds.js';
 import { tty_yn_function } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
@@ -56,7 +60,7 @@ import { newsym, flush_screen, pline, docrt, _buildScreenOutput,
          TOPLINE_SPECIAL_PROMPT , TOPLINE_EMPTY} from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
-         IS_WALL, IS_OBSTRUCTED, IS_DOOR } from './const.js';
+         IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
@@ -94,7 +98,7 @@ const KNOWN_UNPORTED = new Set([
 
 // C ref: hack.c — check if a cell blocks movement
 // include/rm.h closed_door()
-function closed_door(x, y) {
+export function closed_door(x, y) {
     const loc = game.level?.at(x, y);
     return !!(loc && IS_DOOR(loc.typ) && (loc.doormask & (D_CLOSED | D_LOCKED)));
 }
@@ -531,7 +535,25 @@ export async function rhack(key) {
     const ch = String.fromCharCode(key);
 
     if (isMovementKey(ch)) {
-        await domove(DIR_DX[ch], DIR_DY[ch]);
+        /* src/cmd.c movecmd() — the key sets u.dx/u.dy, then domove() reads
+           them. Keeping the direction on `u` is what lets moveloop's run
+           branch call domove() again without re-reading a key. */
+        game.u.dx = DIR_DX[ch];
+        game.u.dy = DIR_DY[ch];
+        /* src/cmd.c:3792 DOMOVE_RUSH — seed multi with max(COLNO, ROWNO) as
+           the upper bound on how far one command can carry the hero. The run
+           does NOT end by counting down: moveloop's guard is
+           (multi < COLNO && !--multi) and multi starts AT COLNO, so it never
+           decrements for a rush. It ends through nomul(0), from lookaround or
+           from domove bumping a monster, being blocked, or stepping onto a
+           door. */
+        if (game.context.run) {
+            if (!game.multi)
+                game.multi = Math.max(COLNO, ROWNO);
+            game.u.last_str_turn = 0;
+            game.context.mv = true;
+        }
+        await domove();
         game.context.move = 1;
     } else if (ch === 'Q') {
         // src/cmd.c cmdlist — 'Q' is dowieldquiver.
@@ -667,19 +689,14 @@ export async function rhack(key) {
 }
 
 // C ref: hack.c domove — execute a movement
-async function domove(dx, dy) {
+export async function domove() {
     const u = game.u;
+    /* C's domove() takes no arguments and reads u.dx/u.dy, which movecmd()
+       set from the key. moveloop's run branch calls it the same way, so the
+       direction has to live on `u` rather than in a parameter. */
+    const dx = u.dx, dy = u.dy;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
-
-    /* src/hack.c — with the rush prefix set, domove() repeats until lookaround()
-       finds something interesting, so C travels several squares where a single
-       step is taken here. The run loop needs lookaround() and is not ported;
-       record it so the distance gap is visible rather than silent. */
-    if (game.context.run) {
-        note_unported_cmd('domove:run loop');
-        game.context.run = 0;
-    }
 
     /* src/hack.c:2242 — with the fight prefix set, the hero attacks the target
        square instead of moving onto it, whether or not anything is there. The
@@ -725,9 +742,50 @@ async function domove(dx, dy) {
        56/11405 from a temporal dead zone, which looks like a catastrophic
        behavioural regression and is really one misplaced line. */
 
+    /* src/hack.c:2786 — bumping a monster ends a run.
+     *
+     *     if (mtmp) {
+     *         if (!is_safemon(mtmp) || svc.context.forcefight)
+     *             nomul(0);
+     *         ...
+     *     }
+     *
+     * C's comment explains the is_safemon half: "don't stop travel when
+     * displacing pets; if the displace fails for some reason, do_attack() in
+     * uhitm.c will stop travel rather than domove". So walking into a pet
+     * keeps the run going and walking into anything else does not.
+     *
+     * Unlike hack.c:2766 this is NOT gated on context.run and does NOT
+     * return -- it only clears multi and lets the rest of domove proceed.
+     * This sits before the blocked-move test, matching C's order. */
+    {
+        const mtmp_bump = m_at(newx, newy);
+        if (mtmp_bump && (!is_safemon(mtmp_bump) || game.context.forcefight))
+            nomul(0);
+    }
+
+    /* src/hack.c:2846 — the blocked-move exit.
+     *
+     *     if (!test_move(u.ux, u.uy, x - u.ux, y - u.uy, DO_MOVE)) {
+     *         if (!svc.context.door_opened) {
+     *             svc.context.move = 0;
+     *             nomul(0);
+     *         }
+     *         return;
+     *     }
+     *
+     * The nomul(0) is how a RUN ends in the ordinary case: lookaround() does
+     * not stop a rush crossing an open room, so C relies on the hero walking
+     * into something. Without it a wired run loop has no terminator.
+     *
+     * The door_opened guard matters: walking into a closed door with autoopen
+     * opens it and consumes the turn, and that must NOT stop a run. */
     if (blocksMove(newx, newy)) {
         // Can't move there
-        game.context.move = 0;
+        if (!game.context.door_opened) {
+            game.context.move = 0;
+            nomul(0);
+        }
         return;
     }
 
@@ -749,6 +807,30 @@ async function domove(dx, dy) {
         if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
             game.u.ux = game.u.ux0;     /* didn't move after all */
             game.u.uy = game.u.uy0;
+        }
+    }
+
+    /* src/hack.c:2936 — the post-move run check.
+     *
+     *     reset_occupations();
+     *     if (svc.context.run) {
+     *         if (svc.context.run < 8)
+     *             if (IS_DOOR(tmpr->typ) || IS_OBSTRUCTED(tmpr->typ)
+     *                 || IS_FURNITURE(tmpr->typ))
+     *                 nomul(0);
+     *     }
+     *
+     * tmpr is the square just MOVED ONTO, not the one ahead. This is the
+     * second ordinary way a run ends -- stepping onto a doorway, a fountain,
+     * an altar, stairs -- and it is separate from lookaround(), which only
+     * inspects neighbours. run == 8 is the travel case and is exempt. */
+    reset_occupations();
+    if (game.context.run) {
+        if (game.context.run < 8) {
+            const tmpr = game.level?.at?.(newx, newy);
+            if (tmpr && (IS_DOOR(tmpr.typ) || IS_OBSTRUCTED(tmpr.typ)
+                         || IS_FURNITURE(tmpr.typ)))
+                nomul(0);
         }
     }
 
@@ -775,7 +857,7 @@ async function domove_swap_with_pet(mtmp, x, y) {
     game.u.ux = game.u.ux0; game.u.uy = game.u.uy0;
     mtmp.mundetected = 0;
     if (mtmp.m_ap_type)
-        note_unported_cmd('domove_swap_with_pet:seemimic');
+        seemimic(mtmp);         /* src/hack.c -- ported at mon.js:1213 */
     game.u.ux = mtmp.mx; game.u.uy = mtmp.my;   /* resume swapping positions */
 
     const trap = mtmp.mtrapped ? t_at(mtmp.mx, mtmp.my) : null;
@@ -958,4 +1040,13 @@ export function reset_occupations() {
     reset_remarm();
     reset_pick();
     reset_trapset();
+}
+
+// src/cmd.c:431 cmdq_clear() — drop every queued command in queue `q`.
+//
+// C walks a linked list and frees it; the queue is an array here, so emptying
+// it is the whole function. The port has no producer for the queue yet, so
+// this clears an empty list exactly as C does when nothing is queued.
+export function cmdq_clear(q) {
+    (game.command_queue ||= [])[q] = null;
 }

@@ -1,3 +1,5 @@
+import { exercise } from './attrib.js';
+import { A_CON } from './const.js';
 // eat.js — nutrition.
 // C ref: src/eat.c
 //
@@ -15,7 +17,7 @@ import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK,
          HUNGRY, FAINTING,
          A_LAWFUL } from './const.js';
 import { ONAMES } from './objects_data.js';
-import { getobj, weight, useup } from './invent.js';
+import { getobj, weight, useup, useupf } from './invent.js';
 import { pline } from './display.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
@@ -129,14 +131,22 @@ export function start_eating(otmp, already_partly_eaten) {
     v.eating = 1;
 
     if (bite()) {
-        /* survived choking; finish off food that is nearly done */
-        if (++v.usedtime >= v.reqtime)
-            note_unported_eat('start_eating:done_eating');
+        /* survived choking, finish off food that's nearly done;
+           need this to handle cockatrice eggs, fortune cookies, etc */
+        if (++v.usedtime >= v.reqtime) {
+            /* C brackets this call with a save/restore of gn.nomovemsg so
+               that done_eating() does not issue one when the reason we got
+               here is a vomit() from bite(). nomovemsg is not tracked, so the
+               bracketing records; the call itself is real. */
+            note_unported_eat('start_eating:nomovemsg_bracket');
+            done_eating(false);
+        }
         return;
     }
 
     if (++v.usedtime >= v.reqtime) {
-        note_unported_eat('start_eating:done_eating');
+        /* print "finish eating" message if they just resumed -dlc */
+        done_eating((v.reqtime > 1 || already_partly_eaten) ? true : false);
         return;
     }
 
@@ -168,7 +178,7 @@ export async function choke(food) {
         note_unported_eat('choke:knight_adjalign');
     }
 
-    note_unported_eat('choke:exercise');
+    exercise(A_CON, false);   /* src/eat.c:256 */
 
     /* Breathless and Hunger are intrinsics this port does not track, so the
        rn2(20) is always the deciding test here. */
@@ -201,7 +211,7 @@ export function bite() {
         return 1;
     }
     if (v.doreset) {
-        note_unported_eat('bite:do_reset_eat');
+        do_reset_eat();     /* src/eat.c:3142 -- ported at eat.js:307 */
         return 0;
     }
     /* src/eat.c bite() tail — force_save_hs makes lesshungry() treat this as
@@ -278,13 +288,13 @@ export function done_eating(message) {
         note_unported_eat('done_eating:fpostfx');
 
     /* the object leaves by one of two doors: useup() when carried, useupf()
-       when it is lying on the floor. useup is ported; useupf still needs
-       delobj plus the shop billing arms. */
+       when it is lying on the floor (src/eat.c:568, :570). Both are ported;
+       useupf's shop-billing arm records inside useupf itself. */
     if (piece) {
         if (carried(piece))
             useup(piece);
         else
-            note_unported_eat('done_eating:useupf');
+            useupf(piece, 1);
     }
 
     game.context.victual = {};          /* zero_victual */

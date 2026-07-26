@@ -15,6 +15,7 @@
 //     effect com_pager has when the entry carries a literal `text`; an entry
 //     that is an ARRAY of strings additionally draws rn2(#array).
 
+import { type_is_pname } from './mondata.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhl_init } from './nhlua.js';
@@ -77,8 +78,6 @@ function align_str(alignment) {
     }
 }
 
-// src/mondata.h type_is_pname()
-function type_is_pname(pm) { return (pm.mflags2 & M2_PNAME) !== 0; }
 
 function monname(idx) {
     const pm = mons[idx];

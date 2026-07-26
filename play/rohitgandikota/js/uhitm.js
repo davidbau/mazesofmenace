@@ -1,3 +1,5 @@
+import { exercise } from './attrib.js';
+import { A_DEX } from './const.js';
 // uhitm.js — the hero attacking, or declining to attack, a monster.
 // C ref: src/uhitm.c
 //
@@ -354,11 +356,13 @@ export function hitum(mon, uattk) {
     let dieroll = rnd(20);
     const mhit = [(tmp > dieroll || game.u.uswallow) ? 1 : 0];
     if (tmp > dieroll)
-        note_unported_uhitm('hitum:exercise_dex');
+        exercise(A_DEX, true);          /* src/uhitm.c hitum() */
 
     let malive = known_hitum(mon, game.u.uwep, mhit, tmp,
                              out.role_roll_penalty, uattk, dieroll);
-    note_unported_uhitm('hitum:passive');
+    const wep_was_destroyed = !!(wepbefore && !game.u.uwep);
+    passive(mon, game.u.uwep, mhit[0], malive, ATTKS.AT_WEAP,
+            wep_was_destroyed);
 
     /* second attack for two-weapon combat or skilled unarmed combat */
     if (game.twohits && !(game.override_confirmation
