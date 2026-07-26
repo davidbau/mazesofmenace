@@ -6,6 +6,7 @@
 // before anything is chosen.
 
 import { game } from './gstate.js';
+import { will_weld } from './monmove.js';
 import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT, prinv } from './invent.js';
 import { W_QUIVER } from './const.js';
@@ -115,4 +116,19 @@ function setuqwep(obj) {
     game.u.uquiver = obj;
     if (obj)
         obj.owornmask |= W_QUIVER;
+}
+
+// src/wield.c welded() — is this the wielded weapon, and is it stuck?
+//
+// Only true for the object that IS uwep; a cursed weapon in the pack is not
+// welded. The set_bknown(obj, 1) is a real side effect: discovering the weld
+// tells you the weapon is cursed, so the B/U/C status becomes known. It is
+// recorded, so the weld is detected but the knowledge is not yet recorded on
+// the object.
+export function welded(obj) {
+    if (obj && obj === game.uwep && will_weld(obj)) {
+        note_unported_wield('welded:set_bknown');
+        return 1;
+    }
+    return 0;
 }

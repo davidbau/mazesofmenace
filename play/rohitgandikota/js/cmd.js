@@ -6,6 +6,8 @@
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { dodrop } from './do.js';
+import { any_obj_ok } from './invent.js';
 import { dodown, do_wire_mklev } from './do.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
@@ -345,12 +347,7 @@ function read_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
-/* src/invent.c:1710 any_obj_ok() — 'd' drop accepts anything in inventory. */
-function any_obj_ok(obj) {
-    if (obj)
-        return GETOBJ_SUGGEST;
-    return GETOBJ_EXCLUDE;
-}
+/* any_obj_ok() lives in js/invent.js, mirroring src/invent.c:1710. */
 
 /* src/do_wear.c:3404 equip_ok() — the shared filter behind W, T, P and R.
 //
@@ -622,7 +619,9 @@ export async function rhack(key) {
         // getobj(). 330 keystrokes across the public corpus, the most of any
         // command we did not handle.
         game.context.move = (await doeat() === ECMD_TIME ? 1 : 0);
-    } else if ('rwqdWPR'.includes(ch)) {
+    } else if (ch === 'd') {
+        game.context.move = (await dodrop() === ECMD_TIME ? 1 : 0);
+    } else if ('rwqWPR'.includes(ch)) {
         // src/cmd.c cmdlist — read, wield, quaff, drop, wear, put on, remove.
         // Every one of them starts with getobj(), which reads the inventory
         // letter. Their effects are unported, but consuming that letter is what
@@ -924,4 +923,39 @@ async function show_inventory() {
 
     tty_destroy_nhwindow(win);
     await docrt();
+}
+
+// src/do_wear.c reset_remarm() — forget a partly-finished take-off.
+export function reset_remarm() {
+    const t = (game.context.takeoff ||= {});
+    t.what = t.mask = 0;
+    t.disrobing = '';
+}
+
+// src/lock.c:259 reset_pick() — forget a partly-finished lock pick or force.
+export function reset_pick() {
+    const x = (game.xlock ||= {});
+    x.usedtime = x.chance = x.picktyp = 0;
+    x.magic_key = false;
+    x.door = null;
+    x.box = null;
+}
+
+// src/apply.c:2813 reset_trapset() — forget a partly-set trap.
+export function reset_trapset() {
+    const t = (game.trapinfo ||= {});
+    t.tobj = 0;
+    t.force_bungle = 0;
+}
+
+// src/cmd.c:195 reset_occupations() — abandon every multi-turn task at once.
+//
+// Three separate state blocks, cleared together because any command that
+// interrupts the hero has to abandon ALL of them, not just the one it knows
+// about. Dropping an object does this: you cannot go on picking a lock while
+// rummaging through your pack.
+export function reset_occupations() {
+    reset_remarm();
+    reset_pick();
+    reset_trapset();
 }

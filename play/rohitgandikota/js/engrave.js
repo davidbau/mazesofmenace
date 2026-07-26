@@ -191,6 +191,31 @@ export function wipe_engr_at(x, y, cnt, magical) {
     if (!ep.engr_txt) del_engr(ep);
 }
 
+// src/engrave.c sengr_at() — is `s` engraved at (x,y)?
+//
+// Three call sites are waiting on this: onscary's Elbereth arm,
+// setmangry's hypocrite branch (whose rnd(5) is its ONLY draw), and
+// goodpos_onscary.
+//
+// The engr_time test is not decoration: an engraving made THIS turn does not
+// count until moves catches up, so a monster is not scared by Elbereth on the
+// turn it is written. HEADSTONE is excluded because a grave's text is not an
+// engraving for this purpose.
+//
+// `strict` picks exact match versus substring, both case-insensitive --
+// strcmpi and strstri. Elbereth callers pass TRUE.
+export function sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+
+    if (ep && ep.engr_type !== HEADSTONE && ep.engr_time <= game.moves) {
+        const txt = String(ep.engr_txt ?? '');
+        if (strict ? txt.toLowerCase() === String(s).toLowerCase()
+                   : txt.toLowerCase().includes(String(s).toLowerCase()))
+            return ep;
+    }
+    return null;
+}
+
 function note_unported_engrave(what) {
     (game.unported ||= new Set()).add(what);
 }

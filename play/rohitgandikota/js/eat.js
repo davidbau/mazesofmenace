@@ -6,6 +6,8 @@
 // port that tracks the turn counter correctly still has to make the call.
 
 import { game } from './gstate.js';
+import { Race_if } from './u_init.js';
+import { PMNAMES } from './monst_data.js';
 import { done } from './end.js';
 import { set_occupation } from './allmain.js';
 import { rn2 } from './rng.js';
@@ -13,7 +15,7 @@ import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK,
          HUNGRY, FAINTING,
          A_LAWFUL } from './const.js';
 import { ONAMES } from './objects_data.js';
-import { getobj } from './invent.js';
+import { getobj, weight, useup } from './invent.js';
 import { pline } from './display.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
@@ -202,7 +204,18 @@ export function bite() {
         note_unported_eat('bite:do_reset_eat');
         return 0;
     }
-    note_unported_eat('bite:nutrition');
+    /* src/eat.c bite() tail — force_save_hs makes lesshungry() treat this as
+       eating even though the occupation check would not; see lesshungry. */
+    game.force_save_hs = true;
+    if (v.nmod < 0) {
+        lesshungry(adj_victual_nutrition());
+        consume_oeaten(v.piece, v.nmod);        /* -= -nmod */
+    } else if (v.nmod > 0 && (v.usedtime % v.nmod)) {
+        lesshungry(1);
+        consume_oeaten(v.piece, -1);            /* -= 1 */
+    }
+    game.force_save_hs = false;
+    recalc_wt();
     return 0;
 }
 
@@ -257,9 +270,22 @@ export function done_eating(message) {
     if (message)
         note_unported_eat('done_eating:message');
 
-    /* cpostfx/fpostfx are the food's after-effects and need the corpse and
-       food-effect tables; useup/useupf remove it from inventory or floor. */
-    note_unported_eat('done_eating:postfx_and_useup');
+    /* cpostfx (199 lines) and fpostfx (90) are the food's after-effects and
+       need the corpse and food-effect tables; both stay recorded. */
+    if (piece && (piece.otyp === ONAMES.CORPSE || piece.globby))
+        note_unported_eat('done_eating:cpostfx');
+    else
+        note_unported_eat('done_eating:fpostfx');
+
+    /* the object leaves by one of two doors: useup() when carried, useupf()
+       when it is lying on the floor. useup is ported; useupf still needs
+       delobj plus the shop billing arms. */
+    if (piece) {
+        if (carried(piece))
+            useup(piece);
+        else
+            note_unported_eat('done_eating:useupf');
+    }
 
     game.context.victual = {};          /* zero_victual */
 }
@@ -360,4 +386,137 @@ export function maybe_finished_meal(stopping) {
 export function morehungry(num) {
     game.u.uhunger -= num;
     newuhs(true);
+}
+
+// src/eat.c recalc_wt() — the piece being eaten gets lighter.
+//
+// Three lines of substance: owt is recomputed from weight() as the meal is
+// consumed. C's impossible() on a missing piece is a programming-error
+// report, not a game event, so it is recorded rather than made to throw.
+export function recalc_wt() {
+    const piece = game.context.victual?.piece;
+
+    if (!piece) {
+        note_unported_eat('recalc_wt:impossible');
+        return;
+    }
+    piece.owt = weight(piece);
+}
+
+// src/eat.c adj_victual_nutrition() — race-adjusted nutrition for the two
+// foods that care.
+//
+// Called ONLY when nmod is negative, which is why the first thing it does is
+// negate it; C says so in a comment and asserts nut > 0.
+//
+// Elves get a quarter more from a lembas wafer and orcs a quarter less
+// (800 -> 1000 or 600); dwarves get a sixth more from a cram ration
+// (600 -> 700). The roundings differ -- (nut+2)/4 twice, (nut+3)/6 once --
+// and are C's, not a uniform formula.
+//
+// maybe_polyd checks the POLYFORM first and the race second, so a
+// polymorphed hero is judged by what it currently is. That is recorded;
+// polyform is not modelled, so the race test alone decides here.
+export function adj_victual_nutrition() {
+    const otyp = game.context.victual.piece.otyp;
+    /* only called when nmod is negative; convert to positive */
+    let nut = -game.context.victual.nmod;
+
+    if (otyp === ONAMES.LEMBAS_WAFER) {
+        note_unported_eat('adj_victual_nutrition:maybe_polyd');
+        if (Race_if(PMNAMES.PM_ELF))
+            nut += Math.trunc((nut + 2) / 4);       /* 800 -> 1000 */
+        else if (Race_if(PMNAMES.PM_ORC))
+            nut -= Math.trunc((nut + 2) / 4);       /* 800 -> 600 */
+    } else if (otyp === ONAMES.CRAM_RATION) {
+        note_unported_eat('adj_victual_nutrition:maybe_polyd');
+        if (Race_if(PMNAMES.PM_DWARF))
+            nut += Math.trunc((nut + 3) / 6);       /* 600 -> 700 */
+    }
+    return Math.max(nut, 1);
+}
+
+// src/eat.c lesshungry() — add nutrition, then react to the new total.
+//
+// The two thresholds are 2000 (choke) and 1500 (the "hard time getting all
+// of it down" warning), and the 1500 arm exists so that EVERY eating path
+// warns before the 2000 one kills you -- C says so in a comment.
+//
+// iseating is (occupation == eatfood) || force_save_hs, and it decides which
+// choke() argument is used and whether reset_eat() follows. The force_save_hs
+// half is why recalc_wt's caller sets it around the nutrition update.
+//
+// newuhs(FALSE) runs unconditionally at the end: the hunger STATE is
+// recomputed whether or not anything was said.
+//
+// reset_eat and paranoid_query are not ported and are recorded; the messages
+// need nomovemsg/multi plumbing and are recorded too.
+export function lesshungry(num) {
+    /* see comments in newuhs() for discussion on force_save_hs */
+    const iseating = (game.occupation === eatfood) || game.force_save_hs;
+
+    game.u.uhunger += num;
+    if (game.u.uhunger >= 2000) {
+        if (!iseating || game.context.victual?.canchoke) {
+            if (iseating) {
+                choke(game.context.victual.piece);
+                note_unported_eat('lesshungry:reset_eat');
+            } else {
+                choke(null);        /* opentin's tin is not modelled */
+                /* no reset_eat() */
+            }
+        }
+    } else {
+        /* report when nearly full so all eating warns before choking */
+        if (game.u.uhunger >= 1500 && !game.u.uprops?.HUNGER
+            && (!game.context.victual?.eating
+                || !game.context.victual?.fullwarn)) {
+            note_unported_eat('lesshungry:hard_time_msg');
+            if (!game.context.victual?.eating) {
+                note_unported_eat('lesshungry:multi');
+            } else {
+                if (game.context.victual.canchoke
+                    && (game.context.victual.reqtime
+                        - game.context.victual.usedtime) > 1)
+                    note_unported_eat('lesshungry:paranoid_query');
+            }
+        }
+    }
+    newuhs(false);
+}
+
+// src/eat.c consume_oeaten() — reduce a partly-eaten object's remaining food.
+//
+// A POSITIVE amt is a BIT SHIFT, not a subtraction: oeaten >>= amt halves the
+// remainder amt times. A negative amt is the plain decrement, and because the
+// value is already negative it is ADDED. Reading the sign as "how much to
+// remove" and subtracting in both cases is wrong in the common case.
+//
+// THE CLAMP AT THE END IS THE POINT, and C spends fourteen lines explaining
+// it: oeaten must never reach 0, because the object is not removed from
+// inventory until the "you finish eating" message on the NEXT turn, and a
+// zero oeaten reads as UNTOUCHED. That produced unexpected encumbrance
+// messages at the end of a meal and full nutrition from an interrupted one.
+// C also notes oeaten is unsigned there, so an over-subtraction wraps to a
+// huge positive -- the reported cause of massively heavy food and unlimited
+// satiation. Setting reqtime = usedtime is what actually ends the meal.
+export function consume_oeaten(obj, amt) {
+    if (amt > 0) {
+        /* bit shift to divide the remaining amount of food */
+        obj.oeaten >>= amt;
+    } else {
+        /* simple decrement; value is negative so we actually add it */
+        if (obj.oeaten > -amt)
+            obj.oeaten += amt;
+        else
+            obj.oeaten = 0;
+    }
+
+    /* mustn't let partly-eaten drop all the way to 0 or the item would be
+       restored to untouched; set to no bites left */
+    if (obj.oeaten === 0) {
+        if (obj === game.context.victual?.piece)  /* true unless wishing */
+            game.context.victual.reqtime = game.context.victual.usedtime;
+        obj.oeaten = 1;         /* smallest possible positive value */
+    }
 }

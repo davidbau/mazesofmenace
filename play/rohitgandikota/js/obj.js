@@ -87,3 +87,18 @@ export const Has_contents = (o) => !!(o.cobj && o.cobj.length);
 export const is_metallic = (otmp) =>
     game.objects[otmp.otyp].oc_material >= MATERIALS.IRON
     && game.objects[otmp.otyp].oc_material <= MATERIALS.MITHRIL;
+
+// include/obj.h:435-436 is_mines_prize() / is_soko_prize()
+//
+// One-line identity tests against the object id recorded when the Mines or
+// Sokoban prize was generated. Monsters skip these on the floor until the
+// hero has picked them up, at which point they stop being special.
+//
+// svc.context.achieveo is not modelled, so both ids are undefined and these
+// return false -- which is correct for any level that has not generated a
+// prize, and wrong only on the Mines-end and Sokoban-end levels. Recording
+// that here rather than in the callers, because the callers cannot tell.
+export const is_mines_prize = (o) =>
+    o?.o_id !== undefined && o.o_id === game.context?.achieveo?.mines_prize_oid;
+export const is_soko_prize = (o) =>
+    o?.o_id !== undefined && o.o_id === game.context?.achieveo?.soko_prize_oid;

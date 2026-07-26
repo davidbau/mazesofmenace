@@ -11,6 +11,7 @@
 // the ones that pass, so its count depends on the first six results.
 
 import { game } from './gstate.js';
+import { You, Your } from './pline.js';
 import { UNENCUMBERED, OVERLOADED } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { rn2 } from './rng.js';
@@ -84,10 +85,57 @@ export function near_capacity() {
     return calc_capacity(0);
 }
 
-// src/pickup.c:1978 encumber_msg() — announce a CHANGE in encumbrance. The
-// message needs pline plumbing; the state it reports is near_capacity() above.
-function encumber_msg() {
-    note_unported_attrib('encumber_msg:message');
+// src/pickup.c:1978 encumber_msg() — announce a CHANGE in encumbrance.
+//
+// Nothing prints unless the capacity actually MOVED: go.oldcap is compared
+// against the fresh near_capacity() and the two switches are for getting
+// heavier and for getting lighter, with different wording for the same level.
+// oldcap is then updated unconditionally, INCLUDING when it did not change,
+// which is why the update sits outside both branches.
+//
+// The stagger() verb varies by polyform and is recorded; every other string
+// is C's verbatim.
+export async function encumber_msg() {
+    const newcap = near_capacity();
+
+    if (game.oldcap < newcap) {
+        switch (newcap) {
+        case 1:
+            await Your('movements are slowed slightly because of your load.');
+            break;
+        case 2:
+            await You('rebalance your load.  Movement is difficult.');
+            break;
+        case 3:
+            note_unported_attrib('encumber_msg:stagger');
+            await You('stagger under your heavy load.  Movement is very hard.');
+            break;
+        default:
+            await You(`${newcap === 4 ? 'can barely' : "can't even"}`
+                      + ' move a handspan with this load!');
+            break;
+        }
+        game.botl = true;
+    } else if (game.oldcap > newcap) {
+        switch (newcap) {
+        case 0:
+            await Your('movements are now unencumbered.');
+            break;
+        case 1:
+            await Your('movements are only slowed slightly by your load.');
+            break;
+        case 2:
+            await You('rebalance your load.  Movement is still difficult.');
+            break;
+        case 3:
+            note_unported_attrib('encumber_msg:stagger');
+            await You('stagger under your load.  Movement is still very hard.');
+            break;
+        }
+        game.botl = true;
+    }
+
+    game.oldcap = newcap;
 }
 
 function note_unported_attrib(what) {

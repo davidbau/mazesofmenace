@@ -11,6 +11,7 @@ import { rn2 } from './rng.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER } from './const.js';
 import { humanoid, is_animal, mindless } from './mondata.js';
+import { canspotmon } from './display.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
@@ -75,7 +76,18 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
         note_do_name_unported('x_monnam:shkname');
     if (mtmp.minvis)
         note_do_name_unported('x_monnam:invisible');
-    note_do_name_unported('x_monnam:canspotmon');   /* the "it" arm */
+    /* src/do_name.c:875 — unseen monsters read as "it". do_it is guarded on
+       ARTICLE_YOUR too, so a pet is still named even when unseen, and on
+       usteed and engulfer for the same reason. SUPPRESS_IT and AUGMENT_IT
+       are not modelled, so augment_it is false and the "someone"/"something"
+       arm cannot fire -- that arm's rn2(2) under Hallucination is therefore
+       not spent, which matches C only while Hallucination is unported. */
+    const do_it = !canspotmon(mtmp) && article !== ARTICLE_YOUR
+                  && mtmp !== game.u.usteed;
+    if (do_it) {
+        note_do_name_unported('x_monnam:augment_it');
+        return 'it';
+    }
 
     let buf = pmname(mdat, 2);      /* neutral; Mgender is not ported */
 

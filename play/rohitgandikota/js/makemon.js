@@ -17,7 +17,7 @@ import {
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { depth } from './dungeon.js';
-import { next_ident, mksobj, mkobj } from './mkobj.js';
+import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { attacktype } from './mondata.js';
@@ -793,8 +793,7 @@ const A_NONE_VALUE = -128;   /* include/align.h A_NONE */
 // src/mkobj.c mkobj_at() — used by the S_SPIDER/S_SNAKE arm of makemon().
 function mkobj_at(oclass, x, y, artif) {
     const otmp = mkobj(oclass, artif);
-    otmp.ox = x; otmp.oy = y;
-    (game.level.objects ||= []).push(otmp);
+    place_object(otmp, x, y);
     return otmp;
 }
 

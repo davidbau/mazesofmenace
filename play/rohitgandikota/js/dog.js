@@ -10,7 +10,8 @@
 // from enexto() to place it.
 
 import { game } from './gstate.js';
-import { DEADMONSTER, is_vampshifter } from './monst.js';
+import { which_armor } from './worn.js';
+import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
 import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
@@ -18,14 +19,14 @@ import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead } from './mondata.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless } from './mondata.js';
 import { sobj_at, eaten_stat } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym } from './display.js';
 import { splitobj } from './mkobj.js';
-import { m_consume_obj } from './mon.js';
+import { m_consume_obj, is_pick } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
@@ -1296,8 +1297,103 @@ export function dog_invent(mtmp, edog, udist) {
 /* src/mon.c droppables() — the first thing in the pet's pack it would drop.
    Our monsters carry no inventory yet, so this is empty rather than wrong;
    m_initinv() is the gap, and it is recorded there. */
+// src/dogmove.c droppables() — the object a pet will put down, or null.
+//
+// This was a one-line stub returning minvent[0] unconditionally, with no
+// note_unported marker, so nothing flagged it and it read as finished code.
+// It made our saddled pony report its WORN saddle as droppable, which sent
+// dog_invent into a block C skips and spent an rn2(udist + 1) C never spends.
+//
+// The final test is the one that matters most and the stub had none of it:
+//
+//     if (!obj->owornmask && obj != wep) return obj;
+//
+// A worn or wielded object is never dropped. Everything above it decides
+// which of several TOOLS the pet keeps: &dummy stands in for "already have
+// one", so an animal or mindless monster keeps nothing, and an intelligent
+// one holds a pick-axe only if it tunnels and needs one, a key only if it
+// has hands and is not verysmall.
 function droppables(mtmp) {
-    return (mtmp.minvent && mtmp.minvent.length) ? mtmp.minvent[0] : null;
+    const dummy = { otyp: ONAMES.STRANGE_OBJECT, oartifact: 0 };
+    const mdat = game.mons[mtmp.mnum];
+    const wep = MON_WEP(mtmp);
+    let pickaxe = null, unihorn = null, key = null;
+
+    if (is_animal(mdat) || mindless(mdat)) {
+        /* won't hang on to any objects of these types */
+        pickaxe = unihorn = key = dummy;    /* act as if already have them */
+    } else {
+        /* don't hang on to pick-axe if can't use one or don't need one */
+        if (!tunnels(mdat) || !needspick(mdat))
+            pickaxe = dummy;
+        /* don't hang on to key if can't open doors */
+        if (nohands(mdat) || verysmall(mdat))
+            key = dummy;
+    }
+    if (wep) {
+        if (is_pick(wep))
+            pickaxe = wep;
+        if (wep.otyp === ONAMES.UNICORN_HORN)
+            unihorn = wep;
+        /* don't need any wielded check for keys... */
+    }
+
+    for (const obj of (mtmp.minvent || [])) {
+        switch (obj.otyp) {
+        case ONAMES.DWARVISH_MATTOCK:
+            /* reject mattock if couldn't wield it */
+            if (which_armor(mtmp, W_ARMS))
+                break;
+            /* keep mattock in preference to pick unless pick is already
+               wielded or is an artifact and mattock isn't */
+            if (pickaxe && pickaxe.otyp === ONAMES.PICK_AXE && pickaxe !== wep
+                && (!pickaxe.oartifact || obj.oartifact))
+                return pickaxe;         /* drop the one we decided to keep */
+            /* FALLTHRU */
+        case ONAMES.PICK_AXE:
+            if (!pickaxe || (obj.oartifact && !pickaxe.oartifact)) {
+                if (pickaxe)
+                    return pickaxe;
+                pickaxe = obj;          /* keep this digging tool */
+                continue;
+            }
+            break;
+
+        case ONAMES.UNICORN_HORN:
+            if (obj.cursed)             /* reject cursed unicorn horns */
+                break;
+            if (!unihorn || (obj.oartifact && !unihorn.oartifact)) {
+                if (unihorn)
+                    return unihorn;
+                unihorn = obj;
+                continue;
+            }
+            break;
+
+        case ONAMES.SKELETON_KEY:
+            /* keep key in preference to lock-pick */
+            if (key && key.otyp === ONAMES.LOCK_PICK
+                && (!key.oartifact || obj.oartifact))
+                return key;
+            /* FALLTHRU */
+        case ONAMES.LOCK_PICK:
+            if (!key || (obj.oartifact && !key.oartifact)) {
+                if (key)
+                    return key;
+                key = obj;              /* keep this unlocking tool */
+                continue;
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        if (!obj.owornmask && obj !== wep)
+            return obj;
+    }
+
+    return null;                        /* don't drop anything */
 }
 
 /* src/mondata.h helpless() */

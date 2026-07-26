@@ -11,13 +11,14 @@ import { adjalign } from './attrib.js';
 import { couldsee, cansee } from './vision.js';
 import { finish_meating } from './dogmove.js';
 import { growl } from './sounds.js';
+import { sengr_at } from './engrave.js';
 import { Monnam } from './do_name.js';
 import { hot_pursuit } from './shk.js';
-import { is_metallic } from './obj.js';
+import { is_metallic, is_mines_prize, is_soko_prize } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
-import { mksobj_at } from './mkobj.js';
+import { mksobj_at, splitobj } from './mkobj.js';
 import { newsym, canseemon, pline } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
@@ -33,18 +34,17 @@ import { hastrack } from './track.js';
 // include/trap.h:125 fixed_tele_trap()
 const fixed_tele_trap = (t) => t.ttyp === TELEP_TRAP
                             && isok(t.teledest?.x, t.teledest?.y);
-import { sobj_at } from './invent.js';
+import { sobj_at, obj_extract_self } from './invent.js';
 import { online2, isok } from './hacklib.js';
 /* onscary() and in_your_sanctuary() are src/monmove.c and src/priest.c
    functions living in js/monmove.js, which imports this file. Both sides
    export function declarations, so the cycle resolves through hoisting. */
-import { onscary, in_your_sanctuary, m_can_break_boulder,
-         mon_knows_traps, can_fog } from './monmove.js';
+import { onscary, in_your_sanctuary, m_can_break_boulder, mon_knows_traps, can_fog, inhishop, mon_would_take_item } from './monmove.js';
 import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
     is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
-import { touch_petrifies, mon_hates_silver } from './dog.js';
+import { touch_petrifies, mon_hates_silver, could_reach_item } from './dog.js';
 import { is_rider } from './makemon.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
@@ -1008,7 +1008,7 @@ export async function wakeup(mtmp, via_attack) {
 // branch is unreachable today -- that is the honest state, not a stub: when
 // engravings land the condition starts being true on its own.
 export async function setmangry(mtmp, via_attack) {
-    if (via_attack && note_sengr_at_unported()
+    if (via_attack && sengr_at("Elbereth", game.u.ux, game.u.uy, true)
         && (onscary(game.u.ux, game.u.uy, mtmp) || mtmp.mpeaceful)) {
         /* unreachable until the engraving subsystem is ported */
         adjalign((game.u.ualign.record > 5) ? -5 : -rnd(5));
@@ -1043,12 +1043,6 @@ export async function setmangry(mtmp, via_attack) {
         note_unported_mon('setmangry:peacefuls_respond');
 }
 
-// src/engrave.c sengr_at() — not ported. No engraving can exist yet, so this
-// is false for the same reason C would be false on a bare floor.
-function note_sengr_at_unported() {
-    note_unported_mon('setmangry:sengr_at');
-    return false;
-}
 
 // src/mon.c:3470 killed() — the hero killed this monster, with a message.
 // Three lines in C and a pure delegation; xkilled (263 lines) does the work
@@ -1123,4 +1117,82 @@ export function seemimic(mtmp) {
         note_unported_mon('seemimic:unblock_point');
 
     newsym(mtmp.mx, mtmp.my);
+}
+
+// src/mon.c:1847 mpickstuff() — a monster picks up ONE object from its square.
+//
+// Three early returns before anything else, and their order matters because
+// the second one DRAWS:
+//   a shopkeeper in its own shop never picks up (it would leave the door);
+//   a non-tame monster inside a shop returns on rn2(25), so 24 times in 25 it
+//     does not shop -- this is the function's only draw and it is spent ONLY
+//     inside a shop;
+//   an item it cannot reach (a pool it cannot swim) is skipped.
+//
+// The corpse rule reads backwards until you follow the negations: most
+// monsters SKIP corpses, and the exceptions -- nymphs, petrifying corpses,
+// lizard, acidic -- fall through to can_carry() instead.
+//
+// Returns after the FIRST object taken; C's comment says "pick only one".
+//
+// distant_name/doname, mpickobj and check_gear_next_turn are recorded.
+export function mpickstuff(mtmp) {
+    const mdat = game.mons[mtmp.mnum];
+
+    /* prevent shopkeepers from leaving the door of their shop */
+    if (mtmp.isshk && inhishop(mtmp))
+        return false;
+
+    /* non-tame monsters normally don't go shopping */
+    if (!mtmp.mtame && in_rooms(mtmp.mx, mtmp.my, SHOPBASE)?.length
+        && rn2(25))
+        return false;
+
+    /* item in a pool, but monster can't swim */
+    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my))
+        return false;
+
+    const here = (game.level.objects || [])
+                     .filter(o => o.ox === mtmp.mx && o.oy === mtmp.my);
+    for (const otmp of here) {
+        /* avoid special items; once the hero picks them up they cease being
+           special and become eligible for normal pickup */
+        /* avoid special items; once the hero picks them up they cease being
+           special and become eligible for normal pickup */
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
+            continue;
+
+        /* Nymphs take everything.  Most monsters don't pick up corpses. */
+        if (mon_would_take_item(mtmp, otmp)) {
+            if (otmp.otyp === ONAMES.CORPSE && mdat.mlet !== MONSYMS.S_NYMPH
+                && !note_unported_mon('mpickstuff:touch_petrifies')
+                && otmp.corpsenm !== PMNAMES.PM_LIZARD
+                && !note_unported_mon('mpickstuff:acidic'))
+                continue;
+            if (!can_touch_safely(mtmp, otmp))
+                continue;
+            const carryamt = can_carry(mtmp, otmp);
+            if (carryamt === 0)
+                continue;
+
+            /* handle cases where the critter can only get some */
+            let otmp3 = otmp;
+            if (carryamt !== otmp.quan)
+                otmp3 = splitobj(otmp, carryamt);
+
+            if (cansee(mtmp.mx, mtmp.my)) {
+                /* C calls distant_name() for its SIDE EFFECTS even when the
+                   result is not printed, and does so BEFORE the extract */
+                note_unported_mon('mpickstuff:distant_name');
+                if (game.flags?.verbose)
+                    note_unported_mon('mpickstuff:pline_picks_up');
+            }
+            obj_extract_self(otmp3);        /* remove from floor */
+            note_unported_mon('mpickstuff:mpickobj');
+            note_unported_mon('mpickstuff:check_gear_next_turn');
+            newsym(mtmp.mx, mtmp.my);
+            return true;                    /* pick only one object */
+        }
+    }
+    return false;
 }

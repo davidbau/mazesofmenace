@@ -57,3 +57,69 @@ export function find_ac() {
         game.disp.botl = true;
     }
 }
+
+// src/do_wear.c Armor_on() — called when a suit becomes worn.
+//
+// The core is two lines and it is SCREEN-VISIBLE: setting uarm.known makes
+// the suit's enchantment evident, which is what lets the status line show the
+// real AC. C's comment says exactly that.
+//
+// dragon_armor_handling and the artifact-light branch (begin_burn plus its
+// "begins to shine" message) are recorded; neither fires for ordinary
+// starting armour.
+export function Armor_on() {
+    if (!game.uarm)     /* no known instances of !uarm here but play it safe */
+        return 0;
+    if (!game.uarm.known) {
+        game.uarm.known = 1;   /* +/- evident because of status line AC */
+        note_unported_do_wear('Armor_on:update_inventory');
+    }
+    note_unported_do_wear('Armor_on:dragon_armor_handling');
+    note_unported_do_wear('Armor_on:artifact_light');
+    return 0;
+}
+
+// src/do_wear.c set_wear() — apply the on-effects of worn gear.
+//
+// With obj null it walks EVERY worn slot; with an object it does just that
+// one. C's `!obj ? uslot != 0 : (obj == uslot)` is that test written once per
+// slot, and the ORDER is fixed: blindfold, right ring, left ring, amulet,
+// then shirt, suit, cloak, boots, gloves, helmet, shield.
+//
+// Only Armor_on is ported. The other nine slot handlers -- Blindf_on,
+// Ring_on, Amulet_on, Shirt_on, Cloak_on, Boots_on, Gloves_on, Helmet_on,
+// Shield_on -- do not exist yet and are recorded by slot, so game.unported
+// names which one a divergence wanted.
+export function set_wear(obj) {
+    game.initial_don = !obj;
+
+    if (!obj ? game.ublindf : (obj === game.ublindf))
+        note_unported_do_wear('set_wear:Blindf_on');
+    if (!obj ? game.uright : (obj === game.uright))
+        note_unported_do_wear('set_wear:Ring_on:right');
+    if (!obj ? game.uleft : (obj === game.uleft))
+        note_unported_do_wear('set_wear:Ring_on:left');
+    if (!obj ? game.uamul : (obj === game.uamul))
+        note_unported_do_wear('set_wear:Amulet_on');
+
+    if (!obj ? game.uarmu : (obj === game.uarmu))
+        note_unported_do_wear('set_wear:Shirt_on');
+    if (!obj ? game.uarm : (obj === game.uarm))
+        Armor_on();
+    if (!obj ? game.uarmc : (obj === game.uarmc))
+        note_unported_do_wear('set_wear:Cloak_on');
+    if (!obj ? game.uarmf : (obj === game.uarmf))
+        note_unported_do_wear('set_wear:Boots_on');
+    if (!obj ? game.uarmg : (obj === game.uarmg))
+        note_unported_do_wear('set_wear:Gloves_on');
+    if (!obj ? game.uarmh : (obj === game.uarmh))
+        note_unported_do_wear('set_wear:Helmet_on');
+    if (!obj ? game.uarms : (obj === game.uarms))
+        note_unported_do_wear('set_wear:Shield_on');
+
+    game.initial_don = false;
+}
+
+function note_unported_do_wear(what) {
+    (game.unported ||= new Set()).add('do_wear:' + what);
+}

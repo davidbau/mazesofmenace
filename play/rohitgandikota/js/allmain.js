@@ -4,6 +4,7 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
+import { set_wear } from './do_wear.js';
 import { maybe_finished_meal } from './eat.js';
 
 // src/allmain.c set_occupation() / stop_occupation() — the multi-turn action
@@ -285,9 +286,22 @@ export async function newgame() {
     // hero-can't-move loop starts at -NORMAL_SPEED instead of 0 and runs its
     // new-turn block twice per command, advancing the turn counter twice.
     g.context.rndencode = rnd(9000);
-    /* set_wear() and pickup(1) draw only when there is something to wear or
-       pick up at the starting square; neither is ported. */
-    note_unported_main('moveloop_preamble set_wear/pickup');
+    /* src/allmain.c:73 — a NEW game calls set_wear((struct obj *) 0) here,
+       "for side-effects of starting gear", and nothing else. The
+       read_engr_at() on line 87 is in the `if (resuming)` branch and only
+       runs when RESTORING a save, so it is not on this path at all; an
+       earlier comment here claimed pickup(1), which C does not call either.
+       set_wear is 30 lines in src/do_wear.c but is a DISPATCHER, not a leaf:
+       it calls Blindf_on, Ring_on, Amulet_on, Shirt_on, Armor_on, Cloak_on,
+       Boots_on, Gloves_on, Helmet_on and Shield_on, and NONE of those ten
+       exist in js/ yet. Porting it means porting whichever of them the
+       starting gear actually triggers -- for most roles that is Armor_on
+       plus one or two others, so the real unit is those functions rather
+       than set_wear itself.
+
+       tools/unported-hits.mjs has this reached by 100% of sessions, but the
+       reach figure counts the CALL, not the work behind it. */
+    set_wear(null);   /* for side-effects of starting gear */
     g.context.seer_turn = rnd(30);
     g.u.umovement = NORMAL_SPEED;
 

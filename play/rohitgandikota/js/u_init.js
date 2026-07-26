@@ -235,7 +235,7 @@ function Role_if(pm) {
     return m === pm || m === PMNAMES[pm];
 }
 
-function Race_if(pm) {
+export function Race_if(pm) {
     const m = game.urace?.mnum;
     return m === pm || m === PMNAMES[pm];
 }

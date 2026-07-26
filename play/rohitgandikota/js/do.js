@@ -7,8 +7,14 @@
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
-import { pline } from './display.js';
-import { ECMD_OK, ECMD_TIME } from './const.js';
+import { reset_occupations } from './cmd.js';
+import { welded } from './wield.js';
+import { ONAMES } from './objects_data.js';
+import { encumber_msg } from './attrib.js';
+import { freeinv, getobj, any_obj_ok } from './invent.js';
+import { place_object } from './mkobj.js';
+import { pline, newsym } from './display.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR } from './const.js';
 import { rn2, rnd } from './rng.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
@@ -170,4 +176,186 @@ export async function deferred_goto() {
     game.u.utotype = UTOTYPE_NONE;      /* the caller keys off this */
     game.dfr_pre_msg = null;
     game.dfr_post_msg = null;
+}
+
+// src/do.c dropz() — put the object on the floor (or into the engulfer).
+//
+// The three wielded-slot clears come FIRST: an object being dropped must stop
+// being the weapon, quiver or offhand before it leaves inventory, or those
+// pointers dangle.
+//
+// flooreffects RETURNS EARLY when the object is destroyed on landing -- water,
+// lava, a trapdoor -- so place_object is skipped entirely in that case. Calling
+// place_object unconditionally would leave a destroyed object on the map.
+//
+// encumber_msg() runs at the very end and OUTSIDE the swallow branch, so
+// dropping while engulfed still reports the weight change.
+//
+// The engulfer branch, flooreffects, container impact, zombie disturbance,
+// ball dropping, shop selling, stackobj and the blind-levitation map_object
+// are recorded.
+export function dropz(obj, with_impact) {
+    if (obj === game.uwep)
+        note_unported_do('dropz:setuwep');
+    if (obj === game.uquiver)
+        note_unported_do('dropz:setuqwep');
+    if (obj === game.uswapwep)
+        note_unported_do('dropz:setuswapwep');
+
+    if (game.u.uswallow) {
+        note_unported_do('dropz:engulfer_branch');
+    } else {
+        if (note_unported_do('dropz:flooreffects'))
+            return;
+        place_object(obj, game.u.ux, game.u.uy);
+        if (with_impact)
+            note_unported_do('dropz:container_impact_dmg');
+        note_unported_do('dropz:impact_disturbs_zombies');
+        if (obj === game.uball)
+            note_unported_do('dropz:drop_ball');
+        else if (game.level?.flags?.has_shop)
+            note_unported_do('dropz:sellobj');
+        note_unported_do('dropz:stackobj');
+        newsym(game.u.ux, game.u.uy);   /* remap location under self */
+    }
+    encumber_msg();
+}
+
+// src/do.c dropy() — dropz with no impact.
+export function dropy(obj) {
+    dropz(obj, false);
+}
+
+// src/do.c dropx() — take it out of inventory, then put it down.
+//
+// freeinv FIRST, then the placement. ship_object is the chute that swallows
+// an object on a Sokoban or level-teleporter square and RETURNS EARLY, so
+// nothing reaches the floor there; doaltarobj sets bknown when it lands on
+// an altar.
+export function dropx(obj) {
+    freeinv(obj);
+    if (!game.u.uswallow) {
+        if (note_unported_do('dropx:ship_object'))
+            return;
+        if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ))
+            note_unported_do('dropx:doaltarobj');   /* sets bknown */
+    }
+    dropy(obj);
+}
+
+// src/do.c drop() — the guards, then dropx().
+//
+// Four ways to fail before anything moves: no object, canletgo says no
+// (cursed-and-worn, or a container in use), a corpse better_not_try_to_drop,
+// and a WELDED weapon -- which prints the weld message and fails rather than
+// silently declining, so the player learns why.
+//
+// The wielded-slot clears happen HERE as well as in dropz. That is not
+// redundant in C: drop() can return ECMD_TIME through the levitation path
+// below without ever reaching dropz, and the slot still has to be cleared.
+//
+// how_lost = LOST_DROPPED is set immediately before dropx so the object
+// records how it left inventory; bones and shop code read it.
+//
+// The engulfed branch, the Heart of Ahriman levitation dance (ELevitation is
+// forced so hitfloor happens before float_down), doname messages, canletgo,
+// welded/weldmsg and hitfloor are recorded.
+export function drop(obj) {
+    if (!obj)
+        return ECMD_FAIL;
+    if (!canletgo(obj, 'drop'))
+        return ECMD_FAIL;
+    if (obj.otyp === ONAMES.CORPSE
+        && note_unported_do('drop:better_not_try_to_drop_that'))
+        return ECMD_FAIL;
+    if (obj === game.uwep) {
+        if (welded(obj)) {
+            note_unported_do('drop:weldmsg');
+            return ECMD_FAIL;
+        }
+        note_unported_do('drop:setuwep');
+    }
+    if (obj === game.uquiver)
+        note_unported_do('drop:setuqwep');
+    if (obj === game.uswapwep)
+        note_unported_do('drop:setuswapwep');
+
+    if (game.u.uswallow) {
+        note_unported_do('drop:engulfed_branch');
+    } else {
+        note_unported_do('drop:levitation_and_message');
+    }
+    obj.how_lost = LOST_DROPPED;
+    dropx(obj);
+    return ECMD_TIME;
+}
+
+// src/do.c dodrop() — the 'd' command.
+//
+// sellobj_state brackets the getobj so a shop prices the item as a
+// DELIBERATE sale rather than an accidental one, and is restored afterwards
+// whether or not anything was dropped.
+export async function dodrop() {
+    if (game.u.ushops?.length)
+        note_unported_do('dodrop:sellobj_state:DELIBERATE');
+    const result = drop(await getobj('drop', any_obj_ok,
+                                     GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
+    if (game.u.ushops?.length)
+        note_unported_do('dodrop:sellobj_state:NORMAL');
+    if (result)
+        reset_occupations();
+
+    return result;
+}
+
+// src/do.c:665 canletgo() — may this object leave the hero's hands?
+//
+// Five refusals, and each one's MESSAGE is suppressed when `word` is empty:
+// callers that only want the yes/no answer pass "" and get it silently. That
+// is why the welded arm's comment warns that bknown can become set with no
+// message shown.
+//
+//   worn armour or accessory   you cannot drop what you are wearing
+//   welded uwep                and NO weldmsg here, unlike drop()
+//   cursed LOADSTONE           the classic refusal, and it set_bknown()s
+//   LEASH with a monster on it tied around your hand
+//   the SADDLE you are on
+//
+// The loadstone arm carries a getobj kludge: corpsenm holds the count the
+// player asked for when a stack split was refused, is used to word the
+// message, and is RESET to 0 immediately after. Preserved because a leftover
+// corpsenm on a loadstone would read as a corpse type.
+//
+// The messages, body_part/makeplural and set_bknown are recorded; every
+// refusal itself is real.
+export function canletgo(obj, word) {
+    if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        if (word) note_unported_do('canletgo:wearing_msg');
+        return false;
+    }
+    if (obj === game.uwep && welded(game.uwep)) {
+        /* no weldmsg(), so uwep bknown might become set silently */
+        if (word) note_unported_do('canletgo:welded_msg');
+        return false;
+    }
+    if (obj.otyp === ONAMES.LOADSTONE && obj.cursed) {
+        if (word) {
+            /* getobj ignores a count for throwing; replicate its kludge */
+            if (word === 'throw' && obj.quan > 1)
+                obj.corpsenm = 1;
+            note_unported_do('canletgo:loadstone_msg');
+        }
+        obj.corpsenm = 0;               /* reset */
+        note_unported_do('canletgo:set_bknown');
+        return false;
+    }
+    if (obj.otyp === ONAMES.LEASH && obj.leashmon !== 0) {
+        if (word) note_unported_do('canletgo:leash_msg');
+        return false;
+    }
+    if (obj.owornmask & W_SADDLE) {
+        if (word) note_unported_do('canletgo:saddle_msg');
+        return false;
+    }
+    return true;
 }
