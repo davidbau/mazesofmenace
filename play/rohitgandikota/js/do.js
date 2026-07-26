@@ -1,3 +1,11 @@
+import { VIBRATING_SQUARE } from './const.js';
+import { You_cant } from './pline.js';
+import { OCLASSES } from './objects_data.js';
+import { IS_SINK } from './const.js';
+import { can_reach_floor } from './engrave.js';
+import { is_lava } from './mon.js';
+import { is_pool } from './mon.js';
+import { t_at } from './mon.js';
 import { setuqwep } from './wield.js';
 import { impact_disturbs_zombies } from './hack.js';
 import { stackobj } from './invent.js';
@@ -62,7 +70,17 @@ export async function dodown() {
     /* levitation, being stuck, u_rooted, trapdoors and holes each have their
        own arm above this in C; none is reachable without those subsystems */
     if (!stairs_down && !ladder_down) {
-        note_unported_do('dodown:not_on_stairs');
+        /* src/do.c dodown() — the levitation, stuck, u_rooted, trapdoor and
+           hole arms all sit above this and need subsystems that are absent;
+           each records. What C actually does when none of them applies is
+           print "You can't go down here." and spend no turn.
+           The " yet" suffix is for the vibrating square. */
+        const trap = t_at(game.u.ux, game.u.uy);
+        if (game.flags?.autodig && !game.context?.nopick && game.u.uwep)
+            note_unported_do('dodown:autodig');
+        await You_cant('go down here'
+                       + ((trap && trap.ttyp === VIBRATING_SQUARE) ? ' yet' : '')
+                       + '.');
         return ECMD_OK;
     }
 
@@ -215,8 +233,23 @@ export function dropz(obj, with_impact) {
     if (game.u.uswallow) {
         note_unported_do('dropz:engulfer_branch');
     } else {
-        if (note_unported_do('dropz:flooreffects'))
-            return;
+        /* src/do.c flooreffects() — returns TRUE when the object did NOT
+           come to rest on the floor: a boulder filling a pool or pit, or
+           the object burning in lava, sinking in water, or falling into a
+           hole. On ordinary dry floor with no trap it returns FALSE and the
+           caller places the object, which is what happens here.
+
+           Recording unconditionally claimed a gap on every drop; it now
+           fires only where C could actually answer TRUE. */
+        {
+            const t = t_at(game.u.ux, game.u.uy);
+            if (obj.otyp === ONAMES.BOULDER || t
+                || is_pool(game.u.ux, game.u.uy)
+                || is_lava(game.u.ux, game.u.uy)) {
+                if (note_unported_do('dropz:flooreffects'))
+                    return;
+            }
+        }
         place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
             note_unported_do('dropz:container_impact_dmg');
@@ -296,7 +329,22 @@ export function drop(obj) {
     if (game.u.uswallow) {
         note_unported_do('drop:engulfed_branch');
     } else {
-        note_unported_do('drop:levitation_and_message');
+        /* src/do.c drop() — two conditional arms, neither of which fires on
+           an ordinary drop:
+             a RING (or meat ring) onto a SINK goes to dosinkring(), and
+             !can_reach_floor(TRUE) takes the levitation path with
+             finesse_ahriman/hitfloor/float_down.
+           can_reach_floor is now ported and answers TRUE for a hero standing
+           normally, so recording unconditionally claimed a gap on every
+           single drop. */
+        const sink = IS_SINK(game.level.at(game.u.ux, game.u.uy)?.typ);
+        if ((obj.oclass === OCLASSES.RING_CLASS
+             || obj.otyp === ONAMES.MEAT_RING) && sink) {
+            note_unported_do('drop:dosinkring');
+            return ECMD_TIME;
+        }
+        if (!can_reach_floor(true))
+            note_unported_do('drop:levitation_and_message');
     }
     obj.how_lost = LOST_DROPPED;
     dropx(obj);

@@ -48,6 +48,7 @@ export const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
 const NON_PM = -1;
 // include/hack.h:1189-1200 — corpse/statue gender is stored in obj.spe.
 const CORPSTAT_INIT = 0x08;
+const CORPSTAT_SPE_VAL = 0x07;
 const CORPSTAT_FEMALE = 1, CORPSTAT_MALE = 2, CORPSTAT_NEUTER = 3;
 // include/hack.h:1404-1406
 const TAINT_AGE = 50, TROLL_REVIVE_CHANCE = 37, ROT_AGE = 250;
@@ -1168,3 +1169,37 @@ export function add_to_container(container, obj) {
     return obj;
 }
 
+
+// src/mkobj.c mkcorpstat() — make a CORPSE or STATUE object.
+//
+// The reached path for an ordinary death needs only mksobj_at, which is
+// ported: x,y are the dead monster's square so the random-placement rloco()
+// branch never runs, and mtmp is Null unless KEEPTRAITS holds, so
+// save_mtraits() is skipped too.
+export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
+    const init = (corpstatflags & CORPSTAT_INIT) !== 0;
+    let otmp;
+
+    if (x === 0 && y === 0) {
+        /* special case - random placement via rloco(), unported */
+        (game.unported ||= new Set()).add('mkobj:mkcorpstat:random_placement');
+        return null;
+    }
+    otmp = mksobj_at(objtype, x, y, init, false);
+    if (!otmp)
+        return null;
+
+    /* record gender and 'historic statue' in overloaded enchantment field */
+    otmp.spe = (corpstatflags & CORPSTAT_SPE_VAL);
+    otmp.norevive = game.mkcorpstat_norevive ? 1 : 0;
+
+    if (mtmp) {
+        /* save_mtraits() stores the monster's details on the corpse */
+        (game.unported ||= new Set()).add('mkobj:mkcorpstat:save_mtraits');
+    }
+
+    if (ptr)
+        otmp.corpsenm = ptr.pmidx;
+
+    return otmp;
+}

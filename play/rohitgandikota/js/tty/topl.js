@@ -94,7 +94,22 @@ function addtopl(bp) {
 }
 
 // win/tty/topl.c:96 remember_topl() — push the current line into ^P history.
-// The history buffer is not modelled yet; nothing reads it.
+//
+// It is NOT purely history, which is how this was described before. C also
+// clears gt.toplines and advances the ring position:
+//
+//     if (!program_state.in_checkpoint) {
+//         *gt.toplines = '\0';
+//         cw->maxcol = cw->maxrow = (idx + 1) % cw->rows;
+//     }
+//
+// The clear is harmless HERE, and that is the real reason this stays
+// unported rather than "no screen output": update_topl() is the only caller
+// in both C and this port, and it overwrites the message immediately after,
+// so clearing it first changes nothing. The ring position only matters to
+// ^P, which nothing reads yet.
+//
+// If a second caller ever appears, this reasoning expires with it.
 function remember_topl() {
     (game.unported ||= new Set()).add('topl:remember_topl');
 }

@@ -572,6 +572,9 @@ export function mpickobj(mtmp, otmp) {
 // branches that need nothing beyond mksobj(). The mlet switch's remaining arms
 // are noted where they belong; each is reached only by a species that cannot
 // yet be generated, and reaching one is recorded rather than approximated.
+/* include/mondata.h:111 is_mercenary() — local copy; see the S_HUMAN arm. */
+const is_merc = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
+
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
 
@@ -593,6 +596,20 @@ function m_initinv(mtmp) {
     case S_GIANT:
     case S_WRAITH:
     case S_LICH:
+    case S_HUMAN:
+        /* src/makemon.c — this arm is a CHAIN: is_mercenary, then
+           PM_SHOPKEEPER, then MS_PRIEST, then a quest monk. An ordinary
+           human matches none of them and C does nothing, so recording for
+           every S_HUMAN overstated the gap.
+           is_merc is a local copy of include/mondata.h:111; js/monmove.js:379
+           has another. Consolidating the three is a separate change, noted in
+           STATUS -- moving it to mondata.js produced a redeclaration I could
+           not trace. */
+        if (is_merc(ptr)
+            || ptr.pmidx === PMNAMES.PM_SHOPKEEPER
+            || ptr.msound === MFLAGS.MS_PRIEST)
+            note_unported(`m_initinv mlet=${ptr.mlet}`);
+        break;
     case S_QUANTMECH:
     case S_DEMON:
     case S_GNOME:

@@ -1,3 +1,12 @@
+import { relobj, steal_wire_droppables } from './steal.js';
+import { ROT_ICE_ADJUSTMENT } from './const.js';
+import { max_passive_dmg } from './mondata.js';
+import { M_ATTK_MISS } from './const.js';
+import { onscary } from './monmove.js';
+import { M_ATTK_DEF_DIED } from './const.js';
+import { M_ATTK_HIT } from './const.js';
+import { M_ATTK_AGR_DIED } from './const.js';
+import { mattackm } from './mhitm.js';
 // dog.js — the starting pet.
 // C ref: src/dog.c
 //
@@ -223,8 +232,14 @@ const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
    cooking code lands, so recording keeps the gap visible without inventing a
    branch. */
 function peek_at_iced_corpse_age(obj) {
-    note_unported('peek_at_iced_corpse_age');
-    return obj.age ?? 0;
+    let retval = obj.age ?? 0;
+
+    if (obj.otyp === ONAMES.CORPSE && obj.on_ice) {
+        /* Adjust the age; must be same as obj_timer_checks() for off ice */
+        const age = game.moves - (obj.age ?? 0);
+        retval += Math.floor(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
+    }
+    return retval;
 }
 
 function stale_egg(obj) {
@@ -943,8 +958,48 @@ function pet_ranged_attk(mtmp, forced) {
 
     /* Hungry pets are unlikely to use breath/spit attacks */
     if (mtarg && (!hungry || !rn2(5))) {
-        /* the attack itself needs mattacku / the monster attack code */
-        note_unported('pet_ranged_attk:attack');
+        let mstatus = M_ATTK_MISS;
+
+        if (mtarg === game.youmonst) {
+            /* mattacku() -- a pet attacking the HERO needs the
+               monster-attacks-you path, which is not ported. */
+            note_unported('pet_ranged_attk:mattacku');
+            return MMOVE_NOTHING;
+        }
+
+        game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+        mstatus = mattackm(mtmp, mtarg);
+
+        /* Shouldn't happen, really */
+        if (mstatus & M_ATTK_AGR_DIED)
+            return MMOVE_DIED;
+
+        /* Allow the targeted nasty to strike back - if the targeted beast
+         * doesn't have a ranged attack, nothing will happen. */
+        if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
+            && rn2(4)) {
+            /* Can monster see?  If it can, it can retaliate even if the pet
+             * is invisible, since it'll see the direction the ranged attack
+             * came from; haseyes() is unported, so only mcansee is tested
+             * here and the eyeless case is recorded. */
+            if (mtarg.mcansee) {
+                note_unported('pet_ranged_attk:haseyes');
+                game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+                const mresp = mattackm(mtarg, mtmp);
+                if (mresp & M_ATTK_DEF_DIED)
+                    return MMOVE_DIED;
+            }
+        }
+
+        /* Only lose the rest of the move if a ranged attack really happened;
+         * best_target never selects a melee-reachable monster, so mattackm
+         * can only have tried ranged options, and returns M_ATTK_MISS when
+         * the monster has none. */
+        if (mstatus !== M_ATTK_MISS)
+            return MMOVE_DONE;
+    } else if (forced) {
+        /* domonnoise() */
+        note_unported('pet_ranged_attk:domonnoise');
     }
     return MMOVE_NOTHING;
 }
@@ -1064,9 +1119,53 @@ export function dog_move(mtmp, after) {
            ALLOW_U on the non-tame, non-peaceful arm, so a pet never carries
            it -- but matching the C costs nothing and removes a condition that
            would be wrong the moment a conflicted pet did get the flag. */
-        if (mfp.info[i] & ALLOW_M) {
-            note_unported('dog_move attack branch');
-            continue;
+        if ((mfp.info[i] & ALLOW_M) && m_at(nx, ny)) {
+            const mtmp2 = m_at(nx, ny);
+            /* src/dogmove.c:1119 — how audacious the pet is about attacking
+               a differently-levelled foe, scaled by its fraction of max HP.
+               balk maxes at +3 and is the LOWEST level it refuses, which is
+               why the comparison below is >=. */
+            const balk = mtmp.m_lev + Math.floor((5 * mtmp.mhp) / mtmp.mhpmax) - 2;
+
+            if ((mtmp2.m_lev | 0) >= balk
+                || (mtmp2.mtame && mtmp.mtame)
+                || (max_passive_dmg(mtmp2, mtmp) >= mtmp.mhp)
+                || ((mtmp.mhp * 4 < mtmp.mhpmax
+                     || mtmp2.data.msound === MFLAGS.MS_GUARDIAN
+                     || mtmp2.data.msound === MFLAGS.MS_LEADER)
+                    && mtmp2.mpeaceful)) {
+                continue;
+            }
+
+            if ((mtmp2.data.pmidx === PMNAMES.PM_FLOATING_EYE && rn2(10))
+                || (mtmp2.data.pmidx === PMNAMES.PM_GELATINOUS_CUBE && rn2(10))
+                || (touch_petrifies(mtmp2.data) && !resists_ston(mtmp))) {
+                /* C consults best_target() before giving up, to allow a
+                   ranged attack instead; that is unported, and its own
+                   comment marks ranged_only as not working as intended. */
+                continue;
+            }
+
+            if (after)
+                return MMOVE_NOTHING; /* hit only once each move */
+
+            game.bhitpos = { x: nx, y: ny };
+            const mstatus = mattackm(mtmp, mtmp2);
+
+            /* aggressor (pet) died */
+            if (mstatus & M_ATTK_AGR_DIED)
+                return MMOVE_DIED;
+
+            if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+                && rn2(4)
+                && mtmp2.mlstmv !== game.moves
+                && !onscary(mtmp.mx, mtmp.my, mtmp2)) {
+                /* the counter-attack; monnear() is unported and only matters
+                   for long worms, which cannot be reached here yet */
+                game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+                mattackm(mtmp2, mtmp); /* return attack */
+            }
+            return MMOVE_DONE;
         }
 
         /* src/dogmove.c:1182 — keep clear of the square the hero just kicked,
@@ -1253,7 +1352,7 @@ export function dog_invent(mtmp, edog, udist) {
     if (droppables(mtmp)) {
         if (!rn2(udist + 1) || !rn2(edog.apport))
             if (rn2(10) < edog.apport) {
-                note_unported('relobj');           /* the drop itself */
+                relobj(mtmp, mtmp.minvis ? 1 : 0, true);  /* the drop itself */
                 if (edog.apport > 1) edog.apport--;
                 edog.dropdist = udist;
                 edog.droptime = game.moves;
@@ -1428,3 +1527,6 @@ function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
     return dx * dx + dy * dy;
 }
+
+/* hand droppables() to js/steal.js; see its header for why */
+steal_wire_droppables(droppables);

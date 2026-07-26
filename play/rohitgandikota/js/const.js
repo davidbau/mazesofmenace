@@ -533,6 +533,18 @@ export const AMII_LOUDER_VOLUME = 80;
 // ===== monflag.h =====
 export const NEUTRAL = (FEMALE + 1);
 export const NUM_MGENDERS = (NEUTRAL + 1);
+// src/? accessible(x,y) — ACCESSIBLE of the terrain at (x,y).
+export function accessible(x, y) {
+    const loc = game?.level?.at?.(x, y);
+    return !!loc && ACCESSIBLE(loc.typ);
+}
+
+// src/mkobj.c:2391 ROT_ICE_ADJUSTMENT — a file-local #define in C, not a
+// header constant; kept here because js/dog.js holds peek_at_iced_corpse_age,
+// which is itself drift from its src/mkobj.c home.
+export const ROT_ICE_ADJUSTMENT = 2;
+
+export const G_FREQ = 0x0007;   /* monflag.h:202 creation frequency mask */
 export const G_UNIQ = 0x1000;   /* monflag.h:194 generated only once */
 export const G_KNOWN = 0x04;
 export const G_GENOD = 0x02;
@@ -2124,6 +2136,13 @@ export const ALLOW_SSM    = 0x40000000;
 export const NOGARLIC     = 0x80000000 | 0; // force signed 32-bit
 
 // Monster attack result bitmask flags (src/uhitm.c and src/mhitm.c)
+// include/monattk.h struct attack { aatyp, adtyp, damn, damd }.
+// js/monst_data.js stores each entry as a 4-element ARRAY rather than an
+// object, so C's mattk->aatyp is mattk[MATTK_AATYP] here. Named so a misread
+// is a visible error rather than a silent `undefined`.
+export const MATTK_AATYP = 0, MATTK_ADTYP = 1,
+             MATTK_DAMN = 2,  MATTK_DAMD = 3;
+
 export const M_ATTK_MISS = 0x0;
 export const M_ATTK_HIT = 0x1;
 export const M_ATTK_DEF_DIED = 0x2;

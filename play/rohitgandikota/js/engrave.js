@@ -1,3 +1,8 @@
+import { Is_airlevel, Is_waterlevel } from './const.js';
+import { Levitation, Flying } from './youprop.js';
+import { ceiling_hider } from './mondata.js';
+import { t_at } from './mon.js';
+import { MFLAGS } from './monst_data.js';
 // engrave.js — engravings.
 // C ref: src/engrave.c
 //
@@ -218,4 +223,45 @@ export function sengr_at(s, x, y, strict) {
 
 function note_unported_engrave(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/engrave.c:187 can_reach_floor() — can the hero touch the ground?
+//
+// Gates dropping, engraving, picking things up and looting. Every early-game
+// answer is TRUE, and the FALSE cases are all special states: swallowed, held
+// by a hugger, levitating, riding without the skill, or hiding on a ceiling.
+//
+// sticks(), the riding-skill test and the pit tests are unported and record
+// only where they would decide the answer, so an ordinary hero on ordinary
+// floor gets a real TRUE rather than a guess.
+export function can_reach_floor(check_pit) {
+    const u = game.u;
+
+    if (u?.uswallow)
+        return false;
+    if (u?.ustuck) {
+        /* sticks(youmonst.data) and attacktype(ustuck->data, AT_HUGS) */
+        (game.unported ||= new Set()).add('engrave:can_reach_floor:ustuck');
+        return false;
+    }
+    if (Levitation() && !(Is_airlevel(u?.uz) || Is_waterlevel(u?.uz)))
+        return false;
+
+    /* Restricted/unskilled riders can't reach the floor */
+    if (u?.usteed) {
+        (game.unported ||= new Set()).add('engrave:can_reach_floor:riding_skill');
+        return false;
+    }
+    if (u?.uundetected && ceiling_hider(game.youmonst?.data))
+        return false;
+
+    if (Flying() || (game.youmonst?.data?.msize | 0) >= MFLAGS.MZ_HUGE)
+        return true;
+
+    if (check_pit && t_at(u.ux, u.uy)) {
+        /* uteetering_at_seen_pit() / uescaped_shaft() */
+        (game.unported ||= new Set()).add('engrave:can_reach_floor:pit');
+    }
+
+    return true;
 }

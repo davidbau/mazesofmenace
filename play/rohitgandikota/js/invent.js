@@ -629,7 +629,19 @@ function freeinv_core(obj) {
         (game.disp ||= {}).botl = true;
         return;
     }
-    note_unported_invent('freeinv_core:uhave_artifacts');
+    /* src/invent.c freeinv_core() — the u.uhave bookkeeping. Each arm is a
+       specific artifact: the Amulet of Yendor, the Candelabrum, the Bell of
+       Opening, the Book of the Dead, then any oartifact for the quest
+       artifact. An ORDINARY object matches none of them and C does nothing,
+       so recording unconditionally claimed a gap on every single drop. */
+    if (obj.otyp === ONAMES.AMULET_OF_YENDOR
+        || obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
+        || obj.otyp === ONAMES.BELL_OF_OPENING
+        || obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
+        || obj.oartifact) {
+        /* u.uhave is not tracked, and set_artifact_intrinsic is unported */
+        note_unported_invent('freeinv_core:uhave_artifacts');
+    }
 
     if (obj.otyp === ONAMES.LOADSTONE)
         curse(obj);

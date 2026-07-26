@@ -492,6 +492,11 @@ export async function doextcmd() {
         return await dojump();
     if (name === 'levelchange')
         return await wiz_level_change();
+    /* #chat reads a direction key through getdir(), so its absence puts the
+       session one keystroke out of step -- exactly the class this dispatch
+       exists to cover. dochat is ported in js/sounds.js. */
+    if (name === 'chat')
+        return await dochat();
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;

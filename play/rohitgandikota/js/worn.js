@@ -1,3 +1,4 @@
+import { obj_extract_self } from './invent.js';
 // worn.js — what a monster or the hero currently has on.
 // C ref: src/worn.c
 //
@@ -362,4 +363,23 @@ export function find_mac(mon) {
     if (Math.abs(base) > AC_MAX)
         base = sgn(base) * AC_MAX;
     return base;
+}
+
+// src/worn.c extract_from_minvent() — take an object out of a monster's pack.
+//
+// C's comment: "At its core this is just obj_extract_self(), but it also
+// handles any updates that need to happen if the gear is equipped". For an
+// object that is NOT worn -- owornmask 0, which is most of what a monster
+// carries -- the equipment handling is all skipped and this is exactly
+// obj_extract_self.
+export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
+    const unwornmask = obj.owornmask;
+
+    if (unwornmask) {
+        /* the gold dragon scales relight, artifact_light, w_blocks and
+           update_mon_extrinsics handling */
+        (game.unported ||= new Set()).add('worn:extract_from_minvent:worn');
+        obj.owornmask = 0;
+    }
+    obj_extract_self(obj);
 }
