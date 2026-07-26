@@ -16,7 +16,9 @@ import {
 } from './makemon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room } from './sp_lev.js';
-import { mkgold, place_object, mkobj_at, mksobj_at } from './mkobj.js';
+import {
+    mkgold, place_object, mkobj_at, mksobj_at, add_to_container, curse,
+} from './mkobj.js';
 
 function note_unported_lev(what) {
     (game.unported ||= new Set()).add(what);
@@ -113,7 +115,7 @@ import { lua_shuffle } from './nhlua.js';
    mklev.js is reached FROM mon.js's import graph, so they arrive by wire. */
 let mklev_mon = { is_pool: () => false, is_lava: () => false };
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
-import { depth as depth_of_level } from './hacklib.js';
+import { depth as depth_of_level } from './dungeon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -265,33 +267,6 @@ function add_to_buried(otmp) {
     (game.level.buriedobjs ||= []).push(otmp);
 }
 function dealloc_obj(otmp) { /* stub */ }
-function curse(otmp) { if (otmp) otmp.cursed = true; }
-// src/mkobj.c add_to_container() — link the object into the container's cobj
-// chain. C PREPENDS here too. Discarding the object (as the stub did) lost
-// every item the supply chest was filled with; the fill loop's draws were
-// correct, the results were thrown away.
-function add_to_container(container, obj) {
-    /* merged() can stack identical items instead of adding a new entry; it
-       needs the object-merge rules, and the supply chest fill deliberately
-       rerolls until it gets a noncursed item, so distinct items are the
-       common case. */
-    for (const otmp of (container.cobj || [])) {
-        if (merged_p(otmp, obj))
-            return otmp;
-    }
-
-    obj.where = OBJ_CONTAINED;
-    obj.ocontainer = container;
-    (container.cobj ||= []).unshift(obj);
-    return obj;
-}
-
-/* src/invent.c merged() takes struct obj ** for both, because otmp can be
-   replaced by oname(). js/invent.js keeps that with one-element holders. */
-function merged_p(otmp, obj) {
-    return merged({ o: otmp }, { o: obj }) !== 0;
-}
-
 // set_corpsenm stub
 function set_corpsenm(otmp, pm) { /* stub */ }
 
@@ -404,7 +379,7 @@ function make_grave(x, y, str) {
     if (old) del_engr(old);
     if (!str)
         str = get_rnd_text('epitaph', rn2, MD_PAD_RUMORS);
-    make_engr_at(x, y, str, 0, HEADSTONE);
+    make_engr_at(x, y, str, null, 0, HEADSTONE);
 }
 
 // in_rooms stub
@@ -417,7 +392,7 @@ function in_rooms(x, y, rtype) { return []; }
 // C ref: bones.c getbones()
 function getbones() {
     const flags = game.flags || {};
-    if (flags.explore) return false;
+    if (game.discover) return false;      /* src/bones.c:639 */
     if (flags.bones === false) return false;
     if (rn2(3) && !game.flags?.debug) return false;
     return false;
@@ -1216,6 +1191,13 @@ function topologize(croom) {
             const loc = game.level.at(x, y);
             if (loc) { loc.edge = true; loc.roomno = loc.roomno ? SHARED : roomno; }
         }
+
+    /* src/mklev.c:1650 — recurse into the subrooms so each stamps its OWN
+       roomno over the parent's. Without this a subroom's squares keep the
+       parent's number, and every roomno test reads them as the outer room:
+       somexy's irregular arm, selection_from_mkroom, in_rooms, inside_room. */
+    for (let subindex = 0; subindex < (croom.nsubrooms || 0); subindex++)
+        topologize(croom.sbrooms[subindex]);
 }
 
 // ============================================================
@@ -1239,9 +1221,45 @@ function good_rm_wall_doorpos(x, y, dir, room) {
     return true;
 }
 
+// src/mklev.c finddpos_shift() — is this a usable doorway, and if the room is
+// IRREGULAR, is there one just inside it?
+//
+// The irregular walk was missing. An irregular room's wall does not follow its
+// bounding rectangle, so the point finddpos() picked can sit outside the wall
+// with STONE or CORR between. C steps inward one square at a time until it
+// either finds a good wall position (and SHIFTS x/y to it, which is what the
+// name is about) or leaves the rectangle. Without it every such pick failed,
+// finddpos() spent another rn1() on its retry loop, and every draw after that
+// point on the level was off by one.
 function finddpos_shift(xp, yp, dir, aroom) {
     const rdir = DIR_180(dir);
-    if (good_rm_wall_doorpos(xp.v, yp.v, rdir, aroom)) return true;
+    const dx = xdir[rdir], dy = ydir[rdir];
+
+    if (good_rm_wall_doorpos(xp.v, yp.v, rdir, aroom))
+        return true;
+
+    if (aroom.irregular) {
+        let rx = xp.v, ry = yp.v;
+        let fail = false;
+
+        while (!fail && isok(rx, ry)
+               && (game.level.at(rx, ry)?.typ === STONE
+                   || game.level.at(rx, ry)?.typ === CORR)) {
+            rx += dx;
+            ry += dy;
+            if (good_rm_wall_doorpos(rx, ry, rdir, aroom)) {
+                xp.v = rx;
+                yp.v = ry;
+                return true;
+            }
+            const t = game.level.at(rx, ry)?.typ;
+            if (!(t === STONE || t === CORR))
+                fail = true;
+            if (rx < aroom.lx || rx > aroom.hx
+                || ry < aroom.ly || ry > aroom.hy)
+                fail = true;
+        }
+    }
     return false;
 }
 
@@ -1740,7 +1758,8 @@ async function makeniche(trap_type) {
                        character, three when it has a rubout substitute. */
                     if (trap_engravings[actualTrap]) {
                         make_engr_at(xx, yy - dy,
-                                     trap_engravings[actualTrap], 0, DUST);
+                                     trap_engravings[actualTrap], null, 0,
+                                     DUST);
                         wipe_engr_at(xx, yy - dy, 5, false);
                     }
                 }
@@ -2131,6 +2150,19 @@ function mkgrave_room(croom) {
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
+
+    /* src/mklev.c:952 — the subroom recursion sits BETWEEN the two guards, and
+       the C says why: "we don't want an outer room that's specified to be
+       unfilled to block an inner subroom that's specified to be filled."
+       Putting it after the needfill check, which is where it naturally wants to
+       go, silently skips every subroom of an unfilled room. */
+    for (let x = 0; x < (croom.nsubrooms || 0); ++x) {
+        const subroom = croom.sbrooms[x];
+        if (!subroom)
+            return;                     /* impossible("Null subroom") */
+        await fill_ordinary_room(subroom, false);
+    }
+
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
@@ -2258,10 +2290,11 @@ async function fill_ordinary_room(croom, bonus_items) {
             } while (!rn2(40));
         }
     }
-    // Random objects
-    /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
-       rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
-    if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
+    /* src/mklev.c:1156 — random objects. Plain `!rn2(3)`, with NO Amulet
+       short-circuit: that belongs to the MONSTER site at mklev.c:974, and
+       having it here would make a hero carrying the Amulet get an object in
+       every room while skipping the rn2(3) those rooms should spend. */
+    if (!rn2(3) && somexyspace(croom, pos)) {
         mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
         let objTrycnt = 0;
         while (!rn2(5)) {

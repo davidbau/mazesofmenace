@@ -6,9 +6,9 @@
 // heavy PRNG consumers and were previously a single invented rn2(48).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
-import { DUST, BURN, HEADSTONE, ENGR_BLOOD } from './const.js';
+import { DUST, BURN, HEADSTONE, ENGR_BLOOD, N_ENGRAVE } from './const.js';
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -131,15 +131,44 @@ export function del_engr(ep) {
     if (i >= 0) list.splice(i, 1);
 }
 
-// src/engrave.c make_engr_at() — replaces any engraving already there.
-// Draws nothing.
-export function make_engr_at(x, y, text, epoch, engr_type) {
+// src/engrave.c:408 make_engr_at() — replaces any engraving already there.
+//
+// It DOES draw, on one branch: engr_type <= 0 means "pick one", and that costs
+// rnd(N_ENGRAVE - 1). Every caller in the tree passes a real type, so the draw
+// is unreachable today, but the branch is the whole reason the parameter is an
+// int rather than an enum and it is one line to keep honest.
+//
+// The signature carries pristine_s, C's fourth parameter: an engraving keeps
+// three copies of its text (what is there, what the hero remembers reading, and
+// what it said before erosion), and pristine_s seeds the third with something
+// other than s. Only mklev.c:1153's MARK engraving passes it.
+export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     const old = engr_at(x, y);
     if (old) del_engr(old);
-    (game.level.lev_engr ||= []).push({
-        x, y, engr_txt: String(text), engr_type,
-        engr_time: epoch, nowipeout: false,
-    });
+
+    const txt = String(s);
+    const ep = {
+        x, y,
+        engr_txt: txt,                          /* actual_text */
+        engr_txt_remembered: txt,               /* remembered_text */
+        engr_txt_pristine: pristine_s != null ? String(pristine_s) : txt,
+        engr_time: e_time,
+        engr_type: (e_type > 0) ? e_type : rnd(N_ENGRAVE - 1),
+        guardobjects: 0,
+        nowipeout: false,
+    };
+
+    /* engraving "Elbereth" while the level is being made creates the old-style
+       one that deters monsters whenever objects are present; the hero doing it
+       exercises wisdom instead. */
+    if (txt === 'Elbereth') {
+        if (game.in_mklev)
+            ep.guardobjects = 1;
+        else
+            note_unported_engrave('make_engr_at:exercise');
+    }
+
+    (game.level.lev_engr ||= []).push(ep);
 }
 
 // src/engrave.c wipe_engr_at() — age an engraving by rubbing out `cnt` of its
@@ -160,4 +189,8 @@ export function wipe_engr_at(x, y, cnt, magical) {
     ep.engr_txt = wipeout_text(ep.engr_txt, cnt, 0);
     ep.engr_txt = ep.engr_txt.replace(/^ +/, '');
     if (!ep.engr_txt) del_engr(ep);
+}
+
+function note_unported_engrave(what) {
+    (game.unported ||= new Set()).add(what);
 }

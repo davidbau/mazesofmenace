@@ -70,3 +70,15 @@ export function gettrack(x, y) {
     }
     return null;
 }
+
+// src/track.c:63 hastrack() — has the hero been on this square recently?
+//
+// mfndpos() uses it with fixed_tele_trap(): a teleport trap whose destination
+// is set and which the hero has walked over is treated as a route the monster
+// may follow rather than a hazard to avoid.
+export function hastrack(x, y) {
+    for (let i = 0; i < (game.utcnt || 0); i++)
+        if (game.utrack[i].x === x && game.utrack[i].y === y)
+            return true;
+    return false;
+}

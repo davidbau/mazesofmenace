@@ -6,6 +6,7 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
+import { is_vampshifter } from './monst.js';
 import { newsym } from './display.js';
 import { sobj_at } from './invent.js';
 import { m_carrying, meatmetal } from './mon.js';
@@ -23,7 +24,7 @@ import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { couldsee, cansee, clear_path } from './vision.js';
 import { gettrack } from './track.js';
-import { distmin } from './hacklib.js';
+import { distmin , isok, sgn, distu, dist2} from './hacklib.js';
 import { acurrstr } from './attrib.js';
 
 // include/mondata.h throws_rocks()
@@ -35,8 +36,12 @@ const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
 import {
     ALLOW_U, COULD_SEE, A_LAWFUL, BOLT_LIM, IS_ALTAR, COLNO, ROWNO, A_STR,
     ALL_TRAPS, NO_TRAP,
+    G_GENOD,
 } from './const.js';
 import { is_rider } from './makemon.js';
+import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
+         MMOVE_NOMOVES, engulfing_u } from './const.js';
+import { MSOUND } from './monst_data.js';
 
 // src/priest.c:9 ALGN_SINNED — worse than strayed (-1..-3).
 const ALGN_SINNED = -4;
@@ -49,9 +54,6 @@ const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
 const unique_corpstat = (ptr) => (ptr.geno & MFLAGS.G_UNIQ) !== 0;
 const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
 const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
-const is_vampshifter = (mon) =>
-    mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
-    || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
 const is_lminion = (mon) =>
     is_minion(game.mons[mon.mnum]) && mon_aligntyp(mon) === A_LAWFUL;
 
@@ -73,7 +75,7 @@ function flees_light(mon) {
 /* src/priest.c in_your_sanctuary() — a temple with a peaceful coaligned priest.
    The early returns that need no priest data are ported; the rest needs the
    priest subsystem. */
-function in_your_sanctuary(mon, x, y) {
+export function in_your_sanctuary(mon, x, y) {
     if (mon) {
         if (is_minion(game.mons[mon.mnum]) || is_rider(game.mons[mon.mnum]))
             return false;
@@ -300,7 +302,7 @@ const magical = [OCLASSES.AMULET_CLASS, OCLASSES.POTION_CLASS,
 
 // src/mondata.c:1617 mon_knows_traps() — mtrapseen is a bitmask of trap types
 // the monster has learned, with bit (ttyp - 1) per type.
-function mon_knows_traps(mtmp, ttyp) {
+export function mon_knows_traps(mtmp, ttyp) {
     if (ttyp === ALL_TRAPS)
         return !!mtmp.mtrapseen;
     else if (ttyp === NO_TRAP)
@@ -413,6 +415,79 @@ function monnear(mon, x, y) {
 // an rnd() in monflee(). The engraving and scare-monster-scroll branches need
 // subsystems that are not ported, so they are recorded rather than guessed:
 // answering TRUE there would invent a flee (and a draw) that C did not make.
+// src/monmove.c:133 m_can_break_boulder() — may this monster smash a boulder
+// out of its way? Riders always can; shopkeepers, priests and quest leaders
+// can while their special attack is off cooldown.
+//
+// mon_allowflags() reads it alongside throws_rocks() to decide ALLOW_ROCK, and
+// mfndpos() then REJECTS any square holding a boulder when ALLOW_ROCK is
+// clear. Leaving it out shrinks the candidate list for every shopkeeper,
+// priest and leader on a level with boulders.
+// src/monmove.c:2365 can_fog() — may this monster turn into a fog cloud to
+// slip under a closed door? Only vampshifters, and only while fog clouds are
+// not genocided, the hero has no Protection from shape changers, and the
+// monster is not carrying something that would stop it.
+//
+// mfndpos() reads it beside amorphous() to decide whether a closed door blocks
+// the square at all.
+export function can_fog(mtmp) {
+    if (!(game.mvitals?.[PMNAMES.PM_FOG_CLOUD]?.mvflags & G_GENOD)
+        && is_vampshifter(mtmp)) {
+        /* Protection_from_shape_changers needs the hero's worn items, and
+           stuff_prevents_passage() needs monster inventory. */
+        note_unported('can_fog:Protection_from_shape_changers');
+        return false;
+    }
+    return false;
+}
+
+// src/monmove.c m_avoid_kicked_loc() — a peaceful or tame monster next to the
+// hero keeps clear of the square the hero just kicked, so it does not walk
+// into the follow-through.
+export function m_avoid_kicked_loc(mtmp, nx, ny) {
+    const k = game.kickedloc;
+    return !!((mtmp.mpeaceful || mtmp.mtame)
+              && mtmp.mcansee
+              && !mtmp.mconf && !mtmp.mstun
+              && !Conflict()
+              && k && isok(k.x, k.y)
+              && nx === k.x && ny === k.y
+              && next2u(nx, ny));
+}
+
+// src/monmove.c m_avoid_soko_push_loc() — in Sokoban a friendly monster will
+// not stand where it would be pushed into a boulder the hero is lined up with.
+export function m_avoid_soko_push_loc(mtmp, nx, ny) {
+    return !!(Sokoban()
+              && (mtmp.mpeaceful || mtmp.mtame)
+              && !mtmp.mconf && !mtmp.mstun
+              && !Conflict()
+              && dist2(nx, ny, game.u.ux, game.u.uy) === 4
+              && sobj_at(ONAMES.BOULDER,
+                         nx + sgn(game.u.ux - nx),
+                         ny + sgn(game.u.uy - ny)));
+}
+
+// include/you.h:558 next2u()
+const next2u = (px, py) => distu(px, py) <= 2;
+
+// include/rm.h:538 Sokoban — the level flag.
+const Sokoban = () => game.level?.flags?.sokoban_rules === true;
+
+// include/youprop.h:218 Conflict — (HConflict || EConflict), the intrinsic or
+// the extrinsic. The port keeps the hero's properties on u.uprops, so this
+// reads them the same way the clairvoyance check in js/allmain.js does. There
+// is no source of conflict in the game yet, so it answers false today, but it
+// answers it by LOOKING rather than by assuming.
+const Conflict = () => !!(game.u?.uprops?.CONFLICT);
+
+export function m_can_break_boulder(mtmp) {
+    return is_rider(mtmp.data)
+        || (!mtmp.mspec_used
+            && (mtmp.isshk || mtmp.ispriest
+                || mtmp.data.msound === MSOUND.MS_LEADER));
+}
+
 export function onscary(x, y, mtmp) {
     /* <0,0> is used by musical scaring; it doesn't care about scrolls or
        engravings or dungeon branch */
@@ -827,8 +902,8 @@ function postmov(mtmp, ptr, omx, omy, mmoved) {
 }
 
 const MTSZ = 4;
-const MMOVE_NOTHING = 0, MMOVE_DIED = 1, MMOVE_MOVED = 2, MMOVE_DONE = 3,
-      MMOVE_NOMOVES = 4;
+/* include/hack.h:1322 — these were declared here with MMOVE_DIED and
+   MMOVE_MOVED SWAPPED against the header. js/const.js has them right. */
 
 /* include/mondata.h hides_under() */
 function hides_under(ptr) {
@@ -839,11 +914,6 @@ function OBJ_AT(x, y) {
     return (game.level?.objects || []).some(o => o.ox === x && o.oy === y);
 }
 
-/* src/hack.c dist2() */
-function dist2(x0, y0, x1, y1) {
-    const dx = x0 - x1, dy = y0 - y1;
-    return dx * dx + dy * dy;
-}
 
 function note_unported(what) {
     (game.unported ||= new Set()).add(what);

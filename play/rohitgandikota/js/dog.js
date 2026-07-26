@@ -10,16 +10,26 @@
 // from enexto() to place it.
 
 import { game } from './gstate.js';
+import { DEADMONSTER, is_vampshifter } from './monst.js';
+import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
+/* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
+   its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
+   so dog_move's death return was an unbound name. */
+import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE } from './const.js';
+import { acurr } from './attrib.js';
+import { put_saddle_on_mon } from './steed.js';
+import { perceives , is_domestic} from './mondata.js';
 import { sobj_at } from './invent.js';
 import { may_dig } from './hack.js';
 import { obj_resists } from './zap.js';
 import {
-    mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at,
+    mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
 import {
     COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, ALLOW_M, ALLOW_U,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, isok,
     IS_STWALL, IS_TREE, W_NONDIGGABLE,
+    ALLOW_MDISP, ALLOW_TRAPS, A_CHA,
 } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
@@ -70,16 +80,73 @@ export function makedog() {
     if (!mtmp)
         return null;
 
-    initedog(mtmp);
+    /* src/dog.c:260 — the starting pet is recorded, and an initial PONY comes
+       already saddled unless the hero is a pauper. Passing no saddle makes
+       put_saddle_on_mon() create one, and that mksobj() spends a next_ident().
+       Skipping it lost a draw in the middle of character creation. */
+    if (!game.context.startingpet_mid) {
+        game.context.startingpet_mid = mtmp.m_id;
+        if (!game.u.uroleplay?.pauper) {
+            if (pettype === PMNAMES.PM_PONY)
+                put_saddle_on_mon(null, mtmp);
+        }
+        /* see_monster_closeup() is display bookkeeping */
+    }
+
+    initedog(mtmp, true);
     return mtmp;
 }
 
-// src/dog.c initedog() — tame flags only, no draw.
-function initedog(mtmp) {
-    mtmp.mtame = 10;
+// src/dog.c:45 initedog() — make mtmp tame and fill in its edog struct.
+//
+// Draws nothing, but several of these fields are read by code that DOES draw,
+// and a missing one silently changes the draw count rather than the outcome:
+//
+//   apport      dog_goal's APPORT branch is `edog->apport > rn2(8)`. Leaving
+//               it undefined makes that test false for every object, so the
+//               goal is never set and EVERY later object in the search box
+//               re-enters the branch and spends another rn2(8). C spends one.
+//   hungrytime  gates dog_move's "eat it even if not starving" arm.
+//   dropdist    starts at 10000, not 0; dog_invent compares against it.
+//
+// `everything` is FALSE when re-taming an already-tame monster, and then only
+// the apport floor is applied.
+function initedog(mtmp, everything) {
+    const edogp = (mtmp.edog ||= {});
+    const minhungry = game.moves + 1000;
+    const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
+
+    mtmp.mtame = Math.max(minimumtame, mtmp.mtame || 0);
     mtmp.mpeaceful = 1;
     mtmp.mavenge = 0;
-    mtmp.mleashed = 0;
+    /* set_malign() recalculates alignment now that it is tamed; no draw */
+
+    if (everything) {
+        mtmp.mleashed = 0;
+        mtmp.meating = 0;
+        edogp.droptime = 0;
+        edogp.dropdist = 10000;
+        /* ACURR(A_CHA), not u.acurr.a[A_CHA]. newgame() calls makedog()
+           BEFORE u_init_inventory_attrs(), where init_attr() lives, so the
+           array is still zeroed here -- but acurr() clamps its result to a
+           floor of 3, so the starting pet gets apport 3 rather than 0. That
+           difference decides whether dog_goal ever settles on a goal. */
+        edogp.apport = acurr(A_CHA);
+        edogp.whistletime = 0;
+        edogp.ogoal = { x: -1, y: -1 };  /* force error if used before set */
+        edogp.abuse = 0;
+        edogp.revivals = 0;
+        edogp.mhpmax_penalty = 0;
+        edogp.killed_by_u = 0;
+    } else {
+        if (edogp.apport <= 0)
+            edogp.apport = 1;
+    }
+
+    /* always set for a newly tamed pet; hungrytime might already be higher
+       when taming magic affects an already-tame monster */
+    if ((edogp.hungrytime ?? 0) < minhungry)
+        edogp.hungrytime = minhungry;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +171,6 @@ const poisonous    = (ptr) => (ptr.mflags1 & MFLAGS.M1_POIS) !== 0;
 const is_undead    = (ptr) => (ptr.mflags2 & MFLAGS.M2_UNDEAD) !== 0;
 const is_elf       = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 const noncorporeal = (ptr) => ptr.mlet === MONSYMS.S_GHOST;
-// include/monst.h:217 is_vampshifter() — a monster, not a permonst.
-const is_vampshifter = (mon) =>
-    mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
-    || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
 /* include/mondata.h:59,190 — both are explicit species lists, not flag tests.
    There is no M1_FIRE_RES; fire resistance lives in mresists as MR_FIRE, and
    guessing a flag here silently made every monster flaming. */
@@ -475,9 +538,21 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
        the follow-player branch and its else arm assign it. */
     let appr = 0;
 
-    /* src/dogmove.c:565 — follow the player.
-       gtyp is UNDEF whenever the object search above found nothing. */
-    if (gtyp === UNDEF) {
+    /* src/dogmove.c:566 — follow the player.
+     *
+     *     if (gg.gtyp == UNDEF || (gg.gtyp != DOGFOOD && gg.gtyp != APPORT
+     *                           && svm.moves < edog->hungrytime)) {
+     *
+     * The second arm is not optional. A goal that is neither DOGFOOD nor
+     * APPORT is something the pet would eat only if it were hungry, so while
+     * it is still full it follows the hero INSTEAD, and follows with an appr
+     * computed here rather than the flat 1 the else arm uses. That changes
+     * dog_move's `j = (ndist - nidist) * appr`: with appr 0 every candidate
+     * gives j == 0 and spends an rn2(++chcnt), and with appr 1 none of them
+     * do. Testing only for UNDEF made the pet march at a corpse it had no
+     * appetite for and skip that whole run of draws. */
+    if (gtyp === UNDEF || (gtyp !== DOGFOOD && gtyp !== APPORT
+                           && game.moves < (edog?.hungrytime ?? 0))) {
         /* src/dogmove.c:566 — gg.gx/gg.gy ARE the goal dog_move steers by
            (GDIST reads them). Writing them into a separate game.gg left the
            local gx/gy at 0,0, so an appr = 1 pet walked toward the top-left
@@ -747,8 +822,6 @@ function pet_ranged_attk(mtmp, forced) {
 // src/dogmove.c:10-12
 const DOG_HUNGRY = 300, DOG_WEAK = 500, DOG_STARVE = 750;
 
-// include/monst.h:214 DEADMONSTER()
-const DEADMONSTER = (mon) => (mon.mhp ?? 0) < 1;
 
 // src/dogmove.c dog_hunger() — a pet that has not eaten in DOG_WEAK turns is
 // weakened, and in DOG_STARVE turns it dies. Draws nothing: it is a comparison
@@ -819,6 +892,10 @@ export function dog_move(mtmp, after) {
     let uncursedcnt = 0;
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
+        /* src/dogmove.c:1073 — a square holding a monster the pet may not
+           attack or displace is not a free square, so it does not count. */
+        if (m_at(nx, ny) && !(mfp.info[i] & (ALLOW_M | ALLOW_MDISP)))
+            continue;
         if (cursed_object_at(nx, ny))
             continue;
         uncursedcnt++;
@@ -826,20 +903,91 @@ export function dog_move(mtmp, after) {
 
     let nix = omx, niy = omy, chi = -1, chcnt = 0;
     let nidist = GDIST(nix, niy);
+    /* src/dogmove.c:989 — cursemsg[] is PER CANDIDATE and is filled in by the
+       object walk below, not by a helper called on demand. Keeping it as an
+       array matters because the newdogpos code reads cursemsg[chi] for the
+       square finally chosen. */
+    const cursemsg = new Array(cnt).fill(false);
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
-        const cursemsg = cursed_object_at(nx, ny);
 
-        /* the eat/attack branches at the top of this loop need dog_eat and
-           the monster-attack path; neither is ported and both draw */
+        /* src/dogmove.c:1141 — the ALLOW_M attack and ALLOW_MDISP displace
+           branches need mattackm/mdisplacem, the monster-vs-monster combat
+           path. Both draw, so stop rather than guess their numbers. */
         if (mfp.info[i] & (ALLOW_M | ALLOW_U)) {
             note_unported('dog_move attack branch');
             continue;
         }
 
-        /* saw a cursed item and is not being forced onto it */
-        if (cursemsg && !mtmp.mleashed && uncursedcnt > 0
+        /* src/dogmove.c:1182 — keep clear of the square the hero just kicked,
+           and of a Sokoban push line. Neither draws. */
+        if (m_avoid_kicked_loc(mtmp, nx, ny))
+            continue;
+        if (m_avoid_soko_push_loc(mtmp, nx, ny))
+            continue;
+
+        /* src/dogmove.c:1197 — a dog avoids a harmful trap, but may have to
+           cross one to keep up with the hero, so it steps on a trap it has
+           SEEN once in forty tries. That rn2(40) was missing entirely: the
+           whole block was absent, so no pet ever spent it.
+           A leashed dog whimpers instead and is dragged across. */
+        if ((mfp.info[i] & ALLOW_TRAPS) && t_at(nx, ny)) {
+            const trap = t_at(nx, ny);
+            if (mtmp.mleashed) {
+                /* whimper() needs the sound code and the Deaf test */
+                note_unported('dog_move:whimper');
+            } else {
+                if (trap.tseen && rn2(40))
+                    continue;
+            }
+        }
+
+        /* src/dogmove.c:1214 — dog eschews cursed objects, but likes dog food.
+         *
+         * This walks the objects ON the square, and that walk DRAWS: dogfood()
+         * opens with obj_resists(obj, 0, 95), which spends an rn2(100) whatever
+         * it returns. Substituting a cursed_object_at() helper for the walk
+         * skipped one draw per non-cursed object on every candidate square,
+         * which is the run of consecutive obj_resists calls the recordings show
+         * right after dog_goal's rn2(8).
+         *
+         * Both short-circuits are load-bearing: a cursed object never reaches
+         * dogfood(), and neither does anything when can_reach_food is false.
+         */
+        if (edog) {
+            const can_reach_food = could_reach_item(mtmp, nx, ny);
+            let ate = false;
+
+            for (const obj of objects_at(nx, ny)) {
+                if (obj.cursed) {
+                    cursemsg[i] = true;
+                } else if (can_reach_food) {
+                    const otyp = dogfood(mtmp, obj);
+                    if (otyp < MANFOOD
+                        && (otyp < ACCFOOD
+                            || (edog.hungrytime ?? 0) <= game.moves)) {
+                        /* the dog likes the food so much it might eat it even
+                           when it conceals a cursed object */
+                        nix = nx;
+                        niy = ny;
+                        chi = i;
+                        cursemsg[i] = false;    /* not reluctant */
+                        ate = true;             /* do_eat = TRUE */
+                        break;                  /* goto newdogpos */
+                    }
+                }
+            }
+            if (ate) {
+                /* dog_eat() draws; stop rather than guess its numbers. */
+                note_unported('dog_move:do_eat');
+                return MMOVE_NOTHING;
+            }
+        }
+
+        /* didn't find something to eat; if we saw a cursed item and aren't
+           being forced to walk on it, usually keep looking */
+        if (cursemsg[i] && !mtmp.mleashed && uncursedcnt > 0
             && rn2(13 * uncursedcnt))
             continue;
 
@@ -911,7 +1059,6 @@ export function dog_move(mtmp, after) {
 
 /* include/monst.h MTSZ — how many previous squares a monster remembers. */
 const MTSZ = 4;
-const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DONE = 3;
 
 /* src/dogmove.c GDIST(x,y) = dist2(x, y, gg.gx, gg.gy) */
 function GDIST(x, y) {
@@ -929,6 +1076,14 @@ function distmin(x0, y0, x1, y1) {
 function cursed_object_at(x, y) {
     return (game.level?.objects || [])
                .some(o => o.ox === x && o.oy === y && o.cursed);
+}
+
+/* src/rm.h svl.level.objects[x][y] — the pile on one square, walked through
+   ->nexthere. place_object() PREPENDS to the level list, so filtering it in
+   order gives newest-first, which is the order the chain has. Every caller
+   that draws per object depends on that order. */
+function objects_at(x, y) {
+    return (game.level?.objects || []).filter(o => o.ox === x && o.oy === y);
 }
 
 // src/dogmove.c:410 dog_invent() — the pet drops what it carries, or picks up
@@ -961,16 +1116,31 @@ export function dog_invent(mtmp, edog, udist) {
         if (obj && !nofetch.includes(obj.oclass)) {
             const edible = dogfood(mtmp, obj);
 
-            if (edible <= CADAVER
-                || (edog.mhpmax_penalty && edible === ACCFOOD)) {
-                /* could_reach_item() and dog_eat() are not ported; dog_eat
-                   draws, so stop here rather than guess. */
+            if ((edible <= CADAVER
+                 /* a starving pet is more aggressive about eating */
+                 || (edog.mhpmax_penalty && edible === ACCFOOD))
+                && could_reach_item(mtmp, obj.ox, obj.oy)) {
+                /* dog_eat() draws; stop rather than guess its numbers. */
                 note_unported('dog_eat');
                 return 0;
             }
-            /* can_carry() itself draws nothing, but it and could_reach_item()
-               decide whether the rn2(20) below happens at all. */
-            note_unported('dog_invent pickup');
+
+            /* src/dogmove.c:443 — the fetch. can_carry() and
+               could_reach_item() draw nothing, but they gate TWO draws that
+               were being skipped entirely: rn2(20) for whether the pet is
+               interested at all, and then rn2(udist) or rn2(apport) for
+               whether it bothers at this distance. */
+            const carryamt = can_carry(mtmp, obj);
+            if (carryamt > 0 && !obj.cursed
+                && could_reach_item(mtmp, obj.ox, obj.oy)) {
+                if (rn2(20) < edog.apport + 3) {
+                    if (rn2(udist) || !rn2(edog.apport)) {
+                        /* splitobj() when carryamt is a partial stack, then
+                           distant_name/pline, mpickobj and mon_wield_item. */
+                        note_unported('dog_invent:pickup');
+                    }
+                }
+            }
         }
     }
     return 0;

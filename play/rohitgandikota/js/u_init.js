@@ -24,7 +24,8 @@ import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { P_NONE } from './const.js';
+import { P_NONE, W_QUIVER, W_WEP } from './const.js';
+import { Is_container } from './obj.js';
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
 import { discover_object } from './o_init.js';
@@ -34,6 +35,9 @@ import {
 } from './objnam.js';
 
 // include/prop.h:101-107 — worn-equipment slot masks.
+/* W_QUIVER was 0x0800 here and in js/objnam.js; include/prop.h:111 says
+   0x0200. They agreed with each other so the "(at the ready)" suffix still
+   showed, but neither agreed with js/const.js. */
 const W_ARM = 0x01, W_ARMC = 0x02, W_ARMH = 0x04, W_ARMS = 0x08,
       W_ARMG = 0x10, W_ARMF = 0x20, W_ARMU = 0x40;
 
@@ -129,8 +133,6 @@ const is_graystone = (obj) =>
     obj.otyp === ONAMES.LUCKSTONE || obj.otyp === ONAMES.LOADSTONE
     || obj.otyp === ONAMES.FLINT || obj.otyp === ONAMES.TOUCHSTONE;
 
-const Is_container = (obj) =>
-    obj.otyp >= ONAMES.LARGE_BOX && obj.otyp <= ONAMES.BAG_OF_TRICKS;
 
 // src/u_init.c:1214 ini_inv_adjust_obj() — returns true when the caller should
 // stop making more of this entry.
@@ -554,7 +556,6 @@ function ini_inv_wield(obj) {
 }
 
 // include/prop.h — quiver and wielded slots.
-const W_QUIVER = 0x0800, W_WEP = 0x0100;
 
 // src/worn.c — which slots are currently filled.
 function worn_slots() {

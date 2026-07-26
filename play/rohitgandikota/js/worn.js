@@ -4,6 +4,7 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
+import { MON_WEP } from './monst.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
@@ -85,7 +86,6 @@ export function m_dowear(mon, creation) {
 }
 
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
-const MON_WEP = (mon) => mon.mw || null;
 
 // src/worn.c:799 m_dowear_type() — pick the best item for one slot and wear it.
 function m_dowear_type(mon, flag, creation, racialexception) {

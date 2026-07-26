@@ -8,7 +8,19 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { In_quest } from './const.js';
+import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
+         ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
+         ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
+         SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
+         WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
+         VIBRATING_SQUARE } from './const.js';
+import { MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
+import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
+         webmaker, defended, resists_fire, resists_sleep,
+         resists_magm } from './mondata.js';
+
+// include/rm.h:538 Sokoban — the level flag, not the dungeon branch.
+const Sokoban = () => game.level?.flags?.sokoban_rules === true;
 
 // src/dungeon.c dunlevs_in_dungeon()
 function dunlevs_in_dungeon(lev) {
@@ -57,4 +69,113 @@ export function hole_destination(dst) {
         if (rn2(4))
             break;
     }
+}
+
+// src/trap.c:1061 floor_trigger() — is this trap one that fires by being
+// stepped ON, as opposed to one that catches anything passing through?
+function floor_trigger(ttyp) {
+    switch (ttyp) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+    case SQKY_BOARD:
+    case BEAR_TRAP:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP:
+    case RUST_TRAP:
+    case FIRE_TRAP:
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TRAPDOOR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// src/trap.c:1085 check_in_air() — is this monster off the ground, allowing
+// for the trap flags? A flyer that was pushed or sat down is NOT in the air.
+function check_in_air(mtmp, trflags) {
+    const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
+
+    return ((trflags & HURTLING) !== 0
+            || is_floater(mtmp.data)
+            || (is_flyer(mtmp.data) && !plunged));
+}
+
+// src/trap.c:1106 m_harmless_trap() — would this trap actually hurt `mtmp`?
+//
+// mfndpos() calls it to decide whether a square holding a trap is worth
+// refusing. Nothing here draws; every arm is a species or resistance test.
+//
+// The opening line covers most of it: anything that triggers by being stepped
+// on does nothing to a monster that is in the air. Sokoban suppresses that,
+// because its pits and holes are the puzzle.
+export function m_harmless_trap(mtmp, ttmp) {
+    const mdat = mtmp.data;
+
+    if (!Sokoban() && floor_trigger(ttmp.ttyp) && check_in_air(mtmp, 0))
+        return true;
+
+    switch (ttmp.ttyp) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+    case SQKY_BOARD:
+        break;
+    case BEAR_TRAP:
+        if (mdat.msize <= MFLAGS.MZ_SMALL || amorphous(mdat)
+            || is_whirly(mdat) || unsolid(mdat))
+            return true;
+        break;
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+        break;
+    case SLP_GAS_TRAP:
+        if (resists_sleep(mtmp) || defended(mtmp, ATTKS.AD_SLEE))
+            return true;
+        break;
+    case RUST_TRAP:
+        if (mdat.pmidx !== PMNAMES.PM_IRON_GOLEM)
+            return true;
+        break;
+    case FIRE_TRAP:
+        if (resists_fire(mtmp) || defended(mtmp, ATTKS.AD_FIRE))
+            return true;
+        break;
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TRAPDOOR:
+        if (is_clinger(mdat) && !Sokoban())
+            return true;
+        break;
+    case TELEP_TRAP:
+    case LEVEL_TELEP:
+    case MAGIC_PORTAL:
+        break;
+    case WEB:
+        if (amorphous(mdat) || webmaker(mdat)
+            || is_whirly(mdat) || unsolid(mdat))
+            return true;
+        break;
+    case STATUE_TRAP:
+        return true;
+    case MAGIC_TRAP:
+        return true;                    /* usually */
+    case ANTI_MAGIC:
+        if (resists_magm(mtmp) || defended(mtmp, ATTKS.AD_MAGM))
+            return true;
+        break;
+    case POLY_TRAP:
+        break;
+    case VIBRATING_SQUARE:
+        return true;
+    default:
+        break;                          /* impossible() */
+    }
+
+    return false;
 }

@@ -14,7 +14,13 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { COLNO, ROWNO } from './const.js';
+import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban } from './const.js';
+import { rnl } from './rng.js';
+import { pline } from './display.js';
+import { You, You_feel, You_cant } from './pline.js';
+import { getlin } from './cmd.js';
+import { get_level, depth } from './dungeon.js';
+import { schedule_goto, UTOTYPE_NONE } from './do.js';
 
 // include/hack.h:1204-1210
 export const CC_NO_FLAGS = 0x00;
@@ -137,4 +143,128 @@ export function enexto_core(cc, xx, yy, mdat, entflags, goodpos) {
 
     cc.x = xx; cc.y = yy;
     return allow_xx_yy && goodpos(xx, yy, mdat, entflags);
+}
+
+// src/teleport.c:1165 level_tele() — the controlled level teleport.
+//
+// The whole function is long because most of it handles destinations that
+// cannot survive: above the dungeon (heaven, Cloud 9, a fatal plummet), the
+// endgame planes, Gehennom before the invocation, and escaping the Quest.
+// What the recorded sessions exercise is the wizard-mode path: prompt, read a
+// number, convert it, schedule the goto.
+//
+// Note the loop: C re-prompts up to ten times while the answer is neither a
+// number nor a level NAME, and appends a hint to the question from the second
+// pass on. That hint changes the prompt text on screen, so the retry count is
+// visible, not just internal.
+export async function level_tele() {
+    let newlev = 0;
+    const newlevel = { dnum: 0, dlevel: 0 };
+    let force_dest = false;
+    let buf = '';
+
+    if ((game.u.uhave?.amulet || In_endgame(game.u.uz) || In_sokoban(game.u.uz))
+        && !game.wizard) {
+        await You_feel('very disoriented for a moment.');
+        return;
+    }
+
+    if ((Teleport_control() && !Stunned()) || game.wizard) {
+        let qbuf = 'To what level do you want to teleport?';
+        let trycnt = 0;
+
+        do {
+            if (++trycnt === 2)
+                qbuf += game.wizard ? ' [type a number, name, or ? for a menu]'
+                                    : ' [type a number or name]';
+            /* EDIT_GETLIN: a previous answer was invalid, so it is NOT
+               offered back as the default */
+            buf = await getlin(qbuf);
+
+            if (buf === '*') {
+                note_unported_tele('level_tele:random_levtport');
+                return;
+            } else if (Confusion() && rnl(5)) {
+                await pline('Oops...');
+                note_unported_tele('level_tele:random_levtport');
+                return;
+            } else if (buf === '\x1b') {        /* cancelled */
+                return;
+            }
+
+            if (game.wizard && buf === '?') {
+                /* print_dungeon() is the dungeon-overview MENU; it needs the
+                   tty menu system. It also sets force_dest. */
+                note_unported_tele('level_tele:print_dungeon menu');
+                return;
+            } else {
+                newlev = lev_by_name(buf);
+                if (newlev === 0)
+                    newlev = parseInt(buf, 10) || 0;   /* atoi() */
+            }
+        } while (!newlev && !isdigit(buf[0])
+                 && (buf[0] !== '-' || !isdigit(buf[1])) && trycnt < 10);
+
+        if (newlev === 0) {
+            /* "Go to Nowhere" and the suicide it performs */
+            note_unported_tele('level_tele:Nowhere');
+            return;
+        }
+
+        if (In_quest(game.u.uz) && newlev > 0)
+            newlev = newlev + game.dungeons[game.u.uz.dnum].depth_start - 1;
+    } else {
+        note_unported_tele('level_tele:random_teleport_level');
+        return;
+    }
+
+    if (!next_to_u() && !force_dest) {
+        await You('shudder for a moment.');
+        return;
+    }
+
+    if (In_endgame(game.u.uz)) {
+        note_unported_tele('level_tele:endgame');
+        return;
+    }
+
+    if (newlev < 0 && !force_dest) {
+        /* heaven, Cloud 9, and the plummet; all of them kill or escape */
+        note_unported_tele('level_tele:above the dungeon');
+        return;
+    }
+
+    get_level(newlevel, newlev);
+
+    if (newlevel.dnum === game.u.uz.dnum && newlevel.dlevel === game.u.uz.dlevel
+        && newlev !== depth(game.u.uz)) {
+        await You_cant('get there from here.');
+        return;
+    }
+
+    schedule_goto(newlevel, UTOTYPE_NONE, null, null);
+}
+
+// src/dungeon.c lev_by_name() — a level's name ("medusa", "castle") to its
+// depth. The name table needs the dungeon overview data; nothing that reaches
+// here today passes a name.
+function lev_by_name(nam) {
+    if (nam && !/^[-0-9]/.test(nam))
+        note_unported_tele('level_tele:lev_by_name');
+    return 0;
+}
+
+// src/hack.c next_to_u() — is everything that follows the hero adjacent?
+// Only a leashed pet or a ball and chain can fail it, and neither is modelled.
+function next_to_u() {
+    return true;
+}
+
+const isdigit = (c) => c >= '0' && c <= '9';
+const Teleport_control = () => !!game.u?.uprops?.TELEPORT_CONTROL;
+const Stunned = () => !!game.u?.uprops?.STUNNED;
+const Confusion = () => !!game.u?.uprops?.CONFUSION;
+
+function note_unported_tele(what) {
+    (game.unported ||= new Set()).add(what);
 }

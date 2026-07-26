@@ -17,8 +17,9 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED,
     MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+    LUCKMIN, LUCKMAX,
 } from './const.js';
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
 
 // include/you.h:247 Role_if()
 function Role_if(pm) {
@@ -176,8 +177,13 @@ export const Very_fast = () => false;
 
 // include/attrib.h:25 ACURRSTR / ACURR(). Exceptional Strength is stored above
 // 18 as 18/xx, and acurrstr() folds that back to a plain number.
+// include/attrib.h:24 — #define ACURR(x) (acurr(x))
+//
+// It is the FUNCTION, not the array. Reading u.acurr.a[i] directly skips the
+// abon/atemp terms and the 3..25 clamp, which is a different number whenever
+// the hero is drained, boosted, or (as at makedog() time) not yet rolled.
 export function ACURR(i) {
-    return game.u.acurr.a[i];
+    return acurr(i);
 }
 
 export function acurrstr() {
@@ -306,4 +312,64 @@ export function exerchk() {
            attrcurse(), which no reachable state triggers yet. */
         note_unported_attrib('exerchk:test');
     }
+}
+
+// src/attrib.c:1200 acurr() — a characteristic's effective value.
+//
+// This is NOT a read of u.acurr.a[]. It sums three arrays and then CLAMPS,
+// and the floor is a hardcoded 3, not the racial ATTRMIN:
+//
+//     result = (tmp >= 25) ? 25 : (tmp <= 3) ? 3 : tmp;
+//
+// The floor is what makes initedog() work. newgame() calls makedog() before
+// u_init_inventory_attrs(), so u.acurr is still zeroed when the starting pet
+// reads ACURR(A_CHA) for its apport -- and gets 3, not 0. Reading the array
+// directly would give 0, `apport > rn2(8)` would never pass, dog_goal would
+// never settle on a goal, and every later object in the search box would spend
+// another rn2(8) that C does not.
+//
+// Strength is encoded differently (3..18, then 19..118 for 18/xx, then
+// 119..125), which is why it skips the shared clamp.
+export function acurr(chridx) {
+    const a = (o) => (o?.a?.[chridx] ?? 0);
+    const tmp = a(game.u.abon) + a(game.u.atemp) + a(game.u.acurr);
+    let result = 0;
+
+    if (chridx === A_STR) {
+        if (tmp >= STR19(25))
+            result = STR19(25);         /* 125 */
+        else
+            result = Math.max(tmp, 3);
+        /* GAUNTLETS_OF_POWER needs worn armour; recorded where uarmg lands. */
+    } else if (chridx === A_CHA) {
+        if (tmp < 18 && (game.youmonst?.data?.mlet === MONSYMS.S_NYMPH
+                         || game.u.umonnum === PMNAMES.PM_AMOROUS_DEMON))
+            result = 18;
+    } else if (chridx === A_CON) {
+        /* u_wield_art(ART_OGRESMASHER) */
+    } else if (chridx === A_INT || chridx === A_WIS) {
+        /* uarmh == DUNCE_CAP -> 6 */
+    } else if (chridx === A_DEX) {
+        ; /* there aren't any special cases for dexterity */
+    }
+
+    if (result === 0)                   /* none of the special cases applied */
+        result = (tmp >= 25) ? 25 : (tmp <= 3) ? 3 : tmp;
+
+    return result;
+}
+
+// include/attrib.h STR19()
+const STR19 = (y) => (100 + y);
+
+// src/attrib.c:411 change_luck() — adjust luck, clamped to LUCKMIN..LUCKMAX.
+//
+// The clamps are one-sided on purpose: a value already past a bound in the
+// wrong direction is left alone, because only the sign-matching test fires.
+export function change_luck(n) {
+    game.u.uluck += n;
+    if (game.u.uluck < 0 && game.u.uluck < LUCKMIN)
+        game.u.uluck = LUCKMIN;
+    if (game.u.uluck > 0 && game.u.uluck > LUCKMAX)
+        game.u.uluck = LUCKMAX;
 }

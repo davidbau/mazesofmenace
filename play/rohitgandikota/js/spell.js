@@ -17,9 +17,9 @@ export function spellid(spidx) {
 // src/spell.c:2024 dovspell() — '+', list known spells.
 // Only the "no spells" path is ported; the menu path lands with the tty menu
 // system. A Tourist starts with no spells, which is the case seed8000 hits.
-export function dovspell() {
+export async function dovspell() {
     if (spellid(0) === NO_SPELL) {
-        pline("You don't know any spells right now.");
+        await pline("You don't know any spells right now.");
     }
     return ECMD_OK;
 }

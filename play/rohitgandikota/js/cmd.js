@@ -17,7 +17,7 @@ import { is_pool, is_lava, m_at } from './mon.js';
 do_wire_mklev(mklev);
 sp_lev_wire_mon({ is_pool, is_lava, m_at });
 mklev_wire_mon({ is_pool, is_lava });
-import { wiz_level_change } from './wizcmds.js';
+import { wiz_level_change, wiz_level_tele } from './wizcmds.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
@@ -37,7 +37,7 @@ import { getpos } from './getpos.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, _buildScreenOutput,
-         TOPLINE_SPECIAL_PROMPT } from './display.js';
+         TOPLINE_SPECIAL_PROMPT , TOPLINE_EMPTY} from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED, IS_DOOR } from './const.js';
@@ -377,7 +377,14 @@ export async function rhack(key) {
         key = await nhgetch();
         // The boundary frame has now been captured with the previous
         // command's message on it, so it is safe to clear for this command.
+        //
+        // win/tty/wintty.c tty_clear_nhwindow(), NHW_MESSAGE, clears the FLAG
+        // as well as the text. Dropping the text alone left toplin at
+        // TOPLINE_NEED_MORE with nothing behind it, and update_topl's joining
+        // branch then glued the next message onto an empty string, indenting
+        // it by the two spaces the join inserts.
         game._pending_message = '';
+        game._toplin = TOPLINE_EMPTY;
     }
 
     const ch = String.fromCharCode(key);
@@ -385,6 +392,9 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if (ch === '\x16') {
+        // src/cmd.c:1970 — C('v') is wizlevelport / wiz_level_tele.
+        game.context.move = ((await wiz_level_tele()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '>') {
         // src/cmd.c cmdlist — '>' is dodown.
         game.context.move = (await dodown() === ECMD_TIME ? 1 : 0);
@@ -393,7 +403,7 @@ export async function rhack(key) {
         game.context.move = (dosearch() ? 1 : 0);
     } else if (ch === '+') {
         // src/cmd.c cmdlist — '+' is dovspell.
-        game.context.move = (dovspell() === ECMD_TIME ? 1 : 0);
+        game.context.move = ((await dovspell()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'i') {
         // src/cmd.c cmdlist — 'i' is ddoinv, which returns ECMD_OK.
         game.context.move = 0;
@@ -493,7 +503,7 @@ export async function rhack(key) {
     } else if (ch === ':') {
         // src/cmd.c cmdlist — ':' is dolook. It returns ECMD_OK when not
         // blind, so looking does not consume a turn.
-        game.context.move = (dolook() === ECMD_TIME ? 1 : 0);
+        game.context.move = ((await dolook()) === ECMD_TIME ? 1 : 0);
     } else if (KNOWN_UNPORTED.has(ch)) {
         // C recognises these keys and does real work for them; we have not
         // ported that work yet. Emitting "Unknown command" here would be

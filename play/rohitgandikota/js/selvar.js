@@ -33,6 +33,24 @@ export function selection_new() {
     };
 }
 
+// src/selvar.c:48 selection_clear() — set every square to `val` at once.
+//
+// This is what `selection.negate()` resolves to when Lua calls it with NO
+// receiver (nhlsel.c:265): a fresh selection, then clear(sel, 1). It is not
+// selection_not() on an empty selection, even though the result is the same
+// set -- clear writes the bounds directly and leaves bounds_dirty false, where
+// not() would walk every square through setpoint. Neither draws, so only the
+// resulting bounds matter, and those agree.
+export function selection_clear(sel, val) {
+    sel.map.fill(1 + val);
+    if (val) {
+        sel.bounds = { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
+    } else {
+        sel.bounds = { lx: COLNO, ly: ROWNO, hx: 0, hy: 0 };
+    }
+    sel.bounds_dirty = false;
+}
+
 // src/selvar.c:168 selection_getpoint()
 export function selection_getpoint(x, y, sel) {
     if (!sel || !sel.map)

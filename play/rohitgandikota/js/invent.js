@@ -6,10 +6,14 @@ import { doname } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MONSYMS, NUMMONS } from './monst_data.js';
 import { erosion_matters } from './mkobj.js';
+import {
+    carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding,
+} from './obj.js';
 import { is_rider } from './makemon.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { pline } from './display.js';
+import { You } from './pline.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
 // a move, which is what makes moveloop advance svm.moves.
@@ -22,24 +26,20 @@ export const ECMD_TIME = 1;
 // feature and not blind, C prints "You see no objects here." and returns
 // ECMD_OK — so looking does NOT consume a turn. Objects, dungeon features and
 // engravings join this function as those subsystems land.
-export function look_here(obj_cnt, lhflags) {
+export async function look_here(obj_cnt, lhflags) {
     const Blind = !!game.u?.ublind;
     const verb = Blind ? 'feel' : 'see';
 
     /* no objects at the hero's square yet, because objects are not ported */
-    You(`${verb} no objects here.`);
+    await You(`${verb} no objects here.`);
     return Blind ? ECMD_TIME : ECMD_OK;
 }
 
 // src/invent.c:4319 dolook()
-export function dolook() {
-    return look_here(0, 0);
+export async function dolook() {
+    return await look_here(0, 0);
 }
 
-// src/pline.c You() — "You " prefix on a message.
-function You(msg) {
-    pline(`You ${msg}`);
-}
 
 // ---------------------------------------------------------------------------
 // Inventory display
@@ -216,9 +216,6 @@ export function weight(obj) {
     return (wt ? wt * obj.quan : (obj.quan + 1) >> 1);
 }
 
-// include/obj.h:337 Is_container()
-const Is_container = (o) => o.otyp >= ONAMES.LARGE_BOX
-                         && o.otyp <= ONAMES.BAG_OF_TRICKS;
 
 // include/monst.h:285 ismnum()
 //
@@ -464,13 +461,8 @@ export function obj_extract_self(obj) {
 }
 
 // include/obj.h — obj->where values, and the two how_lost values mergable reads.
-const OBJ_FREE = 0, OBJ_FLOOR = 1, OBJ_CONTAINED = 2, OBJ_INVENT = 3,
-      OBJ_MINVENT = 4;
 const LOST_NONE = 0, LOST_EXPLODING = 1, LOST_THROWN = 2;
 
-const Is_candle = (o) => o.otyp === ONAMES.TALLOW_CANDLE
-                      || o.otyp === ONAMES.WAX_CANDLE;
-const Is_pudding = (o) => !!o.globby;
 // include/mondata.h:170 is_reviver()
 const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TROLL);
 

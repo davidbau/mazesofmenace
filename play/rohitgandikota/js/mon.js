@@ -12,10 +12,29 @@ import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
 import { mksobj_at } from './mkobj.js';
 import { newsym } from './display.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
+import { DEADMONSTER, MON_WEP } from './monst.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
+
+import { has_ceiling } from './dungeon.js';
+import { in_rooms } from './hack.js';
+import { m_harmless_trap } from './trap.js';
+import { hastrack } from './track.js';
+
+// include/trap.h:125 fixed_tele_trap()
+const fixed_tele_trap = (t) => t.ttyp === TELEP_TRAP
+                            && isok(t.teledest?.x, t.teledest?.y);
+import { sobj_at } from './invent.js';
+import { online2, isok } from './hacklib.js';
+/* onscary() and in_your_sanctuary() are src/monmove.c and src/priest.c
+   functions living in js/monmove.js, which imports this file. Both sides
+   export function declarations, so the cycle resolves through hoisting. */
+import { onscary, in_your_sanctuary, m_can_break_boulder,
+         mon_knows_traps, can_fog } from './monmove.js';
+import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
 import {
     bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
+    is_clinger, is_flyer, is_floater, mindless, dmgtype,
 } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, mon_hates_silver } from './dog.js';
@@ -29,7 +48,9 @@ import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS,
          D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
          ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
          ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR,
-         UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM } from './const.js';
+         UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM,
+         NOGARLIC, TEMPLE, TRAPNUM, TELEP_TRAP, SHOPBASE,
+         W_NONDIGGABLE } from './const.js';
 
 // include/permonst.h:80
 export const NORMAL_SPEED = 12;
@@ -110,6 +131,18 @@ import { dochug } from './monmove.js';
 // note_unported_mon() where they would matter rather than silently dropped, so
 // a session that does reach one shows up in game.unported instead of quietly
 // diverging.
+// src/mon.c:2130 m_in_air() — is this monster off the ground right now?
+//
+// mfndpos() reads it twice, for poolok and lavaok, and a flyer that cannot swim
+// is exactly the case the port was getting wrong: without this, water and lava
+// squares were dropped from the candidate list, so cnt came out short and the
+// rn2(4 * (cnt - j)) inside m_move() drew the wrong bound.
+export function m_in_air(mtmp) {
+    return is_flyer(mtmp.data)
+        || is_floater(mtmp.data)
+        || (is_clinger(mtmp.data) && has_ceiling(game.u?.uz) && mtmp.mundetected);
+}
+
 export function mfndpos(mon, data, flag) {
     const mdat = mon.data;
     const map = game.level;
@@ -122,8 +155,11 @@ export function mfndpos(mon, data, flag) {
 
     const nodiag = NODIAG(mdat);
     let wantpool = (mdat.mlet === MONSYMS.S_EEL);
-    const poolok = is_swimmer(mdat) && !wantpool;
-    const lavaok = likes_lava(mdat);
+    const poolok = ((!Is_waterlevel(game.u?.uz) && m_in_air(mon))
+                    || (is_swimmer(mdat) && !wantpool));
+    let lavaok = (m_in_air(mon) || likes_lava(mdat));
+    if (mdat.pmidx === PMNAMES.PM_FLOATING_EYE)  /* prefers to avoid heat */
+        lavaok = false;
     let rockok = false, treeok = false, mw_tmp;
     let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
 
@@ -170,11 +206,30 @@ export function mfndpos(mon, data, flag) {
                     && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
                     && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny)))
                     continue;
+                /* src/mon.c:2218 — intelligent peacefuls will not dig
+                   through a shop or temple wall to get somewhere, unless they
+                   are already inside one. */
+                if (IS_OBSTRUCTED(ntyp) && rockok
+                    && !mindless(mon.data) && (mon.mpeaceful || mon.mtame)
+                    && (in_rooms(nx, ny, TEMPLE) || in_rooms(nx, ny, SHOPBASE))
+                    && !(in_rooms(x, y, TEMPLE) || in_rooms(x, y, SHOPBASE)))
+                    continue;
                 if (IS_WATERWALL(ntyp) && !is_swimmer(mdat))
                     continue;
-                if (ntyp === IRONBARS && !(flag & ALLOW_BARS))
+                /* src/mon.c:2227 — KMH: iron bars. Rusting and corroding
+                   attacks get through ordinary bars but not non-diggable
+                   ones, so those reject the square even with ALLOW_BARS. */
+                if (ntyp === IRONBARS
+                    && (!(flag & ALLOW_BARS)
+                        || ((loc.wall_info & W_NONDIGGABLE)
+                            && (dmgtype(mdat, ATTKS.AD_RUST)
+                                || dmgtype(mdat, ATTKS.AD_CORR)))))
                     continue;
                 if (IS_DOOR(ntyp)
+                    /* an amorphous creature can only move under or through a
+                       closed door when it does not currently have the hero
+                       engulfed */
+                    && !((amorphous(mdat) || can_fog(mon)) && !engulfing_u(mon))
                     && (((loc.doormask & D_CLOSED) && !(flag & OPENDOOR))
                         || ((loc.doormask & D_LOCKED) && !(flag & UNLOCKDOOR)))
                     && !thrudoor)
@@ -185,7 +240,11 @@ export function mfndpos(mon, data, flag) {
                 if (nx !== x && ny !== y
                     && (nodiag
                         || (IS_DOOR(nowtyp) && (here.doormask & ~D_BROKEN))
-                        || (IS_DOOR(ntyp) && (loc.doormask & ~D_BROKEN))))
+                        || (IS_DOOR(ntyp) && (loc.doormask & ~D_BROKEN))
+                        /* no diagonal in or out of a doorway on the Rogue
+                           level, where the display is the 1980 original */
+                        || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
+                            && Is_rogue_level())))
                     continue;
 
                 if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL)
@@ -194,6 +253,20 @@ export function mfndpos(mon, data, flag) {
                 if ((poolok || is_pool(nx, ny) === wantpool)
                     && (lavaok || !is_lava(nx, ny))) {
                     let info = 0;
+
+                    /* src/mon.c:2277 — Displacement moves the square the
+                       scare check is made on, as long as the hero is visible
+                       to this monster. Not modelled, so dispx/dispy are nx/ny. */
+                    const dispx = nx, dispy = ny;
+
+                    /* src/mon.c:2278 — a scary square (Elbereth, a scroll of
+                       scare monster) is rejected unless the monster ignores
+                       them. No draw; it just removes a candidate. */
+                    if (onscary(dispx, dispy, mon)) {
+                        if (!(flag & ALLOW_SSM))
+                            continue;
+                        info |= ALLOW_SSM;
+                    }
 
                     if (nx === game.u.ux && ny === game.u.uy) {
                         mon.mux = game.u.ux;
@@ -227,6 +300,45 @@ export function mfndpos(mon, data, flag) {
                         }
                     }
 
+                    /* src/mon.c:2318 — ALLOW_SANCT only prevents MOVEMENT
+                       into a temple, not attack, which is why it sits in the
+                       else arm of the hero test. */
+                    if (!(nx === game.u.ux && ny === game.u.uy)
+                        && !(nx === mon.mux && ny === mon.muy)) {
+                        if (game.level?.flags?.has_temple
+                            && in_rooms(nx, ny, TEMPLE)
+                            && !in_rooms(x, y, TEMPLE)
+                            && in_your_sanctuary(null, nx, ny)) {
+                            if (!(flag & ALLOW_SANCT))
+                                continue;
+                            info |= ALLOW_SANCT;
+                        }
+                    }
+
+                    /* src/mon.c:2326 — C reads OBJ_AT once into `checkobj`
+                       and gates both object tests on it. */
+                    const checkobj = objects_here(nx, ny);
+
+                    if (checkobj && sobj_at(ONAMES.CLOVE_OF_GARLIC, nx, ny)) {
+                        if (flag & NOGARLIC)
+                            continue;
+                        info |= NOGARLIC;
+                    }
+                    if (checkobj && sobj_at(ONAMES.BOULDER, nx, ny)) {
+                        if (!(flag & ALLOW_ROCK))
+                            continue;
+                        info |= ALLOW_ROCK;
+                    }
+
+                    /* src/mon.c:2338 — avoid standing in the hero's line.
+                       monseeu is the same test onscary's displacement uses. */
+                    const monseeu = (mon.mcansee && !game.u?.uprops?.INVIS);
+                    if (monseeu && monlineu(mon, nx, ny)) {
+                        if (flag & NOTONL)
+                            continue;
+                        info |= NOTONL;
+                    }
+
                     /* diagonal tight squeeze — all THREE tests must hold.
                        Omitting cant_squeeze_thru() blocked every diagonal
                        between two walls, which cost real candidate squares:
@@ -236,13 +348,29 @@ export function mfndpos(mon, data, flag) {
                         && cant_squeeze_thru(mon))
                         continue;
 
+                    /* src/mon.c:2347 — a monster avoids a trap type it is
+                       familiar with. Pets get ALLOW_TRAPS and dogmove.c does
+                       the deciding instead. A HARMLESS trap is neither avoided
+                       nor marked, which is the part that matters here: marking
+                       it unconditionally set ALLOW_TRAPS on squares C leaves
+                       clear, and m_move reads info[] to choose. */
                     const ttmp = t_at(nx, ny);
                     if (ttmp) {
-                        /* pets get ALLOW_TRAPS and dogmove.c does the
-                           checking; anything else needs mon_knows_traps() */
-                        if (!(flag & ALLOW_TRAPS))
-                            note_unported_mon('mfndpos trap avoidance');
-                        info |= ALLOW_TRAPS;
+                        if (ttmp.ttyp >= TRAPNUM || ttmp.ttyp === 0) {
+                            /* impossible("A monster looked at a very strange
+                               trap of type %d.") -- and then continues. */
+                            continue;
+                        }
+                        /* a fixed-destination teleport trap the hero has used
+                           is a route, not a hazard */
+                        if (fixed_tele_trap(ttmp) && hastrack(nx, ny)) {
+                            info |= ALLOW_TRAPS;
+                        } else if (!m_harmless_trap(mon, ttmp)) {
+                            if (!(flag & ALLOW_TRAPS)
+                                && mon_knows_traps(mon, ttmp.ttyp))
+                                continue;
+                            info |= ALLOW_TRAPS;
+                        }
                     }
 
                     data.poss[cnt] = { x: nx, y: ny };
@@ -261,6 +389,18 @@ export function mfndpos(mon, data, flag) {
 
     data.cnt = cnt;
     return cnt;
+}
+
+// include/rm.h:500 OBJ_AT() — is there anything on this square?
+function objects_here(x, y) {
+    return (game.level?.objects || []).some(o => o.ox === x && o.oy === y);
+}
+
+// src/mon.c:2055 monlineu() — is <nx,ny> in a straight line from where this
+// monster THINKS the hero is? Note it uses mux/muy, the remembered position,
+// not the real one.
+function monlineu(mon, nx, ny) {
+    return online2(nx, ny, mon.mux, mon.muy);
 }
 
 /* src/mon.c m_at() */
@@ -408,7 +548,6 @@ export function m_carrying(mtmp, type) {
 }
 
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
-const MON_WEP = (mon) => mon.mw || null;
 const NO_WEAPON_WANTED = 0;
 
 // include/obj.h:217,220 is_axe() / is_pick()
@@ -503,7 +642,7 @@ export function mon_allowflags(mtmp) {
     if (mtmp.isshk) allowflags |= ALLOW_SSM;
     if (mtmp.ispriest) allowflags |= ALLOW_SSM | ALLOW_SANCT;
     if (passes_walls(d)) allowflags |= (ALLOW_ROCK | ALLOW_WALL);
-    if (throws_rocks(d)) allowflags |= ALLOW_ROCK;
+    if (throws_rocks(d) || m_can_break_boulder(mtmp)) allowflags |= ALLOW_ROCK;
     if (can_tunnel) allowflags |= ALLOW_DIG;
     if (doorbuster) allowflags |= BUSTDOOR;
     if (can_open) allowflags |= OPENDOOR;

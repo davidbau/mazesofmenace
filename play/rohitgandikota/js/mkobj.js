@@ -24,12 +24,19 @@
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
+import { Is_rogue_level } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
     rndmonnum, level_difficulty, is_male, is_female, is_neuter, is_rider,
 } from './makemon.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
+/* invent.js imports erosion_matters() from here, so this edge closes a cycle.
+   Both sides export function DECLARATIONS, which hoist, so each module sees the
+   other's bindings by the time anything is called. */
+import { merged, weight } from './invent.js';
+import { OBJ_CONTAINED, Is_pudding, Is_candle } from './obj.js';
+import { depth } from './dungeon.js';
 
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
 // A NEGATED class, not an index past the real ones. It is the one caller-facing
@@ -165,8 +172,21 @@ function bcsign(otmp) {
     return (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
 }
 
-function curse(otmp) { otmp.cursed = 1; otmp.blessed = 0; }
-function bless(otmp) { otmp.blessed = 1; otmp.cursed = 0; }
+// src/mkobj.c:1783 curse() and :1745 bless(). Both return early for gold,
+// which is neither blessed nor cursed, and both clear the opposite flag. The
+// lamplit/arti_light_radius bookkeeping needs the light-source subsystem.
+export function curse(otmp) {
+    if (otmp.oclass === OCLASSES.COIN_CLASS)
+        return;
+    otmp.blessed = 0;
+    otmp.cursed = 1;
+}
+export function bless(otmp) {
+    if (otmp.oclass === OCLASSES.COIN_CLASS)
+        return;
+    otmp.cursed = 0;
+    otmp.blessed = 1;
+}
 
 // src/mkobj.c:1846 blessorcurse()
 export function blessorcurse(otmp, chance) {
@@ -481,10 +501,6 @@ const LIQUID = 1, PAPER = 5, LEATHER = 7, WOOD = 8, DRAGON_HIDE = 10,
 const P_NONE = 0;                 /* include/skills.h */
 const FIRE_RES = 1;               /* include/prop.h:15 */
 
-// include/obj.h:382 Is_candle()
-function Is_candle(otmp) {
-    return otmp.otyp === ONAMES.TALLOW_CANDLE || otmp.otyp === ONAMES.WAX_CANDLE;
-}
 
 // src/mkobj.c is_flammable()
 function is_flammable(otmp, objects) {
@@ -725,13 +741,6 @@ function assign_candy_wrapper(obj) {
         obj.spe = 1 + rn2(N_CANDY_WRAPPERS - 1);
 }
 
-// include/obj.h:327 Is_pudding()
-function Is_pudding(o) {
-    return o.otyp === ONAMES.GLOB_OF_GRAY_OOZE
-        || o.otyp === ONAMES.GLOB_OF_BROWN_PUDDING
-        || o.otyp === ONAMES.GLOB_OF_GREEN_SLIME
-        || o.otyp === ONAMES.GLOB_OF_BLACK_PUDDING;
-}
 
 // src/timeout.c start_glob_timeout() — when the caller passes 0, the shrink
 // time is 25 + rn2(5) - 2.
@@ -920,7 +929,11 @@ export function mkgold(amount, x, y) {
     let gold = g_at(x, y);
 
     if (amount <= 0) {
-        const mul = rnd(Math.trunc(30 / Math.max(12 - level_difficulty(), 2)));
+        /* src/mkobj.c:2008 — the multiplier uses depth(), the amount uses
+           level_difficulty(). They agree on an ordinary level and diverge once
+           the hero carries the Amulet or reaches the endgame, where
+           level_difficulty() stops tracking depth. */
+        const mul = rnd(Math.trunc(30 / Math.max(12 - depth(game.u.uz), 2)));
         amount = 1 + rnd(level_difficulty() + 2) * mul;
     }
     if (gold) {
@@ -933,6 +946,9 @@ export function mkgold(amount, x, y) {
         gold = mksobj_at(ONAMES.GOLD_PIECE, x, y, true, false);
         gold.quan = amount;
     }
+    /* src/mkobj.c:2018 — runs on BOTH branches, so a pile that just grew gets
+       reweighed too. can_carry() reads this as its `newload`. */
+    gold.owt = weight(gold);
     return gold;
 }
 
@@ -995,12 +1011,33 @@ function note_unported_obj(what) {
     (game.unported ||= new Set()).add(what);
 }
 
-// src/dungeon.c Is_rogue_level() / Inhell — neither is reachable on the levels
-// the public corpus generates, but the branches exist so the class table is
-// selected the way C selects it rather than being assumed.
-function Is_rogue_level() {
-    return game.level?.flags?.is_rogue_level === true;
-}
+/* Is_rogue_level() is include/dungeon.h's Lcheck against rogue_level and lives
+   in js/const.js with the other level tests. The copy that used to
+   be here tested game.level.flags.is_rogue_level instead, which is a different
+   question and a flag nothing sets. */
 function Inhell() {
     return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
 }
+
+// src/mkobj.c:2676 add_to_container() — link an object into a container's cobj
+// chain, or merge it into an identical stack already there.
+//
+// C PREPENDS: `obj->nobj = container->cobj; container->cobj = obj;`. The merge
+// loop runs first and walks the existing contents in that same order, so the
+// returned pointer is the SURVIVING object, which is not always the one passed
+// in. Callers that keep using `obj` after this without taking the return value
+// are using a freed pointer.
+export function add_to_container(container, obj) {
+    /* C also panics on obj->where != OBJ_FREE and calls obj_no_longer_held()
+       when the container is on the floor; neither is modelled yet, and both
+       are bookkeeping rather than draws. */
+    for (const otmp of (container.cobj || []))
+        if (merged({ o: otmp }, { o: obj }) !== 0)
+            return otmp;
+
+    obj.where = OBJ_CONTAINED;
+    obj.ocontainer = container;
+    (container.cobj ||= []).unshift(obj);
+    return obj;
+}
+

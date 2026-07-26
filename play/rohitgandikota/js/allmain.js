@@ -4,6 +4,7 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
+import { maybe_finished_meal } from './eat.js';
 
 // src/allmain.c set_occupation() / stop_occupation() — the multi-turn action
 // slot. moveloop_core calls go.occupation once per turn until it returns 0.
@@ -26,20 +27,29 @@ export function set_occupation(fn, txt, xtime) {
 // src/allmain.c stop_occupation()
 export function stop_occupation() {
     if (game.occupation) {
+        /* src/allmain.c:684 — maybe_finished_meal runs FIRST, and the
+           "You stop <occtxt>." message only prints when it returns FALSE. */
+        if (!maybe_finished_meal(true))
+            note_unported_main(`stop_occupation:message:${game.occtxt}`);
         game.occupation = null;
         game.occtxt = null;
+        /* nomul(0) */
     }
     game.multi = 0;
 }
 
 import { rn2, rn1 } from './rng.js';
-import { exerchk } from './attrib.js';
+import { exerchk, change_luck } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
-import { ask_do_tutorial, set_playmode } from './options.js';
-import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame } from './const.js';
+import { phase_of_the_moon, friday_13th } from './calendar.js';
+import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
+import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
+         FULL_MOON, NEW_MOON } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
+import { deferred_goto } from './do.js';
+import { You } from './pline.js';
 import {
     docrt, cls, bot, flush_screen, pline, TOPLINE_EMPTY,
 } from './display.js';
@@ -103,6 +113,11 @@ export async function newgame() {
         if (ir < 0 || ira < 0 || ig < 0 || ia < 0)
             await player_selection();
     }
+
+    /* src/options.c:3471 optfn_playmode() — the rc's playmode: option sets
+       the wizard and discover globals. Both were being read and neither was
+       ever assigned. */
+    optfn_playmode();
 
     /* src/options.c set_playmode() — called from the port's startup code
        before the game proper. It renames the hero in wizard mode, so it has to
@@ -319,6 +334,29 @@ export async function newgame() {
         await pline(`${Hello(null)} ${g.plname}, welcome to NetHack! `
                     + ` You are a${buf}.`);
     }
+
+    // src/allmain.c:56 moveloop_preamble() — "side-effects from the real
+    // world", and they come BEFORE the new-game branch.
+    //
+    // Neither draws, but both can pline, and a pline at this point is what
+    // pushes the greeting into needing a --More--: the greeting is 76 columns
+    // and "--More--" is 8, so the tty wraps the prompt onto row 1 rather than
+    // appending it. That is the whole difference on seed4500's first frame.
+    //
+    // The luck changes are real too: a full moon starts the hero at Luck 1 and
+    // Friday the 13th at -1, which every later luck-sensitive roll reads.
+    g.flags.moonphase = phase_of_the_moon();
+    if (g.flags.moonphase === FULL_MOON) {
+        await You('are lucky!  Full moon tonight.');
+        change_luck(1);
+    } else if (g.flags.moonphase === NEW_MOON) {
+        await pline('Be careful!  New moon tonight.');
+    }
+    g.flags.friday13 = friday_13th();
+    if (g.flags.friday13) {
+        await pline('Watch out!  Bad things can happen on Friday the 13th.');
+        change_luck(-1);
+    }
 }
 
 // src/allmain.c:118 u_calc_moveamt()
@@ -400,7 +438,11 @@ export async function moveloop_core() {
                    a monster that cannot see the hero has a trail to follow. */
                 settrack();
 
-                g.moves = (g.moves || 1) + 1;
+                /* src/allmain.c:244 svm.moves++. The counter starts at 1
+                   (src/u_init.c:645), so plain increment; the old
+                   `(g.moves || 1) + 1` only happened to agree because the
+                   first increment landed on 2 either way. */
+                g.moves++;
 
                 dosounds();
                 gethungry();
@@ -468,6 +510,11 @@ export async function moveloop_core() {
     // before dispatching, so each message survives exactly until the frame
     // that displays it has been captured.
     await rhack(0);
+
+    /* src/allmain.c:538 — a command that scheduled a level change takes it
+       here, AFTER rhack() returns, not inside the command itself. */
+    if (g.u.utotype)
+        await deferred_goto();
 }
 
 // C ref: allmain.c moveloop()

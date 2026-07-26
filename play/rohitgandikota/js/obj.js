@@ -47,3 +47,38 @@ export const WrappingAllowed = (mptr) =>
     && !noncorporeal(mptr) && mptr.mlet !== MONSYMS.S_CENTAUR
     && mptr.pmidx !== PMNAMES.PM_WINGED_GARGOYLE
     && mptr.pmidx !== PMNAMES.PM_MARILITH;
+
+// include/obj.h:75 — obj->where. These are an enum in all but name, and the
+// values are load-bearing: obj_extract_self() switches on them.
+export const OBJ_FREE = 0;      /* object not attached to anything */
+export const OBJ_FLOOR = 1;     /* object on floor */
+export const OBJ_CONTAINED = 2; /* object in a container */
+export const OBJ_INVENT = 3;    /* object in the hero's inventory */
+export const OBJ_MINVENT = 4;   /* object in a monster inventory */
+export const OBJ_MIGRATING = 5; /* object sent off to another level */
+export const OBJ_BURIED = 6;    /* object buried */
+export const OBJ_ONBILL = 7;    /* object on shk bill */
+
+// include/obj.h:332
+export const carried = (o) => o.where === OBJ_INVENT;
+// include/obj.h:333
+export const mcarried = (o) => o.where === OBJ_MINVENT;
+
+// include/obj.h:327 Is_pudding() — the four glob types by NAME, not by the
+// globby flag. mksobj sets globby for exactly these, so the two agree today,
+// but the flag is a consequence of being a glob rather than the definition of
+// one.
+export const Is_pudding = (o) =>
+    o.otyp === ONAMES.GLOB_OF_GRAY_OOZE || o.otyp === ONAMES.GLOB_OF_BROWN_PUDDING
+    || o.otyp === ONAMES.GLOB_OF_GREEN_SLIME || o.otyp === ONAMES.GLOB_OF_BLACK_PUDDING;
+
+// include/obj.h:337 Is_container()
+export const Is_container = (o) =>
+    o.otyp >= ONAMES.LARGE_BOX && o.otyp <= ONAMES.BAG_OF_TRICKS;
+
+// include/obj.h:382 Is_candle()
+export const Is_candle = (o) =>
+    o.otyp === ONAMES.TALLOW_CANDLE || o.otyp === ONAMES.WAX_CANDLE;
+
+// include/obj.h:334 Has_contents()
+export const Has_contents = (o) => !!(o.cobj && o.cobj.length);

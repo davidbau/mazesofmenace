@@ -229,6 +229,39 @@ export async function ask_do_tutorial() {
     }
 }
 
+// src/options.c:3471 optfn_playmode() — the OPTIONS=playmode: handler.
+//
+// It sets BOTH globals, and every combination matters:
+//
+//     normal / play        wizard = discover = FALSE
+//     explore / discovery  wizard = FALSE, discover = TRUE
+//     debug / wizard       wizard = TRUE,  discover = FALSE
+//
+// Neither was ever assigned. game.wizard was read in four places and was
+// always undefined, and game.discover only got a value inside set_playmode's
+// wizard branch, which therefore never ran. getbones() returns before its
+// rn2(3) when discover is set, so an explore-mode session drew one call that
+// C does not, at call 302 of six of the public sessions.
+//
+// C compares with strncmpi over a PREFIX length, so "explor", "discove" and
+// "wiz" all match; the length is part of the option's contract.
+export function optfn_playmode() {
+    const op = String(game.rc?.opts?.playmode ?? '').toLowerCase();
+
+    if (!op)
+        return;
+    if (op.startsWith('normal') || op === 'play') {
+        game.wizard = game.discover = false;
+    } else if (op.slice(0, 6) === 'explor' || op.slice(0, 6) === 'discov') {
+        game.wizard = false;
+        game.discover = true;
+    } else if (op.slice(0, 5) === 'debug' || op.slice(0, 6) === 'wizard') {
+        game.wizard = true;
+        game.discover = false;
+    }
+    /* anything else is a config error and leaves both alone */
+}
+
 // src/options.c:10134 set_playmode() — wizard mode renames the hero.
 //
 // OPTIONS=playmode:debug reaches here and overwrites plname with "wizard",

@@ -176,9 +176,13 @@ export function setuhpmax(newmax, even_when_polyd) {
 // the level counter moves. newhp's level-up branch spends up to two rnd calls
 // (role and race, each gated on its adv being non-zero) plus a Constitution
 // bonus; newpw spends one rn1.
-export function pluslvl(incr) {
+/* async because pline() is: update_topl() can reach more(), which BLOCKS for
+   a keystroke. Calling pline without awaiting it let wiz_level_change's loop
+   run all its iterations at once while the messages queued up behind an
+   unawaited promise, so the top line froze on the first level gained. */
+export async function pluslvl(incr) {
     if (!incr)
-        pline('You feel more experienced.');
+        await pline('You feel more experienced.');
 
     /* Upolyd would take monhp_per_lvl() first; not reachable here. */
     const hpinc = newhp();
@@ -200,8 +204,8 @@ export function pluslvl(incr) {
             game.u.uexp = newuexp(game.u.ulevel);
         }
         ++game.u.ulevel;
-        pline(`Welcome ${(game.u.ulevelmax < game.u.ulevel) ? '' : 'back '}`
-              + `to experience level ${game.u.ulevel}.`);
+        await pline(`Welcome ${(game.u.ulevelmax < game.u.ulevel) ? '' : 'back '}`
+                    + `to experience level ${game.u.ulevel}.`);
         if (game.u.ulevelmax < game.u.ulevel)
             game.u.ulevelmax = game.u.ulevel;
 

@@ -1203,6 +1203,12 @@ export function makemon(ptr, x, y, mmflags) {
            must start at 0, or movemon() lets the monster act on turn 1 when
            C makes it wait for its first allotment. */
         movement: 0, mspeed: 0,
+        /* mux/muy are where the monster THINKS the hero is. set_apparxy()
+           assigns them each turn and is not ported; until it is, they have to
+           read as C's zeroed 0 rather than undefined, because monlineu() feeds
+           them to online2() where undefined makes every delta NaN and `!dy`
+           then answers true for EVERY square. */
+        mux: 0, muy: 0,
         female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
         minvent: null, mgold: 0, data: ptr, mnum: mndx,
         cham: NON_PM, mstrategy: 0,
@@ -1244,7 +1250,7 @@ export function makemon(ptr, x, y, mmflags) {
     case S_SNAKE:
         if (game.in_mklev) {
             if (x && y)
-                mkobj_at(RANDOM_CLASS, x, y, true);
+                mkobj_at(OCLASSES.RANDOM_CLASS, x, y, true);
             hideunder(mtmp);
         }
         break;

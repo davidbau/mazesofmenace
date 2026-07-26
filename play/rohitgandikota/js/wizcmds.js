@@ -11,6 +11,7 @@ import { ECMD_OK } from './const.js';
 import { getlin } from './cmd.js';
 import { pline } from './display.js';
 import { pluslvl } from './exper.js';
+import { level_tele } from './teleport.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -62,7 +63,7 @@ export async function wiz_level_change() {
             return ECMD_OK;
         }
         while (game.u.ulevel < newlevel)
-            pluslvl(false);
+            await pluslvl(false);
     }
 
     /* blessed full healing or restore ability won't fix any lost levels */
@@ -77,4 +78,13 @@ const MAXULEV = 30;
 // space and drop leading and trailing space.
 function mungspaces(bp) {
     return bp.replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
+}
+
+// src/wizcmds.c wiz_level_tele() — the ^V command.
+export async function wiz_level_tele() {
+    if (game.wizard)
+        await level_tele();
+    else
+        await pline('Unavailable command.');   /* unavailcmd */
+    return ECMD_OK;
 }

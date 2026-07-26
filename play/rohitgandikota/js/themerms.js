@@ -17,9 +17,9 @@ import { level_difficulty } from './makemon.js';
 import { selection_from_mkroom, selection_iterate, selection_rndcoord,
          selection_filter_percent, selection_numpoints,
          selection_filter_mapchar, selection_not,
-         selection_new } from './selvar.js';
+         selection_new, selection_clear } from './selvar.js';
 import { ROOM } from './const.js';
-import { lspo_terrain, lspo_trap, get_traptype_byname,
+import { lspo_engraving, lspo_terrain, lspo_trap, get_traptype_byname,
          lspo_object, lspo_monster, lspo_altar } from './sp_lev.js';
 
 function note_unported_themerms(what) {
@@ -319,9 +319,10 @@ export function fill_buried_treasure(rm) {
     lspo_object('chest', undefined, undefined, {
         buried: true,
         contents: (otmp) => {
-            /* the postprocess entry is recorded; make_dig_engraving runs after
-               the whole level is built */
-            note_unported_themerms('postprocess:make_dig_engraving');
+            /* `if (xobj.NO_OBJ == nil)` — obj:totable() sets NO_OBJ on a null
+               object, so this registers only when the chest really exists. */
+            if (otmp)
+                postprocess_add(make_dig_engraving, { x: otmp.ox, y: otmp.oy });
 
             const n = lua_d(3, 4);
             for (let i = 1; i <= n; i++)
@@ -415,9 +416,46 @@ export function post_level_generate() {
 // The repeat loop spends one rndcoord per pass, and rndcoord(1) REMOVES its
 // pick, so the candidate set shrinks and each pass draws from a smaller range.
 // The `and` in the until means it retries when EITHER coordinate matches.
+// dat/themerms.lua:1052 make_dig_engraving() — the postprocess handler queued
+// by "Buried treasure". It burns a note into the floor saying which way to dig.
+//
+//     local floors = selection.negate():filter_mapchar(".");
+//     local pos = floors:rndcoord(0);
+//     local tx = data.x - pos.x - 1;
+//
+// Exactly one draw, the rn2 inside rndcoord. filter_mapchar defaults lit to -2
+// (nhlsel.c:663) so it sets matches unconditionally rather than spending an
+// rn2(2) per square.
+//
+// The `- 1` on tx is not a typo to tidy up. The engraving reports the offset in
+// the coordinate system the player reads off the screen, whose x is one less
+// than the map x, and the Lua compensates on x only. ty has no such term.
+export function make_dig_engraving(data) {
+    const all = selection_new();
+    selection_clear(all, 1);            /* selection.negate() */
+    const floors = selection_filter_mapchar(all, ROOM, -2);
+    const pos = selection_rndcoord(floors, 0);
+
+    const tx = data.x - pos.x - 1;
+    const ty = data.y - pos.y;
+    let dig = '';
+
+    if (tx === 0 && ty === 0) {
+        dig = ' here';
+    } else {
+        if (tx < 0 || tx > 0)
+            dig = ` ${Math.abs(tx)} ${tx > 0 ? 'east' : 'west'}`;
+        if (ty < 0 || ty > 0)
+            dig += ` ${Math.abs(ty)} ${ty > 0 ? 'south' : 'north'}`;
+    }
+
+    lspo_engraving({ coord: pos, type: 'burn', text: 'Dig' + dig });
+}
+
 export function make_a_trap(data) {
     if (data.teledest === 1 && data.type === 'teleport') {
-        const all = selection_not(selection_new());
+        const all = selection_new();
+        selection_clear(all, 1);        /* nhlsel.c:265 negate() with no self */
         const locs = selection_filter_mapchar(all, ROOM, -2);
 
         do {

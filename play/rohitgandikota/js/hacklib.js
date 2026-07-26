@@ -24,17 +24,15 @@ export function distmin(x1, y1, x2, y2) {
     return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
 }
 
+// include/hack.h:1531 distu() — squared distance from the hero.
+export const distu = (xx, yy) => dist2(xx, yy, game.u.ux, game.u.uy);
+
 export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
-export function depth(uz) {
-    const dnum = uz?.dnum ?? 0;
-    const dlevel = uz?.dlevel ?? 1;
-    const dungeon = game?.dungeons?.[dnum];
-    if (!dungeon) return dlevel;
-    return (dungeon.depth_start || 1) + dlevel - 1;
-}
+/* depth() is src/dungeon.c and lives in js/dungeon.js. The copy that was
+   here differed only in being defensive about a missing dungeon entry. */
 
 // C ref: rn2(x) already in rng.js — re-export not needed
 
@@ -44,4 +42,14 @@ export function s_suffix(s) {
     if (s.toLowerCase() === 'you') return s + 'r';
     if (s.endsWith('s')) return s + "'";
     return s + "'s";
+}
+
+// src/hacklib.c:704 online2() — are the two points on a straight line?
+//
+// Orthogonal when either delta is zero, diagonal when the deltas match in
+// magnitude. Both signs of the diagonal are tested separately because C is
+// comparing ints, not absolute values.
+export function online2(x0, y0, x1, y1) {
+    const dx = x0 - x1, dy = y0 - y1;
+    return (!dy || !dx || dy === dx || dy === -dx);
 }

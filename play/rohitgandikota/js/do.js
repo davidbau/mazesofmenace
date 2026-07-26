@@ -7,6 +7,7 @@
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
+import { pline } from './display.js';
 import { ECMD_OK, ECMD_TIME } from './const.js';
 import { rn2, rnd } from './rng.js';
 
@@ -117,4 +118,56 @@ function u_on_dnstairs() {
         return;
     }
     note_unported_do('u_on_dnstairs:no_upstair');
+}
+
+// include/you.h:354 enum utotypes
+export const UTOTYPE_NONE = 0x00;
+export const UTOTYPE_ATSTAIRS = 0x01;
+export const UTOTYPE_FALLING = 0x02;
+export const UTOTYPE_PORTAL = 0x04;
+export const UTOTYPE_RMPORTAL = 0x10;
+export const UTOTYPE_DEFERRED = 0x20;
+
+// src/do.c schedule_goto() — arrange to change level at the END of this turn.
+//
+// The level change is DEFERRED rather than immediate: the command that asks
+// for it finishes first, and moveloop_core acts on u.utotype after rhack()
+// returns. UTOTYPE_DEFERRED is always ORed in so that UTOTYPE_NONE, which is
+// zero, still leaves a non-zero value for that test to see.
+export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
+    game.u.utotype = utotype_flags | UTOTYPE_DEFERRED;
+    game.u.utolev = { dnum: tolev.dnum, dlevel: tolev.dlevel };
+
+    if (pre_msg) game.dfr_pre_msg = pre_msg;
+    if (post_msg) game.dfr_post_msg = post_msg;
+}
+
+// src/do.c deferred_goto() — carry out a scheduled level change.
+export async function deferred_goto() {
+    const uz = game.u.uz, to = game.u.utolev;
+
+    if (!(uz.dnum === to.dnum && uz.dlevel === to.dlevel)) {
+        const typmask = game.u.utotype;   /* goto_level zeroes it */
+        const dest = { dnum: to.dnum, dlevel: to.dlevel };
+        const oldlev = { dnum: uz.dnum, dlevel: uz.dlevel };
+
+        if (game.dfr_pre_msg)
+            await pline(game.dfr_pre_msg);
+
+        await goto_level(dest, !!(typmask & UTOTYPE_ATSTAIRS),
+                         !!(typmask & UTOTYPE_FALLING),
+                         !!(typmask & UTOTYPE_PORTAL));
+
+        if (typmask & UTOTYPE_RMPORTAL)
+            note_unported_do('deferred_goto:remove portal');
+
+        if (game.dfr_post_msg
+            && !(game.u.uz.dnum === oldlev.dnum
+                 && game.u.uz.dlevel === oldlev.dlevel))
+            await pline(game.dfr_post_msg);
+    }
+
+    game.u.utotype = UTOTYPE_NONE;      /* the caller keys off this */
+    game.dfr_pre_msg = null;
+    game.dfr_post_msg = null;
 }

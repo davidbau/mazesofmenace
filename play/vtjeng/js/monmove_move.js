@@ -49,12 +49,15 @@ import {
     set_apparxy,
     should_displace,
 } from './monmove.js';
+import { m_search_items } from './monmove_items.js';
 import { sobj_at } from './obj.js';
 import { BOULDER, WAN_STRIKING } from './objects.js';
 import { m_in_out_region } from './region.js';
 import { rn2 } from './rng.js';
 import { gettrack } from './track.js';
 import { couldsee } from './vision.js';
+import { collectMonsterMovementMessage } from './startup_a11y.js';
+import { ttyPline } from './tty_message.js';
 
 function activeProperty(state, property) {
     const value = state.u?.uprops?.[property];
@@ -189,9 +192,8 @@ export async function m_move_fresh(monster, rawEnv = {}) {
         }
     }
 
-    // m_search_items() is inert under the simple-turn preflight's empty
-    // search area. Preserve every source admission term and its evaluation
-    // order before asking the preflight to verify that assumption.
+    let selectedItem = null;
+    let getItems = false;
     const passesPeacefulGate = !monster.mpeaceful || !random.rn2(10);
     if (passesPeacefulGate
         && !on_level(state.u?.uz, state.rogue_level)) {
@@ -203,9 +205,35 @@ export async function m_move_fresh(monster, rawEnv = {}) {
             : Math.trunc(effective_attribute(state, A_STR) / 2) + 1;
         const inLine = linedUp
             && distmin(oldX, oldY, monster.mux, monster.muy) <= throwRange;
-        if ((approach !== 1 || !inLine)
-            && typeof rawEnv.assertEmptyItemSearch === 'function') {
-            rawEnv.assertEmptyItemSearch(monster, env);
+        getItems = approach !== 1 || !inLine;
+    }
+    if (getItems) {
+        const search = (rawEnv.searchItems ?? m_search_items)(
+            monster,
+            goalX,
+            goalY,
+            approach,
+            env,
+        );
+        goalX = search.goalX;
+        goalY = search.goalY;
+        approach = search.approach;
+        selectedItem = search.object;
+        if (search.complete) {
+            rawEnv.preflightFloorItems?.(
+                monster,
+                oldX,
+                oldY,
+                selectedItem,
+                env,
+            );
+            return postMonsterMove(
+                monster,
+                oldX,
+                oldY,
+                MMOVE_DONE,
+                env,
+            );
         }
     }
 
@@ -308,11 +336,32 @@ export async function m_move_fresh(monster, rawEnv = {}) {
     const mayCrossRegion = rawEnv.mayCrossRegion ?? m_in_out_region;
     if (!await mayCrossRegion(monster, nextX, nextY, env))
         return MMOVE_DONE;
+    if (state.level.objects[nextX]?.[nextY]) {
+        rawEnv.preflightFloorItems?.(
+            monster,
+            nextX,
+            nextY,
+            selectedItem?.ox === nextX && selectedItem?.oy === nextY
+                ? selectedItem
+                : null,
+            env,
+        );
+    }
     if (data.info[chosen] & ALLOW_ROCK)
         unsupported('ordinary monster boulder breaking');
 
     remove_monster(oldX, oldY, state);
     place_monster(monster, nextX, nextY, state);
+    const movementMessage = collectMonsterMovementMessage(
+        monster,
+        oldX,
+        oldY,
+        state,
+    );
+    if (movementMessage && !env.planning) {
+        const message = rawEnv.message ?? ttyPline;
+        await message(movementMessage, state, env);
+    }
     mon_track_add(monster, oldX, oldY);
     return postMonsterMove(
         monster,

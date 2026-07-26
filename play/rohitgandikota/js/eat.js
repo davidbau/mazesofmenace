@@ -14,6 +14,9 @@ import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK,
          A_LAWFUL } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { getobj } from './invent.js';
+import { pline } from './display.js';
+/* include/obj.h:332 carried() is a WHERE test, not list membership. */
+import { carried } from './obj.js';
 
 // src/eat.c:3170 gethungry()
 export function gethungry() {
@@ -151,7 +154,7 @@ function note_unported_eat(what) {
 //
 // The rn2(20) is the only draw, and it is short-circuited by Breathless or
 // Hunger, so a hero with either spends nothing here.
-export function choke(food) {
+export async function choke(food) {
     /* only happens if you were satiated */
     if (game.u.uhs !== SATIATED) {
         if (!food || food.otyp !== ONAMES.AMULET_OF_STRANGULATION)
@@ -173,9 +176,9 @@ export function choke(food) {
     }
 
     game.killer = { format: KILLED_BY, name: 'quick snack' };
-    pline('You choke over it.');
-    pline('You die...');
-    done(CHOKING);
+    await pline('You choke over it.');
+    await pline('You die...');
+    await done(CHOKING);
 }
 
 // src/eat.c:3132 bite() — one turn of eating. Returns 1 if the hero choked and
@@ -233,8 +236,6 @@ export function eatfood() {
     return 0;
 }
 
-// src/invent.c carried() — is this object in the hero's inventory?
-const carried = (o) => (game.invent || []).includes(o);
 
 // src/invent.c obj_here() — is this object on that square?
 const obj_here = (o, x, y) => o.ox === x && o.oy === y;
@@ -330,4 +331,26 @@ export function newuhs(incr) {
         note_unported_eat('newuhs:weak_or_fainting');
 
     game.u.uhs = newhs;
+}
+
+// src/eat.c maybe_finished_meal() — finish a meal that consume_oeaten has
+// already exhausted, rather than reporting it as interrupted.
+//
+// stop_occupation calls this FIRST and only prints "You stop <occtxt>." when it
+// returns FALSE, so omitting it both leaves the food half-eaten and prints a
+// message C does not.
+//
+// `stopping` clears the occupation BEFORE eatfood() runs, which the C notes is
+// "for do_reset_eat" -- eatfood checks the occupation, so leaving it set makes
+// the meal look still-in-progress to its own callback.
+export function maybe_finished_meal(stopping) {
+    const v = game.context?.victual;
+
+    if (game.occupation === eatfood && v && v.usedtime >= v.reqtime) {
+        if (stopping)
+            game.occupation = null;     /* for do_reset_eat */
+        eatfood();                      /* calls done_eating to use the food up */
+        return true;
+    }
+    return false;
 }

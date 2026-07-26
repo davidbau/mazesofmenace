@@ -12,6 +12,7 @@
 // direct check that the o_init port is right.
 
 import { game } from './gstate.js';
+import { W_ARMOR, W_QUIVER, W_WEP } from './const.js';
 import { mons } from './monst_data.js';
 import { OCLASSES, ONAMES, obj_descr } from './objects_data.js';
 
@@ -282,4 +283,3 @@ export function doname(obj) {
 }
 
 // include/prop.h
-const W_ARMOR = 0x7f, W_QUIVER = 0x0800, W_WEP = 0x0100;

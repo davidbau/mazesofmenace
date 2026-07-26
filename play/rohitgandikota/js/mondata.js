@@ -8,7 +8,14 @@
 //
 // Nothing here draws.
 
-import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
+import { MFLAGS, MONSYMS, PMNAMES, ATTKS } from './monst_data.js';
+import { game } from './gstate.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { MON_WEP } from './monst.js';
+import { which_armor } from './worn.js';
+import { W_ARM, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
+         POISON_RES, ACID_RES, STONE_RES, ANTIMAGIC, DRAIN_RES,
+         BLND_RES } from './const.js';
 
 export const bigmonst     = (d) => d.msize >= MFLAGS.MZ_LARGE;
 export const amorphous    = (d) => (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0;
@@ -91,6 +98,19 @@ export function num_horns(ptr) {
 
 export const has_horns = (ptr) => num_horns(ptr) > 0;
 
+// include/mondata.h:63 unsolid()
+export const unsolid = (ptr) => (ptr.mflags1 & MFLAGS.M1_UNSOLID) !== 0;
+
+// include/mondata.h:147 webmaker() — only the two spiders.
+export const webmaker = (ptr) => ptr.pmidx === PMNAMES.PM_CAVE_SPIDER
+                              || ptr.pmidx === PMNAMES.PM_GIANT_SPIDER;
+
+// include/mondata.h:109 is_domestic() — starts tame at 10 rather than 5.
+export const is_domestic = (ptr) => (ptr.mflags2 & MFLAGS.M2_DOMESTIC) !== 0;
+
+// include/mondata.h:81 perceives() — can this species see invisible?
+export const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
+
 // include/mondata.h is_animal()
 export const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
 
@@ -99,6 +119,8 @@ export const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
 
 // include/mondata.h:19,20,27 — placement predicates read by pm_to_humidity().
 export const is_flyer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_FLY) !== 0;
+// include/mondata.h:22 is_clinger()
+export const is_clinger = (ptr) => (ptr.mflags1 & MFLAGS.M1_CLING) !== 0;
 export const is_floater = (ptr) => ptr.mlet === MONSYMS.S_EYE
                                 || ptr.mlet === MONSYMS.S_LIGHT;
 export const amphibious = (ptr) => (ptr.mflags1 & MFLAGS.M1_AMPHIBIOUS) !== 0;
@@ -113,3 +135,137 @@ export const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
 // include/mondata.h likes_lava()
 export const likes_lava = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
                                 || ptr.pmidx === PMNAMES.PM_SALAMANDER;
+
+// ---------------------------------------------------------------------------
+// src/mondata.c — the resistance predicates.
+//
+// mfndpos()'s trap arm needs m_harmless_trap(), which needs these. None of
+// them draws. What they all share is a walk over the monster's wielded weapon,
+// worn armour and carried items; our monsters have no inventory yet, so those
+// loops are empty rather than wrong, and the species-level tests -- which are
+// the ones that actually fire during level generation and early play -- are
+// exact.
+// ---------------------------------------------------------------------------
+
+// src/mondata.c:704 dmgtype_fromattack() — the monster's attack of this damage
+// type, if it has one. atyp AT_ANY accepts any attack form.
+export function dmgtype_fromattack(ptr, dtyp, atyp) {
+    for (const a of (ptr.mattk || []))
+        if (a[1] === dtyp && (atyp === ATTKS.AT_ANY || a[0] === atyp))
+            return a;
+    return null;
+}
+
+// src/mondata.c:712 dmgtype()
+export function dmgtype(ptr, dtyp) {
+    return dmgtype_fromattack(ptr, dtyp, ATTKS.AT_ANY) ? true : false;
+}
+
+// include/obj.h:348 Is_dragon_scales/Is_dragon_mail/Is_dragon_armor
+const Is_dragon_scales = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALES
+                               && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALES;
+const Is_dragon_mail = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALE_MAIL
+                             && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALE_MAIL;
+const Is_dragon_armor = (obj) => Is_dragon_scales(obj) || Is_dragon_mail(obj);
+
+// src/mondata.c:91 defended() — is `mon` protected against `adtyp` by an
+// artifact it wields or by dragon scales it wears?
+//
+// The dragon case is the interesting one: an ADULT dragon is treated as if it
+// were wearing its own scales, by building a throwaway armour object whose
+// otyp is derived from the species. defends() and Is_dragon_armor() read only
+// otyp, so the rest of the object is left unset exactly as C leaves it.
+export function defended(mon, adtyp) {
+    /* artifact weapons do not exist in this port yet, and C guards on
+       o->oartifact before calling defends(), so that arm is unreachable
+       rather than skipped. */
+    let o = MON_WEP(mon);
+    if (o && o.oartifact) {
+        note_unported_mondata('defended:defends(artifact weapon)');
+        return false;
+    }
+
+    const mndx = mon.data.pmidx;
+    if (mndx >= PMNAMES.PM_GRAY_DRAGON && mndx <= PMNAMES.PM_YELLOW_DRAGON) {
+        o = {
+            oclass: OCLASSES.ARMOR_CLASS,
+            otyp: ONAMES.GRAY_DRAGON_SCALES + (mndx - PMNAMES.PM_GRAY_DRAGON),
+        };
+    } else {
+        o = which_armor(mon, W_ARM);
+    }
+
+    if (o && Is_dragon_armor(o)) {
+        note_unported_mondata('defended:defends(dragon scales)');
+        return false;
+    }
+
+    return false;
+}
+
+// src/mondata.c:129 Resists_Elem() — the shared body behind resists_fire(),
+// resists_sleep() and the rest.
+//
+// propindx 1..8 map to a damage type (propindx + 1) and a resistance bit
+// (1 << (propindx - 1)). The bit is tested against mon_resistancebits(), which
+// ORs the species' innate resistances with the monster's acquired ones.
+export function Resists_Elem(mon, propindx) {
+    let rsstmask = 0;
+
+    switch (propindx) {
+    case FIRE_RES: case COLD_RES: case SLEEP_RES: case DISINT_RES:
+    case SHOCK_RES: case POISON_RES: case ACID_RES: case STONE_RES:
+        rsstmask = 1 << (propindx - 1);
+        break;
+
+    /* accepted, but callers are expected to use these directly */
+    case ANTIMAGIC:
+        return resists_magm(mon);
+    case DRAIN_RES:
+        note_unported_mondata('Resists_Elem:resists_drli');
+        return false;
+    case BLND_RES:
+        note_unported_mondata('Resists_Elem:resists_blnd');
+        return false;
+
+    default:
+        return false;                   /* impossible() */
+    }
+
+    if ((mon_resistancebits(mon) & rsstmask) !== 0)
+        return true;
+
+    /* the wielded-weapon and worn/carried loops need monster inventory */
+    return false;
+}
+
+// include/monst.h:270 mon_resistancebits()
+const mon_resistancebits = (mon) =>
+    (mon.data.mresists | (mon.mextrinsics ?? 0) | (mon.mintrinsics ?? 0));
+
+// src/mondata.c:215 resists_magm() — magic (missile) resistance.
+export function resists_magm(mon) {
+    const ptr = mon.data;
+
+    /* gray dragons, Angels, Oracle, Yeenoghu; the Chromatic Dragon via AD_RBRE */
+    if (dmgtype(ptr, ATTKS.AD_MAGM)
+        || ptr.pmidx === PMNAMES.PM_BABY_GRAY_DRAGON
+        || dmgtype(ptr, ATTKS.AD_RBRE))
+        return true;
+
+    /* the wielded-weapon and worn/carried loops need monster inventory */
+    return false;
+}
+
+export const resists_fire   = (mon) => Resists_Elem(mon, FIRE_RES);
+export const resists_cold   = (mon) => Resists_Elem(mon, COLD_RES);
+export const resists_sleep  = (mon) => Resists_Elem(mon, SLEEP_RES);
+export const resists_disint = (mon) => Resists_Elem(mon, DISINT_RES);
+export const resists_elec   = (mon) => Resists_Elem(mon, SHOCK_RES);
+export const resists_poison = (mon) => Resists_Elem(mon, POISON_RES);
+export const resists_acid   = (mon) => Resists_Elem(mon, ACID_RES);
+export const resists_ston   = (mon) => Resists_Elem(mon, STONE_RES);
+
+function note_unported_mondata(what) {
+    (game.unported ||= new Set()).add(what);
+}

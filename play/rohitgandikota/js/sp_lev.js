@@ -10,12 +10,17 @@
 
 import { game } from './gstate.js';
 import { selection_iterate } from './selvar.js';
-import { rn1, rn2 } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
-import { sobj_at } from './invent.js';
-import { ONAMES, OCLASSES } from './objects_data.js';
-import { mkobj_at, mksobj_at } from './mkobj.js';
+import { sobj_at, weight, obj_extract_self } from './invent.js';
+import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
+import { mkobj_at, mksobj_at, add_to_container } from './mkobj.js';
 import { OBJ_NAME } from './objnam.js';
+import { obj_resists } from './zap.js';
+import { OBJ_BURIED } from './obj.js';
+import { start_timer, TIMER_OBJECT, ROT_ORGANIC } from './timeout.js';
+import { make_engr_at, engr_at } from './engrave.js';
+import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD } from './const.js';
 
 /* is_pool/is_lava/m_at live in js/mon.js, which reaches this file back through
    invent.js -> mkobj.js. A direct import leaves them in TDZ the second time a
@@ -26,7 +31,7 @@ let mon_fns = { is_pool: () => false, is_lava: () => false, m_at: () => null };
 export function sp_lev_wire_mon(fns) { mon_fns = fns; }
 import { NON_PM, SPACE_POS, ALTAR, STAIRS, LADDER, W_RANDOM, W_ANY, W_NORTH, W_SOUTH,
          W_EAST, W_WEST, D_LOCKED, D_TRAPPED } from './const.js';
-import { MONSYMS, PMNAMES } from './monst_data.js';
+import { MONSYMS, PMNAMES, NUMMONS } from './monst_data.js';
 import { amphibious, is_swimmer, is_flyer, is_floater, passes_walls,
          noncorporeal, likes_fire } from './mondata.js';
 import { def_oc_syms } from './drawing_data.js';
@@ -39,9 +44,9 @@ import { NO_TRAP, VIBRATING_SQUARE,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP } from './const.js';
 import { litstate_rnd, flood_fill_rm } from './mkmap.js';
-import { depth } from './dungeon.js';
+import { depth, induced_align } from './dungeon.js';
 import { mkgold } from './mkobj.js';
-import { mkclass, makemon } from './makemon.js';
+import { mkclass, makemon, is_male, is_female } from './makemon.js';
 import { In_mines } from './const.js';
 import {
     OROOM, THEMEROOM, VAULT, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST,
@@ -52,7 +57,8 @@ import {
     TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, MOAT, POOL,
     LAVAPOOL, LAVAWALL, ICE, WATER, TREE, IRONBARS,
     MAX_TYPE, MATCH_WALL, INVALID_TYPE, NO_ROOM, ROOMOFFSET, D_CLOSED,
-    MAXNROFROOMS, IS_WALL, IS_DOOR,
+    MAXNROFROOMS, IS_WALL, IS_DOOR, IS_OBSTRUCTED,
+    D_ISOPEN, D_NODOOR, D_BROKEN,
 } from './const.js';
 
 // src/sp_lev.c:2731 fill_special_room()
@@ -625,6 +631,50 @@ export function lspo_trap(type, x, y, opts) {
     create_trap(t, game.coder?.croom ?? null);
 }
 
+// src/sp_lev.c:3881 lspo_engraving() — the des.engraving() verb.
+//
+// Draws nothing itself. get_location_coord() only spends draws when the coord
+// is RANDOM, and make_engr_at() only when the type is <= 0; the table form
+// always resolves a real type from engrtypes2i[] and every themeroom caller
+// passes a real coord.
+//
+// C's default type is "engrave", not "dust", even though etyp is initialised to
+// DUST -- the initialiser is dead, get_table_option() overwrites it.
+const engrtypes = ['dust', 'engrave', 'burn', 'mark', 'blood'];
+const engrtypes2i = [DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD];
+
+export function lspo_engraving(opts) {
+    let x = -1, y = -1;
+
+    if (opts?.coord) {
+        x = opts.coord.x;
+        y = opts.coord.y;
+    } else if (opts?.x !== undefined || opts?.y !== undefined) {
+        x = opts.x ?? -1;
+        y = opts.y ?? -1;
+    }
+
+    const ti = engrtypes.indexOf(opts?.type ?? 'engrave');
+    const etyp = engrtypes2i[ti < 0 ? 1 : ti];
+    const txt = opts?.text ?? '';
+    /* C: degrade defaults TRUE, guardobjects FALSE */
+    const wipeout = opts?.degrade !== undefined ? !!opts.degrade : true;
+    const guardobjs = !!opts?.guardobjects;
+
+    const ecoord = (x === -1 && y === -1) ? SP_COORD_PACK_RANDOM(0)
+                                          : SP_COORD_PACK(x, y);
+
+    const r = get_location_coord(x, y, DRY, game.coder?.croom ?? null, ecoord);
+
+    make_engr_at(r.x, r.y, txt, null, 0, etyp);
+
+    const ep = engr_at(r.x, r.y);
+    if (ep) {
+        ep.guardobjects = guardobjs ? 1 : 0;
+        ep.nowipeout = !wipeout;
+    }
+}
+
 /* mktrap() lives in js/mklev.js, which imports this file; routed through the
    wire for the same cycle reason as somexy. */
 let mktrap_fn = null;
@@ -712,26 +762,58 @@ export function create_object(o, croom) {
         break;                                  /* keep what mkobj gave us */
     }
 
-    /* src/sp_lev.c create_object() — containment.
+    /* src/sp_lev.c:2304 create_object() — containment.
        SP_OBJ_CONTENT puts this object INSIDE the innermost open container;
        SP_OBJ_CONTAINER opens this one for the objects its contents closure
-       makes. The stack is what lets `des.object({contents=...})` nest. */
-    if ((o.containment & SP_OBJ_CONTENT) && container_obj.length) {
-        const cont = container_obj[container_obj.length - 1];
-        obj_extract_self(otmp);
-        (cont.cobj ||= []).unshift(otmp);
-        otmp.where = OBJ_CONTAINED;
-        otmp.ocontainer = cont;
+       makes. The stack is what lets `des.object({contents=...})` nest.
+
+       C's outer test is `SP_OBJ_CONTENT || invent_carrying_monster`, and the
+       empty-stack arm then either drops the object on the floor or hands it to
+       that monster. invent_carrying_monster is not modelled, so the arm this
+       port can reach is the floor one, which does nothing. */
+    if (o.containment & SP_OBJ_CONTENT) {
+        if (container_obj.length) {
+            const cobj = container_obj[container_obj.length - 1];
+
+            obj_extract_self(otmp);     /* remove_object() */
+            if (cobj) {
+                otmp = add_to_container(cobj, otmp);
+                cobj.owt = weight(cobj);
+            } else {
+                /* The slot was cleared because bury_an_obj() freed the
+                   container out from under us. C destroys the would-be content
+                   rather than dropping it on the floor, and returns NULL. */
+                obj_extract_self(otmp);
+                if (otmp.oartifact)
+                    note_unported('create_object:artifact_exists');
+                return null;            /* obfree(otmp, NULL) */
+            }
+        }
     }
 
     if (o.containment & SP_OBJ_CONTAINER) {
         otmp.cobj = [];                 /* delete_contents(otmp) */
-        container_obj.push(otmp);
+        if (container_obj.length < MAX_CONTAINMENT)
+            container_obj.push(otmp);
+        else
+            note_unported('create_object:too deeply nested containers');
     }
 
     if (!(o.containment & SP_OBJ_CONTENT)) {
-        if (o.buried)
-            bury_an_obj(otmp);
+        if (o.buried) {
+            const dealloced = { v: false };
+
+            bury_an_obj(otmp, dealloced);
+            if (dealloced.v) {
+                /* C nulls the slot WITHOUT popping it: container_idx keeps its
+                   value, so the stack still has to be popped by lspo_object.
+                   Assigning past the end here would grow the array, so only
+                   touch it when something is actually open. */
+                if (container_obj.length)
+                    container_obj[container_obj.length - 1] = null;
+                otmp = null;
+            }
+        }
     }
 
     /* quantity, lit, eroded, locked, trapped and name still record. */
@@ -780,13 +862,26 @@ export function lspo_object(idOrClass, x, y, opts) {
     lspo_object_fixup(o);
     const otmp = create_object(o, game.coder?.croom ?? null);
 
-    /* the contents closure runs with this object open as the container, then
-       it is popped -- src/sp_lev.c pops at the end of lspo_object */
+    /* The contents closure runs with this object open as the container, then
+       the stack is popped. C runs the closure even when create_object returned
+       NULL (nhl_push_obj pushes nil), and pops on the CONTAINER flag rather
+       than on otmp, so a failed container still balances the stack. */
     if (opts?.contents) {
         opts.contents(otmp);
-        container_obj.pop();
+        spo_pop_container();
     }
     return otmp;
+}
+
+// src/sp_lev.c:3040 spo_pop_container() — close the innermost container.
+//
+// C decrements the index and NULLS the slot; it does not shrink an array. That
+// distinction matters because create_object's buried-dealloc path writes NULL
+// into the top slot WITHOUT decrementing, so "slot is NULL" and "stack is
+// empty" are different states that the SP_OBJ_CONTENT arm tells apart.
+function spo_pop_container() {
+    if (container_obj.length > 0)
+        container_obj.pop();
 }
 
 // src/sp_lev.c find_objtype() — an object name to its index.
@@ -824,6 +919,8 @@ export const get_table_buc = (v) => {
 // include/sp_lev.h — containment bits, and the open-container stack
 // create_object pushes to. C caps it at MAX_CONTAINMENT and complains past it.
 const SP_OBJ_CONTENT = 0x01, SP_OBJ_CONTAINER = 0x02;
+// src/sp_lev.c:195 MAX_CONTAINMENT
+const MAX_CONTAINMENT = 10;
 const container_obj = [];
 
 // src/dig.c bury_an_obj() — move an object into the buried list.
@@ -835,7 +932,23 @@ const container_obj = [];
 //
 // The second is start_timer's rnd(250) for organic material, gated on another
 // obj_resists(otmp, 5, 95) which draws whether or not it passes.
-export function bury_an_obj(otmp) {
+//
+// `dealloced` is C's out-parameter, and it is load-bearing rather than
+// informational: ROCK and BOULDER are FREED here, they merge into the burying
+// material rather than joining the buried list. Every caller that can bury an
+// object it still holds a pointer to has to be told, or it keeps using freed
+// memory. create_object is one such caller -- see the container_obj clear at
+// its call site.
+//
+// C also returns otmp2 (the pile's nexthere, read before the extract so the
+// caller can keep walking a chain it is mutating). This port keeps object
+// piles as a flat list rather than a nexthere chain (see js/invent.js:141), and
+// the only caller of that return value is bury_objs(), which is not ported, so
+// there is nothing here to return it from.
+export function bury_an_obj(otmp, dealloced) {
+    if (dealloced)
+        dealloced.v = false;
+
     if (obj_resists(otmp, 0, 0))
         return;                         /* Riders, Amulet, invocation tools */
 
@@ -845,7 +958,9 @@ export function bury_an_obj(otmp) {
 
     if ((otmp.otyp === ONAMES.ROCK && !under_ice)
         || otmp.otyp === ONAMES.BOULDER) {
-        /* merges into the burying material */
+        /* merges into burying material; boulder removal is for #wizbury */
+        if (dealloced)
+            dealloced.v = true;
         return;                         /* obfree() */
     }
 
@@ -854,8 +969,8 @@ export function bury_an_obj(otmp) {
     } else if ((under_ice ? (otmp.oclass === OCLASSES.POTION_CLASS)
                           : is_organic(otmp))
                && !obj_resists(otmp, 5, 95)) {
-        rnd(250);                       /* start_timer ROT_ORGANIC delay */
-        note_unported('bury_an_obj:start_timer');
+        start_timer((under_ice ? 0 : 250) + rnd(250),
+                    TIMER_OBJECT, ROT_ORGANIC, otmp);
     }
 
     (game.level.buriedobjs ||= []).push(otmp);   /* add_to_buried() */
@@ -865,7 +980,6 @@ export function bury_an_obj(otmp) {
 // include/obj.h is_organic()
 const is_organic = (o) => game.objects[o.otyp].oc_material <= MATERIALS.WOOD;
 
-const OBJ_BURIED = 6;
 const STRANGE_OBJECT = 0;
 
 // src/drawing.c def_char_to_objclass() — a class symbol to its class index.
@@ -970,10 +1084,15 @@ export function create_monster(m, croom) {
     if (croom && !inside_room(croom, x, y))
         return null;
 
+    /* src/sp_lev.c create_monster() — a spec that named an alignment resolves
+       it directly; anything else asks the LEVEL, and that draws. */
+    let amask;
     if (m.sp_amask !== AM_SPLEV_RANDOM) {
+        amask = sp_amask_to_amask(m.sp_amask);
         note_unported('create_monster:mk_roamer');
         return null;
     }
+    amask = induced_align(80);
     if (m.id >= PMNAMES.PM_ARCHEOLOGIST && m.id <= PMNAMES.PM_WIZARD) {
         note_unported('create_monster:mk_mplayer');
         return null;
@@ -1011,6 +1130,42 @@ export function create_monster(m, croom) {
 // include/global.h:103 BOOL_RANDOM, include/monst.h:54 M_AP_OBJECT.
 const BOOL_RANDOM = -1, M_AP_OBJECT = 2;
 
+// include/monflag.h:214 enum mgender
+const MALE = 0, FEMALE = 1, NEUTRAL = 2, NUM_MGENDERS = 3;
+// include/permonst.h:15 — LOW_PM = NON_PM + 1, and NON_PM is -1.
+const LOW_PM = 0;
+
+// src/sp_lev.c:3142 find_montype() — resolve a monster NAME to its index and
+// settle its gender.
+//
+// The gender settling DRAWS. A species that is male-only or female-only takes
+// its own, and a name that carried a gender prefix keeps that, but anything
+// else spends an rn2(2). The port resolved the name with name_to_mon() and
+// never made that draw, so every des.monster("some name") in a themeroom was
+// one call short.
+//
+// name_to_monplus() is name_to_mon() plus the gender-prefix parsing; no
+// themeroom name currently carries one.
+function find_montype(s, mgender) {
+    let mgend = NEUTRAL;
+
+    const i = name_to_mon(s, mgender);
+    if (i >= LOW_PM && i < NUMMONS) {
+        const ptr = game.mons[i];
+        if (is_male(ptr) || is_female(ptr))
+            mgend = is_female(ptr) ? FEMALE : MALE;
+        else
+            mgend = (mgend === FEMALE) ? FEMALE
+                    : (mgend === MALE) ? MALE : rn2(2);
+        if (mgender)
+            mgender.v = mgend;
+        return i;
+    }
+    if (mgender)
+        mgender.v = NEUTRAL;
+    return NON_PM;
+}
+
 // src/sp_lev.c:3214 lspo_monster() — the des.monster() verb, simple forms.
 export function lspo_monster(idOrClass, x, y, opts) {
     const m = {
@@ -1023,8 +1178,11 @@ export function lspo_monster(idOrClass, x, y, opts) {
         m.class = idOrClass;
     else if (typeof idOrClass === 'number')
         m.id = idOrClass;
-    else if (idOrClass)
-        m.id = name_to_mon(idOrClass);
+    else if (idOrClass) {
+        const mgend = { v: NEUTRAL };
+        m.id = find_montype(idOrClass, mgend);
+        m.mgender = mgend.v;
+    }
 
     if (opts?.class) m.class = opts.class;
     m.coord = (x === undefined || x === -1) && (y === undefined || y === -1)
@@ -1043,13 +1201,63 @@ export function lspo_monster(idOrClass, x, y, opts) {
 // 0x80, not 0, so `m.sp_amask !== AM_SPLEV_RANDOM` was true for every monster
 // and sent them all down the mk_roamer arm; G_NOGEN is 0x0200, not 0x1000.
 // src/mondata.c name_to_mon() — a monster name to its index.
-export function name_to_mon(name) {
-    const want = String(name).toLowerCase();
+// src/mondata.c:1038 name_to_monplus(), core loop.
+//
+// A permonst carries pmnames[] INDEXED BY GENDER, not a single name, and for
+// many species only one slot is filled: a ghost is
+// pmnames = [null, null, "ghost"], i.e. the NEUTRAL slot alone. Reading a
+// scalar `pmname` therefore matched nothing at all for those, so every
+// des.monster("ghost") in a themeroom silently fell through to a RANDOM
+// monster and spent rndmonst's draws instead of the named species'.
+//
+// C takes the LONGEST match rather than the first, because names prefix each
+// other ("ettin" against "ettin zombie"), and accepts a trailing word or a
+// plural/possessive suffix so that "ettin zombie corpse" resolves. `matchgend`
+// is the gender the matched slot implies, which is what find_montype reads
+// before deciding whether to spend its rn2(2).
+//
+// Not ported: the leading article strip, the alternate-names table (about
+// sixty entries: "genie", "high priestess", "wood elf" and so on), and
+// title_to_mon. Every name the themerooms use is a plain pmnames[] entry.
+export function name_to_mon(name, gender_name_var) {
+    const str = String(name).toLowerCase();
+    const slen = str.length;
+    let mntmp = NON_PM, len = 0, matchgend = -1, exact_match = false;
 
-    for (let i = 0; i < game.mons.length; i++)
-        if ((game.mons[i]?.pmname || '').toLowerCase() === want)
-            return i;
-    return NON_PM;
+    for (let i = LOW_PM; i < game.mons.length; i++) {
+        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
+            const nm = game.mons[i]?.pmnames?.[mgend];
+            if (!nm)
+                continue;
+
+            const m_i_len = nm.length;
+            if (m_i_len > len && str.startsWith(nm.toLowerCase())) {
+                if (m_i_len === slen) {
+                    mntmp = i; len = m_i_len; matchgend = mgend;
+                    exact_match = true;
+                    break;
+                } else if (slen > m_i_len) {
+                    const rest = str.slice(m_i_len);
+                    if (rest[0] === ' ' || rest === 's' || rest.startsWith('s ')
+                        || rest === "'" || rest.startsWith("' ")
+                        || rest === "'s" || rest.startsWith("'s ")
+                        || rest === 'es' || rest.startsWith('es ')) {
+                        mntmp = i; len = m_i_len; matchgend = mgend;
+                    }
+                }
+            }
+        }
+        if (exact_match)
+            break;
+    }
+
+    if (gender_name_var && matchgend !== -1) {
+        /* do not override a caller's male/female with a matched neuter name */
+        if (!(matchgend === NEUTRAL
+              && (gender_name_var.v === MALE || gender_name_var.v === FEMALE)))
+            gender_name_var.v = matchgend;
+    }
+    return mntmp;
 }
 
 const AM_SPLEV_RANDOM = 0x80;

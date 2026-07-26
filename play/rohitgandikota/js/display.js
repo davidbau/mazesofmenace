@@ -2,6 +2,9 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { ONAMES } from './objects_data.js';
+import { update_topl } from './tty/topl.js';
+import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank } from './botl.js';
 import { cansee } from './vision.js';
@@ -174,9 +177,22 @@ export function newsym(x, y) {
         const obj = (game.level?.objects || [])
                         .find(o => o.ox === x && o.oy === y);
         if (obj) {
+            /* include/display.h:894 obj_to_glyph() — a CORPSE does NOT become
+               an object glyph. It becomes `corpsenm + GLYPH_BODY_OFF`, a BODY
+               glyph, and a body glyph takes the colour of the MONSTER it came
+               from rather than objects[CORPSE].oc_color. Drawing every corpse
+               the object's brown was wrong for every species that is not
+               brown: seed1500's first frame differs by exactly one cell, a
+               red '%' we drew brown.
+
+               The symbol is unchanged, because def_oc_syms[FOOD_CLASS] and
+               the body glyph's symbol are both '%'. */
             const oc = game.objects?.[obj.otyp];
-            show_glyph_cell(x, y, def_oc_syms[obj.oclass] || '?',
-                            oc?.oc_color ?? NO_COLOR, false);
+            let color = oc?.oc_color ?? NO_COLOR;
+            if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0)
+                color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
+
+            show_glyph_cell(x, y, def_oc_syms[obj.oclass] || '?', color, false);
             return;
         }
     }
@@ -456,11 +472,38 @@ export async function flush_screen(mode) {
     _buildScreenOutput();
 }
 
-// ── cls ──
+// src/display.c:2189 cls()
+//
+//     display_nhwindow(WIN_MESSAGE, FALSE); / * flush messages * /
+//     disp.botlx = TRUE;
+//     clear_nhwindow(WIN_MAP);
+//     clear_glyph_buffer();
+//
+// The first line is the one that was missing. C FLUSHES the message window:
+// win/tty/wintty.c's NHW_MESSAGE arm calls more() when a message is still
+// unacknowledged, then clears it, leaving toplin == TOPLINE_EMPTY. Wiping the
+// text without touching the flag left toplin at TOPLINE_NEED_MORE with nothing
+// behind it, so the NEXT message took update_topl's joining branch and got
+// glued onto an empty string -- two leading spaces, and seed8000's last two
+// screens shifted right by two columns.
 export async function cls() {
+    if (game._in_cls)
+        return;
+    game._in_cls = true;
+
+    /* display_nhwindow(WIN_MESSAGE, FALSE) */
+    if (game._toplin === TOPLINE_NEED_MORE) {
+        await more();
+        game._toplin = TOPLINE_NEED_MORE;   /* more() reset it; force the erase */
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+    }
+    game._pending_message = '';
+    game._toplin = TOPLINE_EMPTY;
+
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
-    game._pending_message = '';
+
+    game._in_cls = false;
 }
 
 // ── bot ──
@@ -484,8 +527,11 @@ const defmorestr = '--More--';
 // is read by whatever comes next — which is how the tutorial menu ended up on
 // its second pass.
 export async function pline(msg) {
-    game._pending_message = msg;
-    game._toplin = msg ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
+    /* src/pline.c vpline() -> putstr(WIN_MESSAGE) -> tty_putstr() ->
+       update_topl(). Assigning the message straight into the top line skipped
+       the state machine entirely: a second message overwrote the first instead
+       of either joining it or raising --More-- and waiting for a key. */
+    await update_topl(msg);
 }
 
 // win/tty/topl.c more() — draw the suffix, block for a key, clear the top line.
@@ -521,7 +567,11 @@ export async function more() {
             display.setCell(col + i, row, defmorestr[i], NO_COLOR, 0);
         display.setCursor(Math.min(col + defmorestr.length, CO - 1), row);
     }
-    await nhgetch();
+    /* win/tty/topl.c more(): xwaitforspace("\033 "), NOT a bare getch. Only
+       space, ESC and newline dismiss the prompt; anything else rings the bell
+       and waits again, so a movement key pressed at a --More-- is still
+       waiting to be read as a command afterwards. */
+    await xwaitforspace('\x1b ');
 
     /* win/tty/wintty.c tty_display_nhwindow(), NHW_MESSAGE:
      *
