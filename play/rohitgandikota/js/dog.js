@@ -19,10 +19,13 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
 import { perceives , is_domestic} from './mondata.js';
-import { sobj_at } from './invent.js';
+import { sobj_at, eaten_stat } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
+import { newsym } from './display.js';
+import { splitobj } from './mkobj.js';
+import { m_consume_obj } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
@@ -481,6 +484,132 @@ function note_unported(what) {
 // rn2(8) in the recordings.
 const SQSRCHRADIUS = 5;
 
+// src/dogmove.c:156 dog_nutrition() — how much food value obj gives mtmp, and
+// how many turns eating it costs (returned through mtmp.meating, as in C).
+//
+// Draws nothing. The size multiplier is a switch on the PET's size, not the
+// food's, and MZ_MEDIUM shares the default arm.
+function dog_nutrition(mtmp, obj) {
+    let nutrit;
+    const mdat = game.mons[mtmp.mnum];
+
+    /* It is arbitrary that the pet takes the same length of time to eat
+       as a human, but gets more nutritional value. */
+    if (obj.oclass === OCLASSES.FOOD_CLASS) {
+        if (obj.otyp === ONAMES.CORPSE) {
+            mtmp.meating = 3 + (game.mons[obj.corpsenm].cwt >> 6);
+            nutrit = game.mons[obj.corpsenm].cnutrit;
+        } else {
+            mtmp.meating = game.objects[obj.otyp].oc_delay;
+            nutrit = game.objects[obj.otyp].oc_nutrition;
+        }
+        switch (mdat.msize) {
+        case MFLAGS.MZ_TINY:     nutrit *= 8; break;
+        case MFLAGS.MZ_SMALL:    nutrit *= 6; break;
+        default:
+        case MFLAGS.MZ_MEDIUM:   nutrit *= 5; break;
+        case MFLAGS.MZ_LARGE:    nutrit *= 4; break;
+        case MFLAGS.MZ_HUGE:     nutrit *= 3; break;
+        case MFLAGS.MZ_GIGANTIC: nutrit *= 2; break;
+        }
+        if (obj.oeaten) {
+            mtmp.meating = eaten_stat(mtmp.meating, obj);
+            nutrit = eaten_stat(nutrit, obj);
+        }
+    } else if (obj.oclass === OCLASSES.COIN_CLASS) {
+        mtmp.meating = Math.trunc(obj.quan / 2000) + 1;
+        if (mtmp.meating < 0)
+            mtmp.meating = 1;
+        nutrit = Math.trunc(obj.quan / 20);
+        if (nutrit < 0)
+            nutrit = 0;
+    } else {
+        /* Unusual pet such as gelatinous cube eating odd stuff. */
+        mtmp.meating = Math.trunc(obj.owt / 20) + 1;
+        nutrit = 5 * game.objects[obj.otyp].oc_nutrition;
+    }
+    return nutrit;
+}
+
+// src/dogmove.c:218 dog_eat() — the pet eats obj. Returns 2 if the pet died,
+// otherwise 1.
+//
+// Draws nothing itself. It matters anyway, and this is why the whole
+// dog_move(dogmove.c:1255) cluster was stuck: our eat branch used to return
+// MMOVE_NOTHING, so the pet neither moved nor ate and stood still while C's
+// walked onto the food. C reaches the eat through newdogpos, which MOVES the
+// pet first and only then calls dog_eat -- that is what do_eat exists for.
+// A pet parked on the wrong square feeds a wrong mfndpos count and a wrong
+// `nearby` into dochug on every later turn.
+//
+// x,y are the pet's location at the START of the turn, which is why they are
+// passed separately from mtmp.mx,my.
+//
+// Not ported, each recorded rather than faked: the killer-bee royal jelly
+// bypass, the rust monster's erodeproof branch, shop billing (unpaid,
+// costly_alteration, unpaid_cost) and the eating messages.
+function dog_eat(mtmp, obj, x, y, devour) {
+    const edog = mtmp.edog;
+    let nutrit;
+
+    if (edog.hungrytime < game.moves)
+        edog.hungrytime = game.moves;
+    nutrit = dog_nutrition(mtmp, obj);
+
+    if (devour) {
+        if (mtmp.meating > 1)
+            mtmp.meating = Math.trunc(mtmp.meating / 2);
+        if (nutrit > 1)
+            nutrit = Math.trunc((nutrit * 3) / 4);
+    }
+    edog.hungrytime += nutrit;
+    mtmp.mconf = 0;
+    if (edog.mhpmax_penalty) {
+        /* no longer starving */
+        mtmp.mhpmax += edog.mhpmax_penalty;
+        edog.mhpmax_penalty = 0;
+    }
+    if (mtmp.mflee && mtmp.mfleetim > 1)
+        mtmp.mfleetim = Math.trunc(mtmp.mfleetim / 2);
+    if (mtmp.mtame < 20)
+        mtmp.mtame++;
+    if (x !== mtmp.mx || y !== mtmp.my) {   /* moved & ate on same turn */
+        newsym(x, y);
+        newsym(mtmp.mx, mtmp.my);
+    }
+    if (game.mons[mtmp.mnum] === game.mons[PMNAMES.PM_KILLER_BEE]
+        && obj.otyp === ONAMES.LUMP_OF_ROYAL_JELLY) {
+        note_unported('dog_eat:bee_eat_jelly');
+        return 1;
+    }
+
+    /* food items are eaten one at a time; entire stack for other stuff */
+    if (obj.quan > 1 && obj.oclass === OCLASSES.FOOD_CLASS)
+        obj = splitobj(obj, 1);
+
+    if (obj.unpaid)
+        note_unported('dog_eat:shop');
+
+    if (game.mons[mtmp.mnum] === game.mons[PMNAMES.PM_RUST_MONSTER]
+        && obj.oerodeproof) {
+        note_unported('dog_eat:rustproof');
+        obj.oerodeproof = 0;
+        mtmp.mstun = 1;
+    } else {
+        /* It's a reward if it's DOGFOOD and the player dropped/threw it.
+           We know the player had it if invlet is set. -dlc */
+        if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
+            edog.apport += Math.trunc(200 / (edog.dropdist + game.moves
+                                             - edog.droptime));
+            if (edog.apport <= 0)
+                edog.apport = 1;        /* impossible() in C */
+        }
+        m_consume_obj(mtmp, obj);
+    }
+
+    return DEADMONSTER(mtmp) ? 2 : 1;
+}
+
 export function dog_goal(mtmp, edog, after, udist, whappr) {
     const omx = mtmp.mx, omy = mtmp.my;
 
@@ -901,6 +1030,10 @@ export function dog_move(mtmp, after) {
     }
 
     let nix = omx, niy = omy, chi = -1, chcnt = 0;
+    /* src/dogmove.c:1010 — do_eat and the obj it refers to are function-scope
+       in C because the pet has to be MOVED before it can eat; the flag is what
+       carries the decision across the goto to newdogpos. */
+    let do_eat = false, eat_obj = null;
     let nidist = GDIST(nix, niy);
     /* src/dogmove.c:989 — cursemsg[] is PER CANDIDATE and is filled in by the
        object walk below, not by a helper called on demand. Keeping it as an
@@ -914,7 +1047,21 @@ export function dog_move(mtmp, after) {
         /* src/dogmove.c:1141 — the ALLOW_M attack and ALLOW_MDISP displace
            branches need mattackm/mdisplacem, the monster-vs-monster combat
            path. Both draw, so stop rather than guess their numbers. */
-        if (mfp.info[i] & (ALLOW_M | ALLOW_U)) {
+        /* src/dogmove.c:1073 — a square holding a monster is only a
+           candidate when attacking or displacing it is permitted. */
+        if (m_at(nx, ny) && !(mfp.info[i] & (ALLOW_M | ALLOW_MDISP)))
+            continue;
+
+        /* src/dogmove.c:1102 — the ALLOW_M attack branch needs mattackm, the
+           monster-vs-monster combat path, which draws. Stop rather than guess.
+
+           ALLOW_U is no longer skipped here, because C does not skip it: it
+           handles it at newdogpos (dogmove.c:1280). In practice this changes
+           nothing for a pet -- mon_allowflags (src/mon.c:2085) only sets
+           ALLOW_U on the non-tame, non-peaceful arm, so a pet never carries
+           it -- but matching the C costs nothing and removes a condition that
+           would be wrong the moment a conflicted pet did get the flag. */
+        if (mfp.info[i] & ALLOW_M) {
             note_unported('dog_move attack branch');
             continue;
         }
@@ -956,7 +1103,6 @@ export function dog_move(mtmp, after) {
          */
         if (edog) {
             const can_reach_food = could_reach_item(mtmp, nx, ny);
-            let ate = false;
 
             for (const obj of objects_at(nx, ny)) {
                 if (obj.cursed) {
@@ -972,16 +1118,14 @@ export function dog_move(mtmp, after) {
                         niy = ny;
                         chi = i;
                         cursemsg[i] = false;    /* not reluctant */
-                        ate = true;             /* do_eat = TRUE */
+                        eat_obj = obj;
+                        do_eat = true;          /* do_eat = TRUE */
                         break;                  /* goto newdogpos */
                     }
                 }
             }
-            if (ate) {
-                /* dog_eat() draws; stop rather than guess its numbers. */
-                note_unported('dog_move:do_eat');
-                return MMOVE_NOTHING;
-            }
+            if (do_eat)
+                break;                          /* goto newdogpos */
         }
 
         /* didn't find something to eat; if we saw a cursed item and aren't
@@ -1017,7 +1161,9 @@ export function dog_move(mtmp, after) {
     /* src/dogmove.c:1273 — the pet has not attacked anything but is about to
        move; now is the time for a ranged attack. C calls this AFTER the
        position loop and BEFORE newdogpos, unconditionally. */
-    {
+    if (!do_eat) {      /* C's `goto newdogpos` at dogmove.c:1231 jumps OVER
+                           this call, so a pet that is about to eat never
+                           reaches it and never spends score_targ's rnd(5) */
         const i = pet_ranged_attk(mtmp, false);
         if (i !== MMOVE_NOTHING)
             return i;
@@ -1038,19 +1184,19 @@ export function dog_move(mtmp, after) {
         mtmp.mtrack.unshift({ x: omx, y: omy });
         if (mtmp.mtrack.length > MTSZ) mtmp.mtrack.length = MTSZ;
 
-    /* src/dogmove.c:1273 — the pet has not attacked anything but is about to
-       move; now is the time for a ranged attack. */
-    {
-        const i = pet_ranged_attk(mtmp, false);
-        if (i !== MMOVE_NOTHING)
-            return i;
-    }
-
         /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
            the move. Writing mx/my alone leaves m_at() answering with the old
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+        /* src/dogmove.c:1318 — "We have to know if the pet's going to do a
+           combined eat and move before moving it, but it can't eat until
+           after being moved. Thus the do_eat flag." omx,omy is where the pet
+           STARTED the turn, which is what dog_eat wants for its newsym pair. */
+        if (do_eat) {
+            if (dog_eat(mtmp, eat_obj, omx, omy, false) === 2)
+                return MMOVE_DIED;
+        }
         return MMOVE_MOVED;
     }
     return MMOVE_NOTHING;

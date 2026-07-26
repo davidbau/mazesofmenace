@@ -6,19 +6,19 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DELPHI, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
 import { encodeBonesLevel, encodeSaveState } from './save.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { DISPLAY_MONSTER_COLORS, DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, DISPLAY_OBJECT_GLYPHS, FIRST_DISPLAY_OBJECT, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
+import { DISPLAY_MONSTER_COLORS, DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, DISPLAY_OBJECT_GLYPHS, FIRST_DISPLAY_OBJECT, PM_NOPOLY_INDICES, PM_NULL_NAME_OVERRIDES, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { prepareVaultGuardEscort } from './vault.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { datFileLines as bundledDatFileLines } from './dat_files.js';
 import { TRIBUTE_DEATH_QUOTES, TRIBUTE_NOVEL_TITLES } from './tribute.js';
 import { advanceFireBreathRay, applyFireRayFountainTerrain, applyFireRayIceTerrain, applyFireRayWaterTerrain, burnFireRayWebTrap, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
-import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
+import { dryupFountainAt, dryupFountainResultAt, performFountainDryup } from './fountain.js';
 import { DIGTYP_STATUE, beginDigOccupation, digActionMessage, digDbon, digSurfaceText, digUpGrave, digVerbing, downDigStartBlock, fillHoleType, pickDigDirectionPrompt, planHorizontalDig, shopWallDamageCost } from './dig.js';
 import {
     applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
@@ -4127,7 +4127,9 @@ const WATER_DEMON = {
     glyph: '&',
     color: CLR_BLUE,
     mlevel: 8,
-    hpLevel: 7,
+    // no static hpLevel: makemon falls back to adjustedMonsterLevel()
+    // (C ref: adj_lev, makemon.c:2016) — d(8,8) HP at dlvl 8, d(7,8) on
+    // shallower levels where adj_lev decrements.
     difficulty: 11,
     mmove: 12,
     neuter: false,
@@ -4649,7 +4651,11 @@ function startControlledTeleportPrompt() {
 }
 
 async function showControlledTeleportCursorPrompt() {
-    await setMessage("(For instructions type a '?')  Move cursor to the desired position:");
+    // C ref: src/getpos.c:843-849 — the "(For instructions...)" line is
+    // gated on flags.verbose; the tip path then prints "Move cursor to %s:".
+    await setMessage(game.flags?.verbose === false
+        ? 'Move cursor to the desired position:'
+        : "(For instructions type a '?')  Move cursor to the desired position:");
     game._farlook_x = game.u?.ux || 0;
     game._farlook_y = game.u?.uy || 0;
     game._command_mode = 'teleportCursor';
@@ -7563,8 +7569,33 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
 	    game._pending_message = '';
 	    game._message_more = 0;
         game._keep_pending_message = 0;
-        const questArrival = queueQuestArrival(targetLevel, fromLevel, targetIsNew, true);
-        if (questArrival) {
+        // C ref: hack.c spoteffects -> check_special_room -> u_entered_shop —
+        // arriving inside a tended shop greets the hero; pickup(1)/look_here
+        // then shows "You see here ..." for a single arrival object.
+        const shopArrivalGreeting = shopArrivalGreetingMessage(game.u?.ux || 0, game.u?.uy || 0);
+        const questArrival = !shopArrivalGreeting
+            && queueQuestArrival(targetLevel, fromLevel, targetIsNew, true);
+        if (shopArrivalGreeting) {
+            if (arrivalObjects.length === 1) {
+                const obj = arrivalObjects[0];
+                game._queued_message_after_more =
+                    `You ${game.u?.blind ? 'feel' : 'see'} here ${pickupObjectPhrase(obj)}${shopItemPriceSuffix(obj)}.`;
+            } else if (arrivalObjects.length > 1) {
+                if (game.u?.blind) {
+                    game._blind_arrival_objects_after_more = arrivalObjects;
+                } else {
+                    const rows = arrivalObjectListRows(arrivalObjects);
+                    game._queued_overlay_after_more = {
+                        lines: rows,
+                        clearRows: rows.length,
+                        clearCol: 39,
+                        mode: 'objectListMore',
+                        usePendingTime: true,
+                    };
+                }
+            }
+            await setMessage(shopArrivalGreeting, true);
+        } else if (questArrival) {
             if (quietTemperatureMessage) {
                 if (arrivalObjects.length > 1 && game.u?.blind) {
                     game._blind_arrival_objects_after_more = arrivalObjects;
@@ -7584,9 +7615,15 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         } else if (enteringValley) {
             game.u.uevent ??= {};
             game.u.uevent.gehennom_entered = 1;
+            // C ref: do.c arrive() -> pickup(1) -> look_here() — a single
+            // object on the arrival spot gets "You see here %s." after the
+            // valley greeting (invent.c single-object branch).
+            const valleySeeHere = arrivalObjects.length === 1
+                ? `  You ${game.u?.blind ? 'feel' : 'see'} here ${pickupObjectPhrase(arrivalObjects[0])}.`
+                : '';
             game._queued_messages_after_more = [
                 { text: 'The odor of burnt flesh and decay pervades the air.', more: true },
-                { text: 'You hear groans and moans everywhere.', more: arrivalObjects.length > 1, clearOnlyNext: true, valleyGasAfterClear: true },
+                { text: `You hear groans and moans everywhere.${valleySeeHere}`, more: arrivalObjects.length > 1, clearOnlyNext: true, valleyGasAfterClear: true },
             ];
             if (arrivalObjects.length > 1 && game.u?.blind) {
                 game._blind_arrival_objects_after_more = arrivalObjects;
@@ -7652,10 +7689,16 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         if (enteringValley) {
             game.u.uevent ??= {};
             game.u.uevent.gehennom_entered = 1;
+            // C ref: do.c arrive() -> pickup(1) -> look_here() — a single
+            // object on the arrival spot gets "You see here %s." after the
+            // valley greeting (invent.c single-object branch).
+            const valleySeeHere = arrivalObjects.length === 1
+                ? `  You ${game.u?.blind ? 'feel' : 'see'} here ${pickupObjectPhrase(arrivalObjects[0])}.`
+                : '';
             game._queued_messages_after_more = [
                 { text: 'You arrive at the Valley of the Dead...', more: true },
                 { text: 'The odor of burnt flesh and decay pervades the air.', more: true },
-                { text: 'You hear groans and moans everywhere.', more: arrivalObjects.length > 1, clearOnlyNext: true, valleyGasAfterClear: true },
+                { text: `You hear groans and moans everywhere.${valleySeeHere}`, more: arrivalObjects.length > 1, clearOnlyNext: true, valleyGasAfterClear: true },
             ];
             if (arrivalObjects.length > 1) {
                 const rows = arrivalObjectListRows(arrivalObjects);
@@ -10306,6 +10349,36 @@ function heroFarlookDescription() {
     const role = game.urole?.name?.[game.flags?.female ? 'f' : 'm'] || game.urole?.name?.m || game._startup_role || 'Adventurer';
     const called = game.plname ? ` called ${game.plname}` : '';
     return `${String(race).toLowerCase()} ${String(role).toLowerCase()}${called}${chained}`;
+}
+
+// C ref: wizcmds.c wiz_kill() — the #wizkill flow: getpos() picks targets
+// and xkilled(mtmp, XKILL_NOMSG) reduces them to 0HP.  getpos() shows the
+// farlook tip only the first time (getpos.c:838 handle_tip(TIP_GETPOS)).
+async function beginWizKillFlow() {
+    game._farlook_x = game.u?.ux || 0;
+    game._farlook_y = game.u?.uy || 0;
+    if (!game._getpos_tip_seen) {
+        // The "Pick first monster to slay:" pline gets a --More-- ahead of
+        // the first tip overlay.
+        await setMessage('Pick first monster to slay:', true);
+        game._command_mode = 'wizkillIntroMore';
+        return;
+    }
+    await setMessage('Pick first monster to slay:');
+    game._command_mode = 'wizkillCursor';
+}
+
+// C ref: getpos.c auto_describe() — after each cursor key the spot is
+// described; only the hero and visible-monster cases are exercised here.
+function wizkillAutoDescribe(x, y) {
+    if (x === (game.u?.ux ?? -1) && y === (game.u?.uy ?? -1))
+        return heroFarlookDescription();
+    const mon = (game.level?.monsters || []).find(candidate =>
+        !candidate.dead && (candidate.mhp == null || candidate.mhp > 0)
+        && candidate.mx === x && candidate.my === y
+        && !!(game.viz_array?.[candidate.my]?.[candidate.mx] & IN_SIGHT));
+    if (mon) return mon.data?.name || 'monster';
+    return '';
 }
 
 function farlookMonsterDescription(mon) {
@@ -13886,6 +13959,15 @@ function revealLevelMap({ confusedMap = false, revealSecretDoors = false } = {})
             if (loc.typ === SCORR) loc.typ = CORR;
             loc.waslit = true;
             loc.seenv = 0xff;
+            // C ref: show_map_spot() -> magic_map_background() stores the
+            // current background glyph as hero memory (display.c:251-257) and
+            // update_lastseentyp() snapshots the terrain (dungeon.c:2927).
+            // Without this, later out-of-sight terrain changes (e.g. a
+            // monster opening a mapped door) would render live state instead
+            // of what the hero remembers from mapping time.
+            loc.lastseentyp = loc.typ;
+            loc.lastseendoormask = loc.doormask;
+            loc.lastseenwall_info = loc.wall_info;
             newsym(x, y);
         }
     }
@@ -14868,8 +14950,18 @@ async function advanceExperienceLevel(incremental = false) {
     game._command_mode = more ? 'levelChangeMore' : null;
 }
 
+// C ref: include/monsters.h — base AC (mac) for polyself forms whose
+// generated monster data carries no armor class (polymon() uses
+// mons[mntmp].mac as the hero's base AC, polyself.c).
+const POLYSELF_FORM_AC = new Map([
+    ['xorn', -2], // monsters.h:2358 LVL(8, 9, -2, 20, 0)
+]);
+
 function polyselfFormByName(name) {
-    return POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    const form = POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    if (form && form.mac == null && POLYSELF_FORM_AC.has(name))
+        return { ...form, mac: POLYSELF_FORM_AC.get(name) };
+    return form;
 }
 
 function randomPolyselfMonsterName() {
@@ -16206,7 +16298,11 @@ function becomeMonster(name) {
     rn2(19);
     if (form.neuter !== true) rn2(10);
     rn2(500);
-    const hpLevel = form.hpLevel ?? form.mlevel;
+    // C ref: polyself.c:861-869 polymon() — mlvl = mons[mntmp].mlevel (the
+    // base monster level, NOT the adj_lev-adjusted m_lev/hpLevel); dragons
+    // get 4*mlvl + d(mlvl,4), golems golemhp() (fixedHp here), others
+    // d(mlvl,8) or rnd(4) when mlvl is 0.
+    const hpLevel = form.mlevel ?? form.hpLevel;
     const hp = form.fixedHp ?? (form.name.includes('dragon') && hpLevel ? 4 * hpLevel + d(hpLevel, 4)
         : hpLevel ? d(hpLevel, 8) : rnd(4));
     const glyph = form.glyph || (form.mlet?.length === 1 ? form.mlet : form.name[0]);
@@ -21389,13 +21485,70 @@ function monsterPolymorphTargetAllowed(data) {
         || name === 'erinys' || name === 'nazgul');
 }
 
-function randomMonsterPolymorphTarget(mon) {
+// C ref: mon.c:accept_newcham_form() — validate a select_newcham_form() pick.
+function acceptNewchamForm(mon, mndx) {
+    if (!Number.isInteger(mndx) || mndx < 0 || mndx >= SPECIAL_PM) return null;
+    const name = PM_NULL_NAME_OVERRIDES.get(mndx) || DISPLAY_MONSTER_HALLU_NAMES[mndx];
+    if (!name) return null; // is_placeholder()
+    if (isMonsterGenocidedName(name.toLowerCase())) return null; // G_GENOD
+    const data = monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    if (!data) return null;
+    // is_mplayer() always accepts, but mplayers live at SPECIAL_PM and above.
+    if (PM_NOPOLY_INDICES.has(mndx)) {
+        // shapeshifters fail polyok() but may take on their own natural form
+        const cham = String(mon?.cham ?? '').toLowerCase();
+        if (cham && name.toLowerCase() === cham
+            && (name === 'chameleon' || name === 'doppelganger' || name === 'sandestin'))
+            return data;
+        return null; // !polyok() (M2_NOPOLY)
+    }
+    return data;
+}
+
+// C ref: mon.c:validspecmon() — restrict forms for shopkeepers/priests/guards.
+function validSpecmonForm(mon, mndx) {
+    if (!acceptNewchamForm(mon, mndx)) return false;
+    // isspecmon() monsters need forms with a head (and NOTAKE forms are
+    // rejected in C; monster data doesn't model M1_NOTAKE yet)
+    const name = PM_NULL_NAME_OVERRIDES.get(mndx) || DISPLAY_MONSTER_HALLU_NAMES[mndx];
+    const data = monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    if ((mon?.isshk || mon?.ispriest || mon?.isgd) && data?.nohead) return false;
+    return true;
+}
+
+// C ref: mon.c:select_newcham_form() — general random pick when no form was
+// specified (shapeshifter self-polymorph branches and the dragon-armor branch
+// are handled by their own callers, not by ordinary monsters here).
+function selectNewchamFormMndx(mon) {
+    const rogueLevel = Is_rogue_level(game.u?.uz) || !!game.level?.flags?.rogue_level;
+    let mndx = -1;
+    let tryct = 50;
+    do {
+        mndx = rn2(SPECIAL_PM); // rn1(SPECIAL_PM - LOW_PM, LOW_PM) with LOW_PM == 0
+    } while (--tryct > 0 && !validSpecmonForm(mon, mndx)
+             && (tryct > 40 && rogueLevel
+                 && !(DISPLAY_MONSTER_GLYPHS[mndx] >= 'A' && DISPLAY_MONSTER_GLYPHS[mndx] <= 'Z')));
+    return mndx;
+}
+
+export function randomMonsterPolymorphTarget(mon) {
     if (monsterIsImmuneToNewcham(mon)) return null;
-    for (let tries = 0; tries < 20; tries++) {
-        const candidate = rndmonnum();
-        if (monsterPolymorphTargetAllowed(candidate)
-            && String(candidate.name || '') !== String(mon?.data?.name || ''))
+    const rogueLevel = Is_rogue_level(game.u?.uz) || !!game.level?.flags?.rogue_level;
+    // C ref: mon.c:newcham() with mdat == 0 — up to 20 rounds of
+    // select_newcham_form() + accept_newcham_form().
+    for (let tryct = 20; tryct > 0; tryct--) {
+        const mndx = selectNewchamFormMndx(mon);
+        const candidate = acceptNewchamForm(mon, mndx);
+        // rogue level: the first several tries require an upper-case form
+        if (tryct > 15 && rogueLevel && candidate
+            && !(candidate.glyph >= 'A' && candidate.glyph <= 'Z'))
+            continue;
+        if (candidate) {
+            // C ref: mon.c:newcham() — "if (mdat == olddata) return 0"
+            if (String(candidate.name || '') === String(mon?.data?.name || ''))
+                return null;
             return candidate;
+        }
     }
     return null;
 }
@@ -21463,11 +21616,12 @@ function polymorphPotionHitMonster(mon, messages, { attackLevel = 6 } = {}) {
     const oldHp = Math.max(1, mon.mhp || 1);
     const oldMax = Math.max(1, mon.mhpmax || oldHp);
     const nextData = { ...target };
-    const nextLevel = adjustedMonsterLevel(nextData);
-    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
+    // C ref: mon.c:newcham() — mgender_from_permonst() rolls before newmonhp()
     if (nextData.male) mon.female = false;
     else if (nextData.female) mon.female = true;
     else if (!nextData.neuter && !rn2(10)) mon.female = !mon.female;
+    const nextLevel = adjustedMonsterLevel(nextData);
+    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
     Object.assign(mon, {
         data: { ...nextData, hpLevel: nextLevel },
         name: nextData.name,
@@ -24195,6 +24349,29 @@ function clearModeledOneShotSpecialRoom(room) {
     }
 }
 
+// C ref: shk.c u_entered_shop — the greeting shown when the hero arrives
+// inside a tended shop (check_special_room, hack.c:3048).
+function tendedShopGreeting(shopRoom, shkp) {
+    if (!shkp?.isshk || !shkp.mpeaceful || shkp.following) return '';
+    const hello = shopkeeperHello(shkp);
+    const shopIndex = (shkp.shoptype || shopRoom.rtype) - SHOPBASE;
+    const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
+    const shopkeeperName = shkp.shknam || shkp.shopkeeperName || shkp.givenName || 'shopkeeper';
+    const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
+    const greeting = `"${hello}, ${game.plname || 'Hero'}!  Welcome${shkp.visitct ? ' again' : ''} to ${possessive} ${shopName}!"`;
+    shkp.visitct = (shkp.visitct || 0) + 1;
+    return greeting;
+}
+
+function shopArrivalGreetingMessage(x, y) {
+    const roomno = game.level?.at(x, y)?.roomno || 0;
+    const shopRoom = levelRoomByRoomno(roomno);
+    if (!shopRoom || shopRoom.rtype < SHOPBASE) return '';
+    const shkp = shopRoom.resident || (game.level?.monsters || [])
+        .find(mon => mon.isshk && mon.shoproom === roomno);
+    return tendedShopGreeting(shopRoom, shkp);
+}
+
 async function heroLandingSpecialRoomEffectsNoPickup(x, y, messages, options = {}) {
     const oldX = options.oldX ?? game.u?.ux0 ?? x;
     const oldY = options.oldY ?? game.u?.uy0 ?? y;
@@ -24207,15 +24384,8 @@ async function heroLandingSpecialRoomEffectsNoPickup(x, y, messages, options = {
     if (shopRoom?.rtype >= SHOPBASE) {
         const shkp = shopRoom.resident || (game.level?.monsters || [])
             .find(mon => mon.isshk && mon.shoproom === newRoomno);
-        if (shkp?.isshk && shkp.mpeaceful && !shkp.following) {
-            const hello = shopkeeperHello(shkp);
-            const shopIndex = (shkp.shoptype || shopRoom.rtype) - SHOPBASE;
-            const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
-            const shopkeeperName = shkp.shknam || shkp.shopkeeperName || shkp.givenName || 'shopkeeper';
-            const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
-            messages.push(`"${hello}, ${game.plname || 'Hero'}!  Welcome${shkp.visitct ? ' again' : ''} to ${possessive} ${shopName}!"`);
-            shkp.visitct = (shkp.visitct || 0) + 1;
-        }
+        const greeting = tendedShopGreeting(shopRoom, shkp);
+        if (greeting) messages.push(greeting);
     }
 
     const templeEntry = prepareUntendedTempleEntry(newRoomno, oldRoomno);
@@ -26189,6 +26359,44 @@ async function applyHeroKillLiveExperience(mon, messages) {
     game._level_change_pending_message = '';
     messages.push(`Welcome to experience level ${game.u?.ulevel || oldLevel + 1}.${abilityMessage ? `  ${abilityMessage}` : ''}`);
     game._command_mode = null;
+    return true;
+}
+
+// C ref: explode() applies the hero's own injury inside the killing blow
+// (explode.c:590-678).  With !verbose the "You are caught in the
+// explosion!" message is suppressed (explode.c:594), so no --More--
+// interrupts explode(): a fatal blast rolls destroy_items (zap.c:5998),
+// prints "The gas spore's explosion is fatal." on the same topline
+// (explode.c:672) and chains done() -> "Die? [yn]" within the same input
+// step.  The deferred _queued_messages_after_more flow spreads those
+// across steps (matching C's verbose --More-- splits, e.g. the shrieker
+// case), so resolve exactly this case synchronously and report whether
+// it engaged.
+function resolveFatalGasSporeHeroExplosionSync(mon, explosion, messages) {
+    if (!explosion || !game.u) return false;
+    if (game.flags?.verbose !== false) return false; // explode.c:594 gate
+    if (!(game.flags?.debug || game.flags?.explore)) return false;
+    if (Math.abs((game.u.ux ?? 0) - mon.mx) > 1 || Math.abs((game.u.uy ?? 0) - mon.my) > 1)
+        return false;
+    if ((game.inventory || []).some(item => item.worn
+        && String(item.kind || item.actualKind || item.line || '').includes('life saving')))
+        return false; // amulet of life saving: keep the deferred flow
+    const damage = maybeHalfPhysicalDamage(explosion.damage);
+    if ((game.u.uhp || 0) - damage > 0) return false; // non-fatal: deferred flow matches C
+    // Drop the queued hero entry; its effects happen synchronously here.
+    const queue = game._queued_messages_after_more || [];
+    if (queue.length && queue[queue.length - 1].gasSporeHeroExplosion) queue.pop();
+    rn2(5); // C ref: destroy_items(&gy.youmonst, adtyp, dam) — zap.c:5998
+    game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    game._death_cause = "killed by a gas spore's explosion"; // explode.c:1058 killer
+    // C ref: pline_The("%s is fatal.", str) — explode.c:672; the "It is
+    // fatal." variant only follows a printed CAUGHT_IN_EXPLOSION message,
+    // which !verbose suppressed above.
+    messages.push("The gas spore's explosion is fatal.");
+    // C ref: exercise(A_STR, FALSE) — explode.c:678 — runs when done()
+    // returns after the "Die? [yn]" refusal; it is that step's first roll,
+    // consumed in the wizardDieConfirm 'n' branch.
+    game._gas_spore_explode_exercise_pending = 1;
     return true;
 }
 
@@ -34418,7 +34626,7 @@ async function finishGenocideInput(raw) {
             else
                 finishHeroGenocide(messages);
         }
-        await endGenocidePrompt(messages, true);
+        await endGenocidePrompt(messages, messages.length > 1);
         return;
     }
 
@@ -34446,7 +34654,10 @@ async function finishGenocideInput(raw) {
         return;
     }
     genocideMonsterType(data, messages, { killPlayer });
-    await endGenocidePrompt(messages, true);
+    // C ref: do_genocide() reports with plain pline() (read.c:2965) — a lone
+    // "Wiped out all <name>." gets no --More--; the 80-col topline packing
+    // adds one only when further messages follow.
+    await endGenocidePrompt(messages, messages.length > 1);
 }
 
 function fireScrollReadMessages(confusedReading) {
@@ -45384,8 +45595,13 @@ export function pickupObjectName(obj) {
     if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) return named(maybeLitObjectName(obj, 'lamp'));
     if (obj.otyp === BRASS_LANTERN) return named(maybeLitObjectName(obj, 'brass lantern'));
     if (obj.otyp === TALLOW_CANDLE || obj.otyp === WAX_CANDLE) {
-        const name = obj.kind || (obj.otyp === WAX_CANDLE ? 'wax candle' : 'tallow candle');
-        return named(maybeLitObjectName(obj, (obj.quan || 1) > 1 ? obj.plural || `${name}s` : name));
+        const trueName = obj.kind || (obj.otyp === WAX_CANDLE ? 'wax candle' : 'tallow candle');
+        // C ref: objnam.c doname — candles show their "candle" appearance
+        // until the type is discovered (objects[].oc_name_known).
+        const known = !!obj.kind || obj.known === true || toolDiscoveryKnown(trueName);
+        const name = known ? trueName : 'candle';
+        const plural = known ? obj.plural || `${trueName}s` : 'candles';
+        return named(maybeLitObjectName(obj, (obj.quan || 1) > 1 ? plural : name));
     }
     if (obj.otyp === SCROLL_CLASS || obj.cls === 'scroll' || obj.otyp === SCR_SCARE_MONSTER) {
         if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
@@ -50228,6 +50444,8 @@ function shopBaseCost(obj) {
     else if (!kind && obj.otyp === ICE_BOX) kind = 'ice box';
     else if (!kind && obj.otyp === OIL_LAMP) kind = 'oil lamp';
     else if (!kind && obj.otyp === MAGIC_LAMP) kind = 'magic lamp';
+    else if (!kind && obj.otyp === TALLOW_CANDLE) kind = 'tallow candle';
+    else if (!kind && obj.otyp === WAX_CANDLE) kind = 'wax candle';
     else if (!kind && obj.otyp === DART) kind = 'dart';
     else if (!kind && obj.otyp === MIRROR) kind = 'mirror';
     else if (!kind && obj.otyp === CREAM_PIE) kind = 'cream pie';
@@ -50287,6 +50505,19 @@ function specialRoomEntryText(roomno) {
     const room = levelRoomByRoomno(roomno);
     if (!room) return '';
     if (room.rtype === MORGUE) return 'You have an uncanny feeling...';
+    // C ref: check_special_room() DELPHI case (hack.c:3711-3723) — entering
+    // the Oracle's chamber converts it to an ordinary room whether or not
+    // the Oracle is there to greet the hero (hack.c:3737-3738).
+    if (room.rtype === DELPHI) {
+        room.rtype = OROOM;
+        const oracle = (game.level?.monsters || []).find(mon =>
+            mon.data?.name === 'Oracle'
+            && game.level?.at(mon.mx, mon.my)?.roomno === roomno); // monstinroom()
+        if (!oracle) return ''; // C: msg_given = FALSE, no greeting
+        return oracle.mpeaceful
+            ? `"Hello, ${game.plname || 'Hero'}, welcome to Delphi!"`
+            : `"You're in Delphi, ${game.plname || 'Hero'}."`;
+    }
     return '';
 }
 
@@ -50315,33 +50546,52 @@ function tendedTemplePriestHasShrine(priest) {
     return priest.shrine.align === Amask2align(altarMask);
 }
 
-function tendedTemplePriestEntryText(roomno) {
+// C ref: priest.c intemple() tended branch — the "Pilgrim" greeting with
+// its enter_time roll.  Gated on can_speak && !Deaf like C.
+function tendedTemplePriestGreeting(roomno) {
     const priest = tendedTemplePriest(roomno);
     if (!priest || game.u?.deaf) return '';
     const moves = game.moves || 0;
     const shrined = tendedTemplePriestHasShrine(priest);
-    const messages = [];
     if (moves >= (priest._enter_time || 0)) {
-        messages.push(`"Pilgrim, you enter a ${shrined ? 'sacred' : 'desecrated'} place!"`);
         priest._enter_time = moves + d(10, 100);
+        return `"Pilgrim, you enter a ${shrined ? 'sacred' : 'desecrated'} place!"`;
     }
+    return '';
+}
 
+// C ref: priest.c intemple() !sanctum branch — the forbidding/peace
+// feeling with its d(10,20) timer roll.  Not gated on speech in C.
+function tendedTemplePriestFeeling(roomno) {
+    const priest = tendedTemplePriest(roomno);
+    if (!priest) return '';
+    const moves = game.moves || 0;
+    const shrined = tendedTemplePriestHasShrine(priest);
     const coaligned = (game.u?.ualign?.type ?? 0) === priest.shrine?.align;
     const record = game.u?.ualign?.record ?? 0;
     const forbidding = !shrined || !coaligned || record <= -4;
     const timeKey = forbidding ? '_hostile_time' : '_peaceful_time';
     const otherKey = forbidding ? '_peaceful_time' : '_hostile_time';
     if (moves >= (priest[timeKey] || 0) || (priest[otherKey] || 0) >= (priest[timeKey] || 0)) {
-        if (forbidding) {
-            const strange = shrined && coaligned ? ' strange' : '';
-            messages.push(`You have a${strange} forbidding feeling...`);
-        } else {
-            messages.push(`You experience ${record >= 14 ? 'a' : 'an unusual'} sense of peace.`);
-        }
+        const text = forbidding
+            ? `You have a${shrined && coaligned ? ' strange' : ''} forbidding feeling...`
+            : `You experience ${record >= 14 ? 'a' : 'an unusual'} sense of peace.`;
         priest[timeKey] = moves + d(10, 20);
         if (priest[timeKey] <= (priest[otherKey] || 0))
             priest[otherKey] = priest[timeKey] - 1;
+        return text;
     }
+    return '';
+}
+
+function tendedTemplePriestEntryText(roomno) {
+    const priest = tendedTemplePriest(roomno);
+    if (!priest || game.u?.deaf) return '';
+    const messages = [];
+    const greeting = tendedTemplePriestGreeting(roomno);
+    if (greeting) messages.push(greeting);
+    const feeling = tendedTemplePriestFeeling(roomno);
+    if (feeling) messages.push(feeling);
     return messages.join('  ');
 }
 
@@ -55520,7 +55770,7 @@ function polyTrapWarpIronFootwear(item) {
     refreshInventoryObjectLine(item);
 }
 
-function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCanBeSeenForPotionEffect(mon), options = {}) {
+export function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCanBeSeenForPotionEffect(mon), options = {}) {
     if (!mon || !target) return false;
     const refresh = options.refresh !== false;
     const dropSaddle = options.dropInvalidSaddle !== false;
@@ -55529,11 +55779,12 @@ function applyMonsterPolymorphTarget(mon, target, messages, visible = monsterCan
     const oldHp = Math.max(1, mon.mhp || 1);
     const oldMax = Math.max(1, mon.mhpmax || oldHp);
     const nextData = { ...target };
-    const nextLevel = adjustedMonsterLevel(nextData);
-    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
+    // C ref: mon.c:newcham() — mgender_from_permonst() rolls before newmonhp()
     if (nextData.male) mon.female = false;
     else if (nextData.female) mon.female = true;
     else if (!nextData.neuter && !rn2(10)) mon.female = !mon.female;
+    const nextLevel = adjustedMonsterLevel(nextData);
+    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
     Object.assign(mon, {
         data: { ...nextData, hpLevel: nextLevel },
         name: nextData.name,
@@ -59525,6 +59776,7 @@ async function moveHero(dx, dy) {
         const killLoc = game.level?.at(mon.mx, mon.my);
         const killAccessible = killLoc && (ACCESSIBLE(killLoc.typ) || IS_POOL(killLoc.typ));
         const gasSporeExplosion = data.name === 'gas spore' && killAccessible;
+        let fatalGasSporeHeroExplosion = false;
         if (killLoc?.map_invisible) {
             killLoc.map_invisible = false;
             killLoc.remembered_glyph = null;
@@ -59546,7 +59798,8 @@ async function moveHero(dx, dy) {
             }
         }
         if (gasSporeExplosion) {
-            queueGasSporeDeathExplosion(mon, { messages });
+            const explosion = queueGasSporeDeathExplosion(mon, { messages });
+            fatalGasSporeHeroExplosion = resolveFatalGasSporeHeroExplosionSync(mon, explosion, messages);
             await setMessage(messages.join('  '), true);
         } else {
             const dropCorpse = monsterCorpseDropSucceeds(mon, data);
@@ -59557,8 +59810,15 @@ async function moveHero(dx, dy) {
         applyHeroKillLuckSideEffects(mon, messages);
         if (messages.length !== messageCountBeforeLuck)
             await setMessage(messages.join('  '), potionCallPrompt || (killedPet && messages.length > 1));
-        if (await applyHeroKillLiveExperience(mon, messages))
+        if (fatalGasSporeHeroExplosion) {
+            // C ref: xkilled() grants experience (mon.c:3673) only after
+            // mondead() -> mon_explodes() -> done() returns, so with a
+            // fatal blast the credit lands in the survival step, not here
+            // (status shows the old Xp at the fatal --More--).
+            game._gas_spore_deferred_experience_mon = mon;
+        } else if (await applyHeroKillLiveExperience(mon, messages)) {
             await setMessage(messages.join('  '));
+        }
         if (directMeleeHit && mon.ispriest && !rn2(2) && directMeleePriestRetaliation(messages, mon))
             await setMessage(messages.join('  '));
         if (directMeleeHit && angerTownWatchAfterHit && directMeleeAngerTownWatch(messages, { silent: heroIsDeaf() }))
@@ -59567,6 +59827,18 @@ async function moveHero(dx, dy) {
         newsym(mon.mx, mon.my);
         game._run_stop_now = 1;
         game._run_steps_remaining = 0;
+        if (fatalGasSporeHeroExplosion) {
+            // C ref: the turn stays suspended inside done() until the
+            // "Die? [yn]" refusal; hold time processing the same way
+            // applyLifeSavingOrFatalCommandMode({ fatal: true }) does
+            // (cmd.js applyLifeSavingOrFatalCommandMode).
+            game._pending_time_passed = 0;
+            game.context.move = 0;
+            game._process_command_time_now = 0;
+            game._command_mode = 'deathDieMore';
+            prepareDeathBones();
+            return;
+        }
         game.context.move = 1;
         return;
     }
@@ -59665,7 +59937,12 @@ async function moveHero(dx, dy) {
         return;
     }
 
-    const targetObstructed = !target || (IS_OBSTRUCTED(target.typ) && !(target.typ === DOOR && (target.doormask & D_ISOPEN)));
+    // C ref: hack.c:1008-1015 test_move() — a hero with Passes_walls (e.g.
+    // xorn form, M1_WALLWALK) ignores rock obstruction where may_passwall()
+    // (hack.c:932-936) allows it.
+    const heroPhasesThroughRock = !!target && IS_OBSTRUCTED(target.typ)
+        && heroPassesWalls() && untrapMayPasswall(target);
+    const targetObstructed = !target || (IS_OBSTRUCTED(target.typ) && !(target.typ === DOOR && (target.doormask & D_ISOPEN)) && !heroPhasesThroughRock);
     if (targetObstructed && game._running_continuation) {
         game._run_steps_remaining = 0;
         game._run_stop_now = 1;
@@ -60167,6 +60444,14 @@ async function moveHero(dx, dy) {
             return;
         }
     }
+    // C ref: spoteffects() -> check_special_room() (hack.c:3352) — special
+    // room entry messages (zoo, swamp, Delphi, ...) fire on the roomno
+    // transition before trap/pickup handling.
+    const roomEntryText = newRoomno !== oldRoomno ? specialRoomEntryText(newRoomno) : '';
+    if (roomEntryText) {
+        await setMessage(roomEntryText);
+        return;
+    }
     const shopRoom = levelRoomByRoomno(newRoomno);
     if (!continuingTravel && shopRoom?.rtype >= SHOPBASE && oldRoomno !== newRoomno) {
         const shkp = shopRoom.resident || (game.level?.monsters || [])
@@ -60504,6 +60789,14 @@ async function moveHero(dx, dy) {
         objHereMessage = `${featurePrefix}You see here ${pickupObjectPhrase(ballHere)}.`;
 
 	    if (objHereMessage) {
+            // C ref: the terrain-feature line and check_here()'s "You see
+            // here" are separate pline() calls; update_topl()
+            // (win/tty/topl.c:250-269) inserts --More-- between them when
+            // the combination doesn't fit the message line.
+            if (featurePrefix) {
+                await setMessage(featurePrefix.trimEnd());
+                objHereMessage = objHereMessage.slice(featurePrefix.length);
+            }
 	        if (game.u?.blind) {
 	            game._blind_feel_object_after_more = objHereMessage.replace('You see here', 'You feel here');
 	            game._blind_feel_object_after_more_obj = objHere || ballHere;
@@ -62120,6 +62413,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'ponyDamageMore'
         && game._command_mode !== 'deathSlipMore'
         && game._command_mode !== 'deathDieMore'
+        && game._command_mode !== 'wizkillIntroMore'
+        && game._command_mode !== 'wizkillKillMore'
+        && game._command_mode !== 'dryupFountainConfirm'
         && game._command_mode !== 'lavaDeathMore'
         && game._command_mode !== 'fountainDetectMore'
         && game._command_mode !== 'fountainDetectDoneMore'
@@ -62935,6 +63231,14 @@ function tutorialEnterStash() {
                     game.u.uhp = Math.max(0, hpBeforeDeferredDamage - deferredDamage);
                     game._damage_after_topline_more_needs_ac = 0;
                     game._damage_after_topline_more = 0;
+                    // C ref: mhitu.c:1258 mdamageu() sets disp.botl so the HP
+                    // change is visible at the next input boundary.
+                    if (deferredDamage > 0) game.nhDisplay?.renderStatus?.(game.u);
+                    // C ref: mhitu.c:1261-1262 hitmu() calls passiveum() when the
+                    // hit dealt damage; a polymorphed hero whose form has a
+                    // passive (AT_NONE/AT_BOOM) attack slot rolls rn2(3) there
+                    // (mhitu.c:2523) before the adtyp switch.
+                    if (deferredDamage > 0 && game.u?._polyself_form) rn2(3);
 	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
                             if (hpBeforeDeferredDamage - deferredDamage === -1)
                                 game._death_status_hp_before_zero = hpBeforeDeferredDamage;
@@ -64322,6 +64626,17 @@ function tutorialEnterStash() {
                     return;
                 }
             }
+            if (game._queued_priest_feeling_after_more) {
+                const feelingRoomno = game._queued_priest_feeling_after_more;
+                game._queued_priest_feeling_after_more = 0;
+                game._pending_message = '';
+                game._message_more = 0;
+                const feelingText = tendedTemplePriestFeeling(feelingRoomno);
+                if (feelingText) {
+                    await setMessage(feelingText);
+                    return;
+                }
+            }
             const welcome = game._welcome_message;
             game._pending_message = '';
             game._message_more = 0;
@@ -64568,6 +64883,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'ponyDamageMore'
         && game._command_mode !== 'deathSlipMore'
         && game._command_mode !== 'deathDieMore'
+        && game._command_mode !== 'wizkillIntroMore'
+        && game._command_mode !== 'wizkillKillMore'
+        && game._command_mode !== 'dryupFountainConfirm'
         && game._command_mode !== 'lavaDeathMore'
         && game._command_mode !== 'fountainDetectMore'
         && game._command_mode !== 'fountainDetectDoneMore'
@@ -65035,6 +65353,8 @@ function tutorialEnterStash() {
 
     if (game._command_mode === 'wizardDieConfirm') {
         if (ch === 'y') {
+            game._gas_spore_explode_exercise_pending = 0;
+            game._gas_spore_deferred_experience_mon = null;
             game._wizard_lava_refusal_clear_trap = 0;
             game._wizard_lava_refusal_safe_teleport = 0;
             game._death_moves = game.moves || 1;
@@ -65050,6 +65370,12 @@ function tutorialEnterStash() {
             return;
         }
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            if (game._gas_spore_explode_exercise_pending) {
+                game._gas_spore_explode_exercise_pending = 0;
+                // C ref: exercise(A_STR, FALSE) — explode.c:678, reached as
+                // soon as done() returns after the "Die? [yn]" refusal.
+                exerciseAttribute(A_STR, false);
+            }
             const lavaRefusalClearTrap = !!game._wizard_lava_refusal_clear_trap;
             const lavaRefusalSafeTeleport = !!game._wizard_lava_refusal_safe_teleport;
             const lavaRefusalFatalEntry = !!game._wizard_lava_refusal_fatal_entry;
@@ -65078,6 +65404,13 @@ function tutorialEnterStash() {
                 return;
             }
             const survivalMessages = ["OK, so you don't die."];
+            if (game._gas_spore_deferred_experience_mon) {
+                const xpMon = game._gas_spore_deferred_experience_mon;
+                game._gas_spore_deferred_experience_mon = null;
+                // C ref: xkilled() experience grant (mon.c:3671-3674),
+                // reached once done() returns.
+                await applyHeroKillLiveExperience(xpMon, survivalMessages);
+            }
             let landing = null;
             if (lavaRefusalSafeTeleport) {
                 const landingOrigin = {
@@ -65196,18 +65529,60 @@ function tutorialEnterStash() {
         return;
     }
 
+// C ref: drinkfountain() ends with dryup() (fountain.c:389) — the fate
+// message is printed first; a successful dry roll then either appends
+// "The fountain dries up!" or, in wizard mode, prompts "Dry up fountain?
+// [yn] (n)" behind a --More-- and leaves the dry to the answer.
+async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
+    if (dry?.wizardPrompt) {
+        game._dryup_fate_moves = moves;
+        await setMessage(message, true);
+        game._command_mode = 'dryupFountainConfirm';
+        return;
+    }
+    await setMessage(dry?.dried ? `${message}  The fountain dries up!` : message, moves > 1);
+    game._command_mode = null;
+    game.context.move = moves;
+}
+
+    if (game._command_mode === 'dryupFountainConfirm') {
+        // C ref: dryup() wizard-mode confirmation (fountain.c:216-219): the
+        // --More-- acknowledges the fate message, then the y_n prompt shows.
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n' || ch === 'y' || ch === 'n') {
+            await setMessage('Dry up fountain? [yn] (n)');
+            game._command_mode = 'dryupFountainAnswer';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'dryupFountainAnswer') {
+        // Answering 'n' leaves the fountain alone and the prompt text on the
+        // top line (it is only replaced by the next pline / command).
+        if (ch === 'y') {
+            performFountainDryup();
+            await setMessage('The fountain dries up!');
+        } else if (ch !== 'n' && ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
+            game._keep_pending_message = 1;
+            return;
+        } else {
+            game._keep_pending_message = 1;
+        }
+        game._command_mode = null;
+        game.context.move = game._dryup_fate_moves || 1;
+        game._dryup_fate_moves = 0;
+        return;
+    }
+
     if (game._command_mode === 'quaffFountainConfirm') {
         if (ch === 'y') {
             const fateRoll = rnd(30);
             const fate = fateRoll;
+            const quaffDry = () => dryupFountainResultAt(game.u?.ux || 0, game.u?.uy || 0, { wizardPrompt: true });
             if (fate < 10) {
                 rnd(10);
-                const dries = dryupFountainAt();
-                await setMessage(dries
-                    ? 'The cool draught refreshes you.  The fountain dries up!'
-                    : 'The cool draught refreshes you.');
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage('The cool draught refreshes you.', quaffDry());
                 return;
             }
             if (fate === 21) {
@@ -65218,27 +65593,17 @@ function tutorialEnterStash() {
                     game.u.uhp = Math.max(1, (game.u.uhp || 1) - damage);
                 }
                 exerciseAttribute(A_CON, false);
-                const dries = dryupFountainAt();
-                await setMessage(dries
-                    ? 'The water is contaminated!  The fountain dries up!'
-                    : 'The water is contaminated!');
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage('The water is contaminated!', quaffDry());
                 return;
             }
             if (fate === 20) {
                 rn2(20);
-                const dries = dryupFountainAt();
-                await setMessage(dries
-                    ? 'The water is foul!  You gag and vomit.  The fountain dries up!'
-                    : 'The water is foul!  You gag and vomit.', true);
                 game._queued_message_after_more = 'You can move again.';
                 game._process_time_with_more = 1;
                 game._process_command_time_now = 1;
                 game._helpless_time = 2;
                 game._reset_umovement_after_more = 1;
-                game._command_mode = null;
-                game.context.move = 2;
+                await finishQuaffFateMessage('The water is foul!  You gag and vomit.', quaffDry(), { moves: 2 });
                 return;
             }
             if (fate === 22) {
@@ -65248,12 +65613,7 @@ function tutorialEnterStash() {
                     const snake = await makemon(WATER_MOCCASIN, game.u?.ux || 0, game.u?.uy || 0, 0);
                     if (snake) newsym(snake.mx, snake.my);
                 }
-                const dries = dryupFountainAt();
-                await setMessage(dries
-                    ? 'An endless stream of snakes pours forth!  The fountain dries up!'
-                    : 'An endless stream of snakes pours forth!');
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage('An endless stream of snakes pours forth!', quaffDry());
                 return;
             }
             if (fate === 23) {
@@ -65290,23 +65650,15 @@ function tutorialEnterStash() {
                     newsym(demon.mx, demon.my);
                 }
                 rnd(100);
-                const dries = dryupFountainAt();
-                await setMessage(dries
-                    ? 'You unleash a water demon!  The fountain dries up!'
-                    : 'You unleash a water demon!');
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage('You unleash a water demon!', quaffDry());
                 return;
             }
             if (fate === 30) {
                 const gushed = dogushforth();
-                const dries = dryupFountainAt();
                 const message = gushed
                     ? 'Water gushes forth from the overflowing fountain!'
                     : 'Water sprays all over you.';
-                await setMessage(dries ? `${message}  The fountain dries up!` : message);
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage(message, quaffDry());
                 return;
             }
             if (fate === 26) {
@@ -65369,17 +65721,23 @@ function tutorialEnterStash() {
                 if (loc) loc.fountainLooted = true;
                 newsym(x, y);
                 exerciseAttribute(A_WIS, true);
-                const dries = dryupFountainAt(x, y);
-                await setMessage(dries ? `${message}  The fountain dries up!` : message);
-                game._command_mode = null;
-                game.context.move = 1;
+                await finishQuaffFateMessage(message, quaffDry());
                 return;
             }
-            await setMessage(dryupFountainAt()
-                ? 'This tepid water is tasteless.  The fountain dries up!'
-                : 'This tepid water is tasteless.');
-            game._command_mode = null;
-            game.context.move = 1;
+            if (fate === 29) {
+                // C ref: drinkfountain() fate 29 (fountain.c:367-379) — bad
+                // breath; every living monster is scared (monflee() with
+                // fleetime 0 and no message, monmove.c:462-530).
+                for (const mon of game.level?.monsters || []) {
+                    if (mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+                    mon.mfleetim = 0;
+                    mon.mflee = 1;
+                    clearMonsterTrack(mon);
+                }
+                await finishQuaffFateMessage('This water gives you bad breath!', quaffDry());
+                return;
+            }
+            await finishQuaffFateMessage('This tepid water is tasteless.', quaffDry());
             return;
         }
         game._command_mode = null;
@@ -67059,6 +67417,63 @@ function tutorialEnterStash() {
                     item.line = `${item.letter} - a wand of striking${wandChargeSuffix(item)}`;
                 }
                 await setMessage(message);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            const teleportWand = item?.wand === 'teleportation'
+                || item?.kind === 'teleportation'
+                || item?.actualKind === 'wand of teleportation'
+                || item?.wandIndex === 14;
+            if (teleportWand) {
+                // C ref: zap.c:3448 — IMMEDIATE wand beam: exercise(A_WIS,
+                // TRUE) then range rn1(8, 6); bhitm() case WAN_TELEPORTATION
+                // -> teleport.c u_teleport_mon() -> rloc(RLOC_MSG), which
+                // does not stop the beam.
+                exerciseAttribute(A_WIS, true);
+                let range = rn1(8, 6);
+                let x = game.u?.ux || 0;
+                let y = game.u?.uy || 0;
+                const messages = [];
+                const spotVisible = mon => !game.u?.blind && !mon.minvis
+                    && !mon.mundetected && couldsee(mon.mx, mon.my);
+                while (range-- > 0) {
+                    const nx = x + dir.dx;
+                    const ny = y + dir.dy;
+                    if (nx < 1 || nx >= COLNO || ny < 0 || ny >= ROWNO) break;
+                    const loc = game.level?.at(nx, ny);
+                    if (!loc || !ZAP_POS(loc.typ)) break;
+                    x = nx;
+                    y = ny;
+                    const target = (game.level?.monsters || []).find(mon =>
+                        !mon.dead && (mon.mhp ?? 1) > 0 && mon.mx === x && mon.my === y);
+                    if (!target) continue;
+                    const wasVisible = spotVisible(target);
+                    const oldX = target.mx, oldY = target.my;
+                    if (rlocNoMsg(target)) {
+                        newsym(oldX, oldY);
+                        newsym(target.mx, target.my);
+                    }
+                    const nowVisible = spotVisible(target);
+                    const monName = target.data?.name || 'monster';
+                    // C ref: teleport.c rloc_to_core() — vanish/reappear
+                    // feedback depends on seeing the destination.
+                    if (wasVisible && nowVisible) {
+                        const du = (x2, y2) => (x2 - (game.u?.ux || 0)) ** 2 + (y2 - (game.u?.uy || 0)) ** 2;
+                        const newDu = du(target.mx, target.my);
+                        const suffix = newDu <= 2 ? ' next to you'
+                            : newDu <= BOLT_LIM * BOLT_LIM ? ' close by'
+                                : du(oldX, oldY) === newDu ? ''
+                                    : newDu < du(oldX, oldY) ? ' closer to you' : ' farther away';
+                        messages.push(`The ${monName} vanishes and reappears${suffix}.`);
+                    } else if (wasVisible) {
+                        messages.push(`The ${monName} vanishes!`);
+                    } else if (nowVisible) {
+                        messages.push(`The ${monName} appears!`);
+                    }
+                }
+                await setMessage(messages.join('  '), messages.length > 1);
+                game._keep_pending_message = 0;
                 game._command_mode = null;
                 game.context.move = 1;
                 return;
@@ -73841,7 +74256,12 @@ function tutorialEnterStash() {
             // carried potions including the dipped one (drink_ok, potion.c:2383).
             const hereTyp = game.level?.at(game.u?.ux || 0, game.u?.uy || 0)?.typ;
             if (hereTyp === FOUNTAIN) {
-                await setMessage(`Dip ${article}${description} into the fountain? [yn] (n)`);
+                // C ref: dodip() (potion.c:2315-2316) — the prompt uses the
+                // short name ("it"/"them") when !verbose, the full object
+                // description when verbose.
+                const shortestname = (item.quan || 1) > 1 ? 'them' : 'it';
+                const dipName = game.flags?.verbose !== false ? `${article}${description}` : shortestname;
+                await setMessage(`Dip ${dipName} into the fountain? [yn] (n)`);
                 game._command_mode = 'dipConfirm';
                 return;
             }
@@ -74225,7 +74645,9 @@ function tutorialEnterStash() {
     }
 
     if (ch === '\x14' && game.flags?.debug && !game._command_mode && !(game._pending_message && game._message_more)) {
-        const showGetposTip = !getposTipSeen() && game.flags?.tutorial !== false;
+        // C ref: src/hack.c:1854 — handle_tip(TIP_GETPOS) is gated on
+        // OPTIONS=tips (default on), not on the tutorial option.
+        const showGetposTip = !getposTipSeen() && game.flags?.tips !== false;
         await setMessage(showGetposTip ? 'Where do you want to be teleported?'
             : controlledTeleportIntroMessage(), showGetposTip);
         game._teleport_cursor_position_mode = 0;
@@ -74260,6 +74682,8 @@ function tutorialEnterStash() {
             if (['hi', 'his', 'hist', 'histo', 'histor'].includes(command)) command = 'history';
             if (game.flags?.debug && command.startsWith('wizw') && 'wizwhere'.startsWith(command))
                 command = 'wizwhere';
+            if (game.flags?.debug && command.length >= 4 && 'wizkill'.startsWith(command))
+                command = 'wizkill';
 
             game._extended_command = '';
             game._extended_display_command = '';
@@ -74268,6 +74692,10 @@ function tutorialEnterStash() {
             if (command !== 'repeat') game._repeat_last_key = null;
             if (command === 'wizwhere' && game.flags?.debug) {
                 showWizWherePage(0);
+                return;
+            }
+            if (command === 'wizkill' && game.flags?.debug) {
+                await beginWizKillFlow();
                 return;
             }
             if (command === 'chat') {
@@ -74778,6 +75206,7 @@ function tutorialEnterStash() {
 	                            : game.flags?.debug && ['po', 'pol', 'poly', 'polys', 'polyse', 'polysel'].includes(partial) ? 'polyself'
 	                            : game.flags?.debug && partial === 'wizm' ? 'wizmondiff'
 	                            : game.flags?.debug && partial.length >= 4 && 'wizintrinsic'.startsWith(partial) ? 'wizintrinsic'
+	                            : game.flags?.debug && partial.length >= 4 && 'wizkill'.startsWith(partial) ? 'wizkill'
 	                            : game.flags?.debug && partial.startsWith('wizw') && 'wizwhere'.startsWith(partial) ? 'wizwhere'
 	                                : partial === 'wip' ? 'wipe'
 	                : partial;
@@ -74815,7 +75244,7 @@ function tutorialEnterStash() {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._pending_message = '';
             game._message_more = 0;
-            if (!game._getpos_tip_seen && game.flags?.tutorial !== false) {
+            if (!game._getpos_tip_seen && game.flags?.tips !== false) {
                 setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
                 game._getpos_tip_seen = 1;
                 game._command_mode = 'teleportTip';
@@ -74940,6 +75369,81 @@ function tutorialEnterStash() {
         return;
     }
 
+    if (game._command_mode === 'wizkillIntroMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._getpos_tip_seen = 1;
+            setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
+            game._command_mode = 'wizkillTip';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'wizkillTip') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            // C ref: getpos.c:861 — the tip overwrote the prompt, so the
+            // goal message is reprinted when the tip is dismissed.
+            await setMessage('Move cursor to a monster:');
+            game._command_mode = 'wizkillCursor';
+        }
+        return;
+    }
+
+    if (game._command_mode === 'wizkillKillMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            // C ref: wiz_kill() loops with prompt "Next monster"
+            // (wizcmds.c:257); the getpos tip is not shown again.
+            await setMessage('Next monster:');
+            game._command_mode = 'wizkillCursor';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'wizkillCursor') {
+        if (ch === '\x1b') {
+            // C ref: getpos() ESC forces the message window clear
+            // (getpos.c:892-896).
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '.') {
+            const targetX = game._farlook_x || game.u?.ux || 0;
+            const targetY = game._farlook_y || game.u?.uy || 0;
+            const target = (game.level?.monsters || []).find(mon =>
+                !mon.dead && (mon.mhp == null || mon.mhp > 0)
+                && mon.mx === targetX && mon.my === targetY);
+            if (target) {
+                // C ref: wiz_kill() -> xkilled(mtmp, XKILL_NOMSG)
+                // (wizcmds.c:297-315).
+                const messages = [];
+                await killMonsterFromHeroProjectileHit(target, messages, `the ${target.data?.name || 'monster'}`);
+                await setMessage(messages.join('  '), true);
+                game._command_mode = 'wizkillKillMore';
+                return;
+            }
+            await setMessage(wizkillAutoDescribe(targetX, targetY));
+            return;
+        }
+        const dir = movementDirection(ch);
+        if (dir) {
+            game._farlook_x = Math.max(1, Math.min(COLNO - 1, (game._farlook_x || game.u?.ux || 0) + dir.dx));
+            game._farlook_y = Math.max(0, Math.min(ROWNO - 1, (game._farlook_y || game.u?.uy || 0) + dir.dy));
+        }
+        // C ref: getpos() — iflags.autodescribe re-describes the spot after
+        // each key (getpos.c:865-866, 889-890).
+        await setMessage(wizkillAutoDescribe(game._farlook_x || game.u?.ux || 0, game._farlook_y || game.u?.uy || 0));
+        return;
+    }
+
     if (game._command_mode === 'teleportCursor') {
         if (ch === '\x1b') {
             game._pending_message = '';
@@ -75058,18 +75562,31 @@ function tutorialEnterStash() {
             return;
         }
         const dir = movementDirection(ch);
-        if (dir && ['h', 'j', 'k', 'l'].includes(ch)) {
+        // C ref: src/getpos.c — getpos accepts all eight direction keys,
+        // including the y/u/b/n diagonals.
+        if (dir && ['h', 'j', 'k', 'l', 'y', 'u', 'b', 'n'].includes(ch)) {
             game._farlook_x = Math.max(1, Math.min(COLNO - 1, (game._farlook_x || game.u?.ux || 0) + dir.dx));
             game._farlook_y = Math.max(0, Math.min(ROWNO - 1, (game._farlook_y || game.u?.uy || 0) + dir.dy));
-            const loc = game.level?.at(game._farlook_x, game._farlook_y);
-            const text = loc?.typ === STONE ? 'stone'
+            const fx = game._farlook_x, fy = game._farlook_y;
+            const loc = game.level?.at(fx, fy);
+            // C ref: getpos.c auto_describe() -> pager.c do_screen_description —
+            // the description comes from the glyph actually displayed at the
+            // spot: a seen trap shows its name, and a remembered room cell
+            // that is out of sight displays the S_darkroom glyph
+            // ("dark part of a room", display.c:1838-1853).
+            const seenTrap = (game.level?.traps || []).find(t => t.tx === fx && t.ty === fy && t.tseen);
+            const inSight = !!(game.viz_array?.[fy]?.[fx] & IN_SIGHT);
+            const text = seenTrap ? showtrapTrapName(seenTrap.ttyp)
+                : loc?.typ === STONE ? 'stone'
                 : !loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ') ? 'unexplored area'
                 : loc.typ === CORR ? 'corridor'
                 : loc?.typ === DOOR ? doorDescription(loc)
-                    : loc?.typ === ROOM || loc?.typ === STAIRS ? 'floor of a room'
-                        : loc?.typ === MOAT ? 'moat'
-                            : loc?.typ === TREE ? 'tree'
-                            : loc?.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
+                    : loc?.typ === GRAVE ? 'grave'
+                    : loc?.typ === ROOM && !inSight ? 'dark part of a room'
+                        : loc?.typ === ROOM || loc?.typ === STAIRS ? 'floor of a room'
+                            : loc?.typ === MOAT ? 'moat'
+                                : loc?.typ === TREE ? 'tree'
+                                : loc?.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
             game._teleport_dot_described = 0;
             await setMessage(text);
             return;
@@ -75255,9 +75772,32 @@ function tutorialEnterStash() {
                 game._teleport_from_scroll = 0;
                 applySameLevelTeleportNutritionPenalty();
                 game.context.move = 1;
-                const materializeMessage = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
+                // C ref: teleport.c:544-546 — the "materialize" message is
+                // gated on flags.verbose.
+                const materializeMessage = game.flags?.verbose === false ? ''
+                    : `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                 await queueUntendedTempleEntryAfterTeleport(oldX, oldY, landingX, landingY);
-                await setMessage(materializeMessage, true);
+                // C ref: priest.c intemple() via spoteffects() ->
+                // check_special_room() after a same-level teleport into a
+                // tended temple: intone + greeting (each with its timer
+                // roll) on the landing turn, with the forbidding/peace
+                // feeling behind the --More-- like C's message pause.
+                const oldTpRoomno = game.level?.at(oldX, oldY)?.roomno || 0;
+                const landingTpRoomno = game.level?.at(landingX, landingY)?.roomno || 0;
+                if (landingTpRoomno && landingTpRoomno !== oldTpRoomno
+                    && tendedTemplePriest(landingTpRoomno)) {
+                    const intone = tendedTemplePriestIntone(landingTpRoomno);
+                    const greeting = tendedTemplePriestGreeting(landingTpRoomno);
+                    const intoneGreeting = [intone, greeting].filter(Boolean).join('  ');
+                    if (intoneGreeting) {
+                        game._queued_priest_feeling_after_more = landingTpRoomno;
+                        await setMessage(materializeMessage
+                            ? `${materializeMessage}  ${intoneGreeting}`
+                            : intoneGreeting, true);
+                        return;
+                    }
+                }
+                if (materializeMessage) await setMessage(materializeMessage, true);
                 return;
             }
             const up = game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY;
@@ -75689,21 +76229,53 @@ function tutorialEnterStash() {
             const monster = (game._wizgenesis_text || '').trim().toLowerCase();
             game._wizgenesis_text = '';
             game._command_mode = null;
-            const mdat = monsterByRndName(monster)
-                || (monster ? { name: monster, mlet: monster[0], mlevel: 0, mmove: 12, maligntyp: 0, hostile: true, neuter: false } : null);
+            // C ref: read.c create_particular_parse() — a leading
+            // tame/peaceful/hostile word selects the created monster's
+            // initial disposition instead of being part of its name.
+            let disposition = '';
+            let monspec = monster;
+            if (monspec.startsWith('tame ')) { disposition = 'tame'; monspec = monspec.slice(5).trim(); }
+            else if (monspec.startsWith('peaceful ')) { disposition = 'peaceful'; monspec = monspec.slice(9).trim(); }
+            else if (monspec.startsWith('hostile ')) { disposition = 'hostile'; monspec = monspec.slice(8).trim(); }
+            const mdat = monsterByRndName(monspec)
+                || (monspec ? { name: monspec, mlet: monspec[0], mlevel: 0, mmove: 12, maligntyp: 0, hostile: true, neuter: false } : null);
             const spot = mdat ? enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, mdat) : null;
             if (spot) {
                 const created = await makemon(mdat, spot.x, spot.y, 0);
                 if (created) {
                     created.msleeping = 0;
-                    created.mpeaceful = 0;
+                    if (disposition === 'tame') {
+                        // C ref: dog.c tamedog()/initedog() — the new pet is
+                        // peaceful, gets an edog extension, and starts at
+                        // tameness 5 (10 for domestic animals).
+                        created.mpeaceful = 1;
+                        created.pet = true;
+                        created.mtame = Math.max(created.mtame || 0,
+                            created.data?.domestic || created.data?.isDomestic ? 10 : 5);
+                        created.mextra ??= {};
+                        created.mextra.edog ??= {
+                            apport: game.u?.acurr?.a?.[A_CHA] ?? 3,
+                            hungrytime: (game.moves || 1) + 1000,
+                            dropdist: 10000,
+                            whistletime: 0,
+                            ogoal: { x: -1, y: -1 },
+                        };
+                    } else if (disposition === 'peaceful') {
+                        // C ref: read.c create_particular_creation() —
+                        // makepeaceful: mtame = 0, mpeaceful = 1.
+                        created.mtame = 0;
+                        created.mpeaceful = 1;
+                    } else {
+                        created.mpeaceful = 0;
+                        if (disposition === 'hostile') created.mtame = 0;
+                    }
                     newsym(created.mx, created.my);
                     if (created.data?.name === 'minotaur') {
                         game._pending_message = '';
                         game._message_more = 0;
                         game._keep_pending_message = 0;
                     } else {
-                        await setMessage(`A ${created.data?.name || monster || 'monster'} appears next to you.`);
+                        await setMessage(`A ${created.data?.name || monspec || 'monster'} appears next to you.`);
                     }
                     return;
                 }

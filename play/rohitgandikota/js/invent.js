@@ -276,7 +276,7 @@ const LOW_PM = 0, LARGEST_INT = 32767;
 //
 // The zero case is 0, not "divide by 1". Guarding the denominator instead of
 // the whole expression returns base * uneaten there, which is wrong and large.
-function eaten_stat(base, obj) {
+export function eaten_stat(base, obj) {
     /* get full_amount first; obj_nutrition() might modify obj->oeaten */
     const full_amount = obj_nutrition(obj);
     let uneaten_amt = obj.oeaten;

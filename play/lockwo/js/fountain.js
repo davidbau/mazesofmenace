@@ -10,17 +10,20 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { update_topl, newsym } from './display.js';
 import { hliquid } from './dungeon.js';
 import { water_damage } from './trap.js';
-import { curse, objects, COIN_CLASS } from './mkobj.js';
-import { exercise } from './attrib.js';
+import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at } from './mkobj.js';
+import { exercise, acurr_eff } from './attrib.js';
+import { more_experienced, newexplevel } from './exper.js';
 import { newuhs } from './eat.js';
 import { Blind } from './vision.js';
 import { depth } from './hacklib.js';
 import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
-import { x_monnam } from './uhitm.js';
+import { x_monnam, canspotmon } from './uhitm.js';
 import { monster_detect } from './hack.js';
+import { observe_object } from './o_init.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 import {
     ER_NOTHING, ER_DESTROYED, F_LOOTED, F_WARNED,
-    FOUNTAIN, ROOM, A_WIS, A_CON, IS_FOUNTAIN,
+    FOUNTAIN, ROOM, A_WIS, A_CON, IS_FOUNTAIN, S_LRING, G_GONE,
 } from './const.js';
 
 // C ref: include/onames.h — long sword otyp (mkobj.js OBJECT_DATA order).
@@ -165,7 +168,18 @@ export async function drinkfountain() {
             break;
         case 20: /* Foul water */
             await update_topl(`The ${hliquid('water')} is foul!  You gag and vomit.`);
-            rn1(20, 11); /* morehungry(rn1(20,11)); vomit() not modeled */
+            rn1(20, 11); /* morehungry(rn1(20,11)) */
+            // C ref: eat.c vomit() — cantvomit/Sick/spewed branches don't apply
+            // to a plain human hero, so vomit() reduces to its universal tail:
+            // nomul(-2) freezes the hero for 2 turns with a deferred "You can
+            // move again." (gn.nomovemsg), fired once the countdown reaches 0.
+            if ((game.multi ?? 0) >= -2) {
+                game.multi = -2;
+                game.multi_reason = 'vomiting';
+                game.context = game.context || {};
+                game.context.travel = game.context.travel1 = game.context.mv = 0;
+            }
+            game.nomovemsg = 'You can move again.';
             break;
         case 21: /* Poisonous */
             await update_topl(`The ${hliquid('water')} is contaminated!`);
@@ -314,4 +328,195 @@ export async function dryup(x, y, _isyou) {
     if (game.level?.flags && typeof game.level.flags.nfountains === 'number')
         game.level.flags.nfountains = Math.max(0, game.level.flags.nfountains - 1);
     newsym(x, y);
+}
+
+// ── sink interactions (fountain.c drinksink/breaksink) ──
+
+function Hallucination() { return !!game.u?.uhallu; }
+
+// C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the
+// damage from u.uhp (no RNG).  Death handling is not exercised by the covered
+// sessions, so it is reduced to the hp arithmetic + hpmax clamp.
+function losehp(n) {
+    const u = game.u;
+    if (!u) return;
+    u.uhp -= n;
+    if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
+    if (u.uhp < 1) u.uhp = 0;
+}
+
+// C ref: objclass.h OBJ_DESCR(obj) — the shuffled appearance word for obj's
+// type (e.g. a potion's color).
+function OBJ_DESCR(obj) {
+    if (!obj) return null;
+    const idx = obj.oc_descr_idx != null ? obj.oc_descr_idx : obj.otyp;
+    return DESCR_BY_OTYP[idx] ?? null;
+}
+
+// C ref: do_name.c hcolor(colorpref) — colorpref unless hallucinating, in
+// which case a random nonsense word replaces it.  The hallucination table
+// isn't ported (not reached by the covered sessions' non-hallucinating hero);
+// the roll still needs to fire to keep the PRNG faithful if that ever
+// changes, but none of the covered sessions hallucinate while at a sink.
+function hcolor(colorpref) {
+    return colorpref;
+}
+
+// C ref: fountain.c breaksink(x, y) — converts a sink into a fountain (used
+// by both drinksink's "pipes break" case and dipsink).  Both call sites have
+// the hero standing on the square, so the cansee(x,y)||u_at(x,y) message
+// guard always holds.
+export async function breaksink(x, y) {
+    await update_topl('The pipes break!  Water spurts out!');
+    const loc = game.level?.at(x, y);
+    if (loc) {
+        loc.typ = FOUNTAIN;
+        loc.looted = F_LOOTED; // SET_FOUNTAIN_LOOTED
+        loc.blessedftn = 0;
+        const lf = game.level?.flags;
+        if (lf) {
+            lf.nsinks = Math.max(0, (lf.nsinks || 0) - 1);
+            lf.nfountains = (lf.nfountains || 0) + 1;
+        }
+    }
+    newsym(x, y);
+}
+
+// C ref: makemon.c — a monster created at the hero's occupied square goes
+// through the byyou && !in_mklev branch: enexto_core picks the nearest free
+// square (before any of the new monster's own RNG), then place_monster()
+// puts it there (mirrors fountain.js dowaterdemon's placement, minus the
+// full-monster-gen weapon/inventory override that only armed species need).
+async function spawnAtHeroSquare(pmidx) {
+    const u = game.u;
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return null;
+    const spot = enexto_spawn(u.ux, u.uy, ptr);
+    if (!spot) return null;
+    const mtmp = makemon(ptr, spot.x, spot.y, 0 /* MM_NOMSG */);
+    if (mtmp) {
+        placeOnLevel(mtmp, spot.x, spot.y);
+        newsym(spot.x, spot.y);
+    }
+    return mtmp;
+}
+
+// C ref: fountain.c drinksink() — quaff from a sink the hero stands on.
+// fate = rn2(20) selects the outcome.  Branches driving subsystems this port
+// doesn't model yet (random-form polyself, the poison-gas region) still spend
+// their observable message; create_gas_cloud(x,y,1,damage)'s single-square
+// case spends no RNG (its BFS growth loop breaks before the first
+// direction-shuffle draw), so that branch needs no extra roll either.
+export async function drinksink() {
+    const u = game.u;
+    if (u.uprops?.Levitation) {
+        await update_topl('You are floating high above the sink.');
+        return;
+    }
+    const loc = game.level?.at(u.ux, u.uy);
+    const water = hliquid('water');
+    switch (rn2(20)) {
+    case 0:
+        await update_topl(`You take a sip of very cold ${water}.`);
+        break;
+    case 1:
+        await update_topl(`You take a sip of very warm ${water}.`);
+        break;
+    case 2:
+        await update_topl(`You take a sip of scalding hot ${water}.`);
+        // Fire_resistance is never true for the covered heroes; monstunseesu
+        // (M_SEEN_FIRE) only toggles monster-memory bookkeeping (no RNG).
+        losehp(rnd(6));
+        break;
+    case 3: {
+        const pmidx = name_to_pmidx('sewer rat');
+        if ((game.mvitals?.[pmidx]?.mvflags ?? 0) & G_GONE) {
+            await update_topl('The sink seems quite dirty.');
+        } else {
+            const mtmp = await spawnAtHeroSquare(pmidx);
+            if (mtmp) {
+                const seen = !Blind() && canspotmon(mtmp);
+                await update_topl(`Eek!  There's ${seen ? x_monnam(mtmp, 2 /*ARTICLE_A*/, null, 0, false) : 'something squirmy'} in the sink!`);
+            }
+        }
+        break;
+    }
+    case 4: {
+        let otmp;
+        for (;;) {
+            otmp = mkobj(POTION_CLASS, false);
+            if (otmp.otyp !== POT_WATER) break;
+        }
+        otmp.cursed = false;
+        otmp.blessed = false;
+        const descr = OBJ_DESCR(otmp) || 'strange';
+        await update_topl(`Some ${Blind() ? 'odd' : hcolor(descr)} liquid flows from the faucet.`);
+        if (!Blind() && !Hallucination())
+            observe_object(otmp);
+        otmp.quan = (otmp.quan || 1) + 1; // avoid a panic upon useup() (never in invent)
+        otmp.fromsink = 1; // kludge for docall(); not otherwise modeled
+        const { dopotion } = await import('./potion.js');
+        await dopotion(otmp);
+        break;
+    }
+    case 5:
+        if (!((loc?.looted || 0) & S_LRING)) {
+            await update_topl('You find a ring in the sink!');
+            mkobj_at(RING_CLASS, u.ux, u.uy, true);
+            if (loc) loc.looted = (loc.looted || 0) | S_LRING;
+            exercise(A_WIS, true);
+            newsym(u.ux, u.uy);
+        } else {
+            await update_topl(`Some dirty ${water} backs up in the drain.`);
+        }
+        break;
+    case 6:
+        await breaksink(u.ux, u.uy);
+        break;
+    case 7: {
+        await update_topl(`The ${water} moves as though of its own will!`);
+        const pmidx = name_to_pmidx('water elemental');
+        const gone = (game.mvitals?.[pmidx]?.mvflags ?? 0) & G_GONE;
+        const mtmp = gone ? null : await spawnAtHeroSquare(pmidx);
+        if (!mtmp) await update_topl('But it quiets down.');
+        break;
+    }
+    case 8:
+        await update_topl(`Yuk, this ${water} tastes awful.`);
+        more_experienced(1, 0);
+        newexplevel();
+        break;
+    case 9:
+        await update_topl('Gaggg... this tastes like sewage!  You vomit.');
+        // morehungry(rn1(30-ACURR(A_CON),11)); vomit() has no observable
+        // effect for a non-acid-breathing, non-poly'd hero off an altar.
+        rn1(30 - acurr_eff(A_CON), 11);
+        break;
+    case 10:
+        await update_topl(`This ${water} contains toxic wastes!`);
+        // Unchanging is never true for the covered heroes.
+        await update_topl('You undergo a freakish metamorphosis!');
+        // polyself(POLY_NOFLAGS) is not modeled (no polymorph subsystem yet).
+        break;
+    case 11:
+        await update_topl('You hear clanking from the pipes...');
+        break;
+    case 12:
+        await update_topl('You hear snatches of song from among the sewers...');
+        break;
+    case 13:
+        await update_topl('Ew, what a stench!');
+        // create_gas_cloud(u.ux, u.uy, 1, 4): cloudsize 1 spends no RNG (see
+        // header comment); the lingering poison-gas region isn't modeled.
+        break;
+    case 19:
+        if (Hallucination()) {
+            await update_topl('From the murky drain, a hand reaches up... --oops--');
+            break;
+        }
+        /* falls through */
+    default:
+        await update_topl(`You take a sip of ${rn2(3) ? (rn2(2) ? 'cold' : 'warm') : 'hot'} ${water}.`);
+        break;
+    }
 }

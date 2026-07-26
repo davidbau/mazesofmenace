@@ -374,10 +374,23 @@ function terrainGlyph(loc, x, y) {
         if (isRogueLevel()) return { ch: '%', color: loc.stairColor ?? NO_COLOR, dec: false };
         // C ref: display.c mapglyph — stair direction comes from the tile's
         // own ladder field (LA_DOWN -> '>', otherwise '<'), not from the
-        // level's single upstair pointer.
-        if ((loc.ladder ?? 0) === 2)
-            return { ch: '>', color: loc.stairColor ?? NO_COLOR, dec: false };
-        return { ch: '<', color: loc.stairColor ?? ((game.u?.uz?.dlevel ?? 1) === 1 ? CLR_YELLOW : NO_COLOR), dec: false };
+        // level's single upstair pointer.  Branch stairs (tolev in another
+        // dnum) render as S_brupstair/S_brdnstair (yellow) only after the
+        // hero has traversed them (stairs.c known_branch_stairs).
+        {
+            let sway = null;
+            for (let s = game.stairs; s; s = s.next)
+                if (s.sx === x && s.sy === y) { sway = s; break; }
+            // C ref: mklev.c skip0 — the level-1 branch stairs up where the
+            // hero starts count as already traversed (hero "came down them").
+            const startStairs = (game.u?.uz?.dnum ?? 0) === 0
+                && (game.u?.uz?.dlevel ?? 1) === 1 && sway?.up;
+            const branchColor = (sway && sway.tolev?.dnum !== (game.u?.uz?.dnum ?? 0)
+                && (sway.u_traversed || startStairs)) ? CLR_YELLOW : NO_COLOR;
+            if ((loc.ladder ?? 0) === 2)
+                return { ch: '>', color: loc.stairColor ?? branchColor, dec: false };
+            return { ch: '<', color: loc.stairColor ?? branchColor, dec: false };
+        }
     case FOUNTAIN: return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK: return { ch: '{', color: CLR_WHITE, dec: false };
     case IRONBARS: return game.symset === 'DECgraphics'
@@ -810,6 +823,8 @@ export function newsym(x, y) {
 
     const canSee = !!(game.viz_array?.[y]?.[x] & COULD_SEE);
     const visible = !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+    if (process.env.NSYMDBG_X != null && x === Number(process.env.NSYMDBG_X) && y === Number(process.env.NSYMDBG_Y))
+        console.error(`NSYMDBG (${x},${y}) hero=${game.u?.ux},${game.u?.uy} canSee=${canSee} visible=${visible} mon=${monsterAt(x, y)?.data?.name} appearGlyph=${monsterAt(x, y)?.appearGlyph} remembered_glyph=${JSON.stringify(loc.remembered_glyph)}`);
     if (visible) {
         loc.waslit = !!loc.lit;
         loc.lastseentyp = loc.typ;
@@ -886,7 +901,14 @@ export function newsym(x, y) {
             visibleObjectGlyph = glyph;
             loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec, statueGlyph: !!glyph.statueGlyph };
         } else {
-            loc.remembered_glyph = null;
+            // C ref: display.c _map_location — seeing an object-disguised
+            // monster (mimic) leaves an object memory, just like seeing a
+            // real object; it is what gets shown once the spot is out of
+            // sight again.
+            const disguise = monsterVisible && mon?.appearGlyph ? monsterGlyph(mon) : null;
+            loc.remembered_glyph = disguise
+                ? { ch: disguise.ch, color: disguise.color, dec: disguise.dec, statueGlyph: !!disguise.statueGlyph }
+                : null;
         }
     }
     const displayedMon = seesTelepathically ? rawMon : mon;
@@ -897,7 +919,10 @@ export function newsym(x, y) {
             game._hilite_pet && displayedMon.pet ? 1 : 0, glyph);
         return;
     }
-    if (mon?.appearGlyph && remembered
+    // C ref: display.c _map_location — an object-disguised monster (mimic)
+    // is only shown while its square is actually visible (canseemon);
+    // out of sight the hero's memory holds no glyph for it.
+    if (mon?.appearGlyph && remembered && visible
         && Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0))) <= 2) {
         const glyph = monsterGlyph(mon);
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);
@@ -1460,6 +1485,7 @@ function drawGrid() {
         } else if (game._command_mode === 'farlookCursor'
                    || game._command_mode === 'jumpCursor'
                    || game._command_mode === 'payWhomCursor'
+                   || game._command_mode === 'wizkillCursor'
                    || game._command_mode === 'teleportCursor') {
             d.setCursor((game._farlook_x || game.u?.ux || 1) - 1, (game._farlook_y || game.u?.uy || 0) + 1);
             cursorSet = true;

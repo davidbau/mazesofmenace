@@ -35,7 +35,14 @@ export function enableDisplayRngLog(enabled = true) { _displayRngLogEnabled = !!
 
 function logRng(name, args, value) {
     if (!_rngLogEnabled) return;
-    _rngLog.push(`${name}(${args})=${value}`);
+    let entry = `${name}(${args})=${value}`;
+    if (process.env.RNG_SITE) {
+        const frames = (new Error().stack || '').split('\n').slice(2, 5)
+            .map(l => l.trim().replace(/^at\s+/, '').replace(/[^(]*\(([^)]*)\)/, '$1'))
+            .map(l => l.replace(/^.*\//, '')).join(' <- ');
+        entry += ` @ ${frames}`;
+    }
+    _rngLog.push(entry);
 }
 
 function RND(x) {

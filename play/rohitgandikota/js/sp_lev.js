@@ -15,6 +15,8 @@ import { isok } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
+import { stock_room } from './shknam.js';
+import { fill_zoo } from './mkroom.js';
 import { OBJ_NAME } from './objnam.js';
 import { obj_resists } from './zap.js';
 import { OBJ_BURIED } from './obj.js';
@@ -77,10 +79,9 @@ export function fill_special_room(croom) {
 
     if (croom.needfill === FILL_NORMAL) {
         if (croom.rtype >= SHOPBASE) {
-            /* stock_room() is a separate subsystem (shop inventory); it is
-               not reached by any session that currently gets this far. */
-            note_unported('stock_room');
-            game.level.flags.has_shop = true;
+            /* src/mklev.c fill_special_room() — a shop's stock and its
+               shopkeeper. stock_room sets has_shop itself. */
+            stock_room(croom.rtype - SHOPBASE, croom);
             return;
         }
 
@@ -98,7 +99,8 @@ export function fill_special_room(croom) {
         case LEPREHALL:
         case MORGUE:
         case BARRACKS:
-            note_unported(`fill_zoo rtype=${croom.rtype}`);
+            /* src/mkroom.c:275 — mkzoo() marked the room; this fills it. */
+            fill_zoo(croom);
             break;
         default:
             break;
@@ -1108,6 +1110,11 @@ export function inside_room(croom, x, y) {
 // The flags ACCUMULATE: a flying eel is WET from the first test and gains
 // HOT|WET from the second, so the humidity a monster searches with is often
 // several bits, and get_location's is_ok_location accepts any of them.
+// src/sp_lev.c:1311 pm_good_location()
+export function pm_good_location(x, y, pm) {
+    return is_ok_location(x, y, pm_to_humidity(pm));
+}
+
 export function pm_to_humidity(pm) {
     let loc = DRY;
 

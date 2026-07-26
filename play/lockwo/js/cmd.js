@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
@@ -1866,13 +1866,49 @@ async function moverock(otmp, sx, sy, dx, dy) {
                     || dtyp === LAVAPOOL;
     const closedDoor = dloc && IS_DOOR(dtyp)
                     && (dloc.doormask & (D_CLOSED | D_LOCKED));
-    // C: destination must be a real, open, boulder-free square.  A diagonal push
-    // is refused into a doored doorway (unless doorless).
-    const canRoll = isok(rx, ry) && !IS_ROCK(dtyp) && dtyp !== IRONBARS
+    // C: the moverock_core() outer condition — destination must be a real,
+    // in-bounds, non-wall/rock/ironbars square not itself holding a boulder.
+    // A diagonal push is refused into a doored doorway (unless doorless).
+    const destOk = isok(rx, ry) && !IS_ROCK(dtyp) && dtyp !== IRONBARS
         && (!IS_DOOR(dtyp) || !(dx && dy) || doorless_door(rx, ry))
-        && !boulder_at(rx, ry)
+        && !boulder_at(rx, ry);
+
+    if (destOk) {
+        // C ref: hack.c moverock_core() — a monster occupying the destination
+        // blocks the push (unless it's a noncorporeal ghost/shade, or one
+        // pinned in a pit/spiked pit).  Report it as seen or heard, then
+        // refuse the push, before falling through to the trap/door/pool
+        // handling below.
+        const mtmp = m_at(rx, ry);
+        const destTrap = trap_at(rx, ry);
+        if (mtmp && mtmp.data?.mlet !== ' ' /* noncorporeal ghost/shade */
+            && (!mtmp.mtrapped || !(destTrap && is_pit_ttyp(destTrap.ttyp)))) {
+            // Two plines can fire in the same turn (sense + verbose), so route
+            // both through update_topl() — it inserts the --More-- pause (its
+            // own screen frame) when they don't fit coalesced on one line,
+            // exactly like C's back-to-back pline() calls do.
+            let deliverPart1 = false;
+            if (canspotmon(mtmp)) {
+                await update_topl(`There's ${x_monnam(mtmp, 2, null, 0, false)} on the other side.`);
+                deliverPart1 = true;
+            } else {
+                if (!game.u?.Deaf && game.flags?.acoustics !== false) {
+                    await update_topl(`You hear a monster behind ${the_pushable_name(otmp)}.`);
+                    deliverPart1 = true;
+                }
+                map_invisible(rx, ry);
+            }
+            if (game.flags?.verbose !== false) {
+                await update_topl(deliverPart1
+                    ? `Perhaps that's why you cannot move it.`
+                    : `You cannot move ${the_pushable_name(otmp)}.`);
+            }
+            return -1;
+        }
+    }
+
+    const canRoll = destOk
         && !closedDoor && !isPoolLava
-        && !m_at(rx, ry)      // a monster on the far side blocks the push
         && !trap_at(rx, ry);  // keep the boulder off any trap (conservative)
 
     if (canRoll) {

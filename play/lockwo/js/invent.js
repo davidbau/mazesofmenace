@@ -1537,9 +1537,17 @@ function statusLine2() {
     return statusLine2Text();
 }
 
-function putStatusLines(display) {
-    display.putstr(0, 22, statusLine1(), NO_COLOR);
-    display.putstr(0, 23, statusLine2(), NO_COLOR);
+// C ref: win/tty/wintty.c tty_display_nhwindow — a partial-width NHW_MENU
+// only clears/draws its own column band; rows it occupies keep whatever was
+// left of that band (here, the status line) untouched.  When the menu's
+// content (including the trailing "(end)" row) reaches down into row 22/23,
+// the status text there must be truncated at the menu's left edge instead of
+// redrawn full-width, or it clobbers the "(end)" indicator the menu just drew.
+function putStatusLines(display, bandStart = null, menuLastRow = -1) {
+    const s1 = statusLine1();
+    const s2 = statusLine2();
+    display.putstr(0, 22, (bandStart != null && menuLastRow >= 22) ? s1.slice(0, bandStart) : s1, NO_COLOR);
+    display.putstr(0, 23, (bandStart != null && menuLastRow >= 23) ? s2.slice(0, bandStart) : s2, NO_COLOR);
 }
 
 function touristFallbackRows() {
@@ -1611,7 +1619,8 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     // be blanked too or a map glyph beneath it shows through the leading space.
     const bandStart = Math.max(0, col - 1);
     const totalRows = lines.reduce((n, g) => n + g.length, 0) + 1; // +1 for (end)
-    for (let r = 0; r < totalRows && r < 22; r++)
+    const menuLastRow = totalRows - 1; // row the "(end)" line lands on
+    for (let r = 0; r <= menuLastRow && r < 24; r++)
         for (let c = bandStart; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
@@ -1623,7 +1632,7 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     }
     const endRow = row;
     display.putstr(col, row++, '(end)', NO_COLOR);
-    putStatusLines(display);
+    putStatusLines(display, bandStart, menuLastRow);
     // C ref: tty parks the cursor just past the "(end)" prompt (offx + len + 1).
     const curCol = (cursor && cursor[0] != null) ? cursor[0] : col + '(end)'.length + 1;
     const curRow = (cursor && cursor[1] != null) ? cursor[1] : endRow;

@@ -7,6 +7,8 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
+import { spell_skilltype } from './spell.js';
+import { discover_object } from './o_init.js';
 import { OCLASSES } from './objects_data.js';
 import {
     P_NONE, P_NUM_SKILLS, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_EXPERT,
@@ -91,9 +93,66 @@ export function skill_init(class_skill) {
         if (sk[s].skill !== P_ISRESTRICTED)
             sk[s].advance = practice_needed_to_advance(sk[s].skill - 1);
 
-    /* unrestrict_weapon_skill(spell_skilltype(urole.spelspec)) and
-       skill_based_spellbook_id() still to come; neither draws. */
-    note_unported_weapon('skill_init:unrestrict + spellbook_id');
+    /* the role's special spell is always at least unskilled */
+    unrestrict_weapon_skill(spell_skilltype(game.urole.spelspec));
+
+    if (!game.u.uroleplay?.pauper)  /* paupers lack advanced book access */
+        skill_based_spellbook_id();
+}
+
+// src/weapon.c unrestrict_weapon_skill() — lift a restriction to Unskilled.
+// Draws nothing; it is pure state, and it is what lets a role cast its own
+// special spell at all.
+export function unrestrict_weapon_skill(skill) {
+    const sk = game.u.weapon_skills;
+    if (skill < P_NUM_SKILLS && sk[skill].skill === P_ISRESTRICTED) {
+        sk[skill].skill = P_UNSKILLED;
+        sk[skill].max = P_BASIC;
+        sk[skill].advance = 0;
+    }
+}
+
+// src/spell.c:864 skill_based_spellbook_id() — a Wizard starts already
+// knowing the low-level spellbooks its skills cover.
+//
+// Draws nothing. Wizards only; every other role returns immediately, which is
+// why this was reachable in 100% of games while mattering in a fraction of
+// them. discover_object is called with mark_as_known but NOT as encountered,
+// which is C's own distinction: the book is identified without being treated
+// as seen.
+function skill_based_spellbook_id() {
+    if (!Role_if(PMNAMES.PM_WIZARD))
+        return;
+
+    const first = game.bases[OCLASSES.SPBOOK_CLASS];
+    const last = game.bases[OCLASSES.SPBOOK_CLASS + 1];
+
+    for (let booktype = first; booktype < last; booktype++) {
+        const skill = spell_skilltype(booktype);
+        if (skill === P_NONE)
+            continue;
+
+        let known_up_to_level;
+        switch (game.u.weapon_skills[skill].skill) {
+        case P_BASIC:   known_up_to_level = 3; break;
+        case P_SKILLED: known_up_to_level = 5; break;
+        case P_EXPERT:
+        case P_MASTER:
+        case P_GRAND_MASTER:
+            known_up_to_level = 7; break;
+        case P_UNSKILLED:
+        default:
+            /* paupers need more skill than this to ID books, but most
+               wizards know the basics */
+            known_up_to_level = game.u.uroleplay?.pauper ? 0 : 1;
+            break;
+        }
+
+        if (game.objects[booktype].oc_level <= known_up_to_level)
+            /* makeknown(booktype) but don't exercise Wisdom or mark as
+               encountered */
+            discover_object(booktype, true, false, false);
+    }
 }
 
 // src/role.c Role_if()

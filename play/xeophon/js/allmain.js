@@ -8,7 +8,7 @@ import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, s
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
-import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
+import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
 import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
@@ -115,6 +115,23 @@ function levelRoomByRoomno(roomno) {
     return game.level?.rooms?.[idx]
         || (game.level?.subrooms || []).find(room => room?.roomnoidx === idx)
         || null;
+}
+
+// C ref: hack.c in_rooms(x, y, SHOPBASE) reduced to a boolean — nonzero
+// *u.ushops equivalent.  SHARED/SHARED_PLUS walls (e.g. shop doors) are
+// detected via the rooms adjacent to them.
+function inShopBaseRoomAt(x, y) {
+    const roomno = game.level?.at?.(x, y)?.roomno ?? 0;
+    const isShop = rn => (levelRoomByRoomno(rn)?.rtype || 0) >= SHOPBASE;
+    if (roomno >= ROOMOFFSET) return isShop(roomno);
+    if (roomno !== SHARED && roomno !== SHARED_PLUS) return false;
+    const step = roomno === SHARED ? 2 : 1;
+    for (let nx = Math.max(0, x - 1); nx <= Math.min(COLNO - 1, x + 1); nx += step)
+        for (let ny = Math.max(0, y - 1); ny <= Math.min(ROWNO - 1, y + 1); ny += step) {
+            const adj = game.level?.at?.(nx, ny)?.roomno ?? 0;
+            if (adj >= ROOMOFFSET && isShop(adj)) return true;
+        }
+    return false;
 }
 
 const FEMALE_ROLE_NAMES = {
@@ -3408,6 +3425,11 @@ function processAttributeExercise() {
     if ((game._running_continuation || game._initial_run_command)
         && (game._run_steps_remaining || 0) > 0)
         return;
+    // C ref: attrib.c:598-599 — exerchk's whole test block (including the
+    // next_attrib_check reschedule) is gated on !gm.multi, so the check is
+    // deferred while a travel command is still in progress.
+    if (game._travel_keys?.length || game._travel_step_active || game._travel_dynamic_target)
+        return;
     if (game._helpless_time || game._armor_wear_occupation || game._eating_turns_remaining
         || game._force_lock_occupation || game._pick_lock_occupation || game._pick_dig_occupation || game._tin_opening_occupation
         || game._prayer_occupation) return;
@@ -3463,6 +3485,12 @@ function processDungeonSounds() {
         }
         if ((game.level?.monsters || []).some(mon => mon.isgd && mon._vault_escort_active)) return false;
         const shown = addToplineMessage(msg);
+        // C ref: src/sounds.c dosounds — ambient sound messages do not
+        // interrupt travel (context.run = 8); mark the message so the
+        // travel continuation keeps going (see also the crashing-rock
+        // site below).
+        if (shown && !game._message_more)
+            game._travel_noninterrupting_message = game._pending_message;
         if (shown && game._counted_repeat_interruptible
             && (game._pending_time_passed || 0) <= 1) {
             game._pending_time_passed = 0;
@@ -6115,7 +6143,11 @@ export async function processMonsterTurns() {
                                     uondoor = heroX === mon.shd?.x && heroY === mon.shd?.y;
                                     if (uondoor) avoid = true;
                                     else {
-                                        const heroInShop = game.level?.at(heroX, heroY)?.roomno === mon.shoproom;
+                                        // C ref: shk.c:4947 — avoid is set
+                                        // when the hero is inside ANY shop
+                                        // (*u.ushops), not necessarily this
+                                        // shopkeeper's own shop.
+                                        const heroInShop = inShopBaseRoomAt(heroX, heroY);
                                         avoid = heroInShop && (heroX - goalX) ** 2 + (heroY - goalY) ** 2 > 8;
                                     }
                                     const onlineHero = oldx === heroX || oldy === heroY
@@ -6301,6 +6333,7 @@ export async function processMonsterTurns() {
 			                    const attemptedMonsterMove = true;
 				                    const moveResult = moveMonsterTowardHero(mon, conflictActive, monIndex, somebodyCanMove);
 				                    let moveEndedTurn = !!mon._move_consumed_turn;
+                    const teleportedViaTrap = !!mon._teleported_via_trap;
 	                    const hiderStayedUnder = !!mon._hider_stayed_under;
 	                    mon._hider_stayed_under = 0;
                     let hiderPostmoveRoll = null;
@@ -6549,7 +6582,10 @@ export async function processMonsterTurns() {
                         continue;
                     }
                     if ((game.level?.monsters || []).includes(mon)) {
-                        if (!postMoveDistFleeRoll) rn2(5);
+                        // C ref: dochug() post-m_move distfleeck() recalc
+                        // (monmove.c:917); skipped when the monster teleported
+                        // via a trap (MMOVE_DIED path, monmove.c:1510-1514).
+                        if (!postMoveDistFleeRoll && !teleportedViaTrap) rn2(5);
                         const postMoveTargetX = mon.mux ?? game.u?.ux ?? mon.mx;
                         const postMoveTargetY = mon.muy ?? game.u?.uy ?? mon.my;
                         const postMoveDist2 = (mon.mx - postMoveTargetX) ** 2 + (mon.my - postMoveTargetY) ** 2;
@@ -9315,7 +9351,22 @@ async function finishMonsterTurnTail() {
         }
 	        let reachedFullHp = false;
         let reachedFullPower = false;
-        if (!game.u?.uinvulnerable && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
+        if (game.u?._polyself_form) {
+            // C ref: allmain.c regen_hp() — the Upolyd branch (allmain.c:630-644)
+            // heals every 20 turns (or via Regeneration) with NO rn2(100)
+            // roll; that roll exists only in the !Upolyd branch
+            // (allmain.c:659).
+            if (!game.u?.uinvulnerable && (game.u?.uhp || 0) > 0 && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
+                const polyRegenerating = (game.inventory || []).some(item =>
+                    item.worn && (item.actualKind === 'ring of regeneration'
+                        || item.kind === 'ring of regeneration'
+                        || item.ringRoll === 7));
+                if (polyRegenerating || (game.moves || 1) % 20 === 0) {
+                    game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
+                    reachedFullHp = (game.u?.uhp || 0) === (game.u?.uhpmax || 0);
+                }
+            }
+        } else if (!game.u?.uinvulnerable && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
             const con = game.u?.acurr?.a?.[4] ?? 10;
             const regenRoll = rn2(100);
             const suppressHpRegen = !!game._suppress_next_hp_regen;
@@ -11617,6 +11668,10 @@ function monsterTeleportTrapEffect(mon, trap) {
     }
 
     const moved = mon.mx !== oldX || mon.my !== oldY;
+    // C ref: postmov() -> mintrap() returns Trap_Moved_Mon for a teleported
+    // monster, so m_move() returns MMOVE_DIED (monmove.c:1510-1514) and
+    // dochug() then skips the post-move distfleeck() recalc (monmove.c:917).
+    if (moved) mon._teleported_via_trap = 1;
     if (inSight) {
         trap.tseen = true;
         addToplineMessage(monsterVisibleForTeleportFeedback(mon)
@@ -13842,6 +13897,7 @@ function drinkMonsterHealingPotion(mon, healingPotion) {
 
 function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, somebodyCanMove = false) {
     mon._opened_door_this_move = 0;
+    mon._teleported_via_trap = 0;
     const data = mon.data || {};
     const done = () => {
         mon._move_consumed_turn = 1;
@@ -13964,8 +14020,6 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             }
             break;
         }
-        if (mon.data?.mlet === 'L' && Math.abs(mon.my - goalY) === 1 && Math.abs(mon.mx - goalX) > 6)
-            goalX = mon.mx;
     }
     if (!game.u?.uswallow && !peacefulWander
         && (mon.data?.name === 'stalker' || mon.data?.mlet === 'B' || mon.data?.mlet === 'y')) {
@@ -14039,6 +14093,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         rnd(20);
     }
     const poss = mfndpos(mon, monsterAllowFlags(mon, false, conflictActive));
+    if (process.env.MONDBG) { const L = getRngLog().length; const [wlo, whi] = (process.env.MONDBG_WIN || '11840,11960').split(',').map(Number); if (L >= wlo && L <= whi) console.error(`MONDBG rng=${L} ${mon.data?.name} @${mon.mx},${mon.my} peace=${!!mon.mpeaceful} wander=${randomWander} appr=${appr} poss=${JSON.stringify(poss.map(p=>[p.x,p.y,p.info,p.occupant?p.occupant.data?.name:0]))}`); }
     let next = null;
     let nextInfo = 0;
     let best = (mon.mx - goalX) ** 2 + (mon.my - goalY) ** 2;
@@ -14240,6 +14295,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
                     mon.movement = 0;
                 }
             } else {
+	            // C ref: postmov() monster door-open feedback is gated on
+	            // flags.verbose (monmove.c:1583); with !verbose C prints nothing.
+	            if (game.flags?.verbose !== false) {
 	            const doorMessage = openerVisible
 	                ? `${monsterDisplayName(mon)} opens a door.`
 	                : canSeeDoor
@@ -14248,6 +14306,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
 	            game._pending_message = game._pending_message
 	                ? `${game._pending_message}  ${doorMessage}`
 	                : doorMessage;
+	            }
             }
 	        game._keep_pending_message = 1;
 	    }

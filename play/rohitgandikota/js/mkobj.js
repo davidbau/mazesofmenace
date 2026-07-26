@@ -41,7 +41,7 @@ import { depth } from './dungeon.js';
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
 // A NEGATED class, not an index past the real ones. It is the one caller-facing
 // value mkobj() accepts that is not a real oclass.
-const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
+export const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
 
 // include/permonst.h
 const NON_PM = -1;
@@ -100,6 +100,82 @@ export { mkobjprobs, boxiprobs, rogueprobs, hellprobs };
 // src/mkobj.c:521 next_ident()
 // One rnd(2) per created object or monster. Cheap to overlook and it appears
 // between every pair of object draws in the recordings.
+// src/shk.c:2864 oid_price_adjustment() — the +1 an unidentified object's
+// o_id can add to its shop price. Its C home is shk.c; there is no js/shk.js
+// yet, and it exists here only because nextoid() below is its sole caller so
+// far. Move it when the shop code lands.
+function oid_price_adjustment(obj, oid) {
+    let res = 0;
+    const otyp = obj.otyp;
+
+    if (!(obj.dknown && game.objects[otyp].oc_name_known)
+        && (obj.oclass !== OCLASSES.GEM_CLASS
+            || game.objects[otyp].oc_material !== GLASS)) {
+        res = ((oid % 4) === 0) ? 1 : 0; /* id%4 ==0 -> +1, ==1..3 -> 0 */
+    }
+    return res;
+}
+
+// src/mkobj.c:536 nextoid() — pick the split-off object's id.
+//
+// Draws NOTHING, unlike next_ident(). It walks context.ident forward until the
+// new id gives the same price adjustment as the parent's, so a stack that
+// splits does not change price, and it leaves context.ident on the id it used.
+// That last part is why it cannot be replaced by next_ident(): the two advance
+// context.ident by different amounts and every later object id would shift.
+function nextoid(oldobj, newobj) {
+    let trylimit = 256;             /* limit of 4 suffices at present */
+    let oid = game.context.ident - 1; /* loop increment will reverse -1 */
+
+    const olddif = oid_price_adjustment(oldobj, oldobj.o_id);
+    let newdif;
+    do {
+        ++oid;
+        if (!oid)                   /* avoid using 0 (in case value wrapped) */
+            ++oid;
+        newdif = oid_price_adjustment(newobj, oid);
+    } while (newdif !== olddif && --trylimit >= 0);
+    game.context.ident = oid;       /* update 'last ident used' */
+    return oid;
+}
+
+// src/mkobj.c:457 splitobj() — split num items off obj into a new object.
+//
+// Draws nothing. Ported for dog_eat(), which splits a single item off a food
+// stack so a pet eats one ration rather than the whole pile.
+//
+// Not ported, each recorded rather than faked: splitbill (shops), the timer
+// and light-source splits, and the Lua reference bookkeeping. copy_oextra is
+// approximated by carrying the fields our object model actually has.
+export function splitobj(obj, num) {
+    /* can't split containers; C panics here */
+    if (obj.cobj || num <= 0 || obj.quan <= num)
+        note_unported_obj('splitobj:panic');
+
+    const otmp = { ...obj };        /* *otmp = *obj -- copies whole structure */
+    otmp.oextra = null;
+    otmp.o_id = nextoid(obj, otmp);
+    otmp.timed = 0;                 /* not timed, yet */
+    otmp.lamplit = 0;               /* ditto */
+    otmp.owornmask = 0;             /* new object isn't worn */
+    obj.quan -= num;
+    obj.owt = weight(obj);
+    otmp.quan = num;
+    otmp.owt = weight(otmp);
+    otmp.pickup_prev = 0;
+
+    game.context.objsplit = game.context.objsplit || {};
+    game.context.objsplit.parent_oid = obj.o_id;
+    game.context.objsplit.child_oid = otmp.o_id;
+
+    if (obj.unpaid)
+        note_unported_obj('splitobj:splitbill');
+    if (obj.timed)
+        note_unported_obj('splitobj:obj_split_timers');
+
+    return otmp;
+}
+
 export function next_ident() {
     const ctx = game.context;
     const id = ctx.ident || 1;
@@ -309,7 +385,10 @@ export function mksobj_init(otmp, artif) {
         case ONAMES.TALLOW_CANDLE:
         case ONAMES.WAX_CANDLE:
             otmp.spe = 1;
-            otmp.age = 20 * 20; /* 400 */
+            /* src/mkobj.c:991 — 20 * oc_cost, which C's own comment marks as
+               "400 or 200": a tallow candle costs 10 and a wax one 20, so the
+               two candle types do NOT share an age. */
+            otmp.age = 20 * game.objects[otmp.otyp].oc_cost;
             otmp.lamplit = 0;
             otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
             blessorcurse(otmp, 5);
@@ -317,7 +396,11 @@ export function mksobj_init(otmp, artif) {
         case ONAMES.BRASS_LANTERN:
         case ONAMES.OIL_LAMP:
             otmp.spe = 1;
-            otmp.age = 1500;
+            /* src/mkobj.c:1001 — rn1(500, 1000), i.e. 1000..1499. This was a
+               hardcoded 1500, which is both the wrong value and, worse, a
+               MISSING DRAW: every lamp or lantern generated shifted the whole
+               stream by one rn2. */
+            otmp.age = rn1(500, 1000);
             otmp.lamplit = 0;
             blessorcurse(otmp, 5);
             break;
@@ -655,6 +738,14 @@ export function mksobj(otyp, init, artif) {
     default:
         break;
     }
+
+    /* src/mkobj.c:1257 — every object gets its weight cached at creation, and
+       every later reader uses that field rather than recomputing. Omitting it
+       left obj.owt undefined on every object in the game, which made
+       inv_weight() return NaN and silently disabled encumbrance; it also meant
+       the owt assignments in splitobj(), dog_eat() and mkroom's court chest
+       were writing to a field nothing maintained. */
+    otmp.owt = weight(otmp);
     return otmp;
 }
 
@@ -962,6 +1053,41 @@ export function special_corpse(num) {
 }
 
 // src/mkobj.c:1976 set_corpsenm()
+// src/mkobj.c:2227 mk_tt_object() — a corpse or statue named for a player
+// from the scoreboard.
+//
+// tt_oname() reads the tombstone/scoreboard file, which we do not have, and C
+// handles the empty-scoreboard case explicitly: "tt_oname() will return null
+// if the scoreboard is empty, which in turn leaves the random corpsenm value;
+// force it to match a player". An absent scoreboard is therefore the C's own
+// documented path, not a hole, and it DRAWS rn1(PM_WIZARD - PM_ARCHEOLOGIST
+// + 1, PM_ARCHEOLOGIST).
+export function mk_tt_object(objtype, x, y) {
+    /* player statues never contain books */
+    const initialize_it = (objtype !== ONAMES.STATUE);
+    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
+
+    /* tt_oname() is null with no scoreboard, so this arm always runs */
+    const pm = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST + 1,
+                   PMNAMES.PM_ARCHEOLOGIST);
+    set_corpsenm(otmp, pm);
+
+    return otmp;
+}
+
+// src/mkobj.c:1822 uncurse() — clear the cursed bit.
+//
+// The light-radius and luck bookkeeping around it only fires for a lit
+// artifact or a carried luck-conferring object, neither of which applies to
+// a priest's robe at level generation; they are recorded rather than faked.
+export function uncurse(otmp) {
+    if (otmp.lamplit)
+        note_unported_obj('uncurse:arti_light_radius');
+    otmp.cursed = 0;
+    if (otmp.otyp === ONAMES.BAG_OF_HOLDING)
+        otmp.owt = weight(otmp);
+}
+
 export function set_corpsenm(obj, id) {
     obj.corpsenm = id;
     switch (obj.otyp) {

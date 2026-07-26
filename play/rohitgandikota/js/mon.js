@@ -15,6 +15,8 @@ import { mksobj_at } from './mkobj.js';
 import { newsym } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
+import { remove_monster } from './makemon.js';
+import { MON_DETACH } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
@@ -437,7 +439,7 @@ export function healmon(mtmp, amt, overheal) {
 // predicate. For the metal object meatmetal() feeds it none of them can be
 // true, so this is the whole function on that path rather than a reduction of
 // it; the guards are the C's own, evaluated, not assumed.
-function m_consume_obj(mtmp, otmp) {
+export function m_consume_obj(mtmp, otmp) {
     const ispet = mtmp.mtame;
 
     /* non-pet: Heal up to the object's weight in hp */
@@ -846,4 +848,55 @@ function can_touch_safely(mtmp, otmp) {
 function resists_ston(mon) {
     note_unported_mon('resists_ston');
     return false;
+}
+
+// src/mon.c:2734 m_detach() — take a monster off the map.
+//
+// C does NOT unlink from the fmon chain here: it flags MON_DETACH and bumps
+// iflags.purge_monsters, and dmonsfree() does the unlinking later. That split
+// matters because anything walking fmon between now and the purge still SEES
+// this monster. What must happen immediately is the map slot, because m_at()
+// is what mfndpos() counts free squares with.
+//
+// Ported: the map removal, mhp = 0, and the detach flag. Not ported (none are
+// reachable from mk_trap_statue's freshly-made monster, and each is recorded
+// rather than faked): m_unleash, del_light_source, wizdeadorgone, the
+// due_to_death arm (nemdead/leaddead/relobj), thiefdead, shkgone, wormgone,
+// the endgame flag, and the steed dismount.
+export function m_detach(mtmp, mptr, due_to_death) {
+    if (mtmp.mleashed || mtmp.iswiz || mtmp.isshk || mtmp.wormno
+        || due_to_death)
+        (game.unported ||= new Set()).add('mon:m_detach');
+
+    /* mon_leaving_level() — off the map, but still on the fmon chain */
+    if (mtmp.mx > 0)
+        remove_monster(mtmp.mx, mtmp.my);
+
+    mtmp.mhp = 0;               /* simplify some tests: force mhp to 0 */
+
+    mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
+    game.iflags = game.iflags || {};
+    game.iflags.purge_monsters = (game.iflags.purge_monsters || 0) + 1;
+}
+
+// src/mon.c:3267 mongone() — monster disappears, not dies.
+//
+// The distinction from mondead() is the whole point: no corpse, no death
+// message, no experience. mk_trap_statue() uses it to throw away the monster
+// it made purely to source a statue's inventory.
+//
+// discard_minvent() removes the pack FROM THE GAME rather than dropping it,
+// which is why mk_trap_statue moves the objects into the statue first.
+export function mongone(mdef) {
+    mdef.mhp = 0;               /* can skip some inventory bookkeeping */
+
+    if (mdef.isgd)
+        (game.unported ||= new Set()).add('mon:mongone:grddead');
+    /* unstuck() and mdrop_special_objs() are no-ops for a monster that has
+       never acted; the Amulet case cannot arise at level generation. */
+
+    /* discard_minvent(mdef, FALSE) — the pack leaves the game entirely */
+    mdef.minvent = [];
+
+    m_detach(mdef, mdef.data, false);
 }

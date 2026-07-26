@@ -11,9 +11,17 @@ import {
     mkobj, mksobj, next_ident, blessorcurse, special_corpse, start_corpse_timeout,
 } from './mkobj.js';
 import {
-    rndmonnum, makemon, mkclass, monsndx, level_difficulty, MM_NOGRP, NO_MM_FLAGS,
-    Inhell,
+    rndmonnum, rndmonnum_adj, makemon, mkclass, monsndx, level_difficulty,
+    MM_NOGRP, NO_MM_FLAGS, Inhell, likes_gems,
 } from './makemon.js';
+import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
+         BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
+         G_GONE } from './const.js';
+import { do_mkroom, antholemon, mkroom_wire } from './mkroom.js';
+import { SPBOOK_no_NOVEL } from './mkobj.js';
+import { mongone } from './mon.js';
+import { sgn } from './hacklib.js';
+import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room } from './sp_lev.js';
 import {
@@ -140,7 +148,7 @@ const RANDOM_CLASS = 0;
 // It is the NEGATED class, -10, not a class index one past the real ones. Hard
 // coding 11 made it WAND_CLASS, so the supply chest's bonus items generated
 // wands where C generates spellbooks, in 3 of the 10 table slots.
-const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
+/* SPBOOK_no_NOVEL is imported from js/mkobj.js, where it lives. */
 
 // Supply chest items
 const MARK = 6;
@@ -295,6 +303,45 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
 }
 
 
+// src/trap.c:508 mk_trap_statue() — the statue that sits on a STATUE_TRAP.
+//
+// Not decoration: the statue CONTAINS the gear of the monster it depicts, so
+// the makemon and the inventory transfer are part of the object, not extra.
+//
+// Draws: rndmonnum_adj(3, 6) in a retry loop of up to ten that rejects a
+// unicorn sharing the hero's alignment sign, then mkcorpstat's, then a full
+// makemon's. Skipping the whole thing left the statue off the level, which is
+// how seed0030 shows a kitten statue where we show only the gold beneath it.
+function mk_trap_statue(x, y) {
+    let mptr, trycount = 10;
+
+    do {                    /* avoid an ultimately hostile co-aligned unicorn */
+        mptr = game.mons[rndmonnum_adj(3, 6)];
+    } while (--trycount > 0 && is_unicorn(mptr)
+             && sgn(game.u.ualign.type) === sgn(mptr.maligntyp));
+
+    const statue = mkcorpstat(ONAMES.STATUE, null, mptr.pmidx, x, y,
+                              CORPSTAT_NONE);
+    const mtmp = makemon(game.mons[statue.corpsenm], 0, 0,
+                         MM_NOCOUNTBIRTH | MM_NOMSG);
+    if (!mtmp)
+        return;             /* should never happen */
+
+    /* the monster's whole pack moves into the statue */
+    while (mtmp.minvent && mtmp.minvent.length) {
+        const otmp = mtmp.minvent[0];
+        otmp.owornmask = 0;
+        obj_extract_self(otmp);
+        add_to_container(statue, otmp);
+    }
+    statue.owt = weight(statue);
+
+    mongone(mtmp);
+}
+
+// include/mondata.h:149 is_unicorn()
+const is_unicorn = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
+
 // maketrap stub
 // src/trap.c:3083 choose_trapnote() — a squeaky board picks an unused musical
 // note. The draw's ARGUMENT is the count of notes still free on this level, so
@@ -333,7 +380,7 @@ function maketrap(x, y, typ) {
         trap.tnote = choose_trapnote(trap);
         break;
     case STATUE_TRAP:
-        note_unported_lev('mk_trap_statue');
+        mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP:
         note_unported_lev('mkroll_launch');
@@ -370,7 +417,7 @@ function t_at(x, y) {
 
 // src/engrave.c:1687 make_grave() — a grave only goes on plain room floor with
 // no trap, and an unnamed one draws its epitaph from dat/epitaph.
-function make_grave(x, y, str) {
+export function make_grave(x, y, str) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     if ((loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y))
@@ -571,6 +618,50 @@ async function makelevel() {
         }
     }
 
+    /* src/mklev.c:1344 — make up to 1 special room, type dependent on depth.
+       mkroom doesn't guarantee a room gets created, and this step only sets
+       the room's rtype; the fill happens later with the other special rooms.
+
+       The chain is a single if/else-if, so at most ONE arm's rn2 is drawn and
+       every arm after the first true one is skipped. The wizard-mode SHOPTYPE
+       override that heads the chain in C is not modelled.
+
+       Depth arithmetic worth keeping in mind: the shop arm's gate is
+       rn2(u_depth) < 3, so at depths 2 and 3 it is ALWAYS true and a shop is
+       made whenever nroom >= room_threshold. */
+    {
+        const u_depth = g.u?.uz?.dlevel ?? 1;
+        const medusa_depth = g.medusa_level?.dlevel ?? 999;
+
+        if (u_depth > 1 && u_depth < medusa_depth
+            && g.level.nroom >= room_threshold && rn2(u_depth) < 3)
+            do_mkroom(SHOPBASE);
+        else if (u_depth > 4 && !rn2(6))
+            do_mkroom(COURT);
+        else if (u_depth > 5 && !rn2(8)
+                 && !(g.mvitals?.[PMNAMES.PM_LEPRECHAUN]?.mvflags & G_GONE))
+            do_mkroom(LEPREHALL);
+        else if (u_depth > 6 && !rn2(7))
+            do_mkroom(ZOO);
+        else if (u_depth > 8 && !rn2(5))
+            do_mkroom(TEMPLE);
+        else if (u_depth > 9 && !rn2(5)
+                 && !(g.mvitals?.[PMNAMES.PM_KILLER_BEE]?.mvflags & G_GONE))
+            do_mkroom(BEEHIVE);
+        else if (u_depth > 11 && !rn2(6))
+            do_mkroom(MORGUE);
+        else if (u_depth > 12 && !rn2(8) && antholemon())
+            do_mkroom(ANTHOLE);
+        else if (u_depth > 14 && !rn2(4)
+                 && !(g.mvitals?.[PMNAMES.PM_SOLDIER]?.mvflags & G_GONE))
+            do_mkroom(BARRACKS);
+        else if (u_depth > 15 && !rn2(6))
+            do_mkroom(SWAMP);
+        else if (u_depth > 16 && !rn2(8)
+                 && !(g.mvitals?.[PMNAMES.PM_COCKATRICE]?.mvflags & G_GONE))
+            do_mkroom(COCKNEST);
+    }
+
     // Place dungeon branch
     if (branchp) {
         place_branch(branchp);
@@ -621,6 +712,7 @@ function ROOM_IS_FILLABLE(croom) {
 }
 
 sp_lev_wire(add_room, add_door, somexy);
+mkroom_wire({ topologize });
 sp_lev_wire_mktrap(mktrap);
 sp_lev_wire_okdoor(okdoor);
 sp_lev_wire_subroom(create_subroom);
@@ -1182,7 +1274,7 @@ function sort_rooms() {
 }
 
 // C ref: mklev.c topologize()
-function topologize(croom) {
+export function topologize(croom) {
     if (!croom || croom.irregular) return;
     const roomno = (croom.roomnoidx ?? -1) + ROOMOFFSET;
     const lowx = croom.lx, lowy = croom.ly;
@@ -1607,7 +1699,7 @@ export function somexy(croom, c) {
 // src/mklev.c:1806 occupied() — a TRAP occupies a square too, and leaving that
 // out made somexyspace() accept squares C rejects, so every retry after the
 // first trap on a level landed somewhere different.
-function occupied(x, y) {
+export function occupied(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
     if (t_at_lev(x, y)) return true;
@@ -1620,7 +1712,7 @@ function t_at_lev(x, y) {
     return (game.level?.traps || []).some(t => t.tx === x && t.ty === y);
 }
 
-function somexyspace(croom, c) {
+export function somexyspace(croom, c) {
     let trycnt = 0;
     let okay;
     do {

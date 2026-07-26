@@ -404,3 +404,56 @@ export const DISPLAY_MONSTER_HALLU_NAMES = [
     null, null, null, null, null, null, null, null,
     null, null, null, null, null, null, null,
 ];
+
+
+// Generated from nethack-c upstream include/monsters.h (NetHack-5.0.0_Release):
+// true mons[] names for the PM indices in [0, SPECIAL_PM) that
+// DISPLAY_MONSTER_HALLU_NAMES leaves null (used by mon.c:newcham()'s
+// select_newcham_form() random pick, which sees every mons[] entry).
+export const PM_NULL_NAME_OVERRIDES = new Map([
+    [5, "queen bee"], [15, "werejackal"], [21, "werewolf"], [72, "orc"],
+    [91, "wererat"], [93, "woodchuck"], [169, "giant"], [177, "minotaur"],
+    [179, "Keystone Kop"], [180, "Kop Sergeant"], [181, "Kop Lieutenant"],
+    [182, "Kop Kaptain"], [216, "water moccasin"], [223, "water troll"],
+    [228, "Vlad the Impaler"], [248, "skeleton"], [260, "human"], [264, "elf"],
+    [271, "shopkeeper"], [272, "guard"], [273, "prisoner"], [274, "Oracle"],
+    [275, "priest"], [276, "high priest"], [282, "watchman"], [283, "watch captain"],
+    [284, "Medusa"], [285, "Wizard of Yendor"], [286, "Croesus"], [287, "ghost"],
+    [288, "shade"], [289, "water demon"], [303, "Juiblex"], [304, "Yeenoghu"],
+    [305, "Orcus"], [306, "Geryon"], [307, "Dispater"], [308, "Baalzebub"],
+    [309, "Asmodeus"], [310, "Demogorgon"], [311, "Death"], [312, "Pestilence"],
+    [313, "Famine"], [314, "mail daemon"], [315, "djinni"], [316, "jellyfish"],
+    [317, "piranha"], [318, "shark"], [319, "giant eel"], [320, "electric eel"],
+    [321, "kraken"],
+]);
+
+// Generated from nethack-c upstream include/monsters.h: mons[] indices in
+// [0, SPECIAL_PM) whose M2 flags include M2_NOPOLY (mondata.h:polyok()).
+export const PM_NOPOLY_INDICES = new Set([
+    15, 21, 72, 91, 123, 124, 125, 228, 231, 260, 261, 262, 263, 264, 270,
+    271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284,
+    285, 286, 287, 288, 289, 292, 301, 303, 304, 305, 306, 307, 308, 309,
+    310, 311, 312, 313, 314, 315, 321, 327,
+]);
+
+// Generated from nethack-c upstream include/monsters.h: monsters with
+// M1_NOLIMBS. C's nohands() (mondata.h) tests the M1_NOHANDS bit, which is
+// also set for M1_NOLIMBS monsters, so these count as no-handed in C.
+export const NOLIMBS_MONSTERS = new Set([
+    "acid blob", "quivering blob", "gelatinous cube", "gas spore",
+    "floating eye", "freezing sphere", "flaming sphere", "shocking sphere",
+    "blue jelly", "spotted jelly", "ochre jelly", "small mimic",
+    "large mimic", "giant mimic", "rock piercer", "iron piercer",
+    "glass piercer", "lurker above", "trapper", "fog cloud", "dust vortex",
+    "ice vortex", "energy vortex", "steam vortex", "fire vortex",
+    "baby long worm", "baby purple worm", "long worm", "purple worm",
+    "yellow light", "black light", "air elemental", "fire elemental",
+    "earth elemental", "water elemental", "lichen", "brown mold",
+    "yellow mold", "green mold", "red mold", "shrieker", "violet fungus",
+    "red naga hatchling", "black naga hatchling", "golden naga hatchling",
+    "guardian naga hatchling", "red naga", "black naga", "golden naga",
+    "guardian naga", "gray ooze", "brown pudding", "green slime",
+    "black pudding", "garter snake", "snake", "water moccasin", "python",
+    "pit viper", "cobra", "jellyfish", "piranha", "shark", "giant eel",
+    "electric eel",
+]);

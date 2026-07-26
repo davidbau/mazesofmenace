@@ -13,7 +13,7 @@ import { cansee } from './vision.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { restoreBonesLevel } from './save.js';
 import { createGasCloud, createGasCloudSelection } from './region.js';
-import { rn2, rn2_on_display_rng, rnd, rn1, d, rne, rnz } from './rng.js';
+import { rn2, rn2_on_display_rng, rnd, rn1, d, rne, rnz, getRngLog } from './rng.js';
 import {
     CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN,
     CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA,
@@ -21,7 +21,7 @@ import {
 } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
+import { NOLIMBS_MONSTERS, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
 import { TRIBUTE_NOVEL_TITLES } from './tribute.js';
 import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
@@ -33,6 +33,7 @@ import {
     D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     OROOM, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, LEPREHALL,
     COCKNEST, ANTHOLE, VAULT, TEMPLE, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, SHARED_PLUS, SHOPBASE,
+    DELPHI,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA,
@@ -872,10 +873,10 @@ const GHOST = { name: 'ghost', mlet: 'ghost', glyph: ' ', color: CLR_GRAY, mleve
 const SHADE = { name: 'shade', mlet: 'ghost', glyph: ' ', color: CLR_BLACK, mlevel: 12, mmove: 10, difficulty: 14, maligntyp: 0, neuter: false, noCorpse: true, inAir: true, passWalls: true, alwaysHostile: true, nasty: true };
 const ALIGNED_CLERIC = { name: 'aligned cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 12, difficulty: 15, mmove: 12, maligntyp: 0, priest: true, armed: true, randomInventory: true, alwaysPeaceful: true };
 const HIGH_CLERIC = { name: 'high cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 29, difficulty: 30, mmove: 15, maligntyp: 0, priest: true, armed: true, randomInventory: true, alwaysPeaceful: true, nasty: true };
-const SOLDIER = { name: 'soldier', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, hpLevel: 9, difficulty: 8, mmove: 10, maligntyp: -2, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
-const SERGEANT = { name: 'sergeant', mlet: '@', glyph: '@', color: CLR_RED, mlevel: 8, hpLevel: 12, difficulty: 10, mmove: 10, maligntyp: -3, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
-const LIEUTENANT = { name: 'lieutenant', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, hpLevel: 15, difficulty: 12, mmove: 10, maligntyp: -4, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
-const CAPTAIN = { name: 'captain', mlet: '@', glyph: '@', color: CLR_BLUE, mlevel: 12, hpLevel: 16, difficulty: 14, mmove: 10, maligntyp: -5, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
+const SOLDIER = { name: 'soldier', mlet: '@', glyph: '@', color: CLR_GRAY, mlevel: 6, difficulty: 8, mmove: 10, maligntyp: -2, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
+const SERGEANT = { name: 'sergeant', mlet: '@', glyph: '@', color: CLR_RED, mlevel: 8, difficulty: 10, mmove: 10, maligntyp: -3, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
+const LIEUTENANT = { name: 'lieutenant', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, difficulty: 12, mmove: 10, maligntyp: -4, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
+const CAPTAIN = { name: 'captain', mlet: '@', glyph: '@', color: CLR_BLUE, mlevel: 12, difficulty: 14, mmove: 10, maligntyp: -5, mercenary: true, armed: true, hostile: true, alwaysHostile: true };
 const QUEEN_BEE = { name: 'queen bee', mlet: 'a', glyph: 'a', color: CLR_MAGENTA, mlevel: 9, difficulty: 12, mmove: 24, maligntyp: 0, female: true, inAir: true, nohands: true, oviparous: true, alwaysHostile: true };
 const WOODCHUCK = { name: 'woodchuck', mlet: S_RODENT, glyph: 'r', color: CLR_BROWN, mlevel: 3, hpLevel: 4, difficulty: 4, mmove: 3, maligntyp: 0, swimmer: true, nohands: true, tunnel: true, wanderer: true, hostile: true, alwaysHostile: true };
 const GIANT_EEL = { name: 'giant eel', mlet: ';', glyph: ';', color: CLR_CYAN, mlevel: 5, hpLevel: 7, difficulty: 7, mmove: 9, maligntyp: 0, swimmer: true, oviparous: true, nohands: true, hostile: true, alwaysHostile: true };
@@ -5704,7 +5705,8 @@ function monsterFromRndMeta(row) {
         noeyes: NOEYES_MONSTERS.has(name),
         inAir: flags.includes('F'),
         swimmer: flags.includes('w'),
-        nohands: flags.includes('H'),
+        // C ref: mondata.h:nohands() — M1_NOHANDS bit is also set for M1_NOLIMBS
+        nohands: flags.includes('H') || NOLIMBS_MONSTERS.has(name),
         passWalls: WALLWALK_MONSTERS.has(name),
         tunnel: TUNNEL_MONSTERS.has(name),
         needPick: NEED_PICK_MONSTERS.has(name),
@@ -6175,7 +6177,12 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
     const heroLevel = game.u?.ulevel || 1;
     const minDifficulty = Math.trunc(zlevel / 6) + minadj;
     const maxDifficulty = Math.trunc((zlevel + heroLevel) / 2) + maxadj;
-    if (minDifficulty === 1 && maxDifficulty === 5) {
+    // The precomputed tables below carry raw G_FREQ weights.  C's rndmonst()
+    // adds align_shift()/temperature_shift() per candidate (makemon.c:1706-1707),
+    // so on alignment-special or temperature-flagged levels only the full
+    // reservoir scan reproduces C's rn2 sequence.
+    const rawWeightTablesOk = monsterAlignShift(0) === 0 && !game.level?.flags?.temperature;
+    if (minDifficulty === 1 && maxDifficulty === 5 && rawWeightTablesOk) {
         let totalweight = 0;
         let selected = null;
         for (const [name, weight] of DIFFICULTY_1_TO_5_MONSTERS) {
@@ -6192,7 +6199,7 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         }
         return selected;
     }
-    if (minDifficulty === 1 && maxDifficulty === 6) {
+    if (minDifficulty === 1 && maxDifficulty === 6 && rawWeightTablesOk) {
         let totalweight = 0;
         let selected = null;
         for (let i = 0; i < MIDGAME_COMMON_MONSTERS.length; i++) {
@@ -6205,7 +6212,7 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         }
         return selected || { name: 'newt' };
     }
-    if (minDifficulty === 2 && maxDifficulty === 6) {
+    if (minDifficulty === 2 && maxDifficulty === 6 && rawWeightTablesOk) {
         let totalweight = 0;
         let selected = null;
         for (let i = 0; i < MIDGAME_COMMON_MONSTERS.length; i++) {
@@ -6240,6 +6247,8 @@ export function rndmonnum() {
 }
 
 export function monster_hp(ptr, hpLevel = ptr.hpLevel ?? adjustedMonsterLevel(ptr)) {
+    if (process.env.HPDBG && getRngLog().length >= 3600 && getRngLog().length <= 3700)
+        console.error(`HPDBG rng=${getRngLog().length} ${ptr.name} mlevel=${ptr.mlevel} ptr.hpLevel=${ptr.hpLevel} hpLevel=${hpLevel} ld=${level_difficulty()} ulev=${game.u?.ulevel}`);
     if ((ptr.mlevel || 0) > 49) return 2 * (ptr.mlevel - 6);
     if (ptr.name?.endsWith(' golem')) return ptr.hpLevel || 1;
     if (ptr.glyph === 'D' && !ptr.name?.startsWith('baby '))
@@ -6548,7 +6557,12 @@ function m_initmercinv(ptr) {
                 : 3;
     let otmp = null;
     const addArmorAc = () => {
-        if (otmp) mac += (ARMOR_AC_BONUS.get(otmp.otyp) || 0) + (otmp.spe || 0);
+        if (otmp) {
+            const aac = ARMOR_AC_BONUS.get(otmp.otyp) || 0;
+            // C ref: hack.h:ARM_BONUS() — a_ac + spe - min(greatest_erosion, a_ac)
+            const greatestErosion = Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
+            mac += aac + (otmp.spe || 0) - Math.min(greatestErosion, aac);
+        }
         otmp = null;
     };
 
@@ -6775,7 +6789,11 @@ export function rlocToCoreNoMsg(mon, x, y) {
 export function rlocNoMsg(mon) {
     if (!mon?.mx) return false;
     for (let trycount = 0; trycount < 50; trycount++) {
-        const x = rnd(COLNO - 1);
+        // C ref: teleport.c rloc() — x = rnd(COLNO - 1), y = rn2(ROWNO).
+        // The port's world coordinates are C's +1 in x (map, hero, and
+        // monsters all sit one column further right; the display shifts
+        // back), so the same roll addresses the same logical cell at x+1.
+        const x = rnd(COLNO - 1) + 1;
         const y = rn2(ROWNO);
         if (rlocPosOk(mon, x, y)) {
             rlocToCoreNoMsg(mon, x, y);
@@ -12414,7 +12432,11 @@ function flipValleyLevel(vertical, horizontal) {
 function valleyDoor(mask, x, y) {
     const loc = game.level?.at(valleyX(x), valleyY(y));
     if (!loc) return;
-    loc.typ = DOOR;
+    // C ref: sp_lev.c sel_set_door() — a cell that is already SDOOR (or a
+    // door) keeps its typ; only doormask is replaced.  The valley's three
+    // des.door("locked", ...) calls target 'S' map cells, so they stay
+    // secret doors (drawn as walls until discovered), not visible '+' doors.
+    if (loc.typ !== SDOOR && !IS_DOOR(loc.typ)) loc.typ = DOOR;
     loc.doormask = mask;
 }
 
@@ -14809,6 +14831,16 @@ function flipSpecialLevelRnd(xminArg = null, yminArg = null, xmaxArg = null, yma
     };
     for (const obj of map.objects || []) point(obj, 'ox', 'oy');
     for (const mon of map.monsters || []) point(mon, 'mx', 'my');
+    // C ref: sp_lev.c flip_level — monster-embedded coordinates flip along
+    // with the monsters: mgoal, priests' shrpos, shopkeepers' shk/shd.
+    for (const mon of map.monsters || []) {
+        point(mon.mgoal, 'x', 'y');
+        if (mon.ispriest && mon.shrine) point(mon.shrine, 'x', 'y');
+        else if (mon.isshk) {
+            if (mon.shk) point(mon.shk, 'x', 'y');
+            if (mon.shd) point(mon.shd, 'x', 'y');
+        }
+    }
     for (const trap of map.traps || []) point(trap, 'tx', 'ty');
     for (const trap of map.traps || []) {
         point(trap.launch, 'x', 'y');
@@ -15197,6 +15229,16 @@ async function make_valley_level() {
         }
     }
     place_lregion(branchRegion.x, branchRegion.y, branchRegion.x, branchRegion.y, 0, 0, 0, 0, LR_BRANCH, null);
+
+    // C ref: sp_lev.c remove_boundary_syms() — CROSSWALL ('B') cells from
+    // the special level map are "invisible" region boundaries and must be
+    // changed to ROOM before wallification.  The whole valley map area is
+    // SpLev_Map territory (des.map plus the des.terrain 'B' patches).
+    for (let x = valleyX(0); x <= valleyX(75); x++)
+        for (let y = valleyY(0); y <= valleyY(19); y++) {
+            const loc = g.level.at(x, y);
+            if (loc?.typ === CROSSWALL) loc.typ = ROOM;
+        }
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     recount_level_features();
@@ -15879,7 +15921,27 @@ export async function make_oracle_level() {
     oracleSetSubroomWalls(dlx, dly, dhx, dhy);
     oracleRoom.irregular = true;
     oracleRoom.nsubrooms = 1;
-    oracleRoom.sbrooms = [{ lx: dlx, ly: dly, hx: dhx, hy: dhy, rtype: OROOM, rlit: 1, roomnoidx: oracleRoom.roomnoidx }];
+    // C ref: Oracle.lua — the Oracle's chamber is a real subroom with rtype
+    // DELPHI (sp_lev.c "delphi"), so check_special_room() can greet the hero
+    // entering it (hack.c:3711).  It needs its own roomnoidx for the roomno
+    // transition to register.
+    const delphiSubrooms = g.level.subrooms || (g.level.subrooms = []);
+    const delphiRoom = { lx: dlx, ly: dly, hx: dhx, hy: dhy, rtype: DELPHI, rlit: 1,
+                         roomnoidx: MAXNROFROOMS + 1 + delphiSubrooms.length };
+    delphiSubrooms.push(delphiRoom);
+    oracleRoom.sbrooms = [delphiRoom];
+    // C ref: topologize() gives a subroom's wall ring and interior the
+    // subroom's roomno (mklev.c:1621-1647); the parent Oracle room is
+    // irregular so its own squares stay unowned.  The chamber's doorway
+    // must carry the DELPHI roomno for the entry transition to fire.
+    for (let sx = dlx - 1; sx <= dhx + 1; sx++)
+        for (let sy = dly - 1; sy <= dhy + 1; sy++) {
+            const sloc = g.level.at(sx, sy);
+            if (!sloc) continue;
+            if (sx === dlx - 1 || sx === dhx + 1 || sy === dly - 1 || sy === dhy + 1)
+                sloc.edge = true;
+            sloc.roomno = delphiRoom.roomnoidx + ROOMOFFSET;
+        }
     for (const [dx, dy] of [[4, 4], [5, 3], [5, 5], [6, 4]]) {
         const loc = g.level.at(lx + dx, ly + dy);
         if (loc) { loc.typ = FOUNTAIN; loc.lit = true; }
@@ -15887,7 +15949,8 @@ export async function make_oracle_level() {
     g.level.flags.nfountains = 4;
     inducedAlign80();
     const oracle = await makemon({
-        name: 'Oracle', mlet: S_HUMANOID, glyph: '@', color: CLR_WHITE,
+        // C ref: monsters.h PM_ORACLE — display color HI_ZAP (bright blue).
+        name: 'Oracle', mlet: S_HUMANOID, glyph: '@', color: CLR_BRIGHT_BLUE,
         mlevel: 12, hpLevel: adjustedMonsterLevel({ mlevel: 12 }), difficulty: 16,
         mmove: 0, female: true, weight: 1,
     }, lx + 5, ly + 4, MM_NOGRP | MM_ANGRY);

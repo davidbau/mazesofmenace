@@ -19,7 +19,11 @@ import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
-import { ACCESSIBLE, POOL, LAVAPOOL } from './const.js';
+import { get_shop_item } from './shknam.js';
+import { t_at } from './mon.js';
+import { ACCESSIBLE, POOL, LAVAPOOL,
+    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET
+} from './const.js';
 import { enexto_core } from './teleport.js';
 
 // include/hack.h:1174-1175
@@ -82,7 +86,7 @@ const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
 const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
 const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
 const race_peaceful = (ptr) => (ptr.mflags2 & (game.urace?.lovemask ?? 0)) !== 0;
-const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
+export const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
 const is_unicorn = (ptr) => ptr.mlet === S_UNICORN && likes_gems(ptr);
 const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
 const is_ndemon = (ptr) =>
@@ -558,7 +562,7 @@ export function mongets(mtmp, otyp) {
 }
 
 // src/mon.c mpickobj() — returns true when otmp was freed by merging.
-function mpickobj(mtmp, otmp) {
+export function mpickobj(mtmp, otmp) {
     if (!mtmp.minvent) mtmp.minvent = [];
     mtmp.minvent.push(otmp);
     return false;
@@ -651,7 +655,7 @@ function findgold(minvent) {
 }
 
 // src/mon.c mkmonmoney()
-function mkmonmoney(mtmp, amount) {
+export function mkmonmoney(mtmp, amount) {
     mtmp.mgold = (mtmp.mgold || 0) + amount;
 }
 
@@ -738,7 +742,7 @@ function pmIndexOf(name) {
 }
 
 // src/align.c set_malign() — recomputes malign from peacefulness. No draw.
-function set_malign(mtmp) {
+export function set_malign(mtmp) {
     const mal = mtmp.data.maligntyp;
     const coaligned = (sgn(mal) === sgn(game.u.ualign.type));
 
@@ -773,7 +777,134 @@ function hideunder(mtmp) {
 // The remaining makemon() callees all draw, and none can be reached by a
 // monster that rndmonst() can currently produce. Each records itself rather
 // than inventing a draw, so `game.unported` names the exact next thing to port.
-function set_mimic_sym(mtmp) { note_unported('set_mimic_sym'); }
+/* src/makemon.c:2385 syms[] — the classes a mimic can imitate. The two
+   leading MAXOCLASSES and two trailing S_MIMIC_DEF entries are weighting, and
+   the shop arm's `rn2(SIZE(syms) - 2) + 2` deliberately skips the leading
+   pair, so the table's exact length is part of two different moduli. */
+const mimic_syms = [
+    OCLASSES.MAXOCLASSES,      OCLASSES.MAXOCLASSES,
+    OCLASSES.RING_CLASS,       OCLASSES.WAND_CLASS,   OCLASSES.WEAPON_CLASS,
+    OCLASSES.FOOD_CLASS,       OCLASSES.COIN_CLASS,   OCLASSES.SCROLL_CLASS,
+    OCLASSES.POTION_CLASS,     OCLASSES.ARMOR_CLASS,  OCLASSES.AMULET_CLASS,
+    OCLASSES.TOOL_CLASS,       OCLASSES.ROCK_CLASS,   OCLASSES.GEM_CLASS,
+    OCLASSES.SPBOOK_CLASS,     MONSYMS.S_MIMIC_DEF,   MONSYMS.S_MIMIC_DEF,
+];
+
+// src/makemon.c:2393 set_mimic_sym() — decide what a new mimic looks like.
+//
+// This was a note_unported stub, and it is reached by every mimic mkshobj_at
+// places on a shop square, which is where the 36-position shop-stocking
+// residual came from. The draws are heavily branch-dependent, so the order of
+// the tests matters as much as the tests themselves.
+//
+// Only the arms reachable from ordinary level generation are ported; the maze,
+// Delphi and rogue-level arms are recorded rather than faked.
+function set_mimic_sym(mtmp) {
+    if (!mtmp)
+        return;
+
+    const mx = mtmp.mx, my = mtmp.my;
+    const lev = game.level.at(mx, my);
+    const typ = lev?.typ;
+    const roomno = (lev?.roomno ?? 0) - ROOMOFFSET;
+    const rt = (roomno >= 0) ? (game.level.rooms[roomno]?.rtype ?? 0) : 0;
+    let ap_type, appear, s_sym = null;
+
+    if (OBJ_AT(mx, my)) {
+        ap_type = M_AP_OBJECT;
+        appear = game.level.objects.find((o) => o.ox === mx && o.oy === my).otyp;
+    } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
+        ap_type = M_AP_FURNITURE;
+        const w = mx !== 0 ? game.level.at(mx - 1, my)?.typ : undefined;
+        const connects = w === HWALL || w === TLCORNER || w === TRWALL
+                      || w === BLCORNER || w === TDWALL || w === CROSSWALL
+                      || w === TUWALL;
+        appear = connects ? MONSYMS.S_hcdoor : MONSYMS.S_vcdoor;
+    } else if (game.level.flags.is_maze_lev) {
+        note_unported('set_mimic_sym:maze');
+        return;
+    } else if (roomno < 0 && !t_at(mx, my)) {
+        ap_type = M_AP_OBJECT;
+        appear = ONAMES.BOULDER;
+    } else if (rt === ZOO || rt === VAULT) {
+        ap_type = M_AP_OBJECT;
+        appear = ONAMES.GOLD_PIECE;
+    } else if (rt === DELPHI) {
+        note_unported('set_mimic_sym:delphi');
+        return;
+    } else if (rt === TEMPLE) {
+        ap_type = M_AP_FURNITURE;
+        appear = MONSYMS.S_altar;
+    } else if (rt >= SHOPBASE) {
+        if (rn2(10) >= depth(game.u.uz)) {
+            s_sym = MONSYMS.S_MIMIC_DEF;        /* -> STRANGE_OBJECT */
+        } else {
+            s_sym = get_shop_item(rt - SHOPBASE);
+            if (s_sym < 0) {
+                ap_type = M_AP_OBJECT;
+                appear = -s_sym;
+                s_sym = null;
+            } else if (rt === FODDERSHOP && s_sym > OCLASSES.MAXOCLASSES) {
+                ap_type = M_AP_OBJECT;
+                appear = rn2(2) ? ONAMES.LUMP_OF_ROYAL_JELLY
+                                : ONAMES.SLIME_MOLD;
+                s_sym = null;
+            } else if (s_sym === OCLASSES.RANDOM_CLASS
+                       || s_sym >= OCLASSES.MAXOCLASSES) {
+                s_sym = mimic_syms[rn2(mimic_syms.length - 2) + 2];
+            }
+        }
+    } else {
+        s_sym = mimic_syms[rn2(mimic_syms.length)];     /* ROLL_FROM */
+    }
+
+    if (s_sym !== null) {           /* the `assign_sym` label in the C */
+        if (s_sym === OCLASSES.MAXOCLASSES) {
+            const furnsyms = [
+                MONSYMS.S_upstair, MONSYMS.S_upstair,
+                MONSYMS.S_dnstair, MONSYMS.S_dnstair,
+                MONSYMS.S_altar, MONSYMS.S_grave,
+                MONSYMS.S_throne, MONSYMS.S_sink,
+            ];
+            ap_type = M_AP_FURNITURE;
+            appear = furnsyms[rn2(furnsyms.length)];    /* ROLL_FROM */
+        } else {
+            ap_type = M_AP_OBJECT;
+            if (s_sym === MONSYMS.S_MIMIC_DEF) {
+                appear = ONAMES.STRANGE_OBJECT;
+            } else if (s_sym === OCLASSES.COIN_CLASS) {
+                appear = ONAMES.GOLD_PIECE;
+            } else {
+                /* C frees this object again; only its otyp is kept */
+                appear = mkobj(s_sym, false).otyp;
+            }
+        }
+    }
+
+    mtmp.m_ap_type = ap_type;
+    mtmp.mappearance = appear;
+
+    /* an object based on a monster type needs a shape picked for it */
+    if (ap_type === M_AP_OBJECT
+        && (appear === ONAMES.STATUE || appear === ONAMES.FIGURINE
+            || appear === ONAMES.CORPSE || appear === ONAMES.EGG
+            || appear === ONAMES.TIN)) {
+        let mndx = rndmonnum();
+        const nocorpse = (game.mvitals?.[mndx]?.mvflags & G_NOCORPSE) !== 0;
+
+        if (appear === ONAMES.CORPSE && nocorpse)
+            mndx = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST + 1,
+                       PMNAMES.PM_ARCHEOLOGIST);
+        else if (appear === ONAMES.EGG || (appear === ONAMES.TIN && nocorpse))
+            note_unported('set_mimic_sym:can_be_hatched');
+        mtmp.mcorpsenm = mndx;
+    } else if (ap_type === M_AP_OBJECT && appear === ONAMES.SLIME_MOLD) {
+        mtmp.mcorpsenm = game.context.current_fruit;
+    } else if (ap_type === M_AP_FURNITURE && appear === MONSYMS.S_altar) {
+        note_unported('set_mimic_sym:altar_align');
+        rn2(3);                 /* algn = rn2(3) - 1; the draw is spent */
+    }
+}
 function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
 function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
 function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }

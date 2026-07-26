@@ -11,6 +11,8 @@
 // the ones that pass, so its count depends on the first six results.
 
 import { game } from './gstate.js';
+import { UNENCUMBERED, OVERLOADED } from './const.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
 import { rn2 } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
 import {
@@ -27,17 +29,65 @@ function Role_if(pm) {
     return m === pm || m === PMNAMES[pm];
 }
 
-/* src/hack.c near_capacity() and src/botl.c encumber_msg() need inventory
-   weight and the carrying-capacity table. Nothing the hero starts with reaches
-   MOD_ENCUMBER, so the unencumbered answer is the reachable one; it is recorded
-   so the exercise draws it gates are not silently lost when that changes. */
-function near_capacity() {
-    note_unported_attrib('near_capacity');
-    return 0; /* UNENCUMBERED */
+// src/hack.c weight_cap() — how much the hero can carry before encumbrance.
+//
+// Draws nothing. Only the ordinary arm is ported; the polymorph scaling, the
+// levitation and steed overrides and the wounded-leg reductions each need
+// state we do not model, and each would change the ANSWER rather than only a
+// message, so they are recorded rather than assumed away.
+export function weight_cap() {
+    /* include/weight.h:12,14 — WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
+    let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
+
+    if (game.u.uprops?.LEVITATION || game.u.usteed)
+        note_unported_attrib('weight_cap:levitation_or_steed');
+    if (carrcap > 1000)             /* MAX_CARR_CAP */
+        carrcap = 1000;
+    if (game.u.uprops?.WOUNDED_LEGS)
+        note_unported_attrib('weight_cap:wounded_legs');
+
+    return Math.max(carrcap, 1);    /* never return 0 */
 }
 
+// src/hack.c inv_weight() — how far the hero is OVER capacity, negative when
+// under it. Sets game.wc as a side effect, which calc_capacity reads, so the
+// two cannot be reordered.
+//
+// It reads the CACHED obj.owt, as C does, not a fresh weight() call: an object
+// whose weight has since been adjusted has an owt that no longer matches.
+export function inv_weight() {
+    let wt = 0;
+
+    for (const otmp of game.invent || []) {
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            wt += Math.trunc((otmp.quan + 50) / 100);
+        else if (otmp.otyp !== ONAMES.BOULDER)
+            wt += otmp.owt;
+    }
+    game.wc = weight_cap();
+    return wt - game.wc;
+}
+
+// src/hack.c:4372 calc_capacity()
+export function calc_capacity(xtra_wt) {
+    const wt = inv_weight() + xtra_wt;
+
+    if (wt <= 0)
+        return UNENCUMBERED;
+    if (game.wc <= 1)
+        return OVERLOADED;
+    return Math.min(Math.trunc((wt * 2) / game.wc) + 1, OVERLOADED);
+}
+
+// src/hack.c:4385 near_capacity()
+export function near_capacity() {
+    return calc_capacity(0);
+}
+
+// src/pickup.c:1978 encumber_msg() — announce a CHANGE in encumbrance. The
+// message needs pline plumbing; the state it reports is near_capacity() above.
 function encumber_msg() {
-    note_unported_attrib('encumber_msg');
+    note_unported_attrib('encumber_msg:message');
 }
 
 function note_unported_attrib(what) {

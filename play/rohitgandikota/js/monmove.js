@@ -58,7 +58,7 @@ const is_lminion = (mon) =>
     is_minion(game.mons[mon.mnum]) && mon_aligntyp(mon) === A_LAWFUL;
 
 // src/mon.c mon_aligntyp()
-function mon_aligntyp(mon) {
+export function mon_aligntyp(mon) {
     return game.mons[mon.mnum].maligntyp;
 }
 
