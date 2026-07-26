@@ -112,7 +112,7 @@ export function level_difficulty() {
     return depth(game.u.uz);
 }
 
-function Inhell() {
+export function Inhell() {
     return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
 }
 

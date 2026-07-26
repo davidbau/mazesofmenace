@@ -96,3 +96,20 @@ export const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
 
 // include/mondata.h mindless()
 export const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
+
+// include/mondata.h:19,20,27 — placement predicates read by pm_to_humidity().
+export const is_flyer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_FLY) !== 0;
+export const is_floater = (ptr) => ptr.mlet === MONSYMS.S_EYE
+                                || ptr.mlet === MONSYMS.S_LIGHT;
+export const amphibious = (ptr) => (ptr.mflags1 & MFLAGS.M1_AMPHIBIOUS) !== 0;
+export const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
+
+// include/mondata.h:196 likes_fire() — an explicit pair plus likes_lava, not a
+// flag test; writing it from a flag would be the M1_FIRE_RES mistake again.
+export const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
+                                || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+                                || likes_lava(ptr);
+
+// include/mondata.h likes_lava()
+export const likes_lava = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
+                                || ptr.pmidx === PMNAMES.PM_SALAMANDER;

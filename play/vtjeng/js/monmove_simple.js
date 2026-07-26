@@ -11,16 +11,22 @@ import {
     MMOVE_MOVED,
     MMOVE_NOTHING,
     MON_FLOOR,
+    MON_MIGRATING,
     NORMAL_SPEED,
     ROOM,
     STRAT_ARRIVE,
     STRAT_CLOSE,
+    W_SADDLE,
 } from './const.js';
 import { newsym } from './display.js';
-import { dog_move } from './dogmove.js';
+import {
+    dog_move,
+    droppables,
+    find_targ,
+} from './dogmove.js';
 import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
-import { isaac64_next_uint64 } from './isaac64.js';
+import { wake_msg } from './mon.js';
 import {
     attacktype,
     can_teleport,
@@ -53,14 +59,25 @@ import {
     dochug_fresh_pet,
 } from './monmove_dochug_pet.js';
 import { m_move_fresh } from './monmove_move.js';
+import { SADDLE } from './objects.js';
 import {
     inside_region,
     mon_in_region,
 } from './region.js';
-import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
+import {
+    createCoreRandom,
+    d,
+    rn1,
+    rn2,
+    rnd,
+    rne,
+    rnl,
+    rnz,
+} from './rng.js';
 import {
     canSeeMonster,
     canSpotMonster,
+    collectMonsterNoticeMessage,
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import {
@@ -97,10 +114,30 @@ function liveOnMap(monster) {
         && (monster.mstate ?? MON_FLOOR) === MON_FLOOR;
 }
 
+// C refs: dog.c:makedog(), dogmove.c:droppables(). A Knight's starting pony
+// carries a worn saddle, but dog_invent() cannot select that saddle to drop.
+export function hasOnlyInertStartingSaddle(monster, state) {
+    const saddle = monster.minvent;
+    return monster.data?.pmidx === PM_PONY
+        && state.context?.startingpet_mid === monster.m_id
+        && monster.misc_worn_check === W_SADDLE
+        && saddle?.otyp === SADDLE
+        && saddle.owornmask === W_SADDLE
+        && saddle.leashmon === monster.m_id
+        && !saddle.nobj
+        && droppables(monster) === null;
+}
+
 function assertSimpleScanState(monster, state) {
+    const parkedGuard = monster.isgd
+        && !monster.mx
+        && !((monster.mstate ?? MON_FLOOR) & MON_MIGRATING);
+    if (parkedGuard) {
+        if ((state.moves ?? 0) > (monster.mlstmv ?? 0))
+            unsupported('parked guard handling');
+        return false;
+    }
     if (!liveOnMap(monster) || monster.movement < NORMAL_SPEED) return false;
-    if (monster.isgd && !monster.mx)
-        unsupported('parked guard handling');
     if (monster.misc_worn_check & I_SPECIAL)
         unsupported('monster equipment changes');
     if (is_pool(monster.mx, monster.my, state)
@@ -136,8 +173,10 @@ function assertSimpleActionState(monster, state) {
         }
         if (!monster.mextra?.edog)
             unsupported('missing starting-pet state');
-        if (monster.minvent)
+        if (monster.minvent
+            && !hasOnlyInertStartingSaddle(monster, state)) {
             unsupported('pet inventory');
+        }
         return;
     }
 
@@ -174,49 +213,7 @@ function cloneIsaacContext(context) {
 
 function clonedRandom(state) {
     const context = cloneIsaacContext(state.coreCtx);
-    const core = (bound) => {
-        if (bound <= 0) return 0;
-        return Number(isaac64_next_uint64(context) % BigInt(bound));
-    };
-    const random = {
-        rn2: core,
-        rnd: (bound) => core(bound) + 1,
-        rn1: (range, base) => core(range) + base,
-        d: (count, sides) => {
-            let result = count;
-            for (let index = 0; index < count; ++index)
-                result += core(sides);
-            return result;
-        },
-    };
-    random.rne = (bound) => {
-        const limit = (state.u?.ulevel ?? 1) < 15
-            ? 5 : Math.trunc((state.u?.ulevel ?? 1) / 3);
-        let result = 1;
-        while (result < limit && !random.rn2(bound)) ++result;
-        return result;
-    };
-    random.rnl = (bound) => {
-        let adjustment = (state.u?.uluck ?? 0) + (state.u?.moreluck ?? 0);
-        if (bound <= 15) {
-            adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3)
-                * Math.sign(adjustment);
-        }
-        let result = core(bound);
-        if (adjustment && random.rn2(37 + Math.abs(adjustment))) {
-            result -= adjustment;
-            result = Math.max(0, Math.min(bound - 1, result));
-        }
-        return result;
-    };
-    random.rnz = (value) => {
-        let scale = (1000 + random.rn2(1000)) * random.rne(4);
-        if (random.rn2(2))
-            return Math.trunc(value * scale / 1000);
-        scale = Math.trunc(value * 1000 / scale);
-        return scale;
-    };
-    return random;
+    return createCoreRandom(context, state);
 }
 
 function cloneMonster(monster) {
@@ -284,16 +281,6 @@ function freshMonsterCanSeeHero(monster, state) {
         && couldsee(monster.mx, monster.my, state);
 }
 
-function wakeMessage(monster, interesting, env) {
-    if (!monster.msleeping || !canSeeMonster(monster, env.state)) return;
-    const givenName = monster.mgivenname || monster.name;
-    const speciesName = monster.data?.pmnames?.[2]
-        ?? monster.data?.pmnames?.find(Boolean)
-        ?? 'monster';
-    const name = givenName || `The ${speciesName}`;
-    ttyPline(`${name} wakes up${interesting ? '!' : '.'}`, env.state);
-}
-
 function resistsTrapEffect() {
     unsupported('monster trap-resistance evaluation');
 }
@@ -340,12 +327,18 @@ function wipeSimpleEngraving(x, y, _count, _magical, env) {
     unsupported('monster engraving wear');
 }
 
-function postSimpleMove(monster, oldX, oldY, status, env) {
+async function postSimpleMove(monster, oldX, oldY, status, env) {
+    const notice = collectMonsterNoticeMessage(monster, env.state);
+    if (notice && !env.planning) {
+        const message = env.message ?? ttyPline;
+        await message(notice, env.state, env);
+    }
     if (status !== MMOVE_MOVED) return status;
     assertSimpleDestination(monster, monster.mx, monster.my, env);
     if (!env.planning) {
-        newsym(oldX, oldY);
-        newsym(monster.mx, monster.my);
+        const redraw = env.redraw ?? newsym;
+        redraw(oldX, oldY);
+        redraw(monster.mx, monster.my);
     }
     return status;
 }
@@ -360,6 +353,21 @@ async function moveSimpleOrdinary(monster, env) {
         resistsTrapEffect,
         unsupported,
     });
+}
+
+function rejectPetRangedTarget(monster, _forced, env) {
+    if (!monster.mcansee) return MMOVE_NOTHING;
+    for (let dy = -1; dy <= 1; ++dy) {
+        for (let dx = -1; dx <= 1; ++dx) {
+            if (!dx && !dy) continue;
+            const target = find_targ(monster, dx, dy, 7, env);
+            // score_targ() rejects the remembered hero before its random
+            // fuzz. Any monster target enters the unowned scoring branch.
+            if (target && target !== env.state.youmonst)
+                unsupported('pet ranged targeting');
+        }
+    }
+    return MMOVE_NOTHING;
 }
 
 async function moveSimplePet(monster, after, env) {
@@ -380,7 +388,7 @@ async function moveSimplePet(monster, after, env) {
         maxPassiveDamage: () => unsupported('pet combat evaluation'),
         mayCrossRegion: assertSimpleDestination,
         monsterReflects: () => unsupported('pet combat evaluation'),
-        petRangedAttack: () => MMOVE_NOTHING,
+        petRangedAttack: rejectPetRangedTarget,
         pickObject: () => unsupported('pet object pickup'),
         reportCursedStep: () => unsupported('pet cursed-object feedback'),
         resistsStone: () => unsupported('pet combat evaluation'),
@@ -416,7 +424,7 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 monsterCanSeeHero: freshMonsterCanSeeHero,
                 moveMonster: moveSimpleOrdinary,
                 preflightMonster: assertSimpleActionState,
-                wakeMessage: env.planning ? () => {} : wakeMessage,
+                wakeMessage: env.planning ? () => {} : wake_msg,
                 wipeEngraving: wipeSimpleEngraving,
             }),
         stopOccupation: () => unsupported('occupation interruption'),

@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import { aligns } from './role_data.js';
 import { rnd, rn1 } from './rng.js';
 import { ACURR } from './attrib.js';
+import { pline } from './display.js';
 import { A_CON, A_WIS } from './const.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
@@ -140,4 +141,79 @@ export function newpw() {
             en = lim;
     }
     return en;
+}
+
+// src/exper.c newuexp() — the experience threshold for a level.
+export function newuexp(lev) {
+    if (lev < 1)                        /* newuexp(u.ulevel - 1) at level 1 */
+        return 0;
+    if (lev < 10)
+        return 10 * (1 << lev);
+    if (lev < 20)
+        return 10000 * (1 << (lev - 10));
+    return 10000000 * (lev - 19);
+}
+
+// src/attrib.c setuhpmax() — set max HP, tracking the peak.
+export function setuhpmax(newmax, even_when_polyd) {
+    /* Upolyd is false in this port; the else arm needs polymorph state. */
+    if (newmax !== game.u.uhpmax) {
+        game.u.uhpmax = newmax;
+        if (game.u.uhpmax > (game.u.uhppeak ?? 0))
+            game.u.uhppeak = game.u.uhpmax;
+    }
+    if (game.u.uhp > game.u.uhpmax)
+        game.u.uhp = game.u.uhpmax;
+}
+
+// src/exper.c pluslvl() — gain an experience level.
+//
+// `incr` is FALSE for a potion of gain level, a wraith corpse, or wizard-mode
+// #levelchange; TRUE for ordinary experience growth. The two differ in how
+// u.uexp is set, not in the draws.
+//
+// The draws are newhp() and newpw(), in that order, and BOTH are spent before
+// the level counter moves. newhp's level-up branch spends up to two rnd calls
+// (role and race, each gated on its adv being non-zero) plus a Constitution
+// bonus; newpw spends one rn1.
+export function pluslvl(incr) {
+    if (!incr)
+        pline('You feel more experienced.');
+
+    /* Upolyd would take monhp_per_lvl() first; not reachable here. */
+    const hpinc = newhp();
+    game.u.uhp += hpinc;
+    setuhpmax(game.u.uhpmax + hpinc, true);
+
+    const eninc = newpw();
+    game.u.uenmax += eninc;
+    if (game.u.uenmax > (game.u.uenpeak ?? 0))
+        game.u.uenpeak = game.u.uenmax;
+    game.u.uen += eninc;
+
+    if (game.u.ulevel < MAXULEV) {
+        if (incr) {
+            const tmp = newuexp(game.u.ulevel + 1);
+            if (game.u.uexp >= tmp)
+                game.u.uexp = tmp - 1;
+        } else {
+            game.u.uexp = newuexp(game.u.ulevel);
+        }
+        ++game.u.ulevel;
+        pline(`Welcome ${(game.u.ulevelmax < game.u.ulevel) ? '' : 'back '}`
+              + `to experience level ${game.u.ulevel}.`);
+        if (game.u.ulevelmax < game.u.ulevel)
+            game.u.ulevelmax = game.u.ulevel;
+
+        /* adjabil() grants the new intrinsics; achievements and livelog need
+           subsystems this port does not have. */
+        note_unported_exper('pluslvl:adjabil');
+
+        if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
+            game.u.ulevelpeak = game.u.ulevel;
+    }
+}
+
+function note_unported_exper(what) {
+    (game.unported ||= new Set()).add(what);
 }

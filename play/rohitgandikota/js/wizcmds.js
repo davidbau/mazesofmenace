@@ -10,6 +10,7 @@ import { game } from './gstate.js';
 import { ECMD_OK } from './const.js';
 import { getlin } from './cmd.js';
 import { pline } from './display.js';
+import { pluslvl } from './exper.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -60,9 +61,8 @@ export async function wiz_level_change() {
             await pline('You are already as experienced as you can get.');
             return ECMD_OK;
         }
-        /* pluslvl() draws for the hit-point and power gains. */
-        note_unported_wizcmds('wiz_level_change:pluslvl');
-        return ECMD_OK;
+        while (game.u.ulevel < newlevel)
+            pluslvl(false);
     }
 
     /* blessed full healing or restore ability won't fix any lost levels */

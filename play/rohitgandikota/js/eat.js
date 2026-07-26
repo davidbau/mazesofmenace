@@ -6,8 +6,13 @@
 // port that tracks the turn counter correctly still has to make the call.
 
 import { game } from './gstate.js';
+import { done } from './end.js';
+import { set_occupation } from './allmain.js';
 import { rn2 } from './rng.js';
-import { NOT_HUNGRY, ECMD_OK, ECMD_TIME } from './const.js';
+import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK,
+         HUNGRY, FAINTING,
+         A_LAWFUL } from './const.js';
+import { ONAMES } from './objects_data.js';
 import { getobj } from './invent.js';
 
 // src/eat.c:3170 gethungry()
@@ -76,10 +81,253 @@ export async function doeat() {
     if (!otmp)
         return ECMD_OK;
 
-    note_unported_eat('doeat:eating');
+    /* src/eat.c doeat() tail — the tin, corpse and conduct arms above this
+       need their own subsystems; what is ported is the ordinary-food path,
+       which is the one that reaches choke(). */
+    if (otmp.otyp === ONAMES.TIN || otmp.otyp === ONAMES.CORPSE
+        || otmp.globby) {
+        note_unported_eat('doeat:tin_or_corpse');
+        return ECMD_TIME;
+    }
+
+    const v = (game.context.victual ||= {});
+    v.piece = otmp;
+    v.o_id = otmp.o_id;
+    v.usedtime = 0;
+    v.reqtime = game.objects[otmp.otyp].oc_delay;
+
+    /* nutrition units per round eating */
+    if (v.reqtime === 0 || !otmp.oeaten)
+        v.nmod = 0;
+    else if (otmp.oeaten >= v.reqtime)
+        v.nmod = -Math.trunc(otmp.oeaten / v.reqtime);
+    else
+        v.nmod = v.reqtime % otmp.oeaten;
+
+    /* THE death condition: latched ONCE here from the hunger state at the
+       moment the meal starts, not re-tested per bite. */
+    v.canchoke = (game.u.uhs === SATIATED);
+
+    start_eating(otmp, false);
     return ECMD_TIME;
+}
+
+// src/eat.c start_eating() — begin (or resume) a meal.
+//
+// bite() is called BEFORE usedtime is incremented, so a one-turn meal eaten
+// while Satiated chokes on the very first call rather than after finishing.
+export function start_eating(otmp, already_partly_eaten) {
+    const v = game.context.victual;
+
+    v.fullwarn = 0;
+    v.doreset = 0;
+    v.eating = 1;
+
+    if (bite()) {
+        /* survived choking; finish off food that is nearly done */
+        if (++v.usedtime >= v.reqtime)
+            note_unported_eat('start_eating:done_eating');
+        return;
+    }
+
+    if (++v.usedtime >= v.reqtime) {
+        note_unported_eat('start_eating:done_eating');
+        return;
+    }
+
+    set_occupation(eatfood, `eating ${otmp.oname ?? ''}`, 0);
 }
 
 function note_unported_eat(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/eat.c:245 choke() — the hero eats past Satiated and dies.
+//
+// This is seed0030's first death and the blocker for seven sessions. The
+// guard is the SATIATED state, not the food: eating an ordinary meal chokes
+// only when u.uhs is already SATIATED, and anything else returns immediately
+// unless it is an amulet of strangulation.
+//
+// The rn2(20) is the only draw, and it is short-circuited by Breathless or
+// Hunger, so a hero with either spends nothing here.
+export function choke(food) {
+    /* only happens if you were satiated */
+    if (game.u.uhs !== SATIATED) {
+        if (!food || food.otyp !== ONAMES.AMULET_OF_STRANGULATION)
+            return;
+    } else {
+        /* Role_if(PM_KNIGHT) && u.ualign.type == A_LAWFUL -> adjalign(-1),
+           "gluttony is unchivalrous". Needs the hero's role and alignment
+           record; it changes no draw. */
+        note_unported_eat('choke:knight_adjalign');
+    }
+
+    note_unported_eat('choke:exercise');
+
+    /* Breathless and Hunger are intrinsics this port does not track, so the
+       rn2(20) is always the deciding test here. */
+    if (!rn2(20)) {
+        if (food && food.otyp === ONAMES.AMULET_OF_STRANGULATION)
+            return;                     /* "choke, but recover your composure" */
+    }
+
+    game.killer = { format: KILLED_BY, name: 'quick snack' };
+    pline('You choke over it.');
+    pline('You die...');
+    done(CHOKING);
+}
+
+// src/eat.c:3132 bite() — one turn of eating. Returns 1 if the hero choked and
+// survived, 0 otherwise.
+//
+// The choke gate is the whole reason this function matters here:
+//
+//     if (victual.canchoke && u.uhunger >= 2000) { choke(piece); return 1; }
+//
+// so the death is a consequence of ACCUMULATED nutrition, not of the meal.
+export function bite() {
+    const v = game.context?.victual;
+    if (!v)
+        return 0;
+
+    if (v.canchoke && game.u.uhunger >= 2000) {
+        choke(v.piece);
+        return 1;
+    }
+    if (v.doreset) {
+        note_unported_eat('bite:do_reset_eat');
+        return 0;
+    }
+    note_unported_eat('bite:nutrition');
+    return 0;
+}
+
+// src/eat.c eatfood() — the occupation callback. Returns 1 while still busy,
+// 0 when the meal is over (or was interrupted).
+//
+// usedtime is incremented BEFORE bite(), and the test is <= reqtime rather
+// than < , so the last turn of a meal still takes a bite. Writing it as < , or
+// biting before incrementing, drops that final bite -- and for a Satiated hero
+// that final bite is the one that chokes.
+export function eatfood() {
+    const v = game.context.victual;
+    let food = v?.piece;
+
+    if (food && !carried(food) && !obj_here(food, game.u.ux, game.u.uy))
+        food = null;
+    if (!food) {
+        /* maybe it was stolen? */
+        do_reset_eat();
+        return 0;
+    }
+    if (!v.eating)
+        return 0;
+
+    if (++v.usedtime <= v.reqtime) {
+        if (bite())
+            return 0;
+        return 1;                       /* still busy */
+    }
+    done_eating(true);
+    return 0;
+}
+
+// src/invent.c carried() — is this object in the hero's inventory?
+const carried = (o) => (game.invent || []).includes(o);
+
+// src/invent.c obj_here() — is this object on that square?
+const obj_here = (o, x, y) => o.ox === x && o.oy === y;
+
+// src/eat.c done_eating() — the meal finished normally.
+//
+// Order matters: go.occupation is cleared BEFORE newuhs(), with the C's own
+// comment "do this early, so newuhs() knows we're done". newuhs recomputes the
+// hunger state, and it reads whether an occupation is running.
+export function done_eating(message) {
+    const v = game.context.victual;
+    const piece = v.piece;
+
+    if (piece)
+        piece.in_use = true;
+    game.occupation = null;             /* early, so newuhs knows we're done */
+    newuhs(false);
+
+    if (message)
+        note_unported_eat('done_eating:message');
+
+    /* cpostfx/fpostfx are the food's after-effects and need the corpse and
+       food-effect tables; useup/useupf remove it from inventory or floor. */
+    note_unported_eat('done_eating:postfx_and_useup');
+
+    game.context.victual = {};          /* zero_victual */
+}
+
+// src/eat.c do_reset_eat() — the meal was interrupted.
+//
+// canchoke is deliberately NOT cleared: the C comment says so outright, because
+// resuming the same food has to remember whether the hero was Satiated when
+// they STARTED it. Clearing it here would let a hero resume a meal that should
+// still kill them.
+export function do_reset_eat() {
+    const v = game.context.victual;
+
+    if (v?.piece) {
+        v.o_id = 0;
+        note_unported_eat('do_reset_eat:touchfood');
+    }
+    if (v) {
+        v.fullwarn = 0;
+        v.eating = 0;
+        v.doreset = 0;
+        /* canchoke intentionally left alone */
+    }
+}
+
+// src/eat.c newuhs() — recompute the hunger status from u.uhunger.
+//
+// The state table is the part the choke death depends on:
+//
+//     h > 1000 -> SATIATED, > 150 -> NOT_HUNGRY, > 50 -> HUNGRY,
+//     > 0 -> WEAK, else FAINTING
+//
+// Note SATIATED starts at 1001 but choke() needs u.uhunger >= 2000 as well,
+// so there is a wide band where the hero is Satiated and eating is safe.
+//
+// save_hs/saved_hs exist so that passing WEAK -> HUNGRY -> NOT_HUNGRY during a
+// single meal produces one message about the whole meal rather than one per
+// bite; the C's comment block says the occupation test alone is not enough
+// because start_eating calls bite() before setting the occupation.
+let save_hs = 0, saved_hs = false;
+
+export function newuhs(incr) {
+    const h = game.u.uhunger;
+    const newhs = (h > 1000) ? SATIATED
+                : (h > 150)  ? NOT_HUNGRY
+                : (h > 50)   ? HUNGRY
+                : (h > 0)    ? WEAK
+                             : FAINTING;
+
+    /* mid-meal: remember the status we started at and report once at the end */
+    if (game.occupation === eatfood || game.context?.victual?.eating) {
+        if (!saved_hs) {
+            save_hs = game.u.uhs;
+            saved_hs = true;
+        }
+        game.u.uhs = newhs;
+        return;
+    }
+    if (saved_hs) {
+        saved_hs = false;
+        /* the "you only feel hungry now" decision compares save_hs to newhs;
+           the messages need pline plumbing this path does not have yet */
+        note_unported_eat('newuhs:end_of_meal_message');
+    }
+
+    /* the FAINTING/FAINTED arms nomul() the hero and draw; WEAK's warnings and
+       the Hallucination arm need their own state. */
+    if (newhs >= WEAK && game.u.uhs < WEAK)
+        note_unported_eat('newuhs:weak_or_fainting');
+
+    game.u.uhs = newhs;
 }

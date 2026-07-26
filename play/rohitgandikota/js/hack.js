@@ -13,6 +13,8 @@ import {
     W_NONDIGGABLE, W_NONPASSWALL,
 } from './const.js';
 import { sobj_at } from './invent.js';
+import { done } from './end.js';
+import { DIED } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { In_sokoban } from './dungeon.js';
 import { tunnels, needspick, passes_walls } from './mondata.js';
@@ -55,4 +57,20 @@ export function bad_rock(mdat, x, y) {
             || (IS_OBSTRUCTED(lev.typ)
                 && (!tunnels(mdat) || needspick(mdat) || !may_dig(x, y))
                 && !(passes_walls(mdat) && may_passwall(x, y))));
+}
+
+// src/hack.c:4256 losehp() — the hero takes damage, and dies if it reaches 0.
+//
+// This is the main route into done(). It draws nothing itself; showdamage and
+// end_running are display and movement bookkeeping.
+export function losehp(n, knam, k_format) {
+    /* Upolyd's rehumanize path needs polymorph state */
+    game.u.uhp -= n;
+    if (game.u.uhp > game.u.uhpmax)
+        game.u.uhpmax = game.u.uhp;     /* perhaps n was negative */
+
+    if (game.u.uhp < 1) {
+        game.killer = { format: k_format, name: knam };
+        done(DIED);
+    }
 }

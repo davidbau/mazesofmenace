@@ -6,6 +6,17 @@
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { dodown, do_wire_mklev } from './do.js';
+import { mklev, mklev_wire_mon } from './mklev.js';
+import { sp_lev_wire_mon } from './sp_lev.js';
+import { is_pool, is_lava, m_at } from './mon.js';
+
+/* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
+   are cycles when imported directly, so cmd.js -- which already pulls in every
+   one of them -- does the wiring. */
+do_wire_mklev(mklev);
+sp_lev_wire_mon({ is_pool, is_lava, m_at });
+mklev_wire_mon({ is_pool, is_lava });
 import { wiz_level_change } from './wizcmds.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
@@ -374,6 +385,9 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if (ch === '>') {
+        // src/cmd.c cmdlist — '>' is dodown.
+        game.context.move = (await dodown() === ECMD_TIME ? 1 : 0);
     } else if (ch === 's') {
         // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
         game.context.move = (dosearch() ? 1 : 0);

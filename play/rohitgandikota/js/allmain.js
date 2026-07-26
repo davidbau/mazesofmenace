@@ -4,6 +4,34 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
+
+// src/allmain.c set_occupation() / stop_occupation() — the multi-turn action
+// slot. moveloop_core calls go.occupation once per turn until it returns 0.
+//
+// Nothing here draws. The mechanism is what makes eating a food with
+// oc_delay > 1 span several turns, and it is the same `gm.multi >= 0` gate the
+// run loop uses, so porting it unblocks both.
+export function set_occupation(fn, txt, xtime) {
+    if (xtime) {
+        /* timed_occupation wraps fn and counts down xtime */
+        game.occupation = null;
+        (game.unported ||= new Set()).add('set_occupation:timed_occupation');
+        return;
+    }
+    game.occupation = fn;
+    game.occtxt = txt;
+    game.occtime = 0;
+}
+
+// src/allmain.c stop_occupation()
+export function stop_occupation() {
+    if (game.occupation) {
+        game.occupation = null;
+        game.occtxt = null;
+    }
+    game.multi = 0;
+}
+
 import { rn2, rn1 } from './rng.js';
 import { exerchk } from './attrib.js';
 import { init_uhunger } from './eat.js';
@@ -415,6 +443,24 @@ export async function moveloop_core() {
     }
     await bot();
     await flush_screen(1);
+
+    /* src/allmain.c:485 — an active occupation CONSUMES the turn instead of
+       reading a command. It runs once per turn until it returns 0, and a
+       nearby monster stops it early.
+     *
+     *     if (gm.multi >= 0 && go.occupation) {
+     *         if ((*go.occupation)() == 0) go.occupation = 0;
+     *         if (monster_nearby()) stop_occupation();
+     *     }
+     *
+     * monster_nearby() needs the interrupt checks; without it an occupation
+     * runs to completion where C would break it off, so it records. */
+    if ((g.multi ?? 0) >= 0 && g.occupation) {
+        if (g.occupation() === 0)
+            g.occupation = null;
+        note_unported_main('moveloop:monster_nearby');
+        return;                         /* the occupation took this turn */
+    }
 
     // Read and execute one command. The frame captured inside nhgetch shows
     // the message produced by the PREVIOUS command, which is why the message

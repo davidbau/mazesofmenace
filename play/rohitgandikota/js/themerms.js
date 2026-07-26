@@ -16,9 +16,11 @@ import { percent, lua_shuffle, lua_d, nh_random } from './nhlua.js';
 import { level_difficulty } from './makemon.js';
 import { selection_from_mkroom, selection_iterate, selection_rndcoord,
          selection_filter_percent, selection_numpoints,
-         selection_filter_mapchar } from './selvar.js';
+         selection_filter_mapchar, selection_not,
+         selection_new } from './selvar.js';
 import { ROOM } from './const.js';
-import { lspo_terrain } from './sp_lev.js';
+import { lspo_terrain, lspo_trap, get_traptype_byname,
+         lspo_object, lspo_monster, lspo_altar } from './sp_lev.js';
 
 function note_unported_themerms(what) {
     (game.unported ||= new Set()).add(what);
@@ -73,9 +75,9 @@ export function fill_boulder_room(rm) {
 
     selection_iterate(locs, (x, y) => {
         if (percent(50))
-            note_unported_themerms('des.object:boulder');
+            lspo_object('boulder', x, y);
         else
-            note_unported_themerms('des.trap:rolling boulder');
+            lspo_trap(get_traptype_byname('rolling boulder'), x, y);
     });
 }
 
@@ -99,7 +101,7 @@ export function fill_trap_room(rm) {
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
     selection_iterate(locs, (x, y) => {
-        note_unported_themerms(`des.trap:${traps[0]}`);
+        lspo_trap(get_traptype_byname(traps[0]), x, y);
     });
 }
 
@@ -113,11 +115,11 @@ export function fill_trap_room(rm) {
 export function fill_statuary(rm) {
     const nstatues = lua_d(5, 5);
     for (let i = 1; i <= nstatues; i++)
-        note_unported_themerms('des.object:statue');
+        lspo_object('statue');          /* no coord: random in the room */
 
     const ntraps = lua_d(3);
     for (let i = 1; i <= ntraps; i++)
-        note_unported_themerms('des.trap:statue');
+        lspo_trap(get_traptype_byname('statue'));   /* no coord: random */
 }
 
 // dat/themerms.lua:157 "Massacre"
@@ -151,15 +153,18 @@ export function fill_massacre(rm) {
 
 // dat/themerms.lua:191 "Light source" — one unlit-room object, no draws.
 export function fill_light_source(rm) {
-    note_unported_themerms('des.object:oil lamp');
+    lspo_object('oil lamp', undefined, undefined, { lit: true });
 }
 
 // dat/themerms.lua:199 "Temple of the gods" — three altars, one per alignment,
 // in the order nhlib.lua's shuffled `align` table holds them. The shuffle
 // happened once at nhl_init(); nothing draws here.
 export function fill_temple_of_the_gods(rm) {
-    for (const _ of (game.splev_align || []))
-        note_unported_themerms('des.altar');
+    /* des.altar({ align = align[1..3] }) — nhlib.lua's `align` table, shuffled
+       once at nhl_init(). Nothing draws here: the shuffle already happened and
+       an altar with no `type` has shrine 0, which skips create_altar's rn2(2). */
+    for (const al of (game.splev_align || []))
+        lspo_altar({ align: al });
 }
 
 // dat/themerms.lua:92 "Spider nest"
@@ -181,7 +186,7 @@ export function fill_spider_nest(rm) {
 
     selection_iterate(locs, (x, y) => {
         const spider_on_web = spooders && percent(80);
-        note_unported_themerms('des.trap:web');
+        lspo_trap(get_traptype_byname('web'), x, y, { spider_on_web });
     });
 }
 
@@ -197,9 +202,10 @@ export function fill_storeroom(rm) {
 
     selection_iterate(locs, (x, y) => {
         if (percent(25))
-            note_unported_themerms('des.object:chest');
+            lspo_object('chest');
         else
-            note_unported_themerms('des.monster:mimic-as-chest');
+            lspo_monster(null, undefined, undefined,
+                         { class: 'm', appear_as: 'obj:chest' });
     });
 }
 
@@ -219,7 +225,7 @@ export function fill_cloud_room(rm) {
     const limit = selection_numpoints(fog) / 4;
 
     for (let i = 1; i <= limit; i++)
-        note_unported_themerms('des.monster:fog cloud');
+        lspo_monster('fog cloud', undefined, undefined, { asleep: true });
 
     note_unported_themerms('des.gas_cloud');
 }
@@ -232,17 +238,18 @@ export function fill_cloud_room(rm) {
 export function fill_ghost_of_an_adventurer(rm) {
     const loc = selection_rndcoord(selection_from_mkroom(rm._mkroom || rm), 0);
 
-    note_unported_themerms('des.monster:ghost');
+    lspo_monster('ghost', loc.x, loc.y, { asleep: true, waiting: true });
 
-    if (percent(65)) note_unported_themerms('des.object:dagger');
-    if (percent(55)) note_unported_themerms('des.object:weapon');
+    const nb = { coord: loc, buc: 'not-blessed' };
+    if (percent(65)) lspo_object('dagger', undefined, undefined, nb);
+    if (percent(55)) lspo_object(')', undefined, undefined, nb);
     if (percent(45)) {
-        note_unported_themerms('des.object:bow');
-        note_unported_themerms('des.object:arrow');
+        lspo_object('bow', undefined, undefined, nb);
+        lspo_object('arrow', undefined, undefined, nb);
     }
-    if (percent(65)) note_unported_themerms('des.object:armor');
-    if (percent(20)) note_unported_themerms('des.object:ring');
-    if (percent(20)) note_unported_themerms('des.object:scroll');
+    if (percent(65)) lspo_object('[', undefined, undefined, nb);
+    if (percent(20)) lspo_object('=', undefined, undefined, nb);
+    if (percent(20)) lspo_object('?', undefined, undefined, nb);
 }
 
 // dat/themerms.lua:154 "Buried zombies"
@@ -292,7 +299,7 @@ export function fill_garden(rm) {
     const npts = selection_numpoints(s) / 6;
 
     for (let i = 1; i <= npts; i++) {
-        note_unported_themerms('des.monster:wood nymph');
+        lspo_monster('wood nymph', undefined, undefined, { asleep: true });
         if (percent(30))
             note_unported_themerms('des.feature:fountain');
     }
@@ -309,12 +316,19 @@ export function fill_garden(rm) {
 // The d(3,4) is THREE draws and they happen inside the chest's contents
 // closure, i.e. after the chest itself is placed, not before.
 export function fill_buried_treasure(rm) {
-    note_unported_themerms('des.object:buried chest');
-    note_unported_themerms('postprocess:make_dig_engraving');
+    lspo_object('chest', undefined, undefined, {
+        buried: true,
+        contents: (otmp) => {
+            /* the postprocess entry is recorded; make_dig_engraving runs after
+               the whole level is built */
+            note_unported_themerms('postprocess:make_dig_engraving');
 
-    const n = lua_d(3, 4);
-    for (let i = 1; i <= n; i++)
-        note_unported_themerms('des.object:random in chest');
+            const n = lua_d(3, 4);
+            for (let i = 1; i <= n; i++)
+                lspo_object(undefined, undefined, undefined,
+                            { inContainer: true });
+        },
+    });
 }
 
 // dat/themerms.lua:268 "Teleportation hub"
@@ -334,8 +348,13 @@ export function fill_teleportation_hub(rm) {
 
     for (let i = 1; i <= n; i++) {
         const pos = selection_rndcoord(locs, 1);
-        if (pos.x > 0)
-            note_unported_themerms('postprocess:make_a_trap:teleport');
+        if (pos.x > 0) {
+            pos.x = pos.x + rm.region.x1 - 1;
+            pos.y = pos.y + rm.region.y1;
+            postprocess_add(make_a_trap, {
+                type: 'teleport', seen: true, coord: pos, teledest: 1,
+            });
+        }
     }
 }
 
@@ -363,3 +382,49 @@ export const themeroom_fill_contents = {
     'Storeroom':              fill_storeroom,
     'Teleportation hub':      fill_teleportation_hub,
 };
+
+// dat/themerms.lua:42 postprocess — handlers queued DURING level generation and
+// run after all of it, in insertion order.
+//
+// The deferral is not cosmetic: make_a_trap picks its teleport destination from
+// the finished level, so running it inline would search a half-built map and
+// spend a different number of draws.
+const postprocess = [];
+
+export function postprocess_add(handler, data) {
+    postprocess.push({ handler, data });
+}
+
+// dat/themerms.lua:1092 post_level_generate() — drain in order, then clear.
+export function post_level_generate() {
+    for (const v of postprocess)
+        v.handler(v.data);
+    postprocess.length = 0;
+}
+
+// dat/themerms.lua:1081 make_a_trap()
+//
+//     if (data.teledest == 1 and data.type == "teleport") then
+//        local locs = selection.negate():filter_mapchar(".");
+//        repeat
+//           data.teledest = locs:rndcoord(1);
+//        until (data.teledest.x ~= data.coord.x and data.teledest.y ~= data.coord.y);
+//     end
+//     des.trap(data);
+//
+// The repeat loop spends one rndcoord per pass, and rndcoord(1) REMOVES its
+// pick, so the candidate set shrinks and each pass draws from a smaller range.
+// The `and` in the until means it retries when EITHER coordinate matches.
+export function make_a_trap(data) {
+    if (data.teledest === 1 && data.type === 'teleport') {
+        const all = selection_not(selection_new());
+        const locs = selection_filter_mapchar(all, ROOM, -2);
+
+        do {
+            data.teledest = selection_rndcoord(locs, 1);
+        } while (!(data.teledest.x !== data.coord.x
+                   && data.teledest.y !== data.coord.y));
+    }
+    lspo_trap(get_traptype_byname(data.type), data.coord.x, data.coord.y,
+              { seen: data.seen });
+}

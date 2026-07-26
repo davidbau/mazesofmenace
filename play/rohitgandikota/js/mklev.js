@@ -12,6 +12,7 @@ import {
 } from './mkobj.js';
 import {
     rndmonnum, makemon, mkclass, monsndx, level_difficulty, MM_NOGRP, NO_MM_FLAGS,
+    Inhell,
 } from './makemon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room } from './sp_lev.js';
@@ -42,8 +43,8 @@ function mk_knox_portal(x, y) {
     note_unported_lev('mk_knox_portal placement');
 }
 import { random_engraving, wipeout_text } from './engrave.js';
-import { merged, weight } from './invent.js';
-import { themeroom_fill_contents } from './themerms.js';
+import { merged, weight, sobj_at } from './invent.js';
+import { themeroom_fill_contents, post_level_generate } from './themerms.js';
 import { mkroom_table } from './sp_lev.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
@@ -102,9 +103,16 @@ import { get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
 import { DUST, HEADSTONE, OBJ_CONTAINED } from './const.js';
 import { hole_destination } from './trap.js';
 import { Can_fall_thru } from './dungeon.js';
-import { lspo_map, lspo_region, sp_lev_wire } from './sp_lev.js';
+import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
+         sp_lev_wire_okdoor, sp_lev_wire_subroom,
+         lspo_room, lspo_door, inside_room } from './sp_lev.js';
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
+
+/* mktrap()'s "no traps in pools" test needs mon.js's terrain predicates, and
+   mklev.js is reached FROM mon.js's import graph, so they arrive by wire. */
+let mklev_mon = { is_pool: () => false, is_lava: () => false };
+export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level } from './hacklib.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -116,6 +124,8 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
+    MKTRAP_NOFLAGS, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB,
+    MKTRAP_NOVICTIM,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
     LR_UPTELE,
@@ -326,7 +336,11 @@ function choose_trapnote(ttmp) {
 }
 
 // src/trap.c:490 maketrap()
-async function maketrap(x, y, typ) {
+// NOTE: not async. C's maketrap() is an ordinary function and this one has no
+// awaits in it; the async marker was invented here and it forced every caller
+// up to lspo_region() to be async too, which is what blocked the themeroom
+// fills from calling des.trap at all.
+function maketrap(x, y, typ) {
     const trap = {
         ttyp: typ, tx: x, ty: y,
         tseen: (typ === HOLE),          /* unhideable_trap() */
@@ -616,6 +630,11 @@ async function makelevel() {
        SECOND fill_special_room() call site; the vault above is the first. */
     for (let i = 0; i < g.level.nroom; i++)
         fill_special_room(g.level.rooms[i]);
+
+    /* src/mklev.c:1420 themerooms_post_level_generate() — drain the handlers
+       the fills queued. It runs AFTER every room is filled, which is the point:
+       make_a_trap picks its teleport destination from the finished map. */
+    post_level_generate();
 }
 
 // src/mklev.c:929 ROOM_IS_FILLABLE
@@ -626,6 +645,9 @@ function ROOM_IS_FILLABLE(croom) {
 }
 
 sp_lev_wire(add_room, add_door, somexy);
+sp_lev_wire_mktrap(mktrap);
+sp_lev_wire_okdoor(okdoor);
+sp_lev_wire_subroom(create_subroom);
 
 // C ref: mklev.c makerooms()
 async function makerooms() {
@@ -705,19 +727,94 @@ async function themerooms_generate(difficulty) {
     if (mf && themeroom_contents(pick, mf))
         return !game.themeroom_failed;
 
-    if (pick.name !== 'default')
-        note_unported_lev(`themeroom ${pick.name}`);
+    let rtype = OROOM, rlit = -1, contents = null;
+    let roomW = -1, roomH = -1;
+    switch (pick.name) {
+    case 'default': break;
+    case 'Default room with themed fill':
+        rtype = THEMEROOM; contents = themeroom_fill; break;
+    case 'Unlit room with themed fill':
+        rtype = THEMEROOM; contents = themeroom_fill; rlit = 0; break;
+    case 'Room with both normal contents and themed fill':
+        rtype = THEMEROOM; contents = themeroom_fill; break;
+    case 'Room in a room':
+        /* dat/themerms.lua:308 — nested des.room() with a door innermost:
+             des.room({ type="ordinary", filled=1, contents = function()
+                des.room({ type="ordinary", contents = function()
+                   des.door({ state="random", wall="all" });
+                end });
+             end });
+           The OUTER room is what this switch builds; the inner one goes
+           through lspo_room, which routes to create_subroom because a parent
+           room is open by then. */
+        contents = () => {
+            lspo_room({ type: 'ordinary', contents: () => {
+                lspo_door({ state: 'random', wall: 'all' });
+            } }, create_room, topologize);
+        };
+        break;
+    case 'Huge room with another room inside':
+        /* dat/themerms.lua:323 — w and h are ARGUMENTS, so their rn2(10) and
+           rn2(5) are spent BEFORE the room's own chance roll:
+             des.room({ w = nh.rn2(10)+11, h = nh.rn2(5)+8, filled = 1,
+                        contents = function()
+                           if (percent(90)) then des.room({ ... }) end
+                        end }) */
+        roomW = rn2(10) + 11;
+        roomH = rn2(5) + 8;
+        contents = () => {
+            if (percent(90)) {
+                lspo_room({ type: 'ordinary', filled: 1, contents: () => {
+                    lspo_door({ state: 'random', wall: 'all' });
+                    if (percent(50))
+                        lspo_door({ state: 'random', wall: 'all' });
+                } }, create_room, topologize);
+            }
+        };
+        break;
+    case 'Nesting rooms':
+        /* dat/themerms.lua:344 — three levels deep. The middle room's size
+           comes from math.random(floor(width/2), width-2), which the nhlib
+           shim turns into nh.random(a, b+1-a), i.e. a + rn2(b+1-a). Both the
+           middle room's own doors AND the innermost room's are emitted, and
+           each pair is gated by its own percent(15). */
+        roomW = 9 + rn2(4);
+        roomH = 9 + rn2(4);
+        contents = (rm) => {
+            const lo1 = Math.floor(rm.width / 2), hi1 = rm.width - 2;
+            const wid = lo1 + rn2(hi1 + 1 - lo1);
+            const lo2 = Math.floor(rm.height / 2), hi2 = rm.height - 2;
+            const hei = lo2 + rn2(hi2 + 1 - lo2);
 
-    /* sp_lev.c:2811 — the rtype chance roll */
+            lspo_room({ type: 'ordinary', w: wid, h: hei, filled: 1,
+                        contents: () => {
+                if (percent(90)) {
+                    lspo_room({ type: 'ordinary', filled: 1, contents: () => {
+                        lspo_door({ state: 'random', wall: 'all' });
+                        if (percent(15))
+                            lspo_door({ state: 'random', wall: 'all' });
+                    } }, create_room, topologize);
+                }
+                lspo_door({ state: 'random', wall: 'all' });
+                if (percent(15))
+                    lspo_door({ state: 'random', wall: 'all' });
+            } }, create_room, topologize);
+        };
+        break;
+    default:
+        note_unported_lev(`themeroom ${pick.name}`); break;
+    }
+
     rn2(100);
 
-    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    const ok = create_room(-1, -1, roomW, roomH, -1, -1, rtype, rlit);
     if (ok) {
         // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
         const aroom = game.level.rooms[game.level.nroom - 1];
         if (aroom) {
             topologize(aroom);
             aroom.needfill = FILL_NORMAL;
+            if (contents) contents(aroom);
         }
     }
     return ok;
@@ -944,6 +1041,59 @@ function create_vault() {
 }
 
 // C ref: mklev.c add_room()
+// src/mklev.c:322 add_subroom() — a room INSIDE another room.
+//
+// Subrooms live in their own array (gs.subrooms / gn.nsubroom), not in
+// svr.rooms, and the parent keeps a back-pointer list. do_room_or_subroom is
+// called with special=FALSE for the "is a room" flag, unlike add_room which
+// passes TRUE, so a subroom is not registered as its own top-level room.
+export function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
+    const g = game;
+    const croom = {
+        lx: lowx, ly: lowy, hx: hix, hy: hiy,
+        rtype, rlit: lit ? 1 : 0,
+        doorct: 0, fdoor: g.level.doorindex,
+        irregular: false, needjoining: !special,
+        nsubrooms: 0, sbrooms: [],
+        roomnoidx: -1,                  /* subrooms are not in svr.rooms */
+        needfill: 0,
+    };
+    do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
+    (g.level.subrooms ||= []).push(croom);
+    proom.sbrooms.push(croom);
+    proom.nsubrooms++;
+    return croom;
+}
+
+// src/sp_lev.c:1668 create_subroom() — FOUR rnd() draws when size and position
+// are random, in the order w, h, x, y, then litstate_rnd(rlit).
+//
+// The parent must be at least 4x4 and the check happens BEFORE any draw, so a
+// small parent spends nothing at all.
+export function create_subroom(proom, x, y, w, h, rtype, rlit) {
+    const width = proom.hx - proom.lx + 1;
+    const height = proom.hy - proom.ly + 1;
+
+    /* There is a minimum size for the parent room */
+    if (width < 4 || height < 4)
+        return false;
+
+    if (w === -1) w = rnd(width - 3);
+    if (h === -1) h = rnd(height - 3);
+    if (x === -1) x = rnd(width - w);
+    if (y === -1) y = rnd(height - h);
+    if (x === 1) x = 0;
+    if (y === 1) y = 0;
+    if ((x + w + 1) === width) x++;
+    if ((y + h + 1) === height) y++;
+    if (rtype === -1) rtype = OROOM;
+    rlit = litstate_rnd(rlit);
+    add_subroom(proom, proom.lx + x, proom.ly + y,
+                proom.lx + x + w - 1, proom.ly + y + h - 1,
+                rlit, rtype, false);
+    return true;
+}
+
 export function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     const g = game;
     const croom = {
@@ -1268,7 +1418,7 @@ function bydoor(x, y) {
     return false;
 }
 
-function okdoor(x, y) {
+export function okdoor(x, y) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return false;
@@ -1396,12 +1546,28 @@ export function somexy(croom, c) {
         c.y = somey(croom);
         return true;
     }
+    /* src/mkroom.c somexy() — a room WITH subrooms rejects any square that
+       falls inside one of them, and each rejection costs another somex/somey
+       pair. Returning as soon as the square is not a wall places things inside
+       subrooms C keeps clear AND spends fewer draws.
+
+       This could not fire until "Room in a room" made lspo_room call
+       create_subroom earlier in this session; the gap was dormant because
+       nothing generated a subroom. */
     let try_cnt = 0;
     while (try_cnt++ < 100) {
         c.x = somex(croom);
         c.y = somey(croom);
         const loc = game.level.at(c.x, c.y);
         if (loc && IS_WALL(loc.typ)) continue;
+
+        let in_subroom = false;
+        for (let i = 0; i < croom.nsubrooms; i++)
+            if (inside_room(croom.sbrooms[i], c.x, c.y)) {
+                in_subroom = true;
+                break;
+            }
+        if (in_subroom) continue;       /* goto you_lose */
         return true;
     }
     return false;
@@ -1566,7 +1732,7 @@ async function makeniche(trap_type) {
                 let actualTrap = trap_type;
                 if (is_hole(actualTrap) && !Can_fall_thru(g.u.uz))
                     actualTrap = ROCKTRAP;
-                const ttmp = await maketrap(xx, yy + dy, actualTrap);
+                const ttmp = maketrap(xx, yy + dy, actualTrap);
                 if (ttmp) {
                     if (actualTrap !== ROCKTRAP) ttmp.once = 1;
                     /* src/mklev.c:767 — "ad aerarium" is eleven characters,
@@ -1836,23 +2002,80 @@ function mktrap_victim(trap) {
     otmp.age -= (TAINT_AGE + 1); /* died too long ago to safely eat */
 }
 
-async function mktrap_room(croom) {
+// src/mklev.c:2036 mktrap() — place a trap.
+//
+// This used to be `mktrap_room(croom)`, which called somexyspace ONCE. The C
+// loops until it finds an unoccupied square, spending a somexyspace on every
+// rejected one, so a crowded room diverged by however many retries it needed.
+// That is the shape of every function in this chain: the retry loop IS the
+// draw count.
+export function mktrap(num, mktrapflags, croom, tm) {
     let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    const lvl = level_difficulty();
+
+    if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG))
+        return;                         /* paniclog("mktrap", "args invalid") */
+
+    const m = { x: 0, y: 0 };
+
+    /* no traps in pools */
+    if (tm && (mklev_mon.is_pool(tm.x, tm.y) || mklev_mon.is_lava(tm.x, tm.y)))
+        return;
+
+    if (num > NO_TRAP && num < TRAPNUM) {
+        kind = num;
+    } else if (Inhell() && !rn2(5)) {
+        /* bias the frequency of fire traps in Gehennom */
+        kind = FIRE_TRAP;
+    } else {
+        do { kind = traptype_rnd(mktrapflags); } while (kind === NO_TRAP);
+    }
+
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
-    const pos = { x: 0, y: 0 };
-    if (!somexyspace(croom, pos)) return;
-    const trap = await maketrap(pos.x, pos.y, kind);
+    if (is_hole(kind) && !canFallThru)
+        kind = ROCKTRAP;
+
+    if (tm) {
+        m.x = tm.x;
+        m.y = tm.y;
+    } else {
+        let tryct = 0;
+        const avoid_boulder = (is_pit(kind) || is_hole(kind));
+
+        do {
+            if (++tryct > 200)
+                return;
+            if ((mktrapflags & MKTRAP_MAZEFLAG) !== 0) {
+                note_unported_lev('mktrap:mazexy');
+                return;
+            } else if (croom && !somexyspace(croom, m)) {
+                return;
+            }
+        } while (occupied(m.x, m.y)
+                 || (avoid_boulder && sobj_at(ONAMES.BOULDER, m.x, m.y)));
+    }
+
+    const trap = maketrap(m.x, m.y, kind);
+    /* we should always get the type we asked for, but be paranoid */
     kind = trap ? trap.ttyp : NO_TRAP;
-    const lvl = game.u?.uz?.dlevel ?? 1;
-    if (game.in_mklev && kind !== NO_TRAP
+
+    if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB))
+        makemon(game.mons[PMNAMES.PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
+    if (trap && (mktrapflags & MKTRAP_SEEN))
+        trap.tseen = true;
+
+    if (game.in_mklev && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
         && lvl <= rnd(4)
         && kind !== SQKY_BOARD && kind !== RUST_TRAP
-        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !(kind === ROLLING_BOULDER_TRAP
+             && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
         && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
-        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        if (kind === LANDMINE) {
+            /* treat as exploded: an unconcealed pit, no scattered objects */
+            trap.ttyp = PIT;
+            trap.tseen = true;
+        }
         mktrap_victim(trap);
     }
 }
@@ -1912,7 +2135,9 @@ async function fill_ordinary_room(croom, bonus_items) {
 
     const pos = { x: 0, y: 0 };
     // Sleeping monster (33%)
-    if (!rn2(3) && somexyspace(croom, pos)) {
+    /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
+       rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
+    if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
         makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps
@@ -1921,10 +2146,12 @@ async function fill_ordinary_room(croom, bonus_items) {
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
-        await mktrap_room(croom);
+        mktrap(0, MKTRAP_NOFLAGS, croom, null);
     }
     // Gold
-    if (!rn2(3) && somexyspace(croom, pos)) {
+    /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
+       rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
+    if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
         mkgold(0, pos.x, pos.y);
     }
     // Fountain
@@ -2032,7 +2259,9 @@ async function fill_ordinary_room(croom, bonus_items) {
         }
     }
     // Random objects
-    if (!rn2(3) && somexyspace(croom, pos)) {
+    /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
+       rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
+    if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
         mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
         let objTrycnt = 0;
         while (!rn2(5)) {

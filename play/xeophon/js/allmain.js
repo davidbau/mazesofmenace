@@ -6122,12 +6122,11 @@ export async function processMonsterTurns() {
                                         || Math.abs(oldx - heroX) === Math.abs(oldy - heroY);
                                     if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
                                         && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
-                                        const farLineOnly = satdoor && !avoid && oldy === heroY
-                                            && !(mon.robbed || mon.billct || mon.debit)
-                                            && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
-                                        const autoTravelFarLine = farLineOnly
-                                            && (game._travel_keys?.length || game._travel_finish_message || game._travel_keep_message);
-                                        if (!onlineHero || autoTravelFarLine) {
+                                        // C ref: shk.c:4978-4979 — keeper at its home square with the
+                                        // hero off its row/column/diagonal (online2, hacklib.c:704)
+                                        // takes the early return 0; the single rn2(5) is dochug's
+                                        // distfleeck roll (monmove.c:538).
+                                        if (!onlineHero) {
                                             rn2(5);
                                             continue;
                                         }
@@ -15735,6 +15734,13 @@ export function processEatingOccupationTick(g = game) {
 
 export async function moveloop_core() {
     const g = game;
+    // C ref: allmain.c:483-510 — while an occupation is armed the moveloop
+    // charges a full turn automatically (svc.context.move = 1 immediately
+    // before (*go.occupation)()); the eat occupation ticks back-to-back
+    // without waiting for new input, including after a --More-- dismissal.
+    if (g._eating_turns_remaining > 0 && !g._message_more && !g._pending_time_passed
+        && g._command_mode !== 'continueEatingPrompt')
+        g._pending_time_passed = 1;
     while (g._pending_time_passed
         && !(g._pending_message && !g._message_more && g._pending_message_blocks_time)
         && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
@@ -16072,6 +16078,12 @@ export async function moveloop_core() {
 	            g._pet_resume_keep_time_count = 0;
 	            g._pending_time_passed--;
 	        }
+        // C ref: allmain.c:483-510 — while an occupation is armed the
+        // moveloop charges a full turn automatically (svc.context.move = 1
+        // immediately before (*go.occupation)()), so the eat occupation
+        // ticks back-to-back without waiting for new input.
+        if (g._eating_turns_remaining > 0 && !g._message_more)
+            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
         if (g._ball_drag_delay_turns_remaining > 0) {
             if (turnAdvanced) g._ball_drag_delay_turns_remaining--;
             if (g._ball_drag_delay_turns_remaining > 0)

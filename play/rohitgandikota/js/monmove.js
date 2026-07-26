@@ -6,6 +6,7 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
+import { newsym } from './display.js';
 import { sobj_at } from './invent.js';
 import { m_carrying, meatmetal } from './mon.js';
 import { metallivorous, corpse_eater } from './mondata.js';
@@ -778,6 +779,9 @@ export function m_move(mtmp, after) {
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+        /* the newsym for the vacated square is in postmov(), not here --
+           src/monmove.c:1508 sits inside postmov so that EVERY path returning
+           through it redraws, including dog_move's at :1773. */
     }
 
     return postmov(mtmp, ptr, omx, omy, mmoved);
@@ -792,6 +796,13 @@ export function m_move(mtmp, after) {
 // on the paths that mattered. :1773 is the pet path, so dog_move()'s result
 // goes through here too.
 function postmov(mtmp, ptr, omx, omy, mmoved) {
+    /* src/monmove.c:1508 — "update the old position", inside postmov and so on
+       EVERY path that returns through it, including dog_move's at :1773.
+       remove_monster only clears level.monsters[][]; without this the vacated
+       square keeps the monster's glyph and a moving pet leaves a trail. */
+    if (mmoved === MMOVE_MOVED)
+        newsym(omx, omy);
+
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
             /* Maybe a rock mole just ate some metal object */
