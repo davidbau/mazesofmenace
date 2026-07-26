@@ -583,10 +583,24 @@ async function domove(dx, dy) {
         return;
     }
 
-    /* src/hack.c:2787's do_attack() call is NOT wired here. Measured: the
-       swap below is worth +2 screens, adding this attack check costs 30, and
-       it does NOT throw -- that was checked, so the 30 is real behaviour.
-       js/uhitm.js holds the ported do_attack; see STATUS. */
+    /* src/hack.c's domove_attackmon_at() call is NOT wired here yet.
+       js/hack.js now holds that function (it was missing entirely; the C
+       does not call do_attack from domove directly, it calls this).
+
+       RE-MEASURED after the melee chain reached 34 functions: wiring it
+       costs 23 screens and 2,973 RNG calls. That is down from the 30 screens
+       measured when only do_attack's head existed, so the chain is closing
+       the gap, but it is still a regression and stays out.
+
+       It does NOT throw -- checked -- so the cost is real behaviour, not a
+       crash. The remaining gap is the unported kill path (xkilled, killed)
+       and the monster's own attack turn: a hero who swings and connects but
+       whose target never retaliates diverges from the first exchange.
+
+       NOTE the ordering trap found while measuring: this call must sit AFTER
+       `const mtmp = m_at(...)` below. Placed above it the whole suite reads
+       56/11405 from a temporal dead zone, which looks like a catastrophic
+       behavioural regression and is really one misplaced line. */
 
     if (blocksMove(newx, newy)) {
         // Can't move there

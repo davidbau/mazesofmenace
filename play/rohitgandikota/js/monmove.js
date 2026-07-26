@@ -461,7 +461,7 @@ function mon_would_take_item(mtmp, otmp) {
 /* src/muse.c:2706 searches_for_item() needs the whole monster item-use
    subsystem. Its caller gates it behind !mindless && !is_animal, so no animal
    or mindless monster — which is most of an early level — can reach it. */
-function searches_for_item(mon, obj) {
+export function searches_for_item(mon, obj) {
     const typ = obj.otyp;
     const d = game.mons[mon.mnum];
 

@@ -423,3 +423,37 @@ export function change_luck(n) {
     if (game.u.uluck > 0 && game.u.uluck > LUCKMAX)
         game.u.uluck = LUCKMAX;
 }
+
+// src/attrib.c:1298 adjalign() — move the hero's alignment record.
+//
+// Note the asymmetry, which is the whole point of the function: a NEGATIVE
+// adjustment also raises ualign.abuse and only lowers the record if the new
+// value is genuinely lower, while a positive one raises the record and caps it
+// at ALIGNLIM. It is not `record += n`.
+//
+// adj_erinys() summons a fury on heavy abuse; it is recorded rather than faked.
+export function adjalign(n) {
+    const ua = game.u.ualign;
+    const newalign = ua.record + n;
+
+    if (n < 0) {
+        const newabuse = (ua.abuse || 0) - n;
+
+        if (newalign < ua.record)
+            ua.record = newalign;
+        if (newabuse > (ua.abuse || 0)) {
+            ua.abuse = newabuse;
+            note_unported_attrib('adjalign:adj_erinys');
+        }
+    } else if (newalign > ua.record) {
+        ua.record = newalign;
+        const lim = ALIGNLIM();
+        if (ua.record > lim)
+            ua.record = lim;
+    }
+}
+
+/* include/align.h:17 ALIGNLIM — the cap on ualign.record. NOT a constant: it
+   is 10 + moves/200, so it GROWS as the game runs. Writing it as a flat 10,
+   which the first draft of this did, caps a long game's alignment too low. */
+const ALIGNLIM = () => 10 + Math.trunc((game.moves || 0) / 200);

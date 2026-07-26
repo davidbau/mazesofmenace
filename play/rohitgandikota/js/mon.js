@@ -7,16 +7,20 @@
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { adjalign } from './attrib.js';
+import { couldsee, cansee } from './vision.js';
+import { finish_meating } from './dogmove.js';
+import { growl } from './sounds.js';
 import { is_metallic } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
 import { mksobj_at } from './mkobj.js';
-import { newsym } from './display.js';
+import { newsym, canseemon } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster } from './makemon.js';
-import { MON_DETACH } from './const.js';
+import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
@@ -35,9 +39,8 @@ import { online2, isok } from './hacklib.js';
 import { onscary, in_your_sanctuary, m_can_break_boulder,
          mon_knows_traps, can_fog } from './monmove.js';
 import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
-import {
-    bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
-    is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits } from './mondata.js';
+import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
+    is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, mon_hates_silver } from './dog.js';
 import { is_rider } from './makemon.js';
@@ -550,11 +553,18 @@ export function m_carrying(mtmp, type) {
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
 const NO_WEAPON_WANTED = 0;
 
+// include/obj.h:213 is_blade() — a cutting weapon, dagger through saber.
+// WEAPON_CLASS only, unlike is_axe and is_pick which also accept a weptool.
+export const is_blade = (otmp) =>
+    otmp.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[otmp.otyp].oc_skill >= P_DAGGER
+    && game.objects[otmp.otyp].oc_skill <= P_SABER;
+
 // include/obj.h:217,220 is_axe() / is_pick()
-const is_pick = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
+export const is_pick = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
                            || otmp.oclass === OCLASSES.TOOL_CLASS)
                           && game.objects[otmp.otyp].oc_skill === P_PICK_AXE;
-const is_axe  = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
+export const is_axe  = (otmp) => (otmp.oclass === OCLASSES.WEAPON_CLASS
                            || otmp.oclass === OCLASSES.TOOL_CLASS)
                           && game.objects[otmp.otyp].oc_skill === P_AXE;
 
@@ -913,4 +923,167 @@ export function resists_ston(mon) {
     if (mon.misc_worn_check)
         (game.unported ||= new Set()).add('mon:Resists_Elem:worn');
     return (mon_resistancebits(mon) & MFLAGS.MR_STONE) !== 0;
+}
+
+// src/mon.c:3421 set_ustuck() — set or clear what the hero is stuck to.
+//
+// Draws nothing. The point of having it as a function rather than an
+// assignment is the clearing side: releasing u.ustuck must also clear
+// uswallow and uswldtim, or the hero stays "swallowed" by nothing.
+export function set_ustuck(mtmp) {
+    game.disp = game.disp || {};
+    game.disp.botl = true;
+    game.u.ustuck = mtmp;
+    if (!game.u.ustuck) {
+        game.u.uswallow = 0;
+        game.u.uswldtim = 0;
+    }
+}
+
+// src/mon.c wakeup() — wake a monster, and if this was an attack, anger it.
+//
+// Both `was_sleeping` and `was_peaceful` are read BEFORE the calls that clear
+// them. setmangry() clears mpeaceful, so a port that tested mtmp->mpeaceful
+// after it would never take the priest/shopkeeper branch -- the same ordering
+// trap as anger_guards in hmon().
+//
+// The forcefight branch is an ELSE of the mimic branch, not a sibling: a
+// hiding mimic is revealed by seemimic, everything else hiding is revealed
+// only when you deliberately F-fight its square.
+//
+// wake_msg, seemimic, finish_meating, growl, setmangry, ghod_hitsu and
+// hot_pursuit are recorded where they are not ported.
+export function wakeup(mtmp, via_attack) {
+    const was_sleeping = mtmp.msleeping;
+
+    wake_msg(mtmp, via_attack);
+    mtmp.msleeping = 0;
+    if (M_AP_TYPE(mtmp) !== M_AP_NOTHING) {
+        /* mimics come out of hiding, but disguised Wizard doesn't
+           have to lose his disguise */
+        if (M_AP_TYPE(mtmp) !== M_AP_MONSTER)
+            note_unported_mon('wakeup:seemimic');
+    } else if (game.context?.forcefight && !game.context?.mon_moving
+               && mtmp.mundetected) {
+        mtmp.mundetected = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+    finish_meating(mtmp);
+    if (via_attack) {
+        const was_peaceful = mtmp.mpeaceful;
+
+        if (was_sleeping)
+            growl(mtmp);
+        setmangry(mtmp, true);
+        if (was_peaceful) {
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE)?.length)
+                note_unported_mon('wakeup:ghod_hitsu');
+            if (mtmp.isshk && !(game.u?.ushops || '').length)
+                note_unported_mon('wakeup:hot_pursuit');
+        }
+    }
+}
+
+// src/mon.c setmangry() — turn a peaceful monster hostile.
+//
+// The order of the three early exits is what carries the behaviour:
+//   1. STRAT_WAITMASK is cleared for EVERY monster, hostile ones included,
+//      before any return. A monster waiting to ambush stops waiting even if
+//      it was already angry.
+//   2. an already-hostile monster returns; there is nothing to anger.
+//   3. a TAME monster returns too, still peaceful. Hitting your own pet does
+//      not turn it hostile here, and costs no alignment. C flags this as
+//      probably-wrong in a comment and keeps it; so do we.
+//
+// The Elbereth branch is the only source of a draw, rnd(5), and only when
+// alignment is already at or below 5. sengr_at is part of the engraving
+// subsystem, which is not ported, so no engraving exists to stand on and the
+// branch is unreachable today -- that is the honest state, not a stub: when
+// engravings land the condition starts being true on its own.
+export function setmangry(mtmp, via_attack) {
+    if (via_attack && note_sengr_at_unported()
+        && (onscary(game.u.ux, game.u.uy, mtmp) || mtmp.mpeaceful)) {
+        /* unreachable until the engraving subsystem is ported */
+        adjalign((game.u.ualign.record > 5) ? -5 : -rnd(5));
+        note_unported_mon('setmangry:del_engr_at');
+    }
+
+    mtmp.mstrategy &= ~STRAT_WAITMASK;
+    if (!mtmp.mpeaceful)
+        return;
+    if (mtmp.mtame)
+        return;
+    mtmp.mpeaceful = 0;
+    if (mtmp.ispriest) {
+        if (game.p_coaligned?.(mtmp))
+            adjalign(-5); /* very bad */
+        else
+            adjalign(2);
+    } else
+        adjalign(-1); /* attacking peaceful monsters is bad */
+    if (humanoid(game.mons[mtmp.mnum]) || mtmp.isshk || mtmp.isgd) {
+        if (couldsee(mtmp.mx, mtmp.my))
+            note_unported_mon('setmangry:pline_mon_gets_angry');
+    } else {
+        growl(mtmp);
+    }
+
+    /* attacking your own quest leader will anger his or her guardians */
+    note_unported_mon('setmangry:quest_leader_check');
+
+    /* make other peaceful monsters react */
+    if (!game.context?.mon_moving)
+        note_unported_mon('setmangry:peacefuls_respond');
+}
+
+// src/engrave.c sengr_at() — not ported. No engraving can exist yet, so this
+// is false for the same reason C would be false on a bare floor.
+function note_sengr_at_unported() {
+    note_unported_mon('setmangry:sengr_at');
+    return false;
+}
+
+// src/mon.c:3470 killed() — the hero killed this monster, with a message.
+// Three lines in C and a pure delegation; xkilled (263 lines) does the work
+// and is recorded.
+export function killed(mtmp) {
+    xkilled(mtmp, XKILL_GIVEMSG);
+}
+
+// src/mon.c:3477 xkilled() — 263 lines: the death message, the corpse and
+// death drop, experience, vanquished-monster bookkeeping, and the special
+// cases for shopkeepers, guards, quest leaders and Riders. Not ported.
+// Recorded with its flags so game.unported says which caller wanted it.
+export function xkilled(mtmp, xkill_flags) {
+    note_unported_mon(`xkilled:flags=${xkill_flags}`);
+}
+
+// src/mon.c:6058 shieldeff_mon() — the "resists!" flash.
+//
+// The two halves are gated DIFFERENTLY, and C's comment says why: the shield
+// effect itself is visible whether or not you can make out the monster, so
+// shieldeff() runs unconditionally, while the message needs cansee(). Gating
+// both on cansee -- the obvious reading, since they describe one event --
+// would drop the animation for an unseen resister.
+//
+// shieldeff (a display animation) and pline_mon are recorded; the cansee
+// structure is real.
+export function shieldeff_mon(mtmp) {
+    note_unported_mon('shieldeff_mon:shieldeff');
+    /* does not depend on seeing the monster; the shield effect is visible */
+    if (cansee(mtmp.mx, mtmp.my))
+        note_unported_mon('shieldeff_mon:pline_resists');
+}
+
+// src/mon.c:4322 wake_msg() — "%s wakes up!" when you see it happen.
+//
+// It tests mtmp->msleeping, so it MUST run before wakeup() clears that flag.
+// C calls it as wakeup's first statement for exactly that reason; moving it
+// after the clear silences the message permanently.
+//
+// `interesting` (wakeup's via_attack) only picks the punctuation: "!" for an
+// attack, "." otherwise. A flesh golem additionally gets " It's alive!".
+export function wake_msg(mtmp, interesting) {
+    if (mtmp.msleeping && canseemon(mtmp))
+        note_unported_mon('wake_msg:pline');
 }

@@ -8,6 +8,11 @@
 // None of them draws.
 
 import { game } from './gstate.js';
+import { do_attack } from './uhitm.js';
+import { sensemon, is_safemon } from './display.js';
+import { hides_under } from './mondata.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { rn2 } from './rng.js';
 import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
@@ -146,3 +151,44 @@ export function in_rooms(x, y, typewanted) {
    a cycle, and adding the import to the entry point perturbs module init order
    (see STATUS). Publishing on the shared game object avoids both. */
 game.in_rooms = in_rooms;
+
+// src/hack.c domove_attackmon_at() — the gate between walking into a square
+// and attacking what is standing on it.
+//
+// The guard is four ways to be allowed to attack: forcefight, the monster is
+// not hidden, you sense it, or it is a hider/eel that is NOT safe to bump
+// into. A hider you cannot see still routes to do_attack, which prints the
+// "Wait!" message -- that is why the hides_under clause exists at all.
+//
+// The displacer-beast check reads as a long list of draws but is not: the
+// FIRST term is an identity test against PM_DISPLACER_BEAST, so for every
+// other monster the rn2(2) is never reached. Reordering these terms to put
+// the cheap boolean tests first -- which looks like an optimisation -- would
+// change how often that rn2(2) fires and desynchronise the stream.
+//
+// do_attack is only called when the displacement did NOT happen.
+export async function domove_attackmon_at(mtmp, x, y, displaceu) {
+    if (game.context?.forcefight || !mtmp.mundetected || sensemon(mtmp)
+        || ((hides_under(game.mons[mtmp.mnum])
+             || game.mons[mtmp.mnum].mlet === MONSYMS.S_EEL)
+            && !is_safemon(mtmp))) {
+        /* target monster might decide to switch places with you... */
+        displaceu.value =
+            !!(mtmp.mnum === PMNAMES.PM_DISPLACER_BEAST && !rn2(2)
+               && mtmp.mux === game.u.ux0 && mtmp.muy === game.u.uy0
+               && note_unported_hack('domove_attackmon_at:displace_rest'));
+
+        /* if not displacing, try to attack; note that it might evade; also,
+           we don't attack tame or peaceful when safemon() */
+        if (!displaceu.value) {
+            if (await do_attack(mtmp))
+                return true;
+        }
+    }
+    return false;
+}
+
+const note_unported_hack = (w) => {
+    (game.unported ||= new Set()).add('hack:' + w);
+    return false;
+};

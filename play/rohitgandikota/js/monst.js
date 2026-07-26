@@ -19,3 +19,13 @@ import { PMNAMES } from './monst_data.js';
 export const is_vampshifter = (mon) =>
     mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
     || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
+
+// include/monst.h:251 helpless() — asleep or unable to move.
+//
+// EXACTLY two terms. An earlier copy in js/uhitm.js carried a third,
+// `(mon.mfrozen | 0) > 0`, which the C does not have: mfrozen is a separate
+// bitfield (monst.h:147) and is NOT part of this macro. That extra term made
+// any frozen-but-mobile monster read as helpless, which changes combat
+// branches -- find_roll_to_hit gives a to-hit bonus against the helpless, and
+// growl() returns silently for them.
+export const helpless = (mon) => !!(mon.msleeping || !mon.mcanmove);

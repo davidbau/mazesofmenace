@@ -11,6 +11,7 @@
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
+import { is_vampshifter } from './monst.js';
 import { NATTK } from './const.js';
 import { MON_WEP } from './monst.js';
 import { which_armor } from './worn.js';
@@ -101,6 +102,12 @@ export const has_horns = (ptr) => num_horns(ptr) > 0;
 
 // include/mondata.h:63 unsolid()
 export const unsolid = (ptr) => (ptr.mflags1 & MFLAGS.M1_UNSOLID) !== 0;
+
+// include/mondata.h:35 hides_under() — conceals itself UNDER an object, as
+// distinct from a ceiling hider. domove_attackmon_at leans on that
+// distinction: a hides_under monster you cannot see still routes into
+// do_attack so the "Wait!" message prints, while a ceiling hider does not.
+export const hides_under = (ptr) => (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0;
 
 // include/mondata.h:147 webmaker() — only the two spiders.
 export const webmaker = (ptr) => ptr.pmidx === PMNAMES.PM_CAVE_SPIDER
@@ -335,3 +342,21 @@ export const flaming = (d) =>
 // even though a hiding mimic uses M_AP_* rather than mundetected, so callers
 // pair it with a mundetected test.
 export const is_hider = (d) => (d.mflags1 & MFLAGS.M1_HIDE) !== 0;
+
+// include/mondata.h:100 is_orc()
+export const is_orc = (d) => (d.mflags2 & MFLAGS.M2_ORC) !== 0;
+
+// include/mondata.h is_demon()
+export const is_demon = (d) => (d.mflags2 & MFLAGS.M2_DEMON) !== 0;
+
+// include/mondata.h:69 thick_skinned()
+export const thick_skinned = (d) => (d.mflags1 & MFLAGS.M1_THICK_HIDE) !== 0;
+
+// src/mondata.c:540 hates_blessings()
+export const hates_blessings = (d) => is_undead(d) || is_demon(d);
+
+// src/mondata.c:533 mon_hates_blessings() — takes a MONSTER, not a permonst,
+// because a vampshifter hates blessings in whatever shape it is wearing.
+export function mon_hates_blessings(mon) {
+    return is_vampshifter(mon) || hates_blessings(game.mons[mon.mnum]);
+}

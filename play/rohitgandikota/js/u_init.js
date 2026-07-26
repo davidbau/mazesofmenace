@@ -254,7 +254,7 @@ export const is_pole = (otmp) =>
         || game.objects[otmp.otyp].oc_skill === SKILLS.P_LANCE
         || is_art(otmp, ART_SNICKERSNEE));
 
-const is_spear = (otmp) =>
+export const is_spear = (otmp) =>
     otmp.oclass === OCLASSES.WEAPON_CLASS
     && game.objects[otmp.otyp].oc_skill === SKILLS.P_SPEAR;
 

@@ -8,6 +8,9 @@
 // draws rn2(300) — the tests are independent `if`s, not a chain.
 
 import { game } from './gstate.js';
+import { MFLAGS } from './monst_data.js';
+import { canseemon } from './display.js';
+import { helpless } from './monst.js';
 import { rn2 } from './rng.js';
 import { ECMD_OK } from './const.js';
 import { getdir } from './cmd.js';
@@ -93,3 +96,46 @@ export async function dochat() {
 function note_unported_sounds(what) {
     (game.unported ||= new Set()).add(what);
 }
+
+// src/sounds.c growl() — the monster makes a noise.
+//
+// The early return is on helpless() OR msound == MS_SILENT, so a sleeping,
+// paralysed or genuinely mute monster is silent and costs nothing.
+//
+// The structure below the verb lookup is the part worth keeping exactly:
+// the pline and the run-interrupt are inside `canseemon(mtmp) || !Deaf`,
+// but wake_nearto() is OUTSIDE it, inside only `if (growl_verb)`. The noise
+// wakes nearby monsters whether or not YOU hear it. Folding wake_nearto in
+// with the message -- they read as one event -- would make a deaf hero's
+// growls silent to the whole level.
+//
+// The radius is mlevel * 18, so a bigger monster wakes a wider circle.
+//
+// ROLL_FROM(h_sounds) is a draw but only under Hallucination. growl_sound
+// (a table lookup on msound) and wake_nearto are recorded.
+export function growl(mtmp) {
+    let growl_verb = 0;
+
+    if (helpless(mtmp) || game.mons[mtmp.mnum].msound === MFLAGS.MS_SILENT)
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (game.u.uprops?.HALLUC)
+        growl_verb = note_sounds_unported('growl:h_sounds');   /* ROLL_FROM */
+    else
+        growl_verb = note_sounds_unported('growl:growl_sound');
+    if (growl_verb) {
+        if (canseemon(mtmp) || !game.u.uprops?.DEAF) {
+            note_sounds_unported('growl:pline');
+            if (game.context?.run)
+                note_sounds_unported('growl:nomul');
+        }
+        /* OUTSIDE the canseemon check on purpose */
+        note_sounds_unported('growl:wake_nearto');
+    }
+}
+
+const note_sounds_unported = (w) => {
+    (game.unported ||= new Set()).add('sounds:' + w);
+    return 0;
+};
