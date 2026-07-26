@@ -1,3 +1,4 @@
+import { P_CROSSBOW, P_BOW, P_BOOMERANG, P_DART } from './const.js';
 // obj.js — the object-classification macros.
 // C ref: include/obj.h
 //
@@ -102,3 +103,16 @@ export const is_mines_prize = (o) =>
     o?.o_id !== undefined && o.o_id === game.context?.achieveo?.mines_prize_oid;
 export const is_soko_prize = (o) =>
     o?.o_id !== undefined && o.o_id === game.context?.achieveo?.soko_prize_oid;
+// include/obj.h:238 is_ammo() — arrows, bolts and the gems a sling fires.
+// The oc_skill range is NEGATIVE: -P_CROSSBOW..-P_BOW marks launcher ammo.
+export const is_ammo = (o) =>
+    (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.GEM_CLASS)
+    && game.objects[o.otyp].oc_skill >= -P_CROSSBOW
+    && game.objects[o.otyp].oc_skill <= -P_BOW;
+
+// include/obj.h:245 is_missile() — thrown weapons: darts, shuriken,
+// boomerangs. Also a negative oc_skill range, adjacent to is_ammo's.
+export const is_missile = (o) =>
+    (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.TOOL_CLASS)
+    && game.objects[o.otyp].oc_skill >= -P_BOOMERANG
+    && game.objects[o.otyp].oc_skill <= -P_DART;

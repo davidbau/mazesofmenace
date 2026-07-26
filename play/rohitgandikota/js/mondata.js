@@ -514,3 +514,6 @@ export function corpse_chance(mon, magr, was_swallowed) {
                   + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
 }
+
+// include/mondata.h:123 cantwield()
+export const cantwield = (ptr) => nohands(ptr) || verysmall(ptr);

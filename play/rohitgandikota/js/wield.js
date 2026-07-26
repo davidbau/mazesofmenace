@@ -1,3 +1,7 @@
+import { cantwield } from './mondata.js';
+import { is_weptool } from './mkobj.js';
+import { pline } from './display.js';
+import { ECMD_TIME } from './invent.js';
 // wield.js — what the hero is holding.
 // C ref: src/wield.c
 //
@@ -7,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { will_weld } from './monmove.js';
-import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
+import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT, prinv } from './invent.js';
 import { W_QUIVER } from './const.js';
 import { You } from './pline.js';
@@ -15,7 +19,7 @@ import { tty_yn_function } from './tty/topl.js';
 
 // include/hack.h:1330 ynq()
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
-import { ECMD_OK, ECMD_CANCEL, P_BOW, P_CROSSBOW } from './const.js';
+import { ECMD_OK, ECMD_CANCEL, ECMD_FAIL, P_BOW, P_CROSSBOW } from './const.js';
 import { OCLASSES } from './objects_data.js';
 
 // src/wield.c ready_ok() — which objects getobj should suggest for the quiver.
@@ -131,4 +135,59 @@ export function welded(obj) {
         return 1;
     }
     return 0;
+}
+
+// src/wield.c wield_ok() — the filter behind 'w'.
+//
+// Note the !obj arm returns SUGGEST, not EXCLUDE: wielding '-' to wield
+// nothing is a positive act, so the hands option appears in the prompt.
+// read_ok does the opposite. Coins are the only hard exclusion.
+export function wield_ok(obj) {
+    if (!obj)
+        return GETOBJ_SUGGEST;
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+    if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects))
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+// src/wield.c dowield() — the 'w' command.
+//
+// Ported for the same reason as doread: getobj() READS A KEY, so leaving
+// 'w' undispatched shifted every later keystroke in the session.
+//
+// C keeps going even with an empty pack, because wielding '-' is meaningful.
+export async function dowield() {
+    game.multi = 0;
+    /* cantwield(gy.youmonst.data) -- nohands || verysmall. game.youmonst.data
+       is not populated until polymorph exists, and an unpolymorphed hero has
+       hands and is not verysmall, so a missing form answers FALSE rather than
+       throwing. */
+    if (game.youmonst?.data && cantwield(game.youmonst.data)) {
+        await pline("Don't be ridiculous!");
+        return ECMD_FAIL;
+    }
+
+    /* THE KEY CONSUMPTION */
+    const wep = await getobj('wield', wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (!wep)
+        return ECMD_CANCEL;          /* Cancelled */
+
+    if (wep === game.uwep) {
+        await You('are already wielding that!');
+        if (is_weptool(wep, game.objects))
+            game.unweapon = false;   /* [see setuwep()] */
+        return ECMD_FAIL;
+    }
+    if (welded(game.uwep)) {
+        /* weldmsg() and the interrupted-armor-removal reset */
+        (game.unported ||= new Set()).add('dowield:welded');
+        return ECMD_FAIL;
+    }
+
+    /* the actual wield: setuwep(), the two-weapon and unweapon updates,
+       and the artifact/cockatrice checks */
+    (game.unported ||= new Set()).add('dowield:setuwep');
+    return ECMD_TIME;
 }

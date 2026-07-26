@@ -1,3 +1,5 @@
+import { dowield, doquiver_core } from './wield.js';
+import { doread } from './read.js';
 import { seemimic } from './mon.js';
 // cmd.js — Command dispatch and movement.
 // C ref: cmd.c rhack(), hack.c domove().
@@ -463,8 +465,19 @@ async function dofire() {
        the direction read there would put the session out of step in the other
        direction. Record that case rather than consume a key for it. */
     if (!game.u.uquiver) {
-        note_unported_cmd('dofire:empty quiver prompt');
-        return ECMD_OK;
+        /* src/dothrow.c dofire() — with autoquiver off (the default) C says
+           so and then PROMPTS through doquiver_core, which calls getobj and
+           reads a key. Returning here left that key in the stream.
+           The polearm, bullwhip and fireassist arms above the message need
+           use_pole/use_whip and record. */
+        if (game.u.uwep)
+            note_unported_cmd('dofire:polearm_or_whip');
+        await You('have no ammunition readied.');
+        const res = await doquiver_core('fire');
+        if (res !== ECMD_OK && res !== ECMD_TIME)
+            return res;
+        if (!game.u.uquiver)
+            return ECMD_OK;
     }
 
     if (!await getdir(null))
@@ -563,6 +576,15 @@ export async function rhack(key) {
     } else if (ch === 'Q') {
         // src/cmd.c cmdlist — 'Q' is dowieldquiver.
         game.context.move = ((await dowieldquiver()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'w') {
+        /* src/cmd.c cmdlist — 'w' is dowield, which calls getobj() and so
+           READS A KEY. Same keystream reason as 'r' above. */
+        game.context.move = ((await dowield()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'r') {
+        /* src/cmd.c cmdlist — 'r' is doread. It calls getobj(), which READS
+           A KEY, so leaving it undispatched let the inventory letter run as a
+           command and put every later keystroke out of step. */
+        game.context.move = ((await doread(read_ok)) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Z') {
         // src/cmd.c cmdlist — 'Z' is docast.
         game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
