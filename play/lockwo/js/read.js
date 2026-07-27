@@ -272,8 +272,11 @@ async function seffect_enchant_weapon(sobj) {
 
 // C ref: teleport.c teleok(x,y,trapok) — hero-only subset.  The special-level
 // region checks (tele_jump_ok/in_out_region) are no-ops on an ordinary dungeon
-// level, so only the trap guard and goodpos() remain.
-function teleok_hero(x, y, trapok) {
+// level, so only the trap guard and goodpos() remain.  Exported: also used by
+// hack.js's dotele_wizard() (wizard-mode ^T -> tele() -> scrolltele()), which
+// shares this exact C code path with the scroll-of-teleportation controlled
+// case below.
+export function teleok_hero(x, y, trapok) {
     if (!trapok) {
         const trap = t_at(x, y);
         if (trap) {
@@ -293,7 +296,8 @@ function teleok_hero(x, y, trapok) {
 // vacated square, recalculates vision, announces the materialize message
 // (after the vision recalc, so a paged --More-- shows the new map, matching
 // the C comment on this ordering), then runs spoteffects() at the new spot.
-async function teleds_hero(nux, nuy) {
+// Exported for hack.js's dotele_wizard() (see teleok_hero above).
+export async function teleds_hero(nux, nuy) {
     const u = game.u;
     const oldx = u.ux, oldy = u.uy;
     u.ux0 = oldx; u.uy0 = oldy;
@@ -314,7 +318,8 @@ async function teleds_hero(nux, nuy) {
 // initial "completely random, up to 40 tries" loop.  An ordinary dungeon level
 // has plenty of open floor, so the covered starts always land within those 40
 // tries; the ring-expanding collect_coords() fallback is not exercised.
-async function safe_teleds_hero() {
+// Exported for hack.js's dotele_wizard() (see teleok_hero above).
+export async function safe_teleds_hero() {
     for (let tcnt = 0; tcnt < 40; tcnt++) {
         const nux = rnd(COLNO - 1);
         const nuy = rn2(ROWNO);

@@ -563,3 +563,37 @@ export function impact_disturbs_zombies(obj, violent) {
     /* disturb_buried_zombies(obj->ox, obj->oy) */
     (game.unported ||= new Set()).add('hack:disturb_buried_zombies');
 }
+
+// src/hack.c:4177 unmul() — a non-movement, multi-turn action has finished.
+//
+// nomul()'s counterpart, and the half that makes the OCCUPATION mechanism
+// work: it is what finally calls ga.afternmv, the "do this when the action
+// completes" hook that donning(), thiefdead(), stealarm() and unstolenarm()
+// all read or set.
+//
+// THE CLEAR-BEFORE-CALL IS LOAD-BEARING and C comments it: afternmv is
+// zeroed BEFORE invoking it, "to override the encumbrance hack for
+// levitation -- see weight_cap()". A callback that sets afternmv again must
+// be able to, so clearing afterwards would silently discard it.
+//
+// The message half is recorded: nomovemsg is not tracked in this port (see
+// js/eat.js:138 for another site that notes the same gap), and the Upolyd
+// arm needs pmname and Ugender.
+export function unmul(msg_override) {
+    game.multi = 0;              /* caller will usually have done this */
+
+    /* nomovemsg handling, the You_can_move_again default, and the
+       green-slime/life-saving form reminder */
+    note_unported_hack('unmul:nomovemsg');
+
+    game.u.usleep = 0;
+    game.multi_reason = null;
+    game.multireasonbuf = '';
+
+    if (game.afternmv) {
+        const f = game.afternmv;
+        /* clear afternmv BEFORE calling it */
+        game.afternmv = null;
+        f();
+    }
+}

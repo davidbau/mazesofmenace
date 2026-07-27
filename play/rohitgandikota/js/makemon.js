@@ -20,7 +20,7 @@ import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { attacktype, is_neuter } from './mondata.js';
+import { attacktype, is_neuter , is_rider , is_animal , mindless , humanoid } from './mondata.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
@@ -93,13 +93,14 @@ const is_ndemon = (ptr) =>
 const is_shapeshifter = (ptr) => (ptr.mflags2 & MFLAGS.M2_SHAPESHIFTER) !== 0;
 const verysmall = (ptr) => ptr.msize < 1;        /* MZ_SMALL */
 const nohands = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
-const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
-const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
+/* is_animal() is an include/mondata.h macro; it comes from js/mondata.js. */
+/* mindless() is an include/mondata.h macro; it comes from js/mondata.js. */
 const { STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG } = STRAT;
 const { M3_WAITMASK } = MFLAGS;
-export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
-                       || ptr.pmidx === PMNAMES.PM_FAMINE
-                       || ptr.pmidx === PMNAMES.PM_PESTILENCE;
+/* is_rider() lives in js/mondata.js — it is a macro in
+   include/mondata.h:161. Defining it here forced js/mondata.js, a HEADER
+   mirror, to import from a .c mirror, which pulled the whole
+   monster-creation graph into anything that wanted a header macro. */
 // src/mondata.c attacktype_fordmg() — is_armed(ptr) is attacktype(ptr, AT_WEAP)
 /* attacktype lives in js/mondata.js, its C home (src/mondata.c:54). */
 const is_armed = (ptr) => attacktype(ptr, AT_WEAP);
@@ -958,7 +959,7 @@ function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
    the real one does the slot walk. */
 
 // include/mondata.h — the predicates m_initweap() branches on.
-const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
+/* humanoid() is an include/mondata.h macro; it comes from js/mondata.js. */
 const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 const is_dwarf = (ptr) => (ptr.mflags2 & MFLAGS.M2_DWARF) !== 0;
 const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;

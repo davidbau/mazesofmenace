@@ -57,6 +57,7 @@ import {
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
+import { Clairvoyant } from './youprop.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init, str2role, str2align, str2race, str2gend, roles, races,
          Hello, align_str } from './role.js';
@@ -490,8 +491,7 @@ export async function moveloop_core() {
        clairvoyance takes place, so this rn1 is spent roughly every 30 turns of
        any game, not only by a hero carrying the Amulet. */
     if (g.moves >= g.context.seer_turn) {
-        if ((g.u.uhave?.amulet || g.u.uprops?.CLAIRVOYANT) && !In_endgame(g.u.uz)
-            && !g.u.uprops?.BLOCKED_CLAIRVOYANT)
+        if ((g.u.uhave?.amulet || Clairvoyant()) && !In_endgame(g.u.uz))
             note_unported_main('do_vicinity_map');
         /* we maintain this counter even when clairvoyance isn't
            taking place; on average, go again 30 turns from now */

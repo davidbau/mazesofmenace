@@ -1,4 +1,3 @@
-import { is_rider } from './makemon.js';
 import { G_FREQ } from './const.js';
 // mondata.js — the "what kind of creature is this" predicates.
 // C ref: include/mondata.h (they are macros there) and src/mondata.c
@@ -147,6 +146,14 @@ export const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
 
 // include/mondata.h:19,20,27 — placement predicates read by pm_to_humidity().
 export const is_flyer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_FLY) !== 0;
+
+// include/mondata.h:161 is_rider() — Death, Famine or Pestilence.
+//
+// C compares the permonst POINTER against &mons[PM_*]; ours compares pmidx,
+// the same identity test over an array.
+export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
+                       || ptr.pmidx === PMNAMES.PM_FAMINE
+                       || ptr.pmidx === PMNAMES.PM_PESTILENCE;
 // include/mondata.h:22 is_clinger()
 export const is_clinger = (ptr) => (ptr.mflags1 & MFLAGS.M1_CLING) !== 0;
 export const is_floater = (ptr) => ptr.mlet === MONSYMS.S_EYE

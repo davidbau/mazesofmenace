@@ -11,7 +11,7 @@
 // docs/plan/04-level-generation.md §4.0.
 
 import { game } from './gstate.js';
-import { In_endgame, Is_earthlevel } from './const.js';
+import { In_endgame, Is_earthlevel , Align2amask } from './const.js';
 import { rn2, rn1 } from './rng.js';
 import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL } from './const.js';
 import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
@@ -717,8 +717,8 @@ export function induced_align(pct) {
     return Align2amask(al);
 }
 
-// include/align.h:50 Align2amask() — A_NONE and A_LAWFUL are special-cased
-// rather than falling out of the +2, so the mapping is not a plain shift.
-const Align2amask = (x) => (x === A_NONE) ? AM_NONE
-                         : (x === A_LAWFUL) ? AM_LAWFUL
-                         : ((x) + 2);
+/* Align2amask() is include/align.h:50, so it lives in js/const.js with the
+   other header macros; the local copy here was a second definition of the
+   same thing. Its comment is worth keeping: A_NONE and A_LAWFUL are
+   special-cased rather than falling out of the +2, so the mapping is not a
+   plain shift. */

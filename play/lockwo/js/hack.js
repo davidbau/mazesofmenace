@@ -26,6 +26,7 @@ import { dist2 } from './hacklib.js';
 import { roles, races } from './role.js';
 import { DATABASE_ENTRIES } from './data_base_data.js';
 import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE, CLR_WHITE } from './terminal.js';
+import { teleok_hero, teleds_hero, safe_teleds_hero } from './read.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
@@ -2078,9 +2079,14 @@ export async function do_look_full() {
 // "the desired position").  When getpos is cancelled (ESC -> result < 0) tele()
 // returns without teleporting, but dotele() still returns 1 (ECMD_TIME): the
 // command consumes a game turn (the moveloop then runs the monster moves).
-// We model the cancel path the recorded knight session takes; teleok()/teleds()
-// to an actual destination is not needed because the recorded cursor work ends
-// in a cancel and the hero stays put.
+// When a spot IS picked, C's tele()/scrolltele(0) does:
+//   if (teleok(cc.x, cc.y, FALSE)) { teleds(cc.x, cc.y, TELEDS_TELEPORT); return; }
+//   pline("Sorry...");
+//   (void) safe_teleds(TELEDS_TELEPORT);   /* scroll==NULL, so no learnscroll() */
+// teleok_hero/teleds_hero/safe_teleds_hero (read.js) already port these
+// hero-only subsets faithfully for the scroll-of-teleportation controlled/
+// uncontrolled cases, and this is the exact same underlying C code path, so
+// they're reused here rather than reimplemented.
 export async function dotele_wizard() {
     const u = game.u;
     // tele() -> scrolltele(0): with the wizard override taken, C prints
@@ -2102,9 +2108,12 @@ export async function dotele_wizard() {
         // ESC: getpos() returned < 0 -> tele() returns; dotele() still ECMD_TIME.
         return 1;
     }
-    // A picked destination would teleok()/teleds() here; the recorded session
-    // never reaches this branch (it cancels), so we conservatively treat a pick
-    // as a no-op teleport that still costs the turn.
+    if (teleok_hero(cc.x, cc.y, false)) {
+        await teleds_hero(cc.x, cc.y);
+    } else {
+        await pline('Sorry...');
+        await safe_teleds_hero();
+    }
     return 1;
 }
 

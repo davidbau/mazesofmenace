@@ -13,6 +13,7 @@
 // is placed.
 
 import { game } from './gstate.js';
+import { Teleport_control, Stunned, Confusion } from './youprop.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban } from './const.js';
 import { rnl } from './rng.js';
@@ -264,9 +265,10 @@ function next_to_u() {
 }
 
 const isdigit = (c) => c >= '0' && c <= '9';
-const Teleport_control = () => !!game.u?.uprops?.TELEPORT_CONTROL;
-const Stunned = () => !!game.u?.uprops?.STUNNED;
-const Confusion = () => !!game.u?.uprops?.CONFUSION;
+/* Teleport_control, Stunned and Confusion were local copies here; they are
+   include/youprop.h macros and now live in js/youprop.js, so this file
+   imports them. Two of the three were byte-identical to the versions in
+   youprop.js, which is how a header macro drifts into three homes. */
 
 function note_unported_tele(what) {
     (game.unported ||= new Set()).add(what);

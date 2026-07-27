@@ -8,7 +8,9 @@ import { CORPSTAT_MALE } from './const.js';
 import { CORPSTAT_FEMALE } from './const.js';
 import { mkcorpstat } from './mkobj.js';
 import { relobj } from './steal.js';
-import { accessible } from './const.js';
+/* accessible() is a src/monmove.c function, so it comes from
+   js/monmove.js; js/const.js had a second copy with a DIFFERENT body. */
+import { accessible } from './monmove.js';
 import { corpse_chance } from './mondata.js';
 import { mon_offmap } from './monst.js';
 import { dist2 } from './hacklib.js';
@@ -26,6 +28,8 @@ import { mdistu } from './monmove.js';
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { touch_artifact } from './artifact.js';
+import { Invis } from './youprop.js';
 import { adjalign } from './attrib.js';
 import { couldsee, cansee } from './vision.js';
 import { finish_meating } from './dogmove.js';
@@ -67,7 +71,9 @@ import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohand
     is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
-import { is_rider, set_mimic_sym, hideunder, mpickobj, monsndx } from './makemon.js';
+import {
+    set_mimic_sym, hideunder, mpickobj, monsndx } from './makemon.js';
+import { is_rider } from './mondata.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
@@ -456,7 +462,7 @@ export function mfndpos(mon, data, flag) {
 
                     /* src/mon.c:2338 — avoid standing in the hero's line.
                        monseeu is the same test onscary's displacement uses. */
-                    const monseeu = (mon.mcansee && !game.u?.uprops?.INVIS);
+                    const monseeu = (mon.mcansee && !Invis());
                     if (monseeu && monlineu(mon, nx, ny)) {
                         if (flag & NOTONL)
                             continue;
@@ -646,15 +652,9 @@ function resists_poison(mon) {
     return false;
 }
 
-/* src/artifact.c touch_artifact() — TRUE for anything that is not an artifact,
-   which is every object a rock mole meets on an early level. */
-function touch_artifact(otmp, mon) {
-    if (otmp.oartifact) {
-        note_unported_mon('touch_artifact');
-        return true;
-    }
-    return true;
-}
+/* touch_artifact() now lives in js/artifact.js, where src/artifact.c puts it.
+   The local copy here answered TRUE for a real artifact too, recording the
+   gap; the ported one actually evaluates spfx, class and alignment. */
 
 // src/mon.c:5915 check_gear_next_turn() — flag the monster to reconsider its
 // equipment on its next move.

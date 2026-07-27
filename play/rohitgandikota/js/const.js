@@ -534,10 +534,10 @@ export const AMII_LOUDER_VOLUME = 80;
 export const NEUTRAL = (FEMALE + 1);
 export const NUM_MGENDERS = (NEUTRAL + 1);
 // src/? accessible(x,y) — ACCESSIBLE of the terrain at (x,y).
-export function accessible(x, y) {
-    const loc = game?.level?.at?.(x, y);
-    return !!loc && ACCESSIBLE(loc.typ);
-}
+/* accessible() removed: it is src/monmove.c:2188, not a header macro,
+   so it lives in js/monmove.js. The copy here had a different body --
+   it returned early on a missing location and never tested closed_door,
+   so callers importing this one silently got different behaviour. */
 
 // src/mkobj.c:2391 ROT_ICE_ADJUSTMENT — a file-local #define in C, not a
 // header constant; kept here because js/dog.js holds peek_at_iced_corpse_age,

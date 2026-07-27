@@ -2696,8 +2696,10 @@ const WA_ARMOR_ALL = 0x7f;
 
 // C ref: include/objects.h ARMOR()/HELM()/...() oc_delay — the per-turn
 // donning/doffing delay (negated by do_wear.c into a positive nomul count).
-// Only the otyps a role can start with are tabulated; the rest default to 0,
-// which (as in C) means the item goes on/off in a single action.
+// Cloaks, shields, and shirts all have oc_delay 0 in objects.h (so they fall
+// out to the `|| 0` default below without needing an entry here); the ranges
+// below tabulate every otyp whose true oc_delay is nonzero (or, for the suits
+// block, needs to differ from the block's own default).
 const ARMOR_OC_DELAY = new Map([
     [RING_MAIL, 5], [HELMET, 1], [SMALL_SHIELD, 0], [LEATHER_GLOVES, 1],
     [CLOAK_OF_MAGIC_RESISTANCE, 0], [LEATHER_JACKET, 0], [FEDORA, 0],
@@ -2708,6 +2710,19 @@ const ARMOR_OC_DELAY = new Map([
 // and dragon scales (111..120) has oc_delay 5, so donning/doffing is a 5-turn
 // "dressing maneuver" occupation rather than an instant action.
 for (let otyp = 101; otyp <= 120; otyp++) ARMOR_OC_DELAY.set(otyp, 5);
+// C ref: include/objects.h "other suits" ARMOR() block (otyp 121..133: plate
+// mail, crystal/bronze plate mail, splint/banded mail, the two mithril-coats,
+// chain mail, orcish chain mail, scale mail, studded leather armor, ring mail,
+// orcish ring mail).  Every entry has oc_delay 5 EXCEPT the lighter mithril-
+// coats (delay 1, otyp 126/127) and studded leather armor (delay 3, otyp 131);
+// leather armor (134, delay 3) and leather jacket (135, delay 0) are tabulated
+// above by name.  Missing this range previously left plain chain mail (128)
+// defaulting to delay 0 — an instant "You are now wearing ..." rather than the
+// true 5-turn "dressing maneuver" occupation (and its AC-status timing).
+for (let otyp = 121; otyp <= 133; otyp++) ARMOR_OC_DELAY.set(otyp, 5);
+ARMOR_OC_DELAY.set(126, 1); // dwarvish mithril-coat
+ARMOR_OC_DELAY.set(127, 1); // elven mithril-coat
+ARMOR_OC_DELAY.set(131, 3); // studded leather armor
 // C ref: include/objects.h BOOTS() — every boots otyp (163..172) has oc_delay 2,
 // so putting on / taking off any footwear is a 2-turn dressing maneuver.
 for (let otyp = LOW_BOOTS; otyp <= LEVITATION_BOOTS; otyp++) ARMOR_OC_DELAY.set(otyp, 2);

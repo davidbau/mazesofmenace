@@ -7,6 +7,7 @@
 // short of C without it.
 
 import { game } from './gstate.js';
+import { Confusion, Stunned, Blinded } from './youprop.js';
 import { rnl } from './rng.js';
 import {
     A_STR, A_DEX, A_CON, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN,
@@ -196,12 +197,14 @@ export async function doclose() {
 
         /* choosing a direction while impaired costs a turn whether or not a
            door was actually targeted */
-        if (game.u.uprops?.CONFUSION?.intrinsic || game.u.uprops?.STUNNED?.intrinsic)
+        if (Confusion() || Stunned())
             res = ECMD_TIME;
 
-        door = game.level?.locations?.[x]?.[y] ?? null;
+        /* the port's accessor for C's levl[x][y]; it bounds-checks, which
+           the raw locations array does not. */
+        door = game.level?.at(x, y) ?? null;
 
-        if (game.u.uprops?.BLINDED?.intrinsic)
+        if (Blinded())
             note_unported_lock('doclose:blind_feel_location');
     }
 

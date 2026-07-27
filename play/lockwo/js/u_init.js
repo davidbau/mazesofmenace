@@ -478,6 +478,18 @@ const ARMOR_A_AC = new Map([
     [155, 1],   // ORCISH_SHIELD      (ac 9)
     [129, 4],   // ORCISH_CHAIN_MAIL  (ac 6)
     [133, 2],   // ORCISH_RING_MAIL   (ac 8)
+    // C ref: include/objects.h "other suits" ARMOR() block (otyp 121..131,
+    // excluding orcish chain/ring mail and leather armor already listed above):
+    // a_ac = 10 - macro ac arg, same derivation as the racial variants above.
+    [121, 7],   // PLATE_MAIL            (ac 3)
+    [122, 7],   // CRYSTAL_PLATE_MAIL    (ac 3)
+    [123, 6],   // BRONZE_PLATE_MAIL     (ac 4)
+    [125, 6],   // BANDED_MAIL           (ac 4)
+    [126, 6],   // DWARVISH_MITHRIL_COAT (ac 4)
+    [127, 5],   // ELVEN_MITHRIL_COAT    (ac 5)
+    [128, 5],   // CHAIN_MAIL            (ac 5)
+    [130, 4],   // SCALE_MAIL            (ac 6)
+    [131, 3],   // STUDDED_LEATHER_ARMOR (ac 7)
 ]);
 // C ref: include/objects.h DRGN_ARMR — dragon scale mail (otyp 101..110) has
 // macro ac arg 1 so a_ac = 10 - 1 = 9; dragon scales (111..120) have ac 7 so

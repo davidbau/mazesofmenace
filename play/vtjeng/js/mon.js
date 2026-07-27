@@ -149,6 +149,13 @@ function requiredSingleMonsterOperation(env, name) {
     return operation;
 }
 
+// movemon_singlemon() calls dochugw(monster, true) after normalizing its
+// action environment. Adapt an environment-owned action without letting the
+// source `chug` argument displace that environment.
+export function adaptMonsterActionToDochugwSignature(action) {
+    return (monster, _chug, env) => action(monster, env);
+}
+
 function activeMonsterOperations(env) {
     return {
         visionRecalc: requiredSingleMonsterOperation(env, 'visionRecalc'),
@@ -161,7 +168,7 @@ function activeMonsterOperations(env) {
         canSeeHero: requiredSingleMonsterOperation(env, 'canSeeHero'),
         canSeeSquare: requiredSingleMonsterOperation(env, 'canSeeSquare'),
         fightMonster: requiredSingleMonsterOperation(env, 'fightMonster'),
-        moveMonster: requiredSingleMonsterOperation(env, 'moveMonster'),
+        dochugwAction: requiredSingleMonsterOperation(env, 'dochugwAction'),
     };
 }
 
@@ -284,7 +291,7 @@ export async function movemon_singlemon(monster, env = {}) {
             return false;
         }
     }
-    await operations.moveMonster(monster, true, normalized);
+    await operations.dochugwAction(monster, true, normalized);
     return false;
 }
 

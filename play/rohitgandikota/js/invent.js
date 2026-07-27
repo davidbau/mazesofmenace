@@ -14,7 +14,9 @@ import { erosion_matters, curse, splitobj } from './mkobj.js';
 import {
     carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding,
 } from './obj.js';
-import { is_rider, hideunder } from './makemon.js';
+import {
+    hideunder } from './makemon.js';
+import { is_rider } from './mondata.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { pline } from './display.js';

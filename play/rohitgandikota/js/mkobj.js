@@ -29,8 +29,8 @@ import { Is_rogue_level, NODIR} from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
-    rndmonnum, level_difficulty, is_male, is_female, is_rider,
-} from './makemon.js';
+    rndmonnum, level_difficulty, is_male, is_female } from './makemon.js';
+import { is_rider } from './mondata.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
    Both sides export function DECLARATIONS, which hoist, so each module sees the

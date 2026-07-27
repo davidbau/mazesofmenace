@@ -2,6 +2,8 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { See_invisible, Detect_monsters, Blind_telepat, Warn_of_mon,
+         Infravision, Confusion, HHallucination, Stunned } from './youprop.js';
 import { ONAMES } from './objects_data.js';
 import { update_topl } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
@@ -648,7 +650,7 @@ export function tty_clear_nhwindow_message(cury) {
 export function mon_visible(mon) {
     /* The hero can see the monster IF it is not invisible, is not an
        undetected hider, and neither you nor it is buried. */
-    return (!mon.minvis || game.u.uprops?.SEE_INVIS)
+    return (!mon.minvis || See_invisible())
         && !mon.mundetected
         && !(mon.mburied || game.u.uburied);
 }
@@ -657,8 +659,8 @@ export function mon_visible(mon) {
 // arm needs a hero property no early game has; each is recorded rather than
 // assumed, so a session that does have one reports itself.
 export function sensemon(mon) {
-    if (game.u.uswallow || game.u.uprops?.DETECT_MONSTERS
-        || game.u.uprops?.TELEPAT || game.u.uprops?.WARN_OF_MON)
+    if (game.u.uswallow || Detect_monsters()
+        || Blind_telepat() || Warn_of_mon())
         (game.unported ||= new Set()).add('display:sensemon');
     return false;
 }
@@ -667,7 +669,7 @@ export function sensemon(mon) {
 export function canseemon(mon) {
     if (mon.wormno)
         (game.unported ||= new Set()).add('display:canseemon:worm_known');
-    if (game.u.uprops?.INFRAVISION)
+    if (Infravision())
         (game.unported ||= new Set()).add('display:canseemon:see_with_infrared');
     return cansee(mon.mx, mon.my) && mon_visible(mon);
 }
@@ -687,6 +689,6 @@ export function canspotmon(mon) {
 // See NOTES, "Default-On options: read them defensively".
 export function is_safemon(mon) {
     return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
-              && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
-              && !game.u.uprops?.STUNNED);
+              && !Confusion() && !HHallucination()
+              && !Stunned());
 }

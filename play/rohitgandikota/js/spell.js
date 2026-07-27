@@ -2,6 +2,7 @@
 // C ref: src/spell.c
 
 import { game } from './gstate.js';
+import { Confusion, Stunned } from './youprop.js';
 import { pline } from './display.js';
 import { ECMD_OK, weight } from './invent.js';
 import { worn } from './do_wear.js';
@@ -218,7 +219,7 @@ function spellknow(spidx) {
 // Returns { rejected, res, energy } because C uses two out-parameters.
 export async function spelleffects_check(spell, energyRef) {
     let res = ECMD_OK;
-    const confused = !!game.u?.uprops?.CONFUSION;
+    const confused = Confusion();
 
     energyRef.v = 0;
 
@@ -305,7 +306,7 @@ export async function spelleffects_check(spell, energyRef) {
 
 // src/spell.c rejectcasting() — Stunned, or no free hands.
 function rejectcasting() {
-    if (game.u?.uprops?.STUNNED) {
+    if (Stunned()) {
         note_unported_spell('rejectcasting:Stunned message');
         return true;
     }

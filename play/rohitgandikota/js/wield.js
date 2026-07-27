@@ -18,6 +18,10 @@ import { W_QUIVER, W_WEP } from './const.js';
 import { is_missile } from './obj.js';
 import { is_pole } from './u_init.js';
 import { setworn } from './worn.js';
+import { Stone_resistance } from './youprop.js';
+import { retouch_object } from './artifact.js';
+import { update_inventory } from './invent.js';
+import { bimanual } from './obj.js';
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 
@@ -190,11 +194,20 @@ export async function dowield() {
         return ECMD_FAIL;
     }
 
-    /* the actual wield: setuwep(), the two-weapon and unweapon updates,
-       and the artifact/cockatrice checks */
-    setuwep(wep);
-    (game.unported ||= new Set()).add('dowield:twoweapon_and_artifact');
-    return ECMD_TIME;
+    /* src/wield.c dowield() tail. C calls ready_weapon(), NOT setuwep() --
+       setuwep is called from inside it. An earlier version here called
+       setuwep directly, which skipped ready_weapon's whole body; harmless
+       for the stream, since ready_weapon makes no draws, but it skipped
+       every message and check. */
+    const oldwep = game.u.uwep;
+    const result = await ready_weapon(wep);
+
+    if (oldwep && game.u.uwep !== oldwep)
+        /* flags.pushweapon moves the old weapon to the swap slot */
+        (game.unported ||= new Set()).add('dowield:pushweapon_setuswapwep');
+    await untwoweapon();
+
+    return result;
 }
 
 // src/wield.c:100 setuwep() — make `obj` the wielded weapon.
@@ -306,11 +319,103 @@ export function cant_wield_corpse(obj) {
         || !touch_petrifies(game.mons[obj.corpsenm]))
         return false;
 
-    /* Stone_resistance is not modelled; C returns FALSE for a resistant
-       hero, so a resistant hero here is wrongly refused the wield. */
-    note_unported_wield('cant_wield_corpse:Stone_resistance');
+    if (Stone_resistance())
+        return false;
 
     /* Prevent wielding cockatrice when not wearing gloves --KAA */
     note_unported_wield('cant_wield_corpse:instapetrify');
     return true;
+}
+
+// src/wield.c:169 ready_weapon() — the shared body behind wielding.
+//
+// Separated in C so swapping works easily, and dowield() calls THIS rather
+// than setuwep() directly. It makes NO DRAWS, which is why an error here
+// shows up as a wrong message rather than a desynced stream.
+//
+// The order of the early tests is the logic and must not be rearranged:
+// no-weapon, then corpse, then shield-vs-two-handed, then retouch_object.
+// retouch_object returning false costs a TURN without wielding, which is
+// why it is ECMD_TIME rather than ECMD_FAIL.
+export async function ready_weapon(wep) {
+    let res = ECMD_OK;
+    const was_twoweap = game.u.twoweap, had_wep = (game.u.uwep != null);
+
+    if (!wep) {
+        if (game.u.uwep) {
+            await You(`are ${empty_handed()}.`);
+            setuwep(null);
+            res = ECMD_TIME;
+        } else {
+            await You(`are already ${empty_handed()}.`);
+        }
+    } else if (wep.otyp === ONAMES.CORPSE && cant_wield_corpse(wep)) {
+        /* the hero must have been life-saved to get here; uses a turn */
+        res = ECMD_TIME;                    /* corpse won't be wielded */
+    } else if (game.u.uarms && bimanual(wep)) {
+        note_unported_wield('ready_weapon:two_handed_with_shield_msg');
+        res = ECMD_FAIL;
+    } else if (!retouch_object(wep, false).ok) {
+        res = ECMD_TIME;      /* takes a turn even though it is not wielded */
+    } else {
+        /* the weapon WILL be wielded after this point */
+        res = ECMD_TIME;
+        if (will_weld(wep)) {
+            /* the weld message names the body part and pluralises for a
+               two-handed weapon; xname/aobjnam/body_part are not ported */
+            note_unported_wield('ready_weapon:weld_msg');
+            note_unported_wield('ready_weapon:set_bknown');
+        } else {
+            /* C sets W_WEP on a scratch copy of owornmask so prinv() reads
+               "weapon in hand", then restores it -- the comment calls its
+               own kludge obsolete but the behaviour stays. */
+            const dummy = wep.owornmask;
+            wep.owornmask |= W_WEP;
+            if (wep.otyp === ONAMES.AKLYS)
+                note_unported_wield('ready_weapon:aklys_tether_msg');
+            /* prinv is already imported at the top of this file; C passes a
+               null prefix and 0L quantity, so the line is just the object's
+               inventory description. */
+            await prinv(null, wep, 0);
+            wep.owornmask = dummy;
+        }
+
+        setuwep(wep);
+
+        if (was_twoweap && !game.u.twoweap && game.u.uwep)
+            note_unported_wield('ready_weapon:no_longer_twoweap_msg');
+
+        if (wep.oartifact) {
+            /* arti_speak sets the ECMD_TIME bit when the artifact speaks,
+               and DRAWS via getrumor; recorded rather than ported so no
+               draw is invented. */
+            note_unported_wield('ready_weapon:arti_speak');
+        }
+        if (wep.oartifact)
+            note_unported_wield('ready_weapon:artifact_light');
+        if (wep.unpaid)
+            note_unported_wield('ready_weapon:shk_be_careful_msg');
+    }
+
+    if (had_wep !== (game.u.uwep != null))
+        note_unported_wield('ready_weapon:botl_barehanded');
+    return res;
+}
+
+/* src/wield.c:80 — the two messages the two-weapon code shares. Kept as
+   file-scope constants because C keeps them that way and both are used from
+   more than one function. */
+const are_no_longer_twoweap = "are no longer using two weapons at once";
+const can_no_longer_twoweap = "can no longer wield two weapons at once";
+
+// src/wield.c untwoweapon() — stop two-weaponing, if we were.
+//
+// Guarded on u.twoweap, so calling it when not two-weaponing does nothing at
+// all -- which is why dowield's tail can call it unconditionally.
+export async function untwoweapon() {
+    if (game.u.twoweap) {
+        await You(`${can_no_longer_twoweap}.`);
+        set_twoweap(false);                 /* u.twoweap = FALSE */
+        update_inventory();
+    }
 }

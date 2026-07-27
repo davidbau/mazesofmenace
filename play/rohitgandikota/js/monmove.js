@@ -6,10 +6,11 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
+import { Conflict, Displaced, Invis } from './youprop.js';
 import { mpickstuff } from './mon.js';
 import { sengr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
-import { MON_WEP } from './monst.js';
+import { MON_WEP , DEADMONSTER } from './monst.js';
 import { is_launcher, is_pole } from './u_init.js';
 import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
@@ -18,7 +19,7 @@ import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     AM_SHRINE, Amask2align, ROOMOFFSET
 } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
-         attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
+         attacktype, can_blow, needspick, flaming, noncorporeal , hides_under , is_animal , perceives } from './mondata.js';
 import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym } from './display.js';
@@ -56,7 +57,8 @@ import {
     ALL_TRAPS, NO_TRAP,
     G_GENOD,
 } from './const.js';
-import { is_rider } from './makemon.js';
+
+import { is_rider } from './mondata.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          MMOVE_NOMOVES, engulfing_u } from './const.js';
 import { MSOUND } from './monst_data.js';
@@ -67,8 +69,8 @@ const ALGN_SINNED = -4;
 /* include/monst.h:214, include/mondata.h:81,174, include/hack.h:1414 and
    include/monst.h:217,281 — the one-line predicates distfleeck() and onscary()
    test with. Kept as single expressions so each reads like its macro. */
-const DEADMONSTER = (mon) => (mon.mhp ?? 0) < 1;
-const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
+/* DEADMONSTER() is include/monst.h:214; it comes from js/monst.js. */
+/* perceives() is an include/mondata.h macro; it comes from js/mondata.js. */
 const unique_corpstat = (ptr) => (ptr.geno & MFLAGS.G_UNIQ) !== 0;
 const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
 const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
@@ -385,7 +387,7 @@ function objects_at(x, y) {
 /* include/mondata.h:143-146 and friends — what a monster is willing to pick up.
    likes_objs counts an armed monster as a collector. */
 const mindless    = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
-const is_animal   = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
+/* is_animal() is an include/mondata.h macro; it comes from js/mondata.js. */
 const likes_gold  = (ptr) => (ptr.mflags2 & MFLAGS.M2_GREEDY) !== 0;
 const likes_gems  = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
 const likes_magic = (ptr) => (ptr.mflags2 & MFLAGS.M2_MAGIC) !== 0;
@@ -668,7 +670,8 @@ const Sokoban = () => game.level?.flags?.sokoban_rules === true;
 // reads them the same way the clairvoyance check in js/allmain.js does. There
 // is no source of conflict in the game yet, so it answers false today, but it
 // answers it by LOOKING rather than by assuming.
-const Conflict = () => !!(game.u?.uprops?.CONFLICT);
+/* Conflict was a local copy; it is an include/youprop.h macro and now
+   comes from js/youprop.js like the rest. */
 
 export function m_can_break_boulder(mtmp) {
     return is_rider(mtmp.data)
@@ -771,12 +774,11 @@ export function set_apparxy(mtmp) {
         return;
     }
 
-    const Invis = !!game.u.uprops?.INVIS;
-    const Displaced = !!game.u.uprops?.DISPLACED;
+    const invis = Invis(), displaced = Displaced();
     const Underwater = !!game.u.uinwater;
 
-    const notseen = (!mtmp.mcansee || (Invis && !perceives(game.mons[mtmp.mnum])));
-    const notthere = (Displaced && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
+    const notseen = (!mtmp.mcansee || (invis && !perceives(game.mons[mtmp.mnum])));
+    const notthere = (displaced && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
 
     if (Underwater) {
         displ = 1;
@@ -836,7 +838,7 @@ export function set_apparxy(mtmp) {
 
 // src/monmove.c:2188 accessible() — uses the terrain in front of a closed
 // drawbridge, not the drawbridge itself.
-function accessible(x, y) {
+export function accessible(x, y) {
     const levtyp = game.level.at(x, y)?.typ;
     return ACCESSIBLE(levtyp) && !closed_door_mm(x, y);
 }
@@ -880,7 +882,7 @@ export function distfleeck(mtmp) {
     /* Note: if your image is displaced, the monster sees the Elbereth at your
      * displaced position, thus never attacking your displaced position, but
      * possibly attacking you by accident. */
-    if (!mtmp.mcansee || (game.u.uprops?.INVIS && !perceives(game.mons[mtmp.mnum]))) {
+    if (!mtmp.mcansee || (Invis() && !perceives(game.mons[mtmp.mnum]))) {
         seescaryx = mtmp.mux;
         seescaryy = mtmp.muy;
     } else {
@@ -929,7 +931,7 @@ export function dochug(mtmp) {
         || (mdat.mlet === MONSYMS.S_LEPRECHAUN && !findgold(game.invent)
             && (findgold(mtmp.minvent) || rn2(2)))
         || (is_wanderer(mdat) && !rn2(4))
-        || (game.u.uprops?.CONFLICT && !mtmp.iswiz)
+        || (Conflict() && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
 
         /* Possibly cast an undirected spell if not attacking you. castmu()
@@ -989,7 +991,7 @@ export function m_move(mtmp, after) {
                             && (dist2(omx, omy, ggx, ggy) <= 36));
 
         if (!mtmp.mcansee
-            || (should_see && game.u.uprops?.INVIS
+            || (should_see && Invis()
                 && !perceives(ptr) && rn2(11))
             || (mtmp.mpeaceful && !mtmp.isshk) /* allow shks to follow */
             || ((mtmp.mnum === PMNAMES.PM_STALKER
@@ -1168,9 +1170,7 @@ const MTSZ = 4;
    MMOVE_MOVED SWAPPED against the header. js/const.js has them right. */
 
 /* include/mondata.h hides_under() */
-function hides_under(ptr) {
-    return (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0;
-}
+/* hides_under() is an include/mondata.h macro; it comes from js/mondata.js. */
 
 function OBJ_AT(x, y) {
     return (game.level?.objects || []).some(o => o.ox === x && o.oy === y);

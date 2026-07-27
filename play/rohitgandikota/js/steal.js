@@ -2,6 +2,8 @@
 // C ref: src/steal.c
 
 import { game } from './gstate.js';
+import { rn1 } from './rng.js';
+import { LARGEST_INT } from './const.js';
 
 /* js/dog.js owns droppables() and imports this module, so it hands the
    function over instead of being imported back -- dog.js is one of the
@@ -81,4 +83,35 @@ export function relobj(mtmp, show, is_pet) {
 
     if (show && cansee(omx, omy))
         newsym(omx, omy);
+}
+
+// src/steal.c:14 somegold() — a proportional subset of a gold pile.
+//
+// DRAWS, exactly once, and the band it picks decides the argument to rn1 --
+// so getting the boundaries wrong changes the stream, not just the amount.
+// The bands are < 50, < 100, < 500, < 1000, < 5000, < 10000, else, and each
+// keeps a floor of the previous band's size: rn1(igold - floor + 1, floor).
+//
+// Under 50 gold there is NO DRAW AT ALL -- the whole pile is taken. That
+// early arm is the one to be careful with, since a stray rn1 there would
+// desync every later call.
+export function somegold(lmoney) {
+    let igold = (lmoney >= LARGEST_INT) ? LARGEST_INT : lmoney | 0;
+
+    if (igold < 50)
+        ;                                   /* all gold, no draw */
+    else if (igold < 100)
+        igold = rn1(igold - 25 + 1, 25);
+    else if (igold < 500)
+        igold = rn1(igold - 50 + 1, 50);
+    else if (igold < 1000)
+        igold = rn1(igold - 100 + 1, 100);
+    else if (igold < 5000)
+        igold = rn1(igold - 500 + 1, 500);
+    else if (igold < 10000)
+        igold = rn1(igold - 1000 + 1, 1000);
+    else
+        igold = rn1(igold - 5000 + 1, 5000);
+
+    return igold;
 }

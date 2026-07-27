@@ -1,6 +1,6 @@
 import { relobj, steal_wire_droppables } from './steal.js';
 import { ROT_ICE_ADJUSTMENT } from './const.js';
-import { max_passive_dmg } from './mondata.js';
+import { max_passive_dmg , carnivorous, herbivorous , metallivorous, humanoid, noncorporeal , flaming } from './mondata.js';
 import { M_ATTK_MISS } from './const.js';
 import { onscary } from './monmove.js';
 import { M_ATTK_DEF_DIED } from './const.js';
@@ -20,7 +20,7 @@ import { mattackm } from './mhitm.js';
 
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
-import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
+import { DEADMONSTER, is_vampshifter, MON_WEP , helpless } from './monst.js';
 import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
@@ -51,11 +51,12 @@ import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2, rnd } from './rng.js';
-import { dist2, sgn } from './hacklib.js';
+import { dist2, sgn , distmin , distu } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
 import { PMNAMES } from './monst_data.js';
 import {
-    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj } from './makemon.js';
+    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, mpickobj } from './makemon.js';
+import { is_rider } from './mondata.js';
 
 const NON_PM = -1;
 
@@ -175,23 +176,20 @@ export const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3, APPORT = 4,
 /* include/mondata.h and include/objclass.h — the predicates dogfood() sorts
    with. None of them draws; they only decide which branch is taken, and a wrong
    branch changes how far the caller's loop runs before it breaks. */
-const carnivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_CARNIVORE) !== 0;
-const herbivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;
-const metallivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_METALLIVORE) !== 0;
+/* carnivorous() and herbivorous() are include/mondata.h macros and come
+   from js/mondata.js; the copies here were identical. */
+/* metallivorous(), humanoid() and noncorporeal() are include/mondata.h
+   macros and come from js/mondata.js; the copies here matched. */
 const haseyes      = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
-const humanoid     = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
 export const acidic = (ptr) => (ptr.mflags1 & MFLAGS.M1_ACID) !== 0;
 const poisonous    = (ptr) => (ptr.mflags1 & MFLAGS.M1_POIS) !== 0;
 /* is_undead lives in js/mondata.js, its C home (include/mondata.h:95). */
 const is_elf       = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
-const noncorporeal = (ptr) => ptr.mlet === MONSYMS.S_GHOST;
 /* include/mondata.h:59,190 — both are explicit species lists, not flag tests.
    There is no M1_FIRE_RES; fire resistance lives in mresists as MR_FIRE, and
    guessing a flag here silently made every monster flaming. */
-const flaming      = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
-                           || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
-                           || ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
-                           || ptr.pmidx === PMNAMES.PM_SALAMANDER;
+/* flaming() is include/mondata.h:59; it comes from js/mondata.js. Both
+   copies listed the same four species. */
 const likes_lava   = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
                            || ptr.pmidx === PMNAMES.PM_SALAMANDER;
 
@@ -1314,10 +1312,8 @@ function GDIST(x, y) {
     return dx * dx + dy * dy;
 }
 
-/* src/hack.c distmin() — the Chebyshev distance */
-function distmin(x0, y0, x1, y1) {
-    return Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-}
+/* distmin() is src/hacklib.c:657 and comes from js/hacklib.js; the copy
+   that was here differed only in parameter names. */
 
 /* src/dogmove.c cursed_object_at() */
 function cursed_object_at(x, y) {
@@ -1517,16 +1513,16 @@ function droppables(mtmp) {
     return null;                        /* don't drop anything */
 }
 
-/* src/mondata.h helpless() */
-function helpless(mtmp) {
-    return !!(mtmp.msleeping || !mtmp.mcanmove || (mtmp.mfrozen | 0) > 0);
-}
+/* helpless() is include/monst.h:251 and comes from js/monst.js. The copy
+   that was here carried a THIRD term, (mtmp.mfrozen | 0) > 0, which the C
+   macro does not have -- mfrozen is a separate bitfield (monst.h:147). That
+   made any frozen-but-mobile monster read as helpless, which changes combat
+   branches. The identical defect was removed from js/uhitm.js earlier; this
+   copy survived because dup-defs reports the name, not every site. */
 
-// src/hack.c distu() — squared distance from the hero.
-function distu(x, y) {
-    const dx = x - game.u.ux, dy = y - game.u.uy;
-    return dx * dx + dy * dy;
-}
+/* distu() is include/hack.h:1531 and comes from js/hacklib.js. C defines it
+   as dist2(xx, yy, u.ux, u.uy); the copy here inlined the arithmetic
+   instead, which gave the same value but not the same shape. */
 
 /* hand droppables() to js/steal.js; see its header for why */
 steal_wire_droppables(droppables);

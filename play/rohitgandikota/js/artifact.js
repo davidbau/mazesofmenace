@@ -21,6 +21,7 @@ import { mon_aligntyp } from './monmove.js';
    grepped for the NAMES and found mentions rather than definitions, which is
    how they got imported and broke the module. Those branches are recorded. */
 import { sgn } from './hacklib.js';
+import { ONAMES, MATERIALS } from './objects_data.js';
 
 function note_unported_artifact(what) {
     (game.unported ||= new Set()).add(what);
@@ -231,4 +232,57 @@ export function touch_artifact(obj, mon) {
     }
 
     return 1;
+}
+
+// src/artifact.c:2508 retouch_object() — may the hero still hold this?
+//
+// Returns 1 when handling is fine. Two paths reach that answer and the common
+// one is the second: touch_artifact() says yes, and neither silver-hatred nor
+// a bane applies, so the object is ordinary and nothing happens.
+//
+// `objp` is a POINTER in C because the object can be dropped or destroyed
+// here. JS has no out-parameters, so this takes and returns the object: the
+// caller writes `wep = retouch_object_obj(wep)` alongside the boolean. Where
+// C sets *objp = 0 we return null, and the boolean result is unchanged.
+//
+// Not ported, each recorded at its site: Hate_silver (so `ag` reads false,
+// which is the common value but IS an assumption -- only were-creatures,
+// vampires and demons hate silver), the damage arms (losehp,
+// Maybe_Half_Phys, killer_xname), remove_worn_item, hitfloor, and the
+// Levitation branch of the drop.
+export function retouch_object(obj, loseit) {
+    if (!obj)
+        return { ok: 1, obj: null };
+
+    /* C lets a hero in silver-hating form try the invocation ritual:
+         if (otyp == BELL_OF_OPENING && invocation_pos(..) && !On_stairs(..))
+       Neither invocation_pos (js/mklev.js) nor On_stairs (js/dog.js) is
+       EXPORTED, and the branch only fires on the invocation square holding
+       the Bell of Opening, so it is recorded rather than reached for. */
+    if (obj.otyp === ONAMES.BELL_OF_OPENING)
+        note_unported_artifact('retouch_object:invocation_bell');
+
+    if (touch_artifact(obj, game.youmonst)) {
+        /* Hate_silver needs the hero's form and race; recorded, so ag is
+           false and a silver-hating hero wrongly handles silver freely. */
+        const ag = (game.objects[obj.otyp]?.oc_material === MATERIALS.SILVER);
+        if (ag) note_unported_artifact('retouch_object:Hate_silver');
+        const bane = bane_applies(get_artifact(obj), game.youmonst);
+
+        /* nothing else to do if the hero can handle this object */
+        if (!bane)
+            return { ok: 1, obj };
+
+        note_unported_artifact('retouch_object:bane_damage');
+    } else {
+        note_unported_artifact('retouch_object:cant_handle_damage');
+    }
+
+    if (obj.owornmask)
+        note_unported_artifact('retouch_object:remove_worn_item');
+
+    if (loseit && obj)
+        note_unported_artifact('retouch_object:drop');
+
+    return { ok: 0, obj };
 }

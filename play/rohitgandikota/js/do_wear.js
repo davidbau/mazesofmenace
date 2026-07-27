@@ -7,10 +7,13 @@
 // moveloop_preamble()'s find_ac() turns that into the real number.
 
 import { game } from './gstate.js';
+import { rnd } from './rng.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES } from './objects_data.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-         W_RINGL, W_RINGR, W_AMUL, AC_MAX, I_SPECIAL } from './const.js';
+         W_RINGL, W_RINGR, W_AMUL, AC_MAX, I_SPECIAL,
+         FUMBLING, TIMEOUT, ACID_RES, FAST, LEVITATION,
+         FROMOUTSIDE } from './const.js';
 import { sgn } from './hacklib.js';
 
 export function worn(mask) {
@@ -68,10 +71,13 @@ export function find_ac() {
 // "begins to shine" message) are recorded; neither fires for ordinary
 // starting armour.
 export function Armor_on() {
-    if (!game.uarm)     /* no known instances of !uarm here but play it safe */
+    /* reads game.u.uarm, the slot js/worn.js's worn[] table actually writes;
+       this read game.uarm, which nothing assigns -- the same defect fixed in
+       js/uhitm.js and js/do.js for uwep. */
+    if (!game.u.uarm)   /* no known instances of !uarm here but play it safe */
         return 0;
-    if (!game.uarm.known) {
-        game.uarm.known = 1;   /* +/- evident because of status line AC */
+    if (!game.u.uarm.known) {
+        game.u.uarm.known = 1; /* +/- evident because of status line AC */
         note_unported_do_wear('Armor_on:update_inventory');
     }
     note_unported_do_wear('Armor_on:dragon_armor_handling');
@@ -142,4 +148,263 @@ export function cancel_doff(obj, slotmask) {
         note_unported_do_wear('cancel_doff:donning_cancel_don');
 
     t.mask = (t.mask | 0) & ~slotmask;
+}
+
+// src/do_wear.c Shirt_on() — the afternmv callback for putting on a shirt.
+//
+// C's own comment is the point: "no shirt currently requires special
+// handling when put on, but we keep this uncommented in case somebody adds
+// a new one which does". So the switch does nothing for the two real
+// shirts and exists only to catch an unrecognised otyp.
+//
+// Ported with that shape intact rather than collapsed to the `known` check,
+// because the empty switch IS the C and a 5.1 shirt with an effect would
+// land in it.
+export function Shirt_on() {
+    if (!game.u.uarmu)
+        return 0;
+
+    switch (game.u.uarmu.otyp) {
+    case ONAMES.HAWAIIAN_SHIRT:
+    case ONAMES.T_SHIRT:
+        break;
+    default:
+        /* C calls impossible(unknown_type, c_shirt, uarmu->otyp) */
+        note_unported_do_wear('Shirt_on:impossible_unknown_type');
+        break;
+    }
+
+    if (!game.u.uarmu.known) {
+        game.u.uarmu.known = 1; /* +/- evident because of status line AC */
+        note_unported_do_wear('Shirt_on:update_inventory');
+    }
+    return 0;
+}
+
+// src/do_wear.c Shield_on() — the afternmv callback for putting on a shield.
+//
+// Same shape as Shirt_on: the switch does nothing for every real shield and
+// exists to catch an unrecognised otyp. C's comment explains why even the
+// MAGICAL shields need no case here -- "the magical shields are handled by
+// setting u.uprops[*].extrinsic in setworn() called by
+// armor_or_accessory_on() before Shield_on()". That path now works in this
+// port, so a shield of reflection genuinely confers its property before this
+// callback runs.
+export function Shield_on() {
+    if (!game.u.uarms)
+        return 0;
+
+    switch (game.u.uarms.otyp) {
+    case ONAMES.SMALL_SHIELD:
+    case ONAMES.SHIELD_OF_DRAIN_RESISTANCE:
+    case ONAMES.SHIELD_OF_SHOCK_RESISTANCE:
+    case ONAMES.ELVEN_SHIELD:
+    case ONAMES.URUK_HAI_SHIELD:
+    case ONAMES.ORCISH_SHIELD:
+    case ONAMES.DWARVISH_ROUNDSHIELD:
+    case ONAMES.LARGE_SHIELD:
+    case ONAMES.SHIELD_OF_REFLECTION:
+        break;
+    default:
+        /* C calls impossible(unknown_type, c_shield, uarms->otyp) */
+        note_unported_do_wear('Shield_on:impossible_unknown_type');
+        break;
+    }
+
+    if (!game.u.uarms.known) {
+        game.u.uarms.known = 1; /* +/- evident because of status line AC */
+        note_unported_do_wear('Shield_on:update_inventory');
+    }
+    return 0;
+}
+
+// src/do_wear.c Gloves_on() — the afternmv callback for putting on gloves.
+//
+// THE FUMBLING ARM DRAWS, and its guard has to be exact or the stream moves:
+//
+//     if (!oldprop && !(HFumbling & ~TIMEOUT))
+//         incr_itimeout(&HFumbling, rnd(20));
+//
+// oldprop is the extrinsic bits for this glove's property MINUS the gloves
+// slot itself, so it asks "did something else already confer this?". Both it
+// and HFumbling are readable now that uprops exists and is keyed by the
+// property number, so the guard is ported exactly and the rnd(20) fires
+// where C fires it. Only the timeout APPLICATION is recorded, since
+// incr_itimeout is not ported -- the draw happens either way.
+//
+// The other arms need makeknown and adj_abon, neither ported.
+export function Gloves_on() {
+    if (!game.u.uarmg)
+        return 0;
+
+    const prop = game.objects[game.u.uarmg.otyp].oc_oprop;
+    const oldprop = (game.u.uprops?.[prop]?.extrinsic ?? 0) & ~W_ARMG;
+    const HFumbling = game.u.uprops?.[FUMBLING]?.intrinsic ?? 0;
+
+    switch (game.u.uarmg.otyp) {
+    case ONAMES.LEATHER_GLOVES:
+        break;
+    case ONAMES.GAUNTLETS_OF_FUMBLING:
+        if (!oldprop && !(HFumbling & ~TIMEOUT)) {
+            rnd(20);            /* incr_itimeout(&HFumbling, rnd(20)) */
+            note_unported_do_wear('Gloves_on:incr_itimeout');
+        }
+        break;
+    case ONAMES.GAUNTLETS_OF_POWER:
+        note_unported_do_wear('Gloves_on:makeknown_and_botl');
+        break;
+    case ONAMES.GAUNTLETS_OF_DEXTERITY:
+        note_unported_do_wear('Gloves_on:adj_abon');
+        break;
+    default:
+        note_unported_do_wear('Gloves_on:impossible_unknown_type');
+        break;
+    }
+
+    if (!game.u.uarmg.known) {
+        game.u.uarmg.known = 1; /* +/- evident because of status line AC */
+        note_unported_do_wear('Gloves_on:update_inventory');
+    }
+    return 0;
+}
+
+// src/do_wear.c Cloak_on() — the afternmv callback for putting on a cloak.
+//
+// NO DRAWS anywhere in it, so a mistake here costs screens rather than
+// desyncing the stream. The arms are messages and two toggles, except the
+// last one which does real work:
+//
+//     case ALCHEMY_SMOCK: EAcid_resistance |= WORN_CLOAK;
+//
+// That is the alchemy smock's SECOND property. objects[].oc_oprop can only
+// name one, so setworn() confers poison resistance and this line adds acid
+// resistance by hand -- see altprop() in src/worn.c, which describes the
+// same workaround. It is portable now that uprops exists, so it is done
+// rather than recorded.
+export function Cloak_on() {
+    if (!game.u.uarmc)
+        return 0;
+
+    const prop = game.objects[game.u.uarmc.otyp].oc_oprop;
+    const oldprop = (game.u.uprops?.[prop]?.extrinsic ?? 0) & ~W_ARMC;
+
+    switch (game.u.uarmc.otyp) {
+    case ONAMES.ORCISH_CLOAK:
+    case ONAMES.DWARVISH_CLOAK:
+    case ONAMES.CLOAK_OF_MAGIC_RESISTANCE:
+    case ONAMES.ROBE:
+    case ONAMES.LEATHER_CLOAK:
+        break;
+    case ONAMES.CLOAK_OF_PROTECTION:
+        note_unported_do_wear('Cloak_on:makeknown');
+        break;
+    case ONAMES.ELVEN_CLOAK:
+        note_unported_do_wear('Cloak_on:toggle_stealth');
+        break;
+    case ONAMES.CLOAK_OF_DISPLACEMENT:
+        note_unported_do_wear('Cloak_on:toggle_displacement');
+        break;
+    case ONAMES.MUMMY_WRAPPING:
+        /* already worn, so C cheats here and checks visibility directly */
+        note_unported_do_wear('Cloak_on:mummy_wrapping_msg');
+        break;
+    case ONAMES.CLOAK_OF_INVISIBILITY:
+        if (!oldprop)
+            note_unported_do_wear('Cloak_on:invisibility_msg');
+        break;
+    case ONAMES.OILSKIN_CLOAK:
+        break;
+    case ONAMES.ALCHEMY_SMOCK:
+        /* the smock's second property: oc_oprop names only one */
+        uprop_dw(ACID_RES).extrinsic |= W_ARMC;
+        break;
+    default:
+        note_unported_do_wear('Cloak_on:impossible_unknown_type');
+        break;
+    }
+
+    if (!game.u.uarmc.known) {
+        game.u.uarmc.known = 1; /* +/- evident because of status line AC */
+        note_unported_do_wear('Cloak_on:update_inventory');
+    }
+    return 0;
+}
+
+/* same shape as js/worn.js's uprop(): entries are created on first write,
+   since JS has no zero-initialised global struct. */
+function uprop_dw(p) {
+    const u = (game.u.uprops ||= []);
+    return (u[p] ||= { intrinsic: 0, extrinsic: 0, blocked: 0 });
+}
+
+// src/do_wear.c Boots_on() — the afternmv callback for putting on boots.
+//
+// ONE DRAW, in the fumble-boots arm, with the same guard Gloves_on uses:
+//
+//     if (!oldprop && !(HFumbling & ~TIMEOUT))
+//         incr_itimeout(&HFumbling, rnd(20));
+//
+// Ported exactly for the same reason -- oldprop and HFumbling are readable
+// now, so the rnd(20) fires where C fires it and only the application is
+// recorded.
+//
+// The speed-boots and levitation arms have GUARDS worth porting even though
+// their effects are recorded, because the guards decide whether C would
+// have drawn or messaged at all. Note the levitation guard tests
+// BLevitation & FROMOUTSIDE, not just blocked -- an outside-blocked hero
+// takes the float_vs_flight branch instead.
+export function Boots_on() {
+    if (!game.u.uarmf)
+        return 0;
+
+    const prop = game.objects[game.u.uarmf.otyp].oc_oprop;
+    const oldprop = (game.u.uprops?.[prop]?.extrinsic ?? 0) & ~W_ARMF;
+    const HFumbling = game.u.uprops?.[FUMBLING]?.intrinsic ?? 0;
+    const HFast = game.u.uprops?.[FAST]?.intrinsic ?? 0;
+    const HLevitation = game.u.uprops?.[LEVITATION]?.intrinsic ?? 0;
+    const BLevitation = game.u.uprops?.[LEVITATION]?.blocked ?? 0;
+
+    switch (game.u.uarmf.otyp) {
+    case ONAMES.LOW_BOOTS:
+    case ONAMES.IRON_SHOES:
+    case ONAMES.HIGH_BOOTS:
+    case ONAMES.JUMPING_BOOTS:
+    case ONAMES.KICKING_BOOTS:
+        break;
+    case ONAMES.WATER_WALKING_BOOTS:
+        note_unported_do_wear('Boots_on:water_walking_spoteffects');
+        break;
+    case ONAMES.SPEED_BOOTS:
+        /* speed boots beat intrinsic speed but not potion speed */
+        if (!oldprop && !(HFast & TIMEOUT))
+            note_unported_do_wear('Boots_on:speed_msg');
+        break;
+    case ONAMES.ELVEN_BOOTS:
+        note_unported_do_wear('Boots_on:toggle_stealth');
+        break;
+    case ONAMES.FUMBLE_BOOTS:
+        if (!oldprop && !(HFumbling & ~TIMEOUT)) {
+            rnd(20);        /* incr_itimeout(&HFumbling, rnd(20)) */
+            note_unported_do_wear('Boots_on:incr_itimeout');
+        }
+        break;
+    case ONAMES.LEVITATION_BOOTS:
+        if (!oldprop && !HLevitation && !(BLevitation & FROMOUTSIDE)) {
+            game.u.uarmf.known = 1;   /* may come off over a sink */
+            note_unported_do_wear('Boots_on:float_up');
+        } else {
+            note_unported_do_wear('Boots_on:float_vs_flight');
+        }
+        break;
+    default:
+        note_unported_do_wear('Boots_on:impossible_unknown_type');
+        break;
+    }
+
+    /* uarmf could be null here (levitation boots put on over a sink) */
+    if (game.u.uarmf && !game.u.uarmf.known) {
+        game.u.uarmf.known = 1; /* +/- evident because of status line AC */
+        note_unported_do_wear('Boots_on:update_inventory');
+    }
+    return 0;
 }

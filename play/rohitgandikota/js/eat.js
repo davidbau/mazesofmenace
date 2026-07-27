@@ -8,6 +8,7 @@ import { A_CON } from './const.js';
 // port that tracks the turn counter correctly still has to make the call.
 
 import { game } from './gstate.js';
+import { Hunger } from './youprop.js';
 import { Race_if } from './u_init.js';
 import { PMNAMES } from './monst_data.js';
 import { done } from './end.js';
@@ -478,7 +479,7 @@ export function lesshungry(num) {
         }
     } else {
         /* report when nearly full so all eating warns before choking */
-        if (game.u.uhunger >= 1500 && !game.u.uprops?.HUNGER
+        if (game.u.uhunger >= 1500 && !Hunger()
             && (!game.context.victual?.eating
                 || !game.context.victual?.fullwarn)) {
             note_unported_eat('lesshungry:hard_time_msg');

@@ -9,6 +9,7 @@ import { seemimic } from './mon.js';
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { Confusion, Stunned, Fumbling } from './youprop.js';
 import { dodrop } from './do.js';
 import { any_obj_ok } from './invent.js';
 import { dodown, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
@@ -21,7 +22,7 @@ import { is_safemon } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
-import { is_hider, verysmall } from './mondata.js';
+import { is_hider, verysmall , bigmonst } from './mondata.js';
 import { bad_rock, nomul } from './hack.js';
 import { curr_mon_load } from './mon.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE } from './const.js';
@@ -134,7 +135,7 @@ function confdir(force_impairment) {
 
 // src/hack.c u_maybe_impaired()
 function u_maybe_impaired() {
-    return !!(game.u.uprops?.CONFUSION || game.u.uprops?.STUNNED);
+    return !!(Confusion() || Stunned());
 }
 
 // src/cmd.c getdir() — read a direction key and set u.dx/u.dy/u.dz.
@@ -744,8 +745,8 @@ export async function domove() {
        step into a doorway. */
     if (closed_door(newx, newy)
         && flags_autoopen() && !game.context.run
-        && !game.u.uprops?.CONFUSION && !game.u.uprops?.STUNNED
-        && !game.u.uprops?.FUMBLING) {
+        && !Confusion() && !Stunned()
+        && !Fumbling()) {
         await doopen_indir(newx, newy);
         game.context.door_opened = !closed_door(newx, newy);
         game.context.move = 0; /* (ux != u.ux || uy != u.uy) */
@@ -952,7 +953,7 @@ function mundisplaceable(mon) {
 }
 
 // include/mondata.h bigmonst()
-const bigmonst = (ptr) => ptr.msize >= MFLAGS.MZ_LARGE;
+/* bigmonst() is an include/mondata.h macro; it comes from js/mondata.js. */
 
 
 
