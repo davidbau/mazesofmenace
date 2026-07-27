@@ -252,6 +252,32 @@ td.pct {
     font-family: var(--font-mono);
     color: var(--color-fail);
 }
+/* Scoring-error badge: shown next to the team name when the judge's most
+ * recent run could not score the fork (timeout/crash). The row keeps its
+ * last successful numbers; the badge + tooltip explain the staleness. */
+.score-err-badge {
+    display: inline-block;
+    margin-left: 0.45em;
+    padding: 0 0.4em;
+    border: 1px solid var(--color-fail);
+    border-radius: 3px;
+    color: var(--color-fail);
+    font-size: 0.72em;
+    font-family: var(--font-mono);
+    vertical-align: middle;
+    cursor: help;
+}
+/* The badge sits in the LEFTMOST column; the shared popup anchors right:0,
+ * which would push a 22em popup off-screen left. Anchor it left instead. */
+.score-err-badge > .lb-tip-pop {
+    right: auto;
+    left: 0;
+}
+.lb-tip-pop .stale-note {
+    color: var(--color-text-muted);
+    font-size: 0.92em;
+    margin-top: 0.3em;
+}
 .sparkline { width: 100px; }
 .sparkline svg { display: inline-block; vertical-align: middle; width: 100px; height: 20px; }
 .time {
@@ -641,6 +667,31 @@ async function loadLeaderboard() {
 
                 const playUrl   = '/play/' + team.name + '/';
                 const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
+
+                // Scoring-error badge (update-leaderboard.js carries the row
+                // through with its last-good numbers when the newest judge run
+                // could not score the fork — verifier timeout or crash). The
+                // badge tells the visitor (and the contestant) WHY the row is
+                // stale instead of the team silently disappearing.
+                const scoringError = team.scoringError || null;
+                const esc = (s) => String(s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                let errBadge = '';
+                if (scoringError) {
+                    const when = scoringError.at
+                        ? new Date(scoringError.at).toUTCString().replace(/:\d\d GMT$/, ' UTC') : 'recently';
+                    const lastGood = scoringError.lastGood
+                        ? new Date(scoringError.lastGood).toUTCString().replace(/:\d\d GMT$/, ' UTC') : 'an earlier run';
+                    const pop = [
+                        '<strong>Latest scoring run failed</strong>',
+                        `<div>The judge could not score this fork ${esc(when)}: <span class="err-class">${esc(scoringError.error || 'unknown error')}</span></div>`,
+                    ];
+                    if (scoringError.detail) {
+                        pop.push(`<div><code>${esc(scoringError.detail).slice(0, 400)}</code></div>`);
+                    }
+                    pop.push(`<div class="stale-note">Scores shown are from the last successful run (${esc(lastGood)}). The fork is re-scored on the next cycle.</div>`);
+                    errBadge = `<span class="score-err-badge lb-tip" tabindex="0">!<span class="lb-tip-pop">${pop.join('')}</span></span>`;
+                }
                 const playableOk = !(playability && playability.playable === false);
                 const playCell = playableOk
                     ? `<a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a>`
@@ -648,7 +699,7 @@ async function loadLeaderboard() {
 
                 tr.innerHTML = `
                     <td class="rank">${i + 1}</td>
-                    <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
+                    <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a>${errBadge}</td>
                     <td class="action">${playCell}</td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
                     <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
