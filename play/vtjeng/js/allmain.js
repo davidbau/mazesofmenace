@@ -91,7 +91,7 @@ import {
     preflightSimpleMonsterActions,
     runSimpleMonsterAction,
     UnsupportedSimpleMonsterActionError,
-} from './monmove_simple.js';
+} from './unported_monster_actions.js';
 import {
     create_gas_cloud,
     run_regions,
@@ -105,9 +105,6 @@ import { settrack } from './track.js';
 import { is_lava, is_pool } from './trap.js';
 import { is_were } from './mondata.js';
 import { clear_splitobjs } from './obj.js';
-import {
-    fastforward_step,
-} from './fastforward.js';
 
 // PRNG-owning initializer seam corresponding to the point immediately before
 // allmain.c:newgame() calls mklev().
@@ -579,94 +576,44 @@ async function finishFreshElapsedTurn(state, random) {
     maybeWipeHeroEngraving(state, random);
 }
 
-// C ref: allmain.c moveloop_core(), specialized to the first elapsed turn of
-// a new game.  Every live starting monster and pet reaches movemon() in list
-// order; they begin with zero movement, so only their source every-turn effect
-// runs before the first allocation gives them a future ration.
-async function advanceFirstFreshTurn(state) {
-    preflightFirstFreshTurn(state);
-    const random = { d, rn1, rn2, rnd, rne, rnl, rnz };
 
-    state.u.umovement -= NORMAL_SPEED;
-    state.context.mon_moving = true;
-    let monstersCanMove;
-    try {
-        monstersCanMove = await movemon({
-            state,
-            random,
-            moveSingleMonster: (monster, env) =>
-                movemon_singlemon(monster, {
-                    ...env,
-                    everyTurnEffect: runEveryTurnEffectWithRegionHooks,
-                }),
-            clearBypasses: unavailableFirstTurnOperation(
-                'monster bypass cleanup',
-            ),
-            deferredGoto: unavailableFirstTurnOperation(
-                'a deferred monster level transition',
-            ),
-        });
-    } finally {
-        state.context.mon_moving = false;
-    }
-
-    // A new game's initial movement balance is exactly NORMAL_SPEED, and all
-    // monsters start below an action ration.  Retain C's surplus-action gate
-    // so this helper cannot accidentally run once-per-turn work twice.
-    if (!monstersCanMove && state.u.umovement < NORMAL_SPEED) {
-        // l_nhcore_call(), Glib, overexertion, spontaneous hero
-        // teleportation/polymorph, warnings, storms, exercise checks, vault
-        // guards, Amulet/demigod upkeep, bubbles/fumaroles, and negative-multi
-        // recovery are source-inert under preflightFirstFreshTurn()'s new-game
-        // invariants and the guaranteed unencumbered starting inventory.
-        await finishFreshElapsedTurn(state, random);
-    }
-
-    finishHeroTimeEffects(state, { random });
-    see_nearby_monsters(state);
-}
-
-function unavailableSecondTurnOperation(operation) {
+function unavailableElapsedTurnOperation(operation) {
     return () => {
         throw new UnsupportedTurnBoundaryError(
-            `second fresh turn reached ${operation}`,
+            `elapsed turn reached ${operation}`,
         );
     };
 }
 
-const runSecondTurnMonsterAction =
+const runElapsedTurnMonsterAction =
     adaptMonsterActionToDochugwSignature(runSimpleMonsterAction);
 
-async function moveSecondTurnMonster(monster, env) {
+async function moveElapsedTurnMonster(monster, env) {
     return movemon_singlemon(monster, {
         ...env,
         everyTurnEffect: runEveryTurnEffectWithRegionHooks,
         visionRecalc: vision_recalc,
-        clearBypasses: unavailableSecondTurnOperation(
+        clearBypasses: unavailableElapsedTurnOperation(
             'monster bypass cleanup',
         ),
         minLiquid: freshTurnMinLiquid,
-        dowear: unavailableSecondTurnOperation('monster equipment changes'),
-        restrap: unavailableSecondTurnOperation('monster hiding'),
+        dowear: unavailableElapsedTurnOperation('monster equipment changes'),
+        restrap: unavailableElapsedTurnOperation('monster hiding'),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
-        hideUnder: unavailableSecondTurnOperation('eel concealment'),
+        hideUnder: unavailableElapsedTurnOperation('eel concealment'),
         canSeeHero: () => true,
         canSeeSquare: (x, y) => cansee(x, y, env.state),
-        fightMonster: unavailableSecondTurnOperation('conflict combat'),
-        dochugwAction: runSecondTurnMonsterAction,
+        fightMonster: unavailableElapsedTurnOperation('conflict combat'),
+        dochugwAction: runElapsedTurnMonsterAction,
     });
 }
 
-// C ref: allmain.c moveloop_core(), second elapsed new-game turn. Monster
-// movement can require multiple complete list scans while the hero lacks a
-// ration. A fast hero's retained ration ends the scan even when a fast pet
-// could act again; once-per-turn upkeep waits until both sides are out.
-async function advanceSecondFreshTurn(state) {
-    if (state.moves !== 2) {
-        throw new UnsupportedTurnBoundaryError(
-            `second fresh turn reached unexpected move counter ${state.moves}`,
-        );
-    }
+// C ref: allmain.c moveloop_core(), elapsed turn. Monster movement can require
+// multiple complete list scans while the hero lacks a ration. A fast hero's
+// retained ration ends the scan even when a fast pet could act again;
+// once-per-turn upkeep waits until both sides are out. This serves every turn
+// after the first.
+async function advanceFreshTurn(state) {
     try {
         await preflightSimpleMonsterActions(state);
     } catch (error) {
@@ -676,33 +623,43 @@ async function advanceSecondFreshTurn(state) {
         boundary.reason = error.reason;
         throw boundary;
     }
-    nh_timeout_fresh_turn({ ...state, moves: 3 });
+    // C runs the per-turn timeouts against the turn it is entering.
+    nh_timeout_fresh_turn({ ...state, moves: (state.moves || 1) + 1 });
     const random = { d, rn1, rn2, rnd, rne, rnl, rnz };
 
+    // C ref: allmain.c moveloop_core().  The outer loop repeats while the hero
+    // still cannot move; the inner one runs monsters until either they are out
+    // of rations or the hero regains one.  The once-per-turn block runs only
+    // when both sides are out, which is why the gate carries !monstersCanMove
+    // as well as the movement test.
     state.u.umovement -= NORMAL_SPEED;
-    state.context.mon_moving = true;
-    try {
+    do {
+        state.context.mon_moving = true;
         let monstersCanMove;
-        do {
-            monstersCanMove = await movemon({
-                state,
-                random,
-                moveSingleMonster: moveSecondTurnMonster,
-                clearBypasses: unavailableSecondTurnOperation(
-                    'terminal monster bypass cleanup',
-                ),
-                deferredGoto: unavailableSecondTurnOperation(
-                    'a deferred monster level transition',
-                ),
-            });
-            if (state.u.umovement >= NORMAL_SPEED) break;
-        } while (monstersCanMove);
-    } finally {
-        state.context.mon_moving = false;
-    }
+        try {
+            do {
+                monstersCanMove = await movemon({
+                    state,
+                    random,
+                    moveSingleMonster: moveElapsedTurnMonster,
+                    clearBypasses: unavailableElapsedTurnOperation(
+                        'terminal monster bypass cleanup',
+                    ),
+                    deferredGoto: unavailableElapsedTurnOperation(
+                        'a deferred monster level transition',
+                    ),
+                });
+                if (state.u.umovement >= NORMAL_SPEED) break;
+            } while (monstersCanMove);
+        } finally {
+            state.context.mon_moving = false;
+        }
 
-    if (state.u.umovement < NORMAL_SPEED)
-        await finishFreshElapsedTurn(state, random);
+        if (!monstersCanMove && state.u.umovement < NORMAL_SPEED)
+            await finishFreshElapsedTurn(state, random);
+    } while (state.u.umovement < NORMAL_SPEED);
+
+    // C runs the once-per-hero-action block outside both loops.
     finishHeroTimeEffects(state, { random });
     see_nearby_monsters(state);
 }
@@ -718,72 +675,9 @@ export async function moveloop_core() {
     // context.move value. Capture that value before the next command dispatch
     // below (including an internal repeat) resets it optimistically.
     if (g.context?.move) {
-        const elapsedReplayStep = g.moves || 1;
-        if (elapsedReplayStep === 1) {
-            await advanceFirstFreshTurn(g);
-        } else if (elapsedReplayStep === 2) {
-            await advanceSecondFreshTurn(g);
-        } else {
-            // Later replay rows still lack general active monster actions.
-            // Reject that boundary before debiting the hero so retries cannot
-            // duplicate partial elapsed-time state changes.
-            requireNoPendingMonsterAction(g);
-            g.u.umovement -= NORMAL_SPEED;
-            // A fast hero can retain a complete action after paying for the
-            // prior command. C still scans monsters before noticing that
-            // surplus; later rows retain the residual replay boundary.
-            if (g.u.umovement < NORMAL_SPEED) {
-                // g.moves still names the preceding source turn here. This
-                // replay phase uses that one-behind value, then the
-                // hero-allocation callback advances moves before later
-                // once-per-turn effects.
-                const replayComplete = await fastforward_step(
-                    elapsedReplayStep,
-                    () => {
-                        // C ref: mon.c movemon() and allmain.c
-                        // moveloop_core(). Later replay rows still temporarily
-                        // combine terminal purge and list-order allocation.
-                        dmonsfree(g);
-                        for (let monster = g.level?.monlist ?? null;
-                            monster;
-                            monster = monster.nmon) {
-                            monster.movement += mcalcmove(monster, true, g);
-                        }
-                    }, () => {
-                        maybe_generate_rnd_mon(g);
-                    }, () => {
-                        // near_capacity() follows movemon() in C. Current
-                        // reachable commands cannot change the startup
-                        // inventory, whose initializer guarantees an
-                        // unencumbered load.
-                        u_calc_moveamt(UNENCUMBERED, g);
-                        g.moves = (g.moves || 1) + 1;
-                        g.hero_seq = g.moves * 8;
-                    }, async () => {
-                        await dosoundsInitialLevel(g);
-                    }, () => {
-                        gethungry(g, {
-                            random: { rn2 },
-                            nearCapacity: () => UNENCUMBERED,
-                        });
-                    }, () => {
-                        maybeWipeHeroEngraving(g);
-                    }, () => {
-                        finishHeroTimeEffects(g);
-                    },
-                );
-                if (!replayComplete) {
-                    g.context.turn_replay_blocked = true;
-                    throw new UnsupportedTurnBoundaryError(
-                        TURN_REPLAY_BOUNDARY,
-                    );
-                }
-            } else {
-                // A fast hero's surplus action does not start a new turn, but
-                // it still advances the per-action sequence and seer cadence.
-                finishHeroTimeEffects(g);
-            }
-        }
+        // C ref: allmain.c moveloop_core() has one elapsed path for every
+        // turn, and so does this.
+        await advanceFreshTurn(g);
     }
 
     // C has a separate clear_splitobjs() at movemon()'s terminal boundary.

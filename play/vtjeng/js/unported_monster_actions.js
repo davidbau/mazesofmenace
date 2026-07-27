@@ -58,12 +58,11 @@ import {
     S_EEL,
 } from './monsters.js';
 import {
-    dochug_fresh_monster,
-    dochug_fresh_pet,
+    dochug,
     dochugw,
     m_avoid_kicked_loc,
     m_avoid_soko_push_loc,
-    m_move_fresh,
+    m_move,
     select_postmove_object_action,
 } from './monmove.js';
 import { select_fresh_monster_item_action } from './muse.js';
@@ -356,7 +355,7 @@ async function postSimpleMove(monster, oldX, oldY, status, env) {
 }
 
 async function moveSimpleOrdinary(monster, env) {
-    return m_move_fresh(monster, {
+    return m_move(monster, {
         ...env,
         mayCrossRegion: assertSimpleDestination,
         postMonsterMove: postSimpleMove,
@@ -417,18 +416,8 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
     return dochugw(monster, true, {
         ...env,
         canSpotMonster: (subject) => canSpotMonster(subject, state),
-        dochug: monster.mtame && !monster.isminion
-            ? (subject, actionEnv) => dochug_fresh_pet(subject, {
-                ...actionEnv,
-                finishEating: () => unsupported('pet eating'),
-                monFlee: () => unsupported('pet flight'),
-                movePet: moveSimplePet,
-                postMonsterMove: postSimpleMove,
-                preflightPet: assertSimpleActionState,
-                resolveTrappedMonster: () => false,
-                wipeEngraving: wipeSimpleEngraving,
-            })
-            : (subject, actionEnv) => dochug_fresh_monster(subject, {
+        // One dochug() now serves both, as in C. m_move() picks the mover.
+        dochug: (subject, actionEnv) => dochug(subject, {
                 ...actionEnv,
                 attackHero: () => unsupported('monster attack on the hero'),
                 monFlee: () => unsupported('monster flight'),
@@ -448,7 +437,6 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                         weaponUser.weapon_check = NEED_WEAPON;
                     }
                 },
-                preflightMonster: assertSimpleActionState,
                 selectRangedWeapon: () =>
                     unsupported('monster ranged weapon selection'),
                 usePreMoveItems: (itemUser, itemEnv) => {
@@ -477,6 +465,10 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 },
                 wakeMessage: env.planning ? () => {} : wake_msg,
                 wipeEngraving: wipeSimpleEngraving,
+                finishEating: () => unsupported('pet eating'),
+                movePet: moveSimplePet,
+                postMonsterMove: postSimpleMove,
+                preflight: assertSimpleActionState,
             }),
         stopOccupation: () => unsupported('occupation interruption'),
     });

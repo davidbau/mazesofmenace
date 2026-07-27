@@ -1,5 +1,15 @@
 // Monster movement decisions, actions, and item search.
 // C ref: monmove.c.  Every function ported from that file lives here.
+//
+// Five functions here come from other C files and have not moved yet:
+//   mon.c    mon_allowflags(), m_in_air(), mfndpos(), monnear()
+//   trap.c   m_harmless_trap()
+// mfndpos() and its helpers are about 540 lines and call back into can_fog(),
+// monhaskey(), m_can_break_boulder(), closed_door(), accessible(), and
+// onscary(), all of which are monmove.c and stay here.  Moving them to
+// js/mon.js would make js/mon.js and this file import each other.
+// m_harmless_trap() needs isSpecies() below, which duplicates speciesIs() in
+// js/mondata.js; unify those two first, then the move is small.
 
 import {
     ACCESSIBLE,
@@ -17,13 +27,10 @@ import {
     ALLOW_TRAPS,
     ALLOW_U,
     ALLOW_WALL,
-    AM_SHRINE,
     ANTI_MAGIC,
     ARROW_TRAP,
     A_LAWFUL,
-    A_NONE,
     A_STR,
-    Amask2align,
     BEAR_TRAP,
     BOLT_LIM,
     BUSTDOOR,
@@ -54,6 +61,7 @@ import {
     IS_DOOR,
     IS_OBSTRUCTED,
     IS_STWALL,
+    IS_TREE,
     IS_WATERWALL,
     LANDMINE,
     LAVAPOOL,
@@ -105,7 +113,6 @@ import {
     TEMPLE,
     TRAPDOOR,
     TRAPNUM,
-    TREE,
     UNLOCKDOOR,
     VIBRATING_SQUARE,
     WEB,
@@ -113,7 +120,6 @@ import {
     W_ARM,
     W_ARMS,
     W_NONDIGGABLE,
-    W_NONPASSWALL,
     isok,
 } from './const.js';
 import { ART_SUNSWORD } from './artifacts.js';
@@ -123,6 +129,7 @@ import { newsym } from './display.js';
 import { dogfood } from './dogfood.js';
 import { could_reach_item } from './dogmove.js';
 import { on_level } from './dungeon.js';
+import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { dist2, distmin, online2 } from './hacklib.js';
@@ -283,9 +290,15 @@ import {
     WAN_STRIKING,
     WEAPON_CLASS,
 } from './objects.js';
+import {
+    in_your_sanctuary,
+    inhistemple,
+    mon_aligntyp,
+} from './priest.js';
 import { m_in_out_region, visible_region_at } from './region.js';
 import { rn2, rnd } from './rng.js';
 import { in_rooms } from './rooms.js';
+import { inhishop } from './shk.js';
 import { collectMonsterMovementMessage } from './startup_a11y.js';
 import { S_poisoncloud } from './symbols.js';
 import { noteleport_level } from './teleport.js';
@@ -297,8 +310,6 @@ import { can_touch_safely, which_armor } from './weapon.js';
 import * as M from './monsters.js';
 import * as O from './objects.js';
 
-const ALGN_SINNED = -4;
-const ROOM_STRING_SIZE = 5;
 
 function movementEnv(env = {}) {
     const state = env.state ?? game;
@@ -634,39 +645,6 @@ export function m_in_air(monster, state = game) {
         || (is_clinger(monster.data)
             && currentLevelHasCeiling(state)
             && monster.mundetected);
-}
-
-function isTreeTerrain(type, state) {
-    return type === TREE
-        || (type === STONE && state.level?.flags?.arboreal);
-}
-
-// C refs: hack.c may_dig() and may_passwall().
-export function may_dig(x, y, state = game) {
-    const location = state.level?.at?.(x, y);
-    if (!location) return false;
-    return !((IS_STWALL(location.typ) || isTreeTerrain(location.typ, state))
-        && ((location.wall_info ?? 0) & W_NONDIGGABLE));
-}
-
-export function may_passwall(x, y, state = game) {
-    const location = state.level?.at?.(x, y);
-    if (!location) return false;
-    return !(IS_STWALL(location.typ)
-        && ((location.wall_info ?? 0) & W_NONPASSWALL));
-}
-
-// C ref: hack.c bad_rock(), specialized only by its supplied monster species.
-export function bad_rock(species, x, y, state = game) {
-    const location = state.level?.at?.(x, y);
-    if (!location) return true;
-    return Boolean(
-        (state.level?.flags?.sokoban_rules && sobj_at(BOULDER, x, y, state))
-        || (IS_OBSTRUCTED(location.typ)
-            && (!tunnels(species) || needspick(species)
-                || !may_dig(x, y, state))
-            && !(passes_walls(species) && may_passwall(x, y, state))),
-    );
 }
 
 // mfndpos() never passes the hero to hack.c cant_squeeze_thru(). Preserve the
@@ -1060,7 +1038,7 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
                 if (IS_OBSTRUCTED(nextType)
                     && !((flags & ALLOW_WALL)
                         && may_passwall(nx, ny, state))
-                    && !((isTreeTerrain(nextType, state)
+                    && !((IS_TREE(nextType, state)
                         ? treeOkay : rockOkay) && may_dig(nx, ny, state))) {
                     continue;
                 }
@@ -1321,112 +1299,9 @@ function isSpecies(monster, pmidx, state) {
         || monster.data?.pmidx === pmidx;
 }
 
-function monsterAlignment(monster) {
-    let alignment = monster.ispriest
-        ? monster.mextra?.epri?.shralign
-        : monster.isminion
-            ? monster.mextra?.emin?.min_align
-            : monster.data?.maligntyp;
-    if (alignment === A_NONE) return A_NONE;
-    alignment = Math.sign(alignment ?? 0);
-    return alignment;
-}
-
 function isLawfulMinion(monster) {
     return is_minion(monster.data)
-        && monsterAlignment(monster) === A_LAWFUL;
-}
-
-function altarMask(location) {
-    return location?.altarmask ?? location?.flags ?? 0;
-}
-
-function hasShrine(priest, state) {
-    if (!priest?.ispriest) return false;
-    const extension = priest.mextra?.epri;
-    const location = state.level?.at(
-        extension?.shrpos?.x,
-        extension?.shrpos?.y,
-    );
-    const mask = altarMask(location);
-    return IS_ALTAR(location?.typ)
-        && Boolean(mask & AM_SHRINE)
-        && extension.shralign === Amask2align(mask & ~AM_SHRINE);
-}
-
-function histempleAt(priest, x, y, state) {
-    const extension = priest?.mextra?.epri;
-    return Boolean(priest?.ispriest
-        && extension
-        && extension.shroom === (in_rooms(x, y, TEMPLE, state)[0] ?? 0)
-        && on_level(extension.shrlevel, state.u?.uz));
-}
-
-function inhistemple(priest, state) {
-    return Boolean(priest?.ispriest
-        && histempleAt(priest, priest.mx, priest.my, state)
-        && hasShrine(priest, state));
-}
-
-function inhishop(shopkeeper, state) {
-    const extension = shopkeeper?.mextra?.eshk;
-    return Boolean(extension
-        && on_level(extension.shoplevel, state.u?.uz)
-        && in_rooms(
-            shopkeeper.mx,
-            shopkeeper.my,
-            SHOPBASE,
-            state,
-        ).includes(extension.shoproom));
-}
-
-function templeOccupied(roomBuffer, state) {
-    for (let index = 0; index < ROOM_STRING_SIZE; ++index) {
-        const roomNumber = Math.trunc(roomBuffer?.[index] ?? 0);
-        if (!roomNumber) break;
-        if (state.level?.rooms?.[roomNumber - ROOMOFFSET]?.rtype === TEMPLE)
-            return roomNumber;
-    }
-    return 0;
-}
-
-function findPriest(roomNumber, state) {
-    for (let monster = state.level?.monlist ?? null;
-        monster;
-        monster = monster.nmon) {
-        if (monster.mhp < 1) continue;
-        if (monster.ispriest
-            && monster.mextra?.epri?.shroom === roomNumber
-            && histempleAt(monster, monster.mx, monster.my, state)) {
-            return monster;
-        }
-    }
-    return null;
-}
-
-// C ref: priest.c in_your_sanctuary().
-export function in_your_sanctuary(
-    monster,
-    x = 0,
-    y = 0,
-    state = game,
-) {
-    if (monster) {
-        if (is_minion(monster.data) || is_rider(monster.data)) return false;
-        x = monster.mx;
-        y = monster.my;
-    }
-    if (state.u?.ualign?.record <= ALGN_SINNED) return false;
-    const roomNumber = templeOccupied(state.u?.urooms, state);
-    if (!roomNumber
-        || roomNumber !== (in_rooms(x, y, TEMPLE, state)[0] ?? 0)) {
-        return false;
-    }
-    const priest = findPriest(roomNumber, state);
-    return Boolean(priest
-        && hasShrine(priest, state)
-        && monsterAlignment(priest) === state.u?.ualign?.type
-        && priest.mpeaceful);
+        && mon_aligntyp(monster) === A_LAWFUL;
 }
 
 function inHell(state) {
@@ -1875,12 +1750,25 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
     return Boolean(await wieldMonsterItem(monster, rawEnv));
 }
 
-// Cover the source phases reached by ordinary new-game monsters. Special
-// actions and unsupported attacks remain callbacks owned by their subsystems.
-export async function dochug_fresh_monster(monster, rawEnv = {}) {
+// C ref: monmove.c dochug().  One function for tame and non-tame monsters,
+// as in C.  Steps C runs that this does not are listed with the source
+// condition that keeps them unreachable behind the current action boundary:
+//   quest_stat_check(), quest_talk()      no quest monster is reachable
+//   mconf/mstun recovery draws            assertSimpleActionState() rejects
+//                                         mconf and mstun
+//   m_respond(), is_covetous() tactics    the boundary rejects both
+//   release_hero(), u.ustuck              no hero-grabbing monster is reachable
+//   Demonic Blackmail, watch_on_duty(),   the boundary rejects shopkeepers,
+//   mind_blast()                          guards, priests, and AT_MAGC
+//   killer bee jelly, gelcube_digests()   the boundary rejects both species
+//   castmu() undirected spell             the boundary rejects AT_MAGC
+//   mon_offmap(), wormhitu(), cuss()      unreachable on a fresh D:1 level
+// The mflee draws below are likewise unreachable today, because the boundary
+// rejects mflee.  They stay because that boundary is temporary.
+export async function dochug(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? { rn2 };
-    const preflightMonster = requireDochugOperation(rawEnv, 'preflightMonster');
+    const preflight = requireDochugOperation(rawEnv, 'preflight');
     const usePreMoveItems = requireDochugOperation(rawEnv, 'usePreMoveItems');
     const moveMonster = requireDochugOperation(rawEnv, 'moveMonster');
     const attackHero = requireDochugOperation(rawEnv, 'attackHero');
@@ -1898,8 +1786,11 @@ export async function dochug_fresh_monster(monster, rawEnv = {}) {
         ?? wield_pre_move_weapon;
     const redraw = rawEnv.redraw ?? newsym;
     const env = { ...rawEnv, state, random };
+    const hallucinating = () => activeProperty(state, HALLUC)
+        && !activeProperty(state, HALLUC_RES);
 
-    preflightMonster(monster, state);
+    // PHASE ONE: pre-movement adjustments.
+    preflight(monster, state);
     monster.mstrategy &= ~STRAT_ARRIVE;
     if ((monster.mstrategy & STRAT_WAITFORU)
         && (monsterCanSeeHero(monster, state)
@@ -1907,100 +1798,14 @@ export async function dochug_fresh_monster(monster, rawEnv = {}) {
         monster.mstrategy &= ~STRAT_WAITFORU;
     }
     if (!monster.mcanmove || (monster.mstrategy & STRAT_WAITMASK)) {
-        if (activeProperty(state, HALLUC)
-            && !activeProperty(state, HALLUC_RES)) {
-            redraw(monster.mx, monster.my);
-        }
+        if (hallucinating()) redraw(monster.mx, monster.my);
         return 0;
     }
-    if (monster.msleeping) {
-        if (!await disturbMonster(monster, { ...env, wakeMessage })) {
-            if (activeProperty(state, HALLUC)
-                && !activeProperty(state, HALLUC_RES)) {
-                redraw(monster.mx, monster.my);
-            }
-            return 0;
-        }
+    if (monster.msleeping
+        && !await disturbMonster(monster, { ...env, wakeMessage })) {
+        if (hallucinating()) redraw(monster.mx, monster.my);
+        return 0;
     }
-
-    wipeEngraving(monster.mx, monster.my, 1, false, env);
-    setApparentHero(monster, env);
-    let range = await distanceAndFear(monster, { ...env, monFlee });
-    if (await usePreMoveItems(monster, env)) return 1;
-    if (await wieldPreMoveWeapon(monster, range, env)) return 0;
-
-    const mayMove = !range.nearby
-        || monster.mflee
-        || range.scared
-        || monster.mconf
-        || monster.mstun
-        || (monster.minvis && !random.rn2(3))
-        || (is_wanderer(monster.data) && !random.rn2(4))
-        || (!monster.mcansee && !random.rn2(4))
-        || monster.mpeaceful;
-    let status = MMOVE_NOTHING;
-    if (mayMove) {
-        status = await moveMonster(monster, env);
-        if (status !== MMOVE_DIED) {
-            range = await distanceAndFear(monster, {
-                ...env,
-                monFlee,
-            });
-        }
-        if (status === MMOVE_DIED) return 1;
-        if (status === MMOVE_MOVED) {
-            if (!range.nearby
-                && range.inrange
-                && !range.scared
-                && !monster.mpeaceful
-                && attacktype(monster.data, AT_WEAP)) {
-                const postMoveRangedAttack = requireDochugOperation(
-                    rawEnv,
-                    'postMoveRangedAttack',
-                );
-                await postMoveRangedAttack(monster, env);
-            }
-            return 0;
-        }
-    }
-    if (status !== MMOVE_DONE && !monster.mpeaceful && range.nearby)
-        await attackHero(monster, env);
-    return 0;
-}
-
-// ---- monmove.c dochug(), tame-monster path, which inlines m_move()'s
-// ---- mintrap() and meating prologue and its dog_move() dispatch ----
-function requirePetDochugOperation(env, name) {
-    const operation = env[name];
-    if (typeof operation !== 'function')
-        throw new TypeError(`pet dochug requires a ${name} operation`);
-    return operation;
-}
-
-// This is the complete source ordering for the reachable starting-pet action:
-// pre-move upkeep, exact apparent hero location, two distfleeck() evaluations,
-// dog movement, and postmov(). The integration preflight excludes unowned
-// branches before action state or PRNG is changed.
-export async function dochug_fresh_pet(monster, rawEnv = {}) {
-    const state = rawEnv.state ?? game;
-    const random = rawEnv.random ?? { rn2 };
-    const preflightPet = requirePetDochugOperation(rawEnv, 'preflightPet');
-    const resolveTrappedMonster = requirePetDochugOperation(
-        rawEnv,
-        'resolveTrappedMonster',
-    );
-    const finishEating = requirePetDochugOperation(rawEnv, 'finishEating');
-    const movePet = requirePetDochugOperation(rawEnv, 'movePet');
-    const postMonsterMove = requirePetDochugOperation(rawEnv, 'postMonsterMove');
-    const monFlee = requirePetDochugOperation(rawEnv, 'monFlee');
-    const distanceAndFear = rawEnv.distanceAndFear ?? distfleeck;
-    const setApparentHero = rawEnv.setApparentHero ?? set_apparxy;
-    const wipeEngraving = rawEnv.wipeEngraving ?? wipe_engr_at;
-    const redraw = rawEnv.redraw ?? newsym;
-    const env = { ...rawEnv, state, random };
-
-    preflightPet(monster, state);
-    if (!monster.mcanmove) return 0;
 
     wipeEngraving(monster.mx, monster.my, 1, false, env);
     if (monster.mflee) {
@@ -2014,13 +1819,17 @@ export async function dochug_fresh_pet(monster, rawEnv = {}) {
             monster.mflee = false;
         }
     }
-    setApparentHero(monster, env);
-    const range = await distanceAndFear(monster, { ...env, monFlee });
 
-    const oldX = monster.mx;
-    const oldY = monster.my;
-    // The source evaluates every earlier disjunct before the final mpeaceful
-    // term, so wandering pets can still consume their one-in-four draw.
+    // PHASE TWO: special movements and actions.
+    setApparentHero(monster, env);
+    let range = await distanceAndFear(monster, { ...env, monFlee });
+    if (await usePreMoveItems(monster, env)) return 1;
+    if (await wieldPreMoveWeapon(monster, range, env)) return 0;
+
+    // PHASE THREE: movement.  C's disjunction also carries a leprechaun gold
+    // term and (Conflict && !iswiz) between is_wanderer and !mcansee; both are
+    // unported, so a reachable Conflict or leprechaun would shift the
+    // !mcansee draw.  Neither is reachable behind the current boundary.
     const mayMove = !range.nearby
         || monster.mflee
         || range.scared
@@ -2030,38 +1839,39 @@ export async function dochug_fresh_pet(monster, rawEnv = {}) {
         || (is_wanderer(monster.data) && !random.rn2(4))
         || (!monster.mcansee && !random.rn2(4))
         || monster.mpeaceful;
-    let status;
-    if (mayMove && await resolveTrappedMonster(monster, env)) {
-        status = MMOVE_NOTHING;
-    } else if (mayMove && monster.meating) {
-        --monster.meating;
-        if (monster.meating <= 0) finishEating(monster);
-        status = MMOVE_DONE;
-    } else if (mayMove) {
-        // m_move() refreshes the apparent hero location immediately before
-        // dispatching its tame-monster branch.
-        setApparentHero(monster, env);
-        status = await movePet(monster, false, env);
-        status = await postMonsterMove(
-            monster,
-            oldX,
-            oldY,
-            status,
-            env,
-        );
-    } else {
-        status = MMOVE_NOTHING;
-    }
-    if (mayMove && status !== MMOVE_DIED) {
-        await distanceAndFear(monster, { ...env, monFlee });
+    let status = MMOVE_NOTHING;
+    if (mayMove) {
+        status = await moveMonster(monster, env);
+        if (status !== MMOVE_DIED) {
+            range = await distanceAndFear(monster, { ...env, monFlee });
+        }
+        if (status === MMOVE_DIED) return 1;
+        if (status === MMOVE_MOVED) {
+            // C also releases a confused grabber, disturbs buried zombies,
+            // and returns early for a helpless or engulfing monster; none is
+            // reachable here.
+            if (!range.nearby
+                && range.inrange
+                && !range.scared
+                && !monster.mpeaceful
+                && attacktype(monster.data, AT_WEAP)) {
+                const postMoveRangedAttack = requireDochugOperation(
+                    rawEnv,
+                    'postMoveRangedAttack',
+                );
+                await postMoveRangedAttack(monster, env);
+            }
+            return 0;
+        }
+        // MMOVE_NOTHING, MMOVE_DONE, and MMOVE_NOMOVES all reach here.  C
+        // redraws a hallucinated monster that did not move.
+        if (hallucinating()) redraw(monster.mx, monster.my);
     }
 
-    if (status === MMOVE_DIED) return 1;
-    if ((status === MMOVE_NOTHING || status === MMOVE_DONE)
-        && activeProperty(state, HALLUC)
-        && !activeProperty(state, HALLUC_RES)) {
-        redraw(monster.mx, monster.my);
-    }
+    // PHASE FOUR: standard attacks.  A peaceful monster, including every pet,
+    // fails this gate in C too.
+    if (status !== MMOVE_DONE && !monster.mpeaceful && range.nearby)
+        await attackHero(monster, env);
     return 0;
 }
 
@@ -2473,10 +2283,12 @@ export function monsterItemSearchInLine(monster, env = {}) {
         || random.rn2(2 + terrain.boulders) < 2;
 }
 
-// This bounded m_move() owner covers the ordinary new-game path. Special
-// movers, aggression, displacement, and boulder breaking remain explicit
-// seams until their source owners are connected.
-export async function m_move_fresh(monster, rawEnv = {}) {
+// C ref: monmove.c m_move().  Covers the prologue, the tame dog_move()
+// dispatch, and the ordinary not_special path through postmov().  Not covered:
+// the hides_under() early return, the wormno branch, the is_covetous() tactics
+// branch, m_move_aggress(), displacement, and boulder breaking.  Those remain
+// explicit seams until their source owners connect.
+export async function m_move(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? { rn2 };
     const resolveTrappedMonster = requireMoveOperation(
@@ -2488,14 +2300,30 @@ export async function m_move_fresh(monster, rawEnv = {}) {
         'resistsTrapEffect',
     );
     const postMonsterMove = requireMoveOperation(rawEnv, 'postMonsterMove');
+    const finishEating = requireMoveOperation(rawEnv, 'finishEating');
+    const movePet = requireMoveOperation(rawEnv, 'movePet');
     const unsupported = requireMoveOperation(rawEnv, 'unsupported');
     const env = { ...rawEnv, state, random };
     const oldX = monster.mx;
     const oldY = monster.my;
 
+    // C ref: m_move() prologue.  mintrap() runs first, then the meating
+    // countdown, then hides_under (which the boundary rejects), then
+    // set_apparxy(), then the tame dispatch.
     if (await resolveTrappedMonster(monster, env))
         return MMOVE_NOTHING;
+    if (monster.meating) {
+        --monster.meating;
+        if (monster.meating <= 0) finishEating(monster);
+        return MMOVE_DONE;
+    }
     set_apparxy(monster, env);
+    if (monster.mtame) {
+        // C: `return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...)`.
+        // dochug() is the only reachable caller and passes after == 0.
+        const petStatus = await movePet(monster, false, env);
+        return await postMonsterMove(monster, oldX, oldY, petStatus, env);
+    }
     let goalX = monster.mux;
     let goalY = monster.muy;
     let approach = monster.mflee ? -1 : 1;
