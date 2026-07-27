@@ -20,7 +20,7 @@ import { is_flyer } from './mondata.js';
    structure an array of LAST_PROP+1 entries, as in the C, instead of a
    bag of string keys with no C counterpart. */
 import {
-    STONE_RES, FLYING, CLAIRVOYANT, BLINDED, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISPLACED, FIRE_RES, FUMBLING, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, LEVITATION, REGENERATION, SEE_INVIS, SICK, STUNNED, TELEPAT, TELEPORT_CONTROL, VOMITING, WARN_OF_MON, WOUNDED_LEGS, GLIB } from './const.js';
+    STONE_RES, FLYING, CLAIRVOYANT, BLINDED, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISPLACED, FIRE_RES, FUMBLING, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, LEVITATION, REGENERATION, SEE_INVIS, SICK, STUNNED, TELEPAT, TELEPORT_CONTROL, VOMITING, WARN_OF_MON, WOUNDED_LEGS, GLIB, FROMOUTSIDE } from './const.js';
 
 export const H = (prop) => !!(game.u?.uprops?.[prop]?.intrinsic);   /* prop is a NUMBER, as in C */
 export const E = (prop) => !!(game.u?.uprops?.[prop]?.extrinsic);
@@ -198,6 +198,27 @@ export const Displaced = () => H(DISPLACED) || E(DISPLACED);
 // use. The !BBlinded term is missing here for the same reason as Invis and
 // Levitation -- no blocked field yet. Fix all three WITH the structure.
 export const Blinded = () => H(BLINDED) && !B(BLINDED);
+
+// include/youprop.h:96 Blindfolded — EBlinded. A worn blindfold or towel sets
+// BLINDED's extrinsic; LENSES deliberately do NOT.
+export const Blindfolded = () => E(BLINDED);
+
+// include/youprop.h:97 Blindfolded_only
+export const Blindfolded_only = () => Blindfolded() && !Blinded();
+
+// include/youprop.h:94 PermaBlind — the OPTIONS:blind conduct.
+export const PermaBlind = () => !!(game.u?.uprops?.[BLINDED]?.intrinsic & FROMOUTSIDE);
+
+// include/youprop.h:103 Blind — ((HBlinded || EBlinded) && !BBlinded).
+//
+// The C notes that `(Blinded || Blindfolded)` would also work today, because
+// BBlinded (from artifact lenses) and Blindfolded are mutually exclusive, but
+// applies !BBlinded to BOTH terms deliberately for robustness. Ported as
+// written, not as the equivalent-today shortcut.
+export const Blind = () => (H(BLINDED) || E(BLINDED)) && !B(BLINDED);
+
+// include/youprop.h:77 Punished — (uball != 0)
+export const Punished = () => !!game.u?.uball;
 
 
 /* ------------------------------------------------------------------------

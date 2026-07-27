@@ -619,3 +619,8 @@ export function align_str(alignment) {
     default: return 'unknown';
     }
 }
+
+// include/you.h:247 Role_if() — (gu.urole.mnum == X)
+export function Role_if(X) {
+    return game.urole.mnum === X;
+}

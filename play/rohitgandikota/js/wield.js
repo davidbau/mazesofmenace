@@ -416,3 +416,41 @@ export async function untwoweapon() {
         update_inventory();
     }
 }
+
+// src/wield.c:873 uwepgone() — the wielded weapon is gone.
+//
+// The artifact-light arm needs artifact_light(), end_burn() and Tobjnam(),
+// none of which are ported; it only fires for a LIT artifact light source
+// (Sunsword, Frost/Fire Brand while burning), so it is recorded rather than
+// guessed. setworn(0, W_WEP) below is the part that actually unwields.
+export function uwepgone() {
+    if (game.u.uwep) {
+        if (game.u.uwep.lamplit)
+            note_unported_wield('uwepgone:artifact_light');
+        setworn(null, W_WEP);
+        game.unweapon = true;
+        update_inventory();
+    }
+}
+
+// src/wield.c:888 uswapwepgone()
+export function uswapwepgone() {
+    if (game.u.uswapwep) {
+        setworn(null, W_SWAPWEP);
+        update_inventory();
+    }
+}
+
+// src/wield.c uqwepgone()
+export function uqwepgone() {
+    if (game.u.uquiver) {
+        setworn(null, W_QUIVER);
+        update_inventory();
+    }
+}
+
+// src/wield.c:285 setuswapwep()
+export function setuswapwep(obj) {
+    setworn(obj, W_SWAPWEP);
+    return;
+}

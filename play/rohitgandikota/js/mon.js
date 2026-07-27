@@ -12,7 +12,7 @@ import { relobj } from './steal.js';
    js/monmove.js; js/const.js had a second copy with a DIFFERENT body. */
 import { accessible } from './monmove.js';
 import { corpse_chance } from './mondata.js';
-import { mon_offmap } from './monst.js';
+import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear } from './worn.js';
 import { is_hider } from './mondata.js';
@@ -28,6 +28,7 @@ import { mdistu } from './monmove.js';
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { does_block, unblock_point } from './vision.js';
 import { touch_artifact } from './artifact.js';
 import { Invis } from './youprop.js';
 import { adjalign } from './attrib.js';
@@ -48,8 +49,7 @@ import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster } from './makemon.js';
 import { is_vampshifter } from './monst.js';
 import { ismnum } from './const.js';
-import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
-         M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
+import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG, M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
@@ -67,25 +67,17 @@ import { online2, isok } from './hacklib.js';
    export function declarations, so the cycle resolves through hoisting. */
 import { onscary, in_your_sanctuary, m_can_break_boulder, mon_knows_traps, can_fog, inhishop, mon_would_take_item } from './monmove.js';
 import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
-import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
-    is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
+import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous, is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
-import {
-    set_mimic_sym, hideunder, mpickobj, monsndx } from './makemon.js';
+import { set_mimic_sym, hideunder, mpickobj, monsndx } from './makemon.js';
 import { is_rider } from './mondata.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MFLAGS.MZ_MEDIUM;
 
-import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS,
-         D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
-         ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
-         ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR,
-         UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM,
-         NOGARLIC, TEMPLE, TRAPNUM, TELEP_TRAP, SHOPBASE,
-         W_NONDIGGABLE } from './const.js';
+import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS, D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL, ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM, NOGARLIC, TEMPLE, TRAPNUM, TELEP_TRAP, SHOPBASE, W_NONDIGGABLE } from './const.js';
 
 // include/permonst.h:80
 export const NORMAL_SPEED = 12;
@@ -1242,8 +1234,12 @@ export function wake_msg(mtmp, interesting) {
 // is_lightblocker_mappear, has_mcorpsenm, freemcorpsenm, does_block and
 // unblock_point are recorded; the appearance reset and the redraw are real.
 export function seemimic(mtmp) {
-    const is_blocker_appear = note_unported_mon('seemimic:is_lightblocker_mappear');
+    /* computed BEFORE the appearance is reset below -- afterwards
+       is_lightblocker_mappear() would answer false and the point would stay
+       wrongly blocked. The ordering is load-bearing. */
+    const is_blocker_appear = is_lightblocker_mappear(mtmp);
 
+    /* has_mcorpsenm/freemcorpsenm (the mimicked-corpse slot) are not ported */
     note_unported_mon('seemimic:mcorpsenm');
 
     mtmp.m_ap_type = M_AP_NOTHING;
@@ -1251,8 +1247,8 @@ export function seemimic(mtmp) {
 
     /*  Discovered mimics don't block light. */
     if (is_blocker_appear
-        && !note_unported_mon('seemimic:does_block'))
-        note_unported_mon('seemimic:unblock_point');
+        && !does_block(mtmp.mx, mtmp.my, game.level.at(mtmp.mx, mtmp.my)))
+        unblock_point(mtmp.mx, mtmp.my);
 
     newsym(mtmp.mx, mtmp.my);
 }
@@ -1502,3 +1498,19 @@ const SPECIAL_CORPSE_ARMS = new Set([
     PMNAMES.PM_STONE_GOLEM, PMNAMES.PM_WOOD_GOLEM, PMNAMES.PM_ROPE_GOLEM,
     PMNAMES.PM_LEATHER_GOLEM, PMNAMES.PM_GOLD_GOLEM, PMNAMES.PM_PAPER_GOLEM,
 ].filter(v => v !== undefined));
+
+// src/mon.c:4527 iter_mons() — call vfunc for every living monster on the
+// current level.
+//
+// The C saves mtmp->nmon BEFORE calling vfunc, because vfunc may unlink or free
+// the monster. Our list is an array, so the equivalent guard is to iterate a
+// SNAPSHOT: a vfunc that removes a monster would otherwise shift the array
+// under the loop and skip its neighbour.
+export function iter_mons(vfunc) {
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mtmp) || mon_offmap(mtmp))
+            continue;
+        vfunc(mtmp);
+    }
+    return;
+}

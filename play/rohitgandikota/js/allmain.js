@@ -303,7 +303,7 @@ export async function newgame() {
 
        tools/unported-hits.mjs has this reached by 100% of sessions, but the
        reach figure counts the CALL, not the work behind it. */
-    set_wear(null);   /* for side-effects of starting gear */
+    await set_wear(null);   /* for side-effects of starting gear */
     g.context.seer_turn = rnd(30);
     g.u.umovement = NORMAL_SPEED;
 

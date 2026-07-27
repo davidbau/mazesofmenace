@@ -2,9 +2,10 @@
 // C ref: src/invent.c
 
 import { game } from './gstate.js';
+import { pline_The } from './pline.js';
 import { delobj } from './mon.js';
 import { costly_spot } from './shk.js';
-import { u_at , HANDS_SYM } from './const.js';
+import { u_at , HANDS_SYM, silly_thing_to, W_ARMOR, W_ACCESSORY, W_SADDLE, W_WEAPONS } from './const.js';
 import { hides_under } from './mondata.js';
 import { Hallucination } from './youprop.js';
 import { doname } from './objnam.js';
@@ -127,12 +128,19 @@ export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
 //
 // Inventory is walked in INVLET order (sortloot with SORTLOOT_INVLET), and
 // each letter is appended FIRST and then removed when the filter rejects it.
-function getobj_letters(obj_ok, ctrlflags) {
+/* async because some getobj callbacks are. equip_ok() (src/do_wear.c:3404) is
+   the shared body of wear_ok/takeoff_ok/puton_ok/remove_ok and it calls
+   canwearobj(), which is async in this port because js/pline.js is. Calling
+   such a callback synchronously yields a Promise, which is truthy and equals
+   none of the GETOBJ_* constants, so every letter decision below would take the
+   wrong branch WITHOUT throwing. Awaiting a non-Promise is a no-op, so sync
+   callbacks are unaffected. */
+async function getobj_letters(obj_ok, ctrlflags) {
     let buf = '';
     const forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
 
     if (forceprompt || !obj_ok) {
-        const v = obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE;
+        const v = obj_ok ? await obj_ok(null) : GETOBJ_EXCLUDE;
         if (v === GETOBJ_SUGGEST)
             buf += HANDS_SYM + ' ';
     }
@@ -141,7 +149,7 @@ function getobj_letters(obj_ok, ctrlflags) {
         .sort((a, b) => String(a.invlet).localeCompare(String(b.invlet)));
 
     for (const otmp of sorted) {
-        const v = obj_ok ? obj_ok(otmp) : GETOBJ_SUGGEST;
+        const v = obj_ok ? await obj_ok(otmp) : GETOBJ_SUGGEST;
         if (v === GETOBJ_SUGGEST)
             buf += otmp.invlet;
     }
@@ -153,7 +161,7 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
        loop already read a key here; routing it through tty_yn_function adds
        the paint without changing which keys are consumed. */
     let qbuf = `What do you want to ${word}?`;
-    const lets = getobj_letters(obj_ok_func, ctrlflags | 0);
+    const lets = await getobj_letters(obj_ok_func, ctrlflags | 0);
     qbuf += lets ? ` [${lets} or ?*]` : ' [*]';
 
     for (;;) {
@@ -729,4 +737,32 @@ export function update_inventory() {
         return;
 
     note_unported_invent('update_inventory:win_update_inventory');
+}
+
+// src/invent.c:2094 silly_thing() — feedback for using a command on an object
+// it does not apply to.
+//
+// The 'P'/'R' vs 'W'/'T' cross-command advice above it in the C is inside
+// `#ifdef OBSOLETE_HANDLING` and is not compiled, so the live function is only
+// the Amulet special case and the generic fallback. Not ported, because it is
+// not built.
+export async function silly_thing(word, otmp) {
+    /* see comment about Amulet of Yendor in objtyp_is_callable(do_name.c);
+       known fakes yield the silly thing feedback */
+    if (word === "call"
+        && (otmp.otyp === ONAMES.AMULET_OF_YENDOR
+            || (otmp.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !otmp.known)))
+        await pline_The("Amulet doesn't like being called names.");
+    else
+        await pline(silly_thing_to.replace('%s', word));
+}
+
+// src/invent.c:2156 is_worn() — is this object equipped in ANY slot?
+//
+// Note the mask includes W_SADDLE and W_WEAPONS, not just armor and
+// accessories, so a wielded weapon and a saddled steed's saddle both count.
+export function is_worn(otmp) {
+    return (otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS))
+            ? true
+            : false;
 }

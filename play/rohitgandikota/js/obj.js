@@ -126,6 +126,9 @@ export const is_dwarvish_armor = (otmp) =>
 // written uniformly. Ported as the constant it is, not omitted.
 export const is_gnomish_armor = (_otmp) => false;
 
+// include/obj.h:338 Is_box()
+export const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
+
 // include/obj.h:435-436 is_mines_prize() / is_soko_prize()
 //
 // One-line identity tests against the object id recorded when the Mines or

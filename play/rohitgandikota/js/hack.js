@@ -579,7 +579,7 @@ export function impact_disturbs_zombies(obj, violent) {
 // The message half is recorded: nomovemsg is not tracked in this port (see
 // js/eat.js:138 for another site that notes the same gap), and the Upolyd
 // arm needs pmname and Ugender.
-export function unmul(msg_override) {
+export async function unmul(msg_override) {
     game.multi = 0;              /* caller will usually have done this */
 
     /* nomovemsg handling, the You_can_move_again default, and the
@@ -594,6 +594,8 @@ export function unmul(msg_override) {
         const f = game.afternmv;
         /* clear afternmv BEFORE calling it */
         game.afternmv = null;
-        f();
+        /* awaited: the <X>_on handlers are async because toggle_stealth() and
+           the message helpers are. */
+        await f();
     }
 }

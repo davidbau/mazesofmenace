@@ -12,9 +12,12 @@
 // direct check that the o_init port is right.
 
 import { game } from './gstate.js';
+import { Is_container, Is_box } from './obj.js';
+import { undiscovered_artifact } from './artifact.js';
+import { is_weptool, is_damageable } from './mkobj.js';
 import { strstri } from './hacklib.js';
 import { hard_helmet } from './do_wear.js';
-import { W_ARMOR, W_QUIVER, W_WEP } from './const.js';
+import { W_ARMOR, W_QUIVER, W_WEP, has_oname } from './const.js';
 import { mons } from './monst_data.js';
 import { OCLASSES, ONAMES, obj_descr } from './objects_data.js';
 
@@ -355,4 +358,55 @@ export function boots_simple_name(boots) {
             return shoes;
     }
     return "boots";
+}
+
+// src/objnam.c:1787 not_fully_identified() — is anything about this object
+// still unknown to the hero?
+//
+// MAIL_STRUCTURES IS defined (include/global.h:430), so the bknown test carries
+// the SCR_MAIL exception; the plain `!bknown` in the C's #else arm is dead code
+// and is not what ships.
+export function not_fully_identified(otmp) {
+    /* gold doesn't have any interesting attributes [yet?] */
+    if (otmp.oclass === OCLASSES.COIN_CLASS)
+        return false; /* always fully ID'd */
+    /* check fundamental ID hallmarks first */
+    if (!otmp.known || !otmp.dknown
+        || (!otmp.bknown && otmp.otyp !== ONAMES.SCR_MAIL)
+        || !game.objects[otmp.otyp].oc_name_known)
+        return true;
+    if ((!otmp.cknown && (Is_container(otmp) || otmp.otyp === ONAMES.STATUE))
+        || (!otmp.lknown && Is_box(otmp)))
+        return true;
+    if (otmp.oartifact && undiscovered_artifact(otmp.oartifact))
+        return true;
+    /* otmp->rknown is the only item of interest if we reach here */
+    /*
+     *  Note:  if a revision ever allows scrolls to become fireproof or
+     *  rings to become shockproof, this checking will need to be revised.
+     *  `rknown' ID only matters if xname() will provide the info about it.
+     */
+    if (otmp.rknown
+        || (otmp.oclass !== OCLASSES.ARMOR_CLASS
+            && otmp.oclass !== OCLASSES.WEAPON_CLASS
+            && !is_weptool(otmp, game.objects)   /* (redundant) */
+            && otmp.oclass !== OCLASSES.BALL_CLASS)) /* (useless) */
+        return false;
+    else /* lack of `rknown' only matters for vulnerable objects */
+        return is_damageable(otmp, game.objects);
+}
+
+// src/objnam.c obj_is_pname() — is this object's name a PROPER name?
+//
+// Only a named artifact qualifies, and only once fully identified (unless the
+// game is over or override_ID is set). The oartifact test short-circuits for
+// every ordinary object, which is why this is cheap on the common path.
+export function obj_is_pname(obj) {
+    if (!obj.oartifact || !has_oname(obj))
+        return false;
+    if (!game.program_state?.gameover && !game.iflags?.override_ID) {
+        if (not_fully_identified(obj))
+            return false;
+    }
+    return true;
 }

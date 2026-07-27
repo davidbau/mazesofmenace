@@ -31,6 +31,24 @@ export const is_vampshifter = (mon) =>
 // growl() returns silently for them.
 export const helpless = (mon) => !!(mon.msleeping || !mon.mcanmove);
 
+// include/monst.h:243 is_obj_mappear() — a mimic imitating a specific object.
+export const is_obj_mappear = (mon, otyp) =>
+    M_AP_TYPE(mon) === M_AP_OBJECT && mon.mappearance === otyp;
+
+// include/monst.h:233 is_lightblocker_mappear() — mimic appearances that block
+// vision/light.
+//
+// The `mappearance < S_ndoor` term is the C's way of saying "any wall symbol":
+// the wall glyphs all sort below S_ndoor in the symbol enum, so this is a range
+// test, not an equality one. Keep it as a comparison.
+export const is_lightblocker_mappear = (mon) =>
+    is_obj_mappear(mon, ONAMES.BOULDER)
+    || (M_AP_TYPE(mon) === M_AP_FURNITURE
+        && (mon.mappearance === MONSYMS.S_hcdoor
+            || mon.mappearance === MONSYMS.S_vcdoor
+            || mon.mappearance < MONSYMS.S_ndoor /* = walls */
+            || mon.mappearance === MONSYMS.S_tree));
+
 // include/monst.h:240 is_door_mappear() — a mimic currently imitating a closed
 // door. lookaround() needs it: a mimicking door stops a run exactly as a real
 // closed door does.

@@ -18,6 +18,7 @@
 // everything after it.
 
 import { game } from './gstate.js';
+import { setworn } from './worn.js';
 import { mergable } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
@@ -531,8 +532,13 @@ export function ini_inv_use_obj(obj) {
           : cat === ARM_GLOVES ? W_ARMG : cat === ARM_SHIRT ? W_ARMU
           : cat === ARM_CLOAK ? W_ARMC : cat === ARM_BOOTS ? W_ARMF
           : cat === ARM_SUIT ? W_ARM : 0;
+        /* src/u_init.c:1269-1281 — the C calls setworn(), not a bare mask
+           assignment. setworn() also assigns *(wp->w_obj) (so game.u.uarm,
+           game.u.uarmg, ...) and ORs in the item's extrinsic property bits.
+           Setting owornmask alone left every slot pointer null, which made
+           set_wear() a no-op and meant no starting item conferred anything. */
         if (slot && !(worn_slots() & slot))
-            obj.owornmask = slot;
+            setworn(obj, slot);
     }
     obj.owornmask ||= 0;
     ini_inv_wield(obj);

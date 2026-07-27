@@ -126,7 +126,13 @@ export class NethackGame {
         if ('tutorial' in rc.opts) g.tutorial_set_in_config = true;
 
         // Initialize hero struct
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
+        /* include/you.h:169 struct u_roleplay — zeroed like the C struct.
+           Nothing assigns it today, so `pauper` reads as false exactly as
+           before; setworn() needs `nudist` to be a real field to clear. */
+        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0,
+                uroleplay: { blind: false, nudist: false, deaf: false,
+                             pauper: false, reroll: false,
+                             numbones: 0, numrerolls: 0 } };
         g.context = { move: 0 };
         g.program_state = {};
         /* src/decl.c — svm.moves starts at 0 and moveloop() advances it. Several

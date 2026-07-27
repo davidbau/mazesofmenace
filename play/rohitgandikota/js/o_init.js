@@ -11,6 +11,13 @@ import { NODIR, IMMEDIATE } from './const.js';
 // tools/gen-objects.mjs.
 
 import { game } from './gstate.js';
+import { PMNAMES } from './monst_data.js';
+import { Role_if } from './role.js';
+
+function note_unported_o_init(what) {
+    (game.unported_o_init ||= new Set()).add(what);
+}
+import { Hallucination } from './youprop.js';
 import { rn2 } from './rng.js';
 import { obj_typename, OBJ_DESCR as objDescrOf } from './objnam.js';
 import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
@@ -325,9 +332,18 @@ const disco_orders_descr = [
 export function discover_object(oindx, mark_as_known, mark_as_encountered,
                                 credit_hero) {
     const objects = game.objects;
-    if (oindx < 1)                    /* FIRST_OBJECT */
+    /* src/o_init.c:460 — the C bound is FIRST_OBJECT, which is LAST_GENERIC+1
+       (18), NOT 1. `< 1` only skipped STRANGE_OBJECT and let all 17 generic
+       objects be discovered, which the C explicitly excludes. */
+    if (oindx < ONAMES.FIRST_OBJECT) /* don't discover generic objects */
         return;
 
+    /* the C's third arm is `|| (Role_if(PM_SAMURAI)
+       && Japanese_item_name(oindx, NULL))` — a Samurai starts knowing the
+       Japanese-named items. Japanese_item_name is not ported, so it is
+       recorded; the arm only ever ADDS discoveries, never removes them. */
+    if (Role_if(PMNAMES.PM_SAMURAI))
+        note_unported_o_init('discover_object:Japanese_item_name');
     if ((!objects[oindx].oc_name_known && mark_as_known)
         || (!objects[oindx].oc_encountered && mark_as_encountered)) {
         const acls = objects[oindx].oc_class;
@@ -411,4 +427,24 @@ function let_to_name(oclass) {
     for (const [k, v] of Object.entries(OCLASSES))
         if (v === oclass && CLASS_NAMES[k]) return CLASS_NAMES[k];
     return '';
+}
+
+// include/hack.h:1530 makeknown() — discover_object(x, TRUE, TRUE, TRUE).
+export function makeknown(x) {
+    return discover_object(x, true, true, true);
+}
+
+// src/o_init.c:442 observe_object() — the hero has seen this object clearly.
+//
+// discover_object(oindx, FALSE, TRUE, FALSE): the FALSE first arg means the
+// APPEARANCE is learned, not the type name, which is what separates this from
+// makeknown().
+export function observe_object(obj) {
+    const oindx = obj.otyp;
+
+    /* skip for generic objects and for STRANGE_OBJECT */
+    if (oindx >= ONAMES.FIRST_OBJECT && !Hallucination()) {
+        obj.dknown = 1;
+        discover_object(oindx, false, true, false);
+    }
 }

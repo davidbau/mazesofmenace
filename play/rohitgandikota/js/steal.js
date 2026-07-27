@@ -2,19 +2,22 @@
 // C ref: src/steal.c
 
 import { game } from './gstate.js';
+import { donning, cancel_don, Armor_off, Cloak_off, Boots_off,
+         Gloves_off, Helmet_off, Shield_off, Shirt_off } from './do_wear.js';
+import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 
 function note_unported_steal(what) {
     (game.unported ||= new Set()).add(what);
 }
 import { rn1 } from './rng.js';
-import { LARGEST_INT } from './const.js';
+import { LARGEST_INT, W_ARMOR, W_AMUL, W_RING, W_TOOL, W_WEAPONS, W_BALL, W_CHAIN } from './const.js';
 
 /* js/dog.js owns droppables() and imports this module, so it hands the
    function over instead of being imported back -- dog.js is one of the
    modules that re-enters during initialisation. */
 let droppables_fn = null;
 export function steal_wire_droppables(fn) { droppables_fn = fn; }
-import { extract_from_minvent } from './worn.js';
+import { extract_from_minvent, setnotworn, setworn } from './worn.js';
 import { place_object } from './mkobj.js';
 import { stackobj } from './invent.js';
 import { newsym } from './display.js';
@@ -153,4 +156,77 @@ export function thiefdead() {
                                          gn.nomovemsg = 0; }
        stealarm is not ported, so this cannot be tested faithfully yet. */
     note_unported_steal('thiefdead:stealarm_swap');
+}
+
+// src/steal.c:213 remove_worn_item() — take a worn item off, whatever slot.
+//
+// unchain_ball: whether to unpunish or just unwield.
+/* async: the <X>_off handlers are, because toggle_stealth() and the message
+   helpers are. */
+export async function remove_worn_item(obj, unchain_ball) {
+    let oldinuse;
+
+    if (donning(obj))
+        cancel_don();
+    if (!obj.owornmask)
+        return;
+
+    /*
+     * Losing worn gear might drop hero into water or lava or onto a
+     * location-changing trap or take away the ability to breathe in water.
+     * Marking it 'in_use' prevents emergency_disrobe() from dropping it
+     * and lava_effects() from destroying it; other cases impacting object
+     * location (or destruction) might still have issues.
+     */
+    oldinuse = obj.in_use;
+    obj.in_use = 1;
+
+    if (obj.owornmask & W_ARMOR) {
+        if (obj === game.u.uskin) {
+            /* C impossible()s then calls skinback(TRUE); skinback is not
+               ported (it needs arti_light_radius/maybe_adjust_light). */
+            note_unported_steal('remove_worn_item:skinback');
+        }
+        if (obj === game.u.uarm)
+            await Armor_off();
+        else if (obj === game.u.uarmc)
+            await Cloak_off();
+        else if (obj === game.u.uarmf)
+            await Boots_off();
+        else if (obj === game.u.uarmg)
+            await Gloves_off();
+        else if (obj === game.u.uarmh)
+            await Helmet_off();
+        else if (obj === game.u.uarms)
+            await Shield_off();
+        else if (obj === game.u.uarmu)
+            await Shirt_off();
+        /* catchall -- should never happen */
+        else
+            setworn(null, obj.owornmask & W_ARMOR);
+    } else if (obj.owornmask & W_AMUL) {
+        note_unported_steal('remove_worn_item:Amulet_off');
+    } else if (obj.owornmask & W_RING) {
+        note_unported_steal('remove_worn_item:Ring_gone');
+    } else if (obj.owornmask & W_TOOL) {
+        note_unported_steal('remove_worn_item:Blindf_off');
+    } else if (obj.owornmask & W_WEAPONS) {
+        if (obj === game.u.uwep)
+            uwepgone();
+        if (obj === game.u.uswapwep)
+            uswapwepgone();
+        if (obj === game.u.uquiver)
+            uqwepgone();
+    }
+
+    if (obj.owornmask & (W_BALL | W_CHAIN)) {
+        if (unchain_ball)
+            note_unported_steal('remove_worn_item:unpunish');
+    } else if (obj.owornmask) {
+        /* catchall */
+        setnotworn(obj);
+    }
+
+    /* the OBJ_DELETED arm is a debugpline1() only, no game effect */
+    obj.in_use = oldinuse;
 }

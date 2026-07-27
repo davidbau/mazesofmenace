@@ -66,11 +66,39 @@ export function isqrt(val) {
     return rt;
 }
 
+// src/hacklib.c highc() — force 'c' into uppercase.
+export function highc(c) {
+    return (c >= 'a' && c <= 'z')
+        ? String.fromCharCode(c.charCodeAt(0) & ~0o40)
+        : c;
+}
+
 // src/hacklib.c:83 lowc() — force 'c' into lowercase.
 export function lowc(c) {
     return (c >= 'A' && c <= 'Z')
         ? String.fromCharCode(c.charCodeAt(0) | 0o40)
         : c;
+}
+
+// src/hacklib.c strncmpi() — aka strncasecmp. Compares at most n characters.
+//
+// C walks NUL-terminated buffers, so a short string ends the comparison early:
+// it returns (*s1 != 0) when s2 runs out (s1 >= s2) and -1 when s1 runs out.
+// JS strings have no terminator, so reading past the end gives undefined; the
+// explicit length tests below reproduce the same three exits in the same order.
+export function strncmpi(s1, s2, n) {
+    let i = 0;
+    while (n--) {
+        if (i >= s2.length)
+            return (i < s1.length) ? 1 : 0; /* s1 >= s2 */
+        else if (i >= s1.length)
+            return -1;                      /* s1  < s2 */
+        const t1 = lowc(s1[i]), t2 = lowc(s2[i]);
+        i++;
+        if (t1 !== t2)
+            return (t1 > t2) ? 1 : -1;
+    }
+    return 0; /* s1 == s2 */
 }
 
 // src/hacklib.c strstri() — case-insensitive substring search.
@@ -102,4 +130,44 @@ export function strstri(str, sub) {
             return i; /* full match */
     }
     return -1; /* not found */
+}
+
+// include/global.h:113 strcmpi() — strncmpi(a, b, -1).
+//
+// The -1 is deliberate in the C: `while (n--)` with n negative never runs out,
+// so the comparison ends only at a NUL. Our strncmpi() reproduces those exits
+// with explicit length tests, so passing -1 through works unchanged rather than
+// needing a separate implementation.
+export function strcmpi(a, b) {
+    return strncmpi(a, b, -1);
+}
+
+// src/hacklib.c fuzzymatch() — compare two strings for equality, ignoring the
+// presence of specified characters (typically whitespace) and possibly
+// ignoring case.
+//
+// C reads past the end of a JS string as undefined rather than NUL, so the walk
+// uses explicit index bounds and a '\0' sentinel to reproduce the C's exits:
+// the loop stops when EITHER string ends, and the match succeeds only when BOTH
+// ended together.
+export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
+    let i = 0, j = 0;
+    let c1, c2;
+
+    do {
+        do { c1 = (i < s1.length) ? s1[i++] : '\0'; }
+        while (c1 !== '\0' && ignore_chars.includes(c1));
+        do { c2 = (j < s2.length) ? s2[j++] : '\0'; }
+        while (c2 !== '\0' && ignore_chars.includes(c2));
+        if (c1 === '\0' || c2 === '\0')
+            break; /* stop when end of either string is reached */
+
+        if (caseblind) {
+            c1 = lowc(c1);
+            c2 = lowc(c2);
+        }
+    } while (c1 === c2);
+
+    /* match occurs only when the end of both strings has been reached */
+    return c1 === '\0' && c2 === '\0';
 }

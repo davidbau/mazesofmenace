@@ -9,6 +9,7 @@ import { seemimic } from './mon.js';
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { wear_ok, puton_ok, remove_ok, takeoff_ok } from './do_wear.js';
 import { Confusion, Stunned, Fumbling } from './youprop.js';
 import { dodrop } from './do.js';
 import { any_obj_ok } from './invent.js';
@@ -356,67 +357,10 @@ function read_ok(obj) {
 
 /* any_obj_ok() lives in js/invent.js, mirroring src/invent.c:1710. */
 
-/* src/do_wear.c:3404 equip_ok() — the shared filter behind W, T, P and R.
-//
-   The two XORs carry the logic and neither is decorative:
-
-     removing ^ is_worn                  putting ON something already worn,
-                                         or taking OFF something not worn, is
-                                         EXCLUDE_INACCESS -- the item exists
-                                         but the action does not apply.
-     accessory ^ (oclass != ARMOR_CLASS) armor offered to 'P'/'R', or an
-                                         accessory offered to 'W'/'T', is
-                                         DOWNPLAY rather than EXCLUDE: it is
-                                         wearable, just not by this command.
-
-   The class test excludes everything but armor, rings and amulets, THEN
-   re-admits four specific otyps -- MEAT_RING, BLINDFOLD, TOWEL, LENSES --
-   which are wearable while belonging to other classes. Dropping that
-   exception list would make a blindfold unofferable to 'P'.
-
-   canwearobj (polyform restrictions) and inaccessible_equipment (cursed
-   armor covering a ring) are recorded; every other arm is real. */
-function equip_ok(obj, removing, accessory) {
-    if (!obj)
-        return GETOBJ_EXCLUDE;
-
-    /* ignore for putting on if already worn, or removing if not worn */
-    const is_worn = ((obj.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0);
-    if (!!removing !== is_worn)
-        return GETOBJ_EXCLUDE_INACCESS;
-
-    /* exclude most object classes outright */
-    if (obj.oclass !== OCLASSES.ARMOR_CLASS
-        && obj.oclass !== OCLASSES.RING_CLASS
-        && obj.oclass !== OCLASSES.AMULET_CLASS) {
-        /* ... except for a few wearable exceptions outside these classes */
-        if (obj.otyp !== ONAMES.MEAT_RING && obj.otyp !== ONAMES.BLINDFOLD
-            && obj.otyp !== ONAMES.TOWEL && obj.otyp !== ONAMES.LENSES)
-            return GETOBJ_EXCLUDE;
-    }
-
-    /* armor with 'P' or 'R' or accessory with 'W' or 'T' */
-    if (!!accessory !== (obj.oclass !== OCLASSES.ARMOR_CLASS))
-        return GETOBJ_DOWNPLAY;
-
-    /* armor we can't wear, e.g. from polyform */
-    if (obj.oclass === OCLASSES.ARMOR_CLASS && !removing
-        && !note_unported_cmd('equip_ok:canwearobj'))
-        return GETOBJ_DOWNPLAY;
-
-    /* removing inaccessible equipment */
-    if (removing)
-        note_unported_cmd('equip_ok:inaccessible_equipment');
-
-    /* all good to go */
-    return GETOBJ_SUGGEST;
-}
-
-/* src/do_wear.c:3451-3475 — the four getobj callbacks over equip_ok. */
-const puton_ok   = (o) => equip_ok(o, false, true);
-const remove_ok  = (o) => equip_ok(o, true,  true);
-const wear_ok    = (o) => equip_ok(o, false, false);
-const takeoff_ok = (o) => equip_ok(o, true,  false);
+/* equip_ok() and its four getobj callbacks live in js/do_wear.js, their C home
+   (src/do_wear.c:3404 and 3451-3475). They used to be duplicated here with the
+   canwearobj() arm recorded; canwearobj is ported now, so the real ones are
+   imported instead. */
 
 /* src/cmd.c cmdlist — the verb and object filter each command hands getobj().
    Read from the C, not invented: the word appears verbatim in the prompt

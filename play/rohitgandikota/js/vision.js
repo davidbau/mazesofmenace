@@ -4,11 +4,12 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
-import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
-    D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, COULD_SEE, IN_SIGHT } from './const.js';
+import { sobj_at } from './invent.js';
+import { m_at } from './mon.js';
+import { is_lightblocker_mappear } from './monst.js';
+import { See_invisible, Underwater } from './youprop.js';
+import { ONAMES } from './objects_data.js';
+import { COLNO, ROWNO, DOOR, SDOOR, POOL, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, IS_WALL, COULD_SEE, IN_SIGHT, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL, TREE, CLOUD, LAVAWALL } from './const.js';
 import { newsym } from './display.js';
 
 
@@ -619,4 +620,56 @@ export function block_point(x, y) {
        outside night-vision range, and the hero should suddenly see it. */
     if (game.viz_array?.[y]?.[x])
         game.vision_full_recalc = 1;
+}
+
+// src/vision.c:899 unblock_point() — make the location transparent to light.
+//
+// The mirror of block_point above. dig_point(y, x) — note the C passes ROW
+// first — is the shadow-map update and is not ported, same as block_point's
+// fill_point, so it is recorded rather than guessed.
+export function unblock_point(x, y) {
+    note_unported_vision('unblock_point:dig_point');
+
+    /* recalc light sources here? */
+
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
+
+// src/vision.c:153 does_block() — does anything at <x,y> block light?
+//
+// Returns 1 for a hard blocker and 2 for a visible region (gas cloud), which
+// callers distinguish; do NOT collapse it to a boolean.
+//
+// The C's #ifdef DEBUG `seethru` wizard-mode escape is not compiled in a normal
+// build and is not ported.
+export function does_block(x, y, lev) {
+    /* Features that block . . */
+    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE
+        || (IS_DOOR(lev.typ)
+            && (lev.doormask & (D_CLOSED | D_LOCKED | D_TRAPPED))))
+        return 1;
+
+    if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL)
+        return 1;
+    /* the C also ORs `(Underwater && is_moat(x, y))` here; is_moat is not
+       ported, so that one term is recorded. */
+    if (Underwater())
+        note_unported_vision('does_block:is_moat');
+
+    /* Boulders block light. */
+    if (sobj_at(ONAMES.BOULDER, x, y))
+        return 1;
+
+    /* Mimics mimicking a door or boulder or ... block light. */
+    const mon = m_at(x, y);
+    if (mon && (!mon.minvis || See_invisible())
+        && is_lightblocker_mappear(mon))
+        return 1;
+
+    /* Clouds (poisonous or not) block light. visible_region_at() is the gas
+       region system and is not ported, so the `return 2` arm is recorded. */
+    note_unported_vision('does_block:visible_region_at');
+
+    return 0;
 }
