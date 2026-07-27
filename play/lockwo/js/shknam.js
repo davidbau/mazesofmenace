@@ -17,6 +17,210 @@ import { makemon, mkclass, name_to_pmidx, monster_by_pmidx } from './makemon.js'
 import { make_engr_at } from './engrave.js';
 import { shtypes, get_shop_item, VEGETARIAN_CLASS } from './shtypes.js';
 
+// C ref: shknam.c shkliquors[]..shkgeneral[] — per-shop-type personal name
+// pools for nameshk().  Platform-conditional entries (#ifdef OVERLAY/WIN32/
+// MACOS9/AMIGA/TOS/OS2/VMS) are omitted; the Unix build never defines them.
+const shkliquors = [
+    'Njezjin', 'Tsjernigof', 'Ossipewsk', 'Gorlowka', 'Gomel',
+    'Konosja', 'Weliki Oestjoeg', 'Syktywkar', 'Sablja', 'Narodnaja', 'Kyzyl',
+    'Walbrzych', 'Swidnica', 'Klodzko', 'Raciborz', 'Gliwice', 'Brzeg',
+    'Krnov', 'Hradec Kralove',
+    'Leuk', 'Brig', 'Brienz', 'Thun', 'Sarnen', 'Burglen', 'Elm', 'Flims',
+    'Vals', 'Schuls', 'Zum Loch',
+];
+const shkbooks = [
+    'Skibbereen', 'Kanturk', 'Rath Luirc', 'Ennistymon',
+    'Lahinch', 'Kinnegad', 'Lugnaquillia', 'Enniscorthy',
+    'Gweebarra', 'Kittamagh', 'Nenagh', 'Sneem',
+    'Ballingeary', 'Kilgarvan', 'Cahersiveen', 'Glenbeigh',
+    'Kilmihil', 'Kiltamagh', 'Droichead Atha', 'Inniscrone',
+    'Clonegal', 'Lisnaskea', 'Culdaff', 'Dunfanaghy',
+    'Inishbofin', 'Kesh',
+];
+const shkarmors = [
+    'Demirci', 'Kalecik', 'Boyabai', 'Yildizeli', 'Gaziantep',
+    'Siirt', 'Akhalataki', 'Tirebolu', 'Aksaray', 'Ermenak',
+    'Iskenderun', 'Kadirli', 'Siverek', 'Pervari', 'Malasgirt',
+    'Bayburt', 'Ayancik', 'Zonguldak', 'Balya', 'Tefenni',
+    'Artvin', 'Kars', 'Makharadze', 'Malazgirt', 'Midyat',
+    'Birecik', 'Kirikkale', 'Alaca', 'Polatli', 'Nallihan',
+];
+const shkwands = [
+    'Yr Wyddgrug', 'Trallwng', 'Mallwyd', 'Pontarfynach', 'Rhaeader',
+    'Llandrindod', 'Llanfair-ym-muallt', 'Y-Fenni', 'Maesteg', 'Rhydaman',
+    'Beddgelert', 'Curig', 'Llanrwst', 'Llanerchymedd', 'Caergybi',
+    'Nairn', 'Turriff', 'Inverurie', 'Braemar', 'Lochnagar', 'Kerloch',
+    'Beinn a Ghlo', 'Drumnadrochit', 'Morven', 'Uist', 'Storr',
+    'Sgurr na Ciche', 'Cannich', 'Gairloch', 'Kyleakin', 'Dunvegan',
+];
+const shkrings = [
+    'Feyfer', 'Flugi', 'Gheel', 'Havic', 'Haynin',
+    'Hoboken', 'Imbyze', 'Juyn', 'Kinsky', 'Massis',
+    'Matray', 'Moy', 'Olycan', 'Sadelin', 'Svaving',
+    'Tapper', 'Terwen', 'Wirix', 'Ypey',
+    'Rastegaisa', 'Varjag Njarga', 'Kautekeino', 'Abisko', 'Enontekis',
+    'Rovaniemi', 'Avasaksa', 'Haparanda', 'Lulea', 'Gellivare',
+    'Oeloe', 'Kajaani', 'Fauske',
+];
+const shkfoods = [
+    'Djasinga', 'Tjibarusa', 'Tjiwidej', 'Pengalengan',
+    'Bandjar', 'Parbalingga', 'Bojolali', 'Sarangan',
+    'Ngebel', 'Djombang', 'Ardjawinangun', 'Berbek',
+    'Papar', 'Baliga', 'Tjisolok', 'Siboga',
+    'Banjoewangi', 'Trenggalek', 'Karangkobar', 'Njalindoeng',
+    'Pasawahan', 'Pameunpeuk', 'Patjitan', 'Kediri',
+    'Pemboeang', 'Tringanoe', 'Makin', 'Tipor',
+    'Semai', 'Berhala', 'Tegal', 'Samoe',
+];
+const shkweapons = [
+    'Voulgezac', 'Rouffiac', 'Lerignac', 'Touverac', 'Guizengeard',
+    'Melac', 'Neuvicq', 'Vanzac', 'Picq', 'Urignac',
+    'Corignac', 'Fleac', 'Lonzac', 'Vergt', 'Queyssac',
+    'Liorac', 'Echourgnac', 'Cazelon', 'Eypau', 'Carignan',
+    'Monbazillac', 'Jonzac', 'Pons', 'Jumilhac', 'Fenouilledes',
+    'Laguiolet', 'Saujon', 'Eymoutiers', 'Eygurande', 'Eauze',
+    'Labouheyre',
+];
+const shktools = [
+    'Ymla', 'Eed-morra', 'Elan Lapinski', 'Cubask', 'Nieb', 'Bnowr Falr',
+    'Sperc', 'Noskcirdneh', 'Yawolloh', 'Hyeghu', 'Niskal', 'Trahnil',
+    'Htargcm', 'Enrobwem', 'Kachzi Rellim', 'Regien', 'Donmyar', 'Yelpur',
+    'Nosnehpets', 'Stewe', 'Renrut', 'Senna Hut', '-Zlaw', 'Nosalnef',
+    'Rewuorb', 'Rellenk', 'Yad', 'Cire Htims', 'Y-crad', 'Nenilukah',
+    'Corsh', 'Aned', 'Dark Eery', 'Niknar', 'Lapu', 'Lechaim',
+    'Rebrol-nek', 'AlliWar Wickson', 'Oguhmk', 'Telloc Cyaj',
+];
+const shkhealthfoods = [
+    "Ga'er", 'Zhangmu', 'Rikaze', 'Jiangji', 'Changdu',
+    'Linzhi', 'Shigatse', 'Gyantse', 'Ganden', 'Tsurphu',
+    'Lhasa', 'Tsedong', 'Drepung',
+    '=Azura', '=Blaze', '=Breanna', '=Breezy', '=Dharma',
+    '=Feather', '=Jasmine', '=Luna', '=Melody', '=Moonjava',
+    '=Petal', '=Rhiannon', '=Starla', '=Tranquilla', '=Windsong',
+    '=Zennia', '=Zoe', '=Zora',
+];
+const shklight = [
+    'Zarnesti', 'Slanic', 'Nehoiasu', 'Ludus', 'Sighisoara', 'Nisipitu',
+    'Razboieni', 'Bicaz', 'Dorohoi', 'Vaslui', 'Fetesti', 'Tirgu Neamt',
+    'Babadag', 'Zimnicea', 'Zlatna', 'Jiu', 'Eforie', 'Mamaia',
+    'Silistra', 'Tulovo', 'Panagyuritshte', 'Smolyan', 'Kirklareli', 'Pernik',
+    'Lom', 'Haskovo', 'Dobrinishte', 'Varvara', 'Oryahovo', 'Troyan',
+    'Lovech', 'Sliven',
+];
+const shkgeneral = [
+    'Hebiwerie', 'Possogroenoe', 'Asidonhopo', 'Manlobbi',
+    'Adjama', 'Pakka Pakka', 'Kabalebo', 'Wonotobo',
+    'Akalapi', 'Sipaliwini',
+    'Annootok', 'Upernavik', 'Angmagssalik',
+    'Aklavik', 'Inuvik', 'Tuktoyaktuk', 'Chicoutimi',
+    'Ouiatchouane', 'Chibougamau', 'Matagami', 'Kipawa',
+    'Kinojevis', 'Abitibi', 'Maganasipi',
+    'Akureyri', 'Kopasker', 'Budereyri', 'Akranes',
+    'Bordeyri', 'Holmavik',
+];
+
+// C ref: shknam.c shtypes[].shknms field — map the shtypes.js identity tag to
+// the actual name pool.
+const SHKNAME_POOL = {
+    general: shkgeneral, armors: shkarmors, books: shkbooks,
+    liquors: shkliquors, weapons: shkweapons, foods: shkfoods,
+    rings: shkrings, wands: shkwands, tools: shktools,
+    healthfoods: shkhealthfoods, light: shklight,
+};
+
+// C ref: dungeon.c ledger_no() — dlevel + the dungeon's ledger_start.
+function ledger_no_of(uz) {
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    return (dungeon?.ledger_start ?? 0) + (uz?.dlevel ?? 1);
+}
+
+// C ref: u_init.c/calendar.c — ubirthday is the game-start wall-clock time
+// (mktime'd from the fixed recording datetime), used only as a seed for
+// nameshk()'s game-to-game name variation.  There's no way to recover the
+// harness's exact TZ from the session data; empirically the recorded public
+// sessions' shopkeeper names are only reproduced when game.datetime is read
+// as America/Chicago wall-clock (validated against seed0012's "Adjama" and
+// cross-checked for internal consistency), so that's the fixed zone used
+// here — analogous to record-session.mjs's own fixed RERECORD_TZ default.
+function ubirthdaySeconds() {
+    const dt = String(game.datetime || '');
+    if (!/^\d{14}$/.test(dt)) return 0;
+    const y = +dt.slice(0, 4), mo = +dt.slice(4, 6), d = +dt.slice(6, 8);
+    const h = +dt.slice(8, 10), mi = +dt.slice(10, 12), s = +dt.slice(12, 14);
+    const TZ = 'America/Chicago';
+    const guess = Date.UTC(y, mo - 1, d, h, mi, s);
+    const dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ, hourCycle: 'h23',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const parts = {};
+    for (const p of dtf.formatToParts(new Date(guess))) parts[p.type] = p.value;
+    const zonedAsUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day,
+        +parts.hour, +parts.minute, +parts.second);
+    const offsetMs = zonedAsUTC - guess;
+    return Math.trunc((guess - offsetMs) / 1000);
+}
+
+// C ref: shknam.c nameshk() — extract a personal shopkeeper name for the
+// given shop-name pool; sets shk.eshk.shknam and shk.female.  RNG-neutral
+// except the shktools pool (rn2(names_avail) per retry) and the rare
+// same-level-name-collision retry.
+function nameshk(shk, poolKey) {
+    let nlp = SHKNAME_POOL[poolKey];
+    if (!nlp) return; // unknown pool: leave unnamed (falls back to species name)
+
+    if (poolKey === 'light') {
+        // C: minetown lighting shk special-case — the 'light' shtype (prob 0)
+        // is only ever placed via the Mine Town special level.
+        shk.eshk.shknam = '+Izchak';
+        shk.female = 0;
+        return;
+    }
+
+    const nseed = Math.trunc(ubirthdaySeconds() / 257);
+    let name_wanted = shk.m_id + ledger_no_of(game.u?.uz) + (nseed % 13) - (nseed % 5);
+    if (name_wanted < 0) name_wanted += 18;
+    shk.female = name_wanted & 1;
+
+    let names_avail = nlp.length;
+    name_wanted = name_wanted % names_avail;
+
+    let shname = null;
+    for (let trycnt = 0; trycnt < 50; trycnt++) {
+        if (nlp === shktools) {
+            shname = shktools[rn2(names_avail)];
+            shk.female = 0; // reversed below for '_' prefix
+        } else if (name_wanted < names_avail) {
+            shname = nlp[name_wanted];
+        } else {
+            const i = rn2(names_avail);
+            if (i !== 0) {
+                shname = nlp[i - 1];
+            } else if (nlp !== shkgeneral) {
+                nlp = shkgeneral;
+                names_avail = nlp.length;
+                continue;
+            } else {
+                shname = shk.female ? '-Lucrezia' : '+Dirk';
+            }
+        }
+        if (shname[0] === '_' || shname[0] === '-') shk.female = 1;
+        else if (shname[0] === '|' || shname[0] === '+') shk.female = 0;
+
+        // is name already in use on this level?
+        let collision = false;
+        for (const mtmp of game.level?.monsters || []) {
+            if (mtmp === shk || !mtmp.isshk) continue;
+            if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+            if (mtmp.eshk?.shknam === shname) { collision = true; break; }
+        }
+        if (!collision) break;
+        name_wanted = names_avail; // try a random name
+    }
+    shk.eshk.shknam = shname;
+}
+
 const FOOD_CLASS = 7;
 const S_MIMIC = 13;
 const SKELETON_KEY = 221, TOUCHSTONE = 263, SCR_CHARGING = 343;
@@ -150,20 +354,9 @@ function shkinit(shp, sroom) {
         || (shp.shknms === 'general' && rn2(5))) {
         mongets_shk(shk, SCR_CHARGING);
     }
-    // nameshk() consumes no RNG for the general/most cases except shktools
-    // (rn2(names_avail)).  Only the hardware store uses shktools; the general
-    // store (seed5002) does not.  Port the shktools draw for faithfulness.
-    if (shp.shknms === 'tools') {
-        // C ref: nameshk() shktools branch — rn2(names_avail) per trycnt; the
-        // first iteration always succeeds (name unused), so a single draw.
-        rn2(SHKTOOLS_COUNT);
-    }
+    nameshk(shk, shp.shknms);
     return sh;
 }
-
-// Number of entries in C's shktools[] name array (shknam.c).  Used only to
-// reproduce the shktools nameshk rn2(names_avail) draw for hardware stores.
-const SHKTOOLS_COUNT = 16;
 
 // C ref: makemon.c mongets() — give a monster a freshly made object.  For a
 // shopkeeper (not demon/minion/mplayer/prince), the only RNG is mksobj().

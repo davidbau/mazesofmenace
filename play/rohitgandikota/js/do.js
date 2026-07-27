@@ -223,7 +223,7 @@ export async function deferred_goto() {
 // ball dropping, shop selling, stackobj and the blind-levitation map_object
 // are recorded.
 export function dropz(obj, with_impact) {
-    if (obj === game.uwep)
+    if (obj === game.u.uwep)
         note_unported_do('dropz:setuwep');
     if (obj === game.uquiver)
         setuqwep(null);         /* src/do.c -- ported at wield.js:113 */
@@ -314,7 +314,7 @@ export function drop(obj) {
     if (obj.otyp === ONAMES.CORPSE
         && note_unported_do('drop:better_not_try_to_drop_that'))
         return ECMD_FAIL;
-    if (obj === game.uwep) {
+    if (obj === game.u.uwep) {
         if (welded(obj)) {
             note_unported_do('drop:weldmsg');
             return ECMD_FAIL;
@@ -394,7 +394,7 @@ export function canletgo(obj, word) {
         if (word) note_unported_do('canletgo:wearing_msg');
         return false;
     }
-    if (obj === game.uwep && welded(game.uwep)) {
+    if (obj === game.u.uwep && welded(game.u.uwep)) {
         /* no weldmsg(), so uwep bknown might become set silently */
         if (word) note_unported_do('canletgo:welded_msg');
         return false;

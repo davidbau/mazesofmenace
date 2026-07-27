@@ -757,6 +757,15 @@ export async function moveloop_turn() {
     if (g.u.umovement == null) g.u.umovement = NORMAL_SPEED;
     g.u.umovement -= NORMAL_SPEED;
 
+    // C ref: allmain.c moveloop_core():208 — encumber_msg(); runs once per turn,
+    // right after context.move is consumed and before monster movement, so an
+    // autopickup that changed the hero's burden is announced here (chaining
+    // onto the pickup's prinv line via update_topl's --More-- paging).
+    {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
+
     // C ref: allmain.c moveloop_core():
     //   do {                                       // "hero can't move yet"
     //       svc.context.mon_moving = TRUE;

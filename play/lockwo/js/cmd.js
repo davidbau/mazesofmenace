@@ -1676,10 +1676,6 @@ export async function domove(dx, dy) {
     // every subsequent turn.
     if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
 
-    // C ref: hack.c domove() — after a successful WALK, smudge any engraving on
-    // the squares the hero left and entered (rnd(5) per engraved square).
-    maybe_smudge_engr(oldx, oldy, newx, newy);
-
     // C ref: hack.c domove_core() -> u_on_newpos() -> dungeon.c see_nearby_objects().
     // Having relocated on the same level, the hero may now be close enough to a
     // generic (undescribed) potion/gem/spellbook to see it up close, upgrading
@@ -1702,6 +1698,15 @@ export async function domove(dx, dy) {
     // re-entry (pooleffects -> drown -> teleds -> spoteffects again) picks up
     // at the square the hero actually lands on, not the one it fell into.
     await spoteffects(pickup_after_move);
+
+    // C ref: hack.c domove() — after domove_core() (movement + spoteffects,
+    // i.e. everything above) completes, a successful WALK/RUSH smudges any
+    // engraving on the squares the hero left and entered (rnd(5) per engraved
+    // square) using the CURRENT position (spoteffects may have moved the hero
+    // further, e.g. falling through a trap door).  This runs AFTER read_engr_at
+    // (called from spoteffects' pickup path), so what gets read/displayed this
+    // turn is the engraving as it stood BEFORE this move's smudge.
+    maybe_smudge_engr(oldx, oldy, u.ux, u.uy);
 }
 
 // C ref: drawing.c defsyms[].explanation (the short "desc" field) for the
@@ -1927,9 +1932,22 @@ async function moverock(otmp, sx, sy, dx, dy) {
             if (!hero_throws_rocks()) exercise(A_STR, true);
             game._boulder_lastmovetime = game.moves;
         }
-        // C: movobj(otmp, rx, ry) relinks the boulder and redraws both squares.
+        // C: movobj(otmp, rx, ry) == remove_object(obj) + place_object(obj, ox, oy):
+        // the boulder is unlinked from the floor chain and RE-INSERTED AT THE
+        // FOBJ HEAD, not just given new coordinates.  A later dog_goal() fobj
+        // scan (dogmove.js) walks that chain newest-first, so a pet's
+        // apport/obj_resists roll order depends on this repositioning; leaving
+        // the boulder at its original (creation-order) slot in our flat
+        // game.level.objects array desyncs that scan's RNG order against a
+        // separately-created object the boulder has now been pushed past.
+        const _objs = game.level?.objects;
+        if (_objs) {
+            const _oi = _objs.indexOf(otmp);
+            if (_oi >= 0) _objs.splice(_oi, 1);
+        }
         otmp.ox = rx;
         otmp.oy = ry;
+        if (_objs) _objs.push(otmp);
         // C ref: mkobj.c place_object() block_point(rx,ry) / remove_object()
         // recalc_block_point(sx,sy) — a boulder blocks light, so relocating it
         // must update the vision map: the destination becomes opaque and the
@@ -2053,18 +2071,28 @@ async function read_engr_at(x, y) {
     // C: endpunct = "." unless the (original) text already ends in . ! or ?.
     const last = text.charAt(text.length - 1);
     const endpunct = (text.length >= 2 && '.!?'.includes(last)) ? '' : '.';
-    await pline(intro);
-    await topl_more();
     const readLine = `You read: "${text}"${endpunct}`;
-    await pline(readLine);
-    // C ref: win/tty/topl.c redotoplin():139 — a topline that wrapped onto a
-    // second row (cury > 0) auto-fires more().  So only the "You read" line that
-    // overflows 80 columns (e.g. long degraded graffiti) gets paged with
-    // --More--; a short engraving stays without one.  After the page is
-    // acknowledged the topline clears for the next command's frame.
-    if (wrap_topl(readLine).length > 1) {
+    await pline(intro);
+    // C ref: win/tty/topl.c update_topl() — the "You read" pline is a second
+    // update_topl() call in the same turn: when there's room for it plus
+    // "--More--" on the intro's line (len(bp)+len(toplines)+3 < CO-8) it's
+    // appended after two spaces with no paging; otherwise the intro pages with
+    // --More-- first before "You read" starts a fresh line.
+    if (readLine.length + intro.length + 3 < 80 - 8) {
+        game._pending_message = `${intro}  ${readLine}`;
+        game._toplines = game._pending_message;
+    } else {
         await topl_more();
-        game._pending_message = '';
+        await pline(readLine);
+        // C ref: win/tty/topl.c redotoplin():139 — a topline that wrapped onto a
+        // second row (cury > 0) auto-fires more().  So only the "You read" line
+        // that overflows 80 columns (e.g. long degraded graffiti) gets paged
+        // with --More--; a short one stays without one.  After the page is
+        // acknowledged the topline clears for the next command's frame.
+        if (wrap_topl(readLine).length > 1) {
+            await topl_more();
+            game._pending_message = '';
+        }
     }
     ep.eread = 1;
     ep.erevealed = 1;
@@ -2087,6 +2115,7 @@ async function autopickup_after_move(x, y) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     if (objs.length === 0) return 0;
+    game._pickup_encumbrance = 0; // C ref: pickup.c pickup(1) — gp.pickup_encumbrance = 0
     const inv = await import('./invent.js');
     // autopick order is the floor chain (topmost-first); objects_at returns that
     // order.  Pick each eligible object (pickup_types unset => all classes).

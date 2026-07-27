@@ -530,8 +530,9 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
     // picked something up in dog_invent (it stays in minvent until dropped).
     const dog_has_minvent = !!droppables(mtmp);
 
-    // nearby food/objects (C iterates fobj; order only affects tie-breaks for
-    // the goal, not the rn2 stream — obj_resists fires for every object).
+    // nearby food/objects (C iterates fobj newest-first; that traversal order
+    // determines which object's APPORT rn2(8) fires first, so it must match
+    // C's fobj chain — see fobj() above and moverock()'s movobj fix in cmd.js).
     for (const obj of fobj()) {
         const nx = obj.ox, ny = obj.oy;
         if (nx >= min_x && nx <= max_x && ny >= min_y && ny <= max_y) {

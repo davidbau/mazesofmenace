@@ -932,16 +932,19 @@ export function newsym(x, y) {
             if (ep) ep.erevealed = 1;
         }
         const bg = background_glyph(loc, x, y);
-        // Remember the background (not the monster — monsters move).
-        if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
-        }
         // A visible monster takes precedence over the background.  C ref:
         // display.c newsym -> mon_visible(mon): an mundetected hider (e.g. a
         // giant eel submerged in water) is NOT shown; the background shows
         // through instead.
         const mon = m_at(x, y);
         if (mon && !mon.mundetected) {
+            // Remember the background (not the monster — monsters move).
+            if (game.level?.flags?.hero_memory) {
+                loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+            }
+            // C ref: display.c newsym — showing an actual monster here "also
+            // gets rid of any invisibility glyph".
+            loc.invisMon = false;
             const mg = monster_glyph(mon);
             // C ref: win/tty/wintty.c tty_print_glyph — a pet glyph (MG_PET)
             // is drawn with iflags.wc2_petattr (default ATR_INVERSE) when
@@ -949,7 +952,17 @@ export function newsym(x, y) {
             // monster's color.
             const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
+        } else if (loc.invisMon) {
+            // C ref: display.c newsym — else if (glyph_is_invisible(lev->glyph))
+            // map_invisible(x,y): a square remembered as holding a sensed-but-
+            // unseen monster keeps showing 'I' even once back in the hero's
+            // sight, until the monster itself is actually seen there.
+            map_invisible(x, y);
         } else {
+            // Remember the background (not the monster — monsters move).
+            if (game.level?.flags?.hero_memory) {
+                loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+            }
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
         }
     } else {
@@ -1009,8 +1022,10 @@ export function map_invisible(x, y) {
     if (x === game.u?.ux && y === game.u?.uy) return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
-    if (game.level?.flags?.hero_memory)
+    if (game.level?.flags?.hero_memory) {
         loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false };
+        loc.invisMon = true;
+    }
     show_glyph_cell(x, y, 'I', NO_COLOR, false);
 }
 

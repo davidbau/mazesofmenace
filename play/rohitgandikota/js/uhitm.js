@@ -777,7 +777,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         jousting: 0,
         hittxt: false,
         get_dmg_bonus: true,
-        unarmed: !game.uwep && !game.uarm && !game.uarms,
+        unarmed: !game.u.uwep && !game.uarm && !game.uarms,
         hand_to_hand: (thrown === HMON_MELEE
                        /* not grapnels; applied implies uwep */
                        || (thrown === HMON_APPLIED && is_pole(game.uwep))),

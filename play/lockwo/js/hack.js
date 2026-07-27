@@ -1826,9 +1826,22 @@ function mon_hidden_suffix(mtmp) {
 // modelled here; the ", holding you"/", asleep"/etc. suffixes aren't reached.
 function look_at_monster_desc(mtmp) {
     // C: distant_monnam(mtmp, ARTICLE_NONE) — the bare monster type name (or a
-    // given name); mgivenname is used when present.
-    const given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
-    const name = given || mtmp.data?.name || mtmp.data?.pmname || 'monster';
+    // given name); mgivenname is used when present.  x_monnam's isshk branch
+    // (do_hallu/do_mappear false here) replaces the whole name with the
+    // shopkeeper's personal name, only appending "the <species>" when the
+    // shopkeeper isn't the plain shopkeeper species (e.g. polymorphed) or is
+    // invisible.
+    let name;
+    if (mtmp.isshk) {
+        name = mtmp.eshk?.shknam || mtmp.data?.name || 'shopkeeper';
+        if ((mtmp.data?.name !== 'shopkeeper') || mtmp.minvis) {
+            name += ' the ' + (mtmp.minvis ? 'invisible ' : '')
+                + (mtmp.data?.name || mtmp.data?.pmname || 'monster');
+        }
+    } else {
+        const given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
+        name = given || mtmp.data?.name || mtmp.data?.pmname || 'monster';
+    }
     const adj = mtmp.mtame ? 'tame ' : (mtmp.mpeaceful ? 'peaceful ' : '');
     return `${adj}${name}${mon_hidden_suffix(mtmp)}`;
 }

@@ -691,6 +691,7 @@ function set_utrap(tim, typ) {
 async function set_wounded_legs(side, timex) {
     const u = game.u;
     if (!u) return;
+    game.botl = true; // C ref: do.c:2433 — disp.botl = TRUE; before encumber_msg()
     u.atemp = u.atemp || { a: Array(A_MAX).fill(0) };
     u.eprops = u.eprops || {};
     const already = (u.HWounded_legs || 0) || (u.EWounded_legs || 0);

@@ -67,6 +67,7 @@ import { moveloop_turn, youHaveFast, youHaveVeryFast } from './allmain.js';
 import { acurr_eff } from './attrib.js';
 import {
     UNENCUMBERED, OVERLOADED,
+    SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, WT_WOUNDEDLEG_REDUCT, MAX_CARR_CAP,
     A_CON, A_STR, LEFT_SIDE, RIGHT_SIDE,
     CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
@@ -717,11 +718,18 @@ export function near_capacity() { return calc_capacity(0); }
 export async function encumber_msg() {
     const newcap = near_capacity();
     const oldcap = game._oldcap || 0;
-    // Publish the new level for the status line (_statusLine2 reads _curcap) so
-    // the BL_CAP field is current when topl_more() re-renders during the pline
-    // below — C recomputes near_capacity() at bot() time, after the encumbrance
-    // already changed.  (_oldcap is the message-comparison cache, updated last.)
-    game._curcap = newcap;
+    // C ref: pickup.c encumber_msg() sets disp.botl = TRUE AFTER its own
+    // Your()/You() message, not before — so whether the status line's BL_CAP
+    // field shows the new level DURING that message's own --More-- (which can
+    // fire if an earlier pending message, e.g. a pickup's prinv line, is still
+    // unflushed) depends on whether disp.botl was ALREADY dirty from something
+    // the caller did first (do.c set_wounded_legs()/heal_legs() both set
+    // disp.botl = TRUE before calling this).  Mirror that with game.botl: if
+    // it's already dirty, publish _curcap eagerly (matches wounded-legs); if
+    // not (an ordinary pickup crossing a capacity threshold has nothing else
+    // dirtying botl yet), defer until our own message(s) are queued below.
+    const dirtyBefore = !!game.botl;
+    if (dirtyBefore) game._curcap = newcap;
     if (oldcap < newcap) {
         switch (newcap) {
         case 1: await update_topl('Your movements are slowed slightly because of your load.'); break;
@@ -731,6 +739,7 @@ export async function encumber_msg() {
             ? 'You can barely move a handspan with this load!'
             : "You can't even move a handspan with this load!"); break;
         }
+        game.botl = true;
     } else if (oldcap > newcap) {
         switch (newcap) {
         case 0: await update_topl('Your movements are now unencumbered.'); break;
@@ -738,7 +747,9 @@ export async function encumber_msg() {
         case 2: await update_topl('You rebalance your load.  Movement is still difficult.'); break;
         case 3: await update_topl('You stagger under your load.  Movement is still very hard.'); break;
         }
+        game.botl = true;
     }
+    game._curcap = newcap;
     game._oldcap = newcap;
 }
 function inv_cnt(includeGold = true) {
@@ -4047,21 +4058,33 @@ function floor_extract_self(obj) {
 // detach the object from the floor, add it to inventory (assigning an invlet),
 // and announce it via prinv ("<letter> - <doname>.").  The shop/billing,
 // telekinesis, corpse-touch, and scare-monster branches are not reached for the
-// recorded sessions; near_capacity() is 0 here so pickup_prinv passes no prefix.
+// recorded sessions.
 export async function pick_one_obj(obj) {
     const quan = obj.quan || 1;
     observe_object(obj);
     floor_extract_self(obj);
     const held = addinv(obj);
-    // pickup_prinv(held, count, "lifting") with no encumbrance change => prinv
-    // with a NULL prefix, i.e. the bare "<letter> - <name>." pickup line.
+    // C ref: pickup.c pickup_prinv(held, count, "lifting") — only announce an
+    // encumbrance-level change since the last check this pickup() call (reset
+    // to 0 by dopickup()/autopickup_after_move() before lifting anything).
+    const nearload = near_capacity();
+    let liftPrefix = null;
+    if (nearload !== (game._pickup_encumbrance || 0)) {
+        const pfx = nearload >= EXT_ENCUMBER ? 'You have extreme difficulty'
+            : nearload >= HVY_ENCUMBER ? 'You have much trouble'
+              : nearload >= MOD_ENCUMBER ? 'You have trouble'
+                : nearload >= SLT_ENCUMBER ? 'You have a little trouble'
+                  : null;
+        game._pickup_encumbrance = nearload;
+        if (pfx) liftPrefix = `${pfx} lifting`;
+    }
     if (game._merge_discovery_pending) {
         // A merge inside addinv() above discovered new BUC/id info; page the
         // "You learn more..." message first, then route the pickup line
         // through update_topl() so it pages/accumulates after it correctly.
         await report_merge_discovery();
         const acc = game._pending_message;
-        prinv(null, held, quan);
+        prinv(liftPrefix, held, quan);
         const line = game._pending_message;
         game._pending_message = acc;
         await update_topl(line);
@@ -4070,7 +4093,7 @@ export async function pick_one_obj(obj) {
         // same-turn message (e.g. a monster opening a door -> "You hear a door
         // open.") accumulates onto the pickup line via update_topl() instead of
         // replacing it (matches the wield/wear prinv paths).
-        prinv(null, held, quan);
+        prinv(liftPrefix, held, quan);
         game._toplin = 1;
     }
     return held;
@@ -4214,6 +4237,7 @@ async function pickup_menu(here) {
 // multi-object pile -> the selectable "Pick up what?" menu (pickup_menu).
 // Returns ECMD_TIME(1) when something was picked up, else ECMD_OK(0).
 export async function dopickup() {
+    game._pickup_encumbrance = 0; // C ref: pickup.c pickup() — gp.pickup_encumbrance = 0
     const u = ustate();
     const x = u.ux, y = u.uy;
     const here = objects_at(x, y); // topmost-first; chain excludes uchain/uball

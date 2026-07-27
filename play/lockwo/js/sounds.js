@@ -33,6 +33,12 @@ function emit_topl(line) {
         game._pending_message = line;
     }
     game._toplin = 1; // NEED_MORE — matches C update_topl tail
+    // C ref: win/tty/topl.c update_topl() also sets gt.toplines to the full
+    // accumulated line — the persistent text pline.c's Norep() dedups against.
+    // Without this, an ambient sound message doesn't count as "the last
+    // topline" and a later Norep-suppressed struggle line (e.g. "You are
+    // caught in a bear trap.") wrongly stays suppressed after the sound.
+    game._toplines = game._pending_message;
 }
 // C ref: pline.c You_hear() — non-deaf/non-underwater/non-unaware prefix is
 // "You hear ".  You_hear1(cstr) == You_hear("%s", cstr).  The starter sessions

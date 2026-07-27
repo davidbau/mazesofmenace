@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rnd, rn2 } from './rng.js';
 import { pline, topl_more, update_topl, newsym } from './display.js';
-import { getobj, makeknown, useup, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
+import { getobj, makeknown, useup, useupall, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack, trycall } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
@@ -15,10 +15,11 @@ import { study_book } from './spell.js';
 import { erode_obj, obj_erode_type, goodpos_for_hero, t_at, spoteffects } from './trap.js';
 import { find_ac } from './u_init.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
-         SCR_DESTROY_ARMOR, SCR_REMOVE_CURSE, objects } from './mkobj.js';
-import { A_WIS, A_STR, A_CON, CORR, Is_rogue_level, Is_waterlevel,
+         SCR_DESTROY_ARMOR, SCR_REMOVE_CURSE, SCR_ENCHANT_WEAPON,
+         WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, objects } from './mkobj.js';
+import { A_WIS, A_STR, A_CON, A_DEX, CORR, Is_rogue_level, Is_waterlevel,
          ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED,
-         COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
+         COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole, SPE_LIM } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
 
 const ECMD_CANCEL = 0;
@@ -29,19 +30,14 @@ const SCR_MAGIC_MAPPING = 337;
 const SCR_IDENTIFY = 336;
 const SCR_LIGHT = 332;
 
-// C ref: topl.c — within a single turn, consecutive plines concatenate on the
-// top line (separated by two spaces) until it would overflow.  pline() itself
-// replaces, so this helper appends to whatever is already pending.
+// C ref: topl.c update_topl — within a single turn, consecutive messages
+// concatenate on the top line (separated by two spaces) while there's room
+// ("len(bp) + len(toplines) + 3 < CO - 8"), else the pending line pages with
+// --More-- first.  display.js's update_topl() already implements this
+// exactly; this is just a same-named alias kept so existing call sites below
+// don't need touching.
 async function pline_append(msg) {
-    const cur = game._pending_message || '';
-    if (cur && (cur.length + 2 + msg.length) <= 80)
-        game._pending_message = `${cur}  ${msg}`;
-    else
-        await pline(msg);
-    // The appended message is now the unacknowledged top line; mark it so a
-    // following update_topl() (e.g. identify_pack's report) pages it with
-    // --More-- when the two don't fit.  C ref: topl.c TL_HAS_MESSAGE.
-    game._toplin = 1;
+    await update_topl(msg);
 }
 
 // C ref: objects.h — inherently-magical scrolls (oc_magic bit).  The JS object
@@ -135,11 +131,143 @@ async function seffects(sobj) {
             }
         }
         break;
+    case SCR_ENCHANT_WEAPON: {
+        const consumed = await seffect_enchant_weapon(sobj);
+        if (consumed) return true;
+        break;
+    }
     default:
         // Uncovered scroll effects: no-op (object still consumed by doread).
         break;
     }
     return false;
+}
+
+// C ref: objclass.h erosion_matters() — only weapons and armor erode (this
+// simplified form, matching the same helper already duplicated across
+// several port files, omits the TOOL_CLASS weptool case: no covered start
+// wields an erodeable tool).
+function erosion_matters_wep(obj) {
+    return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS;
+}
+
+// C ref: obj.h is_weptool(o) — a TOOL_CLASS object with a real weapon skill.
+function is_weptool_wep(obj) {
+    return obj?.oclass === TOOL_CLASS && (objects[obj.otyp]?.oc_skill ?? 0) !== 0;
+}
+
+// C ref: do_name.c hcolor(colorpref) — colorpref unless hallucinating (not
+// exercised by the covered non-hallucinating starts; same stub as
+// fountain.js's hcolor()).
+function hcolor_wep(colorpref) { return colorpref; }
+
+// C ref: objnam.c vtense(0, verb) — singular 3rd-person conjugation, scoped
+// to the plain present-tense verbs chwepon uses ("glow", "violently glow",
+// "are", "evaporate", "feel", "look").
+function vtense_sing_wep(verb) {
+    const v = verb.toLowerCase();
+    if (v === 'are') return 'is';
+    if (v === 'have') return verb.slice(0, -2) + 's';
+    const last = verb[verb.length - 1]?.toLowerCase();
+    const prev = verb.length >= 2 ? verb[verb.length - 2].toLowerCase() : '';
+    if (last === 'z' || last === 'x' || last === 's'
+        || (verb.length >= 2 && last === 'h' && (prev === 'c' || prev === 's'))
+        || (verb.length === 2 && last === 'o'))
+        return verb + 'es';
+    if (last === 'y' && !'aeiou'.includes(prev))
+        return verb.slice(0, -1) + 'ies';
+    return verb + 's';
+}
+// C ref: objnam.c otense(otmp, verb) — verb unchanged if otmp is plural
+// (quan != 1), else singular-conjugated.
+function otense_wep(obj, verb) {
+    return ((obj?.quan ?? 1) !== 1) ? verb : vtense_sing_wep(verb);
+}
+// C ref: objnam.c Yobjnam2(obj, verb) — "Your <name> <verb>", scoped to a
+// carried, ordinary (non-artifact) object: the "leave off 'your'" artifact
+// carve-out isn't exercised by the covered starts' weapons.
+function Yobjnam2_wep(obj, verb) {
+    return `Your ${xname(obj)} ${otense_wep(obj, verb)}`;
+}
+
+// C ref: wield.c chwepon(otmp, amount) — enchant (amount>0) or disenchant
+// (amount<0) the wielded weapon; otmp is the scroll causing it.  Returns
+// false only for the "no weapon wielded" fallback (matching C's `return 0`,
+// which signals the caller to treat the scroll as already consumed).  The
+// WORM_TOOTH<->CRYSKNIFE transforms, the artifact "faintly glow" resist
+// branch, the Magicbane clue, and the elven-weapon over-enchant vibrate
+// warning are not exercised by the covered (ordinary, non-artifact weapon)
+// starts and are left unported.
+async function chwepon(otmp, amount) {
+    const uwep = game.uwep;
+    if (!uwep || (uwep.oclass !== WEAPON_CLASS && !is_weptool_wep(uwep))) {
+        // Cursed-tin-opener uncurse-with-aura branch (needs will_weld()) is
+        // not exercised by the covered starts; only the plain fallback is
+        // ported.
+        await strange_feeling(otmp, `Your hands ${amount >= 0 ? 'twitch' : 'itch'}.`);
+        exercise(A_DEX, amount >= 0);
+        return false;
+    }
+
+    const color = hcolor_wep(amount < 0 ? 'black' : 'blue');
+    if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0)) && rn2(3)) {
+        if (!Blind())
+            await pline_append(`${Yobjnam2_wep(uwep, 'violently glow')} ${color} for a while and then ${otense_wep(uwep, 'evaporate')}.`);
+        else
+            await pline_append(`${Yobjnam2_wep(uwep, 'evaporate')}.`);
+        useupall(uwep);
+        return true;
+    }
+
+    const xtime = (amount * amount === 1) ? 'moment' : 'while';
+    await pline_append(`${Yobjnam2_wep(uwep, amount === 0 ? 'violently glow' : 'glow')} ${color} for a ${xtime}.`);
+    if (otmp && otmp.oclass === SCROLL_CLASS && uwep.known
+        && (amount > 0 || (amount < 0 && otmp.bknown)))
+        makeknown(otmp.otyp);
+
+    uwep.spe = (uwep.spe || 0) + amount;
+    if (amount > 0 && uwep.cursed) uwep.cursed = false;
+    return true;
+}
+
+// C ref: read.c seffect_enchant_weapon() — scroll (or spellbook cast) of
+// enchant weapon.  Returns true when the scroll was already consumed inside
+// chwepon's no-weapon fallback (matching C's `*sobjp = 0`), signalling the
+// caller to skip its own discover/useup handling.
+async function seffect_enchant_weapon(sobj) {
+    const uwep = game.uwep;
+    const sblessed = sobj.blessed;
+    const scursed = sobj.cursed;
+    const confused = Confused();
+
+    if (confused && uwep && erosion_matters_wep(uwep) && uwep.oclass !== ARMOR_CLASS) {
+        const new_erodeproof = !scursed;
+        uwep.oerodeproof = 0;
+        if (Blind()) {
+            uwep.rknown = false;
+            await pline_append('Your weapon feels warm for a moment.');
+        } else {
+            uwep.rknown = true;
+            await pline_append(`${Yobjnam2_wep(uwep, 'are')} covered by a ${scursed ? 'mottled' : 'shimmering'} ${hcolor_wep(scursed ? 'purple' : 'golden')} ${scursed ? 'glow' : 'shield'}!`);
+        }
+        if (new_erodeproof && (uwep.oeroded || uwep.oeroded2)) {
+            uwep.oeroded = 0; uwep.oeroded2 = 0;
+            await pline_append(`${Yobjnam2_wep(uwep, Blind() ? 'feel' : 'look')} as good as new!`);
+        }
+        uwep.oerodeproof = new_erodeproof ? 1 : 0;
+        return false;
+    }
+
+    const s = scursed ? -1
+        : !uwep ? 1
+        : (uwep.spe >= 9) ? (rn2(uwep.spe) === 0 ? 1 : 0)
+        : sblessed ? rnd(3 - Math.trunc(uwep.spe / 3))
+        : 1;
+
+    const chwSuccess = await chwepon(sobj, s);
+    if (uwep && Math.abs(uwep.spe || 0) > SPE_LIM)
+        uwep.spe = Math.sign(uwep.spe) * SPE_LIM;
+    return !chwSuccess;
 }
 
 // C ref: teleport.c teleok(x,y,trapok) — hero-only subset.  The special-level

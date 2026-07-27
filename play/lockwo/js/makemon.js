@@ -1682,21 +1682,31 @@ const MS_LEADERGUARD_NAMES = new Set(["Lord Carnarvon","Pelias","Shaman Karnov",
 const MS_NEMESIS_NAMES = new Set(["Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One"]);
 
 // C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  Returns the
-// M2 race flag-name sets the hero loves / hates.  (selfmask == lovemask for the
-// PC races present in the slice.)
+// M2 race flag-name sets the hero loves / hates.  Transcribed directly from
+// the races[] table (lovemask, hatemask fields, in that order):
+//   human: lovemask 0,               hatemask MH_GNOME|MH_ORC
+//   elf:   lovemask MH_ELF,           hatemask MH_ORC
+//   dwarf: lovemask MH_DWARF|MH_GNOME, hatemask MH_ORC
+//   gnome: lovemask MH_DWARF|MH_GNOME, hatemask MH_HUMAN
+//   orc:   lovemask 0,               hatemask MH_HUMAN|MH_ELF|MH_DWARF
+// (orcs do NOT automatically love other orc-tagged monsters — lovemask is 0 —
+// and instead hate humans/elves/dwarves; a prior version of this table had
+// orc's love/hate reversed and dwarf/gnome's masks swapped between each
+// other, which shortcircuits peace_minded()'s race_peaceful/race_hostile
+// check without rolling the RNG C actually rolls for these pairings.)
 function urace_race_sets() {
     const adj = String(game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
     switch (adj) {
     case 'elven': case 'elf':
         return { love: [M2_ELF_NAMES], hate: [M2_ORC_NAMES] };
     case 'dwarvish': case 'dwarf':
-        return { love: [M2_DWARF_NAMES], hate: [M2_GNOME_NAMES] }; // MH_GNOME hate? dwarf hates orc+gnome? role.c: dwarf hatemask MH_ORC|MH_GNOME... handled below
+        return { love: [M2_DWARF_NAMES, M2_GNOME_NAMES], hate: [M2_ORC_NAMES] };
     case 'gnomish': case 'gnome':
-        return { love: [M2_GNOME_NAMES], hate: [M2_ORC_NAMES] };
+        return { love: [M2_DWARF_NAMES, M2_GNOME_NAMES], hate: [M2_HUMAN_NAMES] };
     case 'orcish': case 'orc':
-        return { love: [M2_ORC_NAMES], hate: [] };
+        return { love: [], hate: [M2_HUMAN_NAMES, M2_ELF_NAMES, M2_DWARF_NAMES] };
     case 'human': default:
-        return { love: [], hate: [M2_GNOME_NAMES, M2_ORC_NAMES] };  // human: lovemask 0, hatemask MH_GNOME|MH_ORC
+        return { love: [], hate: [M2_GNOME_NAMES, M2_ORC_NAMES] };
     }
 }
 function name_in_any(name, sets) { for (const s of sets) if (s.has(name)) return true; return false; }
