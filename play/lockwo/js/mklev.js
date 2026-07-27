@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt, makemaz_tower1 } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt, makemaz_tower1, shuffle } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
@@ -47,7 +47,7 @@ import {
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_ROOM,
     IS_SDOOR,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR, TREE,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
@@ -908,6 +908,10 @@ async function themerooms_generate(difficulty) {
         });
         return !!placed && !game.themeroom_failed;
     }
+    // C ref: themerms.lua:400-419 'Pillars' — des.room({type="themed", w=10,
+    // h=10, contents=...}).  Fixed 10x10 size (no size roll), random position
+    // + alignment, random lit (all handled by the generic w/h path below).
+    if (pick.name === 'Pillars') return themeroom_build_pillars();
     // C ref: themerms.lua — the three "themed fill" themerooms call
     //   des.room({ type = "themed", [lit=0|filled=1,] contents = themeroom_fill })
     // i.e. a THEMEROOM whose contents() runs the themeroom_fill reservoir
@@ -940,6 +944,42 @@ async function themerooms_generate(difficulty) {
         }
     }
     return ok;
+}
+
+// C ref: sp_lev.c set_levltyp_lit() with lit=SET_LIT_NOCHANGE (-2) — set the
+// terrain type only, leaving the lit state untouched (no RNG either way).
+function themeroom_set_terrain(x, y, typ) {
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    loc.typ = typ;
+    if (typ === HWALL) loc.horizontal = true;
+    else if (typ === VWALL) loc.horizontal = false;
+}
+
+// C ref: themerms.lua:399-419 'Pillars' theme room.
+function themeroom_build_pillars() {
+    rn2(100); // build_room chance check (sp_lev.c:2811)
+    const ok = create_room(-1, -1, 10, 10, -1, -1, THEMEROOM, -1);
+    if (!ok) return false;
+    const aroom = game.level.rooms[game.level.nroom - 1];
+    if (!aroom) return true;
+    topologize(aroom);
+    aroom.needfill = FILL_NONE;
+    // local terr = { "-", "-", "-", "-", "L", "P", "T" }; shuffle(terr);
+    const terr = [HWALL, HWALL, HWALL, HWALL, LAVAPOOL, POOL, TREE];
+    shuffle(terr);
+    const pick = terr[0];
+    const width = aroom.hx - aroom.lx + 1;
+    const height = aroom.hy - aroom.ly + 1;
+    for (let x = 0; x <= Math.trunc(width / 4) - 1; x++) {
+        for (let y = 0; y <= Math.trunc(height / 4) - 1; y++) {
+            themeroom_set_terrain(aroom.lx + x * 4 + 2, aroom.ly + y * 4 + 2, pick);
+            themeroom_set_terrain(aroom.lx + x * 4 + 3, aroom.ly + y * 4 + 2, pick);
+            themeroom_set_terrain(aroom.lx + x * 4 + 2, aroom.ly + y * 4 + 3, pick);
+            themeroom_set_terrain(aroom.lx + x * 4 + 3, aroom.ly + y * 4 + 3, pick);
+        }
+    }
+    return true;
 }
 
 // C ref: sp_lev.c check_room()

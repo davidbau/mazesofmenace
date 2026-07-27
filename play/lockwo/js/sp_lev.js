@@ -219,7 +219,7 @@ function percent(n) {
 // math.random(i) is the 1-arg form: 1 + nh.rn2(i). So each iteration emits one
 // rn2(i) for i from len down to 2 (len-1 calls total). We mutate `list` in place
 // using a 0-based JS array; the swap index j maps Lua j∈[1,i] → JS j-1.
-function shuffle(list) {
+export function shuffle(list) {
     for (let i = list.length; i >= 2; i--) {
         const j = 1 + rn2(i); // math.random(i) == 1 + rn2(i), Lua 1-based
         const a = i - 1, b = j - 1;
