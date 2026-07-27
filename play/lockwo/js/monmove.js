@@ -26,6 +26,7 @@ import { t_at, t_missile } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
+import { mon_msize } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS, weight } from './mkobj.js';
@@ -644,7 +645,12 @@ function m_harmless_trap(mtmp, ttmp) {
     if (FLOOR_TRIGGER.has(ttyp) && mon_check_in_air(mtmp)) return true;
     switch (ttyp) {
     case BEAR_TRAP: {
-        const msize = (mtmp.data?.msize != null) ? mtmp.data.msize : 2;
+        // A starting pet's .data record (dog.js makedog_mon) doesn't carry
+        // its own msize, so fall back to the mons[] table by pmidx — the
+        // same fallback dogmove.js's own bear-trap size check already uses.
+        const msize = (mtmp.data?.msize != null)
+            ? mtmp.data.msize
+            : (mon_msize(mtmp.data?.pmidx) ?? 2);
         // amorphous / is_whirly / unsolid escapes aren't reachable for the
         // grounded quadrupeds placed near bear traps here; only the size test.
         return msize <= 1; /* MZ_SMALL */
@@ -1079,7 +1085,9 @@ async function mon_trapeffect(mtmp, trap) {
         // hit via thitm.  (amorphous / whirly / unsolid escapes aren't reachable
         // for the quadruped pets/steeds that step onto bear traps here.)
         const mptr = mtmp.data;
-        const msize = (mptr?.msize != null) ? mptr.msize : 2 /* MZ_MEDIUM */;
+        // Fall back to the mons[] table by pmidx for pets, whose .data record
+        // (dog.js makedog_mon) doesn't carry its own msize.
+        const msize = (mptr?.msize != null) ? mptr.msize : (mon_msize(mptr?.pmidx) ?? 2 /* MZ_MEDIUM */);
         const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
         if (msize > 1 /* MZ_SMALL */ && !mon_check_in_air(mtmp)) {
             mtmp.mtrapped = 1;
@@ -1977,6 +1985,15 @@ async function use_offensive(mtmp) {
 // catch), else potionhit(&youmonst, obj, POTHIT_MONST_THROW) which shatters the
 // vessel (bottlename rn2(7), losehp rnd(2), then potionbreathe).  POTHIT_MONST_
 // THROW == 2 (potion.h).
+//
+// Display: same tmp_at(DISP_FLASH)/tmp_at(x,y)/tmp_at(DISP_END) dance as
+// m_throw_at_hero (mthrowu.c:648-824) — draw the missile's map glyph at each
+// crossed square, restoring the previous one, and only erase the LAST flashed
+// square once potionhit_hero() (and any --More-- pauses inside it) fully
+// resolve.  C's own post-break tmp_at(bhitpos)/tmp_at(DISP_END,0) cleanup
+// (mthrowu.c:826-833) draws-then-immediately-erases the hero's own square with
+// no message in between, so it never appears in a captured screen; we skip
+// modelling that no-op pair and go straight from "message resolved" to erase.
 async function m_throw_potion(mon, sx, sy, dx, dy, range, otmp) {
     const u = game.u;
     const singleobj = m_throw_single(mon, otmp); // quan split (rnd(2)) if stacked
@@ -1985,6 +2002,18 @@ async function m_throw_potion(mon, sx, sy, dx, dy, range, otmp) {
     // square comes into sight (observe_object).  use_offensive() may already
     // have marked it seen (thrower visible); mirror the clear otherwise.
     if (!canspotmon(mon) && otmp._seen_thrown == null) singleobj._seen_thrown = false;
+    // C ref: mthrowu.c:649 — tmp_at(DISP_FLASH, obj_to_glyph(singleobj)).  sym
+    // (obj->oclass) is always truthy for a potion; potions are never tethered.
+    const fglyph = (singleobj.oclass ? object_glyph(singleobj) : null);
+    let fx = -1, fy = -1; // last flashed cell (-1 = none drawn yet)
+    const flash_at = (x, y) => {
+        if (!fglyph) return;
+        if (fx >= 0) { newsym(fx, fy); fx = fy = -1; } // restore previous square
+        if (!cansee(x, y)) return;                     // unseen: no flash drawn
+        show_glyph_cell(x, y, fglyph.ch, fglyph.color, fglyph.dec);
+        fx = x; fy = y;
+    };
+    const flash_end = () => { if (fx >= 0) { newsym(fx, fy); fx = fy = -1; } };
     let bx = sx, by = sy;
     while (range-- > 0) {
         bx += dx; by += dy;
@@ -1996,19 +2025,28 @@ async function m_throw_potion(mon, sx, sy, dx, dy, range, otmp) {
         if (!Blind() && cansee(bx, by)) singleobj._seen_thrown = true;
         if (bx === u.ux && by === u.uy) {
             // hero square: catch attempt (rn2(100-Dex)); a non-catch shatters.
-            if (u_catch_thrown_obj(singleobj)) { m_useup_thrown(mon, otmp, singleobj); return; }
+            if (u_catch_thrown_obj(singleobj)) {
+                flash_end();
+                m_useup_thrown(mon, otmp, singleobj);
+                return;
+            }
             const { potionhit_hero } = await import('./potion.js');
             await potionhit_hero(singleobj, 2 /*POTHIT_MONST_THROW*/);
+            flash_end();
             m_useup_thrown(mon, otmp, singleobj);
             return;
         }
         // forcehit roll on every non-hero square crossed (mthrowu.c:798).
         rn2(5);
         // (no intervening monster / blocked terrain in the exercised path)
+        // C ref: mthrowu.c:824 — tmp_at(bhitpos) only fires on a non-terminal
+        // iteration (the loop breaks before it once `!range`).
+        if (range > 0) flash_at(bx, by);
     }
     // reached end of range without crossing the hero's square: the potion
     // shatters where it lands (potionhit on empty ground — no hero RNG).  Not
     // exercised for a lined-up throw, but drop it so it leaves the monster.
+    flash_end();
     m_useup_thrown(mon, otmp, singleobj);
 }
 
@@ -2651,7 +2689,10 @@ async function mattacku(mtmp, mdat) {
                 if (mwep) {
                     hittmp = thrown_hitbon(mwep.otyp); // hitval == oc_hitbon here
                     tmp += hittmp;
-                    await mswings_mm(mtmp, mwep);
+                    // mhitu.c:903 — bash: a polearm used at too-close range
+                    // (no ART_SNICKERSNEE reachable here).
+                    const bash = is_pole(mwep) && m_next2u(mtmp);
+                    await mswings_mm(mtmp, mwep, bash);
                 }
                 const j = rnd(20 + i);          // mhitu.c:912
                 if (tmp > j) {
@@ -2893,18 +2934,72 @@ export async function mon_wield_item(mon) {
 const NO_WEAPON_WANTED_MM = 0, NEED_WEAPON_MM = 1, NEED_RANGED_WEAPON_MM = 2, NEED_HTH_WEAPON_MM = 3;
 const HANDS_OBJ = null; // C's &hands_obj sentinel — never selected here.
 
-// C ref: mhitu.c mswings(mtmp, otemp, bash) — "<Mon> <verb> <his> <weapon>."
-// when the attacker (and weapon) is visible.  No RNG for the orcish dagger: its
-// oc_dir is pure PIERCE, so mswings_verb's `thrust` term short-circuits before
-// the rn2(2) (which only fires for weapons that both pierce AND slash).  The
-// verb is therefore always "thrusts" for the dagger.  Display-only.
-async function mswings_mm(mtmp, otemp) {
+// C ref: objects.h WEAPON()/PROJECTILE()/BOW() oc_dir strike-type bits
+// (P=PIERCE=1, S=SLASH=2, B=WHACK=4; "weapon strike mode overloads the oc_dir
+// field") for every WEAPON_CLASS otyp (18 arrow .. 88 crossbow) a monster can
+// wield/throw.  Launchers (bow..crossbow, 83-88) get 0 (the BOW() macro always
+// passes a literal 0 for this field, regardless of sub-type) — that's why a
+// gnome bashing with its bow "swings" rather than "thrusts".
+const WEAPON_ODIR = {
+    18: 1, 19: 1, 20: 1, 21: 1, 22: 1, 23: 1,           // arrows/ya/bolt: P
+    24: 1, 25: 1, 26: 0,                                 // dart/shuriken: P; boomerang: 0
+    27: 1, 28: 1, 29: 1, 30: 1, 31: 1, 32: 1, 33: 1,     // spears + trident: P
+    34: 1, 35: 1, 36: 1, 37: 1,                          // daggers: P
+    38: 2, 39: 2,                                        // athame/scalpel: S
+    40: 1 | 2, 41: 1 | 2,                                 // knife/stiletto: P|S
+    42: 0, 43: 1,                                         // worm tooth: 0; crysknife: P
+    44: 2, 45: 2,                                         // axe/battle-axe: S
+    46: 1, 47: 1, 48: 1, 49: 1,                          // short swords: P
+    50: 2, 51: 2, 52: 2, 53: 2, 54: 2, 55: 2, 56: 2, 57: 2, 58: 2, // sabers/broad/long/2h/katana/tsurugi/runesword: S
+    59: 1, 60: 1, 61: 1,                                 // partisan/ranseur/spetum: P
+    62: 2,                                                // glaive: S
+    63: 1 | 2,                                            // halberd: P|S
+    64: 2, 65: 2,                                         // bardiche/voulge: S
+    66: 1 | 2,                                            // fauchard: P|S
+    67: 2,                                                // guisarme: S
+    68: 1 | 2,                                            // bill-guisarme: P|S
+    69: 4 | 1, 70: 4 | 1,                                 // lucern hammer/bec de corbin: B|P
+    71: 4,                                                 // dwarvish mattock: B
+    72: 1,                                                 // lance: P
+    73: 4, 74: 4, 75: 4, 76: 4, 77: 4,                    // mace/silver mace/morning star/war hammer/club: B
+    78: 4,                                                 // rubber hose: B (but P_WHIP -> lash, see below)
+    79: 4, 80: 4, 81: 4,                                  // quarterstaff/aklys/flail: B
+    82: 0,                                                 // bullwhip: 0 (P_WHIP -> lash)
+    83: 0, 84: 0, 85: 0, 86: 0, 87: 0, 88: 0,             // bow..crossbow launchers: 0
+};
+// oc_skill P_WHIP otyps (objects.h): rubber hose 78, bullwhip 82.
+const WHIP_OTYP = new Set([78, 82]);
+
+// C ref: mhitu.c mswings_verb(mwep, bash) — strike-type verb selection.
+// lash = oc_skill==P_WHIP (is_wet_towel() not modeled: no towels reachable
+// here).  thrust = (dir has PIERCE) && (dir has ONLY pierce, or rn2(2) picks
+// thrust over the mixed slash/bash alternative) — the rn2(2) only fires for
+// weapons with PIERCE plus another bit set (knife/stiletto/halberd/fauchard/
+// bill-guisarme/lucern hammer/bec de corbin), matching C's short-circuit.
+function mswings_verb(otemp, bash) {
+    const dir = WEAPON_ODIR[otemp?.otyp] ?? 0;
+    const lash = WHIP_OTYP.has(otemp?.otyp);
+    const thrust = (dir & 1) !== 0 && ((dir & ~1) === 0 || !rn2(2));
+    return bash ? 'bashes with' : lash ? 'lashes' : thrust ? 'thrusts' : 'swings';
+}
+
+// C ref: mhitu.c mswings(mtmp, otemp, bash) — "<Mon> <verb> [one of] <his>
+// <weapon>." when the attacker (and weapon) is visible.  A multi-item stack
+// (e.g. a demon's 5 carried daggers) reads "one of his daggers" — xname()'s
+// bare pluralized name, with no leading count digit (that belongs to
+// doname() alone), so this uses cxname_singular()+makeplural rather than the
+// digit-prefixing invent.js xname().  Display-only.
+async function mswings_mm(mtmp, otemp, bash) {
     if (!canseemon_mm(mtmp)) return;
-    // mswings_verb: dagger is PIERCE-only -> "thrusts" (no rn2(2)).
-    const verb = 'thrusts';
+    const verb = mswings_verb(otemp, bash);
     const hisher = mtmp.female ? 'her' : 'his';
     const { update_topl } = await import('./display.js');
-    await update_topl(`${Monnam(mtmp)} ${verb} ${hisher} ${mshot_xname(otemp)}.`);
+    const { cxname_singular, makeplural } = await import('./invent.js');
+    const quan = otemp?.quan ?? 1;
+    const oneOf = quan > 1 ? 'one of ' : '';
+    const base = cxname_singular(otemp);
+    const name = quan > 1 ? makeplural(base) : base;
+    await update_topl(`${Monnam(mtmp)} ${verb} ${oneOf}${hisher} ${name}.`);
 }
 
 // C ref: include/attrib.h ACURR(A_DEX) — the hero's current Dexterity.  Stored

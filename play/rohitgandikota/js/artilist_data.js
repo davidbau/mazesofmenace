@@ -5,6 +5,7 @@
 // A("") dummy, which is why oartifact==0 means "not an artifact" and is_art()
 // on an ordinary object is always false.
 
+export const ART_NONARTIFACT = 0;
 export const ART_EXCALIBUR = 1;
 export const ART_STORMBRINGER = 2;
 export const ART_MJOLLNIR = 3;

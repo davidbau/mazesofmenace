@@ -27,7 +27,7 @@ import { print_dungeon } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE } from './const.js';
+import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
@@ -41,7 +41,7 @@ const PM_TOURIST = 10; // makemon/exper PM index
 function level_difficulty() {
     return depth_of_level(game.u.uz);
 }
-import { mon_catchup_elapsed_time } from './dogmove.js';
+import { mon_catchup_elapsed_time, monnear } from './dogmove.js';
 import { onquest } from './questpgr.js';
 import { initrack } from './track.js';
 
@@ -218,10 +218,49 @@ function mon_arrive_with_you(mtmp) {
     }
 }
 
-// C ref: dog.c keepdogs()/losedogs().  Capture adjacent tame pets before the
-// level is torn down by mklev(), then re-place them next to the hero on the
-// new level.  The starter sessions carry a single tame pet (kitten / little
-// dog / pony); the only RNG it consumes is mon_arrive(With_you)'s rn2(10).
+// C ref: mondata.c levl_follower(mtmp) — used by keepdogs() to decide whether
+// a nearby monster accompanies a level change.  Tame pets always qualify; a
+// hostile M2_STALK monster (e.g. the water demon a fountain can unleash) also
+// follows unless it is currently fleeing.  The JS mons table doesn't carry
+// mflags2, so the M2_STALK species are keyed by name (extracted from
+// include/monsters.h); the iswiz-with-Amulet and is_fshk branches are omitted
+// since no recorded session drives a followed Wizard or shopkeeper.
+const M2_STALK_NAMES = new Set(["gremlin", "manes", "homunculus", "imp", "lemure",
+    "quasit", "tengu", "lurker above", "trapper", "couatl", "Aleax", "Angel",
+    "ki-rin", "Archon", "stalker", "troll", "ice troll", "rock troll",
+    "water troll", "Olog-hai", "vampire", "vampire mage", "Vlad the Impaler",
+    "barrow wight", "wraith", "Nazgul", "kobold zombie", "gnome zombie",
+    "orc zombie", "dwarf zombie", "elf zombie", "human zombie", "ettin zombie",
+    "giant zombie", "soldier", "sergeant", "lieutenant", "captain", "watchman",
+    "watch captain", "Croesus", "ghost", "shade", "water demon", "horned devil",
+    "erinys", "barbed devil", "marilith", "vrock", "hezrou", "bone devil",
+    "ice devil", "nalfeshnee", "pit fiend", "sandestin", "balrog", "Juiblex",
+    "Yeenoghu", "Orcus", "Geryon", "Dispater", "Baalzebub", "Asmodeus",
+    "Demogorgon", "Death", "Pestilence", "Famine", "mail daemon", "djinni",
+    "salamander", "Minion of Huhetotl", "Thoth Amon", "Chromatic Dragon",
+    "Goblin King", "Cyclops", "Ixoth", "Master Kaen", "Nalzok", "Scorpius",
+    "Master Assassin", "Ashikaga Takauji", "Lord Surtur", "Dark One"]);
+function levl_follower(m) {
+    if (m === game.u.usteed) return true;
+    if (m.mtame) return true;
+    if (M2_STALK_NAMES.has(m.data?.name))
+        return !m.mflee || !!game.u.uhave?.amulet;
+    return false;
+}
+
+// C ref: include/monst.h helpless(mon) = msleeping || !mcanmove.
+function keepdogs_helpless(m) {
+    return !!(m.msleeping || !m.mcanmove);
+}
+
+// C ref: dog.c keepdogs()/losedogs().  Capture the monsters that accompany
+// the hero across a level change before the level is torn down by mklev():
+// a nearby tame pet, or a nearby non-fleeing M2_STALK hostile (levl_follower),
+// as long as it isn't helpless, isn't still waiting to notice the hero
+// (STRAT_WAITFORU), and isn't mid-meal/trapped (which leaves it behind rather
+// than following).  Re-placed next to the hero on the new level by
+// losedogs_place(); the only RNG this consumes is mon_arrive(With_you)'s
+// rn2(10)/rn2(5)/rn2(2).
 function keepdogs_capture() {
     const lev = game.level;
     if (!lev?.monsters) return [];
@@ -229,11 +268,12 @@ function keepdogs_capture() {
     const kept = [];
     const remain = [];
     for (const m of lev.monsters) {
-        // C ref: keepdogs() — a tame pet adjacent to the hero (distu <= 2,2)
-        // accompanies the hero to the new level.
-        const adj = m.mtame
-            && Math.abs(m.mx - u.ux) <= 1 && Math.abs(m.my - u.uy) <= 1;
-        if (adj) kept.push(m);
+        const follows = monnear(m, u.ux, u.uy) && levl_follower(m);
+        const eligible = follows
+            && (!keepdogs_helpless(m) || m === u.usteed)
+            && !((m.mstrategy || 0) & STRAT_WAITFORU)
+            && !m.meating && !m.mtrapped;
+        if (eligible) kept.push(m);
         else remain.push(m);
     }
     lev.monsters = remain;

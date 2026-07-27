@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt, makemaz_tower1 } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
@@ -47,7 +47,7 @@ import {
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_ROOM,
     IS_SDOOR,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
@@ -393,6 +393,20 @@ async function makelevel() {
         // defers the fill phase (fill_special_room loop + mineralize) into
         // fastforward_fill_mineralize(), which runs at C's level_finalize_topology
         // point (kelp rn2(30) per MOAT cell just before the hero arrival spot).
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — Vlad's Tower upper stage.
+    if (slev && slev.proto === 'tower1') {
+        await makemaz_tower1();
+        // C ref: fixup_special() -> no explicit lregion, so the default
+        // place_lregion(0,0,0,0,...,LR_BRANCH) runs its whole-level rn1 loop
+        // (mkmaze.c:396/397) until it lands on a valid ROOM/CORR cell.  This is
+        // exactly the mines' mk_fixup_branch() whole-level probabilistic loop.
+        mk_fixup_branch();
+        // C ref: lspo_finalize_level -> level_finalize_topology -> set_wall_state()
+        // assigns the WM_MASK wall-mode bits that wall_angle() needs to render
+        // cross/T-junction walls correctly (the tower's internal walls).
+        set_wall_state();
         return;
     }
 
@@ -2518,8 +2532,12 @@ function mk_bad_branch_location(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return true;
     if (occupied(x, y)) return true;
-    // cavernous mines: is_maze_lev is false, so only ROOM is valid.
-    return loc.typ !== ROOM;
+    // C ref: mkmaze.c bad_location — (CORR && is_maze_lev) || ROOM || AIR.
+    // Cavernous mines (is_maze_lev false) reduce this to ROOM; a solidfill maze
+    // like Vlad's Tower (is_maze_lev true) has only ROOM floors so it is the
+    // same set of cells, but keep the faithful predicate.
+    const is_maze = !!game.level?.flags?.is_maze_lev;
+    return !((loc.typ === CORR && is_maze) || loc.typ === ROOM || loc.typ === AIR);
 }
 
 // C ref: mkmaze.c place_lregions() — place the registered "branch" levregion

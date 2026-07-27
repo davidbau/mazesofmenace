@@ -50,8 +50,19 @@ const ALIGNWEIGHT = 4;
 
 // S_* monster-class symbol indices (include/defsym.h MONSYM order).
 const S_LICH = 38;
+const S_VAMPIRE = 48;
 const S_HUMAN = 53;
 const MAXMCLASSES = 61;
+
+// PM indices used by the vampire-shapeshift path (Vlad's Tower).  Inlined to
+// avoid a circular import; verified against name_to_pmidx at load.
+const PM_WOLF = 20;
+const PM_FOG_CLOUD = 106;
+const PM_VAMPIRE_BAT = 129;
+const PM_VAMPIRE = 226;
+const PM_VAMPIRE_LEADER = 227; /* also "vampire lord"/"vampire lady" */
+const PM_VLAD_THE_IMPALER = 228;
+const CANDELABRUM_OF_INVOCATION = 262;
 
 // is_placeholder() monsters (include/mondata.h): PM indices excluded by
 // mkclass()'s mk_gen_ok.  These are abstract class placeholders.
@@ -453,6 +464,57 @@ const MFLAGS3 = [
 export const M3_INFRAVISION = 0x0100;  /* has infravision */
 export const M3_INFRAVISIBLE = 0x0200; /* visible by infravision */
 
+// C ref: include/monflag.h M1_POIS ("poisonous to eat") / M1_ACID ("acidic to
+// eat"), indexed by pmidx.  Extracted verbatim from the flg1 field of every
+// MON() entry in include/monsters.h (positional — same order as MONS_NAMES).
+// Consumed by eat.c eatcorpse()'s poisonous()/acidic() macros; previously
+// eat.js approximated this with a hand-picked species-name set that missed
+// ordinary poisonous vermin (e.g. plain kobolds).
+const MPOIS = [
+    0,1,1,0,1,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,
+    0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    1,0,0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,1,
+    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,
+    0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,
+    0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,
+    0,0,1,0,0,0,0,0,1,0,1,1,0,0,0,1,1,0,1,1,
+    0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,
+    1,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,1,
+    1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,
+    0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,
+];
+const MACID = [
+    0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,
+    0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+    1,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,
+];
+
 const MONS = MONS_RAW.map((t) => ({
     pmidx: t[0],
     name: MONS_NAMES[t[0]],
@@ -474,6 +536,8 @@ const MONS = MONS_RAW.map((t) => ({
     verysmall: VERYSMALL.has(t[0]), // MZ_TINY -> true (used by mkobj.js)
     carnivore: ((MFOOD[t[0]] ?? 0) & 1) !== 0, // M1_CARNIVORE
     herbivore: ((MFOOD[t[0]] ?? 0) & 2) !== 0, // M1_HERBIVORE
+    poisonous: !!MPOIS[t[0]],    // C mondata.h poisonous() = mflags1 & M1_POIS
+    acidic: !!MACID[t[0]],       // C mondata.h acidic() = mflags1 & M1_ACID
 }));
 
 // Monster classes whose members carry their own weapon-generation behavior in
@@ -1736,9 +1800,77 @@ function peace_minded_bigrm(ptr) {
     return a && b;
 }
 
+// C ref: mon.c pickvampshape().  mtmp.cham holds the base vampire pmidx.
+// Returns the pmidx of the shape to take.  uppercase_only (rogue level) and
+// pool/lava checks are false for Vlad's Tower.
+function pickvampshape(mtmp) {
+    let mndx = mtmp.cham;
+    let wolfchance = 10;
+    switch (mndx) {
+    case PM_VLAD_THE_IMPALER:
+        // mon_has_special: Vlad carries the Candelabrum, so Vlad never reaches
+        // here via newcham (handled separately) — keep faithful anyway.
+        wolfchance = 3;
+        /* FALLTHROUGH */
+    case PM_VAMPIRE_LEADER:
+        if (!rn2(wolfchance)) { mndx = PM_WOLF; break; }
+        /* FALLTHROUGH */
+    case PM_VAMPIRE:
+        mndx = (!rn2(4)) ? PM_FOG_CLOUD : PM_VAMPIRE_BAT;
+        break;
+    }
+    // C: revert to base if chosen target genocided, or randomly (rn2(4)) if
+    // already in an alternate form.  For a fresh vampire mtmp.data === base so
+    // the (data != cham) clause is false and no rn2(4) is drawn.
+    const base = mtmp.cham;
+    if ((mtmp.data && mtmp.data.pmidx !== base) && !rn2(4))
+        return base;
+    return mndx;
+}
+
+// C ref: mon.c mgender_from_permonst().  Draws rn2(10) only when the new form
+// isn't fixed-gender/neuter; the gender flip itself is suppressed for
+// vampires/vampshifters (but the rn2(10) is still consumed).
+function mgender_from_permonst(mtmp, mdat) {
+    if (mdat.gcode === 1) { mtmp.female = 0; }
+    else if (mdat.gcode === 2) { mtmp.female = 1; }
+    else if (mdat.gcode !== 3) { /* femaleok */
+        const isVamp = (mdat.mcls === S_VAMPIRE)
+            || (mtmp.cham === PM_VAMPIRE || mtmp.cham === PM_VAMPIRE_LEADER
+                || mtmp.cham === PM_VLAD_THE_IMPALER);
+        if (!rn2(10) && !isVamp) mtmp.female = mtmp.female ? 0 : 1;
+    }
+}
+
+// C ref: mon.c newcham() restricted to the vampire-shapeshift cases used by
+// Vlad's Tower.  mdat === null -> pick a shape via pickvampshape; otherwise
+// take the given form (the create_monster waiting-revert path).  Returns 1 if
+// the form changed.  Consumes: pickvampshape (when mdat null) + mgender rn2(10)
+// (conditional) + newmonhp d(m_lev,8) for the new form.
+export function newcham_vamp(mtmp, mdat) {
+    const olddata = mtmp.data;
+    if (mdat == null) {
+        const mndx = pickvampshape(mtmp);
+        mdat = monster_by_pmidx(mndx);
+    }
+    if (!mdat || mdat === olddata || mdat.pmidx === olddata.pmidx)
+        return 0;
+    mgender_from_permonst(mtmp, mdat);
+    // same fraction of max HP as before (no RNG); newmonhp draws d(m_lev,8).
+    const hpn = mtmp.mhp, hpd = mtmp.mhpmax || 1;
+    const tmp = { data: mdat };
+    newmonhp(tmp);
+    mtmp.m_lev = tmp.m_lev;
+    mtmp.mhpmax = tmp.mhpmax;
+    mtmp.mhp = Math.floor((hpn * tmp.mhp) / hpd) || 1;
+    mtmp.data = mdat;
+    return 1;
+}
+
 export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     const ptr = mdat ?? rndmonst();
     if (!ptr) return null;
+    let allow_minvent = true;
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags };
     mtmp.m_id = next_ident();
@@ -1813,6 +1945,26 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         set_mimic_sym(mtmp);
     }
 
+    // C ref: makemon.c:1352-1390 — mitem selection + shapechanger handling.
+    // Gated to Vlad's Tower generation (_tower_gen) so no other session's PRNG
+    // stream is affected.  Vlad gets the Candelabrum (mongets -> next_ident +
+    // mksobj) and stays in normal form; other vampires (mcls S_VAMPIRE) become
+    // a shapechanger and immediately shift via newcham (which disables their
+    // starting inventory, so allow_minvent goes FALSE — skipping m_initweap/
+    // m_initinv and the trailing saddle rn2(100)).
+    if (game._tower_gen) {
+        let mitem = 0;
+        if (ptr.pmidx === PM_VLAD_THE_IMPALER) mitem = CANDELABRUM_OF_INVOCATION;
+        if (ptr.mcls === S_VAMPIRE) {           /* is_shapeshifter */
+            mtmp.cham = ptr.pmidx;
+            if (ptr.pmidx !== PM_VLAD_THE_IMPALER && newcham_vamp(mtmp, null))
+                allow_minvent = false;
+        } else {
+            mtmp.cham = NON_PM;
+        }
+        if (mitem && allow_minvent) mongets(mtmp, mitem);  // next_ident + mksobj
+    }
+
     // C ref: makemon.c:1389 — during level creation an n-demon / Wumpus /
     // long worm / giant eel that isn't guarding the Amulet has a 4/5 chance of
     // starting asleep, consuming one rn2(5).  This draw sits AFTER peace_minded
@@ -1843,14 +1995,20 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
 
     // Weapon/inventory: full C-faithful path during Big Room generation and
     // shop stocking (_full_mon_gen); conservative (committed) path otherwise.
-    if (game._bigrm_gen || game._full_mon_gen) {
-        if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
-        m_initinv_full(mtmp);
-    } else {
-        if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
-        m_initinv(ptr);
+    // C ref: makemon.c:1441 — the whole block (m_initweap/m_initinv + the
+    // saddle rn2(100)) is guarded by allow_minvent, which a shapeshifter's
+    // newcham() clears.  For every non-shapeshifter path allow_minvent stays
+    // TRUE, so behaviour is unchanged.
+    if (allow_minvent) {
+        if (game._bigrm_gen || game._full_mon_gen) {
+            if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
+            m_initinv_full(mtmp);
+        } else {
+            if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
+            m_initinv(ptr);
+        }
+        rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     }
-    rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     // C ref: makemon.c:1248 — the new monster is linked into fmon (placed on the
     // level).  For Big Room generation and shop stocking, place it so the
     // renderer sees the shopkeeper/mimic and m_at() rejects their squares.

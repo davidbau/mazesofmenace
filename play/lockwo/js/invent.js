@@ -322,7 +322,7 @@ function dupstr(s) { return String(s ?? ''); }
 // never prepends the BUC word ("blessed"/"uncursed"/"cursed") — that belongs to
 // doname() alone — so a BUC-known object still reads e.g. "ring of see invisible"
 // here (used by loot_xname, the itemactions title/label, and data.base lookups).
-function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
+export function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 // C ref: objnam.c xname() — the bare object name: no "a"/"an" article and no
 // BUC word (unlike doname()), but still quantity-aware for stackable types.
 export function xname(obj) { observe_object(obj); return simple_obj_name(obj, { article: false, buc: false }); }
@@ -932,7 +932,7 @@ function singplur_compound(str) {
 // English suffix rules (es / ies / ves / man->men / us->i / ium->ia /
 // sis->ses, default +s).  Pronoun and exotic biology cases C also covers are
 // omitted; they don't occur for the object names this port exercises.
-function makeplural(oldstr) {
+export function makeplural(oldstr) {
     if (oldstr == null) return 's';
     let s = String(oldstr).replace(/^ +/, '');
     if (!s) return 's';

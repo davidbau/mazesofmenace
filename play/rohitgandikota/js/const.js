@@ -2960,3 +2960,90 @@ export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (u
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
 export function Is_juiblex_level(uz) { return false; /* TODO */ }
+
+/* include/artifact.h — the SPFX_* artifact special-effect bits.
+ * Verbatim from the header, same names and same values. These are the
+ * flags spec_applies(), bane_applies() and touch_artifact() test. */
+export const SPFX_NONE        = 0x00000000;   /* no special effects, just a bonus */
+export const SPFX_NOGEN       = 0x00000001;   /* item is special, bequeathed by gods */
+export const SPFX_RESTR       = 0x00000002;   /* item is restricted - can't be named */
+export const SPFX_INTEL       = 0x00000004;   /* item is self-willed - intelligent */
+export const SPFX_SPEAK       = 0x00000008;   /* item can speak (not implemented) */
+export const SPFX_SEEK        = 0x00000010;   /* item helps you search for things */
+export const SPFX_WARN        = 0x00000020;   /* item warns you of danger */
+export const SPFX_ATTK        = 0x00000040;   /* item has a special attack (attk) */
+export const SPFX_DEFN        = 0x00000080;   /* item has a special defence (defn) */
+export const SPFX_DRLI        = 0x00000100;   /* drains a level from monsters */
+export const SPFX_SEARCH      = 0x00000200;   /* helps searching */
+export const SPFX_BEHEAD      = 0x00000400;   /* beheads monsters */
+export const SPFX_HALRES      = 0x00000800;   /* blocks hallucinations */
+export const SPFX_ESP         = 0x00001000;   /* ESP (like amulet of ESP) */
+export const SPFX_STLTH       = 0x00002000;   /* Stealth */
+export const SPFX_REGEN       = 0x00004000;   /* Regeneration */
+export const SPFX_EREGEN      = 0x00008000;   /* Energy Regeneration */
+export const SPFX_HSPDAM      = 0x00010000;   /* 1/2 spell damage (on player) in combat */
+export const SPFX_HPHDAM      = 0x00020000;   /* 1/2 physical damage (on player) in combat */
+export const SPFX_TCTRL       = 0x00040000;   /* Teleportation Control */
+export const SPFX_LUCK        = 0x00080000;   /* Increase Luck (like Luckstone) */
+export const SPFX_DMONS       = 0x00100000;   /* attack bonus on one monster type */
+export const SPFX_DCLAS       = 0x00200000;   /* attack bonus on monsters w/ symbol mtype */
+export const SPFX_DFLAG1      = 0x00400000;   /* attack bonus on monsters w/ mflags1 flag */
+export const SPFX_DFLAG2      = 0x00800000;   /* attack bonus on monsters w/ mflags2 flag */
+export const SPFX_DALIGN      = 0x01000000;   /* attack bonus on non-aligned monsters */
+export const SPFX_DBONUS      = 0x01F00000;   /* attack bonus mask */
+export const SPFX_XRAY        = 0x02000000;   /* gives X-RAY vision to player */
+export const SPFX_REFLECT     = 0x04000000;   /* Reflection */
+export const SPFX_PROTECT     = 0x08000000;   /* Protection */
+
+/* include/monattk.h — the AD_* damage types.
+ * Verbatim from the header, same names and same values. artilist
+ * records carry adtyp as an AD_* NAME; these are what resolve it. */
+export const AD_PHYS        = 0;   /* ordinary physical */
+export const AD_MAGM        = 1;   /* magic missiles */
+export const AD_FIRE        = 2;   /* fire damage */
+export const AD_COLD        = 3;   /* frost damage */
+export const AD_SLEE        = 4;   /* sleep ray */
+export const AD_DISN        = 5;   /* disintegration (death ray) */
+export const AD_ELEC        = 6;   /* shock damage */
+export const AD_DRST        = 7;   /* drains str (poison) */
+export const AD_ACID        = 8;   /* acid damage */
+export const AD_SPC1        = 9;   /* for extension of buzz() */
+export const AD_SPC2        = 10;   /* for extension of buzz() */
+export const AD_BLND        = 11;   /* blinds (yellow light) */
+export const AD_STUN        = 12;   /* stuns */
+export const AD_SLOW        = 13;   /* slows */
+export const AD_PLYS        = 14;   /* paralyzes */
+export const AD_DRLI        = 15;   /* drains life levels (Vampire) */
+export const AD_DREN        = 16;   /* drains magic energy */
+export const AD_LEGS        = 17;   /* damages legs (xan) */
+export const AD_STON        = 18;   /* petrifies (Medusa, cockatrice) */
+export const AD_STCK        = 19;   /* sticks to you (mimic) */
+export const AD_SGLD        = 20;   /* steals gold (leppie) */
+export const AD_SITM        = 21;   /* steals item (nymphs) */
+export const AD_SEDU        = 22;   /* seduces & steals multiple items */
+export const AD_TLPT        = 23;   /* teleports you (Quantum Mech.) */
+export const AD_RUST        = 24;   /* rusts armour (Rust Monster) */
+export const AD_CONF        = 25;   /* confuses (Umber Hulk) */
+export const AD_DGST        = 26;   /* digests opponent (trapper, etc.) */
+export const AD_HEAL        = 27;   /* heals opponent's wounds (nurse) */
+export const AD_WRAP        = 28;   /* special "stick" for eels */
+export const AD_WERE        = 29;   /* confers lycanthropy */
+export const AD_DRDX        = 30;   /* drains dexterity (quasit) */
+export const AD_DRCO        = 31;   /* drains constitution */
+export const AD_DRIN        = 32;   /* drains intelligence (mind flayer) */
+export const AD_DISE        = 33;   /* confers diseases */
+export const AD_DCAY        = 34;   /* decays organics (brown Pudding) */
+export const AD_SSEX        = 35;   /* Succubus seduction (extended) */
+export const AD_HALU        = 36;   /* causes hallucination */
+export const AD_DETH        = 37;   /* for Death only */
+export const AD_PEST        = 38;   /* for Pestilence only */
+export const AD_FAMN        = 39;   /* for Famine only */
+export const AD_SLIM        = 40;   /* turns you into green slime */
+export const AD_ENCH        = 41;   /* remove enchantment (disenchanter) */
+export const AD_CORR        = 42;   /* corrode armor (black pudding) */
+export const AD_POLY        = 43;   /* polymorph the target (genetic engineer) */
+export const AD_CLRC        = 240;   /* random clerical spell */
+export const AD_SPEL        = 241;   /* random magic spell */
+export const AD_RBRE        = 242;   /* random breath weapon */
+export const AD_SAMU        = 252;   /* hits, may steal Amulet (Wizard) */
+export const AD_CURS        = 253;   /* random curse (ex. gremlin) */

@@ -323,5 +323,13 @@ export function makedog() {
         if (!g.level.monsters) g.level.monsters = [];
         g.level.monsters.push(mtmp);
     }
+    // C ref: dog.c tamedog()/initedog() — u.uconduct.pets++ unconditionally
+    // whenever a monster becomes tame, including the starting pet makedog()
+    // creates here (the livelog "obtained first pet" message is gated on
+    // in_moveloop, but the counter itself is not).
+    if (mtmp) {
+        if (!g.u.uconduct) g.u.uconduct = {};
+        g.u.uconduct.pets = (g.u.uconduct.pets || 0) + 1;
+    }
     return mtmp;
 }

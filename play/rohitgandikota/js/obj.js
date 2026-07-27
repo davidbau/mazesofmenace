@@ -1,4 +1,5 @@
-import { P_CROSSBOW, P_BOW, P_BOOMERANG, P_DART } from './const.js';
+import { P_CROSSBOW, P_BOW, P_BOOMERANG, P_DART,
+         P_SHORT_SWORD, P_SABER } from './const.js';
 // obj.js — the object-classification macros.
 // C ref: include/obj.h
 //
@@ -116,3 +117,14 @@ export const is_missile = (o) =>
     (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.TOOL_CLASS)
     && game.objects[o.otyp].oc_skill >= -P_BOOMERANG
     && game.objects[o.otyp].oc_skill <= -P_DART;
+
+// include/obj.h:223 is_sword() — a WEAPON_CLASS object whose skill falls in
+// the sword band. The band is contiguous by design: P_SHORT_SWORD through
+// P_SABER, so this is a range test rather than a list, exactly as in C.
+//
+// Reads game.objects directly, matching bimanual() four lines above rather
+// than taking the table as a parameter -- this file already imports game.
+export const is_sword = (o) =>
+    o.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[o.otyp].oc_skill >= P_SHORT_SWORD
+    && game.objects[o.otyp].oc_skill <= P_SABER;

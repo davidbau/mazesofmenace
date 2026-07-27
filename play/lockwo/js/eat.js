@@ -5,6 +5,7 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { monster_by_pmidx, mon_cwt, mon_cnutrit } from './makemon.js';
 import { game } from './gstate.js';
 import { pline, update_topl, y_n } from './display.js';
+import { poison_strdmg } from './attrib.js';
 
 // NOTE on imports: mkobj.js imports set_tin_variety() from this module, so a
 // static `import ... from './mkobj.js'` (or invent.js, which imports mkobj.js)
@@ -575,9 +576,6 @@ const VEGETARIAN_NAMES = new Set([ ...VEGAN_NAMES,
     /* puddings, blobs etc. are vegetarian-but-not-vegan; not reached here */ ]);
 function speciesVegan(name) { return VEGAN_NAMES.has(name); }
 function speciesVegetarian(name) { return VEGETARIAN_NAMES.has(name); }
-const ACIDIC_EAT = new Set(['acid blob', 'yellow mold', 'green slime']);
-const POISON_EAT = new Set(['killer bee', 'red mold', 'cobra', 'pit viper',
-    'water moccasin', 'snake', 'python', 'quivering blob', 'acid blob']);
 
 // C ref: eat.c eatcorpse(otmp) — eat a (carried/floor) corpse.  Models the
 // ordinary fresh-corpse case the starter sessions reach (goblin): the rot
@@ -633,8 +631,9 @@ async function eatcorpse_cmd(otmp) {
         else if (otmp.blessed) rotted -= 2;
     }
 
-    const acidic = ACIDIC_EAT.has(spName);
-    const poisonous = POISON_EAT.has(spName);
+    // C ref: mondata.h acidic(ptr)/poisonous(ptr) = mflags1 & M1_ACID/M1_POIS.
+    const acidic = !!sp?.acidic;
+    const poisonous = !!sp?.poisonous;
 
     // C ref: eat.c:1895-1943 — the tainted / acidic / poisonous / mildly-ill
     // damage cascade.  The mildly-ill branch ("corpse left too long") is the one
@@ -652,11 +651,11 @@ async function eatcorpse_cmd(otmp) {
     } else if (acidic) {
         tp++;
         await update_topl('You have a very bad case of stomach acid.');
-        rnd(15);                                       // eat.c:1926 acid losehp
+        losehp_eat(rnd(15));                           // eat.c:1926 acid losehp
     } else if (poisonous && rn2(5)) {
         tp++;
         await update_topl('Ecch - that must have been poisonous!');
-        rnd(4); rnd(15);                               // eat.c:1932 poison dmg
+        poison_strdmg(rnd(4), rnd(15));                // eat.c:1932 poison dmg
     } else if (rotted > 3 && rn2(5)) {                 // eat.c:1939
         tp++;
         await update_topl(`You feel ${game.u?.Sick ? 'very ' : ''}sick.`);

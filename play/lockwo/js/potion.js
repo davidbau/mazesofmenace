@@ -9,7 +9,7 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, update_topl, y_n } from './display.js';
 import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_DOWNPLAY, body_part,
-         hands_obj, obj_doname } from './invent.js';
+         hands_obj, obj_doname, xname } from './invent.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_PARALYSIS, POT_HEALING,
@@ -88,6 +88,12 @@ export async function potionhit_hero(obj, how) {
     // losehp(Maybe_Half_Phys(rnd(2)), "thrown potion", KILLED_BY_AN)
     let dmg = Maybe_Half_Phys(rnd(2));                   // potion.c:1638 rnd(2)
     u.uhp -= dmg;
+    // C ref: potion.c:1680-1681 — "oil doesn't instantly evaporate; Neither
+    // does a saddle hit".  hit_saddle is always false on the isyou path;
+    // cansee(tx,ty) is the hero's own square, true unless Blind.  No RNG.
+    if (obj.otyp !== POT_OIL && !Blind()) {
+        await update_topl(`The ${xname(obj)} evaporates.`);
+    }
     // isyou per-otyp direct effect (potion.c:1683)
     switch (obj.otyp) {
     case POT_ACID:
@@ -124,14 +130,29 @@ async function potionbreathe_hero(obj) {
     case POT_SLEEPING:
         kn++;                                            // potion.c:2053
         if (!Free_action() && !Sleep_resistance()) {
+            // C ref: potion.c:2054 You_feel("rather tired.") = "You feel " +
+            // ("You dream that you feel " if Unaware) + line.  No RNG.
+            await update_topl(
+                `${game.u?.Unaware ? 'You dream that you feel' : 'You feel'} rather tired.`);
             nomul_local(-rnd(5));                        // potion.c:2056 rnd(5)
+            // C ref: potion.c:2057-2058 — multi_reason/nomovemsg are set so
+            // the moveloop's unmul() (js/allmain.js) announces "You can move
+            // again." once the sleep countdown reaches 0 (matches the
+            // established peffect_paralysis pattern below).
+            game.multi_reason = 'sleeping off a magical draught';
+            game.nomovemsg = 'You can move again.';
             exercise(A_DEX, false);                      // attrib.c:509 rn2(2)
         }
         break;
     case 301 /*POT_PARALYSIS*/:
         kn++;                                            // potion.c:2042
         if (!Free_action()) {
+            // C ref: potion.c:2041 pline("%s seems to be holding you.",
+            // Something) — Something is the plain constant "Something".
+            await update_topl('Something seems to be holding you.');
             nomul_local(-rnd(5));
+            game.multi_reason = 'frozen by a potion';     // potion.c:2044
+            game.nomovemsg = 'You can move again.';       // potion.c:2045
             exercise(A_DEX, false);
         }
         break;

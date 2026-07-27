@@ -1,4 +1,5 @@
-import { cantwield } from './mondata.js';
+import { cantwield, humanoid } from './mondata.js';
+import { touch_petrifies } from './dog.js';
 import { is_weptool } from './mkobj.js';
 import { pline } from './display.js';
 import { ECMD_TIME } from './invent.js';
@@ -13,14 +14,17 @@ import { game } from './gstate.js';
 import { will_weld } from './monmove.js';
 import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT, prinv } from './invent.js';
-import { W_QUIVER } from './const.js';
+import { W_QUIVER, W_WEP } from './const.js';
+import { is_missile } from './obj.js';
+import { is_pole } from './u_init.js';
+import { setworn } from './worn.js';
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 
 // include/hack.h:1330 ynq()
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
 import { ECMD_OK, ECMD_CANCEL, ECMD_FAIL, P_BOW, P_CROSSBOW } from './const.js';
-import { OCLASSES } from './objects_data.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
 
 // src/wield.c ready_ok() — which objects getobj should suggest for the quiver.
 //
@@ -188,6 +192,125 @@ export async function dowield() {
 
     /* the actual wield: setuwep(), the two-weapon and unweapon updates,
        and the artifact/cockatrice checks */
-    (game.unported ||= new Set()).add('dowield:setuwep');
+    setuwep(wep);
+    (game.unported ||= new Set()).add('dowield:twoweapon_and_artifact');
     return ECMD_TIME;
+}
+
+// src/wield.c:100 setuwep() — make `obj` the wielded weapon.
+//
+// The early return is load-bearing and easy to drop: re-wielding what is
+// already wielded returns WITHOUT touching gu.unweapon, so the "bashing"
+// state survives. C comments it as "necessary to not set gu.unweapon".
+//
+// The unweapon computation at the end is the part that matters downstream --
+// js/uhitm.js:780 reads the wielded weapon in the melee path, and unweapon
+// decides whether the hero gets the bashing message. Note the structure: for
+// a WEAPON_CLASS object unweapon is TRUE when the thing is not meant for
+// melee (a launcher, ammo, a missile, or a polearm on foot), and for anything
+// else it is TRUE unless the object is a weapon-tool or a wet towel.
+//
+// Not ported, each recorded: the Ogresmasher botl updates and the Sunsword
+// end_burn, both artifact-only.
+export function setuwep(obj) {
+    const olduwep = game.u.uwep;
+
+    if (obj === game.u.uwep)
+        return;                     /* necessary to not set gu.unweapon */
+
+    setworn(obj, W_WEP);
+
+    if (obj && obj.oclass !== OCLASSES.WEAPON_CLASS && !is_weptool(obj, game.objects))
+        note_unported_wield('setuwep:is_wet_towel');
+
+    if (olduwep?.oartifact || obj?.oartifact)
+        note_unported_wield('setuwep:artifact_botl_and_light');
+
+    /* Note: explicitly wielding a pick-axe gives no "bashing" message;
+       wielding one via 'a'pplying it does. */
+    if (obj) {
+        game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
+            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+               || (is_pole(obj) && !game.u.usteed))
+            /* C also excludes a wet towel here; is_wet_towel is not
+               exported anywhere in the port, so that arm is recorded. A
+               wet towel therefore reads as unweapon where C says it is
+               not, which changes only the bashing message. */
+            : !is_weptool(obj, game.objects);
+    } else {
+        game.unweapon = true;       /* for the "bare hands" message */
+    }
+}
+
+// src/wield.c:834 set_twoweap() — turn two-weapon fighting on or off.
+//
+// Guarded on a real change, so a redundant call touches nothing. That guard
+// is why setworn() can call it unconditionally when unwielding.
+export function set_twoweap(on_off) {
+    if (on_off !== game.u.twoweap) {
+        game.u.twoweap = on_off;
+        /* flags.weaponstatus gates a botl refresh; the status line does not
+           read twoweap yet, so the refresh is recorded rather than forced. */
+        note_unported_wield('set_twoweap:botl');
+    }
+}
+
+// src/wield.c:158 empty_handed() — how to describe having no weapon.
+//
+// Three phrasings, and the order is the logic: gloves imply hands, so a
+// gloved hero is "empty handed" even though a pawed one is not; a humanoid
+// without gloves is "bare handed"; anything else gets the neutral phrasing
+// because it may have paws or no hands at all.
+//
+// Used by ready_weapon, #seeweapon (')'), #attributes (^X) and #takeoffall.
+export function empty_handed() {
+    return game.u.uarmg ? 'empty handed'          /* gloves imply hands */
+         : (game.youmonst?.data && humanoid(game.youmonst.data))
+             ? 'bare handed'                      /* hands, no weapon, no gloves */
+             : 'not wielding anything';           /* paws, or no hands */
+}
+
+// src/wield.c:75 TWOWEAPOK() — may this object be the SECONDARY weapon?
+//
+// File-local in C and file-local here, deliberately: it is a wield.c macro,
+// not a header one, so exporting it would put a symbol in the tree that the
+// C does not have.
+//
+// Note what it is NOT: it looks like the negation of setuwep's unweapon
+// computation and is not quite. unweapon also excludes polearms on foot
+// (is_pole && !u.usteed); TWOWEAPOK does not, because a polearm is a fine
+// second weapon even though swinging it bashes. Reusing one for the other
+// would be wrong in exactly the case that is hard to notice.
+const TWOWEAPOK = (obj) =>
+    (obj.oclass === OCLASSES.WEAPON_CLASS)
+        ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj))
+        : is_weptool(obj, game.objects);
+
+// src/wield.c cant_wield_corpse() — refuse a petrifying corpse in bare hands.
+//
+// The guard is ported exactly and is the whole of the common path: gloves,
+// a non-corpse, a non-petrifying corpse, or stoning resistance all return
+// FALSE and the wield proceeds.
+//
+// The TRUE branch is where the hero touches a cockatrice corpse bare-handed,
+// and in C that calls instapetrify() -- which usually KILLS. instapetrify,
+// corpse_xname and killer_xname are all absent, so the death is RECORDED and
+// does not happen. The return value still matches C, so the corpse is still
+// refused; what is missing is the hero dying of it.
+//
+// That is a real and deliberate gap, not an approximation: inventing a death
+// path would end games C does not end, which is far worse than failing to end
+// one it does.
+export function cant_wield_corpse(obj) {
+    if (game.u.uarmg || obj.otyp !== ONAMES.CORPSE
+        || !touch_petrifies(game.mons[obj.corpsenm]))
+        return false;
+
+    /* Stone_resistance is not modelled; C returns FALSE for a resistant
+       hero, so a resistant hero here is wrongly refused the wield. */
+    note_unported_wield('cant_wield_corpse:Stone_resistance');
+
+    /* Prevent wielding cockatrice when not wearing gloves --KAA */
+    note_unported_wield('cant_wield_corpse:instapetrify');
+    return true;
 }

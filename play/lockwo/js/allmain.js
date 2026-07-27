@@ -10,7 +10,7 @@ import { nhgetch } from './input.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { makedog } from './dog.js';
-import { rhack, dosearch0 } from './cmd.js';
+import { rhack, dosearch0, monster_nearby } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, topl_more, update_topl } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
@@ -656,6 +656,7 @@ function youHaveSearching() {
     if (lvl == null) return false;
     return (game.u?.ulevel ?? 1) >= lvl;
 }
+export { youHaveSearching };
 
 // C ref: allmain.c u_calc_moveamt(wtcap) — gives the hero movement points for
 // the turn.  When riding and the hero moved, moveamt = mcalcmove(usteed, TRUE)
@@ -1101,6 +1102,14 @@ function exerchk() {
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
+    // C ref: end.c really_done() never returns to moveloop_core() (it longjmps
+    // out via done1()/exit_nhwindows()).  With no longjmp here, the hero dying
+    // from her OWN command (e.g. domove() -> spoteffects() -> lava_effects())
+    // leaves g._pendingTurn/g.context.move set from the fatal command; without
+    // this guard the runner's next moveloop_core() call would run moveloop_turn()
+    // (monster moves, encumber_msg, ...) over a corpse, fabricating RNG really_
+    // done() never reaches.  Matches moveloop()'s own post-death stop.
+    if (g.program_state?.gameover) return;
 
     // Per-turn work runs at the TOP of the turn that follows a hero move,
     // mirroring the C moveloop (monsters move based on the previous command's
@@ -1226,7 +1235,23 @@ export async function moveloop_core() {
         g.context = g.context || {};
         g.context.move = 1;
         g._pendingTurn = true;
-        if ((g.multi ?? 0) <= 0) { g._search_occupation = null; g.multi = 0; }
+        // still counting down => go.occupation stays armed for next turn (C:
+        // `(*go.occupation)() == 0` false).  If dosearch0 already found
+        // something this turn (nomul(0)), multi is 0 here and occupation ends
+        // silently, same as C's `go.occupation = 0` happening before the
+        // monster_nearby() check below.
+        const stillOccupied = (g.multi ?? 0) > 0;
+        if (!stillOccupied) g._search_occupation = null;
+        // C ref: allmain.c moveloop_core():501-508 — after running the
+        // occupation for the turn, a now-adjacent hostile monster stops the
+        // occupation early (stop_occupation(): "You stop searching." + nomul(0)).
+        // stop_occupation() only prints when go.occupation was still set, i.e.
+        // the repeat hadn't already ended this same turn.
+        if (monster_nearby()) {
+            if (stillOccupied) await pline('You stop searching.');
+            g._search_occupation = null;
+            g.multi = 0;
+        }
         return;
     }
 

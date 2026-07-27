@@ -10,7 +10,7 @@ import { game } from './gstate.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES } from './objects_data.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-         W_RINGL, W_RINGR, W_AMUL, AC_MAX } from './const.js';
+         W_RINGL, W_RINGR, W_AMUL, AC_MAX, I_SPECIAL } from './const.js';
 import { sgn } from './hacklib.js';
 
 export function worn(mask) {
@@ -122,4 +122,24 @@ export function set_wear(obj) {
 
 function note_unported_do_wear(what) {
     (game.unported ||= new Set()).add('do_wear:' + what);
+}
+
+// src/do_wear.c:1645 cancel_doff() — called by setworn() for the old item in
+// a slot, and by setnotworn() for a specific item.
+//
+// The mask clear is the whole observable effect for us and is ported exactly.
+//
+// The cancel_don() arm is recorded: donning() and cancel_don() are both
+// absent. C's comment explains why the I_SPECIAL guard exists -- do_takeoff()
+// sets that flag so a setworn(0) reached via <X>_off() does NOT cancel the
+// don, which is what lets the 'A' command continue to its next selected item.
+// Approximating that would break multi-item takeoff in a way no current
+// session exercises.
+export function cancel_doff(obj, slotmask) {
+    const t = (game.context.takeoff ||= {});
+
+    if (!((t.mask | 0) & I_SPECIAL))
+        note_unported_do_wear('cancel_doff:donning_cancel_don');
+
+    t.mask = (t.mask | 0) & ~slotmask;
 }

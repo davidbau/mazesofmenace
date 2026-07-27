@@ -30,6 +30,8 @@ import { race_attrmax } from './u_init.js';
 import { acurr_eff } from './attrib.js';
 import { depth } from './hacklib.js';
 import { newuexp } from './exper.js';
+import { youHaveSearching } from './allmain.js';
+import { Infravision } from './vision.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -54,7 +56,12 @@ const GENDER_ADJ = ['male', 'female'];
 
 // Build the enlightenment text lines.  Returns an array of strings (already
 // containing their own leading-space prefixes; section headers have none).
-export function enlightenment_lines() {
+// `final` mirrors C's enlightenment(mode, final): 0 = ENL_GAMEINPROGRESS (the
+// live ^X command, present tense, BASIC sections only); ENL_GAMEOVERDEAD (2)
+// = the end-of-game disclosure (past tense, plus the MAGICENLIGHTENMENT
+// "Final Attributes:" section) -- the only non-zero value the covered
+// sessions reach.
+export function enlightenment_lines(final = 0) {
     const u = game.u || {};
     const rolemnum = game.urole?.mnum ?? u.umonnum ?? 9;
     const roleDef = roles.find((r) => r.mnum === rolemnum) || roles[rolemnum] || {};
@@ -78,14 +85,17 @@ export function enlightenment_lines() {
     const lines = [];
     const out = (s) => lines.push(s);          // enlght_out: header / raw line
     // enlght_line: " <start><mid><suffix><ps>." with not-contractions applied
+    // (C ref: insight.c enlght_line()'s notwochars[] table -- both present-
+    // and past-tense pairs, since `final` selects which verb enlLine() gets).
     const enlLine = (start, mid, suffix, ps) => {
         let buf = ` ${start}${mid}${suffix}${ps}.`;
-        buf = buf.replace(' are not ', ' aren\'t ').replace(' have not ', ' haven\'t ')
-            .replace(' can not ', ' can\'t ');
+        buf = buf.replace(' are not ', ' aren\'t ').replace(' were not ', ' weren\'t ')
+            .replace(' have not ', ' haven\'t ').replace(' had not ', ' hadn\'t ')
+            .replace(' can not ', ' can\'t ').replace(' could not ', ' couldn\'t ');
         out(buf);
     };
-    const youAre = (attr, ps = '') => enlLine('You ', 'are ', attr, ps);
-    const youHave = (attr, ps = '') => enlLine('You ', 'have ', attr, ps);
+    const youAre = (attr, ps = '') => enlLine('You ', final ? 'were ' : 'are ', attr, ps);
+    const youHave = (attr, ps = '') => enlLine('You ', final ? 'had ' : 'have ', attr, ps);
 
     // ── title ──
     // Headers/title are enlght_out() lines (no leading space); the tty menu
@@ -147,14 +157,14 @@ export function enlightenment_lines() {
     // moon phase and Friday-the-13th status are reported, in that order, BEFORE
     // the experience-point line.
     if (night())
-        enlLine('It ', 'is ', 'nighttime', '');
+        enlLine('It ', final ? 'was ' : 'is ', 'nighttime', '');
     const moonphase = phase_of_the_moon();
     if (moonphase === FULL_MOON || moonphase === NEW_MOON) {
         // C: Sprintf(buf, "a %s moon in effect%s", ..., "") -> enl_msg("There ",
         // "is ", "was ", buf, "").  "in effect" (not "tonight") because the phase
         // is the start-of-session value, not necessarily the current real time.
         const which = (moonphase === FULL_MOON) ? 'full' : 'new';
-        enlLine('There ', 'is ', `a ${which} moon in effect`, '');
+        enlLine('There ', final ? 'was ' : 'is ', `a ${which} moon in effect`, '');
     }
     if (friday_13th()) {
         // C: enlght_out(" Bad things can happen on Friday the 13th.") — a raw
@@ -191,15 +201,15 @@ export function enlightenment_lines() {
     else youHave(`${pw} out of ${pwmax} ${Power}`);
 
     // armor class (enl_msg: "Your armor class " + "is " + value)
-    enlLine('Your armor class ', 'is ', `${u.uac ?? 0}`, '');
+    enlLine('Your armor class ', final ? 'was ' : 'is ', `${u.uac ?? 0}`, '');
 
     // wallet (bypasses you_have; leading space already supplied)
     const umoney = game._goldCount ?? u.umoney ?? 0;
-    out(umoney ? ` Your wallet contains ${umoney} ${currency(umoney)}.`
-               : ' Your wallet is empty.');
+    out(umoney ? ` Your wallet contain${final ? 'ed' : 's'} ${umoney} ${currency(umoney)}.`
+               : ` Your wallet ${final ? 'was' : 'is'} empty.`);
 
     // autopickup (off by default for these sessions)
-    enlLine('Autopickup ', 'is ', game.flags?.pickup ? 'on' : 'off', '');
+    enlLine('Autopickup ', final ? 'was ' : 'is ', game.flags?.pickup ? 'on' : 'off', '');
 
     // ── Characteristics ──
     // C ref: insight.c one_characteristic() — the value plus, when the innate
@@ -210,7 +220,7 @@ export function enlightenment_lines() {
     // acurrent = ACURR (effective), abase = ABASE (u.acurr.a), apeak = AMAX
     // (u.amax.a), alimit = ATTRMAX = race attrmax.
     out('');
-    out('Characteristics:');
+    out(final ? 'Final Characteristics:' : 'Characteristics:');
     const abaseArr = u.acurr?.a || [];
     const apeakArr = u.amax?.a || [];
     const limitArr = race_attrmax();
@@ -219,9 +229,14 @@ export function enlightenment_lines() {
         const abase = abaseArr[idx] ?? acurrent;
         const apeak = apeakArr[idx] ?? abase;
         const alimit = limitArr[idx] ?? 18;
-        const interesting = alimit !== (idx !== A_STR ? 18 : 118 /* STR18(100) */);
+        // C ref: one_characteristic() — interesting_alimit is TRUE unconditionally
+        // in final disclosure (it was originally `abase != alimit`); only the
+        // in-progress path restricts it to a non-default race limit.
+        const interesting = final
+            ? true
+            : alimit !== (idx !== A_STR ? 18 : 118 /* STR18(100) */);
         let valubuf = attrval(idx, acurrent);
-        let paren = ' (current; ';
+        let paren = final ? ' (' : ' (current; ';
         if (acurrent !== abase) {
             valubuf += `${paren}base:${attrval(idx, abase)}`;
             paren = ', ';
@@ -234,7 +249,7 @@ export function enlightenment_lines() {
             valubuf += `${paren}${acurrent > alimit ? 'innate ' : ''}limit:${attrval(idx, alimit)}`;
         if (acurrent !== abase || abase !== apeak || interesting)
             valubuf += ')';
-        enlLine(`Your ${name} `, 'is ', valubuf, '');
+        enlLine(`Your ${name} `, final ? 'was ' : 'is ', valubuf, '');
     };
     characteristic(A_STR, 'strength');
     characteristic(A_DEX, 'dexterity');
@@ -245,21 +260,73 @@ export function enlightenment_lines() {
 
     // ── Status ──
     out('');
-    out('Status:');
+    out(final ? 'Final Status:' : 'Status:');
     // hunger: hu_stat[u.uhs]; NOT_HUNGRY (1) -> "not hungry" at game start.
     youAre(hungerWord(u.uhs ?? 1));
     // encumbrance (near_capacity() == UNENCUMBERED for the starter pack)
     youAre('unencumbered');
     // current weapon + skill
     weaponInsight(youAre, youHave, enlLine);
+    // C ref: status_enlightenment() tail — "report 'nudity'": no armor worn at
+    // all (the covered heroes never have uroleplay.nudist set).
+    if (!game.uarm && !game.uarmu && !game.uarmc && !game.uarms
+        && !game.uarmg && !game.uarmf && !game.uarmh)
+        youAre('not wearing any armor');
+
+    // ── Attributes (MAGICENLIGHTENMENT) ──  C ref: attributes_enlightenment().
+    // Only reached at end-of-game disclosure (final) for the covered sessions;
+    // limited to what the covered heroes can actually have: alignment piety,
+    // role-granted Searching, racial Infravision, and the mortality line.
+    if (final) {
+        out('');
+        out('Final Attributes:');
+        const pio = piousness(u.ualign?.record ?? 0);
+        if ((u.ualign?.record ?? 0) >= 0) youAre(pio);
+        else youHave(pio);
+        if (youHaveSearching()) youHave('automatic searching');
+        if (Infravision()) youHave('infravision');
+        // C ref: enlightenment() tail — "have been killed .../are dead" via
+        // u.umortality; the covered death path always has umortality === 1.
+        out(' You are dead.');
+    }
 
     // ── Miscellaneous ──
     out('');
     out('Miscellaneous:');
+    // C ref: enlightenment() — bones-level reminder, shown for BASIC mode in
+    // wizard/explore/final; flags.bones defaults on and no session has visited
+    // a bones level yet, so this is always the "didn't encounter any" form.
+    if (final) {
+        if (game.flags?.bones === false)
+            youHave('disabled loading and storing of bones levels');
+        else if (!u.numbones)
+            enlLine('You ', final ? 'didn\'t encounter' : 'haven\'t encountered', ' any bones levels', '');
+        else
+            youHave(`encountered ${u.numbones} bones level${u.numbones === 1 ? '' : 's'}`);
+    }
     // elapsed playing time (none at game start; matches fmt_elapsed_time)
-    enlLine('Total elapsed playing time ', 'is ', elapsedTime(), '');
+    enlLine('Total elapsed playing time ', final ? 'was ' : 'is ', elapsedTime(), '');
 
     return lines;
+}
+
+// C ref: insight.c piousness(showneg, suffix) — alignment-piety adjective
+// ("aligned" suffix), used by attributes_enlightenment().  showneg is TRUE
+// there, but the covered heroes' record is always non-negative.
+function piousness(record) {
+    let pio;
+    if (record >= 20) pio = 'piously';
+    else if (record > 13) pio = 'devoutly';
+    else if (record > 8) pio = 'fervently';
+    else if (record > 3) pio = 'stridently';
+    else if (record === 3) pio = '';
+    else if (record > 0) pio = 'haltingly';
+    else if (record === 0) pio = 'nominally';
+    else if (record >= -3) pio = 'strayed';
+    else if (record >= -8) pio = 'sinned';
+    else pio = 'transgressed';
+    if (record >= 0) return record === 3 ? 'aligned' : `${pio} aligned`;
+    return pio;
 }
 
 // C ref: wield.c empty_handed() — how a weaponless hero is described: gloves

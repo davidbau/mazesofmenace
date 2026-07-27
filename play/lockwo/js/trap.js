@@ -1039,17 +1039,45 @@ async function drown(pickupFn) {
     return true;
 }
 
+// C ref: trap.c lava_effects() — the hero (no Fire_resistance, no Wwalking:
+// the only case the corpus reaches) falls into lava and burns.  d(6,6) is
+// rolled unconditionally (it's only ever USED on the Wwalking branch, but C
+// declares/rolls it up front regardless), then usurvive is false, so no
+// "bursts into flame" messages print (those are gated on usurvive) and the
+// invent-burn loop runs silently; the covered heroes carry nothing at this
+// point (Tutorial mode sequesters invent — see allmain.js
+// sequester_inventory_for_tutorial), so that loop is a no-op here.  Ends in
+// done(BURNING); no return when the hero really dies (matches C's
+// really_done() never returning to the caller).
+async function lava_effects() {
+    const u = game.u;
+    const { topl_more } = await import('./display.js');
+    d(6, 6); // dmg; only consulted by the Wwalking branch, not reached here
+    await update_topl(`You fall into the ${waterbody_name(u.ux, u.uy)}!`);
+    game._killer_name = 'burned by molten lava';
+    // C ref: hack.c urgent_pline() — pline() immediately followed by a forced
+    // --More--; concatenates onto the still-pending fall-in line (same as any
+    // other pline), then flushes the joint line.
+    await update_topl('You burn to a crisp...');
+    await topl_more();
+    game._toplin = 0;
+    game._pending_message = '';
+    const { done, BURNING } = await import('./end.js');
+    await done(BURNING);
+}
+
 // C ref: hack.c pooleffects(newspot) — entering/leaving water or lava.  Only
-// the "hero (no steed, no Levitation/Flying) walks onto a plain pool" branch
-// is modelled; leaving water, lava, and the steed/Wwalking paths aren't
-// reached by the corpus.
+// the "hero (no steed, no Levitation/Flying) walks onto a plain pool or into
+// lava" branches are modelled; leaving water/lava and the steed/Wwalking
+// paths aren't reached by the corpus.
 async function pooleffects_enter(pickupFn) {
     const u = game.u;
     if (u.ustuck || u.uprops?.Levitation || u.uprops?.Flying) return false;
     if (u.usteed) return false;
     const loc = game.level?.at(u.ux, u.uy);
     const typ = loc ? loc.typ : STONE;
-    if (!isPoolAt(u.ux, u.uy) || IS_LAVA(typ)) return false;
+    if (!isPoolAt(u.ux, u.uy) && !IS_LAVA(typ)) return false;
+    if (IS_LAVA(typ)) { await lava_effects(); return true; }
     return drown(pickupFn);
 }
 

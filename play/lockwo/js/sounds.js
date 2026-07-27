@@ -84,9 +84,14 @@ export function dosounds() {
     const hallu = 0; // Hallucination not modeled in the move loop
 
     // C ref: sounds.c:213-219 — fountain ambient.  rn2(3) selects the message.
-    if (lf.nfountains && !rn2(400)) { You_hear1(FOUNTAIN_MSG[rn2(3) + hallu]); return; }
-    // C ref: sounds.c:220-225 — sink ambient ("You hear a slow drip.").
-    if (lf.nsinks && !rn2(300)) { You_hear1(SINK_MSG[rn2(2) + hallu]); return; }
+    // NOTE: C does NOT return here — nsinks/has_court/etc. below are still
+    // rolled this same turn (multiple ambient sounds can stack on one line
+    // via update_topl).  A `return` here silently drops every rn2() roll
+    // for the rest of the function whenever the 1/400 fountain chance hits.
+    if (lf.nfountains && !rn2(400)) { You_hear1(FOUNTAIN_MSG[rn2(3) + hallu]); }
+    // C ref: sounds.c:220-225 — sink ambient ("You hear a slow drip.").  Also
+    // falls through (no return) in C — see note above.
+    if (lf.nsinks && !rn2(300)) { You_hear1(SINK_MSG[rn2(2) + hallu]); }
     if (lf.has_court && !rn2(200)) { return; }
     // C ref: sounds.c:230-237 — swamp ambient, via You1() not You_hear1().
     if (lf.has_swamp && !rn2(200)) { You1(SWAMP_MSG[rn2(2) + hallu]); return; }

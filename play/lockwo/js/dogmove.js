@@ -406,43 +406,57 @@ async function dog_invent(mtmp, edog, udist) {
         // top of a trap-victim's corpse — so the tile reverts to the corpse glyph
         // once the dart is taken, matching C.
         const obj = here[here.length - 1];
-        // nofetch classes (BALL/CHAIN/...) and special prizes are skipped in C
-        // before dogfood; the starting level's underfoot objects aren't those.
-        const edible = dogfood(mtmp, obj);
-        if (edible <= CADAVER || (edog.mhpmax_penalty && edible === ACCFOOD)) {
-            // would eat -> counts as the pet's move (dog_eat).  Not modeled in
-            // detail; emit no further RNG and report "ate".
-            return 1;
-        }
-        // can_carry / pickup path: rn2(20) < apport+3, then rn2(udist)/rn2(apport)
-        const carryamt = can_carry(mtmp, obj);
-        if (carryamt > 0 && !obj.cursed) {
-            if (rn2(20) < apport + 3) {
-                if (rn2(udist) || rn2(apport) === 0) {
-                    // C ref: dogmove.c:448-465 — split a partial stack (which
-                    // assigns a fresh o_id via next_ident -> rnd(2)) then move
-                    // the object into the pet's minvent (mpickobj, no RNG).
-                    let otmp = obj;
-                    if (carryamt !== (obj.quan || 1))
-                        otmp = pet_splitobj(obj, carryamt);
-                    // C ref: dogmove.c:451-462 — if the hero can see the pet's
-                    // tile, announce the pickup (verbose default) via pline_xy
-                    // -> vpline -> update_topl.  doname() is evaluated before the
-                    // object is removed from the floor.  No RNG (cansee is
-                    // deterministic; gold/ordinary doname is too).  Routing through
-                    // update_topl (not a raw _pending_message assignment) is what
-                    // lets the pickup APPEND after an unacknowledged prior message
-                    // (e.g. a preceding "The <mon> is killed!") on the same top
-                    // line, exactly as C's topl buffer does.
-                    if (cansee(omx, omy) && game.flags?.verbose !== false)
-                        await emit_pet_msg(`${Monnam(mtmp)} picks up ${pet_doname(otmp)}.`);
-                    // C ref: dogmove.c:463-464 — obj_extract_self(otmp) then
-                    // newsym(omx, omy).  The pet is on the object's tile (omx,omy);
-                    // the newsym refreshes the remembered background so the picked-up
-                    // glyph doesn't linger once the tile leaves the hero's sight.
-                    pet_extract_floor(otmp);
-                    newsym(omx, omy);
-                    mpickobj(mtmp, otmp);
+        // C ref: dogmove.c dog_invent — nofetch[] = {BALL_CLASS, CHAIN_CLASS,
+        // ROCK_CLASS} gates the whole underfoot branch BEFORE dogfood() is
+        // called: a boulder or statue underfoot is never scanned at all (no
+        // obj_resists rn2(100)), unlike dog_goal's fobj scan a few lines down
+        // which has no such guard and dogfood()s every in-range object
+        // (statues included, always UNDEF).  Without this gate the statue
+        // gets dogfood()'d TWICE per turn it sits under the pet — once here,
+        // once in dog_goal's scan — burning an extra rn2(100) that shifts
+        // every subsequent roll (seed0007 step212: the pet's candidate-square
+        // acceptance rn2(3)/rn2(12) rolls land one slot early, so it moves
+        // when C's rolls, read from the correct slot, all reject and it
+        // stays put).
+        const nofetch = obj.oclass === BALL_CLASS || obj.oclass === CHAIN_CLASS
+            || obj.oclass === ROCK_CLASS;
+        if (!nofetch) {
+            const edible = dogfood(mtmp, obj);
+            if (edible <= CADAVER || (edog.mhpmax_penalty && edible === ACCFOOD)) {
+                // would eat -> counts as the pet's move (dog_eat).  Not modeled in
+                // detail; emit no further RNG and report "ate".
+                return 1;
+            }
+            // can_carry / pickup path: rn2(20) < apport+3, then rn2(udist)/rn2(apport)
+            const carryamt = can_carry(mtmp, obj);
+            if (carryamt > 0 && !obj.cursed) {
+                if (rn2(20) < apport + 3) {
+                    if (rn2(udist) || rn2(apport) === 0) {
+                        // C ref: dogmove.c:448-465 — split a partial stack (which
+                        // assigns a fresh o_id via next_ident -> rnd(2)) then move
+                        // the object into the pet's minvent (mpickobj, no RNG).
+                        let otmp = obj;
+                        if (carryamt !== (obj.quan || 1))
+                            otmp = pet_splitobj(obj, carryamt);
+                        // C ref: dogmove.c:451-462 — if the hero can see the pet's
+                        // tile, announce the pickup (verbose default) via pline_xy
+                        // -> vpline -> update_topl.  doname() is evaluated before the
+                        // object is removed from the floor.  No RNG (cansee is
+                        // deterministic; gold/ordinary doname is too).  Routing through
+                        // update_topl (not a raw _pending_message assignment) is what
+                        // lets the pickup APPEND after an unacknowledged prior message
+                        // (e.g. a preceding "The <mon> is killed!") on the same top
+                        // line, exactly as C's topl buffer does.
+                        if (cansee(omx, omy) && game.flags?.verbose !== false)
+                            await emit_pet_msg(`${Monnam(mtmp)} picks up ${pet_doname(otmp)}.`);
+                        // C ref: dogmove.c:463-464 — obj_extract_self(otmp) then
+                        // newsym(omx, omy).  The pet is on the object's tile (omx,omy);
+                        // the newsym refreshes the remembered background so the picked-up
+                        // glyph doesn't linger once the tile leaves the hero's sight.
+                        pet_extract_floor(otmp);
+                        newsym(omx, omy);
+                        mpickobj(mtmp, otmp);
+                    }
                 }
             }
         }
@@ -1328,7 +1342,7 @@ async function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
 
 // C ref: mon.c monnear(mon, x, y) — within melee range (dist2 < 3, but grid
 // bugs can't reach diagonal range-2 squares).
-function monnear(mon, x, y) {
+export function monnear(mon, x, y) {
     const PM_GRID_BUG = 116; // makemon MONS-table index (matches mfndpos nodiag)
     const distance = dist2(mon.mx, mon.my, x, y);
     if (distance === 2 && mon.data?.pmidx === PM_GRID_BUG) return false;

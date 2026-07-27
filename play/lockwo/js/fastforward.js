@@ -119,8 +119,17 @@ export function fastforward_pre_mklev() {
     // oc_descr_idx / oc_color and emits the exact rn2 sequence.
     init_objects();
     const legacy_startup = use_legacy_startup();
-    if (!legacy_startup)
-        fastforward_role_init();
+    // C ref: allmain.c newgame() — role_init() runs for EVERY new game
+    // (before init_dungeons()), regardless of startup selection path. It's
+    // not scaffold-specific: it performs the real quest leader/nemesis
+    // gender fixup (rn2(100) when that monster is neuter — currently
+    // wizard/archeologist) and, for the Priest role (the only role with no
+    // own gods; role.c 'Priest' entry's lgod/ngod/cgod are all 0), draws
+    // randrole(FALSE) in a loop to assign flags.pantheon (role.c:2064-2069).
+    // Previously gated on !legacy_startup, which skipped this for seeds
+    // 2/31..40 and desynced the RNG stream by one draw for every Priest (and
+    // Wizard) character using those seeds (e.g. seed0030 segments 5/6).
+    fastforward_role_init();
     // random
     rn2(3); rn2(2);
     if (legacy_startup)

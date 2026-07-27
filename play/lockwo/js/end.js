@@ -280,48 +280,332 @@ async function done(how) {
         // C ref: end.c really_done() — normal-game (non-wizard/explore) death
         // tail.  After the bones check, display_nhwindow(WIN_MESSAGE, FALSE)
         // pages the still-unseen "You die..." top line with --More--, then
-        // disclose() offers the end-of-game disclosure prompts.  In
-        // wizard/explore mode the paranoid "Die?" query above already paged the
-        // death line, and those recordings stop before disclosure, so this tail
-        // is scoped to the normal game modes.
+        // disclose() offers its six end-of-game queries before the tombstone/
+        // topten teardown.
         if (!wizard && !discover) {
             if (game._toplin === 1) { // display_nhwindow(WIN_MESSAGE): more()
                 await d.topl_more();
                 game._toplin = 0;
                 game._pending_message = '';
             }
-            await disclose(how);
+            const clean = await disclose(how);
+            if (clean) await real_death_epilogue(how);
         }
     }
 }
 
-// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  Only the
-// first query ("Do you want your possessions identified?") is reached by the
-// covered normal-game death: the recorded player runs out of input at that
-// prompt, so the remaining attribute/vanquished/genocided/conduct/overview
-// queries are not yet ported.  On a plain HP-loss death nothing was confiscated
-// (taken == FALSE), so the wording is the "possessions identified?" form; with
-// the default flags.end_disclose, should_query_disclose_option('i') asks with
-// defquery 'n' and ynqchars, giving "... [ynq] (n)".
-async function disclose(_how) {
-    const d = await deps();
-    const inv = Array.isArray(game.invent) ? game.invent
-        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
-    if (inv.length) {
-        await d.y_n('Do you want your possessions identified?', 'ynq\x1b', 'n');
+// C ref: flag.h DISCLOSE_* char values + decl.c disclosure_options="iavgco".
+function disclose_ask(c) {
+    switch (c) {
+    case '+': return { ask: false, defquery: 'y' };
+    case '#': return { ask: false, defquery: 'a' };
+    case '-': return { ask: false, defquery: 'n' };
+    case 'y': return { ask: true, defquery: 'y' };
+    case '?': return { ask: true, defquery: 'a' };
+    default: return { ask: true, defquery: 'n' }; // 'n' (the startup default) or unset
     }
 }
 
+// C ref: options.c optfn_disclose() do_set — parse the `disclose:` rc option
+// into per-category settings (i,a,v,g,c,o order, decl.c disclosure_options).
+// Absent an rc override, options.c's initoptions() sets every category to
+// DISCLOSE_PROMPT_DEFAULT_NO ('n') at startup, so that is the default here too.
+const DISCLOSURE_CATS = ['i', 'a', 'v', 'g', 'c', 'o'];
+function parse_end_disclose() {
+    const settings = { i: 'n', a: 'n', v: 'n', g: 'n', c: 'n', o: 'n' };
+    const raw = game.flags?.disclose;
+    if (raw == null) return settings;
+    const s = String(raw).trim();
+    if (s === '' || /^all$/i.test(s)) {
+        for (const k of DISCLOSURE_CATS) settings[k] = 'y';
+        return settings;
+    }
+    if (/^none$/i.test(s)) {
+        for (const k of DISCLOSURE_CATS) settings[k] = '-';
+        return settings;
+    }
+    let prefix = null;
+    for (const ch of s) {
+        let c = ch.toLowerCase();
+        if (c === 'k') c = 'v'; // killed -> vanquished
+        if (c === 'd') c = 'o'; // dungeon -> overview
+        if (DISCLOSURE_CATS.includes(c)) {
+            settings[c] = prefix || '+'; // bare category letter -> YES_WITHOUT_PROMPT
+            prefix = null;
+        } else if ('yn+-#?'.includes(ch)) {
+            prefix = ch;
+        }
+        // spaces and unrecognized chars: ignored, matching the C parser.
+    }
+    return settings;
+}
+
+// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  Only
+// the 'i'/'a'/'c'/'o' queries are simple yes/no prompts this port models; a
+// 'y' answer to any of them needs content this port doesn't render yet
+// (display_inventory/enlightenment/show_conduct/show_overview), so that is an
+// honest gap: return false and let the caller stop there instead of jumping
+// ahead to a tombstone the real game wouldn't have reached yet.  'v'/'g'
+// (list_vanquished/list_genocided) always prompt with their own bespoke
+// sort-order query when 'ask' is true (the DEFAULT case absent an rc
+// override) — not modeled, so treat 'ask' there as the same kind of gap.
+// taken (items confiscated before death) is never true for a plain HP-loss
+// death, so the 'i' query always uses the "possessions identified?" wording.
+async function disclose(_how) {
+    const d = await deps();
+    const settings = parse_end_disclose();
+    const inv = Array.isArray(game.invent) ? game.invent
+        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+
+    async function query(settingChar, qbuf) {
+        const { ask, defquery } = disclose_ask(settingChar);
+        return ask ? await d.y_n(qbuf, 'ynq\x1b', defquery) : defquery;
+    }
+
+    if (inv.length) {
+        const c = await query(settings.i, 'Do you want your possessions identified?');
+        if (c === 'y') return false;
+        if (c === 'q') return true;
+    }
+
+    {
+        const c = await query(settings.a, 'Do you want to see your attributes?');
+        if (c === 'y') return false;
+        if (c === 'q') return true;
+    }
+
+    if (disclose_ask(settings.v).ask) return false;
+    if (disclose_ask(settings.g).ask) return false;
+
+    {
+        const c = await query(settings.c, 'Do you want to see your conduct?');
+        if (c === 'y') return false;
+        if (c === 'q') return true;
+    }
+
+    {
+        const c = await query(settings.o, 'Do you want to see the dungeon overview?');
+        if (c === 'y') return false;
+        if (c === 'q') return true;
+    }
+
+    return true;
+}
+
+// C ref: end.c really_done() tail for a normal (non-wizard, non-discover)
+// death: outrip() renders the tombstone into a TEXT window whose teardown
+// pages two more blank --More-- acknowledgements, then topten() reports the
+// score.  The scores "record" file is always empty in this harness (no
+// state persists a real high-score list), so the just-died entry is always
+// rank 1 ("You made the top ten list!"); other rank0/skip_scores branches
+// of topten() are not reachable here.
+async function real_death_epilogue(how) {
+    const disp = game?.nhDisplay;
+    const { nhgetch } = await import('./input.js');
+    if (!disp?.putstr) return;
+    const { genl_outrip } = await import('./rip.js');
+    const { roles, races, genders, aligns } = await import('./role.js');
+    const u = game.u;
+    const NO_COLOR = 8;
+    const ATR_BOLD = 2;
+    const ROWS = 24;
+    const COLNO = 80;
+
+    const plname = game.plname || game.svp?.plname || 'wizard';
+    const female = !!game.flags?.female;
+    const roleName = (female && game.urole?.name?.f)
+        ? game.urole.name.f
+        : (game.urole?.name?.m || 'Adventurer');
+    const inv = Array.isArray(game.invent) ? game.invent
+        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+    const umoney = money_toplevel(inv) + hidden_gold_inv(inv);
+
+    const uz = u?.uz || { dnum: 0, dlevel: 1 };
+    const dungeonName = game.dungeons?.[uz.dnum]?.dname || 'The Dungeons of Doom';
+    // deepest_lev_reached(FALSE) approximated by the current depth (matches
+    // outrip_and_score's own simplification for these single-descent deaths).
+    const depth = (game.dungeons?.[uz.dnum]?.depth_start ?? 1) + (uz.dlevel | 0) - 1;
+
+    let tmp = umoney - (u?.umoney0 || 0);
+    if (tmp < 0) tmp = 0;
+    if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
+    tmp += 50 * (depth - 1);
+    const urexp = (u?.urexp || 0) + tmp;
+    u.urexp = urexp; // really_done() persists this before topten() reads it
+
+    const deathText = game._killer_name || DEATHS[how] || 'died';
+    const year = (+String(game.datetime || '').slice(0, 4)) || 2020;
+    const moves = (game.moves == null ? 0 : (game.moves | 0));
+
+    const lines = [];
+    lines.push('');
+    for (const r of genl_outrip(plname, umoney, deathText, year)) lines.push(r);
+    lines.push('');
+    lines.push('');
+    lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`);
+    lines.push('');
+    lines.push(`You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
+        + ` with ${urexp} point${plur(urexp)},`);
+    lines.push(`and ${umoney} piece${plur(umoney)} of gold, after ${moves} move${plur(moves)}.`);
+    lines.push(`You were level ${u?.ulevel || 1} with a maximum of ${u?.uhpmax || 0}`
+        + ` hit point${plur(u?.uhpmax || 0)} when you ${ENDS[how]}.`);
+    lines.push('');
+
+    const MORE = '--More--';
+    const drawMore = (row) => {
+        for (let i = 0; i < MORE.length; i++) disp.setCell(i, row, MORE[i], NO_COLOR, 0);
+        disp.setCursor(MORE.length, row);
+    };
+
+    // Page 1 — the tombstone.
+    disp.clearScreen();
+    for (let i = 0; i < ROWS - 1 && i < lines.length; i++) {
+        if (lines[i]) disp.putstr(0, i, lines[i], NO_COLOR, 0);
+    }
+    drawMore(ROWS - 1);
+    await nhgetch();
+
+    // Two blank --More-- acknowledgements (endwin teardown), per seed0030
+    // step-76/77.
+    for (let b = 0; b < 2; b++) {
+        disp.clearScreen();
+        drawMore(ROWS - 1);
+        await nhgetch();
+    }
+
+    // topten() real (non-wizard) output: a single fresh rank-1 entry.
+    const roleFC = roles[game.initrole]?.filecode || '?';
+    const raceFC = races[game.initrace]?.filecode || '?';
+    const genderFC = genders[female ? 1 : 0]?.filecode || '?';
+    const alignFC = aligns.find(a => a.value === (u?.ualign?.type ?? 0))?.filecode || '?';
+    const entry = {
+        points: urexp, name: plname, plrole: roleFC, plrace: raceFC,
+        plgend: genderFC, plalign: alignFC, death: deathText, dungeonName,
+        deathdnum: uz.dnum, knoxDnum: -99, // Fort Ludios unreachable here
+        deathlev: depth, maxlvl: depth, hp: u?.uhp ?? 0, maxhp: u?.uhpmax ?? 0,
+    };
+    disp.clearScreen();
+    let row = 0;
+    disp.putstr(0, row++, '', NO_COLOR, 0);
+    disp.putstr(0, row++, 'You made the top ten list!', NO_COLOR, 0);
+    disp.putstr(0, row++, '', NO_COLOR, 0);
+    disp.putstr(0, row++, topten_outheader(COLNO), NO_COLOR, 0);
+    for (const l of topten_outentry(1, entry, true, COLNO)) {
+        disp.putstr(0, row++, l, NO_COLOR, ATR_BOLD);
+    }
+    disp.setCursor(0, row);
+
+    game.program_state = game.program_state || {};
+    game.program_state.gameover = true;
+    // Final read: consumes the last recorded key (or exhausts the queue,
+    // which ends the segment exactly as the moveloop's own command read
+    // would).
+    await nhgetch();
+}
+
+// C ref: topten.c outheader() — the column header line, padded so "Hp [max]"
+// lands flush against the right edge (COLNO - 9 == where the padding stops).
+function topten_outheader(COLNO) {
+    let line = ' No  Points     Name';
+    while (line.length < COLNO - 9) line += ' ';
+    line += 'Hp [max]';
+    return line;
+}
+
+// C ref: topten.c outentry(rank, t1, so) — format one score-list entry,
+// word-wrapping across as many lines as needed so the "Hp [max]" column
+// stays aligned at the right edge.  Reduced to the death-description branches
+// reachable by a plain "died in <dungeon> [on level N]" contest death
+// (escaped/ascended/quit/starved/choked/poisoned/crushed/petrified and the
+// astral-plane wording are not reachable here).  `so` (standout) pads each
+// line to COLNO-1 for the bold render, matching the just-died entry.
+function topten_outentry(rank, entry, so, COLNO) {
+    let linebuf = rank ? String(rank).padStart(3) : '   ';
+    linebuf += ` ${String(entry.points).padStart(10)}  ${entry.name.slice(0, 10)}`;
+    linebuf += `-${entry.plrole}`;
+    if (entry.plrace !== '?') linebuf += `-${entry.plrace}`;
+    linebuf += `-${entry.plgend}`;
+    if (entry.plalign !== '?') linebuf += `-${entry.plalign} `;
+    else linebuf += ' ';
+
+    let secondLine = true;
+    const death = entry.death;
+    if (death.startsWith('quit')) { linebuf += 'quit'; secondLine = false; }
+    else if (death.startsWith('died of st')) { linebuf += 'starved to death'; secondLine = false; }
+    else if (death.startsWith('choked')) linebuf += `choked on h${entry.plgend[0] === 'F' ? 'er' : 'is'} food`;
+    else if (death.startsWith('poisoned')) linebuf += 'was poisoned';
+    else if (death.startsWith('crushed')) linebuf += 'was crushed to death';
+    else if (death.startsWith('petrified by ')) linebuf += 'turned to stone';
+    else linebuf += 'died';
+    linebuf += ` in ${entry.dungeonName}`;
+    if (entry.deathdnum !== entry.knoxDnum) linebuf += ` on level ${entry.deathlev}`;
+    if (entry.deathlev !== entry.maxlvl) linebuf += ` [max ${entry.maxlvl}]`;
+    if (death.startsWith('quit ')) linebuf += death.slice(4);
+    linebuf += '.';
+
+    if (secondLine) {
+        const d0 = death.charAt(0).toUpperCase() + death.slice(1);
+        linebuf += `  ${d0}.`;
+        linebuf = linebuf.replace('; the ', ', the ');
+    }
+
+    const printed = [];
+    let lngr = linebuf.length;
+    const hppos0 = COLNO - 10; // sizeof "  Hp [max]" - sizeof ""
+    while (lngr >= hppos0) {
+        let bp = linebuf.length;
+        while (!(bp < linebuf.length && linebuf[bp] === ' ' && bp < hppos0)) {
+            bp--;
+            if (bp < 0) break;
+        }
+        if (15 >= bp) bp = hppos0 - 1;
+        if (bp > 5 && linebuf.slice(bp - 5, bp) === ' [max') bp -= 5;
+        const carry = linebuf[bp] !== ' ' ? linebuf.slice(bp) : linebuf.slice(bp + 1);
+        printed.push(linebuf.slice(0, bp));
+        linebuf = `${' '.repeat(15)} ${carry}`;
+        lngr = linebuf.length;
+    }
+
+    const hpbuf = entry.hp <= 0 ? '-' : String(entry.hp);
+    const hppos = COLNO - 7 - hpbuf.length;
+    if (linebuf.length <= hppos) {
+        while (linebuf.length < hppos) linebuf += ' ';
+        linebuf += hpbuf;
+        const pad = entry.maxhp < 10 ? '  ' : entry.maxhp < 100 ? ' ' : '';
+        linebuf += ` ${pad}[${entry.maxhp}]`;
+    }
+    printed.push(linebuf);
+
+    if (!so) return printed;
+    return printed.map((t) => {
+        let s = t;
+        while (s.length < COLNO - 1) s += ' ';
+        return s;
+    });
+}
+
+// C ref: hack.h an(str) — indefinite article.
+function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+
+// C ref: end.c done_in_by() killer-name construction, reduced to the common
+// case: an ordinary (non-unique, non-ghost, non-shopkeeper, non-priest,
+// non-shapeshifted) monster.  monhealthdescr() is a no-op in this NetHack
+// version (pager.c:140-161, disabled behind `#if 0`), so no health descriptor
+// is ever prepended.  killer.format is KILLED_BY_AN, giving "killed by a
+// <species>" — used for both the tombstone engraving and the topten entry.
+function killer_text_for_monster(mtmp) {
+    const name = mtmp?.data?.name || 'monster';
+    return `killed by ${an(name)}`;
+}
+
 // C ref: end.c done_in_by(mtmp, how) — a monster killed the hero.  Announces
-// "You die..." (the killer-name buffer is only used if death is accepted, which
-// the contest player never does), then runs done(how).
+// "You die..." then runs done(how).
 export async function done_in_by(mtmp, how = DIED) {
     const d = await deps();
     // C ref end.c:195 — You((how == STONING) ? "turn to stone..." : "die...").
     await d.update_topl('You die...');
-    // killer-name buffer (monhealthdescr + species) is unused on the decline
-    // path; record the monster for completeness.
     game._killer_mon = mtmp || null;
+    if (mtmp) game._killer_name = killer_text_for_monster(mtmp);
     await done(how);
 }
 

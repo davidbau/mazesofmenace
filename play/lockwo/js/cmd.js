@@ -15,7 +15,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
-         renderWindowScreen, ECMD_NOTHANDLED, describe_decor } from './invent.js';
+         renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
 import { WEAPON_CLASS, objects as OBJECTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
@@ -785,11 +785,16 @@ export async function dosearch0(aflag) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = DOOR;
                 newsym(x, y);
+                // C ref: detect.c dosearch0() — nomul(0) on a successful find:
+                // a counted search ("9s") stops immediately instead of running
+                // out its full repeat count.
+                if ((game.multi ?? 0) > 0) game.multi = 0;
                 await pline('You find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
                 newsym(x, y);
+                if ((game.multi ?? 0) > 0) game.multi = 0;
                 await pline('You find a hidden passage.');
             } else {
                 const trap = (game.level?.traps || []).find(t => t.tx === x && t.ty === y && !t.tseen);
@@ -804,7 +809,7 @@ export async function dosearch0(aflag) {
 
 // C ref: hack.c monster_nearby() — a hostile, awake, spottable monster on one
 // of the 8 squares adjacent to the hero.  Drives the safe_wait safety check.
-function monster_nearby() {
+export function monster_nearby() {
     const u = game.u;
     if (!u) return false;
     for (let x = u.ux - 1; x <= u.ux + 1; x++)
@@ -1698,6 +1703,10 @@ export async function domove(dx, dy) {
     // re-entry (pooleffects -> drown -> teleds -> spoteffects again) picks up
     // at the square the hero actually lands on, not the one it fell into.
     await spoteffects(pickup_after_move);
+    // C ref: end.c really_done() longjmps out; if spoteffects() (e.g.
+    // lava_effects()) just ended the game, none of domove()'s post-move work
+    // (engraving smudge) runs.
+    if (game.program_state?.gameover) return;
 
     // C ref: hack.c domove() — after domove_core() (movement + spoteffects,
     // i.e. everything above) completes, a successful WALK/RUSH smudges any
@@ -1990,10 +1999,15 @@ async function pickup_after_move(x, y) {
     // announced.  mention_decor is only set by the tutorial, so this is inert
     // elsewhere; the tutorial hero always sinks, so the pool/lava skip matches
     // C (a hero held above liquid by Lev/Fly/Wwalk is out of scope here).
+    // C ref: pickup.c check_here() — describe_decor()'s return value becomes
+    // LOOKHERE_SKIP_DFEATURE, telling look_here() not to re-announce the same
+    // feature it just printed.  Outside the tutorial (mention_decor off),
+    // describe_decor() never runs, so look_here() is the one that announces it.
+    let decorAnnounced = false;
     if (game.flags?.mention_decor) {
         const loc = game.level?.at?.(x, y);
         const inLiquid = !!loc && (IS_POOL(loc.typ) || IS_LAVA(loc.typ));
-        if (!inLiquid) await describe_decor();
+        if (!inLiquid) decorAnnounced = await describe_decor();
     }
     // C ref: pickup.c pickup() — "if there's anything here, stop running":
     //   if (OBJ_AT(u.ux,u.uy) && svc.context.run && svc.context.run != 8
@@ -2019,12 +2033,12 @@ async function pickup_after_move(x, y) {
         const remain = (game.level?.objects || []).filter(
             (o) => o.where === 'floor' && o.ox === x && o.oy === y);
         if (remain.length > 0) {
-            await look_here_after_move(x, y, nPicked > 0);
+            await look_here_after_move(x, y, nPicked > 0, decorAnnounced);
         } else {
             await read_engr_at(x, y);
         }
     } else if (ctx.run !== 8) {
-        await look_here_after_move(x, y);
+        await look_here_after_move(x, y, false, decorAnnounced);
         // C ref: pickup.c check_here() — when there are no objects here it
         // reads any engraving aloud; a run halts on it (read_engr_at -> nomul).
         if (!hasObj) await read_engr_at(x, y);
@@ -2174,25 +2188,38 @@ async function pickup_one(inv, obj, x, y) {
     newsym(x, y);
 }
 
-// C ref: invent.c look_here() — the "You see here ..." auto-announcement when
-// stepping onto floor object(s) with autopickup disabled.  The single-object
-// case prints "You see here <obj>." on the top line; the multi-object case
-// (obj_cnt < pile_limit, default 5) opens the blocking "Things that are here:"
-// menu (look_here in invent.js).  Larger piles ("There are N objects here.")
-// aren't exercised by the owned sessions.
-async function look_here_after_move(x, y, _pickedSome = false) {
+// C ref: invent.c an() — indefinite article.  Local copy matching the same
+// helper duplicated per-file elsewhere (eat.js, invent.js, uhitm.js, hack.js).
+function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+
+// C ref: invent.c look_here() — the "There is <feature> here." + "You see
+// here <obj>." auto-announcement when stepping onto a dungeon feature and/or
+// floor object(s) with autopickup disabled.  The single-object case prints
+// the dfeature line (if any and not already announced by describe_decor's
+// mention_decor path) then "You see here <obj>." on the top line; the
+// multi-object case (obj_cnt < pile_limit, default 5) opens the blocking
+// "Things that are here:" menu (look_here in invent.js).  Larger piles
+// ("There are N objects here.") aren't exercised by the owned sessions.
+async function look_here_after_move(x, y, _pickedSome = false, skipDfeature = false) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     if (objs.length === 0) return;
+    // C ref: look_here() — "if (dfeature && !skip_dfeature) pline1(fbuf);"
+    // fbuf = "There is <a feature> here." (dfeature_at names stairs, altars,
+    // fountains, doors, ...).  skip_dfeature (LOOKHERE_SKIP_DFEATURE) is set
+    // only when describe_decor() (mention_decor / tutorial) already reported
+    // the same feature earlier this move.
+    const dfeature = skipDfeature ? null : dfeature_at(x, y);
     if (objs.length === 1) {
-        // C ref: look_here() single-object case: You("%s here %s.", verb, ...)
-        // -> pline() -> update_topl().  When autopickup just lifted another
-        // object here (pick_one_obj left toplin==NEED_MORE), this line
-        // accumulates onto that pickup line via the CO-8 rule instead of
-        // replacing it — e.g. "$ - 7 gold pieces (19 in total).  You see here
-        // a food ration." on one topline.
+        // C ref: look_here() single-object case: [dfeature pline1] then
+        // You("%s here %s.", verb, ...) -> pline() -> update_topl().  Both go
+        // through update_topl so they chain onto any already-pending message
+        // (e.g. autopickup's prinv line) per the CO-8 rule, or page it with
+        // --More-- first when there's no room — e.g. "$ - 7 gold pieces (19 in
+        // total).  You see here a food ration." on one topline.
         const o = objs[0];
         const name = await objDoname(o);
+        if (dfeature) await update_topl(`There is ${an(dfeature)} here.`);
         await update_topl(`You see here ${name}.`);
         return;
     }

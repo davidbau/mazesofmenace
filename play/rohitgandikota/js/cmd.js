@@ -48,7 +48,7 @@ import {
     NHW_TEXT, NHW_MENU, ATR_NONE,
 } from './tty/wintty.js';
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok } from './const.js';
-import { doopen, doopen_indir } from './lock.js';
+import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
 import { doapply } from './apply.js';
@@ -580,6 +580,8 @@ export async function rhack(key) {
         /* src/cmd.c cmdlist — 'w' is dowield, which calls getobj() and so
            READS A KEY. Same keystream reason as 'r' above. */
         game.context.move = ((await dowield()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'c') {
+        game.context.move = ((await doclose()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'r') {
         /* src/cmd.c cmdlist — 'r' is doread. It calls getobj(), which READS
            A KEY, so leaving it undispatched let the inventory letter run as a

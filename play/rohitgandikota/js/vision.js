@@ -596,3 +596,30 @@ export function clear_path(col1, row1, col2, row2) {
         return true;
     return !!walk(col1, row1, col1 - col2, row2 - row1, -1, 1); /* III */
 }
+
+// src/vision.c:865 block_point() — a square has become opaque.
+//
+// Called when a door closes, a boulder lands, or anything else stops light.
+// Two effects, and only the second is ported.
+//
+// fill_point(y, x) updates the vision engine's own blocking structures and is
+// absent, so a newly closed door does not yet stop light in the shadow-caster.
+// Recorded rather than approximated: writing a plausible fill would change
+// which squares the hero can see, and vision drives newsym, which drives the
+// screen. A wrong fill is worse than a missing one because it looks correct.
+//
+// The DEBUG seethru block above it is a wizard-mode debug aid and has no
+// release-build behaviour, so it has no JS counterpart.
+function note_unported_vision(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
+export function block_point(x, y) {
+    note_unported_vision('block_point:fill_point');
+
+    /* We have to do a full vision recalculation if we "could see" the
+       location: a monster may have opened a way onto a lit room that sits
+       outside night-vision range, and the hero should suddenly see it. */
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
