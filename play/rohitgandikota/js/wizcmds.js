@@ -7,7 +7,7 @@
 // body is skipped leaves its prompt's keystrokes to be read as commands.
 
 import { game } from './gstate.js';
-import { ECMD_OK } from './const.js';
+import { ECMD_OK, MAXULEV } from './const.js';
 import { getlin } from './cmd.js';
 import { pline } from './display.js';
 import { pluslvl } from './exper.js';
@@ -72,7 +72,6 @@ export async function wiz_level_change() {
 }
 
 // include/global.h:413 MAXULEV
-const MAXULEV = 30;
 
 // src/hacklib.c mungspaces() — squeeze internal runs of whitespace to one
 // space and drop leading and trailing space.

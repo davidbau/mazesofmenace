@@ -25,11 +25,11 @@ import { is_neuter } from './mondata.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
-import { Is_rogue_level, NODIR} from './const.js';
+import { Is_rogue_level, NODIR, CORPSTAT_SPE_VAL , FIRE_RES, P_NONE, NON_PM } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
-    rndmonnum, level_difficulty, is_male, is_female } from './makemon.js';
+    rndmonnum, level_difficulty, is_male, is_female , Inhell } from './makemon.js';
 import { is_rider } from './mondata.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
@@ -45,10 +45,8 @@ import { depth } from './dungeon.js';
 export const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
 
 // include/permonst.h
-const NON_PM = -1;
 // include/hack.h:1189-1200 — corpse/statue gender is stored in obj.spe.
 const CORPSTAT_INIT = 0x08;
-const CORPSTAT_SPE_VAL = 0x07;
 const CORPSTAT_FEMALE = 1, CORPSTAT_MALE = 2, CORPSTAT_NEUTER = 3;
 // include/hack.h:1404-1406
 const TAINT_AGE = 50, TROLL_REVIVE_CHANCE = 37, ROT_AGE = 250;
@@ -583,8 +581,6 @@ const MZ_SMALL = 1;
 // include/objclass.h:14-32 — object materials.
 const LIQUID = 1, PAPER = 5, LEATHER = 7, WOOD = 8, DRAGON_HIDE = 10,
       IRON = 11, COPPER = 13, MITHRIL = 17, PLASTIC = 18, GLASS = 19;
-const P_NONE = 0;                 /* include/skills.h */
-const FIRE_RES = 1;               /* include/prop.h:15 */
 
 
 // src/mkobj.c is_flammable()
@@ -1143,9 +1139,10 @@ function note_unported_obj(what) {
    in js/const.js with the other level tests. The copy that used to
    be here tested game.level.flags.is_rogue_level instead, which is a different
    question and a flag nothing sets. */
-function Inhell() {
-    return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
-}
+/* Inhell() is include/dungeon.h:140, In_hell(&u.uz). It is currently
+   exported from js/makemon.js -- the wrong home for a dungeon.h macro, but
+   this file already imports from there, so deduplicating costs no new edge.
+   Move both to js/dungeon.js when someone touches that file. */
 
 // src/mkobj.c:2676 add_to_container() — link an object into a container's cobj
 // chain, or merge it into an identical stack already there.

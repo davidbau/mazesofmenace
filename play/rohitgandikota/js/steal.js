@@ -2,6 +2,10 @@
 // C ref: src/steal.c
 
 import { game } from './gstate.js';
+
+function note_unported_steal(what) {
+    (game.unported ||= new Set()).add(what);
+}
 import { rn1 } from './rng.js';
 import { LARGEST_INT } from './const.js';
 
@@ -114,4 +118,39 @@ export function somegold(lmoney) {
         igold = rn1(igold - 5000 + 1, 5000);
 
     return igold;
+}
+
+// src/steal.c unstolenarm() — an afternmv callback: the hero finished taking
+// off armour that a thief was going to steal, but the thief died first.
+//
+// The comment on the loop is the part to preserve: the object is found
+// BEFORE stealoid is cleared, and it "has already become not-worn and is
+// still in hero's inventory" -- so this searches invent, not the worn slots.
+export function unstolenarm() {
+    /* find the object before clearing stealoid */
+    const obj = (game.invent || []).find((o) => o.o_id === game.stealoid);
+
+    game.stealoid = 0;
+    if (obj) {
+        /* You("finish taking off your %s.", armor_simple_name(obj)) */
+        note_unported_steal('unstolenarm:finish_msg');
+    }
+    return 0;
+}
+
+// src/steal.c:120 thiefdead() — the monster stealing from the hero has died.
+//
+// Both halves are identity tests against ga.afternmv, the same shape as
+// donning(), so stealarm must exist before this is safe. It does not yet, so
+// the swap is RECORDED rather than compared against undefined -- an
+// undefined comparand would make this fire on every death while the hero
+// happened to be mid-occupation.
+export function thiefdead() {
+    /* hero may be busy taking off armour, which takes multiple turns */
+    game.stealmid = 0;
+
+    /* C: if (ga.afternmv == stealarm) { ga.afternmv = unstolenarm;
+                                         gn.nomovemsg = 0; }
+       stealarm is not ported, so this cannot be tested faithfully yet. */
+    note_unported_steal('thiefdead:stealarm_swap');
 }

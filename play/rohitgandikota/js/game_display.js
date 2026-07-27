@@ -12,9 +12,8 @@
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
 import { Terminal, CLR_GRAY } from './terminal.js';
+import { TOPLINE_EMPTY, TOPLINE_NEED_MORE } from './const.js';
 
-const TOPLINE_EMPTY = 0;
-const TOPLINE_NEED_MORE = 1;
 
 export class GameDisplay {
     constructor(terminalOrContainerId) {

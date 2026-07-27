@@ -20,7 +20,7 @@ import { is_flyer } from './mondata.js';
    structure an array of LAST_PROP+1 entries, as in the C, instead of a
    bag of string keys with no C counterpart. */
 import {
-    STONE_RES, FLYING, CLAIRVOYANT, BLINDED, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISPLACED, FIRE_RES, FUMBLING, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, LEVITATION, REGENERATION, SEE_INVIS, SICK, STUNNED, TELEPAT, TELEPORT_CONTROL, VOMITING, WARN_OF_MON, WOUNDED_LEGS } from './const.js';
+    STONE_RES, FLYING, CLAIRVOYANT, BLINDED, CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISPLACED, FIRE_RES, FUMBLING, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, LEVITATION, REGENERATION, SEE_INVIS, SICK, STUNNED, TELEPAT, TELEPORT_CONTROL, VOMITING, WARN_OF_MON, WOUNDED_LEGS, GLIB } from './const.js';
 
 export const H = (prop) => !!(game.u?.uprops?.[prop]?.intrinsic);   /* prop is a NUMBER, as in C */
 export const E = (prop) => !!(game.u?.uprops?.[prop]?.extrinsic);
@@ -150,6 +150,15 @@ export const Stunned = () => H(STUNNED);
 
 // include/youprop.h:84 Confusion — HConfusion. Intrinsic only, as Stunned.
 export const Confusion = () => H(CONFUSION);
+
+// include/youprop.h:112 Glib — u.uprops[GLIB].intrinsic. Intrinsic only.
+//
+// The C macro is the raw long, not a truth value, so `Glib & TIMEOUT` is legal
+// there and yields the remaining turn count. Every use we have ported so far
+// tests it as a condition, which H() answers correctly. A caller that needs the
+// timeout must read game.u.uprops[GLIB].intrinsic directly rather than widening
+// this, so the boolean readers stay uniform.
+export const Glib = () => H(GLIB);
 
 // include/youprop.h:108 Sick — u.uprops[SICK].intrinsic. Intrinsic only,
 // and C spells it out rather than going through an HSick macro.

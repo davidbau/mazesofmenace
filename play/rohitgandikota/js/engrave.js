@@ -1,4 +1,4 @@
-import { Is_airlevel, Is_waterlevel } from './const.js';
+import { Is_airlevel, Is_waterlevel , BUFSZ } from './const.js';
 import { Levitation, Flying } from './youprop.js';
 import { ceiling_hider } from './mondata.js';
 import { t_at } from './mon.js';
@@ -93,7 +93,6 @@ export function wipeout_text(engr, cnt, seed) {
     return out;
 }
 
-const BUFSZ = 256;   /* include/global.h */
 
 // src/engrave.c:50 random_engraving()
 //

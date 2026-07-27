@@ -15,7 +15,7 @@ import { will_weld } from './monmove.js';
 import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT, prinv } from './invent.js';
 import { W_QUIVER, W_WEP } from './const.js';
-import { is_missile } from './obj.js';
+import { is_missile, is_ammo } from './obj.js';
 import { is_pole } from './u_init.js';
 import { setworn } from './worn.js';
 import { Stone_resistance } from './youprop.js';
@@ -66,10 +66,7 @@ const is_launcher = (o) =>
     && game.objects[o.otyp].oc_skill <= P_CROSSBOW;
 
 // include/obj.h:238 is_ammo()
-const is_ammo = (o) =>
-    (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.GEM_CLASS)
-    && game.objects[o.otyp].oc_skill >= -P_CROSSBOW
-    && game.objects[o.otyp].oc_skill <= -P_BOW;
+/* is_ammo() is include/obj.h:238; it comes from js/obj.js. */
 
 // include/obj.h:243 matching_launcher() and :244 ammo_and_launcher()
 const matching_launcher = (a, l) =>

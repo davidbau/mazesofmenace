@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { delobj } from './mon.js';
 import { costly_spot } from './shk.js';
-import { u_at } from './const.js';
+import { u_at , HANDS_SYM } from './const.js';
 import { hides_under } from './mondata.js';
 import { Hallucination } from './youprop.js';
 import { doname } from './objnam.js';
@@ -118,7 +118,6 @@ export const GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
              GETOBJ_EXCLUDE_INACCESS = -1, GETOBJ_EXCLUDE_SELECTABLE = 0,
              GETOBJ_DOWNPLAY = 1, GETOBJ_SUGGEST = 2;
 export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
-const HANDS_SYM = '-';
 
 // src/invent.c:1830 — the letter list C puts in the prompt.
 //

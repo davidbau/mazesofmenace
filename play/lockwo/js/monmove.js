@@ -21,15 +21,18 @@ import {
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
     W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M,
 } from './const.js';
-import { COIN_CLASS, ROCK, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART } from './mkobj.js';
+import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
+    GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
 import { t_at, t_missile } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
-import { mon_msize } from './makemon.js';
+import { mon_msize, monster_by_pmidx } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
-import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS, weight } from './mkobj.js';
+import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
+    weight, base_oc_weight } from './mkobj.js';
+import { obj_resists } from './zap.js';
 import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
@@ -758,6 +761,27 @@ function ansimpleoname_topobj(x, y) {
     const name = OBJECTS?.[otyp]?.name || 'object';
     const vowel = /^[aeiou]/i.test(name);
     return `${vowel ? 'an' : 'a'} ${name}`;
+}
+
+// C ref: mon.c maybe_unhide_at(x,y) — called right after a monster's position is
+// committed (before mintrap/door handling in postmov).  If the monster AT (x,y)
+// was mundetected but can no longer stay hidden there (a hides_under species with
+// no valid object on the new square, or trapped, or an eel that surfaced onto dry
+// land), immediately re-run hideunder() to reset mundetected to FALSE.  This must
+// happen BEFORE the later "re-hide?" gate (`mundetected || (!helpless && rn2(5))`)
+// so that gate's OR correctly falls through to its rn2(5) term instead of
+// short-circuiting on a stale mundetected=TRUE.  hideunder() itself consumes no
+// RNG (only its caller's gate rolls); the hero (u_at) branch isn't modeled here,
+// matching hideunder()'s own scope in this port.
+async function maybe_unhide_at(x, y) {
+    const m = m_at(x, y);
+    if (!m || !m.mundetected) return;
+    const ptr = m.data;
+    const noLongerHidden =
+        (hides_under_pm(ptr)
+         && (!OBJ_AT(x, y) || m.mtrapped || !can_hide_under_obj_at(x, y)))
+        || (ptr?.mcls === S_EEL_MCLS && !IS_POOL(terrainTyp(x, y)));
+    if (noLongerHidden) await hideunder(m);
 }
 
 // C ref: mon.c hideunder(mtmp) — a just-moved concealing monster re-hides under
@@ -1506,6 +1530,17 @@ async function m_move(mtmp) {
             // would sit on the item forever (m_search_items keeps returning done
             // every turn), never reaching the candidate loop — the seed0030
             // step-49 divergence (a gnome standing on a worthless glass gem).
+            // C ref: monmove.c postmov():1660-1681 — meatmetal/meatobj run
+            // BEFORE mpickstuff whenever OBJ_AT && mcanmove, for MMOVE_DONE
+            // just as for MMOVE_MOVED (see the other call site below).
+            if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+                if (metallivorous(ptr)) {
+                    if (await meatmetal(mtmp) === 2) return MMOVE_DIED;
+                }
+                if (is_gelatinous_cube(ptr)) {
+                    await meatobj(mtmp);
+                }
+            }
             mpickstuff(mtmp);
             return MMOVE_DONE; // C: postmov returns mmoved (MMOVE_DONE); no attack
         }
@@ -1577,6 +1612,11 @@ async function m_move(mtmp) {
         // record track history (most-recent first, length MTSZ)
         mtmp.mtrack = [{ x: omx, y: omy }, ...mtrack].slice(0, MTSZ);
         mtmp.mx = nix; mtmp.my = niy;
+        // C ref: monmove.c:1655 maybe_unhide_at(mtmp->mx, mtmp->my) — runs right
+        // after the position commit, before mintrap/door handling, so a stale
+        // mundetected from the monster's OLD (hiding) square is cleared before
+        // postmov's re-hide gate below re-evaluates it on the NEW square.
+        await maybe_unhide_at(mtmp.mx, mtmp.my);
         // Redraw vacated + occupied squares (C: remove/place_monster + newsym).
         newsym(omx, omy);
         // C ref: monmove.c postmov() — after a monster moves, mintrap() fires
@@ -1610,7 +1650,22 @@ async function m_move(mtmp) {
         // the item lingers and the monster re-detects it underfoot every future
         // turn, sitting still forever instead of moving on (seed0030 step-49).
         // mpickstuff draws no rng here, and it must run BEFORE the hideunder
-        // rn2(5) below to preserve C's postmov ordering.
+        // rn2(5) below to preserve C's postmov ordering.  meatmetal/meatobj
+        // (mon.c:1462/1533) run first, exactly as in C's postmov(): a
+        // metallivorous hostile (rock mole/rust monster/xorn) or gelatinous
+        // cube that just stepped onto an object pile eats/engulfs from it
+        // here, before the mpickstuff loot check.  This is the RNG-relevant
+        // piece — the obj_resists(zap.c:1469) rn2(100) cluster per pile item
+        // (seed0002 step-232: ~20 draws per pass) was previously never
+        // emitted, shifting every subsequent monster-move roll this turn.
+        if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+            if (metallivorous(ptr)) {
+                if (await meatmetal(mtmp) === 2) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+            }
+            if (is_gelatinous_cube(ptr)) {
+                await meatobj(mtmp);
+            }
+        }
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove)
             mpickstuff(mtmp);
         // C ref: monmove.c postmov():1696 — a concealing (M1_CONCEAL) monster or
@@ -2216,6 +2271,226 @@ function acurrstr() {
 // DO fire — the in-shop rn2(25) and the finish_search appr/goal override — are
 // reproduced faithfully.  (If monster item-grabbing parity is ever needed, port
 // the OBJ_AT pile loop here; it changes ggx/ggy, not the rng stream.)
+// C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).  Only
+// three species carry the flag (include/monsters.h): rock mole, rust monster,
+// xorn.  Name-keyed for stability, mirroring dogmove.js's identical table for
+// the (unreachable, since none is ever a pet) DOGFOOD-vs-MANFOOD split.
+const M1_METALLIVORE_NAMES = new Set(["rock mole", "rust monster", "xorn"]);
+function metallivorous(ptr) { return M1_METALLIVORE_NAMES.has(ptr?.name); }
+const PM_RUST_MONSTER_NAME = "rust monster";
+const PM_GELATINOUS_CUBE_NAME = "gelatinous cube";
+function is_gelatinous_cube(ptr) { return ptr?.name === PM_GELATINOUS_CUBE_NAME; }
+
+// C ref: objclass.h obj_material_types — the material band tests meatmetal/
+// meatobj consult.  IRON..MITHRIL is_metallic; NO_MATERIAL..WOOD is_organic.
+const MAT_WOOD = 8, MAT_IRON = 11, MAT_MITHRIL = 17;
+function is_metallic(otmp) {
+    const mat = OBJECTS[otmp.otyp]?.material;
+    return mat != null && mat >= MAT_IRON && mat <= MAT_MITHRIL;
+}
+function is_organic(otmp) {
+    const mat = OBJECTS[otmp.otyp]?.material;
+    return mat != null && mat <= MAT_WOOD;
+}
+function is_rustprone(otmp) { return OBJECTS[otmp.otyp]?.material === MAT_IRON; }
+
+// C ref: monst.h resists_poison(mon)/resists_ston(mon) via mons[].mresists
+// (MR_POISON/MR_STONE), and mondata.h slimeproof(ptr).  Of the species that
+// ever reach meatmetal/meatobj, only the gelatinous cube itself carries
+// MR_POISON|MR_STONE (include/monsters.h); the metallivorous trio (rock mole/
+// rust monster/xorn) have neither.  slimeproof is true only for green slime
+// itself, flaming monsters, or noncorporeal ones — never the cube — so a
+// slime glob always forces meatobj's engulf branch for a cube eater.
+function resists_poison_mon(mtmp) { return is_gelatinous_cube(mtmp.data); }
+function resists_ston_mon(mtmp) { return is_gelatinous_cube(mtmp.data); }
+function slimeproof_mon(_mtmp) { return false; }
+
+// C ref: mondata.h touch_petrifies(ptr) = cockatrice/chickatrice;
+// flesh_petrifies(pm) = touch_petrifies(pm) || Medusa.  Name-keyed (rare —
+// none of these corpses occur in the dungeon-1 sessions this subsystem
+// targets, but the guard is kept faithful for any level that does place one).
+function corpse_touch_petrifies(corpsenm) {
+    const nm = monster_by_pmidx(corpsenm)?.name;
+    return nm === "cockatrice" || nm === "chickatrice";
+}
+function corpse_flesh_petrifies(corpsenm) {
+    return corpse_touch_petrifies(corpsenm) || monster_by_pmidx(corpsenm)?.name === "Medusa";
+}
+// C ref: mon.c:1384 #define mstoning(obj) (ofood(obj) && ismnum(obj->corpsenm)
+// && flesh_petrifies(&mons[obj->corpsenm])).  ofood: CORPSE/EGG/TIN.
+const EGG_OTYP = 266, TIN_OTYP = 296; // mkobj.js OBJECT_DATA rows (not individually exported)
+function mstoning_obj(otmp) {
+    if (otmp.otyp !== CORPSE && otmp.otyp !== EGG_OTYP && otmp.otyp !== TIN_OTYP) return false;
+    return otmp.corpsenm != null && otmp.corpsenm >= 0 && corpse_flesh_petrifies(otmp.corpsenm);
+}
+// C ref: obj.h AMULET_OF_STRANGULATION / RIN_SLOW_DIGESTION otyps (mkobj.js
+// OBJECT_DATA rows 203 / 193 — the latter has no individually exported const).
+const RIN_SLOW_DIGESTION_OTYP = 193;
+const CARROT_OTYP = 282;
+
+// All floor objects on mtmp's own square, in level.objects order.  Matches the
+// per-tile traversal mpickstuff/m_search_items already use below (their
+// comments note this order already lines up with C's per-tile `nexthere`
+// chain at the tiles the recorded sessions exercise).
+function objPileAt(mx, my) {
+    return (game.level?.objects || []).filter((o) => o.ox === mx && o.oy === my);
+}
+// obj_extract_self(otmp) + free: the object leaves the floor for good (eaten).
+function delobj_local(otmp) {
+    const arr = game.level?.objects;
+    if (Array.isArray(arr)) {
+        const ix = arr.indexOf(otmp);
+        if (ix >= 0) arr.splice(ix, 1);
+    }
+    otmp.where = 'free';
+}
+// obj_extract_self(otmp) + mpickobj: the object leaves the floor and joins
+// mtmp's minvent (engulfed by a gelatinous cube), matching mpickstuff's own
+// `where`/minvent convention below.
+function mon_engulf_obj(mtmp, otmp) {
+    const arr = game.level?.objects;
+    if (Array.isArray(arr)) {
+        const ix = arr.indexOf(otmp);
+        if (ix >= 0) arr.splice(ix, 1);
+    }
+    otmp.where = 3; // OBJ_MINVENT
+    mtmp.minvent = mtmp.minvent || [];
+    mtmp.minvent.push(otmp);
+}
+
+// C ref: mon.c:1392 m_consume_obj(mtmp, otmp) — a monster eats/absorbs a
+// floor object.  SCOPED: healmon (deterministic, no RNG) and the CARROT
+// blindness cure are ported; meatbox() container-spill draws no RNG in C
+// either (mon.c:1354) so a filled container eaten here is scoped out (no
+// recorded hostile eats a filled container on dungeon level 1); poly/slimer
+// (newcham — chameleon-class corpse or a slime glob) and grow (wraith-corpse
+// level-up via grow_up) are rare corpse-species specials that never reach
+// this path here (a slime glob is always engulfed, never devoured, per
+// slimeproof_mon above) and are omitted rather than porting those subsystems
+// for an unreachable branch.  mstone is likewise structurally a no-op here:
+// mstoning_obj()&&!resists_ston_mon() is exactly the condition meatobj's own
+// engulf gate already tests below, so any object reaching m_consume_obj via
+// devour has either mstoning_obj()==false or resists_ston_mon()==true, both
+// of which make C's own `!resists_ston(mtmp)` guard on the mstone branch a
+// no-op.  Consumes NO further RNG (matching C: only obj_resists/touch_artifact,
+// already rolled by the caller, precede delobj here).
+async function m_consume_obj(mtmp, otmp) {
+    const ispet = !!mtmp.mtame;
+    if (!ispet && (mtmp.mhp ?? 0) < (mtmp.mhpmax ?? 0)) {
+        const amt = base_oc_weight(otmp);
+        mtmp.mhp = Math.min(mtmp.mhpmax, mtmp.mhp + amt);
+    }
+    if (otmp.otyp === CARROT_OTYP && mtmp.mblinded) {
+        mtmp.mblinded = 0;
+        mtmp.mcansee = 1;
+    }
+    delobj_local(otmp);
+}
+
+// C ref: mon.c:1462 meatmetal(mtmp) — a metallivorous hostile (rock mole /
+// rust monster / xorn) eats the topmost metal object on its own square.
+// Pets eat via dog.c (dogmove.js), never here.  Returns 0 (nothing happened),
+// 1 (ate something), 2 (monster died mid-digestion — structurally unreached
+// by the scoped m_consume_obj above, kept for signature fidelity).
+async function meatmetal(mtmp) {
+    if (mtmp.mtame) return 0;
+    const isRustMon = mtmp.data?.name === PM_RUST_MONSTER_NAME;
+    const verbose = game.flags?.verbose !== false;
+    for (const otmp of objPileAt(mtmp.mx, mtmp.my)) {
+        if ((isRustMon && !is_rustprone(otmp))
+            || otmp.otyp === AMULET_OF_STRANGULATION
+            || otmp.otyp === RIN_SLOW_DIGESTION_OTYP
+            || (otmp.opoisoned && !resists_poison_mon(mtmp)))
+            continue;
+        const { touch_artifact } = await import('./invent.js');
+        if (is_metallic(otmp) && !obj_resists(otmp, 5, 95)
+            && touch_artifact(otmp, mtmp)) {
+            const vis = canspotmon(mtmp); // canseemon approximation (see uhitm.js)
+            if (isRustMon && otmp.oerodeproof) {
+                if (vis && verbose) {
+                    const { floor_object_name } = await import('./invent.js');
+                    await pline(`${Monnam(mtmp)} eats ${floor_object_name(otmp)}!`);
+                }
+                otmp.oerodeproof = 0;
+                mtmp.mstun = 1;
+                if (vis && verbose) {
+                    const { floor_object_name } = await import('./invent.js');
+                    await pline(`${Monnam(mtmp)} spits ${floor_object_name(otmp)} out in disgust!`);
+                }
+            } else {
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    if (verbose) {
+                        const { floor_object_name } = await import('./invent.js');
+                        await pline(`${Monnam(mtmp)} eats ${floor_object_name(otmp)}!`);
+                    }
+                } else if (verbose) {
+                    await pline('You hear a crunching sound.');
+                }
+                mtmp.meating = Math.trunc((otmp.owt ?? weight(otmp)) / 2) + 1;
+                await m_consume_obj(mtmp, otmp);
+                if (DEADMONSTER(mtmp)) return 2;
+                if (rnd(25) < 3) mksobj_at(ROCK, mtmp.mx, mtmp.my, true, false);
+                newsym(mtmp.mx, mtmp.my);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// C ref: mon.c:1533 meatobj(mtmp) — a gelatinous cube eats or engulfs every
+// object on its own square in one pass.  Pets eat via dog.c, never here.
+// Returns 0 (nothing), 1 (ate/engulfed something).  (C's 2/3 death/forced-off-
+// level codes are structurally unreached: they come from newcham/rider-revival,
+// both scoped out below — see m_consume_obj's comment.)
+async function meatobj(mtmp) {
+    if (mtmp.mtame) return 0;
+    const verbose = game.flags?.verbose !== false;
+    let count = 0, ecount = 0;
+    const { touch_artifact, floor_object_name } = await import('./invent.js');
+    for (const otmp of objPileAt(mtmp.mx, mtmp.my)) {
+        // avoid special items (mines'/sokoban prize) — never populated here.
+        if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
+
+        // touch-sensitive / untouchable / inaccessible: neither eaten nor
+        // engulfed.  (Rider corpses and the ball&chain never occur on these
+        // dungeon-1 sessions; SCR_SCARE_MONSTER is a real, if rare, guard.)
+        if (otmp.otyp === CORPSE && corpse_touch_petrifies(otmp.corpsenm)
+                && !resists_ston_mon(mtmp)) {
+            continue;
+        } else if (otmp.oclass === ROCK_CLASS || otmp.otyp === SCR_SCARE_MONSTER) {
+            continue;
+        } else if (!is_organic(otmp) || obj_resists(otmp, 5, 95)
+                   || !touch_artifact(otmp, mtmp)
+                   || otmp.otyp === AMULET_OF_STRANGULATION
+                   || otmp.otyp === RIN_SLOW_DIGESTION_OTYP
+                   || (otmp.opoisoned && !resists_poison_mon(mtmp))
+                   || (mstoning_obj(otmp) && !resists_ston_mon(mtmp))
+                   || (otmp.otyp === GLOB_OF_GREEN_SLIME && !slimeproof_mon(mtmp))) {
+            // engulf
+            ecount++;
+            mon_engulf_obj(mtmp, otmp);
+        } else {
+            // devour
+            count++;
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (verbose)
+                    await pline(`${Monnam(mtmp)} eats ${floor_object_name(otmp)}!`);
+            } else if (verbose) {
+                await pline('You hear a slurping sound.');
+            }
+            await m_consume_obj(mtmp, otmp);
+        }
+    }
+    if (ecount > 0 && verbose) {
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} engulfs ${ecount === 1 ? 'an object' : 'several objects'}.`);
+        else
+            await pline(`You hear ${ecount === 1 ? 'a' : 'several'} slurping sound${ecount === 1 ? '' : 's'}.`);
+    }
+    return (count > 0 || ecount > 0) ? 1 : 0;
+}
+
 // C ref: monmove.c:1054 mon_would_take_item(mtmp, otmp).  Reproduced for the
 // gold/gem-loving species the mines exercise: dwarves & gnomes are
 // M2_GREEDY|M2_JEWELS; leprechauns/soldiers/watchmen are M2_GREEDY.  The pctload

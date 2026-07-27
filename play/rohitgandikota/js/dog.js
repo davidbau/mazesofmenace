@@ -1,6 +1,6 @@
 import { relobj, steal_wire_droppables } from './steal.js';
-import { ROT_ICE_ADJUSTMENT } from './const.js';
-import { max_passive_dmg , carnivorous, herbivorous , metallivorous, humanoid, noncorporeal , flaming } from './mondata.js';
+import { ROT_ICE_ADJUSTMENT , MTSZ, NON_PM, SQSRCHRADIUS } from './const.js';
+import { max_passive_dmg , carnivorous, herbivorous , metallivorous, humanoid, noncorporeal , flaming , is_demon, is_swimmer, passes_walls , likes_fire } from './mondata.js';
 import { M_ATTK_MISS } from './const.js';
 import { onscary } from './monmove.js';
 import { M_ATTK_DEF_DIED } from './const.js';
@@ -58,7 +58,6 @@ import {
     makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, mpickobj } from './makemon.js';
 import { is_rider } from './mondata.js';
 
-const NON_PM = -1;
 
 // gu.urole.petnum is a PM_ name in the generated role table.
 function petnumOf(role) {
@@ -207,9 +206,8 @@ export const slimeproof = (ptr) => ptr.pmidx === PMNAMES.PM_GREEN_SLIME
                          || flaming(ptr) || noncorporeal(ptr);
 
 // include/mondata.h:196
-const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
-                         || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
-                         || likes_lava(ptr);
+/* likes_fire() is an include/mondata.h macro; it comes from
+   js/mondata.js, where its identical twin already lived. */
 
 // include/mondata.h:232
 const vegan = (ptr) =>
@@ -272,7 +270,6 @@ function hates_silver(ptr) {
 }
 
 const is_were = (ptr) => (ptr.mflags2 & MFLAGS.M2_WERE) !== 0;
-const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
 
 const resists_ston   = (mon) => { note_unported('resists_ston'); return false; };
 const resists_acid   = (mon) => { note_unported('resists_acid'); return false; };
@@ -316,9 +313,7 @@ function can_reach_location(mon, mx, my, fx, fy) {
     return false;
 }
 
-const is_swimmer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
 const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
-const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 const tunnels      = (ptr) => (ptr.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
 
 
@@ -498,7 +493,6 @@ function note_unported(what) {
 // the pet, so it costs one rn2(100) per nearby object before any of its own
 // draws. That is the whole reason obj_resists shows up ahead of dog_goal's
 // rn2(8) in the recordings.
-const SQSRCHRADIUS = 5;
 
 // src/dogmove.c:156 dog_nutrition() — how much food value obj gives mtmp, and
 // how many turns eating it costs (returned through mtmp.meating, as in C).
@@ -1303,7 +1297,6 @@ export function dog_move(mtmp, after) {
 }
 
 /* include/monst.h MTSZ — how many previous squares a monster remembers. */
-const MTSZ = 4;
 
 /* src/dogmove.c GDIST(x,y) = dist2(x, y, gg.gx, gg.gy) */
 function GDIST(x, y) {

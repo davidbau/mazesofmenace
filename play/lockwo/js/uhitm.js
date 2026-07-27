@@ -552,25 +552,23 @@ function passive(mon, mhit, malive) {
 // treasure-drop gate rn2(6), removes the monster, and (corpse_chance rn2(2))
 // drops a corpse via make_corpse() -> mkcorpstat() -> mksobj() (which rolls the
 // corpse's next_ident, rndmonnum reservoir scan, and gender rn2(2)).
-async function killed(mon) {
+// `opts` mirrors C's xkill_flags: { nomsg } suppresses the "You kill/destroy"
+// line, { nocorpse } skips the WHOLE treasure-drop+corpse_chance block (C:
+// xkilled() goto's straight to cleanup on XKILL_NOCORPSE, before the rn2(6)
+// treasure roll).  Both default off, matching every existing melee call site.
+export async function killed(mon, opts) {
+    const nomsg = !!opts?.nomsg;
+    const skipCorpseBlock = !!opts?.nocorpse;
     const { update_topl } = await import('./display.js');
     const x = mon.mx, y = mon.my;
     mon.mhp = 0;
 
     // u.uconduct.killer++ : no RNG.
-    if (canspotmon(mon))
-        await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} ${mon_nam(mon)}!`);
-    else
-        await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} it!`);
-
-    // illogical-but-traditional treasure drop gate (mon.c:3587).  C also gates
-    // on !(mvitals[mndx].mvflags & G_NOCORPSE): a G_NOCORPSE species (grid bug,
-    // gas spore, …) never drops the extra item.  The rn2(6) still rolls first.
-    const mndx0 = mon.data?.pmidx;
-    const nocorpse = (mndx0 != null) ? mon_nocorpse(mndx0) : false;
-    let dropTreasure = false;
-    if (!rn2(6) && !nocorpse && (x !== game.u.ux || y !== game.u.uy)) {
-        dropTreasure = true;          // mdat->mlet S_KOP / mcloned excluded
+    if (!nomsg) {
+        if (canspotmon(mon))
+            await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} ${mon_nam(mon)}!`);
+        else
+            await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} it!`);
     }
 
     // mondead(): detach the monster from the level BEFORE the once-per-turn
@@ -588,36 +586,49 @@ async function killed(mon) {
     // which then renders as a ')' object glyph at the kill location.
     relobj(mon, x, y);
 
-    // corpse_chance(mon): mon.c:3248 rn2(2 + (G_FREQ<2) + verysmall).
-    const accessible = (() => {
-        const t = game.level?.at(x, y)?.typ;
-        return t != null && ACCESSIBLE(t);
-    })();
-    if (dropTreasure) {
-        // mkobj(RANDOM_CLASS, TRUE): the item's own rolls (class, type,
-        // enchant, erosion, …) always fire before its fate is decided.
-        const otmp = mkobj(0 /*RANDOM_CLASS*/, true);
-        const otyp = otmp.otyp;
-        // C ref: mon.c:3600 xkilled() — "don't create large objects from
-        // small monsters": mdat->msize < MZ_HUMAN && otyp != FIGURINE &&
-        // (owt>30 || oc_big) routes to delobj() instead of placing it.  (The
-        // objects[] table here doesn't carry oc_big, so only the weight leg
-        // of that OR is checked — every otyp big enough to matter is also
-        // over the 30-unit threshold.)  delobj_core() always rolls
-        // obj_resists(obj,0,0)'s rn2(100) (the Amulet/invocation-tool guard)
-        // even though an ordinary item never resists — skipping that roll
-        // (as a bare place always would) desyncs every RNG draw after it,
-        // including corpse_chance() below.
-        if ((mon.data?.msize ?? 2 /* MZ_HUMAN */) < 2 && otyp !== FIGURINE
-            && (otmp.owt || 0) > 30) {
-            const { delobj } = await import('./invent.js');
-            delobj(otmp);
-        } else {
-            place_object(otmp, x, y);
+    if (!skipCorpseBlock) {
+        // illogical-but-traditional treasure drop gate (mon.c:3587).  C also
+        // gates on !(mvitals[mndx].mvflags & G_NOCORPSE): a G_NOCORPSE species
+        // (grid bug, gas spore, …) never drops the extra item.  The rn2(6)
+        // still rolls first.
+        const mndx0 = mon.data?.pmidx;
+        const gNoCorpse = (mndx0 != null) ? mon_nocorpse(mndx0) : false;
+        let dropTreasure = false;
+        if (!rn2(6) && !gNoCorpse && (x !== game.u.ux || y !== game.u.uy)) {
+            dropTreasure = true;          // mdat->mlet S_KOP / mcloned excluded
         }
-    }
-    if (corpse_chance(mon) && accessible) {
-        make_corpse(mon, x, y);
+
+        // corpse_chance(mon): mon.c:3248 rn2(2 + (G_FREQ<2) + verysmall).
+        const accessible = (() => {
+            const t = game.level?.at(x, y)?.typ;
+            return t != null && ACCESSIBLE(t);
+        })();
+        if (dropTreasure) {
+            // mkobj(RANDOM_CLASS, TRUE): the item's own rolls (class, type,
+            // enchant, erosion, …) always fire before its fate is decided.
+            const otmp = mkobj(0 /*RANDOM_CLASS*/, true);
+            const otyp = otmp.otyp;
+            // C ref: mon.c:3600 xkilled() — "don't create large objects from
+            // small monsters": mdat->msize < MZ_HUMAN && otyp != FIGURINE &&
+            // (owt>30 || oc_big) routes to delobj() instead of placing it.
+            // (The objects[] table here doesn't carry oc_big, so only the
+            // weight leg of that OR is checked — every otyp big enough to
+            // matter is also over the 30-unit threshold.)  delobj_core()
+            // always rolls obj_resists(obj,0,0)'s rn2(100) (the Amulet/
+            // invocation-tool guard) even though an ordinary item never
+            // resists — skipping that roll (as a bare place always would)
+            // desyncs every RNG draw after it, including corpse_chance() below.
+            if ((mon.data?.msize ?? 2 /* MZ_HUMAN */) < 2 && otyp !== FIGURINE
+                && (otmp.owt || 0) > 30) {
+                const { delobj } = await import('./invent.js');
+                delobj(otmp);
+            } else {
+                place_object(otmp, x, y);
+            }
+        }
+        if (corpse_chance(mon) && accessible) {
+            make_corpse(mon, x, y);
+        }
     }
 
     // C ref: mon.c xkilled() — give experience points (no RNG).  experience()

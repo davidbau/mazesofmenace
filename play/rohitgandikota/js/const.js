@@ -2921,7 +2921,11 @@ export function Upolyd(player) {
 // Canonical macros — previously duplicated as local stubs in 15+ files
 export function u_at(x, y) { return game?.u?.ux === x && game?.u?.uy === y; }
 export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x && o.oy === y) ?? false; }
-export function Has_contents(obj) { return obj?.cobj != null; }
+/* Has_contents() removed: it is include/obj.h:334 and lives in js/obj.js.
+   The version here read `obj?.cobj != null`, which is TRUE for an empty
+   container -- js/mkobj.js:872 initialises cobj to [], not null, so every
+   box reported as having contents. js/obj.js's `!!(o.cobj && o.cobj.length)`
+   is what C's `cobj != 0` means over an array. */
 // include/monst.h:73 M_AP_TYPE() — ((m)->m_ap_type & M_AP_TYPMASK).
 // The mask is not decoration: m_ap_type also carries M_AP_F_DKNOWN (0x8,
 // monst.h:70) in its high bits, so dropping it makes any mimic whose
@@ -2945,17 +2949,23 @@ export function Is_firelevel(uz) { const lev = uz ?? game?.u?.uz; const fl = gam
 export function Is_earthlevel(uz) { const lev = uz ?? game?.u?.uz; const el = game?.earth_level; return !!lev && !!el && lev.dnum === el.dnum && lev.dlevel === el.dlevel; }
 export function Is_airlevel(uz) { const lev = uz ?? game?.u?.uz; const al = game?.air_level; return !!lev && !!al && lev.dnum === al.dnum && lev.dlevel === al.dlevel; }
 export function In_mines(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.mines_dnum; }
-export function In_sokoban(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.sokoban_dnum; }
+/* In_sokoban() removed: it is a src/dungeon.c predicate and lives in
+   js/dungeon.js. The copy here took an optional argument defaulting to the
+   hero's level; C's takes an explicit d_level and every call site already
+   passes one. */
 export function In_V_tower(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.tower_dnum; }
-export function Is_stronghold(uz) { const g = game; return g?.stronghold_level && (uz ?? g?.u?.uz)?.dnum === g.stronghold_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.stronghold_level.dlevel; }
+/* Is_stronghold() removed: it is an include/dungeon.h predicate and lives
+   in js/dungeon.js. Same pattern as In_sokoban and Is_botlevel -- the copy
+   here defaulted to the hero's level, nothing imported it, and
+   js/dungeon.js:618 is the only call site and passes its level. It also
+   returned the && chain rather than a boolean, so a caller comparing
+   === true would have got a different answer. */
 // C ref: dungeon.c:1637 — Is_botlevel checks if level is the deepest
 // in its dungeon branch. Each branch has its own num_dunlevs.
-export function Is_botlevel(uz) {
-    const lev = uz ?? game?.u?.uz;
-    if (!lev) return false;
-    const dun = game?.dungeons?.[lev.dnum];
-    return !!dun && lev.dlevel === dun.num_dunlevs;
-}
+/* Is_botlevel() removed: it is include/dungeon.h:126 and lives in
+   js/dungeon.js. The copy here took an optional argument defaulting to the
+   hero's level and nothing imported it -- js/dungeon.js:612 is the only
+   call site and passes its level explicitly. */
 export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }

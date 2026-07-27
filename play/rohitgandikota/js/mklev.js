@@ -1,4 +1,4 @@
-import { CORPSTAT_NONE } from './const.js';
+import { CORPSTAT_NONE, TAINT_AGE, NON_PM, XLIM, YLIM, is_hole, is_pit } from './const.js';
 // mklev.js — Level generation.
 // C ref: mklev.c — makelevel, makerooms, makecorridors, generate_stairs.
 // Also includes parts of sp_lev.c (create_room) and mkmap.c (litstate_rnd).
@@ -7,13 +7,14 @@ import { CORPSTAT_NONE } from './const.js';
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
+import { is_unicorn } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import {
     mkobj, mksobj, next_ident, blessorcurse, special_corpse, start_corpse_timeout,
 } from './mkobj.js';
 import {
     rndmonnum, rndmonnum_adj, makemon, mkclass, monsndx, level_difficulty,
-    MM_NOGRP, NO_MM_FLAGS, Inhell, likes_gems,
+    MM_NOGRP, NO_MM_FLAGS, Inhell,
 } from './makemon.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
@@ -60,9 +61,7 @@ import { mkroom_table, create_des_coder, spo_push_room,
          spo_endroom } from './sp_lev.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
-const NON_PM = -1;
 const CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07;
-const TAINT_AGE = 50;
 // Object type and object class constants come from js/objects_data.js, which
 // is generated from the C. They used to be hardcoded literals here and 21 of
 // the 23 object constants and 7 of the 8 class constants were wrong — e.g.
@@ -154,9 +153,6 @@ const RANDOM_CLASS = 0;
 // Supply chest items
 const MARK = 6;
 
-const XLIM = 4;
-const YLIM = 3;
-
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -172,9 +168,6 @@ import {
     STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE,
     TRAPPED_DOOR, TRAPPED_CHEST,
 } from './const.js';
-
-function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
-function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
@@ -267,10 +260,6 @@ function oinit() { /* no-op for contest */ }
 
 let _nextObjId = 1;
 
-
-
-
-
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
 function add_to_buried(otmp) {
@@ -302,7 +291,6 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
     }
     return otmp;
 }
-
 
 // src/trap.c:508 mk_trap_statue() — the statue that sits on a STATUE_TRAP.
 //
@@ -341,7 +329,6 @@ function mk_trap_statue(x, y) {
 }
 
 // include/mondata.h:149 is_unicorn()
-const is_unicorn = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
 
 // maketrap stub
 // src/trap.c:3083 choose_trapnote() — a squeaky board picks an unused musical

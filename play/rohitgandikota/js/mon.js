@@ -1,4 +1,4 @@
-import { CORPSTAT_NONE } from './const.js';
+import { CORPSTAT_NONE, NO_WEAPON_WANTED } from './const.js';
 import { MFLAGS as __MF } from './monst_data.js';
 const G_NOCORPSE = __MF.G_NOCORPSE;
 import { is_neuter } from './mondata.js';
@@ -681,7 +681,6 @@ export function m_carrying(mtmp, type) {
 }
 
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
-const NO_WEAPON_WANTED = 0;
 
 // include/obj.h:213 is_blade() — a cutting weapon, dagger through saber.
 // WEAPON_CLASS only, unlike is_axe and is_pick which also accept a weptool.

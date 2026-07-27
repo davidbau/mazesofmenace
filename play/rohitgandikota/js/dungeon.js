@@ -11,20 +11,16 @@
 // docs/plan/04-level-generation.md §4.0.
 
 import { game } from './gstate.js';
-import { In_endgame, Is_earthlevel , Align2amask } from './const.js';
+import { In_endgame, Is_earthlevel , Align2amask , D_ALIGN_MASK, MAXDUNGEON, MAXLEVEL, UNCONNECTED } from './const.js';
 import { rn2, rn1 } from './rng.js';
 import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL } from './const.js';
 import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
 
 // include/global.h:408-409
-const MAXDUNGEON = 16;
-const MAXLEVEL = 32;
 
 // include/dgn_file.h:56-67
 const TOWN = 0x01, HELLISH = 0x02, MAZELIKE = 0x04, ROGUELIKE = 0x08;
-const UNCONNECTED = 0x10;
 const D_ALIGN_NONE = 0x00;
-const D_ALIGN_MASK = 0x70;
 /* D_ALIGN_x is (AM_x << 4); AM_LAWFUL 4, AM_NEUTRAL 2, AM_CHAOTIC 1 */
 const D_ALIGN_LAWFUL = 4 << 4, D_ALIGN_NEUTRAL = 2 << 4, D_ALIGN_CHAOTIC = 1 << 4;
 

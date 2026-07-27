@@ -8,12 +8,9 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
-} from './const.js';
+    IS_WALL, COULD_SEE, IN_SIGHT } from './const.js';
 import { newsym } from './display.js';
 
-const COULD_SEE = 0x1;
-const IN_SIGHT = 0x2;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [

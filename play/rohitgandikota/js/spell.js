@@ -13,7 +13,7 @@ import { ONAMES } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { rnd } from './rng.js';
 import { tty_yn_function } from './tty/topl.js';
-import { ECMD_FAIL } from './const.js';
+import { ECMD_FAIL, NO_SPELL } from './const.js';
 import { You, Your, You_feel } from './pline.js';
 import { acurr, exercise } from './attrib.js';
 import { mksobj } from './mkobj.js';
@@ -25,7 +25,6 @@ import { W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF, W_WEP,
          P_CLERIC_SPELL, P_UNSKILLED, P_ISRESTRICTED } from './const.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
-const NO_SPELL = 0;
 
 // src/spell.c spellid() — the spell in slot `spidx`, or NO_SPELL.
 export function spellid(spidx) {

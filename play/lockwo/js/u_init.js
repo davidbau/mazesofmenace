@@ -566,8 +566,10 @@ function ini_inv_wear_armor(obj) {
         else if (is_suit(obj) && !game.uarm) setworn(obj, W_ARM);
     }
 
-    // C ref: u_init.c ini_inv_use_obj — wield the starting weapon(s).
-    if (obj.oclass === WEAPON_CLASS) {
+    // C ref: u_init.c ini_inv_use_obj — wield the starting weapon(s).  The
+    // outer class check also special-cases FLINT/ROCK (GEM_CLASS sling ammo)
+    // so a Caveman's starting stones get quivered like any other ammo.
+    if (obj.oclass === WEAPON_CLASS || obj.otyp === FLINT || obj.otyp === ROCK) {
         if (ini_is_ammo(obj)) {
             if (!game.uquiver) { obj.owornmask = (obj.owornmask || 0) | W_QUIVER; game.uquiver = obj; }
         } else if (!game.uwep) {
@@ -586,10 +588,13 @@ function ini_inv_wear_armor(obj) {
 // wielded/alternate weapon (uwep/uswapwep), not the quiver — the earlier
 // quan>1 heuristic wrongly quivered them.
 function ini_is_ammo(obj) {
-    if (obj.oclass !== WEAPON_CLASS) return false;
     const sk = objects?.[obj.otyp]?.oc_skill ?? 0;
-    return (sk >= -22 && sk <= -20)   // is_ammo:    -P_CROSSBOW .. -P_BOW
-        || (sk >= -25 && sk <= -23);  // is_missile: -P_BOOMERANG .. -P_DART
+    // is_ammo: WEAPON_CLASS or GEM_CLASS (sling stones), -P_CROSSBOW..-P_BOW.
+    if ((obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS) && sk >= -22 && sk <= -20)
+        return true;
+    // is_missile: WEAPON_CLASS only here (TOOL_CLASS missiles don't occur in
+    // starting inventories), -P_BOOMERANG..-P_DART.
+    return obj.oclass === WEAPON_CLASS && sk >= -25 && sk <= -23;
 }
 
 // C ref: hack.h ARM_BONUS(obj) — a_ac + spe - min(greatest_erosion(obj), a_ac).

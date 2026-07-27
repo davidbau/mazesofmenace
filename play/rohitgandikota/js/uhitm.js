@@ -30,7 +30,7 @@ import { adjalign, near_capacity } from './attrib.js';
 import { abon, hitval, weapon_hit_bonus, dmgval } from './weapon.js';
 import { find_mac } from './worn.js';
 import { worn } from './do_wear.js';
-import { is_orc, unsolid, thick_skinned, attacktype } from './mondata.js';
+import { is_orc, unsolid, thick_skinned, attacktype , passes_walls } from './mondata.js';
 import { is_blade, is_axe, set_ustuck, m_at } from './mon.js';
 import { is_weptool } from './mkobj.js';
 import { OCLASSES, MATERIALS, ONAMES } from './objects_data.js';
@@ -47,7 +47,7 @@ function note_unported_uhitm(what) {
 }
 
 // include/mondata.h:29 passes_walls()
-const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
+/* passes_walls() is an include/mondata.h macro; it comes from js/mondata.js. */
 
 // include/mondata.h:150 is_longworm() — an identity test against three
 // specific permonst entries, NOT a flag test.

@@ -65,3 +65,41 @@ export function isqrt(val) {
     }
     return rt;
 }
+
+// src/hacklib.c:83 lowc() — force 'c' into lowercase.
+export function lowc(c) {
+    return (c >= 'A' && c <= 'Z')
+        ? String.fromCharCode(c.charCodeAt(0) | 0o40)
+        : c;
+}
+
+// src/hacklib.c strstri() — case-insensitive substring search.
+//
+// C returns a pointer into str, or NULL. The only thing every caller does with
+// it is test it against NULL, so this returns the matching index or -1; -1 is
+// used rather than null so a caller that forgets the comparison gets a truthy
+// 0 for "matched at the start", exactly as the C pointer would be non-NULL.
+//
+// The C prefilters with two 32-entry nibble-count tables before comparing, and
+// bails when sub is longer than str or has more of some bucket than str does.
+// That is pure optimisation with no observable effect, so it is not reproduced;
+// the loop below is the C's final comparison pass, which is what decides the
+// answer. Case folding is lowc() on both sides, matching the C exactly.
+export function strstri(str, sub) {
+    /* special case: empty substring */
+    if (!sub)
+        return 0;
+
+    const k = str.length - sub.length;
+    if (k < 0)
+        return -1; /* sub longer than str, so can't match */
+
+    for (let i = 0; i <= k; i++) {
+        let j = 0;
+        while (j < sub.length && lowc(str[i + j]) === lowc(sub[j]))
+            j++;
+        if (j === sub.length)
+            return i; /* full match */
+    }
+    return -1; /* not found */
+}

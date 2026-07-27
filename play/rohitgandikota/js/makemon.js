@@ -20,17 +20,16 @@ import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { attacktype, is_neuter , is_rider , is_animal , mindless , humanoid } from './mondata.js';
+import { attacktype, is_neuter , is_rider , is_animal , mindless , humanoid , is_demon, is_swimmer, passes_walls , likes_gems, is_unicorn, is_armed, is_domestic, amorphous, noncorporeal, is_whirly, unsolid } from './mondata.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
-    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
+    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U , A_NEUTRAL, ALIGNWEIGHT, NON_PM, In_endgame } from './const.js';
 import { enexto_core } from './teleport.js';
 
 // include/hack.h:1174-1175
 const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
 
 // include/permonst.h:15,23
-const NON_PM = -1;
 const LOW_PM = NON_PM + 1;                 /* first monster in mons[] */
 const SPECIAL_PM = PMNAMES.PM_LONG_WORM_TAIL;  /* [normal] < ~ < [special] */
 
@@ -58,8 +57,6 @@ const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST } = MSOUND;
 const { AT_WEAP, AD_ANY } = ATTKS;
 
 // include/global.h:411, include/align.h:22
-const ALIGNWEIGHT = 4;
-const A_NEUTRAL = 0;
 const AM_NONE = 0, AM_LAWFUL = 4, AM_NEUTRAL = 2, AM_CHAOTIC = 1;
 
 // include/global.h — MAXMONNO, the default per-species birth limit.
@@ -82,12 +79,9 @@ const always_hostile = (ptr) => (ptr.mflags2 & M2_HOSTILE) !== 0;
 const always_peaceful = (ptr) => (ptr.mflags2 & M2_PEACEFUL) !== 0;
 const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
 const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
-const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
+/* is_domestic() is include/mondata.h:109; it comes from js/mondata.js. */
 const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
 const race_peaceful = (ptr) => (ptr.mflags2 & (game.urace?.lovemask ?? 0)) !== 0;
-export const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
-const is_unicorn = (ptr) => ptr.mlet === S_UNICORN && likes_gems(ptr);
-const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
 const is_ndemon = (ptr) =>
     is_demon(ptr) && (ptr.mflags2 & (MFLAGS.M2_LORD | MFLAGS.M2_PRINCE)) === 0;
 const is_shapeshifter = (ptr) => (ptr.mflags2 & MFLAGS.M2_SHAPESHIFTER) !== 0;
@@ -103,7 +97,7 @@ const { M3_WAITMASK } = MFLAGS;
    monster-creation graph into anything that wanted a header macro. */
 // src/mondata.c attacktype_fordmg() — is_armed(ptr) is attacktype(ptr, AT_WEAP)
 /* attacktype lives in js/mondata.js, its C home (src/mondata.c:54). */
-const is_armed = (ptr) => attacktype(ptr, AT_WEAP);
+/* is_armed() is include/mondata.h:87; it comes from js/mondata.js. */
 
 // include/monst.h:259-265
 const monmax_difficulty = (levdif) => Math.trunc((levdif + (game.u?.ulevel ?? 0)) / 2);
@@ -464,9 +458,16 @@ function golemhp(type) {
     }
 }
 
-function In_endgame() {
-    return game.dungeons?.[game.u?.uz?.dnum]?.dname === 'The Elemental Planes';
-}
+/* In_endgame() is include/dungeon.h:141, ((x)->dnum == astral_level.dnum).
+   The version here compared the dungeon's NAME against 'The Elemental
+   Planes' instead -- a proxy for the same question, not the same test. It
+   comes from js/const.js now, which compares dnum as C does and defaults to
+   u.uz when called with no argument, matching this file's call site.
+
+   This matters more than a tidy-up: js/makemon.js:486 reads
+   In_endgame() ? (8 * basehp) : (4 * basehp + d(basehp, 4)), so the answer
+   decides WHETHER A DRAW HAPPENS. Both forms return false outside the
+   endgame, which no public session reaches, so the streams agree today. */
 
 function is_home_elemental(/* ptr */) {
     /* only true in the endgame planes, which no public session reaches */
@@ -773,8 +774,6 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
     return true;
 }
 
-const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
-const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 const may_passwall = () => false;   /* needs level.flags.noteleport wall data */
 
 // src/quest.c quest_info() — the quest leader/nemesis for the hero's role.
@@ -952,7 +951,26 @@ export function set_mimic_sym(mtmp) {
 }
 function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
 function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
-function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
+/* src/steed.c:26 can_saddle() — SEVEN conditions, not one. This tested only
+   msize, so it answered true for many monsters C refuses to saddle.
+   js/steed.js has the correct one, but importing it would close a cycle
+   (steed -> mkobj -> makemon), so the conditions are written out here and
+   the two now agree.
+
+   steeds[] is src/steed.c:8, the six classes that can bear a rider.
+   MZ_MEDIUM is 2, which is why the old `msize >= 2` had the right threshold
+   and nothing else. */
+const steeds = [MONSYMS.S_QUADRUPED, MONSYMS.S_UNICORN, MONSYMS.S_ANGEL,
+                MONSYMS.S_CENTAUR, MONSYMS.S_DRAGON, MONSYMS.S_JABBERWOCK];
+
+function can_saddle(mtmp) {
+    const ptr = mtmp.data;
+    return steeds.includes(ptr.mlet)
+        && ptr.msize >= MFLAGS.MZ_MEDIUM
+        && (!humanoid(ptr) || ptr.mlet === MONSYMS.S_CENTAUR)
+        && !amorphous(ptr) && !noncorporeal(ptr)
+        && !is_whirly(ptr) && !unsolid(ptr);
+}
 
 /* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
    that stood here short-circuited on an empty minvent and recorded otherwise;

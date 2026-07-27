@@ -7,7 +7,8 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
-import { STR18 } from './const.js';
+import { is_ammo } from './obj.js';
+import { STR18, WT_IRON_BALL_INCR } from './const.js';
 import { MONSYMS } from './monst_data.js';
 import { mon_hates_blessings, thick_skinned, passes_walls,
          is_swimmer } from './mondata.js';
@@ -35,10 +36,7 @@ const practice_needed_to_advance = (level) => level * level * 20;
 
 // include/obj.h:238 is_ammo() — the launcher-fired classes. Ammo alone does
 // not confer skill; skill_init waits until it sees the launcher.
-const is_ammo = (otmp) =>
-    (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.GEM_CLASS)
-    && game.objects[otmp.otyp].oc_skill >= -P_CROSSBOW
-    && game.objects[otmp.otyp].oc_skill <= -P_BOW;
+/* is_ammo() is include/obj.h:238; it comes from js/obj.js. */
 
 // src/weapon.c:1517 weapon_type() — the skill an object trains. A NEGATIVE
 // oc_skill marks ammo, and the sign is dropped here.
@@ -478,7 +476,6 @@ export function dmgval(otmp, mon) {
 
 // include/weight.h:18 WT_IRON_BALL_INCR — verified against the header, not
 // recalled: the value was written from memory first and then checked.
-const WT_IRON_BALL_INCR = 160;
 
 // Predicates dmgval needs that are not ported. Each returns 0/false and is
 // recorded by name, so game.unported says which one a divergence wanted.

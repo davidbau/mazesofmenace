@@ -75,7 +75,9 @@ import {
     TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
     POOL, MOAT, WATER,
     IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
+    DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
 } from './const.js';
+import { engr_at } from './engrave.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
@@ -613,7 +615,7 @@ const ARTI_TOUCH_PROPS = {
 // blast/damage branch's losehp/messages are modelled but not reached for the
 // wishes we replay (e.g. Neutral hero wishing Grayswandir: rn2(4) is drawn but
 // !rn2(4) is false, so no blast).
-function touch_artifact(obj, _mon) {
+export function touch_artifact(obj, _mon) {
     const m = obj && obj.oartifact;
     const oart = m && ARTI_TOUCH_PROPS[m];
     if (!oart) return true; // ART_NONARTIFACT
@@ -5076,6 +5078,36 @@ function objects_at(x, y) {
     return here; // topmost (last placed) first
 }
 
+// C ref: engrave.c read_engr_at() — sense and read aloud any engraving at
+// (x,y) via update_topl (so it properly merges onto / pages an already
+// pending message, matching pline's real behavior).  Returns true if an
+// engraving was sensed (and so a message was queued).
+async function read_engr_at_topl(x, y) {
+    const ep = engr_at(x, y);
+    const text = ep?.actualText || '';
+    if (!ep || !text) return false;
+    let intro;
+    switch (ep.engr_type) {
+    case DUST:       if (game.Blind) return false;
+                     intro = 'Something is written here in the dust.'; break;
+    case ENGRAVE:
+    case HEADSTONE:  intro = 'Something is engraved here on the floor.'; break;
+    case BURN:       intro = 'Some text has been burned into the floor here.'; break;
+    case MARK:       if (game.Blind) return false;
+                     intro = "There's some graffiti on the floor here."; break;
+    case ENGR_BLOOD: if (game.Blind) return false;
+                     intro = 'You see a message scrawled in blood here.'; break;
+    default: return false;
+    }
+    const last = text.charAt(text.length - 1);
+    const endpunct = (text.length >= 2 && '.!?'.includes(last)) ? '' : '.';
+    await update_topl(intro);
+    await update_topl(`You read: "${text}"${endpunct}`);
+    ep.eread = 1;
+    ep.erevealed = 1;
+    return true;
+}
+
 // C ref: invent.c look_here() — report the dungeon feature and/or objects under
 // the hero.  Ports the no-object, single-object, and feature-only branches the
 // recorded sessions exercise; the multi-object menu branch is left for callers
@@ -5091,9 +5123,14 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const verb = game.Blind ? 'feel' : 'see';
 
     if (!otmp) {
-        // No object: show the feature if present, else "no objects".
-        if (dfeature) game._pending_message = `There is ${an(dfeature)} here.`;
-        else game._pending_message = `You ${verb} no objects here.`;
+        // No object: feature (if any), then any engraving, then "no objects"
+        // (only when blind or there was no feature to report).
+        // C ref: invent.c look_here() !otmp branch — pline1(fbuf); read_engr_at();
+        // if (!skip_objects && (Blind || !dfeature)) You("%s no objects here.", verb).
+        if (dfeature) await update_topl(`There is ${an(dfeature)} here.`);
+        await read_engr_at_topl(x, y);
+        if (game.Blind || !dfeature)
+            await update_topl(`You ${verb} no objects here.`);
         return game.Blind ? ECMD_TIME : ECMD_OK;
     }
     if (here.length === 1) {

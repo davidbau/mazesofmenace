@@ -699,6 +699,12 @@ const OC_SKILL = {
     // P_UNICORN_HORN=27.
     259: 4 /*pick-axe*/, 260: 13 /*grappling hook*/, 261: 27 /*unicorn horn*/,
 };
+// GEM_CLASS entries (dilithium crystal..rock, otyp 438-473) all carry
+// oc_skill = -P_SLING(-21) via the GEM()/ROCK() macros in objects.h — any real
+// gem, stone, or rock is valid sling ammo (is_ammo/find_launcher).  The
+// otyp==13 "generic gem" placeholder uses the GENERIC() macro instead and
+// keeps oc_skill 0 (not a real, throwable object), so it's excluded here.
+for (let otyp = 438; otyp <= 473; otyp++) OC_SKILL[otyp] = -21;
 
 export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, material, dir, name]) => ({
     otyp, sym, oclass, oc_class: oclass, oc_prob: prob, flags, material, dir, name,
@@ -1247,7 +1253,7 @@ const CLASS_OC_WEIGHT = Object.freeze({
 });
 
 // C ref: mkobj.c — base weight of one unit of `otmp`'s otyp (objects[].oc_weight).
-function base_oc_weight(otmp) {
+export function base_oc_weight(otmp) {
     const b = BASE_OC_WEIGHT[otmp.otyp];
     if (b != null) return b;
     // C ref: objects.h — the RING/AMULET/POTION/SCROLL/SPBOOK/WAND class macros

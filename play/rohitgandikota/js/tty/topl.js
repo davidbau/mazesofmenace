@@ -11,6 +11,7 @@
 // more() is too, and both are really topl.c functions that should live here.
 
 import { game } from '../gstate.js';
+import { TBUFSZ } from '../const.js';
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT,
          _buildScreenOutput } from '../display.js';
 import { nhgetch } from '../input.js';
@@ -123,7 +124,6 @@ function redotoplin(str) {
 }
 
 // include/decl.h TBUFSZ
-const TBUFSZ = 300;
 
 // win/tty/topl.c:365 tty_yn_function() — the generic prompt-and-read-a-key.
 //

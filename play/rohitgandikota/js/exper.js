@@ -7,7 +7,7 @@ import { aligns } from './role_data.js';
 import { rnd, rn1 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS } from './const.js';
+import { A_CON, A_WIS , MAXULEV } from './const.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
@@ -104,7 +104,6 @@ export function newhp() {
 }
 
 // include/global.h:413 MAXULEV
-const MAXULEV = 30;
 
 // src/exper.c:45 newpw() — spell power / energy points for a new level.
 export function newpw() {

@@ -12,6 +12,8 @@
 // direct check that the o_init port is right.
 
 import { game } from './gstate.js';
+import { strstri } from './hacklib.js';
+import { hard_helmet } from './do_wear.js';
 import { W_ARMOR, W_QUIVER, W_WEP } from './const.js';
 import { mons } from './monst_data.js';
 import { OCLASSES, ONAMES, obj_descr } from './objects_data.js';
@@ -283,3 +285,74 @@ export function doname(obj) {
 }
 
 // include/prop.h
+
+// src/objnam.c:5492 cloak_simple_name() — "robe"/"wrapping"/"smock"/"apron",
+// else "cloak". The smock answer depends on discovery: an identified alchemy
+// smock is a "smock", an unidentified one is an "apron".
+export function cloak_simple_name(cloak) {
+    if (cloak) {
+        switch (cloak.otyp) {
+        case ONAMES.ROBE:
+            return "robe";
+        case ONAMES.MUMMY_WRAPPING:
+            return "wrapping";
+        case ONAMES.ALCHEMY_SMOCK:
+            return (game.objects[cloak.otyp].oc_name_known && cloak.dknown)
+                       ? "smock"
+                       : "apron";
+        default:
+            break;
+        }
+    }
+    return "cloak";
+}
+
+// src/objnam.c:5513 helm_simple_name() — helm vs hat for messages.
+//
+// Chosen to agree with the "protected by hard helmet" bonk messages: headgear
+// that protects is a "helm", headgear that does not is a "hat". So elven
+// leather helm and leather hat are both hats, dwarvish iron helm and hard hat
+// are both helms.
+export function helm_simple_name(helmet) {
+    return !hard_helmet(helmet) ? "hat" : "helm";
+}
+
+// src/objnam.c:5532 gloves_simple_name() — gloves vs gauntlets, by discovery.
+//
+// One strstri, against the actual name when the type is known and against the
+// description when it is not. Note this differs from boots_simple_name below,
+// which tests both strings; the asymmetry is in the C.
+export function gloves_simple_name(gloves) {
+    const gauntlets = "gauntlets";
+
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp;
+        const ocl = game.objects[otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if (strstri(game.objects[otyp].oc_name_known ? actualn : descrpn,
+                    gauntlets) >= 0)
+            return gauntlets;
+    }
+    return "gloves";
+}
+
+// src/objnam.c:5550 boots_simple_name() — boots vs shoes, by discovery.
+//
+// Unlike gloves above, this checks the DESCRIPTION unconditionally and the
+// actual name only when the type is known, so it can answer "shoes" for an
+// unidentified pair whose description says shoes.
+export function boots_simple_name(boots) {
+    const shoes = "shoes";
+
+    if (boots && boots.dknown) {
+        const otyp = boots.otyp;
+        const ocl = game.objects[otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+
+        if (strstri(descrpn, shoes) >= 0
+            || (game.objects[otyp].oc_name_known && strstri(actualn, shoes) >= 0))
+            return shoes;
+    }
+    return "boots";
+}

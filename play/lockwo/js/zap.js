@@ -16,10 +16,13 @@ import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          FOOD_CLASS, RING_CLASS, POT_OIL, POT_WATER, GLOB_OF_GREEN_SLIME,
          SPBOOK_CLASS, mkobj as _mkobj, place_object, objects,
          mkcorpstat, CORPSE } from './mkobj.js';
-import { A_WIS, A_STR, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, isok, ROOM, STONE,
+import { A_WIS, A_STR, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, IS_WALL, isok, ROOM, STONE,
          D_CLOSED, D_LOCKED, CORPSTAT_INIT } from './const.js';
 import { CLR_ORANGE } from './terminal.js';
 import { can_make_bones } from './bones.js';
+import { DEADMONSTER } from './mon.js';
+import { MON_WEP } from './monmove.js';
+import { killed, canspotmon, mon_nam, Monnam } from './uhitm.js';
 
 // Object-type numbers for the directional wands/spells that zapyourself() gives
 // a special self-inflicted effect.  C ref: include/objects.h (WAN_DEATH),
@@ -453,28 +456,35 @@ async function ubuzz(type, nd) {
     await dobuzz(type, nd, u.ux, u.uy, u.dx | 0, u.dy | 0);
 }
 
-// C ref: zap.c dobuzz — fire a bouncing ray.  Only the hero-self-hit path that
-// the seed5002 fire/cold/lightning zaps exercise is modelled: the beam walks
-// the lit room, reflects off the far wall (bounce_dir; horizontal/vertical bolts
-// reverse without RNG), returns to the hero, and zhitu() applies damage.  The
-// DISP_BEAM glyph trail is left on the map (matching C, which never reaches
-// tmp_at(DISP_END) when losehp() -> done() interrupts the loop).
+// C ref: zap.c dobuzz — fire a bouncing ray.  The beam walks the level,
+// striking a monster (zap_hit/zhitm/killed) or the hero (zap_hit/zhitu) it
+// crosses, and reflects off obstructions (bounce_dir) until range runs out.
+// u.uswallow / fireball(spell-only, unreachable via a 0-9 wand type) / gas
+// trailing clouds are not modelled (not exercised by any covered wand zap).
 async function dobuzz(type, nd, sx, sy, dx, dy) {
     const u = game.u;
-    const damgtype = type % 10;
+    const fltyp = zaptype(type);
+    const damgtype = fltyp % 10;
     let range = rn1(7, 7);              // C: range = rn1(7, 7)
     if (dx === 0 && dy === 0) range = 1;
     let lsx, lsy;
     const beamGlyph = (dx !== 0 && dy === 0) ? 'q' /*S_hbeam ─*/
                     : (dx === 0 && dy !== 0) ? 'f' /*S_vbeam │*/
                     : (dx === dy) ? 'n' /*S_lslant ╲*/ : 'm' /*S_rslant ╱*/;
-    const drawBeam = (x, y) => show_glyph_cell(x, y, beamGlyph, CLR_ORANGE, true);
+    // C ref: tmp_at(DISP_BEAM,...)/tmp_at(DISP_END,0) — the beam glyph is a
+    // temporary overlay; once the zap finishes every cell it touched is
+    // restored to its real glyph (corpse, monster, floor, ...).  Track visited
+    // cells here and newsym() them back at the bottom of the function.
+    const visited = new Map();
+    const drawBeam = (x, y) => { show_glyph_cell(x, y, beamGlyph, CLR_ORANGE, true); visited.set(`${x},${y}`, [x, y]); };
 
     while (range-- > 0) {
         lsx = sx; sx += dx;
         lsy = sy; sy += dy;
-        if (!isok(sx, sy) || (game.level?.at(sx, sy)?.typ ?? STONE) === STONE)
-            return await make_bounce();
+        if (!isok(sx, sy) || (game.level?.at(sx, sy)?.typ ?? STONE) === STONE) {
+            await make_bounce();
+            continue;
+        }
 
         const typ = game.level?.at(sx, sy)?.typ ?? STONE;
         const mon = m_at(sx, sy);
@@ -485,9 +495,37 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
         // zap_over_floor over plain lit room floor has no effect (no RNG); the
         // pool/fountain/ice cases don't occur on the covered level.
         if (mon) {
-            // No monster lies on the cardinal bolt path in the covered zaps;
-            // the beam continues (bhitm-style hit not exercised).
-            range -= 3;
+            if (zap_hit(find_mac(mon), 0)) {
+                if (mon_reflects(mon)) {
+                    // Reflection (shield/amulet of reflection): no covered zap
+                    // target wears one; not reached.
+                    dx = -dx; dy = -dy;
+                } else {
+                    const mon_could_move = mon.mcanmove;
+                    const { tmp, otmp } = await zhitm(mon, type, nd);
+                    if (tmp === MAGIC_COOKIE) {
+                        await disintegrate_mon(mon, type, flash_str(fltyp));
+                    } else if (DEADMONSTER(mon)) {
+                        if (type >= 0) await killed(mon);
+                        // (type < 0 -> monkilled(); dobuzz is only invoked
+                        // here for hero-caused wand zaps, so type is always
+                        // >= 0 in the reachable sessions.)
+                    } else {
+                        if (!otmp) {
+                            if (canspotmon(mon))
+                                await hit(flash_str(fltyp), mon, exclam(tmp));
+                        } else if (canspotmon(mon)) {
+                            await update_topl(`${Monnam(mon)}'s item is disintegrated!`);
+                        }
+                        if (mon_could_move && !mon.mcanmove) await slept_monst(mon);
+                        if (damgtype !== ZT_SLEEP) wakeup(mon, type >= 0);
+                    }
+                }
+                range -= 2;
+            } else {
+                if (canspotmon(mon) && !disguised_as_non_mon(mon))
+                    await miss(flash_str(fltyp), mon);
+            }
         } else if (sx === u.ux && sy === u.uy && range >= 0) {
             // C: u_at(sx,sy) && range >= 0 -> the bolt strikes the hero.
             if (zap_hit(u.uac | 0, 0)) {
@@ -502,21 +540,27 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
         }
 
         if (!ZAP_POS(game.level?.at(sx, sy)?.typ ?? STONE)) {
-            const r2 = await make_bounce();
-            if (r2 === 'stop') return;
+            await make_bounce();
         }
     }
 
     async function make_bounce() {
+        const typNow = game.level?.at(sx, sy)?.typ ?? STONE;
+        // C: bchance — off-level/STONE always bounces near-certainly (10);
+        // In_mines() dungeon-branch detection isn't modelled (no covered
+        // session zaps inside the Mines), so the wall case always uses 75.
+        const bchance = (!isok(sx, sy) || typNow === STONE) ? 10 : 75;
         // C: --range > 0 && cansee(lsx,lsy) -> "The <flash> bounces!"
-        if (--range > 0 && isok(lsx, lsy)) {
-            await update_topl(`${flash_The(type)} bounces!`);
+        if (--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy)) {
+            await update_topl(`${flash_The(fltyp)} bounces!`);
         }
-        // bounce_dir: a cardinal bolt (dx==0 or dy==0) reverses with no RNG.
-        if (dx === 0 || dy === 0) { dx = -dx; dy = -dy; }
-        else { dx = -dx; dy = -dy; } // diagonal bounce_dir not exercised
-        return 'cont';
+        const nd2 = bounce_dir(sx, sy, dx, dy, bchance);
+        dx = nd2.dx; dy = nd2.dy;
     }
+
+    // C: tmp_at(DISP_END, 0) — erase the temporary beam overlay, revealing
+    // whatever is really at each visited cell (corpse, monster, floor, ...).
+    for (const [vx, vy] of visited.values()) newsym(vx, vy);
 }
 
 // C ref: zap.c zap_hit(ac, type) — does the ray hit a target of armor class ac?
@@ -528,6 +572,168 @@ function zap_hit(ac, type) {
     return (3 - chance < acv + spell_bonus);
 }
 function AC_VALUE(ac) { return ac >= 0 ? ac : -rnd(-ac); }
+
+// C ref: include/hack.h zaptype() — normalize a monster-wand offset (-39..-30)
+// back to the 0-9 hero-wand range, then abs().  Every dobuzz() call in the
+// covered sessions is a hero wand zap (type 0-9) already, so this is a no-op
+// there; kept for structural fidelity.
+function zaptype(type) {
+    if (type <= -30 && type >= -39) type += 30;
+    return Math.abs(type);
+}
+
+// C ref: zap.c zhitm()'s MAGIC_COOKIE sentinel (disintegration instakill).
+const MAGIC_COOKIE = 1000;
+
+// ── monster resistance/defense predicates (mondata.c) ───────────────────────
+// C ref: monflag.h MR_* bits, mons[].mresists (already ported per-species in
+// makemon.js's MONS table).  Only the *innate* half of Resists_Elem() is
+// modelled: none of the covered sessions' zap targets wear or wield gear that
+// grants elemental resistance, so the worn/wielded-item scan is not needed.
+const MR_FIRE = 0x01, MR_COLD = 0x02, MR_SLEEP = 0x04, MR_DISINT = 0x08,
+      MR_ELEC = 0x10, MR_POISON = 0x20, MR_ACID = 0x40;
+function mresists_of(mon) { return mon?.data?.mresists || 0; }
+function resists_fire(mon) { return !!(mresists_of(mon) & MR_FIRE); }
+function resists_cold(mon) { return !!(mresists_of(mon) & MR_COLD); }
+function resists_sleep(mon) { return !!(mresists_of(mon) & MR_SLEEP); }
+function resists_disint(mon) { return !!(mresists_of(mon) & MR_DISINT); }
+function resists_elec(mon) { return !!(mresists_of(mon) & MR_ELEC); }
+function resists_poison(mon) { return !!(mresists_of(mon) & MR_POISON); }
+function resists_acid(mon) { return !!(mresists_of(mon) & MR_ACID); }
+// C ref: mondata.c resists_magm — gray dragons/Angels/Oracle/Yeenoghu innate,
+// or magic-resistant gear.  No covered zap target qualifies.
+function resists_magm(_mon) { return false; }
+// C ref: mondata.c dmgtype_fromattack(ptr, AD_BLND, AT_EXPL/AT_GAZE) plus the
+// mon-state half of resists_blnd (already-blind/asleep resists further
+// blinding).  haseyes()/Sunsword checks omitted: no eyeless or artifact-armed
+// covered target.
+function resists_blnd_mon(mon) { return !!(mon?.mblinded || mon?.msleeping); }
+// C ref: uhitm.c defended(mon, ad) — worn artifact/item granting `ad` defense.
+// No covered zap target wears such gear.
+function defended(_mon, _ad) { return false; }
+// C ref: worn.c mon_reflects — shield/amulet of reflection.  No covered zap
+// target wears one.
+function mon_reflects(_mon) { return false; }
+// C ref: mondata.c is_demon(ptr) — mlet == S_DEMON (defsym.h index 56).
+function is_demon_mdat(mdat) { return !!mdat && mdat.mcls === 56; }
+// C ref: mondata.h nonliving(ptr) — undead/golem/vortex/elemental "destroyed"
+// rather than "killed".  Matches uhitm.js's own nonliving() name heuristic.
+function nonliving_mdat(mdat) {
+    const name = mdat?.name || '';
+    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghost\b|\blich\b|golem\b|\bvortex\b|\belemental\b/.test(name);
+}
+// C ref: zap.c zhitm's find_mac(mon) AC lookup.  No monster in the covered
+// sessions wears armor, so this is just the species' base AC.
+function find_mac(mon) { const ac = mon?.data?.ac; return ac != null ? ac : 10; }
+
+// C ref: zap.c resist(mtmp, oclass, damage, tell) — the generic saving throw
+// against a wand/tool/weapon/scroll/potion/ring/spell effect.  `tell`'s
+// shieldeff() flash is display-only (no RNG); not modelled.
+function resist(mtmp, oclass, damage, _tell) {
+    let alev;
+    switch (oclass) {
+    case WAND_CLASS: alev = 12; break;
+    case TOOL_CLASS: alev = 10; break; // instrument (WEAPON_CLASS artifact
+                                        // case is also alev 10, never reached here)
+    case SCROLL_CLASS: alev = 9; break;
+    case POTION_CLASS: alev = 6; break;
+    case RING_CLASS: alev = 5; break;
+    default: alev = game.u?.ulevel || 1; break;
+    }
+    let dlev = mtmp?.m_lev ?? mtmp?.data?.mlevel ?? 0;
+    if (dlev > 50) dlev = 50;
+    else if (dlev < 1) dlev = 1; // (is_mplayer fake-player special-case omitted)
+    // mtmp.data.mr (species magic resistance) isn't tabulated in the ported
+    // monster data; it defaults to 0, which is correct for every ordinary
+    // early-game monster (only a handful of high-level monsters — liches,
+    // mind flayers, elves, arch-liches, quantum mechanics — have nonzero mr
+    // in real NetHack, and none is a covered zap target).
+    const resisted = rn2(100 + alev - dlev) < (mtmp?.data?.mr || 0);
+    if (resisted) damage = Math.trunc((damage + 1) / 2);
+    if (damage && mtmp) mtmp.mhp = (mtmp.mhp || 0) - damage;
+    return resisted;
+}
+
+// C ref: zap.c bounce_dir(sx, sy, ddx, ddy, bounceback) — reflect the beam's
+// direction off a wall/edge.  sx,sy is the post-move position where the bounce
+// is happening (the same argument the two C call sites pass).
+function bounce_dir(sx, sy, ddx, ddy, bounceback) {
+    if (!ddx || !ddy || (bounceback > 0 && !rn2(bounceback)))
+        return { dx: -ddx, dy: -ddy };
+    const lsy = sy - ddy, lsx = sx - ddx;
+    let bounce = 0;
+    const t1 = game.level?.at(sx, lsy)?.typ;
+    if (isok(sx, lsy) && ZAP_POS(t1) && !closed_door_at(sx, lsy)
+        && (IS_ROOM(t1) || (isok(sx + ddx, lsy) && ZAP_POS(game.level?.at(sx + ddx, lsy)?.typ))))
+        bounce = 1;
+    const t2 = game.level?.at(lsx, sy)?.typ;
+    if (isok(lsx, sy) && ZAP_POS(t2) && !closed_door_at(lsx, sy)
+        && (IS_ROOM(t2) || (isok(lsx, sy + ddy) && ZAP_POS(game.level?.at(lsx, sy + ddy)?.typ))))
+        if (!bounce || rn2(2)) bounce = 2;
+    switch (bounce) {
+    case 0: ddx = -ddx; ddy = -ddy; break; // (C: case 0 falls through to case 1)
+    case 1: ddy = -ddy; break;
+    case 2: ddx = -ddx; break;
+    }
+    return { dx: ddx, dy: ddy };
+}
+
+// C ref: zap.c exclam(force) — "!" for a solid hit, "." for a light one, "?"
+// for force<0 (e.g. a sleep ray, which deals 0 damage).
+function exclam(force) { return force < 0 ? '?' : (force <= 4 ? '.' : '!'); }
+// C ref: zap.c hit(str, mtmp, force)/miss(str, mtmp) — "The <str> hits/misses
+// <mon>."  vtense() pluralization is skipped: every flash_str() here is a
+// singular noun ("bolt of cold", "sleep ray", ...), so the verb is always
+// "hits"/"misses".
+async function hit(str, mon, force) {
+    const name = canspotmon(mon) ? mon_nam(mon) : 'it';
+    await update_topl(`The ${str} hits ${name}${force}`);
+}
+async function miss(str, mon) {
+    const name = canspotmon(mon) ? mon_nam(mon) : 'it';
+    await update_topl(`The ${str} misses ${name}.`);
+}
+// C ref: mondata.c disguised_as_non_mon — a hiding mimic/mimicking object.  No
+// covered zap target is a mimic.
+function disguised_as_non_mon(_mon) { return false; }
+// C ref: mon.c wakeup(mon, via_attack) — clears msleeping.  The via_attack
+// growl/setmangry/priest-temple escalation is message/AI-state only (no RNG
+// in the reachable early-game paths) and isn't modelled.
+function wakeup(mon, _viaAttack) { if (mon) mon.msleeping = 0; }
+// C ref: zap.c slept_monst — releases a grappled hero when their engulfer/
+// holder falls asleep.  No covered zap target is grappling the hero.
+async function slept_monst(_mon) {}
+
+// C ref: mhitm.c sleep_monst(mon, amt, how) — how=WAND_CLASS for a wand of
+// sleep zap.  seemimic() mimic-reveal is not modelled (no covered zap target
+// is a hiding mimic).
+async function sleep_monst(mon, amt, how) {
+    if (resists_sleep(mon) || defended(mon, 4 /*AD_SLEE*/) || resist(mon, how, 0, false)) {
+        // shieldeff(mon.mx, mon.my): display-only, no RNG.
+        return false;
+    }
+    if (mon.mcanmove) {
+        amt += (mon.mfrozen || 0);
+        if (amt > 0) { mon.mcanmove = 0; mon.mfrozen = Math.min(amt, 127); }
+        else mon.msleeping = 1;
+        return true;
+    }
+    return false;
+}
+
+// C ref: zap.c disintegrate_mon — the ZT_BREATH(ZT_DEATH) instakill path.  Not
+// reachable via a hero wand zap (dobuzz's type is always >= 0 there), but kept
+// for structural completeness; mlifesaver()'s amulet-of-life-saving check
+// isn't modelled (no covered target wears one).
+async function disintegrate_mon(mon, type, fltxt) {
+    if (canspotmon(mon)) await update_topl(`${Monnam(mon)} is disintegrated!`);
+    // extract_from_minvent/obfree: drop everything except artifacts/DISINT_RES
+    // items with no RNG; no covered target carries anything, so this is a
+    // no-op in practice.
+    if (Array.isArray(mon.minvent) && mon.minvent.length)
+        mon.minvent = mon.minvent.filter(o => o.oartifact);
+    await killed(mon, { nomsg: true, nocorpse: true });
+}
 
 // C ref: zap.c flash_str — display name of a flash/bolt; "The bolt of fire"
 // via The().  Only the wand RAY types the covered sessions zap are needed.
@@ -586,11 +792,119 @@ async function zhitu(type, nd, fltxt, sx, sy) {
     await losehp(dam, fltxt);
 }
 
-// C ref: monattk.h AD_* (used by destroy_items dispatch).
-const AD_FIRE = 2, AD_COLD = 3, AD_ELEC = 6;
+// C ref: monattk.h AD_* (used by destroy_items dispatch and zhitm's switch).
+const AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3, AD_SLEE = 4, AD_DISN = 5,
+      AD_ELEC = 6, AD_DRST = 7, AD_ACID = 8;
+
+// C ref: zap.c zhitm(mon, type, nd, &ootmp) — apply a ray's damage to a
+// monster.  Returns { tmp, otmp }: tmp is the damage dealt (or MAGIC_COOKIE
+// for a disintegration instakill), otmp is worn armor disintegration
+// destroyed instead of killing (only reachable via the monster-breath branch,
+// which dobuzz never invokes for a hero wand zap).
+async function zhitm(mon, type, nd) {
+    const fltyp = zaptype(type);
+    const damgtype = fltyp % 10;
+    let tmp = 0, orig_dmg = 0, otmp = null, shieldeffFlag = false;
+    switch (damgtype) {
+    case ZT_MAGIC_MISSILE:
+        if (resists_magm(mon) || defended(mon, AD_MAGM)) { shieldeffFlag = true; break; }
+        tmp = d(nd, 6);
+        break;
+    case ZT_FIRE:
+        if (resists_fire(mon) || defended(mon, AD_FIRE)) { shieldeffFlag = true; break; }
+        tmp = d(nd, 6);
+        orig_dmg = tmp;
+        if (resists_cold(mon)) tmp += 7;
+        if (await burnarmor(mon)) {
+            if (!rn2(3)) {
+                tmp += await destroy_items(mon, AD_FIRE, orig_dmg);
+                // ignite_items(mon.minvent): no RNG; no covered target carries
+                // burnable items.
+            }
+        }
+        break;
+    case ZT_COLD:
+        if (resists_cold(mon) || defended(mon, AD_COLD)) { shieldeffFlag = true; break; }
+        tmp = d(nd, 6);
+        orig_dmg = tmp;
+        if (resists_fire(mon)) tmp += d(nd, 3);
+        if (!rn2(3)) tmp += await destroy_items(mon, AD_COLD, orig_dmg);
+        break;
+    case ZT_SLEEP:
+        tmp = 0;
+        await sleep_monst(mon, d(nd, 25), WAND_CLASS);
+        break;
+    case ZT_DEATH:
+        if (Math.abs(type) !== 20 + ZT_DEATH /* ZT_BREATH(ZT_DEATH); unreachable
+                                                 via a hero wand zap (type 0-9) */) {
+            // "death"/disintegration wand or spell.  The PM_DEATH self-heal
+            // and is_rider resurrection special cases aren't reachable by any
+            // covered zap target and are skipped in favor of the ordinary
+            // path straight below.
+            if (nonliving_mdat(mon.data) || is_demon_mdat(mon.data) || resists_magm(mon)) {
+                shieldeffFlag = true;
+                break;
+            }
+            type = -1; // no saving throw
+            tmp = (mon.mhp || 0) + 1;
+            break;
+        }
+        // Disintegration breath: not reachable via a hero wand zap.
+        if (resists_disint(mon) || defended(mon, AD_DISN)) shieldeffFlag = true;
+        else tmp = MAGIC_COOKIE;
+        return { tmp, otmp };
+    case ZT_LIGHTNING:
+        tmp = d(nd, 6);
+        orig_dmg = tmp;
+        if (resists_elec(mon) || defended(mon, AD_ELEC)) { shieldeffFlag = true; tmp = 0; }
+        if (!resists_blnd_mon(mon) && nd > 2) {
+            const rnd_tmp = rnd(50);
+            mon.mcansee = 0;
+            mon.mblinded = Math.min(127, (mon.mblinded || 0) + rnd_tmp);
+        }
+        if (!rn2(3)) tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
+        break;
+    case 7 /*ZT_POISON_GAS*/:
+        if (resists_poison(mon)) { shieldeffFlag = true; break; }
+        tmp = d(nd, 6);
+        break;
+    case 8 /*ZT_ACID*/:
+        if (resists_acid(mon)) { shieldeffFlag = true; break; }
+        tmp = d(nd, 6);
+        if (!rn2(6)) { /* acid_damage(MON_WEP(mon)): scrolls only, null-safe;
+                           no covered target wields a destructible scroll. */ }
+        if (!rn2(6)) await erode_armor_mon(mon);
+        break;
+    }
+    // shieldeff(mon.mx, mon.my): display-only shimmer flash, no RNG.  Not
+    // modelled (no covered target reaches a resisted branch that needs it).
+    void shieldeffFlag;
+    if (tmp > 0 && type >= 0 && resist(mon, fltyp < 10 ? WAND_CLASS : 0, 0, false))
+        tmp = Math.trunc(tmp / 2);
+    if (tmp < 0) tmp = 0;
+    mon.mhp = (mon.mhp || 0) - tmp;
+    return { tmp, otmp };
+}
+
+// C ref: uhitm.c erode_armor(mdef, hurt) — the ACID case's armor-corrosion
+// pass.  Same reroll-until-torso-slot RNG shape as burnarmor(); no monster in
+// the covered sessions wears armor, so this only pays the reroll cost.
+async function erode_armor_mon(mon) {
+    for (;;) {
+        switch (rn2(5)) {
+        case 0: if (worn_slot(mon, 'uarmh')) return; continue;
+        case 1: return; // torso: always terminates (worn or bare)
+        case 2: if (worn_slot(mon, 'uarms')) return; continue;
+        case 3: if (worn_slot(mon, 'uarmg')) return; continue;
+        case 4: if (worn_slot(mon, 'uarmf')) return; continue;
+        }
+    }
+}
 
 // C ref: trap.c burnarmor(victim) — burn worn armor; returns TRUE on a torso
-// (body) hit.  Hero path only; the wet-towel pre-loop is skipped (no towel).
+// (body) hit.  The wet-towel pre-loop is skipped (no towel on the covered
+// hero); no monster in the covered sessions wears armor, so worn_slot() always
+// reports empty for a monster victim.
 async function burnarmor(victim) {
     if (!victim) return false;
     // C: while (1) switch (rn2(5)) { ... } — case 1 (cloak/suit/shirt) always
@@ -598,25 +912,25 @@ async function burnarmor(victim) {
     for (;;) {
         switch (rn2(5)) {
         case 0:
-            if (worn_slot('uarmh')) { await erode_worn('uarmh', 'helmet'); break; }
+            if (worn_slot(victim, 'uarmh')) { await erode_worn(victim, 'uarmh', 'helmet'); break; }
             continue;
         case 1: {
-            const c = worn_slot('uarmc');
-            if (c) { await erode_worn('uarmc', cloak_simple_name(c)); return true; }
-            const s = worn_slot('uarm');
-            if (s) { await erode_worn('uarm', 'suit'); return true; }
-            const sh = worn_slot('uarmu');
-            if (sh) await erode_worn('uarmu', 'shirt');
+            const c = worn_slot(victim, 'uarmc');
+            if (c) { await erode_worn(victim, 'uarmc', cloak_simple_name(c)); return true; }
+            const s = worn_slot(victim, 'uarm');
+            if (s) { await erode_worn(victim, 'uarm', 'suit'); return true; }
+            const sh = worn_slot(victim, 'uarmu');
+            if (sh) await erode_worn(victim, 'uarmu', 'shirt');
             return true;
         }
         case 2:
-            if (worn_slot('uarms')) { await erode_worn('uarms', 'wooden shield'); break; }
+            if (worn_slot(victim, 'uarms')) { await erode_worn(victim, 'uarms', 'wooden shield'); break; }
             continue;
         case 3:
-            if (worn_slot('uarmg')) { await erode_worn('uarmg', 'gloves'); break; }
+            if (worn_slot(victim, 'uarmg')) { await erode_worn(victim, 'uarmg', 'gloves'); break; }
             continue;
         case 4:
-            if (worn_slot('uarmf')) { await erode_worn('uarmf', 'boots'); break; }
+            if (worn_slot(victim, 'uarmf')) { await erode_worn(victim, 'uarmf', 'boots'); break; }
             continue;
         }
         break;
@@ -625,19 +939,22 @@ async function burnarmor(victim) {
 }
 
 // Worn-armor slot accessor.  C tracks uarm*, uarmc, ...; the JS hero stores the
-// worn objects under game.u.<slot> when modelled.  Returns the obj or null.
-function worn_slot(slot) { return game[slot] || null; }
+// worn objects under game.u.<slot> when modelled.  No monster in the covered
+// sessions has worn-armor slots modelled, so a monster victim always reports
+// empty (matching burnarmor()/erode_armor()'s reroll-until-torso RNG cost
+// even when nothing is actually worn).
+function worn_slot(victim, slot) { return (victim === game.u) ? (game[slot] || null) : null; }
 function cloak_simple_name(obj) {
     // C ref: do_name.c cloak_simple_name — MR cloak / robe / etc. -> "cloak".
     return 'cloak';
 }
 // C ref: trap.c erode_obj via burn_dmg — increments erosion and prints a
 // "Your <ostr> smoulders!" line.  No RNG (no grease on the covered armor).
-async function erode_worn(slot, ostr) {
-    const obj = worn_slot(slot);
+async function erode_worn(victim, slot, ostr) {
+    const obj = worn_slot(victim, slot);
     if (obj) obj.oeroded = (obj.oeroded | 0) + 1;
-    // message handled by caller context for the covered cloak; emit it here.
-    await update_topl(`Your ${ostr} smoulders!`);
+    if (victim === game.u) await update_topl(`Your ${ostr} smoulders!`);
+    else if (canspotmon(victim)) await update_topl(`${Monnam(victim)}'s ${ostr} smoulders!`);
 }
 
 // ── destroy_items (zap.c) ────────────────────────────────────────────────
@@ -651,6 +968,21 @@ function invent_list() {
     const out = [];
     for (let o = game.gi?.invent; o; o = o.nobj) out.push(o);
     return out;
+}
+// C ref: zap.c destroy_items's `objchn` (&gi.invent for the hero, &mon->minvent
+// otherwise).
+function obj_chain(carrier) {
+    return (carrier === game.u) ? invent_list() : (Array.isArray(carrier?.minvent) ? carrier.minvent : []);
+}
+// C ref: mon.c m_useup — decrement/remove one item from a monster's minvent.
+function mon_useup(carrier, obj) {
+    const inv = carrier?.minvent;
+    if (!inv) return;
+    obj.quan = (obj.quan || 1) - 1;
+    if (obj.quan <= 0) {
+        const idx = inv.indexOf(obj);
+        if (idx >= 0) inv.splice(idx, 1);
+    }
 }
 
 // C ref: zap.c destroyable(obj, adtyp).
@@ -695,8 +1027,7 @@ function yname_for(obj) {
 }
 
 async function destroy_items(mon, dmgtyp, dmg_in) {
-    const u_carry = (mon === game.u);
-    const objchn = invent_list();
+    const objchn = obj_chain(mon);
     let limit = Math.floor(dmg_in / DMG_DESTROY_SCALE);
     if (dmg_in % DMG_DESTROY_SCALE > rn2(DMG_DESTROY_SCALE)) limit++;
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
@@ -735,7 +1066,8 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         quan = obj.quan; dindx = 0; dmg = rnd(4); break;
     case AD_FIRE:
         xresist = (obj.oclass !== POTION_CLASS && obj.otyp !== GLOB_OF_GREEN_SLIME
-                   && false /* hero not fire-resistant on covered level */);
+                   && (u_carry ? false /* hero not fire-resistant on covered level */
+                               : resists_fire(carrier)));
         quan = obj.quan;
         switch (obj.oclass) {
         case POTION_CLASS: dindx = (obj.otyp !== POT_OIL) ? 1 : 2; dmg = rnd(6); break;
@@ -757,23 +1089,33 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
     for (let i = 0; i < quan; i++) if (!rn2(3)) cnt++;
     if (!cnt) return 0;
 
-    if (u_carry) {
+    const visible = u_carry || canspotmon(carrier);
+    if (visible) {
         const mult = (cnt === 1) ? ((quan === 1) ? '' : 'One of ')
                    : ((cnt < quan) ? 'Some of ' : (quan === 2) ? 'Both of ' : 'All of ');
         // yname capitalises with "Your"; when prefixed by a mult word the leading
         // "Your" lowercases to "your".  For the covered single-stack potions cnt
         // and quan are both 1 so mult is empty -> "Your <name> <how>!".
-        const nm = mult ? yname_for(obj).replace(/^Your/, 'your') : yname_for(obj);
+        const base = u_carry ? yname_for(obj) : `${carrier?.name || 'The monster'}'s ${objects[obj.otyp]?.name || 'item'}`;
+        const nm = (u_carry && mult) ? base.replace(/^Your/, 'your') : base;
         await update_topl(`${mult}${nm} ${DESTROY_STRINGS[dindx][cnt > 1 ? 1 : 0]}!`);
     }
     if (u_carry) {
         if (obj.oclass === POTION_CLASS && dmgtyp !== AD_COLD)
             await potionbreathe(obj);
     }
-    for (let i = 0; i < cnt; i++) useup(obj);
-    if (dmg && u_carry && !xresist) {
-        await losehp(dmg, DESTROY_STRINGS[dindx][1] || DESTROY_STRINGS[dindx][0]);
-        exercise(A_STR, false);
+    for (let i = 0; i < cnt; i++) {
+        if (u_carry) useup(obj);
+        else mon_useup(carrier, obj);
+    }
+    if (dmg) {
+        if (!u_carry) return xresist ? 0 : dmg;
+        if (xresist) {
+            await update_topl("You aren't hurt!");
+        } else {
+            await losehp(dmg, DESTROY_STRINGS[dindx][1] || DESTROY_STRINGS[dindx][0]);
+            exercise(A_STR, false);
+        }
     }
     return dmg;
 }

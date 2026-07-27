@@ -65,14 +65,15 @@ const highc = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
 // src/role.c align_str() / align_gname()
 const align_str = (a) => a === 1 ? 'lawful' : a === 0 ? 'neutral'
                        : a === -1 ? 'chaotic' : 'unaligned';
-function align_gname(a) {
-    const r = game.roles?.[game.pantheon] ?? game.urole;
-    const gnam = a === 1 ? r.lgod : a === 0 ? r.ngod : r.cgod;
-    /* src/pray.c align_gname(): a leading '_' marks a name that already has
-       its article ("_The Lady") and is stripped before display. */
-    return gnam && gnam[0] === '_' ? gnam.slice(1) : gnam;
-}
+/* align_gname() is src/pray.c:2530 and comes from js/questpgr.js, which
+   reads game.urole as C does. The copy here indexed roles[game.pantheon]
+   unconditionally -- correct only for Priest, and only because
+   js/role.js's role_init was not doing C's pantheon-god copy. That copy is
+   ported now (src/role.c:2079), so game.urole holds the right gods for
+   every role and the workaround is no longer needed. */
 const u_gname = () => align_gname(game.u.ualign.type);
+
+import { align_gname } from './questpgr.js';
 
 function note_unported(what) {
     (game.unported ||= new Set()).add(what);

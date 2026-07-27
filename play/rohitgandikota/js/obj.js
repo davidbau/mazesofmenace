@@ -90,6 +90,42 @@ export const is_metallic = (otmp) =>
     game.objects[otmp.otyp].oc_material >= MATERIALS.IRON
     && game.objects[otmp.otyp].oc_material <= MATERIALS.MITHRIL;
 
+// include/objclass.h:201 is_crackable() — GLASS armor only; the oclass test is
+// what keeps glass weapons and gems out. Comment there points at
+// erosion_matters().
+export const is_crackable = (otmp) =>
+    game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+    && otmp.oclass === OCLASSES.ARMOR_CLASS;
+
+// include/obj.h:299 is_elven_armor()
+export const is_elven_armor = (otmp) =>
+    otmp.otyp === ONAMES.ELVEN_LEATHER_HELM
+    || otmp.otyp === ONAMES.ELVEN_MITHRIL_COAT
+    || otmp.otyp === ONAMES.ELVEN_CLOAK
+    || otmp.otyp === ONAMES.ELVEN_SHIELD
+    || otmp.otyp === ONAMES.ELVEN_BOOTS;
+
+// include/obj.h:304 is_orcish_armor()
+export const is_orcish_armor = (otmp) =>
+    otmp.otyp === ONAMES.ORCISH_HELM
+    || otmp.otyp === ONAMES.ORCISH_CHAIN_MAIL
+    || otmp.otyp === ONAMES.ORCISH_RING_MAIL
+    || otmp.otyp === ONAMES.ORCISH_CLOAK
+    || otmp.otyp === ONAMES.URUK_HAI_SHIELD
+    || otmp.otyp === ONAMES.ORCISH_SHIELD;
+
+// include/obj.h:309 is_dwarvish_armor()
+export const is_dwarvish_armor = (otmp) =>
+    otmp.otyp === ONAMES.DWARVISH_IRON_HELM
+    || otmp.otyp === ONAMES.DWARVISH_MITHRIL_COAT
+    || otmp.otyp === ONAMES.DWARVISH_CLOAK
+    || otmp.otyp === ONAMES.DWARVISH_ROUNDSHIELD;
+
+// include/obj.h:314 is_gnomish_armor() — literally (FALSE) in the C. There is
+// no gnomish armor type, and the macro exists so the racial-armor checks can be
+// written uniformly. Ported as the constant it is, not omitted.
+export const is_gnomish_armor = (_otmp) => false;
+
 // include/obj.h:435-436 is_mines_prize() / is_soko_prize()
 //
 // One-line identity tests against the object id recorded when the Mines or
