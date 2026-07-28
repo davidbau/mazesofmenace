@@ -848,9 +848,11 @@ export function themeroom_map_contents(name, fx, fy) {
             shuffle(terr); // 2-elem shuffle → one rn2(2)
             // replace_terrain over region {1,1,9,9}, fromterrain="L"
             // (chance defaults to 100). C lspo_replace_terrain emits rn2(100)
-            // for each cell whose typ == LAVAPOOL ("L"). The Blocked-center map
-            // has a 3x3 LAVAPOOL block (9 cells) entirely inside {1,1,9,9}.
-            for (let i = 0; i < 9; i++) rn2(100);
+            // for each cell whose typ == LAVAPOOL ("L") and, when it passes,
+            // overwrites the cell with toterrain. The Blocked-center map has
+            // a 3x3 LAVAPOOL block (9 cells) entirely inside {1,1,9,9}.
+            const totyp = terr[0] === '-' ? HWALL : POOL;
+            quest_replace_terrain(1, 1, 9, 9, LAVAPOOL, totyp, 100);
         }
     }
     filler_region(fx, fy);

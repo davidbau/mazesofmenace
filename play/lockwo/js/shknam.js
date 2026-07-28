@@ -11,7 +11,7 @@ import { depth } from './hacklib.js';
 import { distmin } from './hacklib.js';
 import { IS_ROOM, ROOMOFFSET, D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED,
          SDOOR, DOOR, CORR, ROOM, MM_ESHK } from './const.js';
-import { mksobj, mksobj_at, mkobj_at, objects } from './mkobj.js';
+import { mksobj, mksobj_at, mkobj_at, objects, CORPSE } from './mkobj.js';
 import { set_tin_variety, HEALTHY_TIN } from './eat.js';
 import { makemon, mkclass, name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { make_engr_at } from './engrave.js';
@@ -226,30 +226,32 @@ const S_MIMIC = 13;
 const SKELETON_KEY = 221, TOUCHSTONE = 263, SCR_CHARGING = 343;
 const DUST = 2;      // engrave.h DUST
 
-// C ref: shknam.c veggy_item() — a FOOD_CLASS item whose material is VEGGY
-// or which is an egg.  (Tins/corpses are handled per-object; shkveg only
-// passes object types, so the corpse/tin branches default to non-veggy here.)
+// C ref: shknam.c veggy_item(NULL, otyp) — the type-only mode used by
+// shkveg(): a FOOD_CLASS item whose material is VEGGY or which is an egg is
+// veggy outright; TIN and CORPSE are "items which might go either way" and
+// the type-only caller stands in a corpsenm of PM_LICHEN (mlet S_FUNGUS,
+// vegan() true), so both are unconditionally veggy in this mode too.
 const VEGGY_MATERIAL = 3; // mkobj.js VEGGY material index
 const EGG_OTYP = 266;
 function veggy_item_type(otyp) {
     const o = objects[otyp];
     if (!o || o.oc_class !== FOOD_CLASS) return false;
     if (o.material === VEGGY_MATERIAL || otyp === EGG_OTYP) return true;
+    if (otyp === TIN_OTYP || otyp === CORPSE) return true;
     return false;
 }
 
 // C ref: shknam.c shkveg() — pick a random vegetarian food item by oc_prob.
+// js/mkobj.js's objects[] table has a synthetic "generic food" class-marker
+// entry (oc_prob 0) that does not sit contiguously before the real FOOD_CLASS
+// otyp range, so (unlike C's svb.bases[oclass]-anchored scan) this cannot
+// assume contiguity — scan the whole table and filter by class instead.
 function shkveg() {
     const oclass = FOOD_CLASS;
     const ok = [];
     let maxprob = 0;
-    // find the first FOOD_CLASS object index (svb.bases[FOOD_CLASS]).
-    let base = 0;
     for (let i = 0; i < objects.length; i++) {
-        if (objects[i] && objects[i].oc_class === oclass) { base = i; break; }
-    }
-    for (let i = base; i < objects.length; i++) {
-        if (!objects[i] || objects[i].oc_class !== oclass) break;
+        if (!objects[i] || objects[i].oc_class !== oclass) continue;
         if (veggy_item_type(i)) { ok.push(i); maxprob += (objects[i].oc_prob || 0); }
     }
     if (maxprob < 1 || ok.length === 0) return EGG_OTYP;

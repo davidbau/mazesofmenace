@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
@@ -809,16 +809,26 @@ export async function dosearch0(aflag) {
 
 // C ref: hack.c monster_nearby() — a hostile, awake, spottable monster on one
 // of the 8 squares adjacent to the hero.  Drives the safe_wait safety check.
+// A monster is excluded when: disguised as furniture/an object (mimic);
+// peaceful (unless the hero is hallucinating); an undetected hider (mimic/
+// piercer/trapper); or helpless (asleep or otherwise unable to move) — C's
+// helpless(mon) = msleeping || !mcanmove.  (onscary and the invisible-but-
+// sensed canspotmon path aren't modeled: no covered session exercises them.)
+const M1_HIDE_PMIDX = new Set([64, 65, 66, 78, 79, 80, 98, 99]);
 export function monster_nearby() {
     const u = game.u;
     if (!u) return false;
+    const hallu = !!u?.uhallu;
     for (let x = u.ux - 1; x <= u.ux + 1; x++)
         for (let y = u.uy - 1; y <= u.uy + 1; y++) {
             if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
             const mtmp = m_at(x, y);
-            if (mtmp && !mtmp.mpeaceful && mtmp.mcanmove !== 0
-                && cansee(x, y))
-                return true;
+            if (!mtmp) continue;
+            if (mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj') continue;
+            if (!(hallu || !mtmp.mpeaceful)) continue;
+            if (M1_HIDE_PMIDX.has(mtmp.data?.pmidx) && mtmp.mundetected) continue;
+            if (mtmp.msleeping || !mtmp.mcanmove) continue;
+            if (cansee(x, y)) return true;
         }
     return false;
 }
@@ -834,7 +844,10 @@ async function cmd_safety_prevention(ucverb, cmddesc, act) {
         // cmdassist defaults On, so the "Use 'm' prefix" suffix always shows.
         const buf = `  Use 'm' prefix to force ${cmddesc}.`;
         if (monster_nearby()) {
-            await pline(`${act}${buf}`);
+            // C: Norep("%s%s", act, buf) — suppressed when identical to the
+            // current top line, so a repeated blocked search/wait next to the
+            // same monster doesn't re-print every turn.
+            await Norep_topl(`${act}${buf}`);
             return true;
         }
     }
@@ -1941,6 +1954,12 @@ async function moverock(otmp, sx, sy, dx, dy) {
             if (!hero_throws_rocks()) exercise(A_STR, true);
             game._boulder_lastmovetime = game.moves;
         }
+        // C ref: hack.c dopush() — "if (glyph_is_invisible(levl[rx][ry].glyph))
+        // unmap_object(rx, ry);" BEFORE moving the boulder: a destination
+        // square remembered as holding a sensed-but-unseen monster ('I') must
+        // have that notation cleared so the newsym(rx,ry) below shows the
+        // boulder instead of re-asserting the stale 'I'.
+        if (dloc?.invisMon) unmap_object(rx, ry);
         // C: movobj(otmp, rx, ry) == remove_object(obj) + place_object(obj, ox, oy):
         // the boulder is unlinked from the floor chain and RE-INSERTED AT THE
         // FOBJ HEAD, not just given new coordinates.  A later dog_goal() fobj

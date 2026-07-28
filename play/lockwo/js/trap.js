@@ -592,6 +592,9 @@ function exclam(force) { return force > 5 ? '!' : '.'; }
 // C ref: objnam.c an() — indefinite article prefix for a plain noun.
 function an_str(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 
+// C ref: hacklib.c upstart() — capitalize the first letter of a string.
+function upstart_trap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
 // C ref: mthrowu.c thitu(tlev, dam, objp, name) — resolve a trap missile (here
 // a dart fired by a dart trap) landing on the hero.  For the named-missile
 // path (name != NULL, e.g. "little dart") the message uses an(name) and there
@@ -605,10 +608,11 @@ async function thitu_named(tlev, dam, name) {
     const dieroll = rnd(20);                     // mthrowu.c:106
     const onm = an_str(name);
     if (uac + tlev <= dieroll) {
-        // Miss feedback (verbose).  Not exercised by the dart-trap session (the
-        // recorded dart hits) but kept faithful.
+        // Miss feedback (verbose).  C: pline("%s %s you.", upstart(onmbuf),
+        // vtense(onmbuf, "miss")) where onmbuf = an(name) -> "a little dart"
+        // -> "A little dart misses you." (not "The little dart ...").
         if (uac + tlev <= dieroll - 2)
-            await update_topl(`The ${name} misses you.`);
+            await update_topl(`${upstart_trap(onm)} ${vtense(onm, 'miss')} you.`);
         else
             await update_topl(`You are almost hit by ${onm}.`);
         return 0;

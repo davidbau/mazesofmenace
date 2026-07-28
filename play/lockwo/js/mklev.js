@@ -38,7 +38,7 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
+    D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_BROKEN, D_SECRET,
     OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, NO_ROOM,
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
@@ -912,6 +912,13 @@ async function themerooms_generate(difficulty) {
     // h=10, contents=...}).  Fixed 10x10 size (no size roll), random position
     // + alignment, random lit (all handled by the generic w/h path below).
     if (pick.name === 'Pillars') return themeroom_build_pillars();
+    // C ref: themerms.lua "Fake Delphi" / "Room in a room" / "Huge room with
+    // another room inside" / "Nesting rooms" — plain OROOM(s) nested via
+    // des.room()'s recursive contents callback (build_room/create_subroom).
+    if (NESTED_ROOM_BUILDERS[pick.name]) {
+        const aroom = await NESTED_ROOM_BUILDERS[pick.name]();
+        return !!aroom;
+    }
     // C ref: themerms.lua — the three "themed fill" themerooms call
     //   des.room({ type = "themed", [lit=0|filled=1,] contents = themeroom_fill })
     // i.e. a THEMEROOM whose contents() runs the themeroom_fill reservoir
@@ -945,6 +952,257 @@ async function themerooms_generate(difficulty) {
     }
     return ok;
 }
+
+// ------------------------------------------------------------------
+// Nested-room themerooms: "Fake Delphi", "Room in a room", "Huge room
+// with another room inside", "Nesting rooms" (themerms.lua).  These all
+// call des.room() recursively from within a room's own contents callback
+// (build_room()/lspo_room() in sp_lev.c): the nested room is a subroom of
+// the currently-active room (create_subroom), and des.door() places a
+// door directly on a wall of whichever room is currently active
+// (gc.coder->croom).  game._splevRoomStack tracks that "currently active
+// room" (mirrors the coder's tmproomlist/croom stack) for the duration of
+// these themeroom builds only.
+// ------------------------------------------------------------------
+
+function splev_current_room() {
+    const stack = game._splevRoomStack;
+    return stack && stack.length ? stack[stack.length - 1] : null;
+}
+
+// C ref: dat/nhlib.lua math.random(lo,hi) override -> nh.random(lo,hi+1-lo)
+// = lo + rn2(hi+1-lo).  Raw Lua math.random (an independent xoshiro256**
+// generator per nhlua.c) is shadowed by this nhlib.lua wrapper for the
+// entire game Lua state, so — unlike the upstream comment's disclaimer —
+// themerms.lua's math.random() calls DO consume the ISAAC64 stream.
+function lua_math_random(lo, hi) {
+    return lo + rn2(hi + 1 - lo);
+}
+
+// C ref: sp_lev.c build_room() + lspo_room() — create a room (top-level via
+// create_room, nested inside the currently-active room via create_subroom
+// when one exists), then run its `contents` callback with the new room
+// pushed as the active room for any nested des_room()/des_door() calls.
+async function des_room(spec, contentsFn) {
+    const chance = spec.chance != null ? spec.chance : 100;
+    const rtype0 = spec.rtype != null ? spec.rtype : OROOM;
+    // C: xint16 rtype = (!r->chance || rn2(100) < r->chance) ? r->rtype : OROOM;
+    const rtype = (!chance || rn2(100) < chance) ? rtype0 : OROOM;
+    const parent = splev_current_room();
+    let aroom;
+    if (parent) {
+        const ok = create_subroom(parent,
+            spec.x != null ? spec.x : -1, spec.y != null ? spec.y : -1,
+            spec.w != null ? spec.w : -1, spec.h != null ? spec.h : -1,
+            rtype, spec.rlit != null ? spec.rlit : -1);
+        if (!ok) { game.themeroom_failed = true; return null; }
+        parent.irregular = true; // C: added a subroom -> parent room goes irregular
+        aroom = parent.sbrooms[parent.nsubrooms - 1];
+    } else {
+        const ok = create_room(
+            spec.x != null ? spec.x : -1, spec.y != null ? spec.y : -1,
+            spec.w != null ? spec.w : -1, spec.h != null ? spec.h : -1,
+            spec.xalign != null ? spec.xalign : -1, spec.yalign != null ? spec.yalign : -1,
+            rtype, spec.rlit != null ? spec.rlit : -1);
+        if (!ok) { game.themeroom_failed = true; return null; }
+        aroom = game.level.rooms[game.level.nroom - 1];
+    }
+    topologize(aroom);
+    aroom.needfill = spec.needfill != null ? spec.needfill : FILL_NONE;
+    aroom.needjoining = spec.joined != null ? spec.joined : true;
+    if (!game._splevRoomStack) game._splevRoomStack = [];
+    game._splevRoomStack.push(aroom);
+    if (contentsFn) await contentsFn(aroom);
+    game._splevRoomStack.pop();
+    splev_add_doors_to_room(aroom);
+    return aroom;
+}
+
+// C ref: sp_lev.c shared_with_room() — is x,y right next to room droom?
+function splev_shared_with_room(x, y, droom) {
+    if (!isok(x, y)) return false;
+    const rmno = (droom.roomnoidx ?? -1) + ROOMOFFSET;
+    const loc = game.level.at(x, y);
+    if (loc.roomno === rmno && !loc.edge) return false;
+    if (isok(x - 1, y) && game.level.at(x - 1, y).roomno === rmno && x - 1 <= droom.hx) return true;
+    if (isok(x + 1, y) && game.level.at(x + 1, y).roomno === rmno && x + 1 >= droom.lx) return true;
+    if (isok(x, y - 1) && game.level.at(x, y - 1).roomno === rmno && y - 1 <= droom.hy) return true;
+    if (isok(x, y + 1) && game.level.at(x, y + 1).roomno === rmno && y + 1 >= droom.ly) return true;
+    return false;
+}
+
+// C ref: sp_lev.c maybe_add_door() — register x,y as a door of droom if it
+// actually borders/belongs to it.  No RNG.
+function splev_maybe_add_door(x, y, droom) {
+    if (droom.hx == null || droom.hx < 0) return;
+    const rmno = (droom.roomnoidx ?? -1) + ROOMOFFSET;
+    const loc = game.level.at(x, y);
+    if ((!droom.irregular && inside_room(droom, x, y))
+        || loc.roomno === rmno
+        || splev_shared_with_room(x, y, droom)) {
+        add_door(x, y, droom);
+    }
+}
+
+// C ref: sp_lev.c add_doors_to_room() — after a themeroom finishes building,
+// pull any door on its border (or a subroom's border) into its door list so
+// makecorridors()/finddpos() can find it later.  No RNG.
+function splev_add_doors_to_room(croom) {
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
+            const loc = game.level.at(x, y);
+            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR))
+                splev_maybe_add_door(x, y, croom);
+        }
+    for (const sub of croom.sbrooms || []) splev_add_doors_to_room(sub);
+}
+
+// C ref: sp_lev.c rnddoor() — state[rn2(5)]. Only reachable from lspo_door's
+// `typ = (msk == -1) ? rnddoor() : msk;`, and for the wall-relative des.door
+// path (our only caller) `typ` itself is never used afterwards — but the
+// rn2(5) draw still happens and must be replicated to stay call-aligned.
+function splev_rnddoor_roll() {
+    const state = [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED];
+    return state[rn2(state.length)];
+}
+
+// C ref: sp_lev.c create_door() — place a new door on a wall of room broom.
+// dd: { secret: 0|1, mask: -1|doormask, pos: -1|offset, wall: bitmask }.
+function splev_create_door(dd, broom) {
+    if (dd.mask === -1) {
+        if (!dd.secret) {
+            if (!rn2(3)) {
+                if (!rn2(5)) dd.mask = D_ISOPEN;
+                else if (!rn2(6)) dd.mask = D_LOCKED;
+                else dd.mask = D_CLOSED;
+                if (dd.mask !== D_ISOPEN && !rn2(25)) dd.mask |= D_TRAPPED;
+            } else {
+                dd.mask = D_NODOOR;
+            }
+        } else {
+            if (!rn2(5)) dd.mask = D_LOCKED;
+            else dd.mask = D_CLOSED;
+            if (!rn2(20)) dd.mask |= D_TRAPPED;
+        }
+    }
+    let x = 0, y = 0, trycnt;
+    for (trycnt = 0; trycnt < 100; trycnt++) {
+        const dwall = dd.wall, dpos = dd.pos;
+        switch (rn2(4)) {
+        case 0: // W_NORTH
+            if (!(dwall & 1)) continue;
+            y = broom.ly - 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1: // W_SOUTH
+            if (!(dwall & 2)) continue;
+            y = broom.hy + 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2: // W_WEST
+            if (!(dwall & 8)) continue;
+            x = broom.lx - 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3: // W_EAST
+            if (!(dwall & 4)) continue;
+            x = broom.hx + 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
+            break;
+        }
+        if (okdoor(x, y)) break;
+    }
+    if (trycnt >= 100) return; // C: impossible(), state unchanged
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    loc.typ = dd.secret ? SDOOR : DOOR;
+    loc.doormask = dd.mask;
+    add_door(x, y, broom);
+}
+
+const DOORSTATES = {
+    random: -1, open: D_ISOPEN, closed: D_CLOSED, locked: D_LOCKED,
+    nodoor: D_NODOOR, broken: D_BROKEN, secret: D_SECRET,
+};
+const WALLDIRS = { all: 15, random: 15, north: 1, west: 8, east: 4, south: 2 };
+
+// C ref: themerms.lua des.door({state=..., wall=..., pos=...}) -> lspo_door's
+// x==-1&&y==-1 path (no explicit coord — the only form our themerooms use).
+function des_door(spec) {
+    const msk = DOORSTATES[spec.state != null ? spec.state : 'random'];
+    const typ = (msk === -1) ? splev_rnddoor_roll() : msk;
+    const broom = splev_current_room();
+    if (!broom) return;
+    const dd = {
+        secret: (typ === D_SECRET) ? 1 : 0,
+        mask: msk,
+        pos: spec.pos != null ? spec.pos : -1,
+        wall: WALLDIRS[spec.wall != null ? spec.wall : 'all'],
+    };
+    splev_create_door(dd, broom);
+}
+
+// C ref: themerms.lua "Fake Delphi".
+async function themeroom_fake_delphi() {
+    return des_room({ rtype: OROOM, w: 11, h: 9, needfill: FILL_NORMAL }, async () => {
+        await des_room({ rtype: OROOM, x: 4, y: 3, w: 3, h: 3, needfill: FILL_NORMAL }, async () => {
+            des_door({ state: 'random', wall: 'all' });
+        });
+    });
+}
+
+// C ref: themerms.lua "Room in a room".
+async function themeroom_room_in_a_room() {
+    return des_room({ rtype: OROOM, needfill: FILL_NORMAL }, async () => {
+        await des_room({ rtype: OROOM }, async () => {
+            des_door({ state: 'random', wall: 'all' });
+        });
+    });
+}
+
+// C ref: themerms.lua "Huge room with another room inside".
+async function themeroom_huge_room_with_inner() {
+    const w = rn2(10) + 11, h = rn2(5) + 8;
+    return des_room({ rtype: OROOM, w, h, needfill: FILL_NORMAL }, async () => {
+        if (mk_percent(90)) {
+            await des_room({ rtype: OROOM, needfill: FILL_NORMAL }, async () => {
+                des_door({ state: 'random', wall: 'all' });
+                if (mk_percent(50)) des_door({ state: 'random', wall: 'all' });
+            });
+        }
+    });
+}
+
+// C ref: themerms.lua "Nesting rooms".
+async function themeroom_nesting_rooms() {
+    const w = 9 + rn2(4), h = 9 + rn2(4);
+    return des_room({ rtype: OROOM, w, h, needfill: FILL_NORMAL }, async (rm) => {
+        const width = rm.hx - rm.lx + 1, height = rm.hy - rm.ly + 1;
+        const wid = lua_math_random(Math.floor(width / 2), width - 2);
+        const hei = lua_math_random(Math.floor(height / 2), height - 2);
+        await des_room({ rtype: OROOM, w: wid, h: hei, needfill: FILL_NORMAL }, async () => {
+            if (mk_percent(90)) {
+                await des_room({ rtype: OROOM, needfill: FILL_NORMAL }, async () => {
+                    des_door({ state: 'random', wall: 'all' });
+                    if (mk_percent(15)) des_door({ state: 'random', wall: 'all' });
+                });
+            }
+            des_door({ state: 'random', wall: 'all' });
+            if (mk_percent(15)) des_door({ state: 'random', wall: 'all' });
+        });
+    });
+}
+
+const NESTED_ROOM_BUILDERS = {
+    'Fake Delphi': themeroom_fake_delphi,
+    'Room in a room': themeroom_room_in_a_room,
+    'Huge room with another room inside': themeroom_huge_room_with_inner,
+    'Nesting rooms': themeroom_nesting_rooms,
+};
 
 // C ref: sp_lev.c set_levltyp_lit() with lit=SET_LIT_NOCHANGE (-2) — set the
 // terrain type only, leaving the lit state untouched (no RNG either way).

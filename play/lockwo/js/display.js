@@ -1029,6 +1029,39 @@ export function map_invisible(x, y) {
     show_glyph_cell(x, y, 'I', NO_COLOR, false);
 }
 
+// C ref: display.c unmap_object(x,y) — remove something from the map's
+// memory when the hero realizes it's not there anymore (most commonly the
+// 'I' invisible-monster notation).  Replaces the remembered glyph with a
+// known trap, then a revealed engraving, then plain terrain — deliberately
+// NEVER a remembered floor object (a caller that just placed/moved a real
+// object there follows up with newsym(), which fills the object back in).
+export function unmap_object(x, y) {
+    if (!game.level?.flags?.hero_memory) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const trap = game.level?.traps?.find((t) => t.tx === x && t.ty === y);
+    let g = null;
+    if (trap && trap.tseen && !covers_objects(loc)) {
+        g = trap_glyph(trap);
+    } else if (loc.seenv) {
+        const ep = spot_shows_engravings(loc) ? engr_at(x, y) : null;
+        if (ep && !covers_objects(loc)) {
+            if (cansee(x, y)) ep.erevealed = 1;
+            g = engraving_glyph(loc);
+        } else {
+            g = terrain_glyph(loc, x, y);
+        }
+        // C: "turn remembered dark room squares dark" — a room floor glyph
+        // picked above for a square that isn't currently lit re-darkens to
+        // blank, same as an unlit room square that was never specially seen.
+        if (!loc.waslit && loc.typ === ROOM) g = { ch: ' ', color: NO_COLOR, dec: false };
+    } else {
+        g = { ch: ' ', color: NO_COLOR, dec: false };
+    }
+    loc.invisMon = false;
+    loc.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec, pile: false };
+}
+
 // ── docrt ──
 // C ref: display.c docrt — recompute the live glyph for every cell so the
 // monster/object/terrain stack and hero are all redrawn from current state.
@@ -1247,6 +1280,19 @@ export function serialize_terminal_grid(display) {
     return output;
 }
 
+// Resolve a DEC-graphics map char to the glyph the grid should hold.
+// C's tty driver wraps S_fountain's '{' in SO/SI along with the wall/corridor
+// line-drawing chars (real vt100 acsc maps '{' to the pi glyph, an old
+// fountain-as-spray pun), so the recorded screens carry it as decgfx too.
+// The frozen scoring decoder's DEC table (frozen/screen-decode.mjs) covers
+// the line-drawing codes but has no '{' entry, so it leaves C's raw '{'
+// un-translated; mirror that by passing '{' through raw here too instead of
+// pre-resolving it to the pi glyph like the other decgfx codes.
+function decgfxMapChar(ch, decgfx) {
+    if (!decgfx || ch === '{') return ch;
+    return DEC_TO_UNICODE[ch] || ch;
+}
+
 // Draw the map (rows 1-21) and the two status lines (rows 22-23) onto the grid
 // without touching row 0 (the message line) or clearing the grid first.  Used
 // by the menu/window overlay renderers so a partial-width NHW_MENU shows the
@@ -1259,7 +1305,7 @@ export function render_map_to_grid() {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level?.at(x, y);
             if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-            const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+            const ch = decgfxMapChar(loc.disp_ch, loc.disp_decgfx);
             display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
         }
     }
@@ -1314,7 +1360,7 @@ function _buildScreenOutput() {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-                const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+                const ch = decgfxMapChar(loc.disp_ch, loc.disp_decgfx);
                 display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
