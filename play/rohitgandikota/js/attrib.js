@@ -11,9 +11,6 @@
 // the ones that pass, so its count depends on the first six results.
 
 import { game } from './gstate.js';
-import { Clairvoyant, Levitation, Wounded_legs, Regeneration,
-         Fumbling, Stunned, Confusion, Sick, Vomiting,
-         HHallucination } from './youprop.js';
 import { You, Your } from './pline.js';
 import { UNENCUMBERED, OVERLOADED } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -43,11 +40,11 @@ export function weight_cap() {
     /* include/weight.h:12,14 — WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
     let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
 
-    if (Levitation() || game.u.usteed)
+    if (game.u.uprops?.LEVITATION || game.u.usteed)
         note_unported_attrib('weight_cap:levitation_or_steed');
     if (carrcap > 1000)             /* MAX_CARR_CAP */
         carrcap = 1000;
-    if (Wounded_legs())
+    if (game.u.uprops?.WOUNDED_LEGS)
         note_unported_attrib('weight_cap:wounded_legs');
 
     return Math.max(carrcap, 1);    /* never return 0 */
@@ -387,16 +384,16 @@ export function exerper() {
            cannot have before the property subsystem lands, so none can fire
            yet. They are written out rather than elided so the order of draws
            is already right when it does. */
-        if (Clairvoyant())
+        if (game.u.uprops?.CLAIRVOYANT && !game.u.uprops?.BLOCKED_CLAIRVOYANT)
             exercise(A_WIS, true);
-        if (Regeneration())
+        if (game.u.uprops?.REGENERATION)
             exercise(A_STR, true);
-        if (Sick() || Vomiting())
+        if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
             exercise(A_CON, false);
-        if (Confusion() || HHallucination())
+        if (game.u.uprops?.CONFUSION || game.u.uprops?.HALLUC)
             exercise(A_WIS, false);
-        if ((Wounded_legs() && !game.u.usteed)
-            || Fumbling() || Stunned())
+        if ((game.u.uprops?.WOUNDED_LEGS && !game.u.usteed)
+            || game.u.uprops?.FUMBLING || game.u.uprops?.STUNNED)
             exercise(A_DEX, false);
     }
 }
@@ -508,34 +505,3 @@ export function adjalign(n) {
    is 10 + moves/200, so it GROWS as the game runs. Writing it as a flat 10,
    which the first draft of this did, caps a long game's alignment too low. */
 const ALIGNLIM = () => 10 + Math.trunc((game.moves || 0) / 200);
-
-// src/attrib.c:1268 extremeattr() — does attrindx's value match its max or min?
-//
-// Fixed_abil and racial MINATTR/MAXATTR aren't relevant here.
-export function extremeattr(attrindx) {
-    let lolimit = 3, hilimit = 25;
-    const curval = ACURR(attrindx);
-
-    /* upper limit for Str is 25 but its value is encoded differently */
-    if (attrindx === A_STR) {
-        hilimit = STR19(25); /* 125 */
-        /* lower limit for Str can also be 25 */
-        if (game.u.uarmg && game.u.uarmg.otyp === ONAMES.GAUNTLETS_OF_POWER)
-            lolimit = hilimit;
-    } else if (attrindx === A_CON) {
-        /* u_wield_art(ART_OGRESMASHER) is not ported; without it a hero
-           wielding Ogresmasher is not recognised as being at the Con limit,
-           so a +0 ring of gain constitution would report its enchantment
-           where the C stays quiet. Recorded, not guessed. */
-        note_unported_attrib('extremeattr:u_wield_art');
-    }
-    /* this exception is hypothetical; the only other worn item affecting
-       Int or Wis is another helmet so can't be in use at the same time */
-    if (attrindx === A_INT || attrindx === A_WIS) {
-        if (game.u.uarmh && game.u.uarmh.otyp === ONAMES.DUNCE_CAP)
-            hilimit = lolimit = 6;
-    }
-
-    /* are we currently at either limit? */
-    return (curval === lolimit || curval === hilimit) ? true : false;
-}

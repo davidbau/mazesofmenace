@@ -14,6 +14,7 @@ import {
     BURN,
     CONFLICT,
     CORR,
+    DOOR,
     HEADSTONE,
     I_SPECIAL,
     INVIS,
@@ -37,7 +38,12 @@ import {
 } from './dogmove.js';
 import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
-import { wake_msg } from './mon.js';
+import { any_light_source } from './light.js';
+import {
+    adaptMonsterActionToDochugwSignature,
+    movemon_singlemon,
+    wake_msg,
+} from './mon.js';
 import {
     attacktype,
     can_teleport,
@@ -62,6 +68,7 @@ import {
     dochugw,
     m_avoid_kicked_loc,
     m_avoid_soko_push_loc,
+    m_everyturn_effect,
     m_move,
     select_postmove_object_action,
 } from './monmove.js';
@@ -93,7 +100,7 @@ import {
     t_at,
 } from './trap.js';
 import { ttyPline } from './tty_message.js';
-import { couldsee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import {
     mon_wield_item,
     select_hwep,
@@ -149,7 +156,14 @@ function assertSimpleScanState(monster, state) {
             unsupported('parked guard handling');
         return false;
     }
-    if (!liveOnMap(monster) || monster.movement < NORMAL_SPEED) return false;
+    if (!liveOnMap(monster)) return false;
+    // Returning true means "hand this monster to movemon_singlemon", not
+    // "this monster will act". mon.c runs m_everyturn_effect() before its
+    // `movement < NORMAL_SPEED` return, so a monster below its ration still
+    // has to be scanned. None of the guards below can be reached on that
+    // path -- they all describe branches mon.c only takes after the movement
+    // debit -- so they are deliberately skipped rather than merely bypassed.
+    if (monster.movement < NORMAL_SPEED) return true;
     if (monster.misc_worn_check & I_SPECIAL)
         unsupported('monster equipment changes');
     if (is_pool(monster.mx, monster.my, state)
@@ -173,7 +187,7 @@ function assertSimpleActionState(monster, state) {
         unsupported('inconsistent frozen monster state');
     if (monster.mtrapped)
         unsupported('a trapped monster');
-    if (monster.mconf || monster.mstun || monster.mflee || monster.meating)
+    if (monster.mconf || monster.mstun || monster.meating)
         unsupported('altered monster movement state');
 
     if (monster.mtame && !monster.isminion) {
@@ -185,6 +199,17 @@ function assertSimpleActionState(monster, state) {
         }
         if (!monster.mextra?.edog)
             unsupported('missing starting-pet state');
+        // uhitm.c:do_attack() can call monflee(rnd(6), FALSE, FALSE) when
+        // safe_pet refuses an attack. mon.c:m_calcdistress() decrements this
+        // seven-bit timer during once-per-turn distress, before the later
+        // dochug() action scan, so a live fleeing starting pet must retain a
+        // positive source-bounded timeout here.
+        if (monster.mflee
+            && (!Number.isInteger(monster.mfleetim)
+                || monster.mfleetim < 1
+                || monster.mfleetim > 127)) {
+            unsupported('altered monster movement state');
+        }
         if (monster.minvent
             && !hasOnlyInertStartingSaddle(monster, state)) {
             unsupported('pet inventory');
@@ -194,6 +219,8 @@ function assertSimpleActionState(monster, state) {
 
     if (monster.mtame || monster.isminion)
         unsupported('minion movement');
+    if (monster.mflee)
+        unsupported('altered monster movement state');
     if (monster.wormno || monster.isshk || monster.isgd
         || monster.ispriest || is_covetous(monster.data)) {
         unsupported('special monster movement');
@@ -260,23 +287,96 @@ function planningState(state) {
                     (monster) => monsterMap.get(monster) ?? null,
                 ),
             ),
+            flags: { ...state.level.flags },
             monlist: monsterMap.get(state.level.monlist) ?? null,
             regions: state.level.regions.map((region) => ({
                 ...region,
                 monsters: [...(region.monsters ?? [])],
             })),
+            // vision.c keeps one cached transparency index. Planning replaces
+            // only monster identities and retains the active geometry which
+            // produced that index, so off-hero do_clear_area() may share it.
+            _visionTransparencyOwner: state.level,
         },
     );
     const hero = {
         ...state.u,
+        abon: [...(state.u?.abon ?? [])],
+        acurr: state.u?.acurr
+            ? { ...state.u.acurr, a: [...state.u.acurr.a] }
+            : state.u?.acurr,
+        aexe: Array.isArray(state.u?.aexe)
+            ? [...state.u.aexe]
+            : state.u?.aexe,
+        amax: state.u?.amax
+            ? { ...state.u.amax, a: [...state.u.amax.a] }
+            : state.u?.amax,
+        atemp: [...(state.u?.atemp ?? [])],
+        atime: [...(state.u?.atime ?? [])],
+        uevent: { ...(state.u?.uevent ?? {}) },
+        uhave: { ...(state.u?.uhave ?? {}) },
+        uprops: state.u?.uprops?.map(
+            (property) => property ? { ...property } : property,
+        ) ?? [],
         usteed: monsterMap.get(state.u?.usteed) ?? state.u?.usteed,
         ustuck: monsterMap.get(state.u?.ustuck) ?? state.u?.ustuck,
     };
+    const mvitals = state.mvitals?.map(
+        (vital) => vital ? { ...vital } : vital,
+    );
+    const cloneLightList = (source) => {
+        if (!source) return null;
+        return {
+            ...source,
+            id: monsterMap.get(source.id) ?? source.id,
+            next: cloneLightList(source.next),
+        };
+    };
+    // timeout.c keeps one timer queue and one timer_id counter. A planning
+    // round can generate a monster whose starting inventory lights a candle,
+    // and start_timer() would otherwise prepend that timer to the live queue
+    // and advance the live counter, leaving an orphan behind on every retry.
+    const cloneTimerList = (source) => {
+        if (!source) return null;
+        return {
+            ...source,
+            arg: monsterMap.get(source.arg) ?? source.arg,
+            next: cloneTimerList(source.next),
+        };
+    };
     return {
         ...state,
-        context: { ...state.context },
+        context: structuredClone(state.context),
+        disp: structuredClone(state.disp),
+        flags: structuredClone(state.flags),
         gg: { ...state.gg },
+        gl: state.gl ? {
+            ...state.gl,
+            light_base: cloneLightList(state.gl.light_base),
+        } : state.gl,
+        go: { ...(state.go ?? {}) },
+        gt: state.gt ? {
+            ...state.gt,
+            timer_base: cloneTimerList(state.gt.timer_base),
+        } : state.gt,
+        gw: { ...(state.gw ?? {}) },
+        head_engr: structuredClone(state.head_engr),
+        iflags: structuredClone(state.iflags),
         level,
+        mvitals,
+        program_state: structuredClone(state.program_state),
+        svm: state.svm ? {
+            ...state.svm,
+            mvitals,
+        } : state.svm,
+        svt: state.svt ? { ...state.svt } : state.svt,
+        svs: state.svs ? {
+            ...state.svs,
+            spl_book: state.svs.spl_book?.map(
+                (spell) => ({ ...spell }),
+            ),
+        } : state.svs,
+        track: structuredClone(state.track),
         u: hero,
     };
 }
@@ -285,7 +385,7 @@ function actionRandom(rawEnv) {
     return rawEnv.random ?? { d, rn1, rn2, rnd, rne, rnl, rnz };
 }
 
-function freshMonsterCanSeeHero(monster, state) {
+function ordinaryMonsterCanSeeHero(monster, state) {
     return (!activeProperty(state, INVIS) || perceives(monster.data))
         && !state.u.uinwater
         && couldsee(monster.mx, monster.my, state);
@@ -298,7 +398,12 @@ function resistsTrapEffect() {
 function assertSimpleDestination(monster, x, y, env) {
     const { state } = env;
     const location = state.level.at(x, y);
-    if (location?.typ !== ROOM && location?.typ !== CORR)
+    const doorMask = location?.flags || location?.doormask || 0;
+    const ordinaryDestination = location
+        && (location.typ === ROOM
+            || location.typ === CORR
+            || (location.typ === DOOR && doorMask === 0));
+    if (!ordinaryDestination)
         unsupported('door or special terrain movement');
     if (t_at(x, y, state))
         unsupported('trap activation');
@@ -421,7 +526,7 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 ...actionEnv,
                 attackHero: () => unsupported('monster attack on the hero'),
                 monFlee: () => unsupported('monster flight'),
-                monsterCanSeeHero: freshMonsterCanSeeHero,
+                monsterCanSeeHero: ordinaryMonsterCanSeeHero,
                 moveMonster: moveSimpleOrdinary,
                 postMoveRangedAttack: (weaponUser, weaponEnv) => {
                     const selected = select_rwep(weaponUser, {
@@ -474,30 +579,107 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
     });
 }
 
+async function planningEveryTurnEffect(monster, env) {
+    await m_everyturn_effect(monster, {
+        ...env,
+        // The live owner passes region.c's real block_point(), which rebuilds
+        // vision.c's transparency index and sets vision_full_recalc, so every
+        // monster after this one in the live scan sees a darker map. Planning
+        // cannot reproduce that: rebuildVisionPoint() refuses any state other
+        // than the live game. Stubbing it out instead would admit a scan whose
+        // later monsters then take different vision-dependent dochug()
+        // branches live, spending PRNG the dry run never charged. Stop here so
+        // the whole scan stays retryable.
+        createGasCloud: () => unsupported('monster region creation'),
+    });
+}
+
+async function planSimpleMonsterScan(monster, env) {
+    return movemon_singlemon(monster, {
+        ...env,
+        everyTurnEffect: planningEveryTurnEffect,
+        visionRecalc: async () => {},
+        clearBypasses: () => unsupported('monster bypass cleanup'),
+        minLiquid: async () => false,
+        dowear: () => unsupported('monster equipment changes'),
+        restrap: () => unsupported('monster hiding'),
+        canSeeMonster: (subject) => canSeeMonster(subject, env.state),
+        hideUnder: () => unsupported('eel concealment'),
+        // movemon_singlemon() requires these three, but its conflict arm is
+        // unreachable from here: assertSimpleScanState() refuses an active
+        // CONFLICT before this function is ever called. They match the live
+        // scan's owners anyway, so the two agree if that guard is ever lifted.
+        canSeeHero: () => true,
+        canSeeSquare: (x, y) => cansee(x, y, env.state),
+        fightMonster: () => unsupported('conflict combat'),
+        dochugwAction:
+            adaptMonsterActionToDochugwSignature(runSimpleMonsterAction),
+    });
+}
+
 // Dry-run every action scan against cloned coordinates and a cloned ISAAC
 // context. Any excluded selected path throws while the live game and PRNG
 // remain unchanged and retryable.
-export async function preflightSimpleMonsterActions(state = game) {
+export async function preflightSimpleMonsterActions(
+    state = game,
+    { advanceRound = null } = {},
+) {
     if (state.context?.bypasses || state.u?.utotype || state.occupation)
         unsupported('deferred monster cleanup or level transition');
     const planned = planningState(state);
-    const random = clonedRandom(state);
-    const heroMovement = state.u.umovement - NORMAL_SPEED;
+    const random = clonedRandom(planned);
+    planned.u.umovement -= NORMAL_SPEED;
     let somebodyCanMove;
+    let upkeepCount = 0;
     do {
-        somebodyCanMove = false;
-        for (let monster = planned.level.monlist;
-            monster;
-            monster = monster.nmon) {
-            if (!assertSimpleScanState(monster, planned)) continue;
-            monster.movement -= NORMAL_SPEED;
-            if (monster.movement >= NORMAL_SPEED) somebodyCanMove = true;
-            await runSimpleMonsterAction(monster, {
-                state: planned,
-                random,
-                planning: true,
-            });
-        }
-        if (heroMovement >= NORMAL_SPEED) break;
-    } while (somebodyCanMove);
+        // C brackets only the monster scan with context.mon_moving, so the
+        // once-per-turn upkeep below sees it clear just as the live loop does.
+        planned.context.mon_moving = true;
+        do {
+            planned.somebody_can_move = false;
+            for (let monster = planned.level.monlist;
+                monster;
+                monster = monster.nmon) {
+                if (!assertSimpleScanState(monster, planned)) continue;
+                await planSimpleMonsterScan(monster, {
+                    state: planned,
+                    random,
+                    planning: true,
+                });
+            }
+            somebodyCanMove = Boolean(planned.somebody_can_move);
+            // C ref: mon.c movemon()'s tail. When a light source is present it
+            // sets vision_full_recalc, and movemon_singlemon() then runs
+            // vision_recalc(0) before the next ration-spending monster, which
+            // rebuilds viz_array. The dry run cannot reproduce that --
+            // vision_recalc writes the live global buffers -- so planning the
+            // following scan would test visibility against a stale index.
+            // Setting the flag on the clone would be inert, because every
+            // planning-side reader of it is an injected no-op. Refuse instead.
+            // clear_bypasses() cannot apply here, since this function already
+            // refused a state with context.bypasses set, and clear_splitobjs()
+            // and dmonsfree() would only touch the discarded clone.
+            if (somebodyCanMove
+                && planned.u.umovement < NORMAL_SPEED
+                && any_light_source(planned)) {
+                unsupported('monster light-source vision recalculation');
+            }
+            if (planned.u.umovement >= NORMAL_SPEED) break;
+        } while (somebodyCanMove);
+        planned.context.mon_moving = false;
+
+        const runsUpkeep =
+            !somebodyCanMove && planned.u.umovement < NORMAL_SPEED;
+        if (!runsUpkeep) break;
+        ++upkeepCount;
+        if (!advanceRound) break;
+        // A truthy result ends the plan early. The live advanceRound never
+        // returns one, so this only serves callers that inject their own
+        // round to stop after a single allocation.
+        if (await advanceRound(planned, random)) break;
+    } while (planned.u.umovement < NORMAL_SPEED);
+    return {
+        runsOncePerTurnUpkeep: upkeepCount > 0,
+        upkeepCount,
+    };
 }

@@ -1,12 +1,3 @@
-import { relobj, steal_wire_droppables } from './steal.js';
-import { ROT_ICE_ADJUSTMENT , MTSZ, NON_PM, SQSRCHRADIUS } from './const.js';
-import { max_passive_dmg , carnivorous, herbivorous , metallivorous, humanoid, noncorporeal , flaming , is_demon, is_swimmer, passes_walls , likes_fire } from './mondata.js';
-import { M_ATTK_MISS } from './const.js';
-import { onscary } from './monmove.js';
-import { M_ATTK_DEF_DIED } from './const.js';
-import { M_ATTK_HIT } from './const.js';
-import { M_ATTK_AGR_DIED } from './const.js';
-import { mattackm } from './mhitm.js';
 // dog.js — the starting pet.
 // C ref: src/dog.c
 //
@@ -20,8 +11,8 @@ import { mattackm } from './mhitm.js';
 
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
-import { DEADMONSTER, is_vampshifter, MON_WEP , helpless } from './monst.js';
-import { m_avoid_kicked_loc, m_avoid_soko_push_loc } from './monmove.js';
+import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
+import { m_avoid_kicked_loc, m_avoid_soko_push_loc, monnear, onscary } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
    so dog_move's death return was an unbound name. */
@@ -29,7 +20,7 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype } from './mondata.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg } from './mondata.js';
 import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
@@ -51,13 +42,20 @@ import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2, rnd } from './rng.js';
-import { dist2, sgn , distmin , distu } from './hacklib.js';
+import { dist2, sgn } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
+import { doname } from './objnam.js';
+import { Monnam, christen_monst } from './do_name.js';
+import { pline_xy } from './pline.js';
+import { relobj } from './steal.js';
+import { set_apparxy } from './monmove.js';
+import { mattackm } from './mhitm.js';
+import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import {
-    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, mpickobj } from './makemon.js';
-import { is_rider } from './mondata.js';
+    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj } from './makemon.js';
 
+const NON_PM = -1;
 
 // gu.urole.petnum is a PM_ name in the generated role table.
 function petnumOf(role) {
@@ -87,6 +85,24 @@ export function makedog() {
     }
 
     const pettype = game.context.startingpet_typ = pet_type();
+    /* src/dog.c:232 — the rc's DOGNAME/CATNAME/HORSENAME override, else the
+       role defaults; every default name belongs to the little dog. */
+    let petname = (pettype === PMNAMES.PM_LITTLE_DOG) ? (game.dogname || '')
+                  : (pettype === PMNAMES.PM_KITTEN) ? (game.catname || '')
+                    : (pettype === PMNAMES.PM_PONY) ? (game.horsename || '')
+                      : '';
+    if (!petname && pettype === PMNAMES.PM_LITTLE_DOG) {
+        const m = game.urole?.mnum;
+        const role_is = (pm) => m === pm || m === PMNAMES[pm];
+        if (role_is('PM_CAVE_DWELLER'))
+            petname = 'Slasher';        /* The Warrior */
+        if (role_is('PM_SAMURAI'))
+            petname = 'Hachi';          /* Shibuya Station */
+        if (role_is('PM_BARBARIAN'))
+            petname = 'Idefix';         /* Obelix */
+        if (role_is('PM_RANGER'))
+            petname = 'Sirius';         /* Orion's dog */
+    }
 
     /* NO_MINVENT stops makemon() giving a pony an already-worn saddle */
     const mtmp = makemon(game.mons[pettype], game.u.ux, game.u.uy,
@@ -106,6 +122,10 @@ export function makedog() {
         }
         /* see_monster_closeup() is display bookkeeping */
     }
+
+    /* src/dog.c:279 — only the first pet gets the name */
+    if (!game.petname_used++ && petname)
+        christen_monst(mtmp, petname);
 
     initedog(mtmp, true);
     return mtmp;
@@ -175,20 +195,23 @@ export const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3, APPORT = 4,
 /* include/mondata.h and include/objclass.h — the predicates dogfood() sorts
    with. None of them draws; they only decide which branch is taken, and a wrong
    branch changes how far the caller's loop runs before it breaks. */
-/* carnivorous() and herbivorous() are include/mondata.h macros and come
-   from js/mondata.js; the copies here were identical. */
-/* metallivorous(), humanoid() and noncorporeal() are include/mondata.h
-   macros and come from js/mondata.js; the copies here matched. */
+const carnivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_CARNIVORE) !== 0;
+const herbivorous  = (ptr) => (ptr.mflags1 & MFLAGS.M1_HERBIVORE) !== 0;
+const metallivorous = (ptr) => (ptr.mflags1 & MFLAGS.M1_METALLIVORE) !== 0;
 const haseyes      = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
+const humanoid     = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
 export const acidic = (ptr) => (ptr.mflags1 & MFLAGS.M1_ACID) !== 0;
 const poisonous    = (ptr) => (ptr.mflags1 & MFLAGS.M1_POIS) !== 0;
 /* is_undead lives in js/mondata.js, its C home (include/mondata.h:95). */
 const is_elf       = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
+const noncorporeal = (ptr) => ptr.mlet === MONSYMS.S_GHOST;
 /* include/mondata.h:59,190 — both are explicit species lists, not flag tests.
    There is no M1_FIRE_RES; fire resistance lives in mresists as MR_FIRE, and
    guessing a flag here silently made every monster flaming. */
-/* flaming() is include/mondata.h:59; it comes from js/mondata.js. Both
-   copies listed the same four species. */
+const flaming      = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
+                           || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+                           || ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
+                           || ptr.pmidx === PMNAMES.PM_SALAMANDER;
 const likes_lava   = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
                            || ptr.pmidx === PMNAMES.PM_SALAMANDER;
 
@@ -206,8 +229,9 @@ export const slimeproof = (ptr) => ptr.pmidx === PMNAMES.PM_GREEN_SLIME
                          || flaming(ptr) || noncorporeal(ptr);
 
 // include/mondata.h:196
-/* likes_fire() is an include/mondata.h macro; it comes from
-   js/mondata.js, where its identical twin already lived. */
+const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
+                         || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+                         || likes_lava(ptr);
 
 // include/mondata.h:232
 const vegan = (ptr) =>
@@ -228,14 +252,8 @@ const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
    cooking code lands, so recording keeps the gap visible without inventing a
    branch. */
 function peek_at_iced_corpse_age(obj) {
-    let retval = obj.age ?? 0;
-
-    if (obj.otyp === ONAMES.CORPSE && obj.on_ice) {
-        /* Adjust the age; must be same as obj_timer_checks() for off ice */
-        const age = game.moves - (obj.age ?? 0);
-        retval += Math.floor(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
-    }
-    return retval;
+    note_unported('peek_at_iced_corpse_age');
+    return obj.age ?? 0;
 }
 
 function stale_egg(obj) {
@@ -270,9 +288,10 @@ function hates_silver(ptr) {
 }
 
 const is_were = (ptr) => (ptr.mflags2 & MFLAGS.M2_WERE) !== 0;
+const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
 
-const resists_ston   = (mon) => { note_unported('resists_ston'); return false; };
-const resists_acid   = (mon) => { note_unported('resists_acid'); return false; };
+/* resists_ston / resists_acid — the real Resists_Elem tests live in
+   js/mondata.js now; the note-stubs that stood here always said "no". */
 
 // src/dogmove.c could_reach_item()
 export function could_reach_item(mon, nx, ny) {
@@ -313,7 +332,9 @@ function can_reach_location(mon, mx, my, fx, fy) {
     return false;
 }
 
+const is_swimmer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
 const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
+const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 const tunnels      = (ptr) => (ptr.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
 
 
@@ -493,6 +514,7 @@ function note_unported(what) {
 // the pet, so it costs one rn2(100) per nearby object before any of its own
 // draws. That is the whole reason obj_resists shows up ahead of dog_goal's
 // rn2(8) in the recordings.
+const SQSRCHRADIUS = 5;
 
 // src/dogmove.c:156 dog_nutrition() — how much food value obj gives mtmp, and
 // how many turns eating it costs (returned through mtmp.meating, as in C).
@@ -636,11 +658,12 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     /* #define DDIST(x, y) (dist2(x, y, omx, omy)) */
     const DDIST = (x, y) => dist2(x, y, omx, omy);
 
-    /* src/dogmove.c — both gate the APPORT branch. couldsee() is real, so use
-       it; droppables() needs monster inventory, and a pet carrying nothing is
-       the reachable state until that lands. */
+    /* src/dogmove.c — both gate the APPORT branch. droppables() reads the
+       real minvent now that dog_invent's fetch arm calls mpickobj, and the
+       flag flips the moment the pet picks something up: the apport rn2(8)
+       stops drawing and the follow block gains its rn2(apport) term. */
     const in_masters_sight = couldsee(omx, omy);
-    const dog_has_minvent = false; /* droppables(mtmp) != 0 */
+    const dog_has_minvent = !!droppables(mtmp);
 
     for (const obj of (game.level.objects || [])) {
         const nx = obj.ox, ny = obj.oy;
@@ -704,9 +727,9 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
         appr = (udist >= 9) ? 1 : (mtmp.mflee ? -1 : 0);
         if (udist > 1) {
             if (!IS_ROOM(game.level.at(game.u.ux, game.u.uy)?.typ)
-                || !rn2(4) || whappr)
+                || !rn2(4) || whappr
+                || (dog_has_minvent && rn2(edog?.apport ?? 0)))
                 appr = 1;
-            /* the dog_has_minvent case needs monster inventory */
         }
 
         /* a pet follows more closely when the hero is carrying its food, is
@@ -750,9 +773,19 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     return appr;
 }
 
-/* src/dungeon.c On_stairs() */
+/* src/stairs.c:148 On_stairs() — stairway_at(x, y) != NULL.
+   The stairs live on the game.stairs LINKED LIST written by mklev
+   (js/mklev.js:181, C's gs.stairs chain). This used to read
+   game.level.stairs, an array nothing ever writes, so it was always false
+   and every pet turn ran the hero-inventory dogfood scan that C skips
+   whenever the hero stands on stairs -- which the hero does from turn one,
+   since the game starts on the upstairs. Four extra rn2(100)s per pet turn
+   from the first move. */
 function On_stairs(x, y) {
-    return (game.level?.stairs || []).some(st => st.sx === x && st.sy === y);
+    for (let st = game.stairs; st; st = st.next)
+        if (st.sx === x && st.sy === y)
+            return true;
+    return false;
 }
 
 // src/dogmove.c:977 dog_move() — the pet's turn.
@@ -950,48 +983,8 @@ function pet_ranged_attk(mtmp, forced) {
 
     /* Hungry pets are unlikely to use breath/spit attacks */
     if (mtarg && (!hungry || !rn2(5))) {
-        let mstatus = M_ATTK_MISS;
-
-        if (mtarg === game.youmonst) {
-            /* mattacku() -- a pet attacking the HERO needs the
-               monster-attacks-you path, which is not ported. */
-            note_unported('pet_ranged_attk:mattacku');
-            return MMOVE_NOTHING;
-        }
-
-        game.bhitpos = { x: mtmp.mx, y: mtmp.my };
-        mstatus = mattackm(mtmp, mtarg);
-
-        /* Shouldn't happen, really */
-        if (mstatus & M_ATTK_AGR_DIED)
-            return MMOVE_DIED;
-
-        /* Allow the targeted nasty to strike back - if the targeted beast
-         * doesn't have a ranged attack, nothing will happen. */
-        if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
-            && rn2(4)) {
-            /* Can monster see?  If it can, it can retaliate even if the pet
-             * is invisible, since it'll see the direction the ranged attack
-             * came from; haseyes() is unported, so only mcansee is tested
-             * here and the eyeless case is recorded. */
-            if (mtarg.mcansee) {
-                note_unported('pet_ranged_attk:haseyes');
-                game.bhitpos = { x: mtmp.mx, y: mtmp.my };
-                const mresp = mattackm(mtarg, mtmp);
-                if (mresp & M_ATTK_DEF_DIED)
-                    return MMOVE_DIED;
-            }
-        }
-
-        /* Only lose the rest of the move if a ranged attack really happened;
-         * best_target never selects a melee-reachable monster, so mattackm
-         * can only have tried ranged options, and returns M_ATTK_MISS when
-         * the monster has none. */
-        if (mstatus !== M_ATTK_MISS)
-            return MMOVE_DONE;
-    } else if (forced) {
-        /* domonnoise() */
-        note_unported('pet_ranged_attk:domonnoise');
+        /* the attack itself needs mattacku / the monster attack code */
+        note_unported('pet_ranged_attk:attack');
     }
     return MMOVE_NOTHING;
 }
@@ -1039,7 +1032,7 @@ function dog_hunger(mtmp, edog) {
     return false;
 }
 
-export function dog_move(mtmp, after) {
+export async function dog_move(mtmp, after) {
     const edog = mtmp.mtame ? (mtmp.edog || {}) : null;
     if (!edog) return 0;
 
@@ -1049,7 +1042,7 @@ export function dog_move(mtmp, after) {
     const omx = mtmp.mx, omy = mtmp.my;
     const udist = distu(omx, omy);
 
-    dog_invent(mtmp, edog, udist);
+    await dog_invent(mtmp, edog, udist);
 
     /* src/dogmove.c:1038 — whappr is TRUE for the five turns after the pet was
        whistled for, and edog->whistletime starts at 0, so it is TRUE for the
@@ -1102,8 +1095,7 @@ export function dog_move(mtmp, after) {
         if (m_at(nx, ny) && !(mfp.info[i] & (ALLOW_M | ALLOW_MDISP)))
             continue;
 
-        /* src/dogmove.c:1102 — the ALLOW_M attack branch needs mattackm, the
-           monster-vs-monster combat path, which draws. Stop rather than guess.
+        /* src/dogmove.c:1102 — the ALLOW_M attack branch.
 
            ALLOW_U is no longer skipped here, because C does not skip it: it
            handles it at newdogpos (dogmove.c:1280). In practice this changes
@@ -1113,28 +1105,28 @@ export function dog_move(mtmp, after) {
            would be wrong the moment a conflicted pet did get the flag. */
         if ((mfp.info[i] & ALLOW_M) && m_at(nx, ny)) {
             const mtmp2 = m_at(nx, ny);
-            /* src/dogmove.c:1119 — how audacious the pet is about attacking
-               a differently-levelled foe, scaled by its fraction of max HP.
-               balk maxes at +3 and is the LOWEST level it refuses, which is
-               why the comparison below is >=. */
-            const balk = mtmp.m_lev + Math.floor((5 * mtmp.mhp) / mtmp.mhpmax) - 2;
+            /* audacity: how much higher-level a foe the pet will start */
+            const balk = mtmp.m_lev
+                         + Math.trunc((5 * mtmp.mhp) / mtmp.mhpmax) - 2;
 
-            if ((mtmp2.m_lev | 0) >= balk
-                || (mtmp2.mtame && mtmp.mtame)
+            if (mtmp2.m_lev >= balk
+                || (mtmp2.mtame && mtmp.mtame /* && !Conflict */)
                 || (max_passive_dmg(mtmp2, mtmp) >= mtmp.mhp)
                 || ((mtmp.mhp * 4 < mtmp.mhpmax
-                     || mtmp2.data.msound === MFLAGS.MS_GUARDIAN
-                     || mtmp2.data.msound === MFLAGS.MS_LEADER)
-                    && mtmp2.mpeaceful)) {
+                     || game.mons[mtmp2.mnum].msound === MSOUND.MS_GUARDIAN
+                     || game.mons[mtmp2.mnum].msound === MSOUND.MS_LEADER)
+                    && mtmp2.mpeaceful /* && !Conflict */)) {
                 continue;
             }
-
-            if ((mtmp2.data.pmidx === PMNAMES.PM_FLOATING_EYE && rn2(10))
-                || (mtmp2.data.pmidx === PMNAMES.PM_GELATINOUS_CUBE && rn2(10))
-                || (touch_petrifies(mtmp2.data) && !resists_ston(mtmp))) {
-                /* C consults best_target() before giving up, to allow a
-                   ranged attack instead; that is unported, and its own
-                   comment marks ranged_only as not working as intended. */
+            /* src/dogmove.c:1130 — the floating eye / gelatinous cube /
+               petrifier avoidance. The eye and cube arms DRAW rn2(10). */
+            if ((mtmp2.mnum === PMNAMES.PM_FLOATING_EYE && rn2(10)
+                 && mtmp.mcansee && haseyes(game.mons[mtmp.mnum])
+                 && mtmp2.mcansee && !mtmp2.minvis)
+                || (mtmp2.mnum === PMNAMES.PM_GELATINOUS_CUBE && rn2(10))
+                || (touch_petrifies(game.mons[mtmp2.mnum])
+                    && !resists_ston(mtmp))) {
+                /* adjacent, so a ranged attack is never the fallback */
                 continue;
             }
 
@@ -1142,7 +1134,7 @@ export function dog_move(mtmp, after) {
                 return MMOVE_NOTHING; /* hit only once each move */
 
             game.bhitpos = { x: nx, y: ny };
-            const mstatus = mattackm(mtmp, mtmp2);
+            let mstatus = await mattackm(mtmp, mtmp2);
 
             /* aggressor (pet) died */
             if (mstatus & M_ATTK_AGR_DIED)
@@ -1151,13 +1143,19 @@ export function dog_move(mtmp, after) {
             if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
                 && rn2(4)
                 && mtmp2.mlstmv !== game.moves
-                && !onscary(mtmp.mx, mtmp.my, mtmp2)) {
-                /* the counter-attack; monnear() is unported and only matters
-                   for long worms, which cannot be reached here yet */
+                && !onscary(mtmp.mx, mtmp.my, mtmp2)
+                && monnear(mtmp2, mtmp.mx, mtmp.my)) {
                 game.bhitpos = { x: mtmp.mx, y: mtmp.my };
-                mattackm(mtmp2, mtmp); /* return attack */
+                mstatus = await mattackm(mtmp2, mtmp); /* return attack */
+                if (mstatus & M_ATTK_DEF_DIED)
+                    return MMOVE_DIED;
             }
             return MMOVE_DONE;
+        }
+        if ((mfp.info[i] & ALLOW_MDISP) && m_at(nx, ny)) {
+            /* mdisplacem — monster displacement is absent */
+            note_unported('dog_move displace branch');
+            continue;
         }
 
         /* src/dogmove.c:1182 — keep clear of the square the hero just kicked,
@@ -1283,6 +1281,10 @@ export function dog_move(mtmp, after) {
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+        /* src/dogmove.c:1354 — the move refreshes the pet's idea of where
+           the hero is. A tame monster's set_apparxy draws nothing, but the
+           call belongs here for the day a pet goes feral mid-move. */
+        set_apparxy(mtmp);
         /* src/dogmove.c:1318 — "We have to know if the pet's going to do a
            combined eat and move before moving it, but it can't eat until
            after being moved. Thus the do_eat flag." omx,omy is where the pet
@@ -1297,6 +1299,7 @@ export function dog_move(mtmp, after) {
 }
 
 /* include/monst.h MTSZ — how many previous squares a monster remembers. */
+const MTSZ = 4;
 
 /* src/dogmove.c GDIST(x,y) = dist2(x, y, gg.gx, gg.gy) */
 function GDIST(x, y) {
@@ -1305,8 +1308,10 @@ function GDIST(x, y) {
     return dx * dx + dy * dy;
 }
 
-/* distmin() is src/hacklib.c:657 and comes from js/hacklib.js; the copy
-   that was here differed only in parameter names. */
+/* src/hack.c distmin() — the Chebyshev distance */
+function distmin(x0, y0, x1, y1) {
+    return Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+}
 
 /* src/dogmove.c cursed_object_at() */
 function cursed_object_at(x, y) {
@@ -1332,7 +1337,7 @@ function objects_at(x, y) {
 /* src/dogmove.c:138 nofetch[] = { BALL_CLASS, CHAIN_CLASS, ROCK_CLASS } */
 const nofetch = [OCLASSES.BALL_CLASS, OCLASSES.CHAIN_CLASS, OCLASSES.ROCK_CLASS];
 
-export function dog_invent(mtmp, edog, udist) {
+export async function dog_invent(mtmp, edog, udist) {
     if (helpless(mtmp) || mtmp.meating)
         return 0;
 
@@ -1341,7 +1346,7 @@ export function dog_invent(mtmp, edog, udist) {
     if (droppables(mtmp)) {
         if (!rn2(udist + 1) || !rn2(edog.apport))
             if (rn2(10) < edog.apport) {
-                relobj(mtmp, mtmp.minvis ? 1 : 0, true);  /* the drop itself */
+                await relobj(mtmp, mtmp.minvis ? 1 : 0, true);
                 if (edog.apport > 1) edog.apport--;
                 edog.dropdist = udist;
                 edog.droptime = game.moves;
@@ -1376,16 +1381,15 @@ export function dog_invent(mtmp, edog, udist) {
                         if (carryamt !== obj.quan)
                             otmp = splitobj(obj, carryamt);
                         if (cansee(omx, omy)) {
-                            /* C calls distant_name() for its SIDE EFFECTS
-                               even when the result is not printed, and does
-                               so BEFORE the extract, because the chain
-                               distant_name -> doname -> xname -> find_artifact
-                               wants otmp still on the floor. Not ported, so
-                               the side effects are recorded here rather than
-                               being silently skipped. */
-                            note_unported('dog_invent:distant_name');
+                            /* C calls distant_name() BEFORE the extract,
+                               because the chain distant_name -> doname ->
+                               xname -> find_artifact wants otmp still on the
+                               floor; no artifact discovery on this tree, so
+                               doname supplies the printed name. */
+                            const otmpname = doname(otmp);
                             if (game.flags?.verbose)
-                                note_unported('dog_invent:pline_picks_up');
+                                await pline_xy(omx, omy,
+                                    `${Monnam(mtmp)} picks up ${otmpname}.`);
                         }
                         obj_extract_self(otmp);
                         newsym(omx, omy);
@@ -1423,7 +1427,7 @@ export function dog_invent(mtmp, edog, udist) {
 // one", so an animal or mindless monster keeps nothing, and an intelligent
 // one holds a pick-axe only if it tunnels and needs one, a key only if it
 // has hands and is not verysmall.
-function droppables(mtmp) {
+export function droppables(mtmp) {
     const dummy = { otyp: ONAMES.STRANGE_OBJECT, oartifact: 0 };
     const mdat = game.mons[mtmp.mnum];
     const wep = MON_WEP(mtmp);
@@ -1506,16 +1510,13 @@ function droppables(mtmp) {
     return null;                        /* don't drop anything */
 }
 
-/* helpless() is include/monst.h:251 and comes from js/monst.js. The copy
-   that was here carried a THIRD term, (mtmp.mfrozen | 0) > 0, which the C
-   macro does not have -- mfrozen is a separate bitfield (monst.h:147). That
-   made any frozen-but-mobile monster read as helpless, which changes combat
-   branches. The identical defect was removed from js/uhitm.js earlier; this
-   copy survived because dup-defs reports the name, not every site. */
+/* src/mondata.h helpless() */
+function helpless(mtmp) {
+    return !!(mtmp.msleeping || !mtmp.mcanmove || (mtmp.mfrozen | 0) > 0);
+}
 
-/* distu() is include/hack.h:1531 and comes from js/hacklib.js. C defines it
-   as dist2(xx, yy, u.ux, u.uy); the copy here inlined the arithmetic
-   instead, which gave the same value but not the same shape. */
-
-/* hand droppables() to js/steal.js; see its header for why */
-steal_wire_droppables(droppables);
+// src/hack.c distu() — squared distance from the hero.
+function distu(x, y) {
+    const dx = x - game.u.ux, dy = y - game.u.uy;
+    return dx * dx + dy * dy;
+}

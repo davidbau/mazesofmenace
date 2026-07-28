@@ -12,8 +12,9 @@
 import { game, resetGame } from './gstate.js';
 import {
     MAX_COMMAND_COUNT,
-    UnsupportedHeroMoveBoundaryError,
+    UnsupportedHeroCommandBoundaryError,
 } from './cmd.js';
+import { UnsupportedHeroMoveBoundaryError } from './hack.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import {
     newgame,
@@ -487,13 +488,15 @@ export async function runSegment(
     for (let iter = 0; iter < maxIter; iter++) {
         try {
             await moveloop_core();
+            if (game.program_state?.gameover) break;
         } catch (e) {
             if (String(e?.message || '').includes('Input queue empty')) break;
             // A known, fail-closed gameplay boundary preserves all output
             // produced through the supported prefix. It must not turn that
             // prefix into a zero-session scorer error.
             if (e instanceof UnsupportedTurnBoundaryError
-                || e instanceof UnsupportedHeroMoveBoundaryError) {
+                || e instanceof UnsupportedHeroMoveBoundaryError
+                || e instanceof UnsupportedHeroCommandBoundaryError) {
                 break;
             }
             throw e;

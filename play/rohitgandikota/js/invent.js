@@ -2,25 +2,23 @@
 // C ref: src/invent.c
 
 import { game } from './gstate.js';
-import { pline_The } from './pline.js';
-import { delobj } from './mon.js';
+import { stairway_at, stairs_description } from './stairs.js';
+import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { delobj, t_at, is_pool, is_lava } from './mon.js';
 import { costly_spot } from './shk.js';
-import { u_at , HANDS_SYM, silly_thing_to, W_ARMOR, W_ACCESSORY, W_SADDLE, W_WEAPONS } from './const.js';
+import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
 import { hides_under } from './mondata.js';
 import { Hallucination } from './youprop.js';
-import { doname } from './objnam.js';
+import { doname, an } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MONSYMS, NUMMONS } from './monst_data.js';
 import { erosion_matters, curse, splitobj } from './mkobj.js';
-import {
-    carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding,
-} from './obj.js';
-import {
-    hideunder } from './makemon.js';
-import { is_rider } from './mondata.js';
-import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding } from './obj.js';
+import { is_rider, hideunder } from './makemon.js';
+import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
-import { pline } from './display.js';
+import { pline, docrt } from './display.js';
+import { observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
 
@@ -29,18 +27,140 @@ import { You } from './pline.js';
 export const ECMD_OK = 0;
 export const ECMD_TIME = 1;
 
+/* src/invent.c:735 inv_rank() — invlet ^ 040, which sorts '$' (gold) before
+   'a'..'z' before 'A'..'Z'. */
+const inv_rank = (o) => ((o.invlet ? o.invlet.charCodeAt(0) : 0) ^ 0o40);
+
+// src/invent.c:739 reorder_invent() — with flags.invlet_constant (default
+// On), addinv keeps the whole inventory chain in inv_rank order. Every walk
+// of the hero's inventory — dogfood scans, getobj, display — sees gold
+// first, then a..z, then A..Z, and a re-used low letter moves back to its
+// rank position. Draws nothing.
+export function reorder_invent() {
+    (game.invent || []).sort((a, b) => inv_rank(a) - inv_rank(b));
+}
+
 // src/invent.c:4104 look_here()
 //
-// Only the empty-square path is ported so far: with no objects, no dungeon
-// feature and not blind, C prints "You see no objects here." and returns
-// ECMD_OK — so looking does NOT consume a turn. Objects, dungeon features and
-// engravings join this function as those subsystems land.
+// The engulfed arm, gas regions, cockatrice touches and Blind feel-arms are
+// gated on state no session can reach yet and are recorded when hit. The
+// dungeon-feature description carries only the stairway arm so far.
 export async function look_here(obj_cnt, lhflags) {
     const Blind = !!game.u?.ublind;
     const verb = Blind ? 'feel' : 'see';
+    const picked_some = (lhflags & LOOKHERE_PICKED_SOME) !== 0;
+    const skip_dfeature = (lhflags & LOOKHERE_SKIP_DFEATURE) !== 0;
 
-    /* no objects at the hero's square yet, because objects are not ported */
-    await You(`${verb} no objects here.`);
+    /* default pile_limit is 5; a value of 0 means "never skip" */
+    const pile_limit = game.flags?.pile_limit ?? 5;
+    const skip_objects = (pile_limit > 0 && obj_cnt >= pile_limit);
+
+    if (game.u?.uswallow) {
+        note_unported_invent('look_here:uswallow');
+        return Blind ? ECMD_TIME : ECMD_OK;
+    }
+
+    if (!skip_objects) {
+        /* visible_region_at — gas clouds are absent; a seen trap underfoot
+           would print "There is a(n) <trap> here." and trapname is not
+           ported, so record it rather than guess the text */
+        const trap = t_at(game.u.ux, game.u.uy);
+        if (trap && trap.tseen)
+            note_unported_invent('look_here:trap_here');
+    }
+
+    /* src/invent.c:4037 — dfeature_at(). The door and stairway arms are
+       ported; fountain/throne/sink/grave/altar/tree still record when that
+       terrain is underfoot. */
+    let dfeature = null;
+    const stway = stairway_at(game.u.ux, game.u.uy);
+    const loc0 = game.level?.at(game.u.ux, game.u.uy);
+    if (loc0 && IS_DOOR(loc0.typ)) {
+        switch (loc0.doormask) {
+        case D_NODOOR: dfeature = 'doorway'; break;
+        case D_ISOPEN: dfeature = 'open door'; break;
+        case D_BROKEN: dfeature = 'broken door'; break;
+        default:       dfeature = 'closed door'; break;
+        }
+    } else if (stway) {
+        dfeature = stairs_description(stway, true);
+    } else {
+        const typ = loc0?.typ;
+        if (typ === FOUNTAIN || typ === THRONE || typ === SINK
+            || typ === GRAVE || typ === ALTAR || typ === TREE)
+            note_unported_invent('look_here:dfeature');
+    }
+    if (Blind && dfeature)
+        note_unported_invent('look_here:blind_feel');
+
+    /* src/mkobj.c place_object() puts the newest object at the chain head,
+       and the js place_object unshifts, so the filtered array is already in
+       C's newest-first pile order. */
+    const pile = (game.level?.objects || [])
+        .filter(o => o.ox === game.u.ux && o.oy === game.u.uy);
+
+    if (!pile.length || is_lava(game.u.ux, game.u.uy)
+        || (is_pool(game.u.ux, game.u.uy) && !game.u.uinwater)) {
+        /* src/invent.c:4241 — with a feature and no objects: print
+           "There is <an feature> here." and SUPPRESS the no-objects line
+           unless blind */
+        if (dfeature && !skip_dfeature)
+            await pline(`There is ${an(dfeature)} here.`);
+        if (!skip_objects && (Blind || !dfeature))
+            await You(`${verb} no objects here.`);
+        return Blind ? ECMD_TIME : ECMD_OK;
+    }
+    /* we know there is something here */
+
+    if (skip_objects) {
+        if (dfeature && !skip_dfeature)
+            await pline(`There is ${an(dfeature)} here.`);
+        if (obj_cnt === 1 && pile[0].quan === 1)
+            await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
+        else
+            await pline(`There are ${
+                (obj_cnt === 2) ? 'two'
+                : (obj_cnt < 5) ? 'a few'
+                  : (obj_cnt < 10) ? 'several'
+                    : 'many'}${picked_some ? ' more' : ''} objects here.`);
+        for (const otmp of pile)
+            if (otmp.otyp === ONAMES.CORPSE)
+                note_unported_invent('look_here:feel_cockatrice');
+    } else if (pile.length === 1) {
+        /* only one object */
+        const otmp = pile[0];
+        if (dfeature && !skip_dfeature)
+            await pline(`There is ${an(dfeature)} here.`);
+        /* doname_with_price() is doname() until shops exist */
+        await You(`${verb} here ${doname(otmp)}.`);
+        if (otmp.otyp === ONAMES.CORPSE)
+            note_unported_invent('look_here:feel_cockatrice');
+    } else {
+        const tmpwin = tty_create_nhwindow(NHW_MENU);
+        if (dfeature && !skip_dfeature) {
+            tty_putstr(tmpwin, 0, `There is ${an(dfeature)} here.`);
+            tty_putstr(tmpwin, 0, '');
+        }
+        tty_putstr(tmpwin, 0, `${picked_some ? 'Other things' : 'Things'} that ${
+            Blind ? 'you feel' : 'are'} here:`);
+        for (const otmp of pile) {
+            if (otmp.otyp === ONAMES.CORPSE)
+                note_unported_invent('look_here:feel_cockatrice');
+            tty_putstr(tmpwin, 0, doname(otmp));
+        }
+        tty_display_nhwindow(tmpwin);
+        await nhgetch();
+        while (tty_next_page(tmpwin))
+            await nhgetch();
+        tty_destroy_nhwindow(tmpwin);
+        await docrt();
+    }
+
+    /* read_engr_at(u.ux, u.uy) */
+    if ((game.level?.engravings || []).some(e => e.engr_x === game.u.ux
+                                            && e.engr_y === game.u.uy))
+        note_unported_invent('look_here:read_engr_at');
+
     return Blind ? ECMD_TIME : ECMD_OK;
 }
 
@@ -67,8 +187,8 @@ const CLASS_NAMES = {
     COIN_CLASS: 'Coins', AMULET_CLASS: 'Amulets', WEAPON_CLASS: 'Weapons',
     ARMOR_CLASS: 'Armor', FOOD_CLASS: 'Comestibles', SCROLL_CLASS: 'Scrolls',
     SPBOOK_CLASS: 'Spellbooks', POTION_CLASS: 'Potions', RING_CLASS: 'Rings',
-    WAND_CLASS: 'Wands', TOOL_CLASS: 'Tools', GEM_CLASS: 'Gems or Stones',
-    ROCK_CLASS: 'Boulders/Statues', BALL_CLASS: 'Iron Balls',
+    WAND_CLASS: 'Wands', TOOL_CLASS: 'Tools', GEM_CLASS: 'Gems/Stones',
+    ROCK_CLASS: 'Boulders/Statues', BALL_CLASS: 'Iron balls',
     CHAIN_CLASS: 'Chains', VENOM_CLASS: 'Venoms',
 };
 function let_to_name(oclass) {
@@ -91,9 +211,13 @@ export function display_inventory() {
         if (!items.length) continue;
         /* add_menu_heading(win, class_header) — iflags.menu_headings */
         out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
-        for (const o of items)
+        for (const o of items) {
+            /* src/invent.c:1039 — displaying the item observes its type */
+            if (!game.u?.ublind)
+                observe_object(o);
             out.push({ heading: false, str: doname(o), attr: ATR_NONE,
                        invlet: o.invlet });
+        }
     }
     return out;
 }
@@ -119,6 +243,7 @@ export const GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
              GETOBJ_EXCLUDE_INACCESS = -1, GETOBJ_EXCLUDE_SELECTABLE = 0,
              GETOBJ_DOWNPLAY = 1, GETOBJ_SUGGEST = 2;
 export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
+const HANDS_SYM = '-';
 
 // src/invent.c:1830 — the letter list C puts in the prompt.
 //
@@ -128,40 +253,116 @@ export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
 //
 // Inventory is walked in INVLET order (sortloot with SORTLOOT_INVLET), and
 // each letter is appended FIRST and then removed when the filter rejects it.
-/* async because some getobj callbacks are. equip_ok() (src/do_wear.c:3404) is
-   the shared body of wear_ok/takeoff_ok/puton_ok/remove_ok and it calls
-   canwearobj(), which is async in this port because js/pline.js is. Calling
-   such a callback synchronously yields a Promise, which is truthy and equals
-   none of the GETOBJ_* constants, so every letter decision below would take the
-   wrong branch WITHOUT throwing. Awaiting a non-Promise is a no-op, so sync
-   callbacks are unaffected. */
-async function getobj_letters(obj_ok, ctrlflags) {
+function getobj_letters(obj_ok, ctrlflags) {
     let buf = '';
     const forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
 
     if (forceprompt || !obj_ok) {
-        const v = obj_ok ? await obj_ok(null) : GETOBJ_EXCLUDE;
+        const v = obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE;
         if (v === GETOBJ_SUGGEST)
             buf += HANDS_SYM + ' ';
     }
 
-    const sorted = [...(game.invent || [])]
-        .sort((a, b) => String(a.invlet).localeCompare(String(b.invlet)));
-
-    for (const otmp of sorted) {
-        const v = obj_ok ? await obj_ok(otmp) : GETOBJ_SUGGEST;
-        if (v === GETOBJ_SUGGEST)
+    /* the chain is kept in inv_rank order by reorder_invent(), so a plain
+       walk yields the letters in prompt order, as C's gi.invent walk does */
+    let suggested = 0;
+    for (const otmp of (game.invent || [])) {
+        const v = obj_ok ? obj_ok(otmp) : GETOBJ_SUGGEST;
+        if (v === GETOBJ_SUGGEST) {
             buf += otmp.invlet;
+            suggested++;
+        }
     }
-    return buf;
+    /* src/invent.c:1908 — "if (suggested > 5) compactify" — five letters
+       stay verbatim, six or more compress */
+    return suggested > 5 ? compactify(buf) : buf;
+}
+
+// src/invent.c:1627 compactify() — "a-e" for 3+ consecutive letters, and
+// "#-#" for 3+ NOINVSYM. A faithful transliteration of the C in-place loop.
+function compactify(str) {
+    if (str.length < 3)
+        return str;
+    const NOINVSYM = '#';
+    const buf = str.split('');
+    let i1 = 1, i2 = 1;
+    let ilet2 = buf[0];
+    let ilet1 = buf[1];
+    buf[++i2] = buf[++i1];
+    let ilet = buf[i1];
+    while (ilet !== undefined) {
+        if (ilet.charCodeAt(0) === ilet1.charCodeAt(0) + 1) {
+            if (ilet1.charCodeAt(0) === ilet2.charCodeAt(0) + 1) {
+                buf[i2 - 1] = ilet1 = '-';
+            } else if (ilet2 === '-') {
+                ilet1 = String.fromCharCode(ilet1.charCodeAt(0) + 1);
+                buf[i2 - 1] = ilet1;
+                buf[i2] = buf[++i1];
+                ilet = buf[i1];
+                continue;
+            }
+        } else if (ilet === NOINVSYM) {
+            if (i2 >= 2 && buf[i2 - 2] === NOINVSYM && buf[i2 - 1] === NOINVSYM)
+                buf[i2 - 1] = '-';
+            else if (i2 >= 3 && buf[i2 - 3] === NOINVSYM && buf[i2 - 2] === '-'
+                     && buf[i2 - 1] === NOINVSYM)
+                --i2;
+        }
+        ilet2 = ilet1;
+        ilet1 = ilet;
+        buf[++i2] = buf[++i1];
+        ilet = buf[i1];
+    }
+    return buf.slice(0, i2).join('');
 }
 
 export async function getobj(word, obj_ok_func, ctrlflags) {
+    /* src/invent.c:1779 — a queued CMDQ_KEY picks the object without
+       prompting; a failed lookup discards the rest of the canned queue so a
+       broken script cannot run its tail against the wrong object. The
+       CMDQ_INT partial-stack arm and the HANDS_SYM choice have no producer
+       in this port yet and are recorded when reached. */
+    {
+        const cmdq = cmdq_pop();
+        if (cmdq) {
+            let otmp = null;
+            if (cmdq.typ === CMDQ_KEY) {
+                if (cmdq.key === HANDS_SYM) {
+                    note_unported_invent('getobj:cmdq_hands');
+                } else {
+                    /* there could be more than one match if key is '#';
+                       take first one which passes the obj_ok callback */
+                    for (const o of (game.invent || []))
+                        if (o.invlet === cmdq.key) {
+                            const v = await obj_ok_func(o);
+                            if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) {
+                                otmp = o;
+                                break;
+                            }
+                        }
+                }
+            } else if (cmdq.typ === CMDQ_INT) {
+                note_unported_invent('getobj:cmdq_int');
+            }
+            if (!otmp)              /* didn't find what we were looking for, */
+                cmdq_clear(CQ_CANNED); /* so discard any other queued cmnds */
+            return otmp;
+        }
+    }
+
     /* src/invent.c:1919 — the prompt, then yn_function reads the key. Our
        loop already read a key here; routing it through tty_yn_function adds
        the paint without changing which keys are consumed. */
     let qbuf = `What do you want to ${word}?`;
-    const lets = await getobj_letters(obj_ok_func, ctrlflags | 0);
+    const lets = getobj_letters(obj_ok_func, ctrlflags | 0);
+
+    /* src/invent.c:1911 — nothing suggested, no forced prompt, no '-'
+       choice: refuse up front. The "else " variant needs the inaccessible
+       tracking and is recorded. */
+    if (!lets && obj_ok_func && !(ctrlflags & GETOBJ_PROMPT)) {
+        await You(`don't have anything to ${word}.`);
+        return null;
+    }
     qbuf += lets ? ` [${lets} or ?*]` : ' [*]';
 
     for (;;) {
@@ -172,8 +373,12 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
             note_unported_invent('getobj:count');
             return null;
         }
-        if (quitchars.includes(ilet))
-            return null;                       /* Never mind */
+        if (quitchars.includes(ilet)) {
+            /* src/invent.c:1950 */
+            if (game.flags.verbose)
+                await pline(Never_mind);
+            return null;
+        }
         if (ilet === '-') {
             /* HANDS_SYM — "your hands" as the object */
             note_unported_invent('getobj:hands');
@@ -189,7 +394,9 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         if (otmp)
             return otmp;
 
-        /* C re-prompts on an unrecognised letter, which costs another key. */
+        /* src/invent.c:2059 — an unrecognised letter says so, then the
+           re-issued prompt forces --More-- on the message. */
+        await You("don't have that object.");
     }
 }
 
@@ -252,7 +459,7 @@ export function useupf(obj, numused) {
 export function stackobj(obj) {
     for (const otmp of (game.level?.objects || []))
         if (otmp.ox === obj.ox && otmp.oy === obj.oy
-            && otmp !== obj && merged(obj, otmp))
+            && otmp !== obj && merged({ o: obj }, { o: otmp }))
             break;
     return;
 }
@@ -524,6 +731,14 @@ export function merged(potmp, pobj) {
     return 0;
 }
 
+// src/invent.c money_cnt() — total gold carried.
+export function money_cnt(invent) {
+    for (const otmp of invent || [])
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            return otmp.quan;
+    return 0;
+}
+
 // src/mkobj.c obj_extract_self() — unlink the object from wherever it lives.
 export function obj_extract_self(obj) {
     switch (obj.where) {
@@ -563,8 +778,9 @@ export function obj_extract_self(obj) {
     obj.where = OBJ_FREE;
 }
 
-// include/obj.h — obj->where values, and the two how_lost values mergable reads.
-const LOST_NONE = 0, LOST_EXPLODING = 1, LOST_THROWN = 2;
+// include/obj.h:481 — how_lost values. These live in js/const.js; the local
+// copy that stood here had LOST_EXPLODING = 1, which is LOST_THROWN's value,
+// so every thrown missile was treated as exploding and never merged.
 
 // include/mondata.h:170 is_reviver()
 const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TROLL);
@@ -638,19 +854,7 @@ function freeinv_core(obj) {
         (game.disp ||= {}).botl = true;
         return;
     }
-    /* src/invent.c freeinv_core() — the u.uhave bookkeeping. Each arm is a
-       specific artifact: the Amulet of Yendor, the Candelabrum, the Bell of
-       Opening, the Book of the Dead, then any oartifact for the quest
-       artifact. An ORDINARY object matches none of them and C does nothing,
-       so recording unconditionally claimed a gap on every single drop. */
-    if (obj.otyp === ONAMES.AMULET_OF_YENDOR
-        || obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
-        || obj.otyp === ONAMES.BELL_OF_OPENING
-        || obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
-        || obj.oartifact) {
-        /* u.uhave is not tracked, and set_artifact_intrinsic is unported */
-        note_unported_invent('freeinv_core:uhave_artifacts');
-    }
+    note_unported_invent('freeinv_core:uhave_artifacts');
 
     if (obj.otyp === ONAMES.LOADSTONE)
         curse(obj);
@@ -737,32 +941,4 @@ export function update_inventory() {
         return;
 
     note_unported_invent('update_inventory:win_update_inventory');
-}
-
-// src/invent.c:2094 silly_thing() — feedback for using a command on an object
-// it does not apply to.
-//
-// The 'P'/'R' vs 'W'/'T' cross-command advice above it in the C is inside
-// `#ifdef OBSOLETE_HANDLING` and is not compiled, so the live function is only
-// the Amulet special case and the generic fallback. Not ported, because it is
-// not built.
-export async function silly_thing(word, otmp) {
-    /* see comment about Amulet of Yendor in objtyp_is_callable(do_name.c);
-       known fakes yield the silly thing feedback */
-    if (word === "call"
-        && (otmp.otyp === ONAMES.AMULET_OF_YENDOR
-            || (otmp.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !otmp.known)))
-        await pline_The("Amulet doesn't like being called names.");
-    else
-        await pline(silly_thing_to.replace('%s', word));
-}
-
-// src/invent.c:2156 is_worn() — is this object equipped in ANY slot?
-//
-// Note the mask includes W_SADDLE and W_WEAPONS, not just armor and
-// accessories, so a wielded weapon and a saddled steed's saddle both count.
-export function is_worn(otmp) {
-    return (otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS))
-            ? true
-            : false;
 }

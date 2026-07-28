@@ -35,6 +35,7 @@ import {
 } from './const.js';
 import { ART_MJOLLNIR } from './artifacts.js';
 import { game } from './gstate.js';
+import { surface } from './dungeon.js';
 import {
     AMULET_OF_YENDOR,
     AKLYS,
@@ -80,18 +81,40 @@ import { donameFresh } from './objnam.js';
 export const INVLET_BASIC = 52;
 export const NOINVSYM = '#';
 
-// C ref: invent.c look_here(), ordinary sighted single-object branch.
+// C ref: invent.c look_here(), ordinary single-object branch.  This helper
+// owns both the sighted and blind output sequence; hack.c supplies the
+// preceding engraving read so it remains ordered between the blind tactile
+// preamble and the final item description.
 export async function look_here_single_object(
     obj,
     state = game,
-    { message } = {},
+    { message, readEngraving } = {},
 ) {
-    if (!obj || obj.nexthere || typeof message !== 'function') {
+    if (!obj || obj.nexthere || typeof message !== 'function'
+        || typeof readEngraving !== 'function') {
         throw new TypeError(
-            'single-object look_here needs one object and a message owner',
+            'single-object look_here needs one object plus message '
+                + 'and engraving owners',
         );
     }
-    await message(`You see here ${donameFresh(obj, state)}.`, state);
+    const blindness = state.u?.uprops?.[BLINDED];
+    const blind = Boolean(
+        (blindness?.intrinsic || blindness?.extrinsic)
+        && !blindness?.blocked,
+    );
+    if (blind) {
+        await message(
+            `You try to feel what is lying here on the ${
+                surface(state.u.ux, state.u.uy, state)
+            }.`,
+            state,
+        );
+    }
+    await readEngraving(state);
+    await message(
+        `You ${blind ? 'feel' : 'see'} here ${donameFresh(obj, state)}.`,
+        state,
+    );
     state.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
 }
 

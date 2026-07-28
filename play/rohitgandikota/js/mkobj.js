@@ -25,13 +25,12 @@ import { is_neuter } from './mondata.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
-import { update_inventory } from './invent.js';
-import { Is_rogue_level, NODIR, CORPSTAT_SPE_VAL , FIRE_RES, P_NONE, NON_PM, OBJ_INVENT } from './const.js';
+import { Is_rogue_level, NODIR, OBJ_FLOOR, In_quest } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
-    rndmonnum, level_difficulty, is_male, is_female , Inhell } from './makemon.js';
-import { is_rider } from './mondata.js';
+    rndmonnum, level_difficulty, is_male, is_female, is_rider,
+} from './makemon.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
    Both sides export function DECLARATIONS, which hoist, so each module sees the
@@ -46,6 +45,7 @@ import { depth } from './dungeon.js';
 export const SPBOOK_no_NOVEL = -OCLASSES.SPBOOK_CLASS;
 
 // include/permonst.h
+const NON_PM = -1;
 // include/hack.h:1189-1200 — corpse/statue gender is stored in obj.spe.
 const CORPSTAT_INIT = 0x08;
 const CORPSTAT_FEMALE = 1, CORPSTAT_MALE = 2, CORPSTAT_NEUTER = 3;
@@ -137,8 +137,15 @@ function nextoid(oldobj, newobj) {
         newdif = oid_price_adjustment(newobj, oid);
     } while (newdif !== olddif && --trylimit >= 0);
     game.context.ident = oid;       /* update 'last ident used' */
+    next_ident();                   /* increment context.ident for next use,
+                                       mkobj.c:549 -- ONE rnd(2) per split.
+                                       (The seed0361 gen-time scare that once
+                                       kept this draw out was a CORPSTAT_NONE
+                                       crash, not a phantom split; see STATUS
+                                       "identification cluster" entries.) */
     return oid;
 }
+
 
 // src/mkobj.c:457 splitobj() — split num items off obj into a new object.
 //
@@ -245,7 +252,7 @@ function is_poisonable(otmp, objects) {
 }
 
 // src/mkobj.c bcsign()
-function bcsign(otmp) {
+export function bcsign(otmp) {
     return (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
 }
 
@@ -510,6 +517,12 @@ export function mksobj_init(otmp, artif) {
         if (artif && !rn2(40 + (10 * nartifact_exist()))) {
             /* mk_artifact() — artifacts not ported */
         }
+        /* src/mkobj.c:1103 — simulate lacquered armor for samurai */
+        if ((game.urole?.mnum === 'PM_SAMURAI'
+             || game.urole?.mnum === PMNAMES.PM_SAMURAI)
+            && otmp.otyp === ONAMES.SPLINT_MAIL
+            && ((game.moves ?? 1) <= 1 || In_quest(game.u?.uz)))
+            otmp.oerodeproof = otmp.rknown = 1;
         break;
 
     case WAND_CLASS:
@@ -582,10 +595,12 @@ const MZ_SMALL = 1;
 // include/objclass.h:14-32 — object materials.
 const LIQUID = 1, PAPER = 5, LEATHER = 7, WOOD = 8, DRAGON_HIDE = 10,
       IRON = 11, COPPER = 13, MITHRIL = 17, PLASTIC = 18, GLASS = 19;
+const P_NONE = 0;                 /* include/skills.h */
+const FIRE_RES = 1;               /* include/prop.h:15 */
 
 
 // src/mkobj.c is_flammable()
-function is_flammable(otmp, objects) {
+export function is_flammable(otmp, objects) {
     const o = objects[otmp.otyp];
     const omat = o.oc_material;
     /* candles burn but take no fire damage and cannot be fireproofed */
@@ -597,18 +612,18 @@ function is_flammable(otmp, objects) {
 }
 
 // src/mkobj.c is_rottable()
-function is_rottable(otmp, objects) {
+export function is_rottable(otmp, objects) {
     const omat = objects[otmp.otyp].oc_material;
     return (omat <= WOOD && omat !== LIQUID) || omat === DRAGON_HIDE;
 }
 
 // include/objclass.h:200-211
-const is_rustprone  = (o, objs) => objs[o.otyp].oc_material === IRON;
-const is_crackable  = (o, objs) => objs[o.otyp].oc_material === GLASS
+export const is_rustprone  = (o, objs) => objs[o.otyp].oc_material === IRON;
+export const is_crackable  = (o, objs) => objs[o.otyp].oc_material === GLASS
                                 && o.oclass === ARMOR_CLASS;
-const is_corrodeable = (o, objs) => objs[o.otyp].oc_material === COPPER
+export const is_corrodeable = (o, objs) => objs[o.otyp].oc_material === COPPER
                                  || objs[o.otyp].oc_material === IRON;
-export const is_damageable = (o, objs) =>
+const is_damageable = (o, objs) =>
     is_rustprone(o, objs) || is_flammable(o, objs) || is_rottable(o, objs)
     || is_corrodeable(o, objs) || is_crackable(o, objs);
 
@@ -1012,6 +1027,10 @@ export function mkobj_at(oclass, x, y, artif) {
 export function place_object(otmp, x, y) {
     otmp.ox = x;
     otmp.oy = y;
+    /* src/mkobj.c place_object() tail — without this, an object that was
+       extracted (where == OBJ_FREE) and then re-floored can't be extracted
+       again: obj_extract_self's OBJ_FREE arm leaves it in level.objects. */
+    otmp.where = OBJ_FLOOR;
     (game.level.objects ||= []).unshift(otmp);
 }
 
@@ -1140,10 +1159,9 @@ function note_unported_obj(what) {
    in js/const.js with the other level tests. The copy that used to
    be here tested game.level.flags.is_rogue_level instead, which is a different
    question and a flag nothing sets. */
-/* Inhell() is include/dungeon.h:140, In_hell(&u.uz). It is currently
-   exported from js/makemon.js -- the wrong home for a dungeon.h macro, but
-   this file already imports from there, so deduplicating costs no new edge.
-   Move both to js/dungeon.js when someone touches that file. */
+function Inhell() {
+    return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
+}
 
 // src/mkobj.c:2676 add_to_container() — link an object into a container's cobj
 // chain, or merge it into an identical stack already there.
@@ -1167,49 +1185,3 @@ export function add_to_container(container, obj) {
     return obj;
 }
 
-
-// src/mkobj.c mkcorpstat() — make a CORPSE or STATUE object.
-//
-// The reached path for an ordinary death needs only mksobj_at, which is
-// ported: x,y are the dead monster's square so the random-placement rloco()
-// branch never runs, and mtmp is Null unless KEEPTRAITS holds, so
-// save_mtraits() is skipped too.
-export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
-    const init = (corpstatflags & CORPSTAT_INIT) !== 0;
-    let otmp;
-
-    if (x === 0 && y === 0) {
-        /* special case - random placement via rloco(), unported */
-        (game.unported ||= new Set()).add('mkobj:mkcorpstat:random_placement');
-        return null;
-    }
-    otmp = mksobj_at(objtype, x, y, init, false);
-    if (!otmp)
-        return null;
-
-    /* record gender and 'historic statue' in overloaded enchantment field */
-    otmp.spe = (corpstatflags & CORPSTAT_SPE_VAL);
-    otmp.norevive = game.mkcorpstat_norevive ? 1 : 0;
-
-    if (mtmp) {
-        /* save_mtraits() stores the monster's details on the corpse */
-        (game.unported ||= new Set()).add('mkobj:mkcorpstat:save_mtraits');
-    }
-
-    if (ptr)
-        otmp.corpsenm = ptr.pmidx;
-
-    return otmp;
-}
-
-// src/mkobj.c:1864 set_bknown() — record that the hero knows obj's B/U/C.
-//
-// The moves > 1 guard keeps the inventory window from being redrawn during
-// game setup, when everything is being assigned for the first time.
-export function set_bknown(obj, onoff) {
-    if (obj.bknown !== onoff) {
-        obj.bknown = onoff;
-        if (obj.where === OBJ_INVENT && game.moves > 1)
-            update_inventory();
-    }
-}

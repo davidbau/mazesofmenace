@@ -1763,8 +1763,8 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 //   killer bee jelly, gelcube_digests()   the boundary rejects both species
 //   castmu() undirected spell             the boundary rejects AT_MAGC
 //   mon_offmap(), wormhitu(), cuss()      unreachable on a fresh D:1 level
-// The mflee draws below are likewise unreachable today, because the boundary
-// rejects mflee.  They stay because that boundary is temporary.
+// A timed fleeing state is reachable for a starting pet after do_attack()'s
+// safe_pet refusal. Other fleeing monsters remain behind the action boundary.
 export async function dochug(monster, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? { rn2 };
@@ -1809,8 +1809,8 @@ export async function dochug(monster, rawEnv = {}) {
 
     wipeEngraving(monster.mx, monster.my, 1, false, env);
     if (monster.mflee) {
-        // The source draws before discovering that starting dogs, cats, and
-        // ponies lack intrinsic teleportation.
+        // C evaluates !rn2(40) before can_teleport(), so starting dogs, cats,
+        // and ponies consume this draw even though they cannot teleport.
         random.rn2(40);
         // m_respond() is inert for all three starting-pet species.
         if (!monster.mfleetim
@@ -2310,7 +2310,7 @@ export async function m_move(monster, rawEnv = {}) {
     // C ref: m_move() prologue.  mintrap() runs first, then the meating
     // countdown, then hides_under (which the boundary rejects), then
     // set_apparxy(), then the tame dispatch.
-    if (await resolveTrappedMonster(monster, env))
+    if (monster.mtrapped && await resolveTrappedMonster(monster, env))
         return MMOVE_NOTHING;
     if (monster.meating) {
         --monster.meating;

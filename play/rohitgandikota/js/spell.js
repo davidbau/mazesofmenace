@@ -2,21 +2,33 @@
 // C ref: src/spell.c
 
 import { game } from './gstate.js';
-import { Confusion, Stunned } from './youprop.js';
 import { pline } from './display.js';
 import { ECMD_OK, weight } from './invent.js';
 import { worn } from './do_wear.js';
 import { ACURR } from './attrib.js';
 import { isqrt } from './hacklib.js';
 import { is_metallic } from './obj.js';
-import { ONAMES } from './objects_data.js';
+import { ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { rnd } from './rng.js';
 import { tty_yn_function } from './tty/topl.js';
-import { ECMD_FAIL, NO_SPELL } from './const.js';
-import { You, Your, You_feel } from './pline.js';
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow, ATR_NONE,
+         ATR_INVERSE } from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
+import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, PICK_NONE,
+         MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
+import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
+import { ECMD_FAIL } from './const.js';
+import { You, Your, You_feel, pline_The } from './pline.js';
 import { acurr, exercise } from './attrib.js';
 import { mksobj } from './mkobj.js';
+import { zapyourself } from './zap.js';
+import { fall_asleep } from './timeout.js';
+import { makeknown } from './o_init.js';
+import { getdir } from './cmd.js';
+import { update_inventory } from './invent.js';
+import { NODIR } from './const.js';
 import { A_WIS } from './const.js';
 import { morehungry } from './eat.js';
 import { ECMD_TIME } from './const.js';
@@ -25,6 +37,7 @@ import { W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF, W_WEP,
          P_CLERIC_SPELL, P_UNSKILLED, P_ISRESTRICTED } from './const.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
+const NO_SPELL = 0;
 
 // src/spell.c spellid() — the spell in slot `spidx`, or NO_SPELL.
 export function spellid(spidx) {
@@ -74,6 +87,71 @@ export function initialspell(obj) {
     }
 }
 
+// src/spell.c:468 study_book() — read a spellbook.
+//
+// The live path: a book whose spell is already fresh in memory prints
+// "You know X quite well already." and asks to refresh. The dull-book
+// sleep gate is real (it keys on the book's shuffled appearance and draws
+// rnd(25) when it fires); the learning occupation itself is recorded.
+export async function study_book(spellbook) {
+    const booktype = spellbook.otyp;
+    const confused = !!game.u.uprops?.CONFUSION;
+
+    /* attempting to read dull book may make hero fall asleep */
+    if (!confused && !game.u.uprops?.SLEEP_RES
+        && OBJ_DESCR(game.objects[booktype]) === 'dull') {
+        let dullbook = rnd(25) - ACURR(A_WIS);
+        if (game.context.spbook?.delay
+            && spellbook === game.context.spbook?.book)
+            dullbook -= rnd(game.objects[booktype].oc_level);
+        if (dullbook > 0) {
+            /* body_part(EYE) pluralized — "eyes" for every current form */
+            await pline("This book is so dull that you can't keep your eyes open.");
+            dullbook += rnd(2 * game.objects[booktype].oc_level);
+            await fall_asleep(-dullbook, true);
+            return 1;
+        }
+    }
+
+    if (game.context.spbook?.delay && !confused
+        && spellbook === game.context.spbook?.book
+        && booktype !== ONAMES.SPE_BLANK_PAPER) {
+        note_unported_spell('study_book:continue_efforts');
+        return 1;
+    }
+
+    if (booktype === ONAMES.SPE_BLANK_PAPER || booktype === ONAMES.SPE_NOVEL) {
+        note_unported_spell('study_book:blank_or_novel');
+        return 1;
+    }
+
+    /* src/spell.c:537 — study time by level; no draw */
+    const lvl = game.objects[booktype].oc_level;
+    const delayTbl = { 1: 1, 2: 1, 3: lvl - 1, 4: lvl - 1, 5: lvl, 6: lvl, 7: 8 };
+    (game.context.spbook ||= {}).delay =
+        -(delayTbl[lvl] ?? 1) * game.objects[booktype].oc_delay;
+
+    /* check to see if we already know it and want to refresh our memory */
+    let i;
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === booktype || spellid(i) === NO_SPELL)
+            break;
+    if (spellid(i) === booktype && spellknow(i) > KEEN / 10) {
+        await You(`know "${OBJ_NAME(game.objects[booktype])}" quite well already.`);
+        makeknown(booktype);
+        if ((await tty_yn_function('Refresh your memory anyway?', 'yn', 'n'))
+            === 'n') {
+            game.context.spbook.delay = 0;
+            return 0;
+        }
+    }
+
+    /* the read-ability roll, the cursed-book arm and the learning
+       occupation follow; each draws */
+    note_unported_spell('study_book:learn');
+    return 1;
+}
+
 // src/spell.c:115 spell_let_to_idx() — 'a'-'z' then 'A'-'Z'.
 function spell_let_to_idx(ilet) {
     let indx = ilet.charCodeAt(0) - 'a'.charCodeAt(0);
@@ -113,36 +191,45 @@ export async function getspell(spell_noRef) {
     if (rejectcasting())
         return false;
 
-    let lets;
-    if (nspells === 1) lets = 'a';
-    else if (nspells < 27) lets = 'a-' + String.fromCharCode(96 + nspells);
-    else if (nspells === 27) lets = 'a-zA';
-    else lets = 'a-zA-' + String.fromCharCode(64 + nspells - 26);
+    /* src/spell.c:744 — MENU_TRADITIONAL asks on the topline; every other
+       menustyle (the default is MENU_FULL) opens the cast menu. */
+    if ((game.rc?.opts?.menustyle || '').toLowerCase().startsWith('t')) {
+        let lets;
+        if (nspells === 1) lets = 'a';
+        else if (nspells < 27) lets = 'a-' + String.fromCharCode(96 + nspells);
+        else if (nspells === 27) lets = 'a-zA';
+        else lets = 'a-zA-' + String.fromCharCode(64 + nspells - 26);
 
-    const qbuf = `Cast which spell? [${lets} *?]`;
+        const qbuf = `Cast which spell? [${lets} *?]`;
 
-    for (let retry_limit = 0; ; ++retry_limit) {
-        if (retry_limit === 10) {
-            await pline("That's enough tries.");
-            return false;
+        for (let retry_limit = 0; ; ++retry_limit) {
+            if (retry_limit === 10) {
+                await pline("That's enough tries.");
+                return false;
+            }
+            const ilet = await tty_yn_function(qbuf, null, '\0');
+            if (ilet === '*' || ilet === '?')
+                break;                  /* use menu mode */
+            if (quitchars.includes(ilet)) {
+                await pline('Never mind.');
+                return false;
+            }
+            const idx = spell_let_to_idx(ilet);
+            if (idx < 0 || idx >= nspells) {
+                await You("don't know that spell.");
+                continue;               /* ask again */
+            }
+            spell_noRef.v = idx;
+            return true;
         }
-        const ilet = await tty_yn_function(qbuf, null, '\0');
-        if (ilet === '*' || ilet === '?') {
-            note_unported_spell('getspell:dospellmenu');
-            return false;
-        }
-        if (quitchars.includes(ilet)) {
-            await pline('Never mind.');
-            return false;
-        }
-        const idx = spell_let_to_idx(ilet);
-        if (idx < 0 || idx >= nspells) {
-            await You("don't know that spell.");
-            continue;                   /* ask again */
-        }
-        spell_noRef.v = idx;
+    }
+
+    const r = await dospellmenu('Choose which spell to cast', SPELLMENU_CAST);
+    if (r.chosen) {
+        spell_noRef.v = r.spell_no;
         return true;
     }
+    return false;
 }
 
 // src/spell.c docast() — the 'Z' command.
@@ -176,10 +263,48 @@ export async function spelleffects(spell_otyp, atme, force) {
     const pseudo = mksobj(force ? spell : spellid(spell), false, false);
     pseudo.blessed = pseudo.cursed = 0;
     pseudo.quan = 20;                   /* do not let useup get it */
+    const otyp = pseudo.otyp;
+    const role_skill = P_SKILL(spell_skilltype(otyp));
 
-    /* the per-spell switch needs zap/potion/dig and the rest of the effect
-       code; every arm of it draws. */
-    note_unported_spell('spelleffects:per-spell dispatch');
+    switch (otyp) {
+    case ONAMES.SPE_HEALING:
+    case ONAMES.SPE_EXTRA_HEALING:
+    case ONAMES.SPE_DRAIN_LIFE:
+    case ONAMES.SPE_STONE_TO_FLESH:
+        if (game.objects[otyp].oc_dir !== NODIR) {
+            if (otyp === ONAMES.SPE_HEALING
+                || otyp === ONAMES.SPE_EXTRA_HEALING) {
+                /* healing and extra healing are actually potion effects,
+                   but they've been extended to take a direction */
+                if (role_skill >= SKILLS.P_SKILLED)
+                    pseudo.blessed = 1;
+            }
+            if (atme) {
+                game.u.dx = game.u.dy = game.u.dz = 0;
+            } else if (!(await getdir(null))) {
+                /* getdir cancelled, re-use previous direction */
+                await pline_The('magical energy is released!');
+            }
+            if (!game.u.dx && !game.u.dy && !game.u.dz) {
+                const dmg = await zapyourself(pseudo, true);
+                if (dmg) {
+                    /* losehp("zapped himself with a spell") */
+                    note_unported_spell('spelleffects:losehp');
+                }
+            } else {
+                /* weffects — the beam engine */
+                note_unported_spell('spelleffects:weffects');
+            }
+        } else {
+            note_unported_spell('spelleffects:weffects');
+        }
+        update_inventory();     /* spell may modify inventory */
+        break;
+    default:
+        /* the remaining arms need seffects/peffects/the beam engine */
+        note_unported_spell('spelleffects:per-spell dispatch');
+        break;
+    }
     return ECMD_TIME;
 }
 
@@ -218,7 +343,7 @@ function spellknow(spidx) {
 // Returns { rejected, res, energy } because C uses two out-parameters.
 export async function spelleffects_check(spell, energyRef) {
     let res = ECMD_OK;
-    const confused = Confusion();
+    const confused = !!game.u?.uprops?.CONFUSION;
 
     energyRef.v = 0;
 
@@ -305,7 +430,7 @@ export async function spelleffects_check(spell, energyRef) {
 
 // src/spell.c rejectcasting() — Stunned, or no free hands.
 function rejectcasting() {
-    if (Stunned()) {
+    if (game.u?.uprops?.STUNNED) {
         note_unported_spell('rejectcasting:Stunned message');
         return true;
     }
@@ -423,12 +548,137 @@ const P_SKILL = (type) => game.u.weapon_skills?.[type]?.skill ?? P_ISRESTRICTED;
 // src/role.c Role_if()
 const Role_if = (pm) => game.urole?.malenum === pm || game.urole?.mnum === pm;
 
+// src/spell.c:25 spellname(), :26 spellet()
+const spellname = (spell) => {
+    const ocl = game.objects[spellid(spell)];
+    return OBJ_NAME(ocl) ?? '';
+};
+const spellet = (spell) =>
+    String.fromCharCode(spell < 26 ? 97 + spell : 65 + spell - 26);
+
+// src/spell.c:669 age_spells() — every pass through the move loop costs one
+// turn of memory for every known spell, whatever the hero is doing.
+export function age_spells() {
+    for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++)
+        if (spellknow(i))
+            game.spl_book[i].sp_know--;         /* decrnknow(i) */
+}
+
+// src/spell.c:832 spelltypemnemonic()
+function spelltypemnemonic(skill) {
+    switch (skill) {
+    case SKILLS.P_ATTACK_SPELL:      return 'attack';
+    case SKILLS.P_HEALING_SPELL:     return 'healing';
+    case SKILLS.P_DIVINATION_SPELL:  return 'divination';
+    case SKILLS.P_ENCHANTMENT_SPELL: return 'enchantment';
+    case SKILLS.P_CLERIC_SPELL:      return 'clerical';
+    case SKILLS.P_ESCAPE_SPELL:      return 'escape';
+    case SKILLS.P_MATTER_SPELL:      return 'matter';
+    default:                         return '';
+    }
+}
+
+// src/spell.c:2295 spellretention() — the "91%-100%" column. The range width
+// depends on the hero's skill in the spell's school.
+function spellretention(idx) {
+    let skill = P_SKILL(spell_skilltype(spellid(idx)));
+    skill = Math.max(skill, P_UNSKILLED); /* restricted same as unskilled */
+    const turnsleft = spellknow(idx);
+
+    if (turnsleft < 1)
+        return '(gone)';
+    if (turnsleft >= KEEN)
+        return '100%';
+    let percent = Math.trunc((turnsleft - 1) / (KEEN / 100)) + 1;
+    const accuracy = (skill === SKILLS.P_EXPERT) ? 2
+                     : (skill === SKILLS.P_SKILLED) ? 5
+                       : (skill === SKILLS.P_BASIC) ? 10
+                         : 25;
+    /* round up to the high end of this range */
+    percent = accuracy * (Math.trunc((percent - 1) / accuracy) + 1);
+    return `${percent - accuracy + 1}%-${percent}%`;
+}
+
+// src/spell.c:2058 SPELLMENU codes (include/spell.h)
+const SPELLMENU_CAST = -2, SPELLMENU_VIEW = -1, SPELLMENU_SORT = -3;
+
+// src/spell.c:2075 dospellmenu()
+async function dospellmenu(prompt, splaction) {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    /* iflags.menu_tab_sep is off on tty */
+    const header = (splaction === SPELLMENU_DUMP ? '' : '    ')
+        + 'Name'.padEnd(20) + ' Level ' + 'Category'.padEnd(12)
+        + ' Fail Retention';
+    /* C add_menu_heading() stamps iflags.menu_headings — ATR_INVERSE with
+       NO_COLOR (src/options.c:7188) — on the whole line. */
+    tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, header,
+                 MENU_ITEMFLAGS_NONE);
+    for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
+        const buf = spellname(i).padEnd(20)
+            + '  ' + String(spellev(i)).padStart(2)
+            + '   ' + spelltypemnemonic(spell_skilltype(spellid(i))).padEnd(12)
+            + ' ' + String(100 - percent_success(i)).padStart(3) + '%'
+            + ' ' + spellretention(i).padStart(9);
+        tty_add_menu(win, null, i + 1, spellet(i), 0, ATR_NONE, NO_COLOR,
+                     buf, (i === splaction) ? MENU_ITEMFLAGS_SELECTED
+                                            : MENU_ITEMFLAGS_NONE);
+    }
+    let how = PICK_ONE;
+    if (splaction === SPELLMENU_VIEW) {
+        if (spellid(1) === NO_SPELL) {
+            /* only one spell => nothing to swap with */
+            how = PICK_NONE;
+        } else {
+            /* more than 1 spell, add an extra menu entry */
+            tty_add_menu(win, null, SPELLMENU_SORT + 1, '+', 0, ATR_NONE,
+                         NO_COLOR, '[sort spells]', MENU_ITEMFLAGS_NONE);
+        }
+    }
+    tty_end_menu(win, prompt);
+
+    const picks = await tty_select_menu(win, how);
+    tty_destroy_nhwindow(win);
+    if (picks.length > 0) {
+        let spell_no = picks[0] - 1;
+        if (picks.length > 1 && spell_no === splaction)
+            spell_no = picks[1] - 1;
+        if (spell_no === splaction)
+            return { chosen: false, spell_no };
+        return { chosen: true, spell_no };
+    } else if (splaction >= 0) {
+        /* explicit de-selection of preselected spell means that
+           user is still swapping but not for the current spell */
+        return { chosen: true, spell_no: splaction };
+    }
+    return { chosen: false, spell_no: -1 };
+}
+const SPELLMENU_DUMP = -4;
+
 // src/spell.c:2024 dovspell() — '+', list known spells.
-// Only the "no spells" path is ported; the menu path lands with the tty menu
-// system. A Tourist starts with no spells, which is the case seed8000 hits.
 export async function dovspell() {
     if (spellid(0) === NO_SPELL) {
         await pline("You don't know any spells right now.");
+    } else {
+        for (;;) {
+            const r = await dospellmenu('Currently known spells',
+                                        SPELLMENU_VIEW);
+            if (!r.chosen)
+                break;
+            if (r.spell_no === SPELLMENU_SORT) {
+                /* spellsortmenu() offers the sort orders */
+                note_unported_spell('dovspell:spellsortmenu');
+            } else {
+                const q = `Reordering spells; swap '${spellet(r.spell_no)}' with`;
+                const r2 = await dospellmenu(q, r.spell_no);
+                if (!r2.chosen)
+                    break;
+                const tmp = game.spl_book[r.spell_no];
+                game.spl_book[r.spell_no] = game.spl_book[r2.spell_no];
+                game.spl_book[r2.spell_no] = tmp;
+            }
+        }
     }
     return ECMD_OK;
 }

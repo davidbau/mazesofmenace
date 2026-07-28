@@ -21,6 +21,10 @@ import {
 } from './const.js';
 import { effective_attribute, init_attr, vary_init_attr } from './attrib.js';
 import { game } from './gstate.js';
+import {
+    inv_weight as initial_inv_weight,
+    weight_cap as initial_weight_cap,
+} from './hack.js';
 import { resetInventory } from './invent.js';
 import { discover_object } from './o_init.js';
 import { JAPANESE_ITEM_TYPES } from './objnam_data.js';
@@ -226,6 +230,10 @@ export function u_init_role(
 ) {
     const env = normalizedEnvironment(state, random, options);
     state.moves = 1;
+    // C decl.c initializes gh.hero_seq to moves << 3 before new-game role
+    // inventory setup. Keep the two turn-sequence roots synchronized at the
+    // JS point which establishes the source's initial moves value.
+    state.hero_seq = state.moves << 3;
 
     switch (state.urole.mnum) {
     case PM_ARCHEOLOGIST:
@@ -355,35 +363,7 @@ export function u_init_race(
     return state;
 }
 
-function effectiveStrengthForCapacity(state) {
-    const strength = effective_attribute(state, A_STR);
-    if (strength <= 18) return strength;
-    if (strength <= 121) return 19 + Math.trunc(strength / 50);
-    return Math.min(strength, 125) - 100;
-}
-
-// This is weight_cap() at the new-game boundary: the hero is not polymorphed,
-// levitating, mounted, wounded, or wearing attribute-changing gear yet.
-export function initial_weight_cap(state = game) {
-    return Math.min(
-        1000,
-        25 * (effectiveStrengthForCapacity(state)
-            + effective_attribute(state, A_CON)) + 50,
-    );
-}
-
-export function initial_inv_weight(state = game) {
-    let weight = 0;
-    for (let object = state.invent; object; object = object.nobj) {
-        if (object.oclass === O.COIN_CLASS)
-            weight += Math.trunc((Math.trunc(object.quan) + 50) / 100);
-        else
-            weight += Math.trunc(object.owt ?? 0);
-    }
-    state.gw ??= {};
-    state.gw.wc = initial_weight_cap(state);
-    return weight - state.gw.wc;
-}
+export { initial_inv_weight, initial_weight_cap };
 
 function adjustCarryAttribute(index, state) {
     const u = state.u;
@@ -515,5 +495,4 @@ export const _uInitInventoryAttrInternals = Object.freeze({
     adjustCarryAttribute,
     armorBonus,
     effectiveAttribute: effective_attribute,
-    effectiveStrengthForCapacity,
 });

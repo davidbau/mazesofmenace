@@ -1,4 +1,3 @@
-import { G_FREQ } from './const.js';
 // mondata.js — the "what kind of creature is this" predicates.
 // C ref: include/mondata.h (they are macros there) and src/mondata.c
 //
@@ -11,16 +10,15 @@ import { G_FREQ } from './const.js';
 // exception is pronoun_gender() at the bottom, which rolls rn2(4) when the
 // hero is hallucinating.
 
-import { PMNAMES, MONSYMS, MFLAGS, ATTKS, mons } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
-import { Upolyd } from './const.js';
 import { rn2 } from './rng.js';
 import { Hallucination } from './youprop.js';
 import { canspotmon } from './display.js';
 import { G_UNIQ, PRONOUN_NO_IT, PRONOUN_HALLU } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_vampshifter } from './monst.js';
-import { NATTK, MATTK_AATYP, MATTK_ADTYP, MATTK_DAMN, MATTK_DAMD } from './const.js';
+import { NATTK } from './const.js';
 import { MON_WEP } from './monst.js';
 import { which_armor } from './worn.js';
 import { W_ARM, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
@@ -147,22 +145,6 @@ export const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
 
 // include/mondata.h:19,20,27 — placement predicates read by pm_to_humidity().
 export const is_flyer   = (ptr) => (ptr.mflags1 & MFLAGS.M1_FLY) !== 0;
-
-// include/mondata.h:144 likes_gems()
-export const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
-
-// include/mondata.h:149 is_unicorn() — defined in terms of likes_gems(),
-// not a flag of its own, so the two belong together.
-export const is_unicorn = (ptr) =>
-    ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
-
-// include/mondata.h:161 is_rider() — Death, Famine or Pestilence.
-//
-// C compares the permonst POINTER against &mons[PM_*]; ours compares pmidx,
-// the same identity test over an array.
-export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
-                       || ptr.pmidx === PMNAMES.PM_FAMINE
-                       || ptr.pmidx === PMNAMES.PM_PESTILENCE;
 // include/mondata.h:22 is_clinger()
 export const is_clinger = (ptr) => (ptr.mflags1 & MFLAGS.M1_CLING) !== 0;
 export const is_floater = (ptr) => ptr.mlet === MONSYMS.S_EYE
@@ -342,15 +324,6 @@ export function attacktype_fordmg(ptr, atyp, dtyp) {
     return null;
 }
 
-// include/mondata.h:87 is_armed() — attacktype(ptr, AT_WEAP).
-//
-// Defined THROUGH attacktype rather than by scanning mattk inline. A copy in
-// js/monmove.js used ptr.mattk.some(a => a[0] === AT_WEAP), which drops both
-// of attacktype_fordmg's guards: the NATTK bound and the null-entry skip. On
-// a permonst whose mattk array is longer than NATTK or holds a null slot the
-// two disagree, and the inline form throws rather than returning false.
-export const is_armed = (ptr) => attacktype(ptr, ATTKS.AT_WEAP);
-
 // src/mondata.c:54 attacktype() — does this monster type have such an attack?
 export function attacktype(ptr, atyp) {
     return attacktype_fordmg(ptr, atyp, ATTKS.AD_ANY) !== null;
@@ -445,28 +418,34 @@ export function pronoun_gender(mtmp, pg_flags) {
             || type_is_pname(mtmp.data)) ? (mtmp.female | 0) : 2;
 }
 
-// src/mondata.c:720 max_passive_dmg() — the worst the DEFENDER's passive
-// could do to the attacker, used by dog_move to let a pet decline a foe
-// whose passive alone would kill it.
-//
-// Two loops. The first counts how many of the attacker's attacks could
-// trigger a passive at all; the second finds the defender's passive slot
-// (AT_NONE or AT_BOOM) and computes its damage, then multiplies by that
-// count. Note the damage falls back to mlevel + 1 when damn is zero, the
-// same shape passivemm uses.
-//
-// completelyburns/rots/rusts are unported; those arms set dmg to the
-// attacker's full hit points, so they matter only against golems.
-export function max_passive_dmg(mdef, magr) {
-    let multi2 = 0, dmg = 0;
+// include/mondata.h:123 cantwield()
+export const cantwield = (ptr) => nohands(ptr) || verysmall(ptr);
 
-    /* each attack by magr can result in passive damage */
-    for (let i = 0; i < NATTK; i++) {
-        switch (magr.data.mattk[i][MATTK_AATYP]) {
-        case ATTKS.AT_CLAW: case ATTKS.AT_BITE: case ATTKS.AT_KICK:
-        case ATTKS.AT_BUTT: case ATTKS.AT_TUCH: case ATTKS.AT_STNG:
-        case ATTKS.AT_HUGS: case ATTKS.AT_ENGL: case ATTKS.AT_TENT:
-        case ATTKS.AT_WEAP:
+// include/mondata.h:223 — golems that leave nothing behind for the listed
+// damage type.
+export const completelyburns = (ptr) =>
+    ptr === game.mons[PMNAMES.PM_PAPER_GOLEM]
+    || ptr === game.mons[PMNAMES.PM_STRAW_GOLEM];
+export const completelyrots = (ptr) =>
+    ptr === game.mons[PMNAMES.PM_WOOD_GOLEM]
+    || ptr === game.mons[PMNAMES.PM_LEATHER_GOLEM];
+export const completelyrusts = (ptr) =>
+    ptr === game.mons[PMNAMES.PM_IRON_GOLEM];
+
+// src/mondata.c:720 max_passive_dmg() — the worst a defender's passive
+// counterattack could do, times the attacker's number of striking attacks.
+// dog_move reads it to decide whether attacking might be suicide. No draws.
+export function max_passive_dmg(mdef, magr) {
+    const A = ATTKS;
+    let multi2 = 0;
+    const magrAtk = game.mons[magr.mnum].mattk;
+    const mdefData = game.mons[mdef.mnum];
+
+    for (let i = 0; i < 6; i++) {
+        switch (magrAtk[i][0]) {
+        case A.AT_CLAW: case A.AT_BITE: case A.AT_KICK: case A.AT_BUTT:
+        case A.AT_TUCH: case A.AT_STNG: case A.AT_HUGS: case A.AT_ENGL:
+        case A.AT_TENT: case A.AT_WEAP:
             multi2++;
             break;
         default:
@@ -474,24 +453,23 @@ export function max_passive_dmg(mdef, magr) {
         }
     }
 
-    for (let i = 0; i < NATTK; i++) {
-        const aatyp = mdef.data.mattk[i][MATTK_AATYP];
-        if (aatyp === ATTKS.AT_NONE || aatyp === ATTKS.AT_BOOM) {
-            const adtyp = mdef.data.mattk[i][MATTK_ADTYP];
-            if (adtyp === ATTKS.AD_FIRE || adtyp === ATTKS.AD_DCAY
-                || adtyp === ATTKS.AD_RUST) {
-                /* completelyburns/rots/rusts would set dmg = magr.mhp here */
-                (game.unported ||= new Set()).add('max_passive_dmg:golem_arms');
-            }
-            if ((adtyp === ATTKS.AD_ACID && !resists_acid(magr))
-                || (adtyp === ATTKS.AD_COLD && !resists_cold(magr))
-                || (adtyp === ATTKS.AD_FIRE && !resists_fire(magr))
-                || (adtyp === ATTKS.AD_ELEC && !resists_elec(magr))
-                || adtyp === ATTKS.AD_PHYS) {
-                dmg = mdef.data.mattk[i][MATTK_DAMN];
+    let dmg = 0;
+    for (let i = 0; i < 6; i++) {
+        const [aatyp, adtyp, damn, damd] = mdefData.mattk[i];
+        if (aatyp === A.AT_NONE || aatyp === A.AT_BOOM) {
+            if ((adtyp === A.AD_FIRE && completelyburns(game.mons[magr.mnum]))
+                || (adtyp === A.AD_DCAY && completelyrots(game.mons[magr.mnum]))
+                || (adtyp === A.AD_RUST && completelyrusts(game.mons[magr.mnum]))) {
+                dmg = magr.mhp;
+            } else if ((adtyp === A.AD_ACID && !resists_acid(magr))
+                       || (adtyp === A.AD_COLD && !resists_cold(magr))
+                       || (adtyp === A.AD_FIRE && !resists_fire(magr))
+                       || (adtyp === A.AD_ELEC && !resists_elec(magr))
+                       || adtyp === A.AD_PHYS) {
+                dmg = damn;
                 if (!dmg)
-                    dmg = mdef.data.mlevel + 1;
-                dmg *= mdef.data.mattk[i][MATTK_DAMD];
+                    dmg = mdefData.mlevel + 1;
+                dmg *= damd;
             }
             dmg *= multi2;
             break;
@@ -500,64 +478,26 @@ export function max_passive_dmg(mdef, magr) {
     return dmg;
 }
 
-// include/mondata.h:108 is_golem()
-export const is_golem = (ptr) => ptr.mlet === MONSYMS.S_GOLEM;
+// src/mondata.c:654 sticks() — grabs and holds its victim.
+export const sticks = (ptr) =>
+    (dmgtype(ptr, ATTKS.AD_STCK)
+     || (dmgtype(ptr, ATTKS.AD_WRAP) && !attacktype(ptr, ATTKS.AT_ENGL))
+     || attacktype(ptr, ATTKS.AT_HUGS));
 
-// src/mon.c:3181 corpse_chance() — will this death leave a corpse?
-//
-// The tail is what runs for an ordinary monster and it ENDS IN A DRAW:
-// !rn2(2 + rare + verysmall). That draw happens on every ordinary kill, so
-// skipping this function costs one RNG call per death -- which now matters,
-// because pets kill things.
-//
-// The lich/Vlad dust message and the gas-spore AT_BOOM explosion are earlier
-// arms that record; neither is reachable by an early-dungeon pet fight.
-export function corpse_chance(mon, magr, was_swallowed) {
-    const mdat = mon.data;
+// include/mondata.h:232 vegan() / :239 vegetarian() — conduct tests used for
+// corpses, tins and digestion.
+export const vegan = (ptr) =>
+    ptr.mlet === MONSYMS.S_BLOB || ptr.mlet === MONSYMS.S_JELLY
+    || ptr.mlet === MONSYMS.S_FUNGUS || ptr.mlet === MONSYMS.S_VORTEX
+    || ptr.mlet === MONSYMS.S_LIGHT
+    || (ptr.mlet === MONSYMS.S_ELEMENTAL
+        && ptr !== game.mons[PMNAMES.PM_STALKER])
+    || (ptr.mlet === MONSYMS.S_GOLEM
+        && ptr !== game.mons[PMNAMES.PM_FLESH_GOLEM]
+        && ptr !== game.mons[PMNAMES.PM_LEATHER_GOLEM])
+    || noncorporeal(ptr);
 
-    if (mdat.pmidx === PMNAMES.PM_VLAD_THE_IMPALER
-        || mdat.mlet === MONSYMS.S_LICH) {
-        (game.unported ||= new Set()).add('corpse_chance:crumbles_to_dust');
-        return false;
-    }
-
-    /* Gas spores always explode upon death */
-    for (let i = 0; i < NATTK; i++) {
-        if (mdat.mattk[i][MATTK_AATYP] === ATTKS.AT_BOOM) {
-            (game.unported ||= new Set()).add('corpse_chance:gas_spore_boom');
-            return false;
-        }
-    }
-
-    /* LEVEL_SPECIFIC_NOCORPSE() needs the endgame/quest level tests */
-
-    if (((bigmonst(mdat) || mdat.pmidx === PMNAMES.PM_LIZARD) && !mon.mcloned)
-        || is_golem(mdat) || is_rider(mdat) || mon.isshk)
-        return true;
-
-    const tmp = 2 + (((mdat.geno & G_FREQ) < 2) ? 1 : 0)
-                  + (verysmall(mdat) ? 1 : 0);
-    return !rn2(tmp);
-}
-
-// include/mondata.h:123 cantwield()
-export const cantwield = (ptr) => nohands(ptr) || verysmall(ptr);
-
-// src/mondata.c:1359 raceptr() — the permonst for a monster's RACE.
-//
-// For the un-polymorphed hero this is the race's monster (human, elf, dwarf,
-// gnome, orc), NOT the role's. Polymorphed, or for any other monster, it is
-// just mtmp->data.
-export function raceptr(mtmp) {
-    if (mtmp === game.youmonst && !Upolyd(game.u))
-        return mons[game.urace.mnum];
-    return mtmp.data;
-}
-
-// include/mondata.h:53 nolimbs() — note the C tests EQUALITY against the mask,
-// not a non-zero AND: M1_NOLIMBS is two bits (M1_NOTAKE|M1_NOHANDS-ish), so a
-// monster with only one of them is NOT nolimbs.
-export const nolimbs = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOLIMBS) === MFLAGS.M1_NOLIMBS;
-
-// include/mondata.h:96 is_were()
-export const is_were = (ptr) => (ptr.mflags2 & MFLAGS.M2_WERE) !== 0;
+export const vegetarian = (ptr) =>
+    vegan(ptr)
+    || (ptr.mlet === MONSYMS.S_PUDDING
+        && ptr !== game.mons[PMNAMES.PM_BLACK_PUDDING]);

@@ -7,11 +7,16 @@
 // reads as an attack or as a pass.
 
 import { game } from './gstate.js';
-import { M_ATTK_MISS, MATTK_AATYP, MATTK_ADTYP, MATTK_DAMN, MATTK_DAMD } from './const.js';
 import { is_animal, perceives, dmgtype, gender } from './mondata.js';
 import { poly_gender } from './polyself.js';
 import { Invis, See_invisible } from './youprop.js';
 import { ATTKS, MONSYMS, PMNAMES } from './monst_data.js';
+import { W_ARMOR, W_AMUL } from './const.js';
+import { ONAMES } from './objects_data.js';
+
+function note_unported_mhitu(what) {
+    (game.unported ||= new Set()).add(what);
+}
 
 // src/sys.c:100 sysopt.seduce — "if it's compiled in, default to on", and the
 // SEDUCE=0 line in sys/unix/sysconf is commented out, so this is 1.
@@ -47,7 +52,7 @@ export function could_seduce(magr, mdef, mattk) {
         gendef = gender(mdef);
     }
 
-    let adtyp = mattk ? mattk[MATTK_ADTYP]
+    let adtyp = mattk ? mattk.adtyp
               : dmgtype(pagr, ATTKS.AD_SSEX) ? ATTKS.AD_SSEX
               : dmgtype(pagr, ATTKS.AD_SEDU) ? ATTKS.AD_SEDU
               : ATTKS.AD_PHYS;
@@ -70,59 +75,29 @@ export function could_seduce(magr, mdef, mattk) {
          : (pagr.mlet === MONSYMS.S_NYMPH) ? 2 : 0;
 }
 
-// src/mhitu.c getmattk() — pick WHICH of the monster's NATTK attacks this
-// pass uses, substituting a different one in a few situations.
-//
-// mattackm's loop calls this every iteration, so it is not optional.
-//
-// THE COPY BEFORE MUTATION IS LOAD BEARING. attk starts as a reference into
-// mons[].mattk, the shared species table. C copies into alt_attk_buf before
-// changing adtyp or aatyp precisely so the table is not corrupted for every
-// other monster of that species. A port that mutated in place would poison
-// the table permanently and the damage would show up far from here.
-//
-// For an ordinary monster none of the four substitutions fire and this
-// returns the base attack unchanged.
-export function getmattk(magr, mdef, indx, prev_result, alt_attk_buf) {
-    const mptr = magr.data;
-    let attk = mptr.mattk[indx];
-    const udefend = (mdef === game.youmonst);
+// src/mhitu.c:1089 magic_negation() — the magic cancellation factor worn
+// armor gives its wearer; the best a_can among worn pieces. The extrinsic
+// Protection arms (rings, amulet of guarding, divine protection) key on
+// state fresh heroes lack and are recorded when present.
+export function magic_negation(mon) {
+    const is_you = (mon === null || mon === game.u || mon === game.youmonst);
+    let mc = 0;
 
-    /* honor SEDUCE=0 -- SYSOPT_SEDUCE is 1 (src/sys.c:100 and the SEDUCE=0
-       line in sys/unix/sysconf is commented out), so this whole block is
-       skipped rather than being a gap. */
-
-    /* prevent a monster with two consecutive disease or hunger attacks
-       from hitting with both of them on the same turn; if the first has
-       already hit, switch to a stun attack for the second */
-    if (indx > 0 && prev_result[indx - 1] > M_ATTK_MISS
-        && (attk[MATTK_ADTYP] === ATTKS.AD_DISE || attk[MATTK_ADTYP] === ATTKS.AD_PEST
-            || attk[MATTK_ADTYP] === ATTKS.AD_FAMN)
-        && attk[MATTK_ADTYP] === mptr.mattk[indx - 1].adtyp) {
-        Object.assign(alt_attk_buf, attk);
-        attk = alt_attk_buf;
-        attk[MATTK_ADTYP] = ATTKS.AD_STUN;
-
-    /* make drain-energy damage be somewhat in proportion to energy */
-    } else if (attk[MATTK_ADTYP] === ATTKS.AD_DREN && udefend) {
-        /* needs u.uen and u.ulevel scaling */
-        (game.unported ||= new Set()).add('getmattk:AD_DREN_scaling');
-
-    } else if (magr.mspec_used && (attk[MATTK_AATYP] === ATTKS.AT_ENGL
-                                   || attk[MATTK_AATYP] === ATTKS.AT_HUGS
-                                   || attk[MATTK_ADTYP] === ATTKS.AD_STCK
-                                   || attk[MATTK_ADTYP] === ATTKS.AD_POLY)) {
-        /* a special attack is on cooldown; substitute an ordinary one */
-        Object.assign(alt_attk_buf, attk);
-        attk = alt_attk_buf;
-        if (attk[MATTK_ADTYP] === ATTKS.AD_ACID || attk[MATTK_ADTYP] === ATTKS.AD_ELEC
-            || attk[MATTK_ADTYP] === ATTKS.AD_COLD || attk[MATTK_ADTYP] === ATTKS.AD_FIRE) {
-            attk[MATTK_AATYP] = ATTKS.AT_TUCH;
-        } else {
-            attk[MATTK_AATYP] = ATTKS.AT_CLAW; /* attack message will be "<foo> hits" */
-            attk[MATTK_ADTYP] = ATTKS.AD_PHYS;
+    const chain = is_you ? (game.invent || []) : (mon.minvent || []);
+    for (const o of chain) {
+        if ((o.owornmask ?? 0) & W_ARMOR) {
+            const armpro = game.objects[o.otyp].a_can | 0;
+            if (armpro > mc)
+                mc = armpro;
+        } else if ((o.owornmask ?? 0) & W_AMUL) {
+            if (o.otyp === ONAMES.AMULET_OF_GUARDING)
+                note_unported_mhitu('magic_negation:amulet_of_guarding');
         }
     }
 
-    return attk;
+    if (is_you && (game.u.uprops?.PROTECTION?.extrinsic
+                   || game.u.uspellprot))
+        note_unported_mhitu('magic_negation:protection');
+
+    return mc;
 }

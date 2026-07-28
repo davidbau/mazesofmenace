@@ -1,5 +1,3 @@
-import { dowield, doquiver_core } from './wield.js';
-import { doread } from './read.js';
 import { seemimic } from './mon.js';
 // cmd.js — Command dispatch and movement.
 // C ref: cmd.c rhack(), hack.c domove().
@@ -9,8 +7,6 @@ import { seemimic } from './mon.js';
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
-import { wear_ok, puton_ok, remove_ok, takeoff_ok } from './do_wear.js';
-import { Confusion, Stunned, Fumbling } from './youprop.js';
 import { dodrop } from './do.js';
 import { any_obj_ok } from './invent.js';
 import { dodown, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
@@ -23,12 +19,12 @@ import { is_safemon } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
-import { is_hider, verysmall , bigmonst } from './mondata.js';
-import { bad_rock, nomul } from './hack.js';
+import { is_hider, verysmall } from './mondata.js';
+import { bad_rock, nomul, domove_attackmon_at, spoteffects } from './hack.js';
 import { curr_mon_load } from './mon.js';
-import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE } from './const.js';
+import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { x_monnam } from './do_name.js';
+import { x_monnam, docallcmd } from './do_name.js';
 import { You } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
@@ -39,36 +35,32 @@ sp_lev_wire_mon({ is_pool, is_lava, m_at });
 mklev_wire_mon({ is_pool, is_lava });
 dokick_wire({ stairway_at, t_at });
 do_wire_dokick(ship_object);
-import { wiz_level_change, wiz_level_tele } from './wizcmds.js';
+import { wiz_level_change, wiz_level_tele, wiz_wish } from './wizcmds.js';
 import { tty_yn_function } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
-import {
-    tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
-    tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-    NHW_TEXT, NHW_MENU, ATR_NONE,
-} from './tty/wintty.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
+import { doread } from './read.js';
+import { dodrink } from './potion.js';
 import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
-import { dothrow } from './dothrow.js';
+import { dothrow, dofire } from './dothrow.js';
 import { getpos } from './getpos.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, _buildScreenOutput,
-         tty_clear_nhwindow_message,
-         TOPLINE_SPECIAL_PROMPT , TOPLINE_EMPTY} from './display.js';
+import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
-         IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
+import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { dowieldquiver } from './wield.js';
+import { dozap } from './zap.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -136,7 +128,72 @@ function confdir(force_impairment) {
 
 // src/hack.c u_maybe_impaired()
 function u_maybe_impaired() {
-    return !!(Confusion() || Stunned());
+    return !!(game.u.uprops?.CONFUSION || game.u.uprops?.STUNNED);
+}
+
+// src/cmd.c:3919 show_direction_keys() — the compass rose. The default
+// keybindings put the plain letters on the movement commands, so visctrl of
+// each is the letter itself; rebinding is not ported.
+function show_direction_keys(win, centerchar, nodiag) {
+    if (!centerchar)
+        centerchar = ' ';
+
+    if (nodiag) {
+        tty_putstr(win, 0, "             k   ");
+        tty_putstr(win, 0, "             |   ");
+        tty_putstr(win, 0, `          h- ${centerchar} -l`);
+        tty_putstr(win, 0, "             |   ");
+        tty_putstr(win, 0, "             j   ");
+    } else {
+        tty_putstr(win, 0, "          y  k  u");
+        tty_putstr(win, 0, "           \\ | / ");
+        tty_putstr(win, 0, `          h- ${centerchar} -l`);
+        tty_putstr(win, 0, "           / | \\ ");
+        tty_putstr(win, 0, "          b  j  n");
+    }
+}
+
+/*
+ * src/cmd.c:4171 help_dir() — the cmdassist panel for an invalid direction.
+ *
+ * Only the non-prefix arm is reachable: every caller here passes the ESC
+ * spkey, so prefixhandling is false, and getdir always passes sym='\0' (its
+ * caller's prompt never starts with '^'), which skips the are-you-trying-
+ * to-use-^X dowhatdoes arm entirely.
+ */
+async function help_dir(sym, msg) {
+    const win = tty_create_nhwindow(NHW_TEXT);
+    /* include/hack.h:1414 NODIAG() — grid bug only */
+    const nodiag = (game.u.umonnum === PMNAMES.PM_GRID_BUG);
+
+    if (msg) {
+        tty_putstr(win, 0, `cmdassist: ${msg}`);
+        tty_putstr(win, 0, "");
+    }
+
+    tty_putstr(win, 0, `Valid direction keys${nodiag ? " in your current form" : ""} are:`);
+    show_direction_keys(win, '.', nodiag);
+
+    tty_putstr(win, 0, "");
+    tty_putstr(win, 0, "          <  up");
+    tty_putstr(win, 0, "          >  down");
+    /* C: "       %4s  direct at yourself" with visctrl(NHKF_GETDIR_SELF),
+       which is "." under the default bindings */
+    tty_putstr(win, 0, "          .  direct at yourself");
+
+    if (msg) {
+        /* non-null msg means that this wasn't an explicit user request */
+        tty_putstr(win, 0, "");
+        tty_putstr(win, 0,
+               "(Suppress this message with !cmdassist in config file.)");
+    }
+    tty_display_nhwindow(win);
+    await nhgetch();
+    while (tty_next_page(win))
+        await nhgetch();
+    tty_destroy_nhwindow(win);
+    await docrt();
+    return true;
 }
 
 // src/cmd.c getdir() — read a direction key and set u.dx/u.dy/u.dz.
@@ -166,7 +223,21 @@ export async function getdir(s) {
         return true;
     }
     if (!isMovementKey(dirsym)) {
-        /* "What a strange direction!" — no draw, no turn */
+        /* src/cmd.c:4095-4110 — a key in quitchars (" \r\n\033",
+           src/decl.c:96) cancels quietly; anything else gets the cmdassist
+           help panel (iflags.cmdassist is opt_out, default On) or the
+           "What a strange direction!" pline when assistance is off. The
+           '?' help-request retry is recorded; no recorded session asks. */
+        if (!" \r\n\x1b".includes(dirsym)) {
+            let did_help = false;
+            if (dirsym === '?' || (game.iflags.cmdassist !== false)) {
+                did_help = await help_dir('\0', "Invalid direction key!");
+                if (dirsym === '?')
+                    note_unported_cmd('getdir:help_retry');
+            }
+            if (!did_help)
+                await pline("What a strange direction!");
+        }
         return false;
     }
     game.u.dx = DIR_DX[dirsym];
@@ -357,10 +428,67 @@ function read_ok(obj) {
 
 /* any_obj_ok() lives in js/invent.js, mirroring src/invent.c:1710. */
 
-/* equip_ok() and its four getobj callbacks live in js/do_wear.js, their C home
-   (src/do_wear.c:3404 and 3451-3475). They used to be duplicated here with the
-   canwearobj() arm recorded; canwearobj is ported now, so the real ones are
-   imported instead. */
+/* src/do_wear.c:3404 equip_ok() — the shared filter behind W, T, P and R.
+//
+   The two XORs carry the logic and neither is decorative:
+
+     removing ^ is_worn                  putting ON something already worn,
+                                         or taking OFF something not worn, is
+                                         EXCLUDE_INACCESS -- the item exists
+                                         but the action does not apply.
+     accessory ^ (oclass != ARMOR_CLASS) armor offered to 'P'/'R', or an
+                                         accessory offered to 'W'/'T', is
+                                         DOWNPLAY rather than EXCLUDE: it is
+                                         wearable, just not by this command.
+
+   The class test excludes everything but armor, rings and amulets, THEN
+   re-admits four specific otyps -- MEAT_RING, BLINDFOLD, TOWEL, LENSES --
+   which are wearable while belonging to other classes. Dropping that
+   exception list would make a blindfold unofferable to 'P'.
+
+   canwearobj (polyform restrictions) and inaccessible_equipment (cursed
+   armor covering a ring) are recorded; every other arm is real. */
+function equip_ok(obj, removing, accessory) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    /* ignore for putting on if already worn, or removing if not worn */
+    const is_worn = ((obj.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0);
+    if (!!removing !== is_worn)
+        return GETOBJ_EXCLUDE_INACCESS;
+
+    /* exclude most object classes outright */
+    if (obj.oclass !== OCLASSES.ARMOR_CLASS
+        && obj.oclass !== OCLASSES.RING_CLASS
+        && obj.oclass !== OCLASSES.AMULET_CLASS) {
+        /* ... except for a few wearable exceptions outside these classes */
+        if (obj.otyp !== ONAMES.MEAT_RING && obj.otyp !== ONAMES.BLINDFOLD
+            && obj.otyp !== ONAMES.TOWEL && obj.otyp !== ONAMES.LENSES)
+            return GETOBJ_EXCLUDE;
+    }
+
+    /* armor with 'P' or 'R' or accessory with 'W' or 'T' */
+    if (!!accessory !== (obj.oclass !== OCLASSES.ARMOR_CLASS))
+        return GETOBJ_DOWNPLAY;
+
+    /* armor we can't wear, e.g. from polyform */
+    if (obj.oclass === OCLASSES.ARMOR_CLASS && !removing
+        && !note_unported_cmd('equip_ok:canwearobj'))
+        return GETOBJ_DOWNPLAY;
+
+    /* removing inaccessible equipment */
+    if (removing)
+        note_unported_cmd('equip_ok:inaccessible_equipment');
+
+    /* all good to go */
+    return GETOBJ_SUGGEST;
+}
+
+/* src/do_wear.c:3451-3475 — the four getobj callbacks over equip_ok. */
+const puton_ok   = (o) => equip_ok(o, false, true);
+const remove_ok  = (o) => equip_ok(o, true,  true);
+const wear_ok    = (o) => equip_ok(o, false, false);
+const takeoff_ok = (o) => equip_ok(o, true,  false);
 
 /* src/cmd.c cmdlist — the verb and object filter each command hands getobj().
    Read from the C, not invented: the word appears verbatim in the prompt
@@ -397,40 +525,10 @@ async function docmd_getobj(ch) {
     note_unported_cmd(`cmd:${ch}`);
     return ECMD_TIME;
 }
+/* dofire() lives in js/dothrow.js, its C home (src/dothrow.c:469), with the
+   fireassist launcher-wielding chain. The local stub that only reached
+   getdir() was replaced when the command queue landed. */
 
-// src/dothrow.c:469 dofire() -> throw_obj() -> getdir().
-//
-// The throw itself needs the missile and trajectory code. What is ported is the
-// direction read, because that is what keeps the session in step: C spends a key
-// on it and stays put, so a port that skips it walks the hero instead.
-async function dofire() {
-    /* src/dothrow.c:469 — with a quivered missile C goes straight to
-       throw_obj() and its getdir(). With an EMPTY quiver it instead prompts for
-       something to fire, which reads a different number of keys, so guessing
-       the direction read there would put the session out of step in the other
-       direction. Record that case rather than consume a key for it. */
-    if (!game.u.uquiver) {
-        /* src/dothrow.c dofire() — with autoquiver off (the default) C says
-           so and then PROMPTS through doquiver_core, which calls getobj and
-           reads a key. Returning here left that key in the stream.
-           The polearm, bullwhip and fireassist arms above the message need
-           use_pole/use_whip and record. */
-        if (game.u.uwep)
-            note_unported_cmd('dofire:polearm_or_whip');
-        await You('have no ammunition readied.');
-        const res = await doquiver_core('fire');
-        if (res !== ECMD_OK && res !== ECMD_TIME)
-            return res;
-        if (!game.u.uquiver)
-            return ECMD_OK;
-    }
-
-    if (!await getdir(null))
-        return ECMD_OK;
-
-    note_unported_cmd('dofire:throwit');
-    return ECMD_TIME;
-}
 
 // src/cmd.c:495 doextcmd() — dispatch an extended command.
 //
@@ -446,15 +544,16 @@ export async function doextcmd() {
     /* src/cmd.c extcmdlist — the command's own function runs here. Only the
        ones that consume further input are wired up so far, because those are
        the ones whose absence puts the whole session out of step. */
+    if (name === 'chat')
+        return await dochat();
+    if (name === 'name')
+        return await docallcmd();
     if (name === 'jump')
         return await dojump();
     if (name === 'levelchange')
         return await wiz_level_change();
-    /* #chat reads a direction key through getdir(), so its absence puts the
-       session one keystroke out of step -- exactly the class this dispatch
-       exists to cover. dochat is ported in js/sounds.js. */
-    if (name === 'chat')
-        return await dochat();
+    if (name === 'wizwish')
+        return await wiz_wish();
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
@@ -475,8 +574,24 @@ async function dojump() {
 }
 
 export async function rhack(key) {
+    /* src/cmd.c:3642 — queued commands run before any key is read. A
+       CMDQ_EXTCMD entry dispatches its function directly, exactly like the
+       doextcmd arm below; a CMDQ_KEY becomes the command key as if typed. */
+    if (key === 0) {
+        const cmdq = cmdq_pop();
+        if (cmdq) {
+            if (cmdq.typ === CMDQ_EXTCMD && cmdq.fn) {
+                game.context.move = ((await cmdq.fn()) === ECMD_TIME ? 1 : 0);
+                return;
+            }
+            if (cmdq.typ === CMDQ_KEY)
+                key = String(cmdq.key).charCodeAt(0);
+        }
+    }
+    let live_input = false;
     if (key === 0) {
         // Read key from input
+        live_input = true;
         await flush_screen(1);
         key = await nhgetch();
         // The boundary frame has now been captured with the previous
@@ -495,7 +610,64 @@ export async function rhack(key) {
         game._toplin = TOPLINE_EMPTY;
     }
 
-    const ch = String.fromCharCode(key);
+    let ch0 = String.fromCharCode(key);
+
+    /* src/cmd.c:5009 get_count() via parse() — with !number_pad, typed
+       digits accumulate a repeat count and the first non-digit key is the
+       command. "Count: N" is echoed only once the count reaches two digits
+       (`cnt > 9`), each time on a cleared topline with no history. ESC
+       cancels the count and the command read. parse() then sets
+       gm.multi = count - 1 and remembers gc.cmd_key for the repeat arm. */
+    if (live_input && !game.in_doagain && ch0 >= '0' && ch0 <= '9') {
+        let cnt = 0;
+        while (ch0 >= '0' && ch0 <= '9') {
+            cnt = 10 * cnt + (ch0.charCodeAt(0) - 48);
+            if (cnt > 9) {
+                /* src/cmd.c:5070 — clear_nhwindow(WIN_MESSAGE) then
+                   custompline(SUPPRESS_HISTORY, "Count: %ld"). The cursor
+                   parks at the end of the text (recorded cursor [9,0] for
+                   "Count: 20"), the same shape as the other topline
+                   prompts. */
+                tty_clear_nhwindow_message(game._topl_cury || 0);
+                const ctext = `Count: ${cnt}`;
+                game._pending_message = ctext;
+                game._toplin = TOPLINE_SPECIAL_PROMPT;
+                _buildScreenOutput();
+                const display = game?.nhDisplay;
+                if (display)
+                    display.setCursor(
+                        Math.min(ctext.length, (display.cols ?? 80) - 1), 0);
+            }
+            key = await nhgetch();
+            ch0 = String.fromCharCode(key);
+        }
+        if (ch0 === '\x1b') {          /* esc cancels count (TH) */
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._pending_message = '';
+            game._toplin = TOPLINE_EMPTY;
+            game.command_count = 0;
+            game.context.move = 0;
+            return;
+        }
+        game.command_count = cnt;
+        /* src/cmd.c:5142 — gm.multi = count; if (multi) multi--; */
+        game.multi = cnt;
+        if (game.multi)
+            game.multi--;
+        /* the count text stays on the topline in C until the command's own
+           output replaces it; rhack's pre-dispatch clear already ran */
+    }
+    game.cmd_key = ch0;
+
+    /* src/cmd.c:1518 do_run_west() and friends — a SHIFTED direction letter
+       is the run form of the move: set_move_cmd(dir, 1) puts context.run = 1
+       and the same domove/moveloop machinery carries the hero until
+       lookaround or a blocked step calls nomul(0). The rush prefix 'g' uses
+       run = 2; the only difference between the modes is how lookaround
+       decides what is interesting enough to stop at. */
+    const ch = 'HJKLYUBN'.includes(ch0) ? ch0.toLowerCase() : ch0;
+    if (ch !== ch0 && isMovementKey(ch) && !game.context.run)
+        game.context.run = 1;
 
     if (isMovementKey(ch)) {
         /* src/cmd.c movecmd() — the key sets u.dx/u.dy, then domove() reads
@@ -516,28 +688,30 @@ export async function rhack(key) {
             game.u.last_str_turn = 0;
             game.context.mv = true;
         }
-        await domove();
+        /* src/cmd.c:5103 parse() — "assume next command will take game time".
+           The flag is set BEFORE domove() runs, and domove's no-move exits
+           (blocked step, hack.c:2846) clear it. Setting it after the call
+           erased that clear, so a wall bump charged a full turn: seed0016's
+           three bumps put the whole game three turns ahead of C. */
         game.context.move = 1;
+        await domove();
+    } else if (ch === 'z') {
+        // src/cmd.c cmdlist — 'z' is dozap: getobj for the wand, getdir for
+        // the direction, and a self-zap of sleep knocks the hero out for
+        // rnd(50) helpless turns.
+        game.context.move = ((await dozap()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Q') {
         // src/cmd.c cmdlist — 'Q' is dowieldquiver.
         game.context.move = ((await dowieldquiver()) === ECMD_TIME ? 1 : 0);
-    } else if (ch === 'w') {
-        /* src/cmd.c cmdlist — 'w' is dowield, which calls getobj() and so
-           READS A KEY. Same keystream reason as 'r' above. */
-        game.context.move = ((await dowield()) === ECMD_TIME ? 1 : 0);
-    } else if (ch === 'c') {
-        game.context.move = ((await doclose()) === ECMD_TIME ? 1 : 0);
-    } else if (ch === 'r') {
-        /* src/cmd.c cmdlist — 'r' is doread. It calls getobj(), which READS
-           A KEY, so leaving it undispatched let the inventory letter run as a
-           command and put every later keystroke out of step. */
-        game.context.move = ((await doread(read_ok)) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Z') {
         // src/cmd.c cmdlist — 'Z' is docast.
         game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x16') {
         // src/cmd.c:1970 — C('v') is wizlevelport / wiz_level_tele.
         game.context.move = ((await wiz_level_tele()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x17') {
+        // src/cmd.c:2000 — C('w') is wizwish / wiz_wish.
+        game.context.move = ((await wiz_wish()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '>') {
         // src/cmd.c cmdlist — '>' is dodown.
         game.context.move = (await dodown() === ECMD_TIME ? 1 : 0);
@@ -604,9 +778,11 @@ export async function rhack(key) {
         // public corpus, and both reads were previously left to run as commands.
         game.context.move = (await dothrow() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'c') {
-        // src/cmd.c cmdlist — 'c' is dochat, whose getdir() consumes a second
-        // key. 107 keystrokes across the public corpus.
-        game.context.move = (await dochat() === ECMD_TIME ? 1 : 0);
+        // src/cmd.c cmdlist — 'c' is doclose (close a door), whose getdir()
+        // consumes a second key. Chat is reachable only as #chat (M-c); this
+        // used to dispatch dochat here, which read the same number of keys
+        // but printed chat responses where C reports about doors.
+        game.context.move = (await doclose() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'a') {
         // src/cmd.c cmdlist — 'a' is doapply. 232 keystrokes across the corpus.
         game.context.move = (await doapply() === ECMD_TIME ? 1 : 0);
@@ -622,7 +798,12 @@ export async function rhack(key) {
         // Every one of them starts with getobj(), which reads the inventory
         // letter. Their effects are unported, but consuming that letter is what
         // keeps the session in step: skip it and the letter runs as a command.
-        game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
+        if (ch === 'r')
+            game.context.move = ((await doread(read_ok)) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'q')
+            game.context.move = ((await dodrink(drink_ok)) === ECMD_TIME ? 1 : 0);
+        else
+            game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
     } else if (ch === '.') {
         // src/cmd.c:1930 — '.' is "wait", donull, which returns ECMD_TIME.
         // src/do.c:2351: the only early exit is cmd_safety_prevention, which
@@ -689,8 +870,8 @@ export async function domove() {
        step into a doorway. */
     if (closed_door(newx, newy)
         && flags_autoopen() && !game.context.run
-        && !Confusion() && !Stunned()
-        && !Fumbling()) {
+        && !game.u.uprops?.CONFUSION && !game.u.uprops?.STUNNED
+        && !game.u.uprops?.FUMBLING) {
         await doopen_indir(newx, newy);
         game.context.door_opened = !closed_door(newx, newy);
         game.context.move = 0; /* (ux != u.ux || uy != u.uy) */
@@ -736,6 +917,26 @@ export async function domove() {
         const mtmp_bump = m_at(newx, newy);
         if (mtmp_bump && (!is_safemon(mtmp_bump) || game.context.forcefight))
             nomul(0);
+    }
+
+    /* src/hack.c:2790 — domove_attackmon_at() gates walking into an occupied
+       square. Wired for SAFE monsters only: the pet-displacement rn2(7),
+       the flee arm and the frozen-pet arm live in do_attack and draw exactly
+       as C. A HOSTILE target keeps the old blocked path, because do_attack's
+       combat tail (hmon, the kill path, retaliation) is unported and wiring
+       it measured -23 screens pre-reset; that gap stays recorded. */
+    {
+        const mtmp_atk = m_at(newx, newy);
+        if (mtmp_atk && is_safemon(mtmp_atk) && !game.context.forcefight) {
+            const displaceu = { value: false };
+            if (await domove_attackmon_at(mtmp_atk, newx, newy, displaceu)) {
+                /* the move was used up (pet refused to budge, message shown);
+                   C's domove returns here with the turn consumed */
+                return;
+            }
+        } else if (mtmp_atk && !is_safemon(mtmp_atk)) {
+            note_unported_cmd('domove:attack_hostile');
+        }
     }
 
     /* src/hack.c:2846 — the blocked-move exit.
@@ -812,6 +1013,11 @@ export async function domove() {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+
+    /* src/hack.c:2980 — "if (u.umoved) spoteffects(TRUE);". The move above
+       either happened or returned early, so reaching here means umoved. */
+    if (u.ux !== u.ux0 || u.uy !== u.uy0)
+        await spoteffects(true);
 }
 
 // src/hack.c:2098 domove_swap_with_pet() — returns TRUE if places were
@@ -897,7 +1103,7 @@ function mundisplaceable(mon) {
 }
 
 // include/mondata.h bigmonst()
-/* bigmonst() is an include/mondata.h macro; it comes from js/mondata.js. */
+const bigmonst = (ptr) => ptr.msize >= MFLAGS.MZ_LARGE;
 
 
 
@@ -1023,4 +1229,36 @@ export function reset_occupations() {
 // this clears an empty list exactly as C does when nothing is queued.
 export function cmdq_clear(q) {
     (game.command_queue ||= [])[q] = null;
+}
+
+/* The queue entries mirror C's struct _cmd_queue: {typ, fn} for CMDQ_EXTCMD
+   (the function itself stands in for C's ext_func_tab lookup) and {typ, key}
+   for CMDQ_KEY (key kept as the character, converted at the consumer). The
+   backing store is an array per queue where C uses a singly-linked list with
+   tail append; push/shift preserve the same FIFO order. */
+
+// src/cmd.c:254 cmdq_add_ec() — add extended command function to the queue.
+export function cmdq_add_ec(q, fn) {
+    ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_EXTCMD, fn });
+}
+
+// src/cmd.c:274 cmdq_add_key() — add a key to the command queue.
+export function cmdq_add_key(q, key) {
+    ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_KEY, key });
+}
+
+// src/cmd.c:410 cmdq_pop() — pop the topmost command. The queue popped
+// depends on whether a do-again (^A) replay is in progress.
+export function cmdq_pop() {
+    const q = game.in_doagain ? CQ_REPEAT : CQ_CANNED;
+    const list = (game.command_queue ||= [])[q];
+    if (list && list.length)
+        return list.shift();
+    return null;
+}
+
+// src/cmd.c:421 cmdq_peek() — the top entry without popping it.
+export function cmdq_peek(q) {
+    const list = (game.command_queue ||= [])[q];
+    return (list && list.length) ? list[0] : null;
 }

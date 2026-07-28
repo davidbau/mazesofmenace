@@ -2,6 +2,7 @@
 // C ref: src/eat.c nonrotting_corpse(), tin_variety(), set_tin_variety().
 
 import {
+    A_STR,
     CONFLICT,
     FAINTED,
     FAINTING,
@@ -10,6 +11,8 @@ import {
     HOMEMADE_TIN,
     HUNGER,
     HUNGRY,
+    HALLUC,
+    HALLUC_RES,
     NOT_HUNGRY,
     PROTECTION,
     RANDOM_TIN,
@@ -36,10 +39,13 @@ import {
     PM_ACID_BLOB,
     PM_BLACK_PUDDING,
     PM_FLESH_GOLEM,
+    PM_ELF,
     PM_LEATHER_GOLEM,
     PM_LICHEN,
     PM_LIZARD,
     PM_STALKER,
+    PM_VALKYRIE,
+    PM_WIZARD,
     S_BLOB,
     S_ELEMENTAL,
     S_FUNGUS,
@@ -138,26 +144,42 @@ function preflightNutritionRing(ring, state) {
     }
 }
 
-// C ref: eat.c gethungry(). This owns the complete nutrition-consumption
-// decision for an alert hero. Hunger-status transitions still require their
-// message, occupation, fainting, and death owners, so this first-command slice
-// fails before changing nutrition when a tick would cross one of them.
-export function gethungry(state = game, env = {}) {
+function supportedIncreasingHungerTransition(oldStatus, newStatus) {
+    return (oldStatus === NOT_HUNGRY && newStatus === HUNGRY)
+        || (oldStatus === HUNGRY && newStatus === WEAK);
+}
+
+function requireHungerTransitionOperation(env, name) {
+    const operation = env[name];
+    if (typeof operation !== 'function')
+        throw new TypeError(`gethungry transition requires ${name}`);
+    return operation;
+}
+
+export class UnsupportedHungerTransitionError extends Error {
+    constructor(reason) {
+        super(`gethungry reached ${reason}`);
+        this.name = 'UnsupportedHungerTransitionError';
+        this.reason = reason;
+    }
+}
+
+// Pure admission for eat.c:gethungry(). allmain.c uses this before changing
+// any elapsed-turn state; gethungry() reuses the returned source inputs at its
+// actual source-ordered call site.
+export function preflightGetHungry(state = game, env = {}) {
     const u = state.u;
     if (!u || !Number.isSafeInteger(u.uhunger)) {
         throw new Error('gethungry requires initialized hero nutrition');
     }
-    if (u.uinvulnerable || state.iflags?.debug_hunger) return 0;
+    if (u.uinvulnerable || state.iflags?.debug_hunger)
+        return { skipped: true };
     if (Math.trunc(state.multi ?? 0) < 0) {
-        throw new Error(
-            'gethungry reached unported unconscious or immobile state',
+        throw new UnsupportedHungerTransitionError(
+            'unported unconscious or immobile state',
         );
     }
 
-    const random = env.random ?? { rn2 };
-    if (typeof random.rn2 !== 'function') {
-        throw new TypeError('gethungry random injection requires rn2');
-    }
     if (typeof env.nearCapacity !== 'function') {
         throw new Error('gethungry requires nearCapacity');
     }
@@ -167,8 +189,8 @@ export function gethungry(state = game, env = {}) {
     }
 
     if (u.uhs === FAINTED || hungerStatus(u.uhunger) !== u.uhs) {
-        throw new Error(
-            'gethungry reached unported hunger-status transition',
+        throw new UnsupportedHungerTransitionError(
+            'unported hunger-status transition',
         );
     }
     // Either ring can be selected by rn2(20). Validate both definitions
@@ -203,17 +225,79 @@ export function gethungry(state = game, env = {}) {
     );
     const evenLoss = ordinaryLoss + hungerLoss + conflictLoss + accessoryLoss;
     const maximumReachableLoss = Math.max(oddLoss, evenLoss);
+    const earliestStatus = hungerStatus(
+        u.uhunger - maximumReachableLoss,
+    );
+    const mayReachSupportedTransition =
+        supportedIncreasingHungerTransition(u.uhs, earliestStatus);
+    if (u.uhs === HUNGRY && earliestStatus === WEAK
+        && (!Array.isArray(u.atemp)
+            || !Number.isInteger(u.atemp[A_STR])
+            || !Number.isInteger(state.urole?.mnum)
+            || !Number.isInteger(state.urace?.mnum))) {
+        throw new Error(
+            'weakness transition requires hero attributes, role, and race',
+        );
+    }
+    const message = mayReachSupportedTransition
+        ? requireHungerTransitionOperation(env, 'message')
+        : null;
+    const stopRunning = mayReachSupportedTransition
+        ? requireHungerTransitionOperation(env, 'endRunning')
+        : null;
+    const statusRefresh = mayReachSupportedTransition
+        ? requireHungerTransitionOperation(env, 'statusRefresh')
+        : null;
 
     // The admitted alert-hero slice must remain within one hunger status for
     // every possible rn2(20) branch. Use only costs reachable from the current
     // form, properties, burden, and equipment so harmless low-loss ticks are
-    // not rejected before their source draw.
-    if (hungerStatus(u.uhunger - maximumReachableLoss) !== u.uhs) {
-        throw new Error(
-            'gethungry reached unported hunger-status transition',
+    // not rejected before their source draw. The first increasing transition
+    // is fully owned, so every parity outcome around that threshold is safe.
+    if (earliestStatus !== u.uhs && !mayReachSupportedTransition) {
+        throw new UnsupportedHungerTransitionError(
+            'unported hunger-status transition',
         );
     }
 
+    return {
+        capacity,
+        conflictLoss,
+        hungerLoss,
+        message,
+        ordinaryLoss,
+        regenerationLoss,
+        skipped: false,
+        slowDigestion,
+        statusRefresh,
+        stopRunning,
+    };
+}
+
+// C ref: eat.c gethungry() and its live newuhs(TRUE) consumer. This owns the
+// nutrition decision for an alert hero through the source-reachable HUNGRY
+// and WEAK transitions. Fainting and death remain fail-closed before any
+// elapsed-turn mutation.
+export async function gethungry(state = game, env = {}) {
+    const plan = preflightGetHungry(state, env);
+    if (plan.skipped) return 0;
+
+    const random = env.random ?? { rn2 };
+    if (typeof random.rn2 !== 'function') {
+        throw new TypeError('gethungry random injection requires rn2');
+    }
+    const {
+        capacity,
+        conflictLoss,
+        hungerLoss,
+        message,
+        ordinaryLoss,
+        regenerationLoss,
+        slowDigestion,
+        statusRefresh,
+        stopRunning,
+    } = plan;
+    const { u } = state;
     let nutritionLoss = ordinaryLoss;
 
     const accessoryTime = random.rn2(20);
@@ -254,12 +338,47 @@ export function gethungry(state = game, env = {}) {
 
     const nextNutrition = u.uhunger - nutritionLoss;
     const nextStatus = hungerStatus(nextNutrition);
-    if (nextStatus !== u.uhs) {
-        throw new Error(
-            'gethungry reached unported hunger-status transition',
+    if (nextStatus !== u.uhs
+        && !supportedIncreasingHungerTransition(u.uhs, nextStatus)) {
+        throw new UnsupportedHungerTransitionError(
+            'unported hunger-status transition',
         );
     }
     u.uhunger = nextNutrition;
+    if (nextStatus !== u.uhs) {
+        let transitionMessage;
+        if (nextStatus === HUNGRY) {
+            transitionMessage = u.uhunger < 145
+                ? 'You feel hungry.'
+                : 'You are beginning to feel hungry.';
+        } else {
+            u.atemp[A_STR] = -1;
+            const hallucinating =
+                hungerPropertyActive(state, HALLUC)
+                && !hungerPropertyActive(state, HALLUC_RES);
+            const specialRole = state.urole.mnum === PM_WIZARD
+                || state.urole.mnum === PM_VALKYRIE;
+            if (hallucinating) {
+                transitionMessage =
+                    'The munchies are interfering with your motor '
+                    + 'capabilities.';
+            } else if (specialRole || state.urace.mnum === PM_ELF) {
+                transitionMessage = `${
+                    specialRole ? state.urole.name.m : 'Elf'
+                } needs food, badly!`;
+            } else {
+                transitionMessage = u.uhunger < 45
+                    ? 'You feel weak.'
+                    : 'You are beginning to feel weak.';
+            }
+        }
+        await message(transitionMessage, state);
+        stopRunning(state);
+        u.uhs = nextStatus;
+        state.disp ??= {};
+        state.disp.botl = true;
+        await statusRefresh(state);
+    }
     return nutritionLoss;
 }
 

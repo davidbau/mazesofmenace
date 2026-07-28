@@ -12,7 +12,6 @@
 // `rn2(1) @ pick_align`.
 
 import { game } from './gstate.js';
-import { ROLE_RACEMASK, ROLE_GENDMASK, ROLE_GENDERS, ROLE_ALIGNS, NON_PM } from './const.js';
 import { rn2 } from './rng.js';
 import { roles, races, genders, aligns } from './role_data.js';
 import { mons as MONS_INIT, PMNAMES, MSOUND } from './monst_data.js';
@@ -25,9 +24,13 @@ const { MS_LEADER, MS_NEMESIS } = MSOUND;
 // include/you.h
 export const ROLE_NONE = -1;
 export const ROLE_RANDOM = -2;
+const ROLE_RACEMASK = 0x0ff8;   /* allowable races */
+const ROLE_GENDMASK = 0xf000;   /* allowable genders */
 const ROLE_ALIGNMASK = 0x07;    /* AM_MASK, include/align.h:33 */
 /* number of *player-selectable* genders and alignments — the tables carry more
    (a "group" gender, an "unaligned" alignment) that players cannot pick. */
+const ROLE_GENDERS = 2;
+const ROLE_ALIGNS = 3;
 
 // include/hack.h:1301
 export const PICK_RANDOM = 0;
@@ -347,6 +350,7 @@ const M2_MALE = 0x00010000, M2_FEMALE = 0x00020000, M2_NEUTER = 0x00040000;
 const M2_PEACEFUL = 0x00000002, M2_HOSTILE = 0x00000004, M2_NASTY = 0x00200000;
 const M2_STALK = 0x00000008;
 const M3_CLOSE = 0x0040, M3_WANTSARTI = 0x0400, M3_WAITFORU = 0x0080;
+const NON_PM = -1;
 
 // include/mondata.h — the gender predicates role_init() branches on.
 const is_male   = (pm) => !!(pm.mflags2 & M2_MALE);
@@ -441,19 +445,6 @@ export function role_init(initrole, initalign) {
             for (let i = 0; i < roles.length; i++)
                 if (roles[i].lgod) { game.pantheon = i; break; }
         }
-    }
-
-    /* src/role.c:2079 — a role with no gods of its own BORROWS the
-       pantheon's. Only Priest has lgod == 0, so this fires for Priest and
-       nobody else; a role with gods keeps them and ignores the pantheon.
-       Without this, align_gname() reading game.urole.lgod returns nothing
-       for a Priest, which is why js/insight.js grew a copy that indexes
-       roles[pantheon] unconditionally -- correct for Priest, WRONG for
-       every other role. */
-    if (game.urole && !game.urole.lgod) {
-        game.urole.lgod = roles[game.pantheon].lgod;
-        game.urole.ngod = roles[game.pantheon].ngod;
-        game.urole.cgod = roles[game.pantheon].cgod;
     }
 }
 
@@ -618,9 +609,4 @@ export function align_str(alignment) {
     case -128: return 'unaligned';
     default: return 'unknown';
     }
-}
-
-// include/you.h:247 Role_if() — (gu.urole.mnum == X)
-export function Role_if(X) {
-    return game.urole.mnum === X;
 }

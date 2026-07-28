@@ -8,14 +8,16 @@
 // draws rn2(300) — the tests are independent `if`s, not a chain.
 
 import { game } from './gstate.js';
-import { Hallucination, Deaf } from './youprop.js';
 import { MFLAGS } from './monst_data.js';
 import { canseemon } from './display.js';
 import { helpless } from './monst.js';
 import { rn2 } from './rng.js';
-import { ECMD_OK } from './const.js';
+import { ECMD_OK, IS_WALL, SDOOR, isok } from './const.js';
 import { getdir } from './cmd.js';
 import { m_at } from './mon.js';
+import { Deaf, Hallucination } from './youprop.js';
+import { pline_The } from './pline.js';
+import { pline } from './display.js';
 
 // src/sounds.c:202 dosounds()
 export function dosounds() {
@@ -86,8 +88,46 @@ export async function dochat() {
     if (game.u.dx === 0 && game.u.dy === 0)
         return ECMD_OK;
 
-    const mtmp = m_at(game.u.ux + game.u.dx, game.u.uy + game.u.dy);
-    if (!mtmp)
+    const tx = game.u.ux + game.u.dx, ty = game.u.uy + game.u.dy;
+    if (!isok(tx, ty))
+        return ECMD_OK;
+
+    const mtmp = m_at(tx, ty);
+
+    if (!mtmp || mtmp.mundetected) {
+        /* src/sounds.c:1335 — a statue at the target: recorded (vobj_at plus
+           the hallucination monster name). */
+        const loc = game.level.at(tx, ty);
+        if (!Deaf() && (IS_WALL(loc.typ) || loc.typ === SDOOR)) {
+            /* Talking to a wall; a secret door remains hidden by behaving
+               like a wall. The Blind arm needs lastseentyp and is recorded. */
+            /* this tree tracks blindness as game.u.ublind */
+            if (game.u?.ublind) {
+                note_unported_sounds('dochat:blind_wall');
+            } else if (!Hallucination()) {
+                await pline("It's like talking to a wall.");
+            } else {
+                const walltalk = [
+                    "gripes about its job.",
+                    "tells you a funny joke!",
+                    "insults your heritage!",
+                    "chuckles.",
+                    "guffaws merrily!",
+                    "deprecates your exploration efforts.",
+                    "suggests a stint of rehab...",
+                    "doesn't seem to be interested.",
+                ];
+                let idx = rn2(10);
+
+                if (idx >= walltalk.length)
+                    idx = walltalk.length - 1;
+                await pline_The(`wall ${walltalk[idx]}`);
+            }
+            return ECMD_OK;
+        }
+    }
+
+    if (!mtmp || mtmp.mundetected)
         return ECMD_OK; /* "talking to thin air" */
 
     note_unported_sounds('dochat:domonnoise');
@@ -121,12 +161,12 @@ export function growl(mtmp) {
         return;
 
     /* presumably nearness and soundok checks have already been made */
-    if (Hallucination())
+    if (game.u.uprops?.HALLUC)
         growl_verb = note_sounds_unported('growl:h_sounds');   /* ROLL_FROM */
     else
         growl_verb = note_sounds_unported('growl:growl_sound');
     if (growl_verb) {
-        if (canseemon(mtmp) || !Deaf()) {
+        if (canseemon(mtmp) || !game.u.uprops?.DEAF) {
             note_sounds_unported('growl:pline');
             if (game.context?.run)
                 note_sounds_unported('growl:nomul');

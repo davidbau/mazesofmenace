@@ -39,7 +39,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          A_STR, A_DEX, A_CON, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT, TIP_SWIM } from './const.js';
-import { exercise } from './attrib.js';
+import { exercise, acurr_eff } from './attrib.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { HEADSTONE } from './const.js';
 
@@ -1074,7 +1074,12 @@ function acurrstr() {
     return Math.min(str, 125) - 100;
 }
 
-function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
+// C ref: attrib.c acurr(chridx) — effective attribute = abon+atemp+acurr,
+// clamped to [3,25] for non-STR characteristics (e.g. wounded legs' atemp
+// [A_DEX] -= 1).  Delegates to attrib.js' shared acurr_eff so every ACURR()
+// call site here (door-open, lock-picking, wounded-legs/strain thresholds)
+// sees the same temporary stat adjustments C's acurr() would.
+function ACURR(i) { return acurr_eff(i); }
 
 // C ref: lock.c doopen() / doopen_indir(x,y) — the #open ('o') command and the
 // autoopen door-walk path.  When called with explicit coords (autoopen), it

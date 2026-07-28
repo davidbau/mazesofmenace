@@ -11,8 +11,7 @@
 // more() is too, and both are really topl.c functions that should live here.
 
 import { game } from '../gstate.js';
-import { TBUFSZ } from '../const.js';
-import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_SPECIAL_PROMPT,
+import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
          _buildScreenOutput } from '../display.js';
 import { nhgetch } from '../input.js';
 
@@ -38,21 +37,29 @@ export async function update_topl(bp) {
     /* strncmp(bp, "You die", 7) != 0 */
     const notdied = bp.slice(0, 7) !== 'You die';
 
-    if (game._toplin === TOPLINE_NEED_MORE
+    /* win/tty/topl.c:257 — WIN_STOP means the player pressed ESC at a
+       --More-- this turn: buffer the text but do not paint it and do not
+       prompt again. "You die" lifts the suppression. */
+    let skip = !!game._win_stop;
+
+    if ((game._toplin === TOPLINE_NEED_MORE || skip)
         && cury === 0
         && n0 + toplines.length + 3 < CO - 8   /* room for --More-- */
         && notdied) {
         game._pending_message = toplines + '  ' + bp;
         game._topl_curx = (game._topl_curx || 0) + 2;
-        addtopl(bp);
+        if (!skip)
+            addtopl(bp);
         return;
     }
 
-    if (game._toplin === TOPLINE_NEED_MORE) {
-        await more();
-    } else if (cury) {
-        /* docorner(1, cury + 1, 0) — reset cury to 0 if the screen is redrawn */
-        game._topl_curx = game._topl_cury = 0;
+    if (!skip) {
+        if (game._toplin === TOPLINE_NEED_MORE) {
+            await more();
+        } else if (cury) {
+            /* docorner(1, cury + 1, 0) — reset cury if the screen is redrawn */
+            game._topl_curx = game._topl_cury = 0;
+        }
     }
 
     remember_topl();
@@ -95,22 +102,7 @@ function addtopl(bp) {
 }
 
 // win/tty/topl.c:96 remember_topl() — push the current line into ^P history.
-//
-// It is NOT purely history, which is how this was described before. C also
-// clears gt.toplines and advances the ring position:
-//
-//     if (!program_state.in_checkpoint) {
-//         *gt.toplines = '\0';
-//         cw->maxcol = cw->maxrow = (idx + 1) % cw->rows;
-//     }
-//
-// The clear is harmless HERE, and that is the real reason this stays
-// unported rather than "no screen output": update_topl() is the only caller
-// in both C and this port, and it overwrites the message immediately after,
-// so clearing it first changes nothing. The ring position only matters to
-// ^P, which nothing reads yet.
-//
-// If a second caller ever appears, this reasoning expires with it.
+// The history buffer is not modelled yet; nothing reads it.
 function remember_topl() {
     (game.unported ||= new Set()).add('topl:remember_topl');
 }
@@ -124,6 +116,7 @@ function redotoplin(str) {
 }
 
 // include/decl.h TBUFSZ
+const TBUFSZ = 300;
 
 // win/tty/topl.c:365 tty_yn_function() — the generic prompt-and-read-a-key.
 //
@@ -138,8 +131,12 @@ function redotoplin(str) {
 // Not ported: the resp filter (allowed characters, '#' for digits, an <esc>
 // hiding the tail from the prompt), yn_number, and the doprev/^P history.
 export async function tty_yn_function(query, resp, def) {
-    if (game._toplin === TOPLINE_NEED_MORE)
+    /* win/tty/topl.c:391-393 — the pending-message more() is SKIPPED while
+       WIN_STOP is set (the player already ESCed this turn's messages), and
+       the flag is lifted either way: a question needs an answer. */
+    if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
         await more();
+    game._win_stop = false;
 
     let prompt = query;
     if (resp) {
@@ -160,16 +157,26 @@ export async function tty_yn_function(query, resp, def) {
     if (display)
         display.setCursor(Math.min(prompt.length + 1, (display.cols ?? 80) - 1), 0);
 
+    /* win/tty/topl.c:533 clean_up — the answered prompt (plus the visible
+       form of the answer key) becomes the topline text, flagged NON_EMPTY so
+       the NEXT key read erases it before its boundary frame. */
+    const clean_up = (q) => {
+        const vis = (q >= ' ' && q !== '\x7f') ? q : '';
+        game._pending_message = prompt + vis;
+        game._toplin = TOPLINE_NON_EMPTY;
+        return q;
+    };
+
     /* with a resp string, only the listed characters (plus the quitchars) are
        accepted; anything else re-reads. */
     for (;;) {
         const c = await nhgetch();
         const ch = (typeof c === 'string') ? c : String.fromCharCode(c);
         if (!resp)
-            return ch;
+            return clean_up(ch);
         if (resp.includes(ch))
-            return ch;
+            return clean_up(ch);
         if (ch === '\x1b' || ch === '\r' || ch === '\n' || ch === ' ')
-            return def && def !== '\0' ? def : ch;
+            return clean_up(def && def !== '\0' ? def : ch);
     }
 }

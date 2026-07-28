@@ -14,6 +14,10 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { rumors, engrave, epitaph, bogusmon, RUMOR_RANGES } from './dat_files.js';
+import { pline } from './display.js';
+import { exercise } from './attrib.js';
+import { A_WIS, BY_ORACLE, BY_COOKIE, BY_PAPER } from './const.js';
+import { is_fainted } from './eat.js';
 
 // include/global.h:41
 export const MD_PAD_RUMORS = 60;
@@ -138,10 +142,11 @@ export function getrumor(truth, exclude_cookie) {
     const R = RUMOR_RANGES;
     let rumor_buf = '';
     let count = 0;
+    let adjtruth = 0;
 
     do {
         rumor_buf = '';
-        const adjtruth = truth + rn2(2);
+        adjtruth = truth + rn2(2);
         let beginning, ending;
         switch (adjtruth) {
         case 2:
@@ -158,6 +163,54 @@ export function getrumor(truth, exclude_cookie) {
     } while (count++ < 50 && exclude_cookie
              && rumor_buf.startsWith(COOKIE_MARKER));
 
-    /* exercise(A_WIS) is skipped while in_mklev, and draws nothing anyway */
+    /* src/rumors.c:175 — "avoid exercising wisdom for graffiti"; the cookie
+       and oracle paths land here with in_mklev false and DO draw the
+       exercise rn2(19). */
+    if (!game.in_mklev)
+        exercise(A_WIS, adjtruth > 0);
+
+    /* src/rumors.c:181 — a cookie-only rumor keeps its marker until it is
+       actually delivered by a cookie */
+    if (!exclude_cookie && rumor_buf.startsWith(COOKIE_MARKER))
+        rumor_buf = rumor_buf.slice(COOKIE_MARKER.length);
     return rumor_buf;
+}
+
+// src/rumors.c:545 outrumor() — deliver a rumor via cookie, paper or Oracle.
+export async function outrumor(truth, mechanism) {
+    const fortune_msg = 'This cookie has a scrap of paper inside.';
+    const reading = (mechanism === BY_COOKIE || mechanism === BY_PAPER);
+
+    if (reading) {
+        /* deal with various things that prevent reading */
+        if (is_fainted() && mechanism === BY_COOKIE) {
+            return;
+        } else if (game.u.ublind) {
+            if (mechanism === BY_COOKIE)
+                await pline(fortune_msg);
+            await pline('What a pity that you cannot read it!');
+            return;
+        }
+    }
+
+    let line = getrumor(truth, reading ? false : true);
+    if (!line)
+        line = 'NetHack rumors file closed for renovation.';
+    switch (mechanism) {
+    case BY_ORACLE:
+        /* the Oracle's delivery draws rn2(4)/rn2(3)/rn2(2) for its adverb */
+        note_unported_rumors('outrumor:oracle');
+        return;
+    case BY_COOKIE:
+        await pline(fortune_msg);
+        /* FALLTHRU */
+    case BY_PAPER:
+        await pline('It reads:');
+        break;
+    }
+    await pline(line);
+}
+
+function note_unported_rumors(what) {
+    (game.unported ||= new Set()).add(what);
 }

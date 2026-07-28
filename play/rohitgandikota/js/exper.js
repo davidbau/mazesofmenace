@@ -4,10 +4,11 @@ import { adjabil } from './attrib.js';
 
 import { game } from './gstate.js';
 import { aligns } from './role_data.js';
+import { PMNAMES } from './monst_data.js';
 import { rnd, rn1 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS , MAXULEV } from './const.js';
+import { A_CON, A_WIS } from './const.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
@@ -104,6 +105,7 @@ export function newhp() {
 }
 
 // include/global.h:413 MAXULEV
+const MAXULEV = 30;
 
 // src/exper.c:45 newpw() — spell power / energy points for a new level.
 export function newpw() {
@@ -222,4 +224,28 @@ export async function pluslvl(incr) {
 
 function note_unported_exper(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/exper.c more_experienced() — add experience points and score.
+export function more_experienced(exper, rexp) {
+    const oldexp = game.u.uexp || 0,
+          oldrexp = game.u.urexp || 0,
+          newexp = oldexp + exper,
+          newrexp = oldrexp + 4 * exper + rexp;
+
+    if (newexp !== oldexp)
+        game.u.uexp = newexp;
+    if (newrexp !== oldrexp)
+        game.u.urexp = newrexp;
+    /* flags.beginner gates some feedback wording; harmless to track */
+    const m = game.urole?.mnum;                     /* Role_if(PM_WIZARD) */
+    const wiz = m === 'PM_WIZARD' || m === PMNAMES.PM_WIZARD;
+    if (game.u.urexp >= (wiz ? 1000 : 2000))
+        game.flags.beginner = false;
+}
+
+// src/exper.c newexplevel()
+export async function newexplevel() {
+    if (game.u.ulevel < MAXULEV && (game.u.uexp || 0) >= newuexp(game.u.ulevel))
+        await pluslvl(true);
 }

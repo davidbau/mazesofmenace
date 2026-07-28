@@ -28,7 +28,7 @@ import {
     M_ATTK_AGR_DONE, W_SADDLE,
 } from './const.js';
 import { DEADMONSTER } from './mon.js';
-import { newsym } from './display.js';
+import { newsym, map_invisible, unmap_object } from './display.js';
 import { cansee } from './vision.js';
 import { update_topl } from './display.js';
 import { make_corpse } from './uhitm.js';
@@ -92,6 +92,19 @@ function Monnam_mm(mtmp) {
 // ordinary visible animals, so canspotmon reduces to cansee here.
 function mm_visible(magr, mdef) {
     return (cansee(magr.mx, magr.my) || cansee(mdef.mx, mdef.my));
+}
+
+// C ref: mhitm.c pre_mm_attack() — called at the top of hitmm()/missmm(), just
+// before the attack message.  When the encounter is visible (gv.vis / our
+// mm_visible) but one combatant isn't individually spotted, the hero
+// remembers that square as holding a sensed-but-unseen monster (the 'I'
+// glyph).  The mimic/hider "unhiding happens even off-screen" branch is not
+// modeled: none of the contest's mon-vs-mon combatants (MON_COMBAT table) are
+// mimics or hiders, so M_AP_TYPE/mundetected never apply here.
+function pre_mm_attack(magr, mdef) {
+    if (!mm_visible(magr, mdef)) return;
+    if (!mm_can_see_mon(magr)) map_invisible(magr.mx, magr.my);
+    if (!mm_can_see_mon(mdef)) map_invisible(mdef.mx, mdef.my);
 }
 
 // C ref: mhitm.c noises() — when a mon-vs-mon attack isn't visible (gv.vis
@@ -388,6 +401,14 @@ function is_pool(x, y) {
 // rndmonnum and the corpse-timeout sequence.
 function killMonster(mdef, defCd) {
     mdef.mhp = 0;
+    // C ref: mon.c mondead() — "if (glyph_is_invisible(...)) unmap_object(...)"
+    // runs before m_detach.  A defender killed this same attack may have just
+    // had pre_mm_attack() mark its square with the 'I' remembered-unseen-
+    // monster glyph (attacker spotted, defender not); clear that stale marker
+    // before the corpse/newsym below so the square reverts to its real
+    // remembered contents instead of keeping the 'I'.
+    const loc0 = game.level?.at(mdef.mx, mdef.my);
+    if (loc0?.invisMon) unmap_object(mdef.mx, mdef.my);
     const dropCorpse = corpse_chance(mdef, defCd); // mon.c:3248 rn2(tmp)
     const mx = mdef.mx, my = mdef.my;
     // Detach from the level so the renderer (m_at / MON_AT) stops drawing it.
@@ -515,18 +536,21 @@ export async function mattackm(magr, mdef) {
             dieroll = rnd(20 + i);             // mhitm.c:441
             strike = (tmp > dieroll) ? 1 : 0;
             if (strike) {
-                // C ref: mhitm.c hitmm() emits "X <verb> Y." (when visible) and
-                // THEN calls mdamagem() — so the hit message precedes any death
-                // message.  Neither consumes RNG.  When not visible the hero may
-                // instead hear the scuffle (noises()).
+                // C ref: mhitm.c hitmm() -> pre_mm_attack() first, then emits
+                // "X <verb> Y." (when visible), THEN calls mdamagem() — so the
+                // hit message precedes any death message.  Neither consumes
+                // RNG.  When not visible the hero may instead hear the scuffle
+                // (noises()).
+                pre_mm_attack(magr, mdef);
                 if (mm_visible(magr, mdef))
                     await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
                 else
                     await noises(magr, mattk);
                 res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
             } else {
-                // C ref: mhitm.c missmm() — "X misses Y." (when visible), else
-                // noises().  No RNG.
+                // C ref: mhitm.c missmm() -> pre_mm_attack() first, then
+                // "X misses Y." (when visible), else noises().  No RNG.
+                pre_mm_attack(magr, mdef);
                 if (mm_visible(magr, mdef))
                     await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
                 else
@@ -555,12 +579,14 @@ export async function mattackm(magr, mdef) {
             dieroll = rnd(20 + i);             // mhitm.c:441
             strike = (tmp > dieroll) ? 1 : 0;
             if (strike) {
+                pre_mm_attack(magr, mdef);
                 if (mm_visible(magr, mdef))
                     await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
                 else
                     await noises(magr, mattk);
                 res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
             } else {
+                pre_mm_attack(magr, mdef);
                 if (mm_visible(magr, mdef))
                     await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
                 else

@@ -14,8 +14,7 @@ import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
-import { mkobj_at, mksobj_at, add_to_container, set_corpsenm,
-         blessorcurse } from './mkobj.js';
+import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
 import { stock_room } from './shknam.js';
 import { fill_zoo } from './mkroom.js';
 import { OBJ_NAME } from './objnam.js';
@@ -23,7 +22,7 @@ import { obj_resists } from './zap.js';
 import { OBJ_BURIED } from './obj.js';
 import { start_timer, TIMER_OBJECT, ROT_ORGANIC } from './timeout.js';
 import { make_engr_at, engr_at } from './engrave.js';
-import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD , AM_SPLEV_RANDOM } from './const.js';
+import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD } from './const.js';
 
 /* is_pool/is_lava/m_at live in js/mon.js, which reaches this file back through
    invent.js -> mkobj.js. A direct import leaves them in TDZ the second time a
@@ -996,10 +995,17 @@ export function find_objtype(name) {
 
 // src/mkobj.c blessorcurse() — maybe bless or curse, one chance in `chance`.
 // Returns WITHOUT drawing if the object already has a BUC state.
-/* blessorcurse() is src/mkobj.c; it comes from js/mkobj.js. The copy here
-   set otmp.cursed/blessed inline where mkobj's calls curse()/bless(), which
-   do more than set the flag -- both make the same two draws, so the streams
-   agreed, but the object state did not. */
+function blessorcurse(otmp, chance) {
+    if (otmp.blessed || otmp.cursed)
+        return;
+
+    if (!rn2(chance)) {
+        if (!rn2(2))
+            otmp.cursed = 1;                            /* curse() */
+        else
+            otmp.blessed = 1;                           /* bless() */
+    }
+}
 
 // src/sp_lev.c get_table_buc() — the buc option's seven states, in C's order.
 const BUC_STATES = ['random', 'blessed', 'uncursed', 'cursed',
@@ -1358,6 +1364,7 @@ export function name_to_mon(name, gender_name_var) {
     return mntmp;
 }
 
+const AM_SPLEV_RANDOM = 0x80;
 const G_NOGEN = 0x0200;
 
 // src/sp_lev.c create_altar() — place one altar from a des.altar spec.

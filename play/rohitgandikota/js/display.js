@@ -2,15 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-
-function note_unported_display(what) {
-    (game.unported_display ||= new Set()).add(what);
-}
-import { is_lightblocker_mappear, DEADMONSTER } from './monst.js';
-import { block_point, unblock_point } from './vision.js';
-import { iter_mons } from './mon.js';
-import { See_invisible, Detect_monsters, Blind_telepat, Warn_of_mon,
-         Infravision, Confusion, HHallucination, Stunned } from './youprop.js';
+import { money_cnt } from './invent.js';
 import { ONAMES } from './objects_data.js';
 import { update_topl } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
@@ -24,7 +16,8 @@ import {
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SDOOR, ICE,
     IRONBARS, TREE, LADDER, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
-    AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN, MON_STILL_ARRIVING } from './const.js';
+    AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN,
+} from './const.js';
 import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
 import { def_monsyms, def_oc_syms } from './drawing_data.js';
@@ -60,7 +53,16 @@ function terrain_glyph(loc, x, y) {
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
-    case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
+    case CORR: {
+        /* src/display.c:2302 back_to_glyph() picks S_litcorr when the cell
+           was lit or lit_corridor is set; :248 map_background() drops back
+           to S_corr when the cell is neither seen nor waslit. Both share
+           '#', so map_glyphinfo (display.c:2938) paints the lit one
+           CLR_WHITE "to provide a visible difference". */
+        const lit = (loc.waslit || game.flags?.lit_corridor)
+                    && (loc.waslit || cansee(x, y));
+        return { ch: '#', color: lit ? CLR_WHITE : NO_COLOR, dec: false };
+    }
     // src/display.c:2324 — '+' when shut, '-'/'|' when open. The open glyphs
     // read backwards from their names: S_vodoor is '-' and S_hodoor is '|'
     // (include/defsym.h:104-105), so the orientation test is inverted.
@@ -155,22 +157,76 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 }
 
 // ── newsym ──
+/* include/display.h:894 obj_to_glyph() — a CORPSE does NOT become an object
+   glyph. It becomes `corpsenm + GLYPH_BODY_OFF`, a BODY glyph, and a body
+   glyph takes the colour of the MONSTER it came from rather than
+   objects[CORPSE].oc_color. Drawing every corpse the object's brown was wrong
+   for every species that is not brown: seed1500's first frame differs by
+   exactly one cell, a red '%' we drew brown.
+
+   The symbol is unchanged, because def_oc_syms[FOOD_CLASS] and the body
+   glyph's symbol are both '%'. */
+function floor_object_glyph(obj) {
+    const oc = game.objects?.[obj.otyp];
+    let color = oc?.oc_color ?? NO_COLOR;
+    let sym = def_oc_syms[obj.oclass] || '?';
+
+    /* include/display.h:950 statue_to_glyph() — a STATUE becomes
+       corpsenm + GLYPH_STATUE_*_OFF, i.e. it is drawn with the MONSTER's
+       symbol and colour, not the object's. Unlike a corpse, where only the
+       colour changes because both glyphs use '%', a statue's SYMBOL changes
+       too: we were drawing '`' where C draws the creature's letter. */
+    if (obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0) {
+        /* src/display.c:2829 — the statue takes the MONSTER's symbol
+           but the STATUE OBJECT's colour:
+               sym.symidx = mons[offset].mlet + SYM_OFF_M;
+               obj_color(STATUE);
+           so a grid bug statue is an 'x' in stone grey, not in the
+           grid bug's magenta. */
+        const mptr = game.mons?.[obj.corpsenm];
+        if (mptr)
+            sym = def_monsyms[mptr.mlet] || sym;
+        color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
+    } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
+        color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
+    }
+    return { ch: sym, color, dec: false };
+}
+
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
     if (game.u?.ux === x && game.u?.uy === y) {
-        // Hero
+        /* Hero. Map memory keeps the topmost non-monster layer, so an object
+           underfoot is what the cell reverts to after stepping off —
+           src/display.c _map_location() sets lev->glyph to the object glyph,
+           and display_self() draws '@' over it. */
         show_glyph_cell(x, y, '@', CLR_WHITE, false);
-        const tg = terrain_glyph(loc, x, y);
+        const under = (game.level?.objects || [])
+                          .find(o => o.ox === x && o.oy === y);
+        const tg = under ? floor_object_glyph(under) : terrain_glyph(loc, x, y);
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
         return;
     }
 
     // src/display.c newsym() picks in priority order: hero, then monster, then
     // object, then trap, then terrain. Only the cell in sight is redrawn; a
-    // remembered glyph is what the hero recalls of somewhere no longer visible.
+    // remembered glyph is what the hero recalls of somewhere no longer
+    // visible. Memory (lev->glyph in C, _map_location()) stores the object
+    // layer too — a monster is drawn OVER it and is not itself remembered.
     if (cansee(x, y)) {
+        /* C shows the TOP of the pile, and our object list is newest-first
+           (place_object prepends), so the first match is the top. */
+        const obj = (game.level?.objects || [])
+                        .find(o => o.ox === x && o.oy === y);
+        const memg = obj ? floor_object_glyph(obj)
+                         : (engraving_glyph(loc, x, y)
+                            || terrain_glyph(loc, x, y));
+        if (game.level?.flags?.hero_memory)
+            loc.remembered_glyph = { ch: memg.ch, color: memg.color,
+                                     decgfx: memg.dec };
+
         const mon = (game.level?.monsters || [])
                         .find(m => m.mx === x && m.my === y && m.mhp > 0
                                    && !m.msleeping_hidden);
@@ -180,47 +236,8 @@ export function newsym(x, y) {
             return;
         }
 
-        /* C shows the TOP of the pile, and our object list is newest-first
-           (place_object prepends), so the first match is the top. */
-        const obj = (game.level?.objects || [])
-                        .find(o => o.ox === x && o.oy === y);
         if (obj) {
-            /* include/display.h:894 obj_to_glyph() — a CORPSE does NOT become
-               an object glyph. It becomes `corpsenm + GLYPH_BODY_OFF`, a BODY
-               glyph, and a body glyph takes the colour of the MONSTER it came
-               from rather than objects[CORPSE].oc_color. Drawing every corpse
-               the object's brown was wrong for every species that is not
-               brown: seed1500's first frame differs by exactly one cell, a
-               red '%' we drew brown.
-
-               The symbol is unchanged, because def_oc_syms[FOOD_CLASS] and
-               the body glyph's symbol are both '%'. */
-            const oc = game.objects?.[obj.otyp];
-            let color = oc?.oc_color ?? NO_COLOR;
-            let sym = def_oc_syms[obj.oclass] || '?';
-
-            /* include/display.h:950 statue_to_glyph() — a STATUE becomes
-               corpsenm + GLYPH_STATUE_*_OFF, i.e. it is drawn with the
-               MONSTER's symbol and colour, not the object's. Unlike a corpse,
-               where only the colour changes because both glyphs use '%', a
-               statue's SYMBOL changes too: we were drawing '`' where C draws
-               the creature's letter. */
-            if (obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0) {
-                /* src/display.c:2829 — the statue takes the MONSTER's symbol
-                   but the STATUE OBJECT's colour:
-                       sym.symidx = mons[offset].mlet + SYM_OFF_M;
-                       obj_color(STATUE);
-                   so a grid bug statue is an 'x' in stone grey, not in the
-                   grid bug's magenta. */
-                const mptr = game.mons?.[obj.corpsenm];
-                if (mptr)
-                    sym = def_monsyms[mptr.mlet] || sym;
-                color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
-            } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
-                color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
-            }
-
-            show_glyph_cell(x, y, sym, color, false);
+            show_glyph_cell(x, y, memg.ch, memg.color, memg.dec);
             return;
         }
     }
@@ -247,6 +264,12 @@ export function newsym(x, y) {
             loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
         }
     } else if (loc.remembered_glyph) {
+        /* src/display.c:852,898 — "Corridors are never felt as lit":
+           a remembered lit corridor reverts to the dark one (S_corr) when
+           the cell is out of sight and not waslit; C rewrites lev->glyph. */
+        if (loc.typ === CORR && loc.remembered_glyph.color === CLR_WHITE
+            && !loc.waslit)
+            loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false };
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
@@ -287,6 +310,13 @@ export async function docrt() {
                     loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
             }
         }
+    /* src/display.c:1761 — "overlay with monsters": see_monsters() runs a
+       newsym over every live monster, which is what brings the pet back
+       after a menu overlay is dismissed and the map redrawn from memory. */
+    for (const mtmp of game.level.monsters || []) {
+        if (mtmp.mhp <= 0) continue;
+        newsym(mtmp.mx, mtmp.my);
+    }
     if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
 }
 
@@ -406,7 +436,7 @@ function _statusLine2() {
        and BL_TIME only when flags.time is. Both default OFF; seed8000's rc
        happens to turn them on, which is what made hardcoding them look right. */
     const f = game.flags || {};
-    let s = `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0}`
+    let s = `Dlvl:${u.uz?.dlevel || 1} $:${money_cnt(game.invent)}`
           + ` HP:${u.uhp || 0}(${u.uhpmax || 0})`
           + ` Pw:${u.uen || 0}(${u.uenmax || 0})`
           + ` AC:${u.uac ?? 0}`
@@ -601,6 +631,12 @@ export async function more() {
        waiting to be read as a command afterwards. */
     await xwaitforspace('\x1b ');
 
+    /* win/tty/topl.c more():234 — ESC sets WIN_STOP: the player has asked to
+       skip this turn's remaining messages. update_topl drops the paint (but
+       still buffers) and tty_yn_function skips its own more() while set. */
+    if (game.morc === '\x1b')
+        game._win_stop = true;
+
     /* win/tty/wintty.c tty_display_nhwindow(), NHW_MESSAGE:
      *
      *     more();
@@ -656,7 +692,7 @@ export function tty_clear_nhwindow_message(cury) {
 export function mon_visible(mon) {
     /* The hero can see the monster IF it is not invisible, is not an
        undetected hider, and neither you nor it is buried. */
-    return (!mon.minvis || See_invisible())
+    return (!mon.minvis || game.u.uprops?.SEE_INVIS)
         && !mon.mundetected
         && !(mon.mburied || game.u.uburied);
 }
@@ -665,8 +701,8 @@ export function mon_visible(mon) {
 // arm needs a hero property no early game has; each is recorded rather than
 // assumed, so a session that does have one reports itself.
 export function sensemon(mon) {
-    if (game.u.uswallow || Detect_monsters()
-        || Blind_telepat() || Warn_of_mon())
+    if (game.u.uswallow || game.u.uprops?.DETECT_MONSTERS
+        || game.u.uprops?.TELEPAT || game.u.uprops?.WARN_OF_MON)
         (game.unported ||= new Set()).add('display:sensemon');
     return false;
 }
@@ -675,7 +711,7 @@ export function sensemon(mon) {
 export function canseemon(mon) {
     if (mon.wormno)
         (game.unported ||= new Set()).add('display:canseemon:worm_known');
-    if (Infravision())
+    if (game.u.uprops?.INFRAVISION)
         (game.unported ||= new Set()).add('display:canseemon:see_with_infrared');
     return cansee(mon.mx, mon.my) && mon_visible(mon);
 }
@@ -695,67 +731,6 @@ export function canspotmon(mon) {
 // See NOTES, "Default-On options: read them defensively".
 export function is_safemon(mon) {
     return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
-              && !Confusion() && !HHallucination()
-              && !Stunned());
-}
-
-// src/display.c:1532 mimic_light_blocking() — iter_mons callback.
-function mimic_light_blocking(mtmp) {
-    if (mtmp.minvis && is_lightblocker_mappear(mtmp)) {
-        if (See_invisible())
-            block_point(mtmp.mx, mtmp.my);
-        else
-            unblock_point(mtmp.mx, mtmp.my);
-    }
-}
-
-// src/display.c:1548 set_mimic_blocking() — a mimic imitating a boulder, wall,
-// closed door or tree blocks light only while it is actually being seen as
-// that thing. Called only when the state of See_invisible changes.
-export function set_mimic_blocking() {
-    iter_mons(mimic_light_blocking);
-}
-
-// src/display.c:1487 see_monsters() — redraw every monster; also recount the
-// warn-object total so Sting's glow can be toggled.
-export function see_monsters() {
-    let new_warn_obj_cnt = 0;
-
-    if (game.defer_see_monsters)
-        return;
-
-    /* steed and unseen engulfer/holder/holdee are recognized via touch
-       even if they aren't going to be rendered; other monsters
-       may get flagged as having been seen by display_monster() if it's
-       called by newsym() */
-    if (game.u.usteed)
-        game.u.usteed.meverseen = 1;
-    if (game.u.ustuck)
-        game.u.ustuck.meverseen = 1;
-
-    /* loop through level.monsters (aka fmon) */
-    for (const mon of [...(game.level?.monsters || [])]) {
-        if (DEADMONSTER(mon))
-            continue;
-        if ((mon.mstate & MON_STILL_ARRIVING) !== 0)
-            continue;
-        newsym(mon.mx, mon.my);
-        if (mon.wormno)
-            note_unported_display('see_monsters:see_wsegs');
-        if (Warn_of_mon()
-            && (game.context.warntype?.obj & mon.data.mflags2) !== 0)
-            new_warn_obj_cnt++;
-    }
-
-    /*
-     * Make Sting glow blue or stop glowing if required.
-     */
-    if (new_warn_obj_cnt !== game.warn_obj_cnt) {
-        note_unported_display('see_monsters:Sting_effects');
-        game.warn_obj_cnt = new_warn_obj_cnt;
-    }
-
-    /* when mounted, hero's location gets caught by monster loop */
-    if (!game.u.usteed)
-        newsym(game.u.ux, game.u.uy);
+              && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
+              && !game.u.uprops?.STUNNED);
 }

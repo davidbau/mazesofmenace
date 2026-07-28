@@ -17,6 +17,9 @@
 // column 0 with the cursor at [9,23].
 
 import { game } from './../gstate.js';
+import { TOPLINE_EMPTY } from './../display.js';
+import { tty_clear_nhwindow_message } from './../display.js';
+import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './../const.js';
@@ -416,8 +419,19 @@ function process_menu_window(cw, page, display) {
                         && s[3] === ' ') ? 4 : 0;
         const attr = term_attr(item.attr);
 
+        /* The reference frames are re-serialized rows: a run of 5 or more
+           spaces is emitted as a cursor-forward escape (see the recorded
+           "ESC[7m    Name ESC[17C Level..." header), and the skipped cells
+           come back PLAIN on replay while shorter runs stay attributed.
+           Reproduce that lossy encoding here or an attributed header can
+           never match. */
+        const plainrun = new Array(s.length).fill(false);
+        for (const m of s.matchAll(/ {5,}/g))
+            for (let k = m.index; k < m.index + m[0].length; k++)
+                plainrun[k] = true;
+
         for (let i = 0; i < s.length && col < COLS; i++, col++) {
-            const on = (i >= attr_n) ? attr : 0;
+            const on = (i >= attr_n && !plainrun[i]) ? attr : 0;
             const ch = (i === 2 && item.identifier && item.selected)
                        ? (item.count === -1 ? '*' : '#') : s[i];
             display.setCell(col, row, ch, NO_COLOR, on);
@@ -491,6 +505,28 @@ export function tty_display_nhwindow(window) {
     cw.offx = compute_offx(cw);
     cw.curr_page = 0;
 
+    /* wintty.c tty_display_nhwindow(), the NHW_MENU/NHW_TEXT arm: a menu
+       drawn as an OVERLAY first erases the message line --
+       `tty_clear_nhwindow(WIN_MESSAGE)` in the else-arm -- while the
+       full-screen path clears the whole region instead. Without this the
+       prompt that launched the command ("# name") stays painted in the
+       columns left of the menu. */
+    if (cw.offx > 0) {
+        /* the per-frame screen rebuild repaints game._pending_message onto
+           row 0, so clearing the grid alone resurrects the old prompt on the
+           next frame; the more() path in js/display.js clears the pair the
+           same way. */
+        game._pending_message = '';
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+    } else {
+        /* wintty.c's full-screen arm (offx collapsed to 0): the whole screen
+           region is cleared and `ttyDisplay->toplin = TOPLINE_EMPTY`, so the
+           prompt that was on the topline does not come back after the window
+           is dismissed. */
+        game._pending_message = '';
+        game._toplin = TOPLINE_EMPTY;
+    }
+
     /* wintty.c:1944 — `if (cw->data || !cw->maxrow)` picks the text renderer;
        a window built with add_menu() has no data[] and lands in the menu one. */
     if (cw.mlist) {
@@ -504,6 +540,45 @@ export function tty_display_nhwindow(window) {
 }
 
 // Advance to the next page; returns false when the window is done.
+// win/tty/wintty.c tty_select_menu() — display the menu and run the key loop.
+//
+// PICK_ONE subset: an accelerator (or group accelerator) picks its entry and
+// returns immediately; ESC cancels with no picks; space and return finish
+// (advancing the page first on a multi-page menu). Counts, PICK_ANY
+// toggling and menu search are not reached by any ported caller yet.
+// Returns the identifiers of the picked entries, so the C's
+// `select_menu(...) > 0` test becomes `.length > 0`.
+export async function tty_select_menu(window, how) {
+    const cw = windows[window];
+    if (!cw) return [];
+    tty_display_nhwindow(window);
+    const picks = [];
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 27) {                      /* ESC — cancel */
+            cw.cancelled = true;
+            return [];
+        }
+        if (c === 32 || c === 13 || c === 10) {  /* space / return */
+            if (tty_next_page(window))
+                continue;
+            return picks;
+        }
+        const ch = String.fromCharCode(c);
+        let hit = false;
+        for (let it = cw.mlist; it; it = it.next) {
+            if (it.identifier && (it.selector === ch || it.gselector === ch)) {
+                picks.push(it.identifier);
+                hit = true;
+                break;
+            }
+        }
+        if (hit)
+            return picks;                    /* PICK_ONE: first hit wins */
+        /* unrecognised key: C beeps and keeps reading */
+    }
+}
+
 export function tty_next_page(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;

@@ -1,4 +1,3 @@
-import { CORPSTAT_NONE, TAINT_AGE, NON_PM, XLIM, YLIM, is_hole, is_pit } from './const.js';
 // mklev.js — Level generation.
 // C ref: mklev.c — makelevel, makerooms, makecorridors, generate_stairs.
 // Also includes parts of sp_lev.c (create_room) and mkmap.c (litstate_rnd).
@@ -7,14 +6,13 @@ import { CORPSTAT_NONE, TAINT_AGE, NON_PM, XLIM, YLIM, is_hole, is_pit } from '.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
-import { is_unicorn } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import {
     mkobj, mksobj, next_ident, blessorcurse, special_corpse, start_corpse_timeout,
 } from './mkobj.js';
 import {
     rndmonnum, rndmonnum_adj, makemon, mkclass, monsndx, level_difficulty,
-    MM_NOGRP, NO_MM_FLAGS, Inhell,
+    MM_NOGRP, NO_MM_FLAGS, Inhell, likes_gems,
 } from './makemon.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
@@ -61,7 +59,10 @@ import { mkroom_table, create_des_coder, spo_push_room,
          spo_endroom } from './sp_lev.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
-const CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07;
+const NON_PM = -1;
+const CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07,
+      CORPSTAT_NONE = 0x00; /* include/obj.h */
+const TAINT_AGE = 50;
 // Object type and object class constants come from js/objects_data.js, which
 // is generated from the C. They used to be hardcoded literals here and 21 of
 // the 23 object constants and 7 of the 8 class constants were wrong — e.g.
@@ -153,6 +154,9 @@ const RANDOM_CLASS = 0;
 // Supply chest items
 const MARK = 6;
 
+const XLIM = 4;
+const YLIM = 3;
+
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -169,9 +173,13 @@ import {
     TRAPPED_DOOR, TRAPPED_CHEST,
 } from './const.js';
 
+function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
+function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
+
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
-    const node = { sx: x, sy: y, up, isladder, tolev: { ...dest }, next: game.stairs };
+    const node = { sx: x, sy: y, up, isladder, u_traversed: false,
+                   tolev: { ...dest }, next: game.stairs };
     game.stairs = node;
 }
 
@@ -260,6 +268,10 @@ function oinit() { /* no-op for contest */ }
 
 let _nextObjId = 1;
 
+
+
+
+
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
 function add_to_buried(otmp) {
@@ -276,7 +288,7 @@ function set_corpsenm(otmp, pm) { /* stub */ }
 // mksobj() picks a random one internally whenever init is set, and mkcorpstat
 // then overwrites it. Gating the draw on `pm === null`, as this used to, loses
 // a whole rndmonst_adj() block from the stream.
-function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
+export function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
     const init = (corpstatflags & CORPSTAT_INIT) !== 0;
     const otmp = mksobj_at(objtyp, x, y, init, false);
 
@@ -291,6 +303,7 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, corpstatflags) {
     }
     return otmp;
 }
+
 
 // src/trap.c:508 mk_trap_statue() — the statue that sits on a STATUE_TRAP.
 //
@@ -329,6 +342,7 @@ function mk_trap_statue(x, y) {
 }
 
 // include/mondata.h:149 is_unicorn()
+const is_unicorn = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
 
 // maketrap stub
 // src/trap.c:3083 choose_trapnote() — a squeaky board picks an unused musical
@@ -652,7 +666,16 @@ async function makelevel() {
 
     // Place dungeon branch
     if (branchp) {
+        const prevstairs = g.stairs; /* used to test for place_branch() success */
         place_branch(branchp);
+
+        /* src/mklev.c:1382-1387 — for main dungeon level 1, the stairs up
+           where the hero starts are branch stairs; treat them as if hero had
+           just come down them by marking them as traversed; the most recently
+           created stairway is at the head of g.stairs */
+        if ((g.u?.uz?.dnum ?? 0) === 0 && (g.u?.uz?.dlevel ?? 1) === 1
+            && g.stairs !== prevstairs)
+            g.stairs.u_traversed = true;
     }
 
     /* src/mklev.c:1391-1412 — some levels have specially generated items in

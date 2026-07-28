@@ -11,6 +11,8 @@
 // (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
 
 import { game } from './gstate.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
 
 // include/timeout.h:11 enum timer_type
 export const TIMER_NONE = 0;
@@ -73,4 +75,18 @@ export function start_timer(when, kind, func_index, arg) {
         arg.timed = (arg.timed ?? 0) + 1;
 
     return true;
+}
+
+// src/timeout.c:951 fall_asleep() — put the hero to sleep for -how_long turns.
+//
+// The #if 0 deafness block is not compiled in C and is not ported. usleep
+// records WHEN sleep began so combat can wake the hero no earlier than the
+// next monster turn. nomovemsg carries the wake message.
+export async function fall_asleep(how_long, wakeup_msg) {
+    await stop_occupation();
+    nomul(how_long);
+    game.multi_reason = "sleeping";
+    /* early wakeup from combat won't be possible until next monster turn */
+    game.u.usleep = game.moves;
+    game.nomovemsg = wakeup_msg ? "You wake up." : "You can move again.";
 }

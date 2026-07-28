@@ -23,6 +23,7 @@ export function initRng(seed) {
 }
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
+
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 

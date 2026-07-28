@@ -6,12 +6,19 @@
 // creates, so skipping it left two calls unspent in the middle of level
 // generation.
 
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
+import { docrt } from './display.js';
+import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+         PICK_ONE, ECMD_OK } from './const.js';
+import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { PMNAMES, MFLAGS } from './monst_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
-         SUPPRESS_SADDLE, has_mgivenname } from './const.js';
-import { humanoid, is_animal, mindless, pronoun_gender } from './mondata.js';
+         SUPPRESS_SADDLE, has_mgivenname, MGIVENNAME } from './const.js';
+import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
@@ -90,10 +97,39 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
         return 'it';
     }
 
-    let buf = pmname(mdat, 2);      /* neutral; Mgender is not ported */
+    /* Put the adjectives in the buffer; invisible/saddled belong here too
+       but their states are recorded above. */
+    let buf = adjective ? adjective + ' ' : '';
+    const has_adjectives = buf !== '';
 
-    if (adjective)
-        buf = adjective + ' ' + buf;
+    /* src/do_name.c:930 — the actual name or type. A given name replaces
+       the species and, standing alone, suppresses the article entirely:
+       "You swap places with Hachi.", never "your Hachi". */
+    let name_at_start;
+    if (has_mgivenname(mtmp)) {
+        const name = MGIVENNAME(mtmp);
+        if (mtmp.mnum === PMNAMES.PM_GHOST) {
+            buf += `${name}'s ghost`;
+            name_at_start = true;
+        } else if (called) {
+            buf += `${pmname(mdat, 2)} called ${name}`;
+            name_at_start = type_is_pname(mdat);
+        } else {
+            /* the mplayer "<name> the <rank>" arm needs is_mplayer */
+            buf += name;
+            name_at_start = true;
+        }
+    } else {
+        buf += pmname(mdat, 2);     /* neutral; Mgender is not ported */
+        name_at_start = type_is_pname(mdat);
+    }
+
+    if (name_at_start && (article === ARTICLE_YOUR || !has_adjectives)) {
+        article = (mtmp.mnum === PMNAMES.PM_WIZARD_OF_YENDOR)
+                  ? ARTICLE_THE : ARTICLE_NONE;
+    } else if ((mdat.geno & MFLAGS.G_UNIQ) !== 0 && article === ARTICLE_A) {
+        article = ARTICLE_THE;
+    }
 
     switch (article) {
     case ARTICLE_YOUR: return 'your ' + buf;
@@ -119,6 +155,14 @@ function just_an(str) {
 export const a_monnam = (mtmp) =>
     x_monnam(mtmp, ARTICLE_A, null, has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
              false);
+
+// src/do_name.c:1052 christen_monst() — give a monster its name.
+// C stores it in mextra and truncates to PL_PSIZ-1 (31); the ghost rename
+// arm (a christened ghost keeps "X's ghost" form) lives in x_monnam.
+export function christen_monst(mtmp, name) {
+    mtmp.mgivenname = String(name).slice(0, 31);
+    return mtmp;
+}
 
 // src/do_name.c mon_nam() — ARTICLE_THE, no adjective.
 export const mon_nam = (mtmp) => x_monnam(mtmp, ARTICLE_THE, null, 0, false);
@@ -168,4 +212,77 @@ export function upstart(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 function note_do_name_unported(what) {
     (game.unported ||= new Set()).add('do_name:' + what);
     return false;
+}
+
+function note_unported_do_name(what) {
+    (game.unported ||= new Set()).add('do_name:' + what);
+}
+
+// src/do_name.c:499 docallcmd() — the #call / #name command: player can name a
+// monster, an object, or a type of object.
+//
+// The menu and the cancel path are complete. Every switch arm's worker
+// (do_mgivenname, do_oname via getobj, docall, namefloorobj, rename_disco,
+// donamelevel) is unported and recorded, so picking one records and returns.
+// C's cmdq_pop arm services a queued key from a scripted command; this port
+// has no queue producer yet, which in C is the empty-queue fallthrough, so no
+// marker fires for it.
+export async function docallcmd() {
+    let ch = 0;
+    /* if player wants a,b,c instead of i,o when looting, do that here too */
+    const abc = !!game.flags.lootabc;
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    tty_add_menu(win, null, 'm', abc ? 0 : 'm', 'C',
+                 ATR_NONE, NO_COLOR, "a monster", MENU_ITEMFLAGS_NONE);
+    if ((game.invent || []).length) {
+        /* we use y and n as accelerators so that we can accept user's
+           response keyed to old "name an individual object?" prompt */
+        tty_add_menu(win, null, 'i', abc ? 0 : 'i', 'y',
+                     ATR_NONE, NO_COLOR, "a particular object in inventory",
+                     MENU_ITEMFLAGS_NONE);
+        tty_add_menu(win, null, 'o', abc ? 0 : 'o', 'n',
+                     ATR_NONE, NO_COLOR, "the type of an object in inventory",
+                     MENU_ITEMFLAGS_NONE);
+    }
+    tty_add_menu(win, null, 'f', abc ? 0 : 'f', ',',
+                 ATR_NONE, NO_COLOR, "the type of an object upon the floor",
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(win, null, 'd', abc ? 0 : 'd', '\\',
+                 ATR_NONE, NO_COLOR, "the type of an object on discoveries list",
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(win, null, 'a', abc ? 0 : 'a', 'l',
+                 ATR_NONE, NO_COLOR, "record an annotation for the current level",
+                 MENU_ITEMFLAGS_NONE);
+    tty_end_menu(win, "What do you want to name?");
+    const picks = await tty_select_menu(win, PICK_ONE);
+    ch = picks.length > 0 ? picks[0] : 'q';
+    tty_destroy_nhwindow(win);
+    await docrt(); /* restore the map underneath, as the show_* callers do */
+
+    switch (ch) {
+    default:
+    case 'q':
+        break;
+    case 'm': /* name a visible monster */
+        note_unported_do_name('docallcmd:do_mgivenname');
+        break;
+    case 'i': /* name an individual object in inventory */
+        note_unported_do_name('docallcmd:do_oname');
+        break;
+    case 'o': /* name a type of object in inventory */
+        note_unported_do_name('docallcmd:docall');
+        break;
+    case 'f': /* name a type of object visible on the floor */
+        note_unported_do_name('docallcmd:namefloorobj');
+        break;
+    case 'd': /* name a type of object on the discoveries list */
+        note_unported_do_name('docallcmd:rename_disco');
+        break;
+    case 'a': /* annotate level */
+        note_unported_do_name('docallcmd:donamelevel');
+        break;
+    }
+    return ECMD_OK;
 }

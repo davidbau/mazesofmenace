@@ -13,23 +13,25 @@ import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     mons as MONS_INIT, PMNAMES, NUMMONS, MONSYMS, MSOUND, ATTKS, MFLAGS,
-    MMFLAGS, LIMITS, STRAT,
+    MMFLAGS, LIMITS, STRAT, GROWNUPS,
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { attacktype, is_neuter , is_rider , is_animal , mindless , humanoid , is_demon, is_swimmer, passes_walls , likes_gems, is_unicorn, is_armed, is_domestic, amorphous, noncorporeal, is_whirly, unsolid } from './mondata.js';
+import { canspotmon, newsym } from './display.js';
+import { attacktype, is_neuter } from './mondata.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
-    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U , A_NEUTRAL, ALIGNWEIGHT, NON_PM, In_endgame } from './const.js';
+    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
 import { enexto_core } from './teleport.js';
 
 // include/hack.h:1174-1175
 const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
 
 // include/permonst.h:15,23
+const NON_PM = -1;
 const LOW_PM = NON_PM + 1;                 /* first monster in mons[] */
 const SPECIAL_PM = PMNAMES.PM_LONG_WORM_TAIL;  /* [normal] < ~ < [special] */
 
@@ -57,6 +59,8 @@ const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST } = MSOUND;
 const { AT_WEAP, AD_ANY } = ATTKS;
 
 // include/global.h:411, include/align.h:22
+const ALIGNWEIGHT = 4;
+const A_NEUTRAL = 0;
 const AM_NONE = 0, AM_LAWFUL = 4, AM_NEUTRAL = 2, AM_CHAOTIC = 1;
 
 // include/global.h — MAXMONNO, the default per-species birth limit.
@@ -79,25 +83,27 @@ const always_hostile = (ptr) => (ptr.mflags2 & M2_HOSTILE) !== 0;
 const always_peaceful = (ptr) => (ptr.mflags2 & M2_PEACEFUL) !== 0;
 const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
 const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
-/* is_domestic() is include/mondata.h:109; it comes from js/mondata.js. */
+const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
 const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
 const race_peaceful = (ptr) => (ptr.mflags2 & (game.urace?.lovemask ?? 0)) !== 0;
+export const likes_gems = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
+const is_unicorn = (ptr) => ptr.mlet === S_UNICORN && likes_gems(ptr);
+const is_demon = (ptr) => (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0;
 const is_ndemon = (ptr) =>
     is_demon(ptr) && (ptr.mflags2 & (MFLAGS.M2_LORD | MFLAGS.M2_PRINCE)) === 0;
 const is_shapeshifter = (ptr) => (ptr.mflags2 & MFLAGS.M2_SHAPESHIFTER) !== 0;
 const verysmall = (ptr) => ptr.msize < 1;        /* MZ_SMALL */
 const nohands = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
-/* is_animal() is an include/mondata.h macro; it comes from js/mondata.js. */
-/* mindless() is an include/mondata.h macro; it comes from js/mondata.js. */
+const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
+const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
 const { STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG } = STRAT;
 const { M3_WAITMASK } = MFLAGS;
-/* is_rider() lives in js/mondata.js — it is a macro in
-   include/mondata.h:161. Defining it here forced js/mondata.js, a HEADER
-   mirror, to import from a .c mirror, which pulled the whole
-   monster-creation graph into anything that wanted a header macro. */
+export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
+                       || ptr.pmidx === PMNAMES.PM_FAMINE
+                       || ptr.pmidx === PMNAMES.PM_PESTILENCE;
 // src/mondata.c attacktype_fordmg() — is_armed(ptr) is attacktype(ptr, AT_WEAP)
 /* attacktype lives in js/mondata.js, its C home (src/mondata.c:54). */
-/* is_armed() is include/mondata.h:87; it comes from js/mondata.js. */
+const is_armed = (ptr) => attacktype(ptr, AT_WEAP);
 
 // include/monst.h:259-265
 const monmax_difficulty = (levdif) => Math.trunc((levdif + (game.u?.ulevel ?? 0)) / 2);
@@ -458,16 +464,9 @@ function golemhp(type) {
     }
 }
 
-/* In_endgame() is include/dungeon.h:141, ((x)->dnum == astral_level.dnum).
-   The version here compared the dungeon's NAME against 'The Elemental
-   Planes' instead -- a proxy for the same question, not the same test. It
-   comes from js/const.js now, which compares dnum as C does and defaults to
-   u.uz when called with no argument, matching this file's call site.
-
-   This matters more than a tidy-up: js/makemon.js:486 reads
-   In_endgame() ? (8 * basehp) : (4 * basehp + d(basehp, 4)), so the answer
-   decides WHETHER A DRAW HAPPENS. Both forms return false outside the
-   endgame, which no public session reaches, so the streams agree today. */
+function In_endgame() {
+    return game.dungeons?.[game.u?.uz?.dnum]?.dname === 'The Elemental Planes';
+}
 
 function is_home_elemental(/* ptr */) {
     /* only true in the endgame planes, which no public session reaches */
@@ -565,6 +564,11 @@ export function mongets(mtmp, otyp) {
 export function mpickobj(mtmp, otmp) {
     if (!mtmp.minvent) mtmp.minvent = [];
     mtmp.minvent.push(otmp);
+    /* src/steal.c add_to_minv() — the object's where/ocarry move with it;
+       obj_extract_self's OBJ_MINVENT arm depends on both. Stack merging
+       (merged()) is not ported; each pickup keeps its own object. */
+    otmp.where = OBJ_MINVENT;
+    otmp.ocarry = mtmp;
     return false;
 }
 
@@ -574,9 +578,6 @@ export function mpickobj(mtmp, otmp) {
 // branches that need nothing beyond mksobj(). The mlet switch's remaining arms
 // are noted where they belong; each is reached only by a species that cannot
 // yet be generated, and reaching one is recorded rather than approximated.
-/* include/mondata.h:111 is_mercenary() — local copy; see the S_HUMAN arm. */
-const is_merc = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
-
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
 
@@ -598,20 +599,6 @@ function m_initinv(mtmp) {
     case S_GIANT:
     case S_WRAITH:
     case S_LICH:
-    case S_HUMAN:
-        /* src/makemon.c — this arm is a CHAIN: is_mercenary, then
-           PM_SHOPKEEPER, then MS_PRIEST, then a quest monk. An ordinary
-           human matches none of them and C does nothing, so recording for
-           every S_HUMAN overstated the gap.
-           is_merc is a local copy of include/mondata.h:111; js/monmove.js:379
-           has another. Consolidating the three is a separate change, noted in
-           STATUS -- moving it to mondata.js produced a redeclaration I could
-           not trace. */
-        if (is_merc(ptr)
-            || ptr.pmidx === PMNAMES.PM_SHOPKEEPER
-            || ptr.msound === MFLAGS.MS_PRIEST)
-            note_unported(`m_initinv mlet=${ptr.mlet}`);
-        break;
     case S_QUANTMECH:
     case S_DEMON:
     case S_GNOME:
@@ -774,6 +761,8 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
     return true;
 }
 
+const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
+const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 const may_passwall = () => false;   /* needs level.flags.noteleport wall data */
 
 // src/quest.c quest_info() — the quest leader/nemesis for the hero's role.
@@ -951,33 +940,14 @@ export function set_mimic_sym(mtmp) {
 }
 function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
 function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
-/* src/steed.c:26 can_saddle() — SEVEN conditions, not one. This tested only
-   msize, so it answered true for many monsters C refuses to saddle.
-   js/steed.js has the correct one, but importing it would close a cycle
-   (steed -> mkobj -> makemon), so the conditions are written out here and
-   the two now agree.
-
-   steeds[] is src/steed.c:8, the six classes that can bear a rider.
-   MZ_MEDIUM is 2, which is why the old `msize >= 2` had the right threshold
-   and nothing else. */
-const steeds = [MONSYMS.S_QUADRUPED, MONSYMS.S_UNICORN, MONSYMS.S_ANGEL,
-                MONSYMS.S_CENTAUR, MONSYMS.S_DRAGON, MONSYMS.S_JABBERWOCK];
-
-function can_saddle(mtmp) {
-    const ptr = mtmp.data;
-    return steeds.includes(ptr.mlet)
-        && ptr.msize >= MFLAGS.MZ_MEDIUM
-        && (!humanoid(ptr) || ptr.mlet === MONSYMS.S_CENTAUR)
-        && !amorphous(ptr) && !noncorporeal(ptr)
-        && !is_whirly(ptr) && !unsolid(ptr);
-}
+function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
 
 /* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
    that stood here short-circuited on an empty minvent and recorded otherwise;
    the real one does the slot walk. */
 
 // include/mondata.h — the predicates m_initweap() branches on.
-/* humanoid() is an include/mondata.h macro; it comes from js/mondata.js. */
+const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
 const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 const is_dwarf = (ptr) => (ptr.mflags2 & MFLAGS.M2_DWARF) !== 0;
 const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
@@ -1555,4 +1525,105 @@ export function makemon(ptr, x, y, mmflags) {
     }
 
     return mtmp;
+}
+
+// src/makemon.c:2051 grow_up() — a pet levels up from a kill (or a wraith
+// corpse/gain-level potion, which is the victim-less arm). Returns the
+// monster's (possibly new) permonst, or null if it died growing.
+//
+// The draws: rnd(victim->m_lev + 1) for the max HP gain, then
+// rn2(max_increase) when that is above 1. The genocided-growth death arm and
+// the leash bookkeeping record.
+export function grow_up(mtmp, victim) {
+    if (mtmp.mhp <= 0)
+        return null;
+
+    let ptr = game.mons[mtmp.mnum];
+    const oldtype = mtmp.mnum;
+    let newtype = (oldtype === PMNAMES.PM_KILLER_BEE && !victim)
+                  ? PMNAMES.PM_QUEEN_BEE : little_to_big(oldtype);
+
+    let hp_threshold, lev_limit, max_increase, cur_increase;
+    if (victim) {                       /* killed a monster */
+        hp_threshold = mtmp.m_lev * 8;
+        if (!mtmp.m_lev)
+            hp_threshold = 4;
+        else if (is_golem(ptr))
+            hp_threshold = (Math.trunc(mtmp.mhpmax / 10) + 1) * 10 - 1;
+        /* is_home_elemental needs the plane levels; not reachable */
+        lev_limit = Math.trunc(3 * ptr.mlevel / 2);
+        if (oldtype !== newtype && game.mons[newtype].mlevel > lev_limit)
+            lev_limit = game.mons[newtype].mlevel;
+        max_increase = rnd(victim.m_lev + 1);
+        if (mtmp.mhpmax + max_increase > hp_threshold + 1)
+            max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
+        cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
+    } else {
+        max_increase = cur_increase = rnd(8);
+        hp_threshold = 0;
+        lev_limit = 50;
+    }
+
+    mtmp.mhpmax += max_increase;
+    mtmp.mhp += cur_increase;
+    if (mtmp.mhpmax <= hp_threshold)
+        return ptr;                     /* doesn't gain a level */
+
+    if (lev_limit < 5)
+        lev_limit = 5;
+    else if (lev_limit > 49)
+        lev_limit = (ptr.mlevel > 49 ? 50 : 49);
+
+    if (++mtmp.m_lev >= game.mons[newtype].mlevel && newtype !== oldtype) {
+        ptr = game.mons[newtype];
+        const fem = mtmp.female | 0;   /* gender forcing needs is_male/is_female flags */
+
+        if ((game.mvitals?.[newtype]?.mvflags ?? 0) & G_GENOD) {
+            note_unported_makemon('grow_up:genocided_growth');
+            mtmp.mnum = newtype;
+            mtmp.data = ptr;
+            const { mondied } = mondied_ref();
+            mondied(mtmp);
+            return null;
+        } else if (canspotmon(mtmp)) {
+            /* pline_mon "%s grows up into %s." */
+            note_unported_makemon('grow_up:growth_msg');
+        }
+        mtmp.mnum = newtype;
+        mtmp.data = ptr;
+        newsym(mtmp.mx, mtmp.my);      /* color may change */
+        lev_limit = mtmp.m_lev;
+        mtmp.female = fem;
+    }
+
+    /* sanity checks */
+    if (mtmp.m_lev > lev_limit) {
+        mtmp.m_lev--;
+        if (mtmp.mhpmax === hp_threshold + 1)
+            mtmp.mhpmax--;
+    }
+    if (mtmp.mhpmax > 50 * 8)
+        mtmp.mhpmax = 50 * 8;
+    if (mtmp.mhp > mtmp.mhpmax)
+        mtmp.mhp = mtmp.mhpmax;
+
+    return ptr;
+}
+
+// src/makemon.c little_to_big() — the GROWNUPS pairs from monst.c.
+function little_to_big(montype) {
+    for (const [littl, big] of GROWNUPS)
+        if (littl === montype)
+            return big;
+    return montype;
+}
+
+/* js/mon.js imports from this file already; a static import back would be an
+   eval-time cycle, so mondied is looked up at call time. */
+function mondied_ref() {
+    return { mondied: game._mondied_ref };
+}
+
+function note_unported_makemon(what) {
+    (game.unported ||= new Set()).add(what);
 }

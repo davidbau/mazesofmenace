@@ -1,8 +1,8 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Per-turn replay remains while command and turn subsystems are ported. The
-// PRNG-owning initializers and new-game sequence below are source-derived;
+// The implemented command boundary uses one source-derived elapsed-turn path.
+// Unsupported command and monster branches stop before live state changes;
 // UUID, notice, and glyph-map setup remain to be ported.
 
 import { game } from './gstate.js';
@@ -14,21 +14,14 @@ import {
     FAST,
     HVY_ENCUMBER,
     INTRINSIC,
-    MON_FLOOR,
-    MON_MIGRATING,
     MOD_ENCUMBER,
-    NON_PM,
     NO_MM_FLAGS,
     NORMAL_SPEED,
-    POLYMORPH,
     RLOC_NOMSG,
     SEARCHING,
     SLT_ENCUMBER,
-    TELEPORT,
-    UNENCUMBERED,
-    WARNING,
 } from './const.js';
-import { effective_attribute } from './attrib.js';
+import { effective_attribute, exerchk } from './attrib.js';
 import { makedog, see_nearby_monsters } from './dog.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { m_at } from './monst.js';
@@ -39,12 +32,13 @@ import {
     mcalcmove,
     movemon,
     movemon_singlemon,
+    UnsupportedMonsterDistressError,
     were_change,
 } from './mon.js';
 import { dmonsfree, makemon } from './makemon_create.js';
 import { init_objects } from './o_init.js';
 import { objectGenerationHooks } from './object_generation.js';
-import { PM_FOG_CLOUD, reset_mvitals } from './monsters.js';
+import { reset_mvitals } from './monsters.js';
 import { depth, init_dungeons } from './dungeon.js';
 import { init_artifacts } from './artifacts.js';
 import { role_init, welcomeMessage } from './role_init.js';
@@ -60,9 +54,19 @@ import {
 } from './startup_skills.js';
 import { reroll_menu } from './startup_reroll.js';
 import { ttyLegacyIntroduction } from './legacy_startup.js';
-import { domove, endRunning, rhack } from './cmd.js';
+import { rhack } from './cmd.js';
+import {
+    domove,
+    endRunning,
+    near_capacity,
+    projected_capacity,
+} from './hack.js';
+import { encumber_msg } from './pickup.js';
 import { docrt, cls, bot, flush_screen, newsym } from './display.js';
-import { ttyPline } from './tty_message.js';
+import {
+    dismissPendingTtyMessage,
+    ttyPline,
+} from './tty_message.js';
 import {
     canSeeMonster,
     emitGlyphUpdateNotices,
@@ -82,11 +86,12 @@ import {
 } from './vision.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { dosoundsInitialLevel } from './sounds.js';
-import { gethungry } from './eat.js';
 import {
-    closed_door,
-    m_everyturn_effect,
-} from './monmove.js';
+    gethungry,
+    preflightGetHungry,
+    UnsupportedHungerTransitionError,
+} from './eat.js';
+import { m_everyturn_effect } from './monmove.js';
 import {
     preflightSimpleMonsterActions,
     runSimpleMonsterAction,
@@ -95,15 +100,17 @@ import {
 import {
     create_gas_cloud,
     run_regions,
-    visible_region_at,
 } from './region.js';
-import { nh_timeout_fresh_turn } from './timeout.js';
+import {
+    UnsupportedHeroTimeoutBoundaryError,
+    nh_timeout_elapsed_turn,
+    preflight_nh_timeout_elapsed_turn,
+} from './timeout.js';
 import { regen_hp, regen_pw } from './regen.js';
 import { automatic_search } from './detect.js';
 import { age_spells } from './spell.js';
 import { settrack } from './track.js';
 import { is_lava, is_pool } from './trap.js';
-import { is_were } from './mondata.js';
 import { clear_splitobjs } from './obj.js';
 
 // PRNG-owning initializer seam corresponding to the point immediately before
@@ -346,21 +353,20 @@ export function maybeRunClairvoyance(state = game, env = {}) {
 // C ref: allmain.c moveloop_core()'s once-per-hero-took-time boundary.
 // New-turn allocation establishes moves*8; each action within that turn then
 // receives the next sequence number before clairvoyance cadence is checked.
-export function finishHeroTimeEffects(state = game, env = {}) {
+export async function finishHeroTimeEffects(state = game, env = {}) {
     if (!Number.isSafeInteger(state.hero_seq) || state.hero_seq < 0) {
         throw new Error('hero time effects require initialized hero_seq');
     }
+    if (typeof env.encumberMessage !== 'function') {
+        throw new Error('hero time effects require encumber_msg');
+    }
     // Validate injected owners before changing hero_seq. Once admitted,
-    // preserve C's increment -> map -> schedule order.
+    // preserve C's increment -> encumbrance -> map -> schedule order.
     const plan = clairvoyancePlan(state, env);
     state.hero_seq++;
+    await env.encumberMessage(state);
     applyClairvoyancePlan(plan, state, env);
 }
-
-const MONSTER_ACTION_BOUNDARY =
-    'moveloop reached the unported monster-action phase';
-const TURN_REPLAY_BOUNDARY =
-    'moveloop reached the end of the residual turn replay';
 
 export class UnsupportedTurnBoundaryError extends Error {
     constructor(message) {
@@ -369,50 +375,14 @@ export class UnsupportedTurnBoundaryError extends Error {
     }
 }
 
-function requireNoPendingMonsterAction(
-    state,
-    { allowEveryTurnEffects = false } = {},
-) {
-    for (let monster = state.level?.monlist ?? null;
-        monster;
-        monster = monster.nmon) {
-        // C ref: mon.c movemon_singlemon(). Parked vault guards and live
-        // on-map monster effects run before the movement-ration check, so
-        // they must also fail closed while their action owners are absent.
-        const parkedGuard = monster.isgd
-            && monster.mx === 0 && monster.my === 0
-            && !(monster.mstate & MON_MIGRATING);
-        if (parkedGuard) {
-            if (state.moves > (monster.mlstmv ?? 0)) {
-                throw new UnsupportedTurnBoundaryError(
-                    MONSTER_ACTION_BOUNDARY,
-                );
-            }
-            continue;
-        }
-        const liveOnMap = monster.mhp > 0
-            && (monster.mstate ?? MON_FLOOR) === MON_FLOOR;
-        const isFogCloud = monster.data === state.mons?.[PM_FOG_CLOUD]
-            || monster.data?.pmidx === PM_FOG_CLOUD
-            || monster.mnum === PM_FOG_CLOUD;
-        const fogCloudNeedsEffect = liveOnMap && isFogCloud
-            && !closed_door(monster.mx, monster.my, state)
-            && !visible_region_at(monster.mx, monster.my, state);
-        if ((!allowEveryTurnEffects && fogCloudNeedsEffect)
-            || (liveOnMap && monster.movement >= NORMAL_SPEED)) {
-            throw new UnsupportedTurnBoundaryError(MONSTER_ACTION_BOUNDARY);
-        }
-    }
-}
-
 function propertyActive(state, property) {
     const value = state.u?.uprops?.[property];
     return Boolean(value?.intrinsic || value?.extrinsic);
 }
 
-function firstTurnBoundary(reason) {
+function elapsedTurnBoundary(reason) {
     throw new UnsupportedTurnBoundaryError(
-        `first fresh turn reached ${reason}`,
+        `elapsed turn reached ${reason}`,
     );
 }
 
@@ -446,89 +416,33 @@ async function runEveryTurnEffectWithRegionHooks(monster, env) {
     });
 }
 
-function preflightFirstFreshTurn(state) {
-    if (state.moves !== 1)
-        firstTurnBoundary(`unexpected move counter ${state.moves}`);
-    if (!state.u || !state.level
-        || !Array.isArray(state.level.regions)) {
-        firstTurnBoundary('uninitialized hero, level, or region state');
-    }
-    if ((state.multi ?? 0) < 0 || state.occupation)
-        firstTurnBoundary('an immobile hero or active occupation');
-    if (state.context?.bypasses || state.u.utotype)
-        firstTurnBoundary('deferred bypass or level-transition work');
-
-    requireNoPendingMonsterAction(
-        state,
-        { allowEveryTurnEffects: true },
-    );
-    if (state.u.umovement !== NORMAL_SPEED)
-        firstTurnBoundary('a non-new-game hero movement balance');
-
-    for (let monster = state.level.monlist;
-        monster;
-        monster = monster.nmon) {
-        const liveOnMap = monster.mhp > 0
-            && (monster.mstate ?? MON_FLOOR) === MON_FLOOR;
-        if (!liveOnMap) continue;
-        if (!monster.data?.mmove
-            && (is_pool(monster.mx, monster.my, state)
-                || is_lava(monster.mx, monster.my, state))) {
-            firstTurnBoundary('an immobile monster in liquid');
-        }
-        // No initial-D:1 generator admits a lycanthrope.  Reject one before
-        // were_change() could require the later set_uasmon() owner.
-        if (is_were(monster.data))
-            firstTurnBoundary('a fresh-game lycanthrope');
-    }
-
-    // These allmain.c branches cannot be established by a new level-one
-    // hero.  Keep that source assumption executable so later command work
-    // cannot silently widen this first-turn slice.
-    if (propertyActive(state, TELEPORT)
-        || propertyActive(state, POLYMORPH)
-        || propertyActive(state, WARNING)
-        || (state.u.ulycn ?? NON_PM) !== NON_PM
-        || state.u.uburied
-        || state.u.uinwater
-        || state.u.utrap
-        || state.u.uevent?.udemigod
-        || state.u.uhave?.amulet
-        || state.level.flags?.fumaroles
-        || Math.trunc(state.gw?.were_changes ?? 0) !== 0) {
-        firstTurnBoundary('a post-start hero or special-level branch');
-    }
-    for (const region of state.level.regions) {
-        if (Math.trunc(region.arg ?? 0) > 0)
-            firstTurnBoundary('a harmful active region');
-    }
-
-    // Validate the pure fresh-turn timeout subset against the move value it
-    // will observe, before monster effects or movement balances can change.
-    nh_timeout_fresh_turn({ ...state, moves: 2 });
-}
-
-function freshTurnMinLiquid(monster, env) {
+function elapsedTurnMinLiquid(monster, env) {
     if (is_pool(monster.mx, monster.my, env.state)
         || is_lava(monster.mx, monster.my, env.state)) {
-        firstTurnBoundary('an immobile monster in liquid');
+        elapsedTurnBoundary('an immobile monster in liquid');
     }
     return false;
 }
 
-function unavailableFirstTurnOperation(operation) {
-    return () => firstTurnBoundary(operation);
-}
-
-async function finishFreshElapsedTurn(state, random) {
-    const wtcap = UNENCUMBERED;
-    const regionEnv = regionEffectEnv(state, random);
+async function finishElapsedTurn(
+    state,
+    random,
+    { planning = false } = {},
+) {
+    // C ref: allmain.c moveloop_core()'s mvl_wtcap, taken once after the
+    // monster loop. C reuses this snapshot only for u_calc_moveamt(),
+    // regen_hp(), regen_pw(), and the overexertion check. eat.c gethungry()
+    // and attrib.c exerper() each call near_capacity() themselves, so they get
+    // a live evaluator below rather than this value, which nh_timeout() and
+    // the hunger transition can already have invalidated.
+    const wtcap = near_capacity(state);
+    const regionEnv = planning ? null : regionEffectEnv(state, random);
     state.gw.were_changes = 0;
     await mcalcdistress(state, {
         state,
         random,
-        visionRecalc: vision_recalc,
-        minLiquid: freshTurnMinLiquid,
+        visionRecalc: planning ? () => {} : vision_recalc,
+        minLiquid: elapsedTurnMinLiquid,
         decideToShapeshift: decide_to_shapeshift,
         wereChange: were_change,
     });
@@ -548,14 +462,36 @@ async function finishFreshElapsedTurn(state, random) {
     settrack(state);
 
     state.moves++;
+    if (state.moves >= 1000000000) {
+        // C ref: allmain.c moveloop_core() runs display_nhwindow(WIN_MESSAGE,
+        // TRUE), then urgent_pline("The dungeon capitulates."), then
+        // done(ESCAPED). Only the first is ported. done() drives the
+        // disclosure prompts, the "You escaped from the dungeon" summary, and
+        // topten, and recorder patch 006 writes its single final capture
+        // inside nh_terminate() after topten has painted. Printing the pline
+        // and capturing a frame here would invent a boundary no C run
+        // produces, so stop after the dismissal C performs first.
+        if (!planning && state._pending_message)
+            await dismissPendingTtyMessage(state);
+        elapsedTurnBoundary('game end through done(ESCAPED)');
+    }
     state.hero_seq = state.moves * 8;
     if (state.flags?.time && !state.context?.run) {
         state.disp ??= {};
         state.disp.time_botl = true;
     }
 
-    nh_timeout_fresh_turn(state);
-    await run_regions(regionEnv);
+    nh_timeout_elapsed_turn(state);
+    // `planning` is true only on the burdened multi-allocation path, because
+    // advanceElapsedTurn supplies advanceRound only when projected_capacity()
+    // is above zero. So these two stops read as "burdened", and an unburdened
+    // turn runs run_regions() and automatic_search() live with no prior dry
+    // run. That asymmetry is deliberate: an unburdened hero regains a ration
+    // in one allocation, so there is no second cycle whose mid-turn failure
+    // would need to be rejected atomically.
+    if (planning && state.level.regions.length)
+        elapsedTurnBoundary('burdened multi-cycle region upkeep');
+    if (!planning) await run_regions(regionEnv);
 
     if (state.u.ublesscnt) state.u.ublesscnt--;
     if (!state.u.uinvulnerable)
@@ -565,14 +501,40 @@ async function finishFreshElapsedTurn(state, random) {
     if (propertyActive(state, SEARCHING)
         && !state.level.flags?.noautosearch
         && (state.multi ?? 0) >= 0) {
+        if (planning)
+            elapsedTurnBoundary('burdened multi-cycle automatic search');
         await automatic_search({ state, random });
     }
-    await dosoundsInitialLevel(state, { random: random.rn2 });
-    gethungry(state, {
+    await dosoundsInitialLevel(state, {
+        random: random.rn2,
+        pline: planning ? async () => {} : ttyPline,
+    });
+    await gethungry(state, {
         random,
-        nearCapacity: () => wtcap,
+        // eat.c gethungry() calls near_capacity() live at its accessory-time
+        // branch, before newuhs() can lower capacity.
+        nearCapacity: () => near_capacity(state),
+        message: planning ? async () => {} : ttyPline,
+        endRunning,
+        statusRefresh: planning ? async () => {} : () => bot(),
     });
     age_spells(state);
+    // C ref: allmain.c moveloop_core() calls exerchk() here, before invault()
+    // and engraving wear.
+    await exerchk(state, {
+        random,
+        // attrib.c exerper() switches on near_capacity() live, after
+        // gethungry() has run. A WEAK transition lowers weight_cap() through
+        // ATEMP(A_STR), so the snapshot above can be a whole band too low.
+        nearCapacity: () => near_capacity(state),
+        encumberMessage: planning
+            ? (subject) => encumber_msg(
+                subject,
+                { message: async () => {} },
+            )
+            : encumber_msg,
+        message: planning ? async () => {} : ttyPline,
+    });
     maybeWipeHeroEngraving(state, random);
 }
 
@@ -585,6 +547,16 @@ function unavailableElapsedTurnOperation(operation) {
     };
 }
 
+// Every refusal class the cloned once-per-turn round can raise. Each becomes
+// an UnsupportedTurnBoundaryError so the segment stops on its last matching
+// screen rather than throwing out of runSegment().
+const ELAPSED_TURN_PLANNING_REFUSALS = [
+    UnsupportedSimpleMonsterActionError,
+    UnsupportedHeroTimeoutBoundaryError,
+    UnsupportedHungerTransitionError,
+    UnsupportedMonsterDistressError,
+];
+
 const runElapsedTurnMonsterAction =
     adaptMonsterActionToDochugwSignature(runSimpleMonsterAction);
 
@@ -596,7 +568,7 @@ async function moveElapsedTurnMonster(monster, env) {
         clearBypasses: unavailableElapsedTurnOperation(
             'monster bypass cleanup',
         ),
-        minLiquid: freshTurnMinLiquid,
+        minLiquid: elapsedTurnMinLiquid,
         dowear: unavailableElapsedTurnOperation('monster equipment changes'),
         restrap: unavailableElapsedTurnOperation('monster hiding'),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
@@ -611,20 +583,81 @@ async function moveElapsedTurnMonster(monster, env) {
 // C ref: allmain.c moveloop_core(), elapsed turn. Monster movement can require
 // multiple complete list scans while the hero lacks a ration. A fast hero's
 // retained ration ends the scan even when a fast pet could act again;
-// once-per-turn upkeep waits until both sides are out. This serves every turn
-// after the first.
-async function advanceFreshTurn(state) {
+// once-per-turn upkeep waits until both sides are out. This serves the first
+// elapsed command and every subsequent elapsed command.
+async function advanceElapsedTurn(state) {
+    const initialCapacity = projected_capacity(state);
+    let preflight;
     try {
-        await preflightSimpleMonsterActions(state);
+        preflight = await preflightSimpleMonsterActions(state, {
+            advanceRound: initialCapacity > 0
+                ? (planned, planningRandom) => finishElapsedTurn(
+                    planned,
+                    planningRandom,
+                    { planning: true },
+                )
+                : null,
+        });
     } catch (error) {
-        if (!(error instanceof UnsupportedSimpleMonsterActionError))
+        // The planning round runs the whole once-per-turn block on the clone,
+        // so any owner it reaches can refuse: monster distress, the timeout
+        // preflight, and the hunger transition all raise their own class.
+        // js/jsmain.js breaks the segment only for the three boundary types,
+        // so anything not converted here escapes as a hard failure and
+        // discards the matching prefix instead of stopping on it.
+        if (!ELAPSED_TURN_PLANNING_REFUSALS.some(
+            (type) => error instanceof type,
+        )) {
             throw error;
+        }
         const boundary = new UnsupportedTurnBoundaryError(error.message);
         boundary.reason = error.reason;
         throw boundary;
     }
-    // C runs the per-turn timeouts against the turn it is entering.
-    nh_timeout_fresh_turn({ ...state, moves: (state.moves || 1) + 1 });
+    // C reaches hunger and timeout work only after the current monster scans
+    // leave both sides without a movement ration.  The cloned scan above
+    // determines that gate without changing live state, so unsupported upkeep
+    // can still stop atomically without rejecting a fast hero who retains a
+    // ration and does not allocate a new turn.
+    const reachesTurnLimit = preflight.runsOncePerTurnUpkeep
+        && (state.moves || 1) + 1 >= 1000000000;
+    // The turn C would finish with done(ESCAPED) is refused here, beside the
+    // other preflight boundaries, so both capacity paths stop identically. A
+    // burdened hero's dry run also reaches the limit inside finishElapsedTurn,
+    // but an unburdened hero has no dry run of that block at all, and letting
+    // the live pass discover the limit would leave moves at the wrap value
+    // with an ISAAC draw already spent.
+    if (reachesTurnLimit)
+        elapsedTurnBoundary('game end through done(ESCAPED)');
+    if (preflight.runsOncePerTurnUpkeep) {
+        try {
+            preflightGetHungry(state, {
+                nearCapacity: () => initialCapacity,
+                message: ttyPline,
+                endRunning,
+                statusRefresh: () => bot(),
+            });
+        } catch (error) {
+            if (!(error instanceof UnsupportedHungerTransitionError))
+                throw error;
+            const boundary = new UnsupportedTurnBoundaryError(error.message);
+            boundary.reason = error.reason;
+            throw boundary;
+        }
+        try {
+            // C runs the per-turn timeouts against the turn it is entering.
+            preflight_nh_timeout_elapsed_turn({
+                ...state,
+                moves: (state.moves || 1) + 1,
+            });
+        } catch (error) {
+            if (!(error instanceof UnsupportedHeroTimeoutBoundaryError))
+                throw error;
+            const boundary = new UnsupportedTurnBoundaryError(error.message);
+            boundary.reason = error.reason;
+            throw boundary;
+        }
+    }
     const random = { d, rn1, rn2, rnd, rne, rnl, rnz };
 
     // C ref: allmain.c moveloop_core().  The outer loop repeats while the hero
@@ -633,7 +666,9 @@ async function advanceFreshTurn(state) {
     // when both sides are out, which is why the gate carries !monstersCanMove
     // as well as the movement test.
     state.u.umovement -= NORMAL_SPEED;
+    let upkeepCount = 0;
     do {
+        await encumber_msg(state);
         state.context.mon_moving = true;
         let monstersCanMove;
         try {
@@ -655,21 +690,36 @@ async function advanceFreshTurn(state) {
             state.context.mon_moving = false;
         }
 
-        if (!monstersCanMove && state.u.umovement < NORMAL_SPEED)
-            await finishFreshElapsedTurn(state, random);
+        const runsOncePerTurnUpkeep =
+            !monstersCanMove && state.u.umovement < NORMAL_SPEED;
+        if (runsOncePerTurnUpkeep !== preflight.runsOncePerTurnUpkeep) {
+            throw new Error(
+                'elapsed-turn preflight disagreed with the live movement gate',
+            );
+        }
+        if (runsOncePerTurnUpkeep) {
+            ++upkeepCount;
+            await finishElapsedTurn(state, random);
+        }
     } while (state.u.umovement < NORMAL_SPEED);
+    if (initialCapacity > 0 && upkeepCount !== preflight.upkeepCount) {
+        throw new Error(
+            'elapsed-turn preflight disagreed with live allocation count',
+        );
+    }
 
     // C runs the once-per-hero-action block outside both loops.
-    finishHeroTimeEffects(state, { random });
+    await finishHeroTimeEffects(state, {
+        random,
+        encumberMessage: encumber_msg,
+    });
     see_nearby_monsters(state);
 }
 
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
-
-    if (g.context?.turn_replay_blocked)
-        throw new UnsupportedTurnBoundaryError(TURN_REPLAY_BOUNDARY);
+    if (g.program_state?.gameover) return;
 
     // C gates its entire elapsed-time block on the preceding command's
     // context.move value. Capture that value before the next command dispatch
@@ -677,12 +727,14 @@ export async function moveloop_core() {
     if (g.context?.move) {
         // C ref: allmain.c moveloop_core() has one elapsed path for every
         // turn, and so does this.
-        await advanceFreshTurn(g);
+        await advanceElapsedTurn(g);
+        if (g.program_state?.gameover) return;
     }
 
     // C has a separate clear_splitobjs() at movemon()'s terminal boundary.
     // This one is the once-per-player-input owner from allmain.c, so it also
-    // runs when no monster scan occurred and on residual replay paths.
+    // runs when no monster scan occurred or the prior command consumed no
+    // time.
     clear_splitobjs(g);
 
     // Vision + display

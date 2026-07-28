@@ -13,8 +13,7 @@ import { A_DEX } from './const.js';
 // code and is recorded, not faked.
 
 import { game } from './gstate.js';
-import { helpless, MON_WEP } from './monst.js';
-import { MATTK_AATYP, MATTK_ADTYP, MATTK_DAMN, MATTK_DAMD } from './const.js';
+import { helpless } from './monst.js';
 import { You } from './pline.js';
 import { mon_nam } from './do_name.js';
 import { exclam } from './zap.js';
@@ -30,7 +29,7 @@ import { adjalign, near_capacity } from './attrib.js';
 import { abon, hitval, weapon_hit_bonus, dmgval } from './weapon.js';
 import { find_mac } from './worn.js';
 import { worn } from './do_wear.js';
-import { is_orc, unsolid, thick_skinned, attacktype , passes_walls } from './mondata.js';
+import { is_orc, unsolid, noncorporeal, thick_skinned, attacktype, sticks } from './mondata.js';
 import { is_blade, is_axe, set_ustuck, m_at } from './mon.js';
 import { is_weptool } from './mkobj.js';
 import { OCLASSES, MATERIALS, ONAMES } from './objects_data.js';
@@ -47,7 +46,7 @@ function note_unported_uhitm(what) {
 }
 
 // include/mondata.h:29 passes_walls()
-/* passes_walls() is an include/mondata.h macro; it comes from js/mondata.js. */
+const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 
 // include/mondata.h:150 is_longworm() — an identity test against three
 // specific permonst entries, NOT a flag test.
@@ -58,184 +57,6 @@ const is_longworm = (ptr) =>
 
 // src/mon.c helpless()
 /* helpless() lives in js/monst.js, matching include/monst.h:251. */
-
-// src/uhitm.c:5247 mhitm_knockback() — a hit may shove the defender back.
-//
-// THE TWO DRAWS AT THE TOP HAPPEN ON EVERY ATTACK, before any early return,
-// and that is the whole reason this is ported now. knockdistance rolls
-// rn2(3) unconditionally, and rn2(chance) rolls again immediately after;
-// only then does C start rejecting. Skipping this function would drop two
-// RNG calls from every single monster-vs-monster blow.
-//
-// After the draws, an ordinary bite exits on the attack-type filter:
-// knockback is only for AD_PHYS with AT_CLAW, AT_KICK, AT_BUTT or AT_WEAP.
-// Everything past that filter -- the direction maths, the messages, the
-// dismount and death handling -- is recorded, since no ported attack type
-// reaches it yet.
-export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
-    const u_agr = (magr === game.youmonst);
-    const knockdistance = rn2(3) ? 1 : 2; /* 67%: 1 step, 33%: 2 steps */
-    let chance = 6; /* 1/6 chance of attack knocking back a monster */
-    const wep = weapon_used ? (u_agr ? game.u.uwep : MON_WEP(magr)) : null;
-
-    if (wep && wep.oartifact) {
-        /* is_art(wep, ART_OGRESMASHER) -- the artifact table is not ported */
-        (game.unported ||= new Set()).add('mhitm_knockback:ogresmasher');
-    }
-
-    if (rn2(chance))
-        return false;
-
-    /* only certain attacks qualify for knockback */
-    if (!((mattk[MATTK_ADTYP] === ATTKS.AD_PHYS)
-          && (mattk[MATTK_AATYP] === ATTKS.AT_CLAW
-              || mattk[MATTK_AATYP] === ATTKS.AT_KICK
-              || mattk[MATTK_AATYP] === ATTKS.AT_BUTT
-              || mattk[MATTK_AATYP] === ATTKS.AT_WEAP)))
-        return false;
-
-    /* don't knockback if attacker also wants to grab or engulf */
-    if (attacktype(magr.data, ATTKS.AT_ENGL)
-        || attacktype(magr.data, ATTKS.AT_HUGS))
-        return false;
-
-    /* the shove itself: direction maths, messages, dismount, death */
-    (game.unported ||= new Set()).add('mhitm_knockback:shove');
-    return false;
-}
-
-// src/uhitm.c:4782 mhitm_adtyping() — dispatch on the attack's DAMAGE type.
-//
-// 39 arms in C, one per AD_* code. Only AD_PHYS is ported; every other arm
-// records under its own name so game.unported names the exact damage type
-// that was reached rather than a single lumped entry. That distinction is
-// the point of writing the dispatcher now: it turns one opaque gap into 38
-// individually-sized ones, and the reach tool will rank them.
-//
-// The default arm is real: an unrecognised damage type deals no damage.
-const MHITM_AD_ARMS = {
-    AD_STUN: 'stun', AD_LEGS: 'legs', AD_WERE: 'were', AD_HEAL: 'heal',
-    AD_FIRE: 'fire', AD_COLD: 'cold', AD_ELEC: 'elec', AD_ACID: 'acid',
-    AD_STON: 'ston', AD_SSEX: 'ssex', AD_SITM: 'sedu', AD_SEDU: 'sedu',
-    AD_SGLD: 'sgld', AD_TLPT: 'tlpt', AD_BLND: 'blnd', AD_CURS: 'curs',
-    AD_DRLI: 'drli', AD_RUST: 'rust', AD_CORR: 'corr', AD_DCAY: 'dcay',
-    AD_DREN: 'dren', AD_DRST: 'drst', AD_DRDX: 'drst', AD_DRCO: 'drst',
-    AD_DRIN: 'drin', AD_STCK: 'stck', AD_WRAP: 'wrap', AD_PLYS: 'plys',
-    AD_SLEE: 'slee', AD_SLIM: 'slim', AD_ENCH: 'ench', AD_SLOW: 'slow',
-    AD_CONF: 'conf', AD_POLY: 'poly', AD_DISE: 'dise', AD_SAMU: 'samu',
-    AD_DETH: 'deth', AD_PEST: 'pest', AD_FAMN: 'famn', AD_DGST: 'dgst',
-    AD_HALU: 'halu',
-};
-
-export function mhitm_adtyping(magr, mattk, mdef, mhm) {
-    if (mattk[MATTK_ADTYP] === ATTKS.AD_PHYS) {
-        mhitm_ad_phys(magr, mattk, mdef, mhm);
-        return;
-    }
-
-    for (const [name, fn] of Object.entries(MHITM_AD_ARMS)) {
-        if (mattk[MATTK_ADTYP] === ATTKS[name]) {
-            (game.unported ||= new Set()).add(`mhitm_ad_${fn}`);
-            return;
-        }
-    }
-
-    /* default: */
-    mhm.damage = 0;
-}
-
-// include/monattk.h:94 struct mhitm_data — { damage, hitflags, done,
-// permdmg, specialdmg, dieroll }. Passed by pointer in C so the arms can
-// mutate it; a plain object here does the same.
-
-// src/uhitm.c:4082 mhitm_ad_phys() — ordinary physical damage.
-//
-// C's one function serves three different fights and branches on WHO is
-// involved: the hero attacking (uhitm), a monster attacking the hero (mhitu),
-// and monster versus monster (mhitm). mattackm() only ever reaches the third,
-// which is why this is ~12 lines here rather than the function's full 220 --
-// the other two branches are recorded, not written, because nothing calls
-// them yet.
-//
-// In the mhitm branch, note that mwep is forced to null for any attack type
-// other than AT_WEAP or AT_CLAW. A biting or kicking monster therefore skips
-// the whole weapon block, and damage passes through exactly as the caller
-// computed it.
-export function mhitm_ad_phys(magr, mattk, mdef, mhm) {
-    const pa = magr.data, pd = mdef.data;
-
-    if (magr === game.youmonst) {
-        /* uhitm — the hero attacking; not reached until damageum() lands */
-        (game.unported ||= new Set()).add('mhitm_ad_phys:uhitm');
-        return;
-    } else if (mdef === game.youmonst) {
-        /* mhitu — a monster attacking the hero */
-        (game.unported ||= new Set()).add('mhitm_ad_phys:mhitu');
-        return;
-    } else {
-        /* mhitm */
-        let mwep = MON_WEP(magr);
-        const vis = canseemon(magr) && canseemon(mdef);
-
-        if (mattk[MATTK_AATYP] !== ATTKS.AT_WEAP && mattk[MATTK_AATYP] !== ATTKS.AT_CLAW)
-            mwep = null;
-
-        if (shade_miss(magr, mdef, mwep, false, vis)) {
-            mhm.damage = 0;
-        } else if (mattk[MATTK_AATYP] === ATTKS.AT_KICK && thick_skinned(pd)) {
-            /* [no 'kicking boots' check needed; monsters with kick attacks
-               can't wear boots and monsters that wear boots don't kick] */
-            mhm.damage = 0;
-        } else if (mwep) { /* non-Null 'mwep' implies AT_WEAP || AT_CLAW */
-            /* dmgval, artifact_hit, rustm, mhitm_really_poison and
-               do_stone_mon are all unported; a monster wielding a weapon
-               records rather than taking a guessed amount of damage. */
-            (game.unported ||= new Set()).add('mhitm_ad_phys:weapon_block');
-        } else if (pa.pmidx === PMNAMES.PM_PURPLE_WORM
-                   && pd.pmidx === PMNAMES.PM_SHRIEKER) {
-            /* hack to enhance mm_aggression(); we don't want purple
-               worm's bite attack to kill a shrieker because then it
-               won't swallow the corpse; but if the target survives,
-               the subsequent engulf attack should accomplish that */
-            if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
-                mhm.damage = mdef.mhp - 1;
-        }
-    }
-}
-
-// src/uhitm.c:2016 shade_miss() — an attack passing harmlessly through a
-// shade. Returns TRUE when the attack did nothing.
-//
-// The first test is the whole function for any ordinary defender: not a
-// shade means FALSE immediately, with no message and no draws. That is why
-// mhitm_ad_phys can call this on every monster-vs-monster blow cheaply.
-//
-// dmgval() is unported, but it is only evaluated when obj is non-Null AND the
-// defender IS a shade -- C's || short-circuits first -- so a weaponless
-// attacker never reaches it. Recorded at exactly that point rather than
-// guessed, because guessing "does damage" would make a silver weapon fail
-// against a shade and guessing the reverse would make a stick work.
-export function shade_miss(magr, mdef, obj, thrown, verbose) {
-    const youdef = (mdef === game.youmonst);
-
-    /* we're using dmgval() for zero/not-zero, not for actual damage amount */
-    if (mdef.data.pmidx !== PMNAMES.PM_SHADE)
-        return false;
-    if (obj) {
-        /* dmgval(obj, mdef) */
-        (game.unported ||= new Set()).add('uhitm:shade_miss:dmgval');
-        return false;
-    }
-
-    if (verbose) {
-        /* the "passes harmlessly through" message needs cxname, vtense,
-           s_suffix and map_invisible */
-        (game.unported ||= new Set()).add('uhitm:shade_miss:message');
-    }
-    if (!youdef)
-        mdef.msleeping = 0;
-    return true;
-}
 
 // src/uhitm.c:462 do_attack() — returns TRUE if the hero's move is used up.
 //
@@ -777,7 +598,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         jousting: 0,
         hittxt: false,
         get_dmg_bonus: true,
-        unarmed: !game.u.uwep && !game.uarm && !game.uarms,
+        unarmed: !game.uwep && !game.uarm && !game.uarms,
         hand_to_hand: (thrown === HMON_MELEE
                        /* not grapnels; applied implies uwep */
                        || (thrown === HMON_APPLIED && is_pole(game.uwep))),
@@ -1216,3 +1037,59 @@ export function nohandglow(mon) {
     note_unported_uhitm('nohandglow:message');
     game.u.umconf--;
 }
+
+// src/uhitm.c:3981 mhitm_ad_phys() — the AD_PHYS arm of mhitm_adtyping.
+//
+// Only the monster-vs-monster branch is live here (the uhitm and mhitu
+// branches run through their own files' flows). With no wielded monster
+// weapons yet, the mwep arms record; a plain claw/bite deals the rolled
+// damage unchanged.
+export function mhitm_ad_phys(magr, mattk, mdef, mhm) {
+    const A = ATTKS;
+    const pd = game.mons[mdef.mnum];
+
+    /* mhitm branch */
+    if (noncorporeal(pd)) {
+        /* shade_miss */
+        note_unported_uhitm('mhitm_ad_phys:shade');
+        mhm.damage = 0;
+    } else if (mattk[0] === A.AT_KICK && thick_skinned(pd)) {
+        mhm.damage = 0;
+    }
+    /* non-Null mwep arms (weapon damage, poison, artifact hits) are absent:
+       mon_wield_item has no port, so MON_WEP is always empty here */
+}
+
+// src/uhitm.c:5247 mhitm_knockback() — can this hit hurl the defender?
+//
+// The TWO leading draws happen before any qualification test: rn2(3) for
+// the distance and rn2(chance) for the 1-in-6 gate, so every damaging hit
+// spends them even when the attack type can never knock back. The actual
+// hurtle needs subsystems that are absent and is recorded.
+export function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
+    const A = ATTKS;
+    rn2(3);                     /* knockdistance: 67% 1 step, 33% 2 */
+    const chance = 6;           /* Ogresmasher needs an artifact wielder */
+
+    if (rn2(chance))
+        return false;
+
+    /* only certain attacks qualify for knockback */
+    if (!((mattk[1] === A.AD_PHYS)
+          && (mattk[0] === A.AT_CLAW
+              || mattk[0] === A.AT_KICK
+              || mattk[0] === A.AT_BUTT
+              || mattk[0] === A.AT_WEAP)))
+        return false;
+
+    /* don't knockback if attacker also wants to grab or engulf */
+    if (attacktype(game.mons[magr.mnum], A.AT_ENGL)
+        || attacktype(game.mons[magr.mnum], A.AT_HUGS)
+        || sticks(game.mons[magr.mnum]))
+        return false;
+
+    /* the hurtle itself (test_move, mhurtle, messages) is absent */
+    note_unported_uhitm('mhitm_knockback:hurtle');
+    return false;
+}
+

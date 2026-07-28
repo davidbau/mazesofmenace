@@ -26,11 +26,11 @@ export function set_occupation(fn, txt, xtime) {
 }
 
 // src/allmain.c stop_occupation()
-export function stop_occupation() {
+export async function stop_occupation() {
     if (game.occupation) {
         /* src/allmain.c:684 — maybe_finished_meal runs FIRST, and the
            "You stop <occtxt>." message only prints when it returns FALSE. */
-        if (!maybe_finished_meal(true))
+        if (!await maybe_finished_meal(true))
             note_unported_main(`stop_occupation:message:${game.occtxt}`);
         game.occupation = null;
         game.occtxt = null;
@@ -49,7 +49,7 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          FULL_MOON, NEW_MOON, COLNO } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
-import { lookaround, end_running } from './hack.js';
+import { lookaround, end_running, unmul } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
@@ -57,7 +57,6 @@ import {
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
-import { Clairvoyant } from './youprop.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init, str2role, str2align, str2race, str2gend, roles, races,
          Hello, align_str } from './role.js';
@@ -84,6 +83,7 @@ function init_sound_disp_gamewindows() {
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { dosounds } from './sounds.js';
+import { age_spells } from './spell.js';
 import { gethungry } from './eat.js';
 import { makemon, NO_MM_FLAGS } from './makemon.js';
 import { depth } from './dungeon.js';
@@ -164,6 +164,14 @@ export async function newgame() {
     // hpadv.inrnd == 0; newpw() draws rnd(enadv.inrnd) per role and race.
     {
         g.urole = roles[g.flags.initrole];
+        /* src/role.c:2079 — a role with no gods of its own (the Priest)
+           borrows the chosen pantheon's. role_init picked game.pantheon
+           above; urole is the shared table record, so copy before writing. */
+        if (!g.urole.lgod)
+            g.urole = { ...g.urole,
+                        lgod: roles[g.pantheon].lgod,
+                        ngod: roles[g.pantheon].ngod,
+                        cgod: roles[g.pantheon].cgod };
         g.urace = races[g.flags.initrace];
         g.u.ulevel = 0;
         /* C's `u` is a static struct, so u.ualign exists before newhp() writes
@@ -242,6 +250,8 @@ export async function newgame() {
     /* src/u_init.c:1002 — init_uhunger() sits between adjabil() and the spell
        book clear. exerper() consults uhunger every tenth move. */
     init_uhunger();
+    /* src/u_init.c:1005 — "no prayers just yet" */
+    g.u.ublesscnt = 300;
 
     // src/allmain.c:816-818 — docrt(); flush_screen(1); bot(); all run BEFORE
     // u_init_skills_discoveries() and the legacy pager, which is why the legacy
@@ -303,7 +313,7 @@ export async function newgame() {
 
        tools/unported-hits.mjs has this reached by 100% of sessions, but the
        reach figure counts the CALL, not the work behind it. */
-    await set_wear(null);   /* for side-effects of starting gear */
+    set_wear(null);   /* for side-effects of starting gear */
     g.context.seer_turn = rnd(30);
     g.u.umovement = NORMAL_SPEED;
 
@@ -321,7 +331,6 @@ export async function newgame() {
     // neutral AFTER u_init had computed the right value. Both are gone; the
     // real records from js/role_data.js carry name, rank, noun, adj and the
     // attrmin/attrmax the ^X window needs.
-    g._goldCount = g.u.umoney0;
     /* uhp/uen were hardcoded to 10 and 2 here, overwriting what newhp() and
        newpw() had already computed from the role and race hp tables a few
        dozen lines above. The status line reads them directly, so every
@@ -436,7 +445,7 @@ export async function moveloop_core() {
                all: movement is allotted below, so a single movemon() call per
                command would always find every monster still at zero. */
             do {
-                monscanmove = movemon();
+                monscanmove = await movemon();
                 if (g.u.umovement >= NORMAL_SPEED)
                     break;         /* it's now your turn */
             } while (monscanmove);
@@ -465,6 +474,11 @@ export async function moveloop_core() {
                    first increment landed on 2 either way. */
                 g.moves++;
 
+                /* src/allmain.c:275 — the prayer timeout ticks down every
+                   turn (it sits beside nh_timeout in the same block). */
+                if (g.u.ublesscnt)
+                    g.u.ublesscnt--;
+
                 dosounds();
                 gethungry();
 
@@ -472,31 +486,48 @@ export async function moveloop_core() {
                    runs exerper(), which every tenth move exercises whichever
                    attribute the hunger and encumbrance state calls for, and
                    each of those spends an rn2(19). */
+                age_spells();
                 exerchk();
 
                 /* src/allmain.c:360 */
                 if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
                     rnd(3);                             /* u_wipe_engr(rnd(3)) */
+
+                /* src/allmain.c:380 — when immobile, count is in turns */
+                if ((g.multi ?? 0) < 0) {
+                    if (++g.multi === 0) { /* finished yet? */
+                        await unmul(null);
+                    }
+                }
             }
         } while (g.u.umovement < NORMAL_SPEED);
+
+        /* src/allmain.c:409 — INSIDE the context.move gate: the vicinity
+           counter only advances on cores where time actually passed, which
+           is why C's first rn2(31) waits for the first time-taking command
+           even when the preamble's rnd(30) rolled 1 (seed2200). */
+        if (g.moves >= g.context.seer_turn) {
+            if ((g.u.uhave?.amulet || g.u.uprops?.CLAIRVOYANT)
+                && !In_endgame(g.u.uz)
+                && !g.u.uprops?.BLOCKED_CLAIRVOYANT)
+                note_unported_main('do_vicinity_map');
+            /* we maintain this counter even when clairvoyance isn't
+               taking place; on average, go again 30 turns from now */
+            g.context.seer_turn = g.moves + rn1(31, 15); /*15..45*/
+        }
+
+        /* the move flag is CONSUMED by the turn block above. C's blocking
+           input reads a whole command before control returns here, so the
+           flag's lifetime is one command -> one turn. Our prompts suspend
+           mid-command; without this clear, the next core call re-reads the
+           stale flag and burns a phantom turn before the prompt resumes. */
+        g.context.move = 0;
     }
 
-    /******************************************/
-    /* once-per-hero-took-time things go here  */
-    /******************************************/
-
-    g.hero_seq = (g.hero_seq || 0) + 1; /* moves*8 + n for n == 1..7 */
-
-    /* src/allmain.c:409 — the clairvoyance counter is maintained even when no
-       clairvoyance takes place, so this rn1 is spent roughly every 30 turns of
-       any game, not only by a hero carrying the Amulet. */
-    if (g.moves >= g.context.seer_turn) {
-        if ((g.u.uhave?.amulet || Clairvoyant()) && !In_endgame(g.u.uz))
-            note_unported_main('do_vicinity_map');
-        /* we maintain this counter even when clairvoyance isn't
-           taking place; on average, go again 30 turns from now */
-        g.context.seer_turn = g.moves + rn1(31, 15); /*15..45*/
-    }
+    /* C bumps hero_seq inside the move gate (moves*8 + n); this port's
+       counter ticks every core because use_stethoscope's first-use-free
+       test was calibrated against that frame (see STATUS). */
+    g.hero_seq = (g.hero_seq || 0) + 1;
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -517,11 +548,20 @@ export async function moveloop_core() {
      *
      * monster_nearby() needs the interrupt checks; without it an occupation
      * runs to completion where C would break it off, so it records. */
+    /* a helpless hero (multi < 0) takes no command; the turn machinery above
+       advanced the count, and context.move stays set so the next core call
+       burns the next helpless turn, exactly like an occupation. */
+    if ((g.multi ?? 0) < 0) {
+        g.context.move = 1;
+        return;
+    }
+
     if ((g.multi ?? 0) >= 0 && g.occupation) {
-        if (g.occupation() === 0)
+        if ((await g.occupation()) === 0)
             g.occupation = null;
         note_unported_main('moveloop:monster_nearby');
-        return;                         /* the occupation took this turn */
+        g.context.move = 1;             /* the occupation took this turn */
+        return;
     }
 
     /* src/allmain.c:515 — the run/rush loop. While multi is positive the hero
@@ -551,12 +591,17 @@ export async function moveloop_core() {
         if (g.context.mv) {
             if (g.multi < COLNO && !--g.multi)
                 end_running(true);
+            /* In C the flag is still TRUE here from parse()'s assume-time and
+               nothing cleared it during the run; our consume-clear above wiped
+               it, so re-assert before domove (whose blocked exit clears it). */
+            g.context.move = 1;
             await domove();
         } else {
             --g.multi;
-            /* rhack(gc.cmd_key) — repeating a non-movement command needs the
-               remembered key, which this port does not track yet. */
-            note_unported_main('moveloop:multi repeat non-mv');
+            /* rhack(gc.cmd_key) — repeat the remembered command without
+               reading a key. parse() does not run for repeats, so no count
+               collection and no topline clear happen here. */
+            await rhack(g.cmd_key ? g.cmd_key.charCodeAt(0) : 0);
         }
         return;
     }

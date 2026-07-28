@@ -1,8 +1,3 @@
-import { cantwield, humanoid } from './mondata.js';
-import { touch_petrifies } from './dog.js';
-import { is_weptool } from './mkobj.js';
-import { pline } from './display.js';
-import { ECMD_TIME } from './invent.js';
 // wield.js — what the hero is holding.
 // C ref: src/wield.c
 //
@@ -11,24 +6,22 @@ import { ECMD_TIME } from './invent.js';
 // before anything is chosen.
 
 import { game } from './gstate.js';
-import { will_weld } from './monmove.js';
-import { getobj, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
-         GETOBJ_PROMPT, GETOBJ_ALLOWCNT, prinv } from './invent.js';
-import { W_QUIVER, W_WEP } from './const.js';
-import { is_missile, is_ammo } from './obj.js';
-import { is_pole } from './u_init.js';
-import { setworn } from './worn.js';
-import { Stone_resistance } from './youprop.js';
-import { retouch_object } from './artifact.js';
-import { update_inventory } from './invent.js';
+import { pline } from './display.js';
+import { cantwield } from './mondata.js';
+import { touch_petrifies } from './dog.js';
 import { bimanual } from './obj.js';
+import { is_weptool } from './mkobj.js';
+import { is_pole } from './u_init.js';
+import { will_weld } from './monmove.js';
+import { getobj, prinv } from './invent.js';
+import { W_QUIVER, W_WEP, W_SWAPWEP, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOOMERANG, P_DART, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './const.js';
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 
 // include/hack.h:1330 ynq()
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
-import { ECMD_OK, ECMD_CANCEL, ECMD_FAIL, P_BOW, P_CROSSBOW } from './const.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { P_BOW, P_CROSSBOW } from './const.js';
+import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 
 // src/wield.c ready_ok() — which objects getobj should suggest for the quiver.
 //
@@ -66,7 +59,10 @@ const is_launcher = (o) =>
     && game.objects[o.otyp].oc_skill <= P_CROSSBOW;
 
 // include/obj.h:238 is_ammo()
-/* is_ammo() is include/obj.h:238; it comes from js/obj.js. */
+export const is_ammo = (o) =>
+    (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.GEM_CLASS)
+    && game.objects[o.otyp].oc_skill >= -P_CROSSBOW
+    && game.objects[o.otyp].oc_skill <= -P_BOW;
 
 // include/obj.h:243 matching_launcher() and :244 ammo_and_launcher()
 const matching_launcher = (a, l) =>
@@ -118,6 +114,125 @@ function note_unported_wield(what) {
     (game.unported ||= new Set()).add(what);
 }
 
+/* include/obj.h:245 is_missile() — dart/shuriken/boomerang class throwables. */
+// include/obj.h:223 is_sword()
+export const is_sword = (o) =>
+    o.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[o.otyp].oc_skill >= SKILLS.P_SHORT_SWORD
+    && game.objects[o.otyp].oc_skill <= SKILLS.P_SABER;
+
+export const is_missile = (o) =>
+    (o.oclass === OCLASSES.WEAPON_CLASS || o.oclass === OCLASSES.TOOL_CLASS)
+    && game.objects[o.otyp].oc_skill >= -P_BOOMERANG
+    && game.objects[o.otyp].oc_skill <= -P_DART;
+
+/* include/obj.h:256 is_wet_towel() */
+const is_wet_towel = (o) => o.otyp === ONAMES.TOWEL && o.spe > 0;
+
+// src/wield.c:100 setuwep() — make obj the wielded weapon.
+//
+// The Ogresmasher botl updates and the Sunsword artifact-light shutdown are
+// recorded; both need artifact state this tree does not track. The unweapon
+// computation is the load-bearing part: it decides the "bashing" message for
+// every later attack with a non-weapon.
+export function setuwep(obj) {
+    const olduwep = game.u.uwep;
+
+    if (obj === game.u.uwep)
+        return; /* necessary to not set gu.unweapon */
+    if (game.u.uwep)
+        game.u.uwep.owornmask &= ~W_WEP;
+    game.u.uwep = obj;
+    if (obj)
+        obj.owornmask |= W_WEP;
+    if ((obj && obj.oartifact) || (olduwep && olduwep.oartifact))
+        note_unported_wield('setuwep:artifact arms');
+    if (obj) {
+        game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
+                       ? is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+                         || (is_pole(obj) && !game.u.usteed)
+                       : !is_weptool(obj, game.objects) && !is_wet_towel(obj);
+    } else
+        game.unweapon = true; /* for "bare hands" message */
+}
+
+// src/wield.c:158 empty_handed() — description of hands when not wielding.
+export function empty_handed() {
+    return game.u.uarmg ? "empty handed" /* gloves imply hands */
+           : "bare handed"; /* humanoid(youmonst.data) is true for every
+                               un-polymorphed playable form, and polyself is
+                               not ported, so the paws arm is unreachable */
+}
+
+// src/wield.c:138 cant_wield_corpse() — cockatrice corpse, bare hands.
+function cant_wield_corpse(obj) {
+    if (game.u.uarmg || obj.otyp !== ONAMES.CORPSE
+        || !touch_petrifies(game.mons[obj.corpsenm]))
+        return false;
+    /* Stone_resistance and instapetrify are not ported; the message and the
+       petrification are recorded together. */
+    note_unported_wield('cant_wield_corpse:instapetrify');
+    return true;
+}
+
+/*
+ * src/wield.c:169 ready_weapon() — separated function so swapping works
+ * easily. async because prinv() is.
+ *
+ * Recorded arms: the weld message (needs aobjnam/The/set_bknown),
+ * retouch_object (only matters for artifacts and silver-hating heroes;
+ * an ordinary object always touches fine and draws nothing), arti_speak,
+ * artifact light, and the shopkeeper unpaid warning.
+ */
+export async function ready_weapon(wep) {
+    let res = ECMD_OK;
+    const was_twoweap = !!game.u.twoweap, had_wep = (game.u.uwep != null);
+
+    if (!wep) {
+        /* No weapon */
+        if (game.u.uwep) {
+            await You(`are ${empty_handed()}.`);
+            setuwep(null);
+            res = ECMD_TIME;
+        } else
+            await You(`are already ${empty_handed()}.`);
+    } else if (wep.otyp === ONAMES.CORPSE && cant_wield_corpse(wep)) {
+        /* hero must have been life-saved to get here; use a turn */
+        res = ECMD_TIME; /* corpse won't be wielded */
+    } else if (game.u.uarms && bimanual(wep)) {
+        await You(`cannot wield a two-handed ${is_sword(wep) ? "sword"
+                  : wep.otyp === ONAMES.BATTLE_AXE ? "axe" : "weapon"} while wearing a shield.`);
+        res = ECMD_FAIL;
+    } else {
+        /* Weapon WILL be wielded after this point */
+        res = ECMD_TIME;
+        if (will_weld(wep)) {
+            note_unported_wield('ready_weapon:weldmsg');
+        } else {
+            /* The message must be printed before setuwep [...] yet we want
+               the message to say "weapon in hand", thus this kludge. */
+            const dummy = wep.owornmask;
+
+            wep.owornmask |= W_WEP;
+            if (wep.otyp === ONAMES.AKLYS && (wep.owornmask & W_WEP) !== 0)
+                await You("secure the tether.");
+            await prinv(null, wep, 0);
+            wep.owornmask = dummy;
+        }
+
+        setuwep(wep);
+        if (was_twoweap && !game.u.twoweap && game.flags.verbose)
+            note_unported_wield('ready_weapon:no_longer_twoweap');
+        if (wep.oartifact)
+            note_unported_wield('ready_weapon:arti_speak');
+        if (wep.unpaid)
+            note_unported_wield('ready_weapon:shk_warning');
+    }
+    if (had_wep !== (game.u.uwep != null))
+        game.botl = true;
+    return res;
+}
+
 // src/wield.c setuqwep() — put an object in the quiver slot.
 export function setuqwep(obj) {
     if (game.u.uquiver)
@@ -125,6 +240,128 @@ export function setuqwep(obj) {
     game.u.uquiver = obj;
     if (obj)
         obj.owornmask |= W_QUIVER;
+}
+
+// src/wield.c:285 setuswapwep() — put an object in the secondary slot.
+export function setuswapwep(obj) {
+    if (game.u.uswapwep)
+        game.u.uswapwep.owornmask &= ~W_SWAPWEP;
+    game.u.uswapwep = obj;
+    if (obj)
+        obj.owornmask |= W_SWAPWEP;
+}
+
+// src/wield.c:331 wield_ok() — getobj callback for the #wield command.
+export function wield_ok(obj) {
+    if (!obj)
+        return GETOBJ_SUGGEST;
+
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+
+    if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects))
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_DOWNPLAY;
+}
+
+/*
+ * src/wield.c:355 dowield() — the #wield command.
+ *
+ * Recorded arms: the split-stack bookkeeping (clear_splitobjs, objsplit,
+ * finish_splitting -- getobj here never yields a split because the count
+ * path is unported), the quivered-stack confirmation prompts, and weldmsg.
+ */
+export async function dowield() {
+    let wep, result;
+
+    /* May we attempt this? gy.youmonst does not exist on this tree; every
+       un-polymorphed playable form can wield, so the guard cannot fire. */
+    game.multi = 0;
+    const ymd = game.youmonst?.data;
+    if (ymd && cantwield(ymd)) {
+        await pline("Don't be ridiculous!");
+        return ECMD_FAIL;
+    }
+
+    /* Prompt for a new weapon */
+    if (!(wep = await getobj("wield", wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT))) {
+        /* Cancelled */
+        return ECMD_CANCEL;
+    } else if (wep === game.u.uwep) {
+        await You("are already wielding that!");
+        if (is_weptool(wep, game.objects) || is_wet_towel(wep))
+            game.unweapon = false; /* [see setuwep()] */
+        return ECMD_FAIL;
+    } else if (welded(game.u.uwep)) {
+        note_unported_wield('dowield:weldmsg');
+        return ECMD_FAIL;
+    }
+
+    /* Handle no object, or object in other slot */
+    if (wep === game.u.uswapwep) {
+        return await doswapweapon();
+    } else if (wep === game.u.uquiver) {
+        /* the split-or-wield-all confirmation prompts read keys this port
+           cannot yet answer faithfully; recorded, quiver left as-is */
+        note_unported_wield('dowield:quivered_weapon_prompt');
+        return ECMD_OK;
+    } else if (wep.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+        await You("cannot wield that!");
+        return ECMD_FAIL;
+    }
+
+    /* wielding: set your new primary weapon */
+    const oldwep = game.u.uwep;
+    result = await ready_weapon(wep);
+    if (game.flags.pushweapon && oldwep && game.u.uwep !== oldwep)
+        setuswapwep(oldwep);
+    if (game.u.twoweap)
+        note_unported_wield('dowield:untwoweapon');
+
+    return result;
+}
+
+// src/wield.c:461 doswapweapon() — the #swap command.
+export async function doswapweapon() {
+    let result = 0;
+
+    /* May we attempt this? (see dowield on the youmonst guard) */
+    game.multi = 0;
+    const ymd = game.youmonst?.data;
+    if (ymd && cantwield(ymd)) {
+        await pline("Don't be ridiculous!");
+        return ECMD_FAIL;
+    }
+    if (welded(game.u.uwep)) {
+        note_unported_wield('doswapweapon:weldmsg');
+        return ECMD_FAIL;
+    }
+
+    /* Unwield your current secondary weapon */
+    const oldwep = game.u.uwep;
+    const oldswap = game.u.uswapwep;
+    setuswapwep(null);
+
+    /* Set your new primary weapon */
+    result = await ready_weapon(oldswap);
+
+    /* Set your new secondary weapon */
+    if (game.u.uwep === oldwep) {
+        /* Wield failed for some reason */
+        setuswapwep(oldswap);
+    } else {
+        setuswapwep(oldwep);
+        if (game.u.uswapwep)
+            await prinv(null, game.u.uswapwep, 0);
+        else
+            await You("have no secondary weapon readied.");
+    }
+
+    if (game.u.twoweap)
+        note_unported_wield('doswapweapon:untwoweapon');
+
+    return result;
 }
 
 // src/wield.c welded() — is this the wielded weapon, and is it stuck?
@@ -140,317 +377,4 @@ export function welded(obj) {
         return 1;
     }
     return 0;
-}
-
-// src/wield.c wield_ok() — the filter behind 'w'.
-//
-// Note the !obj arm returns SUGGEST, not EXCLUDE: wielding '-' to wield
-// nothing is a positive act, so the hands option appears in the prompt.
-// read_ok does the opposite. Coins are the only hard exclusion.
-export function wield_ok(obj) {
-    if (!obj)
-        return GETOBJ_SUGGEST;
-    if (obj.oclass === OCLASSES.COIN_CLASS)
-        return GETOBJ_EXCLUDE;
-    if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects))
-        return GETOBJ_SUGGEST;
-    return GETOBJ_DOWNPLAY;
-}
-
-// src/wield.c dowield() — the 'w' command.
-//
-// Ported for the same reason as doread: getobj() READS A KEY, so leaving
-// 'w' undispatched shifted every later keystroke in the session.
-//
-// C keeps going even with an empty pack, because wielding '-' is meaningful.
-export async function dowield() {
-    game.multi = 0;
-    /* cantwield(gy.youmonst.data) -- nohands || verysmall. game.youmonst.data
-       is not populated until polymorph exists, and an unpolymorphed hero has
-       hands and is not verysmall, so a missing form answers FALSE rather than
-       throwing. */
-    if (game.youmonst?.data && cantwield(game.youmonst.data)) {
-        await pline("Don't be ridiculous!");
-        return ECMD_FAIL;
-    }
-
-    /* THE KEY CONSUMPTION */
-    const wep = await getobj('wield', wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
-    if (!wep)
-        return ECMD_CANCEL;          /* Cancelled */
-
-    if (wep === game.uwep) {
-        await You('are already wielding that!');
-        if (is_weptool(wep, game.objects))
-            game.unweapon = false;   /* [see setuwep()] */
-        return ECMD_FAIL;
-    }
-    if (welded(game.uwep)) {
-        /* weldmsg() and the interrupted-armor-removal reset */
-        (game.unported ||= new Set()).add('dowield:welded');
-        return ECMD_FAIL;
-    }
-
-    /* src/wield.c dowield() tail. C calls ready_weapon(), NOT setuwep() --
-       setuwep is called from inside it. An earlier version here called
-       setuwep directly, which skipped ready_weapon's whole body; harmless
-       for the stream, since ready_weapon makes no draws, but it skipped
-       every message and check. */
-    const oldwep = game.u.uwep;
-    const result = await ready_weapon(wep);
-
-    if (oldwep && game.u.uwep !== oldwep)
-        /* flags.pushweapon moves the old weapon to the swap slot */
-        (game.unported ||= new Set()).add('dowield:pushweapon_setuswapwep');
-    await untwoweapon();
-
-    return result;
-}
-
-// src/wield.c:100 setuwep() — make `obj` the wielded weapon.
-//
-// The early return is load-bearing and easy to drop: re-wielding what is
-// already wielded returns WITHOUT touching gu.unweapon, so the "bashing"
-// state survives. C comments it as "necessary to not set gu.unweapon".
-//
-// The unweapon computation at the end is the part that matters downstream --
-// js/uhitm.js:780 reads the wielded weapon in the melee path, and unweapon
-// decides whether the hero gets the bashing message. Note the structure: for
-// a WEAPON_CLASS object unweapon is TRUE when the thing is not meant for
-// melee (a launcher, ammo, a missile, or a polearm on foot), and for anything
-// else it is TRUE unless the object is a weapon-tool or a wet towel.
-//
-// Not ported, each recorded: the Ogresmasher botl updates and the Sunsword
-// end_burn, both artifact-only.
-export function setuwep(obj) {
-    const olduwep = game.u.uwep;
-
-    if (obj === game.u.uwep)
-        return;                     /* necessary to not set gu.unweapon */
-
-    setworn(obj, W_WEP);
-
-    if (obj && obj.oclass !== OCLASSES.WEAPON_CLASS && !is_weptool(obj, game.objects))
-        note_unported_wield('setuwep:is_wet_towel');
-
-    if (olduwep?.oartifact || obj?.oartifact)
-        note_unported_wield('setuwep:artifact_botl_and_light');
-
-    /* Note: explicitly wielding a pick-axe gives no "bashing" message;
-       wielding one via 'a'pplying it does. */
-    if (obj) {
-        game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
-            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-               || (is_pole(obj) && !game.u.usteed))
-            /* C also excludes a wet towel here; is_wet_towel is not
-               exported anywhere in the port, so that arm is recorded. A
-               wet towel therefore reads as unweapon where C says it is
-               not, which changes only the bashing message. */
-            : !is_weptool(obj, game.objects);
-    } else {
-        game.unweapon = true;       /* for the "bare hands" message */
-    }
-}
-
-// src/wield.c:834 set_twoweap() — turn two-weapon fighting on or off.
-//
-// Guarded on a real change, so a redundant call touches nothing. That guard
-// is why setworn() can call it unconditionally when unwielding.
-export function set_twoweap(on_off) {
-    if (on_off !== game.u.twoweap) {
-        game.u.twoweap = on_off;
-        /* flags.weaponstatus gates a botl refresh; the status line does not
-           read twoweap yet, so the refresh is recorded rather than forced. */
-        note_unported_wield('set_twoweap:botl');
-    }
-}
-
-// src/wield.c:158 empty_handed() — how to describe having no weapon.
-//
-// Three phrasings, and the order is the logic: gloves imply hands, so a
-// gloved hero is "empty handed" even though a pawed one is not; a humanoid
-// without gloves is "bare handed"; anything else gets the neutral phrasing
-// because it may have paws or no hands at all.
-//
-// Used by ready_weapon, #seeweapon (')'), #attributes (^X) and #takeoffall.
-export function empty_handed() {
-    return game.u.uarmg ? 'empty handed'          /* gloves imply hands */
-         : (game.youmonst?.data && humanoid(game.youmonst.data))
-             ? 'bare handed'                      /* hands, no weapon, no gloves */
-             : 'not wielding anything';           /* paws, or no hands */
-}
-
-// src/wield.c:75 TWOWEAPOK() — may this object be the SECONDARY weapon?
-//
-// File-local in C and file-local here, deliberately: it is a wield.c macro,
-// not a header one, so exporting it would put a symbol in the tree that the
-// C does not have.
-//
-// Note what it is NOT: it looks like the negation of setuwep's unweapon
-// computation and is not quite. unweapon also excludes polearms on foot
-// (is_pole && !u.usteed); TWOWEAPOK does not, because a polearm is a fine
-// second weapon even though swinging it bashes. Reusing one for the other
-// would be wrong in exactly the case that is hard to notice.
-const TWOWEAPOK = (obj) =>
-    (obj.oclass === OCLASSES.WEAPON_CLASS)
-        ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj))
-        : is_weptool(obj, game.objects);
-
-// src/wield.c cant_wield_corpse() — refuse a petrifying corpse in bare hands.
-//
-// The guard is ported exactly and is the whole of the common path: gloves,
-// a non-corpse, a non-petrifying corpse, or stoning resistance all return
-// FALSE and the wield proceeds.
-//
-// The TRUE branch is where the hero touches a cockatrice corpse bare-handed,
-// and in C that calls instapetrify() -- which usually KILLS. instapetrify,
-// corpse_xname and killer_xname are all absent, so the death is RECORDED and
-// does not happen. The return value still matches C, so the corpse is still
-// refused; what is missing is the hero dying of it.
-//
-// That is a real and deliberate gap, not an approximation: inventing a death
-// path would end games C does not end, which is far worse than failing to end
-// one it does.
-export function cant_wield_corpse(obj) {
-    if (game.u.uarmg || obj.otyp !== ONAMES.CORPSE
-        || !touch_petrifies(game.mons[obj.corpsenm]))
-        return false;
-
-    if (Stone_resistance())
-        return false;
-
-    /* Prevent wielding cockatrice when not wearing gloves --KAA */
-    note_unported_wield('cant_wield_corpse:instapetrify');
-    return true;
-}
-
-// src/wield.c:169 ready_weapon() — the shared body behind wielding.
-//
-// Separated in C so swapping works easily, and dowield() calls THIS rather
-// than setuwep() directly. It makes NO DRAWS, which is why an error here
-// shows up as a wrong message rather than a desynced stream.
-//
-// The order of the early tests is the logic and must not be rearranged:
-// no-weapon, then corpse, then shield-vs-two-handed, then retouch_object.
-// retouch_object returning false costs a TURN without wielding, which is
-// why it is ECMD_TIME rather than ECMD_FAIL.
-export async function ready_weapon(wep) {
-    let res = ECMD_OK;
-    const was_twoweap = game.u.twoweap, had_wep = (game.u.uwep != null);
-
-    if (!wep) {
-        if (game.u.uwep) {
-            await You(`are ${empty_handed()}.`);
-            setuwep(null);
-            res = ECMD_TIME;
-        } else {
-            await You(`are already ${empty_handed()}.`);
-        }
-    } else if (wep.otyp === ONAMES.CORPSE && cant_wield_corpse(wep)) {
-        /* the hero must have been life-saved to get here; uses a turn */
-        res = ECMD_TIME;                    /* corpse won't be wielded */
-    } else if (game.u.uarms && bimanual(wep)) {
-        note_unported_wield('ready_weapon:two_handed_with_shield_msg');
-        res = ECMD_FAIL;
-    } else if (!retouch_object(wep, false).ok) {
-        res = ECMD_TIME;      /* takes a turn even though it is not wielded */
-    } else {
-        /* the weapon WILL be wielded after this point */
-        res = ECMD_TIME;
-        if (will_weld(wep)) {
-            /* the weld message names the body part and pluralises for a
-               two-handed weapon; xname/aobjnam/body_part are not ported */
-            note_unported_wield('ready_weapon:weld_msg');
-            note_unported_wield('ready_weapon:set_bknown');
-        } else {
-            /* C sets W_WEP on a scratch copy of owornmask so prinv() reads
-               "weapon in hand", then restores it -- the comment calls its
-               own kludge obsolete but the behaviour stays. */
-            const dummy = wep.owornmask;
-            wep.owornmask |= W_WEP;
-            if (wep.otyp === ONAMES.AKLYS)
-                note_unported_wield('ready_weapon:aklys_tether_msg');
-            /* prinv is already imported at the top of this file; C passes a
-               null prefix and 0L quantity, so the line is just the object's
-               inventory description. */
-            await prinv(null, wep, 0);
-            wep.owornmask = dummy;
-        }
-
-        setuwep(wep);
-
-        if (was_twoweap && !game.u.twoweap && game.u.uwep)
-            note_unported_wield('ready_weapon:no_longer_twoweap_msg');
-
-        if (wep.oartifact) {
-            /* arti_speak sets the ECMD_TIME bit when the artifact speaks,
-               and DRAWS via getrumor; recorded rather than ported so no
-               draw is invented. */
-            note_unported_wield('ready_weapon:arti_speak');
-        }
-        if (wep.oartifact)
-            note_unported_wield('ready_weapon:artifact_light');
-        if (wep.unpaid)
-            note_unported_wield('ready_weapon:shk_be_careful_msg');
-    }
-
-    if (had_wep !== (game.u.uwep != null))
-        note_unported_wield('ready_weapon:botl_barehanded');
-    return res;
-}
-
-/* src/wield.c:80 — the two messages the two-weapon code shares. Kept as
-   file-scope constants because C keeps them that way and both are used from
-   more than one function. */
-const are_no_longer_twoweap = "are no longer using two weapons at once";
-const can_no_longer_twoweap = "can no longer wield two weapons at once";
-
-// src/wield.c untwoweapon() — stop two-weaponing, if we were.
-//
-// Guarded on u.twoweap, so calling it when not two-weaponing does nothing at
-// all -- which is why dowield's tail can call it unconditionally.
-export async function untwoweapon() {
-    if (game.u.twoweap) {
-        await You(`${can_no_longer_twoweap}.`);
-        set_twoweap(false);                 /* u.twoweap = FALSE */
-        update_inventory();
-    }
-}
-
-// src/wield.c:873 uwepgone() — the wielded weapon is gone.
-//
-// The artifact-light arm needs artifact_light(), end_burn() and Tobjnam(),
-// none of which are ported; it only fires for a LIT artifact light source
-// (Sunsword, Frost/Fire Brand while burning), so it is recorded rather than
-// guessed. setworn(0, W_WEP) below is the part that actually unwields.
-export function uwepgone() {
-    if (game.u.uwep) {
-        if (game.u.uwep.lamplit)
-            note_unported_wield('uwepgone:artifact_light');
-        setworn(null, W_WEP);
-        game.unweapon = true;
-        update_inventory();
-    }
-}
-
-// src/wield.c:888 uswapwepgone()
-export function uswapwepgone() {
-    if (game.u.uswapwep) {
-        setworn(null, W_SWAPWEP);
-        update_inventory();
-    }
-}
-
-// src/wield.c uqwepgone()
-export function uqwepgone() {
-    if (game.u.uquiver) {
-        setworn(null, W_QUIVER);
-        update_inventory();
-    }
-}
-
-// src/wield.c:285 setuswapwep()
-export function setuswapwep(obj) {
-    setworn(obj, W_SWAPWEP);
-    return;
 }

@@ -4,14 +4,16 @@
 // Contestants should port the full vision.c for complete parity.
 
 import { game } from './gstate.js';
-import { sobj_at } from './invent.js';
-import { m_at } from './mon.js';
-import { is_lightblocker_mappear } from './monst.js';
-import { See_invisible, Underwater } from './youprop.js';
-import { ONAMES } from './objects_data.js';
-import { COLNO, ROWNO, DOOR, SDOOR, POOL, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, IS_WALL, COULD_SEE, IN_SIGHT, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL, TREE, CLOUD, LAVAWALL } from './const.js';
+import {
+    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    D_CLOSED, D_LOCKED, D_TRAPPED,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
+    IS_WALL,
+} from './const.js';
 import { newsym } from './display.js';
 
+const COULD_SEE = 0x1;
+const IN_SIGHT = 0x2;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -593,83 +595,4 @@ export function clear_path(col1, row1, col2, row2) {
     if (row1 === row2 && col1 === col2)
         return true;
     return !!walk(col1, row1, col1 - col2, row2 - row1, -1, 1); /* III */
-}
-
-// src/vision.c:865 block_point() — a square has become opaque.
-//
-// Called when a door closes, a boulder lands, or anything else stops light.
-// Two effects, and only the second is ported.
-//
-// fill_point(y, x) updates the vision engine's own blocking structures and is
-// absent, so a newly closed door does not yet stop light in the shadow-caster.
-// Recorded rather than approximated: writing a plausible fill would change
-// which squares the hero can see, and vision drives newsym, which drives the
-// screen. A wrong fill is worse than a missing one because it looks correct.
-//
-// The DEBUG seethru block above it is a wizard-mode debug aid and has no
-// release-build behaviour, so it has no JS counterpart.
-function note_unported_vision(what) {
-    (game.unported ||= new Set()).add(what);
-}
-
-export function block_point(x, y) {
-    note_unported_vision('block_point:fill_point');
-
-    /* We have to do a full vision recalculation if we "could see" the
-       location: a monster may have opened a way onto a lit room that sits
-       outside night-vision range, and the hero should suddenly see it. */
-    if (game.viz_array?.[y]?.[x])
-        game.vision_full_recalc = 1;
-}
-
-// src/vision.c:899 unblock_point() — make the location transparent to light.
-//
-// The mirror of block_point above. dig_point(y, x) — note the C passes ROW
-// first — is the shadow-map update and is not ported, same as block_point's
-// fill_point, so it is recorded rather than guessed.
-export function unblock_point(x, y) {
-    note_unported_vision('unblock_point:dig_point');
-
-    /* recalc light sources here? */
-
-    if (game.viz_array?.[y]?.[x])
-        game.vision_full_recalc = 1;
-}
-
-// src/vision.c:153 does_block() — does anything at <x,y> block light?
-//
-// Returns 1 for a hard blocker and 2 for a visible region (gas cloud), which
-// callers distinguish; do NOT collapse it to a boolean.
-//
-// The C's #ifdef DEBUG `seethru` wizard-mode escape is not compiled in a normal
-// build and is not ported.
-export function does_block(x, y, lev) {
-    /* Features that block . . */
-    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE
-        || (IS_DOOR(lev.typ)
-            && (lev.doormask & (D_CLOSED | D_LOCKED | D_TRAPPED))))
-        return 1;
-
-    if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL)
-        return 1;
-    /* the C also ORs `(Underwater && is_moat(x, y))` here; is_moat is not
-       ported, so that one term is recorded. */
-    if (Underwater())
-        note_unported_vision('does_block:is_moat');
-
-    /* Boulders block light. */
-    if (sobj_at(ONAMES.BOULDER, x, y))
-        return 1;
-
-    /* Mimics mimicking a door or boulder or ... block light. */
-    const mon = m_at(x, y);
-    if (mon && (!mon.minvis || See_invisible())
-        && is_lightblocker_mappear(mon))
-        return 1;
-
-    /* Clouds (poisonous or not) block light. visible_region_at() is the gas
-       region system and is not ported, so the `return 2` arm is recorded. */
-    note_unported_vision('does_block:visible_region_at');
-
-    return 0;
 }

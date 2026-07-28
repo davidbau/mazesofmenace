@@ -8,20 +8,25 @@ import { A_CON } from './const.js';
 // port that tracks the turn counter correctly still has to make the call.
 
 import { game } from './gstate.js';
-import { Hunger } from './youprop.js';
 import { Race_if } from './u_init.js';
+import { carnivorous, herbivorous, metallivorous } from './mondata.js';
+import { Unaware, Hallucination } from './youprop.js';
+import { singular, xname, doname } from './objnam.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { You, You_cant } from './pline.js';
+import { outrumor } from './rumors.js';
+import { BY_COOKIE } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { done } from './end.js';
 import { set_occupation } from './allmain.js';
-import { rn2 } from './rng.js';
-import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK,
-         HUNGRY, FAINTING,
-         A_LAWFUL } from './const.js';
-import { ONAMES } from './objects_data.js';
-import { getobj, weight, useup, useupf } from './invent.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
+import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, freeinv, update_inventory, reorder_invent } from './invent.js';
 import { pline } from './display.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
+import { splitobj, bcsign } from './mkobj.js';
 
 // src/eat.c:3170 gethungry()
 export function gethungry() {
@@ -30,17 +35,30 @@ export function gethungry() {
     if (u.uinvulnerable)
         return;                       /* forced to fast while praying */
 
+    /* src/eat.c:3174 — ordinary food consumption. The Unaware term is a real
+       short circuit: awake heroes never draw here, but a sleeping hero spends
+       one rn2(10) EVERY turn ("slow metabolic rate while asleep") and only
+       digests on a 0. seed0016's wand-of-sleep nap is what exposed it. */
+    const uptr = game.mons?.[u.umonnum];
+    if ((!Unaware() || !rn2(10))
+        && (!uptr || carnivorous(uptr) || herbivorous(uptr)
+            || metallivorous(uptr))
+        && !u.uprops?.SLOW_DIGESTION)
+        u.uhunger--;
+
     /* src/eat.c:3191 — rn2(20) replaces the old (int) (svm.moves % 20L) */
     const accessorytime = rn2(20);
 
     if (accessorytime % 2) {
         /* regeneration and encumbrance burn food; neither is ported */
     } else {
-        /* ring of hunger / slow digestion; not ported */
+        /* ring of hunger / conflict / charged rings; not ported */
     }
+}
 
-    if (u.uhunger !== undefined)
-        u.uhunger--;
+// src/eat.c:3347 is_fainted()
+export function is_fainted() {
+    return game.u.uhs === FAINTED;
 }
 
 // src/eat.c:126 init_uhunger() — the hero starts well fed.
@@ -75,7 +93,7 @@ export async function floorfood(verb, corpsecheck) {
         return null;
     }
 
-    return await getobj(verb, null, 0);
+    return await getobj(verb, eat_ok, 0);
 }
 
 // src/eat.c doeat() — the 'e' command.
@@ -83,11 +101,108 @@ export async function floorfood(verb, corpsecheck) {
 // The eating itself needs the nutrition, corpse and tin code. What is ported is
 // the object prompt, because a session that eats and does not have its
 // inventory letter consumed runs that letter as a command instead.
+// src/eat.c:91 is_edible() — can the HERO eat this?
+//
+// The fire-elemental and metallivore arms need a polymorphed youmonst,
+// which this tree does not track; ghoul and gelatinous cube read the real
+// u.umonnum. For every un-polymorphed hero this reduces to the C's tail:
+// not a unique object, and FOOD_CLASS.
+export function is_edible(obj) {
+    /* protect invocation tools but not Rider corpses (handled elsewhere) */
+    if (game.objects[obj.otyp].oc_unique)
+        return false;
+
+    if (game.u.umonnum === PMNAMES.PM_GHOUL) {
+        /* vegan() is not ported; a hero polymorphed into a ghoul cannot
+           arise on this tree (polyself absent), so record if reached */
+        note_unported_eat('is_edible:ghoul_vegan');
+        return obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.EGG;
+    }
+
+    return obj.oclass === OCLASSES.FOOD_CLASS;
+}
+
+// src/eat.c:3517 eat_ok() — getobj callback; effectively wraps is_edible().
+//
+// C's getobj_else tracks "floor food declined" to word the refusal as
+// "anything ELSE to eat"; the floor-food prompt machinery is upstream of
+// getobj and recorded there.
+export function eat_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    if (is_edible(obj))
+        return GETOBJ_SUGGEST;
+
+    /* exclude, not downplay, gold: "You cannot eat gold" comes from getobj */
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+
+    return GETOBJ_EXCLUDE_SELECTABLE;
+}
+
+// src/eat.c:325 obj_nutrition()
+function obj_nutrition(otmp) {
+    return (otmp.otyp === ONAMES.CORPSE) ? game.mons[otmp.corpsenm].cnutrit
+           : otmp.globby ? otmp.owt
+             : game.objects[otmp.otyp].oc_nutrition;
+}
+
+// src/eat.c:360 touchfood() — split one item off a stack before eating it and
+// give it its own inventory slot; also latch its full nutrition into oeaten.
+//
+// The split is where the meal's rnd(2) comes from: splitobj -> nextoid ->
+// next_ident. costly_alteration (shop billing) and the 52-slot overflow drop
+// are recorded. The re-slot mirrors C's freeinv + addinv_nomerge using
+// assigninvlet's rule: first unused letter, a-z then A-Z.
+function touchfood(otmp) {
+    if (otmp.quan > 1) {
+        if (!(game.invent || []).includes(otmp))
+            splitobj(otmp, otmp.quan - 1);
+        else
+            otmp = splitobj(otmp, 1);
+    }
+
+    if (!otmp.oeaten) {
+        note_unported_eat('touchfood:costly_alteration');
+        otmp.oeaten = obj_nutrition(otmp);
+    }
+
+    if ((game.invent || []).includes(otmp)) {
+        freeinv(otmp);
+        if ((game.invent || []).length >= 52) {
+            note_unported_eat('touchfood:overflow_drop');
+        } else {
+            /* addinv_nomerge: own slot, no merging back into the stack */
+            const used = new Set((game.invent || []).map(o => o.invlet));
+            const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            for (const ch of letters)
+                if (!used.has(ch)) { otmp.invlet = ch; break; }
+            game.invent.push(otmp);
+            reorder_invent();   /* invlet_constant keeps rank order */
+            update_inventory();
+        }
+    }
+    return otmp;
+}
+
 export async function doeat() {
-    const otmp = await floorfood('eat', 0);
+    let otmp = await floorfood('eat', 0);
 
     if (!otmp)
         return ECMD_OK;
+
+    /* src/eat.c:2864 — "We have to make non-foods take 1 move to eat,
+       unless..." — an explicitly chosen non-food is rejected without
+       spending the turn. */
+    if (!is_edible(otmp)) {
+        await You('cannot eat that!');
+        return ECMD_OK;
+    } else if ((otmp.owornmask & (W_ARMOR | W_TOOL | W_AMUL | W_SADDLE)) !== 0) {
+        /* let them eat rings */
+        await You_cant(`eat something you're wearing.`);
+        return ECMD_OK;
+    }
 
     /* src/eat.c doeat() tail — the tin, corpse and conduct arms above this
        need their own subsystems; what is ported is the ordinary-food path,
@@ -98,11 +213,42 @@ export async function doeat() {
         return ECMD_TIME;
     }
 
+    /* src/eat.c:2966 — latched BEFORE touchfood(), which sets oeaten. */
+    const already_partly_eaten = otmp.oeaten ? true : false;
+
+    /* src/eat.c:2968 — touchfood() BEFORE the victual is set up; it may
+       replace otmp with the split-off single. */
+    otmp = touchfood(otmp);
+
     const v = (game.context.victual ||= {});
     v.piece = otmp;
     v.o_id = otmp.o_id;
     v.usedtime = 0;
     v.reqtime = game.objects[otmp.otyp].oc_delay;
+
+    /* src/eat.c:3027 — cursed or old food behaves rotten. The age arm's
+       rn2(7) only draws once the food is over 30 (blessed: 50) turns old,
+       which is why fresh starting food never spends it. nonrotting_food()
+       is lembas or cram (eat.c:65). */
+    if (otmp.otyp !== ONAMES.FORTUNE_COOKIE
+        && (otmp.cursed
+            || (!(otmp.otyp === ONAMES.LEMBAS_WAFER
+                  || otmp.otyp === ONAMES.CRAM_RATION)
+                && (game.moves - (otmp.age || 0)) > (otmp.blessed ? 50 : 30)
+                && (otmp.orotten || !rn2(7))))) {
+        /* rottenfood()'s messages and blindness/stun arms draw rn2(4); the
+           dont_start bracket depends on them. */
+        note_unported_eat('doeat:rottenfood');
+        otmp.orotten = true;
+        consume_oeaten(otmp, 1);        /* oeaten >>= 1 */
+    } else if (!already_partly_eaten) {
+        if (!(await fprefx(otmp))) {
+            do_reset_eat();
+            return ECMD_TIME;
+        }
+    } else {
+        await You(`${v.reqtime === 1 ? "eat" : "begin eating"} ${doname(otmp)}.`);
+    }
 
     /* nutrition units per round eating */
     if (v.reqtime === 0 || !otmp.oeaten)
@@ -116,38 +262,194 @@ export async function doeat() {
        moment the meal starts, not re-tested per bite. */
     v.canchoke = (game.u.uhs === SATIATED);
 
-    start_eating(otmp, false);
+    await start_eating(otmp, false);
     return ECMD_TIME;
+}
+
+// src/eat.c:2099 fprefx() — the "start to eat" feedback for ordinary food.
+// Returns false when the meal is aborted (a pyrolisk egg explodes).
+//
+// The recording pins the build flags: seed0016's apple prints "Delicious!
+// Must be a Macintosh!", which is the #if MACOS arm, so the reference build
+// defines MACOS (and, being macOS, UNIX — the PEAR fallthrough).
+async function fprefx(otmp) {
+    const give_feedback = async () => {
+        await pline(`This ${singular(otmp, xname)} is ${
+            otmp.cursed
+                ? (Hallucination() ? "grody!" : "terrible!")
+                : (otmp.otyp === ONAMES.CRAM_RATION
+                   || otmp.otyp === ONAMES.K_RATION
+                   || otmp.otyp === ONAMES.C_RATION)
+                    ? "bland."
+                    : Hallucination() ? "gnarly!" : "delicious!"}`);
+    };
+    /* include/hack.h:51 CANNIBAL_ALLOWED() */
+    const cannibal_allowed = () =>
+        game.urole?.mnum === 'PM_CAVE_DWELLER'
+        || game.urole?.mnum === PMNAMES.PM_CAVE_DWELLER
+        || Race_if(PMNAMES.PM_ORC);
+
+    switch (otmp.otyp) {
+    case ONAMES.EGG:
+        if (otmp.corpsenm === PMNAMES.PM_PYROLISK) {
+            /* useup + explode(u.ux, u.uy, -11, d(3,6), 0, EXPL_FIERY) */
+            note_unported_eat('fprefx:pyrolisk_egg');
+            return false;
+        }
+        /* stale_egg() reads iced-corpse age bookkeeping; a stale egg makes
+           vomiting with d(10,4). Fresh eggs take the plain feedback. */
+        note_unported_eat('fprefx:stale_egg_check');
+        await give_feedback();
+        break;
+    case ONAMES.FOOD_RATION: /* nutrition 800 */
+        /* 200+800 remains below 1000+1, the satiation threshold */
+        if (game.u.uhunger <= 200)
+            await pline(Hallucination()
+                ? "Oh wow, like, superior, man!"
+                : "This food really hits the spot!");
+        /* 700-1+800 remains below 1500, the choking threshold */
+        else if (game.u.uhunger < 700)
+            /* body_part(STOMACH) — un-polymorphed heroes all say this */
+            await pline("This satiates your stomach!");
+        break;
+    case ONAMES.TRIPE_RATION:
+        /* the carnivorous non-humanoid arm needs a polymorphed hero */
+        if (Race_if(PMNAMES.PM_ORC)) {
+            await pline(Hallucination() ? "Tastes great!  Less filling!"
+                                        : "Mmm, tripe... not bad!");
+        } else {
+            await pline("Yak - dog food!");
+            more_experienced(1, 0);
+            await newexplevel();
+            /* not cannibalism, but we use similar criteria
+               for deciding whether to be sickened by this meal */
+            if (rn2(2) && !cannibal_allowed()) {
+                rn1(game.context.victual.reqtime, 14);
+                note_unported_eat('fprefx:make_vomiting');
+            }
+        }
+        break;
+    case ONAMES.LEMBAS_WAFER:
+        if (Race_if(PMNAMES.PM_ORC)) {
+            await pline("!#?&* elf kibble!");
+            break;
+        } else if (Race_if(PMNAMES.PM_ELF)) {
+            await pline("A little goes a long way.");
+            break;
+        }
+        await give_feedback();
+        break;
+    case ONAMES.MEATBALL:
+    case ONAMES.MEAT_STICK:
+    case ONAMES.ENORMOUS_MEATBALL:
+    case ONAMES.MEAT_RING:
+        await give_feedback();
+        break;
+    case ONAMES.CLOVE_OF_GARLIC:
+        /* the is_undead vomit arm needs a polymorphed hero;
+           iter_mons(garlic_breath) scares nearby vampiric pets */
+        note_unported_eat('fprefx:garlic_breath');
+        /*FALLTHRU*/
+    default:
+        if (otmp.otyp === ONAMES.SLIME_MOLD && !otmp.cursed
+            && otmp.spe === (game.context.current_fruit ?? 1)) {
+            await pline(`My, this is a ${
+                Hallucination() ? "primo" : "yummy"} ${
+                singular(otmp, xname)}!`);
+        } else if (otmp.otyp === ONAMES.APPLE && otmp.cursed
+                   && !game.u.uprops?.SLEEP_RES) {
+            ; /* skip core joke; feedback deferred til fpostfx() */
+        } else if (otmp.otyp === ONAMES.APPLE) {
+            await pline("Delicious!  Must be a Macintosh!");
+        } else if (otmp.otyp === ONAMES.PEAR) {
+            /* the #ifdef UNIX arm; MACOS grabbed APPLE above */
+            if (!Hallucination()) {
+                await pline("Core dumped.");
+            } else {
+                /* based on an old Usenet joke, a fake a.out manual page */
+                const x = rnd(100);
+                await pline(`${(x <= 75) ? "Segmentation fault"
+                              : (x <= 99) ? "Bus error"
+                                : "Yo' mama"} -- core dumped.`);
+            }
+        } else {
+            await give_feedback();
+        }
+        break; /* default */
+    } /* switch */
+    return true;
+}
+
+// src/eat.c:2510 fpostfx() — the food's after-effects. The reachable arms:
+// the fortune cookie's rumor and the apple/pear "core dumped" deferral. The
+// stat-gain foods (royal jelly, giant corpses via cpostfx) and the wolfsbane
+// and carrot cures are gated on state no current hero has.
+async function fpostfx(otmp) {
+    switch (otmp.otyp) {
+    case ONAMES.SPRIG_OF_WOLFSBANE:
+        /* you_unwere needs lycanthropy */
+        break;
+    case ONAMES.CARROT:
+        if (game.u.ucreamed)
+            note_unported_eat('fpostfx:make_blinded');
+        break;
+    case ONAMES.FORTUNE_COOKIE:
+        await outrumor(bcsign(otmp), BY_COOKIE);
+        if (!game.u.ublind)
+            game.u.uconduct = game.u.uconduct || {},
+            game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+        break;
+    case ONAMES.LUMP_OF_ROYAL_JELLY:
+        note_unported_eat('fpostfx:royal_jelly');
+        break;
+    case ONAMES.EGG:
+        if (otmp.corpsenm >= 0)
+            note_unported_eat('fpostfx:egg_petrify');
+        break;
+    case ONAMES.EUCALYPTUS_LEAF:
+        if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
+            note_unported_eat('fpostfx:eucalyptus');
+        break;
+    case ONAMES.APPLE:
+        if (otmp.cursed && !game.u.uprops?.SLEEP_RES) {
+            /* the Snow White core joke: sleeping poison */
+            note_unported_eat('fpostfx:cursed_apple_sleep');
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 // src/eat.c start_eating() — begin (or resume) a meal.
 //
 // bite() is called BEFORE usedtime is incremented, so a one-turn meal eaten
 // while Satiated chokes on the very first call rather than after finishing.
-export function start_eating(otmp, already_partly_eaten) {
+export async function start_eating(otmp, already_partly_eaten) {
     const v = game.context.victual;
 
     v.fullwarn = 0;
     v.doreset = 0;
     v.eating = 1;
 
-    if (bite()) {
+    if (await bite()) {
         /* survived choking, finish off food that's nearly done;
            need this to handle cockatrice eggs, fortune cookies, etc */
         if (++v.usedtime >= v.reqtime) {
             /* C brackets this call with a save/restore of gn.nomovemsg so
                that done_eating() does not issue one when the reason we got
-               here is a vomit() from bite(). nomovemsg is not tracked, so the
-               bracketing records; the call itself is real. */
-            note_unported_eat('start_eating:nomovemsg_bracket');
-            done_eating(false);
+               here is a vomit() from bite(). */
+            const save = game.nomovemsg;
+            game.nomovemsg = null;
+            await done_eating(false);
+            game.nomovemsg = save;
         }
         return;
     }
 
     if (++v.usedtime >= v.reqtime) {
         /* print "finish eating" message if they just resumed -dlc */
-        done_eating((v.reqtime > 1 || already_partly_eaten) ? true : false);
+        await done_eating((v.reqtime > 1 || already_partly_eaten) ? true : false);
         return;
     }
 
@@ -202,13 +504,13 @@ export async function choke(food) {
 //     if (victual.canchoke && u.uhunger >= 2000) { choke(piece); return 1; }
 //
 // so the death is a consequence of ACCUMULATED nutrition, not of the meal.
-export function bite() {
+export async function bite() {
     const v = game.context?.victual;
     if (!v)
         return 0;
 
     if (v.canchoke && game.u.uhunger >= 2000) {
-        choke(v.piece);
+        await choke(v.piece);
         return 1;
     }
     if (v.doreset) {
@@ -237,7 +539,7 @@ export function bite() {
 // than < , so the last turn of a meal still takes a bite. Writing it as < , or
 // biting before incrementing, drops that final bite -- and for a Satiated hero
 // that final bite is the one that chokes.
-export function eatfood() {
+export async function eatfood() {
     const v = game.context.victual;
     let food = v?.piece;
 
@@ -252,11 +554,11 @@ export function eatfood() {
         return 0;
 
     if (++v.usedtime <= v.reqtime) {
-        if (bite())
+        if (await bite())
             return 0;
         return 1;                       /* still busy */
     }
-    done_eating(true);
+    await done_eating(true);
     return 0;
 }
 
@@ -269,7 +571,7 @@ const obj_here = (o, x, y) => o.ox === x && o.oy === y;
 // Order matters: go.occupation is cleared BEFORE newuhs(), with the C's own
 // comment "do this early, so newuhs() knows we're done". newuhs recomputes the
 // hunger state, and it reads whether an occupation is running.
-export function done_eating(message) {
+export async function done_eating(message) {
     const v = game.context.victual;
     const piece = v.piece;
 
@@ -278,15 +580,20 @@ export function done_eating(message) {
     game.occupation = null;             /* early, so newuhs knows we're done */
     newuhs(false);
 
-    if (message)
-        note_unported_eat('done_eating:message');
+    if (game.nomovemsg) {
+        if (message)
+            await pline(game.nomovemsg);
+        game.nomovemsg = null;
+    } else if (message) {
+        /* food_xname reduces to doname for everything this port serves */
+        await You(`finish eating ${doname(piece)}.`);
+    }
 
-    /* cpostfx (199 lines) and fpostfx (90) are the food's after-effects and
-       need the corpse and food-effect tables; both stay recorded. */
+    /* cpostfx (199 lines) is the corpse table; still recorded. */
     if (piece && (piece.otyp === ONAMES.CORPSE || piece.globby))
         note_unported_eat('done_eating:cpostfx');
     else if (piece)
-        fpostfx(piece);
+        await fpostfx(piece);
 
     /* the object leaves by one of two doors: useup() when carried, useupf()
        when it is lying on the floor (src/eat.c:568, :570). Both are ported;
@@ -380,13 +687,13 @@ export function newuhs(incr) {
 // `stopping` clears the occupation BEFORE eatfood() runs, which the C notes is
 // "for do_reset_eat" -- eatfood checks the occupation, so leaving it set makes
 // the meal look still-in-progress to its own callback.
-export function maybe_finished_meal(stopping) {
+export async function maybe_finished_meal(stopping) {
     const v = game.context?.victual;
 
     if (game.occupation === eatfood && v && v.usedtime >= v.reqtime) {
         if (stopping)
             game.occupation = null;     /* for do_reset_eat */
-        eatfood();                      /* calls done_eating to use the food up */
+        await eatfood();                /* calls done_eating to use the food up */
         return true;
     }
     return false;
@@ -479,7 +786,7 @@ export function lesshungry(num) {
         }
     } else {
         /* report when nearly full so all eating warns before choking */
-        if (game.u.uhunger >= 1500 && !Hunger()
+        if (game.u.uhunger >= 1500 && !game.u.uprops?.HUNGER
             && (!game.context.victual?.eating
                 || !game.context.victual?.fullwarn)) {
             note_unported_eat('lesshungry:hard_time_msg');
@@ -530,28 +837,4 @@ export function consume_oeaten(obj, amt) {
             game.context.victual.reqtime = game.context.victual.usedtime;
         obj.oeaten = 1;         /* smallest possible positive value */
     }
-}
-
-// src/eat.c fpostfx() — a food's after-effects, dispatched on its otyp.
-//
-// Only seven foods have an arm; everything else -- food rations, tripe,
-// cram, k-rations and the rest of what a hero actually eats -- matches no
-// case and the switch does nothing. That is why this can be ported now: the
-// common path is genuinely empty, not merely unimplemented.
-//
-// Each arm records under its own object name so the reach tool can rank
-// them, rather than one lumped fpostfx entry hiding seven different gaps.
-const FPOSTFX_ARMS = [
-    'SPRIG_OF_WOLFSBANE', 'CARROT', 'FORTUNE_COOKIE', 'LUMP_OF_ROYAL_JELLY',
-    'EGG', 'EUCALYPTUS_LEAF', 'APPLE',
-];
-
-export function fpostfx(otmp) {
-    for (const name of FPOSTFX_ARMS) {
-        if (otmp.otyp === ONAMES[name]) {
-            (game.unported ||= new Set()).add(`fpostfx:${name}`);
-            return;
-        }
-    }
-    /* no arm for this food; C's switch falls through and does nothing */
 }

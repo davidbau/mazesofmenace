@@ -7,11 +7,11 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
-import { is_ammo } from './obj.js';
-import { STR18, WT_IRON_BALL_INCR } from './const.js';
+import { OBJ_NAME } from './objnam.js';
+import { def_oc_syms } from './drawing_data.js';
+import { STR18, P_SKILL_LIMIT, P_LAST_WEAPON, P_UNSKILLED, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SLING, P_FLAIL, P_PICK_AXE } from './const.js';
 import { MONSYMS } from './monst_data.js';
-import { mon_hates_blessings, thick_skinned, passes_walls,
-         is_swimmer } from './mondata.js';
+import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer } from './mondata.js';
 import { is_spear } from './u_init.js';
 import { is_pool, is_pick } from './mon.js';
 import { is_weptool } from './mkobj.js';
@@ -23,12 +23,7 @@ import { bigmonst } from './mondata.js';
 import { rnd, d } from './rng.js';
 import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
-import {
-    P_NONE, P_NUM_SKILLS, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_EXPERT,
-    P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL,
-    P_TWO_WEAPON_COMBAT, P_LAST_WEAPON, P_SKILLED, P_MASTER, P_GRAND_MASTER,
-    P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW,
-} from './const.js';
+import { P_NONE, P_NUM_SKILLS, P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL, P_TWO_WEAPON_COMBAT, P_SKILLED, P_MASTER, P_GRAND_MASTER, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW } from './const.js';
 import { PMNAMES } from './monst_data.js';
 
 // include/skills.h:106 practice_needed_to_advance()
@@ -36,7 +31,10 @@ const practice_needed_to_advance = (level) => level * level * 20;
 
 // include/obj.h:238 is_ammo() — the launcher-fired classes. Ammo alone does
 // not confer skill; skill_init waits until it sees the launcher.
-/* is_ammo() is include/obj.h:238; it comes from js/obj.js. */
+const is_ammo = (otmp) =>
+    (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.GEM_CLASS)
+    && game.objects[otmp.otyp].oc_skill >= -P_CROSSBOW
+    && game.objects[otmp.otyp].oc_skill <= -P_BOW;
 
 // src/weapon.c:1517 weapon_type() — the skill an object trains. A NEGATIVE
 // oc_skill marks ammo, and the sign is dropped here.
@@ -167,7 +165,13 @@ function skill_based_spellbook_id() {
 }
 
 // src/role.c Role_if()
-const Role_if = (pm) => game.urole?.malenum === pm || game.urole?.pmidx === pm;
+/* The role record stores its monster as `mnum` (see js/role_data.js); the
+   old malenum/pmidx reads matched no field at all, so every Role_if here was
+   false and skill_init never granted any role its starting spell skill. */
+const Role_if = (pm) => {
+    const m = game.urole?.mnum;
+    return m === pm || m === PMNAMES[pm];
+};
 
 function note_unported_weapon(what) {
     (game.unported ||= new Set()).add(what);
@@ -269,6 +273,161 @@ export function hitval(otmp, mon) {
         note_unported_weapon('hitval:spec_abon');
 
     return tmp;
+}
+
+/* include/obj.h is_graystone() */
+const is_graystone = (o) =>
+    o.otyp === ONAMES.LUCKSTONE || o.otyp === ONAMES.LOADSTONE
+    || o.otyp === ONAMES.FLINT || o.otyp === ONAMES.TOUCHSTONE;
+
+/* src/weapon.c:22-35 — PN_* mark skill categories whose names don't come
+   from OBJ_NAME(objects[type]); the value is a negative index into
+   odd_skill_names. */
+const PN_BARE_HANDED = -1, PN_TWO_WEAPONS = -2, PN_RIDING = -3,
+      PN_POLEARMS = -4, PN_SABER = -5, PN_HAMMER = -6, PN_WHIP = -7,
+      PN_ATTACK_SPELL = -8, PN_HEALING_SPELL = -9, PN_DIVINATION_SPELL = -10,
+      PN_ENCHANTMENT_SPELL = -11, PN_CLERIC_SPELL = -12,
+      PN_ESCAPE_SPELL = -13, PN_MATTER_SPELL = -14;
+
+/* src/weapon.c:38 skill_names_indices[] — skill number to object type (or
+   negative odd_skill_names index). Entry [0] isn't used. */
+const skill_names_indices = [
+    0, ONAMES.DAGGER, ONAMES.KNIFE, ONAMES.AXE, ONAMES.PICK_AXE,
+    ONAMES.SHORT_SWORD, ONAMES.BROADSWORD, ONAMES.LONG_SWORD,
+    ONAMES.TWO_HANDED_SWORD, PN_SABER, ONAMES.CLUB, ONAMES.MACE,
+    ONAMES.MORNING_STAR, ONAMES.FLAIL, PN_HAMMER,
+    ONAMES.QUARTERSTAFF, PN_POLEARMS, ONAMES.SPEAR, ONAMES.TRIDENT,
+    ONAMES.LANCE, ONAMES.BOW, ONAMES.SLING, ONAMES.CROSSBOW,
+    ONAMES.DART, ONAMES.SHURIKEN, ONAMES.BOOMERANG, PN_WHIP,
+    ONAMES.UNICORN_HORN,
+    /* Spell */
+    PN_ATTACK_SPELL, PN_HEALING_SPELL, PN_DIVINATION_SPELL,
+    PN_ENCHANTMENT_SPELL, PN_CLERIC_SPELL, PN_ESCAPE_SPELL, PN_MATTER_SPELL,
+    /* Other */
+    PN_BARE_HANDED, PN_TWO_WEAPONS, PN_RIDING,
+];
+
+/* src/weapon.c:52 — note: entry [0] isn't used */
+const odd_skill_names = [
+    "no skill", "bare hands", /* use barehands_or_martial[] instead */
+    "two weapon combat", "riding", "polearms", "saber", "hammer", "whip",
+    "attack spells", "healing spells", "divination spells",
+    "enchantment spells", "clerical spells", "escape spells", "matter spells",
+];
+/* src/weapon.c:59 — indexed via martial_bonus() */
+const barehands_or_martial = ["bare handed combat", "martial arts"];
+
+// src/weapon.c:63 P_NAME()
+function P_NAME(type) {
+    const idx = skill_names_indices[type];
+    return (idx > 0)
+        ? OBJ_NAME(game.objects[idx])
+        : (type === P_BARE_HANDED_COMBAT)
+            ? barehands_or_martial[martial_bonus() ? 1 : 0]
+            : odd_skill_names[-idx];
+}
+
+/* include/skills.h P_SKILL/P_MAX_SKILL/P_ADVANCE/P_RESTRICTED — readers over
+   u.weapon_skills, which skill_init() builds. */
+export const P_SKILL = (x) => game.u.weapon_skills?.[x]?.skill;
+
+// src/weapon.c:90 weapon_descr() — weapon's skill category name for use as a
+// generalized description of the weapon.
+export function weapon_descr(obj) {
+    const skill = weapon_type(obj);
+    let descr = P_NAME(skill);
+
+    /* assorted special cases */
+    switch (skill) {
+    case P_NONE:
+        /* not a weapon or weptool: use item class name; override for
+           things where it sounds strange (src/weapon.c:96-109) */
+        descr = (obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.TIN
+                 || obj.otyp === ONAMES.EGG || obj.otyp === ONAMES.STATUE
+                 || obj.otyp === ONAMES.BOULDER || obj.otyp === ONAMES.TOWEL
+                 || obj.otyp === ONAMES.TIN_OPENER)
+                ? OBJ_NAME(game.objects[obj.otyp])
+                : def_oc_syms[obj.oclass].name;
+        break;
+    case P_SLING:
+        if (is_ammo(obj))
+            descr = (obj.otyp === ONAMES.ROCK || is_graystone(obj))
+                        ? "stone"
+                        : (obj.oclass === OCLASSES.GEM_CLASS)
+                            ? "gem"
+                            : def_oc_syms[obj.oclass].name;
+        break;
+    case P_BOW:
+        if (is_ammo(obj))
+            descr = "arrow";
+        break;
+    case P_CROSSBOW:
+        if (is_ammo(obj))
+            descr = "bolt";
+        break;
+    case P_FLAIL:
+        if (obj.otyp === ONAMES.GRAPPLING_HOOK)
+            descr = "hook";
+        break;
+    case P_PICK_AXE:
+        /* even if "dwarvish mattock" hasn't been discovered yet */
+        if (obj.otyp === ONAMES.DWARVISH_MATTOCK)
+            descr = "mattock";
+        break;
+    default:
+        break;
+    }
+    /* C finishes with makesingular(descr) (src/objnam.c, ~120 lines of
+       plural handling). Every name reachable here is already singular except
+       the odd_skill_names plurals ("polearms", "... spells"), so the
+       singularization is recorded when it would actually change the text
+       rather than half-ported. */
+    if (descr.endsWith('s'))
+        note_unported_weapon('weapon_descr:makesingular');
+    return descr;
+}
+
+// src/weapon.c:1092 skill_level_name()
+export function skill_level_name(skill) {
+    switch (P_SKILL(skill)) {
+    case P_UNSKILLED:    return "Unskilled";
+    case P_BASIC:        return "Basic";
+    case P_SKILLED:      return "Skilled";
+    case P_EXPERT:       return "Expert";
+    /* these are for unarmed combat/martial arts only */
+    case P_MASTER:       return "Master";
+    case P_GRAND_MASTER: return "Grand Master";
+    default:             return "Unknown";
+    }
+}
+
+// src/weapon.c:1125 skill_name()
+export function skill_name(skill) {
+    return P_NAME(skill);
+}
+
+// src/weapon.c:1131 slots_required() — the # of slots to advance the skill.
+function slots_required(skill) {
+    const tmp = P_SKILL(skill);
+
+    /* unskilled -> basic 1; basic -> skilled 2; skilled -> expert 3 */
+    if (skill <= P_LAST_WEAPON || skill === P_TWO_WEAPON_COMBAT)
+        return tmp;
+    /* alternate for spells and bare hands/martial arts */
+    return (tmp + 1) >> 1; /* half, rounded up */
+}
+
+// src/weapon.c can_advance() — can this skill be enhanced right now?
+export function can_advance(skill, speedy) {
+    const sk = game.u.weapon_skills?.[skill];
+    if (!sk || sk.skill === P_ISRESTRICTED
+        || sk.skill >= sk.max
+        || (game.u.skills_advanced | 0) >= P_SKILL_LIMIT)
+        return false;
+
+    /* the wizard-mode speedy arm is unreachable here */
+    return (sk.advance | 0) >= practice_needed_to_advance(sk.skill)
+           && (game.u.weapon_slots | 0) >= slots_required(skill);
 }
 
 // include/skills.h:81 martial_bonus() — a Samurai's or Monk's martial arts.
@@ -476,6 +635,7 @@ export function dmgval(otmp, mon) {
 
 // include/weight.h:18 WT_IRON_BALL_INCR — verified against the header, not
 // recalled: the value was written from memory first and then checked.
+const WT_IRON_BALL_INCR = 160;
 
 // Predicates dmgval needs that are not ported. Each returns 0/false and is
 // recorded by name, so game.unported says which one a divergence wanted.

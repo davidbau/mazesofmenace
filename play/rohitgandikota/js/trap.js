@@ -7,7 +7,6 @@
 // finds it in the file its C twin lives in.
 
 import { game } from './gstate.js';
-import { dunlevs_in_dungeon } from './dungeon.js';
 import { rn2 } from './rng.js';
 import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -23,8 +22,10 @@ import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
 // include/rm.h:538 Sokoban — the level flag, not the dungeon branch.
 const Sokoban = () => game.level?.flags?.sokoban_rules === true;
 
-/* dunlevs_in_dungeon() is src/dungeon.c:1332; it comes from
-   js/dungeon.js, which is its C home. */
+// src/dungeon.c dunlevs_in_dungeon()
+function dunlevs_in_dungeon(lev) {
+    return game.dungeons[lev.dnum].num_dunlevs;
+}
 
 // src/dungeon.c dunlev()
 function dunlev(lev) {
@@ -177,4 +178,16 @@ export function m_harmless_trap(mtmp, ttmp) {
     }
 
     return false;
+}
+
+// src/trap.c:6776 unconscious()
+export function unconscious() {
+    if ((game.multi ?? 0) >= 0)
+        return false;
+
+    return !!(game.u.usleep
+              || (game.nomovemsg
+                  && (game.nomovemsg.startsWith("You awake")
+                      || game.nomovemsg.startsWith("You regain con")
+                      || game.nomovemsg.startsWith("You are consci"))));
 }

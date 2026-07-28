@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, maybe_do_tutorial } from './allmain.js';
+import { wd_message } from './unixmain.js';
 import { parseNethackrc, optValue } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
@@ -126,13 +127,7 @@ export class NethackGame {
         if ('tutorial' in rc.opts) g.tutorial_set_in_config = true;
 
         // Initialize hero struct
-        /* include/you.h:169 struct u_roleplay — zeroed like the C struct.
-           Nothing assigns it today, so `pauper` reads as false exactly as
-           before; setworn() needs `nudist` to be a real field to clear. */
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0,
-                uroleplay: { blind: false, nudist: false, deaf: false,
-                             pauper: false, reroll: false,
-                             numbones: 0, numrerolls: 0 } };
+        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
         g.context = { move: 0 };
         g.program_state = {};
         /* src/decl.c — svm.moves starts at 0 and moveloop() advances it. Several
@@ -162,6 +157,10 @@ export class NethackGame {
 
         // Run game startup
         await newgame();
+
+        /* sys/unix/unixmain.c:317 — "newgame(); wd_message();": the play-mode
+           notice lands between welcome() and the tutorial query. */
+        await wd_message();
 
         /* src/allmain.c moveloop() — the tutorial query sits between
            moveloop_preamble() and the first moveloop_core(). This driver calls

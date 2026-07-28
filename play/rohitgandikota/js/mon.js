@@ -1,18 +1,4 @@
-import { CORPSTAT_NONE, NO_WEAPON_WANTED } from './const.js';
-import { MFLAGS as __MF } from './monst_data.js';
-const G_NOCORPSE = __MF.G_NOCORPSE;
-import { is_neuter } from './mondata.js';
-import { CORPSTAT_BURIED } from './const.js';
-import { CORPSTAT_INIT } from './const.js';
-import { CORPSTAT_MALE } from './const.js';
-import { CORPSTAT_FEMALE } from './const.js';
-import { mkcorpstat } from './mkobj.js';
-import { relobj } from './steal.js';
-/* accessible() is a src/monmove.c function, so it comes from
-   js/monmove.js; js/const.js had a second copy with a DIFFERENT body. */
-import { accessible } from './monmove.js';
-import { corpse_chance } from './mondata.js';
-import { mon_offmap, is_lightblocker_mappear } from './monst.js';
+import { mon_offmap } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear } from './worn.js';
 import { is_hider } from './mondata.js';
@@ -28,9 +14,6 @@ import { mdistu } from './monmove.js';
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
-import { does_block, unblock_point } from './vision.js';
-import { touch_artifact } from './artifact.js';
-import { Invis } from './youprop.js';
 import { adjalign } from './attrib.js';
 import { couldsee, cansee } from './vision.js';
 import { finish_meating } from './dogmove.js';
@@ -47,9 +30,8 @@ import { newsym, canseemon, pline } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster } from './makemon.js';
-import { is_vampshifter } from './monst.js';
-import { ismnum } from './const.js';
-import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG, M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
+import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
+         M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
@@ -67,17 +49,26 @@ import { online2, isok } from './hacklib.js';
    export function declarations, so the cycle resolves through hoisting. */
 import { onscary, in_your_sanctuary, m_can_break_boulder, mon_knows_traps, can_fog, inhishop, mon_would_take_item } from './monmove.js';
 import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
-import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous, is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
+import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
+    is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
-import { set_mimic_sym, hideunder, mpickobj, monsndx } from './makemon.js';
-import { is_rider } from './mondata.js';
+import { is_rider, set_mimic_sym, hideunder, mpickobj } from './makemon.js';
+import { nonliving, is_neuter } from './mondata.js';
+import { mkcorpstat } from './mklev.js';
+import { CORPSTAT_NONE, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, ACCESSIBLE } from './const.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
 const MZ_HUMAN = MFLAGS.MZ_MEDIUM;
 
-import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS, D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL, ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS, ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM, NOGARLIC, TEMPLE, TRAPNUM, TELEP_TRAP, SHOPBASE, W_NONDIGGABLE } from './const.js';
+import { COLNO, ROWNO, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL, IRONBARS,
+         D_CLOSED, D_LOCKED, D_BROKEN, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
+         ALLOW_ALL, ALLOW_U, ALLOW_SSM, ALLOW_WALL, ALLOW_DIG, ALLOW_BARS,
+         ALLOW_TRAPS, ALLOW_M, ALLOW_SANCT, ALLOW_ROCK, NOTONL, OPENDOOR,
+         UNLOCKDOOR, BUSTDOOR, ALLOW_TM, ALLOW_MDISP, NON_PM,
+         NOGARLIC, TEMPLE, TRAPNUM, TELEP_TRAP, SHOPBASE,
+         W_NONDIGGABLE } from './const.js';
 
 // include/permonst.h:80
 export const NORMAL_SPEED = 12;
@@ -120,17 +111,17 @@ export function mcalcdistress() {
 }
 
 // src/mon.c:298 movemon() — let every monster take its turn.
-export function movemon() {
+export async function movemon() {
     let somebody_can_move = false;
     for (const mtmp of game.level?.monsters || []) {
         if (mtmp.mhp <= 0) continue;
-        if (movemon_singlemon(mtmp)) somebody_can_move = true;
+        if (await movemon_singlemon(mtmp)) somebody_can_move = true;
     }
     return somebody_can_move;
 }
 
 // src/mon.c:1214 movemon_singlemon()
-function movemon_singlemon(mtmp) {
+async function movemon_singlemon(mtmp) {
     /* A monster only acts once it has banked NORMAL_SPEED of movement.
        src/mon.c:1251 returns FALSE here — NOT "has any movement left". The
        return value becomes somebody_can_move, which drives moveloop_core's
@@ -189,7 +180,7 @@ function movemon_singlemon(mtmp) {
             return false;
     }
 
-    dochug(mtmp);
+    await dochug(mtmp);
     return mtmp.movement >= NORMAL_SPEED;
 }
 
@@ -454,7 +445,7 @@ export function mfndpos(mon, data, flag) {
 
                     /* src/mon.c:2338 — avoid standing in the hero's line.
                        monseeu is the same test onscary's displacement uses. */
-                    const monseeu = (mon.mcansee && !Invis());
+                    const monseeu = (mon.mcansee && !game.u?.uprops?.INVIS);
                     if (monseeu && monlineu(mon, nx, ny)) {
                         if (flag & NOTONL)
                             continue;
@@ -644,9 +635,15 @@ function resists_poison(mon) {
     return false;
 }
 
-/* touch_artifact() now lives in js/artifact.js, where src/artifact.c puts it.
-   The local copy here answered TRUE for a real artifact too, recording the
-   gap; the ported one actually evaluates spfx, class and alignment. */
+/* src/artifact.c touch_artifact() — TRUE for anything that is not an artifact,
+   which is every object a rock mole meets on an early level. */
+function touch_artifact(otmp, mon) {
+    if (otmp.oartifact) {
+        note_unported_mon('touch_artifact');
+        return true;
+    }
+    return true;
+}
 
 // src/mon.c:5915 check_gear_next_turn() — flag the monster to reconsider its
 // equipment on its next move.
@@ -673,6 +670,7 @@ export function m_carrying(mtmp, type) {
 }
 
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
+const NO_WEAPON_WANTED = 0;
 
 // include/obj.h:213 is_blade() — a cutting weapon, dagger through saber.
 // WEAPON_CLASS only, unlike is_axe and is_pick which also accept a weptool.
@@ -1001,16 +999,9 @@ function can_touch_safely(mtmp, otmp) {
 // due_to_death arm (nemdead/leaddead/relobj), thiefdead, shkgone, wormgone,
 // the endgame flag, and the steed dismount.
 export function m_detach(mtmp, mptr, due_to_death) {
-    if (mtmp.mleashed || mtmp.iswiz || mtmp.isshk || mtmp.wormno)
-        (game.unported ||= new Set()).add('mon:m_detach:leash_wiz_shk_worm');
-
-    if (due_to_death) {
-        if (mtmp.data.msound === MFLAGS.MS_NEMESIS
-            || mtmp.data.msound === MFLAGS.MS_LEADER)
-            (game.unported ||= new Set()).add('mon:m_detach:quest_death');
-        /* release (drop onto map) all objects carried by mtmp */
-        relobj(mtmp, 1, false);
-    }
+    if (mtmp.mleashed || mtmp.iswiz || mtmp.isshk || mtmp.wormno
+        || due_to_death)
+        (game.unported ||= new Set()).add('mon:m_detach');
 
     /* mon_leaving_level() — off the map, but still on the fmon chain */
     if (mtmp.mx > 0)
@@ -1234,12 +1225,8 @@ export function wake_msg(mtmp, interesting) {
 // is_lightblocker_mappear, has_mcorpsenm, freemcorpsenm, does_block and
 // unblock_point are recorded; the appearance reset and the redraw are real.
 export function seemimic(mtmp) {
-    /* computed BEFORE the appearance is reset below -- afterwards
-       is_lightblocker_mappear() would answer false and the point would stay
-       wrongly blocked. The ordering is load-bearing. */
-    const is_blocker_appear = is_lightblocker_mappear(mtmp);
+    const is_blocker_appear = note_unported_mon('seemimic:is_lightblocker_mappear');
 
-    /* has_mcorpsenm/freemcorpsenm (the mimicked-corpse slot) are not ported */
     note_unported_mon('seemimic:mcorpsenm');
 
     mtmp.m_ap_type = M_AP_NOTHING;
@@ -1247,8 +1234,8 @@ export function seemimic(mtmp) {
 
     /*  Discovered mimics don't block light. */
     if (is_blocker_appear
-        && !does_block(mtmp.mx, mtmp.my, game.level.at(mtmp.mx, mtmp.my)))
-        unblock_point(mtmp.mx, mtmp.my);
+        && !note_unported_mon('seemimic:does_block'))
+        note_unported_mon('seemimic:unblock_point');
 
     newsym(mtmp.mx, mtmp.my);
 }
@@ -1339,178 +1326,116 @@ export function mpickstuff(mtmp) {
     return false;
 }
 
-// src/mon.c lifesaved_monster() — an amulet of life saving may revive it.
-//
-// mlifesaver() returns the worn amulet, and no monster in an early-dungeon
-// session has one, so this is a lookup and a return. The revival itself
-// records rather than being guessed at.
-export function lifesaved_monster(mtmp) {
-    /* mlifesaver(mtmp) walks minvent for a worn AMULET_OF_LIFE_SAVING */
-    const lifesave = (mtmp.minvent || []).find(
-        o => o.otyp === ONAMES.AMULET_OF_LIFE_SAVING && o.owornmask);
-    if (!lifesave)
-        return;
+/* include/monflag.h:201 — corpse-generation bits, via the MFLAGS table. */
+const { G_NOCORPSE: MC_G_NOCORPSE, G_FREQ: MC_G_FREQ } = MFLAGS;
 
-    (game.unported ||= new Set()).add('mon:lifesaved_monster:revive');
-}
-
-// src/mon.c mondead() — the monster dies.
-//
-// The reached path for an ordinary monster is short: zero the hit points,
-// give the amulet its chance, bump the species death count, and detach.
-// Everything between is species-specific and skipped -- the vampshifter
-// revert, the steam vortex cloud, the vault guard's deferred removal, the
-// chameleon and lycanthrope true-form restore, the quest leader flag, the
-// mail daemon and the Keystone Kops.
-//
-// m_detach() is what actually removes it from the map and the monster list,
-// and it was already ported.
-export function mondead(mtmp) {
-    const be_sad = !!game.sad_feeling;
-    game.sad_feeling = false;
-
-    mtmp.mhp = 0; /* in case caller hasn't done this */
-    lifesaved_monster(mtmp);
-    if (!DEADMONSTER(mtmp))
-        return;
-
-    if (is_vampshifter(mtmp)) {
-        /* vamprises() -- reverts to vampire instead of dying */
-        (game.unported ||= new Set()).add('mon:mondead:vamprises');
-        return;
-    }
-
-    if (be_sad)
-        (game.unported ||= new Set()).add('mon:mondead:sad_feeling_msg');
-
-    /* the species-specific arms above m_detach are recorded only when they
-       would fire, so an ordinary monster produces no entries at all */
-    if (mtmp.isgd || ismnum(mtmp.cham))
-        (game.unported ||= new Set()).add('mon:mondead:special_forms');
-
-    const mptr = mtmp.data; /* save this for m_detach() */
-    const mndx = monsndx(mtmp.data);
-    game.mvitals ||= [];
-    game.mvitals[mndx] ||= { died: 0, mvflags: 0 };
-    if (game.mvitals[mndx].died < 255)
-        game.mvitals[mndx].died++;
-
-    m_detach(mtmp, mptr, true);
-}
-
-// src/mon.c mondied() — mondead(), then maybe leave a corpse.
-export function mondied(mdef) {
-    mondead(mdef);
-    if (!DEADMONSTER(mdef))
-        return; /* lifesaved */
-
-    /* this assumes that the dead monster's map coordinates remain accurate */
-    if (corpse_chance(mdef, null, false)
-        && (accessible(mdef.mx, mdef.my) || is_pool(mdef.mx, mdef.my))) {
-        make_corpse(mdef, CORPSTAT_NONE);
-    }
-}
-
-// src/mon.c monkilled() — a monster is killed BY something.
-//
-// how is the AD_* damage type; it decides whether a corpse is possible at
-// all (digestion, disintegration and a burnt flammable golem leave none).
-export function monkilled(mdef, fltxt, how) {
-    const mptr = mdef.data;
-
-    if (fltxt && cansee(mdef.mx, mdef.my)) {
-        /* "%s is destroyed/killed by the %s!" */
-        (game.unported ||= new Set()).add('mon:monkilled:message');
-    } else {
-        /* sad feeling is deferred until after potential life-saving */
-        game.sad_feeling = !!mdef.mtame;
-    }
-
-    /* no corpse if digested or disintegrated or flammable golem burnt up */
-    game.disintegested = (how === ATTKS.AD_DGST
-                          || how === -ATTKS.AD_RBRE);
-    if (game.disintegested)
-        mondead(mdef); /* never leaves a corpse */
-    else
-        mondied(mdef); /* calls mondead() and maybe leaves a corpse */
-}
-
-// src/mon.c:564 make_corpse() — leave a body behind.
-//
-// The function opens with a large switch on mndx for species-specific drops
-// (dragon scales, unicorn horn, worm tooth, iron chains, glass gems). An
-// ORDINARY monster matches none of them and falls to default_1, which is what
-// is ported here; the species arms record by name.
+// src/mon.c:564 make_corpse() — drop the cadaver. The dragon-scale,
+// unicorn-horn, golem and mummy/zombie special arms record when such a
+// creature dies; the ordinary G_NOCORPSE-gated mkcorpstat path is real.
 export function make_corpse(mtmp, corpseflags) {
-    const mdat = mtmp.data;
-    const x = mtmp.mx, y = mtmp.my;
-    const mndx = monsndx(mdat);
-    let corpstatflags = corpseflags | 0;
+    const mdat = game.mons[mtmp.mnum];
+    const mndx = mtmp.mnum;
+    let corpstatflags = corpseflags;
 
     if (mtmp.female)
         corpstatflags |= CORPSTAT_FEMALE;
-    else if (!is_neuter(mtmp.data))
+    else if (!is_neuter(mdat))
         corpstatflags |= CORPSTAT_MALE;
 
-    /* C's switch is in two halves. The first has real arms -- dragons drop
-       scales, unicorns a horn, long worms a tooth, mummies and zombies their
-       old-race corpse, golems their material, puddings and oozes nothing.
-       The second is a LONG packed fall-through list (mon.c:867 and around it)
-       naming most ordinary monsters explicitly, and every one of those lands
-       on default_1, the generic path below. So enumerating them would be
-       pointless -- what matters is only the species with their own arm.
-
-       Those are NOT detected here yet: a dragon dying leaves a plain corpse
-       instead of scales. Recorded by species so the gap is visible where it
-       happens rather than being silent. */
-    if (SPECIAL_CORPSE_ARMS.has(mndx)) {
-        (game.unported ||= new Set()).add('mon:make_corpse:species_arm');
+    /* dragons, unicorns, long worm, vampires, mummies/zombies and golems
+       leave something other than a plain fresh corpse */
+    if ((mndx >= PMNAMES.PM_GRAY_DRAGON && mndx <= PMNAMES.PM_YELLOW_DRAGON)
+        || (mndx >= PMNAMES.PM_WHITE_UNICORN && mndx <= PMNAMES.PM_BLACK_UNICORN)
+        || mndx === PMNAMES.PM_LONG_WORM
+        || mdat.mlet === MONSYMS.S_MUMMY || mdat.mlet === MONSYMS.S_ZOMBIE
+        || mdat.mlet === MONSYMS.S_GOLEM
+        || mndx === PMNAMES.PM_VAMPIRE || mndx === PMNAMES.PM_VAMPIRE_LEADER) {
+        note_unported_mon('make_corpse:special_arm');
         return null;
     }
 
-    /* default_1: */
-    if ((game.mvitals?.[mndx]?.mvflags | 0) & G_NOCORPSE)
+    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
         return null;
 
     corpstatflags |= CORPSTAT_INIT;
-    /* KEEPTRAITS() decides whether the monster's identity rides along; it
-       needs the naming and vampshifter tests, so the traits path records and
-       the corpse is made without them. */
-    const obj = mkcorpstat(ONAMES.CORPSE, null, mdat, x, y, corpstatflags);
-
-    if (corpseflags & CORPSTAT_BURIED)
-        (game.unported ||= new Set()).add('mon:make_corpse:bury');
-
+    /* KEEPTRAITS: shopkeepers, tame, uniques, revivers keep identity */
+    const keep = (mtmp.isshk || mtmp.mtame || is_rider(mdat));
+    const obj = mkcorpstat(ONAMES.CORPSE, keep ? mtmp : null, mndx,
+                           mtmp.mx, mtmp.my, corpstatflags);
     return obj;
 }
 
-/* mndx values with their OWN arm in make_corpse's switch, as opposed to the
-   packed fall-through list that reaches default_1. Dragons, unicorns and the
-   long worm are the ones an early session could plausibly meet. */
-const SPECIAL_CORPSE_ARMS = new Set([
-    PMNAMES.PM_GRAY_DRAGON, PMNAMES.PM_GOLD_DRAGON, PMNAMES.PM_SILVER_DRAGON,
-    PMNAMES.PM_RED_DRAGON, PMNAMES.PM_ORANGE_DRAGON, PMNAMES.PM_WHITE_DRAGON,
-    PMNAMES.PM_BLACK_DRAGON, PMNAMES.PM_BLUE_DRAGON, PMNAMES.PM_GREEN_DRAGON,
-    PMNAMES.PM_YELLOW_DRAGON,
-    PMNAMES.PM_WHITE_UNICORN, PMNAMES.PM_GRAY_UNICORN, PMNAMES.PM_BLACK_UNICORN,
-    PMNAMES.PM_LONG_WORM,
-    PMNAMES.PM_IRON_GOLEM, PMNAMES.PM_GLASS_GOLEM, PMNAMES.PM_CLAY_GOLEM,
-    PMNAMES.PM_STONE_GOLEM, PMNAMES.PM_WOOD_GOLEM, PMNAMES.PM_ROPE_GOLEM,
-    PMNAMES.PM_LEATHER_GOLEM, PMNAMES.PM_GOLD_GOLEM, PMNAMES.PM_PAPER_GOLEM,
-].filter(v => v !== undefined));
-
-// src/mon.c:4527 iter_mons() — call vfunc for every living monster on the
-// current level.
+// src/mon.c:3181 corpse_chance() — does the kill leave a corpse at all?
 //
-// The C saves mtmp->nmon BEFORE calling vfunc, because vfunc may unlink or free
-// the monster. Our list is an array, so the equivalent guard is to iterate a
-// SNAPSHOT: a vfunc that removes a monster would otherwise shift the array
-// under the loop and skip its neighbour.
-export function iter_mons(vfunc) {
-    for (const mtmp of [...(game.level?.monsters || [])]) {
-        if (DEADMONSTER(mtmp) || mon_offmap(mtmp))
-            continue;
-        vfunc(mtmp);
+// The AT_BOOM walk (gas spores) and the lich/Vlad crumble arm are recorded;
+// the ordinary tail is the draw: !rn2(2 + rare + verysmall).
+export function corpse_chance(mon, magr, was_swallowed) {
+    const A = ATTKS;
+    const mdat = game.mons[mon.mnum];
+
+    if (mdat.mlet === MONSYMS.S_LICH) {
+        note_unported_mon('corpse_chance:lich_crumble');
+        return false;
     }
-    return;
+
+    for (let i = 0; i < 6; i++) {
+        if (mdat.mattk[i][0] === A.AT_BOOM) {
+            note_unported_mon('corpse_chance:AT_BOOM');
+            return false;
+        }
+    }
+
+    /* LEVEL_SPECIFIC_NOCORPSE — Vlad's tower / astral; no such levels yet */
+
+    if (((bigmonst(mdat) || mon.mnum === PMNAMES.PM_LIZARD) && !mon.mcloned)
+        || mdat.mlet === MONSYMS.S_GOLEM || is_rider(mdat) || mon.isshk)
+        return true;
+    const tmp = 2 + ((mdat.geno & MC_G_FREQ) < 2 ? 1 : 0)
+                + (verysmall(mdat) ? 1 : 0);
+    return !rn2(tmp);
+}
+
+// src/mon.c:3253 mondied() — monster killed by another monster: mondead()
+// plus the corpse. mondead's full detach (worm segments, shop bookkeeping,
+// vault guards, life-saving) is a slice: the map removal, so the fight's
+// survivor can occupy the square.
+export function mondied(mdef) {
+    const mx = mdef.mx, my = mdef.my;
+
+    /* mondead() slice: remove from the map and the monster list */
+    mdef.mhp = 0;
+    remove_monster(mx, my);
+    const idx = (game.level?.monsters || []).indexOf(mdef);
+    if (idx >= 0)
+        game.level.monsters.splice(idx, 1);
+
+    /* "this assumes that the dead monster's map coordinates remain
+       accurate" — corpse placement reads mdef->mx,my after mondead */
+    mdef.mx = mx; mdef.my = my;
+    if (corpse_chance(mdef, null, false)
+        && (ACCESSIBLE(game.level?.at(mx, my)?.typ) || is_pool(mx, my)))
+        make_corpse(mdef, CORPSTAT_NONE);
+
+    newsym(mx, my);
+}
+
+/* js/makemon.js (grow_up) needs mondied but a static import back into this
+   file closes an eval-time cycle; publish on the shared game object, the same
+   shape hack.js uses for in_rooms. */
+game._mondied_ref = mondied;
+
+// src/mon.c:3377 monkilled() — "<Monster> is killed!" when the hero can see
+// it, then mondied(). The golem "May it rust in peace" arms and the
+// disintegration special cases record.
+export async function monkilled(mdef, fltxt, how) {
+    const mptr = game.mons[mdef.mnum];
+
+    if (fltxt !== null && fltxt !== undefined && cansee(mdef.mx, mdef.my))
+        await pline(`${Monnam(mdef)} is ${
+            nonliving(mptr) ? 'destroyed' : 'killed'}${
+            fltxt ? ' by the ' + fltxt : ''}!`);
+    else if (mdef.mtame)
+        note_unported_mon('monkilled:sad_feeling');
+
+    mondied(mdef);
 }

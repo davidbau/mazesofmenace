@@ -6,6 +6,8 @@ import { dist2 } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at } from './mon.js';
+import { pickup } from './pickup.js';
+import { is_pit } from './const.js';
 import { cmdq_clear, closed_door } from './cmd.js';
 // hack.js — the hero's movement and the terrain predicates that go with it.
 // C ref: src/hack.c
@@ -18,7 +20,7 @@ import { cmdq_clear, closed_door } from './cmd.js';
 
 import { game } from './gstate.js';
 import { do_attack } from './uhitm.js';
-import { sensemon, is_safemon, mon_visible } from './display.js';
+import { sensemon, is_safemon, mon_visible, pline } from './display.js';
 import { hides_under } from './mondata.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { rn2 } from './rng.js';
@@ -202,6 +204,41 @@ const note_unported_hack = (w) => {
     return false;
 };
 
+// src/hack.c:3312 spoteffects() — what happens on the square just moved onto.
+//
+// The reachable slice is the pickup(1) call, ordered around a pit trap the
+// way C orders it. switch_terrain, pooleffects, dosinkfall and the
+// levitation-timeout deferral are tied to terrain state the current levels
+// never put under the hero; dotrap and the special-room announcements are
+// recorded when their state is underfoot.
+export async function spoteffects(pick) {
+    const trap = t_at(game.u.ux, game.u.uy);
+
+    /* check_special_room(FALSE) — announces shops, zoos, temples */
+    const inspecial = (game.level?.rooms || []).some(r => r.rtype
+        && game.u.ux >= r.lx - 1 && game.u.ux <= r.hx + 1
+        && game.u.uy >= r.ly - 1 && game.u.uy <= r.hy + 1);
+    if (inspecial)
+        note_unported_hack('spoteffects:check_special_room');
+
+    /*
+     * If not a pit, pickup before triggering trap.
+     * If pit, trigger trap before pickup.
+     */
+    const pit = !!(trap && is_pit(trap.ttyp));
+    if (pick && !pit)
+        await pickup(1);
+    if (trap)
+        note_unported_hack('spoteffects:dotrap');
+    if (pick && pit)
+        await pickup(1);
+
+    /* hidden monster at the same spot (hides_under, piercers) */
+    const mtmp = m_at(game.u.ux, game.u.uy);
+    if (mtmp && !game.u.uswallow)
+        note_unported_hack('spoteffects:mon_here');
+}
+
 // src/hack.c:4130 end_running() — stop a run/rush/travel.
 //
 // The time_botl line is the one with a visible consequence: moveloop()
@@ -256,6 +293,35 @@ export function nomul(nval) {
         game.multi_reason = null, game.multireasonbuf = '';
     end_running(true);
     cmdq_clear(CQ_CANNED);
+}
+
+// src/hack.c:4177 unmul() — a non-movement multi-turn action has finished.
+//
+// THE CLEAR-BEFORE-CALL on afternmv IS LOAD-BEARING and C comments it: a
+// callback that sets afternmv again must not be clobbered after it returns.
+// The polymorph-reminder arm cannot fire (Upolyd is impossible here) and the
+// life-saving message never arises, so only the plain wake path is live.
+export async function unmul(msg_override) {
+    (game.disp ||= {}).botl = true;
+    game.multi = 0; /* caller will usually have done this already */
+    if (msg_override)
+        game.nomovemsg = msg_override;
+    else if (!game.nomovemsg)
+        game.nomovemsg = "You can move again.";
+    if (game.nomovemsg)
+        await pline(game.nomovemsg);
+    game.nomovemsg = null;
+    if (game.u)
+        game.u.usleep = 0;
+    game.multi_reason = null;
+    game.multireasonbuf = '';
+
+    if (game.afternmv) {
+        const f = game.afternmv;
+        /* clear afternmv BEFORE calling it */
+        game.afternmv = null;
+        await f();
+    }
 }
 
 // src/hack.c:59 Known_wwalking, :63 Known_lwalking — file-local macros, not
@@ -562,40 +628,4 @@ export function impact_disturbs_zombies(obj, violent) {
 
     /* disturb_buried_zombies(obj->ox, obj->oy) */
     (game.unported ||= new Set()).add('hack:disturb_buried_zombies');
-}
-
-// src/hack.c:4177 unmul() — a non-movement, multi-turn action has finished.
-//
-// nomul()'s counterpart, and the half that makes the OCCUPATION mechanism
-// work: it is what finally calls ga.afternmv, the "do this when the action
-// completes" hook that donning(), thiefdead(), stealarm() and unstolenarm()
-// all read or set.
-//
-// THE CLEAR-BEFORE-CALL IS LOAD-BEARING and C comments it: afternmv is
-// zeroed BEFORE invoking it, "to override the encumbrance hack for
-// levitation -- see weight_cap()". A callback that sets afternmv again must
-// be able to, so clearing afterwards would silently discard it.
-//
-// The message half is recorded: nomovemsg is not tracked in this port (see
-// js/eat.js:138 for another site that notes the same gap), and the Upolyd
-// arm needs pmname and Ugender.
-export async function unmul(msg_override) {
-    game.multi = 0;              /* caller will usually have done this */
-
-    /* nomovemsg handling, the You_can_move_again default, and the
-       green-slime/life-saving form reminder */
-    note_unported_hack('unmul:nomovemsg');
-
-    game.u.usleep = 0;
-    game.multi_reason = null;
-    game.multireasonbuf = '';
-
-    if (game.afternmv) {
-        const f = game.afternmv;
-        /* clear afternmv BEFORE calling it */
-        game.afternmv = null;
-        /* awaited: the <X>_on handlers are async because toggle_stealth() and
-           the message helpers are. */
-        await f();
-    }
 }

@@ -7,7 +7,9 @@
 // body is skipped leaves its prompt's keystrokes to be read as commands.
 
 import { game } from './gstate.js';
-import { ECMD_OK, MAXULEV } from './const.js';
+import { makewish } from './zap.js';
+import { encumber_msg } from './attrib.js';
+import { ECMD_OK } from './const.js';
 import { getlin } from './cmd.js';
 import { pline } from './display.js';
 import { pluslvl } from './exper.js';
@@ -21,6 +23,20 @@ function note_unported_wizcmds(what) {
 //
 // The parse is sscanf("%d%c"), which accepts a number with nothing after it;
 // anything else, including an empty line or ESC, falls to "Never mind."
+// src/wizcmds.c:32 wiz_wish() — unlimited wishes for debug mode.
+export async function wiz_wish() {
+    if (game.wizard) {
+        const save_verbose = game.flags.verbose;
+        game.flags.verbose = false;
+        await makewish();
+        game.flags.verbose = save_verbose;
+        await encumber_msg();
+    } else {
+        note_unported_wizcmds('wiz_wish:unavailcmd');
+    }
+    return ECMD_OK;
+}
+
 export async function wiz_level_change() {
     let newlevel = 0;
     let ret;
@@ -72,6 +88,7 @@ export async function wiz_level_change() {
 }
 
 // include/global.h:413 MAXULEV
+const MAXULEV = 30;
 
 // src/hacklib.c mungspaces() — squeeze internal runs of whitespace to one
 // space and drop leading and trailing space.

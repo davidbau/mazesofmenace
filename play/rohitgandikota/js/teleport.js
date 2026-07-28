@@ -13,17 +13,13 @@
 // is placed.
 
 import { game } from './gstate.js';
-import { Teleport_control, Stunned, Confusion } from './youprop.js';
 import { rn2 } from './rng.js';
-import { COLNO, ROWNO, In_endgame, In_quest, GP_CHECKSCARY, NO_MM_FLAGS } from './const.js';
+import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban } from './const.js';
 import { rnl } from './rng.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
-/* In_sokoban comes from js/dungeon.js, its C home, rather than the
-   defaulting copy in js/const.js -- this file's call site passes
-   game.u.uz explicitly, so the strict signature costs nothing. */
-import { get_level, depth, In_sokoban } from './dungeon.js';
+import { get_level, depth } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 
 // include/hack.h:1204-1210
@@ -119,16 +115,6 @@ function m_at(x, y) {
 function ZAP_POS(x, y) {
     const loc = game.level?.at(x, y);
     return !!loc && loc.typ >= 16 /* POOL */;
-}
-
-// src/teleport.c:196 enexto() — GP_CHECKSCARY first, then unrestricted.
-//
-// The || short-circuits: when the scary-checking pass succeeds the second call
-// never runs, so it never draws. goodpos is threaded in rather than imported
-// because js/makemon.js owns it and importing it here closes a cycle.
-export function enexto(cc, xx, yy, mdat, goodpos) {
-    return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY, goodpos)
-            || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS, goodpos));
 }
 
 // src/teleport.c:735 enexto_core() — a spot as close to <xx,yy> as feasible.
@@ -278,10 +264,9 @@ function next_to_u() {
 }
 
 const isdigit = (c) => c >= '0' && c <= '9';
-/* Teleport_control, Stunned and Confusion were local copies here; they are
-   include/youprop.h macros and now live in js/youprop.js, so this file
-   imports them. Two of the three were byte-identical to the versions in
-   youprop.js, which is how a header macro drifts into three homes. */
+const Teleport_control = () => !!game.u?.uprops?.TELEPORT_CONTROL;
+const Stunned = () => !!game.u?.uprops?.STUNNED;
+const Confusion = () => !!game.u?.uprops?.CONFUSION;
 
 function note_unported_tele(what) {
     (game.unported ||= new Set()).add(what);

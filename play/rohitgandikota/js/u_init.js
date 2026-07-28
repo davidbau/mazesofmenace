@@ -18,15 +18,16 @@
 // everything after it.
 
 import { game } from './gstate.js';
-import { setworn } from './worn.js';
-import { mergable } from './invent.js';
+import { mergable, reorder_invent } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP, A_CHAOTIC } from './const.js';
-import { Is_container, is_ammo } from './obj.js';
+import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP} from './const.js';
+import { Is_container, bimanual } from './obj.js';
+import { is_missile } from './wield.js';
+import { is_weptool } from './mkobj.js';
 import { skill_init } from './weapon.js';
 import { spell_skilltype, initialspell, num_spells,
          SPELL_LEV_PW } from './spell.js';
@@ -51,6 +52,7 @@ const {
     COIN_CLASS,
 } = OCLASSES;
 
+const A_CHAOTIC = -1;   /* include/align.h */
 
 // Objects a random starting item must never be. src/u_init.c:1117-1160.
 // src/u_init.c skills_for_role() — the current role's weapon/spell table.
@@ -225,6 +227,9 @@ function addinv(obj) {
     }
     assigninvlet(obj);
     game.invent.push(obj);
+    /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
+       is kept in inv_rank order (gold first). */
+    reorder_invent();
     return obj;
 }
 
@@ -263,9 +268,10 @@ export const is_launcher = (otmp) =>
     && game.objects[otmp.otyp].oc_skill >= SKILLS.P_BOW
     && game.objects[otmp.otyp].oc_skill <= SKILLS.P_CROSSBOW;
 
-/* is_ammo() is include/obj.h:238; it comes from js/obj.js. The copy here
-   was logically identical, differing only in reading SKILLS.P_CROSSBOW
-   rather than the imported P_CROSSBOW -- same values, 22 and 20. */
+const is_ammo = (otmp) =>
+    (otmp.oclass === OCLASSES.WEAPON_CLASS || otmp.oclass === OCLASSES.GEM_CLASS)
+    && game.objects[otmp.otyp].oc_skill >= -SKILLS.P_CROSSBOW
+    && game.objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW;
 
 // src/u_init.c knows_object()
 export function knows_object(obj, override_pauper) {
@@ -493,6 +499,8 @@ export function u_init_inventory() {
     game.u.umoney0 = 0;
     u_init_role();
     u_init_race();
+    if (game.discover)
+        ini_inv(TROBJ.Wishing);
     if (game.u.umoney0)
         ini_inv(TROBJ.Money);
 }
@@ -532,13 +540,8 @@ export function ini_inv_use_obj(obj) {
           : cat === ARM_GLOVES ? W_ARMG : cat === ARM_SHIRT ? W_ARMU
           : cat === ARM_CLOAK ? W_ARMC : cat === ARM_BOOTS ? W_ARMF
           : cat === ARM_SUIT ? W_ARM : 0;
-        /* src/u_init.c:1269-1281 — the C calls setworn(), not a bare mask
-           assignment. setworn() also assigns *(wp->w_obj) (so game.u.uarm,
-           game.u.uarmg, ...) and ORs in the item's extrinsic property bits.
-           Setting owornmask alone left every slot pointer null, which made
-           set_wear() a no-op and meant no starting item conferred anything. */
         if (slot && !(worn_slots() & slot))
-            setworn(obj, slot);
+            obj.owornmask = slot;
     }
     obj.owornmask ||= 0;
     ini_inv_wield(obj);
@@ -550,15 +553,17 @@ export function ini_inv_use_obj(obj) {
 }
 
 // src/u_init.c:1281 — a Tourist's darts go into the quiver, which is what
-// makes the inventory line read "(at the ready)".
+// makes the inventory line read "(at the ready)". The guard also admits
+// weptools, the tin opener, flint, and rocks: a Caveman's flint stones are
+// GEM_CLASS yet start "(in quiver pouch)".
 function ini_inv_wield(obj) {
-    const ocl = game.objects[obj.otyp];
-    if (obj.oclass !== WEAPON_CLASS) return;
-    /* is_ammo/is_missile: thrown weapons carry a negated skill */
-    const sk = ocl.oc_subtyp;
-    if (sk < 0) {
+    if (!(obj.oclass === WEAPON_CLASS || is_weptool(obj, game.objects)
+          || obj.otyp === ONAMES.TIN_OPENER
+          || obj.otyp === ONAMES.FLINT || obj.otyp === ONAMES.ROCK))
+        return;
+    if (is_ammo(obj) || is_missile(obj)) {
         if (!game.u.uquiver) { obj.owornmask |= W_QUIVER; game.u.uquiver = obj; }
-    } else if (!game.u.uwep) {
+    } else if (!game.u.uwep && (!game.u.uarms || !bimanual(obj))) {
         obj.owornmask |= W_WEP; game.u.uwep = obj;
     } else if (!game.u.uswapwep) {
         /* src/u_init.c:1291 — the SECOND weapon becomes the alternate. A

@@ -6,25 +6,25 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
-import { Conflict, Displaced, Invis } from './youprop.js';
 import { mpickstuff } from './mon.js';
 import { sengr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
-import { MON_WEP , DEADMONSTER } from './monst.js';
+import { MON_WEP } from './monst.js';
 import { is_launcher, is_pole } from './u_init.js';
 import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     IS_OBSTRUCTED, LAVAWALL,
     P_DAGGER, P_KNIFE,
-    AM_SHRINE, Amask2align, ROOMOFFSET, MTSZ, SQSRCHRADIUS } from './const.js';
+    AM_SHRINE, Amask2align, ROOMOFFSET
+} from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
-         attacktype, can_blow, needspick, flaming, noncorporeal , hides_under , is_animal , perceives , likes_gems, is_unicorn , mindless, is_armed } from './mondata.js';
+         attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
 import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym } from './display.js';
-import { sobj_at } from './invent.js';
+import { sobj_at, money_cnt } from './invent.js';
 import { m_carrying, meatmetal, resists_ston } from './mon.js';
-import { acidic, slimeproof , touch_petrifies } from './dog.js';
+import { acidic, slimeproof } from './dog.js';
 import { Is_mbag } from './mkobj.js';
 import { Is_container } from './obj.js';
 import { is_weptool } from './mkobj.js';
@@ -56,11 +56,14 @@ import {
     ALL_TRAPS, NO_TRAP,
     G_GENOD,
 } from './const.js';
-
-import { is_rider } from './mondata.js';
+import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          MMOVE_NOMOVES, engulfing_u } from './const.js';
 import { MSOUND } from './monst_data.js';
+
+function note_unported_monmove(what) {
+    (game.unported ||= new Set()).add('monmove:' + what);
+}
 
 // src/priest.c:9 ALGN_SINNED — worse than strayed (-1..-3).
 const ALGN_SINNED = -4;
@@ -68,8 +71,8 @@ const ALGN_SINNED = -4;
 /* include/monst.h:214, include/mondata.h:81,174, include/hack.h:1414 and
    include/monst.h:217,281 — the one-line predicates distfleeck() and onscary()
    test with. Kept as single expressions so each reads like its macro. */
-/* DEADMONSTER() is include/monst.h:214; it comes from js/monst.js. */
-/* perceives() is an include/mondata.h macro; it comes from js/mondata.js. */
+const DEADMONSTER = (mon) => (mon.mhp ?? 0) < 1;
+const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
 const unique_corpstat = (ptr) => (ptr.geno & MFLAGS.G_UNIQ) !== 0;
 const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
 const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
@@ -376,6 +379,7 @@ function m_search_items(mtmp, goal, st) {
     return false;
 }
 
+const SQSRCHRADIUS = 5;
 const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
 
 function objects_at(x, y) {
@@ -384,12 +388,14 @@ function objects_at(x, y) {
 
 /* include/mondata.h:143-146 and friends — what a monster is willing to pick up.
    likes_objs counts an armed monster as a collector. */
-/* mindless() is an include/mondata.h macro; it comes from js/mondata.js. */
-/* is_animal() is an include/mondata.h macro; it comes from js/mondata.js. */
+const mindless    = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;
+const is_animal   = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
 const likes_gold  = (ptr) => (ptr.mflags2 & MFLAGS.M2_GREEDY) !== 0;
+const likes_gems  = (ptr) => (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
 const likes_magic = (ptr) => (ptr.mflags2 & MFLAGS.M2_MAGIC) !== 0;
-/* is_armed() is include/mondata.h:87; it comes from js/mondata.js. */
+const is_armed    = (ptr) => ptr.mattk.some(a => a[0] === ATTKS.AT_WEAP);
 const likes_objs  = (ptr) => (ptr.mflags2 & MFLAGS.M2_COLLECT) !== 0 || is_armed(ptr);
+const is_unicorn  = (ptr) => ptr.mlet === MONSYMS.S_UNICORN && likes_gems(ptr);
 
 /* include/obj.h:337 Is_container() and :339 Is_mbag(). Both are duplicated
    here on purpose: js/obj.js has Is_container and js/mkobj.js has a private
@@ -398,9 +404,8 @@ const likes_objs  = (ptr) => (ptr.mflags2 & MFLAGS.M2_COLLECT) !== 0 || is_armed
    are transcribed from the same C macros. */
 /* Is_container comes from js/obj.js. */
 /* Is_mbag comes from js/mkobj.js. */
-/* touch_petrifies() is include/mondata.h:200. js/dog.js exports it --
-   the wrong home for a header macro, but js/mon.js already imports it from
-   there, so this follows suit rather than adding a third location. */
+const touch_petrifies = (ptr) => ptr.pmidx === PMNAMES.PM_COCKATRICE
+                              || ptr.pmidx === PMNAMES.PM_CHICKATRICE;
 
 // src/monmove.c:991 — the object classes a collector and a magic-user want.
 const practical = [OCLASSES.WEAPON_CLASS, OCLASSES.ARMOR_CLASS,
@@ -589,7 +594,7 @@ export function mon_track_clear(mtmp) {
 }
 
 // src/mon.c monnear() — adjacent, with no diagonal for NODIAG monsters.
-function monnear(mon, x, y) {
+export function monnear(mon, x, y) {
     const distance = dist2(mon.mx, mon.my, x, y);
 
     if (distance === 2 && NODIAG(mon.mnum))
@@ -667,8 +672,7 @@ const Sokoban = () => game.level?.flags?.sokoban_rules === true;
 // reads them the same way the clairvoyance check in js/allmain.js does. There
 // is no source of conflict in the game yet, so it answers false today, but it
 // answers it by LOOKING rather than by assuming.
-/* Conflict was a local copy; it is an include/youprop.h macro and now
-   comes from js/youprop.js like the rest. */
+const Conflict = () => !!(game.u?.uprops?.CONFLICT);
 
 export function m_can_break_boulder(mtmp) {
     return is_rider(mtmp.data)
@@ -771,11 +775,12 @@ export function set_apparxy(mtmp) {
         return;
     }
 
-    const invis = Invis(), displaced = Displaced();
+    const Invis = !!game.u.uprops?.INVIS;
+    const Displaced = !!game.u.uprops?.DISPLACED;
     const Underwater = !!game.u.uinwater;
 
-    const notseen = (!mtmp.mcansee || (invis && !perceives(game.mons[mtmp.mnum])));
-    const notthere = (displaced && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
+    const notseen = (!mtmp.mcansee || (Invis && !perceives(game.mons[mtmp.mnum])));
+    const notthere = (Displaced && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
 
     if (Underwater) {
         displ = 1;
@@ -835,7 +840,7 @@ export function set_apparxy(mtmp) {
 
 // src/monmove.c:2188 accessible() — uses the terrain in front of a closed
 // drawbridge, not the drawbridge itself.
-export function accessible(x, y) {
+function accessible(x, y) {
     const levtyp = game.level.at(x, y)?.typ;
     return ACCESSIBLE(levtyp) && !closed_door_mm(x, y);
 }
@@ -859,14 +864,6 @@ function can_ooze(mtmp) {
     return true;
 }
 
-// src/invent.c money_cnt()
-function money_cnt(invent) {
-    for (const otmp of invent || [])
-        if (otmp.oclass === OCLASSES.COIN_CLASS)
-            return otmp.quan;
-    return 0;
-}
-
 // src/monmove.c:532 distfleeck()
 export function distfleeck(mtmp) {
     let seescaryx, seescaryy;
@@ -879,7 +876,7 @@ export function distfleeck(mtmp) {
     /* Note: if your image is displaced, the monster sees the Elbereth at your
      * displaced position, thus never attacking your displaced position, but
      * possibly attacking you by accident. */
-    if (!mtmp.mcansee || (Invis() && !perceives(game.mons[mtmp.mnum]))) {
+    if (!mtmp.mcansee || (game.u.uprops?.INVIS && !perceives(game.mons[mtmp.mnum]))) {
         seescaryx = mtmp.mux;
         seescaryy = mtmp.muy;
     } else {
@@ -901,7 +898,7 @@ export function distfleeck(mtmp) {
 }
 
 // src/monmove.c:700 dochug() — one monster's turn.
-export function dochug(mtmp) {
+export async function dochug(mtmp) {
     /* src/monmove.c:727 — a sleeping monster still gets a chance to be woken,
        and disturb() DRAWS on the way. Returning early here skipped both the
        draws and the monster's whole turn when it did wake. */
@@ -928,7 +925,7 @@ export function dochug(mtmp) {
         || (mdat.mlet === MONSYMS.S_LEPRECHAUN && !findgold(game.invent)
             && (findgold(mtmp.minvent) || rn2(2)))
         || (is_wanderer(mdat) && !rn2(4))
-        || (Conflict() && !mtmp.iswiz)
+        || (game.u.uprops?.CONFLICT && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
 
         /* Possibly cast an undirected spell if not attacking you. castmu()
@@ -945,10 +942,25 @@ export function dochug(mtmp) {
             }
         }
 
-        /* src/monmove.c:1773 — m_move() dispatches a tame monster to
-           dog_move() before it reaches mfndpos(). */
-        if (!status)
-            status = mtmp.mtame ? dog_move(mtmp, 0) : m_move(mtmp, 0);
+        /* src/monmove.c:1772 — m_move() dispatches a tame monster to
+           `postmov(..., dog_move(mtmp, after), ...)`. postmov is where the
+           display catches up with the move: newsym on the vacated square and
+           on the new one (monmove.c:1508 and the mintrap arm). Without it a
+           pet's move never repaints and the frames show it frozen at its old
+           square. postmov's trap/door arms are recorded. */
+        if (!status) {
+            if (mtmp.mtame) {
+                const omx = mtmp.mx, omy = mtmp.my;
+                status = await dog_move(mtmp, 0);
+                if (status === MMOVE_MOVED) {
+                    newsym(omx, omy); /* update the old position */
+                    newsym(mtmp.mx, mtmp.my);
+                    note_unported_monmove('dochug:postmov_pet_mintrap');
+                }
+            } else {
+                status = m_move(mtmp, 0);
+            }
+        }
 
         /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
            every monster that takes a turn spends TWO rn2(5) draws, not one. */
@@ -988,7 +1000,7 @@ export function m_move(mtmp, after) {
                             && (dist2(omx, omy, ggx, ggy) <= 36));
 
         if (!mtmp.mcansee
-            || (should_see && Invis()
+            || (should_see && game.u.uprops?.INVIS
                 && !perceives(ptr) && rn2(11))
             || (mtmp.mpeaceful && !mtmp.isshk) /* allow shks to follow */
             || ((mtmp.mnum === PMNAMES.PM_STALKER
@@ -1137,8 +1149,14 @@ function postmov(mtmp, ptr, omx, omy, mmoved) {
        EVERY path that returns through it, including dog_move's at :1773.
        remove_monster only clears level.monsters[][]; without this the vacated
        square keeps the monster's glyph and a moving pet leaves a trail. */
-    if (mmoved === MMOVE_MOVED)
+    if (mmoved === MMOVE_MOVED) {
         newsym(omx, omy);
+        /* src/monmove.c:1656 — and the arrival square: the engulf arm's else
+           branch draws the monster at its new spot. Without it a hostile
+           walking into view is painted only when something else happens to
+           redraw its cell. */
+        newsym(mtmp.mx, mtmp.my);
+    }
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
@@ -1162,11 +1180,14 @@ function postmov(mtmp, ptr, omx, omy, mmoved) {
     return mmoved;
 }
 
+const MTSZ = 4;
 /* include/hack.h:1322 — these were declared here with MMOVE_DIED and
    MMOVE_MOVED SWAPPED against the header. js/const.js has them right. */
 
 /* include/mondata.h hides_under() */
-/* hides_under() is an include/mondata.h macro; it comes from js/mondata.js. */
+function hides_under(ptr) {
+    return (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0;
+}
 
 function OBJ_AT(x, y) {
     return (game.level?.objects || []).some(o => o.ox === x && o.oy === y);
