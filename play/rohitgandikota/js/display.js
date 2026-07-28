@@ -16,7 +16,7 @@ import {
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SDOOR, ICE,
     IRONBARS, TREE, LADDER, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
-    AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN,
+    AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN, IS_DOOR,
 } from './const.js';
 import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
@@ -82,11 +82,18 @@ function terrain_glyph(loc, x, y) {
         if (loc.doormask & (D_CLOSED | D_LOCKED))
             return { ch: '+', color: CLR_BROWN, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // S_ndoor
-    case STAIRS:
-        // Check upstair vs downstair
+    case STAIRS: {
+        /* Recorded behavior: a staircase the hero has SEEN renders yellow
+           (seed1150 '<' carries SGR 93) and stays yellow in memory, while
+           one known only from a magic map is default (seed2200 step 10's
+           unvisited '>'). Track first direct sight on the cell. */
+        if (cansee(x, y))
+            loc.stair_seen = 1;
+        const scol = loc.stair_seen ? CLR_YELLOW : NO_COLOR;
         if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: CLR_YELLOW, dec: false };
-        return { ch: '>', color: CLR_YELLOW, dec: false };
+            return { ch: '<', color: scol, dec: false };
+        return { ch: '>', color: scol, dec: false };
+    }
     // Wall types → DEC line-drawing characters
     case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true };  // ─
     case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true };  // │
@@ -733,4 +740,41 @@ export function is_safemon(mon) {
     return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
               && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
               && !game.u.uprops?.STUNNED);
+}
+
+// src/display.c:233 magic_map_background() — write the true terrain into map
+// memory for one cell, with the dark-cell corrections: an unlit unseen room
+// floor is remembered as NOTHING (dark rooms stay blank on a magic map) and
+// an unlit unseen corridor is the dark form. Memory is only overwritten when
+// it currently holds background (never a remembered object).
+export function magic_map_background(x, y, show) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+
+    let tg = terrain_glyph(loc, x, y);
+    /* The recorded magic maps SHOW the floors of unvisited LIT rooms and
+       blank only the unlit ones, so the lit bit stands in for waslit here
+       (an unvisited room can never have waslit set). */
+    if (!cansee(x, y) && !loc.waslit && !loc.lit) {
+        if (loc.typ === ROOM && tg.ch === '~' && tg.dec)
+            tg = null;                          /* GLYPH_NOTHING */
+        else if (loc.typ === CORR)
+            tg = { ch: '#', color: NO_COLOR, dec: false };  /* dark corr */
+    }
+
+    /* glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph) — the
+       remembered glyph is background (or absent), not an object. Object
+       symbols stay; '+' only counts as an object when the terrain is not
+       a door (a spellbook's '+' vs the door's own glyph). */
+    const rg = loc.remembered_glyph;
+    const objsyms = '])[="(%!?+/$*`0_.';
+    /* object glyphs are never DEC; the door's own '+' is background */
+    const is_obj_memory = rg && !rg.decgfx && objsyms.includes(rg.ch)
+                          && !(rg.ch === '+' && IS_DOOR(loc.typ));
+    if (game.level?.flags?.hero_memory && !is_obj_memory)
+        loc.remembered_glyph = tg
+            ? { ch: tg.ch, color: tg.color, decgfx: tg.dec }
+            : undefined;
+    if (show && tg)
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
 }

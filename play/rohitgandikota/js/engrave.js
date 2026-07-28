@@ -8,7 +8,16 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
-import { DUST, BURN, HEADSTONE, ENGR_BLOOD, N_ENGRAVE } from './const.js';
+import { DUST, BURN, HEADSTONE, ENGR_BLOOD, N_ENGRAVE, ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
+import { getobj, GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, hands_obj } from './invent.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { is_pool, is_lava } from './mon.js';
+import { You } from './pline.js';
+import { pline, newsym } from './display.js';
+import { getlin } from './cmd.js';
+import { set_occupation } from './allmain.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -147,6 +156,14 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     if (old) del_engr(old);
 
     const txt = String(s);
+    /* src/engrave.c:442 — engraving "Elbereth": at mklev it guards objects,
+       from the player it exercises wisdom */
+    if (txt === 'Elbereth') {
+        if (game.in_mklev)
+            note_unported_engrave('make_engr_at:guardobjects');
+        else
+            exercise(A_WIS, true);
+    }
     const ep = {
         x, y,
         engr_txt: txt,                          /* actual_text */
@@ -219,3 +236,156 @@ export function sengr_at(s, x, y, strict) {
 function note_unported_engrave(what) {
     (game.unported ||= new Set()).add(what);
 }
+
+// src/engrave.c:481 stylus_ok() — getobj filter for 'E'.
+export function stylus_ok(obj) {
+    if (!obj)
+        return GETOBJ_SUGGEST;
+    if (obj.oclass === OCLASSES.WEAPON_CLASS || obj.oclass === OCLASSES.WAND_CLASS
+        || obj.oclass === OCLASSES.GEM_CLASS || obj.oclass === OCLASSES.RING_CLASS)
+        return GETOBJ_SUGGEST;
+    if (obj.oclass === OCLASSES.TOOL_CLASS
+        && (obj.otyp === ONAMES.TOWEL || obj.otyp === ONAMES.MAGIC_MARKER))
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+// src/engrave.c:502 u_can_engrave() — the terrain gates. Lava, pools,
+// fountains, air and engulfment cannot occur under the hero yet; each
+// records if its state appears.
+function u_can_engrave() {
+    if (game.u.uswallow || is_lava(game.u.ux, game.u.uy)
+        || is_pool(game.u.ux, game.u.uy)) {
+        note_unported_engrave('u_can_engrave:blocked_terrain');
+        return false;
+    }
+    return true;
+}
+
+// src/engrave.c:956 doengrave() — the 'E' command, dust-writing spine.
+//
+// The wand/weapon/marker special effects (doengrave_sfx_item), existing-
+// engraving interaction, altars and graves record when their state occurs;
+// the fingertip-in-dust path is complete: implement prompt, "You write in
+// the dust with your fingertip.", the text prompt, the DUST mix-up rolls
+// (one rn2(25) per non-space character), and the engrave occupation.
+export async function doengrave() {
+    if (!u_can_engrave())
+        return ECMD_OK;                 /* ECMD_FAIL */
+
+    game.multi = 0;
+
+    const otmp = await getobj('write with', stylus_ok, GETOBJ_PROMPT);
+    if (!otmp)
+        return ECMD_CANCEL;
+
+    if (otmp !== hands_obj) {
+        /* weapon/wand/gem styli change type and can zap; absent */
+        note_unported_engrave('doengrave:stylus_item');
+        return ECMD_TIME;
+    }
+    const type = DUST;
+
+    const oep = engr_at(game.u.ux, game.u.uy);
+    if (oep) {
+        note_unported_engrave('doengrave:existing_engraving');
+        return ECMD_TIME;
+    }
+
+    /* "You write in the dust with your fingertip." */
+    await You('write in the dust with your fingertip.');
+
+    const ebuf0 = await getlin('What do you want to write in the dust here?');
+    if (ebuf0 === null)
+        { await pline('Never mind.'); return ECMD_OK; }
+    /* mungspaces: tabs to spaces, consecutive spaces condensed */
+    const ebuf = ebuf0.replace(/\t/g, ' ').replace(/ {2,}/g, ' ')
+                      .replace(/^ | $/g, '');
+
+    let len = 0;
+    for (const c of ebuf)
+        if (c !== ' ')
+            len++;
+    if (len === 0 || ebuf.includes('\x1b')) {
+        await pline('Never mind.');
+        return ECMD_OK;
+    }
+
+    /* single 'x' is the illiterate signature */
+    if (len !== 1 || !/[xX]/.test(ebuf)) {
+        game.u.uconduct = game.u.uconduct || {};
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+    }
+
+    /* src/engrave.c:1220 — mix up the writing on an unsound surface */
+    let mixed = '';
+    for (const c of ebuf) {
+        if (c !== ' ' && ((type === DUST || type === ENGR_BLOOD) && !rn2(25)))
+            mixed += String.fromCharCode(32 + rnd(96 - 2));
+        else
+            mixed += c;
+    }
+
+    game.context.engraving = {
+        text: mixed,
+        nextc: 0,
+        stylus: null,                   /* bare finger */
+        type,
+        pos: { x: game.u.ux, y: game.u.uy },
+        actionct: 0,
+    };
+    set_occupation(engrave, 'engraving', 0);
+
+    /* the setup itself takes no time; the occupation acts */
+    return ECMD_OK;
+}
+
+// src/engrave.c:1266 engrave() — the per-action occupation: ten characters
+// per action, then "You finish your writing in the dust." The carving,
+// marker-ink and weapon-dulling arms record with their styli.
+export function engrave() {
+    const eng = game.context.engraving;
+    if (!eng)
+        return 0;
+    if (eng.pos.x !== game.u.ux || eng.pos.y !== game.u.uy) {
+        note_unported_engrave('engrave:moved_away');
+        return 0;
+    }
+
+    const rate = 10;
+    eng.actionct++;
+
+    /* consume up to `rate` non-space characters */
+    let endc = eng.nextc, i = rate;
+    while (endc < eng.text.length && i > 0) {
+        if (eng.text[endc] !== ' ')
+            i--;
+        endc++;
+    }
+
+    let buf = '';
+    const oep = engr_at(game.u.ux, game.u.uy);
+    if (oep)
+        buf = oep.engr_txt;
+    buf += eng.text.slice(eng.nextc, endc);
+
+    make_engr_at(game.u.ux, game.u.uy, buf, null,
+                 game.moves - (game.multi || 0), eng.type);
+    const nep = engr_at(game.u.ux, game.u.uy);
+    if (nep) {
+        nep.eread = 1;
+        nep.erevealed = 1;
+    }
+
+    if (endc < eng.text.length) {
+        eng.nextc = endc;
+        if (eng.actionct === 1)
+            newsym(eng.pos.x, eng.pos.y);
+        return 1;                       /* not yet finished */
+    }
+    /* finished */
+    newsym(eng.pos.x, eng.pos.y);
+    game.context.engraving = null;
+    return 0;
+}
+

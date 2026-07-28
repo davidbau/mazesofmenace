@@ -30,6 +30,8 @@ import { getlin } from './cmd.js';
 import { prinv, reorder_invent } from './invent.js';
 import { makeknown, observe_object } from './o_init.js';
 import { more_experienced } from './exper.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
 import { rn1 } from './rng.js';
 import { pline_The, You, You_feel } from './pline.js';
 import { pline } from './display.js';
@@ -323,6 +325,9 @@ export async function dozap() {
         note_unported_zap('dozap:backfire');
         return ECMD_TIME;
     } else if (!need_dir) {
+        /* src/zap.c:3436 — weffects() opens with exercise(A_WIS, TRUE)
+           before dispatching ANY zap effect */
+        exercise(A_WIS, true);
         await zapnodir(obj);
     } else if (need_dir && !(await getdir(null))) {
         if (!game.u?.ublind)
@@ -334,6 +339,8 @@ export async function dozap() {
             note_unported_zap('dozap:losehp');
         }
     } else {
+        /* src/zap.c:3436 — weffects() exercises wisdom before the effect */
+        exercise(A_WIS, true);
         /* weffects(): the directional/beam engine, recorded */
         note_unported_zap(`dozap:weffects otyp=${obj.otyp}`);
     }

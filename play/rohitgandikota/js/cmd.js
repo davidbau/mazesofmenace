@@ -57,6 +57,8 @@ import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwin
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
+import { doengrave } from './engrave.js';
+import { dohelp } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { dowieldquiver } from './wield.js';
@@ -715,6 +717,13 @@ export async function rhack(key) {
     } else if (ch === '>') {
         // src/cmd.c cmdlist — '>' is dodown.
         game.context.move = (await dodown() === ECMD_TIME ? 1 : 0);
+    } else if (ch === '?') {
+        // src/cmd.c cmdlist — '?' is dohelp, a menu of viewers.
+        game.context.move = 0;
+        await dohelp();
+    } else if (ch === 'E') {
+        // src/cmd.c cmdlist — 'E' is doengrave.
+        game.context.move = ((await doengrave()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 's') {
         // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
         game.context.move = (dosearch() ? 1 : 0);

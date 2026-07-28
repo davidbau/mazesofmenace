@@ -95,3 +95,7 @@ export const oclass_names = {
  "CHAIN": 16,
  "VENOM": 17
 };
+
+// MONSYM explanation strings, indexed like def_monsyms ("human or elf");
+// src/pager.c do_screen_description reads these for farlook
+export const monexplain = [null,"ant or other insect","blob","cockatrice","dog or other canine","eye or sphere","cat or other feline","gremlin","humanoid","imp or minor demon","jelly","kobold","leprechaun","mimic","nymph","orc","piercer","quadruped","rodent","arachnid or centipede","trapper or lurker above","unicorn or horse","vortex","worm","xan or other mythical/fantastic insect","light","zruty","angelic being","bat or bird","centaur","dragon","elemental","fungus or mold","gnome","giant humanoid","invisible monster","jabberwock","Keystone Kop","lich","mummy","naga","ogre","pudding or ooze","quantum mechanic","rust monster or disenchanter","snake","troll","umber hulk","vampire","wraith","xorn","apelike creature","zombie","human or elf","ghost","golem","major demon","sea monster","lizard","long worm tail","mimic"];

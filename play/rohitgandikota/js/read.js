@@ -10,6 +10,11 @@ import { ECMD_CANCEL } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { pline } from './display.js';
 import { study_book } from './spell.js';
+import { do_mapping } from './detect.js';
+import { makeknown } from './o_init.js';
+import { useup } from './invent.js';
+import { exercise } from './attrib.js';
+import { A_WIS } from './const.js';
 
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
@@ -50,7 +55,76 @@ export async function doread(read_ok) {
     if (scroll.oclass === OCLASSES.SPBOOK_CLASS)
         return (await study_book(scroll)) ? ECMD_TIME : ECMD_OK;
 
-    /* the scroll path: "As you read the scroll, it disappears." + seffects */
-    note_unported_read('doread:seffects');
+    /* src/read.c:617 — the scroll path. Blind and confused readings need
+       state no session reaches yet. */
+    game.known = false;
+    const nodisappear = (otyp === ONAMES.SCR_FIRE
+                         || (otyp === ONAMES.SCR_REMOVE_CURSE
+                             && scroll.cursed));
+    await pline(nodisappear ? 'You read the scroll.'
+                            : 'As you read the scroll, it disappears.');
+
+    if (!await seffects(scroll)) {
+        if (!game.objects[otyp].oc_name_known) {
+            if (game.known)
+                learnscroll(scroll);
+            /* else trycall() asks for a name; not reachable while known
+               stays false only for effectless scrolls we record */
+        }
+        if (otyp !== ONAMES.SCR_BLANK_PAPER)
+            useup(scroll);
+    }
     return ECMD_TIME;
+}
+
+// src/read.c:308 learnscroll() — reading identifies the scroll type.
+function learnscroll(sobj) {
+    /* it's implied hero became literate */
+    makeknown(sobj.otyp);
+}
+
+// src/read.c:2263 seffects() — scroll effects, one arm per type. Only
+// magic mapping is live; every other scroll records with its otyp so the
+// gap is visible per type. Returns true when the scroll was already used
+// up by its own arm.
+async function seffects(sobj) {
+    const otyp = sobj.otyp;
+
+    /* src/read.c:2199 — "just for trying": any magical scroll exercises
+       wisdom before its effect, the same dispatcher prologue weffects has */
+    if (game.objects[otyp].oc_magic)
+        exercise(A_WIS, true);
+
+    switch (otyp) {
+    case ONAMES.SCR_MAGIC_MAPPING:
+    case ONAMES.SPE_MAGIC_MAPPING:
+        await seffect_magic_mapping(sobj);
+        break;
+    default:
+        note_unported_read(`seffects:otyp=${otyp}`);
+        break;
+    }
+    return false;
+}
+
+// src/read.c:2100 seffect_magic_mapping()
+async function seffect_magic_mapping(sobj) {
+    const sblessed = !!sobj.blessed, scursed = !!sobj.cursed;
+    const confused = !!game.u.uprops?.CONFUSION?.intrinsic;
+
+    if (game.level?.flags?.nommap) {
+        note_unported_read('seffect_magic_mapping:nommap');
+        return;
+    }
+    if (sblessed)
+        note_unported_read('seffect_magic_mapping:blessed_reveal');
+    game.known = true;
+
+    await pline('A map coalesces in your mind!');
+    const cval = (scursed && !confused);
+    if (cval)
+        note_unported_read('seffect_magic_mapping:cursed_confusion');
+    /* notice_mon_off/_on wrap the mapping so newly drawn monsters are not
+       announced */
+    do_mapping();
 }

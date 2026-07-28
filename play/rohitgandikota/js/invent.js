@@ -244,6 +244,8 @@ export const GETOBJ_EXCLUDE = -3, GETOBJ_EXCLUDE_NONINVENT = -2,
              GETOBJ_DOWNPLAY = 1, GETOBJ_SUGGEST = 2;
 export const GETOBJ_ALLOWCNT = 0x01, GETOBJ_PROMPT = 0x02;
 const HANDS_SYM = '-';
+/* src/invent.c hands_obj — the sentinel getobj yields for the '-' choice. */
+export const hands_obj = { otyp: 0, oclass: 0, hands: true };
 
 // src/invent.c:1830 — the letter list C puts in the prompt.
 //
@@ -380,7 +382,10 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
             return null;
         }
         if (ilet === '-') {
-            /* HANDS_SYM — "your hands" as the object */
+            /* HANDS_SYM — "your hands" as the object; C returns &hands_obj
+               when the filter allows the no-object choice */
+            if (obj_ok_func && obj_ok_func(null) === GETOBJ_SUGGEST)
+                return hands_obj;
             note_unported_invent('getobj:hands');
             return null;
         }

@@ -8,7 +8,10 @@ import { newsym } from './display.js';
 import { You } from './pline.js';
 import { m_at, t_at } from './mon.js';
 import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO } from './const.js';
-import { SDOOR, SCORR, DOOR, CORR, D_NODOOR } from './const.js';
+import { SDOOR, SCORR, DOOR, CORR, D_NODOOR, SVALL, IS_FURNITURE, A_WIS } from './const.js';
+import { rn2 } from './rng.js';
+import { magic_map_background } from './display.js';
+import { exercise } from './attrib.js';
 
 // src/detect.c:1893 dosearch0() — intrinsic autosearch vs explicit searching.
 //
@@ -195,3 +198,59 @@ export async function findit() {
 function note_unported_detect(what) {
     (game.unported ||= new Set()).add('detect:' + what);
 }
+
+// src/detect.c:1372 show_map_spot() — one cell of a magic map.
+//
+// seenv goes to SVALL, secret corridors are found (not secret doors), the
+// true background is written into memory, and then the non-furniture layers
+// re-assert in the mapping's own precedence: seen traps over engravings
+// over remembered objects. The confusion arm (rn2(7) skip per cell) is
+// gated on Confusion, which cannot be set yet.
+export function show_map_spot(x, y, cnf) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+
+    if (cnf && rn2(7))
+        return;
+
+    loc.seenv = SVALL;
+
+    /* Secret corridors are found, but not secret doors. */
+    if (loc.typ === SCORR)
+        loc.typ = CORR;
+
+    magic_map_background(x, y, 0);
+    newsym(x, y);
+
+    if (!IS_FURNITURE(loc.typ)) {
+        const t = t_at(x, y);
+        if (t && t.tseen) {
+            note_unported_detect('show_map_spot:map_trap');
+        } else if ((game.level?.engravings || [])
+                       .some(e => e.engr_x === x && e.engr_y === y)) {
+            /* map_engraving(ep, 1) — engraving_glyph via newsym covers the
+               visible case; write the engraving into memory too */
+            const eg = { ch: loc.typ === CORR ? '#' : '`',
+                         color: 12 /* CLR_BRIGHT_BLUE */, decgfx: false };
+            if (game.level?.flags?.hero_memory)
+                loc.remembered_glyph = eg;
+            newsym(x, y);
+        }
+        /* the remembered-object re-show is already handled: memory keeps
+           object glyphs (magic_map_background skips them) and newsym shows
+           remembered glyphs for unseen cells */
+    }
+}
+
+// src/detect.c:1422 do_mapping() — reveal the level's terrain.
+export function do_mapping() {
+    /* unconstrain_map() differs only underwater/underground */
+    for (let zx = 1; zx < COLNO; zx++)
+        for (let zy = 0; zy < ROWNO; zy++)
+            show_map_spot(zx, zy,
+                          !!game.u.uprops?.CONFUSION?.intrinsic);
+
+    /* hero_memory is set, so C only reconstrains (a no-op) here */
+    exercise(A_WIS, true);
+}
+
