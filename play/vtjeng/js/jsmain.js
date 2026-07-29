@@ -440,10 +440,13 @@ export function segmentIterationLimit(movesLength) {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 // The optional second argument enables local diagnostics and is never part of
-// a replay recipe or the judge contract.
+// a replay recipe or the judge contract. onBoundary, when supplied, receives
+// the fail-closed boundary error that ended the segment; the loop below
+// swallows it, so an observer has no other way to learn which unported path
+// the segment reached.
 export async function runSegment(
     input,
-    { traceThemeroomSelections = false } = {},
+    { traceThemeroomSelections = false, onBoundary = null } = {},
 ) {
     const { seed, datetime, nethackrc, recorderIsDst, storage } = input;
     const moves = input.moves || '';
@@ -488,7 +491,6 @@ export async function runSegment(
     for (let iter = 0; iter < maxIter; iter++) {
         try {
             await moveloop_core();
-            if (game.program_state?.gameover) break;
         } catch (e) {
             if (String(e?.message || '').includes('Input queue empty')) break;
             // A known, fail-closed gameplay boundary preserves all output
@@ -497,6 +499,7 @@ export async function runSegment(
             if (e instanceof UnsupportedTurnBoundaryError
                 || e instanceof UnsupportedHeroMoveBoundaryError
                 || e instanceof UnsupportedHeroCommandBoundaryError) {
+                onBoundary?.(e);
                 break;
             }
             throw e;

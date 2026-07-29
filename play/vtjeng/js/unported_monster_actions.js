@@ -26,6 +26,7 @@ import {
     NEED_WEAPON,
     NORMAL_SPEED,
     ROOM,
+    STAIRS,
     STRAT_ARRIVE,
     STRAT_CLOSE,
     W_SADDLE,
@@ -399,9 +400,18 @@ function assertSimpleDestination(monster, x, y, env) {
     const { state } = env;
     const location = state.level.at(x, y);
     const doorMask = location?.flags || location?.doormask || 0;
+    // STAIRS is ordinary terrain for a monster that is not covetous: it is
+    // ACCESSIBLE, so mon.c mfndpos() and teleport.c goodpos() admit it with no
+    // stair-specific branch, and monmove.c postmov() has none either. No
+    // ordinary movement path changes a monster's level; every
+    // migrate_to_level() caller is item use (muse.c), digging (dig.c),
+    // teleportation (teleport.c), a shopkeeper (shk.c), or a wizard command.
+    // dogmove.c reads stairs only through dog_goal()'s On_stairs(u.ux, u.uy),
+    // which asks where the hero stands, not where the pet steps.
     const ordinaryDestination = location
         && (location.typ === ROOM
             || location.typ === CORR
+            || location.typ === STAIRS
             || (location.typ === DOOR && doorMask === 0));
     if (!ordinaryDestination)
         unsupported('door or special terrain movement');
@@ -598,9 +608,27 @@ async function planSimpleMonsterScan(monster, env) {
     return movemon_singlemon(monster, {
         ...env,
         everyTurnEffect: planningEveryTurnEffect,
-        visionRecalc: async () => {},
+        // C ref: mon.c movemon_singlemon() runs vision_recalc(0) for the first
+        // ration-spending monster after movemon()'s tail set
+        // vision_full_recalc. That rebuilds vision.c's live global buffers, so
+        // the dry run cannot reproduce it; a later monster in the same scan,
+        // or in the scan after the next allocation, would then test visibility
+        // against an index the live pass has already replaced. Refuse rather
+        // than model the rebuild as a no-op.
+        visionRecalc: () => unsupported(
+            'monster light-source vision recalculation',
+        ),
         clearBypasses: () => unsupported('monster bypass cleanup'),
-        minLiquid: async () => false,
+        // The live owner refuses a monster standing in water or lava and
+        // returns false otherwise. Mirror that instead of passing a permissive
+        // stub, so both tables refuse the same branch even if
+        // assertSimpleScanState()'s earlier liquid guard is narrowed.
+        minLiquid: async (subject, subjectEnv) => {
+            if (is_pool(subject.mx, subject.my, subjectEnv.state)
+                || is_lava(subject.mx, subject.my, subjectEnv.state))
+                unsupported('an immobile monster in liquid');
+            return false;
+        },
         dowear: () => unsupported('monster equipment changes'),
         restrap: () => unsupported('monster hiding'),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
@@ -648,22 +676,16 @@ export async function preflightSimpleMonsterActions(
                 });
             }
             somebodyCanMove = Boolean(planned.somebody_can_move);
-            // C ref: mon.c movemon()'s tail. When a light source is present it
-            // sets vision_full_recalc, and movemon_singlemon() then runs
-            // vision_recalc(0) before the next ration-spending monster, which
-            // rebuilds viz_array. The dry run cannot reproduce that --
-            // vision_recalc writes the live global buffers -- so planning the
-            // following scan would test visibility against a stale index.
-            // Setting the flag on the clone would be inert, because every
-            // planning-side reader of it is an injected no-op. Refuse instead.
+            // C ref: mon.c movemon()'s tail. Keeping the flag here rather than
+            // testing the light source at each place a further scan can follow
+            // means planSimpleMonsterScan()'s refusing visionRecalc fires
+            // exactly where movemon_singlemon() would rebuild viz_array,
+            // whether the next scan comes from this inner loop or from the
+            // allocation after advanceRound.
             // clear_bypasses() cannot apply here, since this function already
             // refused a state with context.bypasses set, and clear_splitobjs()
             // and dmonsfree() would only touch the discarded clone.
-            if (somebodyCanMove
-                && planned.u.umovement < NORMAL_SPEED
-                && any_light_source(planned)) {
-                unsupported('monster light-source vision recalculation');
-            }
+            if (any_light_source(planned)) planned.vision_full_recalc = 1;
             if (planned.u.umovement >= NORMAL_SPEED) break;
         } while (somebodyCanMove);
         planned.context.mon_moving = false;

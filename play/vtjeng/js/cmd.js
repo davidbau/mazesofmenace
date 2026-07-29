@@ -9,13 +9,27 @@ import {
 } from './command_bindings.js';
 import {
     COLNO,
+    PICK_ONE,
     SICK,
     SLIMED,
     STONED,
     STRANGLED,
 } from './const.js';
+import { UnsupportedArtifactDisplayError } from './artifacts.js';
 import { flush_screen } from './display.js';
+import { can_reach_floor, read_engr_at } from './engrave.js';
 import { game } from './gstate.js';
+import {
+    ddoinv,
+    dolook,
+    UnsupportedFeatureDescriptionError,
+} from './invent.js';
+import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
+import { UnsupportedObjectNameError } from './objnam.js';
+import { dovspell, UnsupportedSpellDisplayError } from './spell.js';
+import {
+    displayTtyTextWindow, menuTitleStyle, selectTtyMenu,
+} from './tty_menu.js';
 import {
     domove,
     endRunning,
@@ -295,9 +309,38 @@ export async function parseCommand(state = game) {
     return finishCommandParse(parsed, state);
 }
 
-// The repeated-simple-command milestone admits only one uncounted wait or
-// run-mode-zero walk byte. Classify that first logical byte before get_count()
-// can consume a prefix byte or expose transient count output.
+// Every command this milestone dispatches, named once so the comment above
+// readSimpleCommand(), both boundary messages, and the admission test cannot
+// drift apart as more commands land.
+const ADMITTED_COMMANDS = Object.freeze([
+    'wait', 'look', 'inventory', 'showspells', 'known',
+]);
+const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
+    + `${ADMITTED_COMMANDS.join(', ')}, an uncounted one-square walk, or a `
+    + 'byte bound to no command';
+
+// A byte that cmd.c cmdbind_get() finds no command for reaches rhack()'s
+// bad-command path, which this file owns. parse() returns such a byte
+// unchanged except for the ones get_count() consumes first: every digit when
+// num_pad is off, and the count key itself when it is on. Those start a count
+// rather than a command, so they stay outside this boundary. ESC and the two
+// empty-key values leave rhack() through its earlier return instead.
+function unboundCommandKey(key, command, model) {
+    if (command !== null) return false;
+    // Escape is admitted separately: it never reaches the bad-command path,
+    // because rhack() returns at its empty-key test before looking a command
+    // up. The two empty-key values stay refused; C rings the bell for them
+    // and nhbell() is not ported.
+    if (!key || key === 0xFF || key === ESC) return false;
+    return model.numPad
+        ? key !== model.specialKeys.count
+        : !isDigit(key);
+}
+
+// ADMITTED_COMMANDS above lists what this milestone dispatches; a one-square
+// walk and a byte bound to no command join them here. Classify that first
+// logical byte before get_count() can consume a prefix byte or expose
+// transient count output.
 async function readSimpleCommand(state) {
     await beginCommandParse(state);
     let key;
@@ -307,15 +350,19 @@ async function readSimpleCommand(state) {
         abortCommandParse(state);
         throw error;
     }
-    const command = commandForKey(commandBindings(state), key);
+    const model = commandBindings(state);
+    const command = commandForKey(model, key);
     const movement = MOVEMENT_INTENTS[command];
-    if (command !== 'wait' && (!movement || movement[2] !== 0)) {
+    // parse() answers Escape by clearing the message window and zeroing both
+    // count fields, which finishCommandParse() already does, and rhack() then
+    // returns without a message or a turn.
+    const admitted = key === ESC
+        || ADMITTED_COMMANDS.includes(command)
+        || (movement && movement[2] === 0)
+        || unboundCommandKey(key, command, model);
+    if (!admitted) {
         abortCommandParse(state);
-        throw new UnsupportedHeroCommandBoundaryError(
-            'the repeated-command boundary admits only an uncounted wait '
-                + 'or one-square walk',
-            key,
-        );
+        throw new UnsupportedHeroCommandBoundaryError(ADMITTED_BOUNDARY, key);
     }
     return finishCommandParse({ key, count: 0 }, state);
 }
@@ -408,10 +455,32 @@ function restoreParsedCommand(pending, state) {
 
 function rejectedPhysicalCommand(pending) {
     return new UnsupportedHeroCommandBoundaryError(
-        'the repeated-command boundary admits only an uncounted wait '
-            + 'or one-square walk',
+        ADMITTED_BOUNDARY,
         pending.key,
     );
+}
+
+// A command whose port is complete except for branches that are not, such as
+// an object name doname() cannot format yet. Those throw their owner's error;
+// converting it here keeps the segment's supported prefix and leaves the
+// keystroke retryable, the same contract the admission seam provides.
+async function failClosedCommand(key, state, run) {
+    try {
+        return await run();
+    } catch (error) {
+        if (error instanceof UnsupportedFeatureDescriptionError
+            || error instanceof UnsupportedObjectNameError
+            || error instanceof UnsupportedSpellDisplayError
+            || error instanceof UnsupportedDiscoveryDisplayError
+            || error instanceof UnsupportedArtifactDisplayError) {
+            resetCommandVars(state);
+            throw new UnsupportedHeroCommandBoundaryError(
+                `an unported branch of this command: ${error.message}`,
+                key,
+            );
+        }
+        throw error;
+    }
 }
 
 // C ref: cmd.c rhack(). Only the source handlers owned by this milestone are
@@ -498,11 +567,105 @@ export async function rhack(key, state = game) {
             if (!await donull(state)) resetCommandVars(state);
             return;
         }
+        if (command === 'inventory') {
+            // Every entry is formatted before the menu draws anything, so an
+            // unported object name or display branch stops here with the
+            // screen untouched and the keystroke still retryable.
+            const elapsed = await failClosedCommand(key, state, () => ddoinv(state, {
+                // invent.c display_pickinv() ends its menu with no prompt and
+                // asks select_menu() for PICK_ONE; Escape answers null.
+                menu: (items) => selectTtyMenu(state, {
+                    // add_menu_heading() draws a class heading with
+                    // iflags.menu_headings, which menuTitleStyle() reads.
+                    items: items.map((item) => (item.heading
+                        ? {
+                            ...item,
+                            attr: menuTitleStyle(state).titleAttr,
+                            color: menuTitleStyle(state).titleColor,
+                        }
+                        : item)),
+                    how: PICK_ONE,
+                    cancelValue: null,
+                    overlay: state.iflags?.menu_overlay !== false,
+                }),
+            }));
+            resetCommandVars(state);
+            if (elapsed) state.context.move = 1;
+            return;
+        }
+        if (command === 'showspells') {
+            const elapsed = await failClosedCommand(
+                key, state, () => dovspell(state, { message: ttyPline }),
+            );
+            resetCommandVars(state);
+            if (elapsed) state.context.move = 1;
+            return;
+        }
+        if (command === 'known') {
+            const elapsed = await failClosedCommand(key, state, () => (
+                dodiscovered(state, {
+                    message: ttyPline,
+                    // o_init.c dodiscovered() writes its headings with
+                    // iflags.menu_headings, the same style the inventory
+                    // menu's class headings use.
+                    textWindow: (lines) => displayTtyTextWindow(
+                        state,
+                        lines.map((line) => (line.heading
+                            ? {
+                                ...line,
+                                attr: menuTitleStyle(state).titleAttr,
+                                color: menuTitleStyle(state).titleColor,
+                            }
+                            : line)),
+                    ),
+                })
+            ));
+            resetCommandVars(state);
+            if (elapsed) state.context.move = 1;
+            return;
+        }
+        if (command === 'look') {
+            const elapsed = await failClosedCommand(key, state, () => dolook(
+                state,
+                {
+                    message: ttyPline,
+                    readEngraving: () => read_engr_at(
+                        state.u.ux,
+                        state.u.uy,
+                        state,
+                        { pline: ttyPline, canReachFloor: can_reach_floor },
+                    ),
+                },
+            ));
+            // C ref: rhack()'s result handling. dolook() returns ECMD_OK for
+            // a sighted hero, which reaches reset_cmd_vars(); only ECMD_TIME
+            // puts context.move back to TRUE.
+            resetCommandVars(state);
+            if (elapsed) state.context.move = 1;
+            return;
+        }
         if (Object.hasOwn(MOVEMENT_INTENTS, command)) {
             await executeMovement(command, firstTime, state);
             return;
         }
+        if (command !== null) {
+            // A bound command whose handler this milestone excludes. The
+            // fresh-read seam above rejects it before parsing; reaching here
+            // means a repeat supplied it as logical input.
+            resetCommandVars(state);
+            throw new UnsupportedHeroCommandBoundaryError(
+                ADMITTED_BOUNDARY,
+                key,
+            );
+        }
 
+        // C ref: cmd.c rhack()'s bad-command path. Its custompline() differs
+        // from pline() only in SUPPRESS_HISTORY, which keeps the line out of
+        // the message history that doprev_message() recalls; no message
+        // history is ported. Its cmdq_clear(CQ_CANNED) and
+        // cmdq_clear(CQ_REPEAT) have no queue to clear while no command queue
+        // is ported, and iflags.sanity_no_check suppresses only the debug
+        // sanity check.
         await ttyPline(`Unknown command '${visibleCommandKey(key)}'.`, state);
         state.context.move = 0;
         state.multi = 0;

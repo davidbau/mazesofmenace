@@ -3,33 +3,46 @@
 
 import { find_artifact, permapoisoned } from './artifacts.js';
 import {
-    BLINDED, CORPSTAT_HISTORIC, NON_PM,
+    BLINDED, CORPSTAT_HISTORIC, HAND, NON_PM, P_BOW,
+    W_AMUL, W_ARMG, W_ARMOR, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE,
+    W_SWAPWEP, W_TOOL, W_WEP,
 } from './const.js';
 import {
     fruit_from_indx, makeplural, makesingular, matching_artifact_fruit,
 } from './fruit.js';
+import { tin_details } from './eat.js';
+import { game } from './gstate.js';
+import { lowc, strcasecpy } from './hacklib.js';
+import { body_part } from './polyself.js';
+import { RIGHT_HANDED } from './u_init.js';
+import { bimanual, is_ammo, is_missile } from './worn.js';
 import { PM_CLERIC, PM_SAMURAI } from './monsters.js';
 import { observe_object } from './o_init.js';
 import {
-    erosionMatters, isCandle, isContainer, isCorrodeable, isCrackable,
+    erosionMatters, hasContents, isBox, isCandle, isContainer,
+    isCorrodeable, isCrackable,
     isDamageable, isFlammable, isMultigen, isRottable, isRustprone,
     isWeptool, objectType,
 } from './obj.js';
 import { JAPANESE_ITEM_NAMES } from './objnam_data.js';
 import {
+    AKLYS,
     ALCHEMY_SMOCK, AMULET_CLASS, AMULET_OF_YENDOR, ARMOR_CLASS, ARM_BOOTS,
+    BAG_OF_TRICKS,
     ARM_GLOVES, ARM_HELM, ARM_SHIELD, BALL_CLASS,
     BLACK_OPAL, BOULDER, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CHAIN_CLASS,
     CHEST, COIN_CLASS, CORPSE, CRYSKNIFE, DIAMOND, DILITHIUM_CRYSTAL, EGG,
     ELVEN_SHIELD, EMERALD, FAKE_AMULET_OF_YENDOR, FIGURINE, FLINT, FOOD_CLASS,
     GEMSTONE, GEM_CLASS, GRAY_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, IRON,
     LARGE_BOX, LENSES, MAGIC_HARP, MAGIC_LAMP, MINERAL, MITHRIL,
+    MAXOCLASSES,
     MUMMY_WRAPPING, OBJ_DESCR, OBJ_NAME, OIL_LAMP, OPAL, ORCISH_SHIELD,
     POTION_CLASS, POT_OIL, POT_WATER, RING_CLASS, ROBE, ROCK_CLASS, RUBY,
     SAPPHIRE, SCR_MAIL, SCROLL_CLASS, SHIELD_OF_REFLECTION, SLIME_MOLD,
     SPBOOK_CLASS, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, TOOL_CLASS,
     TOWEL, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS, WOODEN_HARP,
     YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES,
+    HORN_OF_PLENTY,
 } from './objects.js';
 
 export class UnsupportedObjectNameError extends Error {
@@ -49,33 +62,11 @@ function heroIsBlind(state) {
         && !blinded?.blocked);
 }
 
-// C ref: objnam.c just_an().
-function justAn(text) {
-    const lower = String(text).toLowerCase();
-    const first = lower[0] ?? '';
-    if (!lower[1] || lower[1] === ' ')
-        return 'aefhilmnosx'.includes(first) ? 'an' : 'a';
-    if (lower.startsWith('the ')
-        || lower === 'molten lava'
-        || lower === 'iron bars'
-        || lower === 'ice') {
-        return '';
-    }
-    const vowel = 'aeiou'.includes(first);
-    const oneException = lower.startsWith('one')
-        && (!lower[3] || '-_ '.includes(lower[3]));
-    const longU = lower.startsWith('eu')
-        || lower.startsWith('uke')
-        || lower.startsWith('ukulele')
-        || lower.startsWith('unicorn')
-        || lower.startsWith('uranium')
-        || lower.startsWith('useful');
-    const xVowelSound = first === 'x' && !'aeiou'.includes(lower[1] ?? '');
-    return (vowel && !oneException && !longU) || xVowelSound ? 'an' : 'a';
-}
+// C ref: objnam.c an(), whose article comes from just_an(). That helper is
+// defined below with the other name formatters; C's own an() returns the
+// article joined to the name, which is what this returns.
 function articleName(text) {
-    const article = justAn(text);
-    return article ? `${article} ${text}` : text;
+    return an(text);
 }
 function monsterObjectName(obj, state) {
     if (obj.corpsenm === NON_PM) return 'thing';
@@ -84,16 +75,17 @@ function monsterObjectName(obj, state) {
 function isPoisonable(obj, state) {
     return isMultigen(obj, state) || permapoisoned(obj);
 }
-function isGemStone(obj, type) {
-    if (obj.otyp === FLINT) return true;
+// C ref: objnam.h GemStone(). Its argument is an object type, not an object.
+function isGemStone(otyp, type) {
+    if (otyp === FLINT) return true;
     if (type.oc_material !== GEMSTONE) return false;
-    return obj.otyp !== DILITHIUM_CRYSTAL
-        && obj.otyp !== RUBY
-        && obj.otyp !== DIAMOND
-        && obj.otyp !== SAPPHIRE
-        && obj.otyp !== BLACK_OPAL
-        && obj.otyp !== EMERALD
-        && obj.otyp !== OPAL;
+    return otyp !== DILITHIUM_CRYSTAL
+        && otyp !== RUBY
+        && otyp !== DIAMOND
+        && otyp !== SAPPHIRE
+        && otyp !== BLACK_OPAL
+        && otyp !== EMERALD
+        && otyp !== OPAL;
 }
 function sourceActualName(obj, type, state) {
     if (state.urole?.mnum === PM_SAMURAI)
@@ -106,6 +98,83 @@ function sourceDescription(obj, type, state, actual) {
         return 'koto';
     }
     return OBJ_DESCR(type, state) ?? actual;
+}
+
+// C ref: objnam.c obj_typename(). Names an object type rather than an object,
+// which is what the discoveries list shows. A type carrying oc_uname reaches
+// xcalled() in four of the branches below; no ported path assigns one, and
+// naming the type without the call would be wrong, so it stops instead.
+export function obj_typename(otyp, state = game) {
+    const ocl = state.objects[otyp];
+    let actualn = OBJ_NAME(ocl, state);
+    let dn = OBJ_DESCR(ocl, state);
+    const un = ocl.oc_uname;
+    let nn = ocl.oc_name_known;
+
+    if (state.urole?.mnum === PM_SAMURAI) {
+        actualn = JAPANESE_ITEM_NAMES.get(otyp) ?? actualn;
+        if (otyp === WOODEN_HARP || otyp === MAGIC_HARP) dn = 'koto';
+    }
+    // Generic items carry no actual name and should never reach here; C
+    // substitutes a placeholder rather than asserting, so this does too.
+    if (!actualn)
+        actualn = (otyp > 0 && otyp < MAXOCLASSES) ? 'generic' : 'object?';
+    if (un) unsupported('user-assigned type name', null);
+
+    let buf = '';
+    switch (ocl.oc_class) {
+    case COIN_CLASS:
+        return actualn;
+    case POTION_CLASS:
+        buf = 'potion';
+        break;
+    case SCROLL_CLASS:
+        buf = 'scroll';
+        break;
+    case WAND_CLASS:
+        buf = 'wand';
+        break;
+    case SPBOOK_CLASS:
+        if (otyp !== SPE_NOVEL) {
+            buf = 'spellbook';
+        } else {
+            buf = !nn ? 'book' : 'novel';
+            nn = 0;
+        }
+        break;
+    case RING_CLASS:
+        buf = 'ring';
+        break;
+    case AMULET_CLASS:
+        buf = nn ? actualn : 'amulet';
+        if (dn) buf += ` (${dn})`;
+        return buf;
+    case ARMOR_CLASS:
+        if (ocl.oc_armcat === ARM_GLOVES || ocl.oc_armcat === ARM_BOOTS)
+            buf = 'pair of ';
+        else if (otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES)
+            buf = 'set of ';
+    // FALLTHROUGH
+    default: // eslint-disable-line no-fallthrough
+        if (nn) {
+            buf += actualn;
+            if (isGemStone(otyp, ocl)) buf += ' stone';
+            if (dn) buf += ` (${dn})`;
+        } else {
+            buf += dn || actualn;
+            if (ocl.oc_class === GEM_CLASS)
+                buf += ocl.oc_material === MINERAL ? ' stone' : ' gem';
+        }
+        return buf;
+    }
+    // Here for ring, scroll, potion, wand, and spellbook.
+    if (nn) {
+        // oc_unique keeps the Book of the Dead from becoming "spellbook of
+        // Book of the Dead".
+        buf = ocl.oc_unique ? actualn : `${buf} of ${actualn}`;
+    }
+    if (dn) buf += ` (${dn})`;
+    return buf;
 }
 
 // C refs: objnam.c suit_simple_name(), cloak_simple_name(),
@@ -166,23 +235,32 @@ function preflightObjectName(obj, type, state, forDoname = false) {
         unsupported('end-of-game object text', obj);
     if (type.oc_uname)
         unsupported('user-assigned type name', obj);
-    if (obj.otyp === TIN && obj.known)
-        unsupported('identified tin contents', obj);
+
     if (!forDoname) return;
     if (obj.unpaid)
         unsupported('shop price suffix', obj);
     if (state.iflags?.pricequotes && !type.oc_name_known)
         unsupported('price quote suffix', obj);
-    if (obj.owornmask)
-        unsupported('worn-object suffix', obj);
-    if ((isContainer(obj) || obj.otyp === STATUE)
-        && (obj.cknown || obj.lknown || obj.tknown)) {
-        unsupported('known container state', obj);
-    }
-    if ((obj.otyp === LARGE_BOX || obj.otyp === CHEST)
-        && (obj.olocked || obj.obroken || obj.otrapped)
-        && (obj.lknown || obj.tknown)) {
-        unsupported('known box state', obj);
+    if (obj.owornmask & (W_RING | W_RINGL | W_RINGR))
+        unsupported('worn-ring suffix', obj);
+    if (obj.owornmask && state.u?.twoweap)
+        unsupported('two-weapon suffix', obj);
+    if ((obj.owornmask & W_WEP) && obj.otyp === AKLYS)
+        unsupported('tethered weapon suffix', obj);
+    if ((obj.owornmask & W_ARMOR) && (obj === state.u?.uskin
+        || obj.owornmask & W_ARMG))
+        unsupported('embedded or gloved armor suffix', obj);
+    if (obj.owornmask && obj.lamplit)
+        unsupported('lit worn-object suffix', obj);
+    // C names a container's contents only when it holds some; counting them
+    // is pickup.c count_contents(), which is not ported.
+    if (obj.cknown && hasContents(obj))
+        unsupported('container contents count', obj);
+    // These two judge emptiness by charges rather than contents, and the
+    // charge suffix that makes the prefix redundant is a separate branch.
+    if (obj.cknown
+        && (obj.otyp === BAG_OF_TRICKS || obj.otyp === HORN_OF_PLENTY)) {
+        unsupported('charge-based emptiness', obj);
     }
     if (isCandle(obj) && obj.lamplit)
         unsupported('lit candle timer adjustment', obj);
@@ -250,6 +328,10 @@ function xnameBase(obj, type, state) {
                     : obj.owt <= 500 ? 'large' : 'very large';
             return `${size} ${actual}`;
         }
+        // C ref: objnam.c xname(). `known` here is the object's own flag, set
+        // when the hero knows what is inside the tin, not the type's.
+        if (obj.otyp === TIN && obj.known)
+            return tin_details(obj, obj.corpsenm, actual, { state });
         return actual;
     case COIN_CLASS:
     case CHAIN_CLASS:
@@ -313,7 +395,7 @@ function xnameBase(obj, type, state) {
         if (!knownType) {
             return `${description} ${rock}`;
         }
-        return `${actual}${isGemStone(obj, type) ? ' stone' : ''}`;
+        return `${actual}${isGemStone(obj.otyp, type) ? ' stone' : ''}`;
     }
     default:
         unsupported(`object class ${obj.oclass}`, obj);
@@ -353,6 +435,126 @@ function theUniqueObject(obj, type) {
     return Boolean(type.oc_unique
         && (obj.known || obj.otyp === AMULET_OF_YENDOR));
 }
+// C ref: decl.c vowels[].
+const VOWELS = 'aeiouAEIOU';
+
+function startsWithFold(text, prefix) {
+    return text.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase();
+}
+
+// C ref: objnam.c just_an(). Returns the article, with its trailing space,
+// that an() would prepend, or the empty string where C leaves outbuf empty.
+export function just_an(str) {
+    const c0 = lowc(str[0] ?? '');
+    if (!str[1] || str[1] === ' ') {
+        // A single letter, as used for a named fruit or a musical note.
+        return 'aefhilmnosx'.includes(c0) ? 'an ' : 'a ';
+    }
+    if (startsWithFold(str, 'the ')
+        || str.toLowerCase() === 'molten lava'
+        || str.toLowerCase() === 'iron bars'
+        || str.toLowerCase() === 'ice') {
+        return '';
+    }
+    // The normal case is "an <vowel>" or "a <consonant>".
+    const vowelStart = VOWELS.includes(c0)
+        // 'wun' initial sound
+        && (!startsWithFold(str, 'one')
+            || (str[3] && !'-_ '.includes(str[3])))
+        // long 'u' initial sound
+        && !startsWithFold(str, 'eu') // "eucalyptus leaf"
+        && !startsWithFold(str, 'uke') && !startsWithFold(str, 'ukulele')
+        && !startsWithFold(str, 'unicorn') && !startsWithFold(str, 'uranium')
+        && !startsWithFold(str, 'useful'); // "useful tool"
+    return (vowelStart || (c0 === 'x' && !VOWELS.includes(lowc(str[1]))))
+        ? 'an ' : 'a ';
+}
+
+// C ref: objnam.c an(). C answers "an []" through impossible() for an empty
+// name; nothing in the port can supply one, so that stays a thrown error.
+export function an(str) {
+    if (!str) throw new Error(`an() requires a name; got ${String(str)}`);
+    return just_an(str) + str;
+}
+
+// C ref: objnam.c special_subjs[]. Singular subjects that end in 's'.
+const SPECIAL_SUBJS = Object.freeze([
+    'erinys', 'manes', /* this one is ambiguous */
+    'Cyclops', 'Hippocrates', 'Pelias', 'aklys',
+    'amnesia', 'detect monsters', 'paralysis', 'shape changers',
+    'nemesis',
+]);
+
+// C ref: objnam.c vtense(). `verb` arrives in the plural, without a trailing
+// s, and comes back agreeing with `subj`. A null subject asks for the
+// singular third person directly.
+export function vtense(subj, verb) {
+    if (subj) {
+        // C jumps straight to its `sing:` label for an "a "/"an " subject.
+        if (!startsWithFold(subj, 'a ') && !startsWithFold(subj, 'an ')) {
+            // C scans for the first " of "/" from "/" called "/" named "/
+            // " labeled " and takes the character before it as the subject's
+            // head; otherwise the head is the last character.
+            let spot = -1;
+            for (let index = subj.indexOf(' '); index >= 0;
+                index = subj.indexOf(' ', index + 1)) {
+                const tail = subj.slice(index);
+                if (startsWithFold(tail, ' of ')
+                    || startsWithFold(tail, ' from ')
+                    || startsWithFold(tail, ' called ')
+                    || startsWithFold(tail, ' named ')
+                    || startsWithFold(tail, ' labeled ')) {
+                    if (index !== 0) spot = index - 1;
+                    break;
+                }
+            }
+            if (spot < 0) spot = subj.length - 1;
+            const endsWith = (offset, text) => (
+                spot - offset >= 0
+                && subj.slice(spot - offset, spot - offset + text.length)
+                    .toLowerCase() === text
+            );
+            const plural = (lowc(subj[spot]) === 's' && spot !== 0
+                    && !'us'.includes(lowc(subj[spot - 1])))
+                || endsWith(3, 'eeth') || endsWith(3, 'feet')
+                || endsWith(1, 'ia') || endsWith(1, 'ae');
+            if (plural) {
+                const len = spot + 1;
+                const special = SPECIAL_SUBJS.some((entry) => (
+                    (len === entry.length
+                        && subj.slice(0, len).toLowerCase()
+                            === entry.toLowerCase())
+                    || (len > entry.length && subj[spot - entry.length] === ' '
+                        && subj.slice(spot - entry.length + 1, spot + 1)
+                            .toLowerCase() === entry.toLowerCase())
+                ));
+                if (!special) return verb;
+            } else if (subj.toLowerCase() === 'they'
+                || subj.toLowerCase() === 'you') {
+                // Third person plural without a telltale s, and second person
+                // singular, which behaves as if plural.
+                return verb;
+            }
+        }
+    }
+    const buf = verb;
+    const last = buf.length - 1;
+    if (buf.toLowerCase() === 'are') return strcasecpy(buf, 0, 'is');
+    if (buf.toLowerCase() === 'have') return strcasecpy(buf, last - 1, 's');
+    if ('zxs'.includes(lowc(buf[last]))
+        || (buf.length >= 2 && lowc(buf[last]) === 'h'
+            && 'cs'.includes(lowc(buf[last - 1])))
+        || (buf.length === 2 && lowc(buf[last]) === 'o')) {
+        // Ends in z, x, s, ch, or sh, so the third person adds "es". C writes
+        // it with Strcasecpy(bspot + 1, "es"), which takes the case of the
+        // last character already there.
+        return strcasecpy(buf, last + 1, 'es');
+    }
+    if (lowc(buf[last]) === 'y' && !VOWELS.includes(lowc(buf[last - 1])))
+        return strcasecpy(buf, last, 'ies');
+    return strcasecpy(buf, last + 1, 's');
+}
+
 // The normal xname() entry point: it observes a nearby object, marks a
 // displayed artifact found, formats its class branch, pluralizes, and appends
 // an instance name.
@@ -453,6 +655,68 @@ function corpseDoname(obj, modifiers, state) {
     const body = [...modifiers, corpse].join(' ');
     return articleName(body);
 }
+// The mutation-free half of naming an object: every branch this port has not
+// reached throws here, and nothing is written. xnameFresh() calls
+// observe_object() as it formats, so a caller that must not change discovery
+// state until every object is nameable runs this over all of them first.
+export function assertObjectNameable(obj, state = game) {
+    preflightObjectName(obj, objectType(obj, state), state, true);
+}
+
+// C ref: objnam.c doname(), the owornmask suffixes. Amulets, armor, and worn
+// tools are answered inside its class switch; the wielded, alternate-weapon,
+// and quiver phrases follow the charge and lit text, which is the order the
+// port assembles them in too. doffing() and donning() cannot hold here,
+// because no Wear or Take-off is in progress while a name is formatted.
+function wornSuffix(obj, type, state) {
+    const mask = obj.owornmask ?? 0;
+    if (!mask) return '';
+    const classForSuffix = isWeptool(obj, state) ? WEAPON_CLASS : obj.oclass;
+    let suffix = '';
+    if ((classForSuffix === AMULET_CLASS && (mask & W_AMUL))
+        || (classForSuffix === ARMOR_CLASS && (mask & W_ARMOR))
+        || (classForSuffix === TOOL_CLASS && (mask & (W_TOOL | W_SADDLE)))) {
+        suffix += ' (being worn)';
+    }
+    if (mask & W_WEP) {
+        // C uses the alternate phrasing for stacks, for wielded ammo and
+        // missiles, and for non-weapons that are not weapon-tools.
+        const alternate = obj.quan !== 1
+            || (obj.oclass === WEAPON_CLASS
+                ? (is_ammo(obj, state) || is_missile(obj, state))
+                : !isWeptool(obj, state));
+        if (alternate) {
+            suffix += ' (wielded)';
+        } else {
+            const hand = body_part(HAND, state.youmonst);
+            const hands = bimanual(obj, state)
+                ? makeplural(hand)
+                : `${state.u.uhandedness === RIGHT_HANDED ? 'right' : 'left'
+                } ${hand}`;
+            suffix += ` (weapon in ${hands})`;
+        }
+    }
+    if (mask & W_SWAPWEP)
+        suffix += ` (alternate weapon${obj.quan === 1 ? '' : 's'}; not wielded)`;
+    if (mask & W_QUIVER) {
+        // C's Qtyp: 1 is bow ammo, 2 is anything small enough for the pouch,
+        // and 3 is everything else.
+        let qtyp;
+        if (obj.oclass === WEAPON_CLASS) {
+            qtyp = !is_ammo(obj, state) ? 3
+                : (type.oc_skill !== -P_BOW) ? 2 : 1;
+        } else if ([RING_CLASS, AMULET_CLASS, WAND_CLASS, COIN_CLASS,
+            GEM_CLASS].includes(obj.oclass)) {
+            qtyp = 2;
+        } else {
+            qtyp = 3;
+        }
+        suffix += ` (${qtyp === 1 ? 'in quiver'
+            : qtyp === 2 ? 'in quiver pouch' : 'at the ready'})`;
+    }
+    return suffix;
+}
+
 // C ref: objnam.c doname(). Shop, known-container, worn-item, end-game, and
 // lit-candle branches stop before xname() can mutate discovery state.
 export function donameFresh(obj, state) {
@@ -463,6 +727,23 @@ export function donameFresh(obj, state) {
     const modifiers = [];
     const buc = bucWord(obj, type, state);
     if (buc) modifiers.push(buc);
+    // C ref: objnam.c doname(). "empty" comes first, before the blessed or
+    // uncursed word, when the contents are known and there are none. A bag of
+    // tricks or horn of plenty judges emptiness by its charges instead, and
+    // both stop above.
+    if (obj.cknown && (isContainer(obj) || obj.otyp === STATUE)
+        && !hasContents(obj)) {
+        modifiers.unshift('empty');
+    }
+    // A box announces a known trap and its known lock state before the
+    // greased prefix.
+    if (isBox(obj) && obj.otrapped && obj.tknown && obj.dknown)
+        modifiers.push('trapped');
+    if (obj.lknown && isBox(obj)) {
+        modifiers.push(
+            obj.obroken ? 'broken' : obj.olocked ? 'locked' : 'unlocked',
+        );
+    }
     if (obj.greased) modifiers.push('greased');
     const classForModifiers = isWeptool(obj, state)
         ? WEAPON_CLASS : obj.oclass;
@@ -519,6 +800,7 @@ export function donameFresh(obj, state) {
         || (obj.oclass === TOOL_CLASS && type.oc_charged)) {
         base += chargedSuffix(obj, type);
     }
+    base += wornSuffix(obj, type, state);
     const words = [...modifiers, base].join(' ');
     if (quantity !== 1)
         return `${quantity} ${words}`;

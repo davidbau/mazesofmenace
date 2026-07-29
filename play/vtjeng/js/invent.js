@@ -22,11 +22,31 @@ import {
     OBJ_MINVENT,
     OBJ_ONBILL,
     NON_PM,
+    DBWALL,
+    D_BROKEN,
+    D_ISOPEN,
+    D_NODOOR,
+    DRAWBRIDGE_DOWN,
+    DRAWBRIDGE_UP,
+    IRONBARS,
+    IS_ALTAR,
+    IS_DOOR,
+    IS_FOUNTAIN,
+    IS_GRAVE,
+    IS_SINK,
+    IS_THRONE,
+    TREE,
     P_BOOMERANG,
     P_BOW,
     P_CROSSBOW,
     P_DAGGER,
     P_DART,
+    is_pit,
+    Is_airlevel,
+    Is_waterlevel,
+    LOOKHERE_NOFLAGS,
+    LOOKHERE_SKIP_DFEATURE,
+    STONE_RES,
     PLNMSG_ONE_ITEM_HERE,
     P_SABER,
     P_SHORT_SWORD,
@@ -34,8 +54,28 @@ import {
     W_QUIVER,
 } from './const.js';
 import { ART_MJOLLNIR } from './artifacts.js';
+import { CMAP_EXPLANATIONS } from './symbol_data.js';
+import {
+    S_fountain,
+    S_grave,
+    S_lava,
+    S_ndoor,
+    S_sink,
+    S_throne,
+    S_tree,
+    S_vcdbridge,
+    S_vcdoor,
+    S_vodbridge,
+    S_vodoor,
+} from './symbols.js';
+import { touch_petrifies } from './mondata.js';
+import { visible_region_at } from './region.js';
+import { stairs_description, stairway_at } from './stairs.js';
+import { is_ice } from './terrain.js';
+import { is_lava, is_pool, t_at } from './trap.js';
 import { game } from './gstate.js';
 import { surface } from './dungeon.js';
+import { can_reach_floor } from './engrave.js';
 import {
     AMULET_OF_YENDOR,
     AKLYS,
@@ -76,46 +116,367 @@ import {
     preflightWeight,
     weight,
 } from './obj.js';
-import { donameFresh } from './objnam.js';
+import {
+    an,
+    assertObjectNameable,
+    donameFresh,
+    vtense,
+} from './objnam.js';
+import { ILLOBJ_CLASS, MAXOCLASSES } from './objects.js';
 
 export const INVLET_BASIC = 52;
 export const NOINVSYM = '#';
 
-// C ref: invent.c look_here(), ordinary single-object branch.  This helper
-// owns both the sighted and blind output sequence; hack.c supplies the
-// preceding engraving read so it remains ordered between the blind tactile
-// preamble and the final item description.
-export async function look_here_single_object(
-    obj,
-    state = game,
-    { message, readEngraving } = {},
-) {
-    if (!obj || obj.nexthere || typeof message !== 'function'
-        || typeof readEngraving !== 'function') {
-        throw new TypeError(
-            'single-object look_here needs one object plus message '
-                + 'and engraving owners',
-        );
+// Thrown where invent.c reads a terrain description this port has not reached
+// yet. dfeature_at() is otherwise a complete translation, so every stop below
+// names the C helper that is missing rather than the caller that hit it.
+export class UnsupportedFeatureDescriptionError extends Error {
+    constructor(helper) {
+        super(`feature description requires ${helper}`);
+        this.name = 'UnsupportedFeatureDescriptionError';
+        this.helper = helper;
     }
+}
+
+// C ref: invent.c dfeature_at(). Returns the description of the terrain
+// feature at x,y, or null where C returns 0. C writes the same text into the
+// caller's buffer; the JavaScript caller uses the return value alone.
+export function dfeature_at(x, y, state = game) {
+    const lev = state.level?.at(x, y);
+    const ltyp = lev?.typ;
+    let cmap = -1;
+    let dfeature = null;
+
+    if (IS_DOOR(ltyp)) {
+        // Every other reader in the port takes flags first; both fields
+        // stand for C's single doormask, and this one had them reversed.
+        switch (lev.flags || lev.doormask || 0) {
+        case D_NODOOR:
+            cmap = S_ndoor;
+            break;
+        case D_ISOPEN:
+            cmap = S_vodoor;
+            break;
+        case D_BROKEN:
+            dfeature = 'broken door';
+            break;
+        default:
+            cmap = S_vcdoor;
+            break;
+        }
+        // C overrides the door description for an open drawbridge.
+        // dbridge.c is_drawbridge_wall() is not ported; a DOOR square can
+        // only sit beside a drawbridge, so this stop is reachable.
+        throwIfDrawbridgeUnported(x, y, state);
+    } else if (IS_FOUNTAIN(ltyp)) {
+        cmap = S_fountain;
+    } else if (IS_THRONE(ltyp)) {
+        cmap = S_throne;
+    } else if (is_lava(x, y, state)) {
+        cmap = S_lava;
+    } else if (is_ice(x, y, state)) {
+        // C calls ice_descr(), which distinguishes solid from thin ice.
+        throw new UnsupportedFeatureDescriptionError('ice_descr()');
+    } else if (is_pool(x, y, state)) {
+        dfeature = 'pool of water';
+    } else if (IS_SINK(ltyp)) {
+        cmap = S_sink;
+    } else if (IS_ALTAR(ltyp)) {
+        // C composes "altar to <deity> (<alignment>)" from a_gname() and
+        // align_str(), neither of which is ported.
+        throw new UnsupportedFeatureDescriptionError('a_gname()');
+    } else if (stairway_at(x, y, state)) {
+        dfeature = stairs_description(stairway_at(x, y, state), true, state);
+    } else if (ltyp === DRAWBRIDGE_DOWN) {
+        cmap = S_vodbridge;
+    } else if (ltyp === DBWALL) {
+        cmap = S_vcdbridge;
+    } else if (IS_GRAVE(ltyp)) {
+        cmap = S_grave;
+    } else if (ltyp === TREE) {
+        cmap = S_tree;
+    } else if (ltyp === IRONBARS) {
+        dfeature = 'set of iron bars';
+    }
+
+    if (cmap >= 0) dfeature = CMAP_EXPLANATIONS[cmap];
+    return dfeature || null;
+}
+
+// dbridge.c is_drawbridge_wall() is unported. It answers false everywhere no
+// drawbridge exists, which is every level this port generates, so the stop
+// fires only once drawbridge generation arrives.
+function throwIfDrawbridgeUnported(x, y, state) {
+    for (let row = -1; row <= 1; ++row) {
+        for (let column = -1; column <= 1; ++column) {
+            const typ = state.level?.at(x + column, y + row)?.typ;
+            if (typ === DRAWBRIDGE_UP || typ === DRAWBRIDGE_DOWN) {
+                throw new UnsupportedFeatureDescriptionError(
+                    'is_drawbridge_wall()',
+                );
+            }
+        }
+    }
+}
+
+// C ref: invent.c names[]. Indexed by object class.
+const CLASS_NAMES = Object.freeze([
+    null, 'Illegal objects', 'Weapons', 'Armor', 'Rings', 'Amulets', 'Tools',
+    'Comestibles', 'Potions', 'Scrolls', 'Spellbooks', 'Wands', 'Coins',
+    'Gems/Stones', 'Boulders/Statues', 'Iron balls', 'Chains', 'Venoms',
+]);
+
+// C ref: invent.c let_to_name(). Covers the object-class headings the
+// inventory menu asks for. The CONTAINED_SYM heading and the unpaid prefix
+// belong to callers this milestone does not reach.
+export function let_to_name(letter, unpaid, showsym) {
+    // C's parameter is named `let`, which JavaScript reserves.
+    if (unpaid) throw new UnsupportedFeatureDescriptionError('unpaid headings');
+    const oclass = (letter >= 1 && letter < MAXOCLASSES) ? letter : 0;
+    const class_name = CLASS_NAMES[oclass] ?? CLASS_NAMES[ILLOBJ_CLASS];
+    if (!oclass || !showsym) return class_name;
+    // C appends the class symbol from def_oc_syms[], padded to eight columns.
+    // Only iflags.menu_head_objsym asks for that, and it is not ported.
+    throw new UnsupportedFeatureDescriptionError('menu_head_objsym');
+}
+
+// C ref: invent.c display_pickinv(). Covers the branch `i` reaches: the full
+// inventory, no letter subset, no extra choice, want_reply true, and the
+// default sort. Everything else stops.
+export async function display_pickinv(
+    lets,
+    xtra_choice,
+    query,
+    allowxtra,
+    want_reply,
+    state = game,
+    { menu } = {},
+) {
+    if (lets || xtra_choice || allowxtra || !want_reply)
+        throw new UnsupportedFeatureDescriptionError('a partial inventory');
+    if (typeof menu !== 'function')
+        throw new TypeError('display_pickinv needs a menu owner');
+    if (state.iflags.force_invmenu || state.iflags.menu_requested)
+        throw new UnsupportedFeatureDescriptionError('a forced inventory menu');
+    if (state.flags.sortloot === 'i' || state.flags.sortloot === 'f')
+        throw new UnsupportedFeatureDescriptionError('a reordered inventory');
+    if (!state.flags.invlet_constant)
+        throw new UnsupportedFeatureDescriptionError('reassign()');
+    if (!state.flags.sortpack)
+        throw new UnsupportedFeatureDescriptionError('an unpacked inventory');
+    // options.c change_inv_order() would have rewritten flags.inv_order from
+    // a packorder setting; the port keeps the default order, so a session
+    // that sets packorder stops rather than listing the wrong order.
+    if (state.flags.packorder)
+        throw new UnsupportedFeatureDescriptionError('change_inv_order()');
+
+    // C's n counts 0, 1, or "more than 1"; with no letter subset it then adds
+    // one, so the single-item message-line shortcut cannot apply here.
+    // C answers "Not carrying anything." here. Every starting character
+    // carries items, and nothing this milestone runs can empty the pack.
+    if (!state.invent)
+        throw new UnsupportedFeatureDescriptionError('an empty inventory');
+
+    // Formatting a name marks its type discovered, so every object is checked
+    // for an unported naming branch before any of them is formatted. Without
+    // this, a pack whose fifth item cannot be named would leave the first
+    // four discovered and still refuse the command.
+    for (let otmp = state.invent; otmp; otmp = otmp.nobj)
+        assertObjectNameable(otmp, state);
+
+    // sortloot() with SORTLOOT_INVLET|SORTLOOT_PACK keeps invent order, and
+    // the class walk below is what groups it, exactly as C's nextclass loop
+    // does over flags.inv_order.
+    const items = [];
+    for (const oclass of state.flags.inv_order) {
+        let classcount = 0;
+        for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
+            if (otmp.oclass !== oclass) continue;
+            if (!classcount) {
+                items.push({
+                    text: let_to_name(
+                        oclass,
+                        false,
+                        want_reply && state.iflags.menu_head_objsym,
+                    ),
+                    heading: true,
+                });
+                classcount++;
+            }
+            items.push({
+                selector: otmp.invlet,
+                label: donameFresh(otmp, state),
+                value: otmp.invlet,
+            });
+        }
+    }
+    if (query)
+        throw new UnsupportedFeatureDescriptionError('a menu prompt');
+    return menu(items, state);
+}
+
+// C ref: invent.c display_inventory(). Its queued-key branch needs a command
+// queue, which is not ported; nothing can push one yet.
+export async function display_inventory(lets, want_reply, state, hooks) {
+    return display_pickinv(
+        lets, null, null, false, want_reply, state, hooks,
+    );
+}
+
+// C ref: invent.c dispinv_with_action(). `i` supplies no letters, so menumode
+// is true; a selected letter would reach itemactions(), which stops.
+export async function dispinv_with_action(lets, state = game, hooks = {}) {
+    const menumode = true;
+    // The menu owner answers null for Escape, which is C's '\033' reaching
+    // dispinv_with_action() without matching any invlet.
+    const chosen = await display_inventory(lets, menumode, state, hooks);
+    if (chosen != null)
+        throw new UnsupportedFeatureDescriptionError('itemactions()');
+    return false;
+}
+
+// C ref: invent.c ddoinv(). Returns whether the command consumed game time,
+// which for the inventory display is never.
+export async function ddoinv(state = game, hooks = {}) {
+    return dispinv_with_action(null, state, hooks);
+}
+
+// C ref: hack.h Blind. The engraving and description code below reads only
+// the hero's blindness, not the other senses that macro folds in.
+function heroIsBlind(state) {
     const blindness = state.u?.uprops?.[BLINDED];
-    const blind = Boolean(
+    return Boolean(
         (blindness?.intrinsic || blindness?.extrinsic)
         && !blindness?.blocked,
     );
+}
+
+// C ref: invent.c will_feel_cockatrice(). A sighted hero without forced touch
+// never feels a corpse, whatever it is, so feel_cockatrice() is a no-op there.
+export function will_feel_cockatrice(otmp, force_touch, state = game) {
+    return Boolean((heroIsBlind(state) || force_touch)
+        && !state.uarmg
+        && !activeStoneResistance(state)
+        && otmp.otyp === CORPSE
+        && touch_petrifies(state.mons[otmp.corpsenm]));
+}
+
+function activeStoneResistance(state) {
+    const property = state.u?.uprops?.[STONE_RES];
+    return Boolean(
+        (property?.intrinsic || property?.extrinsic) && !property?.blocked,
+    );
+}
+
+// C ref: invent.c look_here(). Covers a hero standing on an ordinary square,
+// sighted or blind: the region and trap line, the terrain feature line, the
+// engraving read, and either "You see no objects here." or the single-object
+// description. Blindness is not excluded; it selects the tactile wording and
+// is this function's whole return value, because C returns ECMD_TIME for a
+// blind look and ECMD_OK otherwise. The branches left out each stop, because
+// they belong to subsystems this milestone excludes: being swallowed, a
+// visible region or seen trap, a drifting level, a pile large enough for the
+// menu, and a corpse that will_feel_cockatrice() says the hero would feel.
+//
+// Returns true where C returns ECMD_TIME and false where it returns ECMD_OK,
+// so the caller decides whether the command takes game time.
+export async function look_here(
+    obj_cnt,
+    lookhere_flags,
+    state = game,
+    { message, readEngraving } = {},
+) {
+    if (typeof message !== 'function' || typeof readEngraving !== 'function')
+        throw new TypeError('look_here needs message and engraving owners');
+    if (state.u.uswallow)
+        throw new UnsupportedFeatureDescriptionError('an engulfer\'s inventory');
+
+    const blind = heroIsBlind(state);
+    const verb = blind ? 'feel' : 'see';
+    const { ux, uy } = state.u;
+    let skip_dfeature = (lookhere_flags & LOOKHERE_SKIP_DFEATURE) !== 0;
+    // A pile_limit of 0 means "never skip"; the default is 5.
+    const skip_objects = state.flags.pile_limit > 0
+        && obj_cnt >= state.flags.pile_limit;
+
+    if (!skip_objects) {
+        const reg = visible_region_at(ux, uy, state);
+        const trap = t_at(ux, uy, state);
+        if (reg || (trap && trap.tseen)) {
+            throw new UnsupportedFeatureDescriptionError(
+                reg ? 'a visible region description' : 'trapname()',
+            );
+        }
+    }
+
+    const otmp = state.level.objects[ux]?.[uy] ?? null;
+    let dfeature = dfeature_at(ux, uy, state);
+    if (dfeature === 'pool of water' && state.u.uinwater) dfeature = null;
+
     if (blind) {
+        // C's drift case belongs to the Air and Water levels, and its ice
+        // case to a square dfeature_at() already stops on.
+        if (Is_airlevel(state.u.uz) || Is_waterlevel(state.u.uz))
+            throw new UnsupportedFeatureDescriptionError('a drifting level');
+        const cant_reach = !can_reach_floor(true, state);
+        const surf = surface(ux, uy, state);
         await message(
-            `You try to feel what is lying here on the ${
-                surface(state.u.ux, state.u.uy, state)
+            `You try to feel what is ${
+                cant_reach ? 'lying beneath you' : `lying here on the ${surf}`
             }.`,
             state,
         );
+        if (dfeature === surf) skip_dfeature = true;
+        const trap = t_at(ux, uy, state);
+        if (!can_reach_floor(Boolean(trap && is_pit(trap.ttyp)), state)) {
+            await message("But you can't reach it!", state);
+            return false;
+        }
     }
+
+    let fbuf = '';
+    if (dfeature && !skip_dfeature) {
+        // "molten lava", "iron bars", and plain ice are special cases in an(),
+        // which C declines to rely on, so it drops the article itself.
+        const article = !(dfeature === 'molten lava'
+            || dfeature === 'iron bars'
+            || dfeature === 'ice'
+            || dfeature.startsWith('frozen ')
+            || / ice$/iu.test(dfeature));
+        const named = article ? an(dfeature) : dfeature;
+        fbuf = `There ${vtense(named, 'are')} ${named} here.`;
+    }
+
+    if (!otmp || is_lava(ux, uy, state)
+        || (is_pool(ux, uy, state) && !state.u.uinwater)) {
+        if (dfeature && !skip_dfeature) await message(fbuf, state);
+        await readEngraving(state);
+        if (!skip_objects && (blind || !dfeature))
+            await message(`You ${verb} no objects here.`, state);
+        return blind;
+    }
+    if (skip_objects || otmp.nexthere) {
+        throw new UnsupportedFeatureDescriptionError(
+            skip_objects ? 'the skipped-pile count' : 'the object-pile menu',
+        );
+    }
+    // Only one object. C ends this branch with feel_cockatrice(otmp, FALSE),
+    // which does nothing unless will_feel_cockatrice() holds; that case is
+    // unported, so it stops here, before any of the branch's output.
+    if (will_feel_cockatrice(otmp, false, state))
+        throw new UnsupportedFeatureDescriptionError('feel_cockatrice()');
+    if (dfeature && !skip_dfeature) await message(fbuf, state);
     await readEngraving(state);
-    await message(
-        `You ${blind ? 'feel' : 'see'} here ${donameFresh(obj, state)}.`,
-        state,
-    );
+    await message(`You ${verb} here ${donameFresh(otmp, state)}.`, state);
     state.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
+    return blind;
+}
+
+// C ref: invent.c dolook(). C hides the norep and noshow message types around
+// the call so a player's MSGTYPE configuration cannot suppress this feedback;
+// no message-type configuration is ported, so only look_here() remains.
+export async function dolook(state = game, hooks = {}) {
+    return look_here(0, LOOKHERE_NOFLAGS, state, hooks);
 }
 
 function inventoryEnv(env = {}) {
