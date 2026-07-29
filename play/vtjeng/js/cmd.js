@@ -9,6 +9,7 @@ import {
 } from './command_bindings.js';
 import {
     COLNO,
+    PICK_NONE,
     PICK_ONE,
     SICK,
     SLIMED,
@@ -18,21 +19,40 @@ import {
 import { UnsupportedArtifactDisplayError } from './artifacts.js';
 import { flush_screen } from './display.js';
 import { can_reach_floor, read_engr_at } from './engrave.js';
+import {
+    AUTOCOMPLETE,
+    CMD_M_PREFIX,
+    CMD_NOT_AVAILABLE,
+    ECM_EXACTMATCH,
+    ECM_IGNOREAC,
+    ECM_NO1CHARCMD,
+    IFBURIED,
+    INTERNALCMD,
+    WIZMODECMD,
+    extcmdlist,
+} from './extcmdlist_data.js';
+import {
+    UnsupportedGetlinBoundaryError,
+    tty_get_ext_cmd,
+} from './getline.js';
 import { game } from './gstate.js';
+import { lcase } from './hacklib.js';
 import {
     ddoinv,
     dolook,
     UnsupportedFeatureDescriptionError,
 } from './invent.js';
+import { doattributes, UnsupportedEnlightenmentError } from './insight.js';
 import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
 import { UnsupportedObjectNameError } from './objnam.js';
+import { UnsupportedShopError } from './shk.js';
 import { dovspell, UnsupportedSpellDisplayError } from './spell.js';
+import { UnsupportedWeaponSkillError } from './weapon.js';
 import {
     displayTtyTextWindow, menuTitleStyle, selectTtyMenu,
 } from './tty_menu.js';
 import {
     domove,
-    endRunning,
     monsterNearby,
     preflightDomoveDestination,
     UnsupportedHeroMoveBoundaryError,
@@ -50,6 +70,11 @@ const BACKSPACE = 0x08;
 const DELETE = 0x7F;
 const DOMOVE_WALK = 0x01;
 const DOMOVE_RUSH = 0x02;
+// C ref: hack.h ECMD_* -- the result every extended command handler returns.
+const ECMD_OK = 0x00;
+const ECMD_TIME = 0x01;
+const ECMD_CANCEL = 0x02;
+const ECMD_FAIL = 0x04;
 
 export class UnsupportedHeroCommandBoundaryError extends Error {
     constructor(reason, key) {
@@ -93,6 +118,47 @@ const MOVEMENT_INTENTS = Object.freeze({
 function commandBindings(state) {
     state.commandBindings ??= createCommandBindingModel(state);
     return state.commandBindings;
+}
+
+// C ref: cmd.c extcmd_initiator(). reset_commands() keeps gc.Cmd.extcmd_char
+// at cmd_from_func(doextcmd), the key currently bound to the '#' row, which
+// keyForCommand() ports.
+export function extcmd_initiator(state = game) {
+    return keyForCommand(commandBindings(state), '#');
+}
+
+// C ref: cmd.c extcmds_match(). Returns the matching extcmdlist[] indexes;
+// findstr === null asks for every currently available entry. strncmpi() and
+// strcmpi() fold case with lowc(), which lcase() ports.
+export function extcmds_match(findstr, ecmflags, state = game) {
+    const ignoreac = (ecmflags & ECM_IGNOREAC) !== 0;
+    const exactmatch = (ecmflags & ECM_EXACTMATCH) !== 0;
+    const no1charcmd = (ecmflags & ECM_NO1CHARCMD) !== 0;
+    const needle = findstr === null ? null : lcase(findstr);
+    const matchlist = [];
+    for (let i = 0; i < extcmdlist.length; ++i) {
+        const entry = extcmdlist[i];
+        if (entry.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) continue;
+        // Debug mode is what makes '#levelchange' and its siblings matchable,
+        // and what keeps 'l' ambiguous there while it expands to 'loot' in an
+        // ordinary game.
+        if (!state.wizard && (entry.flags & WIZMODECMD)) continue;
+        if (!ignoreac && !(entry.flags & AUTOCOMPLETE)) continue;
+        if (no1charcmd && entry.ef_txt.length === 1) continue;
+        if (needle === null) {
+            matchlist.push(i);
+        } else {
+            const name = lcase(entry.ef_txt);
+            if (exactmatch ? name === needle : name.startsWith(needle))
+                matchlist.push(i);
+        }
+    }
+    return matchlist;
+}
+
+// C ref: cmd.c accept_menu_prefix().
+function accept_menu_prefix(entry) {
+    return Boolean(entry && (entry.flags & CMD_M_PREFIX));
 }
 
 function propertyIntrinsic(state, property) {
@@ -311,13 +377,33 @@ export async function parseCommand(state = game) {
 
 // Every command this milestone dispatches, named once so the comment above
 // readSimpleCommand(), both boundary messages, and the admission test cannot
-// drift apart as more commands land.
+// drift apart as more commands land. '#' opens the extended-command prompt,
+// through which the other six are also reachable by name; every other extended
+// command stops inside doextcmd() instead, after the prompt has painted the
+// frames the reference program painted for the same keystrokes.
 const ADMITTED_COMMANDS = Object.freeze([
-    'wait', 'look', 'inventory', 'showspells', 'known',
+    'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
-    + `${ADMITTED_COMMANDS.join(', ')}, an uncounted one-square walk, or a `
+    + `${ADMITTED_COMMANDS.join(', ')}, an uncounted one-square walk, an `
+    + 'uncounted shift-direction run, an uncounted ctrl-direction rush, or a '
     + 'byte bound to no command';
+// context.run values this boundary dispatches. cmd.c set_move_cmd() takes the
+// value from the command the key is bound to: 0 for do_move_<dir>, 1 for
+// do_run_<dir>, which the shift-direction keys use, and 3 for do_rush_<dir>
+// at cmd.c:1461-1512, which the ctrl-direction keys use.
+//
+// Two values are refused here, by value: 2, which only do_rush() behind the `g`
+// prefix sets at cmd.c:1599, and 8, which dotravel_target() sets.
+//
+// The `g` and `G` prefixes are refused one level earlier instead, and this list
+// cannot refuse them. `js/command_bindings.js` binds them to the commands
+// `rush` and `run`, which no `MOVEMENT_INTENTS` entry covers, so the lookup
+// below throws before any run value exists. That matters for `G`: do_run() at
+// cmd.c:1606 sets 3, the same value do_rush_<dir> sets, so this list cannot
+// tell a `G` run from a ctrl-direction rush. Porting PREFIXCMD dispatch has to
+// bring its own seam for `G`, or it will admit prefixed runs by accident.
+const ADMITTED_RUN_MODES = Object.freeze([0, 1, 3]);
 
 // A byte that cmd.c cmdbind_get() finds no command for reaches rhack()'s
 // bad-command path, which this file owns. parse() returns such a byte
@@ -358,7 +444,7 @@ async function readSimpleCommand(state) {
     // returns without a message or a turn.
     const admitted = key === ESC
         || ADMITTED_COMMANDS.includes(command)
-        || (movement && movement[2] === 0)
+        || (movement && ADMITTED_RUN_MODES.includes(movement[2]))
         || unboundCommandKey(key, command, model);
     if (!admitted) {
         abortCommandParse(state);
@@ -398,7 +484,7 @@ async function executeMovement(command, firstTime, state) {
     const newx = state.u.ux + dx;
     const newy = state.u.uy + dy;
     try {
-        preflightDomoveDestination(newx, newy, state);
+        preflightDomoveDestination(newx, newy, state, run);
     } catch (error) {
         if (error instanceof UnsupportedHeroMoveBoundaryError)
             resetCommandVars(state);
@@ -472,6 +558,10 @@ async function failClosedCommand(key, state, run) {
             || error instanceof UnsupportedObjectNameError
             || error instanceof UnsupportedSpellDisplayError
             || error instanceof UnsupportedDiscoveryDisplayError
+            || error instanceof UnsupportedEnlightenmentError
+            || error instanceof UnsupportedShopError
+            || error instanceof UnsupportedWeaponSkillError
+            || error instanceof UnsupportedGetlinBoundaryError
             || error instanceof UnsupportedArtifactDisplayError) {
             resetCommandVars(state);
             throw new UnsupportedHeroCommandBoundaryError(
@@ -480,6 +570,188 @@ async function failClosedCommand(key, state, run) {
             );
         }
         throw error;
+    }
+}
+
+// Five of the six extcmdlist[] handlers this milestone owns follow, each
+// reachable both from the key bound to it and from the extended-command
+// prompt: ddoinv(), dovspell(), dodiscovered(), doattributes() and dolook().
+// The sixth is donull(), which doextcmd() and rhack() call directly because it
+// formats nothing that can fail closed. Every wrapper returns whether its
+// command took time, which its two callers turn into rhack()'s ECMD_TIME.
+//
+// Each wrapper routes its handler through failClosedCommand(), and what that
+// preserves differs by caller. Reached from the single key bound to the
+// command, nothing has painted and rhack() can replay that one byte. Reached
+// from the '#' prompt, hooked_tty_getlin() has already painted the prompt,
+// consumed every keystroke of the command name and cleared the top line, so
+// replaying '#' alone would not reproduce them; there the boundary preserves
+// the segment's matching prefix rather than the keystroke.
+
+// C ref: invent.c ddoinv(). Every entry is formatted before the menu draws
+// anything, so an unported object name or display branch stops before ddoinv()
+// itself writes to the screen.
+async function runInventoryCommand(key, state) {
+    return failClosedCommand(key, state, () => ddoinv(state, {
+        // invent.c display_pickinv() ends its menu with no prompt and asks
+        // select_menu() for PICK_ONE; Escape answers null.
+        menu: (items) => selectTtyMenu(state, {
+            // add_menu_heading() draws a class heading with
+            // iflags.menu_headings, which menuTitleStyle() reads.
+            items: items.map((item) => (item.heading
+                ? {
+                    ...item,
+                    attr: menuTitleStyle(state).titleAttr,
+                    color: menuTitleStyle(state).titleColor,
+                }
+                : item)),
+            how: PICK_ONE,
+            cancelValue: null,
+            overlay: state.iflags?.menu_overlay !== false,
+        }),
+    }));
+}
+
+// C ref: spell.c dovspell().
+async function runShowspellsCommand(key, state) {
+    return failClosedCommand(key, state, () => dovspell(state, {
+        message: ttyPline,
+        // spell.c dospellmenu() ends its menu with end_menu(prompt) and asks
+        // select_menu() for PICK_ONE, or PICK_NONE when only one spell is
+        // known; Escape answers null either way.
+        menu: (items, how, prompt) => selectTtyMenu(state, {
+            // add_menu_heading() draws the column heading with
+            // iflags.menu_headings, and allmain.c hands the same style to
+            // tty_end_menu()'s prompt line through adjust_menu_promptstyle().
+            items: items.map((item) => (item.heading
+                ? {
+                    ...item,
+                    attr: menuTitleStyle(state).titleAttr,
+                    color: menuTitleStyle(state).titleColor,
+                }
+                : item)),
+            how,
+            title: prompt,
+            ...menuTitleStyle(state),
+            cancelValue: null,
+            overlay: state.iflags?.menu_overlay !== false,
+        }),
+    }));
+}
+
+// C ref: o_init.c dodiscovered().
+async function runKnownCommand(key, state) {
+    return failClosedCommand(key, state, () => dodiscovered(state, {
+        message: ttyPline,
+        // o_init.c dodiscovered() writes its headings with
+        // iflags.menu_headings, the same style the inventory menu's class
+        // headings use.
+        textWindow: (lines) => displayTtyTextWindow(
+            state,
+            lines.map((line) => (line.heading
+                ? {
+                    ...line,
+                    attr: menuTitleStyle(state).titleAttr,
+                    color: menuTitleStyle(state).titleColor,
+                }
+                : line)),
+        ),
+    }));
+}
+
+// C ref: insight.c doattributes().
+async function runAttributesCommand(key, state) {
+    return failClosedCommand(key, state, () => doattributes(state, {
+        // insight.c enlightenment() ends its menu with end_menu(win, NULL), so
+        // the window carries no prompt line, and asks select_menu() for
+        // PICK_NONE; every line is an add_menu_str() entry with no selector or
+        // highlight. Escape answers null.
+        menu: (lines) => selectTtyMenu(state, {
+            lines,
+            how: PICK_NONE,
+            cancelValue: null,
+            overlay: state.iflags?.menu_overlay !== false,
+        }),
+    }));
+}
+
+// C ref: invent.c dolook().
+async function runLookCommand(key, state) {
+    return failClosedCommand(key, state, () => dolook(state, {
+        message: ttyPline,
+        readEngraving: () => read_engr_at(
+            state.u.ux,
+            state.u.uy,
+            state,
+            { pline: ttyPline, canReachFloor: can_reach_floor },
+        ),
+    }));
+}
+
+// C ref: cmd.c can_do_extcmd(). The Lua NHCB_CMD_BEFORE arm needs a callback
+// registered by a level script, which no recorded game installs, and
+// iflags.debug_fuzzer is never set. The extended-command prompt cannot reach
+// the WIZMODECMD arm either, because extcmds_match() has already dropped every
+// WIZMODECMD row for a hero who is not in debug mode; rhack()'s own
+// can_do_extcmd() call, which this port does not make yet, is what reaches it.
+async function can_do_extcmd(entry, state) {
+    if (!state.wizard && (entry.flags & WIZMODECMD)) {
+        await ttyPline(`Unavailable command '${entry.ef_txt}'.`, state);
+        return false;
+    }
+    if (state.u?.uburied && !(entry.flags & IFBURIED)) {
+        await ttyPline("You can't do that while you are buried!", state);
+        return false;
+    }
+    return true;
+}
+
+// C ref: cmd.c doextcmd(). The do/while loop repeats only while the command
+// reached is doextlist (#?), which stays unported, so one pass covers every
+// dispatch this milestone can make.
+async function doextcmd(key, state) {
+    const idx = await tty_get_ext_cmd(state);
+    if (idx < 0) return ECMD_OK; /* quit */
+
+    const entry = extcmdlist[idx];
+    if (!await can_do_extcmd(entry, state)) return ECMD_OK;
+    if (state.iflags.menu_requested && !accept_menu_prefix(entry)) {
+        const prefix = keyForCommand(commandBindings(state), 'reqmenu');
+        await ttyPline(
+            `'${visibleCommandKey(prefix)}' prefix has no effect for the `
+            + `${entry.ef_txt} command.`,
+            state,
+        );
+        state.iflags.menu_requested = false;
+    }
+    // ge.ext_tlist tells rhack() which row actually ran. It matters only for
+    // the repeat queue and for rhack()'s PREFIXCMD and MOVEMENTCMD tests, and
+    // no command below is either, so the substitution has nothing to change
+    // yet. Porting '#movewest' or another MOVEMENTCMD row has to add it.
+    switch (entry.ef_funct) {
+    case 'doextcmd':
+        // '#' names itself, so '##' opens a second prompt. C recurses through
+        // `retval = (*func)()`; the do/while around it repeats only for
+        // doextlist.
+        return doextcmd(key, state);
+    case 'donull':
+        return await donull(state) ? ECMD_TIME : ECMD_OK;
+    case 'dolook':
+        return await runLookCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'doattributes':
+        return await runAttributesCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'ddoinv':
+        return await runInventoryCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'dovspell':
+        return await runShowspellsCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'dodiscovered':
+        return await runKnownCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    default:
+        resetCommandVars(state);
+        throw new UnsupportedHeroCommandBoundaryError(
+            `the extended command '${entry.ef_txt}' is not ported`,
+            key,
+        );
     }
 }
 
@@ -567,76 +839,46 @@ export async function rhack(key, state = game) {
             if (!await donull(state)) resetCommandVars(state);
             return;
         }
+        if (command === '#') {
+            // C ref: rhack()'s result handling, applied to what doextcmd()
+            // returns from the command the player named. ECMD_TIME skips
+            // reset_cmd_vars() and puts context.move back to TRUE; ECMD_OK,
+            // ECMD_CANCEL and ECMD_FAIL all reset.
+            const res = await failClosedCommand(
+                key, state, () => doextcmd(key, state),
+            );
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state);
+            if (res & ECMD_TIME) state.context.move = 1;
+            return;
+        }
         if (command === 'inventory') {
-            // Every entry is formatted before the menu draws anything, so an
-            // unported object name or display branch stops here with the
-            // screen untouched and the keystroke still retryable.
-            const elapsed = await failClosedCommand(key, state, () => ddoinv(state, {
-                // invent.c display_pickinv() ends its menu with no prompt and
-                // asks select_menu() for PICK_ONE; Escape answers null.
-                menu: (items) => selectTtyMenu(state, {
-                    // add_menu_heading() draws a class heading with
-                    // iflags.menu_headings, which menuTitleStyle() reads.
-                    items: items.map((item) => (item.heading
-                        ? {
-                            ...item,
-                            attr: menuTitleStyle(state).titleAttr,
-                            color: menuTitleStyle(state).titleColor,
-                        }
-                        : item)),
-                    how: PICK_ONE,
-                    cancelValue: null,
-                    overlay: state.iflags?.menu_overlay !== false,
-                }),
-            }));
+            const elapsed = await runInventoryCommand(key, state);
             resetCommandVars(state);
             if (elapsed) state.context.move = 1;
             return;
         }
         if (command === 'showspells') {
-            const elapsed = await failClosedCommand(
-                key, state, () => dovspell(state, { message: ttyPline }),
-            );
+            const elapsed = await runShowspellsCommand(key, state);
             resetCommandVars(state);
             if (elapsed) state.context.move = 1;
             return;
         }
         if (command === 'known') {
-            const elapsed = await failClosedCommand(key, state, () => (
-                dodiscovered(state, {
-                    message: ttyPline,
-                    // o_init.c dodiscovered() writes its headings with
-                    // iflags.menu_headings, the same style the inventory
-                    // menu's class headings use.
-                    textWindow: (lines) => displayTtyTextWindow(
-                        state,
-                        lines.map((line) => (line.heading
-                            ? {
-                                ...line,
-                                attr: menuTitleStyle(state).titleAttr,
-                                color: menuTitleStyle(state).titleColor,
-                            }
-                            : line)),
-                    ),
-                })
-            ));
+            const elapsed = await runKnownCommand(key, state);
+            resetCommandVars(state);
+            if (elapsed) state.context.move = 1;
+            return;
+        }
+        if (command === 'attributes') {
+            const elapsed = await runAttributesCommand(key, state);
             resetCommandVars(state);
             if (elapsed) state.context.move = 1;
             return;
         }
         if (command === 'look') {
-            const elapsed = await failClosedCommand(key, state, () => dolook(
-                state,
-                {
-                    message: ttyPline,
-                    readEngraving: () => read_engr_at(
-                        state.u.ux,
-                        state.u.uy,
-                        state,
-                        { pline: ttyPline, canReachFloor: can_reach_floor },
-                    ),
-                },
-            ));
+            const elapsed = await runLookCommand(key, state);
             // C ref: rhack()'s result handling. dolook() returns ECMD_OK for
             // a sighted hero, which reaches reset_cmd_vars(); only ECMD_TIME
             // puts context.move back to TRUE.

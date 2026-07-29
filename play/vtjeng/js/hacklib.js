@@ -200,6 +200,22 @@ export function upwords(s) {
     return out;
 }
 
+// C ref: hacklib.c mungspaces().  Collapses each run of spaces or tabs to one
+// space, drops a leading and a trailing one, and truncates at the first
+// newline.  C edits its buffer in place; this returns the shortened string.
+export function mungspaces(bp) {
+    let out = '';
+    let was_space = true;
+    for (const raw of bp) {
+        if (raw === '\n') break; /* treat newline the same as end-of-string */
+        const c = raw === '\t' ? ' ' : raw;
+        if (c !== ' ' || !was_space) out += c;
+        was_space = (c === ' ');
+    }
+    if (was_space && out.length > 0) out = out.slice(0, -1);
+    return out;
+}
+
 // C ref: hacklib.c trimspaces().  Drops leading and trailing spaces and tabs.
 export function trimspaces(txt) {
     let start = 0;
@@ -417,6 +433,22 @@ export function distmin(x1, y1, x2, y2) {
 
 export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+}
+
+// C ref: hacklib.c isqrt().  Integer square root by repeated subtraction of
+// the odd numbers, which is exactly how C computes it; a floating-point
+// Math.sqrt() would round differently for a perfect square near the limit of
+// double precision.
+export function isqrt(val) {
+    let rt = 0;
+    let odd = 1;
+    let remaining = val;
+    while (remaining >= odd) {
+        remaining -= odd;
+        odd += 2;
+        rt += 1;
+    }
+    return rt;
 }
 
 // C ref: hacklib.c online2(). Orthogonal and 45-degree diagonal lines count.

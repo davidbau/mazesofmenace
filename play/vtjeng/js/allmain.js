@@ -5,6 +5,7 @@
 // Unsupported command and monster branches stop before live state changes;
 // UUID, notice, and glyph-map setup remain to be ported.
 
+import { getnow } from './calendar.js';
 import { game } from './gstate.js';
 import {
     A_DEX,
@@ -63,8 +64,11 @@ import { rhack } from './cmd.js';
 import {
     domove,
     endRunning,
+    lookaround,
     near_capacity,
+    nomul,
     projected_capacity,
+    runmode_delay_output,
 } from './hack.js';
 import { encumber_msg } from './pickup.js';
 import { docrt, cls, bot, flush_screen, newsym } from './display.js';
@@ -215,6 +219,11 @@ export async function newgame() {
 
     // C ref: allmain.c newgame() -> com_pager("legacy").
     await ttyLegacyIntroduction(g);
+
+    // C ref: allmain.c newgame(). The elapsed-time clock starts here, which
+    // insight.c fmt_elapsed_time() reads for the ^X window's closing line.
+    g.urealtime.realtime = 0;
+    g.urealtime.start_timing = getnow(g);
 
     // C ref: allmain.c welcome(TRUE) -> pline().
     await ttyPline(welcomeMessage(g), g);
@@ -391,6 +400,22 @@ function elapsedTurnBoundary(reason) {
     );
 }
 
+// C ref: allmain.c interrupt_multi(), which regen_hp() and regen_pw() reach
+// when the hero regains the last hit point or the last power point during a
+// multi-turn action. A run and a travel are deliberately exempt, and a run is
+// the only way this port reaches a positive multi, so this is a no-op today.
+// A counted repeat would print through Norep(); regen_hp() and regen_pw() are
+// synchronous, so that arm stops before nomul(0) changes anything.
+export function interrupt_multi(message, state) {
+    if (!((state.multi ?? 0) > 0)
+        || state.context.travel || state.context.run) {
+        return;
+    }
+    if (state.flags?.verbose && message)
+        elapsedTurnBoundary('a multi-turn interruption message');
+    nomul(0, state);
+}
+
 function regionEffectEnv(state, random) {
     return {
         state,
@@ -504,7 +529,7 @@ async function finishElapsedTurn(
     // instead of healing, and the two consumers below then read the
     // substituted value rather than the snapshot taken above.
     if (state.u.uinvulnerable) wtcap = UNENCUMBERED;
-    else regen_hp(wtcap, state, { random });
+    else regen_hp(wtcap, state, { random, interruptMulti: interrupt_multi });
     // C ref: allmain.c's "moving around while encumbered is hard work" block,
     // between regen_hp() and regen_pw(). overexert_hp() costs a hit point and
     // refreshes the status line, and at uhp <= 1 it also prints a message,
@@ -518,7 +543,7 @@ async function finishElapsedTurn(
             : state.moves % 10)) {
         elapsedTurnBoundary('overexertion hit point loss');
     }
-    regen_pw(wtcap, state, { random });
+    regen_pw(wtcap, state, { random, interruptMulti: interrupt_multi });
 
     if (propertyActive(state, SEARCHING)
         && !state.level.flags?.noautosearch
@@ -793,6 +818,13 @@ export async function moveloop_core() {
     g.context.move = 1;
     g.u.umoved = false;
     if ((g.multi ?? 0) > 0) {
+        await lookaround(g);
+        await runmode_delay_output(g);
+        // lookaround() may clear multi.
+        if (!g.multi) {
+            g.context.move = 0;
+            return;
+        }
         if (g.context.mv) {
             if (g.multi < COLNO && !--g.multi) endRunning(g);
             await domove(g);
@@ -824,4 +856,10 @@ export async function moveloop(resuming) {
         await moveloop_core();
         if (game.program_state?.gameover) break;
     }
+}
+
+// C ref: allmain.c timet_delta(). The number of seconds between two time_t
+// values, which C obtains from difftime().
+export function timet_delta(etim, stim) {
+    return etim - stim;
 }

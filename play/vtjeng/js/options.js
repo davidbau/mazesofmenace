@@ -8,6 +8,10 @@ import {
     GPCOORDS_MAP,
     GPCOORDS_NONE,
     GPCOORDS_SCREEN,
+    RUN_CRAWL,
+    RUN_LEAP,
+    RUN_STEP,
+    RUN_TPORT,
 } from './const.js';
 import {
     ROLE_ALIGNMASK,
@@ -311,6 +315,8 @@ function defaultResult() {
                 BALL_CLASS, CHAIN_CLASS,
             ],
             pushweapon: false,
+            // options.c initoptions_init() sets flags.runmode = RUN_LEAP.
+            runmode: RUN_LEAP,
             showexp: false,
             showvers: false,
             time: false,
@@ -329,6 +335,10 @@ function defaultResult() {
             wc_splash_screen: true,
             status_updates: true,
             wc_eight_bit_input: false,
+            // optlist.h:303 declares extmenu opt_in, defaulting Off, three
+            // lines below eight_bit_tty above.  C binds it to &iflags.extmenu,
+            // so its startup value is FALSE rather than absent.
+            extmenu: false,
             wc2_statuslines: 2,
             wc2_petattr: ATR_INVERSE,
             altmeta: false,
@@ -1679,6 +1689,30 @@ function setNumberPadOption(result, value, negated, lineNumber) {
     });
 }
 
+// C ref: options.c optfn_runmode(). Its four names are matched with
+// str_start_is(name, value, TRUE), so any nonempty prefix of a name selects
+// it and the first match in this order wins.
+const RUNMODE_NAMES = Object.freeze([
+    ['teleport', RUN_TPORT],
+    ['run', RUN_LEAP],
+    ['walk', RUN_STEP],
+    ['crawl', RUN_CRAWL],
+]);
+
+function setRunmode(result, value, negated, lineNumber) {
+    if (negated) {
+        result.flags.runmode = RUN_TPORT;
+        return;
+    }
+    if (value == null || value === '')
+        optionError(lineNumber, 'Value is mandatory for runmode');
+    const lowered = value.toLowerCase();
+    const match = RUNMODE_NAMES.find(([name]) => name.startsWith(lowered));
+    if (!match)
+        optionError(lineNumber, `Unknown runmode parameter '${value}'`);
+    result.flags.runmode = match[1];
+}
+
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
 // their suffix, so the rightmost alias is appended first and wins collisions.
 function applyMenuBindings(result, bindings, lineNumber) {
@@ -1741,6 +1775,11 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
         result.iflags.altmeta = enabled;
     } else if (name === 'cmdassist') {
         result.iflags.cmdassist = enabled;
+    } else if (name === 'extmenu') {
+        // C ref: options.c. tty_get_ext_cmd() reads this as its first test, so
+        // it has to reach iflags rather than being accepted and dropped;
+        // extcmd_via_menu() is unported and the guard there stops on it.
+        result.iflags.extmenu = enabled;
     } else if (name === 'customcolors' || name === 'customsymbols') {
         result.iflags[name] = enabled;
     } else if (name === 'safe_pet') result.flags.safe_dog = enabled;
@@ -1771,7 +1810,7 @@ const HANDLED_BOOLEAN_OPTIONS = new Set([
     'status_updates', 'accessiblemsg', 'mention_map', 'mon_movement',
     'spot_monsters',
     'menu_overlay', 'eight_bit_tty', 'customcolors', 'customsymbols',
-    'altmeta', 'cmdassist', 'safe_pet', 'safe_wait', 'pushweapon',
+    'altmeta', 'cmdassist', 'extmenu', 'safe_pet', 'safe_wait', 'pushweapon',
     'rest_on_space',
     'showexp', 'time', 'verbose',
 ]);
@@ -2036,6 +2075,8 @@ function applyOption(result, optionState, option, lineNumber) {
         setNumberPadOption(result, value, negated, lineNumber);
     } else if (name === 'whatis_coord') {
         setWhatisCoord(result, value, negated, lineNumber);
+    } else if (name === 'runmode') {
+        setRunmode(result, value, negated, lineNumber);
     } else if (HANDLED_BOOLEAN_OPTIONS.has(name)) {
         applyBooleanOption(result, name, value, negated, lineNumber);
     } else if (value != null) {

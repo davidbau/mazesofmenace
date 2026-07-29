@@ -27,6 +27,7 @@ import {
     OBJ_LUAFREE,
     OBJ_MINVENT,
     P_BOW,
+    P_CROSSBOW,
     P_NONE,
     P_SHURIKEN,
     RANDOM_TIN,
@@ -98,6 +99,7 @@ import {
     FIGURINE,
     FIRE_HORN,
     FOOD_CLASS,
+    FLINT,
     FROST_HORN,
     FUMBLE_BOOTS,
     GAUNTLETS_OF_FUMBLING,
@@ -125,6 +127,7 @@ import {
     MAGIC_LAMP,
     MAGIC_MARKER,
     MEAT_RING,
+    MITHRIL,
     OILSKIN_SACK,
     OIL_LAMP,
     NODIR,
@@ -155,6 +158,7 @@ import {
     TIN,
     TINNING_KIT,
     TOOL_CLASS,
+    TOUCHSTONE,
     VENOM_CLASS,
     WAN_FIRE,
     WAN_STASIS,
@@ -667,6 +671,20 @@ export function isWeptool(obj, state = game) {
     return obj.oclass === TOOL_CLASS && objectType(obj, state).oc_subtyp !== P_NONE;
 }
 
+// C ref: obj.h is_ammo().
+export function is_ammo(obj, state = game) {
+    const skill = objectType(obj, state).oc_subtyp;
+    return (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS)
+        && skill >= -P_CROSSBOW
+        && skill <= -P_BOW;
+}
+
+// C ref: obj.h is_graystone().
+export function is_graystone(obj) {
+    return obj.otyp === LUCKSTONE || obj.otyp === LOADSTONE
+        || obj.otyp === FLINT || obj.otyp === TOUCHSTONE;
+}
+
 export function isMultigen(obj, state = game) {
     const skill = objectType(obj, state).oc_subtyp;
     return obj.oclass === WEAPON_CLASS
@@ -694,6 +712,12 @@ export function isRottable(obj, state = game) {
     const material = objectType(obj, state).oc_material;
     return (material <= WOOD && material !== LIQUID)
         || material === DRAGON_HIDE;
+}
+
+// C ref: objclass.h is_metallic().
+export function isMetallic(obj, state = game) {
+    const material = objectType(obj, state).oc_material;
+    return material >= IRON && material <= MITHRIL;
 }
 
 export function isRustprone(obj, state = game) {
