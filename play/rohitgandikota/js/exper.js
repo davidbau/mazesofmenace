@@ -214,7 +214,7 @@ export async function pluslvl(incr) {
         /* src/exper.c:355 — adjabil() grants the new intrinsics, and it is
            ported in js/attrib.js; only the achievement, sound and livelog
            calls that follow it need subsystems this port lacks. */
-        adjabil(game.u.ulevel - 1, game.u.ulevel); /* give new intrinsics */
+        await adjabil(game.u.ulevel - 1, game.u.ulevel); /* give new intrinsics */
         note_unported_exper('pluslvl:achievements_livelog');
 
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))

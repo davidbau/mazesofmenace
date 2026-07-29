@@ -34,6 +34,21 @@ export const slithy       = (d) => (d.mflags1 & MFLAGS.M1_SLITHY) !== 0;
 export const needspick    = (d) => (d.mflags1 & MFLAGS.M1_NEEDPICK) !== 0;
 
 export const nohands    = (d) => (d.mflags1 & MFLAGS.M1_NOHANDS) !== 0;
+// include/mondata.h:53 nolimbs() — note == rather than != 0: NOLIMBS is
+// NOHANDS|NOFEET, and both bits must be set.
+export const nolimbs    = (d) => (d.mflags1 & MFLAGS.M1_NOLIMBS) === MFLAGS.M1_NOLIMBS;
+
+// src/mondata.c:61 noattacks() — no real attacks; AT_BOOM (gas spore's
+// death explosion) does not count as one.
+export function noattacks(ptr) {
+    for (let i = 0; i < 6; i++) {
+        if (ptr.mattk[i][0] === ATTKS.AT_BOOM)
+            continue;
+        if (ptr.mattk[i][0])
+            return false;
+    }
+    return true;
+}
 export const verysmall  = (d) => d.msize < MFLAGS.MZ_SMALL;
 export const is_giant   = (d) => (d.mflags2 & MFLAGS.M2_GIANT) !== 0;
 // include/mondata.h:114 is_neuter() — was defined in js/makemon.js, which is
@@ -501,3 +516,114 @@ export const vegetarian = (ptr) =>
     vegan(ptr)
     || (ptr.mlet === MONSYMS.S_PUDDING
         && ptr !== game.mons[PMNAMES.PM_BLACK_PUDDING]);
+
+// src/mondata.c:893 name_to_monplus() — match a monster name at the START of
+// a string, returning the monster index and (via rest_box) how much of the
+// input the name consumed. The wish parser leans on this to read
+// "gray dragon scale mail" as PM_GRAY_DRAGON + "scale mail" and
+// "yeti corpse" as PM_YETI + "corpse".
+//
+// The rank-title fallback (title_to_mon) is not ported; it is recorded when
+// nothing else matched so the gap stays visible.
+const NAME_TO_MON_ALTS = [
+    ['grey dragon', 'PM_GRAY_DRAGON'], ['baby grey dragon', 'PM_BABY_GRAY_DRAGON'],
+    ['grey unicorn', 'PM_GRAY_UNICORN'], ['grey ooze', 'PM_GRAY_OOZE'],
+    ['gray-elf', 'PM_GREY_ELF'], ['mindflayer', 'PM_MIND_FLAYER'],
+    ['master mindflayer', 'PM_MASTER_MIND_FLAYER'],
+    ['aligned priest', 'PM_ALIGNED_CLERIC'], ['aligned priestess', 'PM_ALIGNED_CLERIC'],
+    ['high priest', 'PM_HIGH_CLERIC'], ['high priestess', 'PM_HIGH_CLERIC'],
+    ['master of thief', 'PM_MASTER_OF_THIEVES'], ['master thief', 'PM_MASTER_OF_THIEVES'],
+    ['master of assassin', 'PM_MASTER_ASSASSIN'],
+    ['master-lich', 'PM_MASTER_LICH'], ['masterlich', 'PM_MASTER_LICH'],
+    ['invisible stalker', 'PM_STALKER'], ['high-elf', 'PM_ELVEN_MONARCH'],
+    ['wood-elf', 'PM_WOODLAND_ELF'], ['wood elf', 'PM_WOODLAND_ELF'],
+    ['woodland nymph', 'PM_WOOD_NYMPH'], ['halfling', 'PM_HOBBIT'],
+    ['genie', 'PM_DJINNI'],
+    ['human wererat', 'PM_HUMAN_WERERAT'], ['human werejackal', 'PM_HUMAN_WEREJACKAL'],
+    ['human werewolf', 'PM_HUMAN_WEREWOLF'],
+    ['rat wererat', 'PM_WERERAT'], ['jackal werejackal', 'PM_WEREJACKAL'],
+    ['wolf werewolf', 'PM_WEREWOLF'],
+    ['ki rin', 'PM_KI_RIN'], ['kirin', 'PM_KI_RIN'],
+    ['uruk hai', 'PM_URUK_HAI'], ['orc captain', 'PM_ORC_CAPTAIN'],
+    ['woodland elf', 'PM_WOODLAND_ELF'], ['green elf', 'PM_GREEN_ELF'],
+    ['grey elf', 'PM_GREY_ELF'], ['gray elf', 'PM_GREY_ELF'],
+    ['elf lady', 'PM_ELF_NOBLE'], ['elf lord', 'PM_ELF_NOBLE'],
+    ['elf noble', 'PM_ELF_NOBLE'], ['olog hai', 'PM_OLOG_HAI'],
+    ['arch lich', 'PM_ARCH_LICH'], ['archlich', 'PM_ARCH_LICH'],
+    ['incubi', 'PM_AMOROUS_DEMON'], ['succubi', 'PM_AMOROUS_DEMON'],
+    ['violet fungi', 'PM_VIOLET_FUNGUS'], ['homunculi', 'PM_HOMUNCULUS'],
+    ['baluchitheria', 'PM_BALUCHITHERIUM'], ['lurkers above', 'PM_LURKER_ABOVE'],
+    ['cavemen', 'PM_CAVE_DWELLER'], ['cavewomen', 'PM_CAVE_DWELLER'],
+    ['watchmen', 'PM_WATCHMAN'], ['djinn', 'PM_DJINNI'],
+    ['mumakil', 'PM_MUMAK'], ['erinyes', 'PM_ERINYS'],
+];
+
+export function name_to_monplus(in_str, rest_box) {
+    const NON_PM = -1, LOW_PM = 0;
+    let str = String(in_str);
+    let skipped = 0;
+
+    const eat = (pfx) => {
+        if (str.toLowerCase().startsWith(pfx)) {
+            str = str.slice(pfx.length);
+            skipped += pfx.length;
+            return true;
+        }
+        return false;
+    };
+    if (!eat('a ')) { if (!eat('an ')) eat('the '); }
+
+    /* plural singularization the C does up front */
+    const vort = str.toLowerCase().indexOf('vortices');
+    if (vort >= 0)
+        str = str.slice(0, vort + 4) + 'ex';
+    else if (str.length > 3 && /ies$/i.test(str)
+             && !(str.length >= 7 && /zombies$/i.test(str)))
+        str = str.slice(0, -3) + 'y';
+    else if (str.length > 3 && /ves$/i.test(str))
+        str = str.slice(0, -3) + 'f';
+
+    const low = str.toLowerCase();
+    const slen = str.length;
+
+    for (const [nm, pm] of NAME_TO_MON_ALTS) {
+        if (low.startsWith(nm)
+            && (!str[nm.length] || str[nm.length] === ' '
+                || str[nm.length] === "'")) {
+            if (rest_box) rest_box.at = skipped + nm.length;
+            const v = PMNAMES[pm];
+            if (v !== undefined) return v;
+        }
+    }
+
+    let mntmp = NON_PM, len = 0, exact_match = false;
+    for (let i = LOW_PM; i < (game.mons?.length || 0); i++) {
+        for (let mgend = 0; mgend < 3; mgend++) {
+            const nm = game.mons[i]?.pmnames?.[mgend];
+            if (!nm) continue;
+            const m_i_len = nm.length;
+            if (m_i_len > len && low.startsWith(nm.toLowerCase())) {
+                if (m_i_len === slen) {
+                    mntmp = i; len = m_i_len; exact_match = true;
+                    break;
+                } else if (slen > m_i_len) {
+                    const rest = str.slice(m_i_len);
+                    if (rest[0] === ' '
+                        || /^s($| )/i.test(rest) || /^es($| )/i.test(rest)
+                        || /^'($| )/.test(rest) || /^'s($| )/i.test(rest)) {
+                        mntmp = i; len = m_i_len;
+                    }
+                }
+            }
+        }
+        if (exact_match) break;
+    }
+
+    if (mntmp === NON_PM) {
+        /* the title_to_mon() rank-title fallback ("captain", "ninja") is
+           not ported; ordinary non-monster strings correctly land here */
+        return NON_PM;
+    }
+    if (rest_box) rest_box.at = skipped + len;
+    return mntmp;
+}

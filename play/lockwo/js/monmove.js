@@ -19,25 +19,27 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
-    W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M,
+    W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M, ALLOW_U, ALLOW_SANCT,
+    ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
+    NOGARLIC, IS_ALTAR, In_endgame, GEHENNOM, HEADSTONE, u_at,
 } from './const.js';
 import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
-import { t_at, t_missile } from './trap.js';
+import { t_at, t_missile, Can_fall_thru } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
-import { mon_msize, monster_by_pmidx } from './makemon.js';
+import { mon_msize, monster_by_pmidx, M2_HUMAN_NAMES, M2_MINION_NAMES } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
     weight, base_oc_weight } from './mkobj.js';
-import { obj_resists } from './zap.js';
+import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
 import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
-import { wipe_engr_at } from './engrave.js';
+import { wipe_engr_at, engr_at } from './engrave.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
 // The only NODIAG monster the contest sessions place on dlvl 1.
@@ -496,8 +498,6 @@ export function mfndpos(mon, flag) {
     // cnt 4 (not 8), which feeds the m_move/dog_move rn2(4*(cnt-j)) tie-breaks.
     // The grid bug carries makemon's pmidx 116 (matching base_mmove's table).
     const nodiag = (mon.data?.pmidx === PM_GRID_BUG);
-    const ALLOW_U = 0x100000; // sentinel; callers below pass it in `flag`.
-    const ALLOW_M = 0x00080000; // include monster-occupied squares (const.js).
 
     // C ref: mon.c:2176-2195 — ALLOW_DIG setup.  A digger that needs no pick
     // can dig any rock/tree; a pick-needer can dig rock only if it carries a
@@ -696,7 +696,110 @@ function mon_allows_rock(mon) {
     return false;
 }
 
-const ALLOW_U = 0x100000;
+// C ref: mondata.h is_giant/is_rider/is_unicorn/is_undead/is_human — makemon.js
+// carries no raw mflags2 bitfield, so these are keyed by monster NAME (the
+// established convention in this file: see makemon.js's M2_HOSTILE_NAMES /
+// M2_HUMAN_NAMES / M2_MINION_NAMES), scanned straight out of
+// include/monsters.h's M2_GIANT / is_rider() / M2_JEWELS(+S_UNICORN) /
+// M2_UNDEAD entries.
+const S_HUMAN_MCLS = 53, S_VAMPIRE_MCLS = 48, S_GHOST_MCLS = 54;
+const GIANT_NAMES = new Set(["giant", "stone giant", "hill giant", "fire giant",
+    "frost giant", "storm giant", "Cyclops", "Lord Surtur"]);
+const RIDER_NAMES = new Set(["Death", "Famine", "Pestilence"]);
+const UNICORN_NAMES = new Set(["white unicorn", "gray unicorn", "black unicorn"]);
+const UNDEAD_NAMES = new Set(["lich", "demilich", "master lich", "arch-lich",
+    "kobold mummy", "gnome mummy", "orc mummy", "dwarf mummy", "elf mummy",
+    "human mummy", "ettin mummy", "giant mummy", "vampire", "vampire lord",
+    "vampire lady", "vampire leader", "vampire mage", "Vlad the Impaler",
+    "barrow wight", "wraith", "Nazgul", "kobold zombie", "gnome zombie",
+    "orc zombie", "dwarf zombie", "elf zombie", "human zombie", "ettin zombie",
+    "ghoul", "giant zombie", "skeleton", "ghost", "shade"]);
+function is_giant(ptr) { return !!ptr && GIANT_NAMES.has(ptr.name); }
+function is_rider(ptr) { return !!ptr && RIDER_NAMES.has(ptr.name); }
+function is_unicorn(ptr) { return !!ptr && UNICORN_NAMES.has(ptr.name); }
+function is_undead(ptr) { return !!ptr && UNDEAD_NAMES.has(ptr.name); }
+function is_human(ptr) { return !!ptr && M2_HUMAN_NAMES.has(ptr.name); }
+// C ref: mondata.h is_minion(ptr) = mflags2&M2_MINION.  makemon.js's
+// M2_MINION_NAMES set (couatl/Aleax/Angel/ki-rin/Archon/high priest(ess)/high
+// cleric) is reused here.
+function is_minion(ptr) { return !!ptr && M2_MINION_NAMES.has(ptr.name); }
+// C ref: monst.h is_lminion(mon) = is_minion(mon->data) && lawful-aligned.
+// Minion alignment isn't tracked on our monster record, so this drops the
+// "&& lawful" restriction — the only effect is exempting a (very rare,
+// never-recorded) non-lawful minion from scaring too, which is conservative
+// (never wrongly excludes a candidate square C would have kept).
+function is_lminion(mon) { return is_minion(mon.data); }
+// C ref: monst.h is_vampshifter(mon) = mon->cham in {vampire, vampire
+// leader, Vlad}.  mon.cham is populated by makemon.js's vampire-shift code.
+const PM_VAMPIRE = 226, PM_VAMPIRE_LEADER = 227, PM_VLAD_THE_IMPALER = 228;
+function is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LEADER
+        || mon.cham === PM_VLAD_THE_IMPALER;
+}
+// C ref: mondata.h unique_corpstat(ptr) = ptr->geno & G_UNIQ.
+const G_UNIQ = 0x1000;
+function unique_corpstat(ptr) { return !!ptr && ((ptr.geno ?? 0) & G_UNIQ) !== 0; }
+// C ref: shk.c/priest.c — no in-temple detection is wired (mirrors the
+// existing mon_in_shop() stub below); a hostile priest standing in its own
+// (unconverted) temple is the only case this affects, and it is not reachable
+// in the recorded sessions.
+function inhistemple(_mon) { return false; }
+// C ref: mondata.h passes_bars(ptr) = passes_walls||amorphous||unsolid||
+// is_whirly||verysmall||dmgtype(AD_RUST/AD_CORR)||metallivorous||
+// (slithy&&!bigmonst).  Only the two cheapest/most common disjuncts are
+// modeled (wall-passers, tiny creatures); IRONBARS terrain (Vlad's Tower)
+// never appears in the recorded sessions, so this is untestable in practice.
+function passes_bars(ptr) { return passes_walls(ptr) || !!ptr?.verysmall; }
+// C ref: mon.c monhaskey(mon, quietly) — does mon carry an unlocking tool?
+const SKELETON_KEY_OTYP = 221, LOCK_PICK_OTYP = 222, CREDIT_CARD_OTYP = 223;
+function monhaskey(mon) {
+    return !!(m_carrying(mon, SKELETON_KEY_OTYP) || m_carrying(mon, LOCK_PICK_OTYP)
+        || m_carrying(mon, CREDIT_CARD_OTYP));
+}
+function Inhell() {
+    return (game.u?.uz?.dnum ?? 0) === (game.gehennom_dnum ?? GEHENNOM);
+}
+// C ref: mkobj.c sobj_at(otyp, x, y) — generic floor-object-type lookup (the
+// same pattern as sobj_at_boulder above, parameterized on otyp).
+function sobj_at_otyp(x, y, otyp) {
+    const objs = game.level?.objects;
+    if (!objs) return false;
+    for (const o of objs)
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === otyp)
+            return true;
+    return false;
+}
+// C ref: monmove.c:241 onscary(x, y, mtmp) — is (x,y) a scare-monster source
+// (Elbereth engraving / scroll of scare monster / vampire-on-altar) for
+// mtmp?  Feeds mfndpos's ALLOW_SSM candidate gate.  Two cases are never
+// reachable and thus not modeled: `Displaced` (no displacement item is
+// tracked) and `ep->guardobjects` (Vlad's Tower guard exemption); the
+// Elbereth match also doesn't model gradual engraving decay (any surviving
+// "Elbereth" substring counts, matching the common case).
+function onscary(x, y, mtmp) {
+    const auditory_scare = (x === 0 && y === 0);
+    const magical_scare = !auditory_scare;
+    if (mtmp.iswiz || is_lminion(mtmp) || mtmp.data?.name === 'Angel'
+        || is_rider(mtmp.data))
+        return false;
+    if (magical_scare
+        && (mtmp.data?.mcls === S_HUMAN_MCLS || unique_corpstat(mtmp.data)))
+        return false;
+    if ((mtmp.isshk && inhishop(mtmp)) || (mtmp.ispriest && inhistemple(mtmp)))
+        return false;
+    if (auditory_scare) return true;
+    if (IS_ALTAR(terrainTyp(x, y))
+        && (mtmp.data?.mcls === S_VAMPIRE_MCLS || is_vampshifter(mtmp)))
+        return true;
+    if (sobj_at_otyp(x, y, SCR_SCARE_MONSTER)) return true;
+    const ep = engr_at(x, y);
+    const hasElbereth = !!ep && ep.engr_type !== HEADSTONE
+        && (ep.actualText || '').includes('Elbereth');
+    return hasElbereth
+        && u_at(x, y) /* Displaced not modeled */
+        && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee || mtmp.mpeaceful
+             || mtmp.data?.name === 'minotaur' || Inhell() || In_endgame());
+}
 
 // C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  The monster
 // data here carries no mflags1, so identify the concealing species by pmidx
@@ -712,6 +815,12 @@ const S_EEL_MCLS = 57;
 function mon_helpless(mtmp) {
     return !!mtmp.msleeping || !mtmp.mcanmove;
 }
+
+// C ref: mondata.h breathless(ptr) = (mflags1 & M1_BREATHLESS) — golems,
+// elementals, vortices, gas spores, etc.  makemon carries no mflags1 and none
+// of the shallow-depth species reachable by the modeled sessions (pets,
+// dungeon vermin/humanoids) are breathless, so this is always false here.
+function breathless(_ptr) { return false; }
 
 // C ref: monmove.c:2121 can_hide_under_obj(obj) — a monster can hide under a
 // floor object unless: there's no object, it sits on a non-pit trap, or the
@@ -843,7 +952,16 @@ const FLOOR_TRIGGER = new Set([
 // winged species and the assorted demons/dragons aren't placed this shallow).
 const M1_FLY_PMIDX = new Set([49, 50, 98, 220]);
 function is_flyer(ptr) { return ptr != null && M1_FLY_PMIDX.has(ptr.pmidx); }
-function is_floater(ptr) { return ptr != null && ptr.mcls === 18 /* S_EYE */; }
+// C ref: mondata.h `#define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet
+// == S_LIGHT)`.  defsym.h MONSYM indices: S_EYE is 5 and S_LIGHT is 25 — this
+// used to test `mcls === 18` with a comment claiming 18 was S_EYE.  18 is
+// S_RODENT, so EVERY rodent (rat/rock mole/woodchuck) counted as airborne and
+// therefore skipped EVERY floor trap via check_in_air(), while real floating
+// eyes were never treated as floaters at all.  seed0030 seg6: a giant rat walked
+// onto a trapdoor at (45,12) and, instead of falling through to Dlvl 4 and
+// leaving the level as C's does, it shrugged the trap off and kept moving for
+// the rest of the episode.
+function is_floater(ptr) { return ptr != null && (ptr.mcls === 5 /* S_EYE */ || ptr.mcls === 25 /* S_LIGHT */); }
 
 // C ref: trap.c check_in_air(mtmp, trflags) — is the monster airborne?  No
 // HURTLING / TOOKPLUNGE / VIASITTING flags reach a monster that simply walked
@@ -875,7 +993,8 @@ function mon_learns_traps(mtmp, ttyp) {
 // dispatched per type, each consuming exactly the RNG the C effect consumes.
 // Returns: 0 = Trap_Effect_Finished, 1 = Trap_Caught_Mon, 2 = Trap_Killed_Mon,
 // 3 = Trap_Moved_Mon (we never produce the latter two for the modeled types).
-export const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2;
+export const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2,
+             Trap_Moved_Mon = 3;
 export async function mon_mintrap(mtmp) {
     const trap = t_at(mtmp.mx, mtmp.my);
     if (!trap) { mtmp.mtrapped = 0; return Trap_Effect_Finished; }
@@ -1250,6 +1369,62 @@ async function mon_trapeffect(mtmp, trap) {
         return trapkilled ? Trap_Killed_Mon
             : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
     }
+    case HOLE:
+    case TRAPDOOR: {
+        // C ref: trap.c trapeffect_hole() monster branch (trap.c:2012-2064) ->
+        // trapeffect_level_telep() -> teleport.c mlevel_tele_trap().  A grounded
+        // monster that steps on a trapdoor/hole LEAVES THE LEVEL: mlevel_tele_trap
+        // takes trap->dst (set by hole_destination() when the trap was made) and
+        // migrate_to_level()s the monster away, returning Trap_Moved_Mon.
+        //
+        // This consumes NO RNG for a hostile: teleport_pet() returns TRUE
+        // immediately for a non-tame monster (it only prompts about pets), and
+        // clamp_hole_destination() is arithmetic.  What matters for parity is that
+        // the monster STOPS BEING PROCESSED — it drops out of fmon, so every later
+        // movemon pass makes one fewer mcalcmove/distfleeck draw.  Leaving it on
+        // the level (the old `default:` fall-through) silently kept an extra
+        // monster alive for the rest of the episode.
+        if (!Can_fall_thru(game.u?.uz))
+            return Trap_Effect_Finished;
+        // C: `if (!grounded(mptr) || (wormno && count_wsegs > 5) || msize >= MZ_HUGE)`
+        // -> without FORCETRAP/Sokoban the monster simply doesn't fall.  grounded()
+        // is !is_flyer && !is_floater && !is_clinger; no clinger (piercer) reaches
+        // a floor trigger, so the flyer/floater tests carry it.
+        const MZ_HUGE = 4; // monflag.h MZ_HUGE (7 is MZ_GIGANTIC)
+        const hptr = mtmp.data;
+        const msz = (hptr?.msize != null) ? hptr.msize : (mon_msize(hptr?.pmidx) ?? 2);
+        if (is_flyer(hptr) || is_floater(hptr) || msz >= MZ_HUGE)
+            return Trap_Effect_Finished;
+        // migrate_to_level(): detach from this level's monster chain.  Our port
+        // does not simulate other levels' monsters, so dropping it here IS the
+        // faithful observable outcome.
+        const list = game.level?.monsters;
+        if (list) {
+            const ix = list.indexOf(mtmp);
+            if (ix >= 0) list.splice(ix, 1);
+        }
+        newsym(mtmp.mx, mtmp.my);
+        return Trap_Moved_Mon;
+    }
+    case SLP_GAS_TRAP: {
+        // C ref: trapeffect_slp_gas_trap() monster branch (trap.c:1579-1589).
+        // Guarded by resists_sleep/breathless/helpless (no RNG); on a pass,
+        // sleep_monst(mtmp, rnd(25), -1) rolls the nap duration — the ONE RNG
+        // draw this path consumes — and, if it actually put the monster to
+        // sleep (resists_sleep/AD_SLEE-defended targets already got filtered
+        // above, so sleep_monst's own checks always pass here) and the hero
+        // can see it, announces "<Mon> suddenly falls asleep!" + seetrap.
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        if (!resists_sleep(mtmp) && !breathless(mtmp.data) && !mon_helpless(mtmp)) {
+            const amt = rnd(25);                                // trap.c:1584
+            if (await sleep_monst(mtmp, amt, -1) && in_sight) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} suddenly falls asleep!`);
+                const { seetrap } = await import('./trap.js');
+                seetrap(trap);
+            }
+        }
+        return Trap_Effect_Finished;
+    }
     default:
         // Trap type not yet modeled for monsters.  Consume no RNG and let the
         // monster pass; add the faithful effect here when a session needs it.
@@ -1326,6 +1501,46 @@ async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
             else if (!Deaf) await emitU('You hear a door crash open.');
         }
     }
+}
+
+// C ref: mon.c:2064 mon_allowflags(mtmp) — the base candidate-list flag
+// bitmask for a monster's OWN generic move (m_move's non-dog/non-shk/
+// non-priest path; dog_move/shk_move/pri_move compute their own flags
+// directly, matching C).  can_tunnel is recomputed HERE independently of
+// m_move's own local can_tunnel (mon.c duplicates the "don't tunnel if
+// hostile and adjacent" suppression rather than sharing monmove.c's copy —
+// see mon.c:2071-2078 vs monmove.c:1911).
+function mon_allowflags(mtmp) {
+    let allowflags = 0;
+    const ptr = mtmp.data;
+    const can_open = mon_can_open_door(mtmp);
+    const can_unlock = (can_open && monhaskey(mtmp)) || !!mtmp.iswiz || is_rider(ptr);
+    const doorbuster = is_giant(ptr);
+    let can_tunnel = tunnels(ptr) && !Is_rogue_level();
+    const Conflict = false; // not modeled
+    if (can_tunnel && needspick(ptr)
+        && ((!mtmp.mpeaceful || Conflict)
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))
+        can_tunnel = false;
+
+    if (mtmp.mtame) allowflags |= ALLOW_M | ALLOW_TRAPS | ALLOW_SANCT | ALLOW_SSM;
+    else if (mtmp.mpeaceful) allowflags |= ALLOW_SANCT | ALLOW_SSM;
+    else allowflags |= ALLOW_U; // (Conflict-driven ALLOW_U for a hostile-to-all mon: not modeled)
+    if (mtmp.isshk) allowflags |= ALLOW_SSM;
+    if (mtmp.ispriest) allowflags |= ALLOW_SSM | ALLOW_SANCT;
+    if (passes_walls(ptr)) allowflags |= ALLOW_WALL;
+    if (mon_allows_rock(mtmp)) allowflags |= ALLOW_ROCK;
+    if (can_tunnel) allowflags |= ALLOW_DIG;
+    if (doorbuster) allowflags |= BUSTDOOR;
+    if (can_open) allowflags |= OPENDOOR;
+    if (can_unlock) allowflags |= UNLOCKDOOR;
+    if (passes_bars(ptr)) allowflags |= ALLOW_BARS;
+    if (is_minion(ptr) || is_rider(ptr)) allowflags |= ALLOW_SANCT;
+    if (is_unicorn(ptr) && !noteleport_level()) allowflags |= NOTONL;
+    if (is_human(ptr) || ptr?.name === 'minotaur') allowflags |= ALLOW_SSM;
+    if ((is_undead(ptr) && ptr?.mcls !== S_GHOST_MCLS) || is_vampshifter(mtmp))
+        allowflags |= NOGARLIC;
+    return allowflags;
 }
 
 // C ref: monmove.c m_move(mtmp, after).  Returns one of the MMOVE_* codes;
@@ -1554,11 +1769,14 @@ async function m_move(mtmp) {
             && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))
         can_tunnel = false;
 
-    // C ref: monmove.c:1918 flag = mon_allowflags(mtmp) — a can_tunnel monster
-    // gets ALLOW_DIG, which lets mfndpos include adjacent diggable rock/tree
-    // cells in the candidate list.
-    const digFlag = can_tunnel ? ALLOW_DIG : 0;
-    const poss = mfndpos(mtmp, (mtmp.mpeaceful ? 0 : ALLOW_U) | digFlag);
+    // C ref: monmove.c:1918 flag = mon_allowflags(mtmp) — the FULL flag set
+    // (ALLOW_U/SANCT/SSM by peaceful-vs-hostile, ALLOW_ROCK/WALL for
+    // wall-passers, OPENDOOR/UNLOCKDOOR/BUSTDOOR, ALLOW_DIG (mon_allowflags
+    // recomputes can_tunnel itself — a real duplicate calc in C too, see
+    // mon.c:2071-2078, mirrored above at monmove.c:1911), ALLOW_BARS, NOTONL
+    // for a noteleport-bound unicorn, NOGARLIC for undead/vampshifters).
+    const flag = mon_allowflags(mtmp);
+    const poss = mfndpos(mtmp, flag);
     const cnt = poss.length;
     if (cnt === 0) return MMOVE_NOMOVES;
 
@@ -1624,7 +1842,16 @@ async function m_move(mtmp) {
         // position is finalized for display so the trap's RNG lands in the
         // right place in the stream.
         const trapret = await mon_mintrap(mtmp);
-        if (trapret === Trap_Killed_Mon) { newsym(nix, niy); return MMOVE_DIED; }
+        // C ref: monmove.c:1510 — `if (trapret == Trap_Killed_Mon || trapret ==
+        // Trap_Moved_Mon) { ...; return MMOVE_DIED; }`.  BOTH outcomes end the
+        // monster's postmov: a monster that fell through a trapdoor is no longer
+        // on this level, so the door-opening / digging / meatmetal / re-hide
+        // (rn2(5)) tail must NOT run for it.  Only checking Trap_Killed_Mon left
+        // a migrated monster drawing one extra hideunder rn2(5) per departure.
+        if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
+            newsym(nix, niy);
+            return MMOVE_DIED;
+        }
         // C ref: monmove.c postmov() — "open a door, or crash through it, if
         // 'mtmp' can".  The monster has already been stepped onto (nix,niy);
         // if that square is a door it can open/unlock/smash, do so now and
@@ -1811,7 +2038,7 @@ export async function dochug(mtmp) {
     // OR.  The rn2() terms must only roll when control actually reaches them,
     // so they are evaluated lazily here (mirroring C's || left-to-right order).
     let status = MMOVE_NOTHING;
-    const S_LEPRECHAUN = 27;
+    const S_LEPRECHAUN = 12; // defsym.h MONSYM index (27 is S_ANGEL)
     const may_move =
            !nearby
         || mtmp.mflee
@@ -2530,7 +2757,7 @@ function curr_mon_load(mtmp) {
 // branches stay conservative; a giant (msize>=MZ_HUGE) would read as strong.
 function max_mon_load(mtmp) {
     const d = mtmp.data || {};
-    const MAX_CARR_CAP = 1000, WT_HUMAN = 1500, MZ_HUMAN = 2, MZ_HUGE = 7;
+    const MAX_CARR_CAP = 1000, WT_HUMAN = 1500, MZ_HUMAN = 2, MZ_HUGE = 4; // monflag.h (7 is MZ_GIGANTIC)
     const strong = (d.msize | 0) >= MZ_HUGE; // M2_STRONG proxy (none of the looters qualify)
     let maxload;
     if (!d.cwt)
@@ -2732,7 +2959,7 @@ const AD_DRST = 7, AD_BLND = 11, AD_WRAP = 28;
 // (uhitm.js keeps a parallel table for the hero-attack XP path; this one is
 // for the monster-attacks-hero direction, where the dice must be rolled.)
 function MA(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
-const AD_STCK = 12; // monattk.h AD_STCK (sticky/holding) — large mimic claw
+const AD_STCK = 19; // monattk.h AD_STCK (sticky/holding) — large mimic claw; was 12
 const MON_HITU_ATTACKS = {
     // grid bug — single AT_BITE / AD_ELEC, 1d1 (include/monsters.h grid bug).
     'grid bug': [MA(AT_BITE, AD_ELEC, 1, 1)],
@@ -2910,7 +3137,7 @@ async function mattacku(mtmp, mdat) {
 
     const atks = mon_attacks(mdat);
     let skipnonmagc = false;
-    const AT_MAGC = 8;
+    const AT_MAGC = 255; // monattk.h AT_MAGC (was 8; cf. AT_WEAP 254 above)
     for (let i = 0; i < atks.length; i++) {
         const mattk = atks[i];
         // C ref mhitu.c:786 — after a wildmiss, skip later non-spell attacks.

@@ -12,6 +12,7 @@
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
+import { mnexto } from './mon.js';
 import { m_avoid_kicked_loc, m_avoid_soko_push_loc, monnear, onscary } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
@@ -1267,8 +1268,13 @@ export async function dog_move(mtmp, after) {
        Without this the pet stands still for the whole game and its search box
        drifts further from C's with every turn. */
     if (nix !== omx || niy !== omy) {
+        /* src/dogmove.c:1280 — a pet whose chosen square is the hero's
+           attacks instead of moving (conflict, confusion). */
         if (chi >= 0 && (mfp.info[chi] & ALLOW_U)) {
-            note_unported('mattacku');
+            if (mtmp.mleashed)
+                note_unported('newdogpos:m_unleash');
+            const { mattacku } = await import('./mhitu.js');
+            await mattacku(mtmp);
             return MMOVE_DONE;
         }
         /* src/monmove.c mtrack — remember where we came from, newest first */
@@ -1519,4 +1525,94 @@ function helpless(mtmp) {
 function distu(x, y) {
     const dx = x - game.u.ux, dy = y - game.u.uy;
     return dx * dx + dy * dy;
+}
+
+// src/dog.c:789 keepdogs() — move adjacent followers off the map and onto
+// the mydogs list before the hero leaves the level. The steed, meating/
+// trapped feedback, amulet-holder and keep_mon_accessible arms need absent
+// state and are recorded when reached.
+export function keepdogs(pets_only) {
+    const chain = [...(game.level?.monsters || [])];
+    for (const mtmp of chain) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (pets_only && !mtmp.mtame)
+            continue;
+        if (((mdistu_dog(mtmp) <= 2 && levl_follower(mtmp)))
+            && (!helpless(mtmp))
+            && !(mtmp.mstrategy & 0x20000000 /* STRAT_WAITFORU */)) {
+            if (mtmp.mtrapped)
+                note_unported('keepdogs:mintrap');
+            if (mtmp.meating || mtmp.mtrapped) {
+                note_unported('keepdogs:stay_behind');
+                continue;
+            }
+            /* mon_leave/relmon: off the map, onto mydogs */
+            remove_monster(mtmp.mx, mtmp.my);
+            const idx = game.level.monsters.indexOf(mtmp);
+            if (idx >= 0)
+                game.level.monsters.splice(idx, 1);
+            (game.mydogs ||= []).push(mtmp);
+            mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
+            mtmp.mlstmv = game.moves;
+        } else if (mtmp.iswiz || mtmp.isshk || mtmp.ispriest || mtmp.isgd) {
+            note_unported('keepdogs:keep_mon_accessible');
+        }
+    }
+}
+
+// src/dogmove.c / include mdistu — hero distance for the follower test.
+function mdistu_dog(mtmp) {
+    const dx = mtmp.mx - game.u.ux, dy = mtmp.my - game.u.uy;
+    return dx * dx + dy * dy;
+}
+
+// src/mondata.c:1211 levl_follower()
+function levl_follower(mtmp) {
+    if (mtmp === game.u.usteed)
+        return true;
+    if (mtmp.iswiz)
+        return true; /* (amulet check is inside the wiz arm in C) */
+    if (mtmp.mtame || mtmp.isshk)
+        return true;
+    return (game.mons[mtmp.mnum].mflags2 & MFLAGS.M2_STALK) !== 0
+        && (!mtmp.mflee || game.u.uhave?.amulet);
+}
+
+// src/dog.c:304 losedogs() — place the monsters accompanying the hero on
+// the new level. The shopkeeper/Kops bookkeeping and the general
+// migrating_mons list need absent subsystems; only mydogs is live.
+export function losedogs() {
+    while ((game.mydogs || []).length) {
+        const mtmp = game.mydogs.shift();
+        mon_arrive(mtmp, true /* With_you */);
+    }
+}
+
+// src/dog.c:420 mon_arrive() — With_you slice: land on the hero's spot
+// 1 time in 10 (pet) if it is free, otherwise next to it via mnexto().
+function mon_arrive(mtmp, with_you) {
+    game.level.monsters.unshift(mtmp); /* back onto fmon (newest first) */
+    mtmp.mstrategy = (mtmp.mstrategy | 0) | 0x40000000; /* STRAT_ARRIVE */
+    mtmp.mux = game.u.ux;
+    mtmp.muy = game.u.uy;
+    mon_track_clear_dog(mtmp);
+
+    if (with_you) {
+        if (!m_at(game.u.ux, game.u.uy)
+            && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2)) {
+            /* rloc_to(mtmp, u.ux, u.uy) */
+            place_monster(mtmp, game.u.ux, game.u.uy);
+            newsym(mtmp.mx, mtmp.my);
+        } else {
+            mnexto(mtmp);
+        }
+        return;
+    }
+    note_unported('mon_arrive:independent');
+}
+
+// src/monmove.c:88 mon_track_clear()
+function mon_track_clear_dog(mtmp) {
+    mtmp.mtrack = [];
 }

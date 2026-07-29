@@ -11,7 +11,7 @@ import {
     IRONBARS, POOL, MOAT, WATER, LAVAPOOL, TREE, FOUNTAIN, THRONE,
     ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM, SHARED,
     OROOM, THEMEROOM, ROOMOFFSET, isok, IS_DOOR,
-    VAULT, SHOPBASE, FILL_NONE, FILL_NORMAL,
+    VAULT, SHOPBASE, BEEHIVE, FILL_NONE, FILL_NORMAL,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
@@ -21,7 +21,8 @@ import {
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, WAX_CANDLE, TALLOW_CANDLE, mkobj_at } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
-         mkclass, mm_mon_at, enexto_spawn, newmonhp, newcham_vamp } from './makemon.js';
+         mkclass, mm_mon_at, enexto_spawn, newmonhp, newcham_vamp,
+         MM_ASLEEP, MM_NOGRP } from './makemon.js';
 import { somexy, inside_room } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { stock_room } from './shknam.js';
@@ -729,6 +730,58 @@ function create_storeroom(croom) {
 }
 
 // C ref: sp_lev.c fill_special_room() — fills vaults, zoos, shops, etc.
+// C ref: mkroom.c fill_zoo(sroom) — the BEEHIVE case only (see the default arm of
+// fill_special_room for why the other room types stay unported).
+//
+// BEEHIVE consumes NO RNG in fill_zoo's head: tx/ty is the room's arithmetic
+// centre, and only an irregular room would need somexyspace() to relocate the
+// queen.  Then, for every stockable square in row-major order, C runs
+//   makemon(sx==tx && sy==ty ? &mons[PM_QUEEN_BEE] : &mons[PM_KILLER_BEE],
+//           sx, sy, MM_ASLEEP | MM_NOGRP);
+//   if (!rn2(3)) mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, TRUE, FALSE);
+// MM_NOGRP is load-bearing: it suppresses makemon's G_SGROUP/G_LGROUP draws,
+// which killer bees would otherwise trigger.  MM_ASLEEP only sets msleeping,
+// which fill_zoo assigns explicitly right afterwards anyway.
+function fill_zoo_beehive(sroom) {
+    const g = game;
+    const LUMP_OF_ROYAL_JELLY = 286;
+    const queen = monster_by_pmidx(name_to_pmidx('queen bee'));
+    const killer = monster_by_pmidx(name_to_pmidx('killer bee'));
+    if (!queen || !killer) return;
+
+    const tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
+    const ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
+    // C relocates the queen only for an irregular room; we have no verified
+    // stream through that path, so leave an irregular beehive alone rather than
+    // spend a somexyspace() draw on a guess.
+    if (sroom.irregular) return;
+
+    const sh = sroom.fdoor;
+    const door = g.level?.doors?.[sh];
+    for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
+        for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+            // C: `!SPACE_POS(levl[sx][sy].typ) || (doorct && <square abuts the
+            // first door from outside>)` -> skip.
+            const typ = g.level?.at(sx, sy)?.typ;
+            if (typ == null || !SPACE_POS(typ)) continue;
+            if (sroom.doorct && door
+                && ((sx === sroom.lx && door.x === sx - 1)
+                    || (sx === sroom.hx && door.x === sx + 1)
+                    || (sy === sroom.ly && door.y === sy - 1)
+                    || (sy === sroom.hy && door.y === sy + 1)))
+                continue;
+
+            const isQueen = (sx === tx && sy === ty);
+            const mon = makemon(isQueen ? queen : killer, sx, sy,
+                                MM_ASLEEP | MM_NOGRP);
+            if (mon) mon.msleeping = 1;
+            if (!rn2(3))
+                mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, true, false);
+        }
+    }
+    if (g.level?.flags) g.level.flags.has_beehive = true;
+}
+
 export function fill_special_room(croom) {
     if (!croom) return;
 
@@ -764,8 +817,16 @@ export function fill_special_room(croom) {
             }
             break;
         }
+        case BEEHIVE:
+            fill_zoo_beehive(croom);
+            break;
         default:
-            // ZOO, COURT, BEEHIVE, etc. → fill_zoo (not yet ported)
+            // ZOO, COURT, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE →
+            // fill_zoo's other per-square cases are NOT ported.  Each needs its
+            // own species picker (courtmon/squadmon/morguemon/antholemon) whose
+            // draw counts we cannot verify without a recorded stream that
+            // reaches them, and guessing would consume RNG C does not.  Leave
+            // them no-ops rather than emit wrong draws.
             break;
         }
     }
@@ -1327,7 +1388,8 @@ function quest_register_branch(mx, my) {
 }
 
 // des.door(state, mx, my) — set the door mask on an existing DOOR/SDOOR cell.
-const _QDOORMASK = { open: 0x20 /*D_ISOPEN*/, closed: 0x04 /*D_CLOSED*/, locked: 0x08 /*D_LOCKED*/ };
+// rm.h: D_ISOPEN is 0x02 (0x20 was wrong — nothing is defined there).
+const _QDOORMASK = { open: 0x02 /*D_ISOPEN*/, closed: 0x04 /*D_CLOSED*/, locked: 0x08 /*D_LOCKED*/ };
 function quest_set_door(mx, my, state) {
     const loc = game.level?.at(q_absx(mx), q_absy(my));
     if (!loc) return;

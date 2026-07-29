@@ -13,7 +13,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt, makemaz_tower1, shuffle } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
-import { maketrap } from './trap.js';
+import { maketrap, Can_fall_thru } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn } from './makemon.js';
 import { m_at } from './display.js';
@@ -28,10 +28,11 @@ import {
     POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY, SCR_ENCHANT_WEAPON,
     SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER, SCR_SCARE_MONSTER,
     WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST, FOOD_RATION,
-    CRAM_RATION, LEMBAS_WAFER,
+    CRAM_RATION, LEMBAS_WAFER, WAND_CLASS, SPBOOK_CLASS,
     mkobj, mkobj_at, mksobj, mksobj_at, mkcorpstat, mkgold, curse,
     place_object, weight, objects, add_to_container,
 } from './mkobj.js';
+import { shtypes } from './shtypes.js';
 import { obj_resists } from './zap.js';
 import { spell_level } from './u_init.js';
 import {
@@ -1502,13 +1503,14 @@ function mkshop() {
         sroom.rlit = 1;
     }
     if (i < 0) {
-        // pick a shop type at random — only the rnd(100) draw is load-bearing
-        // here; the precise type only affects later stocking (sp_lev.js).
-        rnd(100);
+        // C ref: mkroom.c mkshop() — weighted random shop-type pick over
+        // shtypes[].prob, then force wand/book shops in big rooms to a
+        // general store instead (no RNG for the override itself).
+        let j = rnd(100);
         i = 0;
-        // big rooms cannot be wand/book shops — handled at stock time; the
-        // isbig() test itself consumes no RNG.
-        isbig(sroom);
+        while ((j -= shtypes[i].prob) > 0) i++;
+        if (isbig(sroom) && (shtypes[i].symb === WAND_CLASS || shtypes[i].symb === SPBOOK_CLASS))
+            i = 0;
     }
     sroom.rtype = SHOPBASE + i;
     topologize(sroom);
@@ -2681,7 +2683,7 @@ function mk_monster_class(classChar) {
     // induced_align(80) is computed FIRST, then pm = mkclass(class, G_NOGEN),
     // then get_location + makemon.
     oracle_induced_align();
-    const data = mkclass(klass, 1 /* G_NOGEN */);
+    const data = mkclass(klass, 0x0200 /* G_NOGEN (monflag.h); was 1 */);
     const c = mk_get_location_random(mk_ok_dry);
     make_monster(data, c.x, c.y, 0);
 }
@@ -3128,7 +3130,14 @@ async function makeniche(trap_type) {
             rm.typ = SCORR;
             if (trap_type) {
                 let actualTrap = trap_type;
-                if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
+                // C ref: mklev.c:762 `if (is_hole(trap_type) && !Can_fall_thru(&u.uz))
+                // trap_type = ROCKTRAP;` — a hole/trapdoor niche degrades to a rock
+                // trap ONLY on levels you cannot fall through (hardfloor, bottom of
+                // the branch, the invocation level).  We used to downgrade
+                // UNCONDITIONALLY, which cost hole_destination()'s rn2(4) and — since
+                // trap_engravings[ROCKTRAP] is null where trap_engravings[TRAPDOOR] is
+                // "Vlad was here" — the whole make_engr_at + wipe_engr_at cluster.
+                if (is_hole(actualTrap) && !Can_fall_thru(game.u?.uz)) actualTrap = ROCKTRAP;
                 const ttmp = await maketrap(xx, yy + dy, actualTrap);
                 if (ttmp) {
                     if (actualTrap !== ROCKTRAP) ttmp.once = true;

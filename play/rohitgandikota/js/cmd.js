@@ -51,14 +51,17 @@ import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
 import { getpos } from './getpos.js';
+import { dowear, doputon, dotakeoff, doremring } from './do_wear.js';
+import { show_menu_controls } from './options.js';
+import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY } from './display.js';
+import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { doengrave } from './engrave.js';
-import { dohelp } from './pager.js';
+import { dohelp, dowhatis, doquickwhatis } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { dowieldquiver } from './wield.js';
@@ -189,7 +192,7 @@ async function help_dir(sym, msg) {
         tty_putstr(win, 0,
                "(Suppress this message with !cmdassist in config file.)");
     }
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
     await nhgetch();
     while (tty_next_page(win))
         await nhgetch();
@@ -288,6 +291,15 @@ export async function getlin(query, hook) {
     let buf = '';
     let pos = 0;
 
+    /* win/tty/getline.c:53 — an unacknowledged message gets its --More--
+       BEFORE the prompt appears:
+           if (ttyDisplay->toplin == TOPLINE_NEED_MORE && !(cw->flags & WIN_STOP))
+               more();
+       "You write in the dust with your fingertip." carries a --More-- for
+       exactly this reason: doengrave's getlin comes right behind it. */
+    if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
+        await more();
+
     for (;;) {
         /* win/tty/getline.c hooked_tty_getlin():
          *
@@ -322,6 +334,7 @@ export async function getlin(query, hook) {
                 pos = 0;
                 continue;
             }
+            getlin_cleanup();
             return '\x1b';
         } else if (c === '\n' || c === '\r') {
             /* NEWAUTOCOMP does NOT truncate here, so a completed name is
@@ -346,7 +359,20 @@ export async function getlin(query, hook) {
             }
         }
     }
+    getlin_cleanup();
     return buf;
+}
+
+/* win/tty/getline.c:213 — hooked_tty_getlin's exit:
+       ttyDisplay->toplin = TOPLINE_NON_EMPTY;
+       clear_nhwindow(WIN_MESSAGE);   / * clean up after ourselves * /
+   The prompt (and typed answer) are ERASED the moment the read finishes;
+   whatever the caller plines next starts from a blank top line. */
+function getlin_cleanup() {
+    game._toplin = TOPLINE_SPECIAL_PROMPT; /* non-EMPTY so the erase runs */
+    tty_clear_nhwindow_message(game._topl_cury || 0);
+    game._pending_message = '';
+    game._toplin = TOPLINE_EMPTY;
 }
 
 // src/cmd.c extcmds_match() — the indices of the extended commands matching
@@ -486,11 +512,12 @@ function equip_ok(obj, removing, accessory) {
     return GETOBJ_SUGGEST;
 }
 
-/* src/do_wear.c:3451-3475 — the four getobj callbacks over equip_ok. */
-const puton_ok   = (o) => equip_ok(o, false, true);
-const remove_ok  = (o) => equip_ok(o, true,  true);
-const wear_ok    = (o) => equip_ok(o, false, false);
-const takeoff_ok = (o) => equip_ok(o, true,  false);
+/* src/do_wear.c:3451-3475 — the four getobj callbacks over equip_ok.
+   Exported for js/do_wear.js's command layer. */
+export const puton_ok   = (o) => equip_ok(o, false, true);
+export const remove_ok  = (o) => equip_ok(o, true,  true);
+export const wear_ok    = (o) => equip_ok(o, false, false);
+export const takeoff_ok = (o) => equip_ok(o, true,  false);
 
 /* src/cmd.c cmdlist — the verb and object filter each command hands getobj().
    Read from the C, not invented: the word appears verbatim in the prompt
@@ -721,9 +748,20 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — '?' is dohelp, a menu of viewers.
         game.context.move = 0;
         await dohelp();
+    } else if (ch === '/') {
+        // src/cmd.c cmdlist — '/' is dowhatis, the farlook chain.
+        game.context.move = 0;
+        await dowhatis();
+    } else if (ch === ';') {
+        // src/cmd.c cmdlist — ';' is doquickwhatis.
+        game.context.move = 0;
+        await doquickwhatis();
     } else if (ch === 'E') {
         // src/cmd.c cmdlist — 'E' is doengrave.
         game.context.move = ((await doengrave()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '_') {
+        // src/cmd.c cmdlist — '_' is dotravel.
+        game.context.move = ((await dotravel()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 's') {
         // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
         game.context.move = (dosearch() ? 1 : 0);
@@ -802,7 +840,7 @@ export async function rhack(key) {
         game.context.move = (await doeat() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'd') {
         game.context.move = (await dodrop() === ECMD_TIME ? 1 : 0);
-    } else if ('rwqWPR'.includes(ch)) {
+    } else if ('rwqWPRT'.includes(ch)) {
         // src/cmd.c cmdlist — read, wield, quaff, drop, wear, put on, remove.
         // Every one of them starts with getobj(), which reads the inventory
         // letter. Their effects are unported, but consuming that letter is what
@@ -811,6 +849,14 @@ export async function rhack(key) {
             game.context.move = ((await doread(read_ok)) === ECMD_TIME ? 1 : 0);
         else if (ch === 'q')
             game.context.move = ((await dodrink(drink_ok)) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'W')
+            game.context.move = ((await dowear()) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'P')
+            game.context.move = ((await doputon()) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'T')
+            game.context.move = ((await dotakeoff()) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'R')
+            game.context.move = ((await doremring()) === ECMD_TIME ? 1 : 0);
         else
             game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
     } else if (ch === '.') {
@@ -1135,7 +1181,7 @@ async function show_discoveries() {
     const win = tty_create_nhwindow(NHW_TEXT);
     for (const [text, attr] of lines)
         tty_putstr(win, attr, text);
-    tty_display_nhwindow(win);      /* draws the page and parks the cursor */
+    await tty_display_nhwindow(win);      /* draws the page and parks the cursor */
 
     /* dmore(): block here until the player dismisses the window */
     await nhgetch();
@@ -1158,7 +1204,7 @@ async function show_attributes() {
         tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, l,
                      MENU_ITEMFLAGS_NONE);
     tty_end_menu(win, null);
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
 
     /* dmore() blocks once per page */
     await nhgetch();
@@ -1186,7 +1232,7 @@ async function show_inventory() {
         tty_add_menu(win, null, it.heading ? 0 : 1, it.invlet || 0, 0,
                      it.attr, NO_COLOR, it.str, MENU_ITEMFLAGS_NONE);
     tty_end_menu(win, null);
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
 
     await nhgetch();
     while (tty_next_page(win))
@@ -1270,4 +1316,265 @@ export function cmdq_pop() {
 export function cmdq_peek(q) {
     const list = (game.command_queue ||= [])[q];
     return (list && list.length) ? list[0] : null;
+}
+
+// src/cmd.c:5299 dotravel() — the '_' command: pick a destination with
+// getpos (force=TRUE, so unknown keys coach rather than abort), then walk
+// there. The walk itself (dotravel_target -> findtravelpath/domove) is the
+// unported half: a session that actually PICKS a spot desyncs there and the
+// gap is recorded. The cached-destination and menu_requested arms need
+// iflags state no session sets.
+export async function dotravel() {
+    const cc = { x: 0, y: 0 };
+    cc.x = game.iflags?.travelcc?.x || 0;
+    cc.y = game.iflags?.travelcc?.y || 0;
+    if (cc.x === 0 && cc.y === 0) {
+        cc.x = game.u.ux;
+        cc.y = game.u.uy;
+    }
+    game.iflags = game.iflags || {};
+    game.iflags.getloc_travelmode = true;
+    await pline('Where do you want to travel to?');
+    if (await getpos(cc, true, 'the desired destination') < 0) {
+        /* user pressed ESC */
+        game.iflags.getloc_travelmode = false;
+        return ECMD_CANCEL_TRAVEL;
+    }
+    game.iflags.getloc_travelmode = false;
+    (game.unported ||= new Set()).add('cmd:dotravel_target');
+    return 0; /* ECMD_OK; the travel movement is the recorded gap above */
+}
+
+/* include/hack.h ECMD_CANCEL */
+const ECMD_CANCEL_TRAVEL = 0x04;
+
+/* src/cmd.c:2085 misc_keys[] — the special-key entries dokeylist and
+   key2extcmddesc share. The count prefix is numpad-only and numpad is off. */
+const misc_keys = [
+    { key: 27, desc: 'cancel current prompt or pending prefix' },
+];
+
+// src/cmd.c key2txt() — printable form of a key for the binding lists.
+export function key2txt(c) {
+    if (c === 32) return '<space>';
+    if (c === 27) return '<esc>';
+    if (c === 10) return '<enter>';
+    if (c === 127) return '<del>';
+    return visctrl_key(c);
+}
+
+/* src/hacklib.c visctrl() — '^X' for control chars, 'M-x' for meta */
+function visctrl_key(c) {
+    let out = '';
+    if (c & 0x80) {
+        out += 'M-';
+        c &= 0x7f;
+    }
+    if (c < 0x20) {
+        out += '^';
+        c |= 0x40;
+    } else if (c === 0x7f) {
+        return out + '^?';
+    }
+    return out + String.fromCharCode(c);
+}
+
+/* the default key -> extended command bindings: commands_init() walks
+   extcmdlist and binds each entry's default key, later entries replacing
+   earlier ones on a collision. Its extra bind_key() calls follow; most are
+   number_pad alternates whose keys reset_commands() then rebinds to
+   movement commands for !num_pad (h/j/k/l/N/u, ^L/^N via the ctrl-rush
+   forms), and '5'/M-5/'-' land on MOVEMENTCMD entries the key lists
+   exclude. The two that survive visibly are M-O overview and M-N name —
+   exactly the pair the recorded '?j' listing shows. */
+function cmdbind_table() {
+    const binds = new Map();
+    for (const e of extcmdlist)
+        if (e.key)
+            binds.set(e.key, e);
+    const by_txt = (t) => extcmdlist.find(e => e.ef_txt === t);
+    binds.set('5'.charCodeAt(0), by_txt('run'));
+    binds.set(0x80 | '5'.charCodeAt(0), by_txt('rush'));
+    binds.set('-'.charCodeAt(0), by_txt('fight'));
+    binds.set(0x80 | 'O'.charCodeAt(0), by_txt('overview'));
+    binds.set(0x80 | '2'.charCodeAt(0), by_txt('twoweapon'));
+    binds.set(0x80 | 'N'.charCodeAt(0), by_txt('name'));
+    return binds;
+}
+
+// src/cmd.c keylist_putcmds() — one category's bound keys, then the
+// commands of that category with no key at all.
+function keylist_putcmds(putline, docount, incl_flags, excl_flags, keys_used) {
+    const binds = cmdbind_table();
+    const keys_already_used = keys_used.slice();
+    let count = 0;
+
+    for (let i = 0; i < 256; i++) {
+        if (keys_used[i]) continue;
+        if (i === 32 /* && !flags.rest_on_space */) continue;
+        const cmd = binds.get(i);
+        if (!cmd) continue;
+        if ((incl_flags && !(cmd.flags & incl_flags))
+            || (excl_flags && (cmd.flags & excl_flags)))
+            continue;
+        if (docount) {
+            count++;
+            continue;
+        }
+        putline(`${key2txt(i).padEnd(7)} ${cmd.ef_txt.padEnd(13)} ${cmd.ef_desc}`);
+        keys_used[i] = true;
+    }
+    /* commands that lack key assignments */
+    for (const extcmd of extcmdlist) {
+        if ((incl_flags && !(extcmd.flags & incl_flags))
+            || (excl_flags && (extcmd.flags & excl_flags)))
+            continue;
+        /* keylist_func_has_key: is some not-yet-listed key bound to it? */
+        let has_key = false;
+        for (const [k, cmd] of binds)
+            if (!keys_already_used[k] && cmd === extcmd) {
+                has_key = true;
+                break;
+            }
+        if (has_key) continue;
+        if (docount) {
+            count++;
+            continue;
+        }
+        putline(`#${extcmd.ef_txt.padEnd(20)} ${extcmd.ef_desc}`);
+    }
+    return count;
+}
+
+/* include/func_tab.h flag bundle dokeylist ignores everywhere */
+const KEYLIST_IGNORE = EXTCMD_FLAGS.WIZMODECMD | EXTCMD_FLAGS.INTERNALCMD
+    | EXTCMD_FLAGS.MOVEMENTCMD;
+
+// src/cmd.c dokeylist() — the '?j' full key bindings window.
+export async function dokeylist() {
+    const keys_used = new Array(256).fill(false);
+    const pfx_seen = new Array(256).fill(0);
+    keys_used[3] = true;                        /* ^C, SIGINT */
+    const mov_seen = keys_used.slice();
+    let spkey_gap = false;
+    for (const mk of misc_keys) {
+        if (mk.key && !mov_seen[mk.key] && !pfx_seen[mk.key]) {
+            keys_used[mk.key] = true;
+            pfx_seen[mk.key] = 1;
+        } else {
+            spkey_gap = true;
+        }
+    }
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    const putline = (s) => tty_putstr(win, 0, s);
+
+    putline('');
+    putline('        ' + '    Full Current Key Bindings List');
+    {
+        /* the "(also commands with no key assignment)" subtitle shows when
+           spkey_gap or any command has no key; the '#'-only commands make
+           it always true here, but test it the way the C does */
+        const binds = cmdbind_table();
+        let any_keyless = spkey_gap;
+        for (const extcmd of extcmdlist) {
+            if (any_keyless) break;
+            let has_key = false;
+            for (const [k, cmd] of binds)
+                if (!keys_used[k] && cmd === extcmd) {
+                    has_key = true;
+                    break;
+                }
+            if (!has_key) any_keyless = true;
+        }
+        if (any_keyless)
+            putline('        ' + '(also commands with no key assignment)');
+    }
+
+    /* directional keys */
+    putline('');
+    putline('Directional keys:');
+    show_direction_keys(win, '.', false);
+
+    putline('');
+    putline('Ctrl+<direction> will run in specified direction until something very');
+    putline('        ' + 'interesting is seen.');
+    putline('Shift+<direction> will run in specified direction until you encounter');
+    putline('        ' + 'an obstacle.');
+
+    putline('');
+    putline('Miscellaneous keys:');
+    for (const mk of misc_keys)
+        if (mk.key && !mov_seen[mk.key] && pfx_seen[mk.key])
+            putline(`${key2txt(mk.key).padEnd(7)} ${mk.desc}`);
+    putline(`${key2txt(3).padEnd(7)} interrupt: break out of NetHack (SIGINT)`);
+
+    putline('');
+    show_menu_controls(putline, true);
+
+    if (keylist_putcmds(putline, true, EXTCMD_FLAGS.GENERALCMD,
+                        KEYLIST_IGNORE, keys_used)) {
+        putline('');
+        putline('General commands:');
+        keylist_putcmds(putline, false, EXTCMD_FLAGS.GENERALCMD,
+                        KEYLIST_IGNORE, keys_used);
+    }
+
+    if (keylist_putcmds(putline, true, 0,
+                        EXTCMD_FLAGS.GENERALCMD | KEYLIST_IGNORE, keys_used)) {
+        putline('');
+        putline('Game commands:');
+        keylist_putcmds(putline, false, 0,
+                        EXTCMD_FLAGS.GENERALCMD | KEYLIST_IGNORE, keys_used);
+    }
+
+    if (game.wizard
+        && keylist_putcmds(putline, true, EXTCMD_FLAGS.WIZMODECMD,
+                           EXTCMD_FLAGS.INTERNALCMD, keys_used)) {
+        putline('');
+        putline('Debug mode commands:');
+        keylist_putcmds(putline, false, EXTCMD_FLAGS.WIZMODECMD,
+                        EXTCMD_FLAGS.INTERNALCMD, keys_used);
+    }
+
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(' \r\n\x1b');
+        if (game.morc === '\x1b')
+            break;
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    await docrt();
+    return 0; /* ECMD_OK */
+}
+
+// src/cmd.c key2extcmddesc() — what a key does, for dowhatdoes ('?f').
+export function key2extcmddesc(key) {
+    const ch = String.fromCharCode(key & 0x7f);
+    /* movement commands take precedence over the binding table */
+    if (!(key & 0x80)) {
+        if ('hjklyubn'.includes(ch))
+            return 'move'; /* "move or attack"? */
+        if ('HJKLYUBN'.includes(ch))
+            return 'run';
+    }
+    if (ch >= '0' && ch <= '9')
+        return 'start of, or continuation of, a count';
+    for (const mk of misc_keys)
+        if (key === mk.key)
+            return mk.desc;
+    const cmd = cmdbind_table().get(key);
+    if (cmd && cmd.ef_txt) {
+        let buf = `${cmd.ef_desc} (#${cmd.ef_txt})`;
+        /* reqmenu prefix gets a two-line movement/non-movement form */
+        if (buf.toLowerCase().startsWith('prefix:') && cmd.ef_txt === 'reqmenu')
+            buf = 'movement prefix:'
+                + ' move without autopickup and without attacking'
+                + '\n'
+                + 'non-movement prefix:' + buf.slice(7);
+        return buf;
+    }
+    return null;
 }

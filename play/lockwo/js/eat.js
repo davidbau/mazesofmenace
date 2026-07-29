@@ -30,8 +30,9 @@ const CRAM_RATION = 292, K_RATION = 294, C_RATION = 295; // mkobj.js rations
 // Keyed by the makemon data record's monster-class letter (mlet / S_*).
 function olfaction(mdat) {
     const mlet = mdat?.mlet;
-    const S_GOLEM = 13, S_EYE = 21, S_JELLY = 17, S_PUDDING = 31, S_BLOB = 4,
-        S_VORTEX = 38, S_ELEMENTAL = 12, S_FUNGUS = 15, S_LIGHT = 24;
+    // defsym.h MONSYM indices (every one of these was wrong before).
+    const S_GOLEM = 55, S_EYE = 5, S_JELLY = 10, S_PUDDING = 42, S_BLOB = 2,
+        S_VORTEX = 22, S_ELEMENTAL = 31, S_FUNGUS = 32, S_LIGHT = 25;
     if (mlet === S_EYE || mlet === S_JELLY || mlet === S_PUDDING
         || mlet === S_BLOB || mlet === S_VORTEX || mlet === S_ELEMENTAL
         || mlet === S_FUNGUS || mlet === S_LIGHT || mlet === S_GOLEM)

@@ -20,7 +20,7 @@ import {
 } from './const.js';
 import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
-import { def_monsyms, def_oc_syms } from './drawing_data.js';
+import { def_monsyms, def_oc_syms, cmap_names } from './drawing_data.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, DEC_TO_UNICODE } from './terminal.js';
 
@@ -47,12 +47,27 @@ const ANSI_COLOR = [
     97,  // CLR_WHITE     15
 ];
 
+/* src/stairs.c:180 known_branch_stairs() and stairway_at() — needed to pick
+   S_brupstair over S_upstair for the displayed glyph, the same test
+   back_to_glyph() makes at display.c:2346. */
+export function stairway_at(x, y) {
+    for (let st = game.stairs; st; st = st.next)
+        if (st.sx === x && st.sy === y) return st;
+    return null;
+}
+export function known_branch_stairs(sway) {
+    return !!(sway && sway.tolev?.dnum !== game.u?.uz?.dnum
+              && sway.u_traversed);
+}
+
+const CM = cmap_names;
+
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     switch (typ) {
-    case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
-    case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
+    case STONE:     return { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
+    case ROOM:      return { ch: '~', color: NO_COLOR, dec: true, cmap: CM.S_room };  // DEC middle dot
     case CORR: {
         /* src/display.c:2302 back_to_glyph() picks S_litcorr when the cell
            was lit or lit_corridor is set; :248 map_background() drops back
@@ -61,7 +76,8 @@ function terrain_glyph(loc, x, y) {
            CLR_WHITE "to provide a visible difference". */
         const lit = (loc.waslit || game.flags?.lit_corridor)
                     && (loc.waslit || cansee(x, y));
-        return { ch: '#', color: lit ? CLR_WHITE : NO_COLOR, dec: false };
+        return { ch: '#', color: lit ? CLR_WHITE : NO_COLOR, dec: false,
+                 cmap: lit ? CM.S_litcorr : CM.S_corr };
     }
     // src/display.c:2324 — '+' when shut, '-'/'|' when open. The open glyphs
     // read backwards from their names: S_vodoor is '-' and S_hodoor is '|'
@@ -78,10 +94,12 @@ function terrain_glyph(loc, x, y) {
              * Both open-door orientations are the SAME DEC glyph, so the
              * defsym.h '-' / '|' pair never reaches a DECgraphics screen.
              * horizontal is irrelevant here. */
-            return { ch: 'a', color: CLR_BROWN, dec: true };
+            return { ch: 'a', color: CLR_BROWN, dec: true,
+                     cmap: loc.horizontal ? CM.S_hodoor : CM.S_vodoor };
         if (loc.doormask & (D_CLOSED | D_LOCKED))
-            return { ch: '+', color: CLR_BROWN, dec: false };
-        return { ch: '~', color: NO_COLOR, dec: true };  // S_ndoor
+            return { ch: '+', color: CLR_BROWN, dec: false,
+                     cmap: loc.horizontal ? CM.S_hcdoor : CM.S_vcdoor };
+        return { ch: '~', color: NO_COLOR, dec: true, cmap: CM.S_ndoor };
     case STAIRS: {
         /* Recorded behavior: a staircase the hero has SEEN renders yellow
            (seed1150 '<' carries SGR 93) and stays yellow in memory, while
@@ -90,22 +108,28 @@ function terrain_glyph(loc, x, y) {
         if (cansee(x, y))
             loc.stair_seen = 1;
         const scol = loc.stair_seen ? CLR_YELLOW : NO_COLOR;
+        /* src/display.c:2345 back_to_glyph() — the cmap index does come
+           from known_branch_stairs(); only the paint keeps the recorded
+           stair_seen colour model above. */
+        const branch = known_branch_stairs(stairway_at(x, y));
         if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: scol, dec: false };
-        return { ch: '>', color: scol, dec: false };
+            return { ch: '<', color: scol, dec: false,
+                     cmap: branch ? CM.S_brupstair : CM.S_upstair };
+        return { ch: '>', color: scol, dec: false,
+                 cmap: branch ? CM.S_brdnstair : CM.S_dnstair };
     }
     // Wall types → DEC line-drawing characters
-    case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true };  // ─
-    case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true };  // │
-    case TLCORNER:  return { ch: 'l', color: NO_COLOR, dec: true };  // ┌
-    case TRCORNER:  return { ch: 'k', color: NO_COLOR, dec: true };  // ┐
-    case BLCORNER:  return { ch: 'm', color: NO_COLOR, dec: true };  // └
-    case BRCORNER:  return { ch: 'j', color: NO_COLOR, dec: true };  // ┘
-    case CROSSWALL: return { ch: 'n', color: NO_COLOR, dec: true };  // ┼
-    case TUWALL:    return { ch: 'v', color: NO_COLOR, dec: true };  // ┴
-    case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
-    case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
-    case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
+    case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true, cmap: CM.S_hwall };  // ─
+    case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true, cmap: CM.S_vwall };  // │
+    case TLCORNER:  return { ch: 'l', color: NO_COLOR, dec: true, cmap: CM.S_tlcorn };  // ┌
+    case TRCORNER:  return { ch: 'k', color: NO_COLOR, dec: true, cmap: CM.S_trcorn };  // ┐
+    case BLCORNER:  return { ch: 'm', color: NO_COLOR, dec: true, cmap: CM.S_blcorn };  // └
+    case BRCORNER:  return { ch: 'j', color: NO_COLOR, dec: true, cmap: CM.S_brcorn };  // ┘
+    case CROSSWALL: return { ch: 'n', color: NO_COLOR, dec: true, cmap: CM.S_crwall };  // ┼
+    case TUWALL:    return { ch: 'v', color: NO_COLOR, dec: true, cmap: CM.S_tuwall };  // ┴
+    case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true, cmap: CM.S_tdwall };  // ┬
+    case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true, cmap: CM.S_tlwall };  // ┤
+    case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true, cmap: CM.S_trwall };  // ├
     // src/display.c:2304 — a SECRET door looks exactly like the wall it hides
     // in, so it falls through to the HWALL/VWALL case.
     /* The rest of the terrain, from include/defsym.h with dat/symbols'
@@ -115,52 +139,74 @@ function terrain_glyph(loc, x, y) {
 
        None of these had a case at all, so every one fell through to the
        default and drew as blank. */
-    case IRONBARS:  return { ch: '|', color: HI_METAL, dec: true };   // \xfc
-    case TREE:      return { ch: 'g', color: CLR_GREEN, dec: true };  // \xe7
-    case LADDER:
+    case IRONBARS:  return { ch: '|', color: HI_METAL, dec: true, cmap: CM.S_bars };   // \xfc
+    case TREE:      return { ch: 'g', color: CLR_GREEN, dec: true, cmap: CM.S_tree };  // \xe7
+    case LADDER: {
         /* src/display.c:2352 — the direction comes from the square's own
            `ladder` field, not from a level-wide coordinate:
                idx = (ptr->ladder & LA_DOWN) ? S_dnladder : S_upladder;
            defsym.h:122-123 gives '<' / '>', both CLR_BROWN, overridden by
-           dat/symbols to \xf9 / \xfa. The known_branch_stairs() arm needs the
-           branch-discovery state and is not reachable yet. */
+           dat/symbols to \xf9 / \xfa. */
+        const lbranch = known_branch_stairs(stairway_at(x, y));
         return (loc.ladder & LA_DOWN)
-            ? { ch: 'z', color: CLR_BROWN, dec: true }
-            : { ch: 'y', color: CLR_BROWN, dec: true };
-    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true };   // \xfb
-    case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
-    case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false };
-    case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
-    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+            ? { ch: 'z', color: CLR_BROWN, dec: true,
+                cmap: lbranch ? CM.S_brdnladder : CM.S_dnladder }
+            : { ch: 'y', color: CLR_BROWN, dec: true,
+                cmap: lbranch ? CM.S_brupladder : CM.S_upladder };
+    }
+    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true, cmap: CM.S_altar };   // \xfb
+    case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false, cmap: CM.S_grave };
+    case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false, cmap: CM.S_throne };
+    case SINK:      return { ch: '{', color: CLR_WHITE, dec: false, cmap: CM.S_sink };
+    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false, cmap: CM.S_fountain };
     case POOL:
-    case MOAT:      return { ch: '`', color: CLR_BLUE, dec: true };   // \xe0
-    case WATER:     return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true };
-    case LAVAPOOL:  return { ch: '`', color: CLR_RED, dec: true };
-    case LAVAWALL:  return { ch: '`', color: CLR_ORANGE, dec: true };
-    case ICE:       return { ch: '~', color: CLR_CYAN, dec: true };   // \xfe
+    case MOAT:      return { ch: '`', color: CLR_BLUE, dec: true, cmap: CM.S_pool };   // \xe0
+    case WATER:     return { ch: '`', color: CLR_BRIGHT_BLUE, dec: true, cmap: CM.S_water };
+    case LAVAPOOL:  return { ch: '`', color: CLR_RED, dec: true, cmap: CM.S_lava };
+    case LAVAWALL:  return { ch: '`', color: CLR_ORANGE, dec: true, cmap: CM.S_lavawall };
+    case ICE:       return { ch: '~', color: CLR_CYAN, dec: true, cmap: CM.S_ice };   // \xfe
     case DRAWBRIDGE_DOWN:                                  /* S_[vh]odbridge */
-        return { ch: '~', color: CLR_BROWN, dec: true };
+        return { ch: '~', color: CLR_BROWN, dec: true,
+                 cmap: loc.horizontal ? CM.S_hodbridge : CM.S_vodbridge };
     case DRAWBRIDGE_UP:                                    /* S_[vh]cdbridge */
-        return { ch: '#', color: CLR_BROWN, dec: false };
-    case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false };
-    case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false };
+        return { ch: '#', color: CLR_BROWN, dec: false,
+                 cmap: loc.horizontal ? CM.S_hcdbridge : CM.S_vcdbridge };
+    case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false, cmap: CM.S_air };
+    case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false, cmap: CM.S_cloud };
     case SDOOR:     return loc.horizontal
-                        ? { ch: 'q', color: NO_COLOR, dec: true }   // ─
-                        : { ch: 'x', color: NO_COLOR, dec: true };  // │
+                        ? { ch: 'q', color: NO_COLOR, dec: true, cmap: CM.S_hwall }   // ─
+                        : { ch: 'x', color: NO_COLOR, dec: true, cmap: CM.S_vwall };  // │
 
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
 
 // ── show_glyph_cell ──
-export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
+// `glyph` is the provenance of what is displayed — C keeps a glyph NUMBER in
+// its buffer (gbuf) and every classifier (glyph_is_monster & friends) reads
+// it back; this port keeps a descriptor object: { kind: 'hero'|'mon'|'obj'
+// |'cmap'|'nothing', mon?, obj?, cmap? }.
+export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph = undefined) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
+    loc.disp_glyph = glyph;
     loc.gnew = 1;
+}
+
+// C glyph_at() (display.h:200) — what the glyph buffer holds for the spot.
+// A cell nothing was ever drawn to reads as unexplored, the same default C
+// fills gbuf with.
+export function glyph_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return { kind: 'unexplored' };
+    if (loc.disp_glyph) return loc.disp_glyph;
+    if (loc.disp_ch && loc.disp_ch !== ' ')
+        return { kind: 'cmap', cmap: cmap_names.S_stone };
+    return loc.seenv ? { kind: 'nothing' } : { kind: 'unexplored' };
 }
 
 // ── newsym ──
@@ -177,6 +223,13 @@ function floor_object_glyph(obj) {
     const oc = game.objects?.[obj.otyp];
     let color = oc?.oc_color ?? NO_COLOR;
     let sym = def_oc_syms[obj.oclass] || '?';
+    /* the glyph descriptor mirrors C's obj_to_glyph(): a statue and a corpse
+       get their own glyph ranges (GLYPH_STATUE_OFF / GLYPH_BODY_OFF), which
+       is what glyph_is_statue() tests in do_screen_description() */
+    const gdesc = { kind: 'obj', otyp: obj.otyp, oclass: obj.oclass,
+                    corpsenm: obj.corpsenm,
+                    statue: obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0,
+                    body: obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0 };
 
     /* include/display.h:950 statue_to_glyph() — a STATUE becomes
        corpsenm + GLYPH_STATUE_*_OFF, i.e. it is drawn with the MONSTER's
@@ -197,7 +250,7 @@ function floor_object_glyph(obj) {
     } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
         color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
     }
-    return { ch: sym, color, dec: false };
+    return { ch: sym, color, dec: false, glyph: gdesc };
 }
 
 export function newsym(x, y) {
@@ -209,11 +262,13 @@ export function newsym(x, y) {
            underfoot is what the cell reverts to after stepping off —
            src/display.c _map_location() sets lev->glyph to the object glyph,
            and display_self() draws '@' over it. */
-        show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
         const under = (game.level?.objects || [])
                           .find(o => o.ox === x && o.oy === y);
         const tg = under ? floor_object_glyph(under) : terrain_glyph(loc, x, y);
-        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                 glyph: tg.glyph
+                                     ?? { kind: 'cmap', cmap: tg.cmap } };
         return;
     }
 
@@ -232,19 +287,22 @@ export function newsym(x, y) {
                             || terrain_glyph(loc, x, y));
         if (game.level?.flags?.hero_memory)
             loc.remembered_glyph = { ch: memg.ch, color: memg.color,
-                                     decgfx: memg.dec };
+                                     decgfx: memg.dec,
+                                     glyph: memg.glyph
+                                         ?? { kind: 'cmap', cmap: memg.cmap } };
 
         const mon = (game.level?.monsters || [])
                         .find(m => m.mx === x && m.my === y && m.mhp > 0
                                    && !m.msleeping_hidden);
         if (mon) {
             show_glyph_cell(x, y, def_monsyms[mon.data.mlet] || '?',
-                            mon.data.mcolor ?? NO_COLOR, false);
+                            mon.data.mcolor ?? NO_COLOR, false, 0,
+                            { kind: 'mon', mon });
             return;
         }
 
         if (obj) {
-            show_glyph_cell(x, y, memg.ch, memg.color, memg.dec);
+            show_glyph_cell(x, y, memg.ch, memg.color, memg.dec, 0, memg.glyph);
             return;
         }
     }
@@ -266,9 +324,11 @@ export function newsym(x, y) {
     const tg = engraving_glyph(loc, x, y) || terrain_glyph(loc, x, y);
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
-        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
+                        { kind: 'cmap', cmap: tg.cmap });
         if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                     glyph: { kind: 'cmap', cmap: tg.cmap } };
         }
     } else if (loc.remembered_glyph) {
         /* src/display.c:852,898 — "Corridors are never felt as lit":
@@ -276,10 +336,12 @@ export function newsym(x, y) {
            the cell is out of sight and not waslit; C rewrites lev->glyph. */
         if (loc.typ === CORR && loc.remembered_glyph.color === CLR_WHITE
             && !loc.waslit)
-            loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false };
+            loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false,
+                                     glyph: { kind: 'cmap', cmap: CM.S_corr } };
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
-            loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+            loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
+            loc.remembered_glyph.glyph);
     }
 }
 
@@ -303,7 +365,9 @@ function engraving_glyph(loc, x, y) {
     if (cansee(x, y))
         ep.erevealed = 1;
 
-    return { ch: typ === CORR ? '#' : '`', color: CLR_BRIGHT_BLUE, dec: false };
+    return typ === CORR
+        ? { ch: '#', color: CLR_BRIGHT_BLUE, dec: false, cmap: CM.S_engrcorr }
+        : { ch: '`', color: CLR_BRIGHT_BLUE, dec: false, cmap: CM.S_engroom };
 }
 
 // ── docrt ──
@@ -314,7 +378,8 @@ export async function docrt() {
             const loc = game.level.at(x, y);
             if (loc?.remembered_glyph) {
                 show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
+                    loc.remembered_glyph.glyph);
             }
         }
     /* src/display.c:1761 — "overlay with monsters": see_monsters() runs a
@@ -324,7 +389,9 @@ export async function docrt() {
         if (mtmp.mhp <= 0) continue;
         newsym(mtmp.mx, mtmp.my);
     }
-    if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+    if (game.u?.ux > 0)
+        show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false, 0,
+                        { kind: 'hero' });
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -486,12 +553,19 @@ export function _buildScreenOutput() {
     if (!display) return;
 
     let output = '';
-    // Row 0: message
-    output += (game._pending_message || '') + '\n';
+    // Row 0: message. update_topl() wraps a long message by replacing a
+    // space with '\n' (win/tty/topl.c), and the tty paints the continuation
+    // on the NEXT row, over the map, with cl_end() erasing the rest of that
+    // row. Model the overlay the same way.
+    const msgLines = (game._pending_message || '').split('\n');
+    output += msgLines[0] + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
-        output += render_map_row(y) + '\n';
+        if (y + 2 <= msgLines.length)
+            output += msgLines[y + 1] + '\n';   /* message spill + cl_end */
+        else
+            output += render_map_row(y) + '\n';
     }
 
     // Row 22-23: status
@@ -503,12 +577,14 @@ export function _buildScreenOutput() {
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
         display.clearScreen();
-        // Message line
-        const msg = game._pending_message || '';
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-            display.setCell(c, 0, msg[c], NO_COLOR, 0);
-        // Map — write characters to grid (DEC → Unicode for browser display)
+        // Message line(s) — a wrapped message overlays map rows from row 1
+        for (let r = 0; r < msgLines.length && r < 24; r++)
+            for (let c = 0; c < Math.min(msgLines[r].length, display.cols); c++)
+                display.setCell(c, r, msgLines[r][c], NO_COLOR, 0);
+        // Map — write characters to grid (DEC → Unicode for browser display).
+        // A row a wrapped message spilled onto stays the message's (cl_end).
         for (let y = 0; y < ROWNO; y++) {
+            if (y + 2 <= msgLines.length) continue;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
@@ -526,8 +602,11 @@ export function _buildScreenOutput() {
         const s2 = _statusLine2();
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
-        // Cursor at hero
-        if (game.u?.ux > 0)
+        // Cursor at hero — unless getpos has parked it elsewhere on the map
+        // (C's curs(WIN_MAP, cx, cy): the tty cursor follows the picker).
+        if (game._map_cursor)
+            display.setCursor(game._map_cursor.col, game._map_cursor.row);
+        else if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
     }
 }
@@ -622,12 +701,16 @@ export async function more() {
     const display = game?.nhDisplay;
     const msg = game._pending_message || '';
     /* cury must outlive the paint block: tty_clear_nhwindow() erases through
-       cw->cury, and that is set here by the same test that wraps the suffix. */
-    let row = 0;
+       cw->cury, and that is set here by the same test that wraps the suffix.
+       A message update_topl wrapped with '\n' already sits on multiple rows;
+       the suffix goes at the end of the LAST one (tty_curs(BASE_WINDOW,
+       cw->curx + 1, cw->cury)). */
+    const mlines = msg.split('\n');
+    let row = mlines.length - 1;
     if (display) {
         const CO = display.cols ?? 80;
-        let col = msg.length;
-        if (col >= CO - 8) { col = 0; row = 1; }
+        let col = mlines[mlines.length - 1].length;
+        if (col >= CO - 8) { col = 0; row++; }
         for (let i = 0; i < defmorestr.length && col + i < CO; i++)
             display.setCell(col + i, row, defmorestr[i], NO_COLOR, 0);
         display.setCursor(Math.min(col + defmorestr.length, CO - 1), row);
@@ -759,7 +842,8 @@ export function magic_map_background(x, y, show) {
         if (loc.typ === ROOM && tg.ch === '~' && tg.dec)
             tg = null;                          /* GLYPH_NOTHING */
         else if (loc.typ === CORR)
-            tg = { ch: '#', color: NO_COLOR, dec: false };  /* dark corr */
+            tg = { ch: '#', color: NO_COLOR, dec: false,
+                   cmap: cmap_names.S_corr };   /* dark corr */
     }
 
     /* glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph) — the
@@ -773,8 +857,10 @@ export function magic_map_background(x, y, show) {
                           && !(rg.ch === '+' && IS_DOOR(loc.typ));
     if (game.level?.flags?.hero_memory && !is_obj_memory)
         loc.remembered_glyph = tg
-            ? { ch: tg.ch, color: tg.color, decgfx: tg.dec }
+            ? { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                glyph: { kind: 'cmap', cmap: tg.cmap } }
             : undefined;
     if (show && tg)
-        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
+                        { kind: 'cmap', cmap: tg.cmap });
 }

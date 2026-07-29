@@ -9,7 +9,7 @@ import {
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
     CORPSTAT_INIT, CORPSTAT_SPE_VAL,
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
-    TIMER_OBJECT, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
+    TIMER_OBJECT, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, HATCH_EGG,
 } from './const.js';
 import {
     rndmonst_adj, monster_by_pmidx, can_be_hatched, dead_species,
@@ -856,7 +856,7 @@ export function curse(otmp) {
     if (otmp) { otmp.cursed = true; otmp.blessed = false; }
 }
 
-function bless(otmp) {
+export function bless(otmp) {
     if (otmp) { otmp.blessed = true; otmp.cursed = false; }
 }
 
@@ -1145,16 +1145,95 @@ export function start_corpse_timeout(body) {
     start_timer(when, TIMER_OBJECT, action, body);
 }
 
+// C ref: obj.h MAX_EGG_HATCH_TIME — longest an egg can remain unhatched.
+const MAX_EGG_HATCH_TIME = 200;
+
+// C ref: timeout.c stop_timer(func_index, arg) — remove the object's timer of
+// this action and return its REMAINING turns (`timeout - svm.moves`), or 0 when
+// there was none.  Consumes no RNG.
+function stop_object_timer(obj, action) {
+    if (!obj?.timed || obj.timer?.action !== action) return 0;
+    const remaining = obj.timer.when - (game.moves ?? 0);
+    obj.timed = false;
+    delete obj.timer;
+    return remaining;
+}
+
+// C ref: timeout.c attach_egg_hatch_timeout(egg, when) — decide if and when a
+// typed egg hatches.  `when` is non-zero only when re-creating an existing
+// hatch timer; for a fresh egg it is 0 and the schedule is rolled here.  This
+// mimics the old hatch_it(), which tried once a turn from age 151 to 200
+// inclusive and hatched on a roll of rnd(age) exceeding 150 — so the loop draws
+// rnd(151), rnd(152), ... until one exceeds 150 (chance of hatching > 99.999%).
+function attach_egg_hatch_timeout(egg, when) {
+    stop_object_timer(egg, HATCH_EGG); /* stop previous timer, if any */
+    if (!when) {
+        for (let i = (MAX_EGG_HATCH_TIME - 50) + 1; i <= MAX_EGG_HATCH_TIME; i++) {
+            if (rnd(i) > 150) {
+                when = i; /* egg will hatch */
+                break;
+            }
+        }
+    }
+    if (when)
+        start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
+}
+
+// C ref: do_name.c sir_Terry_novels[] — the 41 Discworld titles a "novel"
+// (SPE_NOVEL, the Tribute book) can carry, verbatim and in C's order.
+const SIR_TERRY_NOVELS = [
+    'The Colour of Magic', 'The Light Fantastic', 'Equal Rites',
+    'Mort', 'Sourcery', 'Wyrd Sisters',
+    'Pyramids', 'Guards! Guards!', 'Eric',
+    'Moving Pictures', 'Reaper Man', 'Witches Abroad',
+    'Small Gods', 'Lords and Ladies', 'Men at Arms',
+    'Soul Music', 'Interesting Times', 'Maskerade',
+    'Feet of Clay', 'Hogfather', 'Jingo',
+    'The Last Continent', 'Carpe Jugulum', 'The Fifth Elephant',
+    'The Truth', 'Thief of Time', 'The Last Hero',
+    'The Amazing Maurice and His Educated Rodents', 'Night Watch', 'The Wee Free Men',
+    'Monstrous Regiment', 'A Hat Full of Sky', 'Going Postal',
+    'Thud!', 'Wintersmith', 'Making Money',
+    'Unseen Academicals', 'I Shall Wear Midnight', 'Snuff',
+    'Raising Steam', 'The Shepherd\'s Crown',
+];
+
+// C ref: do_name.c noveltitle(novidx) — ALWAYS draws rn2(SIZE(sir_Terry_novels))
+// == rn2(41), then keeps an already-assigned index if the caller has one.  mksobj
+// calls this for every novel it creates (mkobj.c:1248
+// `otmp = oname(otmp, noveltitle(&otmp->novelidx), ONAME_NO_FLAGS)`), so the draw
+// happens once per novel — a shop that stocks one consumed it and we did not.
+function noveltitle(obj) {
+    const k = SIR_TERRY_NOVELS.length;   // 41
+    let j = rn2(k);
+    if (obj) {
+        if (obj.novelidx === -1 || obj.novelidx == null) obj.novelidx = j;
+        else if (obj.novelidx >= 0 && obj.novelidx < k) j = obj.novelidx;
+    }
+    return SIR_TERRY_NOVELS[j];
+}
+
 // C ref: mkobj.c set_corpsenm() — change a corpse/statue/figurine's monster id
 // and (re)start its decay/revive timer.  Only the CORPSE branch is reachable
 // for the themed-room buried-corpse fill; the old timer stop and weight recalc
 // consume no RNG, so the only RNG side-effect is start_corpse_timeout().
 export function set_corpsenm(obj, id) {
     if (!obj) return;
+    // C: `long when = 0L; if (obj->otyp == EGG) when = stop_timer(HATCH_EGG,
+    // obj_to_any(obj));` — a re-typed egg hands its remaining hatch time to
+    // attach_egg_hatch_timeout so it keeps the original schedule instead of
+    // rolling a fresh one.  A newly created egg has no timer, so when stays 0.
+    const when = obj.otyp === EGG ? stop_object_timer(obj, HATCH_EGG) : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
         start_corpse_timeout(obj);
         obj.owt = weight(obj);
+    } else if (obj.otyp === EGG) {
+        // C: only a typed egg of a still-living species gets a hatch timer.
+        // Note C does NOT recompute owt in this branch (an egg's weight does
+        // not depend on its species), so neither do we.
+        if (id != null && id !== NON_PM && !dead_species(id, true))
+            attach_egg_hatch_timeout(obj, when);
     } else {
         obj.owt = weight(obj);
     }
@@ -1644,11 +1723,24 @@ export function mksobj(otyp, init = true, artif = false) {
         if (otmp.corpsenm != null)
             otmp.spe = mkcorpstat_spe(otmp.corpsenm);
         break;
+    case EGG:
+        // C ref: mkobj.c mksobj() — the CORPSE/STATUE case falls through into
+        // `case EGG:` and both run set_corpsenm(otmp, otmp->corpsenm), which is
+        // what attaches a typed egg's HATCH_EGG timer (timeout.c
+        // attach_egg_hatch_timeout -> the rnd(151..200) hatch-schedule loop).
+        // mksobj_init above only chose the species; without this the whole loop
+        // was skipped and the PRNG stream ran short by however many rolls it
+        // takes to exceed 150.
+        set_corpsenm(otmp, otmp.corpsenm);
+        break;
     case POT_OIL:
         otmp.age = 400;
         break;
     case SPE_NOVEL:
+        // C ref: mkobj.c:1246-1249 — novelidx starts at "none of the above" and
+        // noveltitle() both rolls rn2(41) and fills it in, then onames the book.
         otmp.novelidx = -1;
+        otmp.oname = noveltitle(otmp);
         break;
     default:
         break;

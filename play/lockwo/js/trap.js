@@ -18,7 +18,7 @@ import {
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
-    Is_rogue_level, SLT_ENCUMBER, STONE,
+    Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER,
@@ -78,6 +78,26 @@ function dunlev_reached(lev) {
 function In_hell(lev) {
     const dnum = lev?.dnum ?? 0;
     return dnum === (game.gehennom_dnum ?? -1);
+}
+
+// C ref: dungeon.c Invocation_lev(lev) — the vibrating-square level, i.e. the
+// level just above Gehennom's bottom.
+function Invocation_lev(lev) {
+    return In_hell(lev) && (lev?.dlevel ?? 0) === dunlevs_in_dungeon(lev) - 1;
+}
+
+// C ref: dungeon.c Can_dig_down(lev) = !svl.level.flags.hardfloor
+// && !Is_botlevel(lev) && !Invocation_lev(lev).  Note the hardfloor test reads
+// the CURRENT level's flags in C too (it is svl.level, not lev-relative).
+function Can_dig_down(lev) {
+    return !game.level?.flags?.hardfloor && !Is_botlevel(lev) && !Invocation_lev(lev);
+}
+
+// C ref: dungeon.c Can_fall_thru(lev) = Can_dig_down(lev) || Is_stronghold(lev).
+// Like Can_dig_down but also permits falling through on the stronghold level,
+// whose bottom-of-dungeon status would otherwise resist both digging and falls.
+export function Can_fall_thru(lev) {
+    return Can_dig_down(lev) || !!Is_stronghold(lev);
 }
 
 // C ref: trap.c dng_bottom() — find "bottom" level of the dungeon, stopping

@@ -1657,185 +1657,301 @@ export const INNATE = {
  "arc_abil": [
   [
    1,
-   "HSearching"
+   "HSearching",
+   "",
+   ""
   ],
   [
    5,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ],
   [
    10,
-   "HFast"
+   "HFast",
+   "quick",
+   "slow"
   ]
  ],
  "bar_abil": [
   [
    1,
-   "HPoison_resistance"
+   "HPoison_resistance",
+   "",
+   ""
   ],
   [
    7,
-   "HFast"
+   "HFast",
+   "quick",
+   "slow"
   ],
   [
    15,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ]
  ],
  "cav_abil": [
   [
    7,
-   "HFast"
+   "HFast",
+   "quick",
+   "slow"
   ],
   [
    15,
-   "HWarning"
+   "HWarning",
+   "sensitive",
+   ""
   ]
  ],
  "hea_abil": [
   [
    1,
-   "HPoison_resistance"
+   "HPoison_resistance",
+   "",
+   ""
   ],
   [
    15,
-   "HWarning"
+   "HWarning",
+   "sensitive",
+   ""
   ]
  ],
  "kni_abil": [
   [
    7,
-   "HFast"
+   "HFast",
+   "quick",
+   "slow"
   ]
  ],
  "mon_abil": [
   [
    1,
-   "HFast"
+   "HFast",
+   "",
+   ""
   ],
   [
    1,
-   "HSleep_resistance"
+   "HSleep_resistance",
+   "",
+   ""
   ],
   [
    1,
-   "HSee_invisible"
+   "HSee_invisible",
+   "",
+   ""
   ],
   [
    3,
-   "HPoison_resistance"
+   "HPoison_resistance",
+   "healthy",
+   ""
   ],
   [
    5,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ],
   [
    7,
-   "HWarning"
+   "HWarning",
+   "sensitive",
+   ""
   ],
   [
    9,
-   "HSearching"
+   "HSearching",
+   "perceptive",
+   "unaware"
   ],
   [
    11,
-   "HFire_resistance"
+   "HFire_resistance",
+   "cool",
+   "warmer"
   ],
   [
    13,
-   "HCold_resistance"
+   "HCold_resistance",
+   "warm",
+   "cooler"
   ],
   [
    15,
-   "HShock_resistance"
+   "HShock_resistance",
+   "insulated",
+   "conductive"
   ],
   [
    17,
-   "HTeleport_control"
+   "HTeleport_control",
+   "controlled",
+   "uncontrolled"
   ]
  ],
  "pri_abil": [
   [
    15,
-   "HWarning"
+   "HWarning",
+   "sensitive",
+   ""
   ],
   [
    20,
-   "HFire_resistance"
+   "HFire_resistance",
+   "cool",
+   "warmer"
   ]
  ],
  "ran_abil": [
   [
    1,
-   "HSearching"
+   "HSearching",
+   "",
+   ""
   ],
   [
    7,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ],
   [
    15,
-   "HSee_invisible"
+   "HSee_invisible",
+   "",
+   ""
   ]
  ],
  "rog_abil": [
   [
    1,
-   "HStealth"
+   "HStealth",
+   "",
+   ""
   ],
   [
    10,
-   "HSearching"
+   "HSearching",
+   "perceptive",
+   ""
   ]
  ],
  "sam_abil": [
   [
    1,
-   "HFast"
+   "HFast",
+   "",
+   ""
   ],
   [
    15,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ]
  ],
  "tou_abil": [
   [
    10,
-   "HSearching"
+   "HSearching",
+   "perceptive",
+   ""
   ],
   [
    20,
-   "HPoison_resistance"
+   "HPoison_resistance",
+   "hardy",
+   ""
   ]
  ],
  "val_abil": [
   [
    1,
-   "HCold_resistance"
+   "HCold_resistance",
+   "",
+   ""
   ],
   [
    3,
-   "HStealth"
+   "HStealth",
+   "stealthy",
+   ""
   ],
   [
    7,
-   "HFast"
+   "HFast",
+   "quick",
+   "slow"
   ]
  ],
  "wiz_abil": [
   [
    15,
-   "HWarning"
+   "HWarning",
+   "sensitive",
+   ""
   ],
   [
    17,
-   "HTeleport_control"
+   "HTeleport_control",
+   "controlled",
+   "uncontrolled"
   ]
  ],
- "dwa_abil": [],
- "elf_abil": [],
- "gno_abil": [],
- "orc_abil": [],
+ "dwa_abil": [
+  [
+   1,
+   "HInfravision",
+   "",
+   ""
+  ]
+ ],
+ "elf_abil": [
+  [
+   1,
+   "HInfravision",
+   "",
+   ""
+  ],
+  [
+   4,
+   "HSleep_resistance",
+   "awake",
+   "tired"
+  ]
+ ],
+ "gno_abil": [
+  [
+   1,
+   "HInfravision",
+   "",
+   ""
+  ]
+ ],
+ "orc_abil": [
+  [
+   1,
+   "HInfravision",
+   "",
+   ""
+  ],
+  [
+   1,
+   "HPoison_resistance",
+   "",
+   ""
+  ]
+ ],
  "hum_abil": []
 };
 

@@ -16,6 +16,7 @@ import { set_tin_variety, HEALTHY_TIN } from './eat.js';
 import { makemon, mkclass, name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { make_engr_at } from './engrave.js';
 import { shtypes, get_shop_item, VEGETARIAN_CLASS } from './shtypes.js';
+import { Is_special } from './dungeon.js';
 
 // C ref: shknam.c shkliquors[]..shkgeneral[] — per-shop-type personal name
 // pools for nameshk().  Platform-conditional entries (#ifdef OVERLAY/WIN32/
@@ -283,7 +284,7 @@ function MON_AT(x, y) {
 function mkshobj_at(shp, shp_indx, sx, sy, mkspecl) {
     // 3.6 tribute: rare/secondhand bookstore special spot gets a novel.
     if (mkspecl && (shp.name === 'rare books' || shp.name === 'second-hand bookstore')) {
-        const novel = mksobj_at(/*SPE_NOVEL*/ 384, sx, sy, false, false);
+        const novel = mksobj_at(407 /* SPE_NOVEL (384 is SPE_CLAIRVOYANCE) */, sx, sy, false, false);
         if (novel) game._tribute_bookstock = true;
         return;
     }
@@ -415,7 +416,10 @@ export function stock_room(shp_indx, sroom) {
                 else if (inside_shop(fd.x, fd.y - 1)) n++;
                 make_engr_at(m, n, 'Closed for inventory', null, 0, DUST);
                 const ml = game.level.at(m, n);
-                if (ml && ml.typ !== CORR && ml.typ !== ROOM) ml.typ = ROOM;
+                // C: `levl[m][n].typ = (Is_special(&u.uz) || *in_rooms(m, n, 0))
+                //                       ? ROOM : CORR;`
+                if (ml && ml.typ !== CORR && ml.typ !== ROOM)
+                    ml.typ = (Is_special(game.u?.uz) || in_any_room(m, n)) ? ROOM : CORR;
             }
         }
     }
@@ -457,4 +461,14 @@ function inside_shop(x, y) {
     if (rno < 0) return false;
     const r = game.level.rooms[rno];
     return !!(r && r.rtype >= 14 /*SHOPBASE*/);
+}
+
+// C ref: hack.c *in_rooms(x, y, 0) — non-empty iff <x,y> is roomno-assigned to
+// a real room (typewanted==0 means "any room type").  Like inside_shop() above,
+// this treats a SHARED/SHARED_PLUS boundary square (roomno 1 or 2) as "not in
+// a room", matching that function's existing simplification.
+function in_any_room(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return (loc.roomno ?? 0) - ROOMOFFSET >= 0;
 }

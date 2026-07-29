@@ -3723,10 +3723,11 @@ function throw_isok(x, y) { return x >= 1 && x <= 79 && y >= 0 && y <= 20; }
 // C ref: include/rm.h ZAP_POS(typ) == typ >= POOL (16); a thrown missile cannot
 // pass solid terrain (rock/walls below POOL).
 function throw_zap_pos(typ) { return typ >= 16; }
-// C ref: monmove.c closed_door() — a door that is shut (D_CLOSED=2) or locked
-// (D_LOCKED=4).
+// C ref: monmove.c closed_door() — a door that is shut or locked.  rm.h:
+// D_ISOPEN=0x02, D_CLOSED=0x04, D_LOCKED=0x08.  This used to mask (2|4), i.e.
+// D_ISOPEN|D_CLOSED — so an OPEN door blocked and a LOCKED one did not.
 function throw_closed_door(loc) {
-    return loc?.typ === 23 /* DOOR */ && ((loc.doormask || 0) & (2 | 4)) !== 0;
+    return loc?.typ === 23 /* DOOR */ && ((loc.doormask || 0) & (0x04 | 0x08)) !== 0;
 }
 function bhit_thrown_landing(dx, dy, range) {
     let bx = game.u.ux, by = game.u.uy;
@@ -3855,7 +3856,12 @@ function acurr_str_throw() {
     if (str <= 121) return 19 + Math.trunc(str / 50);
     return Math.min(str, 125) - 100;
 }
-function IS_SOFT(typ) { return typ === 16 /* POOL */ || typ === 17 /* MOAT */ || typ === 19 /* LAVAPOOL approximations */; }
+// C ref: rm.h `#define IS_SOFT(typ) ((typ) == AIR || (typ) == CLOUD || IS_POOL(typ))`
+// with AIR=35, CLOUD=36 and IS_POOL(typ) = POOL(16)..DRAWBRIDGE_UP(19).  This
+// local shadowed const.js's correct IS_SOFT with POOL||MOAT||19 — so WATER and
+// a raised drawbridge were hard, and AIR/CLOUD were too.
+function IS_SOFT(typ) { return typ === 35 /* AIR */ || typ === 36 /* CLOUD */
+                            || (typ >= 16 /* POOL */ && typ <= 19 /* DRAWBRIDGE_UP */); }
 
 // C ref: dothrow.c dothrow() — the 't' command.  Reads the throw target via
 // getobj, then the direction, then performs the throw.  getDir is supplied by
@@ -4506,7 +4512,7 @@ function surface_underfoot() {
     const typ = loc?.typ;
     // C distinguishes water/lava/ice/air/cloud; none occur under the hero in the
     // itemactions-exercising sessions, so the common dungeon case is "floor".
-    if (typ === 21 /* ICE */) return 'ice';
+    if (typ === 33 /* ICE (rm.h); 21 is LAVAWALL */) return 'ice';
     return 'floor';
 }
 

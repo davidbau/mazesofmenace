@@ -229,7 +229,7 @@ async function deliver_by_window(msg, how) {
     for (const line of msg.split('\n'))
         tty_putstr(win, 0, convert_line(line));
 
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
     /* display_nhwindow(win, TRUE) blocks in dmore() until a key arrives; the
        recorder captures the frame at that read. */
     await nhgetch();

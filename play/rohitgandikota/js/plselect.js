@@ -408,7 +408,7 @@ async function select_menu_pick_one(win) {
         if (c0 && !(c0.offx === 10 || c0.maxrow >= 24))
             tty_clear_nhwindow_message(0);
     }
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
     const cw = tty_get_nhwindow(win);
     for (;;) {
         const c = String.fromCharCode(await nhgetch());
@@ -431,7 +431,7 @@ async function select_menu_pick_one(win) {
 // '+' where the initial full-page draw writes '*'. Returns the list of selected
 // identifiers, or null for <escape>.
 async function select_menu_pick_any(win) {
-    tty_display_nhwindow(win);
+    await tty_display_nhwindow(win);
     const cw = tty_get_nhwindow(win);
     for (;;) {
         const c = String.fromCharCode(await nhgetch());

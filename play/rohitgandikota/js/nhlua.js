@@ -51,6 +51,46 @@ export function l_nhcore_init() {
     game.splev_align = nhl_init();
 }
 
+// dat/nhcore.lua:108 show_getpos_tip() — the NHCORE_GETPOS_TIP callback,
+// reached through l_nhcore_call() from handle_tip(). nh.text() (nhlua.c:810)
+// splits its string at newlines and builds an NHW_MENU of add_menu_str lines
+// displayed PICK_NONE, which is why the window is inset with "(end)" rather
+// than a full-screen text page. The call runs in the nhcore state created at
+// newgame, so no fresh nhlib load and no RNG.
+const GETPOS_TIP_TEXT = [
+    'Tip: Farlooking or selecting a map location',
+    '',
+    'You are now in a "farlook" mode - the movement keys move the cursor,',
+    'not your character.  Game time does not advance.  This mode is used',
+    'to look around the map, or to select a location on it.',
+    '',
+    'When in this mode, you can press ESC to return to normal game mode,',
+    'and pressing ? will show the key help.',
+];
+
+export async function show_getpos_tip() {
+    const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+            tty_display_nhwindow, tty_destroy_nhwindow, NHW_MENU, ATR_NONE }
+        = await import('./tty/wintty.js');
+    const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD } = await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const { xwaitforspace } = await import('./tty/getline.js');
+    const { docrt } = await import('./display.js');
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const line of GETPOS_TIP_TEXT)
+        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, line,
+                     MENU_ITEMFLAGS_NONE);
+    tty_end_menu(win, null);
+    /* select_menu(tmpwin, PICK_NONE, &picks) — display and wait for a
+       dismissing key */
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+    await docrt();
+}
+
 // dat/nhlib.lua:43 percent() — `math.random(0, 99) < threshold`, and the
 // math.random shim turns that two-argument form into nh.random(0, 100), i.e.
 // exactly one rn2(100). It is the gate on nearly every themeroom decoration.

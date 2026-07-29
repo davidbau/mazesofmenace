@@ -837,7 +837,7 @@ export function dmgval(otmp, mon) {
 
 // C ref: include/mondata.h bigmonst() / mons[].msize >= MZ_LARGE.
 function largemonst(mdat) {
-    return !!(mdat && mdat.msize != null && mdat.msize >= 4 /* MZ_LARGE */);
+    return !!(mdat && mdat.msize != null && mdat.msize >= 3 /* MZ_LARGE (monflag.h); 4 is MZ_HUGE */);
 }
 
 // ── messaging helpers ──

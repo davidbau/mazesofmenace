@@ -17,7 +17,7 @@
 // column 0 with the cursor at [9,23].
 
 import { game } from './../gstate.js';
-import { TOPLINE_EMPTY } from './../display.js';
+import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
 import { tty_clear_nhwindow_message } from './../display.js';
 import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
@@ -269,21 +269,59 @@ export function tty_end_menu(window, prompt) {
 export function tty_putstr(window, attr, str) {
     const cw = windows[window];
     if (!cw) return;
-    const s = String(str ?? '');
+    let s = String(str ?? '');
+
+    /* win/tty/wintty.c:2251 — every non-message putstr runs compress_str():
+       when the line is CO or longer, runs of spaces collapse to one (leading
+       spaces drop, trailing space drops). option_help's padded
+       "`whatis_filter'      - ..." line is the visible case: 84 chars
+       squeeze to 78 and fit where the wrap below would otherwise split. */
+    if (s.length >= COLS || s.includes('\n')) {
+        let out = '';
+        let was_space = true;
+        for (let c of s) {
+            if (c === '\n') c = ' ';
+            if (was_space && c === ' ') continue;
+            out += c;
+            was_space = (c === ' ');
+        }
+        if (was_space && out.length) out = out.slice(0, -1);
+        s = out;
+    }
+
+    /* win/tty/wintty.c tty_putstr(), NHW_MENU/NHW_TEXT case:
+         n0 = strlen(str) + 1;
+         if (n0 > cw->maxcol) cw->maxcol = n0;
+       Note the +1, where tty_end_menu() uses +2 for an add_menu() entry, and
+       that C takes it from the UNBROKEN length even when the line is about
+       to be split below. */
+    const len = s.length + 1;
+    if (len > cw.maxcol) cw.maxcol = len;
+
+    /* win/tty/wintty.c:2411 — a line of CO or more characters is broken at
+       the last space before column CO; the space is dropped and the rest is
+       fed back through putstr. option_help's "OPTIONS=<options> in <path>"
+       line is the visible case: the intro line wraps before the path and
+       the path itself (no spaces) stays one long line the renderer clips. */
+    let rest = null;
+    if (s.length + 1 > COLS) {
+        let i = COLS - 1;
+        while (i && s[i] !== ' ' && s[i] !== '\n')
+            i--;
+        if (i) {
+            rest = s.slice(i + 1);
+            s = s.slice(0, i);
+        }
+    }
+
     /* C stores the attribute as the first byte of each data line and recovers
        it as `attr = cw->data[i][0] - 1`. Keeping it parallel is simpler. */
     cw.data.push(s);
     (cw.attrs ||= []).push(attr | 0);
     cw.maxrow = cw.data.length;
 
-    /* win/tty/wintty.c tty_putstr(), NHW_MENU/NHW_TEXT case:
-         n0 = strlen(str) + 1;
-         if (n0 > cw->maxcol) cw->maxcol = n0;
-       Note the +1, where tty_end_menu() uses +2 for an add_menu() entry. The
-       legacy window is the case that tells them apart: it is an NHW_MENU built
-       with putstr, and one extra column would move it from 23 to 22. */
-    const len = s.length + 1;
-    if (len > cw.maxcol) cw.maxcol = len;
+    if (rest !== null)
+        tty_putstr(window, attr, rest);
 }
 
 // win/tty/wintty.c:1898-1917 — where the window sits horizontally.
@@ -496,7 +534,7 @@ export function menu_page_items(window, page) {
 // win/tty/wintty.c tty_display_nhwindow() — menu/text case.
 // Renders the first page. Paging on subsequent keys is driven by the caller
 // consuming keys, matching how C's dmore() blocks inside the window.
-export function tty_display_nhwindow(window) {
+export async function tty_display_nhwindow(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
     if (!cw || !display) return;
@@ -504,6 +542,16 @@ export function tty_display_nhwindow(window) {
     cw.active = 1;
     cw.offx = compute_offx(cw);
     cw.curr_page = 0;
+
+    /* wintty.c:1966 — an unacknowledged message is flushed with a blocking
+       --More-- BEFORE the window draws:
+           if (ttyDisplay->toplin == TOPLINE_NEED_MORE)
+               tty_display_nhwindow(WIN_MESSAGE, TRUE);
+       That recursive call is the NHW_MESSAGE arm, i.e. more(). It is what
+       puts the --More-- on "Please move the cursor to ..." while the getpos
+       tip window waits behind it. */
+    if (game._toplin === TOPLINE_NEED_MORE)
+        await more();
 
     /* wintty.c tty_display_nhwindow(), the NHW_MENU/NHW_TEXT arm: a menu
        drawn as an OVERLAY first erases the message line --
@@ -551,7 +599,7 @@ export function tty_display_nhwindow(window) {
 export async function tty_select_menu(window, how) {
     const cw = windows[window];
     if (!cw) return [];
-    tty_display_nhwindow(window);
+    await tty_display_nhwindow(window);
     const picks = [];
     for (;;) {
         const c = await nhgetch();

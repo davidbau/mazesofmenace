@@ -65,3 +65,60 @@ export function isqrt(val) {
     }
     return rt;
 }
+// src/strutil.c pmatch_internal() — the simple wildcard matcher: '*' matches
+// zero or more characters, '?' any single character. checkfile() runs every
+// index line of the data file through this.
+function pmatch_internal(patrn, strng, ci) {
+    let pi = 0, si = 0;
+    for (;;) {
+        const s = strng[si] ?? '';
+        const p = patrn[pi] ?? '';
+        si++; pi++;
+        if (!p)
+            return s === '';
+        if (p === '*') {
+            if (pi >= patrn.length
+                || pmatch_internal(patrn.slice(pi), strng.slice(si - 1), ci))
+                return true;
+            return s ? pmatch_internal(patrn.slice(pi - 1), strng.slice(si), ci)
+                     : false;
+        }
+        if ((ci ? p.toLowerCase() !== s.toLowerCase() : p !== s)
+            && (p !== '?' || !s))
+            return false;
+    }
+}
+
+// src/strutil.c:145 pmatch() — case-sensitive wildcard match.
+export function pmatch(patrn, strng) {
+    return pmatch_internal(String(patrn), String(strng), false);
+}
+
+// src/topl.c/hacklib tabexpand() — expand tabs to 8-column stops; the data
+// file's quote attributions carry embedded tabs.
+export function tabexpand(s) {
+    let out = '';
+    for (const ch of String(s)) {
+        if (ch === '\t') {
+            do { out += ' '; } while (out.length % 8);
+        } else {
+            out += ch;
+        }
+    }
+    return out;
+}
+
+// src/hacklib.c mungspaces() — expand tabs to spaces, squeeze runs of
+// spaces to one, strip leading and trailing space, truncate at newline.
+export function mungspaces(bp) {
+    let out = '';
+    let was_space = true;
+    for (let c of String(bp)) {
+        if (c === '\n') break;
+        if (c === '\t') c = ' ';
+        if (c !== ' ' || !was_space) out += c;
+        was_space = (c === ' ');
+    }
+    if (was_space && out.length) out = out.slice(0, -1);
+    return out;
+}

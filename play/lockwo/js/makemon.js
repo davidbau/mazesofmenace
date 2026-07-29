@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse } from './mkobj.js';
+import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless } from './mkobj.js';
 import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
 // Object-class constants inlined (not imported) to avoid a circular-import TDZ:
 // mkobj.js's dependency chain reaches makemon.js, so importing these names here
@@ -35,7 +35,8 @@ const G_LGROUP = 0x0040; // appear in large groups normally
 const G_GENO = 0x0020;
 const G_NOCORPSE = 0x0010;
 const G_FREQ = 0x0007;
-const MM_NOGRP = 0x00002000; // suppress creation of monster groups
+export const MM_ASLEEP = 0x00001000; // monsters should be generated asleep
+export const MM_NOGRP = 0x00002000; // suppress creation of monster groups
 const MM_ANGRY = 0x00000020; // monster is created angry
 const G_IGNORE = 0x8000;
 const G_GONE = 0x03; // mvflags G_GENOD | G_EXTINCT
@@ -542,7 +543,11 @@ const MONS = MONS_RAW.map((t) => ({
 
 // Monster classes whose members carry their own weapon-generation behavior in
 // m_initweap(); only S_KOBOLD/S_ORC are reachable in the low-level slice.
-const ARMED_MCLS = new Set([11 /*S_KOBOLD*/, 15 /*S_ORC*/]);
+// Classes whose m_initweap() body consumes RNG on the conservative (non-Big-Room)
+// generation path.  C gates the call on is_armed(ptr) == attacktype(ptr, AT_WEAP)
+// for every class; this set is the subset whose branch we have ported, so adding a
+// class here must go with porting its m_initweap case (see m_initweap below).
+const ARMED_MCLS = new Set([11 /*S_KOBOLD*/, 15 /*S_ORC*/, 27 /*S_ANGEL*/]);
 
 export function monster_by_pmidx(pmidx) {
     return MONS[pmidx] ?? null;
@@ -1081,6 +1086,48 @@ function m_initinv(ptr) {
     rn2(100);
 }
 
+// C ref: makemon.c m_initweap() S_ANGEL branch (makemon.c:330-360) — a humanoid
+// angelic being gets minion gear built directly and handed over with mpickobj,
+// bypassing mongets.  RNG order, exactly as the recorded C stream shows it:
+//   rn2(3) weapon pick -> mksobj's next_ident -> rn2(20) artifact-promotion roll
+//   -> rn2(4) enchantment -> rn2(4) shield pick -> mksobj's next_ident.
+// Both rn2(20) and rn2(4) are the LEFT operand of an `||`, so each is always
+// drawn even when is_lord(ptr) would have made the test true anyway.
+function m_initweap_angel(mtmp, ptr) {
+    // C: `if (humanoid(ptr))`.  Within S_ANGEL exactly Aleax/Angel/Archon carry
+    // M1_HUMANOID (couatl is M1_SLITHY|M1_NOHANDS, ki-rin M1_NOHANDS), and those
+    // same three are precisely the AT_WEAP members, so ARMED_NAMES — which is
+    // attacktype(ptr, AT_WEAP) — doubles as the humanoid test for this class.
+    if (!ARMED_NAMES.has(ptr.name)) return;
+    const is_lord = M2_LORD_NAMES.has(ptr.name);
+
+    const typ = rn2(3) ? W_LONG_SWORD : W_SILVER_MACE;          // makemon.c:333
+    const nam = (typ === W_LONG_SWORD) ? 'Sunsword' : 'Demonbane';
+    let otmp = mksobj(typ, false, false);
+    // C: `if ((!rn2(20) || is_lord(ptr)) && sgn(...maligntyp) == A_LAWFUL)
+    //      otmp = oname(otmp, nam, ONAME_RANDOM);`
+    // A non-minion angel uses ptr->maligntyp (we do not model EMIN min_align).
+    // Artifact promotion proper is not modelled — C's oname() only attaches the
+    // name here and consumes no RNG, so recording the name is RNG-faithful.
+    if ((!rn2(20) || is_lord) && Math.sign(ptr.maligntyp ?? 0) === A_LAWFUL)  // makemon.c:338
+        otmp.oname = nam;
+    bless(otmp);
+    otmp.oerodeproof = true;
+    // long sword ends up +0..+3, silver mace +3..+6 to offset being much weaker
+    // against large opponents.
+    otmp.spe = rn2(4);                                          // makemon.c:347
+    if (typ === W_SILVER_MACE) otmp.spe += 3;
+    mtmp._hasinv = true;
+    mpickobj(mtmp, otmp);
+
+    otmp = mksobj((!rn2(4) || is_lord) ? W_SHIELD_OF_REFLECTION                // makemon.c:352
+                                       : W_LARGE_SHIELD, false, false);
+    otmp.oerodeproof = true;
+    otmp.spe = 0;
+    mtmp._hasinv = true;
+    mpickobj(mtmp, otmp);
+}
+
 // C ref: m_initweap() (makemon.c:160). Only the cases reachable by the
 // low-level mons[] slice (S_KOBOLD, S_ORC) plus the general default tail are
 // ported; the slice contains no giants/mercenaries/elves/etc.
@@ -1099,6 +1146,9 @@ function m_initweap(mtmp) {
     case 11: // S_KOBOLD (makemon.c:469)
         if (!rn2(4))
             m_initthrow(mtmp, DART, 12);
+        break;
+    case 27: // S_ANGEL (makemon.c:330)
+        m_initweap_angel(mtmp, ptr);
         break;
     default:
         break;
@@ -1147,6 +1197,7 @@ const W_BOULDER = 474, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_PARTISAN = 59, W_BEC_DE_CORBIN = 70, W_DAGGER = 34, W_KNIFE = 40,
     W_SPEAR = 27, W_SHORT_SWORD = 46, W_FLAIL = 81, W_MACE = 73,
     W_BROADSWORD = 52, W_LONG_SWORD = 54, W_SILVER_SABER = 51,
+    W_SILVER_MACE = 74, W_LARGE_SHIELD = 156, W_SHIELD_OF_REFLECTION = 158,
     W_ELVEN_MITHRIL_COAT = 127, W_ELVEN_CLOAK = 139, W_ELVEN_LEATHER_HELM = 89,
     W_ELVEN_BOOTS = 169, W_ELVEN_DAGGER = 35, W_ELVEN_SHIELD = 153,
     W_ELVEN_SHORT_SWORD = 47, W_ELVEN_BOW = 84, W_ELVEN_ARROW = 19,
@@ -1204,6 +1255,10 @@ function strongmonst_js(ptr) {
 const M2_LORD_NAMES = new Set([
     'gnome leader', 'dwarf leader', 'ogre leader', 'kobold leader',
     'elf-noble', 'orc-captain',
+    // S_ANGEL M2_LORD members (include/monsters.h): only these two of the five
+    // angelic beings carry M2_LORD, which the S_ANGEL branch consults for both
+    // the artifact-promotion test and the shield choice.
+    'ki-rin', 'Archon',
 ]);
 const M2_PRINCE_NAMES = new Set([
     'gnome ruler', 'dwarf ruler', 'ogre tyrant',
@@ -1225,6 +1280,9 @@ function m_initweap_full(mtmp) {
     if (!ptr || Is_rogue_level(game.u?.uz)) return;
     const mm = ptr.pmidx, mcls = ptr.mcls;
     switch (mcls) {
+    case 27: // S_ANGEL (makemon.c:330)
+        m_initweap_angel(mtmp, ptr);
+        break;
     case 34: // S_GIANT (no PM_ETTIN in slice)
         if (rn2(2)) mongets(mtmp, W_BOULDER);
         if (!rn2(5)) mongets(mtmp, rn2(2) ? W_TWO_HANDED_SWORD : W_BATTLE_AXE);
@@ -1418,7 +1476,7 @@ const LIKES_GOLD_PM = new Set([44,45,48,49,63,72,73,74,75,76,77,92,130,131,132,1
 const LIKES_GOLD_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","leprechaun","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","rock mole","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","orc mummy","dwarf mummy","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","Croesus","Charon","rogue","Master of Thieves","Chromatic Dragon","Goblin King","Ixoth","thug"]);
 function rnd_item_excluded(ptr) {
     return ANIMAL_PM.has(ptr.pmidx) || MINDLESS_PM.has(ptr.pmidx)
-        || ptr.mcls === 51 /*S_GHOST*/ || ptr.mcls === 37 /*S_KOP*/;
+        || ptr.mcls === 54 /*S_GHOST (defsym.h; 51 was wrong)*/ || ptr.mcls === 37 /*S_KOP*/;
 }
 function rnd_defensive_item(mtmp) {
     const pm = mtmp?.data;
@@ -1738,10 +1796,10 @@ const M2_GNOME_NAMES = new Set(["gnome","gnome lord","gnome lady","gnome leader"
 const M2_ORC_NAMES = new Set(["goblin","hobgoblin","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","orc mummy","orc zombie","Goblin King"]);
 const M2_ELF_NAMES = new Set(["elf mummy","elf zombie","elf","Woodland-elf","Green-elf","Grey-elf","elf-lord","elf-lady","elf-noble","Elvenking","Elvenqueen","elven monarch","Earendil","Elwing","High-elf"]);
 const M2_DWARF_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","dwarf mummy","dwarf zombie"]);
-const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","human","wererat","werejackal","werewolf","doppelganger","shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","Wizard of Yendor","Croesus","Charon","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","monk","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Thoth Amon","Master Kaen","Master Assassin","Ashikaga Takauji","Dark One","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
+export const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","human","wererat","werejackal","werewolf","doppelganger","shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","Wizard of Yendor","Croesus","Charon","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","monk","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Thoth Amon","Master Kaen","Master Assassin","Ashikaga Takauji","Dark One","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
 // C ref: M2_MINION; SIZ() msound MS_LEADER/MS_GUARDIAN (peaceful) / MS_NEMESIS
 // (hostile).  is_minion()'s result depends on u.ualign.record >= 0.
-const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
+export const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
 const MS_LEADERGUARD_NAMES = new Set(["Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
 const MS_NEMESIS_NAMES = new Set(["Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One"]);
 
@@ -1943,6 +2001,35 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     if (ptr.mcls === 13 /* S_MIMIC */ && (game._full_mon_gen || game._bigrm_gen)
         && x && y) {
         set_mimic_sym(mtmp);
+    }
+
+    // C ref: makemon.c:1327-1346 — the remaining per-mlet switch cases.  Every
+    // one of these is state-only (no RNG) except S_JABBERWOCK/S_NYMPH, so they
+    // run unconditionally (the switch itself is never gated to in_mklev in C;
+    // only the S_SPIDER/S_SNAKE and S_EEL cases guard their body on it).
+    switch (ptr.mcls) {
+    case 12: // S_LEPRECHAUN
+        mtmp.msleeping = true;
+        break;
+    case 36: // S_JABBERWOCK
+    case 14: // S_NYMPH
+        if (rn2(5) && !game.u?.uhave?.amulet) mtmp.msleeping = true;
+        break;
+    case 15: // S_ORC
+        if (game.urace?.adj === 'elf') mtmp.mpeaceful = false;
+        break;
+    case 21: // S_UNICORN
+        if (ptr.name && ptr.name.endsWith('unicorn')
+            && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(ptr.maligntyp ?? 0))
+            mtmp.mpeaceful = true;
+        break;
+    case 25: // S_LIGHT
+    case 31: // S_ELEMENTAL
+        if (ptr.name === 'stalker' || ptr.name === 'black light') {
+            mtmp.perminvis = true;
+            mtmp.minvis = true;
+        }
+        break;
     }
 
     // C ref: makemon.c:1352-1390 — mitem selection + shapechanger handling.

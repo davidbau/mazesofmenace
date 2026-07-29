@@ -27,7 +27,8 @@ import { print_dungeon } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU } from './const.js';
+import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
+         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
@@ -140,13 +141,38 @@ function u_on_rndspot(upflag) {
 
 // ── pet follow (C ref: dog.c keepdogs()/losedogs()/mon_arrive(With_you)) ──
 
+// C ref: rm.h closed_door(x, y) == (IS_DOOR(levl[x][y].typ)
+//                                   && (levl[x][y].doormask & (D_CLOSED|D_LOCKED)))
+function closed_door(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    return IS_DOOR(lev.typ) && ((lev.doormask & (D_CLOSED | D_LOCKED)) !== 0);
+}
+
+// C ref: monmove.c accessible(x, y) == (ACCESSIBLE(SURFACE_AT(x,y))
+//                                      && !closed_door(x, y)).
+// goodpos() calls THIS, not the bare ACCESSIBLE() macro — a closed or locked
+// door is NOT a good position for an ordinary monster (only amorphous ones get
+// the `amorphous(mdata) && closed_door(x,y) -> TRUE` early-out above it, and no
+// pet is amorphous).  SURFACE_AT's drawbridge indirection is not modelled: no
+// session places a monster in front of a closed drawbridge.
+function accessible_mon(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ != null && ACCESSIBLE(typ) && !closed_door(x, y);
+}
+
 function goodpos_mon(x, y) {
     if (!isok(x, y)) return false;
     if (game.u?.ux === x && game.u?.uy === y) return false;
     if (m_at(x, y)) return false;
-    const typ = game.level?.at(x, y)?.typ;
-    // ACCESSIBLE(typ): typ >= DOORS (== anything walkable)
-    return typ != null && typ >= 13 /* DOOR */;
+    // C ref: teleport.c goodpos() — `if (!accessible(x, y)) return FALSE;`.
+    // enexto() takes the FIRST goodpos candidate out of the collect_coords ring
+    // order, so accepting a square C refuses relocates the monster while
+    // consuming IDENTICAL RNG — an invisible, non-RNG placement fork.  Two bugs
+    // lived here: the threshold was `typ >= 13` with a comment claiming 13 was
+    // DOOR (it is TREE; DOOR is 23), and the closed-door rejection was missing
+    // entirely.  A pet arriving on a new level was landing in a closed doorway.
+    return accessible_mon(x, y);
 }
 
 // C ref: teleport.c collect_coords — candidate spots in expanding rings,

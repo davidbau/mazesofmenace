@@ -44,7 +44,7 @@ export function rndghostname() {
 
 // src/mondata.h pmname() — pick from pmnames[male, female, neutral]. The
 // neutral form is index 2 and is the fallback when a gendered entry is null.
-function pmname(ptr, gender) {
+export function pmname(ptr, gender) {
     const n = ptr?.pmnames;
     if (!n) return '';
     return n[gender] || n[2] || n[0] || '';

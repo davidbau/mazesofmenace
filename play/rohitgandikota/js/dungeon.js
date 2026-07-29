@@ -13,8 +13,15 @@
 import { game } from './gstate.js';
 import { In_endgame, Is_earthlevel } from './const.js';
 import { rn2, rn1 } from './rng.js';
-import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL } from './const.js';
+import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL, PICK_ONE,
+         MENU_BEHAVE_STANDARD } from './const.js';
 import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow, tty_putstr, NHW_MENU,
+         ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
+import { MENU_ITEMFLAGS_NONE } from './const.js';
+import { makeplural } from './objnam.js';
 
 // include/global.h:408-409
 const MAXDUNGEON = 16;
@@ -544,6 +551,20 @@ export function init_dungeons() {
     }
     game.oracle_level = game.special_levels.oracle_level ?? null;
 
+    /* src/dungeon.c:1142-1157 — kludge to allow floating Knox entrance. A
+       floating entrance is specified by giving end1 the bogus dnum n_dgns;
+       the real end1 is filled in when a vault portal places the branch. */
+    const knox = game.special_levels.knox_level;
+    if (knox) {
+        const idx = (game.branches || []).findIndex(
+            (b) => b.end2.dnum === knox.dnum && b.end2.dlevel === knox.dlevel);
+        if (idx >= 0) {
+            const br = game.branches.splice(idx, 1)[0];
+            br.end1.dnum = game.dungeons.length; /* n_dgns */
+            insert_branch(br);
+        }
+    }
+
     /* src/dungeon.c:1164-1168 — "I hate hardwiring these names. :-(" */
     game.quest_dnum = dname_to_dnum('The Quest');
     game.sokoban_dnum = dname_to_dnum('Sokoban');
@@ -722,3 +743,245 @@ export function induced_align(pct) {
 const Align2amask = (x) => (x === A_NONE) ? AM_NONE
                          : (x === A_LAWFUL) ? AM_LAWFUL
                          : ((x) + 2);
+
+// src/dungeon.c:1477 builds_up() — the branch is entered from below.
+export function builds_up(lev) {
+    const dptr = game.dungeons[lev.dnum];
+    if (dptr.num_dunlevs > 1)
+        return dptr.entry_lev === dptr.num_dunlevs;
+    /* single-level branch: does its connection build up from the parent? */
+    for (const br of (game.branches || []))
+        if (br.end2.dnum === lev.dnum && br.end2.dlevel === lev.dlevel)
+            return !!br.end1_up;
+    return false;
+}
+
+// src/dungeon.c:2027 level_difficulty() — never negative even on the
+// Elemental Planes: the endgame reads as sanctum depth plus half the hero's
+// level, and a builds-up branch counts the climb beyond its entrance.
+export function level_difficulty() {
+    let res;
+
+    if (In_endgame(game.u.uz)) {
+        const sanctum = game.special_levels?.sanctum_level;
+        res = (sanctum ? depth(sanctum) : 0) + ((game.u.ulevel / 2) | 0);
+    } else if (game.u.uhave?.amulet) {
+        /* deepest_lev_reached() needs the per-dungeon reached tracking */
+        note_unported_dungeon('level_difficulty:deepest_lev_reached');
+        res = depth(game.u.uz);
+    } else {
+        res = depth(game.u.uz);
+        if (builds_up(game.u.uz))
+            res += 2 * (game.dungeons[game.u.uz.dnum].entry_lev
+                        - game.u.uz.dlevel + 1);
+    }
+    /* ring of aggravate monster */
+    if (game.u.uprops?.AGGRAVATE_MONSTER)
+        res = res > 25 ? 50 : res * 2;
+    return res;
+}
+
+// src/dungeon.c:1605 u_on_rndspot() — place the hero at a random location
+// within the arrival region; an unspecified region (lx == 0) defaults to
+// the entire level. The W-tower arm needs its exclusion region and is
+// recorded.
+export async function u_on_rndspot(upflag) {
+    const up = (upflag & 1), was_in_W_tower = (upflag & 2);
+    const { place_lregion, LR_UPTELE, LR_DOWNTELE } =
+        await import('./mkmaze.js');
+
+    if (was_in_W_tower) {
+        note_unported_dungeon('u_on_rndspot:W_tower');
+    } else if (up) {
+        const r = game.updest || {};
+        place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
+                      r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
+                      LR_UPTELE, null);
+    } else {
+        const r = game.dndest || {};
+        place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
+                      r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
+                      LR_DOWNTELE, null);
+    }
+    /* switch_terrain() — levitation/flight state versus the new square;
+       nothing a fresh arrival needs yet */
+}
+
+// src/dungeon.c:2175 unplaced_floater() — Fort Ludios when its branch has
+// not been placed (end1 in the pseudo-dungeon n_dgns).
+function unplaced_floater(idx) {
+    if (idx !== (game.special_levels?.knox_level?.dnum ?? -1))
+        return false;
+    for (const br of (game.branches || []))
+        if (br.end1.dnum === game.dungeons.length && br.end2.dnum === idx)
+            return true;
+    return false;
+}
+
+// src/dungeon.c:2190 unreachable_level()
+function unreachable_level(lvl_p, unplaced) {
+    if (unplaced)
+        return true;
+    if (In_endgame(game.u.uz) && !In_endgame(lvl_p))
+        return true;
+    const dummy = find_level('dummy');
+    if (dummy && lvl_p.dnum === dummy.dlevel.dnum
+        && lvl_p.dlevel === dummy.dlevel.dlevel)
+        return true;
+    return false;
+}
+
+// src/dungeon.c:2204 tport_menu() — add one selectable destination. An
+// unreachable one still consumes the next menu letter; it just cannot be
+// picked, and gets four spaces where "%c - " would go.
+function tport_menu(win, entry, lchoices, lvl_p, cannotreach) {
+    lchoices.lev[lchoices.idx] = lvl_p.dlevel;
+    lchoices.dgn[lchoices.idx] = lvl_p.dnum;
+    lchoices.playerlev[lchoices.idx] = depth(lvl_p);
+    let identifier = 0;
+    if (cannotreach) {
+        /* not selectable, but still consumes next menuletter */
+        entry = `    ${entry}`;
+    } else {
+        identifier = lchoices.idx + 1;
+    }
+    tty_add_menu(win, null, identifier, lchoices.menuletter, 0,
+                 ATR_NONE, NO_COLOR, entry, MENU_ITEMFLAGS_NONE);
+    /* this assumes there are at most 52 interesting levels */
+    if (lchoices.menuletter === 'z')
+        lchoices.menuletter = 'A';
+    else
+        lchoices.menuletter = String.fromCharCode(
+            lchoices.menuletter.charCodeAt(0) + 1);
+    lchoices.idx++;
+}
+
+// src/dungeon.c:2240 br_string()
+function br_string(type) {
+    switch (type) {
+    case BR_PORTAL:
+        return 'Portal';
+    case BR_NO_END1:
+        return 'Connection';
+    case BR_NO_END2:
+        return 'One way stair';
+    case BR_STAIR:
+        return 'Stair';
+    }
+    return ' (unknown)';
+}
+
+// src/dungeon.c:2256 chr_u_on_lvl() — '*' marks the hero's current level.
+function chr_u_on_lvl(dlev) {
+    return (game.u.uz.dnum === dlev.dnum && game.u.uz.dlevel === dlev.dlevel)
+           ? '*' : ' ';
+}
+
+// src/dungeon.c:2263 print_branch() — print all branches out of dungeon
+// dnum with entry level in (lower_bound, upper_bound].
+function print_branch(win, dnum, lower_bound, upper_bound, bymenu, lchoices) {
+    /* This assumes that end1 is the "parent". */
+    for (const br of (game.branches || [])) {
+        if (br.end1.dnum === dnum && lower_bound < br.end1.dlevel
+            && br.end1.dlevel <= upper_bound) {
+            const buf = `${bymenu ? chr_u_on_lvl(br.end1) : ' '} ${
+                br_string(br.type)} to ${
+                game.dungeons[br.end2.dnum].dname}: ${depth(br.end1)}`;
+            if (bymenu)
+                tport_menu(win, buf, lchoices, br.end1,
+                           unreachable_level(br.end1, false));
+            else
+                tty_putstr(win, 0, buf);
+        }
+    }
+}
+
+// src/dungeon.c:2290 print_dungeon() — the wizard-mode dungeon overview.
+// Only the bymenu form (the ^V '?' destination menu) is ported; the plain
+// listing arm is reached from #wizwhere and is recorded.
+//
+// Returns the picked destination's player-visible depth (0 if cancelled)
+// and fills out.lev / out.dnum with the d_level.
+export async function print_dungeon(bymenu, out) {
+    const lchoices = { idx: 0, menuletter: 'a', lev: [], dgn: [],
+                       playerlev: [] };
+    const win = tty_create_nhwindow(NHW_MENU);
+
+    if (!bymenu) {
+        note_unported_dungeon('print_dungeon:listing');
+        tty_destroy_nhwindow(win);
+        return 0;
+    }
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    for (let i = 0; i < game.dungeons.length; i++) {
+        const dptr = game.dungeons[i];
+        if (In_endgame(game.u.uz)
+            && i !== (game.special_levels?.astral_level?.dnum ?? -1))
+            continue;
+        const unplaced = unplaced_floater(i);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs;
+        let buf;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${makeplural(descr)} ${dptr.depth_start
+                  } to ${dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+
+        /* Most entrances are uninteresting. */
+        if (dptr.entry_lev !== 1) {
+            if (dptr.entry_lev === nlev)
+                buf += ', entrance from below';
+            else
+                buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        /* add_menu_heading() */
+        tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, buf,
+                     MENU_ITEMFLAGS_NONE);
+
+        /*
+         * Circle through the special levels to find levels that are in
+         * this dungeon.
+         */
+        let last_level = 0;
+        for (const slev of (game.sp_levchn || [])) {
+            if (slev.dlevel.dnum !== i)
+                continue;
+
+            /* print any branches before this level */
+            print_branch(win, i, last_level, slev.dlevel.dlevel, bymenu,
+                         lchoices);
+
+            let sbuf = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${
+                depth(slev.dlevel)}`;
+            const stronghold = game.special_levels?.stronghold_level;
+            if (stronghold && slev.dlevel.dnum === stronghold.dnum
+                && slev.dlevel.dlevel === stronghold.dlevel)
+                sbuf += ` (tune ${game.castle_tune})`;
+            tport_menu(win, sbuf, lchoices, slev.dlevel,
+                       unreachable_level(slev.dlevel, unplaced));
+
+            last_level = slev.dlevel.dlevel;
+        }
+        /* print branches after the last special level */
+        print_branch(win, i, last_level, MAXLEVEL, bymenu, lchoices);
+    }
+
+    tty_end_menu(win, 'Level teleport to where:');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    tty_destroy_nhwindow(win);
+    if (picks.length > 0) {
+        const idx = picks[0] - 1;
+        if (out) {
+            out.lev = lchoices.lev[idx];
+            out.dnum = lchoices.dgn[idx];
+            return lchoices.playerlev[idx];
+        }
+    }
+    return 0;
+}
+
+function note_unported_dungeon(what) {
+    (game.unported ||= new Set()).add(what);
+}

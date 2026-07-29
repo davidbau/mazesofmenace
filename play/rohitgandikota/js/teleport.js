@@ -19,7 +19,7 @@ import { rnl } from './rng.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
-import { get_level, depth } from './dungeon.js';
+import { get_level, depth, print_dungeon } from './dungeon.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 
 // include/hack.h:1204-1210
@@ -123,6 +123,10 @@ function ZAP_POS(x, y) {
 // pass re-collects and therefore re-shuffles the near rings, so its draw count
 // includes them again even though the caller skips those entries.
 export function enexto_core(cc, xx, yy, mdat, entflags, goodpos) {
+    /* src/teleport.c:234 — a null mdat defaults to the hero's original
+       monster type */
+    if (!mdat)
+        mdat = game.mons[game.u.umonster];
     /* src/teleport.c:118 — C builds a dummy monst and set_mon_data()s the
        permonst into it, because goodpos() takes a monster, not a permonst. */
     const fakemon = { data: mdat, wormno: 0 };
@@ -196,10 +200,17 @@ export async function level_tele() {
             }
 
             if (game.wizard && buf === '?') {
-                /* print_dungeon() is the dungeon-overview MENU; it needs the
-                   tty menu system. It also sets force_dest. */
-                note_unported_tele('level_tele:print_dungeon menu');
-                return;
+                const dest = { lev: 0, dnum: 0 };
+
+                newlev = await print_dungeon(true, dest);
+                if (!newlev)
+                    return;
+
+                newlevel.dnum = dest.dnum;
+                newlevel.dlevel = dest.lev;
+                if (In_endgame(newlevel) && !In_endgame(game.u.uz))
+                    note_unported_tele('level_tele:endgame_amulet');
+                force_dest = true;
             } else {
                 newlev = lev_by_name(buf);
                 if (newlev === 0)
@@ -237,15 +248,29 @@ export async function level_tele() {
         return;
     }
 
-    get_level(newlevel, newlev);
+    if (force_dest) {
+        /* wizard mode menu; no further validation needed */
+    } else {
+        /* the medusa-overshoot find_hell() arm and the Gehennom depth
+           clamps only matter below Medusa; recorded there */
+        if (game.u.uz.dnum === game.medusa_level?.dnum
+            && newlev >= game.dungeons[game.u.uz.dnum].depth_start
+                         + game.dungeons[game.u.uz.dnum].num_dunlevs)
+            note_unported_tele('level_tele:find_hell');
 
-    if (newlevel.dnum === game.u.uz.dnum && newlevel.dlevel === game.u.uz.dlevel
-        && newlev !== depth(game.u.uz)) {
-        await You_cant('get there from here.');
-        return;
+        get_level(newlevel, newlev);
+
+        if (newlevel.dnum === game.u.uz.dnum
+            && newlevel.dlevel === game.u.uz.dlevel
+            && newlev !== depth(game.u.uz)) {
+            await You_cant('get there from here.');
+            return;
+        }
     }
 
-    schedule_goto(newlevel, UTOTYPE_NONE, null, null);
+    schedule_goto(newlevel, UTOTYPE_NONE, null,
+                  game.flags?.verbose
+                      ? 'You materialize on a different level!' : null);
 }
 
 // src/dungeon.c lev_by_name() — a level's name ("medusa", "castle") to its

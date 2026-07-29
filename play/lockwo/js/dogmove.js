@@ -464,11 +464,17 @@ async function dog_invent(mtmp, edog, udist) {
     return 0;
 }
 
-// C ref: steal.c relobj(mtmp,x,y,...) — drop the pet's carried objects onto its
-// tile.  Placement is deterministic (no RNG); we just move them from minvent
-// back into level.objects at (x,y).
+// C ref: steal.c relobj(mtmp, show, is_pet=TRUE) — drop the pet's DROPPABLE
+// carried objects onto its tile.  is_pet=TRUE means "pet should keep
+// wielded/worn items": the C loop is `while ((otmp = droppables(mtmp)))
+// mdrop_obj(...)`, i.e. it repeatedly asks droppables() (dogmove.c:27-136,
+// same "!obj->owornmask && obj != wep" filter as our droppables() above) for
+// the next candidate and stops once nothing droppable remains — a worn item
+// such as a pony's saddle (owornmask=W_SADDLE) is NEVER returned by
+// droppables() and so is never dropped here, matching a live steed's own
+// relobj() call on dismount.  Placement of what IS dropped is deterministic
+// (no RNG); we just move it from minvent back into level.objects at (x,y).
 async function relobj(mtmp, x, y) {
-    const inv = mtmp.minvent || [];
     const arr = game.level?.objects;
     // C ref: steal.c relobj(is_pet=TRUE) -> mdrop_obj(mon,obj,is_pet&&verbose).
     // For each droppable, when verbose and the hero can see the pet's tile,
@@ -479,9 +485,12 @@ async function relobj(mtmp, x, y) {
     // exactly as C's topl buffer does.
     const verbose = game.flags?.verbose !== false;
     const announce = verbose && cansee(x, y);
-    for (const obj of inv) {
+    let obj;
+    while ((obj = droppables(mtmp))) {
         if (announce)
             await emit_pet_msg(`${Monnam(mtmp)} drops ${pet_doname(obj)}.`);
+        const ix = mtmp.minvent.indexOf(obj);
+        if (ix >= 0) mtmp.minvent.splice(ix, 1);
         obj.ox = x; obj.oy = y;
         // C ref: mdrop_obj -> place_object: the object goes back on the floor.
         // Use the same 'floor' marker place_object sets so vobj_at/the display
@@ -489,7 +498,6 @@ async function relobj(mtmp, x, y) {
         obj.where = 'floor';
         if (arr && !arr.includes(obj)) arr.push(obj);
     }
-    mtmp.minvent = [];
 }
 
 // C ref: mkobj.c splitobj(obj,num) — split `num` off a stack into a new obj

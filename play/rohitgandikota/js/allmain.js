@@ -40,16 +40,17 @@ export async function stop_occupation() {
 }
 
 import { rn2, rn1 } from './rng.js';
-import { exerchk, change_luck } from './attrib.js';
+import { exerchk, change_luck, ACURR, near_capacity } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
-         FULL_MOON, NEW_MOON, COLNO } from './const.js';
+         FULL_MOON, NEW_MOON, COLNO, A_CON, MOD_ENCUMBER,
+         Upolyd } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
-import { lookaround, end_running, unmul } from './hack.js';
+import { lookaround, end_running, unmul, nomul } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
@@ -108,7 +109,9 @@ export async function newgame() {
         const ir = str2role(g.rc?.opts?.role);
         const ira = str2race(g.rc?.opts?.race);
         const ig = str2gend(g.rc?.opts?.gender);
-        const ia = str2align(g.rc?.opts?.align);
+        /* parseoptions() files every spelling under the table's canonical
+           name, and "align" is an alias of "alignment" (optlist.h:147) */
+        const ia = str2align(g.rc?.opts?.alignment);
         g.flags.initrole = ir;
         g.flags.initrace = ira;
         g.flags.initgend = ig;
@@ -189,6 +192,11 @@ export async function newgame() {
         // src/u_init.c:991 — u.umonnum = u.umonster = urole.mnum. find_ac()
         // starts from mons[u.umonnum].ac, so a hero without it has no base AC.
         g.u.umonnum = g.u.umonster = g.urole.mnum;
+        // src/mondata.c set_uasmon() — gy.youmonst.data = &mons[u.umonnum].
+        // The hero-as-monster struct: combat code passes it to the same
+        // functions that take a real monster (dmgval, mhitm_ad_phys,
+        // could_seduce), which read .data and .mnum.
+        g.youmonst = { data: g.mons[g.u.umonnum], mnum: g.u.umonnum };
         g.u.ulevel = g.u.ulevelmax = 1;
         /* type and record were filled by newhp() above, where C sets them. */
         // src/u_init.c:1006 — ualignbase[A_CURRENT] and [A_ORIGINAL] track the
@@ -245,7 +253,7 @@ export async function newgame() {
     // src/u_init.c — the hero reaches experience level 1, which grants the
     // role's and race's level-1 intrinsics. Draws nothing itself, but Fast
     // makes u_calc_moveamt() draw every turn thereafter.
-    adjabil(0, 1);
+    await adjabil(0, 1);
 
     /* src/u_init.c:1002 — init_uhunger() sits between adjabil() and the spell
        book clear. exerper() consults uhunger every tenth move. */
@@ -407,6 +415,53 @@ function u_calc_moveamt() {
     if (game.u.umovement < 0) game.u.umovement = 0;
 }
 
+// src/allmain.c:625 regen_hp() — the hero's per-turn heal check. The
+// !Upolyd arm draws rn2(100) every turn the hero is below max HP, so the
+// stream changes shape the moment the hero first takes damage. The Upolyd
+// (u.mh) arm and the eel-out-of-water arm need polymorph state and are
+// recorded.
+async function regen_hp(wtcap) {
+    let heal = 0;
+    let reached_full = false;
+    const encumbrance_ok = (wtcap < MOD_ENCUMBER || !game.u.umoved);
+    const U_CAN_REGEN = () => !!(game.u.uprops?.REGENERATION
+                                 || (game.u.uprops?.SLEEPY && game.u.usleep));
+
+    if (Upolyd(game.u)) {
+        note_unported_main('regen_hp:Upolyd');
+    } else {
+        if (game.u.uhp < game.u.uhpmax && (encumbrance_ok || U_CAN_REGEN())) {
+            heal = (game.u.ulevel + ACURR(A_CON)) > rn2(100) ? 1 : 0;
+
+            if (U_CAN_REGEN())
+                heal += 1;
+            if (game.u.uprops?.SLEEPY && game.u.usleep)
+                heal++;
+
+            if (heal) {
+                (game.disp ||= {}).botl = true;
+                game.u.uhp += heal;
+                if (game.u.uhp > game.u.uhpmax)
+                    game.u.uhp = game.u.uhpmax;
+                /* stop voluntary multi-turn activity if now fully healed */
+                reached_full = (game.u.uhp === game.u.uhpmax);
+            }
+        }
+    }
+
+    if (reached_full)
+        await interrupt_multi('You are in full health.');
+}
+
+// src/allmain.c:976 interrupt_multi()
+async function interrupt_multi(msg) {
+    if (game.multi > 0 && !game.context?.travel && !game.context?.run) {
+        nomul(0);
+        if (game.flags?.verbose && msg)
+            await pline(msg); /* Norep */
+    }
+}
+
 // src/allmain.c:158 maybe_generate_rnd_mon()
 function maybe_generate_rnd_mon() {
     const stronghold = game.special_levels?.stronghold_level;
@@ -478,6 +533,14 @@ export async function moveloop_core() {
                    turn (it sits beside nh_timeout in the same block). */
                 if (g.u.ublesscnt)
                     g.u.ublesscnt--;
+
+                /* src/allmain.c:287 — heal check. The guard matters for the
+                   stream: a hero at full HP never reaches regen_hp(), so the
+                   rn2(100) only starts once the hero has been hurt. */
+                if (!g.u.uinvulnerable
+                    && (!Upolyd(g.u) ? (g.u.uhp < g.u.uhpmax)
+                                     : (g.u.mh < g.u.mhmax)))
+                    await regen_hp(near_capacity());
 
                 dosounds();
                 gethungry();

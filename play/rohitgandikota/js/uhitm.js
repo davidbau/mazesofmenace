@@ -1,5 +1,6 @@
 import { exercise } from './attrib.js';
-import { A_DEX } from './const.js';
+import { A_DEX, A_STR, ERODE_NONE, ERODE_BURN, ERODE_RUST,
+         ERODE_CORRODE } from './const.js';
 // uhitm.js — the hero attacking, or declining to attack, a monster.
 // C ref: src/uhitm.c
 //
@@ -13,7 +14,12 @@ import { A_DEX } from './const.js';
 // code and is recorded, not faked.
 
 import { game } from './gstate.js';
-import { helpless } from './monst.js';
+import { helpless, MON_WEP } from './monst.js';
+import { rn1 } from './rng.js';
+import { dmgtype } from './mondata.js';
+import { touch_petrifies } from './dog.js';
+import { which_armor } from './worn.js';
+import { hitmsg } from './mhitu.js';
 import { You } from './pline.js';
 import { mon_nam } from './do_name.js';
 import { exclam } from './zap.js';
@@ -1040,24 +1046,144 @@ export function nohandglow(mon) {
 
 // src/uhitm.c:3981 mhitm_ad_phys() — the AD_PHYS arm of mhitm_adtyping.
 //
-// Only the monster-vs-monster branch is live here (the uhitm and mhitu
-// branches run through their own files' flows). With no wielded monster
-// weapons yet, the mwep arms record; a plain claw/bite deals the rolled
-// damage unchanged.
-export function mhitm_ad_phys(magr, mattk, mdef, mhm) {
+// The mhitu (monster hits hero) and mhitm (monster vs monster) branches are
+// live; the uhitm branch is only reached by a polymorphed hero using hmonas()
+// and is recorded. Within the mhitu branch, the corpse-petrification, silver,
+// pudding-clone and poison arms need absent subsystems and are recorded at
+// their C decision points.
+export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const A = ATTKS;
     const pd = game.mons[mdef.mnum];
 
-    /* mhitm branch */
-    if (noncorporeal(pd)) {
-        /* shade_miss */
-        note_unported_uhitm('mhitm_ad_phys:shade');
-        mhm.damage = 0;
-    } else if (mattk[0] === A.AT_KICK && thick_skinned(pd)) {
-        mhm.damage = 0;
+    if (magr === game.youmonst) {
+        /* uhitm — hmonas()'s claw/kick attacks for a poly'd hero */
+        note_unported_uhitm('mhitm_ad_phys:uhitm');
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        if (mattk[0] === A.AT_HUGS && !sticks(pd)) {
+            if (!game.u.ustuck && rn2(2)) {
+                /* u_slip_free() needs the grab/armor-slip rules */
+                note_unported_uhitm('mhitm_ad_phys:u_slip_free');
+                mhm.damage = 0;
+                mhm.hitflags |= M_ATTK_MISS;
+            } else if (game.u.ustuck === magr) {
+                exercise(A_STR, false);
+                await You(`are being ${
+                    magr.mnum === PMNAMES.PM_ROPE_GOLEM ? 'choked'
+                                                        : 'crushed'}.`);
+            }
+        } else { /* hand to hand weapon */
+            const otmp = MON_WEP(magr);
+
+            if (mattk[0] === A.AT_WEAP && otmp) {
+                if (otmp.otyp === ONAMES.CORPSE
+                    && touch_petrifies(game.mons[otmp.corpsenm])) {
+                    note_unported_uhitm('mhitm_ad_phys:corpse_stone_u');
+                    mhm.damage = 1;
+                }
+                mhm.damage += dmgval(otmp, mdef);
+                const marmg = which_armor(magr, W_ARMG);
+                if (marmg && marmg.otyp === ONAMES.GAUNTLETS_OF_POWER)
+                    mhm.damage += rn1(4, 3); /* 3..6 */
+                if (mhm.damage <= 0)
+                    mhm.damage = 1;
+                if (!otmp.oartifact) {
+                    await hitmsg(magr, mattk, mhm.indx);
+                    mhm.hitflags |= M_ATTK_HIT;
+                } else {
+                    note_unported_uhitm('mhitm_ad_phys:artifact_hit_u');
+                }
+                if (!mhm.damage)
+                    return;
+                if (game.objects[otmp.otyp].oc_material === MATERIALS.SILVER
+                    && hates_silver_you())
+                    note_unported_uhitm('mhitm_ad_phys:silver_sears_you');
+                /* the black/brown pudding clone arm needs Upolyd state */
+                if (game.u.umonnum === PMNAMES.PM_BLACK_PUDDING
+                    || game.u.umonnum === PMNAMES.PM_BROWN_PUDDING)
+                    note_unported_uhitm('mhitm_ad_phys:cloneu');
+                rustm(game.youmonst, otmp);
+                if (otmp.opoisoned && game.mhitu_dieroll <= 5)
+                    note_unported_uhitm('mhitm_ad_phys:poisoned_u');
+            } else if (mattk[0] !== A.AT_TUCH || mhm.damage !== 0
+                       || magr !== game.u.ustuck) {
+                await hitmsg(magr, mattk, mhm.indx);
+                mhm.hitflags |= M_ATTK_HIT;
+            }
+        }
+    } else {
+        /* mhitm branch */
+        let mwep = MON_WEP(magr);
+        if (mattk[0] !== A.AT_WEAP && mattk[0] !== A.AT_CLAW)
+            mwep = null;
+
+        if (noncorporeal(pd)) {
+            /* shade_miss */
+            note_unported_uhitm('mhitm_ad_phys:shade');
+            mhm.damage = 0;
+        } else if (mattk[0] === A.AT_KICK && thick_skinned(pd)) {
+            /* [no 'kicking boots' check needed; monsters with kick attacks
+               can't wear boots and monsters that wear boots don't kick] */
+            mhm.damage = 0;
+        } else if (mwep) { /* non-Null 'mwep' implies AT_WEAP || AT_CLAW */
+            if (mwep.otyp === ONAMES.CORPSE
+                && touch_petrifies(game.mons[mwep.corpsenm])) {
+                note_unported_uhitm('mhitm_ad_phys:do_stone_mon');
+            }
+
+            mhm.damage += dmgval(mwep, mdef);
+            const marmg = which_armor(magr, W_ARMG);
+            if (marmg && marmg.otyp === ONAMES.GAUNTLETS_OF_POWER)
+                mhm.damage += rn1(4, 3); /* 3..6 */
+            if (mhm.damage < 1) /* is this necessary?  mhitu.c has it... */
+                mhm.damage = 1;
+            if (mwep.oartifact)
+                note_unported_uhitm('mhitm_ad_phys:artifact_hit_m');
+            if (mhm.damage)
+                rustm(mdef, mwep);
+            if (mwep.opoisoned && !rn2(4)) {
+                /* 1/4 chance of weapon poison applying is the same as in
+                 * uhitm and mhitu cases. */
+                note_unported_uhitm('mhitm_ad_phys:mhitm_really_poison');
+            }
+        } else if (magr.mnum === PMNAMES.PM_PURPLE_WORM
+                   && pd === game.mons[PMNAMES.PM_SHRIEKER]) {
+            /* hack to enhance mm_aggression() */
+            if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
+                mhm.damage = mdef.mhp - 1;
+        }
     }
-    /* non-Null mwep arms (weapon damage, poison, artifact hits) are absent:
-       mon_wield_item has no port, so MON_WEP is always empty here */
+}
+
+/* include/youprop.h Hate_silver — hero form that hates silver; base heroes
+   never do, and the polymorph state that could is recorded elsewhere. */
+function hates_silver_you() {
+    return false;
+}
+
+// src/mhitm.c:1260 rustm() — the defender's rust/corrode/burn passive
+// against the weapon that just hit it. The hero (or a monster) without such
+// a passive exits before the rn2(chance) gate, which is why this draws
+// nothing in ordinary fights; erode_obj() itself is absent and recorded.
+function rustm(mdef, obj) {
+    const A = ATTKS;
+    if (!mdef || !obj)
+        return; /* just in case */
+    const pd = (mdef === game.youmonst) ? game.youmonst.data
+                                        : game.mons[mdef.mnum];
+    let dmgtyp = ERODE_NONE, chance = 1;
+    if (dmgtype(pd, A.AD_CORR)) {
+        dmgtyp = ERODE_CORRODE;
+    } else if (dmgtype(pd, A.AD_RUST)) {
+        dmgtyp = ERODE_RUST;
+    } else if (dmgtype(pd, A.AD_FIRE)
+               && pd !== game.mons[PMNAMES.PM_STEAM_VORTEX]) {
+        dmgtyp = ERODE_BURN;
+        chance = 6;
+    }
+
+    if (dmgtyp !== ERODE_NONE && !rn2(chance))
+        note_unported_uhitm('rustm:erode_obj');
 }
 
 // src/uhitm.c:5247 mhitm_knockback() — can this hit hurl the defender?

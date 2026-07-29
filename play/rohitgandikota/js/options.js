@@ -211,7 +211,7 @@ export async function ask_do_tutorial() {
             tty_add_menu_str(win, "(Please choose 'y' or 'n'.)");
 
         tty_end_menu(win, 'Do you want a tutorial?');
-        tty_display_nhwindow(win);
+        await tty_display_nhwindow(win);
 
         /* select_menu(win, PICK_ONE) — returns as soon as a selector is typed */
         let answered = null;
@@ -277,4 +277,248 @@ export function set_playmode() {
         game.plnamelen = game.plname.length;
         game.discover = !game.wizard;
     }
+}
+
+/* ---- the '?g' options help window (src/options.c:9429-9560) ---- */
+
+/* src/options.c:9429 opt_intro[] — CONFIG_SLOT is filled at run time with
+   "Set options as OPTIONS=<options> in <configfile>". get_configfile() in
+   the reference recorder build resolves to the path below; the tty renderer
+   clips it at 80 columns, so the clipped form is all that can ever show. */
+const OPT_INTRO_CONFIG =
+    'Set options as OPTIONS=<options> in '
+    + '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/resul';
+const opt_intro = [
+    '',
+    '                 NetHack Options Help:', '',
+    OPT_INTRO_CONFIG,
+    'or use `NETHACKOPTIONS="<options>"\' in your environment',
+    '(<options> is a list of options separated by commas)',
+    'or press "O" while playing and use the menu.',
+    '',
+    'Boolean options (which can be negated by prefixing them'
+    + ' with \'!\' or "no"):',
+];
+
+/* src/options.c:9448 opt_epilog[] */
+const opt_epilog = [
+    '',
+    'Some of the options can only be set before the game is started;',
+    "those items will not be selectable in the 'O' command's menu.",
+    "Some options are stored in a game's save file, and will keep saved",
+    'values when restoring that game even if you have updated your config-',
+    'uration file to change them.  Such changes will matter for new games.',
+    'The "other settings" can be set with \'O\', but when set within the',
+    'configuration file they use their own directives rather than OPTIONS.',
+    'See NetHack\'s "Guidebook" for details.',
+];
+
+/* src/options.c:9787 wc_options[] / :9823 wc2_options[] and the tty
+   windowport's wincap masks (win/tty/wintty.c:98): which window-capability
+   options the running interface supports. The reference tty build has
+   WC_COLOR|WC_HILITE_PET|WC_INVERSE|WC_EIGHT_BIT_IN (TTY_PERM_INVENT is
+   off: perm_invent is absent from the recorded '?g' list) and the wc2 set
+   below. */
+const wc_option_names = [
+    'ascii_map', 'color', 'eight_bit_tty', 'hilite_pet', 'perm_invent',
+    'perminv_mode', 'popup_dialog', 'player_selection', 'preload_tiles',
+    'tiled_map', 'tile_file', 'tile_width', 'tile_height', 'align_message',
+    'align_status', 'font_map', 'font_menu', 'font_message', 'font_size_map',
+    'font_size_menu', 'font_size_message', 'font_size_status',
+    'font_size_text', 'font_status', 'font_text', 'map_mode',
+    'scroll_amount', 'scroll_margin', 'splash_screen', 'use_inverse',
+    'vary_msgcount', 'windowcolors', 'mouse_support',
+];
+const wc_supported_names = ['color', 'eight_bit_tty', 'hilite_pet',
+                            'use_inverse'];
+const wc2_option_names = [
+    'armorstatus', 'fullscreen', 'guicolor', 'hilite_status', 'hitpointbar',
+    'menu_shift', 'petattr', 'softkeyboard', 'status hilite rules',
+    'statushilites', 'statuslines', 'term_cols', 'term_rows',
+    'terrainstatus', 'use_darkgray', 'weaponstatus', 'windowborders',
+    'wraptext',
+];
+const wc2_supported_names = [
+    'armorstatus', 'hilite_status', 'hitpointbar', 'petattr',
+    'status hilite rules', 'statushilites', 'statuslines', 'terrainstatus',
+    'use_darkgray', 'weaponstatus',
+];
+function is_wc_option(n) { return wc_option_names.includes(n); }
+function wc_supported(n) { return wc_supported_names.includes(n); }
+function is_wc2_option(n) { return wc2_option_names.includes(n); }
+function wc2_supported(n) { return wc2_supported_names.includes(n); }
+
+// src/options.c:9560 next_opt() — flow option names into comma-separated
+// lines under 78 columns; the "" terminator swaps the trailing ", " for ".".
+function next_opt(putline, state, str) {
+    let i;
+    if (!str) {
+        if (state.buf.endsWith(', '))
+            state.buf = state.buf.slice(0, -2) + '.';
+        i = 80; /* force flush */
+    } else {
+        i = state.buf.length + str.length + 2;
+    }
+    if (i > 80 - 2) {
+        putline(state.buf);
+        state.buf = '';
+    }
+    if (str) {
+        state.buf += str + ', ';
+    } else {
+        putline('');
+    }
+}
+
+// src/options.c:9070 show_menu_controls() — the menu-control key tables.
+// dolist=true is the compact form dokeylist embeds; dolist=false is the
+// columned '?l' window. has_menu_shift is false for tty.
+export function show_menu_controls(putline, dolist) {
+    const mc_fmt = (a, b, c) =>
+        a.padStart(8) + '     ' + b.padEnd(6) + ' ' + c;
+    const mc_altfmt = (a, b, c) =>
+        a.padStart(9) + '  ' + b.padEnd(6) + ' ' + c;
+    const hardcoded = [
+        ['Return', 'Accept current choice(s) and dismiss menu'],
+        ['Enter', 'Same as Return'],
+        ['Space', 'If not on last page, advance one page;'],
+        ['     ', 'when on last page, treat like Return'],
+        ['Escape', 'Cancel menu without making any choice(s)'],
+    ];
+
+    putline('Menu control keys:');
+    let fmt, arg;
+    if (dolist) {
+        /* key bindings help: '?j' — default_menu_cmd_info (options.c:314)
+           in table order; the menu_shift pair is skipped for tty */
+        const dmci = [
+            ['>', 'Go to next page'],
+            ['<', 'Go to previous page'],
+            ['^', 'Go to first page'],
+            ['|', 'Go to last page'],
+            ['.', 'Select all items in entire menu'],
+            ['@', 'Invert selection for all items'],
+            ['-', 'Unselect all items in entire menu'],
+            [',', 'Select all items on current page'],
+            ['~', "Invert current page's selections"],
+            ['\\', 'Unselect all items on current page'],
+            [':', 'Search and invert matching items'],
+        ];
+        for (const [ch, desc] of dmci)
+            putline(ch.padEnd(7) + ' ' + desc);
+        fmt = (k, d) => k.padEnd(7) + ' ' + d;
+        for (const [k, d] of hardcoded)
+            putline(fmt(k, d));
+    } else {
+        /* menu controls help: '?l' */
+        putline('');
+        putline(mc_altfmt('', 'Whole', 'Current'));
+        putline(mc_altfmt('', ' Menu', ' Page'));
+        putline(mc_fmt('Select', '.', ','));
+        putline(mc_fmt('Invert', '@', '~'));
+        putline(mc_fmt('Deselect', '-', '\\'));
+        putline('');
+        putline(mc_fmt('Go to', '>', 'Next page'));
+        putline(mc_fmt('', '<', 'Previous page'));
+        putline(mc_fmt('', '^', 'First page'));
+        putline(mc_fmt('', '|', 'Last page'));
+        putline('');
+        putline(mc_fmt('Search', ':',
+            'Exter a target string and invert all matching entries'));
+        putline('');
+        arg = 'Other ';
+        for (const [k, d] of hardcoded) {
+            putline(arg.padStart(9) + '  ' + k.padEnd(8) + ' ' + d);
+            arg = '';
+        }
+    }
+}
+
+// src/options.c:9461 option_help() — the '?g' window.
+export function option_help_lines() {
+    const lines = [];
+    const putline = (s) => lines.push(s);
+    const wizard = !!game.wizard;
+
+    for (const line of opt_intro)
+        putline(line);
+
+    /* Boolean options; consecutive duplicate names come from the header's
+       set_in_game/set_in_config paired declarations (C compiles only one) */
+    const state = { buf: '' };
+    let prev = null;
+    for (const opt of allopt) {
+        if (opt.type !== 'BoolOpt' || opt.noaddr)
+            continue;
+        if (opt.name === prev)
+            continue;
+        if (opt.setwhere === 'set_wizonly' && !wizard)
+            continue;
+        if (opt.setwhere === 'set_wiznofuz' && !wizard)
+            continue;
+        if ((is_wc_option(opt.name) && !wc_supported(opt.name))
+            || (is_wc2_option(opt.name) && !wc2_supported(opt.name)))
+            continue;
+        prev = opt.name;
+        next_opt(putline, state, opt.name);
+    }
+    next_opt(putline, state, '');
+
+    /* Compound options */
+    putline('Compound options:');
+    const comps = [];
+    prev = null;
+    for (const opt of allopt) {
+        if (opt.type !== 'CompOpt')
+            continue;
+        if (opt.name === prev)
+            continue;
+        if (opt.setwhere === 'set_wizonly' && !wizard)
+            continue;
+        if (opt.setwhere === 'set_wiznofuz' && !wizard)
+            continue;
+        if ((is_wc_option(opt.name) && !wc_supported(opt.name))
+            || (is_wc2_option(opt.name) && !wc2_supported(opt.name)))
+            continue;
+        prev = opt.name;
+        comps.push(opt);
+    }
+    comps.forEach((opt, i) => {
+        const name = `\`${opt.name}'`;
+        putline(`${name.padEnd(20)} - ${opt.descr || ''}${
+            i + 1 < comps.length ? ',' : '.'}`);
+    });
+    putline('');
+
+    putline('Other settings:');
+    for (const opt of allopt)
+        if (opt.type === 'OthrOpt')
+            putline(` ${opt.name}`);
+    putline('');
+
+    for (const line of opt_epilog)
+        putline(line);
+
+    return lines;
+}
+
+// src/options.c:9461 option_help() — display the '?g' window.
+export async function option_help() {
+    const { xwaitforspace } = await import('./tty/getline.js');
+    const { docrt } = await import('./display.js');
+    const win = tty_create_nhwindow(5 /* NHW_TEXT */);
+    const { tty_putstr, tty_next_page, tty_destroy_nhwindow }
+        = await import('./tty/wintty.js');
+    for (const line of option_help_lines())
+        tty_putstr(win, 0, line);
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(' \r\n\x1b');
+        if (game.morc === '\x1b')
+            break;
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    await docrt();
 }

@@ -3,6 +3,7 @@
 
 import { game } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
+import { TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY } from './display.js';
 
 const _inputQueue = [];
 
@@ -43,17 +44,31 @@ async function nhgetch_core() {
     const hook = game._preNhgetchHook;
     if (hook) await hook();
 
+    let key;
     if (_inputQueue.length > 0) {
-        return _inputQueue.shift();
+        key = _inputQueue.shift();
+    } else {
+        // Browser mode: wait for keypress from the display
+        const display = game?.nhDisplay;
+        if (display?.readKey) {
+            key = await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+        } else {
+            throw new Error('Input queue empty - test may be missing keystrokes');
+        }
     }
 
-    // Browser mode: wait for keypress from the display
-    const display = game?.nhDisplay;
-    if (display?.readKey) {
-        return await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
-    }
+    /* win/tty/wintty.c:4100 (tty_nhgetch):
+           / * topline has been seen - we can clear the need for --More-- * /
+           if (ttyDisplay && ttyDisplay->toplin == TOPLINE_NEED_MORE)
+               ttyDisplay->toplin = TOPLINE_NON_EMPTY;
+       A key read acknowledges the message on the top line, which is what
+       lets the NEXT pline repaint over it instead of blocking on --More--.
+       getpos's autodescribe (a pline per cursor move, one key between each)
+       depends on this. */
+    if (game._toplin === TOPLINE_NEED_MORE)
+        game._toplin = TOPLINE_NON_EMPTY;
 
-    throw new Error('Input queue empty - test may be missing keystrokes');
+    return key;
 }
 
 // Reset input state

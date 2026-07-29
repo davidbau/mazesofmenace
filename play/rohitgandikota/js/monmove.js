@@ -58,7 +58,13 @@ import {
 } from './const.js';
 import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
-         MMOVE_NOMOVES, engulfing_u } from './const.js';
+         MMOVE_NOMOVES, engulfing_u, NEED_WEAPON, NEED_HTH_WEAPON,
+         Upolyd, u_at } from './const.js';
+import { mon_wield_item } from './weapon.js';
+import { mattacku } from './mhitu.js';
+import { noattacks } from './mondata.js';
+import { helpless } from './monst.js';
+import { is_pick } from './mon.js';
 import { MSOUND } from './monst_data.js';
 
 function note_unported_monmove(what) {
@@ -911,10 +917,31 @@ export async function dochug(mtmp) {
     set_apparxy(mtmp);
 
     /* src/monmove.c:791 */
-    let { nearby, scared } = distfleeck(mtmp);
+    let { inrange, nearby, scared } = distfleeck(mtmp);
 
     const mdat = game.mons[mtmp.mnum];
     let status = 0;
+    let panicattk = false;
+
+    /* src/monmove.c:840 — if monster is nearby you, and has to wield a
+       weapon, do so. This costs the monster a move, of course. */
+    if ((!mtmp.mpeaceful || game.u.uprops?.CONFLICT) && inrange
+        && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8
+        && attacktype(mdat, ATTKS.AT_WEAP)) {
+        /* The scared check is necessary.  Otherwise a monster that is
+         * one square near the player but fleeing into a wall would keep
+         * switching between pick-axe and weapon.  If monster is stuck
+         * in a trap, prefer ranged weapon (wielding is done in thrwmu).
+         */
+        const mw_tmp = MON_WEP(mtmp);
+        if (!(scared && mw_tmp && is_pick(mw_tmp))
+            && mtmp.weapon_check === NEED_WEAPON
+            && !(mtmp.mtrapped && !nearby && select_rwep_absent(mtmp))) {
+            mtmp.weapon_check = NEED_HTH_WEAPON;
+            if (await mon_wield_item(mtmp) !== 0)
+                return 0;
+        }
+    }
 
     /* src/monmove.c:882 — a monster only gets to move if it passes this. Each
        arm that draws does so ONLY because the arms before it were false, so
@@ -965,10 +992,102 @@ export async function dochug(mtmp) {
         /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
            every monster that takes a turn spends TWO rn2(5) draws, not one. */
         if (status !== MMOVE_DIED)
-            ({ nearby, scared } = distfleeck(mtmp));
+            ({ inrange, nearby, scared } = distfleeck(mtmp));
+
+        /* src/monmove.c:917 — the status switch. For pets, cases 0 and 3
+           are equivalent. */
+        switch (status) {
+        case MMOVE_NOMOVES:
+            if (scared)
+                panicattk = true;
+            /*FALLTHRU*/
+        case MMOVE_NOTHING: /* no movement, but it can still attack you */
+        case MMOVE_DONE: /* absolutely no movement */
+            /* vault guard might have vanished */
+            if (mtmp.isgd && (DEADMONSTER(mtmp) || mtmp.mx === 0))
+                return 1; /* behave as if it died */
+            break;
+        case MMOVE_MOVED: /* monster moved */
+            /* if confused grabber has wandered off, let go */
+            if (mtmp === game.u.ustuck && !(distu(mtmp.mx, mtmp.my) <= 2))
+                note_unported_monmove('dochug:unstuck');
+            /* Maybe it stepped on a trap and fell asleep... */
+            if (helpless(mtmp))
+                return 0;
+            /* Monsters can move and then shoot on same turn;
+               our hero can't.  Is that fair? */
+            if (!nearby
+                && (ranged_attk_available(mtmp)
+                    || attacktype(mdat, ATTKS.AT_WEAP)
+                    || dochug_find_offensive(mtmp)))
+                break;
+            /* a monster that's digesting you can move at the
+             * same time -dlc
+             */
+            if (engulfing_u(mtmp))
+                return await mattacku(mtmp);
+            return 0;
+        case MMOVE_DIED: /* monster died */
+            return 1;
+        }
     }
 
-    return status;
+    /*
+     * PHASE FOUR: Standard Attacks
+     */
+
+    /* Now, attack the player if possible - one attack set per monst */
+    if (status !== MMOVE_DONE && (!mtmp.mpeaceful
+                                  || (game.u.uprops?.CONFLICT
+                                      && !resist_conflict_absent(mtmp)))) {
+        if (((inrange && !scared) || panicattk) && !noattacks(mdat)
+            /* [is this hp check really needed?] */
+            && (Upolyd(game.u) ? game.u.mh : game.u.uhp) > 0) {
+            if (await mattacku(mtmp))
+                return 1; /* monster died (e.g. exploded) */
+        }
+        if (mtmp.wormno)
+            note_unported_monmove('dochug:wormhitu');
+    }
+    /* special speeches for quest monsters */
+    if (!helpless(mtmp) && nearby
+        && (mdat.msound === MSOUND.MS_LEADER
+            || mdat.msound === MSOUND.MS_NEMESIS
+            || mdat.msound === MSOUND.MS_GUARDIAN))
+        note_unported_monmove('dochug:quest_talk');
+    /* extra emotional attack for vile monsters */
+    if (inrange && mdat.msound === MSOUND.MS_CUSS && !mtmp.mpeaceful
+        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5))
+        note_unported_monmove('dochug:cuss');
+
+    /* note: can't get here when monster is dead, so this always returns 0 */
+    return (status === MMOVE_DIED) ? 1 : 0;
+}
+
+/* src/muse.c find_offensive() — same recorded absence as in js/mhitu.js:
+   scan for the item classes muse would consider. */
+function dochug_find_offensive(mtmp) {
+    for (const o of (mtmp.minvent || [])) {
+        const cl = o.oclass;
+        if (cl === OCLASSES.WAND_CLASS || cl === OCLASSES.POTION_CLASS
+            || cl === OCLASSES.SCROLL_CLASS || cl === OCLASSES.TOOL_CLASS)
+            return true;
+    }
+    return false;
+}
+
+/* src/weapon.c select_rwep() — the throwing subsystem is absent; reaching
+   this guard (a trapped weapon-monster out of melee range) is recorded. */
+function select_rwep_absent(mtmp) {
+    note_unported_monmove('dochug:select_rwep');
+    return false;
+}
+
+/* src/priest.c resist_conflict() — conflict resistance check for priests;
+   only reachable under Conflict, which is recorded state already. */
+function resist_conflict_absent(mtmp) {
+    note_unported_monmove('dochug:resist_conflict');
+    return false;
 }
 
 // src/monmove.c:1720 m_move() — a non-tame monster's turn. The tame case is
@@ -1116,9 +1235,19 @@ export function m_move(mtmp, after) {
     }
 
     if (mmoved === MMOVE_MOVED && (nix !== omx || niy !== omy)) {
+        /* src/monmove.c:2006 — if ALLOW_U is set, either it's trying to
+           attack you, or it thinks it is. Attack this spot in preference to
+           all others. The attack itself happens back in dochug()'s PHASE
+           FOUR: returning MMOVE_NOTHING leaves the monster adjacent and
+           eligible for mattacku(). */
         if (chi >= 0 && (mfp.info[chi] & ALLOW_U)) {
-            note_unported('mattacku');
-            return MMOVE_DONE;
+            nix = mtmp.mux;
+            niy = mtmp.muy;
+        }
+        if (u_at(nix, niy)) {
+            mtmp.mux = game.u.ux;
+            mtmp.muy = game.u.uy;
+            return MMOVE_NOTHING;
         }
         mtmp.mtrack = mtmp.mtrack || [];
         mtmp.mtrack.unshift({ x: omx, y: omy });

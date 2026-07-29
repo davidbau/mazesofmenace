@@ -15,13 +15,14 @@ import {
     mons as MONS_INIT, PMNAMES, NUMMONS, MONSYMS, MSOUND, ATTKS, MFLAGS,
     MMFLAGS, LIMITS, STRAT, GROWNUPS,
 } from './monst_data.js';
-import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
+import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
 import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
-import { attacktype, is_neuter } from './mondata.js';
+import { attacktype, is_neuter, is_floater } from './mondata.js';
+import { is_vampshifter } from './monst.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
@@ -111,10 +112,10 @@ const monmin_difficulty = (levdif) => Math.trunc(levdif / 6);
 const montoostrong = (mndx, lev) => game.mons[mndx].difficulty > lev;
 const montooweak = (mndx, lev) => game.mons[mndx].difficulty < lev;
 
-// src/dungeon.c level_difficulty() — the ordinary-dungeon case.
-export function level_difficulty() {
-    return depth(game.u.uz);
-}
+/* level_difficulty() now lives in js/dungeon.js, where src/dungeon.c has it;
+   import for the many uses below and re-export for existing importers. */
+import { level_difficulty, Is_special } from './dungeon.js';
+export { level_difficulty };
 
 export function Inhell() {
     return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
@@ -135,9 +136,13 @@ function uncommon(mndx) {
 
 // src/makemon.c:1611 align_shift()
 function align_shift(ptr) {
-    /* the C caches Is_special() per move; with no special levels reached the
-       dungeon's own alignment is what applies */
-    const dgnAlign = game.dungeons?.[game.u?.uz?.dnum]?.flags?.align ?? AM_NONE;
+    /* src/makemon.c:1621 — a special level's own alignment overrides the
+       dungeon's (the C caches Is_special() per move; the lookup here is
+       cheap enough to do per call) */
+    const slev = Is_special(game.u.uz);
+    const dgnAlign = (slev ? slev.flags?.align
+                           : game.dungeons?.[game.u?.uz?.dnum]?.flags?.align)
+                     ?? AM_NONE;
     let alshift;
 
     switch (dgnAlign) {
@@ -627,40 +632,114 @@ function m_initinv(mtmp) {
         mkmonmoney(mtmp, d(level_difficulty(), mtmp.minvent?.length ? 5 : 10));
 }
 
-// src/muse.c rnd_defensive_item() / rnd_misc_item() — both return 0 for
-// monsters that cannot use items, and 0 makes mongets() a no-op that draws
-// nothing. Everything above that gate is unported; note_unported() records a
-// reach so it shows up in tooling instead of quietly skewing the stream.
+/* src/muse.c:1216 rnd_item_gate — both pickers exit before drawing for a
+   monster that cannot use items. */
+function rnd_item_ineligible(mtmp) {
+    const pm = mtmp.data;
+    return is_animal(pm) || attacktype(pm, ATTKS.AT_EXPL)
+        || (pm.mflags1 & MFLAGS.M1_MINDLESS) !== 0
+        || pm.mlet === MONSYMS.S_GHOST || pm.mlet === MONSYMS.S_KOP;
+}
+
+// src/muse.c:1222 rnd_defensive_item() — the escape/heal item a monster is
+// born carrying.
 function rnd_defensive_item(mtmp) {
-    if (!is_mplayer_or_user(mtmp))
+    const O = ONAMES;
+    const difficulty = game.mons[monsndx(mtmp.data)].difficulty;
+    let trycnt = 0;
+
+    if (rnd_item_ineligible(mtmp))
         return 0;
-    note_unported('rnd_defensive_item');
-    return 0;
+    for (;;) {
+        switch (rn2(8 + (difficulty > 3 ? 1 : 0) + (difficulty > 6 ? 1 : 0)
+                    + (difficulty > 8 ? 1 : 0))) {
+        case 6:
+        case 9:
+            if (game.level?.flags?.noteleport && ++trycnt < 2)
+                continue; /* try_again */
+            if (!rn2(3))
+                return O.WAN_TELEPORTATION;
+            /*FALLTHRU*/
+        case 0:
+        case 1:
+            return O.SCR_TELEPORTATION;
+        case 8:
+        case 10:
+            if (!rn2(3))
+                return O.WAN_CREATE_MONSTER;
+            /*FALLTHRU*/
+        case 2:
+            return O.SCR_CREATE_MONSTER;
+        case 3:
+            return O.POT_HEALING;
+        case 4:
+            return O.POT_EXTRA_HEALING;
+        case 5:
+            return (mtmp.mnum !== PMNAMES.PM_PESTILENCE) ? O.POT_FULL_HEALING
+                                                         : O.POT_SICKNESS;
+        case 7: /* wand of digging */
+            /* usually avoid digging in Sokoban */
+            if (game.level?.flags?.sokoban_rules && rn2(4))
+                continue; /* try_again */
+            /* some creatures shouldn't dig down when hurt */
+            if (is_floater(mtmp.data) || mtmp.isshk || mtmp.isgd
+                || mtmp.ispriest)
+                return 0;
+            return O.WAN_DIGGING;
+        }
+    }
 }
 
+// src/muse.c:2654 rnd_misc_item()
 function rnd_misc_item(mtmp) {
-    if (!is_mplayer_or_user(mtmp))
+    const O = ONAMES;
+    const difficulty = game.mons[monsndx(mtmp.data)].difficulty;
+
+    if (rnd_item_ineligible(mtmp))
         return 0;
-    note_unported('rnd_misc_item');
+    /* only weak monsters carry the strengthening items */
+    if (difficulty < 6 && !rn2(30))
+        return rn2(6) ? O.POT_POLYMORPH : O.WAN_POLYMORPH;
+
+    if (!rn2(40) && !nonliving_mm(mtmp.data) && !is_vampshifter(mtmp))
+        return O.AMULET_OF_LIFE_SAVING;
+
+    switch (rn2(3)) {
+    case 0:
+        if (mtmp.isgd)
+            return 0;
+        return rn2(6) ? O.POT_SPEED : O.WAN_SPEED_MONSTER;
+    case 1:
+        if (mtmp.mpeaceful && !game.u.uprops?.SEE_INVIS)
+            return 0;
+        return rn2(6) ? O.POT_INVISIBILITY : O.WAN_MAKE_INVISIBLE;
+    case 2:
+        return O.POT_GAIN_LEVEL;
+    }
     return 0;
 }
 
-/* src/muse.c gates both item pickers behind these tests; a monster failing
-   them returns 0 without drawing. */
-function is_mplayer_or_user(mtmp) {
-    const ptr = mtmp.data;
-    return !(ptr.mflags1 & (MFLAGS.M1_ANIMAL | MFLAGS.M1_MINDLESS))
-        && ptr.mlet !== S_GNOME
-        && (ptr.mflags2 & M2_STRONG) !== 0;
-}
+/* include/mondata.h:220 nonliving() — undead, Manes, golems, vortices. */
+const nonliving_mm = (ptr) =>
+    (ptr.mflags2 & MFLAGS.M2_UNDEAD) !== 0
+    || ptr === game.mons[PMNAMES.PM_MANES]
+    || ptr.mlet === MONSYMS.S_GOLEM
+    || ptr.mlet === MONSYMS.S_VORTEX;
 
 function findgold(minvent) {
     return (minvent || []).some(o => o.oclass === OCLASSES.COIN_CLASS);
 }
 
 // src/mon.c mkmonmoney()
+// src/makemon.c:576 mkmonmoney() — a REAL gold object goes into minvent
+// (mksobj draws its next_ident), not just a counter.
 export function mkmonmoney(mtmp, amount) {
-    mtmp.mgold = (mtmp.mgold || 0) + amount;
+    if (amount > 0) {
+        const gold = mksobj(ONAMES.GOLD_PIECE, false, false);
+        gold.quan = amount;
+        mpickobj(mtmp, gold);
+        mtmp.mgold = (mtmp.mgold || 0) + amount;
+    }
 }
 
 // Reached-but-unported sites, surfaced by tooling rather than papered over
@@ -938,8 +1017,44 @@ export function set_mimic_sym(mtmp) {
         rn2(3);                 /* algn = rn2(3) - 1; the draw is spent */
     }
 }
-function m_initsgrp(mtmp) { note_unported('m_initsgrp'); }
-function m_initlgrp(mtmp) { note_unported('m_initlgrp'); }
+// src/makemon.c:79 m_initgrp() — populate a monster's birth group. rnd(n)
+// first, the low-level swarm reduction, then one enexto_gpflags (which
+// draws collect_coords shuffles) + makemon per member. peace_minded()
+// members are simply skipped.
+function m_initgrp(mtmp, x, y, n, mmflags) {
+    let cnt = rnd(n);
+
+    /* Tuning: cut down on swarming at low character levels [mrs] */
+    cnt = Math.trunc(cnt / ((game.u.ulevel < 3) ? 4
+                            : (game.u.ulevel < 5) ? 2 : 1));
+    if (!cnt)
+        cnt++;
+
+    const mm = { x, y };
+    while (cnt--) {
+        if (peace_minded(mtmp.data))
+            continue;
+        /* Don't create groups of peaceful monsters since they'll get
+         * in our way.  If the monster has a percentage chance so some
+         * are peaceful and some are not, the result will just be a
+         * smaller group.
+         */
+        if (enexto_core(mm, mm.x, mm.y, mtmp.data,
+                        GP_CHECKSCARY | mmflags, goodpos)
+            || enexto_core(mm, mm.x, mm.y, mtmp.data, mmflags, goodpos)) {
+            const mon = makemon(mtmp.data, mm.x, mm.y, (mmflags | MM_NOGRP));
+            if (mon) {
+                mon.mpeaceful = false;
+                mon.mavenge = 0;
+                set_malign(mon);
+            }
+        }
+    }
+}
+
+/* include/makemon.h m_initsgrp()/m_initlgrp() */
+function m_initsgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 3, mmf); }
+function m_initlgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 10, mmf); }
 function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
 
 /* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
@@ -969,13 +1084,72 @@ function m_initthrow(mtmp, otyp, oquan) {
     mpickobj(mtmp, otmp);
 }
 
-// src/muse.c rnd_offensive_item() — same gate as the defensive and misc
-// pickers: a monster that cannot use items returns 0 without drawing.
+// src/muse.c:2035 rnd_offensive_item()
 function rnd_offensive_item(mtmp) {
-    if (!is_mplayer_or_user(mtmp))
+    const O = ONAMES;
+    const pm = mtmp.data;
+    const difficulty = game.mons[monsndx(pm)].difficulty;
+
+    if (rnd_item_ineligible(mtmp))
         return 0;
-    note_unported('rnd_offensive_item');
+    if (difficulty > 7 && !rn2(35))
+        return O.WAN_DEATH;
+    switch (rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0))) {
+    case 0: {
+        const helm = which_armor_mm(mtmp);
+        if (hard_helmet_mm(helm) || (pm.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0
+            || (pm.mflags1 & MFLAGS.M1_WALLWALK) !== 0
+            || (pm.mflags1 & MFLAGS.M1_UNSOLID) !== 0)
+            return O.SCR_EARTH;
+    }
+    /* FALLTHRU */
+    case 1:
+        return O.WAN_STRIKING;
+    case 2:
+        return O.POT_ACID;
+    case 3:
+        return O.POT_CONFUSION;
+    case 4:
+        return O.POT_BLINDNESS;
+    case 5:
+        return O.POT_SLEEPING;
+    case 6:
+        return O.POT_PARALYSIS;
+    case 7:
+    case 8:
+        return O.WAN_MAGIC_MISSILE;
+    case 9:
+        return O.WAN_SLEEP;
+    case 10:
+        return O.WAN_FIRE;
+    case 11:
+        return O.WAN_COLD;
+    case 12:
+        return O.WAN_LIGHTNING;
+    }
     return 0;
+}
+
+/* worn helm lookup + hard_helmet (do_wear.c:568), local slice for
+   rnd_offensive_item; the noncorporeal test is folded into UNSOLID above
+   (C checks both, and every noncorporeal permonst is also unsolid). */
+function which_armor_mm(mtmp) {
+    for (const o of (mtmp.minvent || []))
+        if ((o.owornmask ?? 0) & W_ARMH_MM)
+            return o;
+    return null;
+}
+const W_ARMH_MM = 0x00000004; /* include/prop.h W_ARMH */
+function hard_helmet_mm(obj) {
+    if (!obj)
+        return false;
+    const oc = game.objects[obj.otyp];
+    /* is_helmet && (is_metallic || is_crackable) */
+    if (obj.oclass !== OCLASSES.ARMOR_CLASS || oc.oc_armcat !== 2 /* ARM_HELM */)
+        return false;
+    return (oc.oc_material >= MATERIALS.IRON
+            && oc.oc_material <= MATERIALS.MITHRIL)
+        || oc.oc_material === MATERIALS.GLASS;
 }
 
 // src/makemon.c:400 m_initweap() — species-specific weapons and armour.

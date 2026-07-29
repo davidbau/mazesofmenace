@@ -341,6 +341,46 @@ const Known_lwalking = () =>
     !!(Known_wwalking() && Fire_resistance()
        && game.uarmf.oerodeproof && game.uarmf.rknown);
 
+/* include/context.h:15 — the one-shot gameplay tips, a bitfield in
+   svc.context.tips */
+export const TIP_ENHANCE = 0, TIP_SWIM = 1, TIP_UNTRAP_MON = 2,
+             TIP_GETPOS = 3;
+
+// src/hack.c:1852 handle_tip() — maybe show a helpful gameplay tip once per
+// game. flags.tips defaults on. Only the getpos tip has a window; the others
+// are plines.
+export async function handle_tip(tip) {
+    if (game.flags?.tips === false)
+        return false;
+
+    game.context.tips = game.context.tips || 0;
+    if (!(game.context.tips & (1 << tip))) {
+        game.context.tips |= (1 << tip);
+        switch (tip) {
+        case TIP_ENHANCE:
+            await pline('(Tip: use the #enhance command to advance them.)');
+            break;
+        case TIP_SWIM:
+            (game.unported ||= new Set()).add('hack:handle_tip:swim');
+            break;
+        case TIP_UNTRAP_MON:
+            await pline('(Tip: perhaps #untrap would help?)');
+            break;
+        case TIP_GETPOS: {
+            /* l_nhcore_call(NHCORE_GETPOS_TIP) -> nhcore.lua's
+               show_getpos_tip() */
+            const { show_getpos_tip } = await import('./nhlua.js');
+            await show_getpos_tip();
+            break;
+        }
+        default:
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
 // src/hack.c:2444 avoid_moving_on_trap() — stop a run at a known trap.
 //
 // The vibrating square is a trap structurally but terrain in spirit, so it is

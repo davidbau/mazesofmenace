@@ -23,7 +23,10 @@ import { mongone } from './mon.js';
 import { sgn } from './hacklib.js';
 import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
-import { fill_special_room } from './sp_lev.js';
+import { fill_special_room, sp_lev_wire_mklev } from './sp_lev.js';
+import { enexto_core } from './teleport.js';
+import { goodpos } from './makemon.js';
+import { GP_CHECKSCARY as GP_CHECKSCARY_MK } from './const.js';
 import {
     mkgold, place_object, mkobj_at, mksobj_at, add_to_container, curse,
 } from './mkobj.js';
@@ -125,7 +128,7 @@ import { lua_shuffle } from './nhlua.js';
    mklev.js is reached FROM mon.js's import graph, so they arrive by wire. */
 let mklev_mon = { is_pool: () => false, is_lava: () => false };
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
-import { depth as depth_of_level } from './dungeon.js';
+import { depth as depth_of_level, Is_special } from './dungeon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -541,12 +544,28 @@ async function makelevel() {
     oinit();
     clear_level_structures();
 
-    // C ref: mklev.c:1295 — check for below-Medusa maze level
-    // This rn2(5) is consumed even when the condition fails (short-circuit)
+    /* src/mklev.c:1267 — the special-level dispatch. Each arm before the
+       final else runs makemaz() and returns; the rn2(5) below-Medusa maze
+       check lives in the LAST else-if, so special/proto/quest levels never
+       draw it. A proto level whose script is not in the registry falls
+       through to ordinary generation with the gap recorded (makemaz notes
+       the missing name). */
+    const { makemaz } = await import('./mkmaze.js');
+    const slev = Is_special(g.u.uz);
+    const dgn = g.dungeons?.[g.u.uz.dnum];
     const medusa = g.medusa_level;
-    if (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
-        && (g.u?.uz?.dlevel ?? 1) > (medusa?.dlevel ?? 999)) {
-        // Would generate maze — not applicable for contest level 1
+    if (slev && !g.level?.flags?.is_rogue_level) {
+        if (await makemaz(slev.proto)) return;
+    } else if (dgn?.proto) {
+        if (await makemaz('')) return;
+    } else if (dgn?.fill_lvl) {
+        if (await makemaz(dgn.fill_lvl)) return;
+    } else if (g.u.uz.dnum === g.quest_dnum) {
+        note_unported_lev('makelevel:quest_fill');
+    } else if (dgn?.flags?.hellish
+               || (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
+                   && depth_of_level(g.u.uz) > depth_of_level(medusa))) {
+        if (await makemaz('')) return;
     }
 
     // Regular level generation
@@ -734,6 +753,14 @@ mkroom_wire({ topologize });
 sp_lev_wire_mktrap(mktrap);
 sp_lev_wire_okdoor(okdoor);
 sp_lev_wire_subroom(create_subroom);
+sp_lev_wire_mklev({ mkstairs, makecorridors, wallification,
+                    count_level_features: recount_level_features,
+                    create_room, topologize,
+                    /* src/teleport.c:196 enexto() — CHECKSCARY pass, then
+                       an unrestricted one */
+                    enexto: (cc, xx, yy, mdat) =>
+                        enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY_MK, goodpos)
+                        || enexto_core(cc, xx, yy, mdat, 0, goodpos) });
 
 // C ref: mklev.c makerooms()
 async function makerooms() {
@@ -910,7 +937,9 @@ async function themerooms_generate(difficulty) {
             create_des_coder();
             if (contents) {
                 spo_push_room(aroom);
-                contents(aroom);
+                /* the closure gets the Lua-style room table, same as
+                   lspo_room's own contents call (sp_lev.c:4095) */
+                contents(mkroom_table(aroom));
                 spo_endroom();
             }
         }
@@ -1116,9 +1145,69 @@ function create_room(x, y, w, h, xal, yal, rtype, rlit) {
             wtmp = ddx.v + 1;
             htmp = ddy.v + 1;
             r2 = { lx: xabs - 1, ly: yabs - 1, hx: xabs + wtmp, hy: yabs + htmp };
-        } else {
-            // positioned room (not used for seed8000)
-            return false;
+        } else { /* src/sp_lev.c:1580 — only some parameters are random */
+            let rndpos = 0;
+
+            if (xtmp < 0 && ytmp < 0) { /* Position is RANDOM */
+                xtmp = rnd(5);
+                ytmp = rnd(5);
+                rndpos = 1;
+            }
+            if (wtmp < 0 || htmp < 0) { /* Size is RANDOM */
+                wtmp = rn1(15, 3);
+                htmp = rn1(8, 2);
+            }
+            if (xaltmp === -1) /* Horizontal alignment is RANDOM */
+                xaltmp = rnd(3);
+            if (yaltmp === -1) /* Vertical alignment is RANDOM */
+                yaltmp = rnd(3);
+
+            /* Try to generate real (absolute) coordinates here! */
+            xabs = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
+            switch (xaltmp) {
+            case 1: /* SPLEV_LEFT */
+                break;
+            case 5: /* SPLEV_RIGHT */
+                xabs += Math.trunc(COLNO / 5) - wtmp;
+                break;
+            case 3: /* SPLEV_CENTER */
+                xabs += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2);
+                break;
+            }
+            switch (yaltmp) {
+            case 1: /* TOP */
+                break;
+            case 5: /* BOTTOM */
+                yabs += Math.trunc(ROWNO / 5) - htmp;
+                break;
+            case 3: /* SPLEV_CENTER */
+                yabs += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2);
+                break;
+            }
+
+            if (xabs + wtmp - 1 > COLNO - 2)
+                xabs = COLNO - wtmp - 3;
+            if (xabs < 2)
+                xabs = 2;
+            if (yabs + htmp - 1 > ROWNO - 2)
+                yabs = ROWNO - htmp - 3;
+            if (yabs < 2)
+                yabs = 2;
+
+            /* Try to find a rectangle that fit our room ! */
+            r2 = { lx: xabs - 1, ly: yabs - 1,
+                   hx: xabs + wtmp + rndpos, hy: yabs + htmp + rndpos };
+            r1 = get_rect(r2);
+            /* C passes &xabs/&dx by reference; only the position edits are
+               used afterwards — the size stays wtmp/htmp for add_room. */
+            const ddx = { v: wtmp }, ddy = { v: htmp };
+            const lowx = { v: xabs }, lowy = { v: yabs };
+            if (r1 && !check_room(lowx, ddx, lowy, ddy, vault)) {
+                r1 = null;
+            } else if (r1) {
+                xabs = lowx.v; yabs = lowy.v;
+            }
         }
     } while (++trycnt <= 100 && !r1);
     if (!r1) return false;

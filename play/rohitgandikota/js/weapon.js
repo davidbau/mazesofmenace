@@ -7,14 +7,23 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
-import { OBJ_NAME } from './objnam.js';
+import { OBJ_NAME, doname, xname, the } from './objnam.js';
 import { def_oc_syms } from './drawing_data.js';
 import { STR18, P_SKILL_LIMIT, P_LAST_WEAPON, P_UNSKILLED, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SLING, P_FLAIL, P_PICK_AXE } from './const.js';
 import { MONSYMS } from './monst_data.js';
-import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer } from './mondata.js';
+import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer, strongmonst, attacktype } from './mondata.js';
+import { ATTKS } from './monst_data.js';
 import { is_spear } from './u_init.js';
-import { is_pool, is_pick } from './mon.js';
+import { is_pool, is_pick, m_carrying, can_touch_safely, resists_ston } from './mon.js';
 import { is_weptool } from './mkobj.js';
+import { MON_WEP } from './monst.js';
+import { mon_hates_silver, touch_petrifies } from './dog.js';
+import { which_armor } from './worn.js';
+import { canseemon, pline } from './display.js';
+import { Monnam } from './do_name.js';
+import { W_ARMS, W_ARMG, W_WEP, NO_WEAPON_WANTED, NEED_WEAPON,
+         NEED_RANGED_WEAPON, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE,
+         NEED_PICK_OR_AXE } from './const.js';
 import { ACURR } from './attrib.js';
 import { A_STR, A_DEX } from './const.js';
 import { AKLYS_LIM } from './const.js';
@@ -642,4 +651,245 @@ const WT_IRON_BALL_INCR = 160;
 function note_dmgval_unported(what) {
     (game.unported ||= new Set()).add('weapon:dmgval:' + what);
     return 0;
+}
+
+// src/weapon.c:476 oselect() — the first object of the given type in the
+// monster's inventory that it can safely use.
+function oselect(mtmp, type) {
+    for (const otmp of (mtmp.minvent || [])) {
+        if (otmp.otyp !== type)
+            continue;
+
+        /* never select non-cockatrice corpses */
+        if ((type === ONAMES.CORPSE || type === ONAMES.EGG)
+            && ((otmp.corpsenm ?? -1) === -1
+                || !touch_petrifies(game.mons[otmp.corpsenm])))
+            continue;
+
+        if (!can_touch_safely(mtmp, otmp))
+            continue;
+
+        return otmp;
+    }
+    return null;
+}
+
+// src/weapon.c:691 hwep[] — hand-to-hand weapons in order of preference.
+const hwep = () => {
+    const O = ONAMES;
+    return [
+        O.CORPSE, /* cockatrice corpse */
+        O.TSURUGI, O.RUNESWORD, O.DWARVISH_MATTOCK, O.TWO_HANDED_SWORD,
+        O.BATTLE_AXE, O.KATANA, O.UNICORN_HORN, O.CRYSKNIFE, O.TRIDENT,
+        O.LONG_SWORD, O.ELVEN_BROADSWORD, O.BROADSWORD, O.SCIMITAR,
+        O.SILVER_SABER, O.MORNING_STAR, O.ELVEN_SHORT_SWORD,
+        O.DWARVISH_SHORT_SWORD, O.SHORT_SWORD, O.ORCISH_SHORT_SWORD,
+        O.SILVER_MACE, O.MACE, O.AXE, O.DWARVISH_SPEAR, O.SILVER_SPEAR,
+        O.ELVEN_SPEAR, O.SPEAR, O.ORCISH_SPEAR, O.FLAIL, O.BULLWHIP,
+        O.QUARTERSTAFF, O.JAVELIN, O.AKLYS, O.CLUB, O.PICK_AXE,
+        O.RUBBER_HOSE, O.WAR_HAMMER, O.SILVER_DAGGER, O.ELVEN_DAGGER,
+        O.DAGGER, O.ORCISH_DAGGER, O.ATHAME, O.SCALPEL, O.KNIFE,
+        O.WORM_TOOTH,
+    ];
+};
+
+// src/weapon.c:705 select_hwep() — select a hand to hand weapon for the
+// monster.
+export function select_hwep(mtmp) {
+    const ptr = game.mons[mtmp.mnum];
+    const strong = strongmonst(ptr);
+    const wearing_shield = ((mtmp.misc_worn_check ?? 0) & W_ARMS) !== 0;
+
+    /* prefer artifacts to everything else */
+    for (const otmp of (mtmp.minvent || [])) {
+        if (otmp.oclass === OCLASSES.WEAPON_CLASS && otmp.oartifact) {
+            note_unported_weapon('select_hwep:artifact');
+            break;
+        }
+    }
+
+    if (ptr.mlet === MONSYMS.S_GIANT) { /* giants just love to use clubs */
+        const otmp = oselect(mtmp, ONAMES.CLUB);
+        if (otmp) return otmp;
+    } else if (mtmp.mnum === PMNAMES.PM_BALROG && game.uwep) {
+        const otmp = oselect(mtmp, ONAMES.BULLWHIP);
+        if (otmp) return otmp;
+    }
+
+    /* only strong monsters can wield big (esp. long) weapons */
+    /* big weapon is basically the same as bimanual */
+    /* all monsters can wield the remaining weapons */
+    for (const w of hwep()) {
+        if (w === ONAMES.CORPSE && !((mtmp.misc_worn_check ?? 0) & W_ARMG)
+            && !resists_ston(mtmp))
+            continue;
+        if (((strong && !wearing_shield) || !game.objects[w].oc_bimanual)
+            && (game.objects[w].oc_material !== MATERIALS.SILVER
+                || !mon_hates_silver(mtmp))) {
+            const otmp = oselect(mtmp, w);
+            if (otmp) return otmp;
+        }
+    }
+
+    /* failure */
+    return null;
+}
+
+// src/weapon.c:747 possibly_unwield() — called after polymorphing a monster,
+// robbing it, etc., and before every mattackm weapon swing. The common case
+// re-arms weapon_check = NEED_WEAPON so the next wield check re-evaluates;
+// the stolen/destroyed and no-longer-AT_WEAP arms need states that are
+// recorded when reached.
+export function possibly_unwield(mon, polyspot) {
+    const mw_tmp = MON_WEP(mon);
+    if (!mw_tmp)
+        return;
+    if (!(mon.minvent || []).includes(mw_tmp)) {
+        /* The weapon was stolen or destroyed */
+        mon.mw = null; /* MON_NOWEP */
+        mon.weapon_check = NEED_WEAPON;
+        return;
+    }
+    if (!attacktype(game.mons[mon.mnum], ATTKS.AT_WEAP)) {
+        /* poly'd into a non-wielder: drop the weapon to the floor */
+        note_unported_weapon('possibly_unwield:drop');
+        return;
+    }
+    /* Note that if there is no change, setting the check to NEED_WEAPON
+     * is harmless. */
+    if (!(mwelded_weapon(mw_tmp) && mon.weapon_check === NO_WEAPON_WANTED))
+        mon.weapon_check = NEED_WEAPON;
+}
+
+// src/weapon.c:801 mon_wield_item() — let a monster try to wield a weapon,
+// based on mon->weapon_check. Returns 1 if the monster took time to do it,
+// 0 if it did not.
+//
+// The NEED_HTH_WEAPON and pick/axe arms are ported; NEED_RANGED_WEAPON needs
+// select_rwep() (the throwing subsystem) and is recorded. The messages for a
+// welded (cursed) weapon need Tobjnam/mbodypart and are recorded, but the
+// state changes they accompany still happen.
+export async function mon_wield_item(mon) {
+    let obj;
+    let exclaim = true; /* assume mon is planning to attack */
+
+    /* This case actually should never happen */
+    if (mon.weapon_check === NO_WEAPON_WANTED)
+        return 0;
+    switch (mon.weapon_check) {
+    case NEED_HTH_WEAPON:
+        obj = select_hwep(mon);
+        break;
+    case NEED_RANGED_WEAPON:
+        note_unported_weapon('mon_wield_item:select_rwep');
+        obj = null;
+        break;
+    case NEED_PICK_AXE:
+        obj = m_carrying(mon, ONAMES.PICK_AXE);
+        /* KMH -- allow other picks */
+        if (!obj && !which_armor(mon, W_ARMS))
+            obj = m_carrying(mon, ONAMES.DWARVISH_MATTOCK);
+        exclaim = false; /* mon is just planning to dig */
+        break;
+    case NEED_AXE:
+        /* currently, only 2 types of axe */
+        obj = m_carrying(mon, ONAMES.BATTLE_AXE);
+        if (!obj || which_armor(mon, W_ARMS))
+            obj = m_carrying(mon, ONAMES.AXE);
+        exclaim = false;
+        break;
+    case NEED_PICK_OR_AXE:
+        /* prefer pick for fewer switches on most levels */
+        obj = m_carrying(mon, ONAMES.DWARVISH_MATTOCK);
+        if (!obj)
+            obj = m_carrying(mon, ONAMES.BATTLE_AXE);
+        if (!obj || which_armor(mon, W_ARMS)) {
+            obj = m_carrying(mon, ONAMES.PICK_AXE);
+            if (!obj)
+                obj = m_carrying(mon, ONAMES.AXE);
+        }
+        exclaim = false;
+        break;
+    default:
+        /* impossible("weapon_check %d for %s?") */
+        return 0;
+    }
+    if (obj) {
+        const mw_tmp = MON_WEP(mon);
+
+        if (mw_tmp && mw_tmp.otyp === obj.otyp) {
+            /* already wielding it */
+            mon.weapon_check = NEED_WEAPON;
+            return 0;
+        }
+        /* Actually, this isn't necessary--as soon as the monster
+         * wields the weapon, the weapon welds itself, so the monster
+         * can know it's cursed and needn't even bother trying.
+         * Still....
+         */
+        if (mw_tmp && mwelded_weapon(mw_tmp)) {
+            if (canseemon(mon))
+                note_unported_weapon('mon_wield_item:welded_msg');
+            mw_tmp.bknown = 1;
+            mon.weapon_check = NO_WEAPON_WANTED;
+            return 1;
+        }
+        mon.mw = obj; /* wield obj */
+        setmnotwielded(mon, mw_tmp);
+        mon.weapon_check = NEED_WEAPON;
+        if (canseemon(mon)) {
+            await pline(`${Monnam(mon)} wields ${doname(obj)}${
+                exclaim ? '!' : '.'}`);
+            if (autoreturn_weapon(obj)?.tethered)
+                await pline(`${Monnam(mon)} secures the tether on ${
+                    the(xname(obj))}.`);
+
+            /* 3.6.3: mwelded() predicate expects the object to have its
+               W_WEP bit set in owornmask */
+            obj.owornmask = (obj.owornmask ?? 0) | W_WEP;
+            const newly_welded = mwelded_weapon(obj);
+            obj.owornmask &= ~W_WEP;
+            if (newly_welded) {
+                /* "The <weapon> welds itself to <mon>'s <hand>!" needs
+                   Tobjnam/mbodypart */
+                note_unported_weapon('mon_wield_item:weld_msg');
+                obj.bknown = 1;
+            }
+        }
+        if (obj.oartifact)
+            note_unported_weapon('mon_wield_item:artifact_light');
+        obj.owornmask = W_WEP;
+        return 1;
+    }
+    mon.weapon_check = NEED_WEAPON;
+    return 0;
+}
+
+// src/weapon.c:937 mwepgone() — force monster to stop wielding current
+// weapon, if any.
+export function mwepgone(mon) {
+    const mwep = MON_WEP(mon);
+
+    if (mwep) {
+        setmnotwielded(mon, mwep);
+        mon.weapon_check = NEED_WEAPON;
+    }
+}
+
+/* src/wield.c:63 erodeable_wep(), :68 will_weld(), :1078 mwelded() — local
+   twin of the copy in js/monmove.js, for the same import-cycle reason. */
+function mwelded_weapon(obj) {
+    return obj && obj.cursed && ((obj.owornmask ?? 0) & W_WEP) !== 0
+        && (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects));
+}
+
+// src/weapon.c:1814 setmnotwielded()
+export function setmnotwielded(mon, obj) {
+    if (!obj)
+        return;
+    if (obj.oartifact && obj.lamplit)
+        note_unported_weapon('setmnotwielded:artifact_light');
+    if (MON_WEP(mon) === obj)
+        mon.mw = null; /* MON_NOWEP */
+    obj.owornmask = (obj.owornmask ?? 0) & ~W_WEP;
 }

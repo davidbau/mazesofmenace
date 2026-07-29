@@ -149,7 +149,7 @@ function hit_verb(aatyp) {
 
 // ── attack-type / damage-type enums (include/monattk.h) ──────────────────────
 const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
-      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_EXPL = 11, AT_WEAP = 254;
+      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_EXPL = 13, AT_WEAP = 254; // monattk.h (AT_EXPL was 11, which is AT_ENGL)
 const AD_PHYS = 0;
 
 // weapon_check states (C ref: monst.h wpn_chk_flags).

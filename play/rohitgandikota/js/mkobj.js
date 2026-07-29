@@ -566,10 +566,9 @@ export function mksobj_init(otmp, artif) {
             /* include/mondata.h:11 verysmall(ptr) is msize < MZ_SMALL */
             if (!(game.mons[otmp.corpsenm].msize < MZ_SMALL)
                 && rn2(Math.trunc(level_difficulty() / 2) + 10) > 10) {
-                /* add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, FALSE)) —
-                   SPBOOK_no_NOVEL takes mkobj's rnd_class() branch, which is
-                   not ported; the container add itself makes no draw. */
-                mkobj(SPBOOK_CLASS, false);
+                /* src/mkobj.c:1156 — the book range EXCLUDES the novel
+                   (rnd_class over 999, not the class total of 1000) */
+                add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, false));
             }
         }
         /* boulder init'd below in the 'regardless of !init' code */

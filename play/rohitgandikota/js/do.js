@@ -102,8 +102,22 @@ export async function next_level(at_stairs) {
 // spends none of them, so this path adds no draws of its own -- everything it
 // changes in the stream comes from mklev() running at all.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
+    const up = (depth_do(newlevel) < depth_do(game.u.uz));
+
+    /* src/do.c:1585 keepdogs() — adjacent followers leave the map with the
+       hero BEFORE the old level is left */
+    const { keepdogs, losedogs } = await import('./dog.js');
+    keepdogs(false);
+
     game.u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
     (game.visited_ledgers ||= new Set());
+
+    /* src/do.c:1690 — reset the default level change destination areas;
+       the special level code may override these */
+    game.updest = { lx: 0, ly: 0, hx: 0, hy: 0,
+                    nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0,
+                    nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 
     const ledger = `${newlevel.dnum}:${newlevel.dlevel}`;
     if (game.visited_ledgers.has(ledger)) {
@@ -117,11 +131,69 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* entering this level for the first time; make it now */
     await mklev_fn();
 
-    if (at_stairs)
+    if (at_stairs) {
         u_on_dnstairs();
+    } else { /* trap door or level_tele or In_endgame */
+        const { u_on_rndspot } = await import('./dungeon.js');
+        await u_on_rndspot(up ? 1 : 0);
+    }
 
-    /* losedogs() brings the pets across; it needs the migration list */
-    note_unported_do('goto_level:losedogs');
+    /* obj_delivery() — migrating objects; none exist yet */
+    losedogs();
+
+    /* src/do.c:1826 — hero might be arriving at a spot containing a
+       monster; u_collide_m moves one or the other */
+    const { m_at, mnexto } = await import('./mon.js');
+    const collider = m_at(game.u.ux, game.u.uy);
+    if (collider)
+        await u_collide_m(collider, m_at, mnexto);
+
+    /* src/do.c:1837 — reset the screen: vision blockages for the new
+       map, then a full redraw with vision recalc */
+    const { vision_reset, vision_recalc } = await import('./vision.js');
+    const { docrt, flush_screen } = await import('./display.js');
+    vision_reset();
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+    await docrt();
+    await flush_screen(-1);
+}
+
+// src/do.c:1411 u_collide_m() — the hero and a monster landed on the same
+// square: half the time the hero steps aside (enexto draw), otherwise the
+// monster is moved next to the hero (mnexto draws). The fallback rloc/limbo
+// arm is recorded.
+async function u_collide_m(mtmp, m_at, mnexto) {
+    const { enexto_core } = await import('./teleport.js');
+    const { goodpos } = await import('./makemon.js');
+    const { GP_CHECKSCARY } = await import('./const.js');
+    const { game: g } = await import('./gstate.js');
+
+    const cc = { x: 0, y: 0 };
+    const next2u = (x, y) => {
+        const dx = x - g.u.ux, dy = y - g.u.uy;
+        return dx * dx + dy * dy <= 2;
+    };
+    if (!rn2(2)
+        && (enexto_core(cc, g.u.ux, g.u.uy, g.youmonst?.data, GP_CHECKSCARY,
+                        goodpos)
+            || enexto_core(cc, g.u.ux, g.u.uy, g.youmonst?.data, 0, goodpos))
+        && next2u(cc.x, cc.y)) {
+        g.u.ux = cc.x; /* u_on_newpos */
+        g.u.uy = cc.y;
+    } else {
+        mnexto(mtmp);
+    }
+
+    if (m_at(g.u.ux, g.u.uy))
+        note_unported_do('u_collide_m:rloc_limbo');
+}
+
+/* src/dungeon.c depth() — local copy to keep this module's import graph
+   acyclic (dungeon.js dynamically imports mkmaze.js which imports mklev.js
+   which reaches back here through deferred_goto's users). */
+function depth_do(dlev) {
+    return (game.dungeons?.[dlev.dnum]?.depth_start ?? 1) + dlev.dlevel - 1;
 }
 
 // src/do.c u_on_dnstairs() — put the hero on the down staircase of the new

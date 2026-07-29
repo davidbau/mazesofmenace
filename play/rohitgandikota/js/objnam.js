@@ -12,7 +12,7 @@
 // direct check that the o_init port is right.
 
 import { game } from './gstate.js';
-import { vegetarian } from './mondata.js';
+import { vegetarian, name_to_monplus } from './mondata.js';
 import { rn2, rnd } from './rng.js';
 import { mksobj, rnd_class, curse } from './mkobj.js';
 import { Is_candle, Is_container } from './obj.js';
@@ -212,6 +212,12 @@ export function Japanese_item_name(otyp, ordinaryname) {
 // src/objnam.c:820 xname() — the object's name without quantity or BUC.
 export function xname(obj) {
     const ocl = game.objects[obj.otyp];
+    /* src/objnam.c:627 — naming an object the hero can see observes it:
+           if (!Blind && !gd.distantname) observe_object(obj);
+       This is where a wished amulet's dknown comes from ("a cubical
+       amulet", not "an amulet"). */
+    if (!game.u?.ublind)
+        observe_object(obj);
     const nn = ocl.oc_name_known;
     let actualn = OBJ_NAME(ocl) ?? 'object?';
     let dn = OBJ_DESCR(ocl) ?? actualn;
@@ -343,6 +349,18 @@ export function xname(obj) {
         break;
     } /* gem */
     case ROCK_CLASS:
+        /* src/objnam.c:844 — a statue names the monster it depicts:
+           "statue of a grid bug". The historic prefix needs an
+           Archeologist; the unique/pname article refinements need those
+           monsters to be turned to stone. next_boulder needs pushing. */
+        if (obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0) {
+            const statue_pmname = game.mons?.[obj.corpsenm]?.pmnames?.[2]
+                ?? game.mons?.[obj.corpsenm]?.pmnames?.[0] ?? 'monster';
+            buf = `${actualn} of ${just_an(statue_pmname)}${statue_pmname}`;
+        } else {
+            buf = actualn; /* "boulder" or "statue" */
+        }
+        break;
     default:
         buf = obj_typename(obj.otyp);
         break;
@@ -635,6 +653,58 @@ export function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
     return 0;
 }
 
+/* src/objnam.c:3376 spellings[] — alternate spellings the wish parser
+   accepts; entries whose difference is only spaces/hyphens or an "of"
+   inversion are handled by wishymatch and are not listed */
+const alt_spellings = [
+    ['pickax', 'PICK_AXE'],
+    ['whip', 'BULLWHIP'],
+    ['saber', 'SILVER_SABER'],
+    ['silver sabre', 'SILVER_SABER'],
+    ['smooth shield', 'SHIELD_OF_REFLECTION'],
+    ['grey dragon scale mail', 'GRAY_DRAGON_SCALE_MAIL'],
+    ['grey dragon scales', 'GRAY_DRAGON_SCALES'],
+    ['iron ball', 'HEAVY_IRON_BALL'],
+    ['lantern', 'BRASS_LANTERN'],
+    ['mattock', 'DWARVISH_MATTOCK'],
+    ['amulet of poison resistance', 'AMULET_VERSUS_POISON'],
+    ['amulet of protection', 'AMULET_OF_GUARDING'],
+    ['amulet of telepathy', 'AMULET_OF_ESP'],
+    ['helm of esp', 'HELM_OF_TELEPATHY'],
+    ['gauntlets of ogre power', 'GAUNTLETS_OF_POWER'],
+    ['gauntlets of giant strength', 'GAUNTLETS_OF_POWER'],
+    ['elven chain mail', 'ELVEN_MITHRIL_COAT'],
+    ['silver shield', 'SHIELD_OF_REFLECTION'],
+    ['potion of sleep', 'POT_SLEEPING'],
+    ['scroll of recharging', 'SCR_CHARGING'],
+    ['recharging', 'SCR_CHARGING'],
+    ['stone', 'ROCK'],
+    ['camera', 'EXPENSIVE_CAMERA'],
+    ['tee shirt', 'T_SHIRT'],
+    ['can', 'TIN'],
+    ['can opener', 'TIN_OPENER'],
+    ['kelp', 'KELP_FROND'],
+    ['eucalyptus', 'EUCALYPTUS_LEAF'],
+    ['lembas', 'LEMBAS_WAFER'],
+    ['tripe', 'TRIPE_RATION'],
+    ['cookie', 'FORTUNE_COOKIE'],
+    ['pie', 'CREAM_PIE'],
+    ['huge meatball', 'ENORMOUS_MEATBALL'],
+    ['huge chunk of meat', 'ENORMOUS_MEATBALL'],
+    ['marker', 'MAGIC_MARKER'],
+    ['hook', 'GRAPPLING_HOOK'],
+    ['grappling iron', 'GRAPPLING_HOOK'],
+    ['grapnel', 'GRAPPLING_HOOK'],
+    ['grapple', 'GRAPPLING_HOOK'],
+    ['protection from shape shifters', 'RIN_PROTECTION_FROM_SHAPE_CHAN'],
+    ['accuracy', 'RIN_INCREASE_ACCURACY'],
+    ['box', 'LARGE_BOX'],
+    ['luck stone', 'LUCKSTONE'],
+    ['load stone', 'LOADSTONE'],
+    ['touch stone', 'TOUCHSTONE'],
+    ['flintstone', 'FLINT'],
+];
+
 /* src/objnam.c:2517 wrp[]/wrpsym[] — the wishable class words */
 const wrp = ['wand', 'ring', 'potion', 'scroll', 'gem',
              'amulet', 'spellbook', 'spell book',
@@ -657,7 +727,7 @@ export function readobjnam(bp) {
     if (/^(nothing|nil|none)$/i.test(bp))
         return 'nothing';
 
-    const d = { cnt: 0, spe: 0, spesgn: 0, rechrg: 0, blessed: 0,
+    const d = { cnt: 0, spe: 0, spesgn: 0, rechrg: 0, blessed: 0, mntmp: -1,
                 iscursed: 0, uncursed: 0, islit: 0, erodeproof: 0,
                 oclass: 0, typ: 0, actualn: null, dn: null, un: null };
 
@@ -730,6 +800,93 @@ export function readobjnam(bp) {
         bp = bp.slice(pm[0].length);
     }
 
+    /* src/objnam.c:4378 — corpse type using "of" (figurine of an orc);
+       don't look inside wand/spellbook/gauntlets/gloves/finger names */
+    {
+        const lower = bp.toLowerCase();
+        if (!lower.includes('wand ') && !lower.includes('spellbook ')
+            && !lower.includes('gauntlets ') && !lower.includes('gloves ')
+            && !lower.includes('finger ')) {
+            if (lower.includes('tin of ')) {
+                note_unported_objnam('readobjnam:tin_of');
+            } else {
+                const ofi = bp.indexOf(' of ');
+                if (ofi >= 0) {
+                    const mon = name_to_monplus(bp.slice(ofi + 4), null);
+                    if (mon >= 0) {
+                        d.mntmp = mon;
+                        bp = bp.slice(0, ofi);
+                    }
+                }
+            }
+        }
+    }
+    /* src/objnam.c:4398 — corpse type w/o "of" (red dragon scale mail,
+       yeti corpse); the excluded strings contain monster or rank names */
+    {
+        const lower = bp.toLowerCase();
+        if (!lower.startsWith('samurai sword')
+            && !lower.startsWith('wizard lock')
+            && !lower.startsWith('death wand')
+            && !lower.startsWith('master key')
+            && !lower.startsWith('ninja-to')
+            && !lower.startsWith('magenta')) {
+            if (d.mntmp < 0 && bp.length > 2) {
+                const rest_box = {};
+                const mon = name_to_monplus(bp, rest_box);
+                if (mon >= 0) {
+                    const obp = bp;
+                    d.mntmp = mon;
+                    bp = bp.slice(rest_box.at);
+                    if (bp[0] === ' ') {
+                        bp = bp.slice(1);
+                    } else if (/^s /.test(bp)) {
+                        bp = bp.slice(2);
+                    } else if (/^es /.test(bp) || /^'s /.test(bp)) {
+                        bp = bp.slice(3);
+                    } else if (!bp && !d.actualn && !d.dn && !d.un
+                               && !d.oclass) {
+                        /* no referent; they don't really mean a monster */
+                        bp = obp;
+                        d.mntmp = -1;
+                    }
+                }
+            }
+        }
+    }
+
+    /* src/objnam.c:4435 — change to singular if necessary */
+    if (bp && bp.toLowerCase() !== 'tricks' && bp.toLowerCase() !== 'clothes') {
+        const sng = makesingular(bp);
+        if (bp !== sng) {
+            if (d.cnt === 1)
+                d.cnt = 2;
+            bp = sng;
+        }
+    }
+
+    /* src/objnam.c:4457 — alternate spellings (pick-ax, silver sabre, &c) */
+    for (const [sp, ob] of alt_spellings) {
+        if (wishymatch(bp, sp, true)) {
+            d.typ = ONAMES[ob];
+            break;
+        }
+    }
+    if (!d.typ) {
+        if (/^grey spell/i.test(bp))
+            bp = bp.slice(0, 2) + 'a' + bp.slice(3);
+        bp = bp.replace(/armour/gi, (m) => m.slice(0, 4) + m[5]);
+
+        /* src/objnam.c:4480 — dragon scales, assumes order of dragons */
+        if (bp.toLowerCase() === 'scales'
+            && d.mntmp >= PMNAMES.PM_GRAY_DRAGON
+            && d.mntmp <= PMNAMES.PM_YELLOW_DRAGON) {
+            d.typ = ONAMES.GRAY_DRAGON_SCALES + d.mntmp
+                - PMNAMES.PM_GRAY_DRAGON;
+            d.mntmp = -1;
+        }
+    }
+
     /* the class-word forms: "<class> of X" and "X <class>" */
     const syms = wrpsym();
     const lowbp = bp.toLowerCase();
@@ -762,12 +919,14 @@ export function readobjnam(bp) {
         d.dn = d.dn || bp;
     }
 
-    /* srch — src/objnam.c:4748 */
-    d.typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1)
-            || (d.dn !== d.actualn
-                && rnd_otyp_by_namedesc(d.dn, d.oclass, 1))
-            || rnd_otyp_by_namedesc(d.un, d.oclass, 1)
-            || 0;
+    /* srch — src/objnam.c:4748; skipped when an earlier arm already
+       settled the type (alternate spelling, dragon scales) */
+    if (!d.typ)
+        d.typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1)
+                || (d.dn !== d.actualn
+                    && rnd_otyp_by_namedesc(d.dn, d.oclass, 1))
+                || rnd_otyp_by_namedesc(d.un, d.oclass, 1)
+                || 0;
     if (!d.typ && d.actualn) {
         for (const [key, jname] of Object.entries(Japanese_items))
             if (jname.toLowerCase() === d.actualn.toLowerCase()) {
@@ -852,6 +1011,32 @@ export function readobjnam(bp) {
     if (d.oclass === OCLASSES.WAND_CLASS && d.spesgn === 1)
         otmp.recharged = d.rechrg;
 
+    /* src/objnam.c:5191 — set otmp->corpsenm or dragon scale [mail] */
+    if (d.mntmp >= 0) {
+        switch (d.typ) {
+        case ONAMES.TIN:
+        case ONAMES.EGG:
+            note_unported_objnam(`readobjnam:mntmp_typ=${d.typ}`);
+            break;
+        case ONAMES.CORPSE:
+        case ONAMES.FIGURINE:
+        case ONAMES.STATUE:
+            /* the corpse-timer, figurine-transform and statue-contents
+               refinements are not ported; the type itself is */
+            otmp.corpsenm = d.mntmp;
+            break;
+        case ONAMES.SCALE_MAIL:
+            /* Dragon mail - depends on the order of objects & dragons. */
+            if (d.mntmp >= PMNAMES.PM_GRAY_DRAGON
+                && d.mntmp <= PMNAMES.PM_YELLOW_DRAGON)
+                otmp.otyp = ONAMES.GRAY_DRAGON_SCALE_MAIL
+                    + d.mntmp - PMNAMES.PM_GRAY_DRAGON;
+            break;
+        default:
+            break;
+        }
+    }
+
     if (d.iscursed)
         curse(otmp);
     else if (d.uncursed) {
@@ -865,4 +1050,189 @@ export function readobjnam(bp) {
         otmp.oerodeproof = ((game.u.uluck || 0) < 0 && !game.wizard) ? 0 : 1;
 
     return otmp;
+}
+
+/* src/objnam.c:2662 one_off[] — irregular singular/plural pairs. */
+const one_off = [
+    ['child', 'children'], ['cubus', 'cubi'], ['culus', 'culi'],
+    ['Cyclops', 'Cyclopes'], ['djinni', 'djinn'], ['erinys', 'erinyes'],
+    ['foot', 'feet'], ['fungus', 'fungi'], ['goose', 'geese'],
+    ['knife', 'knives'], ['labrum', 'labra'], ['louse', 'lice'],
+    ['mouse', 'mice'], ['mumak', 'mumakil'], ['nemesis', 'nemeses'],
+    ['ovum', 'ova'], ['ox', 'oxen'], ['passerby', 'passersby'],
+    ['rtex', 'rtices'], ['serum', 'sera'], ['staff', 'staves'],
+    ['tooth', 'teeth'],
+];
+
+/* src/objnam.c:2550 special_subjs[] — vtense() subjects, and an extra as_is
+   set for makesingular during wishing */
+const special_subjs = [
+    'erinys', 'manes', 'Cyclops', 'Hippocrates', 'Pelias', 'aklys',
+    'amnesia', 'detect monsters', 'paralysis', 'shape changers', 'nemesis',
+];
+
+/* src/objnam.c:3194 badman() — *man/*men words that are not man/men pairs;
+   only the makesingular direction's table is needed */
+const no_man = [
+    'abdo', 'acu', 'agno', 'ceru', 'cogno', 'cycla', 'fleh', 'grava',
+    'hegu', 'preno', 'sonar', 'speci', 'dai', 'exa', 'fla', 'sta', 'teg',
+    'tegu', 'vela', 'da', 'hy', 'lu', 'no', 'nu', 'ra', 'ru', 'se', 'vi',
+    'ya', 'o', 'a',
+];
+function badman(basestr, to_plural) {
+    if (!basestr || basestr.length < 4) return false;
+    const low = basestr.toLowerCase();
+    for (const pre of no_man) {
+        const spot = low.length - (pre.length + 3);
+        if (spot < 0) continue;
+        if (low.slice(spot, spot + pre.length) === pre
+            && (spot === 0 || low[spot - 1] === ' '))
+            return true;
+    }
+    return false;
+}
+
+/* src/objnam.c:2783 singplur_compound() — find " of ", " named " &c so the
+   head noun is what gets singularized */
+const sp_compounds = [
+    ' of ', ' labeled ', ' called ', ' named ', ' above',
+    ' versus ', ' from ', ' in ', ' on ', ' a la ', ' with',
+    ' de ', " d'", ' du ', ' au ', '-in-', '-at-',
+];
+function singplur_compound(str) {
+    for (let p = 0; p < str.length; p++) {
+        if (str[p] !== ' ' && str[p] !== '-') continue;
+        for (const cmpd of sp_compounds)
+            if (str.slice(p, p + cmpd.length).toLowerCase()
+                === cmpd.toLowerCase())
+                return p;
+    }
+    return -1;
+}
+
+/* BSTRCMPI(base, ptr, str): true when the tail of base at endlen equals str,
+   guarding against the pointer running off the front */
+function tail_is(base, endlen, str) {
+    const at = endlen - str.length;
+    if (at < 0) return false;
+    return base.slice(at, endlen).toLowerCase() === str.toLowerCase();
+}
+
+/* src/objnam.c:2632 singplur_lookup() — makesingular's half only. Returns
+   the transformed base or null when no as-is/one_off rule applied. */
+function singplur_lookup_sing(base, alt_as_is) {
+    for (const w of as_is)
+        if (tail_is(base, base.length, w)) return base;
+    if (alt_as_is)
+        for (const w of alt_as_is)
+            if (tail_is(base, base.length, w)) return base;
+    if (base.length > 5 && tail_is(base, base.length, 'craft')) return base;
+    if (/^slice$/i.test(base) || /^mongoose$/i.test(base)) return base;
+    if (base.length > 2 && tail_is(base, base.length, 'men')
+        && badman(base, false)) return base;
+    for (const [sing, plur] of one_off) {
+        if (tail_is(base, base.length, sing)) return base;
+        if (tail_is(base, base.length, plur))
+            return base.slice(0, base.length - plur.length) + sing;
+    }
+    return null;
+}
+
+// src/objnam.c:3037 makesingular()
+export function makesingular(oldstr) {
+    let str = String(oldstr ?? '').replace(/^ +/, '');
+    if (!str) return '';
+
+    /* pronouns: "they"/"them" -> "it", "their" -> "its" */
+    const pron = { they: 'it', them: 'it', their: 'its' }[str.toLowerCase()];
+    if (pron)
+        return (str[0] === str[0].toUpperCase())
+            ? pron[0].toUpperCase() + pron.slice(1) : pron;
+
+    /* focus on "foo" of "foo of bar" */
+    const cut = singplur_compound(str);
+    let bp = cut >= 0 ? str.slice(0, cut) : str;
+    const excess = cut >= 0 ? str.slice(cut) : '';
+
+    const looked = singplur_lookup_sing(bp, special_subjs);
+    if (looked !== null)
+        return looked + excess;
+
+    const L = bp.length;
+    const low = bp.toLowerCase();
+    if (L >= 1 && low[L - 1] === 's') {
+        if (L >= 2 && low[L - 2] === 'e') {
+            if (L >= 3 && low[L - 3] === 'i') {          /* "ies" */
+                if (tail_is(bp, L, 'cookies')
+                    || (tail_is(bp, L, 'pies')
+                        && (L === 4 || low[L - 5] === ' '))
+                    || (tail_is(bp, L, 'genies')
+                        && (L === 6 || low[L - 7] === ' '))
+                    || tail_is(bp, L, 'mbies')
+                    || tail_is(bp, L, 'yries'))
+                    return bp.slice(0, L - 1) + excess;  /* just drop s */
+                return bp.slice(0, L - 3) + 'y' + excess; /* ies -> y */
+            }
+            /* wolves &c: [lr or vowel] + "ves" -> f */
+            if (L >= 4 && ('lr'.includes(low[L - 4])
+                           || 'aeiou'.includes(low[L - 4]))
+                && tail_is(bp, L, 'ves')) {
+                if (tail_is(bp, L, 'cloves') || tail_is(bp, L, 'nerves'))
+                    return bp.slice(0, L - 1) + excess;
+                return bp.slice(0, L - 3) + 'f' + excess; /* ves -> f */
+            }
+            if (tail_is(bp, L, 'eses') || tail_is(bp, L, 'oxes')
+                || tail_is(bp, L, 'nxes') || tail_is(bp, L, 'ches')
+                || tail_is(bp, L, 'uses') || tail_is(bp, L, 'shes')
+                || tail_is(bp, L, 'sses') || tail_is(bp, L, 'atoes')
+                || tail_is(bp, L, 'dingoes') || tail_is(bp, L, 'Aleaxes'))
+                return bp.slice(0, L - 2) + excess;       /* drop es */
+            return bp.slice(0, L - 1) + excess;           /* drop s */
+        } else if (tail_is(bp, L, 'us')) {                /* lotus, fungus */
+            if (!tail_is(bp, L, 'tengus') && !tail_is(bp, L, 'hezrous'))
+                return bp + excess;
+            return bp.slice(0, L - 1) + excess;
+        } else if (tail_is(bp, L, 'ss') || tail_is(bp, L, ' lens')
+                   || (L === 4 && low === 'lens')) {
+            return bp + excess;
+        }
+        return bp.slice(0, L - 1) + excess;               /* drop s */
+    }
+
+    /* input doesn't end in 's' */
+    if (tail_is(bp, L, 'men') && !badman(bp, false))
+        return bp.slice(0, L - 2) + 'an' + excess;
+    if (tail_is(bp, L, 'matzot') || tail_is(bp, L, 'ae')
+        || tail_is(bp, L, 'eaux'))
+        return bp.slice(0, L - 1) + excess;               /* drop t/e/x */
+    if (L >= 4 && tail_is(bp, L, 'ia') && 'lr'.includes(low[L - 3])
+        && low[L - 4] === 'e')
+        return bp.slice(0, L - 1) + 'um' + excess;        /* a -> um */
+
+    return bp + excess;
+}
+
+// src/objnam.c the() — prepend "the" unless the name is a proper noun.
+// CapitalMon() and the artifact/fruit refinements need name tables no
+// current caller can reach (farlook passes lowercased or generated names);
+// the capitalized-adjective and "of" branches are the live ones.
+export function the(str) {
+    if (!str) return 'the []';
+    if (/^the /i.test(str))
+        return str[0].toLowerCase() + str.slice(1);
+    if (str[0] < 'A' || str[0] > 'Z')
+        return 'the ' + str;
+    /* probably a proper name; the capitalized-adjective test */
+    const sp = Math.max(str.lastIndexOf(' '), str.lastIndexOf('-'));
+    if (sp >= 0 && (str[sp + 1] < 'A' || str[sp + 1] > 'Z'))
+        return str.includes("'") ? str : 'the ' + str;
+    if (sp >= 0 && str.indexOf(' ') < sp) {
+        const ofi = str.indexOf(' of ');
+        let named = str.indexOf(' named ');
+        const called = str.indexOf(' called ');
+        if (called >= 0 && (named < 0 || called < named)) named = called;
+        if (ofi >= 0 && (named < 0 || ofi < named))
+            return 'the ' + str;
+    }
+    return str;
 }

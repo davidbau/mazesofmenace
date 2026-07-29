@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { isok } from './hacklib.js';
 import { newsym } from './display.js';
+import { cmap_names } from './drawing_data.js';
 import { You } from './pline.js';
 import { m_at, t_at } from './mon.js';
 import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO } from './const.js';
@@ -231,7 +232,10 @@ export function show_map_spot(x, y, cnf) {
             /* map_engraving(ep, 1) — engraving_glyph via newsym covers the
                visible case; write the engraving into memory too */
             const eg = { ch: loc.typ === CORR ? '#' : '`',
-                         color: 12 /* CLR_BRIGHT_BLUE */, decgfx: false };
+                         color: 12 /* CLR_BRIGHT_BLUE */, decgfx: false,
+                         glyph: { kind: 'cmap',
+                                  cmap: cmap_names[loc.typ === CORR
+                                      ? 'S_engrcorr' : 'S_engroom'] } };
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = eg;
             newsym(x, y);

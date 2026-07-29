@@ -45,7 +45,9 @@ const LEATHER_GLOVES = 159, GAUNTLETS_OF_DEXTERITY = 162;
 const CLOAK_OF_PROTECTION = 146, CLOAK_OF_DISPLACEMENT = 149;
 const SPEED_BOOTS = 166, LEVITATION_BOOTS = 172;
 const WAN_NOTHING = 415;
-const NODIR = 0, IMMEDIATE = 1;
+// objclass.h: NODIR=1, IMMEDIATE=2, RAY=3.  These were 0/1, which wrote oc_dir
+// values that zap.js (which uses the correct 1/2) then misread.
+const NODIR = 1, IMMEDIATE = 2;
 
 // Keep the immutable object-table colors so init_objects() can restore them
 // before each new game.  The shared objects[] entries are mutated by shuffling.

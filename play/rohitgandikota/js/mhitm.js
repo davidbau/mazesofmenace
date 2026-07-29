@@ -19,7 +19,18 @@ import { seemimic } from './mon.js';
 import { newsym, canspotmon, pline } from './display.js';
 import { mdistu } from './monmove.js';
 import { Monnam, mon_nam_too } from './do_name.js';
-import { could_seduce } from './mhitu.js';
+import { could_seduce, getmattk, mswings_verb } from './mhitu.js';
+import { MON_WEP } from './monst.js';
+import { hitval, mon_wield_item, possibly_unwield } from './weapon.js';
+import { mon_nam } from './do_name.js';
+import { xname } from './objnam.js';
+import { pronoun_gender } from './mondata.js';
+import { genders } from './role_data.js';
+import { mon_visible } from './display.js';
+import { NEED_WEAPON, NEED_HTH_WEAPON, PRONOUN_HALLU,
+         P_POLEARMS } from './const.js';
+import { ONAMES } from './objects_data.js';
+import { dist2 } from './hacklib.js';
 import { rn2, rnd, d } from './rng.js';
 import { helpless } from './monst.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
@@ -125,25 +136,8 @@ export async function missmm(magr, mdef, mattk) {
 // include/mondata.h is_elf()
 const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 
-// src/mhitu.c:310 getmattk() — the attack for this slot, with substitutions.
-//
-// Every substitution arm needs state no current fight reaches (succubi,
-// disease pairs, energy drain vs the hero, holder re-grab timing); each is
-// recorded if its condition ever fires so the plain row is visibly a slice.
-function getmattk(magr, mdef, indx, prev_result) {
-    const A = ATTKS;
-    const mptr = game.mons[magr.mnum];
-    const attk = mptr.mattk[indx];
-
-    if (mptr.mattk[0][1] === A.AD_SSEX || attk[1] === A.AD_SSEX)
-        note_unported_mhitm('getmattk:SEDUCE');
-    if (indx > 0 && prev_result[indx - 1] > M_ATTK_MISS
-        && (attk[1] === A.AD_DISE || attk[1] === A.AD_PEST
-            || attk[1] === A.AD_FAMN)
-        && attk[1] === mptr.mattk[indx - 1][1])
-        note_unported_mhitm('getmattk:disease_pair');
-    return attk;
-}
+/* getmattk() lives in src/mhitu.c and is shared with mattacku(); it is
+   imported from js/mhitu.js above. */
 
 // src/mhitm.c:293 mattackm() — one monster performs all its attacks on
 // another. Returns the M_ATTK_* result bits.
@@ -204,29 +198,56 @@ export async function mattackm(magr, mdef) {
             continue;
 
         const mattk = getmattk(magr, mdef, i, res);
-        const mwep = null;      /* mon_wield_item is absent; see AT_WEAP */
+        let mwep = null;
         let attk = 1;
         let strike = 0;
         let dieroll;
 
         switch (mattk[0]) {
         case A.AT_WEAP:
-            /* mon_wield_item / thrwmm are absent */
-            note_unported_mhitm('mattackm:AT_WEAP');
-            strike = 0;
-            attk = 0;
-            break;
-
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
+                /* D: Do a ranged attack here! — thrwmm needs the throwing
+                   subsystem */
+                note_unported_mhitm('mattackm:thrwmm');
+                strike = 0;
+                attk = 0;
+                break;
+            }
+            if (magr.weapon_check === NEED_WEAPON || !MON_WEP(magr)) {
+                magr.weapon_check = NEED_HTH_WEAPON;
+                if (await mon_wield_item(magr) !== 0)
+                    return M_ATTK_MISS;
+            }
+            possibly_unwield(magr, false);
+            if ((mwep = MON_WEP(magr)) != null) {
+                if (game.vis)
+                    await mswingsm(magr, mdef, mwep);
+                tmp += hitval(mwep, mdef);
+            }
+            /*FALLTHRU*/
         case A.AT_CLAW: case A.AT_KICK: case A.AT_BITE: case A.AT_STNG:
         case A.AT_TUCH: case A.AT_BUTT: case A.AT_TENT:
             if (mattk[0] === A.AT_KICK
                 && (game.level?.traps || []).some(t => t.tx === magr.mx
                         && t.ty === magr.my && magr.mtrapped))
                 continue;
+            /* Nymph that teleported away on first attack? */
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
                 continue;
+            /* Monsters won't attack cockatrices physically if they
+             * have a weapon instead.  This instinct doesn't work for
+             * players, or under conflict or confusion.
+             */
+            if (!magr.mconf && !game.u.uprops?.CONFLICT && mwep
+                && mattk[0] !== A.AT_WEAP && touch_petrifies(pd)) {
+                strike = 0;
+                break;
+            }
             dieroll = rnd(20 + i);
             strike = (tmp > dieroll) ? 1 : 0;
+            /* KMH -- don't accumulate to-hit bonuses */
+            if (mwep)
+                tmp -= hitval(mwep, mdef);
             if (strike) {
                 if (unsolid(pd)) {
                     /* failed_grab: eel wrap vs unsolid target */
@@ -278,6 +299,27 @@ export async function mattackm(magr, mdef) {
     return struck ? M_ATTK_HIT : M_ATTK_MISS;
 }
 
+// src/mhitm.c:1283 mswingsm() — one monster swings its weapon at another.
+async function mswingsm(magr, mdef, otemp) {
+    if (game.flags?.verbose && !game.u.ublind && mon_visible(magr)) {
+        const bash = (is_pole_mm(otemp)
+                      && (dist2(magr.mx, magr.my, mdef.mx, mdef.my) <= 2));
+        await pline(`${Monnam(magr)} ${mswings_verb(otemp, bash)} ${
+            ((otemp.quan ?? 1) > 1) ? 'one of ' : ''}${mhis_mm(magr)} ${
+            xname(otemp)} at ${mon_nam(mdef)}.`);
+    }
+}
+
+/* include/obj.h is_pole() — C also excludes ART_SNICKERSNEE, a katana that
+   is_pole() already rejects. */
+function is_pole_mm(obj) {
+    return game.objects[obj.otyp].oc_skill === P_POLEARMS
+           || obj.otyp === ONAMES.LANCE;
+}
+
+// include/you.h:324 mhis()
+const mhis_mm = (mtmp) => genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his;
+
 // src/mhitm.c:644 hitmm() — a monster's attack lands: the message, then
 // mdamagem() for the damage. The seduction, shade and silver arms are gated
 // on monster types that record when reached.
@@ -325,7 +367,7 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
     /* mhitm_adtyping: dispatch on the damage type */
     if (mattk[1] === A.AD_PHYS) {
-        mhitm_ad_phys(magr, mattk, mdef, mhm);
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
     } else {
         note_unported_mhitm(`mdamagem:adtyp=${mattk[1]}`);
     }

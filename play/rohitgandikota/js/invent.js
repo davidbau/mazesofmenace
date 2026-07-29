@@ -2,6 +2,7 @@
 // C ref: src/invent.c
 
 import { game } from './gstate.js';
+import { read_engr_at } from './engrave.js';
 import { stairway_at, stairs_description } from './stairs.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
@@ -106,6 +107,7 @@ export async function look_here(obj_cnt, lhflags) {
            unless blind */
         if (dfeature && !skip_dfeature)
             await pline(`There is ${an(dfeature)} here.`);
+        await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
         if (!skip_objects && (Blind || !dfeature))
             await You(`${verb} no objects here.`);
         return Blind ? ECMD_TIME : ECMD_OK;
@@ -115,6 +117,7 @@ export async function look_here(obj_cnt, lhflags) {
     if (skip_objects) {
         if (dfeature && !skip_dfeature)
             await pline(`There is ${an(dfeature)} here.`);
+        await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
         if (obj_cnt === 1 && pile[0].quan === 1)
             await pline(`There is ${picked_some ? 'another' : 'an'} object here.`);
         else
@@ -131,6 +134,7 @@ export async function look_here(obj_cnt, lhflags) {
         const otmp = pile[0];
         if (dfeature && !skip_dfeature)
             await pline(`There is ${an(dfeature)} here.`);
+        await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
         /* doname_with_price() is doname() until shops exist */
         await You(`${verb} here ${doname(otmp)}.`);
         if (otmp.otyp === ONAMES.CORPSE)
@@ -148,7 +152,7 @@ export async function look_here(obj_cnt, lhflags) {
                 note_unported_invent('look_here:feel_cockatrice');
             tty_putstr(tmpwin, 0, doname(otmp));
         }
-        tty_display_nhwindow(tmpwin);
+        await tty_display_nhwindow(tmpwin);
         await nhgetch();
         while (tty_next_page(tmpwin))
             await nhgetch();
@@ -156,11 +160,8 @@ export async function look_here(obj_cnt, lhflags) {
         await docrt();
     }
 
-    /* read_engr_at(u.ux, u.uy) */
-    if ((game.level?.engravings || []).some(e => e.engr_x === game.u.ux
-                                            && e.engr_y === game.u.uy))
-        note_unported_invent('look_here:read_engr_at');
-
+    /* C's multi-object menu arm does not call read_engr_at; the other three
+       arms above do */
     return Blind ? ECMD_TIME : ECMD_OK;
 }
 

@@ -595,7 +595,7 @@ const MR_FIRE = 0x01, MR_COLD = 0x02, MR_SLEEP = 0x04, MR_DISINT = 0x08,
 function mresists_of(mon) { return mon?.data?.mresists || 0; }
 function resists_fire(mon) { return !!(mresists_of(mon) & MR_FIRE); }
 function resists_cold(mon) { return !!(mresists_of(mon) & MR_COLD); }
-function resists_sleep(mon) { return !!(mresists_of(mon) & MR_SLEEP); }
+export function resists_sleep(mon) { return !!(mresists_of(mon) & MR_SLEEP); }
 function resists_disint(mon) { return !!(mresists_of(mon) & MR_DISINT); }
 function resists_elec(mon) { return !!(mresists_of(mon) & MR_ELEC); }
 function resists_poison(mon) { return !!(mresists_of(mon) & MR_POISON); }
@@ -707,7 +707,7 @@ async function slept_monst(_mon) {}
 // C ref: mhitm.c sleep_monst(mon, amt, how) — how=WAND_CLASS for a wand of
 // sleep zap.  seemimic() mimic-reveal is not modelled (no covered zap target
 // is a hiding mimic).
-async function sleep_monst(mon, amt, how) {
+export async function sleep_monst(mon, amt, how) {
     if (resists_sleep(mon) || defended(mon, 4 /*AD_SLEE*/) || resist(mon, how, 0, false)) {
         // shieldeff(mon.mx, mon.my): display-only, no RNG.
         return false;
