@@ -15,7 +15,7 @@ import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap, Can_fall_thru } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
-         name_to_pmidx, monster_by_pmidx, enexto_spawn } from './makemon.js';
+         name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { m_at } from './display.js';
 import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
@@ -216,10 +216,11 @@ function rndmonnum() {
 async function makemon(mdat, x, y, mmflags) {
     const mtmp = make_monster(mdat, x, y, mmflags);
     if (mtmp && x > 0 && y > 0 && game.level) {
-        mtmp.mx = x;
-        mtmp.my = y;
-        if (!game.level.monsters) game.level.monsters = [];
-        game.level.monsters.push(mtmp);
+        // Via placeOnLevel so a group leader lands BEFORE the members m_initgrp
+        // just appended: C links the leader into fmon at makemon.c:1248, ahead of
+        // the group block at 1430.  A plain push put the leader AFTER them, which
+        // reversed the visit order inside every group.
+        placeOnLevel(mtmp, x, y);
     }
     return mtmp;
 }

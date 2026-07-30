@@ -806,7 +806,7 @@ export async function moveloop_turn() {
 
         if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
             // Both hero and all monsters are out of steam -> advance a turn.
-            mcalcdistress();
+            await mcalcdistress();
             for (const mtmp of (g.level?.monsters || [])) {
                 if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
                 mtmp.movement = (mtmp.movement || 0) + mcalcmove(mtmp, true);

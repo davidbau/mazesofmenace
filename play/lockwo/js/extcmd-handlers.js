@@ -1559,7 +1559,7 @@ async function chest_shatter_msg(otmp) {
     let thing;
     if (otmp.oclass === 10 /*SPBOOK_CLASS*/) thing = 'spellbook';
     else if (otmp.oclass === 8 /*POTION_CLASS*/) thing = 'potion';
-    else if (otmp.oclass === 7 /*SCROLL_CLASS*/) thing = 'scroll';
+    else if (otmp.oclass === 9 /*SCROLL_CLASS (objclass.h); 7 is FOOD_CLASS*/) thing = 'scroll';
     else thing = ocl?.name || 'object';
     const disposition = chest_shatter_disposition(ocl?.material);
     // An()/An(thing): capitalised indefinite article.

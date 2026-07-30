@@ -10,6 +10,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
+import { find_misc, use_misc } from './muse.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
     D_ISOPEN, D_NODOOR, D_TRAPPED,
@@ -22,15 +23,16 @@ import {
     W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M, ALLOW_U, ALLOW_SANCT,
     ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
     NOGARLIC, IS_ALTAR, In_endgame, GEHENNOM, HEADSTONE, u_at,
+    STAIRS, LADDER, IRONBARS, WEB,
 } from './const.js';
 import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
-import { t_at, t_missile, Can_fall_thru } from './trap.js';
+import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER } from './mon.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
 import { mon_msize, monster_by_pmidx, M2_HUMAN_NAMES, M2_MINION_NAMES } from './makemon.js';
-import { newsym, map_invisible, show_glyph_cell, object_glyph, pline } from './display.js';
+import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
     weight, base_oc_weight } from './mkobj.js';
@@ -801,6 +803,82 @@ function onscary(x, y, mtmp) {
              || mtmp.data?.name === 'minotaur' || Inhell() || In_endgame());
 }
 
+// ── web spinning (monmove.c:1240-1288) ──────────────────────────────────────
+// C ref: monmove.c holds_up_web(x, y) — a square that can anchor a web edge:
+// off-map, obstructed terrain, an UP staircase/ladder, or iron bars.
+function holds_up_web(x, y) {
+    if (!isok(x, y)) return true;
+    const typ = terrainTyp(x, y);
+    if (typ == null) return true;
+    if (IS_OBSTRUCTED(typ)) return true;
+    // C ref: `(sway = stairway_at(x, y)) != 0 && sway->up` — only an UP staircase
+    // or ladder anchors a web.  Stairways live on game.stairs with .sx/.sy/.up
+    // (see dungeon.js On_stairs).
+    if (typ === STAIRS || typ === LADDER) {
+        for (const s of (game.stairs || [])) if (s.sx === x && s.sy === y && s.up) return true;
+    }
+    if (typ === IRONBARS) return true;
+    return false;
+}
+
+// C ref: monmove.c count_webbing_walls(x, y) — the FOUR orthogonal neighbours
+// only (no diagonals).
+function count_webbing_walls(x, y) {
+    return holds_up_web(x, y - 1) + holds_up_web(x + 1, y)
+         + holds_up_web(x, y + 1) + holds_up_web(x - 1, y);
+}
+
+// C ref: trap.c count_traps(ttyp) — how many traps of a type are on the level.
+function count_traps_web() {
+    let n = 0;
+    for (const t of (game.level?.traps || [])) if (t.ttyp === WEB) n++;
+    return n;
+}
+
+// C ref: mondata.h webmaker(ptr) == (ptr == &mons[PM_CAVE_SPIDER]
+//                                    || ptr == &mons[PM_GIANT_SPIDER]).
+// pmidx IS the C monster index (verified by swarm/bin/gen-monflags.mjs), so these
+// are the real PM_ values: 94 cave spider, 96 giant spider (95 is centipede).
+const PM_CAVE_SPIDER = 94;
+const PM_GIANT_SPIDER = 96;
+
+// C ref: monmove.c maybe_spin_web(mtmp), called from postmov for MMOVE_MOVED and
+// MMOVE_DONE alike (monmove.c:1690).  Cave spiders and giant spiders roll
+// rn2(1000) EVERY move they complete, so omitting it desynced the stream from the
+// first spider onward — seed0399 step 117 is a giant spider's roll.  The d(4,4)
+// cooldown draw only happens when the web is actually created.
+function webmaker(ptr) {
+    return ptr?.pmidx === PM_CAVE_SPIDER || ptr?.pmidx === PM_GIANT_SPIDER;
+}
+async function maybe_spin_web(mtmp) {
+    if (!webmaker(mtmp.data) || mon_helpless(mtmp) || mtmp.mspec_used
+        || t_at(mtmp.mx, mtmp.my))
+        return;
+    // C ref: monmove.c soko_allow_web(mon) — unrestricted off Sokoban.  The
+    // Sokoban restriction ("web only where the spinner can see the up stairs")
+    // is not reachable: no Sokoban level in the corpus holds a web spinner.
+    if (game.level?.flags?.sokoban) return;
+    const prob = (((mtmp.data?.pmidx === PM_GIANT_SPIDER) ? 15 : 5)
+                  * (count_webbing_walls(mtmp.mx, mtmp.my) + 1))
+               - (3 * count_traps_web());
+    if (rn2(1000) < prob) {
+        const trap = await maketrap(mtmp.mx, mtmp.my, WEB);
+        if (trap) {
+            mtmp.mspec_used = d(4, 4); // 4..16
+            if (cansee(mtmp.mx, mtmp.my)) {
+                // C: upstart(canspotmon ? y_monnam(mtmp) : something).  y_monnam
+                // only differs from mon_nam for a TAME monster ("your" vs "the"),
+                // and no corpus session has a tame web spinner, so Monnam's
+                // already-capitalised "The <mon>" is the same string here.
+                // C: pline() -> update_topl(), so an unacknowledged topline gets
+                // its --More-- before this replaces it.
+                await update_topl(`${canspotmon(mtmp) ? Monnam(mtmp) : 'Something'} spins a web.`);
+                trap.tseen = 1;
+            }
+        }
+    }
+}
+
 // C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  The monster
 // data here carries no mflags1, so identify the concealing species by pmidx
 // (the 8 M1_CONCEAL entries in include/monsters.h: cave spider, centipede,
@@ -1040,7 +1118,7 @@ function passes_rocks(_ptr) { return false; }
 function stone_missile(obj) {
     const mat = OBJECTS[obj.otyp]?.material;
     return (mat === 20 /* GEMSTONE */ || mat === 21 /* MINERAL */)
-        && obj.oclass !== 1 /* RING_CLASS */;
+        && obj.oclass !== 4 /* RING_CLASS (objclass.h); 1 is ILLOBJ_CLASS */;
 }
 
 // C ref: worn.c find_mac(mdef) — base armour class of a monster with no worn
@@ -1757,6 +1835,9 @@ async function m_move(mtmp) {
                 }
             }
             mpickstuff(mtmp);
+            // C ref: monmove.c postmov():1690 — maybe_spin_web runs for
+            // MMOVE_DONE too, not just MMOVE_MOVED.
+            await maybe_spin_web(mtmp);
             return MMOVE_DONE; // C: postmov returns mmoved (MMOVE_DONE); no attack
         }
     }
@@ -1895,6 +1976,10 @@ async function m_move(mtmp) {
         }
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove)
             mpickstuff(mtmp);
+        // C ref: monmove.c postmov():1690 — maybe_spin_web sits between the
+        // pickup block and the re-hide block, for MMOVE_MOVED and MMOVE_DONE
+        // alike.  Its rn2(1000) fires on every completed spider move.
+        await maybe_spin_web(mtmp);
         // C ref: monmove.c postmov():1696 — a concealing (M1_CONCEAL) monster or
         // an eel that just moved re-hides: `if (mtmp->mundetected || (!helpless
         // && rn2(5))) hideunder(mtmp);`.  The rn2(5) fires whenever the monster
@@ -2033,6 +2118,17 @@ export async function dochug(mtmp) {
     // PHASE TWO — set_apparxy (sets mux/muy) then distance/scariness check.
     set_apparxy(mtmp);
     const { inrange, nearby, scared } = distfleeck(mtmp);
+
+    // C ref: monmove.c:793-800 — "search for and potentially use defensive or
+    // miscellaneous items", immediately after distfleeck and before Demonic
+    // Blackmail / PHASE THREE.  A monster that uses an item spends its whole turn
+    // on it and does NOT move; getting this wrong made every item-user take a
+    // step C's stood still for.  find_defensive/use_defensive are not ported (see
+    // js/muse.js), so C's `if (find_defensive(...)) {...} else if (find_misc())`
+    // reduces to the else branch here.
+    if (find_misc(mtmp)) {
+        if (await use_misc(mtmp) !== 0) return 1;
+    }
 
     // PHASE THREE — movement opportunity.  C ref monmove.c:882: a short-circuit
     // OR.  The rn2() terms must only roll when control actually reaches them,

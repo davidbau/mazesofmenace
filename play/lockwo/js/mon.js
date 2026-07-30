@@ -12,6 +12,11 @@ import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit } from './const.js';
 import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm } from './monmove.js';
 import { cansee } from './vision.js';
 import { t_at } from './trap.js';
+import { night, FULL_MOON } from './calendar.js';
+import { is_were_flag, is_human_flag } from './monflags_data.js';
+import { monster_by_pmidx } from './makemon.js';
+import { newsym, pline } from './display.js';
+import { Monnam } from './uhitm.js';
 
 // Speed-modifier flags (permonst.mspeed); C ref: monst.h.
 const MSLOW = 1;
@@ -212,22 +217,121 @@ export function mcalcmove(mon, m_moving, inline = false) {
     return mcalc_round(mcalcmove_base(mon));
 }
 
-// C ref: mon.c m_calcdistress(mtmp) — per-turn timeouts/regen.  For the
-// monsters our sessions exercise (no liquids, no shapeshifters) this is a
-// no-op as far as RNG is concerned, but we keep the structure so the loop
-// is faithful and extensible.
-function m_calcdistress(mtmp) {
-    // mon_regen / decide_to_shapeshift / were_change consume no RNG here.
+// ── lycanthropes (were.c) ────────────────────────────────────────────────────
+// C ref: mondata.h is_were(ptr) = (mflags2 & M2_WERE); is_human(ptr) =
+// (mflags2 & M2_HUMAN).  Both come from js/monflags_data.js, which is generated
+// from the recorder's monsters.h and verified index-for-index against
+// js/makemon.js's table.  The port's usual name-keyed workaround CANNOT be used
+// here: monsters.h gives the animal and human forms of each lycanthrope THE SAME
+// NAME ("werewolf" appears twice, once as S_DOG and once as S_HUMAN), so
+// M2_HUMAN_NAMES calls both forms human and would take the wrong branch every
+// time.  Only the flag bits distinguish them.
+// C ref: were.c counter_were(pm) — the opposite form of a lycanthrope.  Keyed by
+// pmidx because that IS the C monster index (verified by the generator).
+const COUNTER_WERE = { 15: 262, 21: 263, 91: 261, 261: 91, 262: 15, 263: 21 };
+function is_were(ptr) { return is_were_flag(ptr); }
+function counter_were(pmidx) {
+    const c = COUNTER_WERE[pmidx];
+    return c === undefined ? -1 : c;
+}
+function is_human_were(ptr) { return is_were_flag(ptr) && is_human_flag(ptr); }
+// C ref: youprop.h Protection_from_shape_changers — extrinsic only (the ring).
+// Read from the same uprops bag the rest of the port uses; no covered session
+// wears the ring, so this is False throughout, but the guard is C's.
+function Protection_from_shape_changers() {
+    return !!game.u?.uprops?.Protection_from_shape_changers;
+}
+
+// C ref: were.c new_were(mon) — swap a lycanthrope to its counterpart form.
+// Consumes NO RNG: set_mon_data and healmon are both deterministic, and
+// mon_break_armor()/possibly_unwield() draw nothing either (checked in worn.c).
+// The trailing `monflee(mon, rn1(9,2), ...)` branch requires
+// svc.context.mon_moving, and BOTH C call sites of were_change() (mcalcdistress
+// in the once-per-turn block, and uhitm.c's silver-hit path) run with
+// mon_moving FALSE — so that draw is unreachable and is deliberately omitted
+// rather than guessed at.  Monster armor/weapon shedding is not modelled.
+function new_were(mon) {
+    // C: the hero's extrinsic pins a were in critter form; it can still revert.
+    if (Protection_from_shape_changers() && is_human_were(mon.data)) return;
+    const pm = counter_were(mon.data?.pmidx);
+    if (pm < 0) return; // C: impossible("unknown lycanthrope")
+    const ptr = monster_by_pmidx(pm);
+    if (!ptr) return;
+    mon.data = ptr;
+    // C: helpless(mon) -> the transformation wakens and revitalizes.
+    if (mon.msleeping || !mon.mcanmove) {
+        mon.msleeping = 0;
+        mon.mfrozen = 0;
+        mon.mcanmove = 1;
+    }
+    // C: healmon(mon, (mhpmax - mhp) / 4, 0) — regain a quarter of lost HP.
+    const amt = Math.floor(((mon.mhpmax || 0) - (mon.mhp || 0)) / 4);
+    if (amt > 0) {
+        mon.mhp = Math.min((mon.mhp || 0) + amt, mon.mhpmax || 0);
+    }
+    newsym(mon.mx, mon.my);
+}
+
+// C ref: were.c were_change(mon) — each lycanthrope rolls once per turn to
+// flip form.  THE DRAW IS THE POINT: a human-form were draws
+// rn2(night() ? (FULL_MOON ? 3 : 30) : (FULL_MOON ? 10 : 50)) and an
+// animal-form were draws rn2(30), every turn, for the whole game.  Omitting it
+// desynced every session containing a lycanthrope from the first turn one was
+// alive onward.
+// Note the short-circuit order in each branch: the human branch tests
+// !Protection_from_shape_changers FIRST (so no draw while protected), while the
+// animal branch tests !rn2(30) first (so the draw ALWAYS happens).
+async function were_change(mon) {
+    const ptr = mon.data;
+    if (!is_were(ptr)) return;
+
+    if (is_human_were(ptr)) {
+        const full = game.flags?.moonphase === FULL_MOON;
+        if (!Protection_from_shape_changers()
+            && !rn2(night() ? (full ? 3 : 30) : (full ? 10 : 50))) {
+            const seen = canseemon_mon(mon);
+            const nam = seen ? Monnam(mon) : '';
+            new_were(mon); // change into animal form
+            game.were_changes = (game.were_changes || 0) + 1;
+            if (seen && !game.u?.uhallu) {
+                // C: pmname(&mons[pm]) + 4 — skip the "were" prefix.
+                await pline(`${nam} changes into a ${(mon.data?.name || '').slice(4)}.`);
+            }
+            // C also has a You_hear("a %s howling at the moon.") + wake_nearto
+            // branch for !Deaf && !canseemon; wake_nearto consumes no RNG.
+        }
+    } else if (!rn2(30) || Protection_from_shape_changers()) {
+        const seen = canseemon_mon(mon);
+        const nam = seen ? Monnam(mon) : '';
+        new_were(mon); // change back into human form
+        game.were_changes = (game.were_changes || 0) + 1;
+        if (seen && !game.u?.uhallu) await pline(`${nam} changes into a human.`);
+    }
+}
+
+// C ref: display.c canseemon(mon).  Same shape as the dogmove.js copy.
+function canseemon_mon(mtmp) {
+    if (!mtmp) return false;
+    if (game.u?.uswallow) return true;
+    if (mtmp.minvis && !game.u?.see_invis) return false;
+    return !!cansee(mtmp.mx, mtmp.my);
+}
+
+// C ref: mon.c m_calcdistress(mtmp) — per-turn timeouts/regen/shapeshift.
+// mon_regen and decide_to_shapeshift consume no RNG for the species our
+// sessions exercise; were_change DOES (see above).
+async function m_calcdistress(mtmp) {
+    await were_change(mtmp);
     if (mtmp.mblinded && !--mtmp.mblinded) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !--mtmp.mfrozen) mtmp.mcanmove = 1;
     if (mtmp.mfleetim && !--mtmp.mfleetim) mtmp.mflee = 0;
 }
 
 // C ref: mon.c mcalcdistress(void) — iterates fmon (newest-first).
-export function mcalcdistress() {
+export async function mcalcdistress() {
     for (const mtmp of fmonOrder()) {
         if (DEADMONSTER(mtmp)) continue;
-        m_calcdistress(mtmp);
+        await m_calcdistress(mtmp);
     }
 }
 

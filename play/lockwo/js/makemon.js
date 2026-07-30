@@ -2070,6 +2070,19 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     //   G_SGROUP && rn2(2) -> m_initsgrp (m_initgrp n=3 -> rnd(3))
     //   G_LGROUP -> rn2(3) ? m_initlgrp (n=10) : m_initsgrp (n=3)
     // Members are created (with MM_NOGRP) BEFORE the top monster's inventory.
+    //
+    // ORDER: C's place_monster() links the leader into fmon at makemon.c:1248,
+    // BEFORE this block.  Since C prepends, the chain comes out
+    // [last member, ..., first member, LEADER] — leader at the TAIL, visited LAST
+    // by the newest-first movemon loop.  Our array is that chain reversed, so the
+    // leader must sit immediately BEFORE its members.  Placing it for real here
+    // instead is NOT an option: it would also expose the leader to the members'
+    // own enexto()/goodpos() during level generation, moving squares and shifting
+    // the RNG (measured 6250 -> 1904 screens).  So remember the FIRST MEMBER and
+    // let whoever links the leader in splice it ahead of that object — an object
+    // anchor rather than an index, because an index goes stale for any monster
+    // whose placement happens later (that cost 200 RNG calls when tried).
+    const grpFirstIdx = game.level?.monsters?.length ?? 0;
     const anymon = (mdat == null);
     if (anymon && !(mmflags & MM_NOGRP)) {
         if ((ptr.geno & G_SGROUP) && rn2(2)) {
@@ -2078,6 +2091,10 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             if (rn2(3)) m_initgrp(mtmp, mtmp.mx, mtmp.my, 10, mmflags);
             else m_initgrp(mtmp, mtmp.mx, mtmp.my, 3, mmflags);
         }
+    }
+    {
+        const mons = game.level?.monsters;
+        if (mons && mons.length > grpFirstIdx) mtmp._chainBefore = mons[grpFirstIdx];
     }
 
     // Weapon/inventory: full C-faithful path during Big Room generation and
@@ -2302,7 +2319,19 @@ function peace_minded_spawn(ptr) {
 export function placeOnLevel(mtmp, x, y) {
     mtmp.mx = x; mtmp.my = y;
     if (!game.level.monsters) game.level.monsters = [];
-    if (!game.level.monsters.includes(mtmp)) game.level.monsters.push(mtmp);
+    if (game.level.monsters.includes(mtmp)) return;
+    // A group leader carries a reference to its FIRST MEMBER (set in makemon):
+    // C links the leader into fmon before creating the members, so in our
+    // reversed-array view it must precede them.  This only reorders the chain; it
+    // does not change WHEN the monster becomes visible to enexto()/goodpos(),
+    // which is what makes the generation RNG sensitive.
+    const before = mtmp._chainBefore;
+    if (before !== undefined) delete mtmp._chainBefore;
+    if (before) {
+        const i = game.level.monsters.indexOf(before);
+        if (i >= 0) { game.level.monsters.splice(i, 0, mtmp); return; }
+    }
+    game.level.monsters.push(mtmp);
 }
 
 // C ref: makemon.c makemon((permonst*)0, 0, 0, NO_MM_FLAGS) for an in-game
