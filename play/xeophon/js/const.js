@@ -1323,6 +1323,14 @@ export const STRAT_PLAYER = 0x01000000;
 export const STRAT_NONE = 0x00000000;
 export const STRAT_STRATMASK = 0x0f000000;
 export const STRAT_GOAL = 0x000000ff;
+
+// ===== monflag.h =====
+// C ref: include/monflag.h:159-163 — covetous strategy target masks.
+export const M3_WANTSAMUL = 0x0001;
+export const M3_WANTSBELL = 0x0002;
+export const M3_WANTSBOOK = 0x0004;
+export const M3_WANTSCAND = 0x0008;
+export const M3_WANTSARTI = 0x0010;
 export const MSLOW = 1;
 export const MFAST = 2;
 

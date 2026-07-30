@@ -54,7 +54,7 @@ import {
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     TAINT_AGE,
-    In_endgame, In_mines, In_quest, Is_airlevel, Is_firelevel,
+    In_endgame, In_mines, In_quest, Is_airlevel, Is_firelevel, Is_rogue_level,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -2681,7 +2681,7 @@ const WIZARD1_FIXED_MONSTERS = [
     ['piranha', 15, 2],
     ['piranha', 19, 8],
 ];
-const WIZARD_OF_YENDOR = {
+export const WIZARD_OF_YENDOR = {
     name: 'Wizard of Yendor', mlet: '@', glyph: '@', color: CLR_BRIGHT_MAGENTA,
     mlevel: 30, hpLevel: 30, difficulty: 34, mmove: 12, maligntyp: 0,
     male: true, strong: true, nasty: true, covetous: true,
@@ -5931,7 +5931,8 @@ const ALWAYS_HOSTILE_DEMONS = new Set([
     'nalfeshnee', 'pit fiend', 'balrog',
 ]);
 
-const NASTY_MONSTER_NAMES = [
+// C ref: wizard.c:43-57 (nasties[]) — full neutral/chaotic/lawful table.
+export const NASTY_MONSTER_NAMES = [
     'cockatrice', 'ettin', 'stalker', 'minotaur',
     'owlbear', 'purple worm', 'xan', 'umber hulk',
     'xorn', 'zruty', 'leocrotta', 'baluchitherium',
@@ -5994,6 +5995,7 @@ export function chameleonAnimalForm() {
 }
 
 export function monsterByRndName(name) {
+    if (name === 'Wizard of Yendor') return WIZARD_OF_YENDOR;
     if (name === 'ghost') return GHOST;
     if (name === 'shade') return SHADE;
     if (name === 'vampire lord') return VAMPIRE_LORD;
@@ -6043,10 +6045,73 @@ function countMonsterBirth(ptr, mmflags) {
     if (born >= limit && !ptr.noGen) markMonsterExtinct(name);
 }
 
+// C ref: monsters.h G_HELL among nasties[]/substitutes, G_NOHELL for Aleax.
+const NASTY_HELL_ONLY = new Set(['green slime', 'arch-lich', 'master lich', 'disenchanter']);
+const NASTY_OUTSIDE_HELL_ONLY = new Set(['Aleax']);
+
+// C ref: mondata.c:1228-1291 (grownups) — big_to_little() picks the first row
+// whose adult matches; restricted here to rows reachable from nasties[].
+const NASTY_BIG_TO_LITTLE = {
+    'cockatrice': 'chickatrice',
+    'purple worm': 'baby purple worm', /* blocked by juvenile filter */
+    'vampire leader': 'vampire',
+    'master mind flayer': 'mind flayer',
+    'arch-lich': 'master lich',
+    'elf-noble': 'elf',
+    'elven monarch': 'elf-noble',
+    'ogre tyrant': 'ogre leader',
+    'guardian naga': 'guardian naga hatchling', /* juvenile, filtered out */
+    'captain': 'lieutenant',
+    'black dragon': 'baby black dragon',
+    'red dragon': 'baby red dragon',
+    'silver dragon': 'baby silver dragon',
+    'orange dragon': 'baby orange dragon',
+    'green dragon': 'baby green dragon',
+    'yellow dragon': 'baby yellow dragon',
+};
+
+// PM_ELF has no rndmonst row (NoGen, mklev.js); C can still place it from an
+// explicit permonst, so provide the minimal record for the substitution.
+const NASTY_ELF_PMONST = {
+    name: 'elf', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 6, mmove: 12,
+    difficulty: 8, maligntyp: -3, noGen: true,
+};
+
+function nastyPtrByName(name) {
+    if (name === 'elf') return NASTY_ELF_PMONST;
+    return monsterByRndName(name);
+}
+
+// C ref: wizard.c:578-630 (pick_nasty).  also used by newcham().
 export function pickNasty(difcap) {
-    let ptr = monsterByRndName(NASTY_MONSTER_NAMES[rn2(NASTY_MONSTER_NAMES.length)]);
-    if (ptr?.difficulty >= difcap) ptr = monsterByRndName(ptr.name === 'arch-lich' ? 'master lich' : ptr.name === 'master mind flayer' ? 'mind flayer' : ptr.name);
-    return ptr;
+    let res = NASTY_MONSTER_NAMES[rn2(NASTY_MONSTER_NAMES.length)];
+
+    /* wizard.c:594-597: prefer uppercase monsters on the Rogue level;
+       "we don't try very hard" — only one reroll. */
+    if (Is_rogue_level(game.u?.uz)) {
+        const sym = nastyPtrByName(res)?.glyph || '';
+        if (!(sym >= 'A' && sym <= 'Z'))
+            res = NASTY_MONSTER_NAMES[rn2(NASTY_MONSTER_NAMES.length)];
+    }
+
+    /* wizard.c:599-607: if genocided or too difficult or out of place, try a
+       substitute when a suitable one exists (big_to_little). */
+    let alt = res;
+    const ptr = nastyPtrByName(res);
+    const inHell = !!game.inhell || game.dungeons?.[game.u?.uz?.dnum]?.name === 'Gehennom';
+    if (monsterNameGenocided(res)
+        || (difcap > 0 && (ptr?.difficulty || 0) >= difcap)
+        || (inHell ? NASTY_OUTSIDE_HELL_ONLY.has(res) : NASTY_HELL_ONLY.has(res)))
+        alt = NASTY_BIG_TO_LITTLE[res] || res;
+
+    /* wizard.c:609-620: only a non-genocided, non-juvenile substitute may
+       replace the direct pick. */
+    if (alt !== res && !monsterNameGenocided(alt)
+        && !alt.startsWith('baby ')
+        && !/\s(?:hatchling|pup|cub)$/.test(alt))
+        res = alt;
+
+    return nastyPtrByName(res);
 }
 
 function monsterRowsByDifficulty(rows) {
@@ -7678,6 +7743,14 @@ export async function makemon(mdat, x, y, mmflags) {
             }
         }
         rn2(100);
+    }
+
+    // C ref: makemon.c:1370-1375 — every makemon() of the Wizard of Yendor is
+    // flagged and counted (svc.context.no_of_wizards, include/context.h:145).
+    if (ptr === WIZARD_OF_YENDOR || ptr.name === 'Wizard of Yendor') {
+        mon.iswiz = true;
+        const ctx = (game.context ??= {});
+        ctx.noOfWizards = (ctx.noOfWizards || 0) + 1;
     }
 
     game._mongets_target = previousMongetsTarget;

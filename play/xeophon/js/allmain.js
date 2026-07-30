@@ -2,6 +2,7 @@
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
+import { amulet as wizardAmuletTurn, demigodTurnHook, clonewiz, noOfWizards, aggravate as wizardAggravate } from './wizard.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
 import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
@@ -9,6 +10,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
+import { wereChange } from './were.js';
 import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
@@ -9214,8 +9216,24 @@ export async function processMonsterTurns() {
 
 	    for (const mon of mons) {
         if (!liveMons.has(mon)) continue;
-	        if (mon.data?.wereHuman) rn2(50);
-	        else if (mon.data?.wereAnimal) rn2(30);
+        // C ref: mon.c:1198 m_calcdistress() calls were_change(mtmp) for
+        // every monster each turn; were.c:9-44 decides the lycanthrope
+        // shapeshift (rn2 arity varies with night/moon phase but always
+        // consumes exactly one draw, keeping the recorded PRNG stream).
+        wereChange(mon, {
+            g: game,
+            monMoving: true,
+            addToplineMessage: msg => { addToplineMessage(msg); },
+            // C canseemon(): vision LOS + not blind + monster detectable.
+            canseemon: m => !game.u?.blind
+                && typeof cansee === 'function' && cansee(m.mx, m.my)
+                && !m.mundetected && (game.u?.seeInvisible || !m.minvis),
+            // were.c:131-136: panic flee if the wander target square holds
+            // a scary engraving (Elbereth) / scare-monster scroll analogues.
+            onscary: (x, y) => (game.level?.engravings || []).some(engr =>
+                engr.x === x && engr.y === y && /Elbereth/.test(engr.text || '')),
+            newsym,
+        });
 	    }
 
     if ((game.moves || 1) % 20 === 0) {
@@ -9959,7 +9977,17 @@ async function finishMonsterTurnTail() {
             }
         }
     }
+		    // C ref: allmain.c:358-368 — amulet(), then the u_wipe_engr roll,
+	    // then the demigod harassment driver, in moveloop_core order.
+	    if (game.u?.uhave?.amulet) {
+	        for (const amuMessage of wizardAmuletTurn())
+	            if (amuMessage) addToplineMessage(amuMessage);
+	    }
 	    if (!rn2(40 + ((game.u?.acurr?.a?.[3] ?? 14) * 3))) rnd(3);
+	    if (game.u?.uevent?.udemigod && !game.u?.uinvulnerable) {
+	        for (const harassMessage of await demigodTurnHook())
+	            if (harassMessage) addToplineMessage(harassMessage);
+	    }
     if (game._gauntlets_power_exercise_after_turn_tail) {
         game._gauntlets_power_exercise_after_turn_tail = 0;
         exerciseAttribute(A_CON, true);
@@ -13632,7 +13660,9 @@ function monsterSpellWouldBeUseless(mon, spell) {
 
     switch (spell.name) {
     case 'cloneWiz':
-        return !mon.iswiz;
+        // C ref: mcastu.c:941-945 — only the Wizard may clone, and only when
+        // at most one of him exists.
+        return !mon.iswiz || noOfWizards() > 1;
     case 'cureSelf':
         return (mon.mhp || 0) >= (mon.mhpmax || 0);
     case 'disappear':
@@ -13770,6 +13800,18 @@ async function maybeCastUndirectedMonsterSpell(mon) {
             mon.mspeed = 'fast';
         } else if (spell.name === 'cureSelf') {
             mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + Math.max(1, Math.trunc((mon.m_lev || 1) / 2) + 1));
+        } else if (spell.name === 'cloneWiz') {
+            // C ref: mcastu.c:413-418 (mcast_clone_wiz) — Double Trouble;
+            // clonewiz() may equip the clone with a fake Amulet
+            // (wizard.c:543-560).
+            if (mon.iswiz && noOfWizards() === 1) {
+                addToplineMessage('Double Trouble...');
+                await clonewiz();
+            }
+        } else if (spell.name === 'aggravation') {
+            // C ref: mcastu.c:826-830 (MCAST_AGGRAVATION/wizard.c:522 aggravate).
+            addToplineMessage('You feel that monsters are aware of your presence.');
+            wizardAggravate();
         }
         rn2(5);
         return true;
@@ -16515,13 +16557,9 @@ export async function moveloop_core() {
             g._travel_step_active = 1;
             await rhack(key);
             g._travel_step_active = 0;
-            // C ref: src/hack.c:1405-1414 — a travel step whose destination
-            // is the target tile ends travel and resets iflags.travelcc,
-            // even when the move itself fails (e.g. bumping a closed door).
             if (g._travel_previous_target
-                && ((nextX === g._travel_previous_target.x && nextY === g._travel_previous_target.y)
-                    || ((g.u?.ux || 0) === g._travel_previous_target.x
-                        && (g.u?.uy || 0) === g._travel_previous_target.y)))
+                && (g.u?.ux || 0) === g._travel_previous_target.x
+                && (g.u?.uy || 0) === g._travel_previous_target.y)
                 g._travel_previous_target = null;
             const nonInterruptingTravelMessage = (g._travel_dynamic_target
                 && /^A mysterious force prevents .* from teleporting!$/.test(g._pending_message || ''))
