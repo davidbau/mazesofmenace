@@ -1205,8 +1205,17 @@ function _statusLine2() {
     // (1 for tut-1).
     const inTut = (u.uz?.dnum != null && u.uz.dnum === game.tutorial_dnum);
     const lvlLabel = inTut ? 'Tutorial' : 'Dlvl';
-    // C ref: botl.c bot1() — displayed HP is clamped at 0 (negative uhp shows 0).
-    const hpShown = Math.max(0, u.uhp || 0);
+    // C ref: botl.c bot() — `if (u.uhp != -1 && ...)` guards the whole status
+    // redraw.  u.uhp==-1 is dosave()'s "game's over" sentinel (save.c:58); a
+    // hit whose damage lands HP exactly on -1 collides with it, so bot()
+    // silently skips the redraw and disp.botl is cleared unrendered — the
+    // displayed HP freezes at its last drawn value until uhp next becomes
+    // something other than -1 (e.g. done() forcing it to 0 for the death
+    // prompt).  Our status line is rebuilt live every frame, so reproduce the
+    // freeze by caching the last shown value and holding it while uhp===-1.
+    const hpShown = u.uhp === -1
+        ? (game._botlHpShown ?? 0)
+        : (game._botlHpShown = Math.max(0, u.uhp || 0));
     // C ref: botl.c describe_level — the displayed level number is depth(&u.uz),
     // the ledger depth across branches (so the Gnomish Mines show Dlvl:3, not
     // the mines-relative dlevel 1), not u.uz.dlevel.
@@ -1499,7 +1508,16 @@ export async function topl_more_ext(extraChars) {
     // xwaitforspace: read keys until space / return / escape / an extra char.
     for (;;) {
         const c = await nhgetch();
-        if (c === 32 || c === 13 || c === 10 || c === 27) return c;
+        if (c === 32 || c === 13 || c === 10 || c === 27) {
+            // C ref: win/tty/topl.c more() — `if (morc == '\033') cw->flags |=
+            // WIN_STOP;`.  Dismissing a --More-- with ESC (as opposed to space/
+            // return) suppresses every further topline message until the next
+            // yn_function-style prompt (getdir/y_n), which both checks-and-more()s
+            // and then unconditionally clears the flag.  Space/return leave
+            // messages flowing normally.
+            if (c === 27) game._winStop = true;
+            return c;
+        }
         if (extraChars && extraChars.includes(String.fromCharCode(c))) return c;
     }
 }
@@ -1567,19 +1585,20 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
         const c = await nhgetch();
         delete game._modal_screen;
         const ch = String.fromCharCode(c);
-        // quitchars (space/return/ESC) -> default.  Answering the prompt clears
-        // the top line (C ref: topl.c — the toplin NEED_MORE state is reset once
-        // the player's response is read), so a message printed right after the
-        // prompt (e.g. savelife's "OK, so you don't die.") starts a fresh line
-        // rather than appending after a phantom "  " separator.
+        // quitchars (space/return/ESC) -> default.  C ref: topl.c
+        // tty_yn_function clean_up: the answered prompt text is left on the
+        // top line as-is (only gt.toplines' history bookkeeping is updated,
+        // never redrawn/cleared) — the message only disappears when a later
+        // pline() overwrites it.  toplin still leaves NEED_MORE so a message
+        // printed right after the prompt (e.g. savelife's "OK, so you don't
+        // die.") starts a fresh line rather than appending after a phantom
+        // "  " separator.
         if (c === 32 || c === 13 || c === 10 || c === 27) {
-            game._pending_message = '';
             game._toplin = 0;
             return def;
         }
         const lc = ch.toLowerCase();
         if (resp.includes(lc)) {
-            game._pending_message = '';
             game._toplin = 0;
             return lc;
         }

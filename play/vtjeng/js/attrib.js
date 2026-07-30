@@ -167,9 +167,15 @@ function attributeArray(value) {
 }
 
 // C ref: attrib.c acurr(). The shared arithmetic here owns the
-// base/bonus/temporary sum, source caps, and form-specific Charisma floor.
-// Equipment-specific overrides remain with the eventual worn-item attribute
-// subsystem.
+// base/bonus/temporary sum, the source caps, and the A_CHA floor of 18 for a
+// nymph or amorous demon. Three of acurr()'s special cases are unported, and
+// each needs a different owner:
+//   A_STR, gauntlets of power forcing STR19(25)   -> worn items
+//   A_INT and A_WIS, dunce cap forcing 6          -> worn items
+//   A_CON, u_wield_art(ART_OGRESMASHER) forcing 25 -> wielded artifacts
+// The A_CON case is a wielded artifact rather than worn gear, so the worn-item
+// subsystem will not reach it. A hero wielding Ogresmasher gets the plain
+// 3..25 clamp here.
 export function effective_attribute(state = game, index) {
     const u = state.u;
     const base = Math.trunc(u?.acurr?.a?.[index] ?? 0);
@@ -183,6 +189,17 @@ export function effective_attribute(state = game, index) {
         return 18;
     }
     return Math.max(3, Math.min(total, 25));
+}
+
+// C ref: attrib.c acurrstr(), the ACURRSTR macro's implementation. It folds
+// acurr(A_STR)'s 3..125 encoding down to the 3..25 range that arithmetic on
+// Strength uses: 18/01..18/31 become 19, 18/32..18/81 become 20,
+// 18/82..18/100 and 19..21 become 21, and 22..25 come back from 122..125.
+export function acurrstr(state = game) {
+    const str = effective_attribute(state, A_STR);
+    if (str <= 18) return Math.max(str, 3);
+    if (str <= 121) return 19 + Math.trunc(str / 50);
+    return Math.min(str, 125) - 100;
 }
 
 function randomAttribute(role, random) {

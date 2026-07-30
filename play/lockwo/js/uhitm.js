@@ -17,10 +17,12 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
 import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
 import { DEADMONSTER } from './mon.js';
-import { mkcorpstat, mkobj, CORPSE, FIGURINE, place_object } from './mkobj.js';
+import { mkcorpstat, mkobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
+import { is_weptool, objectBaseName } from './invent.js';
+import { livelog_printf, LL_CONDUCT } from './livelog.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
 
@@ -419,6 +421,13 @@ async function known_hitum(mon, weapon, mhit, dieroll) {
         await missum(mon);
         return true;
     }
+    // C ref: uhitm.c known_hitum():613-616 — KMH conduct: count a weapon-class
+    // (or weapon-skilled tool) hit before the damage is applied.
+    if (weapon && (weapon.oclass === WEAPON_CLASS || is_weptool(weapon))) {
+        const u = game.u;
+        if (!u.uconduct) u.uconduct = {};
+        u.uconduct.weaphit = (u.uconduct.weaphit || 0) + 1;
+    }
     const oldhp = mon.mhp;
     const malive = await hmon(mon, weapon, dieroll);
     // C ref: uhitm.c known_hitum():624 — a monster that SURVIVES the hit has a
@@ -492,6 +501,18 @@ async function hmon(mon, weapon, dieroll) {
         maybe_knockback = true;                // uhitm.c:1831
     }
 
+    // C ref: uhitm.c:1841-1844 first_weapon_hit() — logged BEFORE the mhp
+    // subtraction so a same-turn kill's "killed for the first time" gamelog
+    // line always follows this one, never precedes it.  minimal_xname()-style
+    // bare name (cursed prefix only; no BUC/erosion/enchant/call-name) mirrors
+    // first_weapon_hit()'s own avoidance of xname()'s player-supplied name.
+    if (!unarmed && dmg > 0 && (game.u?.uconduct?.weaphit ?? 0) <= 1) {
+        const buf = (weapon.cursed && weapon.bknown ? 'cursed ' : '')
+            + objectBaseName(weapon);
+        livelog_printf(LL_CONDUCT,
+            `hit with a wielded weapon (${buf}) for the first time`);
+    }
+
     mon.mhp = (mon.mhp || 0) - dmg;
     if (mon.mhpmax != null && mon.mhp > mon.mhpmax) mon.mhp = mon.mhpmax;
 
@@ -563,7 +584,15 @@ export async function killed(mon, opts) {
     const x = mon.mx, y = mon.my;
     mon.mhp = 0;
 
-    // u.uconduct.killer++ : no RNG.
+    // C ref: mon.c xkilled() — "if (!u.uconduct.killer++) livelog_printf(...)".
+    // No RNG.
+    {
+        const u = game.u;
+        if (!u.uconduct) u.uconduct = {};
+        if (!u.uconduct.killer)
+            livelog_printf(LL_CONDUCT, 'killed for the first time');
+        u.uconduct.killer = (u.uconduct.killer || 0) + 1;
+    }
     if (!nomsg) {
         if (canspotmon(mon))
             await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} ${mon_nam(mon)}!`);

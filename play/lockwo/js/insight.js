@@ -20,7 +20,7 @@ import {
     ROLE_MALE, ROLE_FEMALE, ROLE_GENDMASK,
     G_GONE, G_GENOD, G_EXTINCT,
     P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_SKILLED, P_TWO_WEAPON_COMBAT,
-    In_quest,
+    P_BARE_HANDED_COMBAT, In_quest,
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
 import { p_skill_of } from './enhance.js';
@@ -32,6 +32,9 @@ import { depth } from './hacklib.js';
 import { newuexp } from './exper.js';
 import { youHaveSearching } from './allmain.js';
 import { Infravision } from './vision.js';
+import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
+         LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER } from './livelog.js';
+import { nhgetch } from './input.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -119,8 +122,8 @@ export function enlightenment_lines(final = 0) {
     youAre(roleBuf);
 
     // alignment + pantheon (bypasses you_are to omit ending period)
-    out(` You are ${alignStr(aligntype)}, on a mission for ${align_gname(roleIdx, aligntype)}`);
-    let pan = ' who is opposed by';
+    out(` You ${final ? 'were' : 'are'} ${alignStr(aligntype)}, on a mission for ${align_gname(roleIdx, aligntype)}`);
+    let pan = ` who ${final ? 'was' : 'is'} opposed by`;
     if (aligntype !== A_LAWFUL)
         pan += ` ${align_gname(roleIdx, A_LAWFUL)} (${alignStr(A_LAWFUL)}) and`;
     if (aligntype !== A_NEUTRAL)
@@ -173,15 +176,16 @@ export function enlightenment_lines(final = 0) {
     }
 
     // experience (not polymorphed).  C ref: insight.c background_enlightenment —
-    // for a sub-30 experience level, wizard mode (or the game-over 'final' pass)
+    // for a sub-30 experience level, wizard mode OR the game-over 'final' pass
     // appends how much more experience is needed to reach the next level.
-    // doattributes() runs with final==0, so only the wizard branch applies here.
+    // doattributes() runs with final==0, so only the wizard branch applies there.
     const uexp = u.uexp ?? 0;
     const xlvl = u.ulevel ?? 1;
     let expbuf = `${uexp} experience point${uexp === 1 ? '' : 's'}`;
-    if (xlvl < 30 && !!game.flags?.debug) {
+    if (xlvl < 30 && (final || !!game.flags?.debug)) {
         const delta = newuexp(xlvl) - uexp;
-        expbuf += `, ${delta} ${uexp > 0 ? 'more ' : ''}`
+        const wasWere = !final ? '' : (delta === 1 ? 'was ' : 'were ');
+        expbuf += `, ${delta} ${uexp > 0 ? 'more ' : ''}${wasWere}`
             + `needed ${xlvl < 18 ? 'to attain' : 'for'} level ${xlvl + 1}`;
     }
     youHave(expbuf);
@@ -208,8 +212,22 @@ export function enlightenment_lines(final = 0) {
     out(umoney ? ` Your wallet contain${final ? 'ed' : 's'} ${umoney} ${currency(umoney)}.`
                : ` Your wallet ${final ? 'was' : 'is'} empty.`);
 
-    // autopickup (off by default for these sessions)
-    enlLine('Autopickup ', final ? 'was ' : 'is ', game.flags?.pickup ? 'on' : 'off', '');
+    // autopickup.  C ref: insight.c basics_enlightenment() — when on, names
+    // the pickup_types restriction (oc_to_str(flags.pickup_types, ocl), or
+    // "all types" when unset) and appends "plus thrown" when pickup_thrown
+    // applies to a non-empty restriction.  costly_spot (shop suppression) and
+    // the apelist exceptions clause are both omitted -> always the "else"/
+    // unset case (shops aren't modeled here; exceptions are always empty,
+    // see doset.js "autopickup exceptions   [(0 currently set)]").
+    let apbuf;
+    if (game.flags?.pickup) {
+        const ocl = game.flags.pickup_types || '';
+        apbuf = `on for ${ocl ? `'${ocl}'` : 'all types'}`;
+        if ((game.flags.pickup_thrown ?? true) && ocl) apbuf += ' plus thrown';
+    } else {
+        apbuf = 'off';
+    }
+    enlLine('Autopickup ', final ? 'was ' : 'is ', apbuf, '');
 
     // ── Characteristics ──
     // C ref: insight.c one_characteristic() — the value plus, when the innate
@@ -360,13 +378,16 @@ function weaponInsight(youAre, youHave, enlLine) {
     if (!uwep) {
         // C: you_are(empty_handed(), "").
         youAre(empty_handed());
-        // C: weapon_type(0) == P_BARE_HANDED_COMBAT, always reported.  At game
-        // start no modeled non-Monk role has trained it, so the level is
-        // P_UNSKILLED -> "unskilled in <skill>" via you_are (hav == false).  The
-        // "and can enhance that" clause needs skill-practice tracking (can
-        // advance is false for a fresh hero), so it's omitted here.
+        // C: weapon_type(0) == P_BARE_HANDED_COMBAT, always reported.
+        // skill_init() gives Monks P_BASIC bare-handed skill at game start
+        // (their P_MAX_SKILL for it exceeds P_EXPERT); everyone else starts
+        // P_UNSKILLED.  The "and can enhance that" clause needs skill-practice
+        // tracking (can advance is false for a fresh hero), so it's omitted.
         const skName = isMartialArtsRole() ? 'martial arts' : 'bare handed combat';
-        youAre(`unskilled in ${skName}`);
+        const lvl = skillLevelNameLc(p_skill_of(P_BARE_HANDED_COMBAT));
+        const hav = lvl !== 'unskilled' && lvl !== 'skilled';
+        if (hav) youHave(`${lvl} skill with ${skName}`);
+        else youAre(`${lvl} in ${skName}`);
         return;
     }
 
@@ -516,13 +537,24 @@ function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 // genoing == FALSE so there is no " yet" suffix).  The full genocided/extinct
 // species menu is only reachable after a genocide, which the covered sessions
 // never perform.
-function anyGenocidedOrExtinct() {
+export function anyGenocidedOrExtinct() {
     const mv = game.mvitals;
     if (!mv) return false;
     for (let i = 0; i < mv.length; i++) {
         if (mv[i] && (mv[i].mvflags & G_GONE)) return true;
     }
     return false;
+}
+
+// C ref: insight.c list_vanquished() — its whole prompt/listing is gated on
+// "at least one species has svm.mvitals[].died != 0" (ntypes != 0).  This port
+// doesn't tally that per-species death count, but u.uconduct.killer (already
+// tracked for the "pacifist" conduct line) is incremented on every kill the
+// hero makes and is otherwise 0, so it is a safe (if conservative — it misses
+// monster-on-monster deaths the covered sessions never produce) stand-in for
+// "the vanquished list would be non-empty".
+export function anyVanquished() {
+    return !!(game.u?.uconduct?.killer);
 }
 
 // C ref: insight.c dogenocided() — the M-g / #genocided command.
@@ -534,4 +566,264 @@ export async function dogenocided() {
     // The genocided/extinct species menu is unreached by the covered sessions.
     await update_topl('No creatures have been genocided.');
     return 0;
+}
+
+// C ref: insight.c LL_majors / majorevent()/spoilerevent() — the #chronicle
+// filters.  LL_majors is the bitwise-or of the "always worth a dumplog entry"
+// flags; spoilerevent is any message tagged LL_SPOILER.
+const LL_majors = LL_WISH | LL_ACHIEVE | LL_UMONST | LL_DIVINEGIFT
+    | LL_LIFESAVE | LL_ARTIFACT | LL_GENOCIDE | LL_DUMP;
+function majorevent(msg) { return (msg.flags & LL_majors) !== 0; }
+function spoilerevent(msg) { return (msg.flags & LL_SPOILER) !== 0; }
+
+// C ref: insight.c show_gamelog(final) — the #chronicle details window.  Builds
+// "Logged events:" / "Major events:" (unused here; 'final' end-of-game dumplog
+// path isn't reached by the covered sessions) followed by a " Turn" header and
+// one "%5ld: %s" line per surviving gg.gamelog entry, in a full-screen NHW_TEXT
+// window paged with "--More--".
+async function show_gamelog(final) {
+    const lines = [`${final ? 'Major' : 'Logged'} events:`];
+    const wizard = !!game.flags?.debug;
+    let eventcnt = 0;
+    for (const msg of (game.gamelog || [])) {
+        if (final && !majorevent(msg)) continue;
+        if (!final && !wizard && spoilerevent(msg)) continue;
+        if (!eventcnt++) lines.push(' Turn');
+        lines.push(`${String(msg.turn).padStart(5)}: ${msg.text}`);
+    }
+    if (!eventcnt) lines.push(' none');
+    const { display_text_window } = await import('./pager.js');
+    await display_text_window(lines);
+}
+
+// C ref: insight.c do_gamelog() — the #chronicle command.
+export async function do_gamelog() {
+    if (game.gamelog && game.gamelog.length) {
+        await show_gamelog(false);
+    } else {
+        await update_topl('No chronicled events.');
+    }
+    return 0; // ECMD_OK
+}
+
+// C ref: insight.c num_genocides() — count of svm.mvitals[] entries flagged
+// G_GENOD (actual genocides; excludes species merely hunted to extinction).
+function num_genocides() {
+    const mv = game.mvitals;
+    if (!mv) return 0;
+    let n = 0;
+    for (let i = 0; i < mv.length; i++)
+        if (mv[i] && (mv[i].mvflags & G_GENOD)) n++;
+    return n;
+}
+
+function plur(n) { return n === 1 ? '' : 's'; }
+
+// C ref: insight.c N_times() — "once" / "twice" / "N times".
+function N_times(n) {
+    return n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`;
+}
+
+// C ref: insight.c show_conduct(final)'s "only report Sokoban conduct if the
+// Sokoban branch has been entered" gate.  ACH_SOKO isn't otherwise tracked by
+// this port (no covered session enters Sokoban), so this is always false.
+function sokoban_in_play() {
+    const ach = game.u?.uachieved;
+    return Array.isArray(ach) && ach.includes(6 /* ACH_SOKO */);
+}
+
+// C ref: insight.c show_conduct(final) — the #conduct details window.  Builds
+// the "Voluntary challenges:" lines from the live u.uconduct/u.uroleplay
+// counters.  Only final==0 (in-game, non-wizard) is modeled: show_achievements
+// is a no-op in that mode (it requires final or wizard), and the wizard-only
+// "N times"/"N item(s)" elaborations for a nonzero counter are skipped (the
+// non-wizard branches of those ifs emit nothing, matching C).
+function conduct_lines(final = 0) {
+    const u = game.u || {};
+    const uc = u.uconduct || {};
+    const rp = u.uroleplay || {};
+    const wizard = !!game.flags?.debug;
+    const lines = [];
+    const out = (s) => lines.push(s);
+    // C ref: insight.c enlght_line() — " <start><mid><end><ps>." with the
+    // not-contraction table applied.
+    const enlLine = (start, mid, end, ps = '') => {
+        let buf = ` ${start}${mid}${end}${ps}.`;
+        buf = buf.replace(' are not ', ' aren\'t ').replace(' were not ', ' weren\'t ')
+            .replace(' have not ', ' haven\'t ').replace(' had not ', ' hadn\'t ')
+            .replace(' can not ', ' can\'t ').replace(' could not ', ' couldn\'t ');
+        out(buf);
+    };
+    const you_have_been = (good) => enlLine('You ', final ? 'were ' : 'have been ', good);
+    const you_have_never = (bad) => enlLine('You ', final ? 'never ' : 'have never ', bad);
+    const you_have_X = (thing) => enlLine('You ', final ? '' : 'have ', thing);
+
+    out('Voluntary challenges:');
+
+    if (!rp.reroll)
+        out(' Character rerolling was not enabled.');
+    else if (!rp.numrerolls)
+        out(' Your character was not rerolled.');
+    else
+        out(` Your character was rerolled ${N_times(rp.numrerolls)}.`);
+
+    if (rp.blind) you_have_been('blind from birth');
+    if (rp.deaf) you_have_been('deaf from birth');
+    if (rp.pauper)
+        enlLine('You ', (game.invent && game.invent.length) ? 'started' : 'are',
+                ' without possessions');
+    if (rp.nudist) you_have_been('faithfully nudist');
+
+    if (!uc.food) enlLine('You ', final ? 'went' : 'have gone', ' without food');
+    else if (!uc.unvegan) you_have_X('followed a strict vegan diet');
+    else if (!uc.unvegetarian) you_have_been('vegetarian');
+
+    if (!uc.gnostic) you_have_been('an atheist');
+
+    if (!uc.weaphit) you_have_never('hit with a wielded weapon');
+    else if (wizard)
+        you_have_X(`hit with a wielded weapon ${uc.weaphit} time${plur(uc.weaphit)}`);
+
+    if (!uc.killer) you_have_been('a pacifist');
+
+    if (!uc.literate) you_have_been('illiterate');
+    else if (wizard)
+        you_have_X(`read items or engraved ${uc.literate} time${plur(uc.literate)}`);
+
+    if (!uc.pets) you_have_never('had a pet');
+
+    const ngenocided = num_genocides();
+    if (ngenocided === 0)
+        you_have_never('genocided any monsters');
+    else
+        you_have_X(`genocided ${ngenocided} type${plur(ngenocided)} of monster${plur(ngenocided)}`);
+
+    if (!uc.polypiles) you_have_never('polymorphed an object');
+    else if (wizard)
+        you_have_X(`polymorphed ${uc.polypiles} item${plur(uc.polypiles)}`);
+
+    if (!uc.polyselfs) you_have_never('changed form');
+    else if (wizard)
+        you_have_X(`changed form ${uc.polyselfs} time${plur(uc.polyselfs)}`);
+
+    if (!uc.wishes) {
+        you_have_X('used no wishes');
+    } else {
+        let buf = `used ${uc.wishes} wish${uc.wishes > 1 ? 'es' : ''}`;
+        if (uc.wisharti) {
+            if (uc.wisharti === uc.wishes)
+                buf += ` (${uc.wisharti > 2 ? 'all ' : uc.wisharti === 2 ? 'both ' : ''}`;
+            else
+                buf += ` (${uc.wisharti} `;
+            buf += `for ${uc.wisharti === 1 ? 'an artifact' : 'artifacts'})`;
+        }
+        you_have_X(buf);
+        if (!uc.wisharti) enlLine('You ', 'have not wished', ' for any artifacts');
+    }
+
+    if (sokoban_in_play()) {
+        if (!uc.sokocheat)
+            enlLine('You ', 'have not violated', ' any of the special Sokoban rules');
+        else
+            enlLine('You ', 'have violated', ` the special Sokoban rules ${N_times(uc.sokocheat)}`);
+    }
+
+    // show_achievements(final): requires final || wizard; both false for the
+    // in-game, non-wizard #conduct the covered sessions exercise.
+    return lines;
+}
+
+// C ref: win/tty/wintty.c process_text_window()'s corner-menu placement
+// (docorner/H2344_BROKEN offx calc) — show_conduct()'s window is a NHW_MENU
+// populated via putstr() (not add_menu()), so tty_display_nhwindow() routes it
+// through process_text_window(), not the selectable-menu path: it lands at a
+// right-of-center corner offset and pages with "--More--" (parked right after
+// the last content line, not row 23) rather than the "(end)" a real
+// select_menu()-driven menu (e.g. #overview) uses.
+async function render_conduct_menu(lines) {
+    const { NO_COLOR } = await import('./terminal.js');
+    const disp = game.nhDisplay;
+    if (!disp?.setCell) return;
+    const cols = disp.cols || 80;
+    // C ref: wintty.c putstr() — cw->maxcol tracks max(strlen(line) + 1) over
+    // every line added (the morestr is appended later, after offx is fixed, so
+    // it never contributes).
+    let maxcol = 0;
+    for (const l of lines) maxcol = Math.max(maxcol, l.length + 1);
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    const textCol = offx + 1;
+    for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0);
+    const moreRow = lines.length;
+    for (let r = 0; r <= moreRow; r++) {
+        for (let c = offx; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+    }
+    for (let r = 0; r < lines.length; r++)
+        disp.putstr(textCol, r, lines[r], NO_COLOR, 0);
+    const footer = '--More--';
+    disp.putstr(textCol, moreRow, footer, NO_COLOR, 0);
+    disp.setCursor(textCol + footer.length, moreRow);
+}
+
+// C ref: insight.c show_conduct(final) -> display_nhwindow()+destroy_nhwindow()
+// — shared by doconduct() (final=ENL_GAMEINPROGRESS/0) and end.c disclose()'s
+// 'c' query (final=ENL_GAMEOVERALIVE/1 or ENL_GAMEOVERDEAD/2, both of which
+// conduct_lines()'s truthy `final` check treats identically: past tense).
+export async function show_conduct_disclosure(final) {
+    const lines = conduct_lines(final);
+    await render_conduct_menu(lines);
+    for (;;) {
+        const key = await nhgetch();
+        if (key === 27 || key === 13 || key === 10 || key === 32) break;
+    }
+    const { flush_screen } = await import('./display.js');
+    await flush_screen(1);
+}
+
+// C ref: insight.c doconduct() — the #conduct command.
+export async function doconduct() {
+    await show_conduct_disclosure(0);
+    return 0; // ECMD_OK
+}
+
+// C ref: insight.c enlightenment(mode, final) end-of-game path — ge.en_via_menu
+// is `!final`, so for any final!=0 (only reached from end.c disclose()'s 'a'
+// query, which always uses ENL_GAMEOVERALIVE/1 or ENL_GAMEOVERDEAD/2) the tty
+// renders the text through process_text_window() rather than the paged
+// selectable menu doattributes() uses: 23 content lines per page with
+// "--More--" parked at row 23 (the mid-loop break — reached because the
+// combined BASIC+MAGIC disclosure content always exceeds one page, which
+// forces offx to 0, i.e. full screen, no corner box), then one further
+// trailing "--More--" right after the last line of the final page (an
+// NHW_MENU window parks its trailing morestr at the current row, not pinned
+// to 23 the way NHW_TEXT's is).
+export async function show_attributes_disclosure(final) {
+    const lines = enlightenment_lines(final);
+    const { renderWindowScreen, dismiss_invent_screen } = await import('./invent.js');
+    const disp = game.nhDisplay;
+    const rows = disp?.rows ?? 24;
+    const perPage = rows - 1; // 23 content lines; footer parked right after them
+    let i = 0;
+    while (i < lines.length) {
+        const take = Math.min(perPage, lines.length - i);
+        const chunk = lines.slice(i, i + take);
+        i += take;
+        renderWindowScreen(chunk, {
+            menu: false,
+            footer: '--More--',
+            footerRow: take,
+            // C ref: wintty.c dmore() — offset = (NHW_TEXT) ? 1 : 2; this is an
+            // NHW_MENU window, so the morestr lands one column further right
+            // than content lines (which start at column 0 here, offx==0).
+            footerCol: 1,
+            modal: 'enlightenment',
+        });
+        for (;;) {
+            const key = await nhgetch();
+            if (key === 27) { i = lines.length; break; } // ESC cancels the rest
+            if (key === 32 || key === 13 || key === 10) break; // advance
+            // any other key: ignored (bell), same page stays up
+        }
+    }
+    await dismiss_invent_screen();
 }

@@ -14,6 +14,7 @@ import { rn2, rnz, rn1, rnl } from './rng.js';
 import { update_topl, y_n } from './display.js';
 import { align_gname } from './role.js';
 import { A_WIS } from './const.js';
+import { livelog_printf, LL_CONDUCT, LL_MINORAC } from './livelog.js';
 
 const A_NONE = -128;
 const STRIDENT = 4;
@@ -57,6 +58,7 @@ function heroIsHuman() {
 // for level 1 are zero, so this is a no-op against the recorded status line.
 async function losexp() {
     /* level-1 divine-anger drain: no RNG, no message, no net HP/EN change. */
+    livelog_printf(LL_MINORAC, 'lost all experience');
 }
 
 // C ref: rnd.c change_luck(n).
@@ -339,6 +341,8 @@ export async function dopray(paranoid_query) {
 
     const u = game.u;
     if (!u.uconduct) u.uconduct = {};
+    if (!u.uconduct.gnostic)
+        livelog_printf(LL_CONDUCT, 'rejected atheism with a prayer');
     u.uconduct.gnostic = (u.uconduct.gnostic || 0) + 1;
 
     // set up gp.p_type and gp.p_aligntyp; prints "You begin praying to <god>."

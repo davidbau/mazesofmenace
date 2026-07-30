@@ -2130,6 +2130,28 @@ export async function dochug(mtmp) {
         if (await use_misc(mtmp) !== 0) return 1;
     }
 
+    // C ref: monmove.c:836-849 — "If monster is nearby you, and has to wield a
+    // weapon, do so."  A hostile within dist2<=8 of its believed hero position
+    // that attacks with AT_WEAP and still needs its melee weapon (weapon_check
+    // == NEED_WEAPON) wields it THIS turn instead of reaching PHASE THREE.
+    // Missing this let an armed hostile fall through to the movement branch a
+    // turn early, costing an extra m_move + recalc-distfleeck roll it never
+    // took in C (seed0002 step-232: goblin fmndpos/distfleeck one turn early).
+    {
+        const Conflict = false; // not modeled
+        if ((!mtmp.mpeaceful || Conflict) && inrange
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8
+            && attacktype_weap(mdat)) {
+            const mw_tmp = MON_WEP(mtmp);
+            if (!(scared && mw_tmp && is_pick_otyp(mw_tmp))
+                && mtmp.weapon_check === NEED_WEAPON_MM
+                && !(mtmp.mtrapped && !nearby && select_rwep(mtmp))) {
+                mtmp.weapon_check = NEED_HTH_WEAPON_MM;
+                if (await mon_wield_item(mtmp) !== 0) return 0;
+            }
+        }
+    }
+
     // PHASE THREE — movement opportunity.  C ref monmove.c:882: a short-circuit
     // OR.  The rn2() terms must only roll when control actually reaches them,
     // so they are evaluated lazily here (mirroring C's || left-to-right order).
@@ -3526,6 +3548,11 @@ export async function mon_wield_item(mon) {
         }
         return 1;
     }
+    // C ref: weapon.c:932 — the no-object fallthrough (no HTH weapon carried, or
+    // a ranged check that needs no launcher) resets weapon_check to NEED_WEAPON
+    // unconditionally, so a later dochug/mattackm re-check finds it eligible
+    // again instead of stuck at whatever check value was in effect this call.
+    mon.weapon_check = NEED_WEAPON_MM;
     return 0;
 }
 // weapon_check enum values (C ref: monst.h wpn_chk_flags).

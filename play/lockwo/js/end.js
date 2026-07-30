@@ -10,10 +10,13 @@
 
 import { game } from './gstate.js';
 
-// end.h death codes (subset).  DIED=0; PANICKED separates "real" deaths from
-// program panics in done().
+// end.h death codes (subset).  DIED=0; GENOCIDED separates the death codes
+// that leave a tombstone/bones from the ones that don't (QUIT/ESCAPED/
+// ASCENDED); PANICKED separates "real" deaths from program panics in done().
 const DIED = 0;
+const GENOCIDED = 10;
 const PANICKED = 11;
+const QUIT = 13;
 
 // C ref: end.c ends[] — "when you %s" phrasing per death code (also the
 // "You %s in <dungeon>" verb for the score summary).
@@ -218,22 +221,31 @@ function savelife(_how) {
 async function done(how) {
     const d = await deps();
     const u = game.u;
+    const stopprint = !!game._done_stopprint;
 
-    // how < PANICKED: force HP to zero (it may already be <= 0) and redraw bot.
-    u.uhp = 0;
-    if (u.mh != null) u.mh = 0;
-    await d.bot();
-    await d.flush_screen(1);
+    // how < PANICKED: force HP to zero (it may already be <= 0) and redraw
+    // bot.  Skip the forced status update when quitting via a 'q' answer to
+    // "Dump core?" (done_stopprint) — end.c done(): disp.botl = FALSE etc.
+    if (how < PANICKED) {
+        u.uhp = 0;
+        if (u.mh != null) u.mh = 0;
+    }
+    if (!(how === QUIT && stopprint)) {
+        await d.bot();
+        await d.flush_screen(1);
+    }
 
     // Lifesaved (amulet) path not reachable for the starter heroes.
 
-    // explore/wizard mode: offer the "Die?" paranoid query.  paranoid_query
-    // shows the deferred "You die...--More--" first (game._yn_need_more) then
-    // "Die? [yn] (n)".  A 'y' would end the game; the contest player declines.
+    // explore/wizard mode: offer the "Die?" paranoid query — but only for
+    // how <= GENOCIDED (end.c done()); QUIT/ESCAPED/ASCENDED skip it outright.
+    // paranoid_query shows the deferred "You die...--More--" first
+    // (game._yn_need_more) then "Die? [yn] (n)".  A 'y' would end the game;
+    // the contest player declines.
     const wizard = !!game.flags?.debug;
     const discover = !!game.flags?.discover;
     let survive = false;
-    if (wizard || discover) {
+    if ((wizard || discover) && how <= GENOCIDED) {
         game._yn_need_more = true; // page the pending "You die..." line first
         const ans = await d.y_n('Die?', 'yn\x1b', 'n');
         if (ans !== 'y') {
@@ -260,7 +272,6 @@ async function done(how) {
         // segment's o_init shuffle, so emitting it keeps the RNG stream aligned
         // across the death boundary (seed0030 step-73).  savebones()/the actual
         // bones-file write is never reached here (bones_ok is FALSE).
-        const GENOCIDED = 10; // end.h
         if (how < GENOCIDED) {
             // C ref: end.c really_done() — bones_ok = (how < GENOCIDED) &&
             // can_make_bones(); if (bones_ok) savebones(how, corpse).
@@ -277,21 +288,90 @@ async function done(how) {
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
 
-        // C ref: end.c really_done() — normal-game (non-wizard/explore) death
-        // tail.  After the bones check, display_nhwindow(WIN_MESSAGE, FALSE)
-        // pages the still-unseen "You die..." top line with --More--, then
-        // disclose() offers its six end-of-game queries before the tombstone/
-        // topten teardown.
-        if (!wizard && !discover) {
+        if (stopprint) {
+            // C ref: end.c disclose() — every one of its six category blocks
+            // is gated on "!done_stopprint", so a 'q' answer to the wizard-
+            // mode "Dump core?" query (set via done_stopprint++ in done2())
+            // skips all of them outright; the tombstone is unreachable too
+            // (outrip() requires how < GENOCIDED, and QUIT is 13).  What's
+            // left is topten()'s wizard/discover branch: a bare score-skipped
+            // notice, no table.
+            await quit_final_message();
+        } else if (!wizard && !discover) {
+            // C ref: end.c really_done() — normal-game (non-wizard/explore)
+            // death tail.  After the bones check, display_nhwindow(WIN_MESSAGE,
+            // FALSE) pages the still-unseen "You die..." top line with
+            // --More--, then disclose() offers its six end-of-game queries
+            // before the tombstone/topten teardown.
             if (game._toplin === 1) { // display_nhwindow(WIN_MESSAGE): more()
                 await d.topl_more();
                 game._toplin = 0;
                 game._pending_message = '';
             }
+            // C ref: end.c really_done() — "needed for both inventory
+            // disclosure and dumplog": for how != PANICKED, fully identify
+            // every inventory object (discover_object + known/bknown/dknown/
+            // rknown=1 + set_cknown_lknown) before disclose() runs, so its
+            // 'i' listing shows true names/enchantments, not appearances.
+            if (how !== PANICKED) {
+                const invmod = await import('./invent.js');
+                const inv = Array.isArray(game.invent) ? game.invent
+                    : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+                for (const obj of inv) invmod.fully_identify_obj(obj);
+            }
             const clean = await disclose(how);
             if (clean) await real_death_epilogue(how);
         }
     }
+}
+
+// C ref: topten.c topten() wizard/discover branch — reached once bones/
+// disclose/tombstone are all unreachable (done_stopprint, how >= GENOCIDED):
+// a blank line then "Since you were in wizard mode, the score list will not
+// be checked." (no --More--, no table), and the game ends.
+async function quit_final_message() {
+    const disp = game?.nhDisplay;
+    if (!disp?.putstr) {
+        game.program_state = game.program_state || {};
+        game.program_state.gameover = true;
+        return;
+    }
+    const { nhgetch } = await import('./input.js');
+    const NO_COLOR = 8; // terminal.js NO_COLOR
+    const wizard = !!game.flags?.debug;
+    disp.clearScreen();
+    const msg = `Since you were in ${wizard ? 'wizard' : 'discover'} mode,`
+        + ' the score list will not be checked.';
+    disp.putstr(0, 1, msg, NO_COLOR, 0);
+    // C ref: end.c really_done() tail — "if (done_stopprint) { raw_print("");
+    // raw_print(""); }" right before nh_terminate(): two more blank-line
+    // cursor advances (no visible text change) when quitting via 'q'.
+    disp.setCursor(0, game._done_stopprint ? 4 : 2);
+    game.program_state = game.program_state || {};
+    game.program_state.gameover = true;
+    await nhgetch();
+}
+
+// C ref: end.c done2() — the '#quit' command.  Confirms via paranoid_query
+// (ParanoidQuit is off by default, so a plain "[yn] (n)" prompt), then in
+// wizard mode offers ynq("Dump core?").  Declining the core dump either way
+// falls through to done(QUIT); answering 'q' there sets done_stopprint,
+// which done()/disclose() key off of to skip straight to the score-skipped
+// notice.  The tutorial-abandon branch (no tutorial support in this port)
+// and the 'y' core-dump branch (an immediate process abort with no further
+// screens) aren't exercised by any recorded session.
+export async function doquit() {
+    const d = await deps();
+    const ans = await d.y_n('Really quit without saving?', 'yn', 'n');
+    if (ans !== 'y') return 0; // ECMD_OK: declined, keep playing
+
+    const wizard = !!game.flags?.debug;
+    if (wizard) {
+        const c = await d.y_n('Dump core?', 'ynq', 'q');
+        if (c === 'q') game._done_stopprint = (game._done_stopprint || 0) + 1;
+    }
+    await done(QUIT);
+    return 0;
 }
 
 // C ref: flag.h DISCLOSE_* char values + decl.c disclosure_options="iavgco".
@@ -340,22 +420,25 @@ function parse_end_disclose() {
     return settings;
 }
 
-// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  Only
-// the 'i'/'a'/'c'/'o' queries are simple yes/no prompts this port models; a
-// 'y' answer to any of them needs content this port doesn't render yet
-// (display_inventory/enlightenment/show_conduct/show_overview), so that is an
-// honest gap: return false and let the caller stop there instead of jumping
-// ahead to a tombstone the real game wouldn't have reached yet.  'v'/'g'
-// (list_vanquished/list_genocided) always prompt with their own bespoke
-// sort-order query when 'ask' is true (the DEFAULT case absent an rc
-// override) — not modeled, so treat 'ask' there as the same kind of gap.
-// taken (items confiscated before death) is never true for a plain HP-loss
-// death, so the 'i' query always uses the "possessions identified?" wording.
-async function disclose(_how) {
+// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  The
+// 'i' query's 'y' content (display_inventory) is ported via invent.js's
+// display_inventory_interactive(); 'a'/'c'/'o' render their content through
+// insight.js's show_attributes_disclosure()/show_conduct_disclosure() and
+// dungeon.js's build_overview_lines() (via extcmd-handlers.js's
+// show_overview_disclosure()).  'v'/'g' (list_vanquished/list_genocided) are
+// gated in C on there being at least one dead/genocided species to list
+// (ntypes/ngone != 0); when that count is 0 neither ever prompts at all, no
+// matter what 'ask' is, so only treat a true 'ask' as an unmodeled gap (their
+// bespoke sort-order sub-menus aren't ported) when the list would actually be
+// non-empty.  taken (items confiscated before death) is never true for a
+// plain HP-loss death, so the 'i' query always uses the "possessions
+// identified?" wording.
+async function disclose(how) {
     const d = await deps();
     const settings = parse_end_disclose();
     const inv = Array.isArray(game.invent) ? game.invent
         : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+    const final = (how >= PANICKED) ? 1 : 2; // ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD
 
     async function query(settingChar, qbuf) {
         const { ask, defquery } = disclose_ask(settingChar);
@@ -364,28 +447,43 @@ async function disclose(_how) {
 
     if (inv.length) {
         const c = await query(settings.i, 'Do you want your possessions identified?');
-        if (c === 'y') return false;
+        if (c === 'y') {
+            const invmod = await import('./invent.js');
+            await invmod.display_inventory_interactive(null);
+        }
         if (c === 'q') return true;
     }
 
     {
         const c = await query(settings.a, 'Do you want to see your attributes?');
-        if (c === 'y') return false;
+        if (c === 'y') {
+            const { show_attributes_disclosure } = await import('./insight.js');
+            await show_attributes_disclosure(final);
+        }
         if (c === 'q') return true;
     }
 
-    if (disclose_ask(settings.v).ask) return false;
-    if (disclose_ask(settings.g).ask) return false;
+    {
+        const { anyVanquished, anyGenocidedOrExtinct } = await import('./insight.js');
+        if (anyVanquished() && disclose_ask(settings.v).ask) return false;
+        if (anyGenocidedOrExtinct() && disclose_ask(settings.g).ask) return false;
+    }
 
     {
         const c = await query(settings.c, 'Do you want to see your conduct?');
-        if (c === 'y') return false;
+        if (c === 'y') {
+            const { show_conduct_disclosure } = await import('./insight.js');
+            await show_conduct_disclosure(final);
+        }
         if (c === 'q') return true;
     }
 
     {
         const c = await query(settings.o, 'Do you want to see the dungeon overview?');
-        if (c === 'y') return false;
+        if (c === 'y') {
+            const { show_overview_disclosure } = await import('./extcmd-handlers.js');
+            await show_overview_disclosure(final, how);
+        }
         if (c === 'q') return true;
     }
 
@@ -465,21 +563,36 @@ async function real_death_epilogue(how) {
     drawMore(ROWS - 1);
     await nhgetch();
 
-    // Two blank --More-- acknowledgements (endwin teardown), per seed0030
-    // step-76/77.
-    for (let b = 0; b < 2; b++) {
+    // C ref: topten() — "assure minimum number of points": t0->points is
+    // floored to 0 when under sysopt.pointsmin (always 1: POINTSMIN's
+    // config-file floor is max(POINTSMIN,1)).  With this harness's scores
+    // file always empty, the fresh entry only "makes the [top ten] list"
+    // (rank0 set, flg incremented, the "You made the top ten list!" banner
+    // shown, outentry's rank==1) when its post-floor points are > 0 — an
+    // empty file's placeholder entry has points 0, and the insertion check
+    // is a strict "<", so a tie (both 0) takes the "didn't reach the list"
+    // fallback instead: no banner, and outentry(rank=0, ...) (blank rank
+    // field).
+    const scorePoints = urexp < 1 ? 0 : urexp;
+    const madeList = scorePoints > 0;
+
+    // Blank --More-- acknowledgements (endwin teardown): two when the entry
+    // makes the top ten list (seed0030's diverse deaths, each ending with
+    // real points and "You made the top ten list!"), one when it doesn't
+    // (seed0009's Tutorial death, floored to 0 points).
+    for (let b = 0; b < (madeList ? 2 : 1); b++) {
         disp.clearScreen();
         drawMore(ROWS - 1);
         await nhgetch();
     }
 
-    // topten() real (non-wizard) output: a single fresh rank-1 entry.
+    // topten() real (non-wizard) output.
     const roleFC = roles[game.initrole]?.filecode || '?';
     const raceFC = races[game.initrace]?.filecode || '?';
     const genderFC = genders[female ? 1 : 0]?.filecode || '?';
     const alignFC = aligns.find(a => a.value === (u?.ualign?.type ?? 0))?.filecode || '?';
     const entry = {
-        points: urexp, name: plname, plrole: roleFC, plrace: raceFC,
+        points: scorePoints, name: plname, plrole: roleFC, plrace: raceFC,
         plgend: genderFC, plalign: alignFC, death: deathText, dungeonName,
         deathdnum: uz.dnum, knoxDnum: -99, // Fort Ludios unreachable here
         deathlev: depth, maxlvl: depth, hp: u?.uhp ?? 0, maxhp: u?.uhpmax ?? 0,
@@ -487,10 +600,12 @@ async function real_death_epilogue(how) {
     disp.clearScreen();
     let row = 0;
     disp.putstr(0, row++, '', NO_COLOR, 0);
-    disp.putstr(0, row++, 'You made the top ten list!', NO_COLOR, 0);
-    disp.putstr(0, row++, '', NO_COLOR, 0);
+    if (madeList) {
+        disp.putstr(0, row++, 'You made the top ten list!', NO_COLOR, 0);
+        disp.putstr(0, row++, '', NO_COLOR, 0);
+    }
     disp.putstr(0, row++, topten_outheader(COLNO), NO_COLOR, 0);
-    for (const l of topten_outentry(1, entry, true, COLNO)) {
+    for (const l of topten_outentry(madeList ? 1 : 0, entry, true, COLNO)) {
         disp.putstr(0, row++, l, NO_COLOR, ATR_BOLD);
     }
     disp.setCursor(0, row);

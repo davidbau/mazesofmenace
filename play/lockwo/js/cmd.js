@@ -36,7 +36,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
          TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, IS_POOL, IS_LAVA,
-         A_STR, A_DEX, A_CON, Is_rogue_level,
+         A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT, TIP_SWIM } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
@@ -784,6 +784,9 @@ export async function dosearch0(aflag) {
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = DOOR;
+                // C ref: detect.c dosearch0() — exercise(A_WIS, TRUE) fires on
+                // every successful find, before nomul(0).
+                exercise(A_WIS, true);
                 newsym(x, y);
                 // C ref: detect.c dosearch0() — nomul(0) on a successful find:
                 // a counted search ("9s") stops immediately instead of running
@@ -793,6 +796,7 @@ export async function dosearch0(aflag) {
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
+                exercise(A_WIS, true);
                 newsym(x, y);
                 if ((game.multi ?? 0) > 0) game.multi = 0;
                 await pline('You find a hidden passage.');
@@ -1006,6 +1010,16 @@ async function dokick() {
 // An optional `s` overrides the prompt (e.g. dochat's "Talk to whom? ...").
 export async function getdir(s) {
     const prompt = s || 'In what direction?';
+    // C ref: win/tty/topl.c tty_yn_function() — `if (toplin == TOPLINE_NEED_MORE
+    // && !skip) more(); flags &= ~(WIN_STOP|WIN_NOSTOP);` before drawing the new
+    // prompt: an unacknowledged pending message (e.g. a pet dropping an item
+    // this same turn) gets its own --More-- pause rather than being silently
+    // overwritten — unless the player already dismissed a previous --More--
+    // with ESC this turn (game._winStop), in which case the message was
+    // suppressed outright and no extra pause is owed.  Either way the
+    // suppression is one-shot: clear it once this prompt has been drawn.
+    if (game._toplin === 1 && !game._winStop) await topl_more();
+    game._winStop = false;
     game._pending_message = prompt;
     await flush_screen(1);
     game._modal_screen = 'topl';
@@ -2009,8 +2023,10 @@ async function moverock(otmp, sx, sy, dx, dy) {
 // matching floor objects (prinv "<letter> - <name>." lines).  Travel (run == 8)
 // does not auto-stop, but pickup still fires; we exclude only the mid-action
 // teleport case (context.mv with no context.run) which C skips via
-// "gm.multi && !run".
-async function pickup_after_move(x, y) {
+// "gm.multi && !run".  Exported so steed.js's dismount_steed_bychoice() can
+// invoke the same pickup(1) tail that C's float_down() runs once the hero has
+// landed on the dismount square.
+export async function pickup_after_move(x, y) {
     const ctx = game.context || {};
     const hasObj = (game.level?.objects || []).some(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);

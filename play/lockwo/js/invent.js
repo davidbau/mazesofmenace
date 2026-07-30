@@ -60,6 +60,7 @@ import {
 import { getpos, getpos_render } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
+import { tin_variety, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, vegetarian } from './eat.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { find_ac } from './u_init.js';
@@ -247,6 +248,7 @@ function Role_if(pm) {
 const PM_HEALER = 3;
 const PM_CLERIC = 6;
 const PM_MONK = 5;
+const PM_TOURIST = 10;
 const PM_WIZARD = 12;
 const FAKE_AMULET_OF_YENDOR_OTYP = 212; // objects.h FAKE_AMULET_OF_YENDOR
 function confers_luck(obj) { return obj?.otyp === 469; }
@@ -1010,7 +1012,7 @@ function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
 // C ref: obj.h is_weptool(o) — a TOOL_CLASS object with a real weapon skill
 // (oc_skill != P_NONE).  Pick-axe / grappling hook / unicorn horn qualify;
 // lamps, towels, bags, etc. do not.
-function is_weptool(obj) {
+export function is_weptool(obj) {
     return obj?.oclass === TOOL_CLASS && (objects[obj.otyp]?.oc_skill ?? 0) !== 0;
 }
 function is_wet_towel(_obj) { return false; }
@@ -1095,7 +1097,7 @@ function obj_appearance_descr(obj) {
 // the class uses its unidentified appearance ("silver wand", "scroll labeled
 // FOO", ...).  Prefixes (BUC, enchantment, quantity) are added by the caller
 // in simple_obj_name; this returns only the base/type phrase.
-function objectBaseName(obj) {
+export function objectBaseName(obj) {
     if (!obj) return 'object';
     // C ref: objnam.c xname_flags — a Cleric (priest/priestess) always senses an
     // object's beatitude, so naming any object forces its bknown on ("avoid
@@ -1269,26 +1271,16 @@ function bucPrefix(obj) {
     // every role), "uncursed" is omitted for a fully-identified charged item:
     // knowing the exact charges/+N of a charged, non-armor, non-ring item that
     // isn't flagged blessed/cursed means it must be uncursed, so the word is
-    // unnecessary (e.g. "a magic marker (0:19)", "a wand of sleep (0:7)").  The
-    // exceptions (Amulet of Yendor, its fake, and a Cleric who senses BUC) keep
-    // the word.  Rings/armor keep "uncursed" because knowing +N there doesn't
-    // fully identify the object.
-    //
-    // The flag is role-independent, so faithful behavior is universal.  Applying
-    // it to every role, though, flips a single coincidentally-matching late frame
-    // in seed1800 (a Tourist run already message-diverged much earlier by an
-    // unrelated fortune-cookie rumor): there the suppression is in fact the *more*
-    // faithful render, but C's recorded frame is from its own diverged state, so
-    // the surviving match was luck.  Until that session's real divergence is
-    // ported, scope the suppression to the roles whose corpus exercises it — the
-    // Healer's starting wand of sleep, the Monk's starting magic marker, and the
-    // Wizard's starting wand/marker — which preserves the Tourist floor.
-    if ((Role_if(PM_HEALER) || Role_if(PM_MONK) || Role_if(PM_WIZARD))
-        && obj.known && is_oc_charged(obj)
+    // unnecessary (e.g. "a magic marker (0:19)", "a wand of sleep (0:7)", "a +0
+    // short sword").  The exceptions (Amulet of Yendor, its fake) keep the word.
+    // Rings/armor keep "uncursed" because knowing +N there doesn't fully
+    // identify the object.  The flag is role-independent (any role's known
+    // weapon/wand/tool suppresses the same way), so no Role_if() gate belongs
+    // here — the Cleric case is already handled by the early return above.
+    if (obj.known && is_oc_charged(obj)
         && obj.oclass !== ARMOR_CLASS && obj.oclass !== RING_CLASS
         && obj.otyp !== FAKE_AMULET_OF_YENDOR_OTYP
-        && obj.otyp !== AMULET_OF_YENDOR
-        && !Role_if(PM_CLERIC))
+        && obj.otyp !== AMULET_OF_YENDOR)
         return '';
     return 'uncursed ';
 }
@@ -1317,6 +1309,25 @@ function empty_prefix(obj) {
     return isEmpty ? 'empty ' : '';
 }
 
+// C ref: eat.c tin_details() — species-specific "tin of X" wording for a
+// known tin.  The freshness word (rotten/homemade/pickled/...) only shows
+// once the tin's contents are known (cknown); corpsenm NON_PM (-1) means an
+// emptied tin.
+function tin_details(obj, base) {
+    const r = tin_variety(obj, true);
+    if (r === SPINACH_TIN) return `${base} of spinach`;
+    const mnum = obj.corpsenm;
+    if (mnum == null || mnum < 0) return `empty ${base}`;
+    const mname = monster_by_pmidx(mnum)?.name ?? '';
+    const meatWord = vegetarian(monster_by_pmidx(mnum)) ? mname : `${mname} meat`;
+    if (obj.cknown && obj.spe < 0) {
+        const fresh = tintxts[r]?.txt ?? '';
+        if (r === ROTTEN_TIN || r === HOMEMADE_TIN) return `${fresh} ${base} of ${meatWord}`;
+        return `${base} of ${fresh} ${meatWord}`;
+    }
+    return `${base} of ${meatWord}`;
+}
+
 function simple_obj_name(obj, opts = {}) {
     const { article = true, quantity = true, buc = true, empty = false } = opts;
     if (!obj) return 'nothing';
@@ -1327,7 +1338,7 @@ function simple_obj_name(obj, opts = {}) {
     // the species-derived "tin of X" wording only appears once the tin's
     // specific contents are identified; an unopened, unidentified tin is
     // just "a tin".
-    if (obj.corpsenm != null && obj.otyp === TIN && obj.known) base = `tin of ${base}`;
+    if (obj.otyp === TIN && obj.known) base = tin_details(obj, base);
     let prefix = (empty ? empty_prefix(obj) : '') + (buc ? bucPrefix(obj) : '');
     // C ref: objnam.c doname_base — a lockable box (chest/large box/ice box)
     // whose lock state is known (lknown, set once the hero loots/kicks/forces
@@ -1623,7 +1634,16 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     for (const group of lines)
         for (const ln of group) if (ln.length > widest) widest = ln.length;
     const cols = display.cols ?? 80;
-    const col = Math.max(10, cols - (widest + 1) - 1);
+    const rows = display.rows ?? 24;
+    let col = Math.max(10, cols - (widest + 1) - 1);
+    // C ref: win/tty/wintty.c tty_display_nhwindow — offx is forced back to 0
+    // (full-screen) when cw->maxrow (== nitems+1: one entry per heading/item,
+    // plus the "(end)" line) reaches the screen height; a menu that tall can't
+    // float as a partial overlay, so it takes over the whole screen (offx=0,
+    // text at offx+1 == col 1) instead of the computed floating position.
+    const nitems = lines.reduce((n, g) => n + g.length, 0);
+    const maxrow = nitems + 1;
+    if (maxrow >= rows) col = 1;
     // C ref: the menu window is a rectangle [col-1..cols) x [0..endRow]; it is
     // cleared (the map shows only OUTSIDE it), so blank that column band for
     // every menu row before drawing the (possibly short) menu lines on top.
@@ -1631,7 +1651,7 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     // draws a leading space there and the text at offx+1 (== col), so col-1 must
     // be blanked too or a map glyph beneath it shows through the leading space.
     const bandStart = Math.max(0, col - 1);
-    const totalRows = lines.reduce((n, g) => n + g.length, 0) + 1; // +1 for (end)
+    const totalRows = nitems + 1; // +1 for (end)
     const menuLastRow = totalRows - 1; // row the "(end)" line lands on
     for (let r = 0; r <= menuLastRow && r < 24; r++)
         for (let c = bandStart; c < cols; c++)
@@ -4790,6 +4810,39 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
     }
 }
 
+// C ref: end.c disclose() 'i' branch — `(void) display_inventory((char *) 0,
+// TRUE); container_contents(...)`.  want_reply=TRUE but the caller discards
+// the result, so this is the same paginated PICK_ONE display+page loop as
+// dispinv_with_action, minus the itemactions() follow-up: any dismiss key
+// (space on the last page / return / ESC) or a valid invlet selection just
+// closes the menu with no further effect.
+export async function display_inventory_interactive(lets = null) {
+    const rows = inventoryRows(lets);
+    if (!rows.length) {
+        await renderMessageOnMap('Not carrying anything.');
+        return;
+    }
+    const byLet = new Map();
+    for (const obj of inventoryArray())
+        if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
+    let page = 0;
+    for (;;) {
+        const info = renderInventoryMenu(rows, page);
+        const c = await nhgetch();
+        if (c === 32 && info.multipage && page < info.pages - 1) {
+            page++;
+            continue;
+        }
+        if (c === 27 || c === 32 || c === 13 || c === 10) {
+            await dismiss_invent_screen();
+            return;
+        }
+        if (!byLet.get(String.fromCharCode(c))) continue; // invalid selector: bell, menu stays
+        await dismiss_invent_screen();
+        return;
+    }
+}
+
 // Render the selectable inventory.  When the content fits one page it is a tty
 // overlay (offx computed from the widest line, "(end)" footer); when it overflows
 // it becomes a full-screen paged menu with an "(N of M)" footer.  C ref:
@@ -4797,10 +4850,13 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
 // {multipage, pages} so callers can drive the space-advances-page loop.
 function renderInventoryMenu(rows, page = 0) {
     // Flatten rows into menu lines, tagging class headers (ATR_INVERSE).
+    // C ref: windows.c add_menu_heading() — suppresses the highlight
+    // (attr = ATR_NONE) during end-of-game disclosure (program_state.gameover).
+    const headerAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
     const lines = [];
     for (const group of rows) {
         const [heading, ...items] = group;
-        lines.push({ text: ` ${heading}`, attr: ATR_INVERSE, header: true });
+        lines.push({ text: ` ${heading}`, attr: headerAttr, header: true });
         for (const it of items) lines.push({ text: ` ${it}`, attr: 0 });
     }
     const display = game.nhDisplay;

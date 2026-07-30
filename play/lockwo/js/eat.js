@@ -1,8 +1,8 @@
 // eat.js - Eating / food code (and tin variety helpers used at object creation).
 // C ref: nethack-c/upstream/src/eat.c
 
-import { rn2, rnd, rn1 } from './rng.js';
-import { monster_by_pmidx, mon_cwt, mon_cnutrit } from './makemon.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import { monster_by_pmidx, mon_cwt, mon_cnutrit, name_to_pmidx } from './makemon.js';
 import { game } from './gstate.js';
 import { pline, update_topl, y_n } from './display.js';
 import { poison_strdmg } from './attrib.js';
@@ -66,10 +66,12 @@ function garlic_breath() {
 let _invent = null;
 let _mkobj = null;
 let _engrave = null;
+let _vision = null;
 async function loadEatDeps() {
     if (!_invent) _invent = await import('./invent.js');
     if (!_mkobj) _mkobj = await import('./mkobj.js');
     if (!_engrave) _engrave = await import('./engrave.js');
+    if (!_vision) _vision = await import('./vision.js');
 }
 
 // tin types [SPINACH_TIN = -1, overrides corpsenm, nut==600]
@@ -137,7 +139,7 @@ function ismnum(mnum) {
     return mnum >= 0;
 }
 
-function vegetarian(ptr) {
+export function vegetarian(ptr) {
     // C ref: vegetarian() in eat.c; only consulted for HEALTHY_TIN, which
     // is not used at object creation. Conservative default.
     return false;
@@ -604,6 +606,44 @@ function lesshungry_eat(num) {
     newuhs(false);
 }
 
+// C ref: eat.c rottenfood(obj) — "first bite" of rotten food.  A CORPSE is
+// always FLESH-material (<=WOOD, !=LIQUID), so is_rottable() is always true
+// for the corpses eaten here and the message is always "Rotten" (never
+// "Awful").  Rolls, in order: a confusion chance, then (only if that missed)
+// a blindness chance, then (only if that missed too) a pass-out chance.
+// Returns true if the hero passed out (aborting the rest of this meal).
+async function rottenfood_eat() {
+    await update_topl('Blecch!  Rotten food!');
+    const u = game.u;
+    const hallu = !!u?.uhallu;
+    if (!rn2(4)) {                                          // eat.c:1817
+        await update_topl(hallu ? 'You feel rather trippy.'
+                                 : 'You feel rather light headed.');
+        if (u) {
+            if (!u.uprops) u.uprops = {};
+            const newval = (u.uprops.Confusion || 0) + d(2, 4);   // eat.c:1822
+            u.uprops.Confusion = newval;
+            u.uconf = newval > 0;
+        }
+    } else if (!rn2(4) && !_vision.Blind()) {                // eat.c:1823
+        await update_topl('Everything suddenly goes dark.');
+        if (u) u.blinded = (u.blinded || 0) + d(2, 10);          // eat.c:1827
+        if (!_vision.Blind()) await update_topl('Your vision quickly clears.');
+    } else if (!rn2(3)) {                                    // eat.c:1830
+        const dur = rnd(10);                                     // eat.c:1832
+        const blind = _vision.Blind();
+        // C also special-cases Levitation/air-level/water-level while blind
+        // ("you lose control of yourself"); not modeled — not exercised by
+        // any covered session (this whole branch never fires for them).
+        const what = blind ? 'you slap against the' : 'goes';
+        const where = blind ? (u?.usteed ? 'saddle' : 'floor') : 'dark';
+        await update_topl(`The world spins and ${what} ${where}.`);
+        if ((game.multi ?? 0) >= -dur) game.multi = -dur;        // nomul(-dur)
+        return true; // eat.c:1848 — passed out; meal aborted
+    }
+    return false;
+}
+
 async function eatcorpse_cmd(otmp) {
     await loadEatDeps();
     const u = game.u;
@@ -678,13 +718,20 @@ async function eatcorpse_cmd(otmp) {
     // A fresh corpse has oeaten==0/unset; C's obj_nutrition(CORPSE) yields
     // mons[mnum].cnutrit, which touchfood() stores into oeaten.  A partly-eaten
     // corpse keeps its remaining oeaten.
+    const already_partly_eaten = !!otmp.oeaten;
     let oeaten = otmp.oeaten ? otmp.oeaten : mon_cnutrit(mnum);
 
     // rot-away gate: if (!tp && !nonrotting_corpse(mnum) && (orotten || !rn2(7)))
     let usedUp = false;
     if (!tp && !nonrotting && (otmp.orotten || !rn2(7))) {   // eat.c:1949
-        // rottenfood()/cnutrit==0 branches: for a fresh, nourishing goblin the
-        // consume_oeaten path runs (no extra RNG).  Not the message branch.
+        // C ref: eat.c:1950 if (rottenfood(otmp)) { orotten=TRUE; retcode=1; }
+        // rottenfood() always prints the Blecch/Awful message and rolls a
+        // confusion / blindness / pass-out chance; the pass-out branch aborts
+        // the rest of this meal (dont_start in the caller) for this turn.
+        if (await rottenfood_eat()) {
+            otmp.orotten = true;
+            return true; // ECMD_TIME — dont_start: the meal never begins
+        }
         // C ref: eat.c:1970 consume_oeaten(otmp, 2) — a rotted corpse loses 3/4
         // of its nutrition (oeaten >>= 2).
         oeaten = oeaten >> 2;
@@ -725,6 +772,23 @@ async function eatcorpse_cmd(otmp) {
     }
 
     void usedUp;
+
+    // C ref: eat.c doeat():3049-3059 — after eatcorpse() picks reqtime/oeaten,
+    // the caller rescales reqtime to the fraction of nutrition actually left:
+    // reqtime = rounddiv(reqtime * oeaten, basenutrit).  For a fresh corpse
+    // oeaten==basenutrit so this is a no-op, but the rot-away gate above may
+    // have just quartered oeaten — e.g. a rotten newt corpse (basenutrit 20,
+    // cwt-based reqtime 3, oeaten quartered to 5) shrinks to rounddiv(3*5,20)
+    // == 1, turning what would be a multi-turn meal into a single-turn one.
+    const basenutrit = mon_cnutrit(mnum);
+    if (basenutrit === 0) {
+        reqtime = 0;
+    } else {
+        const num = reqtime * oeaten;
+        const q = Math.trunc(num / basenutrit);
+        const rem = num % basenutrit;
+        reqtime = (2 * rem >= basenutrit) ? q + 1 : q;   // hack.c rounddiv()
+    }
 
     // C ref: eat.c start_eating(otmp, FALSE).  Sets up the multi-turn eating
     // occupation: usedtime starts at 1; bite() (no RNG for a corpse) runs; if
@@ -774,9 +838,11 @@ async function eatcorpse_cmd(otmp) {
     };
 
     if (game.context.victual.usedtime >= reqtime) {
-        // Single-turn finish (reqtime<=1, not reachable for a corpse): emit the
-        // completion message and use the corpse up now.
-        await done_eating_corpse(true);
+        // C ref: eat.c start_eating():2065-2069 — single-turn finish (reqtime
+        // shrunk to <=1 by the rounddiv rescale above, e.g. a heavily-rotted
+        // corpse).  done_eating()'s message is suppressed unless reqtime>1 or
+        // this was a resumed meal, matching the non-corpse fprefx() path.
+        await done_eating_corpse(reqtime > 1 || already_partly_eaten);
         return true;
     }
 
@@ -820,9 +886,32 @@ export async function eatfood_step() {
     return false;
 }
 
+// C ref: eat.c:1103 eye_of_newt_buzz() — eating a magic-attack monster (or a
+// newt) has a chance to give a small magical energy boost.  Rolls fire even
+// when the boost is invisible (uen already at cap): the RNG stream must stay
+// in lockstep with C regardless of whether the botl message ends up printed.
+async function eye_of_newt_buzz() {
+    const u = game.u;
+    if (rn2(3) || 3 * u.uen <= 2 * u.uenmax) {
+        const old_uen = u.uen;
+        u.uen += rnd(3);
+        if (u.uen > u.uenmax) {
+            if (!rn2(3)) {
+                u.uenmax++;
+                if (u.uenmax > u.uenpeak) u.uenpeak = u.uenmax;
+            }
+            u.uen = u.uenmax;
+        }
+        if (old_uen !== u.uen) {
+            await update_topl('You feel a mild buzz.');
+            game.botl = true;
+        }
+    }
+}
+
 // C ref: eat.c done_eating(message) — finish the meal: print "You finish eating
-// <corpse>." (when message), run cpostfx (RNG-inert for the plain corpses our
-// sessions eat), then use up the corpse.  Clears the victual context.
+// <corpse>." (when message), run cpostfx, then use up the corpse.  Clears the
+// victual context.
 async function done_eating_corpse(message) {
     await loadEatDeps();
     const v = game.context?.victual;
@@ -830,10 +919,12 @@ async function done_eating_corpse(message) {
     const otmp = v.piece;
     if (message)
         await update_topl(`You finish eating the ${v.spName} corpse.`);
-    // cpostfx(corpsenm): special-corpse intrinsics / effects.  For the ordinary
-    // corpses the contest sessions eat (gnome, etc.) this conveys nothing and
-    // rolls no RNG, so it is a no-op here.  (If an intrinsic-bearing corpse is
-    // ever eaten this is where givit()'s rolls would go.)
+    // cpostfx(corpsenm): special-corpse intrinsics/effects.  Only the newt's
+    // magic-energy buzz is ported (attacktype(ptr, AT_MAGC) || pm == PM_NEWT);
+    // the other cpostfx cases (polyself, stun/hallucination corpses, etc.)
+    // aren't exercised by the contest sessions' plain corpses (gnome, etc.).
+    if (v.spName === 'newt')
+        await eye_of_newt_buzz();
     // Remove the eaten corpse: useupf for a floor corpse (so the pet's dog_goal
     // fobj scan no longer sees it), useup/useupall for a carried one.
     if (v.on_floor)

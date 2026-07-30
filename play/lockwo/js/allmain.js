@@ -31,6 +31,7 @@ import { settrack } from './track.js';
 import { nh_timeout } from './timeout.js';
 import { genTutorialLevel } from './tutorial.js';
 import { find_level } from './dungeon.js';
+import { livelog_printf, LL_ACHIEVE } from './livelog.js';
 
 const PM_KNIGHT = 4;
 const PM_WIZARD = 12;
@@ -67,13 +68,19 @@ function realUinitRan() {
     return REAL_UINIT_ROLES.has(name);
 }
 
-// C ref: allmain.c welcome(TRUE) — startup greeting message text.
-function welcomeMessage() {
+// C ref: allmain.c welcome() — svp.plname (the name in play; "wizard" when a
+// debug-mode game never got an explicit -u name).
+function welcomePlname() {
+    return game.flags?.debug ? 'wizard' : (game.plname || 'Hero');
+}
+
+// C ref: allmain.c welcome(TRUE) — the " <align> [<gender>] <race> <role>" buf
+// shared by the greeting pline and the "entered the dungeon" livelog line.
+function welcomeBuf() {
     const role = roles[game.initrole];
     const race = races[game.initrace] || races[0];
     const align = aligns[game.initalign];
     const female = !!game.flags?.female;
-    const plname = game.flags?.debug ? 'wizard' : (game.plname || 'Hero');
 
     let buf = ` ${align?.adj || 'neutral'}`;
     // Gender word: only when role has no fixed female name and allows both.
@@ -82,7 +89,13 @@ function welcomeMessage() {
         buf += ` ${female ? 'female' : 'male'}`;
     const roleNm = (female && role?.name?.f) ? role.name.f : role?.name?.m;
     buf += ` ${race.adj} ${roleNm}`;
-    return `${Hello(gameRoleMnum())} ${plname}, welcome to NetHack!  You are a${buf}.`;
+    return buf;
+}
+
+// C ref: allmain.c welcome(TRUE) — startup greeting message text.
+function welcomeMessage() {
+    return `${Hello(gameRoleMnum())} ${welcomePlname()}, welcome to NetHack!`
+        + `  You are a${welcomeBuf()}.`;
 }
 
 // C ref: allmain.c newgame()
@@ -282,6 +295,9 @@ async function newgame_real() {
     await flush_screen(1);
     await bot();
     await pline(welcomeMessage());
+    // C ref: allmain.c welcome(TRUE) — "guarantee that 'major' event category
+    // is never empty": the very first gamelog line.
+    livelog_printf(LL_ACHIEVE, `${welcomePlname()} the${welcomeBuf()} entered the dungeon`);
 
     // C ref: allmain.c moveloop_preamble() — runs right after newgame().
     // The moon-phase / Friday-the-13th greeting is the first thing printed
@@ -896,6 +912,12 @@ export async function moveloop_turn() {
                 if (++g.multi === 0) {
                     // unmul: hero regains control next command.
                     g.context.travel = g.context.travel1 = g.context.mv = 0;
+                    // C ref: hack.c unmul() — u.usleep = 0.  Without this, a hero
+                    // who fell asleep (zap.js fall_asleep) stays Unaware forever
+                    // after waking, so gethungry() keeps rolling the extra
+                    // asleep-only rn2(10) every turn instead of stopping once
+                    // the sleep countdown (this block) completes.
+                    if (g.u) g.u.usleep = 0;
                     // C ref: hack.c unmul(NULL) — announce the pending nomovemsg,
                     // then clear it.  Route through update_topl so a still-pending
                     // top line (toplin == NEED_MORE — savelife's "OK, so you don't

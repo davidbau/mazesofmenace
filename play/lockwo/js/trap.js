@@ -18,7 +18,7 @@ import {
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
-    Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold,
+    Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER,
@@ -1086,7 +1086,7 @@ async function lava_effects() {
     await topl_more();
     game._toplin = 0;
     game._pending_message = '';
-    const { done, BURNING } = await import('./end.js');
+    const { done } = await import('./end.js');
     await done(BURNING);
 }
 

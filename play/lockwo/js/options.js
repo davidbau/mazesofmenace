@@ -18,10 +18,18 @@ import { game } from './gstate.js';
 // get_configfile(): the run-time configuration file path substituted into the
 // intro line.  It is environment-specific (differs per machine/recording) and
 // is NOT present in any harness input we receive — it exists only inside the
-// recorded screen itself.  Hardcoding one recording's path would inflate that
-// recording's public screens with zero held-out benefit, so we leave it empty
-// and accept the intro-page mismatch.  The rest of the option_help window (the
-// option lists and epilog) is environment-independent and matches faithfully.
+// recorded screen itself, so we can never reproduce its exact characters and
+// that one substituted line is always lost.  But C's initoptions() always
+// resolves *some* (non-empty) configfile path before option_help() can run
+// (cfgfiles.c set_configfile_name() fallback chain always sets one), and
+// tty_putstr()'s line-break-on-overflow (ported below as wput()) always
+// splits "Set options as OPTIONS=<options> in <cfg>" onto its own line
+// whenever that combined string doesn't fit in COLNO — which it never does
+// for any real absolute path.  Losing that split (by leaving the substituted
+// text empty, so the combined line fits on one row after all) shifts every
+// following putstr() line up by one row and costs many more matches than the
+// single unrecoverable line does, so we still emit the split's second line —
+// just with unknown/empty content instead of a fabricated path.
 const OPT_CONFIGFILE = '';
 
 // Boolean option names, in allopt[] order (option_help() BoolOpt loop output).
@@ -188,7 +196,8 @@ export function option_help_lines() {
     wput(L, '');
     wput(L, '                 NetHack Options Help:');
     wput(L, '');
-    wput(L, `Set options as OPTIONS=<options> in ${OPT_CONFIGFILE}`);
+    wput(L, 'Set options as OPTIONS=<options> in');
+    wput(L, OPT_CONFIGFILE);
     wput(L, 'or use `NETHACKOPTIONS="<options>"\' in your environment');
     wput(L, '(<options> is a list of options separated by commas)');
     wput(L, 'or press "O" while playing and use the menu.');

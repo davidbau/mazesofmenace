@@ -1005,13 +1005,29 @@ function overview_level_for(ledger) {
     return game._level_store?.[ledger]?.level || null;
 }
 
-export function build_overview_lines() {
+// `final` mirrors print_mapseen()'s eponymous parameter: 0 (default) is the
+// live '#overview' command, which only lists levels interest_mapseen() flags
+// as "of interest"; 1 or 2 is the end-of-game disclosure, which (per
+// traverse_mapseenchn()'s `why != 0 || interest_mapseen(mptr)`) lists EVERY
+// visited level unconditionally.  `how` is the death code, needed only to
+// pick the "<- You are/were/left from here" verb for final==1 (an alive
+// ending); it is unused for final==0/2.
+export function build_overview_lines(final = 0, how = 0) {
     const M = game._full_dungeon || { dungeons: game.dungeons, n_dgns: game.n_dgns };
     const u = game.u;
     const uzLedger = u && u.uz ? `${u.uz.dnum}:${u.uz.dlevel}` : null;
 
     const ledgers = new Set(Object.keys(game._visited_levels || {}));
     if (uzLedger) ledgers.add(uzLedger);
+    // C ref: allmain.c maybe_do_tutorial() -> goto_level(): a lua-scripted
+    // level entry (the tutorial redirect) assigns u.ucamefrom the level the
+    // hero is leaving, exactly as goto_level() would, but our tutorial-enter
+    // shortcut (allmain.js enter_tutorial_level) bypasses do.js's goto_level()
+    // and so never marks that departure level in _visited_levels/_level_store.
+    // The end-of-game disclosure still needs to list it (a mapseen entry was
+    // made for it when the hero's character was first placed there), so add
+    // it here from the one general-purpose field that survives the shortcut.
+    if (final && u?.ucamefrom) ledgers.add(`${u.ucamefrom.dnum}:${u.ucamefrom.dlevel}`);
 
     const parsed = Array.from(ledgers).map((ledger) => {
         const [dnum, dlevel] = ledger.split(':').map(Number);
@@ -1021,32 +1037,47 @@ export function build_overview_lines() {
     // order, so mapseenchn traversal is already sorted that way.
     parsed.sort((a, b) => (a.dnum - b.dnum) || (a.dlevel - b.dlevel));
 
+    // A dungeon's dunlev_ureached is, by definition, at least as deep as any
+    // level of it the hero has actually visited.  A lua-scripted level entry
+    // (the tutorial redirect, see the ucamefrom comment above) sets u.uz
+    // directly without going through do.js's goto_level(), which is what
+    // normally bumps dunlev_ureached, so the tracked field can understate it;
+    // this recovers the invariant instead of trusting the possibly-stale field.
+    const maxDlevelByDnum = new Map();
+    for (const p of parsed)
+        maxDlevelByDnum.set(p.dnum, Math.max(maxDlevelByDnum.get(p.dnum) ?? 0, p.dlevel));
+
     const lines = [];
     let lastdun = -1;
     for (const p of parsed) {
         const level = overview_level_for(p.ledger);
-        if (!level) continue;
-        const feat = {
+        if (!level && !final) continue;
+        const feat = level ? {
             nthrone: overview_count_feat(level, IS_THRONE),
             nfount: overview_count_feat(level, IS_FOUNTAIN),
             nsink: overview_count_feat(level, IS_SINK),
             ngrave: overview_count_feat(level, IS_GRAVE),
             ntree: overview_count_feat(level, (t) => t === TREE),
-        };
+        } : { nthrone: 0, nfount: 0, nsink: 0, ngrave: 0, ntree: 0 };
         const custom = game._level_annotations?.[p.ledger] || '';
         const onHere = p.ledger === uzLedger;
         const ofInterest = !!(feat.nthrone || feat.nfount || feat.nsink || feat.ngrave || feat.ntree);
-        if (!onHere && !ofInterest && !custom) continue;
+        if (!final && !onHere && !ofInterest && !custom) continue;
 
         const dptr = M.dungeons[p.dnum];
         if (!dptr) continue;
+        const dunlevUreached = Math.max(dptr.dunlev_ureached ?? 0, maxDlevelByDnum.get(p.dnum) ?? 0);
         const showheader = p.dnum !== lastdun;
         if (showheader) {
-            const buf = (dptr.dunlev_ureached === dptr.entry_lev)
+            const buf = (dunlevUreached === dptr.entry_lev)
                 ? `${dptr.dname}:`
                 : `${dptr.dname}: levels ${dptr.depth_start} to `
-                  + `${dptr.depth_start + dptr.dunlev_ureached - 1}`;
-            lines.push({ text: buf, attr: ATR_INVERSE });
+                  + `${dptr.depth_start + dunlevUreached - 1}`;
+            // C ref: windows.c add_menu_heading() — "suppress highlighting
+            // during end-of-game disclosure": program_state.gameover forces
+            // ATR_NONE there, so only the live '#overview' command (final==0)
+            // gets the highlighted iflags.menu_headings.attr (ATR_INVERSE).
+            lines.push({ text: buf, attr: final ? 0 : ATR_INVERSE });
             lastdun = p.dnum;
         }
 
@@ -1055,7 +1086,12 @@ export function build_overview_lines() {
             ? 1 : dptr.depth_start;
         let lbuf = `${OVERVIEW_TAB}Level ${depthstart + p.dlevel - 1}:`;
         if (custom) lbuf += ` "${custom}"`;
-        if (onHere) lbuf += ' <- You are here.';
+        if (onHere) {
+            const ASCENDED = 15, ESCAPED = 14;
+            const verb = (final <= 0 || (final === 1 && how === ASCENDED)) ? 'are'
+                : (final === 1 && how === ESCAPED) ? 'left from' : 'were';
+            lbuf += ` <- You ${verb} here.`;
+        }
         lines.push({ text: lbuf, attr: 0 });
 
         if (ofInterest) {
@@ -1074,6 +1110,18 @@ export function build_overview_lines() {
             const idx = OVERVIEW_PREFIX.length;
             fbuf = fbuf.slice(0, idx) + fbuf[idx].toUpperCase() + fbuf.slice(idx + 1) + '.';
             lines.push({ text: fbuf, attr: 0 });
+        }
+
+        // C ref: print_mapseen()'s final_resting_place block — always entered
+        // when final>0 (die-here bumps kncnt to 1); the bones-cemetery half of
+        // that loop (other heroes' remains) isn't modeled since no covered
+        // session ever reaches a level that already has bones.
+        if (final === 2 && onHere) {
+            lines.push({ text: `${OVERVIEW_PREFIX}Final resting place for`, attr: 0 });
+            lines.push({
+                text: `${OVERVIEW_PREFIX}${OVERVIEW_TAB}you, ${game._killer_name || 'died'}.`,
+                attr: 0,
+            });
         }
     }
     return lines;

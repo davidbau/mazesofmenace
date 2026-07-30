@@ -28,6 +28,7 @@ import { m_at } from './display.js';
 import { vision_recalc } from './vision.js';
 import { x_monnam } from './uhitm.js';
 import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
+import { pickup_after_move } from './cmd.js';
 
 // C ref: cmd.c getdir() — read a direction.  Renders "In what direction?",
 // reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel/ESC.
@@ -325,6 +326,16 @@ async function dismount_steed_bychoice() {
     // the hero steps into).
     game.vision_full_recalc = 1;
     vision_recalc(0);
+
+    // C ref: steed.c dismount_steed() -> float_down(0L, W_SADDLE) -> its tail
+    // "if (!Is_airlevel && !Is_waterlevel && !u.uswallow && on_level(...))
+    // pickup(1)": once grounded, the hero's landing square is examined exactly
+    // like the tail of any other move.  Any objects there that autopickup
+    // leaves behind (or, with it off, all of them) are announced via
+    // look_here() -- "Things that are here:" for a pile -- chaining onto the
+    // still-pending dismount pline with a --More-- the same way update_topl()
+    // pages any two same-turn messages that don't fit on one line.
+    await pickup_after_move(u.ux, u.uy);
 }
 
 // C ref: steed.c doride() — the #ride command.  With no current steed, read a

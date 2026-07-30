@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_arc_strt, makemaz_tower1, shuffle } from './sp_lev.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_tower1, shuffle } from './sp_lev.js';
 import { Is_special } from './dungeon.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap, Can_fall_thru } from './trap.js';
@@ -381,6 +381,13 @@ async function makelevel() {
         // "branch" levregion.  A 1-cell region so place_lregion's rn1 loop draws
         // exactly rn2(1) for x and rn2(1) for y (mkmaze.c:396/397).
         quest_place_branch();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Barbarian quest "locate"
+    // level (a desert oasis).  Registers no branch levregion, so unlike
+    // Bar-strt there is no quest_place_branch() finalize step here.
+    if (slev && slev.proto === 'Bar-loca') {
+        await makemaz_bar_loca();
         return;
     }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Archeologist quest "home"

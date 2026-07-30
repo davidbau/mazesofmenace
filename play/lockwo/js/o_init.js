@@ -443,15 +443,17 @@ export function knows_class(oclass) {
     const isKnight = roleMnum === 4;
     const isRanger = roleMnum === 7;
     const isRogue = roleMnum === 8;
-    // is_pole(): polearm weapons (PARTISAN..DWARVISH_MATTOCK on the JS table).
-    const isPole = (ct) => ct >= 59 && ct <= 71;
     // C ref: include/obj.h is_launcher/is_ammo (skill in [P_BOW,P_CROSSBOW] /
     // [-P_CROSSBOW,-P_BOW]) and is_spear (skill == P_SPEAR == 17).
     const sk = (ct) => objects[ct]?.oc_skill ?? 0;
+    // is_pole(): oc_skill P_POLEARMS or P_LANCE. Dwarvish mattock uses
+    // P_PICK_AXE (not pole) despite sitting right before lance on the table.
+    const P_POLEARMS = 16, P_LANCE = 19;
+    const isPole = (ct) => sk(ct) === P_POLEARMS || sk(ct) === P_LANCE;
     const isLauncher = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) >= 20 && sk(ct) <= 22;
     const isAmmo = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) >= -22 && sk(ct) <= -20;
     const isSpear = (ct) => objects[ct]?.oc_class === WEAPON_CLASS && sk(ct) === 17;
-    const CORNUTHAUM = 100, DUNCE_CAP = 101, SMALL_SHIELD = 110;
+    const CORNUTHAUM = 93, DUNCE_CAP = 94, SMALL_SHIELD = 150;
     const P_DAGGER = 1;
     for (let ct = bases[oclass]; ct < bases[oclass + 1]; ct++) {
         const o = objects[ct];

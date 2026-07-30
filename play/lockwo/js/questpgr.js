@@ -153,22 +153,47 @@ const ARC_FIRSTTIME = [
 ];
 
 // C ref: quest.c onquest() — called from goto_level() arrival.  Dispatches to
-// on_start() on the quest start (home) level for a first-time arrival.
+// on_start() on the quest start (home) level for a first-time arrival, or
+// on_locate() on the quest "locate" level.
 export async function onquest() {
     const g = game;
     if (g.u?.uevent?.qcompleted) return;
     if (!In_quest(g.u?.uz)) return;
     // Is_qstart(&u.uz)
     const qs = g.qstart_level;
-    if (!qs || g.u.uz.dnum !== qs.dnum || g.u.uz.dlevel !== qs.dlevel) return;
-    // on_start(): qt_pager("firsttime") once, then set first_start.
-    if (g._quest_first_start) return;
-    g._quest_first_start = true;
+    if (qs && g.u.uz.dnum === qs.dnum && g.u.uz.dlevel === qs.dlevel) {
+        // on_start(): qt_pager("firsttime") once, then set first_start.
+        if (g._quest_first_start) return;
+        g._quest_first_start = true;
+        const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
+        // Only the quest home levels whose Xxx-strt.lua generation is ported.
+        const fc = roles[rolenum]?.filecode;
+        if (fc !== 'Bar' && fc !== 'Arc') return;
+        await com_pager_quest_firsttime(rolenum);
+        return;
+    }
+    // Is_qlocate(&u.uz)
+    const ql = g.qlocate_level;
+    if (ql && g.u.uz.dnum === ql.dnum && g.u.uz.dlevel === ql.dlevel) {
+        await on_locate();
+    }
+}
+
+// C ref: quest.c on_locate() — the quest "locate" level's first-time arrival
+// text ("locate_first"), delivered only when arriving from a shallower level
+// (from_above).  "locate_next" (repeat visits) is not modelled — not
+// exercised by any covered session.
+async function on_locate() {
+    const g = game;
+    if (g._quest_killed_nemesis) return;
+    if (g._quest_first_locate) return;
+    g._quest_first_locate = true;
+    const fromAbove = (g.u.uz0?.dlevel ?? 0) < g.u.uz.dlevel;
+    if (!fromAbove) return;
     const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
-    // Only the quest home levels whose Xxx-strt.lua generation is ported.
-    const fc = roles[rolenum]?.filecode;
-    if (fc !== 'Bar' && fc !== 'Arc') return;
-    await com_pager_quest_firsttime(rolenum);
+    // Only the Barbarian's locate level (Bar-loca.lua) generation is ported.
+    if (roles[rolenum]?.filecode !== 'Bar') return;
+    await com_pager_quest_locate_first();
 }
 
 async function com_pager_quest_firsttime(rolenum) {
@@ -203,6 +228,36 @@ async function com_pager_quest_firsttime(rolenum) {
     // then the NHW_TEXT window is shown (full screen, --More-- at the last row).
     await topl_more();                                      // screen: "...--More--"
     renderWindowScreen(lines, { footer: '--More--', footerRow: 23, footerCol: 0, modal: 'textwin' });
+    await flush_screen(1);
+    g._modal_screen = 'topl';
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+    }
+    delete g._modal_screen;
+    g._pending_message = '';
+}
+
+// dat/quest.lua Bar.locate_first.text (with the %i intermed() substitution).
+const BAR_LOCATE_FIRST = [
+    'The scent of water comes to you in the desert breeze.  You know that',
+    'you have located the Duali Oasis.',
+];
+
+async function com_pager_quest_locate_first() {
+    const g = game;
+    // com_pager_core -> nhl_init() loads quest.lua -> nhlib.lua top-level
+    // shuffle(align): rn2(3), rn2(2).
+    const a = ['law', 'neutral', 'chaos'];
+    for (let i = a.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const t = a[i - 1]; a[i - 1] = a[j - 1]; a[j - 1] = t;
+    }
+    // deliver_by_window -> display_nhwindow(datawin, TRUE): the pending topline
+    // ("You materialize on a different level!") is flushed with --More-- first,
+    // then the NHW_TEXT window is shown (full screen, --More-- at the last row).
+    await topl_more();
+    renderWindowScreen(BAR_LOCATE_FIRST, { footer: '--More--', footerRow: 23, footerCol: 0, modal: 'textwin' });
     await flush_screen(1);
     g._modal_screen = 'topl';
     for (;;) {

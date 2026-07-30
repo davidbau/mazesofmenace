@@ -39,7 +39,7 @@ import { rn1 } from './rng.js';
 import { dopray as pray_dopray, dosacrifice } from './pray.js';
 import { dosit } from './sit.js';
 import { dodip } from './potion.js';
-import { dogenocided } from './insight.js';
+import { dogenocided, do_gamelog, doconduct } from './insight.js';
 import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
@@ -1666,15 +1666,23 @@ function render_overview_menu(lines) {
 // tty_dismiss_nhwindow()'s corner-menu path (docorner) repaints the area the
 // menu covered with the real map/status; flush_screen(1) reproduces that.
 export async function dooverview() {
-    const lines = build_overview_lines();
-    if (!lines.length) return 0;
+    await show_overview_disclosure(0, 0);
+    return 0;
+}
+
+// C ref: end.c disclose() 'o' query -> show_overview((how>=PANICKED)?1:2, how).
+// Same corner-menu rendering as the live command, just with build_overview_lines'
+// `final`/`how` params threaded through so it lists every visited level and
+// (for a real death) appends the "Final resting place for you, ..." lines.
+export async function show_overview_disclosure(final, how) {
+    const lines = build_overview_lines(final, how);
+    if (!lines.length) return;
     render_overview_menu(lines);
     for (;;) {
         const key = await nhgetch();
         if (key === 27 || key === 13 || key === 10 || key === 32) break;
     }
     await flush_screen(1);
-    return 0;
 }
 
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
@@ -1700,10 +1708,21 @@ const HANDLERS = {
     dip: dodip,
     offer: dosacrifice,
     genocided: dogenocided,
+    chronicle: do_gamelog,
+    conduct: doconduct,
     wizgenesis: wiz_genesis,
     overview: dooverview,
     version: doextversion,
+    quit: doquit_extcmd,
 };
+
+// C ref: end.c done2() — '#quit'.  Implemented in end.js (it shares state/
+// helpers with done()/disclose()); dynamic import matches this file's
+// existing pattern for the other end.js-adjacent commands.
+async function doquit_extcmd() {
+    const { doquit } = await import('./end.js');
+    return await doquit();
+}
 
 // C ref: apply.c dorub()/do.c dowipe() return ECMD_* (OK=0/CANCEL=1/TIME=2).
 // The extcmd dispatcher's turn convention is "return 1 -> a turn elapses", so
