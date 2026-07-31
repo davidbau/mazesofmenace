@@ -781,7 +781,16 @@ export function couldsee(x, y) {
 // on the hero).  Applies func(x, y) to every couldsee() cell within the
 // circle of the given range around (scol, srow).
 export function do_clear_area(scol, srow, range, func) {
-    if (scol !== game.u?.ux || srow !== game.u?.uy || range < 1) return;
+    for (const [x, y] of clear_area_cells(scol, srow, range)) func(x, y);
+}
+
+// Same cell set as do_clear_area, returned as a list instead of driving a
+// synchronous callback — for callers (e.g. fountain.js gush()) whose per-cell
+// work is async and must be awaited in order, which a bare callback loop
+// can't guarantee.
+export function clear_area_cells(scol, srow, range) {
+    const cells = [];
+    if (scol !== game.u?.ux || srow !== game.u?.uy || range < 1) return cells;
     const limits = circle_data.slice(circle_start[range]);
     const maxY = Math.min(srow + range, ROWNO - 1);
     const minY = Math.max(srow - range, 0);
@@ -790,8 +799,9 @@ export function do_clear_area(scol, srow, range, func) {
         const minX = Math.max(scol - offset, 1);
         const maxX = Math.min(scol + offset, COLNO - 1);
         for (let x = minX; x <= maxX; x++)
-            if (couldsee(x, y)) func(x, y);
+            if (couldsee(x, y)) cells.push([x, y]);
     }
+    return cells;
 }
 
 export function init_vision_globals() {

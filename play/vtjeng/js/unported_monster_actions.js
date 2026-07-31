@@ -15,16 +15,15 @@ import {
     CONFLICT,
     CORR,
     DOOR,
+    D_CLOSED,
     HEADSTONE,
-    I_SPECIAL,
     INVIS,
-    MMOVE_DONE,
-    MMOVE_MOVED,
     MMOVE_NOTHING,
     MON_FLOOR,
     MON_MIGRATING,
     NEED_WEAPON,
     NORMAL_SPEED,
+    OBJ_MINVENT,
     ROOM,
     STAIRS,
     STRAT_ARRIVE,
@@ -40,6 +39,7 @@ import {
 import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { any_light_source } from './light.js';
+import { m_dowear } from './makemon_create.js';
 import {
     adaptMonsterActionToDochugwSignature,
     movemon_singlemon,
@@ -50,10 +50,18 @@ import {
     can_teleport,
     is_covetous,
     is_hider,
+    nohands,
+    passes_walls,
     perceives,
+    tunnels,
+    verysmall,
 } from './mondata.js';
 import {
+    AT_BREA,
+    AT_GAZE,
     AT_MAGC,
+    AT_SPIT,
+    AT_WEAP,
     PM_ERINYS,
     PM_GELATINOUS_CUBE,
     PM_KILLER_BEE,
@@ -65,16 +73,18 @@ import {
     S_EEL,
 } from './monsters.js';
 import {
+    INERT_DOOR_MASKS,
     dochug,
     dochugw,
     m_avoid_kicked_loc,
     m_avoid_soko_push_loc,
     m_everyturn_effect,
     m_move,
-    select_postmove_object_action,
+    monnear,
 } from './monmove.js';
 import { select_fresh_monster_item_action } from './muse.js';
-import { SADDLE } from './objects.js';
+import { newObject } from './obj.js';
+import { copyObjclassEntry, SADDLE } from './objects.js';
 import {
     inside_region,
     mon_in_region,
@@ -92,16 +102,17 @@ import {
 import {
     canSeeMonster,
     canSpotMonster,
-    collectMonsterNoticeMessage,
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
-import {
-    is_lava,
-    is_pool,
-    t_at,
-} from './trap.js';
+import { is_lava, is_pool } from './trap.js';
 import { ttyPline } from './tty_message.js';
-import { cansee, couldsee } from './vision.js';
+import {
+    cansee,
+    couldsee,
+    makeVisionBuffers,
+    recalc_block_point,
+    vision_recalc,
+} from './vision.js';
 import {
     mon_wield_item,
     select_hwep,
@@ -165,8 +176,6 @@ function assertSimpleScanState(monster, state) {
     // path -- they all describe branches mon.c only takes after the movement
     // debit -- so they are deliberately skipped rather than merely bypassed.
     if (monster.movement < NORMAL_SPEED) return true;
-    if (monster.misc_worn_check & I_SPECIAL)
-        unsupported('monster equipment changes');
     if (is_pool(monster.mx, monster.my, state)
         || is_lava(monster.mx, monster.my, state)) {
         unsupported('monster liquid effects');
@@ -269,6 +278,60 @@ function cloneMonster(monster) {
     };
 }
 
+// Copy every object on this level's floor and in every monster's pack. A
+// monster picking an item up splits a stack, unlinks it from the pile and the
+// level list, and merges it into its own inventory, so without this the dry
+// run would empty the live square and change a live carried stack's quantity.
+// C has no counterpart: the dry run is this port's own device for keeping a
+// refusal atomic, and objects are shared state that device has to isolate,
+// exactly as it already isolates monsters, light sources and timers.
+//
+// The discovery ledger is cloned beside this, in planningState(): naming an
+// object writes objects[].oc_encountered, svd.disco[] and artiexist[].found,
+// which the spread would otherwise share.
+//
+// The hero's belongings and the buried list stay shared, because no action the
+// scan admits writes to one: mpickstuff() and dog_invent()'s carry arm move an
+// object from the floor into a monster's pack and touch nothing else. Extend
+// this walk before admitting an action that steals from the hero or digs.
+//
+// obj.v is C's union: nexthere on the floor, ocontainer inside a container,
+// and ocarry inside a monster's pack, so an inventory object's `v` remaps
+// through the monster map rather than the object map. The matching guard in
+// the walk keeps a carrier out of the object queue; it changes no result on
+// its own, since the remap already discriminates on `where`, and it exists so
+// that no `newObject({ ...monster })` is ever built. The two roots are the
+// level list and each monster's minvent, because obj.js keeps the level list
+// and the coordinate grid in step: place_object() writes both and
+// remove_object() refuses an object missing from either.
+function cloneObjects(state, monsterMap) {
+    const objectMap = new Map();
+    const pending = [];
+    const enqueue = (obj) => {
+        if (obj && !objectMap.has(obj)) pending.push(obj);
+    };
+    enqueue(state.level?.objlist);
+    for (const monster of monsterMap.keys()) enqueue(monster.minvent);
+    while (pending.length) {
+        const original = pending.pop();
+        if (objectMap.has(original)) continue;
+        const copy = newObject({ ...original });
+        if (original.oextra) copy.oextra = { ...original.oextra };
+        objectMap.set(original, copy);
+        enqueue(original.nobj);
+        enqueue(original.cobj);
+        if (original.where !== OBJ_MINVENT) enqueue(original.v);
+    }
+    for (const [original, copy] of objectMap) {
+        copy.nobj = objectMap.get(original.nobj) ?? null;
+        copy.cobj = objectMap.get(original.cobj) ?? null;
+        copy.v = original.where === OBJ_MINVENT
+            ? monsterMap.get(original.v) ?? original.v
+            : objectMap.get(original.v) ?? null;
+    }
+    return objectMap;
+}
+
 function planningState(state) {
     const monsterMap = new Map();
     for (let monster = state.level?.monlist ?? null;
@@ -276,8 +339,22 @@ function planningState(state) {
         monster = monster.nmon) {
         monsterMap.set(monster, cloneMonster(monster));
     }
-    for (const [original, clone] of monsterMap)
+    const objectMap = cloneObjects(state, monsterMap);
+    const clonedObject = (obj) => {
+        if (!obj) return null;
+        const copy = objectMap.get(obj);
+        // Dropping the object instead would hide it from the whole scan.
+        if (!copy)
+            throw new Error('planning clone: floor object outside objlist');
+        return copy;
+    };
+    for (const [original, clone] of monsterMap) {
         clone.nmon = monsterMap.get(original.nmon) ?? null;
+        clone.minvent = objectMap.get(original.minvent) ?? null;
+        // MON_WEP(). A wielded weapon is also in minvent, so the clone's
+        // pointer has to name the copy the pack now holds.
+        clone.mw = objectMap.get(original.mw) ?? null;
+    }
 
     const level = Object.assign(
         Object.create(Object.getPrototypeOf(state.level)),
@@ -288,15 +365,34 @@ function planningState(state) {
                     (monster) => monsterMap.get(monster) ?? null,
                 ),
             ),
+            objects: state.level.objects.map(
+                (column) => column.map(clonedObject),
+            ),
+            objlist: clonedObject(state.level.objlist),
             flags: { ...state.level.flags },
             monlist: monsterMap.get(state.level.monlist) ?? null,
             regions: state.level.regions.map((region) => ({
                 ...region,
                 monsters: [...(region.monsters ?? [])],
             })),
-            // vision.c keeps one cached transparency index. Planning replaces
-            // only monster identities and retains the active geometry which
-            // produced that index, so off-hero do_clear_area() may share it.
+            // trap.c seetrap() sets trap->tseen and then repaints the square,
+            // and its `if (!trap->tseen)` guard makes the repaint happen once.
+            // Sharing the live trap would let the dry run consume that first
+            // time, so the live pass would set nothing and draw nothing. Every
+            // struct trap field the port writes lives on the trap itself or in
+            // one of these four nested records.
+            traps: state.level.traps.map((trap) => ({
+                ...trap,
+                vl: trap.vl ? { ...trap.vl } : trap.vl,
+                launch: trap.launch ? { ...trap.launch } : trap.launch,
+                dst: trap.dst ? { ...trap.dst } : trap.dst,
+                teledest: trap.teledest ? { ...trap.teledest } : trap.teledest,
+            })),
+            // vision.c keeps one cached transparency index, which the planned
+            // state borrows: it describes the planned map throughout the scan,
+            // because admitDoorOpening() is the only thing that changes the
+            // planned map and it rebuilds the index. Off-hero do_clear_area()
+            // may therefore share it.
             _visionTransparencyOwner: state.level,
         },
     );
@@ -329,7 +425,9 @@ function planningState(state) {
         if (!source) return null;
         return {
             ...source,
-            id: monsterMap.get(source.id) ?? source.id,
+            id: monsterMap.get(source.id)
+                ?? objectMap.get(source.id)
+                ?? source.id,
             next: cloneLightList(source.next),
         };
     };
@@ -341,7 +439,9 @@ function planningState(state) {
         if (!source) return null;
         return {
             ...source,
-            arg: monsterMap.get(source.arg) ?? source.arg,
+            arg: monsterMap.get(source.arg)
+                ?? objectMap.get(source.arg)
+                ?? source.arg,
             next: cloneTimerList(source.next),
         };
     };
@@ -350,6 +450,14 @@ function planningState(state) {
         context: structuredClone(state.context),
         disp: structuredClone(state.disp),
         flags: structuredClone(state.flags),
+        // distant_name() raises gd.distantname around a name it must not let
+        // observe_object() record, and lowers it in a finally. The dry run
+        // reaches that raise through dog_invent(), so a shared gd is a live
+        // write. It never showed, because the counter is balanced and gd is
+        // absent from a fresh game -- it exists only once a live distant_name()
+        // has created it, and the leak needs both. The frozen-state case in
+        // scripts/unported-monster-actions.test.mjs seeds gd to reach it.
+        gd: { ...(state.gd ?? {}) },
         gg: { ...state.gg },
         gl: state.gl ? {
             ...state.gl,
@@ -379,6 +487,28 @@ function planningState(state) {
         } : state.svs,
         track: structuredClone(state.track),
         u: hero,
+        // The admitted naming path writes the discovery ledger:
+        // distant_name() reaches xname(), which calls observe_object() and
+        // o_init.c discover_object(), setting objects[otyp].oc_encountered and
+        // svd.disco[]; artifacts.c find_artifact() sets artiexist[].found. The
+        // spread above shares all four by reference, so a dry run mutated live
+        // discovery state and the writes survived even a rejected round. Each
+        // is isolated, not merely re-wrapped. `svb` is the exception: its own
+        // spread is one level, and nothing on the admitted path writes through
+        // it, so it is carried rather than deepened.
+        //
+        // The catalog uses prototype delegation rather than a copy. A
+        // materialized 482-entry copy cost 6.4 ms on every elapsed turn, which
+        // measured as 80-92% of a scored turn's total time; Object.create()
+        // gives the same isolation for free. Reads fall through to the live
+        // entry, a write shadows it on the copy and never reaches the live
+        // one, and the eight non-enumerable aliases keep working because their
+        // accessor bodies read `this[source]`, so the receiver is the copy.
+        objects: state.objects?.map((entry) => Object.create(entry)),
+        svd: state.svd ? { ...state.svd, disco: [...(state.svd.disco ?? [])] }
+            : state.svd,
+        svb: state.svb ? { ...state.svb } : state.svb,
+        artiexist: state.artiexist?.map((entry) => ({ ...entry })),
     };
 }
 
@@ -396,6 +526,55 @@ function resistsTrapEffect() {
     unsupported('monster trap-resistance evaluation');
 }
 
+// C ref: monmove.c postmov()'s `here->doormask == D_CLOSED && can_open` arm
+// (1576-1592), plus the block's own entry test at 1520-1522. can_open repeats
+// mon.c mon_allowflags():2067, so mfndpos() has already refused this square to
+// a monster without it; a wall-walker or a tunneler skips the block instead and
+// leaves the door closed, which is a separate behavior and stays refused.
+function opensClosedDoor(monster, location, doorMask) {
+    const species = monster.data;
+    return location?.typ === DOOR
+        && doorMask === D_CLOSED
+        && !(nohands(species) || verysmall(species))
+        && !passes_walls(species)
+        && !tunnels(species);
+}
+
+// UnblockDoor (monmove.c:1526-1536) writes the doormask and then rebuilds the
+// vision system twice: recalc_block_point() rebuilds the compact transparency
+// index, and vision_recalc(0) rebuilds what the hero sees. Both write state
+// the cloned scan shares with the live game, and the second also paints and
+// ORs seenv into every square that has come into view. This gives the cloned
+// scan what it needs to run both, and runs before the first door it opens.
+//
+// The two rebuilds are isolated differently, because vision.c holds them
+// differently. The COULD_SEE buffers and the level are per-state, so the clone
+// takes its own; the terrain grid is copied whole, since vision_recalc() marks
+// squares all over the map rather than only the door. The transparency index
+// is one set of module buffers with no per-state form, so the clone borrows
+// it: it rebuilds it from the planned map, and preflightSimpleMonsterActions()
+// rebuilds it from the live map before returning. Nothing else reads it in
+// between, and either rebuild derives the whole index from the map it is given,
+// so the live game gets back exactly the index it had.
+function isolatePlannedVision(state) {
+    if (state._visionBuffers) return;
+    state.level.locations = state.level.locations.map(
+        (column) => column.map((cell) => ({ ...cell })),
+    );
+    // Only the spare buffer of the pair is written: vision_recalc() fills it,
+    // then points state.viz_array at it. Until then the clone keeps reading
+    // the live game's current view, which is the value it should see, so this
+    // takes the pair and copies nothing.
+    state._visionBuffers = makeVisionBuffers();
+}
+
+function admitDoorOpening(x, y, env) {
+    const { state } = env;
+    if (!env.planning) return;
+    isolatePlannedVision(state);
+    state._plannedDoorOpening ??= { x, y };
+}
+
 function assertSimpleDestination(monster, x, y, env) {
     const { state } = env;
     const location = state.level.at(x, y);
@@ -408,15 +587,26 @@ function assertSimpleDestination(monster, x, y, env) {
     // teleportation (teleport.c), a shopkeeper (shk.c), or a wizard command.
     // dogmove.c reads stairs only through dog_goal()'s On_stairs(u.ux, u.uy),
     // which asks where the hero stands, not where the pet steps.
+    // A doorway a monster can stand in without acting on it, or a closed one
+    // it opens. INERT_DOOR_MASKS names the first set; js/monmove.js owns it
+    // beside the block that skips them.
+    const inertDoorway = location?.typ === DOOR
+        && INERT_DOOR_MASKS.has(doorMask);
+    const opensDoor = opensClosedDoor(monster, location, doorMask);
     const ordinaryDestination = location
         && (location.typ === ROOM
             || location.typ === CORR
             || location.typ === STAIRS
-            || (location.typ === DOOR && doorMask === 0));
+            || inertDoorway
+            || opensDoor);
     if (!ordinaryDestination)
         unsupported('door or special terrain movement');
-    if (t_at(x, y, state))
-        unsupported('trap activation');
+    // A trap on the destination is no longer refused here. C has no such gate:
+    // monmove.c postmov() calls mintrap() after the move, and only there. That
+    // is where an unported trap type now stops the scan, which also covers a
+    // monster standing still on one -- a case this destination check never
+    // saw. preflightSimpleMonsterActions() runs the whole scan on the clone
+    // before the live pass, so a refusal that late is still atomic.
     for (const region of state.level.regions) {
         if (region.attach_2_m === monster.m_id) continue;
         if (mon_in_region(region, monster)
@@ -424,6 +614,8 @@ function assertSimpleDestination(monster, x, y, env) {
             unsupported('a region transition');
         }
     }
+    // Last, so that a destination another guard rejects prepares nothing.
+    if (opensDoor) admitDoorOpening(x, y, env);
     return true;
 }
 
@@ -437,43 +629,29 @@ function wipeSimpleEngraving(x, y, _count, _magical, env) {
     unsupported('monster engraving wear');
 }
 
-async function postSimpleMove(monster, oldX, oldY, status, env) {
-    const notice = collectMonsterNoticeMessage(monster, env.state);
-    if (notice && !env.planning) {
-        const message = env.message ?? ttyPline;
-        await message(notice, env.state, env);
-    }
-    if (status === MMOVE_MOVED) {
-        assertSimpleDestination(monster, monster.mx, monster.my, env);
-        if (!env.planning) {
-            const redraw = env.redraw ?? newsym;
-            redraw(oldX, oldY);
-            redraw(monster.mx, monster.my);
-        }
-    }
-    if ((status === MMOVE_MOVED || status === MMOVE_DONE)
-        && env.state.level.objects[monster.mx]?.[monster.my]) {
-        const selected = select_postmove_object_action(
-            monster,
-            monster.mx,
-            monster.my,
-            {
-                ...env,
-                touchArtifact: () =>
-                    unsupported('monster artifact item interaction'),
-            },
-        );
-        if (selected)
-            unsupported('ordinary monster item interaction');
-    }
-    return status;
+// UnblockDoor's second rebuild, vision_recalc(0). The cloned scan runs the
+// same function the live scan does, against the buffers and the terrain grid
+// isolatePlannedVision() gave it, and paints nothing: the scan replays the
+// turn against the live display afterwards.
+function planningVisionRecalc(state) {
+    return (control) => vision_recalc(control, { state, redraw: () => {} });
+}
+
+// postmov()'s two vision owners, which reach it through m_move()'s env for a
+// pet as well as for an ordinary monster. recalc_block_point() is the module
+// default in both passes: it derives the transparency index from whichever
+// state it is handed, so the cloned scan gets the index its own map implies.
+function doorVisionOperations(env) {
+    return env.planning
+        ? { visionRecalc: planningVisionRecalc(env.state) }
+        : {};
 }
 
 async function moveSimpleOrdinary(monster, env) {
     return m_move(monster, {
         ...env,
+        ...doorVisionOperations(env),
         mayCrossRegion: assertSimpleDestination,
-        postMonsterMove: postSimpleMove,
         resolveTrappedMonster: () => false,
         resistsTrapEffect,
         unsupported,
@@ -512,13 +690,47 @@ async function moveSimplePet(monster, after, env) {
         eatObject: () => unsupported('pet eating'),
         maxPassiveDamage: () => unsupported('pet combat evaluation'),
         mayCrossRegion: assertSimpleDestination,
+        // dog_invent()'s carry arm prints through pline_xy() and repaints the
+        // square. The planning scan replays the same turn against the live
+        // display afterwards, so it must produce neither.
+        message: env.planning ? async () => {} : ttyPline,
         monsterReflects: () => unsupported('pet combat evaluation'),
         petRangedAttack: rejectPetRangedTarget,
-        pickObject: () => unsupported('pet object pickup'),
+        redraw: env.planning ? () => {} : newsym,
         reportCursedStep: () => unsupported('pet cursed-object feedback'),
         resistsStone: () => unsupported('pet combat evaluation'),
         resistsTrapEffect,
+        wieldPickedItem: () => unsupported('pet weapon selection'),
     });
+}
+
+// C ref: mhitu.c mattacku(). dochug()'s standard-attack gate admits a monster
+// anywhere inside BOLT_LIM, and what it may do there depends on whether it
+// believes it is adjacent. An adjacent attacker reaches the melee arms, which
+// are not ported at all. A monster that only thinks it is near reaches the
+// range2 arms alone: AT_MAGC's castmu(), refused by assertSimpleActionState()
+// before the scan; AT_BREA, AT_SPIT and AT_GAZE, refused here; and AT_WEAP's
+// thrwmu(), which does nothing at all unless select_rwep() finds a missile.
+// mattacku()'s preamble writes nothing and draws nothing on this path: its
+// nomul(0) is behind !ranged, and the steed, swallow and underwater arms need
+// hero states this boundary already excludes.
+function refuseHeroAttack(monster, env) {
+    if (monnear(monster, monster.mux, monster.muy))
+        unsupported('monster attack on the hero');
+    const species = monster.data;
+    if (attacktype(species, AT_BREA)
+        || attacktype(species, AT_SPIT)
+        || attacktype(species, AT_GAZE)) {
+        unsupported('monster ranged attack on the hero');
+    }
+    if (attacktype(species, AT_WEAP)) {
+        const selected = select_rwep(monster, {
+            ...env,
+            touchArtifact: () =>
+                unsupported('monster artifact weapon selection'),
+        });
+        if (selected) unsupported('monster ranged weapon action');
+    }
 }
 
 // Execute one already-preflighted monster action. The same function is used
@@ -534,7 +746,7 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
         // One dochug() now serves both, as in C. m_move() picks the mover.
         dochug: (subject, actionEnv) => dochug(subject, {
                 ...actionEnv,
-                attackHero: () => unsupported('monster attack on the hero'),
+                attackHero: refuseHeroAttack,
                 monFlee: () => unsupported('monster flight'),
                 monsterCanSeeHero: ordinaryMonsterCanSeeHero,
                 moveMonster: moveSimpleOrdinary,
@@ -582,7 +794,6 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 wipeEngraving: wipeSimpleEngraving,
                 finishEating: () => unsupported('pet eating'),
                 movePet: moveSimplePet,
-                postMonsterMove: postSimpleMove,
                 preflight: assertSimpleActionState,
             }),
         stopOccupation: () => unsupported('occupation interruption'),
@@ -629,7 +840,13 @@ async function planSimpleMonsterScan(monster, env) {
                 unsupported('an immobile monster in liquid');
             return false;
         },
-        dowear: () => unsupported('monster equipment changes'),
+        // C ref: mon.c movemon_singlemon():1268-1281. m_dowear() reassesses
+        // the monster's gear; only a monster that would actually put
+        // something on stops the scan.
+        dowear: (subject, creation, subjectEnv) => m_dowear(subject, creation, {
+            ...subjectEnv,
+            wearArmor: () => unsupported('monster equipment changes'),
+        }),
         restrap: () => unsupported('monster hiding'),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         hideUnder: () => unsupported('eel concealment'),
@@ -657,6 +874,37 @@ export async function preflightSimpleMonsterActions(
     const planned = planningState(state);
     const random = clonedRandom(planned);
     planned.u.umovement -= NORMAL_SPEED;
+    let upkeepCount = 0;
+    try {
+        upkeepCount = await planSimpleMonsterTurn(planned, random, advanceRound);
+    } finally {
+        // admitDoorOpening() rebuilt js/vision.js's shared transparency index
+        // from the planned map. Deriving it again from the live map restores
+        // it, whether the plan finished or refused partway through.
+        //
+        // recalc_block_point() is not side-effect-free on the live state:
+        // rebuildVisionPoint() sets vision_full_recalc whenever the change
+        // touches the hero's current vision, which is the normal case for a
+        // door in a lit room. Leaving that set would make the live scan run a
+        // vision_recalc(0) C never performs, so the flag is saved and written
+        // back — the restore has to restore everything it touches, not only
+        // the index it came for.
+        if (planned._plannedDoorOpening) {
+            const { x, y } = planned._plannedDoorOpening;
+            const fullRecalcBefore = state.vision_full_recalc;
+            recalc_block_point(x, y, state);
+            state.vision_full_recalc = fullRecalcBefore;
+        }
+    }
+    return {
+        runsOncePerTurnUpkeep: upkeepCount > 0,
+        upkeepCount,
+    };
+}
+
+// The body of preflightSimpleMonsterActions()'s scan, split out so that its
+// caller can restore the shared vision buffers on every exit.
+async function planSimpleMonsterTurn(planned, random, advanceRound) {
     let somebodyCanMove;
     let upkeepCount = 0;
     do {
@@ -700,8 +948,5 @@ export async function preflightSimpleMonsterActions(
         // round to stop after a single allocation.
         if (await advanceRound(planned, random)) break;
     } while (planned.u.umovement < NORMAL_SPEED);
-    return {
-        runsOncePerTurnUpkeep: upkeepCount > 0,
-        upkeepCount,
-    };
+    return upkeepCount;
 }

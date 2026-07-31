@@ -879,7 +879,7 @@ export async function moveloop_turn() {
             // periodic exercise.  (nh_timeout consumes no RNG for the starter
             // sessions.)  C order: dosounds, do_storms, gethungry, age_spells,
             // exerchk, invault, ..., u_wipe_engr.
-            dosounds();
+            await dosounds();
             gethungry();
             age_spells(); // C ref: spell.c age_spells — decrnknow each turn (no RNG)
             exerchk();

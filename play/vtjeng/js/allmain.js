@@ -39,10 +39,14 @@ import {
 } from './mon.js';
 import {
     dmonsfree,
+    m_dowear,
     makemon,
     UnsupportedMonsterCreationError,
 } from './makemon_create.js';
 import { init_objects } from './o_init.js';
+import { UnsupportedObjectNameError } from './objnam.js';
+import { UnsupportedObjectOperationError } from './obj.js';
+import { UnsupportedMonsterPickupOperationError } from './steal.js';
 import { objectGenerationHooks } from './object_generation.js';
 import { reset_mvitals } from './monsters.js';
 import { depth, init_dungeons } from './dungeon.js';
@@ -609,6 +613,15 @@ const ELAPSED_TURN_PLANNING_REFUSALS = [
     UnsupportedHungerTransitionError,
     UnsupportedMonsterDistressError,
     UnsupportedMonsterCreationError,
+    // Both pickup arms -- dogmove.c dog_invent()'s and mon.c mpickstuff()'s --
+    // call distant_name(), splitobj() and mpickobj() from inside the monster
+    // scan, so these three reach here from a path that used to stop at an
+    // injected refusal of the first class above. Without them a naming, split
+    // or pickup refusal discards the whole segment instead of stopping on its
+    // last matching screen.
+    UnsupportedObjectNameError,
+    UnsupportedObjectOperationError,
+    UnsupportedMonsterPickupOperationError,
 ];
 
 const runElapsedTurnMonsterAction =
@@ -623,7 +636,15 @@ async function moveElapsedTurnMonster(monster, env) {
             'monster bypass cleanup',
         ),
         minLiquid: elapsedTurnMinLiquid,
-        dowear: unavailableElapsedTurnOperation('monster equipment changes'),
+        // C ref: mon.c movemon_singlemon():1268-1281. A monster whose gear
+        // was flagged for reassessment reruns worn.c m_dowear(); only a
+        // monster that would actually put something on stops the turn.
+        dowear: (subject, creation, subjectEnv) => m_dowear(subject, creation, {
+            ...subjectEnv,
+            wearArmor: unavailableElapsedTurnOperation(
+                'monster equipment changes',
+            ),
+        }),
         restrap: unavailableElapsedTurnOperation('monster hiding'),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         hideUnder: unavailableElapsedTurnOperation('eel concealment'),

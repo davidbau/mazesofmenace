@@ -1557,6 +1557,23 @@ export async function update_topl(bp) {
     game._toplines = bp;
 }
 
+// C ref: win/tty/topl.c topl_putsym() — a normal character is never placed at
+// column CO-1 (79): when curx is already there, a newline is inserted first
+// ("1 <= curx < CO; avoid CO").  This is a low-level terminal-cursor quirk
+// independent of how the message text itself wraps onto the grid (that uses
+// wrap_topl's word-wrap instead), so it needs its own simulation to get the
+// physical cursor position right after printing a string that is an exact
+// multiple of the screen width.  redotoplin()/more() always reset curx/cury
+// to (0,0) before printing a fresh topline, so callers start there.
+function topl_cursor_after(str) {
+    let curx = 0, cury = 0;
+    for (let i = 0; i < str.length; i++) {
+        if (curx === CO - 1) { curx = 0; cury++; }
+        curx++;
+    }
+    return [curx, cury];
+}
+
 // C ref: topl.c tty_yn_function / hack.h y_n.  Render a yes/no prompt and read
 // a valid response.  When a top-line message is still pending acknowledgment
 // (needMore), show "--More--" first (capturing that as its own step) before the
@@ -1581,7 +1598,10 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
         game._pending_message = full.trimEnd();
         await flush_screen(1);
         game._modal_screen = 'topl';
-        if (disp?.setCursor) disp.setCursor(Math.min(full.length, CO - 1), 0);
+        if (disp?.setCursor) {
+            const [curx, cury] = topl_cursor_after(full);
+            disp.setCursor(curx, cury);
+        }
         const c = await nhgetch();
         delete game._modal_screen;
         const ch = String.fromCharCode(c);

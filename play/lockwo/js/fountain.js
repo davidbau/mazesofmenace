@@ -7,15 +7,18 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { update_topl, newsym } from './display.js';
+import { update_topl, newsym, m_at } from './display.js';
 import { hliquid } from './dungeon.js';
-import { water_damage } from './trap.js';
-import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at } from './mkobj.js';
+import { water_damage, t_at, delfloortrap } from './trap.js';
+import { find_ac } from './u_init.js';
+import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, BOULDER } from './mkobj.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { newuhs } from './eat.js';
 import { Blind } from './vision.js';
-import { depth } from './hacklib.js';
+import { depth, distmin } from './hacklib.js';
+import { clear_area_cells } from './vision.js';
+import { nexttodoor } from './mkroom.js';
 import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { x_monnam, canspotmon } from './uhitm.js';
 import { monster_detect } from './hack.js';
@@ -23,7 +26,7 @@ import { observe_object } from './o_init.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import {
     ER_NOTHING, ER_DESTROYED, F_LOOTED, F_WARNED,
-    FOUNTAIN, ROOM, A_WIS, A_CON, IS_FOUNTAIN, S_LRING, G_GONE,
+    FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_FOUNTAIN, S_LRING, G_GONE,
 } from './const.js';
 
 // C ref: include/onames.h — long sword otyp (mkobj.js OBJECT_DATA order).
@@ -56,7 +59,11 @@ export async function dipfountain(obj) {
         // wash_hands(): no RNG on the reached levels.
         er = ER_NOTHING;
     } else {
-        er = water_damage(obj, null, true);
+        er = await water_damage(obj, null, true);
+        // C ref: allmain.c moveloop_core() — find_ac() runs once per player
+        // input (not from erode_obj/water_damage itself), so a dipped piece
+        // of worn armor's AC penalty is already visible on this same screen.
+        find_ac();
     }
 
     if (er === ER_DESTROYED || (er !== ER_NOTHING && !rn2(2))) {
@@ -292,8 +299,46 @@ async function dowaterdemon() {
         }
     }
 }
+// C ref: fountain.c dowaternymph() — unless the species is genocided, spawn a
+// water nymph at the hero's square (mirrors dowaterdemon's byyou &&
+// !in_mklev placement: enexto_spawn resolves the nearest free square before
+// any of the new monster's own RNG).  Water nymphs aren't armed, but
+// m_initinv()'s S_NYMPH case still rolls a mirror/potion-of-object-detection
+// chance for every nymph regardless of weapons, so this needs the same
+// full-fidelity makemon() path dowaterdemon() uses (normally scoped to Big
+// Room / shop stocking) to reach that case instead of the conservative
+// generic-species stub.
 async function dowaternymph() {
-    await update_topl('A large bubble rises to the surface and pops.');
+    const u = game.u;
+    const pmidx = name_to_pmidx('water nymph');
+    const gone = (game.mvitals?.[pmidx]?.mvflags ?? 0) & G_GONE;
+    const ptr = (!gone && pmidx >= 0) ? monster_by_pmidx(pmidx) : null;
+    const spot = ptr ? enexto_spawn(u.ux, u.uy, ptr) : null;
+    let mtmp = null;
+    if (spot) {
+        const was_full = game._full_mon_gen;
+        game._full_mon_gen = true;
+        try {
+            mtmp = makemon(ptr, spot.x, spot.y, 0 /* MM_NOMSG */);
+        } finally {
+            game._full_mon_gen = was_full;
+        }
+    }
+    if (mtmp) {
+        placeOnLevel(mtmp, spot.x, spot.y);
+        newsym(spot.x, spot.y);
+        if (!Blind())
+            await update_topl(`You attract ${x_monnam(mtmp, 2 /*ARTICLE_A*/, null, 0, false)}!`);
+        else
+            await update_topl('You hear a seductive voice.');
+        mtmp.msleeping = 0;
+        // mintrap(mtmp) if t_at(nymph square) — no trap on the fountain.
+        return;
+    }
+    if (!Blind())
+        await update_topl('A large bubble rises to the surface and pops.');
+    else
+        await update_topl('You hear a loud pop.');
 }
 async function dowatersnakes() {
     await update_topl('An endless stream of snakes pours forth!');
@@ -305,8 +350,62 @@ async function dofindgem() {
     newsym(game.u.ux, game.u.uy);
     exercise(A_WIS, true);
 }
-async function dogushforth(_drinking) {
-    await update_topl('Water sprays all over you.');
+// C ref: mkobj.c sobj_at(BOULDER, x, y) as used by gush() — is there a boulder
+// on the floor at (x, y)?
+function floor_boulder_at(x, y) {
+    for (const o of game.level?.objects || [])
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === BOULDER)
+            return true;
+    return false;
+}
+
+// C ref: engrave.c del_engr_at(x, y) — remove any engraving at (x, y) (no RNG,
+// no message).
+function del_engr_at(x, y) {
+    if (!game.level?.engravings) return;
+    game.level.engravings = game.level.engravings.filter(
+        (ep) => ep.engr_x !== x || ep.engr_y !== y);
+}
+
+// C ref: fountain.c gush(x, y, poolcnt) — do_clear_area's per-cell callback
+// for dogushforth().  Turns a floor-of-a-ROOM square within range into a
+// POOL, unless a checkerboard/distance/terrain/boulder/door-adjacency guard
+// skips it.  poolcnt is a {n} box so the caller can see how many succeeded.
+async function gush(x, y, poolcnt) {
+    const u = game.u;
+    if (((x + y) % 2) || (x === u.ux && y === u.uy)
+        || rn2(1 + distmin(u.ux, u.uy, x, y))
+        || game.level?.at(x, y)?.typ !== ROOM
+        || floor_boulder_at(x, y) || nexttodoor(x, y))
+        return;
+
+    const ttmp = t_at(x, y);
+    if (ttmp && !delfloortrap(ttmp)) return;
+
+    if (poolcnt.n++ === 0)
+        await update_topl('Water gushes forth from the overflowing fountain!');
+
+    const loc = game.level?.at(x, y);
+    if (loc) { loc.typ = POOL; loc.flags = 0; }
+    del_engr_at(x, y);
+    const here = (game.level?.objects || []).filter(
+        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    for (const obj of here) await water_damage(obj, null, false);
+
+    // minliquid(mtmp) (monster drowning in the new pool) isn't modeled: no
+    // covered session has a monster occupying a gush-flooded square.
+    if (!m_at(x, y)) newsym(x, y);
+}
+
+async function dogushforth(drinking) {
+    const u = game.u;
+    const poolcnt = { n: 0 };
+    for (const [x, y] of clear_area_cells(u.ux, u.uy, 7))
+        await gush(x, y, poolcnt);
+    if (!poolcnt.n) {
+        if (drinking) await update_topl('Your thirst is quenched.');
+        else await update_topl('Water sprays all over you.');
+    }
 }
 
 // C ref: fountain.c dryup(x, y, isyou) — a fountain has a 1-in-3 chance of

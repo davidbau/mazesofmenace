@@ -9,7 +9,7 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, update_topl, y_n } from './display.js';
 import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_DOWNPLAY, body_part,
-         hands_obj, obj_doname, xname } from './invent.js';
+         hands_obj, short_oname, xname } from './invent.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { POTION_CLASS, POT_OIL, POT_CONFUSION, POT_PARALYSIS, POT_HEALING,
@@ -496,6 +496,12 @@ function dip_can_reach_floor() {
     return true;
 }
 
+// C ref: potion.c dodip() — the QBUFSZ(128)-based length budget passed to
+// short_oname() when building obuf: 128 minus sizeof the surrounding "What do
+// you want to dip into? [...]" prompt text (the widest possible response set).
+const DIP_OBUF_LENLIMIT = 128
+    - ('What do you want to dip into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] '.length + 1);
+
 // C ref: potion.c dodip — the #dip command.  Prompt for an object; if standing
 // on a fountain/sink/pool (and 'm' wasn't used) offer to dip into it, else ask
 // which potion to dip the object into.
@@ -516,7 +522,7 @@ export async function dodip() {
     const is_hands = (obj === hands_obj);
     const verbose = game.flags?.verbose !== false;
     const shortestname = (is_hands || (obj.quan || 1) > 1) ? 'them' : 'it';
-    const obuf = is_hands ? `your ${body_part(0 /* HAND */)}s` : obj_doname(obj);
+    const obuf = is_hands ? `your ${body_part(0 /* HAND */)}s` : short_oname(obj, DIP_OBUF_LENLIMIT);
     const named = verbose ? obuf : shortestname;
 
     if (!menu_requested) {

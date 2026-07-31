@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
 import { newsym, pline, m_at, update_topl } from './display.js';
-import { body_part, near_capacity, update_inventory, delobj } from './invent.js';
+import { body_part, near_capacity, update_inventory, delobj, xname } from './invent.js';
 import { exercise } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
@@ -14,11 +14,12 @@ import {
     TT_BEARTRAP, A_DEX, A_MAX, FOOT, LEG, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
-    EF_PAY, EF_DESTROY,
+    EF_PAY, EF_DESTROY, EF_NONE,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
+    LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER,
@@ -45,6 +46,25 @@ function deltrap(trap) {
     if (!list) return;
     const i = list.indexOf(trap);
     if (i >= 0) list.splice(i, 1);
+}
+
+// C ref: trap.c delfloortrap(ttmp) — destroy a trap that emanates from the
+// floor (used by gush() to clear a trap before flooding its square).  The
+// u_at() branch is unreachable from gush's only caller (it already skips the
+// hero's own square), so only the monster-occupant bookkeeping applies here.
+export function delfloortrap(ttmp) {
+    if (!ttmp) return false;
+    const removable = ttmp.ttyp === SQKY_BOARD || ttmp.ttyp === BEAR_TRAP
+        || ttmp.ttyp === LANDMINE || ttmp.ttyp === FIRE_TRAP
+        || is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp)
+        || ttmp.ttyp === TELEP_TRAP || ttmp.ttyp === LEVEL_TELEP
+        || ttmp.ttyp === WEB || ttmp.ttyp === MAGIC_TRAP
+        || ttmp.ttyp === ANTI_MAGIC;
+    if (!removable) return false;
+    const mtmp = m_at(ttmp.tx, ttmp.ty);
+    if (mtmp) mtmp.mtrapped = 0;
+    deltrap(ttmp);
+    return true;
 }
 
 // C ref: display.c seetrap()/feeltrap() — mark a trap as seen and redraw it.
@@ -310,32 +330,6 @@ function erosion_matters(obj) {
     return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS;
 }
 
-// C ref: trap.c erode_obj(otmp, ostr, type, ef_flags).  Faithful port of the
-// rust path (type == ERODE_RUST) used by water_damage().  Only the RNG-bearing
-// branch (blessed && !rnl(4)) and the early non-vulnerable returns matter for
-// PRNG parity; the cosmetic messages are emitted via pline() like the rest of
-// the engine.  Returns one of the ER_* codes.
-function erode_obj_rust(otmp, ostr) {
-    if (!otmp) return ER_NOTHING;
-    const vulnerable = is_rustprone(otmp);
-    const erosion = otmp.oeroded || 0;
-
-    if (!erosion_matters(otmp)) {
-        return ER_NOTHING;
-    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
-        return ER_NOTHING;
-    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
-        // C: blessed objects get a luck-modulated saving roll (rnl(4)); the
-        // rnl() call must fire to stay in sync with C.
-        if (otmp.oerodeproof) otmp.rknown = true;
-        return ER_NOTHING;
-    } else if (erosion < MAX_ERODE) {
-        otmp.oeroded = erosion + 1;
-        return ER_DAMAGED;
-    }
-    return ER_NOTHING;
-}
-
 // C ref: apply.c splash_lit() — a lit candle/lamp is at risk of being put out
 // by a splash of water.  None of the owned starter sessions step on a rust
 // trap while carrying a lit light source, so the RNG-bearing extinguish path
@@ -349,9 +343,13 @@ function splash_lit(_obj) {
 // branches reachable from the rust trap and from dipping into a fountain/pool.
 // `force` (TRUE from the rust trap and fountain dips) skips the luck-based
 // ER_NOTHING saving throw.  Returns an ER_* code.
-export function water_damage(obj, ostr, force) {
+export async function water_damage(obj, ostr, force) {
     if (!obj) return ER_NOTHING;
     if (splash_lit(obj)) return ER_DAMAGED;
+    // C: `if (!ostr) ostr = cxname(obj);` — callers that don't already have a
+    // fixed body-slot word (rust trap) leave ostr null and rely on this default
+    // (the CORPSE special case in cxname() isn't reachable via water_damage).
+    if (!ostr) ostr = xname(obj);
 
     // Greased items: a coin-flip washes the grease off.  (rn2(2) must fire.)
     if (obj.greased) {
@@ -392,7 +390,7 @@ export function water_damage(obj, ostr, force) {
         }
         return ER_NOTHING; // undiluted water: no effect
     default:
-        return erode_obj_rust(obj, ostr);
+        return await erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
     }
 }
 
@@ -555,26 +553,26 @@ function trap_nomul() {
 // variant.  Rolls rn2(5) to pick which body location the gush of water hits,
 // then water_damage()s the relevant gear.  case 3 (the "default") splashes the
 // hero generally and rusts cloak/suit/shirt.
-function trapeffect_rust_trap(trap, _trflags) {
+async function trapeffect_rust_trap(trap, _trflags) {
     const u = game.u;
     seetrap(trap);
 
     switch (rn2(5)) {
     case 0:
         pline('A gush of water hits you on the head!');
-        water_damage(game.uarmh, 'helm', true);
+        await water_damage(game.uarmh, 'helm', true);
         break;
     case 1:
         pline('A gush of water hits your left arm!');
-        if (water_damage(game.uarms, 'shield', true) !== ER_NOTHING) break;
+        if (await water_damage(game.uarms, 'shield', true) !== ER_NOTHING) break;
         if (u?.twoweap || (game.uwep && false /* bimanual unmodeled */))
-            water_damage(u?.twoweap ? game.uswapwep : game.uwep, null, true);
-        water_damage(game.uarmg, 'gloves', true);
+            await water_damage(u?.twoweap ? game.uswapwep : game.uwep, null, true);
+        await water_damage(game.uarmg, 'gloves', true);
         break;
     case 2:
         pline('A gush of water hits your right arm!');
-        water_damage(game.uwep, null, true);
-        water_damage(game.uarmg, 'gloves', true);
+        await water_damage(game.uwep, null, true);
+        await water_damage(game.uarmg, 'gloves', true);
         break;
     default:
         pline('A gush of water hits you!');
@@ -586,11 +584,11 @@ function trapeffect_rust_trap(trap, _trflags) {
                 splash_lit(otmp);
         }
         if (game.uarmc)
-            water_damage(game.uarmc, 'cloak', true);
+            await water_damage(game.uarmc, 'cloak', true);
         else if (game.uarm)
-            water_damage(game.uarm, 'suit', true);
+            await water_damage(game.uarm, 'suit', true);
         else if (game.uarmu)
-            water_damage(game.uarmu, 'shirt', true);
+            await water_damage(game.uarmu, 'shirt', true);
         break;
     }
 }
@@ -877,7 +875,7 @@ async function trapeffect_magic_trap(trap, _trflags) {
 async function trapeffect_selector(trap, trflags) {
     switch (trap.ttyp) {
     case RUST_TRAP:
-        trapeffect_rust_trap(trap, trflags);
+        await trapeffect_rust_trap(trap, trflags);
         break;
     case BEAR_TRAP:
         await trapeffect_bear_trap(trap, trflags);

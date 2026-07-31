@@ -38,7 +38,7 @@ const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
 
 const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 
-const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 100;
+const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
 
 // Food object types referenced by dogfood() (mkobj.js OBJECT_DATA otyp order).
 const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
@@ -146,7 +146,7 @@ export const PET_REAL_VISION = true;
 // C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
 // kitten(34)/little dog(16): cwt=150, MZ_SMALL, not strong ->
 //   (1000*150)/1450 = 103, then /2 (not strong) = 51.
-// pony(100): cwt=1300, MZ_MEDIUM, M2_STRONG, cwt<=WT_HUMAN -> MAX_CARR_CAP=1000,
+// pony(102): cwt=1300, MZ_MEDIUM, M2_STRONG, cwt<=WT_HUMAN -> MAX_CARR_CAP=1000,
 //   no halving (strong) = 1000.
 // All three starting pets are M1_NOHANDS and are not dragons / engulfers.
 const PET_MAXLOAD = { [PM_LITTLE_DOG]: 51, [PM_KITTEN]: 51, [PM_PONY]: 1000 };
@@ -776,6 +776,16 @@ function objWeight(obj) {
     return Math.max(1, obj.owt ?? 1);
 }
 
+// C ref: mon.c curr_mon_load(mtmp) — sum of minvent weights, excluding a
+// BOULDER unless the monster throws_rocks (none of the starting pets do).
+function curr_mon_load(mtmp) {
+    let load = 0;
+    for (const obj of mtmp.minvent || []) {
+        if (obj.otyp !== BOULDER || cri_throws_rocks(mtmp.data)) load += objWeight(obj);
+    }
+    return load;
+}
+
 // C ref: mon.c can_carry(mtmp, otmp).  Returns 0 (cannot) or a positive
 // quantity.  The dog_goal APPORT branch only cares whether the result is > 0,
 // so we faithfully reproduce the conditions that yield 0 for the starting pet:
@@ -783,16 +793,15 @@ function objWeight(obj) {
 //   - notake / unsafe-to-touch: ordinary objects are fine -> not 0 here.
 //   - M1_NOHANDS pets (all three starting pets) with a stack quan > 1 and no
 //     engulf/dragon "glomper" return 1 BEFORE the load check (mon.c:2026).
-//   - single items: 0 iff curr_mon_load + owt > max_mon_load.  A freshly
-//     created starting pet carries nothing, so curr_mon_load == 0.
+//   - single items: 0 iff curr_mon_load + owt > max_mon_load.
 export function can_carry(mtmp, obj) {
     const pmidx = mtmp.data?.pmidx;
     const maxload = PET_MAXLOAD[pmidx] ?? 51;
     const iquan = obj.quan || 1;
     // All starting pets are NOHANDS and not glompers -> early return for stacks.
     if (iquan > 1) return 1;
-    // single object: load capacity check (curr load is 0 for the start pet).
-    if (objWeight(obj) > maxload) return 0;
+    // single object: load capacity check against what the pet already carries.
+    if (curr_mon_load(mtmp) + objWeight(obj) > maxload) return 0;
     return iquan;
 }
 

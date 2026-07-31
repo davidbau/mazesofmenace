@@ -238,7 +238,7 @@ function is_human_were(ptr) { return is_were_flag(ptr) && is_human_flag(ptr); }
 // C ref: youprop.h Protection_from_shape_changers — extrinsic only (the ring).
 // Read from the same uprops bag the rest of the port uses; no covered session
 // wears the ring, so this is False throughout, but the guard is C's.
-function Protection_from_shape_changers() {
+export function Protection_from_shape_changers() {
     return !!game.u?.uprops?.Protection_from_shape_changers;
 }
 

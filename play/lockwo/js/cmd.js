@@ -1454,12 +1454,73 @@ export async function pick_lock(pick) {
     return PICKLOCK_DID_SOMETHING;
 }
 
+// C ref: hack.c u_maybe_impaired() — a Stunned hero is always impaired; a
+// merely Confused one is impaired only 1-in-5 of the time.  Short-circuit
+// order matters: Stunned skips the rn2(5) draw entirely (matches C's
+// `Stunned || (Confusion && !rn2(5))`).
+function u_maybe_impaired() {
+    const u = game.u;
+    const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+    if (stunned) return true;
+    const confused = (u.uprops?.Confusion || 0) > 0;
+    return confused && !rn2(5);
+}
+
+// C ref: decl.c dirs_ord[]/xdir[]/ydir[] — cardinals-first direction order and
+// the compass-point deltas, DIR_W..DIR_SW indexed 0..7.
+const DIRS_ORD = [0, 2, 4, 6, 1, 3, 5, 7]; // W, N, E, S, NW, NE, SE, SW
+const XDIR = [-1, -1, 0, 1, 1, 1, 0, -1];
+const YDIR = [0, -1, -1, -1, 0, 1, 1, 1];
+const PM_GRID_BUG = 116;
+
+// C ref: cmd.c confdir(force_impairment) — if impaired (or forced), pick a
+// random direction and overwrite u.dx/u.dy.  A grid-bug hero is NODIAG and
+// only draws from the 4 cardinal entries of dirs_ord.
+function confdir(forceImpairment) {
+    const u = game.u;
+    if (!(forceImpairment || u_maybe_impaired())) return;
+    const kmax = (u.umonnum === PM_GRID_BUG) ? 4 : 8;
+    const k = DIRS_ORD[rn2(kmax)];
+    u.dx = XDIR[k];
+    u.dy = YDIR[k];
+}
+
+// C ref: hack.c bad_rock(mdat,x,y) — reduced to the plain-human-hero case (no
+// Sokoban boulder-push, no tunneling/wall-passing): blocked iff the square is
+// obstructed terrain (rock/wall/tree/iron bars).
+function bad_rock(x, y) {
+    const loc = game.level?.at(x, y);
+    return IS_OBSTRUCTED(loc ? loc.typ : 0);
+}
+
+// C ref: hack.c impaired_movement(&x, &y) — while impaired, repeatedly pick a
+// random direction (confdir(TRUE)) until it lands on a valid, non-rock square,
+// giving up (and returning "can't move") after 50 tries.  Returns the
+// (possibly redirected) destination, or null if domove_core should bail out.
+function impaired_movement(x, y) {
+    const u = game.u;
+    if (!u_maybe_impaired()) return { x, y };
+    let tries = 0;
+    let nx = x, ny = y;
+    do {
+        if (tries++ > 50) return null;
+        confdir(true);
+        nx = u.ux + u.dx;
+        ny = u.uy + u.dy;
+    } while (!isok(nx, ny) || bad_rock(nx, ny));
+    return { x: nx, y: ny };
+}
+
 // C ref: hack.c domove / domove_core — execute a movement, including the
 // bump-into-a-monster path (attack a hostile, or swap places with a pet).
 export async function domove(dx, dy) {
     const u = game.u;
-    const newx = u.ux + dx;
-    const newy = u.uy + dy;
+    // C ref: hack.c rhack() sets u.dx/u.dy from the pressed direction key
+    // BEFORE calling domove(); domove_core() then reads u.ux+u.dx/u.uy+u.dy
+    // as its starting point.  Our domove(dx,dy) receives that direction as
+    // parameters, so this assignment is the equivalent point.
+    u.dx = dx;
+    u.dy = dy;
     // C ref: hack.c domove_core() — u.umoved is reset FALSE at the top of a
     // hero command and set TRUE only when the hero's position changes
     // (hack.c:2968).  u_calc_moveamt() reads it to decide whether a riding
@@ -1467,10 +1528,12 @@ export async function domove(dx, dy) {
     const _umoved_ux0 = u.ux, _umoved_uy0 = u.uy;
     u.umoved = false;
 
-    // C ref: domove_core sets u.dx/u.dy from the chosen direction; do_attack()
-    // and the swap logic read them.
-    u.dx = dx;
-    u.dy = dy;
+    // C ref: hack.c domove_core() — `x = u.ux + u.dx; y = u.uy + u.dy; if
+    // (impaired_movement(&x, &y)) return;`.  The u.uswallow branch (u.dx=dy=0,
+    // move onto u.ustuck) isn't reached by these sessions (no engulfers).
+    const redirected = impaired_movement(u.ux + dx, u.uy + dy);
+    if (!redirected) return; // 50 tries found no valid square; turn wasted
+    const newx = redirected.x, newy = redirected.y;
 
     const mtmp = m_at(newx, newy);
 
@@ -1640,7 +1703,7 @@ export async function domove(dx, dy) {
     // C's closed_door-first ordering), so only open/doorless-with-frame doors
     // reach here.  This runs before the generic blocksMove() floor/wall test
     // because the door square itself is otherwise walkable floor.
-    if (blocksDiagonalDoor(u.ux, u.uy, newx, newy, dx, dy)) {
+    if (blocksDiagonalDoor(u.ux, u.uy, newx, newy, u.dx, u.dy)) {
         game.context.move = 0;
         return;
     }
@@ -1654,7 +1717,7 @@ export async function domove(dx, dy) {
     {
         const bobj = boulder_at(newx, newy);
         if (bobj) {
-            const pushed = await moverock(bobj, newx, newy, dx, dy);
+            const pushed = await moverock(bobj, newx, newy, u.dx, u.dy);
             if (pushed < 0) {
                 // Boulder couldn't be pushed: hero stays put, no turn elapses.
                 game.context.move = 0;

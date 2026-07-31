@@ -11,17 +11,19 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee } from './vision.js';
-import { m_at, newsym } from './display.js';
+import { m_at, newsym, map_invisible } from './display.js';
 import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
-         CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE } from './const.js';
+         CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
+         engulfing_u } from './const.js';
 import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
-import { DEADMONSTER } from './mon.js';
-import { mkcorpstat, mkobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS } from './mkobj.js';
+import { DEADMONSTER, Protection_from_shape_changers } from './mon.js';
+import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
+         objects, COIN_CLASS, STRANGE_OBJECT } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
-import { is_weptool, objectBaseName } from './invent.js';
+import { is_weptool, objectBaseName, simple_typename, is_plural, otense } from './invent.js';
 import { livelog_printf, LL_CONDUCT } from './livelog.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
@@ -159,6 +161,255 @@ function overexertion() {
     return false; // gm.multi >= 0 (hero didn't faint)
 }
 
+// ── attack_checks: pre-swing special cases (mimic/hidden-monster reveal) ──
+// C ref: display.c canseemon(mon) — visible on an in-sight, non-invisible
+// square.  Same shape as the copies in dogmove.js/mon.js/muse.js.
+function canseemon(mtmp) {
+    if (!mtmp) return false;
+    if (game.u?.uswallow) return true;
+    if (mtmp.minvis && !game.u?.see_invis) return false;
+    return !!cansee(mtmp.mx, mtmp.my);
+}
+
+// C ref: display.c sensemon(mon) — telepathy / detect-monster sensing.  No
+// covered session carries telepathy or a detect-monster effect, so the hero
+// never senses a monster magically.  Same stub as mon.js's copy.
+function sensemon(_mtmp) { return false; }
+
+// C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  Same pmidx set
+// as monmove.js's hides_under_pm (cave spider, centipede, scorpion, garter
+// snake, snake, water moccasin, pit viper, cobra); duplicated locally rather
+// than imported to avoid a uhitm.js<->monmove.js import cycle (monmove.js
+// already imports several names from this file).
+const M1_CONCEAL_PMIDX = new Set([94, 95, 97, 214, 215, 216, 218, 219]);
+function hides_under_pm(ptr) {
+    return ptr != null && M1_CONCEAL_PMIDX.has(ptr.pmidx);
+}
+const S_EEL_MCLS = 57;   // monsym.h S_EEL
+const S_MIMIC_MCLS = 13; // monsym.h S_MIMIC
+
+// C ref: rm.h glyph_is_invisible(glyph) — a square remembered as holding a
+// sensed-but-unseen monster.  display.js tracks this per-square as `invisMon`
+// (see game.js's rm-cell shape / map_invisible()).
+function glyph_is_invisible(x, y) {
+    return !!game.level?.at(x, y)?.invisMon;
+}
+
+// C ref: display.c mon_warning()/glyph_is_warning() — the "Warning" monster-
+// detection intrinsic (via class ring or high-level Cleric prayer reward)
+// isn't modeled anywhere in this port yet, so no square is ever a warning
+// glyph.
+function glyph_is_warning() { return false; }
+
+// C ref: makemon.c FURNSYMS[] explanation text for the 6 furniture
+// appearances set_mimic_sym() can assign a mimic (up/down staircase, altar,
+// grave, throne, sink).  Same table as hack.js's FURNITURE_EXPLANATION
+// (duplicated locally: hack.js imports from this file, so the reverse import
+// would cycle).
+const FURNITURE_EXPLANATION = {
+    25: 'staircase up',
+    26: 'staircase down',
+    33: 'altar',
+    34: 'grave',
+    35: 'opulent throne',
+    36: 'sink',
+};
+
+// C ref: mon.c seemimic(mtmp) — a discovered mimic drops its object/furniture
+// appearance and is redrawn as its true form.
+function seemimicLocal(mtmp) {
+    mtmp.m_ap_type = 0;
+    mtmp.mappearance = 0;
+    newsym(mtmp.mx, mtmp.my);
+}
+
+// C ref: uhitm.c that_is_a_mimic()'s "what" naming: a_monnam(mtmp), except a
+// disguised mimic caught while asleep or frozen is named with a "sleeping"
+// adjective instead (C's own comment flags this as misclassifying a
+// paralyzed mimic as sleeping — reproduced as-is for fidelity).
+function mimic_reveal_what(mtmp) {
+    if ((mtmp.msleeping || mtmp.mfrozen) && mtmp.data?.mcls === S_MIMIC_MCLS)
+        return an('sleeping ' + (mtmp.data?.name || 'monster'));
+    return x_monnam(mtmp, /*ARTICLE_A*/ 2, null, 0, false);
+}
+
+// C ref: uhitm.c that_is_a_mimic(mtmp, MIM_REVEAL) — the "That <disguise> is
+// really/actually a <mimic>!" reveal line.  Reduced to the M_AP_OBJECT/
+// M_AP_FURNITURE cases this port's mimics ever carry (set_mimic_sym never
+// assigns M_AP_MONSTER); the Blind branch falls back to C's own generic
+// "Wait!  That's a monster!" (Blind_telepat is never true — no telepathy is
+// modeled, matching sensemon()'s stub above).
+// C ref: pager.c object_from_map(glyph, x, y, &obj_p) — reduced to the
+// M_AP_OBJECT-mimic case that_is_a_mimic() needs.  If a REAL floor object of
+// the disguise's exact type already sits on the mimic's square, C names that
+// (no RNG).  Otherwise it builds a throwaway object via mksobj(glyphotyp,
+// FALSE, FALSE) purely to name/pluralize the disguise — critically, mksobj
+// ALWAYS assigns o_id via next_ident(), which rolls rnd(2), regardless of the
+// FALSE init arg.  This roll is NOT optional: skipping it desyncs every RNG
+// draw for the rest of the game (the bug a previous, reverted attempt at this
+// fix hit).  The temporary object is never placed on the floor or added to
+// any list, matching C's dealloc_obj() cleanup (left to the GC here).
+function object_from_map_lite(mtmp) {
+    const otyp = mtmp.mappearance;
+    const real = (game.level?.objects || []).find(
+        (o) => o.ox === mtmp.mx && o.oy === mtmp.my && o.otyp === otyp);
+    if (real) return real;
+    const otmp = mksobj(otyp, false, false);
+    // C ref: pager.c object_from_map() — "to force pluralization" for coins.
+    if (otmp.oclass === COIN_CLASS) otmp.quan = 2;
+    return otmp;
+}
+
+function that_is_a_mimic_message(mtmp) {
+    if (Blind()) return "Wait!  That's a monster!";
+
+    let fmtbuf;
+    if (mtmp.m_ap_type === 'furniture') {
+        const furn = FURNITURE_EXPLANATION[mtmp.mappearance] || 'thing';
+        fmtbuf = `That ${furn} actually is %s!`;
+    } else if (mtmp.m_ap_type === 'obj') {
+        const otyp = mtmp.mappearance;
+        const otmp = object_from_map_lite(mtmp);
+        const otmp_name = (otyp && otyp !== STRANGE_OBJECT) ? simple_typename(otyp) : 'strange object';
+        const plural = is_plural(otmp);
+        const verb = otense(otmp, 'are');
+        fmtbuf = `${plural ? 'Those' : 'That'} ${otmp_name} ${verb} %s!`;
+    } else {
+        fmtbuf = "Wait!  That's %s!"; // not reached by this port's data model
+    }
+    return fmtbuf.replace('%s', mimic_reveal_what(mtmp));
+}
+
+// C ref: mon.c wakeup(mtmp, via_attack) — reduced to the pieces attack_checks
+// needs: the "<Mon> wakes up!"/"." message (gated on canseemon, using the
+// PRE-reset msleeping value) and un-mimicking (mimics/hiders always drop
+// their disguise on wakeup here; the M_AP_MONSTER "keep disguise" exception
+// never applies since this port's mimics never carry that appearance type).
+// The via_attack aftermath (growl/setmangry/ghod_hitsu/hot_pursuit) isn't
+// modeled — no covered session reaches a hostile-turn/temple/shop reaction
+// from this path yet.
+async function wakeupAttack(mtmp, viaAttack) {
+    const wasSleeping = !!mtmp.msleeping;
+    if (wasSleeping && canseemon(mtmp)) {
+        const { pline } = await import('./display.js');
+        await pline(`${Monnam(mtmp)} wakes up${viaAttack ? '!' : '.'}`);
+    }
+    mtmp.msleeping = 0;
+    if (mtmp.m_ap_type) seemimicLocal(mtmp);
+}
+
+// C ref: uhitm.c stumble_onto_mimic(mtmp) — the hero has bumped into (or
+// force-attacked) a disguised mimic for the first time: reveal it (message +
+// seemimic), then silently wake it (via_attack=FALSE: the "wakes up" framing
+// belongs to a fresh attack, not this reveal).  This whole call consumes the
+// hero's turn with NO swing — do_attack/attack_checks returns TRUE so the
+// caller skips hitum() entirely this turn.
+async function stumble_onto_mimic(mtmp) {
+    const { pline } = await import('./display.js');
+    const msg = that_is_a_mimic_message(mtmp);
+    seemimicLocal(mtmp);
+    await pline(msg);
+    // dmgtype(AD_STCK) + set_ustuck (a large/giant mimic "grabs" the hero on
+    // reveal): not modeled — no large/giant mimic reaches this path in the
+    // covered corpus (their AD_STCK claw attack is otherwise ported in
+    // hmon()'s adtyp table for monster-vs-monster fights, not this branch).
+    await wakeupAttack(mtmp, false);
+    // wakeup() -> if hero is blind, the monster still won't display; keep the
+    // invisible-monster marker up for a blind hero (uhitm.c:6294-6296).
+    if (!canspotmon(mtmp) && !glyph_is_invisible(mtmp.mx, mtmp.my))
+        map_invisible(mtmp.mx, mtmp.my);
+}
+
+// C ref: uhitm.c attack_checks(mtmp, wep) — pre-swing special cases: engulf,
+// forcefight, hidden/invisible-monster reveal, mimic reveal, undetected-hider
+// reveal, and (peaceful "Really attack?" confirm — needs an interactive
+// prompt the recorded input streams can't drive, not modeled).  Returns TRUE
+// when the "attack" is fully resolved here (do_attack must return
+// immediately, no swing this turn); FALSE means fall through to hitum().
+async function attack_checks(mtmp) {
+    // uhitm.c:216 — clear the monster's "waiting for you" AI flag now that
+    // you're adjacent enough to attack it (STRAT_WAITMASK = 0x00ff0000).
+    if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x00ff0000;
+
+    if (engulfing_u(mtmp)) return false;
+    if (game.context?.forcefight) return false;
+
+    const gx = game.bhitpos.x, gy = game.bhitpos.y;
+    const glyphInvisible = glyph_is_invisible(gx, gy);
+    const glyphWarning = glyph_is_warning();
+
+    // uhitm.c:217-234 — the hero can't spot the target at all (not merely
+    // disguised — an actually hidden/invisible one) and there's no warning/
+    // invisible marker already up: announce it and remember an invisible-
+    // monster marker there.
+    if (!canspotmon(mtmp) && !glyphWarning && !glyphInvisible
+        && !(!Blind() && mtmp.mundetected && hides_under_pm(mtmp.data))) {
+        const { pline } = await import('./display.js');
+        await pline("Wait!  There's something there you can't see!");
+        map_invisible(gx, gy);
+        // dmgtype(AD_STCK)+set_ustuck sticky-hold branch: large/giant-mimic
+        // only, not modeled (see stumble_onto_mimic's note above).
+        await wakeupAttack(mtmp, true);
+        return true;
+    }
+
+    // uhitm.c:243-251 — a disguised mimic (m_ap_type set).  If an "invisible
+    // monster" marker is already up at that square the hero already knew
+    // something was there, so the reveal is silent and the swing proceeds
+    // this same turn; otherwise the reveal (stumble_onto_mimic) consumes the
+    // whole turn and no swing happens.
+    if (mtmp.m_ap_type && !Protection_from_shape_changers() && !sensemon(mtmp)
+        && !glyphWarning) {
+        if (glyphInvisible) {
+            seemimicLocal(mtmp);
+            return false;
+        }
+        await stumble_onto_mimic(mtmp);
+        return true;
+    }
+
+    // uhitm.c:253-277 — an undetected hider (hides-under species or eel) the
+    // hero can't otherwise see: reveal it, then (without telepathy/Detect_
+    // monsters, neither modeled) announce it and consume the turn.
+    if (mtmp.mundetected && !canseemon(mtmp) && !glyphWarning
+        && (hides_under_pm(mtmp.data) || mtmp.data?.mcls === S_EEL_MCLS)) {
+        mtmp.mundetected = 0;
+        mtmp.msleeping = 0;
+        newsym(mtmp.mx, mtmp.my);
+        if (glyphInvisible) {
+            seemimicLocal(mtmp);
+            return false;
+        }
+        const { pline } = await import('./display.js');
+        if (Blind()) {
+            await pline("Wait!  There's a hidden monster there!");
+        } else {
+            const objAtSquare = game.level?.at(mtmp.mx, mtmp.my)?.objects;
+            const obj = Array.isArray(objAtSquare) ? objAtSquare[0] : objAtSquare;
+            if (obj) {
+                await pline(`Wait!  There's something hiding under ${objectBaseName(obj)}!`);
+            } else {
+                await pline("Wait!  There's something there you can't see!");
+            }
+        }
+        return true;
+    }
+
+    // uhitm.c:281-285 — a sensed (telepathy) hider/mimic wakes/un-hides even
+    // without a physical reveal.  sensemon() is always false here, so this
+    // never fires yet (no telepathy modeled).
+    if ((mtmp.mundetected || mtmp.m_ap_type) && sensemon(mtmp)) {
+        mtmp.mundetected = 0;
+        await wakeupAttack(mtmp, true);
+    }
+
+    // uhitm.c:287-302 — flags.confirm "Really attack <peaceful>?" prompt: not
+    // modeled (is_safemon() already screens out ordinary peaceful/tame
+    // targets before hostile_attack() is ever reached).
+
+    return false;
+}
+
 async function hostile_attack(mtmp) {
     const u = game.u;
 
@@ -167,6 +418,8 @@ async function hostile_attack(mtmp) {
     // and no RNG is consumed.  bhitpos is the target square.
     game.context = game.context || {};
     game.bhitpos = { x: u.ux + u.dx, y: u.uy + u.dy };
+
+    if (await attack_checks(mtmp)) return true;
 
     // C ref: uhitm.c:532-534 — check_capacity(...) || overexertion().
     // check_capacity() is RNG-inert for the unencumbered starter hero, but
@@ -249,6 +502,16 @@ function martial_bonus() {
     return m === PM_MONK || m === PM_SAMURAI;
 }
 // C ref: starting bare-handed-combat skill is P_BASIC (2) for the melee roles.
+//
+// NOTE: u_init.c's Skill_A/B/C/H/K/Mon/P/Ran/R/S/T/V/W[] tables actually vary
+// this per role (e.g. Tourist starts P_SKILLED=3, Barbarian/Caveman P_MASTER=5
+// via P_MARTIAL_ARTS) — a per-role table was tried here but, combined with a
+// separate pre-existing bug in this file's barehanded hmon() stagger-roll gate
+// (uhitm.c:1825's `unarmed && dmg>1` condition fires when C's real trace does
+// not, for reasons not yet root-caused), it REGRESSED seed0030 seg1 (matched
+// 1251->1197, first mismatch 174->135) instead of improving it.  Left as the
+// P_BASIC constant pending that separate fix; a future step should investigate
+// hmon()'s stagger gate before reattempting the per-role skill table.
 const P_BASIC = 2;
 function bare_handed_skill() { return P_BASIC; }
 // C ref: weapon.c weapon_hit_bonus(NULL) — bare-handed-combat branch:

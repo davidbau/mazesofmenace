@@ -334,8 +334,11 @@ function yname(obj) { return simple_obj_name(obj); }
 function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
 function simpleonames(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 function distant_name(obj, fn = doname) { return fn(obj); }
-function short_oname(obj) { return simple_obj_name(obj, { quantity: false }); }
-function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }); }
+// C ref: objnam.c doname() appends the worn-status suffix ("(being worn)",
+// "(wielded)", "(on right hand)", ...) unconditionally — it is not limited to
+// the inventory window, so every doname()/obj_doname() caller (dip/wield/drop
+// prompts included) must see it too.
+function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj); }
 function doname_with_price(obj) { return doname(obj); }
 // C ref: invent.c doname() — full floor-object name (with quantity/article) for
 // the "You see here ..." auto-announcement after a step.  Exported for cmd.js.
@@ -343,6 +346,30 @@ export function floor_object_name(obj) { return doname(obj); }
 
 // C ref: invent.c doname()/wield.c wield_tool() — exposed for apply.js #rub.
 export function obj_doname(obj) { return doname(obj); }
+
+// C ref: objnam.c short_oname(obj, func, altfunc, lenlimit) — used to build a
+// getobj/y_n prompt's object phrase within a fixed buffer budget.  When the
+// full doname() is too long, C first shortens an individually-named object's
+// custom name/call-name (oc_uname/ONAME) — not modeled here, as no covered
+// session dips a custom-named object — then, still too long, temporarily
+// hides the BUC/erosion words (bknown/rknown/greased/oeroded/oeroded2, the
+// exact attribute list C zeroes) and retries before falling back to a bare
+// definite-article name.  The temporary field clears are always restored.
+export function short_oname(obj, lenlimit) {
+    if (!obj) return 'nothing';
+    let outbuf = doname(obj);
+    if (outbuf.length <= lenlimit) return outbuf;
+    const saved = {
+        bknown: obj.bknown, rknown: obj.rknown, greased: obj.greased,
+        oeroded: obj.oeroded, oeroded2: obj.oeroded2,
+    };
+    obj.bknown = obj.rknown = obj.greased = 0;
+    obj.oeroded = obj.oeroded2 = 0;
+    outbuf = doname(obj);
+    Object.assign(obj, saved);
+    if (outbuf.length <= lenlimit) return outbuf;
+    return `the ${simpleonames(obj)}`;
+}
 
 // C ref: objnam.c simple_typename(otyp) — the plain type name of an object
 // type, with any user-given call name suppressed and any trailing " (...)"
@@ -1007,8 +1034,8 @@ function fingers_or_gloves(_the) { return game.uarmg ? 'gloves' : 'fingers'; }
 // here) is "not wielding anything".  The starter heroes are always humanoid.
 function empty_handed() { return game.uarmg ? 'empty handed' : 'bare handed'; }
 function is_gloves(obj) { return obj?.otyp === 159 || obj?.otyp === 160; }
-function pair_of(obj) { return is_gloves(obj) || /boots|gloves/.test(objects[obj?.otyp]?.name || ''); }
-function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
+export function pair_of(obj) { return is_gloves(obj) || /boots|gloves/.test(objects[obj?.otyp]?.name || ''); }
+export function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
 // C ref: obj.h is_weptool(o) — a TOOL_CLASS object with a real weapon skill
 // (oc_skill != P_NONE).  Pick-axe / grappling hook / unicorn horn qualify;
 // lamps, towels, bags, etc. do not.
@@ -3419,10 +3446,13 @@ function start_occupation(delay, msg, afternmv) {
 async function ynq(query) { return await y_n(query, 'ynq\x1b', 'q'); }
 
 // C ref: objnam.c otense()/vtense() — conjugate a (plural-form) verb for the
-// object: a plural object keeps it, a singular object gets the 3rd-person 's'
-// (with the usual y->ies / s/x/z/ch/sh->es spelling tweaks).
-function otense(obj, verb) {
+// object: a plural object keeps it, a singular object gets the 3rd-person
+// form (vtense's "sing:" label: are->is and have->has are irregular special
+// cases, then the usual y->ies / s/x/z/ch/sh->es spelling tweaks, else +s).
+export function otense(obj, verb) {
     if (is_plural(obj)) return verb;
+    if (/^are$/i.test(verb)) return 'is';
+    if (/^have$/i.test(verb)) return 'has';
     if (/[^aeiou]y$/.test(verb)) return verb.slice(0, -1) + 'ies';
     if (/(s|x|z|ch|sh)$/.test(verb)) return verb + 'es';
     return verb + 's';

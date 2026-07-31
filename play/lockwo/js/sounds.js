@@ -11,44 +11,23 @@ import { phase_of_the_moon, night, FULL_MOON } from './calendar.js';
 import { VAULT } from './const.js';
 import { GOLD_PIECE } from './mkobj.js';
 import { DEADMONSTER } from './mon.js';
+import { update_topl } from './display.js';
 
 // C ref: sounds.c dosounds().  Deaf/acoustics/swallow/underwater short-circuit
 // before any roll.  Each `level.flags.*` clause rolls rn2(N) when the feature
 // is present and returns after producing a (suppressed) message.
-// C ref: win/tty/topl.c update_topl() — append a fresh message onto the top
-// line when one is still pending this turn ("toplin == NEED_MORE && cury==0 &&
-// n0 + len(toplines) + 3 < CO-8").  In C every pline() leaves toplin in
-// NEED_MORE, so a here-message ("You see here a drum.") produced by look_here()
-// earlier in the same move chains the dosounds() drip after two spaces:
-// "You see here a drum.  You hear a slow drip."  When no message is pending
-// (the usual case) it simply replaces the line.  dosounds runs once per turn,
-// so this is the only same-turn pairing it can produce.
-const CO = 80;
-function emit_topl(line) {
-    const cur = game._pending_message || '';
-    // Same-line append: a prior pline this turn left toplin == NEED_MORE.
-    if (cur && line.length + cur.length + 3 < CO - 8 && !line.startsWith('You die')) {
-        game._pending_message = cur + '  ' + line;
-    } else {
-        game._pending_message = line;
-    }
-    game._toplin = 1; // NEED_MORE — matches C update_topl tail
-    // C ref: win/tty/topl.c update_topl() also sets gt.toplines to the full
-    // accumulated line — the persistent text pline.c's Norep() dedups against.
-    // Without this, an ambient sound message doesn't count as "the last
-    // topline" and a later Norep-suppressed struggle line (e.g. "You are
-    // caught in a bear trap.") wrongly stays suppressed after the sound.
-    game._toplines = game._pending_message;
-}
 // C ref: pline.c You_hear() — non-deaf/non-underwater/non-unaware prefix is
 // "You hear ".  You_hear1(cstr) == You_hear("%s", cstr).  The starter sessions
-// are never Deaf/Underwater/Unaware here, so we emit the plain prefix.
-function You_hear1(cstr) {
-    emit_topl('You hear ' + cstr);
+// are never Deaf/Underwater/Unaware here, so we emit the plain prefix.  Routed
+// through the real update_topl() (not a hand-rolled append) so a message that
+// doesn't fit on the same line as an already-pending one pauses with
+// "--More--" first, instead of silently overwriting it.
+async function You_hear1(cstr) {
+    await update_topl('You hear ' + cstr);
 }
 // C ref: pline.c You() — prefix "You ".  You1(cstr) == You("%s", cstr).
-function You1(cstr) {
-    emit_topl('You ' + cstr);
+async function You1(cstr) {
+    await update_topl('You ' + cstr);
 }
 
 // Fountain ambient (sounds.c:214-217): fountain_msg[rn2(3) + hallu].
@@ -75,7 +54,7 @@ const SHOP_MSG = [
     'the chime of a cash register.', 'Neiman and Marcus arguing!',
 ];
 
-export function dosounds() {
+export async function dosounds() {
     const g = game;
     if (g.flags?.acoustics === false || g.u?.uswallow || g.u?.uunderwater)
         return;
@@ -88,13 +67,13 @@ export function dosounds() {
     // rolled this same turn (multiple ambient sounds can stack on one line
     // via update_topl).  A `return` here silently drops every rn2() roll
     // for the rest of the function whenever the 1/400 fountain chance hits.
-    if (lf.nfountains && !rn2(400)) { You_hear1(FOUNTAIN_MSG[rn2(3) + hallu]); }
+    if (lf.nfountains && !rn2(400)) { await You_hear1(FOUNTAIN_MSG[rn2(3) + hallu]); }
     // C ref: sounds.c:220-225 — sink ambient ("You hear a slow drip.").  Also
     // falls through (no return) in C — see note above.
-    if (lf.nsinks && !rn2(300)) { You_hear1(SINK_MSG[rn2(2) + hallu]); }
+    if (lf.nsinks && !rn2(300)) { await You_hear1(SINK_MSG[rn2(2) + hallu]); }
     if (lf.has_court && !rn2(200)) { return; }
     // C ref: sounds.c:230-237 — swamp ambient, via You1() not You_hear1().
-    if (lf.has_swamp && !rn2(200)) { You1(SWAMP_MSG[rn2(2) + hallu]); return; }
+    if (lf.has_swamp && !rn2(200)) { await You1(SWAMP_MSG[rn2(2) + hallu]); return; }
     // C ref: sounds.c:238-273 — vault ambient.  gd_sound() gates the rn2(2)
     // message roll; g_at/vault_occupied here always report false because the
     // hero-room-membership list (u.urooms) and the vault-guard subsystem
@@ -111,7 +90,7 @@ export function dosounds() {
                     for (let vy = sroom.ly; vy <= sroom.hy; vy++)
                         if (gold_at(vx, vy)) { gold_in_vault = true; break; }
                 if (!vault_occupied()) {
-                    You_hear1(gold_in_vault ? 'someone counting gold coins.'
+                    await You_hear1(gold_in_vault ? 'someone counting gold coins.'
                                             : 'someone searching.');
                     break;
                 }
@@ -120,10 +99,10 @@ export function dosounds() {
             }
             /* falls through */
             case 0:
-                You_hear1('the footsteps of a guard on patrol.');
+                await You_hear1('the footsteps of a guard on patrol.');
                 break;
             case 2:
-                You_hear1('Ebenezer Scrooge!');
+                await You_hear1('Ebenezer Scrooge!');
                 break;
             }
         }
@@ -134,10 +113,10 @@ export function dosounds() {
     // C ref: sounds.c:286-307 — barracks ambient.  The rn2(3) message roll only
     // fires inside the mercenary loop; since the message-bearing path is what
     // consumes the rn2(3), keep the roll and emit the corresponding text.
-    if (lf.has_barracks && !rn2(200)) { You_hear1(BARRACKS_MSG[rn2(3) + hallu]); return; }
+    if (lf.has_barracks && !rn2(200)) { await You_hear1(BARRACKS_MSG[rn2(3) + hallu]); return; }
     if (lf.has_zoo && !rn2(200)) { return; }
     // C ref: sounds.c:313-328 — shop ambient.
-    if (lf.has_shop && !rn2(200)) { You_hear1(SHOP_MSG[rn2(2) + hallu]); return; }
+    if (lf.has_shop && !rn2(200)) { await You_hear1(SHOP_MSG[rn2(2) + hallu]); return; }
     if (lf.has_temple && !rn2(200)) { return; }
     // C ref: sounds.c:335 — `if (Is_oracle_level(&u.uz) && !rn2(400)) { ... }`.
     // The Oracle level (placed at dnum 0, base 5 range 5) is reached by these
