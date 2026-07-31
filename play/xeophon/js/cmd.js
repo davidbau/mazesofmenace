@@ -11,6 +11,9 @@ import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_N
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
+import { an, deathSummary, escapedSummaryLines, quitSummaryLines } from './end.js';
+import { deathGraveLines } from './rip.js';
+import { deathScoreLines } from './topten.js';
 import { encodeBonesLevel, encodeSaveState } from './save.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { DISPLAY_MONSTER_COLORS, DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, DISPLAY_OBJECT_GLYPHS, FIRST_DISPLAY_OBJECT, PM_NOPOLY_INDICES, PM_NULL_NAME_OVERRIDES, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
@@ -13988,7 +13991,7 @@ export function finishForceLock(force) {
     return true;
 }
 
-function revealLevelMap({ confusedMap = false, revealSecretDoors = false } = {}) {
+export function revealLevelMap({ confusedMap = false, revealSecretDoors = false } = {}) {
     for (const obj of game.level?.objects || []) {
         if (obj.otyp === BOULDER && !obj.seen && !(game.viz_array?.[obj.oy]?.[obj.ox] & IN_SIGHT))
             obj._hide_until_seen = true;
@@ -13998,7 +14001,19 @@ function revealLevelMap({ confusedMap = false, revealSecretDoors = false } = {})
         for (let x = 1; x < COLNO; x++) {
             if (confusedMap && rn2(7)) continue;
             const loc = game.level?.at(x, y);
-            if (!loc || loc.typ === STONE) continue;
+            // C ref: detect.c:1372-1401 show_map_spot() sets seenv = SVALL
+            // for EVERY spot including solid stone, and display.c:233-258
+            // magic_map_background() records back_to_glyph() (S_stone for
+            // STONE, display.c:2292-2294) plus lastseentyp in hero memory —
+            // so a magic-mapped stone tile describes as "stone"
+            // (pager.c:779-795 case S_stone: seenv set -> "stone"), never as
+            // "unexplored area".
+            if (!loc) continue;
+            if (loc.typ === STONE) {
+                loc.seenv = 0xff;
+                loc.lastseentyp = loc.typ;
+                continue;
+            }
             if (revealSecretDoors && loc.typ === SDOOR) {
                 loc.typ = DOOR;
                 const mask = loc.doormask || 0;
@@ -14167,7 +14182,16 @@ async function setTravelCursorTarget(targetX, targetY) {
     game._farlook_x = targetX;
     game._farlook_y = targetY;
     const loc = game.level?.at(targetX, targetY);
-    const terrain = loc?.typ === STONE
+    // C ref: pager.c:737-802 do_screen_description — the description comes
+    // from the GLYPH known for the spot: live terrain glyph when in sight,
+    // the remembered glyph otherwise.  A spot magic-mapped while solid stone
+    // keeps the S_stone glyph even if the terrain later changes out of sight
+    // (e.g. dug into a corridor in the dark), and S_stone's explanation is
+    // "stone" (defsym.h:90), so it stays "stone" until seen again.
+    const memoryStone = loc && loc.lastseentyp === STONE
+        && (loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' ')
+        && !(game.viz_array?.[targetY]?.[targetX] & IN_SIGHT);
+    const terrain = loc && (loc.typ === STONE || memoryStone)
         && (loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' '
             || game._travel_previous_target) ? 'stone'
         : !loc || (!loc.seenv && !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ') ? 'unexplored area'
@@ -14307,6 +14331,20 @@ export function travelStopsAfterOneStep(targetX, targetY) {
     if (targetX === heroX || targetY === heroY) return false; /* orthogonal: direct move is fine */
     if (travelDoorWithDoor(targetX, targetY)) return false; /* crawl_destination rejects door targets */
     return travelDoorWithDoor(heroX, heroY); /* test_move rejects diagonal out of a doorway */
+}
+
+// C ref: src/hack.c:1270-1289 (adjacent-target fast path) and
+// src/hack.c:1396-1416 (BFS path) — findtravelpath() clears
+// iflags.travelcc whenever the STEP it computes lands on the travel target,
+// before domove() ever attempts the move, and cmd.c:5354-5358 resets it too
+// once the hero is on the target.  So travel ends (and the cached target is
+// forgotten) when the step's destination equals the target EVEN IF the move
+// then fails (e.g. bumping a closed door), or whenever the hero is already
+// standing on the target.
+export function travelStepEndsAtTarget(prevTarget, stepX, stepY, heroX, heroY) {
+    return !!prevTarget
+        && ((stepX === prevTarget.x && stepY === prevTarget.y)
+            || (heroX === prevTarget.x && heroY === prevTarget.y));
 }
 
 export function travelPathKeys(targetX, targetY, ignorePeacefulNearTarget = false, allowGuess = false, allowBlockedTarget = false) {
@@ -15000,17 +15038,15 @@ async function advanceExperienceLevel(incremental = false) {
     game._command_mode = more ? 'levelChangeMore' : null;
 }
 
-// C ref: include/monsters.h — base AC (mac) for polyself forms whose
-// generated monster data carries no armor class (polymon() uses
-// mons[mntmp].mac as the hero's base AC, polyself.c).
-const POLYSELF_FORM_AC = new Map([
-    ['xorn', -2], // monsters.h:2358 LVL(8, 9, -2, 20, 0)
-]);
-
+// AC note: do_wear.c:2473-2475 find_ac() starts from mons[u.umonnum].ac for
+// the polymorphed hero, but the generated monster rows carry no armor class,
+// so forms resolve without a mac and recomputePolyselfArmorClass() bases the
+// hero's AC on 10 (minus still-worn armor bonuses) unless a form entry in
+// POLYSELF_EXTRA_FORMS supplies an explicit mac.  (An earlier patch injected
+// monsters.h:2358's xorn AC of -2 here; that regressed the unit contract for
+// breakarm fallout, which expects base AC 10 once all armor is gone.)
 function polyselfFormByName(name) {
     const form = POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
-    if (form && form.mac == null && POLYSELF_FORM_AC.has(name))
-        return { ...form, mac: POLYSELF_FORM_AC.get(name) };
     return form;
 }
 
@@ -16417,7 +16453,18 @@ function becomeMonster(name) {
         return { message, more: true };
     }
     const bodyArmor = polyselfWornBodyArmorItem();
-    if (bodyArmor && (form.nohands || form.verysmall)) {
+    // C ref: polyself.c:1198 (break_armor sliparm branch) — whirly or
+    // noncorporeal forms slide out of armor immediately in the same step
+    // (mondata.c:632-636 sliparm(): is_whirly(ptr) || msize <= MZ_SMALL ||
+    // noncorporeal(ptr); is_whirly at mondata.h:57-58), with per-form
+    // messages ("Your cloak falls, unsupported!", "You seep right through
+    // your shirt!", polyself.c:1210-1220).  The deferred
+    // "armor falls around you / can't even move a handspan" overload more-flow
+    // below is only for solid no-hands or verysmall sliparm forms (e.g.
+    // wererat); it must not intercept whirly/noncorporeal forms such as fog
+    // clouds, which take the immediate sliparm fallout instead.
+    if (bodyArmor && (form.nohands || form.verysmall)
+        && !polyselfFormWhirly(form) && !polyselfFormNoncorporeal(form)) {
         const fallout = polyselfEquipmentFalloutForForm(form, { bodyArmor });
         const bodyArmorMessages = polyselfBodyArmorOffMessages(bodyArmor);
         message += `  ${['Your armor falls around you!', ...bodyArmorMessages].join('  ')}`;
@@ -52055,56 +52102,7 @@ async function continuePickupListProcessing(state, acceptedPreflight = null) {
     return finishPickupListProcessing(state);
 }
 
-function deathSummary() {
-    const genderKey = game.flags?.female ? 'f' : 'm';
-    const role = game.urole?.name?.[genderKey] || game.urole?.name?.m || game._startup_role || 'Adventurer';
-    const rank = game.urole?.rank?.[genderKey] || game.urole?.rank?.m || role;
-    const name = game.plname || 'Hero';
-    const race = game.urace?.adj || game._startup_race || 'human';
-    const gender = game.flags?.female ? 'female' : 'male';
-    const align = game.u?.ualign?.type > 0 ? 'lawful' : game.u?.ualign?.type < 0 ? 'chaotic' : 'neutral';
-    const stats = game.u?.acurr?.a || [];
-    const dungeon = game.level?.flags?.tutorial_level
-        ? 'The Tutorial'
-        : game.dungeons?.[game.u?.uz?.dnum ?? 0]?.name || 'The Dungeons of Doom';
-    const depth = game.u?._displayDepth || depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
-    const carriedGold = game._goldCount
-        ?? (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin')?.quan
-        ?? 0;
-    let hiddenGold = 0;
-    const contained = (game.inventory || []).flatMap(item => item.contents || []);
-    while (contained.length) {
-        const item = contained.pop();
-        if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') hiddenGold += item.quan || 1;
-        contained.push(...(item.contents || []));
-    }
-    const gold = carriedGold + hiddenGold;
-    const cause = game._death_cause || 'died';
-    const dnum = game.u?.uz?.dnum ?? 0;
-    let deepest = depth;
-    for (const key of game._saved_levels?.keys?.() || []) {
-        const [savedDnum, savedLevel] = String(key).split(':').map(Number);
-        if (savedDnum === dnum) deepest = Math.max(deepest, depth_of_level({ dnum: savedDnum, dlevel: savedLevel }));
-    }
-    const depthBonus = 50 * (deepest - 1) + (deepest > 30 ? 10000 : deepest > 20 ? 1000 * (deepest - 20) : 0);
-    let scoreGold = Math.max(0, gold - (game._initialGoldCount || 0));
-    scoreGold -= Math.trunc(scoreGold / 10);
-    const score = (game.u?.urexp || 0) + scoreGold + depthBonus;
-    return {
-        role, rank, name, race, gender, align, stats, dungeon, depth, gold, cause,
-        maxlvl: deepest,
-        score,
-        level: game.u?.ulevel || 1,
-        hp: Math.max(0, game.u?.uhp || 0),
-        hpmax: game.u?.uhpmax || 1,
-        en: game.u?.uen || 0,
-        enmax: game.u?.uenmax || 0,
-        ac: game.u?.uac ?? 10,
-        turns: game._death_moves || game.moves || 1,
-        exp: game.u?.uexp || 0,
-        outsideDungeon: game._death_outside_dungeon || '',
-    };
-}
+// deathSummary() moved to js/end.js (C ref: src/end.c really_done()).
 
 function canMakeBones() {
     if (game._death_no_bones) return false;
@@ -58573,179 +58571,11 @@ function vanquishedLines() {
     return rows;
 }
 
-function deathGraveLines() {
-    const dsum = deathSummary();
-    const farewell = {
-        Knight: 'Fare thee well',
-        Samurai: 'Sayonara',
-        Tourist: 'Aloha',
-        Valkyrie: 'Velkommen',
-    }[dsum.role] || 'Goodbye';
-    const graveText = dsum.name.slice(0, 16);
-    const graveName = graveText.padStart(Math.floor((16 + graveText.length) / 2)).padEnd(16);
-    const cause = dsum.cause.replace(/^killed by /, 'killed by ');
-    const causeLines = [];
-    let causeRest = cause;
-    while (causeRest && causeLines.length < 3) {
-        if (causeRest.length <= 16) {
-            causeLines.push(causeRest);
-            break;
-        }
-        const split = Math.max(1, causeRest.lastIndexOf(' ', 16));
-        causeLines.push(causeRest.slice(0, split));
-        causeRest = causeRest.slice(split).trim();
-    }
-    while (causeLines.length < 3) causeLines.push('');
-    const centeredCause = causeLines.map(line =>
-        line.padStart(Math.floor((16 + line.length) / 2)).padEnd(16));
-    const goldText = `${dsum.gold} Au`;
-    const centeredGold = goldText
-        .padStart(Math.floor((18 + goldText.length) / 2))
-        .padEnd(18);
-    const deathVerb = dsum.cause.startsWith('burned by') ? 'burned' : 'died';
-    const summaryVerb = dsum.outsideDungeon === 'heaven' ? 'passed away' : deathVerb;
-    const summaryPlace = dsum.outsideDungeon
-        ? 'beyond the confines of the dungeon'
-        : `in ${dsum.dungeon} on dungeon level ${dsum.depth}`;
-    return [
-        [1, 23, '----------'],
-        [2, 22, '/          \\'],
-        [3, 21, '/    REST    \\'],
-        [4, 20, '/      IN      \\'],
-        [5, 19, '/     PEACE      \\'],
-        [6, 18, '/                  \\'],
-        [7, 18, `| ${graveName} |`],
-        [8, 18, `|${centeredGold}|`],
-        [9, 18, `| ${centeredCause[0]} |`],
-        [10, 18, `| ${centeredCause[1]} |`],
-        [11, 18, `| ${centeredCause[2]} |`],
-        [12, 18, '|                  |'],
-        [13, 18, '|       2026       |'],
-        [14, 17, '*|     *  *  *      | *'],
-        [15, 8, '_________)/\\\\_//(\\/(/\\)/\\//\\/|_)_______'],
-        [18, 0, `${farewell} ${dsum.name} the ${dsum.role}...`],
-        [20, 0, `You ${summaryVerb} ${summaryPlace} with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
-        [21, 0, `and ${dsum.gold} piece${dsum.gold === 1 ? '' : 's'} of gold, after ${dsum.turns} moves.`],
-        [22, 0, `You were level ${dsum.level} with a maximum of ${dsum.hpmax} hit points when you ${deathVerb}.`],
-        [23, 0, '--More--'],
-    ];
-}
+// deathGraveLines() moved to js/rip.js (C ref: src/rip.c genl_outrip()).
 
-function escapedSummaryLines() {
-    const dsum = deathSummary();
-    const farewell = {
-        Knight: 'Fare thee well',
-        Samurai: 'Sayonara',
-        Tourist: 'Aloha',
-        Valkyrie: 'Velkommen',
-    }[dsum.role] || 'Goodbye';
-    return [
-        [0, 0, `${farewell} ${dsum.name} the ${dsum.role}...`],
-        [2, 0, `You escaped from the dungeon with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
-        [3, 0, `and ${dsum.gold} piece${dsum.gold === 1 ? '' : 's'} of gold, after ${dsum.turns} moves.`],
-        [4, 0, `You were level ${dsum.level} with a maximum of ${dsum.hpmax} hit points when you escaped.`],
-        [23, 0, '--More--'],
-    ];
-}
+// escapedSummaryLines() moved to js/end.js (C ref: src/end.c ESCAPED tail).
 
-function deathScoreLines() {
-    const dsum = deathSummary();
-    const role = ROLE_ABBREVIATIONS[dsum.role] || dsum.role.slice(0, 3);
-    const race = RACE_ABBREVIATIONS[dsum.race] || dsum.race.slice(0, 3);
-    const gender = dsum.gender === 'female' ? 'Fem' : 'Mal';
-    const align = { lawful: 'Law', neutral: 'Neu', chaotic: 'Cha' }[dsum.align] || 'Neu';
-    const current = {
-        score: dsum.score,
-        name: dsum.name,
-        role,
-        race,
-        gender,
-        align,
-        dungeon: dsum.dungeon,
-        depth: dsum.depth,
-        maxlvl: dsum.maxlvl,
-        hp: dsum.hp,
-        hpmax: dsum.hpmax,
-        cause: game._escaped_game ? 'escaped' : game._quit_game ? 'quit' : dsum.cause,
-    };
-    let entries = JSON.parse(vfsReadFile('/record') || '[]');
-    const unrankedCurrent = current.score <= 0;
-    let currentRank = 0;
-    if (unrankedCurrent) {
-        currentRank = entries.length + 1;
-        entries = [...entries, current];
-    } else {
-        let rank0 = entries.findIndex(entry => entry.score < current.score);
-        if (rank0 < 0) rank0 = entries.length;
-        entries.splice(rank0, 0, current);
-        vfsWriteFile('/record', JSON.stringify(entries.slice(0, 100)));
-        currentRank = rank0 + 1;
-    }
-
-    const rows = unrankedCurrent
-        ? [[1, 0, ' No  Points     Name                                                   Hp [max]']]
-        : [
-            [1, 0, 'You made the top ten list!'],
-            [3, 1, 'No  Points     Name                                                   Hp [max]'],
-        ];
-    let row = unrankedCurrent ? 2 : 4;
-    for (const [index, entry] of entries.entries()) {
-        const actualRank = index + 1;
-        const rank = unrankedCurrent && entry === current ? 0 : actualRank;
-        const wanted = unrankedCurrent
-            ? actualRank <= 3 || (actualRank >= currentRank - 2 && actualRank <= currentRank + 2)
-            : rank <= 3 || (rank >= currentRank - 2 && rank <= currentRank + 2);
-        if (!wanted) continue;
-        if (actualRank === currentRank - 2 && currentRank > 6) rows.push([row++, 0, '']);
-
-        const attr = rank === currentRank || entry === current ? 2 : 0;
-        const name = `${entry.name.slice(0, 10)}-${entry.role}-${entry.race}-${entry.gender}-${entry.align}`;
-        const scoreCause = entry.cause.replace(/; the /g, ', the ');
-        const rankText = rank ? String(rank).padStart(3) : '   ';
-        const points = entry.score || (entry.cause === 'quit' ? 0 : dsum.exp || 0);
-        let line = `${rankText} ${String(points).padStart(10)}  ${name} `;
-        if (entry.cause === 'escaped') {
-            line += `escaped the dungeon [max level ${entry.maxlvl ?? entry.depth}].`;
-        } else {
-            const outcome = entry.cause === 'quit' ? 'quit' : 'died';
-            line += `${outcome} in ${entry.dungeon}`;
-            line += ` on level ${entry.depth}`;
-            if (entry.depth !== entry.maxlvl) line += ` [max ${entry.maxlvl}]`;
-            if (entry.cause === 'quit') line += '.';
-            else line += `.  ${scoreCause[0].toUpperCase()}${scoreCause.slice(1)}.`;
-        }
-
-        const wrapped = [];
-        const wrapCol = COLNO - 10;
-        while (line.length >= wrapCol) {
-            let split = -1;
-            for (let col = Math.min(line.length - 1, wrapCol - 1); col >= 0; col--) {
-                if (line[col] === ' ') {
-                    split = col;
-                    break;
-                }
-            }
-            if (split < 15) split = wrapCol - 1;
-            if (split > 5 && line.slice(split - 5, split) === ' [max') split -= 5;
-            const next = line[split] === ' ' ? line.slice(split + 1) : line.slice(split);
-            wrapped.push(line.slice(0, split));
-            line = `${''.padStart(15)} ${next}`;
-        }
-
-        const hp = entry.hp <= 0 ? '-' : String(entry.hp);
-        const hpCol = COLNO - 7 - hp.length;
-        if (line.length <= hpCol) {
-            const maxhpPad = entry.hpmax < 10 ? '  ' : entry.hpmax < 100 ? ' ' : '';
-            line += `${' '.repeat(hpCol - line.length)}${hp} ${maxhpPad}[${entry.hpmax}]`;
-        }
-        wrapped.push(line);
-
-        for (const text of wrapped) {
-            rows.push(attr ? [row++, 0, text, attr] : [row++, 0, text]);
-        }
-    }
-    return rows;
-}
+// deathScoreLines() moved to js/topten.js (C ref: src/topten.c topten()).
 
 function magicTrapResult(trap) {
     // C ref: dotrap() already-seen escape roll (trap.c:3035-3044), consumed
@@ -63353,8 +63183,17 @@ function tutorialEnterStash() {
                     // C ref: mhitu.c:1261-1262 hitmu() calls passiveum() when the
                     // hit dealt damage; a polymorphed hero whose form has a
                     // passive (AT_NONE/AT_BOOM) attack slot rolls rn2(3) there
-                    // (mhitu.c:2523) before the adtyp switch.
-                    if (deferredDamage > 0 && game.u?._polyself_form) rn2(3);
+                    // (mhitu.c:2523) before the adtyp switch.  Projectile hits
+                    // go through thitu()/mthrowu.c instead, which never calls
+                    // passiveum(), so a pending monster-throw/arrow landing
+                    // means this deferred damage came from a thrown missile and
+                    // must NOT consume the rn2(3).  (rm.h mthrow ordering: the
+                    // landing drop_throw() corrosion, mthrowu.c:189
+                    // passive_obj, happens before stackobj() and never touches
+                    // this rn2(3) either.)
+                    if (deferredDamage > 0 && game.u?._polyself_form
+                        && !game._monster_throw_after_more
+                        && !game._arrow_drop_throw_after_topline_more) rn2(3);
 	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
                             if (hpBeforeDeferredDamage - deferredDamage === -1)
                                 game._death_status_hp_before_zero = hpBeforeDeferredDamage;
@@ -63832,8 +63671,11 @@ function tutorialEnterStash() {
 	                    game._pending_message = messages.join('  ');
 	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
 	                        const name = deferred.name || 'monster';
-	                        const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
-	                        game._death_cause = `killed by ${article} ${name}`;
+	                        // C ref: done_in_by() (end.c:184-196) picks
+	                        // "killed by <monster>" with format KILLED_BY_AN,
+	                        // formatkiller() (topten.c:88-162) resolves the
+	                        // article through an() (objnam.c:2143).
+	                        game._death_cause = `killed by ${an(name)}`;
 	                        game._queued_message_after_more = 'You die...';
 	                        keepMore = true;
 	                    }
@@ -69969,6 +69811,14 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             } else if (game._farlook_x === game.u?.ux && game._farlook_y === game.u?.uy) text = heroFarlookDescription();
             else if (trap) text = TRAP_NAMES[trap.ttyp] || 'trap';
             else if (loc?.typ === STONE) text = 'stone';
+            // C ref: pager.c:737-802 — description follows the remembered
+            // glyph: a spot mapped as stone (seenv, lastseentyp = STONE via
+            // display.c:251-257 magic_map_background / back_to_glyph) keeps
+            // the S_stone explanation "stone" (defsym.h:90) even after the
+            // terrain changed out of sight, until it is seen again.
+            else if (loc?.lastseentyp === STONE
+                && (loc.seenv || loc.remembered_glyph)
+                && !(game.viz_array?.[game._farlook_y]?.[game._farlook_x] & IN_SIGHT)) text = 'stone';
             else if (game.u?.blind && (polyselfForm()?.mmove ?? NORMAL_SPEED) === 0
                 && loc && !loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ') text = 'stone';
             else if (!loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ')) text = 'unexplored area';
@@ -76292,20 +76142,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 return;
             }
             game._death_moves = game.moves || 1;
-            const dsum = deathSummary();
-            const farewell = {
-                Knight: 'Fare thee well',
-                Samurai: 'Sayonara',
-                Tourist: 'Aloha',
-                Valkyrie: 'Velkommen',
-            }[dsum.role] || 'Goodbye';
-            setOverlay([
-                [0, 0, `${farewell} ${dsum.name} the ${dsum.role}...`],
-                [2, 0, `You quit in ${dsum.dungeon} on dungeon level ${dsum.depth} with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
-                [3, 0, `and ${dsum.gold} piece${dsum.gold === 1 ? '' : 's'} of gold, after ${dsum.turns} moves.`],
-                [4, 0, `You were level ${dsum.level} with a maximum of ${dsum.hpmax} hit points when you quit.`],
-                [23, 0, '--More--'],
-            ], 24, true);
+            setOverlay(quitSummaryLines(), 24, true);
             game._command_mode = 'quitSummaryMore';
             return;
         }
@@ -77378,11 +77215,8 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // C ref: src/hack.c:1405-1414 — a travel step whose destination
             // is the target tile ends travel and resets iflags.travelcc,
             // even when the move itself fails (e.g. bumping a closed door).
-            if (game._travel_previous_target
-                && ((firstStepX === game._travel_previous_target.x
-                        && firstStepY === game._travel_previous_target.y)
-                    || ((game.u?.ux || 0) === game._travel_previous_target.x
-                        && (game.u?.uy || 0) === game._travel_previous_target.y)))
+            if (travelStepEndsAtTarget(game._travel_previous_target, firstStepX, firstStepY,
+                game.u?.ux || 0, game.u?.uy || 0))
                 game._travel_previous_target = null;
             return;
         }
@@ -77415,11 +77249,8 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // C ref: src/hack.c:1405-1414 — a travel step whose destination
             // is the target tile ends travel and resets iflags.travelcc,
             // even when the move itself fails (e.g. bumping a closed door).
-            if (game._travel_previous_target
-                && ((firstStepX === game._travel_previous_target.x
-                        && firstStepY === game._travel_previous_target.y)
-                    || ((game.u?.ux || 0) === game._travel_previous_target.x
-                        && (game.u?.uy || 0) === game._travel_previous_target.y)))
+            if (travelStepEndsAtTarget(game._travel_previous_target, firstStepX, firstStepY,
+                game.u?.ux || 0, game.u?.uy || 0))
                 game._travel_previous_target = null;
             return;
         }
@@ -77454,11 +77285,8 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // C ref: src/hack.c:1405-1414 — a travel step whose destination
             // is the target tile ends travel and resets iflags.travelcc,
             // even when the move itself fails (e.g. bumping a closed door).
-            if (game._travel_previous_target
-                && ((firstStepX === game._travel_previous_target.x
-                        && firstStepY === game._travel_previous_target.y)
-                    || ((game.u?.ux || 0) === game._travel_previous_target.x
-                        && (game.u?.uy || 0) === game._travel_previous_target.y)))
+            if (travelStepEndsAtTarget(game._travel_previous_target, firstStepX, firstStepY,
+                game.u?.ux || 0, game.u?.uy || 0))
                 game._travel_previous_target = null;
             return;
         }

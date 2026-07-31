@@ -8203,7 +8203,8 @@ function unpad_random_text(line) {
     return text;
 }
 
-function get_rnd_line(text, rng = rn2, pad = RANDOM_TEXT_PAD) {
+// Exported for source-derived selection-math tests (endgame audit 948).
+export function get_rnd_line(text, rng = rn2, pad = RANDOM_TEXT_PAD) {
     const start = 0;
     const end = text.length;
     const size = end - start;

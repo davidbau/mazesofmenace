@@ -4,13 +4,21 @@
 import { game } from './gstate.js';
 import { amulet as wizardAmuletTurn, demigodTurnHook, clonewiz, noOfWizards, aggravate as wizardAggravate } from './wizard.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget } from './cmd.js';
+import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
 import { wereChange } from './were.js';
+import {
+    setMhitmHooks as setMonsterMonsterCombatHooks,
+    mmAggression as monsterMonsterAggression,
+    mMoveAggress as monsterMoveAggress,
+    resistConflict as monsterResistsConflict,
+    MM_AGGR as MONSTER_MM_AGGR_FLAG,
+} from './mhitm.js';
+import { planMonsterSteal } from './steal.js';
 import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
@@ -5679,90 +5687,70 @@ export async function processMonsterTurns() {
 	                                }
 	                                else damage = 0;
 	                            }
-		                            if (attack.adtyp === 'steal') {
-		                                let stealWeight = 0;
-		                                const stealable = [];
-		                                const inventoryForSteal = [...(game.inventory || [])]
-		                                    .sort((a, b) => inventoryLetterRank(a) - inventoryLetterRank(b));
-		                                const wornGloves = inventoryForSteal.find(item =>
-		                                    item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
-		                                    && /gloves|gauntlets/i.test(inventoryItemName(item)));
-		                                const wornCloak = inventoryForSteal.find(item =>
-		                                    item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
-		                                    && /cloak|robe|wrapping|smock|apron/i.test(inventoryItemName(item)));
-		                                const wornSuit = inventoryForSteal.find(item =>
-		                                    item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
-		                                    && /mail|armor|dragon scales|plate|shirt/i.test(inventoryItemName(item))
-		                                    && !/cloak|robe|wrapping|smock|apron/i.test(inventoryItemName(item)));
-		                                const wornShirt = inventoryForSteal.find(item =>
-		                                    item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
-		                                    && /shirt/i.test(inventoryItemName(item)));
-		                                const wieldedWeapon = inventoryForSteal.find(item =>
-		                                    item.wielded || item.line?.includes('weapon in') || item.line?.includes('wielded in'));
-		                                for (const item of inventoryForSteal) {
-		                                    if (item.cls === 'coin') continue;
-		                                    if (wornSuit && item === wornCloak) continue;
-		                                    const wornArmorOrAccessory = (item.worn || item.line?.includes('being worn') || /\(on (?:left|right) hand\)/.test(item.line || ''))
-		                                        && !(item.wielded || item.alternate || item.cls === 'weapon');
-		                                    const weight = wornArmorOrAccessory ? 5 : 1;
-		                                    stealWeight += weight;
-		                                    stealable.push({ item, weight });
-		                                }
-		                                if (stealWeight) {
-		                                    let pick = rn2(stealWeight);
-	                                    let stolen = stealable[stealable.length - 1].item;
-	                                    for (const entry of stealable) {
-	                                        pick -= entry.weight;
-	                                        if (pick < 0) {
-	                                            stolen = entry.item;
-		                                            break;
-		                                        }
-		                                    }
-		                                    if ((stolen.cls === 'ring' || /\(on (?:left|right) hand\)/.test(stolen.line || '')) && wornGloves)
-		                                        stolen = wornGloves;
-		                                    if (stolen === wornGloves && wieldedWeapon) stolen = wieldedWeapon;
-		                                    else if (stolen === wornSuit && wornCloak) stolen = wornCloak;
-		                                    else if (stolen === wornShirt && (wornCloak || wornSuit)) stolen = wornCloak || wornSuit;
-		                                    const stolenName = inventoryItemName(stolen);
-		                                    const bareStolenName = stolenName.replace(/^(?:a|an|the) /i, '');
-		                                    const wornPlace = stolen.worn === 'right' ? ' (from right hand)'
-		                                        : stolen.worn === 'left' ? ' (from left hand)' : '';
-		                                    const weaponStolen = stolen.wielded || stolen.alternate
-		                                        || /(?:weapon|wielded) in /.test(stolen.line || '')
-		                                        || /alternate weapon/.test(stolen.line || '');
-		                                    const accessoryStolen = wornPlace || stolen.cls === 'ring' || stolen.cls === 'amulet';
-		                                    const removeMessage = weaponStolen
-		                                        ? `${subject} disarms your ${bareStolenName}.`
-		                                        : accessoryStolen
-		                                            ? `${subject} removes your ${bareStolenName}${wornPlace}.`
-		                                            : (stolen.worn || stolen.line?.includes('being worn'))
-		                                                ? `${subject} takes off your ${bareStolenName}.`
-		                                                : '';
-		                                    const thief = mon.female ? 'She' : subject;
-		                                    const stolenMessage = `${removeMessage ? thief : subject} stole ${stolenName}.`;
-                                            const theftWidth = game.nhDisplay?.cols || 80;
-		                                    const theftMessage = removeMessage
-                                                && removeMessage.length + stolenMessage.length + 2 < theftWidth - 8
-                                                ? `${removeMessage}  ${stolenMessage}`
-                                                : removeMessage || stolenMessage;
-		                                    game._nymph_steal_after_more = {
-		                                        mon, itemLetter: stolen.letter, item: stolen, removeMessage, stolenMessage, theftMessage,
-		                                    };
-		                                    mon.mflee = 1;
-		                                    mon.mfleetim = 0;
-		                                    mon.mavenge = 1;
-		                                    clearMonsterTrack(mon);
-		                                    game._topline_after_more = theftMessage;
-		                                    if (removeMessage && theftMessage === removeMessage)
-		                                        game._queued_message_after_topline_more = stolenMessage;
-		                                    game._topline_more_after_more = 1;
-		                                    game._message_more = 1;
-		                                    game._process_time_with_more = 0;
-		                                    game._monster_resume_index = monIndex + 1;
-	                                    game._monster_resume_somebody_can_move = somebodyCanMove;
-	                                    return false;
-	                                }
-	                            }
+if (attack.adtyp === 'steal') {
+                                    // C ref: src/steal.c steal() (nymph/monkey AD_SITM and
+                                    // AD_SEDU theft; mhitu caller mhitm_ad_sedu uhitm.c:4709-4746).
+                                    // Selection/weighting/message logic lives in js/steal.js; the
+                                    // multi--More-- deferral plumbing below is shared with the
+                                    // pre-slice theft flow (see cmd.js _nymph_steal_after_more).
+                                    const theft = planMonsterSteal(mon, { subject, nameFor: inventoryItemName });
+                                    if (theft.kind === 'steal') {
+                                        const removeMessage = theft.removeMessage;
+                                        const stolenMessage = theft.stolenMessage;
+                                        const theftWidth = game.nhDisplay?.cols || 80;
+                                        const theftMessage = removeMessage
+                                            && removeMessage.length + stolenMessage.length + 2 < theftWidth - 8
+                                            ? `${removeMessage}  ${stolenMessage}`
+                                            : removeMessage || stolenMessage;
+                                        game._nymph_steal_after_more = {
+                                            mon, itemLetter: theft.stolen.letter, item: theft.stolen, removeMessage, stolenMessage, theftMessage,
+                                        };
+                                        // monflee(mon, 0, FALSE, FALSE) — monmove.c:462-533; mavenge set
+                                        // unless conflict distracts the thief (steal.c:543-547).
+                                        mon.mflee = 1;
+                                        mon.mfleetim = 0;
+                                        if (!game.u?.conflict) mon.mavenge = 1;
+                                        clearMonsterTrack(mon);
+                                        game._topline_after_more = theftMessage;
+                                        if (removeMessage && theftMessage === removeMessage)
+                                            game._queued_message_after_topline_more = stolenMessage;
+                                        game._topline_more_after_more = 1;
+                                        game._message_more = 1;
+                                        game._process_time_with_more = 0;
+                                        game._monster_resume_index = monIndex + 1;
+                                        game._monster_resume_somebody_can_move = somebodyCanMove;
+                                        return false;
+                                    }
+                                    if (theft.kind === 'nothing' || (theft.kind === 'cantake' && theft.flees)) {
+                                        // steal() returned 1: nothing worth having / gave up and
+                                        // runs — steal.c:340-378 and :432-441; the shared deferred
+                                        // path relocates a non-animal thief and continues the turn.
+                                        game._nymph_steal_after_more = {
+                                            mon, itemLetter: null, item: null,
+                                            removeMessage: null, stolenMessage: theft.message, theftMessage: theft.message,
+                                        };
+                                        mon.mflee = 1;
+                                        mon.mfleetim = 0;
+                                        if (!game.u?.conflict && theft.kind === 'nothing') mon.mavenge = 1;
+                                        clearMonsterTrack(mon);
+                                        game._topline_after_more = theft.message;
+                                        game._topline_more_after_more = 1;
+                                        game._message_more = 1;
+                                        game._process_time_with_more = 0;
+                                        game._monster_resume_index = monIndex + 1;
+                                        game._monster_resume_somebody_can_move = somebodyCanMove;
+                                        return false;
+                                    }
+                                    if (theft.kind === 'cantake') {
+                                        // steal() returned 0 (steal.c:441): failed grab, thief
+                                        // sticks around; show the attempt and move to next attack.
+                                        addToplineMessage(theft.message);
+                                        continue;
+                                    }
+                                    // kind 'busy': steal() returned 0 without a message
+                                    // (steal.c:428-429, item mid multi-turn theft) — next attack.
+                                    continue;
+                                }
                                     const shownSubject = game.u?.blind || hiddenBullwhip ? 'It' : monsterDisplayName(mon, true);
                                     const shownWeaponPrefix = weaponPrefix ? weaponPrefix.replace(subject, shownSubject) : '';
                                 const unseenWarning = hiddenBullwhip && !game.u?.blind && !pendingBeforeAttack;
@@ -11740,6 +11728,11 @@ function monsterTeleportTrapEffect(mon, trap) {
 function monsterUsePolyTrap(mon) {
     const data = mon?.data || {};
     if (!mon || data.animal || data.mindless) return false;
+    // C ref: muse.c:2136-2137 (find_misc) — a monster wearing iron footwear
+    // (iron shoes / kicking boots; trap.c:1098-1102 wearing_iron_shoes())
+    // never chooses MUSE_POLY_TRAP; it walks onto the trap and the mintrap()
+    // path (trap.c:2501-2514) warps the footwear instead of polymorphing.
+    if (monsterWornIronFootwearForAntiMagic(mon)) return false;
     if (game.u?.uswallow && game.u?.ustuck === mon) return false;
     const goalX = mon.mux ?? game.u?.ux ?? mon.mx;
     const goalY = mon.muy ?? game.u?.uy ?? mon.my;
@@ -11775,7 +11768,14 @@ function monsterUsePolyTrap(mon) {
                 newsym(tx, ty);
             }
             const target = randomMonsterPolymorphTarget(mon);
-            if (target) applyMonsterPolymorphTarget(mon, target, [], visible);
+            if (target) {
+                // C ref: muse.c:2543 — use_misc() MUSE_POLY_TRAP calls
+                // newcham(mtmp, 0, NC_SHOW_MSG), so the "turns into" feedback
+                // (mon.c newcham()) is shown when the monster is visible.
+                const feedback = [];
+                applyMonsterPolymorphTarget(mon, target, feedback, visible);
+                for (const message of feedback) addToplineMessage(message);
+            }
             return true;
         }
     }
@@ -13417,10 +13417,21 @@ function mfndpos(mon, flag) {
                 } else {
                     occupant = game.level?.monsters?.find(other => other !== mon && other.mx === nx && other.my === ny) || null;
                     if (occupant) {
-                        if (!(flag & ALLOW_M)) continue;
+                        /* C ref: mon.c:2301 — flag | mm_aggression(mon, mtmp2).
+                         * mm_aggression grants ALLOW_M for purple
+                         * worm-vs-shrieker and zombie-maker-vs-zombifiable
+                         * pairs even between hostile monsters; it is pure
+                         * data-level (no RNG).  MONSTER_MM_AGGR_FLAG marks
+                         * candidates granted by it so the move loop routes
+                         * them through the ported mattackm() core
+                         * (mhitm.c:293). */
+                        const mmAggr = monsterMonsterAggression(mon, occupant);
+                        const mmflag = flag | mmAggr;
+                        if (!(mmflag & ALLOW_M)) continue;
                         info |= ALLOW_M;
+                        if (!(flag & ALLOW_M) && (mmAggr & ALLOW_M)) info |= MONSTER_MM_AGGR_FLAG;
                         if (occupant.pet || occupant.mtame) {
-                            if (!(flag & ALLOW_TM)) continue;
+                            if (!(mmflag & ALLOW_TM)) continue;
                             info |= ALLOW_TM;
                         }
                     }
@@ -14317,6 +14328,20 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         return false;
     }
     if (next.target) {
+        /* C ref: monmove.c:2086-2126 m_move_aggress() — when mfndpos
+         * granted the attack square via mm_aggression() (mon.c:2301; in
+         * particular zombie-maker-vs-zombifiable and
+         * purple-worm-vs-shrieker pairs between non-tame monsters), C
+         * routes the strike through mattackm() with the rn2(4)/rn2(12)
+         * return-attack gate.  The legacy bespoke block below covers the
+         * tame/conflict candidates that recorded sessions exercise; this
+         * branch only fires for plane hostiles, where no JS combat path
+         * existed before. */
+        if ((nextInfo & MONSTER_MM_AGGR_FLAG) && !mon.pet && !mon.mtame
+            && (game.level?.monsters || []).includes(next.target)) {
+            monsterMoveAggress(mon, next.target);
+            return done();
+        }
         const weapon = mon.mw || mon.minvent?.find(item =>
             item.otyp === ORCISH_DAGGER || item.kind === 'orcish dagger' || item.kind === 'dagger');
         if (!mon.mw && weapon) {
@@ -16557,9 +16582,15 @@ export async function moveloop_core() {
             g._travel_step_active = 1;
             await rhack(key);
             g._travel_step_active = 0;
-            if (g._travel_previous_target
-                && (g.u?.ux || 0) === g._travel_previous_target.x
-                && (g.u?.uy || 0) === g._travel_previous_target.y)
+            // C ref: src/hack.c:1270-1289 and src/hack.c:1396-1416 —
+            // findtravelpath() clears iflags.travelcc (and nomul(0), ending
+            // travel) when the NEXT STEP's destination is the travel target,
+            // at path-computation time, i.e. before the move is even
+            // attempted; the move may then fail (e.g. bumping a closed
+            // door) and the target stays cleared.  (cmd.c:5354-5358 confirms
+            // travelcc==<0,0> once the hero is already on the target.)
+            if (travelStepEndsAtTarget(g._travel_previous_target, nextX, nextY,
+                (g.u?.ux || 0), (g.u?.uy || 0)))
                 g._travel_previous_target = null;
             const nonInterruptingTravelMessage = (g._travel_dynamic_target
                 && /^A mysterious force prevents .* from teleporting!$/.test(g._pending_message || ''))
@@ -16994,6 +17025,51 @@ export async function moveloop(_resuming) {
         if (game.program_state?.gameover) break;
     }
 }
+
+/* ------------------------------------------------------------------ *
+ * Monster-vs-monster combat (src/mhitm.c core port in js/mhitm.js).  *
+ * The hooks below bridge the ported mattackm/fightm core to the       *
+ * display/kill pipelines without creating a js/allmain.js import edge *
+ * in mhitm.js.  C refs: mhitm.c:41-71 (pre_mm_attack visibility),     *
+ * mon.c:3392 (monkilled), monmove.c:2086 (m_move_aggress).            *
+ * ------------------------------------------------------------------ */
+
+/* Kill reporting + removal for the mattackm() core ("S is killed!",
+ * inventory drop, optional corpse/glob, vanquished counter).  Mirrors
+ * the mondead() drop pipeline already used by pet-kill slices. */
+function monsterCombatKill(mdef /* , how */) {
+    if (monsterVisibleToHero(mdef))
+        addToplineMessage(`${monsterDisplayName(mdef)} is killed!`);
+    const explosion = queueGasSporeDeathExplosion(mdef);
+    const corpseData = corpseDataForMonster(mdef.data || {});
+    const dropCorpse = !explosion && monsterCorpseDropSucceeds(mdef, mdef.data || {});
+    dropMonsterInventory(mdef);
+    if (explosion) addToplineMessage(explosion.message);
+    else if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+        createMonsterCorpseOrGlob(mdef, corpseData);
+    recordVanquished(mdef, false);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mdef);
+    mdef.mhp = 0;
+    mdef.dead = true;
+    newsym(mdef.mx, mdef.my);
+}
+
+setMonsterMonsterCombatHooks({
+    /* pline() -> topline message pipeline */
+    pline: (msg) => { addToplineMessage(msg); },
+    /* mhitm.c:327-329 gv.vis: either combatant visible to the hero */
+    vis: (magr, mdef) => monsterVisibleToHero(magr) || monsterVisibleToHero(mdef),
+    cansee: (x, y) => !game.u?.blind && couldSeeCoord(x, y),
+    canseemon: (m) => monsterVisibleToHero(m),
+    canspotmon: (m) => monsterVisibleToHero(m),
+    Monnam: (m) => monsterDisplayName(m),
+    mon_nam: (m) => (m.givenName || `the ${m.data?.name || 'creature'}`),
+    monkilled: (m, how) => monsterCombatKill(m, how),
+    monstone: (m) => stoneMonster(m, null, { awardExperience: false }),
+    newsym,
+    /* mdamagem() -> grow_up(magr, mdef): cmd.js growth bookkeeping */
+    growUp: (agr, def) => monsterGrowUp(agr, def),
+});
 
 export const __allmainTestHooks = {
     mfndposForTest: mfndpos,
