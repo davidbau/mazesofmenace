@@ -1565,8 +1565,12 @@ function initializeHero() {
     game.u.uhpmax = game._initialHp;
     game.u.uen = game._initialEnergy;
     game.u.uenmax = game._initialEnergy;
-    game.u.uhpinc = [];
-    game.u.ueninc = [];
+    // C ref: u_init.c:995-998 — the initial hero values come from newhp()/
+    // newpw() with u.ulevel == 0, which also store u.uhpinc[0]/u.ueninc[0]
+    // (attrib.c:1130-1131, exper.c:70-71); newman() subtracts them again as
+    // "level gain" HP/Pw (polyself.c:385-388, 400-401).
+    game.u.uhpinc = [game._initialHp];
+    game.u.ueninc = [game._initialEnergy];
     game.u.uac = game.flags?.legacy === false ? (STARTING_AC[roleName] ?? role.ac) : role.ac;
     game.u.uhunger = 900;
     game._post_intro_ac = STARTING_AC[roleName] ?? role.ac;

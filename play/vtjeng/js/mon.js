@@ -48,10 +48,12 @@ import {
     is_female,
     is_hider,
     is_human,
+    is_shapeshifter,
     is_male,
     is_neuter,
     is_vampshifter,
     is_were,
+    monsndx,
     regenerates,
     strongmonst,
     throws_rocks,
@@ -59,6 +61,7 @@ import {
 import {
     G_UNIQ,
     MZ_MEDIUM,
+    NON_PM,
     PM_FLESH_GOLEM,
     PM_FOG_CLOUD,
     PM_HUMAN_WEREJACKAL,
@@ -199,6 +202,50 @@ export function mon_offmap(monster) {
 
 function monsterOnMap(monster) {
     return !mon_offmap(monster);
+}
+
+// C ref: mon.c get_iter_mons(). Walks this level's monsters and answers the
+// first one `bfunc` accepts, or null. C caches each monster's `nmon` before
+// calling `bfunc` so that a predicate which removes the monster from the chain
+// still leaves the walk somewhere valid.
+export function get_iter_mons(bfunc, state = game) {
+    let next = null;
+    for (let mtmp = state.level?.monlist ?? null; mtmp; mtmp = next) {
+        next = mtmp.nmon;
+        if (mtmp.mhp < 1 /* DEADMONSTER() */ || mon_offmap(mtmp)) continue;
+        if (bfunc(mtmp)) return mtmp;
+    }
+    return null;
+}
+
+// C ref: mon.c pm_to_cham(). Answers the shape a monster of species `mndx`
+// reverts to, which is that species itself for a shapeshifter and NON_PM for
+// everything else.
+export function pm_to_cham(mndx, state = game) {
+    const species = state.mons?.[mndx];
+    return species && is_shapeshifter(species) ? mndx : NON_PM;
+}
+
+// C ref: mon.c restore_cham(), which dog.c mon_arrive() calls on every monster
+// that reaches a level, because Protection_from_shape_changers may have
+// changed while the monster was off the map.
+//
+// The forced-revert arm needs normal_shape(), which is unported: it undoes a
+// mimic's disguise through seemimic() and a vampshifter's form through
+// newcham(). Neither the hero property nor mcan can be set on any path that
+// reaches a level change today, so the arm stops rather than runs.
+export function restore_cham(monster, state = game) {
+    const shapeChangerProtection
+        = state.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    if (shapeChangerProtection?.intrinsic
+        || shapeChangerProtection?.extrinsic
+        || monster.mcan) {
+        throw new RangeError(
+            'restore_cham: forcing a natural shape is future work',
+        );
+    }
+    if (monster.cham === NON_PM)
+        monster.cham = pm_to_cham(monsndx(monster.data), state);
 }
 
 // C ref: mon.c set_ustuck() (3421-3434). The sanity-check impossible() at the

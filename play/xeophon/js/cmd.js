@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { wizardCussMessage, wizdeadorgone } from './wizard.js';
 import { WERE_SPECIES } from './were.js';
+import { MONS } from './permonst.js'; // js port of include/monsters.h rows (natural AC via .ac)
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
@@ -4307,6 +4308,36 @@ const RACE_EN_ADVANCE = {
     dwarf: { lowFix: 0, lowRnd: 0, highFix: 0, highRnd: 0 },
     gnome: { lowFix: 2, lowRnd: 0, highFix: 2, highRnd: 0 },
     orc: { lowFix: 1, lowRnd: 0, highFix: 1, highRnd: 0 },
+};
+// C ref: role.c roles[] / race.c races[] "Init" (infix, inrnd) columns of
+// hpadv and enadv (struct RoleAdvance, you.h:23-27) — used by newhp()'s
+// ulevel==0 branch (attrib.c:1085-1093) and newpw()'s (exper.c:48-53),
+// both reached per-level from newman() (polyself.c:397-406).
+const ROLE_HP_INIT = {
+    Archeologist: { fix: 11, rnd: 0 }, Barbarian: { fix: 14, rnd: 0 },
+    Caveman: { fix: 14, rnd: 0 }, Healer: { fix: 11, rnd: 0 },
+    Knight: { fix: 14, rnd: 0 }, Monk: { fix: 12, rnd: 0 },
+    Priest: { fix: 12, rnd: 0 }, Rogue: { fix: 10, rnd: 0 },
+    Ranger: { fix: 13, rnd: 0 }, Samurai: { fix: 13, rnd: 0 },
+    Tourist: { fix: 8, rnd: 0 }, Valkyrie: { fix: 14, rnd: 0 },
+    Wizard: { fix: 10, rnd: 0 },
+};
+const RACE_HP_INIT = {
+    human: { fix: 2, rnd: 0 }, elf: { fix: 1, rnd: 0 }, dwarf: { fix: 4, rnd: 0 },
+    gnome: { fix: 1, rnd: 0 }, orc: { fix: 1, rnd: 0 },
+};
+const ROLE_EN_INIT = {
+    Archeologist: { fix: 1, rnd: 0 }, Barbarian: { fix: 1, rnd: 0 },
+    Caveman: { fix: 1, rnd: 0 }, Healer: { fix: 1, rnd: 4 },
+    Knight: { fix: 1, rnd: 4 }, Monk: { fix: 2, rnd: 2 },
+    Priest: { fix: 4, rnd: 3 }, Rogue: { fix: 1, rnd: 0 },
+    Ranger: { fix: 1, rnd: 0 }, Samurai: { fix: 1, rnd: 0 },
+    Tourist: { fix: 1, rnd: 0 }, Valkyrie: { fix: 1, rnd: 0 },
+    Wizard: { fix: 4, rnd: 3 },
+};
+const RACE_EN_INIT = {
+    human: { fix: 1, rnd: 0 }, elf: { fix: 2, rnd: 0 }, dwarf: { fix: 0, rnd: 0 },
+    gnome: { fix: 2, rnd: 0 }, orc: { fix: 1, rnd: 0 },
 };
 const WAND_NAME_TO_INDEX = new Map([
     ['light', 0], ['secret door detection', 1], ['enlightenment', 2], ['create monster', 3],
@@ -15063,15 +15094,25 @@ async function advanceExperienceLevel(incremental = false) {
     game._command_mode = more ? 'levelChangeMore' : null;
 }
 
-// AC note: do_wear.c:2473-2475 find_ac() starts from mons[u.umonnum].ac for
-// the polymorphed hero, but the generated monster rows carry no armor class,
-// so forms resolve without a mac and recomputePolyselfArmorClass() bases the
-// hero's AC on 10 (minus still-worn armor bonuses) unless a form entry in
-// POLYSELF_EXTRA_FORMS supplies an explicit mac.  (An earlier patch injected
-// monsters.h:2358's xorn AC of -2 here; that regressed the unit contract for
-// breakarm fallout, which expects base AC 10 once all armor is gone.)
+// AC note: do_wear.c:2473-2475 find_ac() bases the polymorphed hero's AC on
+// mons[u.umonnum].ac (the form's natural armor class from include/monsters.h;
+// polymon() recomputes it via find_ac(), polyself.c:896-898).  The monster
+// rows returned by monsterByRndName() / RANDOM_MONSTER_BY_NAME usually carry
+// no mac, so attach the natural AC from js/permonst.js MONS (its .ac field
+// mirrors each monsters.h LVL row, e.g. xorn -2 at monsters.h:2358, fog cloud
+// 0 at monsters.h:1054) for the becomeMonster()/recomputePolyselfArmorClass()
+// `form.mac ?? 10` paths.  POLYSELF_EXTRA_FORMS entries keep their curated
+// mac-or-default behavior.  MONS lists werecreatures twice (beast form first);
+// polyself into a werecreature uses the beast form (polyself.c:782-792), which
+// is also the form the curated map covers, so first-name-match is right.
 function polyselfFormByName(name) {
-    const form = POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    const curated = POLYSELF_EXTRA_FORMS.get(name);
+    if (curated) return curated;
+    const form = monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    if (form && form.mac == null) {
+        const pmRow = MONS.find(entry => entry.name === form.name);
+        if (pmRow) return { ...form, mac: pmRow.ac };
+    }
     return form;
 }
 
@@ -15091,6 +15132,57 @@ function polymorphSystemShock() {
     if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
     exerciseAttribute(A_CON, false);
     return { message: 'You shudder for a moment.', more: false };
+}
+
+// C ref: polyself.c:481 controllable_poly = Polymorph_control && !(Stunned
+// || Unaware); polymorph control here comes from the worn ring (or the
+// intrinsic, mirrored by game.u.polymorphControl elsewhere).
+function heroHasPolymorphControl() {
+    if (game.u?.polymorphControl || game.u?.polycontrol || game.u?.Polymorph_control) return true;
+    return heroWearsRingNamed('polymorph control');
+}
+
+function heroIsUnaware() {
+    return !!(game.u?.unaware || (game._helpless_time || 0) > 0 && game.u?._unaware);
+}
+
+function controllablePolyself() {
+    return heroHasPolymorphControl() && !heroIsStunned() && !heroIsUnaware();
+}
+
+// C ref: zapyourself() WAN_POLYMORPH (zap.c:2804-2810) calls
+// polyself(POLY_NOFLAGS); with controllable poly the system-shock roll
+// (polyself.c:489-497) is skipped and the "Become what kind of monster?"
+// prompt answer drives the form selection.  Name resolution mirrors
+// polyself.c:566-714: placeholder/illegal or own-race names (!polyok()
+// short-circuit, e.g. "human" — polymorphing into a human is what forces
+// newman()) consume no extra roll; a genuine polyok() monster first takes
+// the 1-in-5 forced-newman roll at polyself.c:712 (!forcecontrol && !rn2(5)).
+function controlledPolyselfZapResult(item, name) {
+    const raceName = String(game.urace?.noun || game._startup_race || 'human').toLowerCase();
+    let result;
+    if (name === 'human' || name === raceName) {
+        result = becomeMonster(name);
+    } else {
+        const form = polyselfFormByName(name);
+        if (!form) result = { message: "I've never heard of such monsters.", more: false };
+        else result = rn2(5) === 0 ? becomeMonster('human') : becomeMonster(form.name);
+    }
+    if (item) setKnownWandLine(item, 'polymorph');
+    // zap.c:123-150 learnwand() - discover_object() (o_init.c:474-490): the
+    // first time the wand type is discovered with an observable effect, the
+    // hero gets credit_hero and exercise(A_WIS, TRUE) rolls (attrib.c:499-509).
+    const alreadyKnown = (game._discoveries || []).some(entry =>
+        entry.section === 'Wands' && entry.name === 'wand of polymorph');
+    if (!alreadyKnown) {
+        if (result && result.message) exerciseAttribute(A_WIS, true);
+        game._discoveries ??= [];
+        game._discoveries.push({
+            section: 'Wands', name: 'wand of polymorph', text: 'wand of polymorph',
+            starred: false, known: true,
+        });
+    }
+    return result;
 }
 
 function polymorphSelfZapResult(item = null) {
@@ -16296,75 +16388,149 @@ function becomeMonster(name) {
     if (name === 'human' || name === game.urace?.noun || name === game._startup_race) {
         const wasFormBlinded = !!game.u._polyself_form_blinded;
         const skinbackMessages = polyselfSkinbackMessages(false);
-        const newLevel = Math.max(1, Math.min(30, (game.u?.ulevel || 1) + rn2(5) - 2));
-        rn2(10);
-        const minExp = newLevel === 1 ? 0 : newLevel - 1 < 10 ? 10 * (2 ** (newLevel - 1))
-            : newLevel - 1 < 20 ? 10000 * (2 ** (newLevel - 11))
-                : 10000000 * (newLevel - 20);
-        const maxExp = newLevel < 10 ? 10 * (2 ** newLevel)
-            : newLevel < 20 ? 10000 * (2 ** (newLevel - 10))
-                : 10000000 * (newLevel - 19);
-        const newExp = minExp + rn2(maxExp - minExp);
-        rn2(5);
-        rn2(5);
-        rn2(5);
-        rn2(5);
-	        const hpScale = 8 + rn2(4);
-	        const hpGain = rnd(8);
-	        const hpRaceGain = rnd(2);
-	        const energyScale = 8 + rn2(4);
-	        const initialEnergyRoll = rnd(3);
-	        const levelEnergyRoll = rn2(7);
-	        const hunger = rn2(500) + 500;
-	        if (base) {
-	            const baseLevel = base.ulevel || 1;
-	            const baseHpMax = Math.max(1, base.uhpmax || game.u.uhpmax || 1);
-	            const baseHp = Math.max(1, Math.min(base.uhp || baseHpMax, baseHpMax));
-	            const role = game._startup_role || game.urole?.name?.m || 'Wizard';
-	            const raceName = game._startup_race || game.urace?.noun || 'human';
-	            const roleHp = ROLE_HP_ADVANCE[role] || ROLE_HP_ADVANCE.Tourist;
-	            const raceHp = RACE_HP_ADVANCE[raceName] || RACE_HP_ADVANCE.human;
-	            const roleEnergy = ROLE_EN_ADVANCE[role] || ROLE_EN_ADVANCE.Tourist;
-	            const raceEnergy = RACE_EN_ADVANCE[raceName] || RACE_EN_ADVANCE.human;
-	            const initialHp = base.initialHp || game._initialHp || baseHpMax;
-	            const hpIncs = [...(base.uhpinc || [])];
-	            if (!hpIncs[0]) hpIncs[0] = initialHp;
-	            let hpExtra = baseHpMax;
-	            for (let i = 0; i < baseLevel; i++) hpExtra -= hpIncs[i] || 0;
-	            const con = game.u?.acurr?.a?.[4] || 10;
-	            const conplus = con <= 3 ? -2 : con <= 6 ? -1 : con <= 14 ? 0 : con <= 16 ? 1 : con === 17 ? 2 : con === 18 ? 3 : 4;
-	            const levelHpGain = Math.max(1, roleHp.lowFix + raceHp.lowFix + hpGain + hpRaceGain + conplus);
-	            const hpmax = Math.max(newLevel, Math.round(Math.max(0, hpExtra) * hpScale / 10) + initialHp + levelHpGain);
-	            const baseEnergyMax = Math.max(1, base.uenmax || game.u.uenmax || 1);
-	            const baseEnergy = Math.max(0, Math.min(base.uen || 0, baseEnergyMax));
-	            const initialEnergy = role === 'Wizard' && raceName === 'human'
-	                ? 5 + initialEnergyRoll
-	                : base.initialEnergy || game._initialEnergy || baseEnergyMax;
-	            const energyIncs = [...(base.ueninc || [])];
-	            if (!energyIncs[0]) energyIncs[0] = initialEnergy;
-	            let energyExtra = baseEnergyMax;
-	            for (let i = 0; i < baseLevel; i++) energyExtra -= energyIncs[i] || 0;
-	            let levelEnergyGain = levelEnergyRoll + roleEnergy.lowFix + raceEnergy.lowFix;
-	            if (role === 'Priest' || role === 'Wizard') levelEnergyGain *= 2;
-	            else if (role === 'Healer' || role === 'Knight') levelEnergyGain = Math.trunc((3 * levelEnergyGain) / 2);
-	            else if (role === 'Barbarian' || role === 'Valkyrie') levelEnergyGain = Math.trunc((3 * levelEnergyGain) / 4);
-	            if (levelEnergyGain <= 0) levelEnergyGain = 1;
-	            const energyMax = Math.max(newLevel, Math.round(Math.max(0, energyExtra) * energyScale / 10) + initialEnergy + levelEnergyGain);
-	            game.u.uhp = Math.max(1, Math.round(baseHp * hpmax / baseHpMax));
-	            game.u.uhpmax = hpmax;
-	            game.u.uen = Math.max(0, Math.round(baseEnergy * energyMax / baseEnergyMax));
-	            game.u.uenmax = energyMax;
-	            game.u.uac = 10;
-	            for (const item of game.inventory || []) {
-	                if (!(item.cls === 'armor' && (item.worn || item.line?.includes('being worn')))) continue;
-	                const armorName = String(item.actualKind || item.kind || inventoryItemName(item)).toLowerCase();
-	                game.u.uac -= (ARMOR_AC_BONUS[armorName] ?? 0) + (item.spe ?? 0);
-	            }
-	            game.u.ulevel = newLevel;
-	            game.u.uexp = newExp;
-	            game.u.uhunger = hunger;
-            if (base.rank && game.urole) game.urole.rank = base.rank;
+        // C ref: newman() polyself.c:336-466 — every roll below mirrors the C
+        // sequence: rn1(5,-2) for the level (polyself.c:342), sex-change check
+        // (polyself.c:361; gs.sex_change_ok is set by the polyself() caller at
+        // polyself.c:711), rndexp(FALSE) (exper.c:377-395 via polyself.c:365),
+        // redist_attr()'s four rn2(5) rolls for Str/Dex/Con/Cha
+        // (attrib.c:744-772, Int/Wis skipped at attrib.c:753-755), then
+        // rn1(4,8) scaling + newhp() per level 0..newlvl-1 (polyself.c:388-401,
+        // attrib.c:1080-1140), energy likewise with newpw() (polyself.c:403-410,
+        // exper.c:40-84, enermod exper.c:25-43), hunger rn1(500,500)
+        // (polyself.c:414).
+        const role = game._startup_role || game.urole?.name?.m || 'Wizard';
+        const raceName = game._startup_race || game.urace?.noun || 'human';
+        const roleHp = ROLE_HP_ADVANCE[role] || ROLE_HP_ADVANCE.Tourist;
+        const raceHp = RACE_HP_ADVANCE[raceName] || RACE_HP_ADVANCE.human;
+        const roleEnergy = ROLE_EN_ADVANCE[role] || ROLE_EN_ADVANCE.Tourist;
+        const raceEnergy = RACE_EN_ADVANCE[raceName] || RACE_EN_ADVANCE.human;
+        const roleHpInit = ROLE_HP_INIT[role] || ROLE_HP_INIT.Tourist;
+        const raceHpInit = RACE_HP_INIT[raceName] || RACE_HP_INIT.human;
+        const roleEnInit = ROLE_EN_INIT[role] || ROLE_EN_INIT.Tourist;
+        const raceEnInit = RACE_EN_INIT[raceName] || RACE_EN_INIT.human;
+        const roleXlev = roleEnergy.xlev || 14; /* urole.xlev cutoff level */
+        // While polymorphed the JS port keeps the hero's base stats alive in
+        // game.u._polyself_base (matching C where u.uhp/u.uhpmax/... are
+        // untouched by polymon()); fall back to game.u when not polymorphed.
+        const baseLevel = base?.ulevel ?? (game.u?.ulevel || 1);
+        const baseHpMax = Math.max(1, base?.uhpmax ?? game.u.uhpmax ?? 1);
+        const baseHp = Math.max(1, Math.min(base?.uhp ?? game.u.uhp ?? baseHpMax, baseHpMax));
+        const baseEnMax = Math.max(1, base?.uenmax ?? game.u.uenmax ?? 1);
+        const baseEn = Math.max(0, Math.min(base?.uen ?? game.u.uen ?? 0, baseEnMax));
+        const hpIncs = [...(base?.uhpinc || game.u.uhpinc || [])];
+        const enIncs = [...(base?.ueninc || game.u.ueninc || [])];
+        // polyself.c:342 — newlvl = oldlvl + rn1(5,-2); going to level 0 or
+        // less kills (polyself.c:343-346); MAXULEV clamp at polyself.c:347.
+        const newLevel = Math.max(1, Math.min(30, baseLevel + rn2(5) - 2));
+        rn2(10); // polyself.c:361 sex-change check (sex change not modeled)
+        // exper.c:377-395 rndexp(FALSE): minexp + factor * rn2(diff).
+        const newuexp = (lev) => lev < 1 ? 0
+            : lev < 10 ? 10 * (2 ** lev)
+                : lev < 20 ? 10000 * (2 ** (lev - 10))
+                    : 10000000 * (lev - 19);
+        const minExp = newLevel === 1 ? 0 : newuexp(newLevel - 1);
+        let expDiff = newuexp(newLevel) - minExp;
+        let expFactor = 1;
+        while (expDiff >= 0x7fffffff) { expDiff = Math.floor(expDiff / 2); expFactor *= 2; }
+        const newExp = minExp + expFactor * rn2(expDiff);
+        // attrib.c:744-772 redist_attr() — four rolls in Str,Dex,Con,Cha
+        // order.  The resulting AMAX/ABASE drift is not displayed (ACURR is)
+        // and is not modeled further.
+        rn2(5); rn2(5); rn2(5); rn2(5);
+        const con = game.u?.acurr?.a?.[A_CON] || 10;
+        const conplus = con <= 3 ? -2 : con <= 6 ? -1 : con <= 14 ? 0 : con <= 16 ? 1 : con === 17 ? 2 : con === 18 ? 3 : 4;
+        const wisDiv2 = Math.trunc((game.u?.acurr?.a?.[A_WIS] || 10) / 2);
+        const rounddiv = (x, y) => { // hack.c:4551-4570
+            const sgn = (x < 0) !== (y < 0) ? -1 : 1;
+            const ax = Math.abs(x), ay = Math.abs(y);
+            let rr = Math.floor(ax / ay);
+            if (2 * (ax % ay) >= ay) rr++;
+            return sgn * rr;
+        };
+        // attrib.c:1080-1140 newhp(): level 0 uses the init (infix/inrnd)
+        // columns with no Con adjustment; other levels use the low/high
+        // columns chosen by urole.xlev plus the ACURR(A_CON) adjustment.
+        const hpIncsOut = [];
+        const newLevelHp = (lev) => {
+            let hp;
+            if (lev === 0) {
+                hp = roleHpInit.fix + raceHpInit.fix;
+                if (roleHpInit.rnd > 0) hp += rnd(roleHpInit.rnd);
+                if (raceHpInit.rnd > 0) hp += rnd(raceHpInit.rnd);
+            } else if (lev < roleXlev) {
+                hp = roleHp.lowFix + raceHp.lowFix
+                    + (roleHp.lowRnd > 0 ? rnd(roleHp.lowRnd) : 0)
+                    + (raceHp.lowRnd > 0 ? rnd(raceHp.lowRnd) : 0)
+                    + conplus; // attrib.c:1111-1125
+            } else {
+                hp = roleHp.highFix + raceHp.highFix
+                    + (roleHp.highRnd > 0 ? rnd(roleHp.highRnd) : 0)
+                    + (raceHp.highRnd > 0 ? rnd(raceHp.highRnd) : 0)
+                    + conplus;
+            }
+            hp = Math.max(1, hp);
+            if (lev < 30) hpIncsOut[lev] = hp; /* u.uhpinc[lev], attrib.c:1131 */
+            return hp;
+        };
+        // exper.c:40-84 newpw(): at levels > 0 the whole rn1(enrnd, enfix)
+        // goes through enermod() (exper.c:25-43); level 0 uses init columns
+        // (exper.c:48-52, no enermod).
+        const enermod = (en) => { // exper.c:25-43
+            if (role === 'Priest' || role === 'Wizard') return 2 * en;
+            if (role === 'Healer' || role === 'Knight') return Math.trunc((3 * en) / 2);
+            if (role === 'Barbarian' || role === 'Valkyrie') return Math.trunc((3 * en) / 4);
+            return en;
+        };
+        const enIncsOut = [];
+        const newLevelEn = (lev) => {
+            let en;
+            if (lev === 0) {
+                en = roleEnInit.fix + raceEnInit.fix;
+                if (roleEnInit.rnd > 0) en += rnd(roleEnInit.rnd);
+                if (raceEnInit.rnd > 0) en += rnd(raceEnInit.rnd);
+            } else if (lev < roleXlev) {
+                en = enermod(roleEnergy.lowFix + raceEnergy.lowFix
+                    + rn2(wisDiv2 + roleEnergy.lowRnd + raceEnergy.lowRnd)); // rn1(enrnd, enfix)
+            } else {
+                en = enermod(roleEnergy.highFix + raceEnergy.highFix
+                    + rn2(wisDiv2 + roleEnergy.highRnd + raceEnergy.highRnd));
+            }
+            en = Math.max(1, en);
+            if (lev < 30) enIncsOut[lev] = en; /* u.ueninc[lev], exper.c:71 */
+            return en;
+        };
+        // polyself.c:380-401 — strip level-gain HP, rescale by rn1(4,8),
+        // then re-add newhp() per level.
+        let hpExtra = baseHpMax;
+        for (let i = 0; i < baseLevel; i++) hpExtra -= hpIncs[i] || 0;
+        let hpmax = rounddiv(hpExtra * (8 + rn2(4)), 10); // rn1(4,8)
+        for (let lev = 0; lev < newLevel; lev++) hpmax += newLevelHp(lev);
+        if (hpmax < newLevel) hpmax = newLevel; // polyself.c:399-400
+        // polyself.c:403-410 — same for spell power.
+        let enExtra = baseEnMax;
+        for (let i = 0; i < baseLevel; i++) enExtra -= enIncs[i] || 0;
+        let enmax = rounddiv(enExtra * (8 + rn2(4)), 10);
+        for (let lev = 0; lev < newLevel; lev++) enmax += newLevelEn(lev);
+        if (enmax < newLevel) enmax = newLevel; // polyself.c:407-408
+        const hunger = rn2(500) + 500; // rn1(500,500), polyself.c:414
+        // retain the same proportion of current HP/Pw (polyself.c:394-396,
+        // 409-411 rounddiv).
+        game.u.uhpmax = hpmax;
+        game.u.uhp = Math.max(1, Math.min(hpmax, rounddiv(baseHp * hpmax, baseHpMax)));
+        game.u.uenmax = enmax;
+        game.u.uen = Math.max(0, Math.min(enmax, rounddiv(baseEn * enmax, Math.max(1, baseEnMax))));
+        game.u.uhpinc = hpIncsOut;
+        game.u.ueninc = enIncsOut;
+        game.u.uac = 10; // polyman() -> find_ac() (polyself.c:200-220 area): human base AC
+        for (const item of game.inventory || []) {
+            if (!(item.cls === 'armor' && (item.worn || item.line?.includes('being worn')))) continue;
+            const armorName = String(item.actualKind || item.kind || inventoryItemName(item)).toLowerCase();
+            game.u.uac -= (ARMOR_AC_BONUS[armorName] ?? 0) + (item.spe ?? 0);
         }
+        game.u.ulevel = newLevel;
+        game.u.uexp = newExp;
+        game.u.uhunger = hunger;
+        if (base?.rank && game.urole) game.urole.rank = base.rank;
         game.u._glyph = null;
         game.u._glyphColor = undefined;
         game.u._monsterHd = null;
@@ -67764,6 +67930,17 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         game._zap_item = null;
         game._command_mode = null;
         if (selfZap) {
+            // C ref: polyself.c:481/513 — with controllable polymorph the
+            // system-shock roll is skipped and polyself() prompts for the
+            // form instead of picking at random (no rn2(SPECIAL_PM)).
+            if (!heroHasUnchanging() && controllablePolyself()) {
+                game._zap_polyself_item = item;
+                game._polyself_text = '';
+                await setMessage('Become what kind of monster? [type the name]');
+                game._command_mode = 'zapPolyselfMonster';
+                game.context.move = 0;
+                return;
+            }
             const result = polymorphSelfZapResult(item);
             game.context.move = 1;
             if (result.message) await setMessage(result.message, result.more);
@@ -73010,6 +73187,33 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     await setMessage("I've never heard of such monsters.");
                     return;
                 }
+                newsym(game.u.ux, game.u.uy);
+                await setMessage(result.message, !!result.more);
+                if (applyLifeSavingOrFatalCommandMode(result)) return;
+                return;
+            }
+            await setMessage('Never mind.');
+            return;
+        }
+        if (key === 8 || key === 127) game._polyself_text = (game._polyself_text || '').slice(0, -1);
+        else if (key >= 32) game._polyself_text = `${game._polyself_text || ''}${ch}`;
+        await setMessage(`Become what kind of monster? [type the name]${game._polyself_text ? ` ${game._polyself_text}` : ''}`);
+        return;
+    }
+
+    // Wand/spell of polymorph zapped at self with polymorph control:
+    // zapyourself() WAN_POLYMORPH (zap.c:2804-2810) running
+    // polyself(POLY_NOFLAGS) with controllable_poly (polyself.c:481).
+    if (game._command_mode === 'zapPolyselfMonster') {
+        if (ch === '\r' || ch === '\n') {
+            const name = (game._polyself_text || '').trim().toLowerCase();
+            game._polyself_text = '';
+            const item = game._zap_polyself_item;
+            game._zap_polyself_item = null;
+            game._command_mode = null;
+            game.context.move = 1;
+            if (name) {
+                const result = controlledPolyselfZapResult(item, name);
                 newsym(game.u.ux, game.u.uy);
                 await setMessage(result.message, !!result.more);
                 if (applyLifeSavingOrFatalCommandMode(result)) return;
