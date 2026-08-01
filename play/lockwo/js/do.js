@@ -23,24 +23,28 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, rnl } from './rng.js';
-import { print_dungeon } from './dungeon.js';
+import { print_dungeon, builds_up } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
-         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
+         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
 
-// C ref: dungeon.c level_difficulty() — factor of difficulty from depth.  The
-// covered ports' path is the main dungeon with no amulet and outside the
-// endgame, where res == depth(&u.uz); the builds-up (Sokoban / Vlad's Tower)
-// and ring-of-aggravate-monster adjustments are not exercised.
+// C ref: dungeon.c level_difficulty() — factor of difficulty from depth,
+// bumped in a "builds up" branch (Sokoban / Vlad's Tower) to compensate for
+// depth() alone making their harder-to-reach levels look easier.  The amulet
+// / endgame variants are not exercised.
 const PM_TOURIST = 10; // makemon/exper PM index
 function level_difficulty() {
-    return depth_of_level(game.u.uz);
+    const uz = game.u.uz;
+    let res = depth_of_level(uz);
+    if (builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
 }
 import { mon_catchup_elapsed_time, monnear } from './dogmove.js';
 import { onquest } from './questpgr.js';
@@ -453,6 +457,22 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
+
+    // C ref: do.c goto_level() — track the deepest (or, in a builds-up branch,
+    // shallowest) dlevel reached in this dungeon so far.  dng_bottom() (trap.c,
+    // hole/trapdoor destinations) reads this to decide whether the Quest
+    // branch's "don't fall past locate until you've been there" cutoff still
+    // applies; leaving it unset would pin that cutoff forever.
+    {
+        const dng = game.dungeons?.[u.uz.dnum];
+        if (dng) {
+            if (!builds_up(u.uz)) {
+                if (u.uz.dlevel > dng.dunlev_ureached) dng.dunlev_ureached = u.uz.dlevel;
+            } else if (dng.dunlev_ureached === 0 || u.uz.dlevel < dng.dunlev_ureached) {
+                dng.dunlev_ureached = u.uz.dlevel;
+            }
+        }
+    }
 
     if (firstVisit) {
         g._visited_levels[ledger] = true;

@@ -13,7 +13,7 @@ import { NO_COLOR } from './terminal.js';
 import { roles, rank_of, align_gname, align_gtitle } from './role.js';
 import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, In_quest } from './const.js';
 import { rn2 } from './rng.js';
-import { flush_screen, topl_more } from './display.js';
+import { flush_screen, topl_more, pline } from './display.js';
 import { renderWindowScreen } from './invent.js';
 
 // dat/quest.lua questtext.common.legacy.text
@@ -139,6 +139,16 @@ const BAR_FIRSTTIME = [
     '    "By %d, there will be blood spilt today."',
 ];
 
+// dat/quest.lua Pri.firsttime.text (with the %-codes convert_arg substitutes).
+const PRI_FIRSTTIME = [
+    'You find yourself standing in sight of %H.  Something',
+    'is obviously wrong here.  The doors to %H, which usually',
+    'stand open, are closed.  Strange human shapes shamble around',
+    'outside.',
+    '',
+    'You realize that %l needs your assistance!',
+];
+
 // dat/quest.lua Arc.firsttime.text (with the %-codes convert_arg substitutes).
 const ARC_FIRSTTIME = [
     'You are suddenly in familiar surroundings.  The buildings in the distance',
@@ -168,7 +178,7 @@ export async function onquest() {
         const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
         // Only the quest home levels whose Xxx-strt.lua generation is ported.
         const fc = roles[rolenum]?.filecode;
-        if (fc !== 'Bar' && fc !== 'Arc') return;
+        if (fc !== 'Bar' && fc !== 'Arc' && fc !== 'Pri') return;
         await com_pager_quest_firsttime(rolenum);
         return;
     }
@@ -214,6 +224,10 @@ async function com_pager_quest_firsttime(rolenum) {
         template = ARC_FIRSTTIME;
         leader = 'Lord Carnarvon';
         home = 'the College of Archeology';               // Arc urole.homebase
+    } else if (roles[rolenum]?.filecode === 'Pri') {
+        template = PRI_FIRSTTIME;
+        leader = 'the Arch Priest';    // ldrname(): not a pname -> "the "+name
+        home = 'the Great Temple';                         // Pri urole.homebase
     } else {
         template = BAR_FIRSTTIME;
         leader = 'Pelias';                                // ldrname(): proper name
@@ -266,4 +280,122 @@ async function com_pager_quest_locate_first() {
     }
     delete g._modal_screen;
     g._pending_message = '';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Quest leader dialogue.  C ref: monmove.c dochug() PHASE ONE — a monster
+// whose mstrategy has STRAT_CLOSE (the one named quest leader per role; see
+// makemon.js M3_CLOSE_NAMES) freezes in place (mstrategy & STRAT_WAITMASK)
+// until the hero is adjacent and it is that monster's turn to act, at which
+// point quest_talk(mtmp) is its only chance to do something.  quest.c
+// quest_talk() -> leader_speaks() -> chat_with_leader().
+//
+// Only the "Rule 5" not-yet-quested branch (met_leader / leader_first /
+// leader_next) is ported here, and only for the two roles whose home-level
+// generation (sp_lev.js makemaz_arc_strt / makemaz_bar_strt) is ported —
+// same scope restriction as com_pager_quest_firsttime above.  The
+// got_thanks / questart / got_quest post-assignment branches, and the
+// not_capable()/is_pure()/expulsion() readiness gate chat_with_leader runs
+// after the greeting, are not reached by any covered session and are left
+// unmodeled.  STRAT_CLOSE is also set on "prisoner" (a different quest_talk
+// case, prisoner_speaks()) and STRAT_WAITFORU on the nemeses/uniques
+// (nemesis_speaks()); neither is modeled here.
+// ════════════════════════════════════════════════════════════════════════
+
+// dat/quest.lua Arc.leader_first.text / leader_next.text.
+const ARC_LEADER_FIRST = [
+    '"Finally you have returned, %p.  You were always',
+    'my most promising student.  Allow me to see if you are ready for the',
+    'most difficult task of your career."',
+];
+const ARC_LEADER_NEXT = [
+    '"Again, %p, you stand before me.',
+    'Let me see if you have gained experience in the interim."',
+];
+// dat/quest.lua Bar.leader_first.text / leader_next.text.
+const BAR_LEADER_FIRST = [
+    '"Ah, %p.  You have returned at last.  The world is in dire',
+    'need of your help.  There is a great quest you must undertake.',
+    '',
+    '"But first, I must see if you are ready to take on such a challenge."',
+];
+const BAR_LEADER_NEXT = [
+    '"%p, you are back.  Are you ready now for the challenge?"',
+];
+
+// C ref: monsters.h — the M3_CLOSE monster per role that IS the quest leader
+// (i.e. makemon.js's M3_CLOSE_NAMES minus "prisoner", which is a different
+// quest_talk case — see the module comment above).
+const QUEST_LEADER_NAMES = new Set(["Lord Carnarvon", "Pelias", "Shaman Karnov", "Earendil", "Elwing", "Hippocrates", "King Arthur", "Grand Master", "Arch Priest", "Orion", "Master of Thieves", "Lord Sato", "Twoflower", "Norn", "Neferet the Green"]);
+
+// C ref: questpgr.c com_pager_core() — every qt_pager() call creates a fresh
+// sandboxed Lua state and reloads quest.lua from scratch, so nhlib.lua's
+// top-level shuffle(align) (rn2(3), rn2(2)) fires again on EVERY call, not
+// just the first.  Factored out of com_pager_quest_firsttime/locate_first's
+// inline copies since this is now a third call site.
+function quest_lua_reload_shuffle() {
+    const a = ['law', 'neutral', 'chaos'];
+    for (let i = a.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const t = a[i - 1]; a[i - 1] = a[j - 1]; a[j - 1] = t;
+    }
+}
+
+// C ref: questpgr.c com_pager_core() — output defaults to "pline" for a
+// single-line message and is switched to a full-screen NHW_TEXT window
+// (deliver_by_window) whenever the raw text contains an embedded newline
+// (quest.lua's leader_next is pline-only for Bar but window-shaped for Arc;
+// this mirrors C's own strchr(text,'\n') decision rather than hardcoding a
+// per-role rendering mode).
+async function qt_pager_text(lines, plname) {
+    const subst = lines.map((l) => l.replace(/%p/g, plname || ''));
+    if (subst.length <= 1) {
+        if (subst[0]) await pline(subst[0]);
+        return;
+    }
+    const g = game;
+    // create_nhwindow()/display_nhwindow() implicitly flush any pending
+    // NEED_MORE topline (e.g. teleds' "You materialize...") before painting
+    // over it — see com_pager_quest_firsttime's identical guard above.
+    if (g._toplin === 1) await topl_more();
+    renderWindowScreen(subst, { footer: '--More--', footerRow: 23, footerCol: 0, modal: 'textwin' });
+    await flush_screen(1);
+    g._modal_screen = 'topl';
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 32 || c === 13 || c === 10 || c === 27) break;
+    }
+    delete g._modal_screen;
+    g._pending_message = '';
+}
+
+// C ref: quest.c chat_with_leader() "Rule 5" branch (see module comment).
+async function chat_with_leader(mtmp) {
+    const g = game;
+    if (!mtmp.mpeaceful || g._quest_pissed_off) return;
+    const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
+    const fc = roles[rolenum]?.filecode;
+    let first, next;
+    if (fc === 'Arc') { first = ARC_LEADER_FIRST; next = ARC_LEADER_NEXT; }
+    else if (fc === 'Bar') { first = BAR_LEADER_FIRST; next = BAR_LEADER_NEXT; }
+    else return; // this role's home-level generation isn't ported (see above)
+    quest_lua_reload_shuffle();
+    if (!g._quest_met_leader) {
+        g._quest_met_leader = true;
+        await qt_pager_text(first, g.plname);
+    } else {
+        await qt_pager_text(next, g.plname);
+    }
+}
+
+// C ref: quest.c leader_speaks() — the "maybe you attacked leader?" branch
+// is not modeled: chat_with_leader() itself already no-ops when !mpeaceful.
+async function leader_speaks(mtmp) {
+    await chat_with_leader(mtmp);
+}
+
+// C ref: quest.c quest_talk() — dispatch by species; only the leader case is
+// ported (see the module comment above).
+export async function quest_talk(mtmp) {
+    if (QUEST_LEADER_NAMES.has(mtmp.data?.name)) await leader_speaks(mtmp);
 }

@@ -3,12 +3,13 @@
 
 import { game } from './gstate.js';
 import { wizardCussMessage, wizdeadorgone } from './wizard.js';
+import { WERE_SPECIES } from './were.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DELPHI, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MON_LIMBO, MON_MIGRATING, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
-import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
+import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz, getRngLog } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
 import { an, deathSummary, escapedSummaryLines, quitSummaryLines } from './end.js';
@@ -38,7 +39,7 @@ import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, curre
 import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers, killEggHatchTimer } from './egg_timers.js';
 import { METALLIC_MATERIALS, metallivoreObjectAlwaysResists, monsterIsMetallivore, objectIsAmuletLike, objectIsRingLike, objectIsSlowDigestionRing, objectMaterialForMetallivore, wandTrueMaterial } from './metallivore.js';
 import { castSpellDirectionalEffect, castSpellNodirEffect, spellCastNeedsDirection } from './spell.js';
-import { altarAlignAt, heroOnAltar, isHighAltarAt, offerAmulet, offerCorpse } from './offer.js';
+import { adjAlign, altarAlignAt, alignGodName, heroOnAltar, isHighAltarAt, offerAmulet, offerCorpse } from './offer.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -10408,6 +10409,7 @@ function heroFarlookDescription() {
 // and xkilled(mtmp, XKILL_NOMSG) reduces them to 0HP.  getpos() shows the
 // farlook tip only the first time (getpos.c:838 handle_tip(TIP_GETPOS)).
 async function beginWizKillFlow() {
+    game._wizkill_mon_locs = null;
     game._farlook_x = game.u?.ux || 0;
     game._farlook_y = game.u?.uy || 0;
     if (!game._getpos_tip_seen) {
@@ -10430,7 +10432,12 @@ function wizkillAutoDescribe(x, y) {
         !candidate.dead && (candidate.mhp == null || candidate.mhp > 0)
         && candidate.mx === x && candidate.my === y
         && !!(game.viz_array?.[candidate.my]?.[candidate.mx] & IN_SIGHT));
-    if (mon) return mon.data?.name || 'monster';
+    if (mon) return farlookMonsterDescription(mon);
+    // C ref: pager.c lookat()/do_look() — an object under the cursor is
+    // described by its topmost pile entry ("a scroll labeled ZLORFIK").
+    const object = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    if (object) return pickupObjectPhrase(object);
     return '';
 }
 
@@ -10443,6 +10450,11 @@ function farlookMonsterDescription(mon) {
     else if (mon.pet || mon.mpeaceful) name = `${mon.pet ? 'tame' : 'peaceful'} ${name}`;
     const details = [];
     if (mon.msleeping) details.push('asleep');
+    else if ((Number.isInteger(mon.mstrategy) && (mon.mstrategy & STRAT_WAITMASK))
+            || mon.mstrategy === 'waitforu')
+        // C ref: pager.c:463-464 — monsters with mstrategy & STRAT_WAITMASK
+        // are described as "meditating".
+        details.push('meditating');
     if (mon.mundetected) details.push('hidden');
     if (mon.appearObj != null || mon.appearGlyph) details.push('mimicking something');
     return details.length ? `${name}, ${details.join(', ')}` : name;
@@ -12192,6 +12204,19 @@ function applyLifeSavingConLoss() {
     if (game._life_saving_refresh_con && game.u?.acurr?.a)
         game.u.acurr.a[A_CON] = Math.max(3, game.u.acurr.a[A_CON] - 1);
     game._life_saving_refresh_con = 0;
+}
+
+// C ref: end.c:2040-2068 savelife() — same synchronous-heal helper as
+// allmain.js's restoreHeroHpForUnresolvedWizardDeath(); duplicated here because
+// cmd.js is the deferred-damage application site ((mhitu.c mdamageu path).
+function restoreHeroHpForUnresolvedWizardDeath() {
+    if (!(game.flags?.debug || game.flags?.explore)) return;
+    const u = game.u;
+    if (!u || !('uhp' in u)) return;
+    const con = u.acurr?.a?.[A_CON] ?? 10;
+    const givehp = 50 + 10 * Math.trunc(con / 2);
+    u.uhp = Math.min(u.uhpmax || 1, givehp);
+    game._death_pending_confirm = true; // cleared when the Die? prompt resolves
 }
 
 function restoreHeroHpAfterLifeSaving() {
@@ -26502,7 +26527,11 @@ function directMeleeNonlethalWrapperTail(mon, messages, {
 
 function maybeDropHeroProjectileKillRandomTreasure(mon, data, corpseData, killAccessible, treasureDrop) {
     if (!killAccessible || !treasureDrop) return;
-    if (corpseData.noCorpse || corpseData !== data) return;
+    // C ref: mon.c:3585-3591 — the "traditional treasure drop" gate is the
+    // geno G_NOCORPSE bit (mvitals[mndx].mvflags), NOT corpse drop-ability:
+    // the Wizard of Yendor (G_NOGEN|G_UNIQ, include/monsters.h:2847-2855)
+    // has no corpse bit, so he still drops treasure when #wizkilled.
+    if ((corpseData.noCorpse && !mon.iswiz && data.name !== 'Wizard of Yendor') || corpseData !== data) return;
     if (mon.mx === game.u?.ux && mon.my === game.u?.uy) return;
     if (data.mlet === 'Kop') return;
     if (mon.mcloned) return;
@@ -30285,6 +30314,85 @@ for (const [neutral, names] of GENDERED_CORPSTAT_MONSTER_NAMES) {
 const RANDOM_MONSTER_BY_LOWER_NAME = new Map(
     [...RANDOM_MONSTER_BY_NAME.entries()].map(([name, data]) => [String(name).toLowerCase(), data]),
 );
+
+// C ref: read.c:3245+ create_particular_parse() — monster names are matched
+// case-insensitively, but the special permonst objects (the Wizard of Yendor,
+// Medusa, ...) only register under their canonical capitalization, so map
+// them explicitly.
+const WIZGENESIS_SPECIAL_SPECS = new Map([
+    ['wizard of yendor', 'Wizard of Yendor'],
+    ['medusa', 'Medusa'],
+]);
+function wizgenesisMonsterspecPtr(spec) {
+    if (!spec) return null;
+    const lower = spec.toLowerCase();
+    const canon = WIZGENESIS_SPECIAL_SPECS.get(lower);
+    return monsterByRndName(canon || spec)
+        || RANDOM_MONSTER_BY_LOWER_NAME.get(lower)
+        || null;
+}
+
+// C ref: read.c:3112-3134 cant_revive(&mnum, FALSE, (struct obj *) 0) as used
+// by create_particular_creation() (read.c:3258-3269) for #wizgenesis —
+// special monsters that "can't exist here" resolve to a human zombie (guard,
+// shopkeeper, high cleric, aligned cleric, Angel), a long worm (long worm
+// tail), or a doppelganger (unique monsters via unique_corpstat(),
+// include/mondata.h:174); wizard mode then asks
+// "Creating <substitute> instead; force <name>? [yn] (n)" and only creates
+// the requested monster itself when the answer is 'y'.
+function wizgenesisCantReviveSubstitute(ptr) {
+    if (!ptr || !ptr.name) return null;
+    if (ptr.name === 'guard' || ptr.name === 'shopkeeper'
+        || ptr.name === 'high cleric' || ptr.name === 'aligned cleric'
+        || ptr.name === 'Angel')
+        return monsterByRndName('human zombie');
+    if (ptr.name === 'long worm tail')
+        return monsterByRndName('long worm');
+    if (ptr.unique || ptr.iswiz || ptr.name === 'Wizard of Yendor')
+        return monsterByRndName('doppelganger');
+    return null;
+}
+
+// C ref: read.c:3252-3361 create_particular_creation() — the actual spawn:
+// enexto-like spot next to the hero (makemon(makemon.c:1109-1131) relocates
+// from the hero's square), disposition overrides (read.c:3324-3330), then
+// makemon's MM_NOEXCLAM "appears next to you." message (makemon.c:1474-1496).
+async function finishWizgenesisSpawn(mdat, disposition, monspec) {
+    const spot = mdat ? enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, mdat) : null;
+    if (spot) {
+        const created = await makemon(mdat, spot.x, spot.y, 0);
+        if (created) {
+            created.msleeping = 0;
+            if (disposition === 'tame') {
+                created.mpeaceful = 1;
+                created.pet = true;
+                created.mtame = Math.max(created.mtame || 0,
+                    created.data?.domestic || created.data?.isDomestic ? 10 : 5);
+                created.mextra ??= {};
+                created.mextra.edog ??= {
+                    apport: game.u?.acurr?.a?.[A_CHA] ?? 3,
+                    hungrytime: (game.moves || 1) + 1000,
+                    dropdist: 10000,
+                    whistletime: 0,
+                    ogoal: { x: -1, y: -1 },
+                };
+            } else if (disposition === 'peaceful') {
+                created.mtame = 0;
+                created.mpeaceful = 1;
+            } else {
+                created.mpeaceful = 0;
+                if (disposition === 'hostile') created.mtame = 0;
+            }
+            newsym(created.mx, created.my);
+            const appearName = created.data?.name || monspec || 'monster';
+            const proper = !!(created.data?.unique || created.data?.iswiz || created.data?.pname
+                || /^[A-Z]/.test(appearName));
+            await setMessage(`${proper ? 'The' : 'A'} ${appearName} appears next to you.`);
+            return;
+        }
+    }
+    await setMessage('Nothing happens.');
+}
 
 const WISHED_MONSTER_FALLBACKS = new Map([
     ['human', { name: 'human', mlet: '@', glyph: '@', human: true, neuter: false }],
@@ -36084,6 +36192,67 @@ export function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
         damage += itemDamage;
     }
     return damage;
+}
+
+// C ref: destroy_items(&gy.youmonst, AD_FIRE, dmg) — zap.c:5980-6070, called
+// from mhitm_ad_fire()'s mhitu branch when a fiery melee attack lands
+// (uhitm.c:2579-2582: `magr->m_lev > rn2(20)` gate, then ignite_items()).
+// RNG shape: rn2(5) damage-limit roll (zap.c:6018), reservoir selection
+// rn2(elig) per eligible stack (zap.c:6045), then per selected stack
+// rnd(6) for potions (zap.c:5850 dmg computation) and rn2(3) per unit
+// destroyed-or-not (zap.c:5897, maybe_destroy_item).
+export function heroMeleeFireInventoryBurn(origDamage) {
+    const messages = [];
+    let limit = Math.trunc(origDamage / 5);
+    if (origDamage % 5 > rn2(5)) limit++;
+    if (limit < 1) return { messages, damage: 0 };
+    limit = Math.min(20, limit);
+
+    const selected = [];
+    let eligible = 0;
+    for (const item of [...(game.inventory || [])]) {
+        const cls = fireDestroyableInventoryClass(item);
+        if (!cls || fireInventoryItemImmune(item, cls)) continue;
+        const i = eligible < limit ? eligible : rn2(eligible);
+        eligible++;
+        if (i < limit) selected[i] = item;
+    }
+
+    let damage = 0;
+    for (const item of selected.filter(Boolean)) {
+        const cls = fireDestroyableInventoryClass(item);
+        if (cls === 'spellbook' && isBookOfTheDeadItem(item)) {
+            if (!game.u?.blind) messages.push(bookOfTheDeadGlowMessage());
+            continue;
+        }
+        const quan = Math.max(0, (item.quan || 1) - (item.in_use ? 1 : 0));
+        // maybe_destroy_item() zap.c:5850: potion damage is rolled before the
+        // destruction loop; scrolls/spellbooks default to 1 hit point.
+        const itemDamage = cls === 'potion' ? rnd(6)
+            : cls === 'slime' ? Math.trunc(((item.owt || 20) + 19) / 20)
+                : 1;
+        let destroyed = 0;
+        for (let i = 0; i < quan; i++)
+            if (!rn2(3)) destroyed++;
+        if (!destroyed) continue;
+
+        const plural = destroyed > 1;
+        const name = pickupObjectName({ ...item, line: '', quan: plural ? Math.max(2, quan) : 1 });
+        const subject = destroyed === 1 && quan === 1 ? `Your ${name}`
+            : destroyed === 1 ? `One of your ${name}`
+                : destroyed < quan ? `Some of your ${name}`
+                    : quan === 2 ? `Both of your ${name}`
+                        : `All of your ${name}`;
+        messages.push(`${subject} ${fireInventoryDestroyVerb(cls, item, plural)}!`);
+        // C ref: zap.c:5884-5932 maybe_destroy_item() — destruction also
+        // removes the stack and its damage is added (this probe only ever
+        // survives the rn2(3), so potions boil/breathe paths are omitted).
+        const remaining = (item.quan || 1) - destroyed;
+        if (remaining > 0) item.quan = remaining;
+        else game.inventory = (game.inventory || []).filter(other => other !== item);
+        damage += itemDamage;
+    }
+    return { messages, damage };
 }
 
 function monsterColdInventoryDamage(mon, origDamage, messages, visible) {
@@ -50688,15 +50857,28 @@ function tendedTemplePriestIntone(roomno) {
     priest._intone_time = moves + d(10, 500);
     priest._enter_time = 0;
     const visible = !game.u?.blind && !priest.minvis && !priest.mundetected && couldsee(priest.mx, priest.my);
-    return `${visible ? `The ${priest.data?.name || 'priest'}` : 'A nearby voice'} intones:`;
+    // C ref: priest.c intemple() — pline("%s intones:", canseemon(priest)
+    // ? Monnam(priest) : "A nearby voice"); Monnam() of an ispriest monster
+    // resolves through priestname() (do_name.c:887-904 -> priest.c:302-355):
+    // "the priest of <god>" ("priestess" if female), god named from the
+    // shrine alignment via halu_gname(mon_aligntyp(mon)) (align_gname()'s
+    // A_NONE case yields Moloch; pray.c align_gname).  pline() upstarts the
+    // leading article to "The".
+    const what = priest.female ? 'priestess' : 'priest';
+    const shrineAlign = priest.shrine?.align ?? A_NEUTRAL;
+    const priestName = `The ${what} of ${alignGodName(shrineAlign)}`;
+    return `${visible ? priestName : 'A nearby voice'} intones:`;
 }
 
 function tendedTemplePriestHasShrine(priest) {
     const shrine = priest?.shrine;
     const loc = shrine ? game.level?.at(shrine.x, shrine.y) : null;
+    // C ref: priest.c has_shrine() — requires the shrine position to still
+    // hold an altar marked AM_SHRINE with matching alignment.
     if (!priest?.ispriest || !shrine || loc?.typ !== ALTAR) return false;
-    const altarMask = (loc.flags ?? loc.altarmask ?? 0) & ~AM_SHRINE;
-    return priest.shrine.align === Amask2align(altarMask);
+    const altarMask = (loc.flags ?? loc.altarmask ?? 0);
+    if (!(altarMask & AM_SHRINE)) return false;
+    return priest.shrine.align === Amask2align(altarMask & ~AM_SHRINE);
 }
 
 // C ref: priest.c intemple() tended branch — the "Pilgrim" greeting with
@@ -62361,6 +62543,8 @@ function tutorialEnterStash() {
         && game._command_mode !== 'deathDieMore'
         && game._command_mode !== 'wizkillIntroMore'
         && game._command_mode !== 'wizkillKillMore'
+        && game._command_mode !== 'amuletBestowMore'
+        && game._command_mode !== 'amuletBestowPrompt'
         && game._command_mode !== 'dryupFountainConfirm'
         && game._command_mode !== 'lavaDeathMore'
         && game._command_mode !== 'fountainDetectMore'
@@ -64534,6 +64718,7 @@ function tutorialEnterStash() {
                         game._resume_run_after_queued_dead_more = 1;
                 }
                 if (next === 'You die...' || next === 'You die.') {
+                    if (process.env.WEREDBG) console.error(`WEREDBG enter-deathDieMore moves=${game.moves} rngidx=${getRngLog().length}`);
                     if (!game._pending_time_passed) game._death_current_move = 0;
                     game._pending_time_passed = 0;
                     game.context.move = 0;
@@ -64850,6 +65035,8 @@ function tutorialEnterStash() {
         && game._command_mode !== 'deathDieMore'
         && game._command_mode !== 'wizkillIntroMore'
         && game._command_mode !== 'wizkillKillMore'
+        && game._command_mode !== 'amuletBestowMore'
+        && game._command_mode !== 'amuletBestowPrompt'
         && game._command_mode !== 'dryupFountainConfirm'
         && game._command_mode !== 'lavaDeathMore'
         && game._command_mode !== 'fountainDetectMore'
@@ -65317,6 +65504,8 @@ function tutorialEnterStash() {
     }
 
     if (game._command_mode === 'wizardDieConfirm') {
+        if (process.env.WEREDBG) console.error(`WEREDBG wizardDieConfirm key=${JSON.stringify(ch)} moves=${game.moves} rngidx=${getRngLog().length}`);
+        game._death_pending_confirm = false;
         if (ch === 'y') {
             game._gas_spore_explode_exercise_pending = 0;
             game._gas_spore_deferred_experience_mon = null;
@@ -65369,6 +65558,17 @@ function tutorialEnterStash() {
                 return;
             }
             const survivalMessages = ["OK, so you don't die."];
+            // C ref: savelife() (end.c:704-758) — a hero who refuses the "Die?"
+            // prompt while held is released ("The salamander releases you.",
+            // end.c:753) and unstuck() tags the grabber with an immediate
+            // re-hold cooldown (mspec_used = rnd(2), mon.c:3465).
+            if (game.u?.ustuck) {
+                const grabber = game.u.ustuck;
+                const grabberName = grabber.personalName || `The ${grabber.data?.name || 'monster'}`;
+                survivalMessages.push(`${grabberName} releases you.`);
+                game.u.ustuck = null;
+                grabber.mspec_used = rnd(2);
+            }
             if (game._gas_spore_deferred_experience_mon) {
                 const xpMon = game._gas_spore_deferred_experience_mon;
                 game._gas_spore_deferred_experience_mon = null;
@@ -72564,7 +72764,21 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             }
             item.owt = finalWishedWeight;
             godsNoticeWish();
-            await setWishResultMessage(`${item.line}.`);
+            // C ref: allmain.c:447-453 — once-per-player-input post-command
+            // check: when the hero newly holds the real Amulet of Yendor,
+            // u.uevent.amulet_wish is set and makewish() is invoked right away
+            // ("The Amulet is bestowing a wish upon you!").
+            const grantAmuletWish = !!item.realAmuletOfYendor
+                && !game.u?.uevent?.amulet_wish;
+            if (grantAmuletWish) {
+                game.u ??= {};
+                game.u.uhave ??= {};
+                game.u.uhave.amulet = 1;
+                game.u.uevent ??= {};
+                game.u.uevent.amulet_wish = 1;
+            }
+            await setWishResultMessage(`${item.line}.`, grantAmuletWish);
+            if (grantAmuletWish) game._command_mode = 'amuletBestowMore';
             return;
         }
         if (key === 8 || key === 127) game._wish_text = (game._wish_text || '').slice(0, -1);
@@ -75365,6 +75579,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // C ref: getpos.c:861 — the tip overwrote the prompt, so the
             // goal message is reprinted when the tip is dismissed.
             await setMessage('Move cursor to a monster:');
+            game._wizkill_mon_locs = null;
             game._command_mode = 'wizkillCursor';
         }
         return;
@@ -75375,6 +75590,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // C ref: wiz_kill() loops with prompt "Next monster"
             // (wizcmds.c:257); the getpos tip is not shown again.
             await setMessage('Next monster:');
+            game._wizkill_mon_locs = null;
             game._command_mode = 'wizkillCursor';
             return;
         }
@@ -75391,6 +75607,42 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             game._command_mode = null;
             return;
         }
+        if (ch === 'm' || ch === 'M') {
+            // C ref: getpos.c mMoOdDxX 'm'/'M' (NHKF_GETPOS_MON_NEXT/PREV):
+            // gather_locs(&mon.arr, &mon.count, GLOC_MONS) (getpos.c:511-558)
+            // collects the hero's spot plus every currently-displayed monster
+            // glyph, qsort()s by cmp_coord_distu() (getpos.c:571-585 —
+            // Chebyshev distance from the hero, then y, then x), and cycles
+            // the gidx cursor per press; the initial index is 0 (hero), so
+            // the first 'm' jumps to the nearest monster.
+            if (!game._wizkill_mon_locs) {
+                const ux = game.u?.ux || 0, uy = game.u?.uy || 0;
+                const spots = [{ x: ux, y: uy }];
+                for (const mon of game.level?.monsters || []) {
+                    if (mon.dead || (mon.mhp != null && mon.mhp <= 0) || mon.mundetected) continue;
+                    // invisible monsters don't show a glyph unless the hero
+                    // can see invisible (gather_locs_interesting GLOC_MONS,
+                    // getpos.c:452-457 uses glyph_at()).
+                    if ((mon.minvis || mon.perminvis) && !game.u?.seeInvisible) continue;
+                    spots.push({ x: mon.mx, y: mon.my });
+                }
+                spots.sort((a, b) => {
+                    const da = Math.max(Math.abs(ux - a.x), Math.abs(uy - a.y));
+                    const db = Math.max(Math.abs(ux - b.x), Math.abs(uy - b.y));
+                    return da - db || (a.y - b.y) || (a.x - b.x);
+                });
+                game._wizkill_mon_locs = spots;
+                game._wizkill_mon_idx = 0;
+            }
+            const locs = game._wizkill_mon_locs;
+            game._wizkill_mon_idx = ch === 'm'
+                ? (game._wizkill_mon_idx + 1) % locs.length
+                : (game._wizkill_mon_idx - 1 + locs.length) % locs.length;
+            game._farlook_x = locs[game._wizkill_mon_idx].x;
+            game._farlook_y = locs[game._wizkill_mon_idx].y;
+            await setMessage(wizkillAutoDescribe(game._farlook_x, game._farlook_y));
+            return;
+        }
         if (ch === '.') {
             const targetX = game._farlook_x || game.u?.ux || 0;
             const targetY = game._farlook_y || game.u?.uy || 0;
@@ -75403,6 +75655,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 const messages = [];
                 await killMonsterFromHeroProjectileHit(target, messages, `the ${target.data?.name || 'monster'}`);
                 await setMessage(messages.join('  '), true);
+                game._wizkill_mon_locs = null;
                 game._command_mode = 'wizkillKillMore';
                 return;
             }
@@ -76208,8 +76461,44 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             if (monspec.startsWith('tame ')) { disposition = 'tame'; monspec = monspec.slice(5).trim(); }
             else if (monspec.startsWith('peaceful ')) { disposition = 'peaceful'; monspec = monspec.slice(9).trim(); }
             else if (monspec.startsWith('hostile ')) { disposition = 'hostile'; monspec = monspec.slice(8).trim(); }
-            const mdat = monsterByRndName(monspec)
+            // C ref: mondata.c:1038-1072 name_to_monplus() — the exact-match
+            // scan walks mons[] from LOW_PM upward, so plain "werewolf"
+            // resolves to PM_WEREWOLF (beast form, monsters.h S_DOG section,
+            // NOT armed) rather than PM_HUMAN_WEREWOLF. The human forms are
+            // reached via the "human werewolf"/etc. prefix (mondata.c:983-985);
+            // "wolf werewolf"/"rat wererat"/"jackal werejackal" are explicit
+            // beast-form aliases (mondata.c:987-989).
+            const wereBeastNames = {
+                wererat: 'wererat', werejackal: 'werejackal', werewolf: 'werewolf',
+                'rat wererat': 'wererat', 'jackal werejackal': 'werejackal',
+                'wolf werewolf': 'werewolf',
+            };
+            const wereHumanNames = {
+                'human wererat': 'wererat', 'human werejackal': 'werejackal',
+                'human werewolf': 'werewolf',
+            };
+            let mdat = null;
+            if (wereHumanNames[monspec]) {
+                mdat = monsterByRndName(wereHumanNames[monspec]); // human-form entry in RNDMONST tables
+            } else if (wereBeastNames[monspec]) {
+                const beast = WERE_SPECIES.get(wereBeastNames[monspec])?.beast;
+                if (beast) mdat = { ...beast, hpLevel: undefined, alwaysHostile: true };
+            }
+            if (!mdat) mdat = wizgenesisMonsterspecPtr(monspec)
+                || monsterByRndName(monspec)
                 || (monspec ? { name: monspec, mlet: monspec[0], mlevel: 0, mmove: 12, maligntyp: 0, hostile: true, neuter: false } : null);
+            // C ref: read.c:3256-3269 create_particular_creation() — a
+            // monster subject to cant_revive() (read.c:3112) is replaced by a
+            // doppelganger/zombie unless the player forces it at the prompt.
+            if (mdat) {
+                const substitute = wizgenesisCantReviveSubstitute(mdat);
+                if (substitute) {
+                    game._wizgenesis_force = { requested: mdat, substitute, disposition, monspec };
+                    game._command_mode = 'wizgenesisForce';
+                    await setMessage(`Creating ${substitute.name} instead; force ${mdat.name}? [yn] (n)`);
+                    return;
+                }
+            }
             const spot = mdat ? enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, mdat) : null;
             if (spot) {
                 const created = await makemon(mdat, spot.x, spot.y, 0);
@@ -76246,7 +76535,14 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                         game._message_more = 0;
                         game._keep_pending_message = 0;
                     } else {
-                        await setMessage(`A ${created.data?.name || monspec || 'monster'} appears next to you.`);
+                        // C ref: makemon.c:1474-1496 — makemon's MM_NOEXCLAM
+                    // message uses Amonnam() ("The <unique>/pname" vs
+                    // "a <generic>"); #wizgenesis (MM_NOEXCLAM via
+                    // read.c:3299) suppresses "suddenly" and uses '.'.
+                    const appearName = created.data?.name || monspec || 'monster';
+                    const proper = !!(created.data?.unique || created.data?.iswiz || created.data?.pname
+                        || /^[A-Z]/.test(appearName));
+                    await setMessage(`${proper ? 'The' : 'A'} ${appearName} appears next to you.`);
                     }
                     return;
                 }
@@ -76257,6 +76553,38 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         if (key === 8 || key === 127) game._wizgenesis_text = (game._wizgenesis_text || '').slice(0, -1);
         else if (key >= 32) game._wizgenesis_text = `${game._wizgenesis_text || ''}${ch}`;
         await setMessage(`Create what kind of monster?${game._wizgenesis_text ? ` ${game._wizgenesis_text}` : ''}`);
+        return;
+    }
+
+    if (game._command_mode === 'amuletBestowMore') {
+        // C ref: allmain.c:449-450 (urgent_pline) — the bestow message is
+        // followed by makewish()'s prompt, both pending behind --More--.
+        await setMessage('The Amulet is bestowing a wish upon you!', true);
+        game._command_mode = 'amuletBestowPrompt';
+        return;
+    }
+
+    if (game._command_mode === 'amuletBestowPrompt') {
+        // C ref: allmain.c:451 makewish() -> getlin("For what do you wish?")
+        // (zap.c:6329-6339).
+        await beginWishPrompt();
+        return;
+    }
+
+    if (game._command_mode === 'wizgenesisForce') {
+        // C ref: read.c:3262-3269 — answering 'y' forces the requested
+        // monster (d->which = firstchoice); any other accepted answer leaves
+        // the cant_revive() substitution (e.g. doppelganger) in place.
+        const force = game._wizgenesis_force;
+        if (!force) { game._command_mode = null; return; }
+        if (ch !== 'y' && ch !== 'n' && ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._wizgenesis_force = null;
+        game._command_mode = null;
+        await finishWizgenesisSpawn(ch === 'y' ? force.requested : force.substitute,
+            ch === 'y' ? force.disposition : '', force.monspec);
         return;
     }
 

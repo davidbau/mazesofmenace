@@ -28,6 +28,7 @@ import {
     weight,
 } from './mkobj.js';
 import { roles, races } from './role.js';
+import { monster_by_pmidx } from './makemon.js';
 import { knows_class, knows_object, discover_object } from './o_init.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 
@@ -604,9 +605,13 @@ function ARM_BONUS(obj) {
     return a_ac + (obj.spe || 0) - Math.min(greatest_erosion(obj), a_ac);
 }
 
-// C ref: do_wear.c find_ac — current armor class from worn gear.
+// C ref: do_wear.c find_ac — current armor class from worn gear.  C: `int uac
+// = mons[u.umonnum].ac;` — the current FORM's base AC, not always the human
+// default; only observable while Upolyd (mons[urole/urace].ac == 10 for every
+// starter human form).
 export function find_ac() {
-    const base = PLAYER_BASE_AC_DEFAULT;
+    const u = game.u;
+    const base = u?.Upolyd ? (monster_by_pmidx(u.umonnum)?.ac ?? PLAYER_BASE_AC_DEFAULT) : PLAYER_BASE_AC_DEFAULT;
     let uac = base;
     for (const obj of [game.uarm, game.uarmc, game.uarmh, game.uarmf,
         game.uarms, game.uarmg, game.uarmu]) {
@@ -664,11 +669,18 @@ const RACE_ATTRMAX = {
     [PM_ORC]: [68, 16, 16, 18, 18, 16],
 };
 
-function race_attrmin() {
+export function race_attrmin() {
     return RACE_ATTRMIN[current_race_mnum()] || HUMAN_ATTRMIN;
 }
 export function race_attrmax() {
     return RACE_ATTRMAX[current_race_mnum()] || HUMAN_ATTRMAX;
+}
+
+// C ref: role.c character_race(pmindex) — races[] entry for an ARBITRARY monster
+// index (not necessarily the hero's current race), or undefined if pmindex isn't
+// one of the player races.  Used by polyself.c uasmon_maxStr().
+export function race_attrmax_of(pmidx) {
+    return RACE_ATTRMAX[pmidx];
 }
 
 // role.c attrbase/attrdist, order [Str,Int,Wis,Dex,Con,Cha].
@@ -1197,7 +1209,9 @@ export function u_init_role() {
     game.moves = 1;
     // C ref: role_init() sets u.umonnum before inventory creation; mksobj's
     // samurai lacquered-armor branch reads Role_if(PM_SAMURAI) via umonnum.
-    if (game.u && game.u.umonnum == null) game.u.umonnum = role;
+    // C ref: u_init.c:991 u.umonnum = u.umonster = gu.urole.mnum — umonster is
+    // the hero's original (non-polymorphed) form; Upolyd = (umonnum != umonster).
+    if (game.u && game.u.umonnum == null) game.u.umonnum = game.u.umonster = role;
     if (game.u) game.u.umoney0 = game.u.umoney0 ?? 0;
     switch (role) {
     case PM_ARCHEOLOGIST:

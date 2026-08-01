@@ -117,7 +117,7 @@ function strsubst(s, orig, replacement) {
 // makesingular(): minimal English de-pluralization sufficient for the
 // wishymatch "detect <foo>" / "abilities" special cases.  Full makesingular
 // lives in objnam.c; this covers the trailing-'s' cases those branches need.
-function makesingular(s) {
+export function makesingular(s) {
     if (s == null) return s;
     if (s.endsWith('ies')) return s.slice(0, -3) + 'y';
     if (s.endsWith('s')) return s.slice(0, -1);

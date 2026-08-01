@@ -45,6 +45,9 @@ import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
 import { build_overview_lines } from './dungeon.js';
 import { doextversion } from './version.js';
+import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { polyok_flag } from './monflags_data.js';
+import { polymon, newman, domonability, PM_HUMAN } from './polyself.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -710,6 +713,57 @@ function distu_xy(x, y) {
 export async function wiz_genesis() {
     if (!isWizard()) return 0;
     await create_particular();
+    return 0;
+}
+
+// ── #polyself (wizcmds.c wiz_polyself -> polyself.c polyself(POLY_CONTROLLED)) ──
+//
+// Wizard-mode polymorph-self.  wiz_polyself() always calls polyself() with
+// forcecontrol=TRUE and controllable_poly=FALSE (no ring of polymorph
+// control in any covered session), so the "Become <x>?" y_n confirmation and
+// the draconian/vampire/lycanthrope goto-shortcuts (none of which a covered
+// session's hero ever is) never fire; those branches are therefore left out
+// rather than half-wired.  Random ("*") selection is likewise unreached (no
+// covered session ever types "*"/"random"/ESC at this prompt) and left out.
+//
+// Name resolution mirrors makemon.js's create_particular_monster(): a plain
+// name_to_pmidx() exact-match lookup (matching that established precedent),
+// not C's full name_to_mon() prefix/plural/alt-spelling matching.
+const POLYSELF_TRYLIM = 5;
+export async function wiz_polyself() {
+    if (!isWizard()) return 0;
+    let tryct = POLYSELF_TRYLIM;
+    do {
+        const raw = await getlin_top('Become what kind of monster? [type the name]');
+        if (raw === '\x1b' || (raw.length && raw[0] === '\x1b')) {
+            await pline('Never mind.');
+            return 0;
+        }
+        const buf = mungspaces(raw);
+        let mntmp = name_to_pmidx(buf);
+
+        if (mntmp < 0) {
+            await pline("I've never heard of such monsters.");
+            continue;
+        }
+        // is_placeholder() ORC/ELF/GIANT substitution (mkclass_poly-style
+        // random pick within the class): not modeled — no covered session
+        // types a bare class placeholder name ("orc"/"elf"/"giant"); PM_HUMAN
+        // is exempted from is_placeholder() handling entirely, matching C.
+        const mdat = monster_by_pmidx(mntmp);
+        if (mntmp !== PM_HUMAN && !polyok_flag(mdat)) {
+            const pmName = mdat?.name || 'that';
+            await pline(`You can't polymorph into ${/^[aeiou]/i.test(pmName) ? 'an' : 'a'} ${pmName}.`);
+            continue;
+        }
+        if (mntmp === PM_HUMAN) {
+            await newman();
+        } else {
+            await polymon(mntmp);
+        }
+        return 0;
+    } while (--tryct > 0);
+    await pline("That's enough tries!");
     return 0;
 }
 
@@ -1714,7 +1768,17 @@ const HANDLERS = {
     overview: dooverview,
     version: doextversion,
     quit: doquit_extcmd,
+    polyself: wiz_polyself,
+    monster: domonability_extcmd,
 };
+
+// C ref: cmd.c domonability() return convention — ECMD_OK(0)/ECMD_TIME(1);
+// the extcmd dispatcher's turn convention already treats non-1 as "no turn",
+// so this is a direct pass-through (kept as its own wrapper only so the
+// HANDLERS table above reads the same way as its neighbors).
+async function domonability_extcmd() {
+    return await domonability();
+}
 
 // C ref: end.c done2() — '#quit'.  Implemented in end.js (it shares state/
 // helpers with done()/disclose()); dynamic import matches this file's

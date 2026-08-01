@@ -46,6 +46,7 @@ import {
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
     ARMORSHOP, WEAPONSHOP,
     NO_MINVENT, MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
+    STRAT_WAITFORU, STRAT_APPEARMSG,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
     DB_EAST, DB_UNDER, DB_FLOOR, DB_MOAT,
@@ -1103,6 +1104,9 @@ const RNDMONST_WEAPON_ATTACKS = new Map([
     ['kobold', [1, 4]], ['large kobold', [1, 6]], ['kobold leader', [2, 4]],
     ['goblin', [1, 4]], ['hobgoblin', [1, 6]], ['orc', [1, 8]],
     ['hill orc', [1, 6]], ['Mordor orc', [1, 6]], ['Uruk-hai', [1, 8]],
+    // C ref: monsters.h:2611/2620/2629 — human-form weres ATTK(AT_WEAP,
+    // AD_PHYS, 2, 4) (unarmed 2d4 weapon hit when they carry no weapon).
+    ['wererat', [2, 4]], ['werejackal', [2, 4]], ['werewolf', [2, 4]],
 ]);
 
 const RNDMONST_COLOR_BY_GLYPH = new Map([
@@ -1793,8 +1797,11 @@ const XLIM = 4;
 const YLIM = 3;
 
 // Direction deltas
+// C ref: decl.c xdir/ydir (compass-point delta tables)
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
+const N_DIRS = 8; // C ref: hack.h N_DIRS (N_DIRS_Z minus up/down)
+function dir_clamp(dir) { return ((dir % N_DIRS) + N_DIRS) % N_DIRS; } // C ref: hack.h DIR_CLAMP
 
 // Trap constants
 const NO_TRAP = 0;
@@ -2683,7 +2690,10 @@ const WIZARD1_FIXED_MONSTERS = [
 ];
 export const WIZARD_OF_YENDOR = {
     name: 'Wizard of Yendor', mlet: '@', glyph: '@', color: CLR_BRIGHT_MAGENTA,
-    mlevel: 30, hpLevel: 30, difficulty: 34, mmove: 12, maligntyp: 0,
+    // C ref: monsters.h:2847-2856 — LVL(30, 12, -8, 100, A_NONE): maligntyp is
+    // A_NONE (-128), which makemon's set_malign() maps to malign = 20 when
+    // non-peaceful (xkilled() then applies adjalign(20)).
+    mlevel: 30, hpLevel: 30, difficulty: 34, mmove: 12, maligntyp: -128,
     male: true, strong: true, nasty: true, covetous: true,
     noCorpse: true, alwaysHostile: true, randomInventory: true,
 };
@@ -4187,6 +4197,10 @@ export function mksobj(otyp, init, artif) {
 // C ref: mkobj.c mksobj initialization RNG consumption
 // This varies by object class. Keep this aligned with the C path used for
 // objects created during mklev.
+// C ref: mkobj.c — scroll identities implied by specific otyps; index is the
+// JS SCROLL_NAMES order (allmain.js:622), not the raw otyp value.
+const SCROLL_INDEX_BY_OTYP = new Map([[SCR_TELEPORTATION, 10]]);
+
 function mksobj_init(otmp, otyp, artif) {
     // For BOULDER, GOLD_PIECE: no extra init RNG
     // For scrolls: blessorcurse
@@ -4199,6 +4213,14 @@ function mksobj_init(otmp, otyp, artif) {
             otmp.glyph = '?';
             otmp.scrollIndex = 3;
             otmp.actualKind = 'scroll of scare monster';
+        } else if (SCROLL_INDEX_BY_OTYP.has(otyp)) {
+            // C ref: mkobj.c mksobj_init() for scrolls — a specific scroll
+            // otyp keeps its scroll identity (appearance resolved from the
+            // shuffled description table at description time); the JS port
+            // stores that identity as scrollIndex (SCROLL_NAMES order).
+            otmp.cls = 'scroll';
+            otmp.glyph = '?';
+            otmp.scrollIndex = SCROLL_INDEX_BY_OTYP.get(otyp);
         }
         blessorcurse(otmp, 4);
     } else if (otyp === POTION_CLASS || (otyp >= 230 && otyp < 270)) {
@@ -5812,6 +5834,19 @@ function monsterFromRndMeta(row) {
         ptr.attack = { dice: 1, sides: 3, verb: 'bites' };
     }
     if (name === 'coyote') ptr.attack = { dice: 1, sides: 4, verb: 'bites' };
+    // C ref: monsters.h dog/lycanthrope-summon bite cases —
+    // wolf: ATTK(AT_BITE, AD_PHYS, 2, 4); warg/winter wolf: 2,6;
+    // winter wolf cub: 1,8 (plus its breath attack).
+    if (name === 'wolf') ptr.attack = { dice: 2, sides: 4, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
+    if (name === 'warg') ptr.attack = { dice: 2, sides: 6, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
+    if (name === 'winter wolf') {
+        ptr.attack = { dice: 2, sides: 6, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
+        ptr.breath = { dice: 2, sides: 6, adtyp: 'cold' };
+    }
+    if (name === 'winter wolf cub') {
+        ptr.attack = { dice: 1, sides: 8, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
+        ptr.breath = { dice: 1, sides: 6, adtyp: 'cold' };
+    }
     if (name === 'soldier ant') ptr.attack = { dice: 2, sides: 4, verb: 'bites' };
     if (mlet === S_NYMPH) {
         ptr.attack = { dice: 0, sides: 0, verb: 'hits', aatyp: 'claw', adtyp: 'steal' };
@@ -7751,6 +7786,11 @@ export async function makemon(mdat, x, y, mmflags) {
         mon.iswiz = true;
         const ctx = (game.context ??= {});
         ctx.noOfWizards = (ctx.noOfWizards || 0) + 1;
+        // C ref: makemon.c:1456-1463 — M3_WAITFORU|M3_COVETOUS set
+        // STRAT_WAITFORU and STRAT_APPEARMSG in mstrategy (the farlook /
+        // stethoscope description reads ", meditating", pager.c:463-464).
+        if (!(mmflags & MM_NOWAIT))
+            mon.mstrategy = (mon.mstrategy || 0) | STRAT_WAITFORU | STRAT_APPEARMSG;
     }
 
     game._mongets_target = previousMongetsTarget;
@@ -12510,6 +12550,13 @@ function flipValleyLevel(vertical, horizontal) {
         const point = { x: mon.mx, y: mon.my };
         flipPoint(point);
         mon.mx = point.x; mon.my = point.y;
+        // C ref: sp_lev.c flip_level() monsters loop — Flip_coord flips each
+        // monster's mgoal (sp_lev.c:649) and, for temple priests, the shrine
+        // position EPRI(mtmp)->shrpos (sp_lev.c:651-652); priests use shrpos
+        // as their milling goal (pri_move(), priest.c:190-196), so skipping
+        // the flip leaves the priest heading for the unflipped altar spot.
+        if (mon.mgoal) flipPoint(mon.mgoal);
+        if (mon.ispriest && mon.shrine) flipPoint(mon.shrine);
     }
     for (const trap of g.level.traps || []) {
         const point = { x: trap.tx, y: trap.ty };
@@ -15271,9 +15318,23 @@ async function make_valley_level() {
         altar.flags = Align2amask(A_NONE) | AM_SHRINE;
         altar.altarmask = altar.flags;
     }
-    rn2(8);
-    relocatePriestSpotOccupant(valleyX(2), valleyY(9));
-    const priest = await makemon(ALIGNED_CLERIC, valleyX(2), valleyY(9), MM_NOGRP);
+    // C ref: priest.c priestini() lines 226-243 — si = rn2(N_DIRS), then
+    // scan the 8 compass directions starting at si (xdir/ydir tables,
+    // decl.c:77-78, indexed by DIR_CLAMP) for the first pm_good_location()
+    // spot around the altar; if all 8 fail (i == N_DIRS), put the priest
+    // on the altar spot itself, relocating any occupant (MON_AT insurance).
+    const si = rn2(N_DIRS);
+    let px = valleyX(3), py = valleyY(10);
+    {
+        let i = 0;
+        for ( ; i < N_DIRS; i++) {
+            const tx = px + xdir[dir_clamp(i + si)];
+            const ty = py + ydir[dir_clamp(i + si)];
+            if (makemon_goodpos({}, tx, ty)) { px = tx; py = ty; break; }
+        }
+    }
+    relocatePriestSpotOccupant(px, py);
+    const priest = await makemon(ALIGNED_CLERIC, px, py, MM_NOGRP);
     if (priest) {
         initPriestMonster(priest, {
             room: (temple?.roomnoidx ?? 0) + ROOMOFFSET,
@@ -22161,7 +22222,13 @@ function themeroom_buried_zombies(croom) {
 function themeroom_massacre(croom) {
     const pos = { x: 0, y: 0 };
     let idx = rn2(MASSACRE_CORPSES.length);
-    for (let i = 0, count = d(5, 5); i < count; i++) {
+    // C ref: dat/themerms.lua "Massacre" — Lua d(5,5) (nhlib.lua:29-40) sums
+    // five math.random(1,5) draws; nhlib.lua:5-15 math.random(1,x) -> 1+rn2(x)
+    // (nhlua.c nhl_random:947-948), so each die is logged as a separate rn2(5)
+    // by the C recorder. Do NOT use hacklib d(5,5) here.
+    let count = 0;
+    for (let k = 0; k < 5; k++) count += 1 + rn2(5);
+    for (let i = 0; i < count; i++) {
         if (rn2(100) < 10) idx = rn2(MASSACRE_CORPSES.length);
         if (!somexyspace(croom, pos)) continue;
         const corpse = mksobj_at(CORPSE, pos.x, pos.y, true, false);
@@ -22221,10 +22288,16 @@ async function themeroom_trap_room(croom) {
 
 async function themeroom_statuary(croom) {
     const pos = { x: 0, y: 0 };
-    for (let i = 0, count = d(5, 5); i < count; i++) {
+    // C ref: dat/themerms.lua "Statuary" — lua d(5,5) then lua d(3), both via
+    // nhlib.lua:29-40 -> five rn2(5) draws then one rn2(3) draw (1-arg d ->
+    // math.random(1,3) -> 1 + rn2(3), nhlua.c nhl_random:947-948).
+    let count = 0;
+    for (let k = 0; k < 5; k++) count += 1 + rn2(5);
+    for (let i = 0; i < count; i++) {
         if (somexyspace(croom, pos)) mksobj_at(STATUE, pos.x, pos.y, true, false);
     }
-    for (let i = 0, count = rnd(3); i < count; i++) {
+    count = 1 + rn2(3);
+    for (let i = 0; i < count; i++) {
         if (somexyspace(croom, pos)) await maketrap(pos.x, pos.y, STATUE_TRAP);
     }
 }
@@ -22328,7 +22401,11 @@ function themeroom_buried_treasure(croom) {
     const chest = mksobj_at(CHEST, pos.x, pos.y, true, false);
     if (!chest) return null;
     delete_contents(chest);
-    for (let i = 0, count = d(3, 4); i < count; i++)
+    // C ref: dat/themerms.lua "Buried treasure" — lua d(3,4) (nhlib.lua:29-40)
+    // = three math.random(1,4) draws -> three 1+rn2(4) (nhlua.c:947-948).
+    let count = 0;
+    for (let k = 0; k < 3; k++) count += 1 + rn2(4);
+    for (let i = 0; i < count; i++)
         add_to_container(chest, mkobj(RANDOM_CLASS, true));
     buryThemeroomObject(chest);
     game._themeroom_postprocess ??= [];

@@ -501,19 +501,21 @@ function martial_bonus() {
     const m = roleMnum();
     return m === PM_MONK || m === PM_SAMURAI;
 }
-// C ref: starting bare-handed-combat skill is P_BASIC (2) for the melee roles.
-//
-// NOTE: u_init.c's Skill_A/B/C/H/K/Mon/P/Ran/R/S/T/V/W[] tables actually vary
-// this per role (e.g. Tourist starts P_SKILLED=3, Barbarian/Caveman P_MASTER=5
-// via P_MARTIAL_ARTS) — a per-role table was tried here but, combined with a
-// separate pre-existing bug in this file's barehanded hmon() stagger-roll gate
-// (uhitm.c:1825's `unarmed && dmg>1` condition fires when C's real trace does
-// not, for reasons not yet root-caused), it REGRESSED seed0030 seg1 (matched
-// 1251->1197, first mismatch 174->135) instead of improving it.  Left as the
-// P_BASIC constant pending that separate fix; a future step should investigate
-// hmon()'s stagger gate before reattempting the per-role skill table.
-const P_BASIC = 2;
-function bare_handed_skill() { return P_BASIC; }
+// C ref: u_init.c skill_init() — P_SKILL(P_BARE_HANDED_COMBAT) at game start.
+// No starting weapon ever grants this skill (weapon_type() only maps to
+// P_BARE_HANDED_COMBAT for a NULL weapon), so the class_skill walk always
+// finds it P_ISRESTRICTED and bumps it to P_UNSKILLED(1) -- UNLESS the role's
+// own P_MAX_SKILL (u_init.c Skill_A/B/C/H/K/Mon/P/Ran/R/S/T/V/W[]) exceeds
+// P_EXPERT(4), in which case "high potential fighters already know how to
+// use their hands" starts it at P_BASIC(2) instead.  Only Barbarian/Caveman
+// (P_MASTER) and Monk/Samurai (P_GRAND_MASTER/P_MASTER, via P_MARTIAL_ARTS,
+// the same skill slot) clear that bar; every other role -- including
+// Tourist's P_SKILLED(3) cap -- begins P_UNSKILLED.
+const HIGH_POTENTIAL_FIGHTER_MNUM = new Set([1, 2, 5, 9]); // Barbarian, Caveman, Monk, Samurai
+function bare_handed_skill() {
+    return HIGH_POTENTIAL_FIGHTER_MNUM.has(roleMnum()) ? 2 /* P_BASIC */
+                                                        : 1 /* P_UNSKILLED */;
+}
 // C ref: weapon.c weapon_hit_bonus(NULL) — bare-handed-combat branch:
 //   bonus = max(P_SKILL, P_UNSKILLED) - 1; bonus = ((bonus+2)*(martial?2:1))/2.
 function weapon_hit_bonus_barehand() {

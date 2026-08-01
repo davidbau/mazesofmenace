@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnz, rne } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { builds_up } from './dungeon.js';
 import {
     Is_rogue_level, GEHENNOM,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
@@ -788,8 +789,15 @@ function Inhell() {
     return dnum === (game.gehennom_dnum ?? GEHENNOM);
 }
 
+// C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
+// bump in a "builds up" branch (Vlad's Tower, Sokoban); see makemon.js's copy
+// of this same C function for the full rationale.
 function level_difficulty() {
-    return depth_of_level(game.u?.uz);
+    const uz = game.u?.uz;
+    let res = depth_of_level(uz);
+    if (uz && builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
 }
 
 function gem_probability(obj) {
@@ -858,6 +866,14 @@ export function curse(otmp) {
 
 export function bless(otmp) {
     if (otmp) { otmp.blessed = true; otmp.cursed = false; }
+}
+
+export function uncurse(otmp) {
+    if (otmp) otmp.cursed = false;
+}
+
+export function unbless(otmp) {
+    if (otmp) otmp.blessed = false;
 }
 
 function bcsign(otmp) {

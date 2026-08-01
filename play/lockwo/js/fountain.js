@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { update_topl, newsym, m_at } from './display.js';
-import { hliquid } from './dungeon.js';
+import { hliquid, builds_up } from './dungeon.js';
 import { water_damage, t_at, delfloortrap } from './trap.js';
 import { find_ac } from './u_init.js';
 import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, BOULDER } from './mkobj.js';
@@ -249,10 +249,15 @@ export async function drinkfountain() {
     await dryup(u.ux, u.uy, true);
 }
 
-// C ref: dungeon.c level_difficulty() — depth-based difficulty (main dungeon,
-// no amulet: res == depth(&u.uz)).
+// C ref: dungeon.c level_difficulty() — depth-based difficulty, plus a
+// compensating bump in a "builds up" branch (Vlad's Tower, Sokoban); see
+// makemon.js's copy of this same C function for the full rationale.
 function level_difficulty() {
-    return depth(game.u.uz);
+    const uz = game.u.uz;
+    let res = depth(uz);
+    if (builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
 }
 
 // C ref: fountain.c dowaterdemon() — unless the species is extinct/genocided,

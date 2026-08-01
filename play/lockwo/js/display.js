@@ -1079,10 +1079,16 @@ export async function docrt() {
 // C ref: display.c display_self() — the glyph drawn at the hero's tile.  When
 // riding a steed the steed's glyph is shown instead of the hero's '@'.
 function hero_glyph() {
-    const st = game.u?.usteed;
+    const u = game.u;
+    const st = u?.usteed;
     if (st) {
         const d = st.data || {};
         return { ch: d.mlet || 'u', color: (d.mcolor != null) ? d.mcolor : CLR_WHITE };
+    }
+    // C ref: display.c display_self() — while Upolyd, monnum_to_glyph(u.umonnum)
+    // is shown instead of '@'.
+    if (u?.Upolyd && u.data) {
+        return { ch: u.data.mlet || '@', color: (u.data.mcolor != null) ? u.data.mcolor : CLR_WHITE };
     }
     return { ch: '@', color: CLR_WHITE };
 }
@@ -1174,7 +1180,12 @@ function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = _statusPlname();
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
+    // C ref: botl.c bot1() — titl = !Upolyd ? rank() : pmname(&mons[u.umonnum],
+    // Ugender); when Upolyd, each word of the monster name is capitalized
+    // ("Gnome", "Red Dragon") instead of showing the role rank.
+    const role = u.Upolyd
+        ? (u.data?.name || '').replace(/(^|\s)([a-z])/g, (_m, sp, c) => sp + c.toUpperCase())
+        : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer');
     const title = `${name} the ${role}`;
     // acurr.a is stored in attribute order [STR, INT, WIS, DEX, CON, CHA]
     // (A_STR..A_CHA); the status line displays St Dx Co In Wi Ch.
@@ -1213,9 +1224,12 @@ function _statusLine2() {
     // something other than -1 (e.g. done() forcing it to 0 for the death
     // prompt).  Our status line is rebuilt live every frame, so reproduce the
     // freeze by caching the last shown value and holding it while uhp===-1.
-    const hpShown = u.uhp === -1
+    // C ref: botl.c bot1() — hp = Upolyd ? u.mh : u.uhp; hpmax likewise u.mhmax.
+    const curHp = u.Upolyd ? u.mh : u.uhp;
+    const curHpMax = u.Upolyd ? u.mhmax : u.uhpmax;
+    const hpShown = curHp === -1
         ? (game._botlHpShown ?? 0)
-        : (game._botlHpShown = Math.max(0, u.uhp || 0));
+        : (game._botlHpShown = Math.max(0, curHp || 0));
     // C ref: botl.c describe_level — the displayed level number is depth(&u.uz),
     // the ledger depth across branches (so the Gnomish Mines show Dlvl:3, not
     // the mines-relative dlevel 1), not u.uz.dlevel.
@@ -1225,12 +1239,16 @@ function _statusLine2() {
     const levelDesc = In_quest(u.uz)
         ? `Home ${u.uz?.dlevel || 1}`
         : `${lvlLabel}:${dlvlNum}`;
-    let s = `${levelDesc} $:${game._goldCount || 0} HP:${hpShown}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
-    // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>], optional T:<moves>.
-    if (game.flags?.showexp)
+    let s = `${levelDesc} $:${game._goldCount || 0} HP:${hpShown}(${curHpMax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
+    // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>] normally, but HD:<mlevel>
+    // (monster level/"Hit Dice") replaces it entirely while Upolyd.
+    if (u.Upolyd) {
+        s += ` HD:${u.data?.mlevel ?? 0}`;
+    } else if (game.flags?.showexp) {
         s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;
-    else
+    } else {
         s += ` Xp:${u.ulevel || 1}`;
+    }
     if (game.flags?.time)
         s += ` T:${game.moves || 1}`;
     // C ref: botl.c bot2 — the hunger field (BL_HUNGER) precedes the
@@ -1257,6 +1275,11 @@ function _statusLine2() {
     // C ref: botl.c bot2 condition order — Stun, then Conf, then Hallu.
     if ((u.uprops?.Confusion || 0) > 0)
         s += ` Conf`;
+    // C ref: botl.c bot2 condition order — Lev, then Fly, then Ride.
+    if (u.uprops?.Levitation)
+        s += ` Lev`;
+    if (u.uprops?.Flying)
+        s += ` Fly`;
     if (u.usteed)
         s += ` Ride`;
     return s;

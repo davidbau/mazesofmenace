@@ -4,10 +4,13 @@
 // traps and monsters, reveals them, and reports what (if anything) was found.
 
 import { game } from './gstate.js';
-import { pline, newsym, terrain_background_glyph, show_glyph_cell } from './display.js';
+import { pline, newsym, terrain_background_glyph, show_glyph_cell,
+         object_glyph, vobj_at, trap_glyph } from './display.js';
 import { couldsee } from './vision.js';
 import { exercise } from './attrib.js';
-import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS } from './const.js';
+import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS,
+         STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
+import { BOULDER } from './mkobj.js';
 
 // C ref: detect.c findone — reveal a single hidden feature at (zx,zy).
 function findone(zx, zy, found) {
@@ -119,4 +122,45 @@ export async function do_mapping() {
         for (let y = 0; y < ROWNO; y++)
             show_map_spot(x, y);
     exercise(A_WIS, true);
+}
+
+// C ref: detect.c skip_premap_detect — a STONE cell flagged both nondiggable
+// and nonpasswall is outside the special level's own map footprint (the rest
+// of the level, solidified at finalize); premap_detect leaves it unmapped.
+function skip_premap_detect(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    return loc.typ === STONE
+        && ((loc.wall_info || 0) & (W_NONDIGGABLE | W_NONPASSWALL))
+            === (W_NONDIGGABLE | W_NONPASSWALL);
+}
+
+// C ref: detect.c premap_detect() — used by splev_initlev() when a special
+// level (Sokoban) sets the "premapped" level flag.  Maps every reachable
+// cell's background (terrain + a boulder object, if any) into hero memory,
+// and marks every trap on the level tseen.  No RNG.
+export function premap_detect() {
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            if (skip_premap_detect(x, y)) continue;
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.seenv = 0xff; // SVALL
+            loc.waslit = true;
+            const bg = terrain_background_glyph(loc, x, y);
+            loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec };
+            const obj = vobj_at(x, y);
+            if (obj && obj.otyp === BOULDER) {
+                const og = object_glyph(obj);
+                if (og) loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec };
+            }
+        }
+    }
+    for (const trap of game.level?.traps || []) {
+        trap.tseen = true;
+        const loc = game.level?.at(trap.tx, trap.ty);
+        if (!loc || skip_premap_detect(trap.tx, trap.ty)) continue;
+        const tg = trap_glyph(trap);
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+    }
 }

@@ -34,9 +34,12 @@
 // Display, removal, and placement side effects go through injected hooks so
 // this module has no import edge into js/allmain.js (which imports us).
 
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, d, getRngLog } from './rng.js';
 import { game } from './gstate.js';
-import { Is_stronghold, STRAT_WAITMASK, STRAT_WAITFORU } from './const.js';
+import {
+    Is_stronghold, STRAT_WAITMASK, STRAT_WAITFORU,
+    NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, W_ARMS,
+} from './const.js';
 import {
     MONS, NATTK, NORMAL_SPEED, G_UNIQ,
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
@@ -52,9 +55,11 @@ import {
     PM_ARCHON, PM_WRAITH, PM_STEAM_VORTEX,
     PM_ELF_ZOMBIE, PM_HUMAN_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE,
     S_ZOMBIE, S_KOBOLD, S_ORC, S_GIANT, S_HUMAN, S_KOP, S_HUMANOID, S_GNOME, S_NYMPH,
-    MZ_HUGE,
-    is_elf, is_orc, is_dwarf, unsolid, haseyes, perceives, is_rider, nonliving,
-    is_animal, is_golem, is_whirly, touch_petrifies, acidic,
+    S_XORN, S_DRAGON, S_JABBERWOCK, S_NAGA,
+    MZ_HUGE, MZ_LARGE,
+    bigmonst, is_elf, is_orc, is_dwarf, unsolid, haseyes, perceives, is_rider, nonliving,
+    is_animal, is_golem, is_whirly, touch_petrifies, acidic, is_undead, is_demon, is_were,
+    is_giant, thick_skinned, PM_WOOD_GOLEM,
 } from './permonst.js';
 import { W_ARMC, W_ARMG, W_ARMH, W_ARMF } from './const.js';
 
@@ -164,8 +169,12 @@ export function deadMonster(mon) {
     return !(game.level?.monsters || []).includes(mon);
 }
 
-/* include/monst.h:251 helpless(): asleep or can't move. */
-export function helpless(mon) { return !!(mon.msleeping || !mon.mcanmove); }
+/* include/monst.h:251 helpless(): asleep or can't move.  JS monsters
+ * carry mcanmove=false/0 when frozen (cmd.js:5988 convention); an unset
+ * field means movable (C makemon.c:1296 initializes it TRUE). */
+export function helpless(mon) {
+    return !!(mon.msleeping || mon.mcanmove === false || mon.mcanmove === 0);
+}
 
 /* src/hacklib.c distmin()/dist2() ports. */
 export function distmin(x0, y0, x1, y1) {
@@ -454,6 +463,235 @@ function nameOf(mon) { return mon.data?.name || 'creature'; }
 function theName(mon) { return mon.givenName || `the ${nameOf(mon)}`; }
 function mhis(mon) { return mon.female ? 'her' : 'its'; }
 
+/* ------------------------------------------------------------------ */
+/* Monster weaponry (src/weapon.c): select_hwep (weapon.c:705-744),   */
+/* mon_wield_item (weapon.c:801-955), hitval (weapon.c:1267-1300),    */
+/* dmgval (weapon.c:216-355).  JS monster items are plain             */
+/* { otyp, kind, cls, quan, spe?... } records from mklev mongets();   */
+/* identity is matched by real kind name.                             */
+/* ------------------------------------------------------------------ */
+
+/* Real object kind of a monster-held weapon.  mongets() items carry
+ * kind='scimitar'-style names; some paths store the unidentified
+ * appearance in .kind with the real kind in .actualKind. */
+function weaponRealKind(obj) {
+    return String(obj?.actualKind || obj?.kind || obj?.name || '').toLowerCase();
+}
+
+/* include/objects.h WEAPON(name, descr, known, mkprob, bimanual, prob,
+ * wt, cost, wsdam, wldam, hitbon, dir, skill, material, color), reduced
+ * to what monster weapon combat needs:
+ *   realKind -> [oc_wsdam, oc_wldam, oc_bimanual, oc_hitbon, isSilver] */
+const MONWPN = {
+    'tsurugi':             [16,  8, 1,  2, false],
+    'runesword':           [ 4,  6, 0,  0, false],
+    'dwarvish mattock':    [12,  8, 1, -1, false],
+    'two-handed sword':    [12,  6, 1,  0, false],
+    'battle-axe':          [ 8,  6, 1,  0, false],
+    'katana':              [10, 12, 0,  1, false],
+    'unicorn horn':        [12, 12, 0,  0, false],
+    'crysknife':           [10, 10, 0,  3, false],
+    'trident':             [ 6,  4, 0,  0, false],
+    'long sword':          [ 8, 12, 0,  0, false],
+    'elven broadsword':    [ 6,  6, 0,  0, false],
+    'broadsword':          [ 4,  6, 0,  0, false],
+    'scimitar':            [ 8,  8, 0,  0, false],
+    'silver saber':        [ 8,  8, 0,  0, true ],
+    'morning star':        [ 4,  6, 0,  0, false],
+    'elven short sword':   [ 8,  8, 0,  0, false],
+    'dwarvish short sword':[ 7,  8, 0,  0, false],
+    'short sword':         [ 6,  8, 0,  0, false],
+    'orcish short sword':  [ 5,  8, 0,  0, false],
+    'silver mace':         [ 6,  6, 0,  0, true ],
+    'mace':                [ 6,  6, 0,  0, false],
+    'axe':                 [ 6,  4, 0,  0, false],
+    'dwarvish spear':      [ 8,  8, 0,  0, false],
+    'silver spear':        [ 6,  8, 0,  0, true ],
+    'elven spear':         [ 7,  8, 0,  0, false],
+    'spear':               [ 6,  8, 0,  0, false],
+    'orcish spear':        [ 5,  8, 0,  0, false],
+    'flail':               [ 6,  4, 0,  0, false],
+    'bullwhip':            [ 2,  1, 0,  0, false],
+    'quarterstaff':        [ 6,  6, 1,  0, false],
+    'javelin':             [ 6,  6, 0,  0, false],
+    'aklys':               [ 6,  3, 0,  0, false],
+    'club':                [ 6,  3, 0,  0, false],
+    'pick-axe':            [ 6,  3, 0,  0, false],
+    'rubber hose':         [ 4,  3, 0,  0, false],
+    'war hammer':          [ 4,  4, 0,  0, false],
+    'silver dagger':       [ 4,  3, 0,  2, true ],
+    'elven dagger':        [ 5,  3, 0,  2, false],
+    'dagger':              [ 4,  3, 0,  2, false],
+    'orcish dagger':       [ 3,  3, 0,  2, false],
+    'athame':              [ 4,  3, 0,  0, false],
+    'scalpel':             [ 3,  3, 0,  0, false],
+    'knife':               [ 3,  2, 0,  0, false],
+    'worm tooth':          [ 2,  2, 0,  0, false],
+    /* BOW() rows: sdam 2 / ldam 2 (include/objects.h:126-130) */
+    'bow':                 [ 2,  2, 0,  0, false],
+    'elven bow':           [ 2,  2, 0,  0, false],
+    'orcish bow':          [ 2,  2, 0,  0, false],
+    'yumi':                [ 2,  2, 0,  0, false],
+    'long bow':            [ 2,  2, 0,  0, false],
+    'sling':               [ 2,  2, 0,  0, false],
+    'crossbow':            [ 2,  2, 0,  0, false],
+};
+
+/* weapon.c:691-703 hwep[] — melee weapon preference order for
+ * select_hwep().  CORPSE leads the C list (cockatrice corpse pseudo-
+ * weapon); JS monsters never carry corpse weapons though (documented
+ * gap), so the entry is intentionally absent here. */
+const HWEP_ORDER = [
+    'tsurugi', 'runesword', 'dwarvish mattock', 'two-handed sword',
+    'battle-axe', 'katana', 'unicorn horn', 'crysknife', 'trident',
+    'long sword', 'elven broadsword', 'broadsword', 'scimitar',
+    'silver saber', 'morning star', 'elven short sword',
+    'dwarvish short sword', 'short sword', 'orcish short sword',
+    'silver mace', 'mace', 'axe', 'dwarvish spear', 'silver spear',
+    'elven spear', 'spear', 'orcish spear', 'flail', 'bullwhip',
+    'quarterstaff', 'javelin', 'aklys', 'club', 'pick-axe',
+    'rubber hose', 'war hammer', 'silver dagger', 'elven dagger',
+    'dagger', 'orcish dagger', 'athame', 'scalpel', 'knife', 'worm tooth',
+];
+
+/* mondata.h:121 strongmonst() — M2_STRONG 0x04000000 (monflag.h:148). */
+function strongMonst(mon) {
+    const pm = pmOf(mon);
+    return !!pm && ((pm.m2 || 0) & 0x04000000) !== 0;
+}
+
+/* weapon.c:517-541 mon_hates_silver()/mon_hates_blessings(): same
+ * family — vampshifters, demons, undead, were, shade. */
+function monHatesSilver(mon) {
+    if (mon?.vampBase || mon?.data?.vampshifter) return true;
+    const pm = pmOf(mon);
+    if (!pm) return false;
+    return pm.pm === PM_SHADE || is_demon(pm) || is_undead(pm) || is_were(pm);
+}
+const monHatesBlessings = monHatesSilver;
+
+/* weapon.c:705-744 select_hwep(): best melee weapon from inventory.
+ * No RNG. */
+export function selectHwep(magr) {
+    const strong = strongMonst(magr);
+    const wearingShield = ((magr.misc_worn_check || 0) & W_ARMS) !== 0;
+    const minvent = magr.minvent || [];
+    if (is_giant(pmOf(magr) || {})) {
+        /* giants love clubs (weapon.c:720-721) */
+        const club = minvent.find(o => weaponRealKind(o) === 'club');
+        if (club) return club;
+    }
+    /* balrog bullwhip-greed (weapon.c:722-723) needs the hero's wielded
+     * weapon; not modeled (documented gap). */
+    for (const kind of HWEP_ORDER) {
+        const bimanual = !!MONWPN[kind]?.[2];
+        if (!((strong && !wearingShield) || !bimanual)) continue;
+        if (MONWPN[kind]?.[4] && monHatesSilver(magr)) continue;
+        const otmp = minvent.find(o => weaponRealKind(o) === kind);
+        if (otmp) return otmp;
+    }
+    return null;
+}
+
+/* weapon.c:801-955 mon_wield_item(), NEED_HTH_WEAPON slice (the
+ * pick-axe/dig branches live in allmain's dig code).  No RNG.
+ * Returns 1 when wielding took time (the pending attack is aborted). */
+export function monWieldItem(magr) {
+    if (magr.weapon_check === NO_WEAPON_WANTED) return 0; /* weapon.c:807-808 */
+    const obj = selectHwep(magr);
+    if (obj) {
+        const cur = magr.mw || null;
+        if (cur && weaponRealKind(cur) === weaponRealKind(obj)) {
+            /* already wielding it (weapon.c:845-849) */
+            magr.weapon_check = NEED_WEAPON;
+            return 0;
+        }
+        /* cursed-weapon-weld block (weapon.c:853-868): JS monster items
+         * carry no weld-curse state; documented gap. */
+        magr.mw = obj;
+        magr.weapon_check = NEED_WEAPON;
+        if (canseemon(magr)) {
+            /* weapon.c:870-896: "The FOO wields BAR!" (exclaim variant) */
+            const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj)
+                : `a ${weaponRealKind(obj)}`;
+            pline(`${MONNAM(magr)} wields ${name}!`);
+        }
+        return 1;
+    }
+    magr.weapon_check = NO_WEAPON_WANTED;
+    return 0;
+}
+
+/* weapon.c:747-799 possibly_unwield(): monsters never unwield on their
+ * own; JS minvent entries are never removed while wielded except by the
+ * steal pipeline (which clears mon.mw itself).  No RNG — no-op port. */
+
+/* weapon.c:1267-1300 hitval(): weapon to-hit bonus — deterministic,
+ * consumes no RNG. */
+export function hitvalMonsterWeapon(otmp, mdef) {
+    const kind = weaponRealKind(otmp);
+    const info = MONWPN[kind];
+    let tmp = 0;
+    if (info) tmp += (otmp.spe || 0) + (info[3] || 0);
+    if (otmp.blessed && monHatesBlessings(mdef)) tmp += 2;
+    /* spear vs kebabable targets (weapon.c:71-73, 1339?) */
+    if (['spear', 'elven spear', 'orcish spear', 'dwarvish spear',
+         'silver spear'].includes(kind)) {
+        const mlet = pmOf(mdef)?.mlet;
+        if (mlet === S_XORN || mlet === S_DRAGON || mlet === S_JABBERWOCK
+            || mlet === S_NAGA || mlet === S_GIANT) tmp += 2;
+    }
+    /* trident-vs-swimmer / pick-vs-xorn bonuses (weapon.c:171-177): rare
+     * and target-class-scoped; documented gap. */
+    return tmp;
+}
+
+/* weapon.c:216-355 dmgval(): weapon damage roll vs a target. */
+export function dmgvalMonsterWeapon(otmp, mdef) {
+    const kind = weaponRealKind(otmp);
+    const info = MONWPN[kind];
+    if (!info) return 0; /* not a weapon: no weapon-dice portion */
+    const [ws, wl] = info;
+    const pd = pmOf(mdef);
+    const big = mdef && mdef.data && pd ? bigmonst(pd) : false;
+    let tmp = 0;
+    if (big) {
+        /* weapon.c:221-267 big-target branch */
+        if (wl) tmp = rnd(wl);
+        if (['morning star', 'partisan', 'runesword', 'elven broadsword',
+             'broadsword'].includes(kind)) tmp += 1;
+        else if (['flail', 'ranseur', 'voulge'].includes(kind)) tmp += rnd(4);
+        else if (['halberd', 'spetum'].includes(kind)) tmp += rnd(6);
+        else if (['battle-axe', 'bardiche', 'trident'].includes(kind)) tmp += d(2, 4);
+        else if (['tsurugi', 'dwarvish mattock', 'two-handed sword'].includes(kind)) tmp += d(2, 6);
+    } else {
+        /* weapon.c:269-296 small/medium-target branch */
+        if (ws) tmp = rnd(ws);
+        if (['mace', 'silver mace', 'war hammer', 'flail', 'spetum',
+             'trident'].includes(kind)) tmp += 1;
+        else if (['battle-axe', 'bardiche', 'bill-guisarme', 'guisarme',
+                  'lucern hammer', 'morning star', 'ranseur', 'broadsword',
+                  'elven broadsword', 'runesword', 'voulge'].includes(kind)) tmp += rnd(4);
+    }
+    /* weapon.c:297-301: enchantment */
+    tmp += (otmp.spe || 0);
+    if (tmp < 0) tmp = 0;
+    /* weapon.c:306-308: soft (<=LEATHER) material vs thick hide — among
+     * wieldables only bullwhip qualifies. */
+    if (kind === 'bullwhip' && pd && thick_skinned(pd)) tmp = 0;
+    /* weapon.c:328-341 weapon-vs-type bonuses */
+    if (otmp.blessed && monHatesBlessings(mdef)) tmp += rnd(4);
+    if (kind === 'axe' && pd && pd.pm === PM_WOOD_GOLEM) tmp += rnd(4);
+    if (info[4] && monHatesSilver(mdef)) tmp += rnd(20);
+    /* artifact_light/double-damage adjustments unported: JS monsters
+     * never wield artifacts (documented gap). */
+    if (tmp > 0) {
+        tmp -= (otmp.oeroded || 0); /* greatest_erosion() */
+        if (tmp < 1) tmp = 1;
+    }
+    return tmp;
+}
+
 /* Default kill handler mirroring monkilled() (mon.c) minus corpse/mdrop
  * richness; js/allmain.js supplies hook overrides with the full drop
  * pipeline for live game-state kills.  mhitm.c calls monkilled(mdef, "",
@@ -621,19 +859,42 @@ function staggers(pd) {
     return 'reels';
 }
 
-/* uhitm.c:4033-4140 mhitm_ad_phys mhitm branch (barehanded subset). */
-function mhitmAdPhys(magr, _mattk, mdef, mhm) {
+/* uhitm.c:4033-4140 mhitm_ad_phys mhitm branch. */
+function mhitmAdPhys(magr, mattk, mdef, mhm) {
     const pa = pmOf(magr), pd = pmOf(mdef);
-    /* Weapon/dmgval/artifact/poison augmentation: JS monster weapons are
-     * managed by allmain's wield pipeline and not yet passed through here. */
-    if (pa?.pm === PM_PURPLE_WORM && pd?.pm === PM_SHRIEKER) {
-        /* uhitm.c:4132-4138: bite leaves the shrieker alive so the engulf
+    let mwep = monWep(magr);
+    if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW) mwep = null;
+
+    /* shade_miss() unported (needs silver/blessed weapon object rules). */
+    if (mattk.aatyp === AT_KICK && pd && thick_skinned(pd)) {
+        /* uhitm.c:4143-4146: kick cannot hurt thick-skinned monsters */
+        mhm.damage = 0;
+    } else if (mwep) { /* non-Null 'mwep' implies AT_WEAP || AT_CLAW */
+        /* corpse pseudo-weapon petrification (uhitm.c:4151-4156): JS
+         * monsters never wield corpses; documented gap. */
+        mhm.damage += dmgvalMonsterWeapon(mwep, mdef);
+        /* gauntlets of power check (uhitm.c:4159-4161): monsters' worn-armor
+         * pipeline is not wired into mvm; documented gap. */
+        if (mhm.damage < 1) /* uhitm.c:4162-4163 */
+            mhm.damage = 1;
+        /* artifact_hit() on oartifact does not occur in JS (monster items
+         * carry no oartifact); the non-artifact hit message was already
+         * delivered by hitmm()'s default branch (mhitm.c:690-692). */
+        if (mhm.damage) rustm(mdef, mwep); /* uhitm.c:4172 */
+        if ((mwep.opoisoned || mwep.permapoisoned) && !rn2(4)) {
+            /* uhitm.c:4173-4179 poison application; JS monster weapons are
+             * never poisoned by mkmon init, so this gate never fires. */
+            hooks.poisonMonster?.(magr, mattk, mdef, mhm);
+        }
+    } else if (pa?.pm === PM_PURPLE_WORM && pd?.pm === PM_SHRIEKER) {
+        /* uhitm.c:4181-4188: bite leaves the shrieker alive so the engulf
          * attack can swallow it whole */
         if (mhm.damage >= (mdef.mhp ?? 1) && (mdef.mhp ?? 1) > 1)
             mhm.damage = (mdef.mhp ?? 1) - 1;
     }
     return false;
 }
+function monWep(mon) { return mon?.mw || null; }
 
 /* uhitm.c:5247+ mhitm_knockback(): the rn2(3)/rn2(6) preamble ALWAYS
  * consumes draws; only the physical displacement (needs enexto/move
@@ -754,9 +1015,17 @@ export function hitmm(magr, mdef, mattk, mwep = null, dieroll = 0) {
             case AT_HUGS:
                 if (game.u?.ustuck !== magr) buf = `${MONNAM(magr)} squeezes`;
                 break;
-            default: break;
+            default:
+                /* mhitm.c:688-692: weapon (AT_WEAP/AT_CLAW+mwep) and generic
+                 * hits print "Foo hits Bar." unless an artifact message is
+                 * due (JS monsters never wield artifacts). */
+                if (!mwep || !mwep.oartifact) buf = `${MONNAM(magr)} hits`;
+                break;
             }
             if (buf) pline(`${buf} ${mon_nam(mdef)}.`);
+            /* silver-sears message (mhitm.c:694-716): silver weapons vs
+             * silver-hating defenders — JS monster items are not silver
+             * flagged on this path; documented gap. */
         }
     } else {
         noises(magr, mattk);
@@ -1038,8 +1307,25 @@ export function mattackm(magr, mdef) {
         switch (mattk.aatyp) {
         case AT_WEAP: /* "hand to hand" attacks */
             if (dist > 1) { strike = 0; break; } /* thrwmm ranged not wired */
-            /* mon_wield_item()/hitval() augmentation not wired: barefist
-             * damage stays the listed dice. */
+            /* mhitm.c:406-418: weapon upkeep and to-hit augmentation. */
+            if (magr.weapon_check === NEED_WEAPON || !monWep(magr)) {
+                magr.weapon_check = NEED_HTH_WEAPON;
+                if (monWieldItem(magr) !== 0)
+                    return M_ATTK_MISS; /* mhitm.c:409 */
+            }
+            /* possibly_unwield(magr, FALSE) — weapon.c:747-799 port is a
+             * no-op (see above); MW stays in minvent. */
+            mwep = monWep(magr);
+            if (mwep) {
+                /* mswingsm (mhitm.c:1283-1299): message only under
+                 * flags.verbose, and only then does mswings_verb's
+                 * thrust/swing cadence consume rn2(2). */
+                if (hooks.swingsMessage) {
+                    const msg = hooks.swingsMessage(magr, mdef, mwep, visNow);
+                    if (msg) pline(msg);
+                }
+                tmp += hitvalMonsterWeapon(mwep, mdef);
+            }
             /* FALLTHROUGH */
         case AT_CLAW: case AT_KICK: case AT_BITE: case AT_STNG:
         case AT_TUCH: case AT_BUTT: case AT_TENT: {
@@ -1050,6 +1336,7 @@ export function mattackm(magr, mdef) {
                 && touch_petrifies(pd || {})) { strike = 0; break; }
             dieroll = rnd(20 + i);
             strike = (tmp > dieroll);
+            if (mwep) tmp -= hitvalMonsterWeapon(mwep, mdef); /* mhitm.c:451-452 */
             if (strike) {
                 if (pd && unsolid(pd) && failedGrab(magr, mdef, mattk)) {
                     strike = 0;

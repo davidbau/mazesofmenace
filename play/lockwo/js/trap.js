@@ -229,11 +229,15 @@ function isclearpath(cc, distance, dx, dy) {
 
 // C ref: trap.c find_random_launch_coord(ttmp, cc) — pick a clear coord 4..8
 // (2..8 for a rolling boulder trap) cells away from the trap for the launched
-// object.  The launchplace early-out uses gl.launchplace, which is (0,0) for a
-// randomly generated trap (reset in sp_lev.c:4467); with launchplace (0,0),
-// bcc == trap location and linedup(same point) is FALSE, so we always fall
-// through to the rn1(5,4)/rn2(N_DIRS) search.  The while loop consumes no RNG.
+// object.  `Sokoban` (svl.level.flags.sokoban_rules) short-circuits to FALSE
+// before any RNG: Sokoban's own rolling-boulder traps have their launch point
+// fixed by the level layout, not rolled.  Otherwise the launchplace early-out
+// uses gl.launchplace, which is (0,0) for a randomly generated trap (reset in
+// sp_lev.c:4467); with launchplace (0,0), bcc == trap location and
+// linedup(same point) is FALSE, so we always fall through to the
+// rn1(5,4)/rn2(N_DIRS) search.  The while loop consumes no RNG.
 function find_random_launch_coord(ttmp, cc) {
+    if (game.level?.flags?.sokoban_rules) return false;
     const x = ttmp.tx, y = ttmp.ty;
     // launchplace (0,0): bcc == (x,y); linedup(x,y,x,y) returns FALSE (zero
     // displacement), so the early return is skipped.

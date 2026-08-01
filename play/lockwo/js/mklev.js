@@ -10,8 +10,10 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_tower1, shuffle } from './sp_lev.js';
-import { Is_special } from './dungeon.js';
+import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, shuffle } from './sp_lev.js';
+import { Is_special, builds_up } from './dungeon.js';
+import { In_quest } from './const.js';
+import { roles } from './role.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
 import { maketrap, Can_fall_thru } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
@@ -193,11 +195,15 @@ export function u_on_upstairs() {
 // oinit stub (level-dependent object probability reset)
 function oinit() { /* no-op for contest */ }
 
-// level_difficulty stub
+// C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
+// bump in a "builds up" branch (Vlad's Tower, Sokoban); see makemon.js's copy
+// of this same C function for the full rationale.
 function level_difficulty() {
     const uz = game.u?.uz;
-    const d = depth_of_level(uz);
-    return d;
+    let res = depth_of_level(uz);
+    if (uz && builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
 }
 
 // ============================================================
@@ -373,6 +379,13 @@ async function makelevel() {
         await makemaz_oracle();
         return;
     }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Sokoban entrance level.
+    // Only soko1 (and only its "-2" variant) is ported; the other Sokoban
+    // levels and soko1's "-1" variant fall through to the regular generator.
+    if (slev && slev.proto === 'soko1') {
+        await makemaz_soko1();
+        return;
+    }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Barbarian quest "home"
     // (start) level.  Only Bar-strt is ported; other quest levels fall through.
     if (slev && slev.proto === 'Bar-strt') {
@@ -404,6 +417,14 @@ async function makelevel() {
         // point (kelp rn2(30) per MOAT cell just before the hero arrival spot).
         return;
     }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Priest quest "home"
+    // (start) level, the besieged Great Temple.  Same finalize as Bar-strt:
+    // place the 1-cell "branch" levregion (place_lregion rn2(1)/rn2(1)).
+    if (slev && slev.proto === 'Pri-strt') {
+        await makemaz_pri_strt();
+        quest_place_branch();
+        return;
+    }
     // C ref: mklev.c:1269 makemaz(slev->proto) — Vlad's Tower upper stage.
     if (slev && slev.proto === 'tower1') {
         await makemaz_tower1();
@@ -428,6 +449,24 @@ async function makelevel() {
         const fill = g.dungeons?.[dnum0]?.fill_lvl;
         if (!slev && fill && fill.toLowerCase() === 'minefill') {
             await makemaz_minefill();
+            return;
+        }
+    }
+
+    // C ref: mklev.c:1275 — `else if (In_quest(&u.uz))`: a quest-branch level
+    // that is none of the three named levels dispatches to "{filecode}-fila"
+    // (dlevel < the locate level's) or "{filecode}-filb" (>=).  This is an
+    // else-if arm in C, so when it fires the below-Medusa rn2(5) check (and
+    // the regular generator) are NOT reached at all — no RNG is drawn for
+    // them.  Only the Barbarian's filler levels (Bar-fila/Bar-filb) are
+    // ported; every other role falls through to the regular generator
+    // exactly as before this change (unmodelled, not a regression).
+    if (!slev && In_quest(g.u?.uz)) {
+        const fc = roles[g.initrole]?.filecode;
+        const ql = g.qlocate_level;
+        if (fc === 'Bar' && ql) {
+            if (g.u.uz.dlevel < ql.dlevel) await makemaz_bar_fila();
+            else await makemaz_bar_filb();
             return;
         }
     }
@@ -2541,9 +2580,9 @@ function mk_finish_map(fg_typ, bg_typ, lit, walled) {
     }
 }
 
-// C ref: mkmap.c mkmap() — bg=STONE, fg=ROOM, smooth+join+walled for mines.
-function mk_mkmap(lit) {
-    const bg_typ = STONE, fg_typ = ROOM;
+// C ref: mkmap.c mkmap() — smooth+join always run (every covered caller sets
+// smoothed/joined); bg_typ/fg_typ/walled are the only params that vary.
+function mk_mkmap(lit, bg_typ = STONE, fg_typ = ROOM, walled = true) {
     mk_init_map(bg_typ);
     mk_init_fill(bg_typ, fg_typ);
     mk_pass_one(bg_typ, fg_typ);     // N_P1_ITER = 1
@@ -2551,10 +2590,12 @@ function mk_mkmap(lit) {
     mk_pass_three(bg_typ, fg_typ);   // N_P3_ITER = 2 (smoothed)
     mk_pass_three(bg_typ, fg_typ);
     mk_join_map(bg_typ, fg_typ);     // joined
-    mk_finish_map(fg_typ, bg_typ, lit, true);  // walled
+    mk_finish_map(fg_typ, bg_typ, lit, walled);
     // a walled, joined level is cavernous, not mazelike
-    game.level.flags.is_maze_lev = false;
-    game.level.flags.is_cavernous_lev = true;
+    if (walled) {
+        game.level.flags.is_maze_lev = false;
+        game.level.flags.is_cavernous_lev = true;
+    }
 }
 
 // ── lspo helpers for minefill ──
@@ -2671,7 +2712,7 @@ function mk_find_montype(name) {
 
 // des.monster(name) — a multi-char monster name (id given, no mkclass).
 // C ref: lspo_monster (find_montype) + create_monster (induced_align + makemon).
-function mk_monster_named(name) {
+function mk_monster_named(name, peacefulOverride) {
     const data = mk_find_montype(name);
     // sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80).
     oracle_induced_align();
@@ -2679,27 +2720,33 @@ function mk_monster_named(name) {
     // hero (seed0030) is not gnome/dwarf race, so this gate does not fire.
     // pm_to_humidity(pm) — DRY for these mines monsters (no swimmers/flyers).
     const c = mk_get_location_random(mk_ok_dry);
-    make_monster(data, c.x, c.y, 0);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
 }
 
 // des.monster("G"/"h") — a single-char monster CLASS (no find_montype gender
 // roll).  C ref: create_monster -> mkclass(class, G_NOGEN), then induced_align
 // + makemon.  S_GNOME=33 ('G'), S_HUMANOID=8 ('h').
-function mk_monster_class(classChar) {
-    const klass = classChar === 'G' ? 33 : classChar === 'h' ? 8 : 0;
+// S_OGRE=41, S_TROLL=46 (defsym.h), needed by Bar-fila's "O"/"T" class picks.
+const MK_CLASS_CHAR = { G: 33, h: 8, O: 41, T: 46 };
+function mk_monster_class(classChar, peacefulOverride) {
+    const klass = MK_CLASS_CHAR[classChar] ?? 0;
     // C ref: create_monster — amask = sp_amask_to_amask(AM_SPLEV_RANDOM) ->
     // induced_align(80) is computed FIRST, then pm = mkclass(class, G_NOGEN),
     // then get_location + makemon.
     oracle_induced_align();
     const data = mkclass(klass, 0x0200 /* G_NOGEN (monflag.h); was 1 */);
     const c = mk_get_location_random(mk_ok_dry);
-    make_monster(data, c.x, c.y, 0);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
 }
 
 // dispatch: single-char -> class; else named.
-function mk_monster(spec) {
-    if (spec.length === 1) mk_monster_class(spec);
-    else mk_monster_named(spec);
+function mk_monster(spec, peacefulOverride) {
+    if (spec.length === 1) return mk_monster_class(spec, peacefulOverride);
+    return mk_monster_named(spec, peacefulOverride);
 }
 
 // des.trap() random type at a random DRY spot (avoiding stairs/ladders).
@@ -2721,6 +2768,14 @@ async function mk_trap() {
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
     const trap = await maketrap(c.x, c.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
+    // C ref: sp_lev.c create_trap() -> mktrap(..., mktrap_flags, ...) — a
+    // lua des.trap() defaults spider_on_web=TRUE (lspo_trap, sp_lev.c:4405),
+    // so MKTRAP_NOSPIDERONWEB is normally NOT set; mktrap() then spawns a
+    // giant spider on a freshly made WEB trap.
+    if (kind === WEB) {
+        const spiderPm = monster_by_pmidx(name_to_pmidx('giant spider'));
+        if (spiderPm) make_monster(spiderPm, c.x, c.y, 0);
+    }
     const lvl = level_difficulty();
     if (kind !== NO_TRAP
         && lvl <= rnd(4)
@@ -2812,6 +2867,134 @@ async function makemaz_minefill() {
     // goto_level() runs immediately after mklev().  For minefill the room-fill
     // loop there is a no-op (join_map_cleanup left nroom == 0) and only
     // mineralize() runs, matching C's level_finalize_topology ordering.
+}
+
+// C ref: mklev.c makelevel() `In_quest(&u.uz)` branch — a quest-branch level
+// that is NOT one of the three named levels (start/locate/goal) dispatches to
+// "{filecode}-fila" (before the locate level) or "{filecode}-filb" (at/after
+// it).  dat/Bar-fila.lua: same splev engine as minefill (mines-style init_fill
+// + smoothed + joined cave), but bg==fg==ROOM and walled=false (a fully open,
+// unwalled cavern) and an explicit lit=0 (no BOOL_RANDOM roll, unlike
+// minefill's implicit lit).  Only the Barbarian's "before locate" filler is
+// ported; other roles/filb fall through to the regular generator.
+async function makemaz_bar_fila() {
+    const g = game;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const a = i - 1, b = j - 1;
+        const t = align[a]; align[a] = align[b]; align[b] = t;
+    }
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    try {
+        // des.level_init({ style="solidfill", fg=" " })
+        //   splev_initlev SOLIDFILL: lit = rn2(2); lvlfill_solid(STONE, lit).
+        rn2(2);
+        // des.level_flags("mazelevel","noflip") — no PRNG; is_maze_lev stays
+        // TRUE below since mk_mkmap's walled&&joined override only fires when
+        // walled (it isn't, here).
+        if (g.level?.flags) g.level.flags.is_maze_lev = true;
+        // des.level_init({ style="mines", fg=".", bg=".", smoothed=true,
+        //                  joined=true, lit=0, walled=false })
+        //   splev_initlev MINES: lit is an explicit boolean (0), so
+        //   litstate_rnd draws NO rn2 (unlike minefill's implicit/random lit).
+        mk_mkmap(false, ROOM, ROOM, false);
+
+        // des.stair("up"); des.stair("down")
+        mk_stair(true);
+        mk_stair(false);
+
+        // des.object() x8 — fully random class, random DRY spot.
+        for (let i = 0; i < 8; i++) mk_object(RANDOM_CLASS);
+
+        // des.trap() x4
+        for (let i = 0; i < 4; i++) await mk_trap();
+
+        // des.monster({id=,peaceful=0}) x2 + class "O" + named "rock troll",
+        // all forced hostile regardless of induced_align.
+        mk_monster('ogre', false);
+        mk_monster('ogre', false);
+        mk_monster('O', false);
+        mk_monster('rock troll', false);
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: !corrmaze -> wallification(1,0,COLNO-1,ROWNO-1).
+    // A no-op here (the level has no wall tiles at all — walled=false, bg==fg)
+    // but kept for fidelity/consistency with every other special-level path.
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // fixup_special: place the dungeon branch staircase, if this level happens
+    // to be one (it isn't, for the Barbarian's Bar-fila — the quest branch
+    // point is Bar-strt — but mirrors minefill's unconditional call).
+    mk_fixup_branch();
+}
+
+// C ref: dat/Bar-filb.lua — the "at/after locate" quest filler.  Same engine
+// as Bar-fila but bg=STONE (not ROOM) and walled=true (an ordinary walled
+// mines cave, exactly like makemaz_minefill's shape), 11 objects, and a
+// bigger monster roster (7 ogres + class O + 3 rock trolls + class T).
+async function makemaz_bar_filb() {
+    const g = game;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const a = i - 1, b = j - 1;
+        const t = align[a]; align[a] = align[b]; align[b] = t;
+    }
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    try {
+        // des.level_init({ style="solidfill", fg=" " }) — rn2(2), discarded.
+        rn2(2);
+        // des.level_flags("mazelevel","noflip") — no PRNG; walled&&joined in
+        // mk_mkmap below overrides is_maze_lev to false (cavernous), same as
+        // minefill, so no explicit flag set here is needed.
+        // des.level_init({ style="mines", fg=".", bg=" ", smoothed=true,
+        //                  joined=true, lit=0, walled=true })
+        //   lit is an explicit boolean (0): litstate_rnd draws NO rn2.
+        mk_mkmap(false, STONE, ROOM, true);
+
+        // des.stair("up"); des.stair("down")
+        mk_stair(true);
+        mk_stair(false);
+
+        // des.object() x11 — fully random class, random DRY spot.
+        for (let i = 0; i < 11; i++) mk_object(RANDOM_CLASS);
+
+        // des.trap() x4
+        for (let i = 0; i < 4; i++) await mk_trap();
+
+        // des.monster({id=,peaceful=0}) x7 ogres + class "O" + 3x named
+        // "rock troll" + class "T", all forced hostile.
+        for (let i = 0; i < 7; i++) mk_monster('ogre', false);
+        mk_monster('O', false);
+        for (let i = 0; i < 3; i++) mk_monster('rock troll', false);
+        mk_monster('T', false);
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: !corrmaze -> wallification(1,0,COLNO-1,ROWNO-1).
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // fixup_special: place the dungeon branch staircase (not applicable here
+    // either — mirrors minefill's/Bar-fila's unconditional call).
+    mk_fixup_branch();
 }
 
 // C ref: mkmaze.c fixup_special() — for a branch level with no rooms left
@@ -3076,6 +3259,14 @@ async function oracle_trap(croom) {
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
     const trap = await maketrap(c.x, c.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
+    // C ref: sp_lev.c create_trap() -> mktrap(..., mktrap_flags, ...) — a
+    // lua des.trap() defaults spider_on_web=TRUE (lspo_trap, sp_lev.c:4405),
+    // so MKTRAP_NOSPIDERONWEB is normally NOT set; mktrap() then spawns a
+    // giant spider on a freshly made WEB trap.
+    if (kind === WEB) {
+        const spiderPm = monster_by_pmidx(name_to_pmidx('giant spider'));
+        if (spiderPm) make_monster(spiderPm, c.x, c.y, 0);
+    }
     const lvl = level_difficulty();
     // victim gate (gi.in_mklev is true during gen)
     if (kind !== NO_TRAP
@@ -3324,7 +3515,7 @@ export function wallification(x1, y1, x2, y2) {
 // ============================================================
 
 function traptype_rnd() {
-    const lvl = game.u?.uz?.dlevel ?? 1;
+    const lvl = level_difficulty();
     let kind = rnd(TRAPNUM - 1);
     switch (kind) {
     case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:

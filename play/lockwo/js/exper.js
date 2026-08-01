@@ -283,7 +283,7 @@ export function rank_of(lev, mnum, female) {
 
 // Update game.urole.rank.m to the level-appropriate (gender-aware) rank so the
 // status line (display.js _statusLine1) reflects the current rank title.
-function update_rank() {
+export function update_rank() {
     const female = !!game.flags?.female;
     const rk = rank_of(game.u.ulevel || 1, game.urole?.mnum, female);
     if (game.urole) {
@@ -407,7 +407,7 @@ const ROLE_ABIL = new Map([
     [PM_WIZARD, [[15, 'sensitive', ''], [17, 'controlled', 'uncontrolled']]],
 ]);
 
-async function adjabil(oldlevel, newlevel, emitMsg) {
+export async function adjabil(oldlevel, newlevel, emitMsg) {
     const tbl = ROLE_ABIL.get(game.urole?.mnum);
     if (!tbl) return;
     for (const [ulvl, gainstr, losestr] of tbl) {

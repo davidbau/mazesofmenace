@@ -18,10 +18,12 @@ import {
     D_LOCKED,
     D_NODOOR,
     D_TRAPPED,
+    EXT_ENCUMBER,
     FAST,
     FIRE_RES,
     FLYING,
     FUMBLING,
+    GOLD_SYM,
     HALLUC,
     HALLUC_RES,
     HEADSTONE,
@@ -60,6 +62,7 @@ import {
     TELEPORT,
     TELEPORT_CONTROL,
     TIMER_OBJECT,
+    Upolyd,
     VIBRATING_SQUARE,
     W_NONDIGGABLE,
     W_NONPASSWALL,
@@ -206,6 +209,17 @@ export function inv_weight(state = game) {
     return inventory_weight(state) - state.gw.wc;
 }
 
+// C ref: hack.c inv_cnt() (4494-4507). Counts inventory slots, optionally
+// including the gold one. C selects gold by invlet rather than by class, so a
+// non-gold object that somehow carries '$' would be skipped too.
+export function inv_cnt(incl_gold, state = game) {
+    let count = 0;
+    for (let obj = state.invent; obj; obj = obj.nobj) {
+        if (incl_gold || obj.invlet !== GOLD_SYM) count++;
+    }
+    return count;
+}
+
 // C ref: hack.c calc_capacity() and near_capacity().
 export function calc_capacity(extraWeight = 0, state = game) {
     const excess = inv_weight(state) + Math.trunc(extraWeight);
@@ -214,6 +228,20 @@ export function calc_capacity(extraWeight = 0, state = game) {
 
 export function near_capacity(state = game) {
     return calc_capacity(0, state);
+}
+
+// C ref: hack.c check_capacity() (4398-4408). Answers whether the hero is too
+// loaded to act, and says so first. C's `str` is a caller-supplied replacement
+// line printed through pline1(); a null one takes the You_cant() default.
+export async function check_capacity(str, state = game) {
+    if (near_capacity(state) >= EXT_ENCUMBER) {
+        await ttyPline(
+            str ?? "You can't do that while carrying so much stuff.",
+            state,
+        );
+        return true;
+    }
+    return false;
 }
 
 // near_capacity() without the cache write. hack.c's inv_weight() assigns
@@ -240,11 +268,25 @@ export class UnsupportedHeroMoveBoundaryError extends Error {
     }
 }
 
-// C ref: you.h Upolyd() (307). Nothing in this port assigns u.umonnum, so it
-// is always FALSE; the readers below still ask rather than assume, because a
-// polymorph that arrives later has to change one place.
-function Upolyd(state) {
-    return state.u.umonnum !== state.u.umonster;
+// C ref: hack.c rounddiv() (4549-4573). Integer division that rounds a
+// remainder of exactly half away from zero, and carries the sign of the
+// quotient rather than C's truncation. eat.c doeat() divides a meal's
+// remaining nutrition by its full nutrition through this.
+export function rounddiv(x, y) {
+    let divsgn = 1;
+    if (y === 0) throw new RangeError('division by zero in rounddiv');
+    if (y < 0) {
+        divsgn = -divsgn;
+        y = -y;
+    }
+    if (x < 0) {
+        divsgn = -divsgn;
+        x = -x;
+    }
+    let r = Math.trunc(x / y);
+    const m = x % y;
+    if (2 * m >= y) r++;
+    return divsgn * r;
 }
 
 function propertyActiveUnblocked(state, property) {
@@ -412,7 +454,7 @@ async function maybe_wail(state) {
 async function showdamage(dmg, state) {
     if (!state.iflags?.showdamage || !dmg) return;
 
-    await ttyPline(`[HP ${-dmg}, ${Upolyd(state) ? state.u.mh : state.u.uhp}`
+    await ttyPline(`[HP ${-dmg}, ${Upolyd(state.u) ? state.u.mh : state.u.uhp}`
         + ' left]', state);
 }
 
@@ -422,7 +464,7 @@ export async function losehp(n, knam, k_format, state = game) {
     state.disp ??= {};
     state.disp.botl = true; /* u.uhp or u.mh is changing */
     endRunning(state);
-    if (Upolyd(state)) {
+    if (Upolyd(state.u)) {
         // Nothing in this port polymorphs the hero, so u.mh, rehumanize() and
         // the Unchanging wail have no reachable caller. The branch stops
         // rather than duplicating hit points into a second unowned field.

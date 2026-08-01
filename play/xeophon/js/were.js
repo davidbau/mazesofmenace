@@ -37,6 +37,8 @@ export const WERE_SPECIES = new Map([
             mlevel: 2, difficulty: 3, mmove: 12, mac: 10, mr: 10, maligntyp: -7,
             were: true, wereHuman: true, armed: true, regen: true,
             mrPoison: true, noCorpse: false,
+            // monsters.h:2611 — ATTK(AT_WEAP, AD_PHYS, 2, 4)
+            attack: { verb: 'hits', aatyp: 'weap', adtyp: 'phys', dice: 2, sides: 4 },
         },
         beast: {
             name: 'wererat', mlet: 'r', glyph: 'r', color: 3 /*CLR_BROWN*/,
@@ -56,6 +58,8 @@ export const WERE_SPECIES = new Map([
             mlevel: 2, difficulty: 3, mmove: 12, mac: 10, mr: 10, maligntyp: -7,
             were: true, wereHuman: true, armed: true, regen: true,
             mrPoison: true, noCorpse: false,
+            // monsters.h:2620 — ATTK(AT_WEAP, AD_PHYS, 2, 4)
+            attack: { verb: 'hits', aatyp: 'weap', adtyp: 'phys', dice: 2, sides: 4 },
         },
         beast: {
             name: 'werejackal', mlet: 'd', glyph: 'd', color: 3 /*CLR_BROWN*/,
@@ -75,6 +79,8 @@ export const WERE_SPECIES = new Map([
             mlevel: 5, difficulty: 6, mmove: 12, mac: 10, mr: 20, maligntyp: -7,
             were: true, wereHuman: true, armed: true, regen: true,
             mrPoison: true, noCorpse: false,
+            // monsters.h:2629 — ATTK(AT_WEAP, AD_PHYS, 2, 4)
+            attack: { verb: 'hits', aatyp: 'weap', adtyp: 'phys', dice: 2, sides: 4 },
         },
         beast: {
             name: 'werewolf', mlet: 'd', glyph: 'd', color: 8 /*CLR_GRAY*/,

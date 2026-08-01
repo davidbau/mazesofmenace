@@ -284,6 +284,19 @@ function depth(lev) {
     return game.dungeons[lev.dnum].depth_start + lev.dlevel - 1;
 }
 
+// C ref: dungeon.c builds_up(lev) — True iff <lev>'s dungeon is entered at its
+// bottom and climbed (Vlad's Tower, Sokoban): the branch's "up" direction
+// means depth() alone would make the harder-to-reach levels look easier, so
+// level_difficulty() (do.js) compensates using this test.
+export function builds_up(lev) {
+    const dptr = game.dungeons[lev.dnum];
+    if (dptr.num_dunlevs > 1)
+        return dptr.entry_lev === dptr.num_dunlevs;
+    const br = (game.branches || []).find((b) =>
+        b.end2.dnum === lev.dnum && b.end2.dlevel === lev.dlevel);
+    return br ? !!br.end1_up : false;
+}
+
 function parent_dlevel(s, pd) {
     const branch_index = find_branch(s, pd);
     const dnum = parent_dnum(s, pd);

@@ -5,6 +5,8 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { builds_up } from './dungeon.js';
+import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless } from './mkobj.js';
 import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
 // Object-class constants inlined (not imported) to avoid a circular-import TDZ:
@@ -24,7 +26,9 @@ import {
     GEHENNOM,
     In_endgame, Is_astralevel, Is_rogue_level,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
+    STRAT_CLOSE, STRAT_WAITFORU,
 } from './const.js';
+const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
 const G_NOHELL = 0x0800;
@@ -567,6 +571,15 @@ export function infravision(ptr) {
     return !!(ptr && (ptr.mflags3 & M3_INFRAVISION));
 }
 
+// C ref: include/monflag.h M3_COVETOUS (0x1f) = WANTSAMUL|WANTSBELL|WANTSBOOK
+// |WANTSCAND|WANTSARTI ("wants something"); include/mondata.h is_covetous(ptr)
+// = (mflags3 & M3_COVETOUS).  A covetous monster (Vlad wants the Candelabrum,
+// the Wizard wants the Amulet, &c) bypasses a level's noteleport restriction.
+const M3_COVETOUS = 0x001f;
+export function is_covetous(ptr) {
+    return !!(ptr && (ptr.mflags3 & M3_COVETOUS));
+}
+
 // C ref: sp_lev.c lspo_object montype scan — find a monster by its (neutral)
 // name string, returning its pmidx or NON_PM (-1).  Used by themed-room corpse
 // fills (themerms.lua "Buried zombies": montype="kobold"/"gnome"/...).
@@ -720,8 +733,16 @@ export function mon_nocorpse(mndx) {
     return (MONS[mndx]?.geno & G_NOCORPSE) !== 0;
 }
 
+// C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
+// bump in a "builds up" branch (Vlad's Tower, Sokoban): depth() alone would
+// make the harder-to-reach levels there look easier since their dlevel counts
+// down as you climb, so add 2 per level of extra effort spent reaching them.
 function level_difficulty() {
-    return depth_of_level(game.u?.uz);
+    const uz = game.u?.uz;
+    let res = depth_of_level(uz);
+    if (uz && builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
 }
 
 function monmin_difficulty(levdif) {
@@ -811,11 +832,53 @@ function isupper_sym(ptr) {
     return c >= 'A' && c <= 'Z';
 }
 
+// C ref: you.h struct Role enemy1num/enemy2num/enemy1sym/enemy2sym — the
+// per-role table role.c bakes into gu.urole, keyed here by filecode.  A null
+// numN is C's NON_PM ("no specific species for this slot, class only").
+// symN is the S_* monster-class index (defsym.h).
+const QT_ENEMY = {
+    Arc: { num1: null, sym1: 45 /* S_SNAKE */, num2: 'human mummy', sym2: 39 /* S_MUMMY */ },
+    Bar: { num1: 'ogre', sym1: 41 /* S_OGRE */, num2: 'troll', sym2: 46 /* S_TROLL */ },
+    Cav: { num1: 'bugbear', sym1: 8 /* S_HUMANOID */, num2: 'hill giant', sym2: 34 /* S_GIANT */ },
+    Hea: { num1: 'giant rat', sym1: 18 /* S_RODENT */, num2: 'snake', sym2: 51 /* S_YETI */ },
+    Kni: { num1: 'quasit', sym1: 9 /* S_IMP */, num2: 'ochre jelly', sym2: 10 /* S_JELLY */ },
+    Mon: { num1: 'earth elemental', sym1: 31 /* S_ELEMENTAL */, num2: 'xorn', sym2: 50 /* S_XORN */ },
+    Pri: { num1: 'human zombie', sym1: 52 /* S_ZOMBIE */, num2: 'wraith', sym2: 49 /* S_WRAITH */ },
+    Rog: { num1: 'leprechaun', sym1: 14 /* S_NYMPH */, num2: 'guardian naga', sym2: 40 /* S_NAGA */ },
+    Ran: { num1: 'forest centaur', sym1: 29 /* S_CENTAUR */, num2: 'scorpion', sym2: 19 /* S_SPIDER */ },
+    Sam: { num1: 'wolf', sym1: 4 /* S_DOG */, num2: 'stalker', sym2: 31 /* S_ELEMENTAL */ },
+    Tou: { num1: 'giant spider', sym1: 19 /* S_SPIDER */, num2: 'forest centaur', sym2: 29 /* S_CENTAUR */ },
+    Val: { num1: 'fire ant', sym1: 1 /* S_ANT */, num2: 'fire giant', sym2: 34 /* S_GIANT */ },
+    Wiz: { num1: 'vampire bat', sym1: 28 /* S_BAT */, num2: 'xorn', sym2: 49 /* S_WRAITH */ },
+};
+
+// C ref: questpgr.c qt_montype() — the quest branch's random-fill substitute:
+// a role-specific "enemy" monster (by species, falling back to its class)
+// instead of a species out of the general table.
+function qt_montype() {
+    const enemy = QT_ENEMY[roles[game.initrole]?.filecode];
+    if (!enemy) return null;
+    if (rn2(5)) {
+        const qpm = enemy.num1 != null ? name_to_pmidx(enemy.num1) : NON_PM;
+        if (qpm !== NON_PM && rn2(5) && !(mvflags(qpm) & G_GENOD)) return MONS[qpm];
+        return mkclass(enemy.sym1, 0);
+    }
+    const qpm = enemy.num2 != null ? name_to_pmidx(enemy.num2) : NON_PM;
+    if (qpm !== NON_PM && rn2(5) && !(mvflags(qpm) & G_GENOD)) return MONS[qpm];
+    return mkclass(enemy.sym2, 0);
+}
+
 // C ref: rndmonst_adj() (makemon.c:1658).  Weighted reservoir sampling over
 // the full mons[] array (LOW_PM .. SPECIAL_PM).
 export function rndmonst_adj(minadj = 0, maxadj = 0) {
-    if (game.u?.uz?.dnum === game.quest_dnum) {
-        if (rn2(7)) return null; // qt_montype() is not ported yet.
+    // C ref: makemon.c:1666 — `if (u.uz.dnum == quest_dnum && rn2(7)
+    // && (ptr = qt_montype()) != 0) return ptr;`.  rn2(7) is drawn only when
+    // in the quest branch (short-circuit); when it (and qt_montype) succeed
+    // the substitute is returned immediately, otherwise fall through to the
+    // general weighted-table pick below exactly as C does.
+    if (game.u?.uz?.dnum === game.quest_dnum && rn2(7)) {
+        const pm = qt_montype();
+        if (pm) return pm;
     }
 
     const zlevel = level_difficulty();
@@ -1261,10 +1324,10 @@ const M2_LORD_NAMES = new Set([
     'ki-rin', 'Archon',
 ]);
 const M2_PRINCE_NAMES = new Set([
-    'gnome ruler', 'dwarf ruler', 'ogre tyrant',
+    'gnome ruler', 'dwarf ruler', 'ogre tyrant', 'Vlad the Impaler',
 ]);
 const M2_NASTY_NAMES = new Set([
-    'Elvenking', 'water demon',
+    'Elvenking', 'water demon', 'Vlad the Impaler',
 ]);
 function m_initweap_bias(ptr) {
     const n = ptr?.name;
@@ -1327,11 +1390,20 @@ function m_initweap_full(mtmp) {
                 if (rn2(2)) { mongets(mtmp, W_ELVEN_SPEAR); mongets(mtmp, W_ELVEN_SHIELD); }
                 break;
             }
+        } else if (ptr.name === 'Arch Priest') {
+            // C ref: makemon.c m_initweap S_HUMAN `msound == MS_PRIEST ||
+            // quest_mon_represents_role(ptr, PM_CLERIC)` branch.
+            // quest_mon_represents_role expands to (S_HUMAN && Role_if(role_pm)
+            // && msound is LEADER/NEMESIS); for our covered roster that's
+            // exactly the Priest quest leader, "Arch Priest" (msound MS_LEADER).
+            const otmp = mksobj(W_MACE, false, false);
+            otmp.spe = rnd(3);
+            if (!rn2(2)) curse(otmp);
+            mpickobj(mtmp, otmp);
         } else if (GUARDIAN_WEAP_NAMES.has(ptr.name)) {
             // C ref: makemon.c m_initweap S_HUMAN `msound == MS_GUARDIAN` branch
-            // — quest "guardian" humans (the priest/ninja branches that precede
-            // it in C are omitted; those monster types never reach here on the
-            // ported Barbarian home level).
+            // — quest "guardian" humans (the ninja branch that precedes it in C
+            // is omitted; PM_NINJA never reaches here on the ported levels).
             const nm = ptr.name;
             if (nm === 'student' || nm === 'attendant' || nm === 'abbot'
                 || nm === 'acolyte' || nm === 'guide' || nm === 'apprentice') {
@@ -1483,8 +1555,10 @@ function rnd_defensive_item(mtmp) {
     if (!pm || rnd_item_excluded(pm)) return 0;
     const d = pm.difficulty ?? 0;
     // C ref: muse.c rnd_defensive_item — teleport picks retry once on a
-    // noteleport level; digging picks retry in Sokoban.
-    const noteleport = !!game.level?.flags?.noteleport;
+    // noteleport level (unless the monster is covetous, e.g. Vlad wanting the
+    // Candelabrum bypasses his own tower's noteleport flag); digging picks
+    // retry in Sokoban.
+    const noteleport = !!game.level?.flags?.noteleport && !is_covetous(pm);
     const inSokoban = (game.sokoban_dnum != null
                        && game.u?.uz?.dnum === game.sokoban_dnum);
     let trycnt = 0;
@@ -1622,6 +1696,24 @@ function m_initinv_full(mtmp) {
             case 2: mongets(mtmp, 307 /*POT_HEALING*/);       /* FALLTHRU */
             case 3: mongets(mtmp, 416 /*WAN_STRIKING*/);
             }
+        } else if (ptr.name === 'Arch Priest') {
+            // C ref: makemon.c m_initinv() S_HUMAN `msound == MS_PRIEST ||
+            // quest_mon_represents_role(ptr, PM_CLERIC)` branch — see the
+            // matching m_initweap branch above for why this is name-keyed.
+            if (rn2(7)) mongets(mtmp, 143 /*ROBE*/);
+            else mongets(mtmp, rn2(3) ? 146 /*CLOAK_OF_PROTECTION*/ : 148 /*CLOAK_OF_MAGIC_RESISTANCE*/);
+            mongets(mtmp, 150 /*SMALL_SHIELD*/);
+            // C ref: mkmonmoney(mtmp, rn1(10,20)) -> if(amount>0) mksobj(GOLD_PIECE,
+            // FALSE, FALSE) (one next_ident rnd(2); no mksobj_init since init==FALSE)
+            // + add to minvent — kept (unlike the LIKES_GOLD_NAMES tail case) since
+            // quest_drop_default_invent's mdrop_special_objs walk counts it.
+            const amt = rn1(10, 20);
+            if (amt > 0) {
+                const gold = mksobj(437 /*GOLD_PIECE*/, false, false);
+                gold.quan = amt;
+                mpickobj(mtmp, gold);
+            }
+            mtmp._hasgold = true;
         }
         break;
     case 14: // S_NYMPH
@@ -1802,6 +1894,17 @@ export const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieute
 export const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
 const MS_LEADERGUARD_NAMES = new Set(["Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
 const MS_NEMESIS_NAMES = new Set(["Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One"]);
+
+// C ref: include/monsters.h mflags3 M3_CLOSE — set on "prisoner" and the one
+// named quest-leader monster per role.  makemon() ORs STRAT_CLOSE into
+// mstrategy for these; dochug() (monmove.js) then freezes them in place
+// (mstrategy & STRAT_WAITMASK) until the hero is adjacent, at which point
+// quest_talk() lets a leader speak.  Keyed by NAME (see M2_PEACEFUL_NAMES
+// above for why: the JS pmidx scheme is a reordered subset of mons[]).
+const M3_CLOSE_NAMES = new Set(["prisoner", "Lord Carnarvon", "Pelias", "Shaman Karnov", "Earendil", "Elwing", "Hippocrates", "King Arthur", "Grand Master", "Arch Priest", "Orion", "Master of Thieves", "Lord Sato", "Twoflower", "Norn", "Neferet the Green"]);
+// C ref: mflags3 M3_WAITFORU — the 13 quest nemeses (MS_NEMESIS_NAMES) plus
+// the non-quest "waits until it notices you" uniques.
+const M3_WAITFORU_NAMES = new Set(["Vlad the Impaler", "Medusa", "Wizard of Yendor", "Juiblex", "Orcus", "Baalzebub", "Asmodeus", ...MS_NEMESIS_NAMES]);
 
 // C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  Returns the
 // M2 race flag-name sets the hero loves / hates.  Transcribed directly from
@@ -2112,6 +2215,13 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             m_initinv(ptr);
         }
         rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
+    }
+    // C ref: makemon.c:1460-1466 — mflags3 STRAT_WAITFORU/STRAT_CLOSE (no RNG).
+    // STRAT_APPEARMSG is not modeled: no covered session reaches a "materializes
+    // in a cloud of smoke" first-appearance message for one of these monsters.
+    if (!(mmflags & MM_NOWAIT)) {
+        if (M3_WAITFORU_NAMES.has(ptr.name)) mtmp.mstrategy = (mtmp.mstrategy | STRAT_WAITFORU) >>> 0;
+        if (M3_CLOSE_NAMES.has(ptr.name)) mtmp.mstrategy = (mtmp.mstrategy | STRAT_CLOSE) >>> 0;
     }
     // C ref: makemon.c:1248 — the new monster is linked into fmon (placed on the
     // level).  For Big Room generation and shop stocking, place it so the

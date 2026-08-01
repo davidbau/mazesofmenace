@@ -24,7 +24,9 @@ import {
     ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
     NOGARLIC, IS_ALTAR, In_endgame, GEHENNOM, HEADSTONE, u_at,
     STAIRS, LADDER, IRONBARS, WEB,
+    STRAT_CLOSE, STRAT_WAITFORU, STRAT_WAITMASK,
 } from './const.js';
+import { quest_talk } from './questpgr.js';
 import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
 import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
@@ -42,6 +44,7 @@ import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
 import { wipe_engr_at, engr_at } from './engrave.js';
+import { discover_object } from './o_init.js';
 
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
 // The only NODIAG monster the contest sessions place on dlvl 1.
@@ -2077,7 +2080,29 @@ export async function dochug(mtmp) {
     if (DEADMONSTER(mtmp)) return 1;
 
     // PHASE ONE — frozen / sleeping / pre-move timers.
-    if (!mtmp.mcanmove) return 0;
+    // C ref: monmove.c:704-708 STRAT_ARRIVE/m_arrival is not modeled — no
+    // migrating monster reaches dochug in the covered sessions.
+    // C ref: monmove.c:710-712 — a monster waiting for the hero to notice it
+    // (STRAT_WAITFORU: quest nemeses and a few uniques) stops waiting once it
+    // can see the hero or has taken damage.
+    if ((mtmp.mstrategy & STRAT_WAITFORU) && (m_canseeu(mtmp) || mtmp.mhp < mtmp.mhpmax))
+        mtmp.mstrategy &= ~STRAT_WAITFORU;
+    // C ref: monmove.c:715 quest_stat_check(mtmp) is not modeled — it only
+    // updates Qstat(in_battle) for the MS_NEMESIS species, which nemesis_speaks()
+    // (not ported — see questpgr.js quest_talk) is the only reader of.
+
+    // C ref: monmove.c:717-723 — a monster frozen by STRAT_WAITMASK (the one
+    // named quest leader per role, via STRAT_CLOSE; or "prisoner") never
+    // moves or attacks on its own.  While hero-adjacent and awake it gets one
+    // chance per turn to speak instead (quest_talk).  The Hallucination
+    // newsym() repaint is not modeled: Hallucination is never active in the
+    // covered sessions.
+    if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
+        if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
+            && !mtmp.msleeping && monnear(mtmp, game.u?.ux, game.u?.uy))
+            await quest_talk(mtmp);
+        return 0;
+    }
 
     if (mtmp.msleeping) {
         // disturb() may wake it; for our (already-noticed) hostile monsters
@@ -3754,6 +3779,14 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
     let bx = sx, by = sy;
     while (range-- > 0) {
         bx += dx; by += dy;
+        // C ref: mthrowu.c m_throw():676-677 — as soon as the missile occupies
+        // a visible square, observe_object(singleobj) fires (dknown + the type
+        // marked "encountered", feeding the '\' discoveries list) regardless of
+        // whether it goes on to hit, miss, or land.  No RNG.
+        if (!Blind() && cansee(bx, by)) {
+            singleobj.dknown = 1;
+            discover_object(singleobj.otyp, false, true);
+        }
         if (bx === u.ux && by === u.uy) {
             // hero square: catch attempt, then the hit resolution.
             if (u_catch_thrown_obj(singleobj)) { flash_end(); return; } // caught

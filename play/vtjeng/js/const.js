@@ -1494,6 +1494,10 @@ export const LOOKHERE_SKIP_DFEATURE = 2;
 export const WINTYPELEN = 16;
 export const MAX_BMASK = 4;
 export const CONTAINED_SYM = '>';
+// C ref: defsym.h:479, the OBJCLASS2() row that names COIN_CLASS's symbol.
+// assigninvlet() gives it to every coin stack; getobj() and hack.c inv_cnt()
+// each test an inventory letter against it.
+export const GOLD_SYM = '$';
 export const HANDS_SYM = '-';
 export const MSGTYP_NORMAL = 0;
 export const MSGTYP_NOREP = 1;
@@ -1932,12 +1936,15 @@ export const BUC_BLESSED = 1;
 export const BUC_UNCURSED = 2;
 export const BUC_CURSED = 3;
 export const BUC_UNKNOWN = 4;
-export const GETOBJ_EXCLUDE = 0;
+// C ref: hack.h:513-539. The six values are ordered, not just distinct:
+// getobj() writes `obj_ok(otmp) <= GETOBJ_EXCLUDE` at invent.c:2011, which
+// relies on GETOBJ_EXCLUDE being the smallest of them.
+export const GETOBJ_EXCLUDE = -3;
+export const GETOBJ_EXCLUDE_NONINVENT = -2;
+export const GETOBJ_EXCLUDE_INACCESS = -1;
+export const GETOBJ_EXCLUDE_SELECTABLE = 0;
 export const GETOBJ_DOWNPLAY = 1;
 export const GETOBJ_SUGGEST = 2;
-export const GETOBJ_EXCLUDE_INACCESS = 3;
-export const GETOBJ_EXCLUDE_SELECTABLE = 4;
-export const GETOBJ_EXCLUDE_NONINVENT = 5;
 export const GETOBJ_ALLOWCNT = 0x01;
 export const GETOBJ_PROMPT = 0x02;
 export const GETOBJ_NOFLAGS = 0;
@@ -2849,9 +2856,13 @@ export function OMONST(obj) { return obj?.oextra?.omonst; }
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 
-// C: you.h — #define Upolyd (u.mtimedone != 0)
+// C ref: you.h:554 — #define Upolyd (u.umonnum != u.umonster). The macro reads
+// the two monster indexes, not the polymorph timer: polyself.c polyman()
+// restores u.umonnum (210) before it clears u.mtimedone (216), so between
+// those two statements the timer still answers TRUE and the macro FALSE.
+// The single argument is the hero struct, so every call site passes `state.u`.
 export function Upolyd(player) {
-    return !!(player && player.mtimedone && player.mtimedone > 0);
+    return player?.umonnum !== player?.umonster;
 }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files

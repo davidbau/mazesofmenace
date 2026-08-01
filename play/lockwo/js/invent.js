@@ -60,6 +60,7 @@ import {
 import { getpos, getpos_render } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
+import { strongmonst_flag as strongmonst } from './monflags_data.js';
 import { tin_variety, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, vegetarian } from './eat.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
@@ -694,14 +695,27 @@ function acurrstr() {
 }
 
 // C ref: hack.c weight_cap() — the hero's carrying capacity.  The starter
-// sessions are never polymorphed/levitating/riding, so only the base
-// STR+CON capacity and the wounded-legs reduction apply (a bear trap that
-// wounds a leg drops carrcap by WT_WOUNDEDLEG_REDUCT, which is what pushes the
-// seed0004 hero from unencumbered to Burdened).  Consumes no RNG.
+// sessions are never levitating/riding, so only the base STR+CON capacity,
+// the polymorphed-form scaling, and the wounded-legs reduction apply (a bear
+// trap that wounds a leg drops carrcap by WT_WOUNDEDLEG_REDUCT, which is what
+// pushes the seed0004 hero from unencumbered to Burdened).  Consumes no RNG.
 function weight_cap() {
     const u = game.u;
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr_eff(A_CON))
                   + WT_WEIGHTCAP_SPARE;
+    // C ref: hack.c weight_cap() Upolyd branch (consistent with mon.c
+    // can_carry()) — small/large forms scale capacity by body size (cwt) or,
+    // for the cwt==0 case, by msize relative to human-sized (MZ_HUMAN=2).
+    if (u?.Upolyd && u.data) {
+        const MZ_HUMAN = 2, WT_HUMAN = 1450;
+        if (u.data.mlet === 'n') {
+            carrcap = MAX_CARR_CAP;
+        } else if (!u.data.cwt) {
+            carrcap = Math.trunc((carrcap * (u.data.msize ?? MZ_HUMAN)) / MZ_HUMAN);
+        } else if (!strongmonst(u.data) || (strongmonst(u.data) && u.data.cwt > WT_HUMAN)) {
+            carrcap = Math.trunc((carrcap * u.data.cwt) / WT_HUMAN);
+        }
+    }
     // Levitation / air level / strong steed -> MAX_CARR_CAP (never set here).
     if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
     // !Flying: each wounded leg side reduces capacity (the hero never Flies).

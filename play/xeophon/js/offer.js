@@ -154,7 +154,7 @@ function changeLuck(n) {
 }
 
 // C ref: src/attrib.c:adjalign() (adj_erinys() only tunes erinys flags; no RNG)
-function adjAlign(n) {
+export function adjAlign(n) {
     const u = game.u;
     if (!u?.ualign || !n) return;
     const record = u.ualign.record || 0;
