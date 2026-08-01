@@ -4297,6 +4297,7 @@ function maybeShapeshiftVampire(mon) {
 }
 
 export async function processMonsterTurns() {
+    if (process.env.WEREDBG) console.error(`WEREDBG PMTenter moves=${game.moves} rng=${getRngLog().length} mresume=${game._monster_resume_index} cont=${game._continue_monsters_after_more} paved=${game._paused_at_visual_event_dismissal}`);
     if (game._stale_queued_kill_pet && game._pending_message !== game._stale_queued_kill_pet.message) {
         const stale = game._stale_queued_kill_pet;
         game._stale_queued_kill_pet = null;
@@ -7072,6 +7073,7 @@ if (attack.adtyp === 'steal') {
                         && Math.abs(mon.my - (game.u?.uy || 0)) <= 1;
                     if (process.env.WEREDBG && /wolf|jackal/.test(mon.data?.name || ''))
                         console.error(`WEREDBG stop-search-check mon=${mon.data?.name}@${mon.mx},${mon.my} moves=${game.moves} sao=${searchOccupationActive} spc=${game._search_pending_count} adjs=${searchAdjacentHostile} peace=${!!mon.mpeaceful} blind=${!!game.u?.blind} mind=${!!mon.mundetected} vis=${!!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)} csc=${couldSeeCoord(mon.mx, mon.my)}`);
+                    if (process.env.WEREDBG) console.error(`WEREDBG pmt-mon name=${mon.data?.name} sao=${searchOccupationActive} rng=${getRngLog().length}`);
                     if (searchOccupationActive && (game.level?.monsters || []).includes(mon)
                         && !mon.mpeaceful && mon.mcanmove !== false && !mon.mundetected
                         && !scaryObjectAt(mon, game.u?.ux || 0, game.u?.uy || 0)
@@ -10663,6 +10665,7 @@ async function finishMonsterTurnTail() {
 	    game._monster_turns_started = 1;
     const suppressImmobileExtraTurns = !!game._suppress_immobile_extra_turns_once;
     game._suppress_immobile_extra_turns_once = 0;
+    if (process.env.WEREDBG) console.error(`WEREDBG tail-guard moves=${game.moves} umov=${game.u?.umovement} supp=${suppressImmobileExtraTurns} rng=${getRngLog().length}`);
     if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss && !suppressImmobileExtraTurns) {
         game.moves = (game.moves || 1) + 1;
         await afterMoveTurn(game, false);
@@ -16655,6 +16658,7 @@ export async function moveloop_core() {
     while (g._pending_time_passed
         && !(g._pending_message && !g._message_more && g._pending_message_blocks_time)
         && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
+        if (process.env.WEREDBG) console.error(`WEREDBG timepass moves=${g.moves} pt=${g._pending_time_passed} spc=${g._search_pending_count} pmsg=${JSON.stringify(g._pending_message)} more=${g._message_more} rng=${getRngLog().length}`);
         let turnAdvanced = false;
         let skipMonsterTurnsThisPass = false;
         let ballDragNoResumePass = false;
@@ -16791,12 +16795,26 @@ export async function moveloop_core() {
                     && couldSeeCoord(candidate.mx, candidate.my))) {
                 addToplineMessage('You stop searching.');
                 g._search_pending_count = 0;
-                g._pending_time_passed = Math.min(g._pending_time_passed, 1);
+                // C ref: allmain.c:483-509 — stop_occupation()/nomul(0) cancels
+                // the *remaining* searches only; the current turn still runs
+                // its monster phase to completion before the moveloop waits
+                // for input again.  If no monster holds leftover movement,
+                // this pass's processMonsterTurns() only performs the
+                // rollover that allocates movement (C moves each monster with
+                // its freshly allocated rations inside movemon's do/while
+                // retry, allmain.c:217-260), so keep one extra pending pass
+                // for the actual monster actions of the current turn.
+                const monstersLackMovementForThisTurn = !(game.level?.monsters || []).some(candidate =>
+                    (candidate.mhp == null || candidate.mhp > 0)
+                    && (candidate.movement || 0) >= NORMAL_SPEED);
+                g._pending_time_passed = Math.min(g._pending_time_passed,
+                    monstersLackMovementForThisTurn ? 2 : 1);
                 g._keep_pending_message = 1;
             }
         }
 
 
+        if (process.env.WEREDBG) console.error(`WEREDBG post-searchblk moves=${g.moves} pt=${g._pending_time_passed} spc=${g._search_pending_count} pmsg=${JSON.stringify(g._pending_message)} rng=${getRngLog().length}`);
         const earlyForceLock = g._force_lock_occupation && !g._process_time_with_more;
         const earlyPickLock = g._pick_lock_occupation && !g._process_time_with_more;
         const earlyPickDig = g._pick_dig_occupation && !g._process_time_with_more;
@@ -16835,7 +16853,9 @@ export async function moveloop_core() {
             g._ball_drag_force_tail_on_last_turn = 0;
             g._force_monster_turn_tail_once = 1;
         }
+        if (process.env.WEREDBG) console.error(`WEREDBG pre-monsters moves=${g.moves} skip=${skipMonsterTurnsThisPass} rng=${getRngLog().length}`);
         const movedMonsters = skipMonsterTurnsThisPass || armorTailOnly ? false : await processMonsterTurns();
+        if (process.env.WEREDBG) console.error(`WEREDBG post-monsters moves=${g.moves} moved=${movedMonsters} pmsg=${JSON.stringify(g._pending_message)} more=${g._message_more} rng=${getRngLog().length}`);
         if (ballDragForcedTail && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
         if (ballDragNoResumePass && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
         if (normalHalluDisplay && !armorTailOnly) g._display_hallucinated_normal = 0;
