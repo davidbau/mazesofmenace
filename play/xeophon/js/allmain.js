@@ -4769,8 +4769,24 @@ export async function processMonsterTurns() {
 	                    if (!mon.pet && !mon.mpeaceful && !mon.data?.mindless && !mon.data?.nohands && !(mon.m_seenres & M_SEEN_MAGR)) {
                         const targetX = mon.mux ?? game.u?.ux ?? mon.mx;
                         const targetY = mon.muy ?? game.u?.uy ?? mon.my;
-                        const linedUp = mon.mx === targetX || mon.my === targetY
-                            || Math.abs(mon.mx - targetX) === Math.abs(mon.my - targetY);
+                        /* C ref: use_offensive() (muse.c:1824) is only ever
+                           called from mattacku() (mhitu.c:758-761), which
+                           dochug() reaches only in PHASE FOUR
+                           (monmove.c:960-971, gated on inrange && !scared).
+                           A monster whose perceived target is NOT nearby
+                           (monnear(), mon.c:2476-2483: dist2 < 3) first
+                           takes dochug PHASE THREE (monmove.c:880-892) and
+                           m_move()s instead of zapping; one that moved next
+                           to the hero during that phase returns without any
+                           attack (monmove.c:935-948: !nearby check after the
+                           movement recalc).  Only a monster that believes the
+                           hero is already adjacent (no movement phase)
+                           reaches mattacku -> the wand zap. */
+                        const perceivedNearby = (mon.mx - targetX) ** 2
+                            + (mon.my - targetY) ** 2 < 3;
+                        const linedUp = perceivedNearby && !mon.mflee && !mon.mconf && !mon.mstun
+                            && (mon.mx === targetX || mon.my === targetY
+                                || Math.abs(mon.mx - targetX) === Math.abs(mon.my - targetY));
                         const strikingWand = linedUp && clearPath(mon.mx, mon.my, targetX, targetY)
                             && (mon.minvent || []).find(item => {
                                 const kind = String(item.kind || item.actualKind || '').replace(/^wand:/, '').replace(/^wand of /, '');
@@ -6808,16 +6824,14 @@ if (attack.adtyp === 'steal') {
                                 if (mon.following && !mon.billct && fudist > 4
                                     && !game.level?.flags?.rogue_level
                                     && inShopBaseRoomAt(oldx, oldy)) {
-                                    const tgtX = mon.mux ?? heroX;
-                                    const tgtY = mon.muy ?? heroY;
-                                    const tdx = Math.abs(oldx - tgtX);
-                                    const tdy = Math.abs(oldy - tgtY);
-                                    const linedUp = tdx === 0 || tdy === 0 || tdx === tdy;
-                                    const throwRange = game.u?._polyself_base?.throwsRocks
-                                        ? 20
-                                        : Math.trunc((game.u?.acurr?.a?.[A_STR] ?? 10) / 2) + 1;
-                                    const inLine = linedUp && Math.max(tdx, tdy) <= throwRange;
-                                    if (appr !== 1 || !inLine) rn2(25);
+                                    /* m_search_items()'s shop rule
+                                       (monmove.c:1353-1356): standing in a shop
+                                       room rolls rn2(25) unconditionally before
+                                       deciding whether the keeper skips the
+                                       search.  Observed recorder output (e.g.
+                                       seed9006 step 80/88) always has this
+                                       roll for the -1-following keeper here. */
+                                    rn2(25);
                                 }
                             }
 
@@ -6839,6 +6853,7 @@ if (attack.adtyp === 'steal') {
                             let choice = null;
                             let choiceInfo = 0;
                             let chcnt = 0;
+                            const fudist0 = (oldx - heroX) ** 2 + (oldy - heroY) ** 2; /* C dist2(shk, hero) — shk_move()'s udist (shk.c:4936-4948) */
                             let positions;
                             if (cShapedPriestMove) {
                                 positions = mfndpos(mon, monsterAllowFlags(mon, false, conflictActive))
@@ -6871,9 +6886,19 @@ if (attack.adtyp === 'steal') {
                                 && positions.length && positions.every(pos => pos.info & NOTONL)) {
                                 avoid = false;
                             }
+                            /* C ref: monmove.c:1940-1990 m_move() candidate loop,
+                                   reached from shk_move() only via its return -1 case
+                                   (shk.c:4941-4948: angry keeper following the hero,
+                                   udist > 4, no outstanding bill — "let m_move do
+                                   it").  Peaceful keepers and temple priests stay in
+                                   move_special()/pri_move() and never touch the
+                                   mtrack-avoidance rolls below. */
+                                const inShkGenericMMove = mon.isshk && !mon.mpeaceful
+                                    && mon.following && !mon.billct && fudist0 > 4;
                             for (const pos of positions) {
                                 if (!(IS_ROOM(pos.loc.typ) || (mon.isshk && (!inHisShop || mon.following)))) continue;
                                 if (avoid && (pos.info & NOTONL) && !(pos.info & ALLOW_M)) continue;
+                                
                                 const candidateDist = (pos.x - goalX) ** 2 + (pos.y - goalY) ** 2;
                                     const choiceDist = choice
                                         ? (choice.x - goalX) ** 2 + (choice.y - goalY) ** 2
@@ -6901,6 +6926,11 @@ if (attack.adtyp === 'steal') {
                             if (choice && !(choiceInfo & ALLOW_M)) {
                                 mon.mx = choice.x;
                                 mon.my = choice.y;
+                                /* C ref: monmove.c:2062 mon_track_add() runs only in
+                                   m_move()'s movement commit (not in shk_move()'s
+                                   move_special() or pri_move() paths), so the track
+                                   ring only updates on the shk_move() return -1 case. */
+                                if (inShkGenericMMove) updateMonsterTrack(mon, oldx, oldy);
                                 newsym(oldx, oldy);
                                 newsym(mon.mx, mon.my);
                             }

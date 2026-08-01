@@ -76013,7 +76013,29 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             // ("dark part of a room", display.c:1838-1853).
             const seenTrap = (game.level?.traps || []).find(t => t.tx === fx && t.ty === fy && t.tseen);
             const inSight = !!(game.viz_array?.[fy]?.[fx] & IN_SIGHT);
-            const text = seenTrap ? showtrapTrapName(seenTrap.ttyp)
+            // C ref: getpos.c:864-867 auto_describe() -> do_screen_description()
+            // (pager.c) — the description reflects the glyph actually displayed
+            // at the spot: a seen object shows its name ("a candle" /
+            // "7 candles"), a remembered-but-out-of-sight room cell shows the
+            // S_darkroom glyph ("dark part of a room").
+            const cursorObj = (game.level?.objects || []).slice().reverse()
+                .find(obj => !obj.hidden && !obj.transientProjectile
+                    && obj.ox === fx && obj.oy === fy) ?? null;
+            /* Only describe it when the cell actually displays the object's
+               glyph (in sight now, or its remembered glyph is the object —
+               do_screen_description() reads back_to_glyph()/glyph_at()). */
+            const objShown = cursorObj && (inSight
+                || loc?.remembered_glyph?.ch === cursorObj.glyph
+                || loc?.disp_ch === cursorObj.glyph);
+            // C ref: pager.c do_screen_description -> lookat: an object
+            // glyph is named via doname()/xname()-equivalents with its
+            // stacked quantity ("a candle", "7 candles").
+            const cursorObjName = objShown ? pickupObjectName(cursorObj) : null;
+            const text = objShown
+                ? ((cursorObj.quan || 1) > 1
+                    ? `${cursorObj.quan} ${cursorObjName}`
+                    : /^[aeiou]/i.test(cursorObjName) ? `an ${cursorObjName}` : `a ${cursorObjName}`)
+                : seenTrap ? showtrapTrapName(seenTrap.ttyp)
                 : loc?.typ === STONE ? 'stone'
                 : !loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ') ? 'unexplored area'
                 : loc.typ === CORR ? 'corridor'

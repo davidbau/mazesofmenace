@@ -16,6 +16,7 @@ import {
     COLNO,
     CROSSWALL,
     DOOR,
+    FODDERSHOP,
     G_GENOD,
     GP_AVOID_MONPOS,
     GP_CHECKSCARY,
@@ -53,6 +54,7 @@ import {
     SCORR,
     SDOOR,
     SEE_INVIS,
+    SHOPBASE,
     PROT_FROM_SHAPE_CHANGERS,
     TDWALL,
     TLCORNER,
@@ -80,7 +82,7 @@ import {
 } from './dog.js';
 import { christen_monst, rndghostname } from './do_name.js';
 import { newsym } from './display.js';
-import { level_difficulty, on_level } from './dungeon.js';
+import { depth, level_difficulty, on_level } from './dungeon.js';
 import { game } from './gstate.js';
 import {
     add_to_minv,
@@ -284,6 +286,7 @@ import {
     LEATHER,
     LONG_SWORD,
     LUCERN_HAMMER,
+    LUMP_OF_ROYAL_JELLY,
     MAXOCLASSES,
     MIRROR,
     MUMMY_WRAPPING,
@@ -350,6 +353,7 @@ import {
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { enexto_core, goodpos } from './teleport.js';
 import { cansee } from './vision.js';
+import { get_shop_item } from './shknam.js';
 import {
     S_altar,
     S_dnstair,
@@ -713,7 +717,8 @@ function hideunder(monster, state) {
     return hidden;
 }
 
-// C ref: makemon.c set_mimic_sym(), for ordinary and themed initial rooms.
+// C ref: makemon.c set_mimic_sym() (2467-2486), whole: the ordinary and
+// themed initial-room arms and the `rt >= SHOPBASE` shop arm alike.
 // The descriptor which requested the Storeroom mimic overwrites m_ap_type and
 // mappearance only. All RNG, temporary-object allocation, fruit state, and any
 // mcorpsenm overlay established here remain intact.
@@ -750,19 +755,75 @@ function set_mimic_sym(monster, normalized) {
         const roomType = roomIndex >= 0
             ? state.level.rooms?.[roomIndex]?.rtype ?? 0
             : null;
-        if (roomType !== OROOM && roomType !== THEMEROOM) {
+        // C's s_sym. The two shop arms that set ap_type and appear straight
+        // from the shop's stock leave it undefined, which is how this port
+        // spells C's two `goto assign_sym` jumps being skipped.
+        let symbol;
+        if (roomType >= SHOPBASE) {
+            // C ref: makemon.c:2467-2486. Deeper shops disguise their mimics
+            // as stock more often: the strange object wins on rn2(10) >= 2 at
+            // depth two, so four shop mimics in five are one.
+            if (random.rn2(10) >= depth(state.u.uz, state)) {
+                symbol = S_MIMIC_DEF;
+            } else {
+                const stock = get_shop_item(roomType - SHOPBASE, random);
+                if (stock < 0) {
+                    // A negated iprobs[] itype names one object type, so the
+                    // mimic wears that type itself rather than a draw from its
+                    // class. Four rows carry such entries, read from the
+                    // generated table: the delicatessen, quality apparel and
+                    // accessories, the health food store with five, and the
+                    // lighting store with nine. The last is unreachable in
+                    // play, its shtypes[] prob being 0, so mkshop()'s roll
+                    // never lands on it.
+                    appearanceType = M_AP_OBJECT;
+                    appearance = -stock;
+                } else if (roomType === FODDERSHOP && stock > MAXOCLASSES) {
+                    // The health food store's VEGETARIAN_CLASS. C declines to
+                    // pick among every vegetarian food and takes one of two.
+                    //
+                    // Neither clause of this test can be told from a wrong
+                    // version of itself against shtypes[] as generated. The
+                    // health food store is the only row listing an itype above
+                    // MAXOCLASSES, and it lists nothing else non-negative, so
+                    // the two clauses are true on exactly the same inputs and
+                    // `&&`, `||` and either clause alone all agree.
+                    appearanceType = M_AP_OBJECT;
+                    appearance = random.rn2(2)
+                        ? LUMP_OF_ROYAL_JELLY
+                        : SLIME_MOLD;
+                } else {
+                    // A general store's iprobs[] answers RANDOM_CLASS, so 42%
+                    // of shops reroll here over syms[] without its two
+                    // furniture entries.
+                    //
+                    // The `|| stock >= MAXOCLASSES` clause is unreachable
+                    // against shtypes[] as generated: no row lists an itype
+                    // equal to MAXOCLASSES, and the one row above it, the
+                    // health food store's VEGETARIAN_CLASS, is claimed by the
+                    // FODDERSHOP arm above.
+                    symbol = (stock === RANDOM_CLASS || stock >= MAXOCLASSES)
+                        ? MIMIC_SYMBOLS[
+                            random.rn2(MIMIC_SYMBOLS.length - 2) + 2
+                        ]
+                        : stock;
+                }
+            }
+        } else if (roomType !== OROOM && roomType !== THEMEROOM) {
             throw new UnsupportedMonsterCreationError(
                 `mimic room type ${roomType ?? 'none'}`,
             );
+        } else {
+            symbol = MIMIC_SYMBOLS[random.rn2(MIMIC_SYMBOLS.length)];
         }
 
-        const symbol = MIMIC_SYMBOLS[random.rn2(MIMIC_SYMBOLS.length)];
+        // C's assign_sym label.
         if (symbol === MAXOCLASSES) {
             appearanceType = M_AP_FURNITURE;
             appearance = MIMIC_FURNITURE[
                 random.rn2(MIMIC_FURNITURE.length)
             ];
-        } else {
+        } else if (symbol !== undefined) {
             appearanceType = M_AP_OBJECT;
             if (symbol === S_MIMIC_DEF) {
                 appearance = STRANGE_OBJECT;
