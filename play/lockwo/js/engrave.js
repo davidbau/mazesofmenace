@@ -6,7 +6,8 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { BUFSZ, BURN, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, ICE, MARK,
-         FINGERTIP, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT } from './const.js';
+         FINGERTIP, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
+         GRAVE, ROOM } from './const.js';
 import { RUMORS_B64, ENGRAVE_B64 } from './rumors_data.js';
 import { EPITAPH_B64 } from './epitaph_data.js';
 import { WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS,
@@ -201,6 +202,30 @@ function get_rnd_text(data, padlength) {
 // is not displayed at game start, so only the draw sequence is load-bearing.
 export function get_rnd_epitaph() {
     return get_rnd_text(EPITAPH_DATA, MD_PAD_RUMORS);
+}
+
+// C ref: engrave.c make_grave().  The only RNG side-effect is the epitaph pick
+// when no text is supplied: get_rnd_text(EPITAPHFILE, ...) -> rn2(24075) plus the
+// MD_PAD_RUMORS line scan.  Dropping that draw desyncs every subsequent rn2() on
+// levels that contain a grave.  The headstone text itself is not shown at game
+// start, so only the draw sequence is load-bearing.
+export function make_grave(x, y, text) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    // C: `if ((levl[x][y].typ != ROOM && levl[x][y].typ != GRAVE) || t_at(x,y))
+    //      return;` — a trap on the square blocks the grave.
+    if (loc.typ !== ROOM && loc.typ !== GRAVE) return;
+    if ((game.level?.traps || []).some((t) => t.tx === x && t.ty === y)) return;
+    loc.typ = GRAVE;
+    // del_engr_at: drop any existing engraving at this spot (consumes no RNG)
+    if (game.level?.engravings) {
+        game.level.engravings = game.level.engravings.filter(
+            (ep) => ep.engr_x !== x || ep.engr_y !== y,
+        );
+    }
+    let str = text;
+    if (str == null) str = get_rnd_epitaph();
+    make_engr_at(x, y, str, null, 0, HEADSTONE);
 }
 
 // C ref: rumors.c getrumor(). truth: 1=true, -1=false, 0=either.

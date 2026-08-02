@@ -24,6 +24,9 @@ import { PMNAMES } from './monst_data.js';
 import { done } from './end.js';
 import { set_occupation } from './allmain.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import { You_feel } from './pline.js';
+import { losehp } from './hack.js';
+import { SICK_RES, KILLED_BY_AN } from './const.js';
 import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, freeinv, update_inventory, reorder_invent, addinv_nomerge } from './invent.js';
@@ -336,9 +339,11 @@ async function eatcorpse(otmp) {
         tp++;
         note_unported_eat('eatcorpse:poisonous');
     /* now any corpse left too long will make you mildly ill */
-    } else if (rotted > 5 || (rotted > 3 && rn2(5))) {
+    } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
+               && !game.u.uprops?.[SICK_RES]?.intrinsic) {
         tp++;
-        note_unported_eat('eatcorpse:mildly_ill');
+        await You_feel(`${game.u.usick ? 'very ' : ''}sick.`);
+        losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
     }
 
     /* delay is weight dependent */

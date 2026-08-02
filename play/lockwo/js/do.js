@@ -164,9 +164,14 @@ function u_on_newpos(x, y) {
 // goto_level memset svu.updest / svd.dndest to zero).
 function u_on_rndspot(upflag) {
     const up = (upflag & 1);
-    // svd.dndest / svu.updest are cleared by goto_level (no special level
-    // override in scope), so the region defaults to the entire level.
-    place_hero_lregion(0, 0, 0, 0, 0, 0, 0, 0,
+    // C: goto_level() memsets svu.updest / svd.dndest to zero before mklev(),
+    // and a special level's des.teleport_region() (via fixup_special()'s
+    // LR_*TELE arm) fills the matching one back in.  An unspecified region
+    // (.lx == 0) makes place_lregion() default to the entire level.
+    // (The was_in_W_tower arm is Vlad's-Tower-only and never reached here.)
+    const dest = up ? game.updest : game.dndest;
+    place_hero_lregion(dest?.lx || 0, dest?.ly || 0, dest?.hx || 0, dest?.hy || 0,
+                       dest?.nlx || 0, dest?.nly || 0, dest?.nhx || 0, dest?.nhy || 0,
                        up ? LR_UPTELE : LR_DOWNTELE);
 }
 
@@ -506,6 +511,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // g.level hasn't been reassigned yet — that happens inside mklev()'s
     // clear_level_structures()/getlev_restore() below).
     const prevTemperature = g.level?.flags?.temperature ?? 0;
+
+    // C ref: do.c goto_level() — "set default level change destination areas;
+    // the special level code may override these": both regions are zeroed
+    // BEFORE mklev(), so a des.teleport_region() on the level being generated
+    // takes effect for this very arrival.
+    g.updest = null;
+    g.dndest = null;
 
     if (firstVisit) {
         g._visited_levels[ledger] = true;
@@ -904,7 +916,7 @@ export async function wiz_level_tele(readLevel) {
     if (In_quest(u.uz) && newlev > 0)
         newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
 
-    newlevel = get_level(newlev);
+    newlevel = level_tele_destination(newlev);
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return 0; // can't get there from here
 
@@ -1035,7 +1047,7 @@ export async function level_tele(readLevel) {
     // modelled; the covered scroll teleport always yields an in-dungeon level.
     if (newlev <= 0) return; // faithful no-op guard (unmodelled destinations)
 
-    const newlevel = get_level(newlev);
+    const newlevel = level_tele_destination(newlev);
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel
         && newlev !== cur_depth) {
         await pline("You can't get there from here.");
@@ -1108,6 +1120,29 @@ function get_level(levnum) {
         levnum = levnum - dng.depth_start + 1;
     }
     return { dnum: dgn, dlevel: levnum };
+}
+
+// C ref: dungeon.c find_hell(lev) — Gehennom's entrance, i.e. the Valley of
+// the Dead.  No RNG.
+function find_hell() {
+    const vl = game.valley_level;
+    return { dnum: vl?.dnum ?? 0, dlevel: 1 };
+}
+
+// C ref: teleport.c level_tele()'s destination chain — the `else if
+// (u.uz.dnum == medusa_level.dnum && newlev >= depth_start + dunlevs_in_dungeon)
+// find_hell()` arm, then the generic get_level() translation.  Asking for a
+// level at or past the bottom of the Dungeons of Doom drops the hero into the
+// Valley of the Dead rather than clamping to the Castle: you cannot skip the
+// Valley on the way into Gehennom.  No RNG.
+function level_tele_destination(newlev) {
+    const u = game.u;
+    const dng = game.dungeons?.[u.uz.dnum];
+    const medusa_dnum = game.medusa_level?.dnum;
+    if (medusa_dnum != null && u.uz.dnum === medusa_dnum && dng
+        && newlev >= (dng.depth_start ?? 1) + (dng.num_dunlevs ?? 0))
+        return find_hell();
+    return get_level(newlev);
 }
 
 // C ref: dungeon.c lev_by_name — resolve a level *name* ("mines end", branch

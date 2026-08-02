@@ -2946,3 +2946,10 @@ export function Is_juiblex_level(uz) { return false; /* TODO */ }
 
 // include/hack.h:1520 plur()
 export const plur = (x) => (x === 1 ? "" : "s");
+
+// include/decl.h:17 NH_* — the colour names messages are written from
+// (src/decl.c:16 c_color_names).
+export const NH_BLACK = 'black', NH_AMBER = 'amber', NH_GOLDEN = 'golden',
+             NH_LIGHT_BLUE = 'light blue', NH_RED = 'red', NH_GREEN = 'green',
+             NH_SILVER = 'silver', NH_BLUE = 'blue', NH_PURPLE = 'purple',
+             NH_WHITE = 'white', NH_ORANGE = 'orange';

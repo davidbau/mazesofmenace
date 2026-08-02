@@ -18,7 +18,7 @@
 // everything after it.
 
 import { game } from './gstate.js';
-import { mergable, reorder_invent, assigninvlet, addinv } from './invent.js';
+import { mergable, reorder_invent, assigninvlet, addinv, weight } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
@@ -176,6 +176,14 @@ function ini_inv_adjust_obj(trop, obj) {
         if (trop.trbless !== UNDEF_BLESS)
             obj.blessed = trop.trbless;
     }
+    /* src/u_init.c:1248 — "defined after setting otyp+quan + blessedness".
+       Outside the `if` on purpose, exactly as in the C. Missing this left
+       every starting stack carrying the weight of a single item (8 apples
+       weighed 2, 4 potions weighed 20), so inv_weight() ran low and
+       near_capacity() reported UNENCUMBERED when the hero was Burdened.
+       That silently deleted exerper()'s encumbrance exercise() every tenth
+       move, in every session. */
+    obj.owt = weight(obj);
     return stop;
 }
 
@@ -487,6 +495,44 @@ export function u_init_role() {
 // (Xtra_food), and no public session plays one.
 export function u_init_race() {
     const race = raceMnum();
+    if (race === PMNAMES.PM_ELF) {
+        /*
+         * Elves are people of music and song, or they are warriors.
+         * Non-warriors get an instrument.  We use a kludge to
+         * get only non-magic instruments.
+         */
+        if (roleMnum() === PMNAMES.PM_CLERIC
+            || roleMnum() === PMNAMES.PM_WIZARD) {
+            /* src/u_init.c:806 — ROLL_FROM(trotyp) is trotyp[rn2(SIZE)], so
+               this costs one rn2(6) BEFORE ini_inv's own draws. Omitting the
+               whole arm started an elven wizard's attribute rolls four draws
+               early and gave it different characteristics. */
+            const trotyp = [ONAMES.WOODEN_FLUTE, ONAMES.TOOLED_HORN,
+                            ONAMES.WOODEN_HARP, ONAMES.BELL,
+                            ONAMES.BUGLE, ONAMES.LEATHER_DRUM];
+            const Instrument = [
+                { trotyp: trotyp[rn2(trotyp.length)], trspe: 0,
+                  trclass: TOOL_CLASS, trquan_min: 1, trquan_max: 1,
+                  trbless: 0 },
+                { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0,
+                  trquan_max: 0, trbless: 0 },
+            ];
+            ini_inv(Instrument);
+        }
+
+        /* Elves can recognize all elvish objects */
+        knows_object(ONAMES.ELVEN_SHORT_SWORD);
+        knows_object(ONAMES.ELVEN_ARROW);
+        knows_object(ONAMES.ELVEN_BOW);
+        knows_object(ONAMES.ELVEN_SPEAR);
+        knows_object(ONAMES.ELVEN_DAGGER);
+        knows_object(ONAMES.ELVEN_BROADSWORD);
+        knows_object(ONAMES.ELVEN_MITHRIL_COAT);
+        knows_object(ONAMES.ELVEN_LEATHER_HELM);
+        knows_object(ONAMES.ELVEN_SHIELD);
+        knows_object(ONAMES.ELVEN_BOOTS);
+        knows_object(ONAMES.ELVEN_CLOAK);
+    }
     if (race === PMNAMES.PM_ORC) {
         if (roleMnum() !== PMNAMES.PM_WIZARD)
             ini_inv(TROBJ.Xtra_food);

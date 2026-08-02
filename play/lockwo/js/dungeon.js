@@ -204,7 +204,10 @@ export function find_level(s) {
 export function In_hell(lev) {
     const dnum = lev?.dnum;
     if (dnum == null) return false;
-    return !!game.dungeons?.[dnum]?.hellish;
+    // The flag lives on the dungeon's `flags` sub-object (init_dungeon() builds
+    // it there from dungeon.lua's flags list) — reading it off the dungeon
+    // itself silently returned false for every level.
+    return !!game.dungeons?.[dnum]?.flags?.hellish;
 }
 
 // C ref: dungeon.h Is_valley(x) = Lcheck(x, &valley_level) — same dnum+dlevel.

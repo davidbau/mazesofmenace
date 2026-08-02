@@ -17,7 +17,14 @@ import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP,
          ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, isok } from './const.js';
 import { rn2 } from './rng.js';
 import { dist2 } from './hacklib.js';
-import { near_capacity } from './attrib.js';
+import { near_capacity, acurrstr, ACURR, exercise } from './attrib.js';
+import { rnl, rnd } from './rng.js';
+import { A_STR, A_DEX, A_CON, D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
+         IS_DOOR } from './const.js';
+import { newsym } from './display.js';
+import { You } from './pline.js';
+import { is_pool } from './mon.js';
+import { OBJ_AT } from './const.js';
 import { sobj_at } from './invent.js';
 import { ONAMES } from './objects_data.js';
 import { pline, canspotmon, more } from './display.js';
@@ -28,6 +35,14 @@ import { overexertion } from './hack.js';
 
 import { attack_checks } from './uhitm.js';
 import { getdir } from './cmd.js';
+
+/* src/dokick.c:8 martial() — Samurai and Monk get the bonus, as do bigfoot
+   forms and anyone wearing kicking boots. */
+function martial() {
+    const r = game.urole?.name?.m;
+    return (r === 'Samurai' || r === 'Monk')
+           || (game.uarmf && game.uarmf.otyp === ONAMES.KICKING_BOOTS);
+}
 
 function note_unported_dokick(what) {
     (game.unported ||= new Set()).add(what);
@@ -205,6 +220,96 @@ export async function dokick() {
         note_unported_dokick('dokick:kick_monster');
         return ECMD_TIME;
     }
-    note_unported_dokick('dokick:kick_terrain_or_object');
+
+    /* src/dokick.c:1328 — KMH: kicking boots always succeed */
+    const avrg_attrib = (game.uarmf && game.uarmf.otyp === ONAMES.KICKING_BOOTS)
+        ? 99
+        : Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
+
+    /* src/dokick.c:1444 — kicking water or lava just splashes it */
+    if (is_pool(x, y) !== !!game.u.uinwater) {
+        note_unported_dokick('dokick:splash');
+        return ECMD_TIME;
+    }
+
+    if (OBJ_AT(x, y)) {
+        /* kick_object() moves the pile and has its own damage rolls */
+        note_unported_dokick('dokick:kick_object');
+        return ECMD_TIME;
+    }
+
+    const maploc = game.level.at(x, y);
+    if (IS_DOOR(maploc.typ))
+        await kick_door(x, y, avrg_attrib, maploc);
+    else
+        note_unported_dokick('dokick:kick_nondoor');
     return ECMD_TIME;
+}
+
+// src/dokick.c:890 kick_dumb() — kicking a doorway with nothing in it.
+async function kick_dumb(x, y) {
+    exercise(A_DEX, false);
+    if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) {
+        await You('kick at empty space.');
+        if (game.u.ublind)
+            note_unported_dokick('kick_dumb:feel_location');
+    } else {
+        await pline('Dumb move!  You strain a muscle.');
+        exercise(A_STR, false);
+        note_unported_dokick('kick_dumb:wounded_legs');
+        rnd(5);                 /* set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
+    }
+    /* the airlevel/Levitation hurtle needs neither here */
+}
+
+// src/dokick.c:910 kick_door() — kick a door.
+async function kick_door(x, y, avrg_attrib, maploc) {
+    if (maploc.doormask === D_ISOPEN || maploc.doormask === D_BROKEN
+        || maploc.doormask === D_NODOOR) {
+        await kick_dumb(x, y);
+        return; /* uses a turn */
+    }
+
+    /* not enough leverage to kick open doors while levitating */
+    if (game.u.uprops?.LEVITATION) {
+        note_unported_dokick('kick_door:kick_ouch');
+        return;
+    }
+
+    exercise(A_DEX, true);
+    const doorbuster = false;   /* Upolyd && is_giant(youmonst.data) */
+    /* door is known to be CLOSED or LOCKED */
+    if (doorbuster
+        || (rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX)))) {
+        const shopdoor = false; /* *in_rooms(x, y, SHOPBASE) */
+
+        /* break the door */
+        if (maploc.doormask & D_TRAPPED) {
+            if (game.flags?.verbose)
+                await You('kick the door.');
+            exercise(A_STR, false);
+            maploc.doormask = D_NODOOR;
+            note_unported_dokick('kick_door:b_trapped');
+        } else if (ACURR(A_STR) > 18 && !rn2(5) && !shopdoor) {
+            await pline('As you kick the door, it shatters to pieces!');
+            exercise(A_STR, true);
+            maploc.doormask = D_NODOOR;
+        } else {
+            await pline('As you kick the door, it crashes open!');
+            exercise(A_STR, true);
+            maploc.doormask = D_BROKEN;
+        }
+        newsym(x, y);           /* feel_newsym: we know we broke it */
+        /* unblock_point() needs the vision shadow map */
+        note_unported_dokick('kick_door:unblock_point');
+    } else {
+        if (game.u.ublind)
+            note_unported_dokick('kick_door:feel_location');
+        exercise(A_STR, true);
+        /* note: this used to be unconditional "WHAMMM!!!" but that has a
+           fairly strong connotation of noise that a deaf hero shouldn't
+           hear; we've kept the extra 'm's and one of the extra '!'s */
+        await pline(`${(game.u.udeaf || !rn2(3)) ? 'Thwack' : 'Whammm'}!!`);
+    }
+    /* in_town() watchman reactions need town rooms */
 }

@@ -32,6 +32,26 @@ function RND(x) {
     return Number(val % BigInt(x));
 }
 
+// src/rnd.c:70 rn2_on_display_rng() — 0 <= x, on a DIFFERENT sequence from the
+// main rn2, for answers that do not affect gameplay.
+//
+// C seeds this context from sys_random_seed() (rnd.c:284), so its values are
+// deliberately not reproducible; that is the whole point of the separate
+// stream, and it is why nothing it decides can ever appear in a scored screen.
+// Seeding it here from the core seed keeps it deterministic for our own
+// debugging without touching the core context, which is what parity depends on.
+// It is NOT logged: the recordings only carry core-context draws.
+export function rn2_on_display_rng(x) {
+    if (x <= 0) return 0;
+    if (!game.dispCtx) {
+        let s = BigInt(game.currentSeed || 0) & 0xFFFFFFFFFFFFFFFFn;
+        const bytes = new Uint8Array(8);
+        for (let i = 0; i < 8; i++) { bytes[i] = Number(s & 0xFFn); s >>= 8n; }
+        game.dispCtx = isaac64_init(bytes);
+    }
+    return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+}
+
 // C ref: rn2(x) — random number 0..x-1
 export function rn2(x) {
     if (x <= 0) return 0;

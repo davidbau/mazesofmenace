@@ -17,25 +17,33 @@ import {
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
-    TELEP_TRAP, D_SECRET, D_CLOSED, IS_OBSTRUCTED,
+    TELEP_TRAP, D_SECRET, D_CLOSED, IS_OBSTRUCTED, A_NONE, In_endgame,
+    AM_NONE, AM_SHRINE,
     IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     PIT, NO_TRAP, is_pit, BURN,
 } from './const.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
-         CORPSE, CHEST, WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
+         CORPSE, CHEST, LARGE_BOX, mk_tt_object,
+         WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
          FOOD_CLASS, RING_CLASS, WAND_CLASS, BAG_OF_HOLDING, SCR_SCARE_MONSTER,
+         WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
+         SPBOOK_CLASS, GEM_CLASS,
          GOLD_PIECE, add_to_container, weight,
          uncurse, curse } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
-         mkclass, mm_mon_at, enexto_spawn, newmonhp, newcham_vamp, mongets_pub,
+         mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, newmonhp,
+         newcham_vamp, mongets_pub,
          MM_ASLEEP, MM_NOGRP } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
+import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
+         mflags1_of, M1_AMPHIBIOUS } from './monflags_data.js';
 import { maketrap } from './trap.js';
 import { stock_room } from './shknam.js';
-import { Is_special } from './dungeon.js';
+import { Is_special, In_hell } from './dungeon.js';
 import { premap_detect } from './detect.js';
-import { make_engr_at } from './engrave.js';
+import { make_engr_at, make_grave } from './engrave.js';
+import { priestini } from './priest.js';
 import { match_maptyps,
          selection_new as selection_new_var,
          selection_setpoint as selection_setpoint_var,
@@ -786,7 +794,10 @@ function create_storeroom(croom) {
 // C ref: include/defsym.h MONSYM() — monster-class (S_*) indices, as used by
 // mkclass().  js/makemon.js keys its per-class switches off the same numbers.
 const S_KOBOLD = 11, S_ORC = 15, S_CENTAUR = 29, S_DRAGON = 30, S_GNOME = 33,
-    S_GIANT = 34, S_TROLL = 46;
+    S_GIANT = 34, S_TROLL = 46, S_VAMPIRE_CLASS = 48, S_ZOMBIE = 52,
+    S_DEMON = 56;
+// C ref: monflags.h G_UNIQ — a one-of-a-kind species, never a random pick.
+const G_UNIQ = 0x1000;
 // C ref: include/onames.h MACE (mkobj.js OBJECT_DATA otyp column).
 const MACE_OTYP = 73;
 
@@ -826,6 +837,40 @@ function courtmon() {
     return mkclass(S_KOBOLD, 0);
 }
 
+// C ref: minion.c ndemon(atyp) — a randomly picked demon of the wanted
+// alignment (A_NONE meaning "any"), or NON_PM.  mkclass_aligned does the draw.
+function ndemon(atyp) {
+    const ptr = mkclass_aligned(S_DEMON, 0, atyp);
+    return (ptr && is_ndemon(ptr)) ? ptr : null;
+}
+
+// C ref: mondata.h is_ndemon() — a non-unique demon (lord/prince and the named
+// demons are G_UNIQ and excluded from a random "nameless demon" pick).
+function is_ndemon(ptr) {
+    return ptr.mcls === S_DEMON && !(ptr.geno & G_UNIQ);
+}
+
+// C ref: mkroom.c morguemon() — the graveyard's inhabitants.  BOTH rn2()s are
+// always drawn (C evaluates them in the declaration list before any test).
+function morguemon() {
+    const i = rn2(100), hd = rn2(level_difficulty_ext());
+
+    if (hd > 10 && i < 10) {
+        if (Inhell_lev() || In_endgame_lev()) return mkclass(S_DEMON, 0);
+        const nd = ndemon(A_NONE);
+        if (nd) return nd;
+        /* else fall through to ghost/wraith/zombie */
+    }
+    if (hd > 8 && i > 85) return mkclass(S_VAMPIRE_CLASS, 0);
+    return (i < 20) ? monster_by_pmidx(name_to_pmidx('ghost'))
+        : (i < 40) ? monster_by_pmidx(name_to_pmidx('wraith'))
+            : mkclass(S_ZOMBIE, 0);
+}
+
+// C ref: dungeon.h Inhell (== In_hell(&u.uz)) / In_endgame.  No RNG.
+function Inhell_lev() { return In_hell(game.u?.uz); }
+function In_endgame_lev() { return In_endgame(game.u?.uz); }
+
 // C ref: mkroom.c fill_zoo(sroom) head — the per-type preamble that runs before
 // the stocking loop.  Returns the {tx,ty} the loop needs (the throne square for
 // COURT, the queen's square for BEEHIVE), or null when this room type is not
@@ -862,10 +907,14 @@ function fill_zoo_head(sroom, type) {
         }
         return { x: tx, y: ty };
     }
-    // ZOO / LEPREHALL would set goldlim here; MORGUE / BARRACKS / COCKNEST /
-    // ANTHOLE have no preamble at all.  All of them still need their species
-    // picker (morguemon/squadmon/antholemon) ported before their stocking loop
-    // can be run — see fill_special_room's default arm.
+    // MORGUE has no preamble at all — C's switch simply has no case for it, so
+    // the stocking loop starts straight away (tx/ty stay 0 and are only read by
+    // the COURT/BEEHIVE arms).
+    if (type === MORGUE) return { x: 0, y: 0 };
+    // ZOO / LEPREHALL would set goldlim here; BARRACKS / COCKNEST / ANTHOLE
+    // have no preamble either, but each still needs its species picker
+    // (squadmon/antholemon) ported before its stocking loop can be run — see
+    // fill_special_room's default arm.
     return null;
 }
 
@@ -940,7 +989,8 @@ function fill_zoo_core(sroom) {
             if (type === COURT && g.level?.at(sx, sy)?.typ === THRONE) continue;
 
             const ptr = (type === COURT) ? courtmon()
-                : ((sx === tx && sy === ty) ? queen : killer);
+                : (type === MORGUE) ? morguemon()
+                    : ((sx === tx && sy === ty) ? queen : killer);
             const mon = makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
             if (mon) {
                 mon.msleeping = 1;
@@ -951,6 +1001,14 @@ function fill_zoo_core(sroom) {
             }
             if (type === BEEHIVE && !rn2(3))
                 mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, true, false);
+            if (type === MORGUE) {
+                // C ref: mkroom.c fill_zoo() MORGUE arm — a dead adventurer's
+                // corpse, buried treasure, and a grave, each on its own roll.
+                if (!rn2(5)) mk_tt_object(CORPSE, sx, sy);      // mkroom.c:384
+                if (!rn2(10))                                   // mkroom.c:386
+                    mksobj_at(rn2(3) ? LARGE_BOX : CHEST, sx, sy, true, false);
+                if (!rn2(5)) make_grave(sx, sy, null);          // mkroom.c:389
+            }
         }
     }
 
@@ -2335,7 +2393,6 @@ function tower_place_ladder(mx, my) {
 // C ref: sp_lev.c create_monster for a class ("V"): amask induced_align rn2(3),
 // pm = mkclass(S_VAMPIRE, G_NOGEN), get_location (explicit coord, no RNG),
 // makemon.  makemon (with _tower_gen set) shifts the vampire via newcham.
-const S_VAMPIRE_CLASS = 48;         // defsym.h MONSYM(48,'V',...)
 const G_NOGEN_TOWER = 0x0200;
 function tower_create_V(mx, my) {
     rn2(3);                                          // induced_align
@@ -2545,6 +2602,82 @@ export async function makemaz_tower1() {
 // Loading nhlib.lua first runs `align = {...}; shuffle(align)` at module top
 // level (nhlib.lua:24-25): a 3-element Fisher-Yates -> rn2(3), rn2(2).
 // ════════════════════════════════════════════════════════════════════════
+
+// ── generic get_location() humidity machinery (sp_lev.c) ────────────────
+// C ref: sp_lev.h — the getloc_flags_t bits get_location()/is_ok_location()
+// filter candidate squares with.
+export const LOC_DRY = 0x01, LOC_WET = 0x02, LOC_HOT = 0x04, LOC_SOLID = 0x08,
+             LOC_ANY = 0x10, LOC_SPACE = 0x40;
+
+// C ref: sp_lev.c is_ok_location(x, y, humidity).  No RNG.  The
+// is_ok_location_func hook is only installed by the themed-room and Sokoban
+// coders (which use their own local checks in this port), and Is_waterlevel's
+// "accept anything" shortcut belongs to the endgame.
+export function is_ok_location(x, y, humidity) {
+    if (!isok(x, y)) return false;
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ == null) return false;
+    if (humidity & LOC_ANY) return true;
+    if ((humidity & LOC_SOLID) && IS_OBSTRUCTED(typ)) return true;
+    if ((humidity & (LOC_DRY | LOC_SPACE)) && SPACE_POS(typ)) {
+        // C: a boulder disqualifies the square unless SOLID is also asked for.
+        const bould = !!(game.level?.objects || []).find(
+            (o) => o && o.otyp === BOULDER && o.ox === x && o.oy === y);
+        if (!bould || (humidity & LOC_SOLID)) return true;
+    }
+    if ((humidity & LOC_WET) && splev_is_pool(x, y)) return true;
+    if ((humidity & LOC_HOT) && IS_LAVA(typ)) return true;
+    return false;
+}
+
+function splev_is_pool(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ === POOL || typ === MOAT || typ === WATER;
+}
+
+// C ref: monsym.h S_* class indices used by mondata.h's mlet-based predicates.
+const S_EYE = 5, S_LIGHT = 25, S_EEL = 57, S_GHOST = 54;
+
+// C ref: mondata.h is_floater / noncorporeal / likes_fire (via likes_lava).
+const is_floater = (p) => p.mcls === S_EYE || p.mcls === S_LIGHT;
+const noncorporeal = (p) => p.mcls === S_GHOST;
+const likes_fire = (p) => ['fire vortex', 'flaming sphere', 'fire elemental',
+                           'salamander'].includes(p.name);
+
+// C ref: sp_lev.c pm_to_humidity(pm) — where a species may be placed.  No RNG.
+export function pm_to_humidity(pm) {
+    let loc = LOC_DRY;
+    if (!pm) return loc;
+    if (pm.mcls === S_EEL || (mflags1_of(pm) & M1_AMPHIBIOUS)
+        || is_swimmer_flag(pm))
+        loc = LOC_WET;
+    if (is_flyer_flag(pm) || is_floater(pm)) loc |= (LOC_HOT | LOC_WET);
+    if (passes_walls_flag(pm) || noncorporeal(pm)) loc |= LOC_SOLID;
+    if (likes_fire(pm)) loc |= LOC_HOT;
+    return loc;
+}
+
+// C ref: sp_lev.c get_location() random-location branch with croom == NULL:
+// loop `x = xstart + rn2(xsize); y = ystart + rn2(ysize)` until
+// is_ok_location(humidity) passes, up to 100 tries, then fall back to a
+// deterministic scan of the map footprint.  With NO_LOC_WARN in `humidity` C
+// returns (-1,-1) instead of the fallback, which is how create_monster asks
+// "is there a wet/solid spot?" before retrying with DRY added.
+export function splev_get_location_rnd(humidity, nowarn = false) {
+    let x = -1, y = -1, cpt = 0;
+    do {
+        x = gx.xstart + rn2(gx.xsize);   // sp_lev.c:1233
+        y = gy.ystart + rn2(gy.ysize);   // sp_lev.c:1234
+        if (is_ok_location(x, y, humidity)) return { x, y };
+    } while (++cpt < 100);
+    if (nowarn) return { x: -1, y: -1 };
+    for (let xx = 0; xx < gx.xsize; xx++)
+        for (let yy = 0; yy < gy.ysize; yy++) {
+            x = gx.xstart + xx; y = gy.ystart + yy;
+            if (is_ok_location(x, y, humidity)) return { x, y };
+        }
+    return { x: gx.x_maze_max, y: gy.y_maze_max };
+}
 
 // C ref: rm.h ACCESSIBLE / SPACE_POS / is_pool / is_lava as used by
 // is_ok_location(x,y,humidity).  We only need the DRY case for bigrm
@@ -3803,5 +3936,483 @@ export async function makemaz_soko1() {
         }
     } finally {
         g._full_mon_gen = false;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Valley of the Dead loader (dat/valley.lua) — the first Gehennom level.
+//
+// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("valley")
+// -> load_special("valley.lua"), executed by the des.* engine in sp_lev.c.
+// Loading nhlib.lua first runs `align = {...}; shuffle(align)` at module top
+// level (rn2(3), rn2(2)); then the des.* program runs in file order consuming
+// the PRNG exactly.  Hand-ported so the stream matches C's recorded trace.
+//
+// The level is a fixed 76x20 map: Moloch's shrine (a temple region whose
+// des.altar spawns the priest), three irregular morgue regions filled at level
+// finalize, 22 named player corpses, a pile of random loot, eleven traps and a
+// crowd of undead.
+// ════════════════════════════════════════════════════════════════════════
+
+const VALLEY_MAP = [
+    '----------------------------------------------------------------------------',
+    '|...S.|..|.....|  |.....-|      |................|   |...............| |...|',
+    '|---|.|.--.---.|  |......--- ----..........-----.-----....---........---.-.|',
+    '|   |.|.|..| |.| --........| |.............|   |.......---| |-...........--|',
+    '|   |...S..| |.| |.......-----.......------|   |--------..---......------- |',
+    '|----------- |.| |-......| |....|...-- |...-----................----       |',
+    '|.....S....---.| |.......| |....|...|  |..............-----------          |',
+    '|.....|.|......| |.....--- |......---  |....---.......|                    |',
+    '|.....|.|------| |....--   --....-- |-------- ----....---------------      |',
+    '|.....|--......---BBB-|     |...--  |.......|    |..................|      |',
+    '|..........||........-|    --...|   |.......|    |...||.............|      |',
+    '|.....|...-||-........------....|   |.......---- |...||.............--     |',
+    '|.....|--......---...........--------..........| |.......---------...--    |',
+    '|.....| |------| |--.......--|   |..B......----- -----....| |.|  |....---  |',
+    '|.....| |......--| ------..| |----..B......|       |.--------.-- |-.....---|',
+    '|------ |........|  |.|....| |.....----BBBB---------...........---.........|',
+    '|       |........|  |...|..| |.....|  |-.............--------...........---|',
+    '|       --.....-----------.| |....-----.....----------     |.........----  |',
+    '|        |..|..B...........| |.|..........|.|              |.|........|    |',
+    '----------------------------------------------------------------------------',
+].join('\n');
+
+// C ref: mkroom.h TEMPLE room type (const.js exports MORGUE already).
+const TEMPLE_RTYPE = 10;
+
+// C ref: sp_lev.c get_location() with croom == NULL for an EXPLICIT coordinate:
+// the map-relative x/y simply gain the last des.map() origin.  No RNG.
+function vly_abs(mx, my) { return { x: mx + gx.xstart, y: my + gy.ystart }; }
+
+// C ref: nhlsel.c l_selection_line -> selection_do_line(): both endpoints go
+// through get_location_coord() first, then Bresenham between them.  valley.lua
+// only ever draws axis-aligned lines.  No RNG.
+function vly_terrain_line(x1, y1, x2, y2, typ) {
+    const a = vly_abs(x1, y1), b = vly_abs(x2, y2);
+    const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y);
+    const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    for (let i = 0; i <= n; i++)
+        set_levltyp_lit(a.x + dx * i, a.y + dy * i, typ, SET_LIT_NOCHANGE);
+}
+
+// C ref: sp_lev.c lspo_terrain() table form des.terrain({x=,y=,typ=}).  No RNG.
+function vly_terrain_at(mx, my, typ) {
+    const c = vly_abs(mx, my);
+    set_levltyp_lit(c.x, c.y, typ, SET_LIT_NOCHANGE);
+}
+
+// C ref: mklev.c add_door(x, y, aroom).  Kept local to sp_lev.js (rather than
+// imported from mklev.js) because mklev.js already imports this module and a
+// second edge would close an import cycle.  No RNG.
+function splev_add_door(x, y, aroom) {
+    const g = game;
+    if (!g.level.doors) g.level.doors = [];
+    for (let i = 0; i < aroom.doorct; i++) {
+        const d = g.level.doors[aroom.fdoor + i];
+        if (d && d.x === x && d.y === y) return;
+    }
+    if (aroom.doorct === 0) aroom.fdoor = g.level.doorindex;
+    aroom.doorct++;
+    for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--)
+        g.level.doors[tmp] = g.level.doors[tmp - 1];
+    for (const broom of g.level.rooms || []) {
+        if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
+        if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
+    g.level.doors[aroom.fdoor] = { x, y };
+    g.level.doorindex++;
+}
+
+// C ref: sp_lev.c maybe_add_door() / add_doors_to_room() — after a region has
+// become a room, every DOOR/SDOOR square already on the map that belongs to it
+// joins its door list.  No RNG.
+function splev_add_doors_to_room(croom) {
+    const rmno = croom.roomnoidx + ROOMOFFSET;
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || !(IS_DOOR(loc.typ) || loc.typ === SDOOR)) continue;
+            const mine = croom.irregular
+                ? (loc.roomno === rmno)
+                : (x >= croom.lx - 1 && x <= croom.hx + 1
+                   && y >= croom.ly - 1 && y <= croom.hy + 1);
+            if (mine || loc.roomno === rmno) splev_add_door(x, y, croom);
+        }
+}
+
+// C ref: mkmap.c flood_fill_rm(sx, sy, rmno, lit, anyroom=TRUE) — the
+// scanline flood behind an irregular des.region.  Faithful to the C recursion
+// (including its diagonal spill-over through the `else` arms), because the
+// exact set of flooded squares decides how many squares fill_zoo() stocks and
+// therefore thousands of downstream draws.  No RNG.
+const FFR_WIDTH = COLNO - 2;
+function flood_fill_rm(sx, sy, rmno, lit, anyroom, ext) {
+    const at = (x, y) => game.level?.at(x, y);
+    const typAt = (x, y) => at(x, y)?.typ;
+    const roomnoAt = (x, y) => (at(x, y)?.roomno ?? NO_ROOM);
+    const fg_typ = typAt(sx, sy);
+
+    while (sx > 0 && (anyroom ? IS_ROOM(typAt(sx, sy)) : typAt(sx, sy) === fg_typ)
+           && roomnoAt(sx, sy) !== rmno)
+        sx--;
+    sx++;
+
+    if (sx < ext.min_rx) ext.min_rx = sx;
+    if (sy < ext.min_ry) ext.min_ry = sy;
+
+    let i;
+    for (i = sx; i <= FFR_WIDTH && typAt(i, sy) === fg_typ; i++) {
+        const loc = at(i, sy);
+        loc.roomno = rmno;
+        loc.lit = !!lit;
+        if (anyroom) {
+            /* add walls to room as well */
+            for (let ii = (i === sx ? i - 1 : i); ii <= i + 1; ii++)
+                for (let jj = sy - 1; jj <= sy + 1; jj++) {
+                    if (!isok(ii, jj)) continue;
+                    const wl = at(ii, jj);
+                    if (!wl) continue;
+                    if (!(IS_WALL(wl.typ) || IS_DOOR(wl.typ) || wl.typ === SDOOR))
+                        continue;
+                    wl.edge = 1;
+                    if (lit) wl.lit = true;
+                    if ((wl.roomno ?? NO_ROOM) === NO_ROOM) wl.roomno = rmno;
+                    else if (wl.roomno !== rmno) wl.roomno = SHARED;
+                }
+        }
+        ext.n_loc_filled++;
+    }
+    const nx = i;
+
+    for (const dy of [-1, 1]) {
+        if (!isok(sx, sy + dy)) continue;
+        for (i = sx; i < nx; i++) {
+            if (typAt(i, sy + dy) === fg_typ) {
+                if (roomnoAt(i, sy + dy) !== rmno)
+                    flood_fill_rm(i, sy + dy, rmno, lit, anyroom, ext);
+            } else {
+                if ((i > sx || isok(i - 1, sy + dy))
+                    && typAt(i - 1, sy + dy) === fg_typ
+                    && roomnoAt(i - 1, sy + dy) !== rmno)
+                    flood_fill_rm(i - 1, sy + dy, rmno, lit, anyroom, ext);
+                if ((i < nx - 1 || isok(i + 1, sy + dy))
+                    && typAt(i + 1, sy + dy) === fg_typ
+                    && roomnoAt(i + 1, sy + dy) !== rmno)
+                    flood_fill_rm(i + 1, sy + dy, rmno, lit, anyroom, ext);
+            }
+        }
+    }
+
+    if (nx > ext.max_rx) ext.max_rx = nx - 1;
+    if (sy > ext.max_ry) ext.max_ry = sy;
+}
+
+// C ref: sp_lev.c lspo_region() for a SPECIAL (non-OROOM) region — the room is
+// really created (add_room + topologize, or flood_fill_rm for an irregular one),
+// its needfill is recorded for the level-finalize fill_special_room() pass, and
+// add_doors_to_room() attaches any door squares already on the map.  litstate is
+// an explicit 0/1 here, so litstate_rnd() draws nothing.
+function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    let croom;
+    if (irregular) {
+        const roomno = game.level.nroom + ROOMOFFSET;
+        const ext = { min_rx: a.x, max_rx: a.x, min_ry: a.y, max_ry: a.y,
+                      n_loc_filled: 0 };
+        flood_fill_rm(a.x, a.y, roomno, lit, true, ext);
+        croom = add_sp_room(ext.min_rx, ext.min_ry, ext.max_rx, ext.max_ry,
+                            lit, rtype, true, needfill, true);
+    } else {
+        croom = add_sp_room(a.x, a.y, b.x, b.y, lit, rtype, false, needfill, true);
+        const roomno = croom.roomnoidx + ROOMOFFSET;
+        for (let x = a.x; x <= b.x; x++)
+            for (let y = a.y; y <= b.y; y++) {
+                const loc = game.level?.at(x, y);
+                if (loc) { loc.roomno = roomno; loc.lit = !!lit; }
+            }
+    }
+    splev_add_doors_to_room(croom);
+    return croom;
+}
+
+// C ref: sp_lev.c lspo_teleport_region() -> fixup_special() LR_DOWNTELE arm,
+// which copies the region into svd.dndest for goto_level()'s own
+// place_lregion() call (the hero's arrival spot).  No RNG here.
+function vly_teleport_region(mx1, my1, mx2, my2) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    game.dndest = { lx: a.x, ly: a.y, hx: b.x, hy: b.y,
+                    nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+}
+
+// C ref: sp_lev.c create_altar() with croom == NULL — an explicit coordinate
+// (no RNG), the altarmask from the requested alignment, and, when the square
+// falls inside a TEMPLE region and shrine is set, priestini().
+function vly_altar(mx, my, amask, shrine) {
+    const c = vly_abs(mx, my);
+    if (!set_levltyp_lit(c.x, c.y, ALTAR, SET_LIT_NOCHANGE)) return;
+    const loc = game.level.at(c.x, c.y);
+    loc.altarmask = amask;
+    // C: `sproom = *in_rooms(x, y, TEMPLE)`; a des.region temple already owns
+    // this square's roomno.
+    const rno = (loc.roomno ?? 0) - ROOMOFFSET;
+    const croom = (rno >= 0) ? game.level.rooms[rno] : null;
+    if (!croom || croom.rtype !== TEMPLE_RTYPE || !shrine) return;
+    priestini(game.u?.uz, croom, c.x, c.y, shrine > 1);
+    loc.altarmask |= AM_SHRINE;
+}
+
+// C ref: sp_lev.c lspo_non_diggable() -> set_wall_property(W_NONDIGGABLE) over
+// the selection: every wall/tree/ironbars square inside it becomes undiggable.
+// No RNG.
+function vly_non_diggable(mx1, my1, mx2, my2) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    for (let x = Math.max(a.x, 1); x <= Math.min(b.x, COLNO - 1); x++)
+        for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+}
+
+// C ref: sp_lev.c create_object() at a RANDOM DRY location.  `montype` names a
+// species for a corpse/statue (a plain table scan in lspo_object -> no RNG);
+// `oclass` is a des.object("X") class char; `otyp` a des.object("name") id.
+function vly_object({ otyp = null, oclass = null, montype = null }) {
+    const { x, y } = splev_get_location_rnd(LOC_DRY);
+    let otmp;
+    if (otyp != null) otmp = mksobj_at(otyp, x, y, true, true);
+    else if (oclass != null) otmp = mkobj_at(oclass, x, y, true);
+    else otmp = mkobj_at(0 /* RANDOM_CLASS */, x, y, true);
+    if (otmp && montype != null) {
+        const pmidx = name_to_pmidx(montype);
+        if (pmidx >= 0) set_corpsenm(otmp, pmidx);
+    }
+    return otmp;
+}
+
+// C ref: sp_lev.c create_trap() — get_location(DRY) (explicit coord: no RNG;
+// random coord: the rn2 loop) then mktrap(type, MKTRAP_MAZEFLAG|NOSPIDERONWEB).
+// mktrap's own only draw at this depth is the victim check rnd(4)
+// (mklev.c:2137), which is always evaluated and never succeeds here.
+async function vly_trap(ttyp, mx = null, my = null) {
+    let x, y;
+    if (mx != null) { const c = vly_abs(mx, my); x = c.x; y = c.y; }
+    else { const c = splev_get_location_rnd(LOC_DRY); x = c.x; y = c.y; }
+    await maketrap(x, y, ttyp);
+    rnd(4);                                       // mktrap victim check
+}
+
+// C ref: sp_lev.c create_monster() at a RANDOM location, for a monster given by
+// SPECIES NAME.  lspo_monster's single-string form resolves the name through
+// find_montype() (one rn2(2) unless the species has a fixed gender) while
+// parsing; create_monster then does sp_amask_to_amask -> induced_align rn2(3),
+// the pm_to_humidity get_location (retried with DRY added if the first,
+// NO_LOC_WARN pass finds nothing), the MON_AT/enexto relocate, and makemon.
+function vly_monster_named(name) {
+    const pmidx = name_to_pmidx(name);
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return null;
+    if (ptr.gcode !== 1 && ptr.gcode !== 2) rn2(2);   // find_montype gender
+    rn2(3);                                           // induced_align
+    return vly_place_monster(ptr);
+}
+
+// C ref: sp_lev.c create_monster() for a bare CLASS char ("L"/"V"/"Z"/"M").
+// find_montype is never reached (no "id" field), so there is no gender roll;
+// the class is resolved by mkclass(class, G_NOGEN) AFTER induced_align.
+function vly_monster_class(classNum) {
+    rn2(3);                                           // induced_align
+    const ptr = mkclass(classNum, 0x0200 /* G_NOGEN */);
+    if (!ptr) return null;
+    return vly_place_monster(ptr);
+}
+
+function vly_place_monster(ptr) {
+    const hum = pm_to_humidity(ptr);
+    let { x, y } = splev_get_location_rnd(hum, true);
+    if (x === -1 && y === -1) {
+        const c = splev_get_location_rnd(hum | LOC_DRY);
+        x = c.x; y = c.y;
+    }
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, ptr);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    return makemon(ptr, x, y, 0 /* NO_MM_FLAGS */);
+}
+
+// C ref: mkroom.h TEMPLE room type + include/align.h AM_SHRINE, plus the
+// trap-type and monster-class numbers valley.lua names by string.
+const VLY_SPIKED_PIT = 12, VLY_SLP_GAS = 8, VLY_SQKY_BOARD = 4,
+      VLY_DART = 2, VLY_MAGIC_TRAP = 20, VLY_ANTI_MAGIC = 21;
+const VLY_S_LICH = 38, VLY_S_MUMMY = 39, VLY_S_VAMPIRE = 48, VLY_S_ZOMBIE = 52;
+
+// C ref: valley.lua's `des.object({id="corpse",montype=...})` roster — "**LOTS**
+// of dead bodies (all human)", in file order.
+const VALLEY_CORPSE_MONTYPES = [
+    'archeologist', 'archeologist', 'barbarian', 'barbarian',
+    'caveman', 'cavewoman', 'healer', 'healer', 'knight', 'knight',
+    'ranger', 'ranger', 'rogue', 'rogue', 'samurai', 'samurai',
+    'tourist', 'tourist', 'valkyrie', 'valkyrie', 'wizard', 'wizard',
+];
+
+// C ref: objclass.h def_char_to_objclass() for the class chars valley.lua uses.
+const VALLEY_LOOT_CLASSES = [
+    ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS,
+    WEAPON_CLASS, WEAPON_CLASS, WEAPON_CLASS, WEAPON_CLASS,
+];
+const VALLEY_LOOT_TAIL = [
+    GEM_CLASS, GEM_CLASS,
+    POTION_CLASS, POTION_CLASS, POTION_CLASS,
+    SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS,
+    WAND_CLASS, WAND_CLASS,
+    RING_CLASS, RING_CLASS,
+    SPBOOK_CLASS, SPBOOK_CLASS,
+    TOOL_CLASS, TOOL_CLASS, TOOL_CLASS,
+];
+const RUBY_OTYP = 440;
+
+// Entry point.  C ref: makemaz("valley") -> load_special("valley.lua").
+export async function makemaz_valley() {
+    const g = game;
+    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    shuffle(['law', 'neutral', 'chaos']);
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.level_flags("mazelevel","noteleport","hardfloor","nommap","temperate")
+    // — no RNG.  "temperate" is temperature 0, which zeroes rndmonst_adj's
+    // temperature_shift() for every species on this level.
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+        g.level.flags.nommap = true;
+        g.level.flags.temperature = 0;
+    }
+    // des.map([[...]]) — full-level 76x20 map, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(VALLEY_MAP, lit);
+
+    // "Make the path somewhat unpredictable" — three independent percent(50)
+    // blocks, each one rn2(100).  The terrain edits themselves draw nothing.
+    if (percent(50)) {
+        vly_terrain_line(50, 8, 53, 8, HWALL);
+        vly_terrain_line(40, 8, 43, 8, IRONBARS);
+    }
+    if (percent(50)) {
+        vly_terrain_at(27, 12, VWALL);
+        vly_terrain_line(27, 3, 29, 3, IRONBARS);
+        vly_terrain_at(28, 2, HWALL);
+    }
+    if (percent(50)) {
+        vly_terrain_line(16, 10, 16, 11, VWALL);
+        vly_terrain_line(9, 13, 14, 13, IRONBARS);
+    }
+
+    // The shrine to Moloch: filled=2 is FILL_LVLFLAGS_ONLY, so the temple gets
+    // no fill_special_room() body — only the has_temple level flag.  The priest
+    // arrives with des.altar below.
+    vly_region(1, 6, 5, 14, 1, TEMPLE_RTYPE, 2, false);
+    // The Morgues — irregular, unlit, filled at level finalize.
+    const morgues = [
+        vly_region(19, 1, 24, 8, 0, MORGUE, FILL_NORMAL, true),
+        vly_region(9, 14, 16, 18, 0, MORGUE, FILL_NORMAL, true),
+        vly_region(37, 9, 43, 14, 0, MORGUE, FILL_NORMAL, true),
+    ];
+    // Stairs / branch / arrival region — no RNG.
+    quest_place_stair(1, 1, false);
+    quest_register_branch(66, 17);
+    vly_teleport_region(58, 9, 72, 18);
+    // Secret Doors — no RNG (explicit state).
+    quest_set_door(4, 1, 'locked');
+    quest_set_door(8, 4, 'locked');
+    quest_set_door(6, 6, 'locked');
+    // The altar of Moloch — align="noalign", type="shrine" -> priestini().
+    g._full_mon_gen = true;
+    try {
+        vly_altar(3, 10, AM_NONE, 1);
+    } finally {
+        g._full_mon_gen = false;
+    }
+    // Non diggable walls - everywhere!  No RNG.
+    vly_non_diggable(0, 0, 75, 19);
+
+    g._full_mon_gen = true;
+    try {
+        // Objects: the corpses, then random armor/weapons, then random loot.
+        for (const mt of VALLEY_CORPSE_MONTYPES)
+            vly_object({ otyp: CORPSE, montype: mt });
+        for (const oc of VALLEY_LOOT_CLASSES) vly_object({ oclass: oc });
+        vly_object({ otyp: RUBY_OTYP });
+        for (const oc of VALLEY_LOOT_TAIL) vly_object({ oclass: oc });
+
+        // (Not so) Random traps.
+        await vly_trap(VLY_SPIKED_PIT, 5, 2);
+        await vly_trap(VLY_SPIKED_PIT, 14, 5);
+        await vly_trap(VLY_SLP_GAS, 3, 1);
+        await vly_trap(VLY_SQKY_BOARD, 21, 12);
+        await vly_trap(VLY_SQKY_BOARD);
+        await vly_trap(VLY_DART, 60, 1);
+        await vly_trap(VLY_DART, 26, 17);
+        await vly_trap(VLY_ANTI_MAGIC);
+        await vly_trap(VLY_ANTI_MAGIC);
+        await vly_trap(VLY_MAGIC_TRAP);
+        await vly_trap(VLY_MAGIC_TRAP);
+
+        // Random monsters: the ghosts, a few bats, a lich, and undead nasties.
+        for (let i = 0; i < 6; i++) vly_monster_named('ghost');
+        for (let i = 0; i < 3; i++) vly_monster_named('vampire bat');
+        vly_monster_class(VLY_S_LICH);
+        for (let i = 0; i < 3; i++) vly_monster_class(VLY_S_VAMPIRE);
+        for (let i = 0; i < 4; i++) vly_monster_class(VLY_S_ZOMBIE);
+        for (let i = 0; i < 4; i++) vly_monster_class(VLY_S_MUMMY);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // C ref: lspo_finalize_level() — link_doors_rooms/remove_boundary_syms/
+    // map_cleanup (no RNG), wallification (no RNG), then
+    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) {
+        flip_level(flp);
+        quest_flip_branch(flp);
+        vly_flip_dndest(flp);
+    }
+    return morgues;
+}
+
+// C ref: sp_lev.c flip_level() also flips gl.lregions[] — including the
+// teleport region that fixup_special() copies into svd.dndest.  No RNG.
+function vly_flip_dndest(flp) {
+    const d = game.dndest;
+    if (!d) return;
+    const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
+    const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
+    for (const [kx, ky] of [['lx', 'ly'], ['hx', 'hy']]) {
+        if (!inArea(d[kx], d[ky])) continue;
+        if (flp & 1) d[ky] = miny + maxy - d[ky];
+        if (flp & 2) d[kx] = minx + maxx - d[kx];
+    }
+    if (d.lx > d.hx) { const t = d.lx; d.lx = d.hx; d.hx = t; }
+    if (d.ly > d.hy) { const t = d.ly; d.ly = d.hy; d.hy = t; }
+}
+
+// C ref: lspo_finalize_level()'s trailing `for (i = 0; i < svn.nroom; ++i)
+// fill_special_room(&svr.rooms[i]);` — run AFTER fixup_special() has placed the
+// branch lregion.  Stocking runs the fully C-faithful monster path, the same
+// flag the other special-level generators use.
+export function fill_level_special_rooms() {
+    const g = game;
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    try {
+        for (let i = 0; i < (g.level?.nroom ?? 0); i++)
+            fill_special_room(g.level.rooms[i]);
+    } finally {
+        g._full_mon_gen = was_full;
     }
 }

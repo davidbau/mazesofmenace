@@ -223,7 +223,7 @@ function poly_obj(obj) {
             otmp.otyp = rnd_class_spbook();
         if (otmp.otyp !== 407 /*SPE_BLANK_PAPER*/ && otmp.otyp !== 408 /*SPE_NOVEL*/) {
             otmp.spestudied = (obj.spestudied | 0) + 1;
-            if (otmp.spestudied > 4 /*MAX_SPELL_STUDY*/) {
+            if (otmp.spestudied > 3 /*MAX_SPELL_STUDY (spell.h:12)*/) {
                 otmp.spestudied = rn2(otmp.spestudied);
                 otmp.otyp = 407 /*SPE_BLANK_PAPER*/;
             }
@@ -231,11 +231,11 @@ function poly_obj(obj) {
         break;
     case GEM_CLASS:
         if ((otmp.quan || 1) > rnd(4)
-            && (objects[obj.otyp]?.material === 7 /*MINERAL*/)
-            && (objects[otmp.otyp]?.material !== 7))
+            && (objects[obj.otyp]?.material === 21 /*MINERAL (objclass.h:34); 7 is LEATHER*/)
+            && (objects[otmp.otyp]?.material !== 21))
             otmp.otyp = 481 /*ROCK*/;
-        else if ((objects[otmp.otyp]?.material === 6 /*GLASS*/)
-                 !== (objects[obj.otyp]?.material === 6))
+        else if ((objects[otmp.otyp]?.material === 19 /*GLASS (objclass.h:32); 6 is CLOTH*/)
+                 !== (objects[obj.otyp]?.material === 19))
             ; /* color preserved; no RNG */
         break;
     default:

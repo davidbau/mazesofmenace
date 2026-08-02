@@ -102,3 +102,8 @@ export const is_mines_prize = (o) =>
     o?.o_id !== undefined && o.o_id === game.context?.achieveo?.mines_prize_oid;
 export const is_soko_prize = (o) =>
     o?.o_id !== undefined && o.o_id === game.context?.achieveo?.soko_prize_oid;
+// include/obj.h:360 is_elven_weapon()
+export const is_elven_weapon = (otmp) =>
+    otmp.otyp === ONAMES.ELVEN_ARROW || otmp.otyp === ONAMES.ELVEN_SPEAR
+    || otmp.otyp === ONAMES.ELVEN_DAGGER || otmp.otyp === ONAMES.ELVEN_SHORT_SWORD
+    || otmp.otyp === ONAMES.ELVEN_BROADSWORD || otmp.otyp === ONAMES.ELVEN_BOW;

@@ -15,6 +15,7 @@ import {
 import {
     rndmonst_adj, monster_by_pmidx, can_be_hatched, dead_species,
     undead_to_corpse, mon_has_cnutrit, mon_nocorpse, mon_cwt, mon_msize,
+    name_to_pmidx,
 } from './makemon.js';
 import { set_tin_variety, SPINACH_TIN, RANDOM_TIN } from './eat.js';
 
@@ -179,16 +180,19 @@ const GEMSTONE = 20;
 const MINERAL = 21;
 const NODIR = 1;
 const NON_PM = -1;
-const PM_HUMAN = 260;
 
-const PM_LICHEN = 158;
-const PM_LICHEN_ALT = 162;
-const PM_LIZARD = 333;
-const PM_DEATH = 318;
-const PM_PESTILENCE = 319;
-const PM_FAMINE = 320;
-const PM_ARCHEOLOGIST = 338;
-const PM_WIZARD = 350;
+// C ref: monsters.h PM_* species indices.  Resolved from the species NAME at
+// first use rather than written as literals: mons[] indices shift whenever the
+// table changes, and stale literals fail silently.  (They had drifted 5-8
+// entries: PM_LIZARD read 333, which is really the healer player-monster, so
+// every healer corpse skipped its rot timer and lost a whole rnz() from the
+// stream.)  Lazy, so the makemon.js <-> mkobj.js import cycle has settled by
+// the time the lookup runs.
+const _pmidx_cache = new Map();
+function PM(name) {
+    if (!_pmidx_cache.has(name)) _pmidx_cache.set(name, name_to_pmidx(name));
+    return _pmidx_cache.get(name);
+}
 
 // [otyp, enum-name, object-class, base oc_prob, flags, material, oc_dir, name]
 const OBJECT_DATA = [
@@ -787,9 +791,11 @@ const boxiprobs = [
     [1, AMULET_CLASS],
 ];
 
+// C ref: dungeon.h Inhell == In_hell(&u.uz) == dungeons[u.uz.dnum].flags.hellish.
+// The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
+// order at init_dungeons() time — so the flag has to be read off the dungeon.
 function Inhell() {
-    const dnum = game.u?.uz?.dnum ?? 0;
-    return dnum === (game.gehennom_dnum ?? GEHENNOM);
+    return !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
 }
 
 // C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
@@ -1044,20 +1050,22 @@ function corpse_mon_name(corpsenm) {
     return monster_by_pmidx(corpsenm)?.name ?? '';
 }
 
+// C ref: mkobj.c start_corpse_timeout() — "lizards and lichen don't rot or
+// revive".
 function is_lizard_or_lichen(corpsenm) {
-    const name = corpse_mon_name(corpsenm);
-    return name === 'lizard' || name === 'lichen'
-        || corpsenm === PM_LICHEN || corpsenm === PM_LICHEN_ALT
-        || corpsenm === PM_LIZARD;
+    return corpsenm === PM('lizard') || corpsenm === PM('lichen');
 }
 
 // C ref: mondata.h is_rider(ptr) — Death / Pestilence / Famine.  Exported so
 // zap.c's obj_resists() can apply its Rider-corpse exemption.
+// Body is the branch's PM()-based lookup: this merge dropped the corpse_mon_name
+// / PM_DEATH helpers the previous implementation relied on, so keeping the old
+// body crashed level generation (makeniche -> mkcorpstat -> start_corpse_timeout)
+// and took 7 sessions to 0 matched. `export` is retained because zap.js's
+// obj_resists() imports it for the Rider-corpse exemption.
 export function is_rider_pm(corpsenm) {
-    const name = corpse_mon_name(corpsenm);
-    return name === 'Death' || name === 'Pestilence' || name === 'Famine'
-        || corpsenm === PM_DEATH || corpsenm === PM_PESTILENCE
-        || corpsenm === PM_FAMINE;
+    return corpsenm === PM('Death') || corpsenm === PM('Pestilence')
+        || corpsenm === PM('Famine');
 }
 
 function is_troll_pm(corpsenm) {
@@ -1068,7 +1076,7 @@ function is_troll_pm(corpsenm) {
 function zombie_form_pm(corpsenm) {
     const ptr = monster_by_pmidx(corpsenm);
     if (!ptr) {
-        if (corpsenm >= PM_ARCHEOLOGIST && corpsenm <= PM_WIZARD)
+        if (corpsenm >= PM('archeologist') && corpsenm <= PM('wizard'))
             return 0;
         return NON_PM;
     }
@@ -1128,7 +1136,7 @@ export function run_object_timers() {
 }
 
 function rider_revival_time(body, retry = false) {
-    const minturn = retry ? 3 : body.corpsenm === PM_DEATH ? 6 : 12;
+    const minturn = retry ? 3 : body.corpsenm === PM('Death') ? 6 : 12;
     for (let when = minturn; when < 67; when++) {
         if (!rn2(3))
             return when;
@@ -1519,7 +1527,7 @@ function mksobj_init(otmp, artif) {
             do {
                 otmp.corpsenm = undead_to_corpse(rndmonnum());
             } while (mon_nocorpse(otmp.corpsenm) && (--tryct > 0));
-            if (tryct === 0) otmp.corpsenm = PM_HUMAN;
+            if (tryct === 0) otmp.corpsenm = PM('human');
             break;
         }
         case EGG:
@@ -1839,6 +1847,45 @@ function g_at(x, y) {
         if (o.where === 'floor' && o.ox === x && o.oy === y
             && o.oclass === COIN_CLASS) return o;
     return null;
+}
+
+// C ref: topten.c get_rnd_toptenentry() — pick a random entry out of the
+// scoreboard (RECORD) file, biased to the top `sysopt.tt_oname_maxrank` (10)
+// ranks.  The rnd(10) is drawn BEFORE the file is read, so it is consumed even
+// when the file holds no entries; the read then finds points == 0 on the very
+// first entry, retries once at rank 1 (still nothing) and gives up.  This port
+// keeps no scoreboard at all — the equivalent of a freshly installed game — so
+// the result is always "no entry", but the single rnd() must still happen.
+function get_rnd_toptenentry() {
+    rnd(10);                       // rnd(sysopt.tt_oname_maxrank)
+    return null;
+}
+
+// C ref: topten.c tt_oname() — hang a random dead player's name/role on a
+// corpse or statue.  With no scoreboard entry available it is a no-op that has
+// already spent get_rnd_toptenentry()'s draw.
+function tt_oname(otmp) {
+    if (!otmp) return null;
+    const tt = get_rnd_toptenentry();
+    if (!tt) return null;
+    return otmp;
+}
+
+// C ref: mkobj.c mk_tt_object() — a corpse/statue named after someone from the
+// scoreboard.  A statue is created uninitialized ("player statues never contain
+// books"); when tt_oname() cannot supply a player the corpsenm is forced to a
+// random player-monster role instead, via set_corpsenm() (which restarts the
+// corpse rot timer).
+export function mk_tt_object(objtype, x, y) {
+    const initialize_it = (objtype !== STATUE);
+    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
+    if (!tt_oname(otmp)) {
+        // C: rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST) — the 13
+        // player-monster roles, in mons[] order starting at PM_ARCHEOLOGIST.
+        const lo = PM('archeologist'), hi = PM('wizard');
+        if (lo >= 0 && hi >= lo) set_corpsenm(otmp, rn1(hi - lo + 1, lo));
+    }
+    return otmp;
 }
 
 export function mkgold(amount, x, y) {

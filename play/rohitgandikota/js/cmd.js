@@ -67,6 +67,8 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_W
 import { dosearch } from './detect.js';
 import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd } from './rng.js';
+import { ACCESSIBLE } from './const.js';
+import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
@@ -652,8 +654,70 @@ async function dojump() {
     if (!(await is_valid_jump_pos(cc.x, cc.y, game.jumping_is_magic, true)))
         return ECMD_FAIL;
 
-    note_unported_cmd('jump:movement');
-    return ECMD_OK;
+    /* src/apply.c:2116 — jumping onto your own square never moves you */
+    if (cc.x === game.u.ux && cc.y === game.u.uy) {
+        if (t_at(cc.x, cc.y)) {
+            note_unported_cmd('jump:in_place_trap');
+            return ECMD_TIME;
+        }
+        /* jumping in place takes no time and doesn't exercise anything */
+        await You('decide not to jump after all.');
+        return ECMD_OK;
+    }
+
+    /*
+     * Check the path from uc to cc, calling hurtle_step at each location.
+     * The final position actually reached will be in cc.
+     */
+    const uc = { x: game.u.ux, y: game.u.uy };
+    let range = cc.x - uc.x;
+    if (range < 0) range = -range;
+    let temp = cc.y - uc.y;
+    if (temp < 0) temp = -temp;
+    if (range < temp) range = temp;
+
+    const { walk_path } = await import('./dothrow.js');
+    const { teleds, TELEDS_NO_FLAGS } = await import('./teleport.js');
+    walk_path(uc, cc, hurtle_jump, { range });
+    /* hurtle_jump -> hurtle_step results in <u.ux,u.uy> == <cc.x,cc.y> and
+     * usually moves the ball if punished, but does not handle all the
+     * effects of landing on the final position.
+     */
+    await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
+    nomul(-1);
+    game.multi_reason = 'jumping around';
+    game.nomovemsg = '';
+    morehungry(rnd(25));
+    return ECMD_TIME;
+}
+
+// src/dothrow.c hurtle_step() — one square of a hurtle, via walk_path().
+//
+// Only the unobstructed case is live. C's wall/crevice arm draws
+// rnd(2 + range) for the damage and wakes monsters; a jump that hits
+// something is recorded instead of guessed.
+function hurtle_step(arg, x, y) {
+    if (!isok(x, y) || bad_rock_at(x, y)) {
+        note_unported_cmd('hurtle_step:obstructed');
+        return false;
+    }
+    if (m_at(x, y)) {
+        note_unported_cmd('hurtle_step:monster');
+        return false;
+    }
+    /* C moves the hero one step here; teleds() places them at the end */
+    return true;
+}
+
+/* src/apply.c hurtle_jump() — hurtle_step with flying allowed over water */
+function hurtle_jump(arg, x, y) {
+    return hurtle_step(arg, x, y);
+}
+
+/* include/rm.h — a square the hero cannot occupy */
+function bad_rock_at(x, y) {
+    const loc = game.level?.at(x, y);
+    return !loc || !ACCESSIBLE(loc.typ);
 }
 
 export async function rhack(key) {
@@ -802,6 +866,10 @@ export async function rhack(key) {
         // src/cmd.c:1780 cmdlist — 'O' is doset_simple.
         const { doset_simple } = await import('./options.js');
         game.context.move = (await doset_simple() === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x14') {
+        // src/cmd.c:1890 cmdlist — C('t') is dotelecmd.
+        const { dotelecmd } = await import('./teleport.js');
+        game.context.move = (await dotelecmd() === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x04') {
         // src/cmd.c cmdlist — C('d') is dokick.
         game.context.move = (await dokick() === ECMD_TIME ? 1 : 0);

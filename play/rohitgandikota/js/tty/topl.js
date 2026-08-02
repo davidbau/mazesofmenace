@@ -171,7 +171,8 @@ export async function tty_yn_function(query, resp, def) {
        the NEXT key read erases it before its boundary frame. */
     const clean_up = (q) => {
         const vis = (q >= ' ' && q !== '\x7f') ? q : '';
-        game._pending_message = prompt + vis;
+        game._toplines = prompt + vis;   /* gt.toplines: ^P recall buffer */
+        game._pending_message = '';
         game._toplin = TOPLINE_NON_EMPTY;
         return q;
     };

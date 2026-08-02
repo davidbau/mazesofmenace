@@ -6,10 +6,12 @@
 // makemaz() records the gap; nothing is faked.
 
 import { oracle_level } from './oracle.js';
+import { bigrm7_level } from './bigrm-7.js';
 import { castle_level } from './castle.js';
 import { valley_level } from './valley.js';
 
 export const SPECIAL_LEVELS = {
+    'bigrm-7': bigrm7_level,
     oracle: oracle_level,
     castle: castle_level,
     valley: valley_level,

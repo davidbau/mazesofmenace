@@ -23,8 +23,23 @@ import { get_level, depth, print_dungeon, dunlevs_in_dungeon } from './dungeon.j
 import { rnd } from './rng.js';
 import { Is_knox_level } from './const.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
+import { t_at } from './mon.js';
+import { unconscious } from './trap.js';
+import { goodpos } from './makemon.js';
+import { newsym } from './display.js';
+import { vision_recalc } from './vision.js';
+import { spoteffects } from './hack.js';
+import { morehungry } from './eat.js';
+import { getpos } from './getpos.js';
+
+import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 
 // include/hack.h:1204-1210
+
+function note_unported_teleport(what) {
+    (game.unported ||= new Set()).add('teleport:' + what);
+}
+
 export const CC_NO_FLAGS = 0x00;
 export const CC_INCL_CENTER = 0x01;
 export const CC_UNSHUFFLED = 0x02;
@@ -364,4 +379,159 @@ export function random_teleport_level() {
 // src/dungeon.c Is_botlevel() — bottom of its dungeon
 function Is_botlevel_tele(lev) {
     return lev.dlevel === dunlevs_in_dungeon(lev);
+}
+
+// src/teleport.c u_on_newpos() — move the hero to <x,y>.
+//
+// js/mklev.js has a private copy of this from level generation; C keeps the
+// one definition here. They should be consolidated.
+function u_on_newpos(x, y) {
+    game.u.ux = x;
+    game.u.uy = y;
+    /* u.usteed follows; cliparound() is a no-op on an 80x21 map */
+}
+
+// src/teleport.c teleok() — may the hero teleport onto <x,y>?
+function teleok(x, y, trapok) {
+    if (!trapok) {
+        /* allow teleportation onto vibrating square, it's not a real trap;
+           also allow pits and holes if levitating or flying */
+        const trap = t_at(x, y);
+
+        if (!trap)
+            trapok = true;
+        else if (trap.ttyp === VIBRATING_SQUARE)
+            trapok = true;
+        else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
+                 && game.u.uprops?.LEVITATION)
+            trapok = true;
+
+        if (!trapok)
+            return false;
+    }
+    if (!goodpos(x, y, game.youmonst, 0))
+        return false;
+    /* the caller's remaining tests (in_mklev, sokoban, vault guard) need
+       state no reachable teleport has yet */
+    return true;
+}
+
+// src/teleport.c teleds() — put the hero at <nux,nuy>.
+//
+// Only the plain path is live: an unpunished, unswallowed hero with no ball
+// and chain. The ball/chain drag, the mimic un-hide and the vault-guard arms
+// are recorded.
+export async function teleds(nux, nuy, teleds_flags) {
+    const is_teleport = !(teleds_flags & TELEDS_ALLOW_DRAG);
+
+    if (game.uball || game.u.uswallow || game.u.utrap)
+        note_unported_teleport('teleds:ball_or_swallow');
+
+    const ux0 = game.u.ux, uy0 = game.u.uy;
+    game.u.ux0 = ux0;
+    game.u.uy0 = uy0;
+    u_on_newpos(nux, nuy);
+
+    newsym(ux0, uy0);           /* clear the old position */
+    vision_recalc(0);           /* vision before effects */
+
+    if (is_teleport && game.flags?.verbose)
+        await You('materialize in %s different place.', 'a');
+
+    await spoteffects(true);
+}
+
+/* src/teleport.h TELEDS_* */
+export const TELEDS_NO_FLAGS = 0, TELEDS_ALLOW_DRAG = 1, TELEDS_TELEPORT = 2;
+
+// src/teleport.c:850 scrolltele() — the controlled-teleport prompt.
+//
+// Only the controlled arm is ported: Teleport_control or wizard mode, hero
+// conscious. The Amulet/W-tower disorientation, the uncontrolled random
+// destination and the level-teleport arms are recorded.
+async function scrolltele(scroll) {
+    const cc = { x: 0, y: 0 };
+
+    if ((game.u.uhave?.amulet) && !rn2(3)) {
+        note_unported_teleport('scrolltele:disoriented');
+        return;
+    }
+    const controlled = (game.u.uprops?.TELEPORT_CONTROL
+                        || (scroll && scroll.blessed) || game.wizard);
+    if (!controlled) {
+        note_unported_teleport('scrolltele:uncontrolled');
+        return;
+    }
+    if (unconscious()) {
+        await pline('Being unconscious, you cannot control your teleport.');
+        return;
+    }
+
+    /* "you and <steed>" when riding */
+    const whobuf = 'you';
+    await pline(`Where do ${whobuf} want to be teleported?`);
+    if (scroll)
+        note_unported_teleport('scrolltele:learnscroll');
+    cc.x = game.u.ux;
+    cc.y = game.u.uy;
+    if (isok(game.iflags?.travelcc?.x, game.iflags?.travelcc?.y)) {
+        /* The player showed some interest in traveling here; pre-suggest
+           this coordinate. */
+        cc.x = game.iflags.travelcc.x;
+        cc.y = game.iflags.travelcc.y;
+    }
+    if ((await getpos(cc, true, 'the desired position')) < 0)
+        return;                 /* abort */
+    /* possible extensions: introduce a small error if magic power is low;
+       allow transfer to solid rock */
+    if (teleok(cc.x, cc.y, false)) {
+        await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+        return;
+    }
+    await pline('Sorry...');
+}
+
+// src/teleport.c:842 tele()
+export async function tele() {
+    await scrolltele(null);
+}
+
+// src/teleport.c:1035 dotele() — `break_the_rules` is wizard-mode ^T.
+async function dotele(break_the_rules) {
+    const trap = t_at(game.u.ux, game.u.uy);
+
+    if (trap) {
+        note_unported_teleport('dotele:trap');
+        return 0;
+    }
+    if (!break_the_rules) {
+        /* the Teleportation-intrinsic and spell-casting gate */
+        note_unported_teleport('dotele:not_wizard');
+        return 0;
+    }
+
+    if (game.iflags?.travelcc)
+        game.iflags.travelcc.x = game.iflags.travelcc.y = 0;
+    await tele();
+    /* next_to_u() drags adjacent pets along */
+    note_unported_teleport('dotele:next_to_u');
+
+    morehungry(100);
+    return 1;
+}
+
+// src/teleport.c:919 dotelecmd() — the ^T command.
+export async function dotelecmd() {
+    /* normal mode; ignore 'm' prefix if it was given */
+    if (!game.wizard)
+        return (await dotele(false)) ? ECMD_TIME : ECMD_OK;
+
+    /* wizard mode without the 'm' prefix ignores every restriction; with it,
+       C puts up a menu of teleport flavours, which is recorded */
+    if (game.iflags?.menu_requested) {
+        note_unported_teleport('dotelecmd:menu');
+        return ECMD_OK;
+    }
+    const res = await dotele(true);
+    return res ? ECMD_TIME : ECMD_OK;
 }

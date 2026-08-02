@@ -32,7 +32,9 @@ import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { visible_region_at, show_region } from './region.js';
-import { ACCESSIBLE, IS_POOL, IS_LAVA } from './const.js';
+import { ACCESSIBLE, IS_POOL, IS_LAVA, In_sokoban,
+         Is_knox_level } from './const.js';
+import { In_hell } from './dungeon.js';
 
 const COIN_CLASS = 12;
 const ROCK_CLASS = 14;
@@ -553,13 +555,22 @@ function wall_cmap_glyph(idx) {
     return { ch: ch ?? (dec ? 'q' : '-'), color: wall_cmap_color(), dec };
 }
 
-// C ref: display.c reset_glyphmap wall_color() — walls in the Gnomish Mines use
-// the GLYPH_CMAP_MINES range -> wallcolors[mines_walls] (CLR_BROWN); the main
-// dungeon uses main_walls (CLR_GRAY, which emits no tty escape == NO_COLOR).
+// C ref: display.h cmap_walls_to_glyph() + display.c reset_glyphmap's
+// wall_color(): a wall's glyph (and therefore its colour) is picked from a
+// per-branch GLYPH_CMAP_*_OFF range, in exactly this priority order —
+// mines, hell, knox, sokoban, main.  wallcolors[] itself defaults to CLR_GRAY
+// for every region, but loading a symset applies its `G_<wall>_<region>: /col`
+// lines, and dat/symbols' DECgraphics set (the one these recordings use)
+// specifies /brown for the mines, /red for Gehennom, /yellow for Knox and
+// /blue for Sokoban, leaving the main dungeon gray.  CLR_GRAY emits no tty
+// escape at all, which is what NO_COLOR records as.
 function wall_cmap_color() {
     const uz = game.u?.uz;
-    if (uz && game.mines_dnum != null && uz.dnum === game.mines_dnum)
-        return CLR_BROWN;
+    if (!uz) return NO_COLOR;
+    if (game.mines_dnum != null && uz.dnum === game.mines_dnum) return CLR_BROWN;
+    if (In_hell(uz)) return CLR_RED;
+    if (Is_knox_level(uz)) return CLR_YELLOW;
+    if (In_sokoban(uz)) return CLR_BLUE;
     return NO_COLOR;
 }
 

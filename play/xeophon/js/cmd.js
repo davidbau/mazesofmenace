@@ -9,7 +9,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DELPHI, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MON_LIMBO, MON_MIGRATING, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DELPHI, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MON_LIMBO, MON_MIGRATING, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NEW_MOON, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz, getRngLog } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -10422,6 +10422,16 @@ function genericAttributesPage2() {
     return page2;
 }
 
+// C ref: pager.c self_lookat()/look_at_monster() region suffix
+// (pager.c:120-132, 271-277): describing the hero/monster standing in a
+// visible gas region appends ", in a cloud of poison gas" (or "vapor").
+function gasCloudRegionSuffix(x, y) {
+    const reg = (game.level?.regions || []).find(r =>
+        r.visible !== false && (r.coords || []).some(coord => coord.x === x && coord.y === y));
+    if (!reg) return '';
+    return `, in a cloud of ${reg.damage ? 'poison gas' : 'vapor'}`;
+}
+
 function heroFarlookDescription() {
     const form = polyselfForm();
     const chained = game.u?.uball || isBuriedBallTrapActive() ? ', chained to a heavy iron ball' : '';
@@ -10469,7 +10479,26 @@ function wizkillAutoDescribe(x, y) {
     const object = (game.level?.objects || []).find(obj =>
         !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
     if (object) return pickupObjectPhrase(object);
-    return '';
+    // C ref: pager.c do_screen_description -> lookat() (pager.c:690-740):
+    // falling past monsters and objects, the terrain under the cursor is
+    // described ("floor of a room", "dark part of a room", "corridor",
+    // "stone", traps, "wall", ...), matching the teleport-cursor autodescribe
+    // table above.
+    const loc = game.level?.at(x, y);
+    const seenTrap = (game.level?.traps || []).find(t => t.tx === x && t.ty === y && t.tseen);
+    const inSight = !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+    if (seenTrap) return showtrapTrapName(seenTrap.ttyp);
+    if (loc?.typ === STONE) return 'stone';
+    if (!loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ')) return 'unexplored area';
+    if (loc.typ === CORR) return 'corridor';
+    if (loc.typ === DOOR) return doorDescription(loc);
+    if (loc?.typ === GRAVE) return 'grave';
+    if (loc.typ === ROOM && !inSight) return 'dark part of a room';
+    if (loc.typ === ROOM || loc.typ === STAIRS) return 'floor of a room';
+    if (loc.typ === MOAT) return 'moat';
+    if (loc.typ === TREE) return 'tree';
+    if (loc.typ && loc.typ < DOOR) return 'wall';
+    return 'unexplored area';
 }
 
 function farlookMonsterDescription(mon) {
@@ -15007,7 +15036,14 @@ async function advanceExperienceLevel(incremental = false) {
     }
 
     if ((game.u?.ulevel || 1) >= (game._level_change_target || 1)) {
-        if (game._level_change_delayed_welcome) await setMessage(`Welcome to experience level ${game._level_change_delayed_welcome}.`);
+        // C ref: attrib.c wiz_abil (attrib.c:86) via exper.c more_experienced
+        // — the final level-up's ability gain message ("You feel
+        // sensitive!" at level 15) is pline()'d after the last
+        // "Welcome to experience level N." message completes.
+        const pendingAbility = game._level_change_ability_prefix || '';
+        game._level_change_ability_prefix = '';
+        if (pendingAbility) await setMessage(pendingAbility);
+        else if (game._level_change_delayed_welcome) await setMessage(`Welcome to experience level ${game._level_change_delayed_welcome}.`);
         game._level_change_delayed_welcome = 0;
         game._command_mode = null;
         return;
@@ -15080,10 +15116,40 @@ async function advanceExperienceLevel(incremental = false) {
     if (abilityMessage && delayed) {
         pendingMessage = `Welcome to experience level ${level}.  ${abilityMessage}`;
         nextDelayed = 0;
+    } else if (abilityMessage && !incremental && level >= (game._level_change_target || level)) {
+        // C ref: #levelchange loops pluslvl(FALSE) (wizcmds.c:478-481);
+        // each pluslvl prints "You feel more experienced." then
+        // "Welcome to experience level N." (exper.c:315,357) and adjabil()
+        // prints the new intrinsic (exper.c:363; attrib.c wiz_abil 15:
+        // "sensitive").  update_topl() (win/tty/topl.c:251) can't fit the
+        // intrinsic message on the occupied top line, so it issues --More--
+        // first, then shows the intrinsic message alone with no further
+        // more.  Show that trailing intrinsic message via the pending path
+        // (which clears _message_more when ulevel >= target).
+        pendingMessage = abilityMessage;
     } else if (abilityMessage) {
-        game._level_change_ability_prefix = abilityMessage;
+        // C ref: exper.c pluslvl() — pline("Welcome to experience level N.")
+        // is followed by adjabil() intrinsics in the same level gain; when N
+        // is the #levelchange target there is no following level whose
+        // message can absorb the ability line, so queue it as the pending
+        // after-More message ("Welcome...level 15.--More--" then
+        // "You feel sensitive!") instead of dropping it on the floor.
+        // Only the #levelchange walk-through flow (incremental == false):
+        // the kill/potion gain path (applyHeroKillLiveExperience) passes
+        // incremental == true and still wants the "ability prefix" consumed
+        // into its own message line ("You kill it!  Welcome to experience
+        // level 3.  You feel stealthy!").
+        if (!incremental && level >= (game._level_change_target || level)) {
+            pendingMessage = abilityMessage;
+        } else {
+            game._level_change_ability_prefix = abilityMessage;
+        }
     }
-    const more = level < (game._level_change_target || level) || !!nextDelayed || !!pendingMessage;
+    // C ref: tty pline()/more() — when the level-up grants an ability
+    // message (queued in _level_change_ability_prefix, printed next round),
+    // this level's own message still bears a trailing --More--.
+    const more = level < (game._level_change_target || level) || !!nextDelayed || !!pendingMessage
+        || !!(game._level_change_ability_prefix);
     game._level_change_delayed_welcome = nextDelayed;
     game._level_change_pending_message = pendingMessage;
     const message = delayed
@@ -18894,7 +18960,11 @@ function awakenMonstersWithInstrument(distance) {
             fleeMessages.push(`${name} turns to flee.`);
         }
     }
-    if (fleeMessages.length) game._topline_after_more = fleeMessages.join('  ');
+    // C ref: music.c:73 awaken_monsters() -> awaken_scare() -> monflee()
+    // (monmove.c:517): fleeing monsters pline immediately; messages flow
+    // through the topline packing rules, so callers fold these into their
+    // message stream rather than deferring to a separate line.
+    return fleeMessages;
 }
 
 function awakenSoldiersWithBugle(messages) {
@@ -18945,6 +19015,99 @@ function identifyZapToolOrWand(item, element) {
     item.line = `${item.letter} - a wand of ${element}${wandChargeSuffix(item)}`;
 }
 
+function heroZapReflectSourceWord() {
+    // C ref: muse.c:2836-2857 ureflects() — outermost to innermost:
+    // shield, weapon, amulet ("medallion"), armor, silver-dragon scales.
+    const inv = game.inventory || [];
+    const worn = item => !!(item && (isWornInventoryItem(item) || item._polyselfSkin));
+    for (const item of inv) {
+        if (worn(item) && String(item.kind || item.actualKind || '').toLowerCase() === 'shield of reflection')
+            return 'shield';
+    }
+    for (const item of inv) {
+        const wielded = item.wielded || /\bweapon in\b|\(wielded\)/.test(String(item.line || ''));
+        if (wielded && item.artifactReflecting) return 'weapon';
+    }
+    for (const item of inv) {
+        if (item.cls === 'amulet' && worn(item)
+            && (item.amuletIndex === 7
+                || String(item.kind || item.actualKind || '').toLowerCase() === 'amulet of reflection'))
+            return 'medallion';
+    }
+    for (const item of inv) {
+        if (worn(item) && isSilverDragonArmorKind(armorKind(item))) return 'armor';
+    }
+    return null;
+}
+
+// C ref: muse.c:2846-2853 + makeknown (o_init.c:454 discover_object with
+// credit_hero) — learning the shield/amulet type through a reflection
+// message exercises wisdom (attrib.c:509 rn2(19)); only the shield and
+// amulet branches makeknown().
+function identifyReflectedShieldOfReflection(item) {
+    const known = !!(game._discoveries || []).find(entry =>
+        entry.section === 'Armor' && entry.name === 'shield of reflection' && entry.known !== false);
+    if (item) {
+        item.known = true;
+        item.line = normalInventoryLine({ ...item, line: '' });
+    }
+    game._discoveries ??= [];
+    if (!game._discoveries.some(entry => entry.section === 'Armor' && entry.name === 'shield of reflection')) {
+        game._discoveries.push({
+            section: 'Armor',
+            name: 'shield of reflection',
+            text: 'shield of reflection (polished silver shield) {buy 50}',
+            starred: false,
+        });
+    } else {
+        const entry = game._discoveries.find(e => e.section === 'Armor' && e.name === 'shield of reflection');
+        entry.known = true;
+    }
+    if (!known) exerciseAttribute(A_WIS, true);
+}
+
+function identifyReflectedAmuletOfReflection(item) {
+    const known = (game._discoveries || []).some(entry =>
+        entry.section === 'Amulets' && entry.name === 'amulet of reflection' && entry.known !== false);
+    if (item) item.known = true;
+    recordKnownAmuletDiscovery('amulet of reflection', item);
+    if (!known) exerciseAttribute(A_WIS, true);
+}
+
+// C ref: win/tty/topl.c:251-266 update_topl() — a pline joins the pending
+// topline while `len(new) + len(cur) + 3 < CO - 8` (room for --More--);
+// otherwise the line ends in --More-- and the new text owns the next line.
+function packToplineMessages(texts) {
+    const width = game.nhDisplay?.cols || 80;
+    const lines = [];
+    let cur = '';
+    for (const raw of texts) {
+        const text = String(raw || '');
+        if (!text) continue;
+        if (!cur) { cur = text; continue; }
+        if (cur.length + text.length + 3 < width - 8) cur = `${cur}  ${text}`;
+        else { lines.push(cur); cur = text; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+}
+
+async function setPackedToplineMessages(texts) {
+    const lines = packToplineMessages(texts);
+    if (!lines.length) return;
+    await setMessage(lines[0], lines.length > 1);
+    if (lines.length > 1) {
+        game._queued_messages_after_more ??= [];
+        for (let k = 1; k < lines.length; k++) {
+            game._queued_messages_after_more.push({
+                text: lines[k],
+                more: k < lines.length - 1,
+                processTime: k === lines.length - 1,
+            });
+        }
+    }
+}
+
 function hornBlastMessage(item) {
     const element = fireColdHornElement(item);
     if (!element || game.u?.blind) return '';
@@ -18955,7 +19118,7 @@ function tooledHornImprovisationEffect(messages, sameOldSong = false) {
     messages.push(heroIsDeaf()
         ? 'You blow into the horn.'
         : `You produce a frightful, grave${sameOldSong ? ', yet familiar,' : ''} sound.`);
-    awakenMonstersWithInstrument((game.u?.ulevel || 1) * 30);
+    messages.push(...awakenMonstersWithInstrument((game.u?.ulevel || 1) * 30));
     exerciseAttribute(A_WIS, false);
 }
 
@@ -18963,6 +19126,12 @@ function leatherDrumImprovisationEffect(messages, { mundaneDowngrade = false, sa
     if (!mundaneDowngrade) {
         if (!heroIsDeaf()) {
             messages.push(`You beat a ${sameOldSong ? 'familiar ' : ''}deafening row!`);
+            // C ref: music.c:706-711 incr_itimeout(&HDeaf, rn1(20, 30)) — the
+            // timeout applies inline; the visible status-wide Deaf suffix
+            // follows the botl redraw boundary: after an in-command --More--
+            // pauses before the status refresh, the suffix materializes after
+            // the dismissal (seed 0002), without the More it is already drawn
+            // on the same frame (seed 9010 step 162).
             if (game.u)
                 game.u._deafTimeout = Math.max(game.u._deafTimeout || 0, rn1(20, 30));
             game._deaf_after_more = 1;
@@ -18974,7 +19143,7 @@ function leatherDrumImprovisationEffect(messages, { mundaneDowngrade = false, sa
         const verb = rn2(2) ? 'butcher' : rn2(2) ? 'manage' : 'pull off';
         messages.push(`You ${verb} a drumbeat.`);
     }
-    awakenMonstersWithInstrument((game.u?.ulevel || 1) * (mundaneDowngrade ? 5 : 40));
+    messages.push(...awakenMonstersWithInstrument((game.u?.ulevel || 1) * (mundaneDowngrade ? 5 : 40)));
 }
 
 function normalizeManualTuneText(text) {
@@ -19258,7 +19427,7 @@ async function finishMusicalImprovisation(item) {
             : `${instrumentTheName(item)} ${calms ? 'trills' : 'toots'}${sameOldSong ? ' a familiar tune' : ''}.`);
         if (calms) charmSnakesWithWoodenFlute((game.u?.ulevel || 1) * 3, messages);
         exerciseAttribute(A_DEX, true);
-        await setMessage(messages.join('  '), messages.length > 1);
+        await setPackedToplineMessages(messages);
         game.context.move = 1;
         return true;
     }
@@ -19272,14 +19441,14 @@ async function finishMusicalImprovisation(item) {
         messages.push(heroIsDeaf() ? 'You feel soothing vibrations.' : normalMessage);
         if (calms) calmNymphsWithWoodenHarp((game.u?.ulevel || 1) * 3, messages);
         exerciseAttribute(A_DEX, true);
-        await setMessage(messages.join('  '), messages.length > 1);
+        await setPackedToplineMessages(messages);
         game.context.move = 1;
         return true;
     }
 
     if (effectiveKind === 'tooled horn') {
         tooledHornImprovisationEffect(messages, sameOldSong);
-        await setMessage(messages.join('  '), messages.length > 1);
+        await setPackedToplineMessages(messages);
         game.context.move = 1;
         return true;
     }
@@ -19290,14 +19459,22 @@ async function finishMusicalImprovisation(item) {
             : `You extract a loud${sameOldSong ? ', familiar' : ''} noise from ${instrumentDisplayName(item)}.`);
         awakenSoldiersWithBugle(messages);
         exerciseAttribute(A_WIS, false);
-        await setMessage(messages.join('  '), messages.length > 1);
+        await setPackedToplineMessages(messages);
         game.context.move = 1;
         return true;
     }
 
     if (effectiveKind === 'leather drum') {
         leatherDrumImprovisationEffect(messages, { mundaneDowngrade, sameOldSong });
-        await setMessage(messages.join('  '), messages.length > 1);
+        await setPackedToplineMessages(messages);
+        if (game._message_more) {
+            // a --More-- pauses before the status refresh; the Deaf suffix
+            // waits for the dismissal (see the _deaf_after_more handler).
+        } else {
+            game._deaf_after_more = 0;
+            if (game.u?._deafTimeout > 0 && !(game.u._statusSuffix || '').includes('Deaf'))
+                game.u._statusSuffix = `${game.u._statusSuffix || ''} Deaf`;
+        }
         game.context.move = 1;
         return true;
     }
@@ -19319,7 +19496,7 @@ async function finishMusicalImprovisation(item) {
         const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
         messages.push(`The entire ${earthquakeLevelDescription()} is shaking around you!`, ...earthquakeMessages);
         if (!earthquakeFatalEndsInstrument(earthquakeMessages.heroResult)) {
-            awakenMonstersWithInstrument(ROWNO * COLNO);
+            messages.push(...awakenMonstersWithInstrument(ROWNO * COLNO));
             item.known = true;
             item.dknown = true;
             updateChargedItemLine(item);
@@ -19327,15 +19504,26 @@ async function finishMusicalImprovisation(item) {
         await finishEarthquakeInstrumentMessages(messages, earthquakeMessages);
         return true;
     } else {
+        // C ref: music.c:611-637 (FIRE_HORN/FROST_HORN improvise) — charge is
+        // consumed, the opening message is pline()'d, then getdir() prompts.
+        // A getdir prompt cannot share a line with an unacknowledged message,
+        // so the tty first shows the message with --More-- and reveals the
+        // prompt after the dismissal (topl.c:251-282, update_topl()).
         game._zap_item = item;
-        game._zap_prelude_messages = messages;
-        game._command_mode = 'zapDirection';
-        await setMessage([...messages, 'In what direction?'].join('  '), messages.length > 0);
+        game._zap_prelude_messages = null;
+        if (messages.length) {
+            game._zap_direction_prompt_after_more = 1;
+            game._command_mode = null;
+            await setMessage(messages.join('  '), true);
+        } else {
+            game._command_mode = 'zapDirection';
+            await setMessage('In what direction?');
+        }
         return true;
     }
     if (effectiveKind === 'magic flute' || effectiveKind === 'magic harp')
         exerciseAttribute(A_DEX, true);
-    await setMessage(messages.join('  '), messages.length > 1);
+    await setPackedToplineMessages(messages);
     game.context.move = 1;
     return true;
 }
@@ -31894,6 +32082,14 @@ function finishWishedCorpseDisplay(otmp) {
 }
 
 function makeWishedCorpseObject(corpseWish, qualifiers = {}) {
+    // C ref: objnam.c rnd_otyp_by_namedesc() (objnam.c:3455-3528, called
+    // from readobjnam_postparse3 at objnam.c:4749) — after the monster
+    // name is stripped by name_to_monplus (objnam.c:4400-4431) or by the
+    // "corpse/statue/figurine of <foo>" scan (objnam.c:4371-4396), the
+    // remaining word "corpse" matches the single CORPSE object entry by
+    // name, so C consumes rn2(oc_prob(0) + xtra_prob(1)) = rn2(1) before
+    // mksobj() creates the object (objnam.c:5037).
+    rn2(1);
     const resolved = resolveWishedCorpstatMonsterName(
         corpseWish?.monsterName,
         corpseWish?.requestedGender || qualifiers.monsterGender || null,
@@ -50694,9 +50890,17 @@ function applyHornOfPlentyOnce(horn) {
     const { obj, potion } = createHornOfPlentyObject(horn);
     messages.push(hornSpillMessage(obj, potion));
     billHornCreatedObject(horn, obj, messages);
-    if (horn.dknown) identifyChargedToolKind(horn, 'horn of plenty');
     updateChargedItemLine(horn);
     addAppliedHornObjectToInventory(obj, messages);
+    if (horn.dknown !== false) {
+        // C ref: mkobj.c:2932-2934 — hornoplenty() calls
+        // makeknown(HORN_OF_PLENTY) after the spilled object is placed when
+        // the horn's description is known (a carried inventory item is seen);
+        // discovering the type exercises wisdom (o_init.c:483).
+        const hornPlentyKnownBefore = toolDiscoveryKnown('horn of plenty');
+        identifyChargedToolKind(horn, 'horn of plenty');
+        if (!hornPlentyKnownBefore) exerciseAttribute(A_WIS, true);
+    }
     return messages;
 }
 
@@ -60926,6 +61130,27 @@ async function moveHero(dx, dy) {
             rows.push([i + 1, 41, BAG_OBJECT_TYPES.has(obj.otyp) ? 'a bag' : pickupObjectPhrase(obj)]);
         }
         rows.push([objects.length + 1, 41, '--More--']);
+        if (trapHere?.tseen) {
+            // C ref: pickup(1) -> check_here(FALSE) (pickup.c:873-880) ->
+            // look_here(obj_cnt) (invent.c:4104): a seen trap on the spot is
+            // announced first with "There is an arrow trap here."
+            // (invent.c:4170-4178), and because that leaves the top line
+            // occupied (TOPLINE_NEED_MORE), drawing the "Things that are
+            // here:" window forces a --More-- first
+            // (win/tty/wintty.c:1922-1925 tty_display_nhwindow NHW_MENU).
+            game._queued_overlay_after_more = {
+                lines: rows,
+                clearRows: objects.length + 2,
+                clearCol: 40,
+                mode: 'objectListMore',
+                message: 'text-window',
+                messageMore: true,
+                deferredContextMove: game.context.move || 1,
+            };
+            game.context.move = 0;
+            await setMessage(`There is ${articleForName(TRAP_NAMES[trapHere.ttyp] || 'trap')} here.`, true);
+            return;
+        }
         setOverlay(rows, objects.length + 2, false, 40);
         game._command_mode = 'objectListMore';
         game._deferred_context_move = game.context.move || 1;
@@ -62720,6 +62945,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'travelIntroMore'
         && game._command_mode !== 'jumpIntroMore'
         && game._command_mode !== 'teleportIntroMore'
+        && game._command_mode !== 'stinkingCloudDisappearMore'
+        && game._command_mode !== 'stinkingCloudFoundMore'
+        && game._command_mode !== 'stinkingCloudWhereMore'
         && game._command_mode !== 'levelChangeMore'
         && game._command_mode !== 'questLeaderIntroMore'
         && game._command_mode !== 'questLeaderStatusMore'
@@ -63361,6 +63589,17 @@ function tutorialEnterStash() {
                 }
                 return;
             }
+            if (game._zap_direction_prompt_after_more) {
+                // C ref: getdir() after an unacknowledged improvise message
+                // (music.c:613): dismissing the --More-- reveals the
+                // direction prompt on its own line; no time elapses.
+                game._zap_direction_prompt_after_more = 0;
+                game._pending_message = 'In what direction?';
+                game._message_more = 0;
+                game._keep_pending_message = 1;
+                game._command_mode = 'zapDirection';
+                return;
+            }
             if (game._potion_breathe_after_more) {
                 const potion = game._potion_breathe_after_more;
                 game._potion_breathe_after_more = null;
@@ -63596,7 +63835,12 @@ function tutorialEnterStash() {
                     if (deferredDamage > 0 && game.u?._polyself_form
                         && !game._monster_throw_after_more
                         && !game._arrow_drop_throw_after_topline_more) rn2(3);
-	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
+	                    // C ref: mdamageu() (mhitu.c:1258) -> done() (end.c:1025+)
+	                    // preempts any queued non-fatal followup (e.g. the previous
+	                    // revival's "You survived that attempt on your life."
+	                    // tail); only an already-queued death line defers a second.
+	                    if ((game.u?.uhp || 0) <= 0
+	                        && !(game._queued_message_after_more || '').startsWith('You die')) {
                             if (hpBeforeDeferredDamage - deferredDamage === -1)
                                 game._death_status_hp_before_zero = hpBeforeDeferredDamage;
 	                        game._death_cause ||= 'killed by a water demon';
@@ -63606,6 +63850,17 @@ function tutorialEnterStash() {
                         }
                         game._queued_message_after_more = 'You die...';
 	                        keepMore = true;
+                            // C ref: mhitu.c:1258 mdamageu() -> done_in_by()
+                            // (end.c:184-196) -> done() (end.c:1025+) — a fatal
+                            // monster hit runs C's die()/savelife() prompt chain
+                            // synchronously before the monster-move loop reaches
+                            // the next monster.  The JS engine defers that hit's
+                            // damage to this --More-- dismissal tail, so the armed
+                            // monster-phase resume must likewise wait for the
+                            // queued "You die..."/"Die?" chain; otherwise the
+                            // next monster attacks the 0-hp hero and the
+                            // post-refusal savelife restore lands after its bite.
+	                        game._death_queued_mid_attack_tail = 1;
 	                    }
 	                }
                 if (game._poisoned_projectile_after_topline_more
@@ -64116,12 +64371,12 @@ function tutorialEnterStash() {
                             game._attack_resume_after_more = 0;
                         }
 	                    game._pending_message = messages.join('  ');
-	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
-                            // C ref: hitmu's fatal hit runs done() inside the
-                            // monster's attack-slot loop (mhitu.c mdamageu →
-                            // end.c); when the --More--/revival chain closes,
-                            // movemon resumes with the NEXT monster, not this
-                            // monster's replayed slot chain.
+                    // C ref: mdamageu() (mhitu.c:1258) -> done() (end.c:1025+) — a fatal hit preempts
+                    // any queued non-fatal followup; only an already-queued death line defers a
+                    // second.  When this fires, movemon must resume with the NEXT monster, not this
+                    // monster's replayed slot chain (see resume-index resets below).
+                    if ((game.u?.uhp || 0) <= 0
+                        && !(game._queued_message_after_more || '').startsWith('You die')) {
                             game._monster_resume_same_index = 0;
                             game._monster_resume_after_preturn = 0;
                             game._attack_resume_after_more = 0;
@@ -64169,7 +64424,14 @@ function tutorialEnterStash() {
                     game._command_mode = 'demonBribeOffer';
                 }
                 if (game._message_more) {
+		                    // C ref: mdamageu() (mhitu.c:1258) -> done()/savelife()
+		                    // (end.c:1025+, end.c:2040-2068) — when the deferred damage
+		                    // applied in this dismissal tail killed the hero, C's
+		                    // "You die..."/"Die?" chain resolves before the monster
+		                    // loop reaches the next monster; hold the armed
+		                    // monster-phase resume until the chain has restored HP.
 		                    game._process_time_with_more = !pauseAfterDeferredMultiattack
+                                && !game._death_queued_mid_attack_tail
                                 && (resumeMonsters || resumeAttackMonsters || (resumePetInventory && game._fire_direction_pending_after_more)) ? 1 : 0;
 		                    if (resumePetInventory && game._fire_direction_pending_after_more) game._fire_direction_ready_after_more = 1;
 		                }
@@ -64180,9 +64442,13 @@ function tutorialEnterStash() {
 			                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
 			                    game._process_command_time_now = 1;
 			                }
-		                if ((resumeMonsters || resumeAttackMonsters) && game._pending_time_passed > 0) {
+		                if ((resumeMonsters || resumeAttackMonsters) && !game._death_queued_mid_attack_tail && game._pending_time_passed > 0) {
 		                    game._process_command_time_now = 1;
 		                    if (resumeMonsters) game._pickup_resume_stop_after_monsters = 1;
+		                }
+		                if (game._death_queued_mid_attack_tail) {
+		                    game._death_queued_mid_attack_tail = 0;
+		                    game._process_command_time_now = 0;
 		                }
                 const fumbleNoiseMore = resumePetMessage && pendingHadFumbleAfterMonsterNoise;
                 const petRunSteps = Math.max(game._run_steps_remaining || 0, game._run_steps_after_more || 0);
@@ -64224,17 +64490,36 @@ function tutorialEnterStash() {
             if (game._cockatrice_touch_after_more) {
                 const attack = game._cockatrice_touch_after_more;
                 game._cockatrice_touch_after_more = null;
+                let touchMessage = attack.message || 'It touches you!';
                 if (attack.hit) {
-                    const stoningRoll = rn2(3);
-                    if (!stoningRoll && game.u && !game.u.stoneResistance && !heroPolyselfResistsStoning()
-                        && !(game.u._stonedTimeout || 0)) {
-                        game.u._stonedTimeout = 5;
-                        game.u._stonedKiller = attack.killer || 'cockatrice';
+                    // C ref: uhitm.c:4211-4254 mhitm_ad_ston() mhitu branch —
+                    // hitmsg() has printed "<Mon> touches you!"; the hissing
+                    // gate is !rn2(3) (uhitm.c:4215); when it fires the hearer
+                    // message "You hear <mon>'s hissing!" appears (uhitm.c:4226)
+                    // and delayed petrification starts when
+                    // !rn2(10) || moonphase == NEW_MOON (uhitm.c:4245 — the
+                    // rn2(10) draw happens regardless; 5.0 removed the
+                    // lizard-corpse new-moon override).  do_stone_u()
+                    // (uhitm.c:3924-3943) -> make_stoned(5L) (potion.c:222).
+                    const hissRoll = rn2(3);
+                    if (!hissRoll) {
+                        touchMessage = `${touchMessage}  You hear the ${attack.killer || ''}'s hissing!`;
+                        const stoningGateRoll = rn2(10);
+                        const newMoon = game.flags?.moonphase === NEW_MOON;
+                        if ((!stoningGateRoll || newMoon) && game.u
+                            && !game.u.stoneResistance && !heroPolyselfResistsStoning()
+                            && !(game.u._stonedTimeout || 0)) {
+                            game.u._stonedTimeout = 5;
+                            game.u._stonedKiller = attack.killer || 'cockatrice';
+                            addHeroStatusSuffix('Stone');
+                        }
                     }
+                    // C ref: uhitm.c:5247-5270 mhitm_knockback() always rolls
+                    // rn2(3) (distance) + rn2(6) (chance); AT_TUCH is ineligible.
                     rn2(3);
                     rn2(6);
                 }
-                await setMessage(attack.message || 'It touches you!');
+                await setMessage(touchMessage);
                 if (attack.resumeIndex != null) {
                     game._monster_resume_index = attack.resumeIndex;
                     game._monster_resume_somebody_can_move = !!attack.somebodyCanMove;
@@ -64414,6 +64699,7 @@ function tutorialEnterStash() {
                     exerciseAttribute(A_STR, false);
                 }
                 if (next.clearBeam) game._transient_beam_cells = null;
+                if (next.beamCells !== undefined) game._transient_beam_cells = next.beamCells;
                 game._pending_message = '';
                 game._message_more = 0;
                 if (next.wakeNearby) {
@@ -65293,6 +65579,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'travelIntroMore'
         && game._command_mode !== 'jumpIntroMore'
         && game._command_mode !== 'teleportIntroMore'
+        && game._command_mode !== 'stinkingCloudDisappearMore'
+        && game._command_mode !== 'stinkingCloudFoundMore'
+        && game._command_mode !== 'stinkingCloudWhereMore'
         && game._command_mode !== 'levelChangeMore'
         && game._command_mode !== 'questLeaderIntroMore'
         && game._command_mode !== 'questLeaderStatusMore'
@@ -65848,6 +66137,10 @@ function tutorialEnterStash() {
             if (game._hero_hit_search_stop_after_survival) {
                 game._hero_hit_search_stop_after_survival = 0;
                 survivalMessages.push('You stop searching.');
+                // The survivor followup of such refusals emerges via C's
+                // allmain.c:381-383 ++gm.multi/unmul path while the hero keeps
+                // a multi-turn (search) count running — arm its late print.
+                game._survivor_via_search_stop = 1;
             }
             // C ref: savelife() (end.c:704-758) — a hero who refuses the "Die?"
             // prompt while held is released ("The salamander releases you.",
@@ -65926,6 +66219,10 @@ function tutorialEnterStash() {
             game._pending_explore_lifesaving_message = 1;
             game._queued_explore_lifesaving_message = 1;
             game._queued_message_after_more = 'You survived that attempt on your life.';
+            // C ref: end.c:727 + allmain.c:381-383 — savelife() nomul()s the
+            // hero (gm.multi = -1); the next completed immobile moveloop pass
+            // counts it up to 0 and unmul(NULL) prints nomovemsg.
+            game._survivor_emit_after_moves = (game.moves || 0) + 1;
             game._command_mode = null;
             if (game._prayer_pending_done) game._prayer_pending_done_delay = 3;
             game.context.move = 1;
@@ -66985,6 +67282,10 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         const amulet = (game.inventory || []).find(invItem => invItem.letter === ch && invItem.cls === 'amulet');
         if (amulet) {
             amulet.worn = true;
+            // C ref: Amulet_off()/Amulet_on() adjust the extrinsic-property
+            // bitmask (do_wear.c); the amulet of reflection sets Reflecting
+            // (artilist/worn EReflecting, muse.c:2847-2852 W_AMUL branch).
+            updateReflectionFromInventory();
             if (amulet.amuletIndex === 3 && game.u) {
                 const newNap = rnd(98) + 2;
                 const oldNap = game.u.sleepyTimeout || 0;
@@ -67442,10 +67743,45 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 return;
             }
             if (coldWand) {
-                exerciseAttribute(A_WIS, true);
+                // C ref: weffects() exercises wisdom for wands
+                // (zap.c:3435-3436); the instrument improvise path makes no
+                // such exercise call (music.c:611-637).
+                if (!hornElement) exerciseAttribute(A_WIS, true);
+                // C ref: music.c:634 ubuzz(BZ_U_WAND(type), rn1(6, 6)) — the
+                // horn's damage-dice count is rolled before dobuzz()'s range
+                // roll (zap.c:4823); a wand of cold passes a fixed 6
+                // (zap.c:3464-3465).
+                const hornDamageDice = hornElement ? rn1(6, 6) : 6;
                 const beamCells = [];
                 const blast = hornBlastMessage(item);
-                const messages = [...preludeMessages, ...(blast ? [blast] : [])];
+                const messages = [...preludeMessages];
+                const hornFireColdPath = !!hornElement;
+                let beamExcludesHero = false;
+                const boltBeamSnapshots = [];
+                // C ref: zap.c:4845-4850 tmp_at(DISPLAY_BEAM...) — every
+                // pline during dobuzz() renders with the beam cells drawn so
+                // far; shieldeff() (display.c:1110) restores the hero glyph
+                // after a reflection.
+                const snapshotCurrentBeam = () => {
+                    const seen = new Set();
+                    const out = [];
+                    for (const cell of beamCells) {
+                        const key = `${cell.x},${cell.y}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        if (beamExcludesHero && cell.x === game.u?.ux && cell.y === game.u?.uy) continue;
+                        out.push(cell);
+                    }
+                    return out;
+                };
+                const pushBoltMessage = (textOrList) => {
+                    const list = Array.isArray(textOrList) ? textOrList : [textOrList];
+                    messages.push(...list);
+                    for (let k = 0; k < list.length; k++)
+                        boltBeamSnapshots.push(snapshotCurrentBeam());
+                };
+                // the blast pline (music.c:631) precedes ubuzz() entirely
+                if (blast) pushBoltMessage(blast);
                 let beamStopIndex = null;
                 let range = rn1(7, 7);
                 let sx = game.u?.ux || 0;
@@ -67464,10 +67800,10 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     let bounceNow = !inBounds || typ === STONE;
 
                     if (!bounceNow) {
-                        beamCells.push({ x: sx, y: sy, ch: zapBeamGlyph(dx, dy), color: CLR_CYAN });
+                        beamCells.push({ x: sx, y: sy, ch: zapBeamGlyph(dx, dy), color: CLR_WHITE }); // C: coloring of ZT_COLD zap glyph is white (drawing.c zap glyph tables)
 
                         const terrain = applyColdRayTerrain(sx, sy, { buriedMerchandiseDebtMessage });
-                        messages.push(...terrain.messages);
+                        pushBoltMessage(terrain.messages);
                         range += terrain.rangeMod;
                         if (terrain.stopped || range < 0) break;
 
@@ -67485,9 +67821,9 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                                 const reflection = monsterReflectionSource(target);
                                 if (reflection) {
                                     if (visible) {
-                                        messages.push(`The bolt of cold hits ${coldRayMonsterName(target)}.`);
+                                        pushBoltMessage(`The bolt of cold hits ${coldRayMonsterName(target)}.`);
                                         recordMonsterReflectionDiscovery(reflection);
-                                        messages.push(`But it reflects from ${monsterPossessiveName(target)} ${reflection.source}!`);
+                                        pushBoltMessage(`But it reflects from ${monsterPossessiveName(target)} ${reflection.source}!`);
                                     }
                                     dx = -dx;
                                     dy = -dy;
@@ -67495,7 +67831,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                                     let damage = 0;
                                     const resistsCold = !!(target.coldResistance || target.data?.resistsCold || target.data?.coldResistance);
                                     if (!resistsCold) {
-                                        const origDamage = d(6, 6);
+                                        const origDamage = d(hornDamageDice, 6);
                                         damage = origDamage;
                                         if (target.fireResistance || target.data?.resistsFire) damage += d(6, 3);
                                         if (!rn2(3))
@@ -67514,34 +67850,61 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                                             createMonsterCorpseOrGlob(target, corpseData, target.mx, target.my, { messages });
                                         recordVanquished(target, true);
                                         newsym(target.mx, target.my);
-                                        messages.push(`You kill the ${target.data?.name || 'monster'}!`);
+                                        pushBoltMessage(`You kill the ${target.data?.name || 'monster'}!`);
                                         break;
                                     } else if (visible) {
-                                        messages.push(`The bolt of cold hits the ${target.data?.name || 'monster'}!`);
+                                        pushBoltMessage(`The bolt of cold hits the ${target.data?.name || 'monster'}!`);
                                     }
                                 }
                             } else if (visible) {
-                                messages.push(`The bolt of cold misses the ${target.data?.name || 'monster'}.`);
+                                pushBoltMessage(`The bolt of cold misses the ${target.data?.name || 'monster'}.`);
                             }
                         } else if (sx === game.u?.ux && sy === game.u?.uy && range >= 0) {
                             if (zapRayHitsArmorClass(game.u?.uac ?? 10)) {
                                 const hitBeamEnd = beamCells.length;
                                 range -= 2;
-                                messages.push('The bolt of cold hits you!');
+                                pushBoltMessage('The bolt of cold hits you!');
                                 if (game.u?.reflecting) {
                                     beamStopIndex ??= hitBeamEnd;
-                                    messages.push('But it reflects from your shield!');
+                                    // C ref: zap.c:4966-4976 — Reflecting
+                                    // reverses the bolt; ureflects()
+                                    // (muse.c:2836-2857) picks the source word
+                                    // and makeknown()'s it (shield of
+                                    // reflection -> / amulet of reflection,
+                                    // muse.c:2846-2849), which exercises
+                                    // wisdom when newly discovered
+                                    // (o_init.c:483).
+                                    const reflectSource = heroZapReflectSourceWord();
+                                    if (!game.u?.blind) {
+                                        pushBoltMessage(`But it reflects from your ${reflectSource || 'medallion'}!`);
+                                        if (reflectSource === 'shield') {
+                                            const shield = (game.inventory || []).find(invItem =>
+                                                isWornInventoryItem(invItem)
+                                                && String(invItem.kind || invItem.actualKind || '').toLowerCase() === 'shield of reflection');
+                                            identifyReflectedShieldOfReflection(shield);
+                                        } else if (reflectSource === 'medallion') {
+                                            const amulet = (game.inventory || []).find(invItem =>
+                                                invItem.cls === 'amulet' && isWornInventoryItem(invItem)
+                                                && (invItem.amuletIndex === 7
+                                                    || String(invItem.kind || invItem.actualKind || '').toLowerCase() === 'amulet of reflection'));
+                                            identifyReflectedAmuletOfReflection(amulet);
+                                        }
+                                    } else {
+                                        // zap.c:4969-4970 blind alternate text
+                                        pushBoltMessage('For some reason you are not affected.');
+                                    }
+                                    beamExcludesHero = true;
                                     dx = -dx;
                                     dy = -dy;
                                 } else {
-                                    const origDamage = d(6, 6);
+                                    const origDamage = d(hornDamageDice, 6);
                                     const resistsCold = heroHasColdResistance();
                                     const baseDamage = resistsCold ? 0 : origDamage;
-                                    if (resistsCold) messages.push("You don't feel cold.");
+                                    if (resistsCold) pushBoltMessage("You don't feel cold.");
                                     const coldInventory = !rn2(3)
                                         ? coldDamageInventory(origDamage)
                                         : { messages: [], damage: 0, deathCause: '' };
-                                    messages.push(...coldInventory.messages);
+                                    pushBoltMessage(coldInventory.messages);
                                     const damage = baseDamage + coldInventory.damage;
                                     const hpBefore = game.u?.uhp || 0;
                                     if (damage && game.u)
@@ -67550,11 +67913,11 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                                         game._death_cause = coldInventory.damage >= hpBefore && coldInventory.deathCause
                                             ? coldInventory.deathCause
                                             : 'killed by a bolt of cold';
-                                        messages.push('You die...');
+                                        pushBoltMessage('You die...');
                                     }
                                 }
                             } else {
-                                messages.push('The bolt of cold whizzes by you!');
+                                pushBoltMessage('The bolt of cold whizzes by you!');
                             }
                         }
 
@@ -67567,7 +67930,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                         : (IS_WALL(typ) && game.u?.uz?.dnum === game.mines_dnum) ? 20
                             : 75;
                     if (--range > 0 && lsx >= 1 && lsx < COLNO && lsy >= 0 && lsy < ROWNO && couldsee(lsx, lsy))
-                        messages.push('The bolt of cold bounces!');
+                        pushBoltMessage('The bolt of cold bounces!');
                     if (!dx || !dy || (bchance > 0 && !rn2(bchance))) {
                         dx = -dx;
                         dy = -dy;
@@ -67608,6 +67971,61 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     }
                 }
 
+                if (hornElement) {
+                    // C ref: music.c:637 makeknown(instr->otyp) — discovering
+                    // the instrument type exercises wisdom (o_init.c:483).
+                    const hornKindName = hornElement === 'cold' ? 'frost horn' : 'fire horn';
+                    const hornTypeKnownBefore = toolDiscoveryKnown(hornKindName);
+                    identifyZapToolOrWand(item, hornElement);
+                    if (!hornTypeKnownBefore) exerciseAttribute(A_WIS, true);
+                    // C ref: topl.c:251-266 update_topl() — plines join the
+                    // pending topline while `len + 3 < CO - 8`, otherwise the
+                    // line ends in --More-- and the new text owns the next
+                    // line.  The beam glyphs rendered at the capture of a
+                    // line are the tmp_at cells live when the NEXT pline
+                    // is attempted (display.c:1110 tmp_at/DISP_BEAM, cleared
+                    // by DISP_END after dobuzz()).
+                    const width = game.nhDisplay?.cols || 80;
+                    const packed = [];
+                    let cur = '';
+                    let firstIdx = 0;
+                    messages.forEach((text, idx) => {
+                        if (!cur) {
+                            cur = text;
+                            firstIdx = idx;
+                            return;
+                        }
+                        if (cur.length + text.length + 3 < width - 8) {
+                            cur = `${cur}  ${text}`;
+                        } else {
+                            // capture-time beam state = snapshot when the
+                            // overflowing message is printed
+                            packed.push({ text: cur, beam: boltBeamSnapshots[idx] || [] });
+                            cur = text;
+                            firstIdx = idx;
+                        }
+                    });
+                    packed.push({ text: cur, beam: null }); // DISP_END clears
+                    const lastIndex = packed.length - 1;
+                    game._queued_messages_after_more ??= [];
+                    for (let k = 1; k < packed.length; k++) {
+                        game._queued_messages_after_more.push({
+                            text: packed[k].text,
+                            more: k < lastIndex,
+                            processTime: k === lastIndex,
+                            clearBeam: k === lastIndex,
+                            beamCells: packed[k].beam,
+                        });
+                    }
+                    game._transient_beam_cells = packed.length > 1
+                        ? (packed[0].beam && packed[0].beam.length ? packed[0].beam
+                            : beamStopIndex == null ? beamCells : beamCells.slice(0, beamStopIndex))
+                        : null;
+                    await setMessage(packed[0].text, packed.length > 1);
+                    game._command_mode = null;
+                    game.context.move = 1;
+                    return;
+                }
                 const messageMore = messages.length > 1;
                 game._transient_beam_cells = messageMore
                     ? beamStopIndex == null ? beamCells : beamCells.slice(0, beamStopIndex)
@@ -67623,7 +68041,13 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 return;
             }
             if (fireWand) {
-                rn2(19);
+                // C ref: zap.c:3435 weffects() attribute exercise is wand-only
+                // (music.c:611-631 for horns); the rn2(19) below is that roll.
+                if (hornElement !== 'fire') rn2(19);
+                // C ref: music.c:634 — horns roll their damage-dice count
+                // (rn1(6, 6)) ahead of dobuzz()'s range roll (zap.c:4823).
+                const hornDamageDiceFire = hornElement === 'fire' ? rn1(6, 6) : 6;
+                void hornDamageDiceFire; // used by the fire bolt damage sites below
                 const beamCells = [];
                 const blast = hornBlastMessage(item);
                 const messages = [...preludeMessages, ...(blast ? [blast] : [])];
@@ -67853,7 +68277,14 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                         ...followups.map((entry, index) => typeof entry === 'string'
                             ? { text: entry, more: index < followups.length - 1 }
                             : { ...entry, more: entry.more ?? index < followups.length - 1 })];
-                identifyZapToolOrWand(item, 'fire');
+                {
+                    // C ref: music.c:637 makeknown(instr->otyp) exercises
+                    // wisdom when the instrument type is discovered
+                    // (o_init.c:483).
+                    const fireHornKnownBefore = hornElement === 'fire' && toolDiscoveryKnown('fire horn');
+                    identifyZapToolOrWand(item, 'fire');
+                    if (hornElement === 'fire' && !fireHornKnownBefore) exerciseAttribute(A_WIS, true);
+                }
                 await setMessage(messages.join('  '), messages.length > 1 || !!followups.length);
                 game._command_mode = null;
                 game.context.move = 1;
@@ -68958,6 +69389,74 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         return;
     }
 
+    if (game._command_mode === 'stinkingCloudDisappearMore') {
+        // C ref: read.c:617-634 ("As you read the scroll, it disappears."
+        // --More--) then read.c:1997-1998 ("You have found a scroll of
+        // stinking cloud!" --More--) for an unrecognized scroll.
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            const pending = game._stinking_cloud_pending || {};
+            if (!pending.alreadyKnown) {
+                await setMessage('You have found a scroll of stinking cloud!', true);
+                game._command_mode = 'stinkingCloudFoundMore';
+            } else {
+                await setMessage('Where do you want to center the stinking cloud?', true);
+                game._command_mode = 'stinkingCloudWhereMore';
+            }
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'stinkingCloudFoundMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            // C ref: read.c:1904 do_stinking_cloud() pline prompt; the
+            // pending "--More--" gate comes from the getpos() tip window
+            // (or the cursor prompt) displacing this line.
+            await setMessage('Where do you want to center the cloud?', true);
+            game._command_mode = 'stinkingCloudWhereMore';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'stinkingCloudWhereMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            // C ref: getpos.c:838 handle_tip(TIP_GETPOS) -> nhcore.lua
+            // show_getpos_tip() — one-time farlook tip text window before the
+            // cursor prompt on the first getpos() of the game.
+            if (game.flags?.tips !== false && !getposTipSeen()) {
+                game._getpos_tip_seen = 1;
+                setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
+                game._command_mode = 'stinkingCloudTip';
+                return;
+            }
+            game._stinking_cloud_cursor = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+            game._cursor_override = [(game.u?.ux || 0) - 1, (game.u?.uy || 0) + 1];
+            await setMessage('Move cursor to the desired position:');
+            game._command_mode = 'stinkingCloudCenter';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'stinkingCloudTip') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._stinking_cloud_cursor = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+            game._cursor_override = [(game.u?.ux || 0) - 1, (game.u?.uy || 0) + 1];
+            // C ref: getpos.c:838-841 — the tip overwrote the prompt, so the
+            // goal message is reprinted as "Move cursor to %s:" (and with
+            // !verbose the "(For instructions...)" line is suppressed).
+            await setMessage('Move cursor to the desired position:');
+            game._command_mode = 'stinkingCloudCenter';
+        }
+        return;
+    }
+
     if (game._command_mode === 'stinkingCloudCenter') {
         const pending = game._stinking_cloud_pending;
         if (!pending) {
@@ -68974,11 +69473,18 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             y = Math.max(0, Math.min(ROWNO - 1, y + dir.dy));
             game._stinking_cloud_cursor = { x, y };
             game._cursor_override = [x - 1, y + 1];
-            const description = fireScrollTargetDescription(x, y);
+            // C ref: getpos.c auto_describe() -> pager.c do_screen_description()
+            // -> lookat() -> look_at_monster() — the cursor spot monster is
+            // named bare ("shrieker"), unlike the fire-scroll targeting text.
+            const cursorMon = (game.level?.monsters || []).find(mn =>
+                !mn.dead && (mn.mhp == null || mn.mhp > 0) && mn.mx === x && mn.my === y);
+            const description = cursorMon ? farlookMonsterDescription(cursorMon) : fireScrollTargetDescription(x, y);
             await setMessage(canCenterFireScroll(x, y) ? description : `${description} (invalid target)`);
             return;
         }
-        if (!(ch === '.' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n')) {
+        // C ref: getpos.c:909-913 — only the pick keys "." , ; : select the
+        // cursor position; space/return are not selectors here.
+        if (!(ch === '.' || ch === ',' || ch === ';' || ch === ':' || ch === '\x1b')) {
             game._keep_pending_message = 1;
             return;
         }
@@ -68988,10 +69494,13 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         game._command_mode = null;
         game.context.move = 1;
         if (ch === '\x1b') {
+            // C ref: getpos.c:891-896 (ESC -> result -1) then
+            // read.c:1909-1910 prints Never_mind.
             await setMessage('Never mind.');
             return;
         }
         if (!canCenterFireScroll(x, y)) {
+            // C ref: read.c:1911-1917 can_center_cloud() failure.
             await setMessage(game.u?.hallucinating
                 ? 'Ugh... someone cut the cheese.'
                 : 'The scroll crumbles with a whiff of rotten eggs.');
@@ -69000,6 +69509,13 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         const wasInside = heroInsideGasCloud();
         const region = createGasCloud(x, y, pending.cloudsize, pending.damage);
         if (region) region.heroFault = true;
+        // C ref: doread() runs learnscroll() only after seffects() returns
+        // (read.c:634-641), i.e. after do_stinking_cloud() -> getpos() ->
+        // create_gas_cloud(); for an unrecognized scroll learnscrolltyp()
+        // (read.c:58-66) calls makeknown() (hack.h:1530), whose
+        // discover_object(..., credit_hero TRUE) exercises wisdom
+        // (o_init.c:475-483), firing exercise()'s attn rn2(19) (attrib.c:509).
+        if (!pending.alreadyKnown) exerciseAttribute(A_WIS, true);
         const enveloped = !wasInside && region?.coords?.some(coord => coord.x === ux && coord.y === uy);
         if (enveloped) await setMessage('You are enveloped in a cloud of noxious gas!');
         else {
@@ -69646,25 +70162,27 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             return;
         }
         if (isScroll && (scrollName === 'stinking cloud' || item.scrollIndex === 20)) {
+            // C ref: read.c doread() -> seffects() -> seffect_stinking_cloud()
+            // (read.c:1991-2002) -> do_stinking_cloud() (read.c:1899-1924).
+            // Each pline lands on its own tty --More-- gate here because the
+            // 38+"You have found..."+"Where..." lines exceed 80 columns, so
+            // deliver them stepwise instead of joining them onto one line.
             const confusedReading = heroIsConfused();
             const alreadyKnown = scrollDiscoveryKnown('stinking cloud');
             const messages = scrollReadMessages(confusedReading);
             const cval = item.blessed ? 1 : item.cursed ? -1 : 0;
             removeInventoryItem(item);
             rn2(19);
-            if (!alreadyKnown) {
-                messages.push('You have found a scroll of stinking cloud!');
-                learnScrollByName('stinking cloud', item, 20);
-            }
-            messages.push(`Where do you want to center the ${alreadyKnown ? 'stinking ' : ''}cloud?`);
             game._stinking_cloud_pending = {
                 cloudsize: 15 + 10 * cval,
                 damage: 8 + 4 * cval,
+                // read.c:1997 already_known gates the discovery message
+                alreadyKnown,
+                confusedReading,
             };
-            game._stinking_cloud_cursor = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
-            game._cursor_override = [(game.u?.ux || 0) - 1, (game.u?.uy || 0) + 1];
-            await setMessage(messages.join('  '), false);
-            game._command_mode = 'stinkingCloudCenter';
+            if (!alreadyKnown) learnScrollByName('stinking cloud', item, 20);
+            await setMessage(messages.join('  '), true);
+            game._command_mode = 'stinkingCloudDisappearMore';
             game.context.move = 0;
             return;
         }
@@ -71636,7 +72154,7 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         }
         if (isHornOfPlentyObject(item)) {
             const messages = applyHornOfPlentyOnce(item);
-            await setMessage(messages.join('  '), messages.length > 1);
+            await setPackedToplineMessages(messages);
             game.context.move = 1;
             return;
         }
@@ -75980,12 +76498,22 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 && mon.mx === targetX && mon.my === targetY);
             if (target) {
                 // C ref: wiz_kill() -> xkilled(mtmp, XKILL_NOMSG)
-                // (wizcmds.c:297-315).
+                // (wizcmds.c:297-315); the wiz_kill() loop then plines the
+                // next prompt immediately (wizcmds.c:257-258), and
+                // update_topl() (win/tty/topl.c:251) combines it with the
+                // kill message on one line when it fits ("You kill the newt!
+                // Next monster:"), --More-- otherwise.
                 const messages = [];
                 await killMonsterFromHeroProjectileHit(target, messages, `the ${target.data?.name || 'monster'}`);
-                await setMessage(messages.join('  '), true);
+                const killedText = messages.join('  ');
+                const nextPrompt = 'Next monster:';
                 game._wizkill_mon_locs = null;
-                game._command_mode = 'wizkillKillMore';
+                if (killedText && killedText.length + 2 + nextPrompt.length + 3 < (game.nhDisplay?.cols || 80) - 8) {
+                    await setMessage(`${killedText}  ${nextPrompt}`);
+                } else {
+                    await setMessage(killedText, true);
+                    game._command_mode = 'wizkillKillMore';
+                }
                 return;
             }
             // C ref: wiz_kill() — selecting a spot with no monster prints
@@ -76256,7 +76784,12 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 game.context.move = 1;
                 return;
             }
-            let text = targetX === game.u?.ux && targetY === game.u?.uy ? heroFarlookDescription()
+            // C ref: pager.c:271-277 (look_at_monster region suffix applied to
+            // self_lookat's hero description) — standing in a visible gas
+            // region reads "human wizard called wizard, in a cloud of poison
+            // gas".
+            let text = targetX === game.u?.ux && targetY === game.u?.uy
+                ? heroFarlookDescription() + gasCloudRegionSuffix(targetX, targetY)
                 : loc?.typ === STAIRS && game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY ? 'staircase up'
                 : loc?.typ === STAIRS && game.level?.dnstair?.x === targetX && game.level?.dnstair?.y === targetY ? 'staircase down'
                 : loc?.typ === CORR ? 'corridor'
@@ -76382,6 +76915,13 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     }
                 }
                 if (materializeMessage) await setMessage(materializeMessage, true);
+                else {
+                    // C ref: with !verbose, tele() prints nothing on landing
+                    // (teleport.c:544-546), so the tty top line keeps the last
+                    // getpos autodescribe text (wintty.c leaves toplines
+                    // untouched when no new message arrives).
+                    game._keep_pending_message = 1;
+                }
                 // C ref: shk.c u_left_shop() via spoteffects() ->
                 // check_special_room() after a same-level teleport out of a
                 // shop with unpaid merchandise.
@@ -76665,6 +77205,31 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                 return;
             if (arrowTrap && await handleUntrapShootingTrap(arrowTrap, dir))
                 return;
+            // C ref: untrap() (trap.c:5848) — a seen floor trap at the
+            // target that has no disarm handler falls into the switch
+            // default: pits tell you to fill them (or that you're already
+            // at the edge); every other type (falling rock, teleport,
+            // anti-magic, ...) prints "You cannot disable %s trap."
+            // (trap.c:5962-5978).  These return 0: no turn passes.
+            const resistTrap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen);
+            if (resistTrap) {
+                const here = !dir.dx && !dir.dy;
+                if (resistTrap.ttyp === PIT || resistTrap.ttyp === SPIKED_PIT) {
+                    if (here) {
+                        await setMessage('You are already on the edge of the pit.');
+                        return;
+                    }
+                    const pitMonster = (game.level?.monsters || []).find(mon =>
+                        !mon.hidden && mon.mx === x && mon.my === y);
+                    if (!pitMonster) {
+                        await setMessage('Try filling the pit instead.');
+                        return;
+                    }
+                }
+                await setMessage(`You cannot disable ${here ? 'this' : 'that'} trap.`);
+                return;
+            }
             if (boxes.length && await beginUntrapBoxPrompt(boxes, { force, x, y }))
                 return;
             const loc = game.level?.at?.(x, y);
@@ -77370,6 +77935,41 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             }
             if (corpse) {
                 const corpseName = item.corpsenm?.name || 'monster';
+                // C ref: eat.c:59 nonrotting_corpse() — PM_LIZARD never rots,
+                // so eatcorpse() skips the taint branch entirely and rolls
+                // only the fresh-corpse taste pair: palatable rn2(10)
+                // (eat.c:1987) and the palate-message bucket rn2(5)
+                // (eat.c:1994); the buckets in palate_msgs (eat.c:1989-1993)
+                // are Tokay/Istringy/Igamey/Ifatty/Itough — bucket 0 reads
+                // "This lizard corpse tastes okay." for non-hallucinating
+                // carnivorous heroes (eat.c:2000-2014).  cpostfx() case
+                // PM_LIZARD (eat.c:827-829) calls fix_petrification()
+                // (eat.c:865-876: "You feel limber!", clears the Stoned
+                // timer).  The meal continues as an eat occupation
+                // (eat.c:2069-2074) until monster_nearby() stops it with
+                // "You stop eating the lizard corpse." (allmain.c:505-508).
+                if (corpseName === 'lizard' && !item.oldCorpse) {
+                    const palatable = rn2(10);
+                    const palatBucket = rn2(5);
+                    const tasteMessage = palatable
+                        ? (palatBucket === 0 ? 'This lizard corpse tastes okay.'
+                            : `This lizard corpse is ${['stringy', 'gamey', 'fatty', 'tough'][palatBucket - 1]}.`)
+                        : 'This lizard corpse tastes terrible!';
+                    const limberMessage = fixHeroPetrification();
+                    game._pet_food_scan_inventory = game.inventory || [];
+                    game._eating_turns_remaining = 3;
+                    game._eating_finish_message = 'You finish eating the lizard corpse.';
+                    game._eating_inventory_object = item;
+                    game._eating_bite_nutrition = CORPSE_NUTRITION.get('lizard') || 80;
+                    game._eating_bite_hunger = CORPSE_NUTRITION.get('lizard') || 80;
+                    await setMessage(limberMessage
+                        ? `${tasteMessage}  ${limberMessage}`
+                        : tasteMessage);
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    game._command_mode = null;
+                    game.context.move = 1;
+                    return;
+                }
                 if (corpseName === 'lichen') {
                     rn2(10);
                     removeInventoryItem(item);

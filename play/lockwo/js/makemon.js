@@ -7,7 +7,10 @@ import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { builds_up } from './dungeon.js';
 import { roles } from './role.js';
-import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless } from './mkobj.js';
+import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
+         rnd_class, WAN_DIGGING as WAN_DIGGING_OTYP,
+         DILITHIUM_CRYSTAL as DILITHIUM_CRYSTAL_OTYP,
+         LUCKSTONE as LUCKSTONE_OTYP } from './mkobj.js';
 import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
 // Object-class constants inlined (not imported) to avoid a circular-import TDZ:
 // mkobj.js's dependency chain reaches makemon.js, so importing these names here
@@ -24,7 +27,7 @@ import {
     AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL,
     DUNGEON_ALIGN_BY_DNUM,
     GEHENNOM,
-    In_endgame, Is_astralevel, Is_rogue_level,
+    In_endgame, Is_astralevel, Is_rogue_level, MM_NONAME,
     Is_airlevel, Is_firelevel, Is_earthlevel, Is_waterlevel,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
     STRAT_CLOSE, STRAT_WAITFORU,
@@ -34,7 +37,8 @@ import {
     M2_LORD, M2_PRINCE, M2_NASTY, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
     M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN,
     M3_CLOSE, M3_WAITFORU,
-    MS_LEADER, MS_GUARDIAN, MS_NEMESIS,
+    MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
+    is_undead_flag, is_giant_flag,
 } from './monflags_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
@@ -66,6 +70,17 @@ const ALIGNWEIGHT = 4;
 const S_LICH = 38;
 const S_VAMPIRE = 48;
 const S_HUMAN = 53;
+
+// C ref: mondata.h quest_mon_represents_role(mptr, role_pm) —
+//   mptr->mlet == S_HUMAN && Role_if(role_pm)
+//   && (mptr->msound == MS_LEADER || mptr->msound == MS_NEMESIS)
+// The role is named by its role.c filecode (e.g. 'Pri' for PM_CLERIC).
+function quest_mon_represents_role(ptr, roleFilecode) {
+    if (!ptr || ptr.mcls !== S_HUMAN) return false;
+    if (roles[game.initrole]?.filecode !== roleFilecode) return false;
+    const snd = msound_of(ptr);
+    return snd === MS_LEADER || snd === MS_NEMESIS;
+}
 const MAXMCLASSES = 61;
 
 // PM indices used by the vampire-shapeshift path (Vlad's Tower).  Inlined to
@@ -589,13 +604,45 @@ export function is_covetous(ptr) {
     return !!(ptr && (ptr.mflags3 & M3_COVETOUS));
 }
 
-// C ref: sp_lev.c lspo_object montype scan — find a monster by its (neutral)
-// name string, returning its pmidx or NON_PM (-1).  Used by themed-room corpse
-// fills (themerms.lua "Buried zombies": montype="kobold"/"gnome"/...).
+// C ref: monsters.h NAMS(male, female, neutral) — the 15 species that carry a
+// gendered name pair alongside their neutral one.  mons[].pmnames[] holds all
+// three, and every by-name lookup (sp_lev.c's lspo_object montype scan,
+// do_name.c name_to_monplus) matches ANY of them, so a level file may equally
+// say montype="caveman", "cavewoman" or "cave dweller".  Keyed by the neutral
+// name, which is what MONS_NAMES stores.
+const MONS_GENDERED_NAMES = [
+    ['dwarf leader',      'dwarf lord',        'dwarf lady'],
+    ['dwarf ruler',       'dwarf king',        'dwarf queen'],
+    ['kobold leader',     'kobold lord',       'kobold lady'],
+    ['gnome leader',      'gnome lord',        'gnome lady'],
+    ['gnome ruler',       'gnome king',        'gnome queen'],
+    ['ogre leader',       'ogre lord',         'ogre lady'],
+    ['ogre tyrant',       'ogre king',         'ogre queen'],
+    ['vampire leader',    'vampire lord',      'vampire lady'],
+    ['elf-noble',         'elf-lord',          'elf-lady'],
+    ['elven monarch',     'Elvenking',         'Elvenqueen'],
+    ['aligned cleric',    'priest',            'priestess'],
+    ['high cleric',       'high priest',       'high priestess'],
+    ['amorous demon',     'incubus',           'succubus'],
+    ['cave dweller',      'caveman',           'cavewoman'],
+    ['cleric',            'priest',            'priestess'],
+];
+const _GENDERED_BY_NEUTRAL = new Map(
+    MONS_GENDERED_NAMES.map(([n, ma, f]) => [n, [ma, f]]));
+
+// C ref: sp_lev.c lspo_object montype scan / do_name.c name_to_monplus — find a
+// monster by name, returning its pmidx or NON_PM (-1).  C walks mons[] in index
+// order testing pmnames[NEUTRAL], then [MALE], then [FEMALE], and takes the
+// first hit; building the map in that same order (first insertion wins) gives
+// the same answer for the names two species share ("priest" -> aligned cleric,
+// not the player-monster cleric).
 const _NAME_TO_PMIDX = (() => {
     const m = new Map();
     for (const mon of MONS) {
-        if (mon.name && !m.has(mon.name)) m.set(mon.name, mon.pmidx);
+        if (!mon.name) continue;
+        if (!m.has(mon.name)) m.set(mon.name, mon.pmidx);
+        for (const alias of _GENDERED_BY_NEUTRAL.get(mon.name) || [])
+            if (alias && !m.has(alias)) m.set(alias, mon.pmidx);
     }
     return m;
 })();
@@ -770,9 +817,11 @@ function montoostrong(mndx, lev) {
     return MONS[mndx].difficulty > lev;
 }
 
+// C ref: dungeon.h Inhell == In_hell(&u.uz) == dungeons[u.uz.dnum].flags.hellish.
+// The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
+// order at init_dungeons() time — so the flag has to be read off the dungeon.
 function Inhell() {
-    const dnum = game.u?.uz?.dnum ?? 0;
-    return dnum === (game.gehennom_dnum ?? GEHENNOM);
+    return !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
 }
 
 function mvflags(mndx) {
@@ -879,6 +928,27 @@ function qt_montype() {
 
 // C ref: rndmonst_adj() (makemon.c:1658).  Weighted reservoir sampling over
 // the full mons[] array (LOW_PM .. SPECIAL_PM).
+// C ref: mondata.h is_ndemon(ptr) — a nameless (non-unique) major demon.
+const S_DEMON_CLS = 56;
+function is_ndemon_pm(ptr) {
+    return !!ptr && ptr.mcls === S_DEMON_CLS && !(ptr.geno & G_UNIQ);
+}
+
+// C ref: do_name.c ghostnames[] — 34 names, and rndghostname():
+//   rn2(7) ? ROLL_FROM(ghostnames) : svp.plname
+// so the rn2(7) is always drawn and an rn2(34) follows 6 times out of 7.
+const GHOSTNAMES = [
+    'Adri', 'Andries', 'Andreas', 'Bert', 'David', 'Dirk',
+    'Emile', 'Frans', 'Fred', 'Greg', 'Hether', 'Jay',
+    'John', 'Jon', 'Karnov', 'Kay', 'Kenny', 'Kevin',
+    'Maud', 'Michiel', 'Mike', 'Peter', 'Robert', 'Ron',
+    'Tom', 'Wilmar', 'Nick Danger', 'Phoenix', 'Jiro', 'Mizue',
+    'Stephan', 'Lance Braccus', 'Shadowhawk', 'Murphy',
+];
+function rndghostname() {
+    return rn2(7) ? GHOSTNAMES[rn2(GHOSTNAMES.length)] : (game.plname || '');
+}
+
 export function rndmonst_adj(minadj = 0, maxadj = 0) {
     // C ref: makemon.c:1666 — `if (u.uz.dnum == quest_dnum && rn2(7)
     // && (ptr = qt_montype()) != 0) return ptr;`.  rn2(7) is drawn only when
@@ -1089,7 +1159,7 @@ function m_initthrow(_mtmp, otyp, oquan) {
 // C routine merges stacks and tracks weapon wielding; for the death-drop use
 // here we only need the object to live in mtmp.minvent so relobj() can release
 // it.  Consumes no RNG.
-function mpickobj(mtmp, otmp) {
+export function mpickobj(mtmp, otmp) {
     if (!mtmp || !otmp) return;
     if (!mtmp.minvent) mtmp.minvent = [];
     otmp.where = 'minvent';
@@ -1443,12 +1513,12 @@ function m_initweap_full(mtmp) {
                 if (rn2(2)) { mongets(mtmp, W_ELVEN_SPEAR); mongets(mtmp, W_ELVEN_SHIELD); }
                 break;
             }
-        } else if (ptr.name === 'Arch Priest') {
+        } else if (msound_of(ptr) === MS_PRIEST
+                   || quest_mon_represents_role(ptr, 'Pri')) {
             // C ref: makemon.c m_initweap S_HUMAN `msound == MS_PRIEST ||
-            // quest_mon_represents_role(ptr, PM_CLERIC)` branch.
-            // quest_mon_represents_role expands to (S_HUMAN && Role_if(role_pm)
-            // && msound is LEADER/NEMESIS); for our covered roster that's
-            // exactly the Priest quest leader, "Arch Priest" (msound MS_LEADER).
+            // quest_mon_represents_role(ptr, PM_CLERIC)` branch — every temple
+            // priest (msound MS_PRIEST: "aligned cleric" and "high cleric") plus
+            // the Priest quest's own leader/nemesis.
             const otmp = mksobj(W_MACE, false, false);
             otmp.spe = rnd(3);
             if (!rn2(2)) curse(otmp);
@@ -1633,12 +1703,36 @@ function rnd_defensive_item(mtmp) {
         }
     }
 }
+// C ref: mondata.h nonliving(ptr) = is_undead(ptr) || PM_MANES ||
+// weirdnonliving(ptr) [is_golem(ptr) || mlet == S_VORTEX].  No RNG.
+const S_VORTEX_CLS = 22, S_GOLEM_CLS = 55;
+function nonliving_pm(ptr) {
+    if (!ptr) return false;
+    return is_undead_flag(ptr) || ptr.name === 'manes'
+        || ptr.mcls === S_GOLEM_CLS || ptr.mcls === S_VORTEX_CLS;
+}
+
+// C ref: monst.h is_vampshifter(mon) — cham is one of the vampire forms.
+function is_vampshifter_mon(mtmp) {
+    const cham = mtmp?.cham;
+    if (cham == null || cham === NON_PM) return false;
+    const nm = MONS[cham]?.name;
+    return nm === 'vampire' || nm === 'vampire leader'
+        || nm === 'Vlad the Impaler';
+}
+
 function rnd_misc_item(mtmp) {
     const pm = mtmp?.data;
     if (!pm || rnd_item_excluded(pm)) return 0;
     const d = pm.difficulty ?? 0;
+    // C ref: muse.c rnd_misc_item() — `return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;`
+    // 422 is WAN_POLYMORPH; 421 (undead turning) is a different wand entirely.
     if (d < 6 && !rn2(30)) return rn2(6) ? 305 : 422;
-    if (!rn2(40)) return 211;
+    // C: `if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))` — the rn2(40)
+    // is the LEFT operand so it is always drawn, and an undead/golem/vortex/
+    // vampshifter that wins the roll still falls through to the rn2(3) switch
+    // below instead of getting the amulet.
+    if (!rn2(40) && !nonliving_pm(pm) && !is_vampshifter_mon(mtmp)) return 211;
     switch (rn2(3)) {
     case 0: return rn2(6) ? 302 : 420;
     case 1: if (mtmp.mpeaceful) return 0; return rn2(6) ? 303 : 418;
@@ -1747,10 +1841,11 @@ function m_initinv_full(mtmp) {
             case 2: mongets(mtmp, 307 /*POT_HEALING*/);       /* FALLTHRU */
             case 3: mongets(mtmp, 417 /*WAN_STRIKING*/);
             }
-        } else if (ptr.name === 'Arch Priest') {
+        } else if (msound_of(ptr) === MS_PRIEST
+                   || quest_mon_represents_role(ptr, 'Pri')) {
             // C ref: makemon.c m_initinv() S_HUMAN `msound == MS_PRIEST ||
             // quest_mon_represents_role(ptr, PM_CLERIC)` branch — see the
-            // matching m_initweap branch above for why this is name-keyed.
+            // matching m_initweap branch above.
             if (rn2(7)) mongets(mtmp, 143 /*ROBE*/);
             else mongets(mtmp, rn2(3) ? 146 /*CLOAK_OF_PROTECTION*/ : 148 /*CLOAK_OF_MAGIC_RESISTANCE*/);
             mongets(mtmp, 150 /*SMALL_SHIELD*/);
@@ -1777,6 +1872,32 @@ function m_initinv_full(mtmp) {
     case 33: // S_GNOME
         if (!rn2((In_mines_js() && game.in_mklev) ? 20 : 60))
             mksobj(rn2(4) ? 224 /*TALLOW_CANDLE*/ : 225 /*WAX_CANDLE*/, true, false);
+        break;
+    case 34: // S_GIANT
+        // C ref: makemon.c m_initinv() S_GIANT — the Minotaur may carry a wand
+        // of digging (the rn2(8) is the LEFT operand of C's `||`, so it is
+        // always drawn); any other true giant carries a few gems.
+        if (ptr.name === 'minotaur') {
+            if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u?.uz)))
+                mongets(mtmp, WAN_DIGGING_OTYP);
+        } else if (is_giant_flag(ptr)) {
+            for (let cnt = rn2(Math.trunc((mtmp.m_lev || 0) / 2)); cnt; cnt--) {
+                const otmp = mksobj(rnd_class(DILITHIUM_CRYSTAL_OTYP,
+                                              LUCKSTONE_OTYP - 1), false, false);
+                otmp.quan = rn1(2, 3);
+                otmp.owt = weight(otmp);
+                mpickobj(mtmp, otmp);
+            }
+        }
+        break;
+    case 49: // S_WRAITH
+        // C ref: makemon.c m_initinv() S_WRAITH — a Nazgul's cursed ring of
+        // invisibility (mksobj with init FALSE: next_ident only).
+        if (ptr.name === 'Nazgul') {
+            const otmp = mksobj(198 /*RIN_INVISIBILITY*/, false, false);
+            curse(otmp);
+            mpickobj(mtmp, otmp);
+        }
         break;
     case 43: // S_QUANTMECH
         if (!rn2(20) && mm === 210 /*PM_QUANTUM_MECHANIC*/) {
@@ -2170,34 +2291,38 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     }
 
     // C ref: makemon.c:1352-1390 — mitem selection + shapechanger handling.
-    // Gated to Vlad's Tower generation (_tower_gen) so no other session's PRNG
-    // stream is affected.  Vlad gets the Candelabrum (mongets -> next_ident +
-    // mksobj) and stays in normal form; other vampires (mcls S_VAMPIRE) become
-    // a shapechanger and immediately shift via newcham (which disables their
-    // starting inventory, so allow_minvent goes FALSE — skipping m_initweap/
-    // m_initinv and the trailing saddle rn2(100)).
-    if (game._tower_gen) {
+    // Vlad gets the Candelabrum (mongets -> next_ident + mksobj) and stays in
+    // normal form; other vampires (mcls S_VAMPIRE, i.e. pm_to_cham != NON_PM)
+    // become shapechangers and immediately shift via newcham, which disables
+    // their starting inventory (allow_minvent FALSE — skipping m_initweap/
+    // m_initinv and the trailing saddle rn2(100)).  A ghost is christened with
+    // rndghostname().
+    {
         let mitem = 0;
         if (ptr.pmidx === PM_VLAD_THE_IMPALER) mitem = CANDELABRUM_OF_INVOCATION;
-        if (ptr.mcls === S_VAMPIRE) {           /* is_shapeshifter */
+        mtmp.cham = NON_PM;                     /* default: not a shapechanger */
+        if (ptr.mcls === S_VAMPIRE) {           /* pm_to_cham() != NON_PM */
             mtmp.cham = ptr.pmidx;
             if (ptr.pmidx !== PM_VLAD_THE_IMPALER && newcham_vamp(mtmp, null))
                 allow_minvent = false;
-        } else {
-            mtmp.cham = NON_PM;
+        } else if (ptr.name === 'ghost' && !(mmflags & MM_NONAME)) {
+            // C ref: makemon.c:1374 `christen_monst(mtmp, rndghostname())` —
+            // do_name.c rndghostname() is rn2(7) ? ROLL_FROM(ghostnames)
+            // : plname, i.e. one rn2(7) plus (usually) one rn2(34).
+            mtmp.mnamelth = 1;
+            mtmp.mname = rndghostname();
         }
         if (mitem && allow_minvent) mongets(mtmp, mitem);  // next_ident + mksobj
     }
 
-    // C ref: makemon.c:1389 — during level creation an n-demon / Wumpus /
+    // C ref: makemon.c:1386-1390 — during level creation an n-demon / Wumpus /
     // long worm / giant eel that isn't guarding the Amulet has a 4/5 chance of
-    // starting asleep, consuming one rn2(5).  This draw sits AFTER peace_minded
-    // and BEFORE group spawning / m_initweap.  Gated to quest-level generation
-    // (game._quest_gen) so ordinary-level and Big Room streams are untouched;
-    // within a quest home level only the giant eels reach it.
-    if (game._quest_gen && game.in_mklev && !game.u?.uhave?.amulet) {
+    // starting asleep, consuming one rn2(5).  This draw sits AFTER the
+    // mitem/shapechanger block and BEFORE group spawning / m_initweap.
+    if (game.in_mklev && !game.u?.uhave?.amulet) {
         const nm = ptr.name;
-        if ((nm === 'giant eel' || nm === 'long worm' || nm === 'wumpus')
+        if ((is_ndemon_pm(ptr) || nm === 'giant eel' || nm === 'long worm'
+             || nm === 'wumpus')
             && rn2(5))
             mtmp.msleeping = true;
     }

@@ -9,6 +9,7 @@ import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
 import { cansee } from './vision.js';
+import { t_at } from './mon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -23,7 +24,9 @@ import { nhgetch } from './input.js';
 import { def_monsyms, def_oc_syms, cmap_names } from './drawing_data.js';
 import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
-         CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, DEC_TO_UNICODE } from './terminal.js';
+         CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
+         CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
+         DEC_TO_UNICODE } from './terminal.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -79,6 +82,37 @@ function wall_glyph(loc, ch, cmap) {
     return loc.seenv
         ? { ch, color: NO_COLOR, dec: true, cmap }
         : { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
+}
+
+/* include/defsym.h:157 — the trap span of defsyms[], '^' for every entry
+   except S_web ('"') and S_vibrating_square ('~'), indexed by cmap. C reads
+   the colour straight out of defsyms[]; tools/gen-drawing.mjs does not emit
+   the colour column yet, so the trap span is transcribed here from defsym.h
+   rather than guessed. */
+const trap_cmap_color = {
+    49: CLR_CYAN,   50: CLR_CYAN,   51: CLR_GRAY,   52: CLR_BROWN,
+    53: CLR_CYAN,   54: CLR_RED,    55: CLR_GRAY,   56: CLR_BRIGHT_BLUE,
+    57: CLR_BLUE,   58: CLR_ORANGE, 59: CLR_BLACK,  60: CLR_BLACK,
+    61: CLR_BROWN,  62: CLR_BROWN,  63: CLR_MAGENTA, 64: CLR_MAGENTA,
+    65: CLR_BRIGHT_MAGENTA, 66: CLR_GRAY, 67: CLR_GRAY, 68: CLR_BRIGHT_BLUE,
+    69: CLR_BRIGHT_BLUE, 70: CLR_BRIGHT_GREEN, 71: CLR_MAGENTA,
+    72: CLR_ORANGE, 73: CLR_ORANGE,
+};
+
+// include/rm.h:497 trap_to_defsym() — S_arrow_trap + ttyp - 1.
+function trap_glyph(trap) {
+    const cmap = CM.S_arrow_trap + trap.ttyp - 1;
+    const sym = showsym(cmap);
+    return { ch: sym ? sym.ch : '^', color: trap_cmap_color[cmap] ?? NO_COLOR,
+             cmap };
+}
+
+// include/display.h:218 covers_objects() / :222 covers_traps() — a pool or
+// lava square hides what is under it.
+function covers_traps(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && (loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER
+                     || loc.typ === LAVAPOOL || loc.typ === LAVAWALL);
 }
 
 // ── src/display.c:2302 back_to_glyph() — terrain to cmap index + colour ──
@@ -298,6 +332,17 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
+    /* src/display.c:967 — `lev->waslit = (lev->lit != 0)`, inside newsym's
+       cansee() branch and BEFORE the hero-specific handling, so the hero's own
+       square is updated too. C deliberately uses lev->lit rather than
+       templit(): otherwise a non-permanently lit area just out of sight would
+       stay remembered as lit ("the light pool problem"). Without this, a
+       square that a scroll of light had just lit kept waslit clear, so
+       back_to_glyph picked S_corr over S_litcorr and the corridor stayed
+       default-coloured instead of white. */
+    if (cansee(x, y))
+        loc.waslit = loc.lit ? 1 : 0;
+
     if (game.u?.ux === x && game.u?.uy === y) {
         /* Hero. Map memory keeps the topmost non-monster layer, so an object
            underfoot is what the cell reverts to after stepping off —
@@ -345,6 +390,29 @@ export function newsym(x, y) {
         if (obj) {
             show_glyph_cell(x, y, memg.ch, memg.color, memg.dec, 0, memg.glyph);
             return;
+        }
+    }
+
+    /* src/display.c:455 _map_location() — the TRAP layer sits between the
+       object layer and the engraving/background one:
+           else if ((trap = t_at(x,y)) && trap->tseen && !covers_traps(x,y))
+               map_trap(trap, show);
+       It was missing entirely, so a trap the hero had already discovered was
+       never drawn: seed0002 knew about the dart trap at (75,12) with tseen
+       set from step 87 on and still painted plain floor there. */
+    {
+        const trap = t_at(x, y);
+        if (trap && trap.tseen && !covers_traps(x, y)) {
+            const tg = trap_glyph(trap);
+            if (game.level?.flags?.hero_memory)
+                loc.remembered_glyph = { ch: tg.ch, color: tg.color,
+                                         decgfx: false,
+                                         glyph: { kind: 'cmap', cmap: tg.cmap } };
+            if (cansee(x, y)) {
+                show_glyph_cell(x, y, tg.ch, tg.color, false, 0,
+                                { kind: 'cmap', cmap: tg.cmap });
+                return;
+            }
         }
     }
 

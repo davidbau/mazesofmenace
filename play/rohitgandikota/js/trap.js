@@ -6,6 +6,7 @@
 // holds the pieces of src/trap.c it calls into, so that a grep for a C symbol
 // finds it in the file its C twin lives in.
 
+import { t_at as t_at_mon } from './mon.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { mksobj, place_object } from './mkobj.js';
@@ -22,7 +23,7 @@ import { ONAMES } from './objects_data.js';
 import { KILLED_BY_AN, A_STR } from './const.js';
 
 /* src/trap.h — trapeffect_*() return values. */
-const Trap_Effect_Finished = 0, Trap_Is_Gone = 2;
+const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Is_Gone = 2;
 
 function note_unported_trap(what) {
     (game.unported ||= new Set()).add(what);
@@ -383,4 +384,91 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
     await domagictrap();
     /* steedintrap() — no steed on this tree */
     return Trap_Effect_Finished;
+}
+
+/* include/hack.h:1306 */
+const FORCETRAP = 0x01, FORCEBUNGLE = 0x08;
+
+// src/mondata.c:1617 mon_knows_traps() — mtrapseen is a bitmask of trap types
+// this monster has already walked into.
+function mon_knows_traps(mtmp, ttyp) {
+    return ((mtmp.mtrapseen | 0) & (1 << (ttyp - 1))) !== 0;
+}
+
+// src/mondata.c:1629 mon_learns_traps()
+function mon_learns_traps(mtmp, ttyp) {
+    mtmp.mtrapseen = (mtmp.mtrapseen | 0) | (1 << (ttyp - 1));
+}
+
+// src/trap.c trapeffect_selector() — dispatch one trap's effect for whoever
+// stepped on it. Only the arms this port has are wired; the rest record so a
+// session that lands on one is visibly incomplete rather than silently wrong.
+async function trapeffect_selector(mtmp, trap, trflags) {
+    switch (trap.ttyp) {
+    case DART_TRAP:
+        return await trapeffect_dart_trap(mtmp, trap, trflags);
+    case MAGIC_TRAP:
+        return await trapeffect_magic_trap(mtmp, trap, trflags);
+    default:
+        note_unported_trap(`trapeffect_selector:ttyp=${trap.ttyp}`);
+        return Trap_Effect_Finished;
+    }
+}
+
+// src/trap.c:3733 mintrap() — a monster steps onto a trap.
+//
+// The "already caught in it" half is recorded: escaping draws rn2(40) and
+// then branches through boulders, metallivores and eels, none of which any
+// session has reached. The fresh-trigger half is live, because that is what
+// spends draws on the common path.
+export async function mintrap(mtmp, mintrapflags) {
+    const trap = t_at_mon(mtmp.mx, mtmp.my);
+    let trap_result = Trap_Effect_Finished;
+
+    if (!trap) {
+        mtmp.mtrapped = 0;      /* perhaps teleported? */
+    } else if (mtmp.mtrapped) { /* is currently in the trap */
+        note_unported_trap('mintrap:escape');
+        trap_result = mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    } else {
+        const tt = trap.ttyp;
+        let forcetrap = ((mintrapflags & FORCETRAP) !== 0);
+        const forcebungle = (mintrapflags & FORCEBUNGLE) !== 0;
+        /* monster has seen such a trap before */
+        const already_seen = (mon_knows_traps(mtmp, tt)
+                              || (tt === HOLE && !mindless(mtmp.data)));
+
+        if (fixed_tele_trap(trap)) {
+            mintrapflags |= FORCETRAP;
+            forcetrap = true;
+        }
+
+        if (mtmp === game.u.usteed) {
+            /* true when called from dotrap, inescapable is not an option */
+        } else if (Sokoban() && (is_pit(tt) || is_hole(tt)) && !trap.madeby_u) {
+            /* nothing here, the trap effects will handle messaging */
+        } else if (!forcetrap) {
+            if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags))
+                return Trap_Effect_Finished;
+            if (already_seen && rn2(4) && !forcebungle)
+                return Trap_Effect_Finished;
+        }
+
+        mon_learns_traps(mtmp, tt);
+        /* mons_see_trap() marks the trap seen by onlookers */
+
+        /* Monster is aggravated by being trapped by you. Recognizing who made
+           the trap isn't completely unreasonable; everybody has their own
+           style. */
+        if (trap.madeby_u && rnl(5))
+            note_unported_trap('mintrap:setmangry');
+
+        trap_result = await trapeffect_selector(mtmp, trap, mintrapflags);
+    }
+    return trap_result;
+}
+
+/* src/trap.c fixed_tele_trap() — a vault or level teleporter always fires. */
+function fixed_tele_trap(trap) {
+    return (trap.ttyp === LEVEL_TELEP || (trap.ttyp === TELEP_TRAP && trap.once));
 }

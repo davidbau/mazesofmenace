@@ -40,7 +40,7 @@ import {
     ACCESSIBLE, IN_SIGHT,
     SPACE_POS, ZAP_POS, isok, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY,
     W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, TREE, CLOUD,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_DIR, DB_WEST, TREE, CLOUD,
     ICED_POOL, ICED_MOAT, MATCH_WALL, SET_LIT_RANDOM, SET_LIT_NOCHANGE,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
@@ -3736,13 +3736,13 @@ function u_on_newpos(x, y) {
     game.u.uy = y;
 }
 
-// C ref: mkmaze.c bad_location — simplified for skeleton
+// C ref: mkmaze.c bad_location
 function bad_location(x, y, nlx, nly, nhx, nhy) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
     if (occupied(x, y)) return true;
-    // Excluded region
-    if (nlx && x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
+    // Excluded region (mkmaze.c bad_location: within_bounded_area(x,y,nlx,nly,nhx,nhy))
+    if (x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
     // Must be ROOM, AIR, or (CORR in maze)
     if (loc.typ !== ROOM && loc.typ !== AIR && !(loc.typ === CORR && game.level?.flags?.is_maze_lev))
         return true;
@@ -3791,9 +3791,14 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
         nhy = 0;
     }
     // Probabilistic search
+    const DBG = typeof process !== 'undefined' && process.env.NH_DBG_LREG;
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
+        if (DBG) {
+            const loc = game.level?.at(x, y);
+            console.error(`DBG place_lregion rtype=${rtype} args=${JSON.stringify([lx,ly,hx,hy,nlx,nly,nhx,nhy])} try=${trycnt} cand=(${x},${y}) typ=${loc?.typ} occupied=${occupied(x,y)}`);
+        }
         const occupiedByMonster = rtype >= LR_TELE && rtype <= LR_DOWNTELE
             && game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
         if (!bad_location(x, y, nlx, nly, nhx, nhy)
@@ -4276,6 +4281,23 @@ function mksobj_init(otmp, otyp, artif) {
     } else if (otyp === ICE_BOX || otyp === SACK || otyp === OILSKIN_SACK || otyp === BAG_OF_HOLDING) {
         mkbox_cnts(otmp);
     } else if (otyp === ELVEN_ARROW || otyp === ORCISH_ARROW || otyp === ARROW || otyp === DART || otyp === CROSSBOW_BOLT) {
+        // C ref: mksobj always knows its otyp identity (mkobj.c objects[]
+        // table); mongets() (mklev.js:6457-6478) assigns these same strings
+        // for monster-carried missiles — apply them here too so plain
+        // mksobj()/mktrap_victim() arrows/darts name correctly.
+        if (otyp === ELVEN_ARROW) Object.assign(otmp, {
+            cls: 'weapon', kind: 'runed arrow', actualKind: 'elven arrow',
+            singular: 'runed arrow', plural: 'runed arrows',
+            appearance: 'runed arrow', material: 'wood',
+        });
+        else if (otyp === ORCISH_ARROW) Object.assign(otmp, {
+            cls: 'weapon', kind: 'crude arrow', actualKind: 'orcish arrow',
+            singular: 'crude arrow', plural: 'crude arrows',
+            appearance: 'crude arrow', material: 'iron',
+        });
+        else if (otyp === ARROW) Object.assign(otmp, { cls: 'weapon', kind: 'arrow', plural: 'arrows' });
+        else if (otyp === CROSSBOW_BOLT) Object.assign(otmp, { cls: 'weapon', kind: 'crossbow bolt', plural: 'crossbow bolts' });
+        else Object.assign(otmp, { cls: 'weapon', kind: 'dart', plural: 'darts' });
         otmp.quan = rn1(6, 6);
         if (!rn2(11)) {
             otmp.spe = rne(3);
@@ -11184,13 +11206,152 @@ async function castleFillBarracksRoom(room, fillState) {
     game.level.flags.has_barracks = true;
 }
 
+// C ref: sp_lev.c flip_dbridge_horizontal — castle drawbridge dir flips
+// with a left/right level flip (lev->drawbridgemask; `flags` doubles as it)
+function castleFlipDbridgeHorizontal(lev) {
+    if (!lev || !(lev.typ === DRAWBRIDGE_UP || lev.typ === DRAWBRIDGE_DOWN || lev.typ === DBWALL)) return;
+    if ((lev.flags & DB_DIR) === DB_WEST) {
+        lev.flags = (lev.flags & ~DB_DIR) | DB_EAST;
+    } else if ((lev.flags & DB_DIR) === DB_EAST) {
+        lev.flags = (lev.flags & ~DB_DIR) | DB_WEST;
+    }
+}
+
+// C ref: sp_lev.c flip_level(flp=2, extras=FALSE) — left/right flip during
+// castle level creation (castle.lua level_flags "mazelevel", "noteleport",
+// "noflipy": the Y-flip roll at sp_lev.c:975 is suppressed, only the X-flip
+// roll at sp_lev.c:977 is made by flip_level_rnd).  Bounds come from
+// get_level_extends (mkmaze.c:1353) with the post-clamp rules of
+// sp_lev.c:556-563.
+function castleFlipLevelX() {
+    const g = game;
+    const lev = g.level;
+    const ext = getLevelExtendsForFlip();
+    let minx = ext.xmin, maxx = ext.xmax, miny = ext.ymin, maxy = ext.ymax;
+    if (miny < 0) miny = 0;
+    if (minx < 1) minx = 1;
+    if (maxx >= COLNO) maxx = COLNO - 1;
+    if (maxy >= ROWNO) maxy = ROWNO - 1;
+    const fx = v => maxx - v + minx;        /* FlipX (sp_lev.c:516) */
+    const inFlipArea = (x, y) => x >= minx && x <= maxx && y >= miny && y <= maxy;
+
+    /* stairs and ladders (sp_lev.c:583-588) — flipped unconditionally */
+    for (let st = g.stairs; st; st = st.next) st.sx = fx(st.sx);
+
+    /* traps (sp_lev.c:591-613) */
+    for (const trap of lev.traps || []) {
+        if (!inFlipArea(trap.tx, trap.ty)) continue;
+        trap.tx = fx(trap.tx);
+        if (trap.ttyp === ROLLING_BOULDER_TRAP) {
+            if (trap.launch) trap.launch.x = fx(trap.launch.x);
+            if (trap.launch2) trap.launch2.x = fx(trap.launch2.x);
+        }
+    }
+
+    /* objects (sp_lev.c:616-624); buried objects (sp_lev.c:627-634) — the
+       castle buries nothing, so level.objects covers everything here */
+    for (const obj of lev.objects || []) {
+        if (!inFlipArea(obj.ox, obj.oy)) continue;
+        obj.ox = fx(obj.ox);
+    }
+
+    /* monsters (sp_lev.c:637-667) */
+    for (const mon of lev.monsters || []) {
+        if (!inFlipArea(mon.mx, mon.my)) continue;
+        mon.mx = fx(mon.mx);
+        /* Flip_coord(mtmp->mgoal) (sp_lev.c:649) */
+        if (mon.mgoal && mon.mgoal.x && inFlipArea(mon.mgoal.x, mon.mgoal.y))
+            mon.mgoal.x = fx(mon.mgoal.x);
+        if (mon.ispriest && mon.shrine && mon.shrine.x && inFlipArea(mon.shrine.x, mon.shrine.y))
+            mon.shrine.x = fx(mon.shrine.x);
+        else if (mon.isshk) {
+            if (mon.shk && mon.shk.x && inFlipArea(mon.shk.x, mon.shk.y)) mon.shk.x = fx(mon.shk.x);
+            if (mon.shd && mon.shd.x && inFlipArea(mon.shd.x, mon.shd.y)) mon.shd.x = fx(mon.shd.x);
+        }
+    }
+
+    /* engravings (sp_lev.c:690-697) — flipped unconditionally */
+    for (const engr of lev.engravings || []) engr.x = fx(engr.x);
+
+    /* level (teleport) regions (sp_lev.c:699-733): the castle's dndest/updest
+       came from three gl.lregions entries; flip inarea.x1/x2 and delarea
+       x1/x2 unconditionally (flp & 2 branch). */
+    for (const dest of [lev.dndest, lev.updest]) {
+        if (!dest) continue;
+        const a = fx(dest.lx), b = fx(dest.hx);
+        dest.lx = Math.min(a, b); dest.hx = Math.max(a, b);
+        const c = fx(dest.nlx), d = fx(dest.nhx);
+        dest.nlx = Math.min(c, d); dest.nhx = Math.max(c, d);
+    }
+
+    /* rooms (sp_lev.c:760-810) — flipped unconditionally */
+    const flipRoomX = room => {
+        if (!room || room.hx < 0) return;
+        const a = fx(room.lx), b = fx(room.hx);
+        room.lx = Math.min(a, b); room.hx = Math.max(a, b);
+        for (const sub of room.sbrooms || []) flipRoomX(sub);
+    };
+    for (const room of lev.rooms || []) flipRoomX(room);
+
+    /* doors (sp_lev.c:813-816) — Flip_coord semantics */
+    for (const door of lev.doors || []) {
+        if (door.x && inFlipArea(door.x, door.y)) door.x = fx(door.x);
+    }
+
+    /* the map (sp_lev.c:840-860, flp & 2 branch) */
+    for (let x = minx; x < minx + Math.trunc((maxx - minx + 1) / 2); x++) {
+        const nx = fx(x);
+        for (let y = miny; y <= maxy; y++) {
+            castleFlipDbridgeHorizontal(lev.at(x, y));
+            castleFlipDbridgeHorizontal(lev.at(nx, y));
+            [lev.locations[x][y], lev.locations[nx][y]] = [lev.locations[nx][y], lev.locations[x][y]];
+        }
+    }
+
+    /* exclusion zones (sp_lev.c:876-896) — flipped unconditionally */
+    for (const ez of lev.exclusionZones || []) {
+        const a = fx(ez.lx), b = fx(ez.hx);
+        ez.lx = Math.min(a, b); ez.hx = Math.max(a, b);
+    }
+
+    /* sp_lev.c:915 — flip_level always re-derives wall spines after the swap */
+    fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
+    return { minx, maxx };
+}
+
 async function castleFinishSpecial() {
     castleAddRoom(27, 5, 37, 11, COURT, true);
     const barracks1 = castleAddRoom(16, 5, 25, 6, BARRACKS, true);
     const barracks2 = castleAddRoom(16, 10, 25, 11, BARRACKS, true);
 
-    rn2(2);
-    place_lregion(1, 0, 10, 20, castleX(0), castleY(0), castleX(62), castleY(16), LR_UPSTAIR, null);
+    /* C ref: sp_lev.c lspo_finalize_level — wallification (sp_lev.c:6037)
+       runs BEFORE flip_level_rnd; fixup_special and the special-room fills
+       run after it.  Consume the flip roll at exactly the stream position of
+       sp_lev.c:977 (noflipy => the flp&1 roll at sp_lev.c:975 is skipped). */
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flip = rn2(2);
+    let lr = { lx: 1, ly: 0, hx: 10, hy: 20 };
+    let nlr = { lx: castleX(0), ly: castleY(0), hx: castleX(62), hy: castleY(16) };
+    if (flip) {
+        const { minx, maxx } = castleFlipLevelX();
+        if (typeof process !== 'undefined' && process.env.NH_DBG_LREG) {
+            console.error(`CASTLE FLIP bounds minx=${minx} maxx=${maxx}`);
+            const e = getLevelExtendsForFlip();
+            console.error(`raw extends ${JSON.stringify(e)} is_maze_lev=${game.level.flags.is_maze_lev}`);
+            const l = game.level;
+            const nz = [];
+            for (let x = 0; x <= 79; x++) { let has = false; for (let y = 0; y <= 20; y++) if (l.at(x,y)?.typ !== 0) has = true; if (has) nz.push(x); }
+            console.error('nonstone cols:', nz.join(','));
+        }
+        /* flip_level lregion loop (sp_lev.c:717-731), flp & 2: flip the
+           stair-up levregion's inarea/delarea x-bounds */
+        const fx = v => maxx - v + minx;
+        const a = fx(lr.lx), b = fx(lr.hx);
+        lr.lx = Math.min(a, b); lr.hx = Math.max(a, b);
+        const c = fx(nlr.lx), d = fx(nlr.hx);
+        nlr.lx = Math.min(c, d); nlr.hx = Math.max(c, d);
+    }
+    place_lregion(lr.lx, lr.ly, lr.hx, lr.hy, nlr.lx, nlr.ly, nlr.hx, nlr.hy, LR_UPSTAIR, null);
 
     const croom = generate_stairs_find_room();
     if (croom) {
@@ -15468,10 +15629,16 @@ export async function make_castle_level() {
     }
 
     for (const [mask, x, y] of CASTLE_DOORS) {
+        // C: sel_set_door (sp_lev.c:4647-4663) — the des.door stamps only set
+        // typ=DOOR when the cell isn't already DOOR/SDOOR; the throne doors
+        // land on map-text SDOORs ('S'), which stay secret (doormask keeps
+        // the stamped state, e.g. D_LOCKED).  Orientation via
+        // set_door_orientation (sp_lev.c:4647 comment ref to mklev.c dosdoor).
         const loc = g.level.at(castleX(x), castleY(y));
         if (loc) {
-            loc.typ = DOOR;
+            if (!(loc.typ === DOOR || loc.typ === SDOOR)) loc.typ = DOOR;
             loc.doormask = mask;
+            loc.horizontal = spDesDoorOrientation(castleX(x), castleY(y)) ? 1 : 0;
         }
     }
     const bridge = g.level.at(castleX(5), castleY(8));
@@ -15549,7 +15716,6 @@ export async function make_castle_level() {
 
     await castleFinishSpecial();
 
-    wallification(1, 0, COLNO - 1, ROWNO - 1);
     recount_level_features();
     level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
     g.in_mklev = false;
@@ -23814,6 +23980,14 @@ function generate_stairs_find_room() {
 
 function mkstairs(x, y, up, croom) {
     const g = game;
+    // C ref: mklev.c:2183-2189 — no stairs can lead off an end of the
+    // dungeon; e.g. the castle (bottom of the main dungeon) makes no down
+    // stair: the generate_stairs_find_room()/somex/somey() rolls still
+    // happen, but mkstairs returns without changing the map.
+    const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
+    const dunlev = (g.u?.uz?.dlevel ?? 1) - (dungeon?.ledger_start ?? 0);
+    const dunlevs = dungeon?.num_dunlevs ?? 1;
+    if (dunlev === (up ? 1 : dunlevs)) return;
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;

@@ -3,6 +3,7 @@
 
 import { game } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
+import { flushDeferredWereTransforms } from './were.js';
 
 const _inputQueue = [];
 
@@ -22,17 +23,23 @@ export async function nhgetch() {
     const hook = game._preNhgetchHook;
     if (hook) await hook();
 
-    if (_inputQueue.length > 0) {
-        return _inputQueue.shift();
-    }
-
-    // Browser mode: wait for keypress from the display
-    const display = game?.nhDisplay;
-    if (display?.readKey) {
-        return await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
-    }
-
-    throw new Error('Input queue empty - test may be missing keystrokes');
+    // C ref: pline() -> tty putmsg --More-- blocking (win/tty wintty.c
+    // xwaitforspace) — a were transformation whose feedback message overflowed
+    // the topline blocks inside new_were() (were.c:113-115) until the
+    // "--More--" is dismissed; its map repaint (newsym, were.c:126-128) lands
+    // when that keypress actually dismisses the prompt (space/return/escape),
+    // NOT when a swallowed key (digit prefix, movement key, ...) is ignored.
+    const readOne = async () => {
+        if (_inputQueue.length > 0) return _inputQueue.shift();
+        const display = game?.nhDisplay;
+        if (display?.readKey) return await display.readKey({ bindings: KEY_BINDINGS.VI_KEYS });
+        throw new Error('Input queue empty - test may be missing keystrokes');
+    };
+    const key = await readOne();
+    if (game._message_more
+        && [' ', '\x1b', '\r', '\n'].includes(String.fromCharCode(key)))
+        flushDeferredWereTransforms();
+    return key;
 }
 
 // Reset input state

@@ -12,6 +12,7 @@ import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn } from './invent.js';
+import { In_mines } from './const.js';
 import { rndghostname } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -737,10 +738,27 @@ function m_initinv(mtmp) {
         }
         break;
     case S_QUANTMECH:
+        /* src/makemon.c:776 — a quantum mechanic may carry Schroedinger's
+           box. The draw happens for every S_QUANTMECH; the box and its
+           cat corpse are recorded. */
+        if (!rn2(20) && ptr.pmidx === PMNAMES.PM_QUANTUM_MECHANIC)
+            note_unported('m_initinv:schroedingers_box');
+        break;
     case S_DEMON:
-    case S_GNOME:
-        /* Schroedinger's box, devil weapons, mine candles: recorded */
+        /* src/makemon.c:786 — devil weapons */
         note_unported(`m_initinv mlet=${ptr.mlet}`);
+        break;
+    case S_GNOME:
+        /* src/makemon.c:809 — a gnome sometimes carries a lit candle; in the
+           Mines during level creation it is far more likely. */
+        if (!rn2((In_mines(game.u.uz) && game.in_mklev) ? 20 : 60)) {
+            const otmp = mksobj(rn2(4) ? ONAMES.TALLOW_CANDLE
+                                       : ONAMES.WAX_CANDLE, true, false);
+            otmp.quan = 1;
+            otmp.owt = weight_fn(otmp);
+            if (!mpickobj(mtmp, otmp) && !game.level.at(mtmp.mx, mtmp.my)?.lit)
+                note_unported('m_initinv:begin_burn');
+        }
         break;
     default:
         break;

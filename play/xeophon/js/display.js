@@ -5,7 +5,8 @@ import { game } from './gstate.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
-    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     D_ISOPEN, D_CLOSED, D_LOCKED, SDOOR, SCORR, FOUNTAIN, SINK,
     IRONBARS, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, ICE, TREE, CLOUD, GRAVE, THRONE, ALTAR,
     COULD_SEE, IN_SIGHT, TEMP_LIT,
@@ -415,6 +416,27 @@ function terrainGlyph(loc, x, y) {
     case GRAVE: return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE: return { ch: '\\', color: CLR_YELLOW, dec: false };
     case ALTAR: return { ch: game.symset === 'DECgraphics' ? '\x0e{\x0f' : '_', color: altarColor(loc), dec: false };
+    // C ref: display.c back_to_glyph — DBWALL renders as a closed drawbridge
+    // (S_hcdbridge/S_vcdbridge -> '#'), DRAWBRIDGE_UP shows the terrain under
+    // the bridge via ptr->drawbridgemask & DB_UNDER (S_pool/S_lava/S_ice/
+    // S_room), DRAWBRIDGE_DOWN renders as an open drawbridge (S_hodbridge/
+    // S_vodbridge -> '#').  In this port the rm `flags` field doubles as
+    // drawbridgemask for bridge cells.
+    case DBWALL: return { ch: '#', color: CLR_BROWN, dec: false };
+    case DRAWBRIDGE_UP: {
+        const under = (loc?.flags ?? 0) & DB_UNDER;
+        if (under === DB_MOAT) return game.symset === 'DECgraphics'
+            ? { ch: '\x0e`\x0f', color: CLR_BLUE, dec: false }
+            : { ch: '}', color: CLR_BLUE, dec: false };
+        if (under === DB_LAVA) return game.symset === 'DECgraphics'
+            ? { ch: '\x0e`\x0f', color: CLR_RED, dec: false }
+            : { ch: '}', color: CLR_RED, dec: false };
+        if (under === DB_ICE) return { ch: '.', color: CLR_CYAN, dec: false };
+        return isRogueLevel() || game.symset !== 'DECgraphics'
+            ? { ch: '.', color: NO_COLOR, dec: false }
+            : { ch: DEC_GLYPHS['~'], color: NO_COLOR, dec: false };
+    }
+    case DRAWBRIDGE_DOWN: return { ch: '#', color: CLR_BROWN, dec: false };
     case HWALL: return game.level?.flags?.sokoban_rules ? wallGlyph('q', '-') : rememberedWallGlyph(loc, 'q', '-');
     case VWALL: return game.level?.flags?.sokoban_rules ? wallGlyph('x', '|') : rememberedWallGlyph(loc, 'x', '|');
     case TLCORNER: return game.level?.flags?.sokoban_rules ? wallGlyph('l', '-') : rememberedWallGlyph(loc, 'l', '-');
@@ -1391,7 +1413,8 @@ function drawGrid() {
             if (game._command_mode === 'extendedCommand') {
                 d.setCursor(2 + String(game._extended_command || '').length, 0);
                 cursorSet = true;
-            } else if (game._command_mode === 'wizardWish'
+            } else if (game._command_mode === 'instrumentTuneText'
+                       || game._command_mode === 'wizardWish'
                        || game._command_mode === 'wizGenesisMonster'
                        || game._command_mode === 'polyselfMonster'
                        || game._command_mode === 'engraveText'
@@ -1405,7 +1428,8 @@ function drawGrid() {
                        || pendingMessage.startsWith('Count: ')) {
                 if (pendingMessage.startsWith('Count: ')) d.setCursor(pendingMessage.length, 0);
                 else {
-                    const entry = game._command_mode === 'wizardWish' ? game._wish_text
+                    const entry = game._command_mode === 'instrumentTuneText' ? game._instrument_tune_text
+                        : game._command_mode === 'wizardWish' ? game._wish_text
                         : game._command_mode === 'wizGenesisMonster' ? game._wizgenesis_text
                         : game._command_mode === 'polyselfMonster' ? game._polyself_text
                         : game._command_mode === 'engraveText' ? game._engrave_text
@@ -1493,7 +1517,8 @@ function drawGrid() {
         } else if (game._command_mode === 'extendedCommand' && !extendedWrap) {
             d.setCursor(2 + String(game._extended_command || '').length, 0);
             cursorSet = true;
-        } else if (game._command_mode === 'wizardWish'
+        } else if (game._command_mode === 'instrumentTuneText'
+                   || game._command_mode === 'wizardWish'
                    || game._command_mode === 'wizGenesisMonster'
                    || game._command_mode === 'polyselfMonster'
                    || game._command_mode === 'engraveText'
@@ -1509,7 +1534,8 @@ function drawGrid() {
                    || displayMessage.startsWith('Count: ')) {
             if (displayMessage.startsWith('Count: ')) d.setCursor(displayMessage.length, 0);
             else {
-                const entry = game._command_mode === 'wizardWish' ? game._wish_text
+                const entry = game._command_mode === 'instrumentTuneText' ? game._instrument_tune_text
+                    : game._command_mode === 'wizardWish' ? game._wish_text
                     : game._command_mode === 'wizGenesisMonster' ? game._wizgenesis_text
                     : game._command_mode === 'polyselfMonster' ? game._polyself_text
                     : game._command_mode === 'engraveText' ? game._engrave_text

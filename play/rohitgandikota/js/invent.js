@@ -280,6 +280,67 @@ export function display_inventory() {
     return out;
 }
 
+// src/invent.c:3220 display_pickinv() — the menu getobj's '?' and '*' open.
+//
+// `allowed_choices` restricts the listing to those inventory letters ('?'
+// passes the command's own filter, '*' passes null for everything). Returns
+// the letter the player picked, ESC when cancelled, or 0 for no selection.
+//
+// The hands entry, force_invmenu's extra query line and the count field are
+// recorded; nothing ported reaches them.
+export async function display_pickinv(allowed_choices, handsbuf, menuquery,
+                                      allownone) {
+    const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+            tty_select_menu, tty_destroy_nhwindow, tty_get_nhwindow,
+            ATR_NONE: A_NONE, ATR_INVERSE: A_INV, NHW_MENU: W_MENU }
+        = await import('./tty/wintty.js');
+    const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, PICK_ONE }
+        = await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+
+    if (handsbuf || menuquery)
+        note_unported_invent('display_pickinv:hands_or_forcemenu');
+
+    const win = tty_create_nhwindow(W_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    /* src/invent.c:3273 — C applies the `lets` filter FIRST and only then adds
+       the class heading, gated on `!classcount`, so a heading appears just
+       before the first item of its class that survived the filter. Emitting
+       headings up front instead listed every empty class: quaffing showed
+       Coins/Weapons/Armor/... around a lone Potions section. */
+    let pending_heading = null;
+    for (const e of display_inventory()) {
+        if (e.heading) {
+            pending_heading = e;
+            continue;
+        }
+        /* for showing a set of specific letters, skip ones not in the set */
+        if (allowed_choices && !allowed_choices.includes(e.invlet))
+            continue;
+        if (pending_heading) {
+            tty_add_menu(win, null, 0, 0, 0, A_INV, NO_COLOR,
+                         pending_heading.str, MENU_ITEMFLAGS_NONE);
+            pending_heading = null;
+        }
+        tty_add_menu(win, null, e.invlet.charCodeAt(0), e.invlet, 0,
+                     A_NONE, NO_COLOR, e.str, MENU_ITEMFLAGS_NONE);
+    }
+    /* src/invent.c:3378 — `end_menu(win, (query && *query) ? query : NULL)`.
+       getobj passes its menuquery through, which is empty for '?' and '*', so
+       this window has NO title; the hardcoded one added a phantom first row. */
+    tty_end_menu(win, (menuquery && menuquery.length) ? menuquery : null);
+
+    const picks = await tty_select_menu(win, PICK_ONE);
+    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    tty_destroy_nhwindow(win);
+
+    if (cancelled)
+        return '\x1b';
+    if (!picks.length)
+        return 0;
+    return String.fromCharCode(picks[0]);
+}
+
 // src/decl.c:96 quitchars — the keys that abandon a prompt.
 const quitchars = ' \r\n\x1b';
 
@@ -426,7 +487,7 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
     qbuf += lets ? ` [${lets} or ?*]` : ' [*]';
 
     for (;;) {
-        const ilet = await tty_yn_function(qbuf, null, '\0');
+        let ilet = await tty_yn_function(qbuf, null, '\0');
 
         if (ilet >= '0' && ilet <= '9') {
             /* get_count() keeps reading digits and then a letter */
@@ -448,9 +509,20 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
             return null;
         }
         if (ilet === '?' || ilet === '*') {
-            /* display_pickinv() opens a menu and reads its own keys */
-            note_unported_invent('getobj:menu');
-            return null;
+            /* src/invent.c:1963 — '?' lists only the letters this command
+               accepts, '*' lists everything. */
+            const allowed_choices = (ilet === '?') ? lets : null;
+            /* C's `allownone` comes from the '-' choice being offered; our
+               hands arm above is recorded, so it is always false here. */
+            ilet = await display_pickinv(allowed_choices, null, null, false);
+            if (!ilet)
+                continue;
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose)
+                    await pline(Never_mind);
+                return null;
+            }
+            /* '*'/'?' inside the menu would redo it; not reachable here */
         }
 
         const otmp = (game.invent || []).find(o => o.invlet === ilet);

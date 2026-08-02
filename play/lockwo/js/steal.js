@@ -125,7 +125,9 @@ export function mpickobj(mtmp, otmp) {
     return 0;
 }
 // C ref: obj.h how_lost values used by mpickobj's autopickup bookkeeping.
-const LOST_THROWN = 1, LOST_DROPPED = 3;
+// obj.h:481-484 — LOST_NONE 0, LOST_THROWN 1, LOST_DROPPED 2, LOST_STOLEN 3.
+// LOST_DROPPED was 3, which is LOST_STOLEN: dropped objects were bookkept as stolen.
+const LOST_THROWN = 1, LOST_DROPPED = 2;
 
 // C ref: mkobj.c mergable(otmp, obj) — reduced to the identity tests that
 // matter for a stolen item: same type/enchantment/BUC, and only for the classes

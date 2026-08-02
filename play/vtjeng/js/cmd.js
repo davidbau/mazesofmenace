@@ -92,6 +92,9 @@ import {
 import { nhgetch } from './input.js';
 import { doride, UnsupportedSteedError } from './steed.js';
 import { UnsupportedHitPointLossError } from './hack.js';
+import { UnsupportedAbilityChangeError } from './attrib.js';
+import { UnsupportedExperienceChangeError } from './exper.js';
+import { wiz_level_change } from './wizcmds.js';
 import {
     clearTtyMessageWindow,
     ttyNorep,
@@ -912,6 +915,13 @@ export function failClosedCommandRefusals() {
         UnsupportedHitPointLossError,
         UnsupportedArtifactDisplayError,
         UnsupportedLevelChangeError,
+        // wizcmds.c wiz_level_change() reaches the first when asked to lower
+        // a level, which exper.c losexp() owns. attrib.c adjabil() throws the
+        // second only while losing an ability or a weapon-skill slot, which
+        // no ported command reaches; it is listed so that a future lowering
+        // path ends the segment instead of failing the run.
+        UnsupportedExperienceChangeError,
+        UnsupportedAbilityChangeError,
         // do.c goto_level()'s tail reaches all four from inside the `>`
         // handler, so each one ends the segment where it would otherwise
         // discard the prefix: pickup(1) is goto_level()'s last statement,
@@ -1082,6 +1092,13 @@ async function runDownCommand(key, state) {
     return failClosedCommand(key, state, () => dodown(state));
 }
 
+// C ref: wizcmds.c wiz_level_change(). Like dosearch() and doeat() it returns
+// its own ECMD_* result; #levelchange never spends a turn, so that result is
+// always ECMD_OK.
+async function runLevelChangeCommand(key, state) {
+    return failClosedCommand(key, state, () => wiz_level_change(state));
+}
+
 // C ref: invent.c dolook().
 async function runLookCommand(key, state) {
     return failClosedCommand(key, state, () => dolook(state, {
@@ -1162,6 +1179,8 @@ async function doextcmd(key, state) {
     case 'doride':
         // C ref: steed.c doride(), which returns its own ECMD_* result.
         return await doride(state);
+    case 'wiz_level_change':
+        return await runLevelChangeCommand(key, state);
     default:
         resetCommandVars(state);
         throw new UnsupportedHeroCommandBoundaryError(

@@ -13,6 +13,18 @@ import { bimanual } from './obj.js';
 import { is_weptool } from './mkobj.js';
 import { is_pole } from './u_init.js';
 import { will_weld } from './monmove.js';
+import { hcolor } from './do_name.js';
+import { NH_BLACK, NH_BLUE, NH_AMBER, HAND, A_DEX } from './const.js';
+import { Yobjnam2, otense, simpleonames, makeplural, an } from './objnam.js';
+import { body_part } from './polyself.js';
+import { uncurse } from './mkobj.js';
+import { update_inventory, useupall, weight } from './invent.js';
+import { strange_feeling } from './potion.js';
+import { exercise, encumber_msg } from './attrib.js';
+import { makeknown } from './o_init.js';
+import { is_elven_weapon } from './obj.js';
+import { rn2 } from './rng.js';
+import { Your } from './pline.js';
 import { getobj, prinv } from './invent.js';
 import { W_QUIVER, W_WEP, W_SWAPWEP, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOOMERANG, P_DART, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './const.js';
 import { You } from './pline.js';
@@ -93,8 +105,12 @@ export async function doquiver_core(verb) {
             note_unported_wield('doquiver_core:decline message');
             return ECMD_OK;
         }
-        /* quivering the alternate weapon, so no more uswapwep */
-        game.u.uswapwep = null;
+        /* src/wield.c:648 — quivering the alternate weapon, so no more
+           uswapwep. This must go through setuswapwep(), which clears
+           W_SWAPWEP from the object's owornmask; nulling the pointer alone
+           left the mask set, so doname kept appending
+           "(alternate weapon; not wielded)" alongside "(at the ready)". */
+        setuswapwep(null);
         note_unported_wield('doquiver_core:untwoweapon');
     }
 
@@ -371,6 +387,144 @@ export async function doswapweapon() {
 // tells you the weapon is cursed, so the B/U/C status becomes known. It is
 // recorded, so the weld is detected but the knowledge is not yet recorded on
 // the object.
+// src/wield.c:918 chwepon() — enchant (amount > 0) or degrade (amount < 0) the
+// wielded weapon. Returns 0 when nothing was enchanted, which tells the caller
+// its scroll has already been used up by strange_feeling().
+//
+// The only draws are the rn2(3) "violently glow then evaporate" test at the
+// soft +/-5 limit and the rn2(7) elven-vibration clue; the empty-handed arm's
+// exercise(A_DEX, amount >= 0) is an INCREMENT for a non-negative amount and so
+// costs an rn2(19) inside exercise() itself.
+export async function chwepon(otmp, amount) {
+    const color = hcolor((amount < 0) ? NH_BLACK : NH_BLUE);
+    let xtime, wepname = '';
+    let multiple;
+    let otyp = ONAMES.STRANGE_OBJECT;
+    const uwep = game.u.uwep;
+
+    if (!uwep || (uwep.oclass !== OCLASSES.WEAPON_CLASS
+                  && !is_weptool(uwep, game.objects))) {
+        let buf;
+
+        if (amount >= 0 && uwep && will_weld(uwep)) { /* cursed tin opener */
+            if (!game.u.ublind) {
+                buf = `${Yobjnam2(uwep, 'glow')} with `
+                      + an(hcolor(NH_AMBER)) + ' aura.';
+                /* ok to bypass set_bknown() */
+                uwep.bknown = (game.u?.intrinsic?.HHallucination
+                               || game.u?.uprops?.HALLUC) ? 0 : 1;
+            } else {
+                /* cursed tin opener is wielded in right hand */
+                buf = `Your right ${body_part(HAND)} tingles.`;
+            }
+            uncurse(uwep);
+            update_inventory();
+        } else {
+            buf = `Your ${makeplural(body_part(HAND))} `
+                  + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
+        }
+        await strange_feeling(otmp, buf); /* pline()+docall()+useup() */
+        exercise(A_DEX, amount >= 0);
+        return 0;
+    }
+
+    if (otmp && otmp.oclass === OCLASSES.SCROLL_CLASS)
+        otyp = otmp.otyp;
+
+    if (uwep.otyp === ONAMES.WORM_TOOTH && amount >= 0) {
+        multiple = (uwep.quan > 1);
+        /* order: message, transformation, shop handling */
+        await Your(`${simpleonames(uwep)} `
+                   + `${multiple ? 'fuse, and become' : 'is'} much sharper now.`);
+        uwep.otyp = ONAMES.CRYSKNIFE;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (uwep.cursed)
+            uncurse(uwep);
+        /* update shop bill to reflect new higher value */
+        if (uwep.unpaid)
+            note_unported_wield('chwepon:alter_cost');
+        if (otyp !== ONAMES.STRANGE_OBJECT)
+            makeknown(otyp);
+        if (multiple)
+            await encumber_msg();
+        return 1;
+    } else if (uwep.otyp === ONAMES.CRYSKNIFE && amount < 0) {
+        multiple = (uwep.quan > 1);
+        /* order matters: message, shop handling, transformation */
+        await Your(`${simpleonames(uwep)} `
+                   + `${multiple ? 'fuse, and become' : 'is'} much duller now.`);
+        note_unported_wield('chwepon:costly_alteration');
+        uwep.otyp = ONAMES.WORM_TOOTH;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (otyp !== ONAMES.STRANGE_OBJECT && otmp.bknown)
+            makeknown(otyp);
+        if (multiple)
+            await encumber_msg();
+        return 1;
+    }
+
+    if (uwep.oname != null)
+        wepname = uwep.oname;
+    if (amount < 0 && uwep.oartifact) {
+        /* restrict_name() needs the artifact tables, which are not ported */
+        note_unported_wield('chwepon:restrict_name');
+    }
+    /* there is a (soft) upper and lower limit to uwep->spe */
+    if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
+        && rn2(3)) {
+        if (!game.u.ublind)
+            await pline(`${Yobjnam2(uwep, 'violently glow')} ${color} `
+                        + `for a while and then ${otense(uwep, 'evaporate')}.`);
+        else
+            await pline(`${Yobjnam2(uwep, 'evaporate')}.`);
+
+        useupall(uwep);         /* let all of them disappear */
+        return 1;
+    }
+    if (!game.u.ublind) {
+        xtime = (amount * amount === 1) ? 'moment' : 'while';
+        await pline(`${Yobjnam2(uwep, amount === 0 ? 'violently glow' : 'glow')}`
+                    + ` ${color} for a ${xtime}.`);
+        if (otyp !== ONAMES.STRANGE_OBJECT && uwep.known
+            && (amount > 0 || (amount < 0 && otmp.bknown)))
+            makeknown(otyp);
+    }
+    if (amount < 0)
+        note_unported_wield('chwepon:costly_alteration');
+    uwep.spe += amount;
+    if (amount > 0) {
+        if (uwep.cursed)
+            uncurse(uwep);
+        /* update shop bill to reflect new higher price */
+        if (uwep.unpaid)
+            note_unported_wield('chwepon:alter_cost');
+    }
+
+    /*
+     * Enchantment, which normally improves a weapon, has an additional
+     * adverse reaction on Magicbane whose effects are spe dependent.
+     * Give an obscure clue here.
+     */
+    if (uwep.oartifact && uwep.spe >= 0)
+        note_unported_wield('chwepon:magicbane');
+
+    /* an elven magic clue, cookie@keebler */
+    /* elven weapons vibrate warningly when enchanted beyond a limit */
+    if ((uwep.spe > 5)
+        && (is_elven_weapon(uwep) || uwep.oartifact || !rn2(7)))
+        await pline(`${Yobjnam2(uwep, 'suddenly vibrate')} unexpectedly.`);
+
+    return 1;
+}
+
 export function welded(obj) {
     if (obj && obj === game.uwep && will_weld(obj)) {
         note_unported_wield('welded:set_bknown');

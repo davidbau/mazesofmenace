@@ -819,8 +819,11 @@ function monhaskey(mon) {
     return !!(m_carrying(mon, SKELETON_KEY_OTYP) || m_carrying(mon, LOCK_PICK_OTYP)
         || m_carrying(mon, CREDIT_CARD_OTYP));
 }
+// C ref: dungeon.h Inhell == In_hell(&u.uz) == dungeons[u.uz.dnum].flags.hellish.
+// The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
+// order at init_dungeons() time — so the flag has to be read off the dungeon.
 function Inhell() {
-    return (game.u?.uz?.dnum ?? 0) === (game.gehennom_dnum ?? GEHENNOM);
+    return !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
 }
 // C ref: mkobj.c sobj_at(otyp, x, y) — generic floor-object-type lookup (the
 // same pattern as sobj_at_boulder above, parameterized on otyp).
@@ -3355,7 +3358,7 @@ async function mattacku(mtmp, mdat) {
         // summonmu(mtmp): the two demon species exempted from summoning
         // (Balrog / incubus-succubus "amorous demon") aren't in the melee
         // sessions this port drives, so only the roll itself is needed here.
-        const inhell = (u.uz?.dnum ?? 0) === (game.gehennom_dnum ?? 5);
+        const inhell = Inhell();
         if (!rn2(inhell ? 10 : 16)) {
             // msummon(mtmp): rare demon-summon consequence, not modeled —
             // an honest divergence rather than a silent RNG desync.

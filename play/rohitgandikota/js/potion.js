@@ -3,10 +3,17 @@
 //
 // Only healup() so far, reached by the healing spells' zapyourself route.
 
+import { fruitname } from './objnam.js';
+import { trycall } from './do_name.js';
+import { newuhs } from './eat.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { You, You_feel } from './pline.js';
 import { exercise } from './attrib.js';
+import { A_DEX } from './const.js';
+import { Your } from './pline.js';
+import { nomul } from './hack.js';
+import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
 import { Unaware, Hallucination } from './youprop.js';
 import { rn2, rn1 } from './rng.js';
@@ -116,6 +123,13 @@ async function peffects(otmp) {
     case ONAMES.POT_CONFUSION:
         await peffect_confusion(otmp);
         break;
+    case ONAMES.POT_PARALYSIS:
+        await peffect_paralysis(otmp);
+        break;
+    case ONAMES.POT_FRUIT_JUICE:
+    case ONAMES.POT_SEE_INVISIBLE:
+        await peffect_see_invisible(otmp);
+        break;
     case ONAMES.POT_OIL:
         await peffect_oil(otmp);
         break;
@@ -144,7 +158,10 @@ export async function dopotion(otmp) {
             makeknown(otmp.otyp);
             more_experienced(0, 10);
         } else {
-            note_unported_potion('dopotion:trycall');
+            /* src/potion.c:1473 — offer to name the type we still cannot
+               identify. */
+            const { trycall } = await import('./do_name.js');
+            await trycall(otmp);
         }
     }
     useup(otmp);
@@ -185,4 +202,65 @@ export async function dodrink(drink_ok) {
         return ECMD_TIME;
     }
     return dopotion(otmp);
+}
+
+// src/potion.c:840 peffect_see_invisible() — also the fruit-juice arm, which
+// returns early after its hunger bump. The see-invisible effects proper are
+// recorded.
+async function peffect_see_invisible(otmp) {
+    game.potion_unkn++;
+    if (otmp.cursed)
+        await pline('Yecch!  This tastes rotten.');
+    else
+        await pline(`This tastes like ${otmp.odiluted ? 'reconstituted ' : ''}${
+            fruitname(true)}.`);
+    if (otmp.otyp === ONAMES.POT_FRUIT_JUICE) {
+        game.u.uhunger += (otmp.odiluted ? 5 : 10) * (2 + bcsign(otmp));
+        await newuhs(false);
+        return;
+    }
+    note_unported_potion('peffect_see_invisible:see_invisible');
+}
+
+// src/potion.c peffect_paralysis() — the hero freezes for rn1(10, 25) turns,
+// longer when the potion is cursed and shorter when blessed.
+//
+// Free_action, Levitation and riding change only the message; none is
+// reachable yet, so those arms are recorded.
+async function peffect_paralysis(otmp) {
+    if (game.u.uprops?.FREE_ACTION?.intrinsic) {
+        note_unported_potion('peffect_paralysis:free_action');
+        return;
+    }
+    if (game.u.uprops?.LEVITATION || game.u.usteed) {
+        note_unported_potion('peffect_paralysis:suspended_or_steed');
+    } else {
+        await Your(`feet are frozen to the ${surface(game.u.ux, game.u.uy)}!`);
+    }
+    nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
+    game.multi_reason = 'frozen by a potion';
+    game.nomovemsg = 'You can move again.';
+    exercise(A_DEX, false);
+}
+
+// src/potion.c strange_feeling() — the "nothing obvious happened" path shared
+// by scrolls and potions whose effect could not apply.
+//
+// C's `!txt` arm also covers flags.beginner. The dknown test gates trycall(),
+// which is what lets the hero name an object that just failed to do anything.
+export async function strange_feeling(obj, txt) {
+    if (game.flags?.beginner || !txt)
+        await You(`have a ${game.u?.intrinsic?.HHallucination
+                            || game.u?.uprops?.HALLUC ? 'normal' : 'strange'}`
+                  + ' feeling for a moment, then it passes.');
+    else
+        await pline(txt);
+
+    if (!obj)                   /* e.g., crystal ball finds no traps */
+        return;
+
+    if (obj.dknown)
+        await trycall(obj);
+
+    useup(obj);
 }

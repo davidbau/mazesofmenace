@@ -11,7 +11,7 @@
 // docs/plan/04-level-generation.md §4.0.
 
 import { game } from './gstate.js';
-import { In_endgame, Is_earthlevel } from './const.js';
+import { In_endgame, Is_earthlevel, ROOM, CORR } from './const.js';
 import { rn2, rn1 } from './rng.js';
 import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL, PICK_ONE,
          MENU_BEHAVE_STANDARD } from './const.js';
@@ -983,4 +983,21 @@ export async function print_dungeon(bymenu, out) {
 
 function note_unported_dungeon(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/dungeon.c:1750 surface() — what the hero is standing on, for messages.
+//
+// Only the arms a normal dungeon floor reaches are live: pools, ice, lava,
+// altars and the swallowed/air cases are recorded when hit.
+export function surface(x, y) {
+    const lev = game.level?.at(x, y);
+    if (!lev)
+        return 'floor';
+    /* pools, ice, lava, altars, graves, fountains and stairs each have their
+       own word; none is reached by anything ported, so they record. */
+    if (lev.typ !== ROOM && lev.typ !== CORR) {
+        note_unported_dungeon(`surface:typ=${lev.typ}`);
+        return 'floor';
+    }
+    return 'floor';
 }

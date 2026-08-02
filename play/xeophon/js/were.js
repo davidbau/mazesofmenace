@@ -17,6 +17,7 @@
 
 import { rn2, rnd, rn1 } from './rng.js';
 import { game } from './gstate.js';
+import { newsym } from './display.js';
 
 // C ref: include/flag.h:80-81
 export const NEW_MOON = 0;
@@ -142,7 +143,7 @@ export function wereBeastieSpecies(name) {
 
 // C ref: include/youprop.h:359-360 Protection_from_shape_changers —
 // hero-only worn/extrinsic property.
-function heroProtectionFromShapeChangers(g) {
+export function heroProtectionFromShapeChangers(g) {
     const u = g?.u;
     if (u?.protectionFromShapeChangers || u?.Protection_from_shape_changers) return true;
     return (g?.inventory || []).some(item => {
@@ -201,12 +202,38 @@ export function newWere(mon, ctx = {}) {
     const hallucinating = !!(ctx.hallucination ?? g?.u?.hallucinating ?? g?.u?.hallucination);
     // were.c:113-115: visible, non-hallucinating feedback. `pmname+4`
     // skips the "were" prefix -> "changes into a wolf."
+    let messageBlocked = false;
     if (canSeeMonster && !hallucinating) {
         const msg = `${monnam(mon)} changes into a ${toHuman ? 'human' : next.name.replace(/^were/, '')}.`;
-        if (typeof ctx.addToplineMessage === 'function') ctx.addToplineMessage(msg);
+        if (typeof ctx.addToplineMessage === 'function') messageBlocked = ctx.addToplineMessage(msg) === false;
         else (g._deferredMessages ??= []).push(msg);
     }
 
+    // were.c:113-115 -> 117-128 ordering: C pline()s the transformation
+    // feedback BEFORE set_mon_data()+newsym(), and an overflowing message
+    // makes putmsg()'s "--More--" block inside new_were(); the map keep its
+    // old glyph for the pre-dismissal snapshot while set_mon_data (data swap)
+    // has already run by the time play resumes (mdat re-cached at
+    // mhitu.c:740 after the caller's blocked pline).  Emulate that by
+    // applying the data swap immediately (combat/RNG state is post-swap,
+    // as C's post-dismissal attack resolution observes) and deferring only
+    // the map repaint until the next input boundary (see
+    // flushDeferredWereTransforms, called from nhgetch() after the
+    // screen-capture hook).
+    if (messageBlocked && g._message_more)
+        (g._deferred_were_transforms ??= []).push(mon);
+    applyNewWereBody(mon, ctx, next, toHuman);
+    return true;
+}
+
+// C ref: were.c:117-136 — new_were() body applied once the transformation
+// feedback has been displayed (immediately when the message fits, or on the
+// --More-- dismissal when it blocked).
+export function applyNewWereBody(mon, ctx = {}, nextArg = null, toHumanArg = null) {
+    const g = ctx.g || game;
+    const next = nextArg || counterWereData(mon?.data || {});
+    if (!next) return;
+    const toHuman = toHumanArg ?? isWereHumanForm(next);
     // were.c:117 set_mon_data: identity swap, hp preserved; movement
     // prorated (no-op here, both forms are mmove 12).
     mon.data = { ...next };
@@ -232,7 +259,10 @@ export function newWere(mon, ctx = {}) {
     if (lost > 0) mon.mhp = Math.min(mon.mhpmax, mon.mhp + Math.trunc(lost / 4));
     // were.c:126-128: newsym; mon_break_armor + possibly_unwield — beast
     // forms are M1_NOHANDS so wielded/worn gear is forced off.
-    if (typeof ctx.newsym === 'function') ctx.newsym(mon.mx, mon.my);
+    if ((g._deferred_were_transforms || []).includes(mon)) {
+        // deferred repaint: see newWere() comment above.
+    } else if (typeof ctx.newsym === 'function') ctx.newsym(mon.mx, mon.my);
+    else if (g?.level?.at) newsym(mon.mx, mon.my);
     if (next.nohands && mon.mw) { // possibly_unwield: drop monster weapon
         (mon.minvent ??= []).push(mon.mw);
         mon.mw = null;
@@ -249,8 +279,9 @@ export function newWere(mon, ctx = {}) {
     // destination. onscary()/elbereth semantics are handled by ctx.onscary
     // when available; the flee roll is rn1(9, 2) = 2..10 turns.
     if (ctx.monMoving && !mon.mpeaceful) {
-        const scary = typeof ctx.onscary === 'function' && mon.mux != null
-            && ctx.onscary(mon.mux, mon.muy, mon);
+        const onscaryFn = typeof ctx.onscary === 'function' ? ctx.onscary : defaultDeferredOnscary;
+        const scary = typeof onscaryFn === 'function' && mon.mux != null
+            && onscaryFn(mon.mux, mon.muy, mon);
         const nearTarget = mon.mux != null
             && Math.abs((mon.mx ?? mon.mux) - mon.mux) <= 1
             && Math.abs((mon.my ?? mon.muy) - mon.muy) <= 1;
@@ -259,8 +290,28 @@ export function newWere(mon, ctx = {}) {
             mon.mflee = true;
         }
     }
-    return true;
 }
+
+// Onscary fallback for deferred transforms (allmain.js's wereChange caller
+// resolved Elbereth checks inline); mirrors that caller's engraving check.
+function defaultDeferredOnscary(x, y, mon) {
+    return (game.level?.engravings || []).some(engr =>
+        engr.x === x && engr.y === y && /Elbereth/.test(engr.text || ''));
+}
+
+// C ref: plymsg()/putmsg --More-- blocking (pline.c) — a transformation that
+// overflowed into "--More--" has its set_mon_data()/newsym() deferred until
+// the dismissal keypress; the next nhgetch() boundary flushes it.
+export function flushDeferredWereTransforms(g = game) {
+    const pending = g._deferred_were_transforms;
+    if (!pending || !pending.length) return;
+    g._deferred_were_transforms = [];
+    for (const mon of pending) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        newsym(mon.mx, mon.my);
+    }
+}
+
 
 // C ref: were.c:9-44 were_change() — per-turn lycanthrope shapeshift roll,
 // called for every were monster each monster turn (mon.c:1198 in
@@ -301,6 +352,21 @@ export function wereChange(mon, ctx = {}) {
         return false;
     }
     return false;
+}
+
+// C ref: were.c:142-189 were_summon() attempt species selection —
+// one conditional rn2 chain per roll table row (were.c:150-168), rolled
+// per summon attempt.  Shared between wereSummon() and the suspending
+// werewolf-attack summon loop in allmain.js.
+export function wereSummonSpeciesPick(data) {
+    const species = wereSpeciesOf(data);
+    const entry = species && WERE_SPECIES.get(species);
+    if (!entry) return null;
+    let typ = entry.summonKinds.fallback;
+    for (const [n, name] of entry.summonKinds.rolls) {
+        if (rn2(n)) { typ = name; break; }
+    }
+    return typ;
 }
 
 // C ref: were.c:142-189 were_summon() — a were-creature (maybe the hero in

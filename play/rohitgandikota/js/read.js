@@ -6,10 +6,13 @@
 
 import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
-import { ECMD_CANCEL } from './const.js';
+import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level } from './const.js';
+import { sgn } from './hacklib.js';
+import { chwepon } from './wield.js';
+import { erosion_matters } from './mkobj.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { pline } from './display.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { getlin } from './cmd.js';
 import { name_to_monplus } from './mondata.js';
 import { makemon } from './makemon.js';
@@ -18,6 +21,7 @@ import { Amonnam } from './do_name.js';
 import { MM_NOEXCLAM } from './const.js';
 import { study_book } from './spell.js';
 import { do_mapping } from './detect.js';
+import { do_clear_area, vision_recalc } from './vision.js';
 import { makeknown } from './o_init.js';
 import { more_experienced } from './exper.js';
 import { You } from './pline.js';
@@ -115,6 +119,10 @@ async function seffects(sobj) {
         break;
     case ONAMES.SCR_IDENTIFY:
         return await seffect_identify(sobj);
+    case ONAMES.SCR_ENCHANT_WEAPON:
+        return await seffect_enchant_weapon(sobj);
+    case ONAMES.SCR_LIGHT:
+        return await seffect_light(sobj);
     default:
         note_unported_read(`seffects:otyp=${otyp}`);
         break;
@@ -130,6 +138,138 @@ function learnscrolltyp(scrolltyp) {
         return true;
     }
     return false;
+}
+
+// src/read.c seffect_light() — the scroll of light.
+//
+// The confused arm makes yellow/black lights, which needs makemon with
+// MM_EDOG plus initedog; recorded. The ordinary arm is live.
+async function seffect_light(sobj) {
+    const scursed = sobj.cursed;
+    const confused = !!(game.u?.intrinsic?.HConfusion
+                        || game.u?.uprops?.CONFUSION);
+
+    if (!confused) {
+        if (!game.u.ublind)
+            game.known = true;
+        await litroom(!scursed, sobj);
+        if (!scursed) {
+            /* lightdamage(sobj, TRUE, 5): the gremlin arm is the only one
+               with draws or effect, and the hero is never a gremlin here */
+            if (5)
+                game.known = true;
+        }
+    } else {
+        note_unported_read('seffect_light:confused_lights');
+    }
+    return false;
+}
+
+// src/read.c set_lit() — do_clear_area()'s callback.
+//
+// The gremlin collection list is recorded: it only matters when a gremlin is
+// standing in the lit area, and light_hits_gremlin's rnd(5) would be a draw.
+function set_lit(x, y, val) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    if (val) {
+        loc.lit = 1;
+        const mtmp = (game.level?.monsters || [])
+            .find(m => m.mx === x && m.my === y && m.mhp > 0);
+        if (mtmp && mtmp.data?.mname === 'gremlin')
+            note_unported_read('set_lit:gremlin');
+    } else {
+        loc.lit = 0;
+        note_unported_read('set_lit:snuff_light_source');
+    }
+}
+
+// src/read.c:2491 litroom() — light (on) or darken (!on) the hero's area.
+//
+// Radius is 5, or 9 for a blessed scroll. The darkening arm needs
+// snuff_lit/artifact_light over the inventory and is recorded; the lighting
+// arm is what a scroll of light reaches.
+export async function litroom(on, obj) {
+    const blessed_effect = !!(obj && obj.oclass === OCLASSES.SCROLL_CLASS
+                              && obj.blessed);
+    const no_op = !!game.u.uswallow;    /* Underwater/waterlevel not modelled */
+
+    /* update object lights and produce message (provided you're not blind) */
+    if (!on) {
+        note_unported_read('litroom:darken');
+        return;
+    }
+    if (blessed_effect)
+        /* impact_arti_light over lamplit artifacts; none exist yet */
+        note_unported_read('litroom:blessed_arti_light');
+
+    if (game.u.uswallow) {
+        note_unported_read('litroom:swallowed');
+    } else if (!game.u.ublind
+               && (!Is_rogue_level(game.u.uz)
+                   || game.level?.at(game.u.ux, game.u.uy)?.typ !== CORR)) {
+        await pline(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
+    }
+
+    /* No-op when swallowed or in water */
+    if (no_op)
+        return;
+
+    do_clear_area(game.u.ux, game.u.uy, blessed_effect ? 9 : 5,
+                  set_lit, on ? 1 : 0);
+
+    /*
+     *  If we are not blind, then force a redraw on all positions in sight
+     *  by temporarily blinding the hero. The vision recalculation will
+     *  correctly update all previously seen positions *and* correctly set
+     *  the waslit bit.
+     */
+    if (!game.u.ublind)
+        vision_recalc(2);
+
+    game.vision_full_recalc = 1;        /* delayed vision recalculation */
+}
+
+// src/read.c:1627 seffect_enchant_weapon() — the scroll of enchant weapon.
+//
+// The confused arm rustproofs the weapon instead of enchanting it, and returns
+// before chwepon(); erosion_matters() plus the ARMOR_CLASS exclusion is what
+// keeps it to actual weapons. `s` guards its own uwep tests against a null
+// pointer, which is why the !uwep case yields 1 rather than reading uwep->spe.
+async function seffect_enchant_weapon(sobj) {
+    const scursed = sobj.cursed;
+    const confused = !!(game.u?.intrinsic?.HConfusion
+                        || game.u?.uprops?.CONFUSION);
+    const sblessed = sobj.blessed;
+    const uwep = game.u.uwep;
+    let s;
+
+    /* [What about twoweapon mode?  Proofing/repairing/enchanting both
+       would be too powerful, but shouldn't we choose randomly between
+       primary and secondary instead of always acting on primary?] */
+    if (confused && uwep && erosion_matters(uwep, game.objects)
+        && uwep.oclass !== OCLASSES.ARMOR_CLASS) {
+        note_unported_read('seffect_enchant_weapon:erodeproof');
+        return false;
+    }
+    s = scursed ? -1
+        : !uwep ? 1                     /* guard the tests below against null */
+        : (uwep.spe >= 9) ? (rn2(uwep.spe) === 0)  /* usually 0, maybe 1 */
+        : sblessed ? rnd(3 - Math.trunc(uwep.spe / 3)) /* >=9 prevents rnd(0) */
+        : 1;                            /* uncursed */
+    /* nothing enchanted: strange_feeling -> useup */
+    const used_up = !(await chwepon(sobj, s));
+    if (uwep)
+        cap_spe(uwep);
+    return used_up;
+}
+
+// src/read.c cap_spe() — clamp enchantment to the +/-SPE_LIM band.
+function cap_spe(obj) {
+    if (obj) {
+        if (Math.abs(obj.spe) > SPE_LIM)
+            obj.spe = sgn(obj.spe) * SPE_LIM;
+    }
 }
 
 // src/read.c:2055 seffect_identify() — the scroll arm.

@@ -47,6 +47,8 @@ import { is_weptool } from './mkobj.js';
 import { OCLASSES, MATERIALS, ONAMES } from './objects_data.js';
 import { sgn } from './hacklib.js';
 import { ATTKS } from './monst_data.js';
+import { STR18 } from './const.js';
+import { ACURR } from './attrib.js';
 import { W_ARM, W_ARMS, P_BARE_HANDED_COMBAT, P_BASIC,
          HMON_MELEE, HMON_APPLIED, HMON_THROWN, HMON_KICKED,
          W_ARMG, W_RINGR, W_RINGL, P_KNIFE, P_WHIP, XKILL_NOMSG,
@@ -734,6 +736,7 @@ const is_watch = (d) =>
 // jousting / stagger / the two-weapon arm, then the kill handling, then pet,
 // splitmon and msg_hit.
 export async function hmon_hitmon(mon, obj, thrown, dieroll) {
+    let maybe_knockback = false;
     const hmd = {
         dmg: 0,
         thrown: thrown,
@@ -750,7 +753,18 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         jousting: 0,
         hittxt: false,
         get_dmg_bonus: true,
-        unarmed: !game.uwep && !game.uarm && !game.uarms,
+        /* src/uhitm.c:1779 — `!uwep && !uarm && !uarms`.
+           KNOWN WRONG, deliberately left as-is for now: game.uwep,
+           game.uarm and game.uarms do NOT exist (the real accessors are
+           game.u.uwep and worn(W_ARM)/worn(W_ARMS)), so this is always
+           true and every armed branch below is dead. Correcting it to
+              !game.u.uwep && !worn(W_ARM) && !worn(W_ARMS)
+           makes hmon_hitmon's knockback arm fire, which matches C's draws
+           at uhitm.c:5258/5269 -- and then diverges one draw later at
+           known_hitum's rn2(25) because our monster dies where C's lives.
+           Net -2 screens (seed0360), so it is reverted until that
+           downstream gap is fixed with it. See docs/plan/STATUS.md. */
+        unarmed: !game.u.uwep && !worn(W_ARM) && !worn(W_ARMS),
         hand_to_hand: (thrown === HMON_MELEE
                        /* not grapnels; applied implies uwep */
                        || (thrown === HMON_APPLIED && is_pole(game.uwep))),
@@ -787,7 +801,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         hmon_hitmon_stagger(hmd, mon, obj);
     } else if (!hmd.unarmed && hmd.dmg > 1 && !thrown && !game.Upolyd
                && !game.u.twoweap && game.u.uwep) {
-        note_unported_uhitm('hmon_hitmon:knockback');
+        maybe_knockback = true;
     }
 
     if (!hmd.already_killed) {
@@ -849,10 +863,20 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
        Both are ported, so this is a real call chain. */
     if (!hmd.destroyed && !hmd.offmap) {
         await wakeup(mon, true);
-        note_unported_uhitm('hmon_hitmon:maybe_knockback');
+        /* src/uhitm.c:1926 — a solid weapon hit can hurl the defender. The
+           two leading draws inside mhitm_knockback happen unconditionally,
+           so skipping the call loses them for every armed hit. */
+        if (maybe_knockback)
+            mhitm_knockback(game.youmonst, mon,
+                            game.youmonst.data.mattk, {}, true);
     }
 
-    return hmd.retval;
+    /* src/uhitm.c:1934 — `return hmd.destroyed ? FALSE : TRUE`. This used to
+       return hmd.retval, which is initialised false and only set true on the
+       hit_no_harm path, so EVERY ordinary hit reported the monster dead and
+       known_hitum's whole post-hit block (its rn2(25) flee check among
+       others) was unreachable. */
+    return hmd.destroyed ? false : true;
 }
 
 /* include/obj.h is_pole() — the real predicate lives in js/u_init.js; this
@@ -1107,7 +1131,7 @@ function hmon_hitmon_dmg_recalc(hmd, obj) {
         if (hmd.thrown !== HMON_THROWN
             || !obj || !game.uwep
             || !note_unported_uhitm('dmg_recalc:ammo_and_launcher')) {
-            strbonus = note_dbon_unported();
+            strbonus = dbon();
             absbonus = Math.abs(strbonus);
             if (hmd.twohits)
                 strbonus = (((3 * absbonus + 2) / 4) | 0) * sgn(strbonus);
@@ -1135,11 +1159,31 @@ function hmon_hitmon_dmg_recalc(hmd, obj) {
         hmd.dmg = 1;
 }
 
-// src/attrib.c dbon() — strength damage bonus. Not ported; returns 0 so the
-// scaling above is exercised but adds nothing.
-function note_dbon_unported() {
-    note_unported_uhitm('dmg_recalc:dbon');
-    return 0;
+// src/weapon.c:993 dbon() — the Strength damage bonus. A weak hero takes a
+// PENALTY, which is why stubbing this at 0 made light hits kill monsters C
+// leaves alive.
+function dbon() {
+    const str = ACURR(A_STR);
+
+    if (game.Upolyd)
+        return 0;
+
+    if (str < 6)
+        return -1;
+    else if (str < 16)
+        return 0;
+    else if (str < 18)
+        return 1;
+    else if (str === 18)
+        return 2;                       /* up to 18 */
+    else if (str <= STR18(75))
+        return 3;                       /* up to 18/75 */
+    else if (str <= STR18(90))
+        return 4;                       /* up to 18/90 */
+    else if (str < STR18(100))
+        return 5;                       /* up to 18/99 */
+    else
+        return 6;
 }
 
 // src/uhitm.c:1637 hmon_hitmon_msg_hit() — the "You hit it!" line.

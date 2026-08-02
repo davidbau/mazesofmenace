@@ -9,6 +9,7 @@
 // itself.
 
 import { game } from './gstate.js';
+import { get_level_extends, fix_wall_spines } from './mklev.js';
 import { selection_iterate } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
@@ -63,7 +64,7 @@ import {
     TLWALL, TRWALL, DBWALL, AIR, CLOUD, FOUNTAIN, THRONE, SINK, MOAT, POOL,
     LAVAPOOL, LAVAWALL, ICE, WATER, TREE, IRONBARS,
     MAX_TYPE, MATCH_WALL, INVALID_TYPE, NO_ROOM, ROOMOFFSET, D_CLOSED,
-    MAXNROFROOMS, IS_WALL, IS_DOOR, IS_OBSTRUCTED,
+    MAXNROFROOMS, IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_STWALL,
     D_ISOPEN, D_NODOOR, D_BROKEN, D_SECRET,
 } from './const.js';
 
@@ -366,6 +367,52 @@ export function lspo_terrain(sel, mapchr) {
         return;                             /* nhl_error("Erroneous map char") */
 
     selection_iterate(sel, sel_set_ter, ter);
+}
+
+// src/sp_lev.c:5055 lspo_replace_terrain() — swap one terrain type for
+// another across a region.
+//
+// **Every MATCHING square draws rn2(100)**, even with the default chance of
+// 100 where the replacement always happens. Skipping the draw for a level
+// that uses this desynchronises the whole build.
+//
+// The mapfrag (`mapfragment`) and explicit-`selection` forms are recorded;
+// the region + fromterrain form is what the level files use.
+export function lspo_replace_terrain(opts) {
+    const totyp = splev_chr2typ(opts.toterrain);
+    if (totyp === INVALID_TYPE)
+        return;
+    if (opts.mapfragment || opts.selection) {
+        note_unported('replace_terrain:mapfragment_or_selection');
+        return;
+    }
+    const fromtyp = splev_chr2typ(opts.fromterrain);
+    const chance = (opts.chance === undefined) ? 100 : opts.chance;
+    const r = opts.region || [];
+    /* C runs both corners through get_location(), which applies the map's
+       xstart/ystart offset; without it the scan covers the wrong columns and
+       misses matching squares at the map's right edge. */
+    const rx1 = r[0] + game.xstart, ry1 = r[1] + game.ystart;
+    const rx2 = r[2] + game.xstart, ry2 = r[3] + game.ystart;
+
+    for (let x = Math.max(1, rx1); x <= Math.min(rx2, COLNO - 1); x++)
+        for (let y = Math.max(0, ry1); y <= Math.min(ry2, ROWNO - 1); y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc)
+                continue;
+            /* src/sp_lev.c:5130 — the match is
+                   (fromtyp == MATCH_WALL && IS_STWALL(levl[x][y].typ))
+                   || levl[x][y].typ == fromtyp
+               A plain equality test misses MATCH_WALL, the wildcard a level
+               file uses to mean "any stone or wall". That made the scan match
+               a handful of squares where C matches the whole wall run, so we
+               spent one rn2(100) where C spends dozens. */
+            if (!((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
+                  || loc.typ === fromtyp))
+                continue;
+            if (rn2(100) < chance)
+                loc.typ = totyp;
+        }
 }
 
 // src/sp_lev.c:3059 l_push_mkroom_table() — the shape a `contents` function
@@ -2026,7 +2073,119 @@ function flip_level_rnd(flp) {
     if ((flp & 2) && rn2(2))
         c |= 2;
     if (c)
-        note_unported('flip_level');
+        flip_level(c, false);
+}
+
+// src/sp_lev.c:533 flip_level() — mirror the level on one or both axes.
+//
+// Everything positional moves: the terrain grid, objects, monsters, traps,
+// stairways, engravings and doors. This port keeps objects and monsters in
+// flat lists rather than per-square chains, so C's grid swap of
+// level.objects[][] / level.monsters[][] is implicit once their coordinates
+// are flipped -- only the terrain cells need exchanging.
+//
+// Recorded: the ball-and-chain repositioning, the vault guard's egd,
+// migrating monsters, timers and the level-teleport regions. `extras` is
+// false for the post-build flip, which is the only caller so far.
+export function flip_level(flp, extras) {
+    if ((flp & 3) === 0)
+        return;
+    if (extras)
+        note_unported('flip_level:extras');
+
+    const ext = get_level_extends();
+    let minx = ext.xmin, miny = ext.ymin, maxx = ext.xmax, maxy = ext.ymax;
+    /* get_level_extends() returns -1,-1 to COLNO,ROWNO at max */
+    if (miny < 0) miny = 0;
+    if (minx < 1) minx = 1;
+    if (maxx >= COLNO) maxx = COLNO - 1;
+    if (maxy >= ROWNO) maxy = ROWNO - 1;
+
+    const FlipX = (v) => (maxx - v) + minx;
+    const FlipY = (v) => (maxy - v) + miny;
+    const inFlipArea = (x, y) =>
+        (x >= minx && x <= maxx && y >= miny && y <= maxy);
+
+    /* stairs and ladders */
+    for (let st = game.stairs; st; st = st.next) {
+        if (flp & 1) st.sy = FlipY(st.sy);
+        if (flp & 2) st.sx = FlipX(st.sx);
+    }
+
+    /* This port also records the up/down stair coordinates separately on the
+       level (js/mklev.js sets level.upstair / level.dnstair) and the display
+       keys the '<' vs '>' glyph off them, so they have to move too. C reads
+       the stairway list for that and has no such record. */
+    for (const key of ['upstair', 'dnstair']) {
+        const st = game.level?.[key];
+        if (!st || !inFlipArea(st.x, st.y)) continue;
+        if (flp & 1) st.y = FlipY(st.y);
+        if (flp & 2) st.x = FlipX(st.x);
+    }
+
+    /* traps */
+    for (const t of (game.level?.traps || [])) {
+        if (!inFlipArea(t.tx, t.ty)) continue;
+        if (flp & 1) t.ty = FlipY(t.ty);
+        if (flp & 2) t.tx = FlipX(t.tx);
+    }
+
+    /* objects */
+    for (const o of (game.level?.objects || [])) {
+        if (!inFlipArea(o.ox, o.oy)) continue;
+        if (flp & 1) o.oy = FlipY(o.oy);
+        if (flp & 2) o.ox = FlipX(o.ox);
+    }
+
+    /* monsters */
+    for (const m of (game.level?.monsters || [])) {
+        if (!inFlipArea(m.mx, m.my)) continue;
+        if (flp & 1) m.my = FlipY(m.my);
+        if (flp & 2) m.mx = FlipX(m.mx);
+    }
+
+    /* engravings */
+    for (const e of (game.level?.lev_engr || [])) {
+        if (flp & 1) e.y = FlipY(e.y);
+        if (flp & 2) e.x = FlipX(e.x);
+    }
+
+    /* doors */
+    for (const d of (game.level?.doors || [])) {
+        if (flp & 1) d.y = FlipY(d.y);
+        if (flp & 2) d.x = FlipX(d.x);
+    }
+
+    /* the map */
+    if (flp & 1) {
+        for (let x = minx; x <= maxx; x++)
+            for (let y = miny; y < (miny + (((maxy - miny + 1) / 2) | 0)); y++) {
+                const ny = FlipY(y);
+                const a = game.level.at(x, y), b = game.level.at(x, ny);
+                if (!a || !b) continue;
+                const tmp = { ...a };
+                Object.assign(a, b);
+                Object.assign(b, tmp);
+            }
+    }
+    if (flp & 2) {
+        for (let x = minx; x < (minx + (((maxx - minx + 1) / 2) | 0)); x++)
+            for (let y = miny; y <= maxy; y++) {
+                const nx = FlipX(x);
+                const a = game.level.at(x, y), b = game.level.at(nx, y);
+                if (!a || !b) continue;
+                const tmp = { ...a };
+                Object.assign(a, b);
+                Object.assign(b, tmp);
+            }
+    }
+
+    /* src/sp_lev.c:915 — the swap moves wall SQUARES but leaves their corner
+       and T-junction types pointing the old way; this recomputes them from
+       the neighbours. Without it every corner glyph comes out mirrored. */
+    fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
+    /* C ends with vision_reset(); goto_level() already does one right after
+       the level is built, so it is left to that caller. */
 }
 
 /* SpLev_Map — which map squares the special level explicitly touched. */

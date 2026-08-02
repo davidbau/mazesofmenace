@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, shuffle,
+import { filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_valley, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
          splev_map_origin, SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
@@ -32,7 +32,8 @@ import { makemon as make_monster, rndmonst, mkclass,
 import { m_at } from './display.js';
 import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
-import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
+import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph,
+         make_grave } from './engrave.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
     SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, ROCK_CLASS, SPBOOK_no_NOVEL,
@@ -243,29 +244,6 @@ async function makemon(mdat, x, y, mmflags) {
     return mtmp;
 }
 
-// C ref: engrave.c make_grave(). The only RNG side-effect is the epitaph pick
-// when no text is supplied: get_rnd_text(EPITAPHFILE, ...) -> rn2(24075) plus the
-// MD_PAD_RUMORS line scan. Dropping that draw desyncs every subsequent rn2() on
-// levels that contain a grave. The headstone text itself is not shown at game
-// start, so only the draw sequence is load-bearing.
-function make_grave(x, y, text) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return;
-    // Can we put a grave here?  (caller's find_okay_roompos already excludes
-    // traps/furniture, so this guard normally passes for a plain ROOM cell)
-    if (loc.typ !== ROOM && loc.typ !== GRAVE) return;
-    loc.typ = GRAVE;
-    // del_engr_at: drop any existing engraving at this spot (consumes no RNG)
-    if (game.level?.engravings) {
-        game.level.engravings = game.level.engravings.filter(
-            (ep) => ep.engr_x !== x || ep.engr_y !== y,
-        );
-    }
-    let str = text;
-    if (str == null) str = get_rnd_epitaph();
-    make_engr_at(x, y, str, null, 0, HEADSTONE);
-}
-
 // in_rooms stub
 function in_rooms(x, y, rtype) { return []; }
 
@@ -453,6 +431,23 @@ async function makelevel() {
         // C ref: lspo_finalize_level -> level_finalize_topology -> set_wall_state()
         // assigns the WM_MASK wall-mode bits that wall_angle() needs to render
         // cross/T-junction walls correctly (the tower's internal walls).
+        set_wall_state();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Valley of the Dead, the
+    // gateway level of Gehennom.  lspo_finalize_level's tail order is
+    // load-bearing here: the flip (inside makemaz_valley) comes first, then
+    // fixup_special() places the "branch" levregion, and only THEN does the
+    // fill_special_room() loop stock the three morgues.
+    if (slev && slev.proto === 'valley') {
+        await makemaz_valley();
+        // C ref: fixup_special() places the registered "branch" levregion; the
+        // teleport_region is only stored (goto_level places the hero from it).
+        await quest_place_branch();
+        // The fill_special_room() loop that closes lspo_finalize_level is the
+        // engine's generic post-mklev pass (fastforward_fill_mineralize), which
+        // runs right after mklev() returns — i.e. already in C's order, after
+        // the branch lregion and after level_finalize_topology's mineralize().
         set_wall_state();
         return;
     }
@@ -2834,7 +2829,7 @@ async function mk_trap() {
     } while (++trycnt <= 100);
     // mktrap(type=-1 random): traptype loop + maketrap + victim gate.
     let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    kind = mktrap_random_kind();
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const canFallThru = (game.u?.uz?.dlevel ?? 1)
         < (dungeon?.num_dunlevs ?? 99);
@@ -4119,7 +4114,7 @@ async function oracle_trap(croom) {
     const c = oracle_get_free_room_loc(croom);      // somexy (get_free_room_loc)
     // is_pool_or_lava(tm) check: room floor is never pool here.
     let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP); // rnd(25) loop
+    kind = mktrap_random_kind();
     const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
     const canFallThru = (g.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? dungeon?.dunlev_ureached ?? 99);
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
@@ -4283,6 +4278,20 @@ function find_branch_room(mp) {
     return croom;
 }
 
+// C ref: mklev.c mktrap() — the random-trap-type selection chain for a call
+// with no explicit type:
+//   Is_rogue_level -> traptype_roguelvl()
+//   Inhell && !rn2(5) -> FIRE_TRAP        ("bias the frequency of fire traps
+//                                          in Gehennom")
+//   otherwise -> the do/while traptype_rnd() loop.
+// The rn2(5) is only reached in Gehennom, so this is RNG-neutral elsewhere.
+function mktrap_random_kind() {
+    if (In_hell(game.u?.uz) && !rn2(5)) return FIRE_TRAP;  // mklev.c:2070
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    return kind;
+}
+
 // C ref: mklev.c place_branch(br, 0, 0) — the makelevel() call, which picks
 // random coordinates via find_branch_room() instead of being handed a spot.
 // The `br->type` dispatch below is the same one mk_place_branch_at() runs for
@@ -4412,7 +4421,10 @@ function traptype_rnd() {
     case STATUE_TRAP: case POLY_TRAP:
         if (lvl < 8) kind = NO_TRAP; break;
     case FIRE_TRAP:
-        kind = NO_TRAP; break; // not hellish
+        // C ref: mklev.c traptype_rnd() — `if (!Inhell) kind = NO_TRAP;`.
+        // Fire traps only generate randomly in Gehennom.
+        if (!In_hell(game.u?.uz)) kind = NO_TRAP;
+        break;
     case TELEP_TRAP:
         if (game.level?.flags?.noteleport) kind = NO_TRAP; break;
     case HOLE:
@@ -4532,7 +4544,7 @@ function mktrap_victim(trap) {
 
 async function mktrap_room(croom) {
     let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    kind = mktrap_random_kind();
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
@@ -4802,7 +4814,7 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
     // Room is a special level, so its gold/gem loop is suppressed (kelp only).
     if (!skip_lvl_checks) {
         const sp = Is_special(game.u?.uz);
-        if (game.level?.flags?.arboreal
+        if (In_hell(game.u?.uz) || game.level?.flags?.arboreal
             || (sp && sp.proto && sp.proto.toLowerCase() !== 'oracle'
                 && sp.proto.toLowerCase() !== 'minetn')) {
             return;

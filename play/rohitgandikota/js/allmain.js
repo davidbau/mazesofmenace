@@ -83,6 +83,7 @@ function init_sound_disp_gamewindows() {
 // include/you.h:441-442
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
+import { u_wipe_engr } from './engrave.js';
 import { dosounds } from './sounds.js';
 import { nh_timeout } from './timeout.js';
 import { age_spells } from './spell.js';
@@ -563,9 +564,14 @@ export async function moveloop_core() {
                 age_spells();
                 exerchk();
 
-                /* src/allmain.c:360 */
+                /* src/allmain.c:360 — the hero scuffs what is written under
+                   their feet. This used to spend the rnd(3) and DISCARD it
+                   without calling u_wipe_engr(), so a dust engraving never
+                   degraded: an "Elbereth" stayed pristine forever and kept
+                   scaring monsters through onscary(), which C's scuffed copy
+                   no longer matches. */
                 if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
-                    rnd(3);                             /* u_wipe_engr(rnd(3)) */
+                    u_wipe_engr(rnd(3));
 
                 /* src/allmain.c:380 — when immobile, count is in turns */
                 if ((g.multi ?? 0) < 0) {

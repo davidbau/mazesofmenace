@@ -14,6 +14,7 @@ import {
     rndmonnum, rndmonnum_adj, makemon, mkclass, monsndx, level_difficulty,
     MM_NOGRP, NO_MM_FLAGS, Inhell, likes_gems,
 } from './makemon.js';
+import { in_rooms } from './hack.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
          G_GONE } from './const.js';
@@ -148,6 +149,11 @@ import { lua_shuffle } from './nhlua.js';
 let mklev_mon = { is_pool: () => false, is_lava: () => false };
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level, Is_special } from './dungeon.js';
+import { Is_oracle_level, In_mines } from './const.js';
+
+/* include/dungeon.h In_hell() — the Gehennom branch. js/trap.js has a private
+   copy of this; C has one, and they should be consolidated. */
+const In_hell = (lev) => (lev ?? game.u?.uz)?.dnum === game.hell_dnum;
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -454,8 +460,11 @@ export function make_grave(x, y, str) {
     make_engr_at(x, y, str, null, 0, HEADSTONE);
 }
 
-// in_rooms stub
-function in_rooms(x, y, rtype) { return []; }
+/* in_rooms() lives in js/hack.js, its C home (src/hack.c). This file used to
+   carry a stub that always returned empty, so dosdoor's `shdoor` was
+   permanently false and every shop door got the non-shop mask: C gives a shop
+   doorway D_ISOPEN and a shop wall-door D_LOCKED, we gave D_NODOOR and the
+   rn2(5) roll. */
 
 // ============================================================
 // Core mklev functions (ported from main project's mklev.js)
@@ -1632,7 +1641,7 @@ function dosdoor(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
-    const shdoor = in_rooms(x, y, 0).length > 0;
+    const shdoor = in_rooms(x, y, SHOPBASE).length > 0;
     if (!IS_WALL(loc.typ)) type = DOOR;
     loc.typ = type;
     if (type === DOOR) {
@@ -2159,7 +2168,7 @@ function wall_cleanup(x1, y1, x2, y2) {
                 loc.typ = STONE;
         }
 }
-function fix_wall_spines(x1, y1, x2, y2) {
+export function fix_wall_spines(x1, y1, x2, y2) {
     const spineArray = [VWALL, HWALL, HWALL, HWALL,
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
@@ -2617,6 +2626,19 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
 function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
     mineralize_kelp(kelp_pool, kelp_moat);
+
+    /* src/mklev.c:1472 — hell, the Vlad tower, rogue, arboreal and every
+       SPECIAL level except the Oracle (and mines towns) skip mineralization
+       entirely. Without this test a des-built level spends draws C never
+       spends, and everything after it shifts. */
+    if (!skip_lvl_checks) {
+        const sp = Is_special(game.u?.uz);
+        if (In_hell(game.u?.uz) || game.level?.flags?.arboreal
+            || (sp && !Is_oracle_level(game.u?.uz)
+                && (!In_mines(game.u?.uz) || sp.flags?.town)))
+            return;
+    }
+
     const absDepth = depth_of_level(game.u?.uz);
     const dunLevel = game.u?.uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
@@ -2663,7 +2685,7 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
 // Level finalize topology
 // ============================================================
 
-function get_level_extends() {
+export function get_level_extends() {
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
     let found = false, nonwall = false;

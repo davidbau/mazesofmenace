@@ -51,9 +51,14 @@ export function dosearch0(aflag) {
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund))
                     continue;
-                /* cvt_sdoor_to_door(): .typ = DOOR */
-                loc.typ = DOOR;
-                loc.doormask = D_NODOOR;
+                /* src/detect.c:2046 — C calls cvt_sdoor_to_door() here. This
+                   used to inline `typ = DOOR; doormask = D_NODOOR`, which is
+                   wrong on every level except the rogue one: a newly exposed
+                   secret door is CLOSED (or stays LOCKED), not a doorway.
+                   mfndpos excludes a D_CLOSED square, so leaving it D_NODOOR
+                   handed every monster on the level an extra candidate square
+                   and shifted its rn2(4 * (cnt - j)) backtrack draw. */
+                cvt_sdoor_to_door(loc);
                 newsym(x, y);
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund))

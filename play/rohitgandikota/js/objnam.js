@@ -24,9 +24,10 @@ import { is_weptool, is_rustprone, is_corrodeable, is_flammable,
          is_crackable, is_rottable } from './mkobj.js';
 import { bimanual } from './obj.js';
 import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP,
-         MALE, FEMALE, NEUTER, CORPSTAT_MALE, CORPSTAT_FEMALE } from './const.js';
+         MALE, FEMALE, NEUTER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
+import { ART_ORB_OF_DETECTION, ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
 import { OCLASSES, ONAMES, MATERIALS, obj_descr } from './objects_data.js';
 
@@ -442,6 +443,109 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     return any_prefix ? an(nambuf) : nambuf;
 }
 
+// src/objnam.c:1038 minimal_xname() — the object's plain type name, with the
+// hero's own naming, discovery state and per-object details suppressed.
+//
+// C temporarily zeroes objects[otyp].oc_uname / oc_name_known, builds a bare
+// obj on the stack and runs xname() over it; both the override and the restore
+// are ported literally because xname() reads the shared objects[] entry.
+export function minimal_xname(obj) {
+    const otyp = obj.otyp;
+    const ocl = game.objects[otyp];
+
+    /* suppress user-supplied name */
+    const save_uname = ocl.oc_uname;
+    ocl.oc_uname = 0;
+    /* suppress actual name if object's description is unknown */
+    const save_name_known = ocl.oc_name_known;
+    if (!obj.dknown)
+        ocl.oc_name_known = 0;
+
+    /* caveat: this makes a lot of assumptions about which fields are
+       required in order for xname() to yield a sensible result */
+    const bareobj = {
+        otyp: otyp,
+        oclass: obj.oclass,
+        dknown: obj.dknown ? 1 : 0,
+        /* suppress known except for amulets (needed for fakes and real
+           A-of-Y); default is "on" for types which don't use it */
+        known: (obj.oclass === OCLASSES.AMULET_CLASS)
+            ? obj.known : !ocl.oc_uses_known,
+        quan: 1,                        /* don't want plural */
+        /* for a boulder, leave corpsenm as 0; non-zero produces
+           "next boulder" */
+        corpsenm: (otyp !== ONAMES.BOULDER) ? NON_PM : 0,
+        spe: (obj.otyp === ONAMES.SLIME_MOLD) ? obj.spe : 0,
+    };
+
+    let bufp = xname(bareobj);
+    /* undo forced setting of bareobj.blessed for cleric (priest[ess]) */
+    if (bufp.startsWith('uncursed '))
+        bufp = bufp.slice(9);
+
+    ocl.oc_uname = save_uname;
+    ocl.oc_name_known = save_name_known;
+    return bufp;
+}
+
+// src/objnam.c simpleonames() — minimal_xname(), pluralised for a stack.
+export function simpleonames(obj) {
+    let simpleoname = minimal_xname(obj);
+
+    if (obj.quan !== 1)
+        simpleoname = makeplural(simpleoname);
+    return simpleoname;
+}
+
+// src/objnam.c:1924 cxname() — xname(), except a corpse names its monster.
+export function cxname(obj) {
+    if (obj.otyp === ONAMES.CORPSE)
+        return corpse_xname(obj, null, CXN_NORMAL);
+    return xname(obj);
+}
+
+// src/objnam.c:2244 aobjnam() — "<count> <cxname> <verb>", count omitted at 1.
+export function aobjnam(otmp, verb) {
+    let bp = cxname(otmp);
+
+    if (otmp.quan !== 1)
+        bp = `${otmp.quan} ` + bp;
+    if (verb)
+        bp += ' ' + otense(otmp, verb);
+    return bp;
+}
+
+// src/objnam.c:2262 yobjnam() — yname + aobjnam, "your <count> <name> <verb>".
+//
+// C routes the prefix through shk_your(), whose shop-ownership, monster-
+// ownership and unique-corpse arms are not reached by anything ported; the
+// remaining arm is the_your[carried(obj)], which is what yname() already uses.
+export function yobjnam(obj, verb) {
+    const s = aobjnam(obj, verb);
+
+    /* leave off "your" for most of your artifacts, but prepend "your" for
+       unique objects and "foo of bar" quest artifacts */
+    if (!carried(obj) || !obj_is_pname(obj)
+        || obj.oartifact >= ART_ORB_OF_DETECTION)
+        return `${carried(obj) ? 'your' : 'the'} ` + s;
+    return s;
+}
+
+// src/objnam.c:2280 Yobjnam2() — yobjnam with the first letter capitalised.
+export function Yobjnam2(obj, verb) {
+    const s = yobjnam(obj, verb);
+    return highc(s.charAt(0)) + s.slice(1);
+}
+
+// src/objnam.c:2290 Tobjnam() — like aobjnam, but "The" instead of a count.
+export function Tobjnam(otmp, verb) {
+    let bp = The(xname(otmp));
+
+    if (verb)
+        bp += ' ' + otense(otmp, verb);
+    return bp;
+}
+
 // The CORPSE arm redirects xname to cxname for the monster type; corpses on
 // this tree go through the same xname, so the redirect has nothing to change.
 /* src/objnam.c yname() — "your <name>" when carried, "the <name>" otherwise.
@@ -449,6 +553,159 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
    ownership and unique-corpse arms are not reached by anything ported. */
 export function yname(obj) {
     return `${carried(obj) ? 'your' : 'the'} ${xname(obj)}`;
+}
+
+/* src/objnam.c fruitname() — the hero's fruit, optionally as juice. */
+export function fruitname(juice) {
+    const pl_fruit = game.svp?.pl_fruit || 'slime mold';
+    const i = pl_fruit.indexOf(' of ');
+    const fruit_nam = (i >= 0) ? pl_fruit.slice(i + 4) : pl_fruit;
+    return makesingular(fruit_nam) + (juice ? ' juice' : '');
+}
+
+/* src/decl.c:111 vowels[] */
+const vowels = 'aeiouAEIOU';
+
+/* include/hack.h highc() — uppercase a single character, unlike insight.js's
+   string-level helper of the same name. */
+const highc = (c) => (c >= 'a' && c <= 'z') ? c.toUpperCase() : c;
+
+/* include/obj.h has_oname() */
+const has_oname = (obj) => obj.oname != null;
+
+// src/objnam.c:331 obj_is_pname() — is the object's name a proper name?
+//
+// Only the artifact arm can return TRUE, and no artifact is generated by
+// anything ported yet, so not_fully_identified()'s branch is recorded rather
+// than guessed: it would change the ANSWER, not just a message.
+function obj_is_pname(obj) {
+    if (!obj.oartifact || !has_oname(obj))
+        return false;
+    note_unported_objnam('obj_is_pname:not_fully_identified');
+    return true;
+}
+
+// src/artifact.c undiscovered_artifact() — C scans artidisco[]. Nothing ported
+// discovers an artifact, so the list is empty and every artifact is
+// undiscovered; the call is recorded so this stops being an assumption the
+// moment artifacts land.
+function undiscovered_artifact(m) {
+    note_unported_objnam('undiscovered_artifact');
+    return true;
+}
+
+// include/obj.h:421 is_plural()
+//
+// The artifact arm is C's: "the Eyes of the Overworld" are plural, but "a pair
+// of lenses named the Eyes of the Overworld" is not.
+function is_plural(o) {
+    return o.quan !== 1
+        || (o.oartifact === ART_EYES_OF_THE_OVERWORLD
+            && !undiscovered_artifact(ART_EYES_OF_THE_OVERWORLD));
+}
+
+/* special_subjs[] is C's single table, shared by vtense() and makesingular();
+   it is declared further down, next to makesingular's other word lists. */
+
+// src/objnam.c:2531 otense() — the verb form to use if xname(otmp) were the
+// subject. `verb` comes in plural (no trailing s), and is returned unchanged
+// when xname(otmp) would itself be plural.
+export function otense(otmp, verb) {
+    if (!is_plural(otmp))
+        return vtense(null, verb);
+    return verb;
+}
+
+// src/objnam.c:2563 vtense() — present-tense 3rd person form of `verb` for
+// `subj`. A null subj asks for the singular form directly, which is how
+// otense() uses it.
+export function vtense(subj, verb) {
+    let sing = false;
+
+    if (subj) {
+        if (/^an? /i.test(subj)) {
+            sing = true;
+        } else {
+            let spot = -1;
+            for (let sp = subj.indexOf(' '); sp >= 0;
+                 sp = subj.indexOf(' ', sp + 1)) {
+                const rest = subj.slice(sp);
+                if (/^ (?:of|from|called|named|labeled) /i.test(rest)) {
+                    if (sp !== 0)
+                        spot = sp - 1;
+                    break;
+                }
+            }
+            if (spot < 0)
+                spot = subj.length - 1;
+
+            /* plural: anything ending in 's', but not '*us' or '*ss', plus a
+               few shapes makeplural() creates */
+            const at = (i) => (i >= 0 && i < subj.length)
+                ? subj.charAt(i).toLowerCase() : '';
+            const tail = (from, n) =>
+                (spot - from >= 0) ? subj.substr(spot - from, n).toLowerCase()
+                                   : '';
+            if ((at(spot) === 's' && spot !== 0 && !'us'.includes(at(spot - 1)))
+                || tail(3, 4) === 'eeth' || tail(3, 4) === 'feet'
+                || tail(1, 2) === 'ia' || tail(1, 2) === 'ae') {
+                const len = spot + 1;
+                for (const spec of special_subjs) {
+                    const ltmp = spec.length;
+                    if (len === ltmp
+                        && spec.toLowerCase() === subj.slice(0, len).toLowerCase()) {
+                        sing = true;
+                        break;
+                    }
+                    /* also <prefix><space><special_subj>, to catch things
+                       like "the invisible erinys" */
+                    if (len > ltmp && subj.charAt(spot - ltmp) === ' '
+                        && spec.toLowerCase()
+                           === subj.substr(spot - ltmp + 1, ltmp).toLowerCase()) {
+                        sing = true;
+                        break;
+                    }
+                }
+                if (!sing)
+                    return verb;
+            } else if (/^(?:they|you)$/i.test(subj)) {
+                /* 3rd person plural lacks the telltale 's'; 2nd person
+                   singular behaves as if plural */
+                return verb;
+            }
+        }
+    }
+
+    /* sing: */
+    const buf = verb;
+    const len = buf.length;
+    const last = buf.charAt(len - 1).toLowerCase();
+    const prev = len >= 2 ? buf.charAt(len - 2).toLowerCase() : '';
+
+    if (buf.toLowerCase() === 'are')
+        return Strcasecpy(buf, 0, 'is');
+    if (buf.toLowerCase() === 'have')
+        return Strcasecpy(buf, len - 2, 's');
+    if ('zxs'.includes(last)
+        || (len >= 2 && last === 'h' && 'cs'.includes(prev))
+        || (len === 2 && last === 'o'))
+        /* ends in z, x, s, ch, sh; add an "es" */
+        return Strcasecpy(buf, len, 'es');
+    if (last === 'y' && !vowels.includes(prev))
+        /* like the "y" case in makeplural */
+        return Strcasecpy(buf, len - 1, 'ies');
+    return Strcasecpy(buf, len, 's');
+}
+
+/* src/hacklib.c Strcasecpy() — overwrite buf from `at` with `repl`, matching
+   the case of the character being replaced. C works on a char* in place; the
+   JS equivalent rebuilds the string, and the case is taken from the character
+   at `at` (or the one before it when appending past the end, which is what
+   C's *bspot+1 writes look at). */
+function Strcasecpy(buf, at, repl) {
+    const model = buf.charAt(at < buf.length ? at : buf.length - 1);
+    const upper = model >= 'A' && model <= 'Z';
+    return buf.slice(0, at) + (upper ? repl.toUpperCase() : repl);
 }
 
 export function singular(otmp, func) {
@@ -1357,6 +1614,12 @@ export function the(str) {
             return 'the ' + str;
     }
     return str;
+}
+
+// src/objnam.c The() — the() with the first letter capitalised.
+export function The(str) {
+    const tmp = the(str);
+    return highc(tmp.charAt(0)) + tmp.slice(1);
 }
 
 // src/objnam.c:5532 gloves_simple_name() — gloves vs gauntlets; depends upon

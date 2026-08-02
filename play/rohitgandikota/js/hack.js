@@ -310,8 +310,13 @@ export async function unmul(msg_override) {
     game.multi = 0; /* caller will usually have done this already */
     if (msg_override)
         game.nomovemsg = msg_override;
-    else if (!game.nomovemsg)
+    /* C tests the POINTER here (`!gn.nomovemsg`), so only an unset message
+       gets the default; an explicitly EMPTY string survives. */
+    else if (game.nomovemsg == null)
         game.nomovemsg = "You can move again.";
+    /* and dereferences it here (`if (*gn.nomovemsg)`), so "" prints nothing.
+       Collapsing the two states made every nomovemsg="" caller -- jump is
+       one -- announce "You can move again." where C stays silent. */
     if (game.nomovemsg)
         await pline(game.nomovemsg);
     game.nomovemsg = null;

@@ -19,7 +19,7 @@ import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
 } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
-import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED } from './const.js';
+import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, In_endgame } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym } from './display.js';
 import { sobj_at, money_cnt } from './invent.js';
@@ -39,6 +39,7 @@ import {
     curr_mon_load, max_mon_load,
 } from './mon.js';
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
+import { M_AP_TYPE, M_AP_NOTHING } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { couldsee, cansee, clear_path } from './vision.js';
 import { gettrack } from './track.js';
@@ -725,9 +726,37 @@ export function onscary(x, y, mtmp) {
     if (sobj_at(ONAMES.SCR_SCARE_MONSTER, x, y))
         return true;
 
-    /* src/monmove.c — the last arm: an engraved Elbereth scares it. */
-    return !!sengr_at("Elbereth", x, y, true);
-    return false;
+    /*
+     * src/monmove.c — creatures who don't (or can't) fear a written Elbereth:
+     * all the above plus shopkeepers (even if poly'd into non-human), vault
+     * guards (also even if poly'd), blind or peaceful monsters, humans and
+     * elves, and minotaurs.
+     *
+     * If the player isn't actually on the square OR the player's image isn't
+     * displaced to the square, no protection is being granted.
+     *
+     * Elbereth doesn't work in Gehennom, the Elemental Planes, or the Astral
+     * Plane; the influence of the Valar only reaches so far.
+     *
+     * This used to be a bare `return !!sengr_at(...)`, which scared every
+     * monster that merely looked at a square carrying the engraving —
+     * PEACEFUL ones included, and from anywhere on the level.
+     */
+    const ep = sengr_at("Elbereth", x, y, true);
+    return !!ep
+        && ((game.u.ux === x && game.u.uy === y)
+            || (game.u.uprops?.DISPLACED && mtmp.mux === x && mtmp.muy === y)
+            || (ep.guardobjects && !!(game.level?.objects || [])
+                                        .find(o => o.ox === x && o.oy === y)))
+        && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee
+             || mtmp.mpeaceful
+             || mtmp.mnum === PMNAMES.PM_MINOTAUR
+             /* include/dungeon.h In_hell(); the helper is private to
+                trap.js and mklev.js (duplicate-definition debt in NOTES),
+                so the one-liner is used directly rather than adding a third
+                copy. */
+             || game.u.uz?.dnum === game.hell_dnum
+             || In_endgame(game.u.uz));
 }
 
 // src/monmove.c:462 monflee() — begin fleeing for fleetime turns.
@@ -976,22 +1005,7 @@ export async function dochug(mtmp) {
            pet's move never repaints and the frames show it frozen at its old
            square. postmov's trap/door arms are recorded. */
         if (!status) {
-            if (mtmp.mtame) {
-                const omx = mtmp.mx, omy = mtmp.my;
-                status = await dog_move(mtmp, 0);
-                if (status === MMOVE_MOVED) {
-                    newsym(omx, omy); /* update the old position */
-                    newsym(mtmp.mx, mtmp.my);
-                    /* src/trap.c mintrap() returns at once when there is no
-                       trap under the monster, so only record when one is
-                       actually there — otherwise the note fires on every pet
-                       step and buries the case that matters. */
-                    if (t_at(mtmp.mx, mtmp.my))
-                        note_unported_monmove('dochug:postmov_pet_mintrap');
-                }
-            } else {
-                status = m_move(mtmp, 0);
-            }
+            status = await m_move(mtmp, 0);
         }
 
         /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
@@ -1097,14 +1111,44 @@ function resist_conflict_absent(mtmp) {
 
 // src/monmove.c:1720 m_move() — a non-tame monster's turn. The tame case is
 // dispatched to dog_move() above, exactly as C does at :1773.
-export function m_move(mtmp, after) {
+export async function m_move(mtmp, after) {
     const ptr = mtmp.data;
     const omx = mtmp.mx, omy = mtmp.my;
 
-    /* mtrapped / meating / hides_under all come first in C; the first two
-       draw nothing here and the third needs an object underfoot. */
+    /* src/monmove.c:1733 — a monster that starts its turn already caught in
+       a trap re-triggers it; postmov() handles the ARRIVAL case. */
+    if (mtmp.mtrapped) {
+        const { mintrap } = await import('./trap.js');
+        const i = await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
+        if (i === 3 /* Trap_Killed_Mon */) {
+            newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
+        if (i === 1 /* Trap_Caught_Mon */)
+            return MMOVE_NOTHING;   /* still in trap, so didn't move */
+    }
+
+    /* src/monmove.c:1745 — digest the meal. This is the ONLY per-turn
+       countdown of meating, and m_move() is the common entry for pets too
+       (it dispatches to dog_move() further down), so leaving it out froze
+       meating forever: dog_invent() then bailed on every turn and a pet
+       that had eaten once could never eat again. */
+    if (mtmp.meating) {
+        mtmp.meating--;
+        if (mtmp.meating <= 0)
+            finish_meating(mtmp);
+        return MMOVE_DONE;         /* still eating */
+    }
+
+    /* hides_under comes next in C; it needs an object underfoot. */
     if (hides_under(ptr) && OBJ_AT(omx, omy) && rn2(10))
         return MMOVE_NOTHING;      /* do not leave hiding place */
+
+    /* src/monmove.c:1772 — my dog gets special treatment. Routing pets here
+       rather than straight from dochug() is what puts them through the
+       mtrapped and meating blocks above, exactly as C does. */
+    if (mtmp.mtame)
+        return await postmov(mtmp, ptr, omx, omy, await dog_move(mtmp, after));
 
     let ggx = mtmp.mux, ggy = mtmp.muy;
     const prange = { min: 0, max: 0 };
@@ -1178,7 +1222,7 @@ export function m_move(mtmp, after) {
         const st = { mmoved: MMOVE_NOTHING, appr };
         if (m_search_items(mtmp, goal, st)) {
             /* src/monmove.c:1799 — C returns through postmov() here too. */
-            return postmov(mtmp, ptr, omx, omy, MMOVE_DONE);
+            return await postmov(mtmp, ptr, omx, omy, MMOVE_DONE);
         }
         ggx = goal.x; ggy = goal.y; appr = st.appr;
     }
@@ -1270,7 +1314,7 @@ export function m_move(mtmp, after) {
         mon_track_add(mtmp, omx, omy);
     }
 
-    return postmov(mtmp, ptr, omx, omy, mmoved);
+    return await postmov(mtmp, ptr, omx, omy, mmoved);
 }
 
 // src/monmove.c:1455 postmov() — everything a monster does after arriving.
@@ -1281,7 +1325,7 @@ export function m_move(mtmp, after) {
 // wiring meatmetal() in changed nothing: the block was there but unreachable
 // on the paths that mattered. :1773 is the pet path, so dog_move()'s result
 // goes through here too.
-function postmov(mtmp, ptr, omx, omy, mmoved) {
+async function postmov(mtmp, ptr, omx, omy, mmoved) {
     /* src/monmove.c:1508 — "update the old position", inside postmov and so on
        EVERY path that returns through it, including dog_move's at :1773.
        remove_monster only clears level.monsters[][]; without this the vacated
@@ -1293,6 +1337,18 @@ function postmov(mtmp, ptr, omx, omy, mmoved) {
            walking into view is painted only when something else happens to
            redraw its cell. */
         newsym(mtmp.mx, mtmp.my);
+    }
+
+    /* src/monmove.c:1509 — the arrival square's trap fires here, for pets and
+       hostiles alike. */
+    if (mmoved === MMOVE_MOVED) {
+        const { mintrap } = await import('./trap.js');
+        const trapret = await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
+        if (trapret === 3 /* Trap_Killed_Mon */ || trapret === 4 /* Moved */) {
+            if (mtmp.mx)
+                newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
     }
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
@@ -1516,4 +1572,16 @@ function blocking_terrain(x, y) {
         || lev.typ === LAVAWALL)
         return true;
     return false;
+}
+
+// src/dogmove.c:1448 finish_meating() — the meal ends.
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if (M_AP_TYPE(mtmp) !== M_AP_NOTHING
+        && game.mons[mtmp.mnum].mlet !== MONSYMS.S_MIMIC) {
+        /* was eating a mimic and now appearance needs resetting */
+        mtmp.m_ap_type = M_AP_NOTHING;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
 }

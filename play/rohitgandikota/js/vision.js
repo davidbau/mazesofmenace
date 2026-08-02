@@ -8,7 +8,7 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_WALL, MAX_RADIUS,
 } from './const.js';
 import { newsym } from './display.js';
 
@@ -595,4 +595,50 @@ export function clear_path(col1, row1, col2, row2) {
     if (row1 === row2 && col1 === col2)
         return true;
     return !!walk(col1, row1, col1 - col2, row2 - row1, -1, 1); /* III */
+}
+
+/* circle_data[] and circle_start[] are already declared at the top of this
+   file (src/vision.c:27 and :47), the full tables. js/detect.js carries a
+   TRUNCATED copy (`circle_data_findit`, radii 0..8) for findit(). */
+
+// src/vision.c circle_ptr() — the half-width row for radius z.
+function circle_ptr(z) {
+    return circle_data.slice(circle_start[z]);
+}
+
+// src/vision.c:2107 do_clear_area() — apply `func` to every square within
+// `range` of (scol,srow) that the hero could see.
+//
+// Only the hero-centred arm is ported. The off-hero arm needs view_from(),
+// which this tree does not have; it is recorded rather than approximated
+// because it would change WHICH squares are affected, not just a message.
+export function do_clear_area(scol, srow, range, func, arg) {
+    if (scol !== game.u.ux || srow !== game.u.uy) {
+        (game.unported ||= new Set()).add('vision:do_clear_area:view_from');
+        return;
+    }
+    if (range > MAX_RADIUS || range < 1)
+        return;                         /* panic("illegal range") */
+    if (game.vision_full_recalc)
+        vision_recalc(0);               /* recalc vision if dirty */
+
+    const limits = circle_ptr(range);
+    let max_y = srow + range;
+    if (max_y >= ROWNO)
+        max_y = ROWNO - 1;
+    let y = srow - range;
+    if (y < 0)
+        y = 0;
+    for (; y <= max_y; y++) {
+        const offset = limits[Math.abs(y - srow)];
+        let min_x = scol - offset;
+        if (min_x < 1)
+            min_x = 1;
+        let max_x = scol + offset;
+        if (max_x >= COLNO)
+            max_x = COLNO - 1;
+        for (let x = min_x; x <= max_x; x++)
+            if (couldsee(x, y))
+                func(x, y, arg);
+    }
 }

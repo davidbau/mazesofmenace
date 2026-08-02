@@ -4,7 +4,7 @@ import { m_dowear } from './worn.js';
 import { is_hider, perceives, is_human, is_unicorn } from './mondata.js';
 import { ceiling_hider } from './mondata.js';
 import { sensemon } from './display.js';
-import { mdistu } from './monmove.js';
+import { mdistu, mon_track_clear } from './monmove.js';
 // mon.js — monster bookkeeping.
 // C ref: src/mon.c
 //
@@ -589,15 +589,26 @@ export function m_consume_obj(mtmp, otmp) {
     }
 
     const corpsenm = (otmp.otyp === ONAMES.CORPSE) ? otmp.corpsenm : NON_PM;
-    if (corpsenm !== NON_PM || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME
-        || otmp.otyp === ONAMES.EGG || otmp.otyp === ONAMES.CARROT) {
+    const has_effects = (corpsenm !== NON_PM
+                         || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME
+                         || otmp.otyp === ONAMES.EGG
+                         || otmp.otyp === ONAMES.CARROT);
+
+    /* src/mon.c — C computes polyfood/mlevelgain/mhealup/mstoning (all pure
+       predicates, no draws), then calls delobj() UNCONDITIONALLY, and only
+       then applies the consequences. This used to return before delobj on the
+       corpse arm, so the corpse was never eaten: seed0030's kitten "ate" the
+       same newt corpse at step 30 and again at step 33, and the level's object
+       count never dropped. The effects still need newcham/grow_up/monstone/
+       mon_givit and are recorded, but the object must go either way. */
+    delobj(otmp); /* munch */
+
+    if (has_effects) {
         /* polyfood/mlevelgain/mhealup/mstoning and their newcham, grow_up,
            monstone and mon_givit consequences; all draw. */
         note_unported_mon('m_consume_obj:corpse_effects');
         return;
     }
-
-    delobj(otmp); /* munch */
 }
 
 // src/mkobj.c delobj() — take the object off the floor and free it.
@@ -1803,8 +1814,16 @@ function wake_nearto_core(x, y, distance, petcall) {
                 mtmp.mstrategy &= ~STRAT_WAITMASK; /* wake 'meditation' */
             if (game.context?.mon_moving || !petcall)
                 continue;
-            if (mtmp.mtame)
-                note_unported_mon('wake_nearto_core:whistletime');
+            if (mtmp.mtame) {
+                if (!mtmp.isminion)
+                    (mtmp.edog ||= {}).whistletime = game.moves;
+                /* src/mon.c:4393 — "Fix up a pet who is stuck 'fleeing' its
+                   master". Skipping this left the pet's mtrack ring holding
+                   stale squares, and m_move's backtrack test reads the INDEX
+                   of the matching entry: `rn2(4 * (cnt - j))`. A stale ring
+                   matches at the wrong j and draws the wrong modulus. */
+                mon_track_clear(mtmp);
+            }
         }
     }
     /* disturb_buried_zombies() needs buried monsters, which nothing makes */

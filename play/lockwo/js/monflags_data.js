@@ -246,6 +246,7 @@ export const MFLAGS3 = [
     0x200, 0x200, 0x200, 0x200, 0x200, 0x200,
 ];
 
+export const MS_PRIEST = 41;
 export const MS_LEADER = 36;
 export const MS_NEMESIS = 37;
 export const MS_GUARDIAN = 38;
