@@ -51,14 +51,14 @@ import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
 import { getpos } from './getpos.js';
-import { dowear, doputon, dotakeoff, doremring } from './do_wear.js';
+import { dowear, doputon, dotakeoff, doremring, canwearobj_core } from './do_wear.js';
 import { show_menu_controls } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
+import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { doengrave } from './engrave.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
@@ -111,13 +111,34 @@ function flags_autoopen() {
     return game.flags?.autoopen !== false;
 }
 
-function blocksMove(x, y) {
+function blocksMove(x, y, dx, dy) {
+    /* src/hack.c:1001 — test_move clears door_opened on entry; without this
+       a door opened two commands ago lets a later blocked move keep its
+       turn and run a monster round C never ran */
+    game.context.door_opened = false;
     const loc = game.level?.at(x, y);
     if (!loc) return true;
     if (loc.typ === STONE) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
+       are not allowed (block_door boulder check needs Sokoban state) */
+    if (dx && dy && IS_DOOR(loc.typ) && !doorless_door(x, y)) return true;
+    /* src/hack.c:1208 — nor diagonal moves OUT of one */
+    const ust = game.level?.at(game.u.ux, game.u.uy);
+    if (dx && dy && ust && IS_DOOR(ust.typ)
+        && !doorless_door(game.u.ux, game.u.uy)) return true;
     return false;
+}
+
+// src/hack.c:4063 doorless_door() — no physical door in the frame. Rogue
+// level doors count as present to keep diagonals blocked there.
+function doorless_door(x, y) {
+    const lev_p = game.level?.at(x, y);
+    if (!lev_p || !IS_DOOR(lev_p.typ))
+        return false;
+    /* Is_rogue_level: the rogue level is not modelled yet */
+    return !(lev_p.doormask & ~(D_NODOOR | D_BROKEN));
 }
 
 // C ref: cmd.c rhack — main command dispatcher
@@ -499,9 +520,9 @@ function equip_ok(obj, removing, accessory) {
     if (!!accessory !== (obj.oclass !== OCLASSES.ARMOR_CLASS))
         return GETOBJ_DOWNPLAY;
 
-    /* armor we can't wear, e.g. from polyform */
+    /* armor we can't wear (slot occupied, poly form, ...) */
     if (obj.oclass === OCLASSES.ARMOR_CLASS && !removing
-        && !note_unported_cmd('equip_ok:canwearobj'))
+        && !canwearobj_core(obj).mask)
         return GETOBJ_DOWNPLAY;
 
     /* removing inaccessible equipment */
@@ -860,12 +881,11 @@ export async function rhack(key) {
         else
             game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
     } else if (ch === '.') {
-        // src/cmd.c:1930 — '.' is "wait", donull, which returns ECMD_TIME.
-        // src/do.c:2351: the only early exit is cmd_safety_prevention, which
-        // fires on a paranoid-confirmation option none of the recorded rc
-        // files set. So this rests one move and CONSUMES A TURN; leaving it
-        // unhandled made the hero stand still for free while C's clock moved.
-        game.context.move = 1;
+        // src/cmd.c:1930 — '.' is "wait", donull. cmd_safety_prevention
+        // (flags.safe_wait, default On) refuses the rest next to a spottable
+        // hostile with "Are you waiting to get hit?" and NO time passes.
+        const { donull } = await import('./do.js');
+        game.context.move = ((await donull()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'f') {
         // src/cmd.c cmdlist — 'f' is dofire, which reaches throw_obj() and
         // getdir(). C consumes the direction key there and the hero does NOT
@@ -1010,7 +1030,7 @@ export async function domove() {
      *
      * The door_opened guard matters: walking into a closed door with autoopen
      * opens it and consumes the turn, and that must NOT stop a run. */
-    if (blocksMove(newx, newy)) {
+    if (blocksMove(newx, newy, dx, dy)) {
         // Can't move there
         if (!game.context.door_opened) {
             game.context.move = 0;

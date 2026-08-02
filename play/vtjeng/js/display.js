@@ -1093,6 +1093,13 @@ export function object_glyph_info(obj, state = game) {
             color = state.mons[obj.corpsenm].mcolor;
     }
     const glyph = glyphPresentation(symbol, color, state);
+    // display.h obj_to_glyph() numbers a generic object into the leading
+    // FIRST_OBJECT-1 slots of the object glyph ranges, which is the whole of
+    // what glyph_is_generic_object() recognizes. This port stores
+    // presentations rather than glyph numbers, so it carries the same fact as
+    // a mark, which remembered_glyph_from_presentation() copies into map
+    // memory for see_nearby_objects() to read back.
+    if (generic) glyph.genericObject = true;
     // C ref: win/tty/wintty.c tty_print_glyph(). Pile highlighting is a tty
     // presentation attribute and is suppressed together with inverse video.
     const piletop = object_is_piletop(obj, state);
@@ -1393,6 +1400,7 @@ export function remembered_glyph_from_presentation(glyph, trap = null) {
     // collide after symbol customization, so retain the trap identity needed
     // by detect.c:find_trap() in the same canonical memory record.
     if (trap) remembered.trapType = trap.ttyp;
+    if (glyph.genericObject) remembered.genericObject = true;
     if (glyph.attr) remembered.attr = glyph.attr;
     if (glyph.displayColor) remembered.displayColor = glyph.displayColor;
     if (glyph.rgb) remembered.rgb = [...glyph.rgb];
@@ -1544,6 +1552,63 @@ export function trap_glyph_info(trap, state = game) {
         `trap:${trap.ttyp}`,
         { type: 'trap', trap, ttyp: trap.ttyp },
     );
+}
+
+/**
+ * C ref: display.h glyph_is_generic_object(). C asks the question of the
+ * glyph number stored in levl[x][y].glyph; the port asks it of the mark
+ * object_glyph_info() puts on a generic object's presentation and
+ * remembered_glyph_from_presentation() carries into map memory.
+ */
+export function glyph_is_generic_object(location) {
+    return Boolean(location?.remembered_glyph?.genericObject);
+}
+
+/**
+ * C ref: display.c see_nearby_objects() (1574-1604). Mark the top object of
+ * each nearby pile as seen up close, and redraw the ones the map still
+ * remembers in their generic form. dungeon.c u_on_newpos() calls this on
+ * every same-level hero step, which is where a walk turns a remembered `!`
+ * or `*` from its class colour into the object's own.
+ *
+ * C's newsym_force() is newsym() plus the glyph buffer's dirty bookkeeping.
+ * js/display.js flush_screen() repaints from game.level rather than from a
+ * dirty range, so newsym() alone carries the whole effect here.
+ *
+ * The redraw below is newsym(), which takes no state and reads the
+ * module-global `game`, so a caller threading some other state would observe
+ * objects on that state while repainting cells of the live map. Every caller
+ * passes the live state; this refuses anything else rather than splitting the
+ * two halves silently.
+ */
+export function see_nearby_objects(state = game) {
+    if (state !== game) {
+        throw new TypeError('see_nearby_objects() redraws the global game');
+    }
+    const x = state.u?.ux ?? 0;
+    const y = state.u?.uy ?? 0;
+    // these 'r' and 'neardist' calculations match distant_name(objnam.c)
+    const radius = state.u?.xray_range > 2 ? state.u.xray_range : 2;
+    // neardist produces a small square with rounded corners
+    const nearDistance = radius * radius * 2 - radius;
+
+    for (let iy = y - radius; iy <= y + radius; ++iy) {
+        for (let ix = x - radius; ix <= x + radius; ++ix) {
+            if (!isok(ix, iy)) continue;
+            // skip if no object or the object has already been marked as
+            // having been seen up close
+            const object = state.level?.objects?.[ix]?.[iy] ?? null;
+            if (!object || object.dknown) continue;
+            // skip if the spot can't be seen or is too far (diagonal)
+            if (!cansee(ix, iy, state) || dist2(ix, iy, x, y) > nearDistance)
+                continue;
+
+            observe_object(object, state);
+            // operate on remembered glyph rather than current one
+            if (glyph_is_generic_object(state.level.at(ix, iy)))
+                newsym(ix, iy);
+        }
+    }
 }
 
 function observeNearbyObject(object, x, y, state) {
@@ -3061,23 +3126,31 @@ function _buildScreenOutput() {
 // of them, at do.c:1718 and do.c:1839.
 //
 // C can keep it in a function-static because C never leaves goto_level()
-// between that pair. This port can: nine fail-closed `throw` statements sit
-// between the two calls, and a boundary raised at any of them would strand the
-// toggle in its delayed state. A module variable would then suppress every
-// later flush in the process, so each remaining segment of the session would
-// record its cursor at the origin. The flag therefore lives on the game state,
+// between that pair. This port can: js/do.js goto_level() raises fail-closed
+// boundaries between its own two `await flush_screen(-1)` calls, and a
+// boundary raised at any of them would strand the toggle in its delayed state.
+// Those two calls are the whole window, so a refusal after the second one
+// releases the toggle first and strands nothing. A module variable would
+// suppress every later flush in the process, so each remaining segment of the
+// session would record its cursor at the origin. The flag lives on game state,
 // which js/gstate.js resetGame() replaces wholesale for each runSegment(), so
 // a new segment always starts undelayed. That is a port-side correction for a
 // port-side abort, not a divergence from the static's semantics within one
 // level change.
 
-// C ref: display.c flush_screen() (2207-2266). `mode` is C's cursor_on_u.
+// C ref: display.c flush_screen() (2207-2266). `mode` is C's cursor_on_u, and
+// the body below reads it for the -1 sentinel alone.
 //
 // A value of -1 toggles the delay: goto_level() calls flush_screen(-1) at
 // do.c:1718 to postpone every map flush while it builds the destination, and
 // again at do.c:1839 to release it. The second call falls past the guard below
-// and flushes, with a nonzero cursor_on_u, so it places the cursor on the hero
-// exactly as flush_screen(1) does.
+// and flushes.
+//
+// Every other value behaves as C's flush_screen(1) does, because
+// _buildScreenOutput() places the cursor on the hero unconditionally. No
+// ported caller passes 0, so the gap is latent; a caller that needs C's
+// cursor_on_u == 0 behaviour -- pline.c:274's NO_CURS_ON_U among them -- must
+// first give _buildScreenOutput() a way to leave the cursor where it stands.
 export async function flush_screen(mode) {
     if (mode === -1) game.delay_flushing = !game.delay_flushing;
     if (game.delay_flushing) return;

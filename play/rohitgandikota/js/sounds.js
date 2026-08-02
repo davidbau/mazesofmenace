@@ -8,19 +8,19 @@
 // draws rn2(300) — the tests are independent `if`s, not a chain.
 
 import { game } from './gstate.js';
-import { MFLAGS } from './monst_data.js';
+import { MFLAGS, PMNAMES } from './monst_data.js';
 import { canseemon } from './display.js';
-import { helpless } from './monst.js';
+import { helpless, DEADMONSTER } from './monst.js';
 import { rn2 } from './rng.js';
 import { ECMD_OK, IS_WALL, SDOOR, isok } from './const.js';
 import { getdir } from './cmd.js';
 import { m_at } from './mon.js';
 import { Deaf, Hallucination } from './youprop.js';
-import { pline_The } from './pline.js';
+import { pline_The, You_hear } from './pline.js';
 import { pline } from './display.js';
 
 // src/sounds.c:202 dosounds()
-export function dosounds() {
+export async function dosounds() {
     const u = game.u;
     if (u.uswallow || u.Underwater)
         return;
@@ -60,6 +60,35 @@ export function dosounds() {
     if (f.has_shop && !rn2(200)) {
         note_unported('dosounds shop');
     }
+    if (f.has_temple && !rn2(200)) {
+        /* temple_priest_sound needs the priest records (EPRI shrine
+           position); with no priest on the list, C's get_iter_mons finds
+           nothing and falls through without drawing */
+        note_unported('dosounds temple');
+    }
+    if (Is_oracle_level() && !rn2(400)) {
+        /* src/sounds.c:180 oracle_sound() via get_iter_mons */
+        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            if (DEADMONSTER(mtmp) || mtmp.mnum !== PMNAMES.PM_ORACLE)
+                continue;
+            /* don't produce silly effects when she's clearly visible */
+            if (!canseemon(mtmp)) {
+                const ora_msg = [
+                    'a strange wind.',     /* Jupiter at Dodona */
+                    'convulsive ravings.', /* Apollo at Delphi */
+                    'snoring snakes.',     /* AEsculapius at Epidaurus */
+                ];
+                await You_hear(ora_msg[rn2(3)]);
+            }
+            break;
+        }
+    }
+}
+
+/* include/dungeon.h Is_oracle_level() */
+function Is_oracle_level() {
+    const o = game.special_levels?.oracle_level;
+    return !!(o && game.u.uz.dnum === o.dnum && game.u.uz.dlevel === o.dlevel);
 }
 
 function note_unported(what) {

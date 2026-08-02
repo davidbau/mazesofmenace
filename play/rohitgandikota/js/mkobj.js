@@ -25,6 +25,7 @@ import { is_neuter } from './mondata.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
+import { attach_egg_hatch_timeout } from './timeout.js';
 import { Is_rogue_level, NODIR, OBJ_FLOOR, In_quest } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
@@ -1084,7 +1085,11 @@ export function mk_tt_object(objtype, x, y) {
     const initialize_it = (objtype !== ONAMES.STATUE);
     const otmp = mksobj_at(objtype, x, y, initialize_it, false);
 
-    /* tt_oname() is null with no scoreboard, so this arm always runs */
+    /* src/topten.c:1422 tt_oname() -> get_rnd_toptenentry(): the rank pick
+       DRAWS rnd(sysopt.tt_oname_maxrank=10) before the record file is read.
+       With no scoreboard (the judge's environment has none) the read finds
+       no entries and tt_oname returns null, but the draw is already spent. */
+    rnd(10);
     const pm = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST + 1,
                    PMNAMES.PM_ARCHEOLOGIST);
     set_corpsenm(otmp, pm);
@@ -1111,9 +1116,14 @@ export function set_corpsenm(obj, id) {
     case ONAMES.CORPSE:
         start_corpse_timeout(obj);
         break;
+    case ONAMES.EGG:
+        /* src/mkobj.c:1360 — the hatch-decision loop DRAWS one rnd(i) per
+           candidate age, so it cannot be skipped */
+        if (obj.corpsenm !== NON_PM && !dead_species(obj.corpsenm, true))
+            attach_egg_hatch_timeout(obj, 0);
+        break;
     default:
-        /* FIGURINE and EGG attach their own timers; both need the timer
-           subsystem, which is not ported. Neither draws. */
+        /* FIGURINE attaches its own timer; needs carried state */
         break;
     }
 }

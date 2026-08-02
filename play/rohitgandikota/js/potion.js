@@ -5,10 +5,11 @@
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
-import { You } from './pline.js';
+import { You, You_feel } from './pline.js';
 import { exercise } from './attrib.js';
 import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
-import { rn2 } from './rng.js';
+import { Unaware, Hallucination } from './youprop.js';
+import { rn2, rn1 } from './rng.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
@@ -48,6 +49,51 @@ export function healup(nhp, nxtra, curesick, cureblind) {
     (game.disp ||= {}).botl = true;
 }
 
+// src/potion.c:89 make_confused() — set or clear the confusion timeout.
+// HConfusion lives in game.u.intrinsic as a plain counter; uprops.CONFUSION
+// mirrors it so the many existing Confusion() readers keep working.
+export async function make_confused(xtime, talk) {
+    const old = game.u.intrinsic?.HConfusion || 0;
+
+    if (Unaware())
+        talk = false;
+
+    if (!xtime && old) {
+        if (talk)
+            await You_feel(`less ${Hallucination() ? 'trippy'
+                                                   : 'confused'} now.`);
+    }
+    if ((xtime && !old) || (!xtime && old))
+        (game.disp ||= {}).botl = true;
+
+    (game.u.intrinsic ||= {}).HConfusion = xtime;
+    if (xtime)
+        (game.u.uprops ||= {}).CONFUSION = 1;
+    else if (game.u.uprops)
+        delete game.u.uprops.CONFUSION;
+}
+
+// include/hack.h itimeout_incr() — add to a timeout, clamping at TIMEOUT.
+const itimeout_incr = (old, incr) => Math.max(0, (old || 0) + incr);
+
+// include/obj.h bcsign()
+const bcsign = (o) => (o.blessed ? 1 : 0) - (o.cursed ? 1 : 0);
+
+// src/potion.c:1014 peffect_confusion()
+async function peffect_confusion(otmp) {
+    if (!game.u.uprops?.CONFUSION) {
+        if (Hallucination()) {
+            await pline('What a trippy feeling!');
+            game.potion_unkn++;
+        } else
+            await pline('Huh, What?  Where am I?');
+    } else
+        game.potion_nothing++;
+    await make_confused(itimeout_incr(game.u.intrinsic?.HConfusion,
+                                      rn1(7, 16 - 8 * bcsign(otmp))),
+                        false);
+}
+
 // src/potion.c:1260 peffect_oil() — the one potion arm the sessions reach.
 async function peffect_oil(otmp) {
     const good_for_you = false;
@@ -67,6 +113,9 @@ async function peffect_oil(otmp) {
 // Returns -1 to let dopotion() finish (identify + useup), matching C.
 async function peffects(otmp) {
     switch (otmp.otyp) {
+    case ONAMES.POT_CONFUSION:
+        await peffect_confusion(otmp);
+        break;
     case ONAMES.POT_OIL:
         await peffect_oil(otmp);
         break;

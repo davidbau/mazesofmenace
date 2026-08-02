@@ -1,7 +1,7 @@
 import { is_flimsy } from './obj.js';
 import { You, pline_xy, pline_The, set_msg_xy } from './pline.js';
 import { a_monnam, upstart } from './do_name.js';
-import { is_door_mappear } from './monst.js';
+import { is_door_mappear, helpless } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
@@ -20,8 +20,9 @@ import { cmdq_clear, closed_door } from './cmd.js';
 
 import { game } from './gstate.js';
 import { do_attack } from './uhitm.js';
-import { sensemon, is_safemon, mon_visible, pline } from './display.js';
-import { hides_under } from './mondata.js';
+import { sensemon, is_safemon, mon_visible, pline, canspotmon } from './display.js';
+import { hides_under, noattacks, is_hider } from './mondata.js';
+import { onscary } from './monmove.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { rn2 } from './rng.js';
 import {
@@ -668,4 +669,25 @@ export function impact_disturbs_zombies(obj, violent) {
 
     /* disturb_buried_zombies(obj->ox, obj->oy) */
     (game.unported ||= new Set()).add('hack:disturb_buried_zombies');
+}
+
+// src/hack.c:4106 monster_nearby() — a spottable hostile adjacent to the hero.
+export function monster_nearby() {
+    const u = game.u;
+    for (let x = u.ux - 1; x <= u.ux + 1; x++) {
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (!isok(x, y) || (x === u.ux && y === u.uy))
+                continue;
+            const mtmp = m_at(x, y);
+            if (mtmp
+                && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+                && M_AP_TYPE(mtmp) !== M_AP_OBJECT
+                && !mtmp.mpeaceful && !noattacks(game.mons[mtmp.mnum])
+                && (!is_hider(game.mons[mtmp.mnum]) || !mtmp.mundetected)
+                && !helpless(mtmp)
+                && !onscary(u.ux, u.uy, mtmp) && canspotmon(mtmp))
+                return true;
+        }
+    }
+    return false;
 }

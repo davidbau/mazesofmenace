@@ -870,7 +870,12 @@ const WATCHMAN = { name: 'watchman', mlet: '@', glyph: '@', color: CLR_GRAY, mle
 const WATCH_CAPTAIN = { name: 'watch captain', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 10, difficulty: 12, mmove: 10, maligntyp: -4, mercenary: true, armed: true, alwaysPeaceful: true };
 
 const GIANT_MIMIC = { name: 'giant mimic', mlet: S_MIMIC, mlevel: 9, mac: 7, mmove: 3, maligntyp: 0, hostile: true, neuter: false, attack: { dice: 3, sides: 6, verb: 'hits' } };
-const GHOST = { name: 'ghost', mlet: 'ghost', glyph: ' ', color: CLR_GRAY, mlevel: 10, mmove: 3, maligntyp: -5, neuter: false, noCorpse: true, alwaysHostile: true };
+const GHOST = { name: 'ghost', mlet: 'ghost', glyph: ' ', color: CLR_GRAY, mlevel: 10, mmove: 3, maligntyp: -5, neuter: false, noCorpse: true, alwaysHostile: true,
+    /* include/monsters.h ghost row: M1_FLY|M1_BREATHLESS|M1_WALLWALK|
+       M1_HUMANOID|M1_UNSOLID — ghosts float over water/lava and pass
+       through walls (mon_allowflags() -> ALLOW_WALL|ALLOW_ROCK,
+       mon.c:2104-2105). */
+    inAir: true, passWalls: true, solidless: true, unsolid: true };
 const SHADE = { name: 'shade', mlet: 'ghost', glyph: ' ', color: CLR_BLACK, mlevel: 12, mmove: 10, difficulty: 14, maligntyp: 0, neuter: false, noCorpse: true, inAir: true, passWalls: true, alwaysHostile: true, nasty: true };
 const ALIGNED_CLERIC = { name: 'aligned cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 12, difficulty: 15, mmove: 12, maligntyp: 0, priest: true, armed: true, randomInventory: true, alwaysPeaceful: true };
 const HIGH_CLERIC = { name: 'high cleric', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 29, difficulty: 30, mmove: 15, maligntyp: 0, priest: true, armed: true, randomInventory: true, alwaysPeaceful: true, nasty: true };
@@ -6894,11 +6899,13 @@ export function rlocNoMsg(mon, { allowUnset = false } = {}) {
     // callers placing one (mon_arrive, dog.c) pass allowUnset.
     if (!mon?.mx && !allowUnset) return false;
     for (let trycount = 0; trycount < 50; trycount++) {
-        // C ref: teleport.c rloc() — x = rnd(COLNO - 1), y = rn2(ROWNO).
-        // The port's world coordinates are C's +1 in x (map, hero, and
-        // monsters all sit one column further right; the display shifts
-        // back), so the same roll addresses the same logical cell at x+1.
-        const x = rnd(COLNO - 1) + 1;
+        // C ref: teleport.c rloc() — x = rnd(COLNO - 1) (1..COLNO-1),
+        // y = rn2(ROWNO) (0..ROWNO-1).  The port's world coordinates are
+        // identical to C's (verified against recorded monster placement,
+        // e.g. wand-of-teleportation rloc of a monster near the wall),
+        // so there is no +1 offset here — the same roll addresses the
+        // same cell.
+        const x = rnd(COLNO - 1);
         const y = rn2(ROWNO);
         if (rlocPosOk(mon, x, y)) {
             rlocToCoreNoMsg(mon, x, y);

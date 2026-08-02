@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { Is_special, depth } from './dungeon.js';
 import { load_special } from './sp_lev.js';
-import { COLNO, ROWNO, ROOM, CORR, AIR } from './const.js';
+import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, IS_DOOR } from './const.js';
 import { occupied } from './mklev.js';
 import { t_at, m_at } from './mon.js';
 
@@ -122,10 +122,10 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         break;
     case LR_DOWNSTAIR:
     case LR_UPSTAIR:
-        note_unported_mkmaze('put_lregion_here:mkstairs');
+        mkmaze_mklev_fns?.mkstairs?.(x, y, rtype === LR_UPSTAIR ? 1 : 0, null);
         break;
     case LR_BRANCH:
-        note_unported_mkmaze('put_lregion_here:place_branch');
+        mkmaze_mklev_fns?.place_branch?.(Is_branchlev_here(), x, y);
         break;
     }
     return true;
@@ -136,7 +136,8 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (!lx) { /* default to whole level */
         if (rtype === LR_BRANCH && game.level.nroom) {
-            note_unported_mkmaze('place_lregion:place_branch');
+            /* let place_branch choose, avoiding corridors */
+            mkmaze_mklev_fns?.place_branch?.(Is_branchlev_here(), 0, 0);
             return;
         }
         lx = 1;
@@ -168,6 +169,11 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
 
     note_unported_mkmaze('place_lregion:failed');
 }
+
+/* mkstairs/place_branch live in js/mklev.js, which imports this file;
+   wired to keep the import one-way. */
+let mkmaze_mklev_fns = null;
+export function mkmaze_wire_mklev(fns) { mkmaze_mklev_fns = fns; }
 
 // src/mkmaze.c:570 fixup_special() — post-script placement of lregions and
 // the per-level oddities. The water/air setup, medusa statues, cleric
@@ -229,4 +235,59 @@ function Is_branchlev_here() {
             return br;
     }
     return null;
+}
+
+// src/mkmaze.c:32 mz_move()
+function mz_move(c, dir) {
+    switch (dir) {
+    case 0: --c.y; break;
+    case 1: c.x++; break;
+    case 2: c.y++; break;
+    case 3: --c.x; break;
+    }
+}
+
+// src/mkmaze.c:297 okay() — can the maze walk step two cells this way?
+function okay(x, y, dir) {
+    const c = { x, y };
+    mz_move(c, dir);
+    mz_move(c, dir);
+    if (c.x < 3 || c.y < 3 || c.x > 78 /* x_maze_max */
+        || c.y > 20 /* y_maze_max */
+        || game.level.at(c.x, c.y)?.typ !== STONE)
+        return false;
+    return true;
+}
+
+// src/mkmaze.c:1279 walkfrom() — the recursive maze carver (the non-MICRO
+// build); the draw order of its rn2(q) picks depends on this exact shape.
+export function walkfrom(x, y, typ) {
+    if (!typ)
+        typ = game.level.flags?.corrmaze ? CORR : ROOM;
+
+    const loc0 = game.level.at(x, y);
+    if (loc0 && !IS_DOOR(loc0.typ)) {
+        loc0.typ = typ;
+        loc0.flags = 0;
+    }
+
+    for (;;) {
+        const dirs = [];
+        for (let a = 0; a < 4; a++)
+            if (okay(x, y, a))
+                dirs.push(a);
+        if (!dirs.length)
+            return;
+        const dir = dirs[rn2(dirs.length)];
+        const c = { x, y };
+        mz_move(c, dir);
+        const mid = game.level.at(c.x, c.y);
+        if (mid) { mid.typ = typ; }
+        mz_move(c, dir);
+        walkfrom(c.x, c.y, typ);
+        /* C's mz_move MACRO mutates the local x,y, so after the recursive
+           call the while(1) continues from the MOVED position, not the
+           frame's original one. The draw order depends on this. */
+        x = c.x; y = c.y;
+    }
 }

@@ -31,7 +31,8 @@ import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DAR
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
 import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
 import { gettrack } from './track.js';
-import { DEADMONSTER } from './mon.js';
+import { DEADMONSTER, healmon } from './mon.js';
+import { regenerates_flag } from './monflags_data.js';
 import { dog_move, can_carry, m_cansee } from './dogmove.js';
 import { mon_msize, monster_by_pmidx, M2_HUMAN_NAMES, M2_MINION_NAMES } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl } from './display.js';
@@ -39,7 +40,7 @@ import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
     weight, base_oc_weight } from './mkobj.js';
 import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
-import { clear_path, couldsee, cansee, vision_recalc, Blind } from './vision.js';
+import { clear_path, couldsee, cansee, vision_recalc, recalc_block_point, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
@@ -464,7 +465,7 @@ async function shk_move(shkp) {
 // to the hero, or monsters that can see a non-invisible/non-displaced hero,
 // this resolves to the hero's real position with no RNG.  The RNG-consuming
 // guessing branch only runs under invisibility/displacement/underwater.
-function set_apparxy(mtmp) {
+export function set_apparxy(mtmp) {
     const mx = mtmp.mux, my = mtmp.muy;
     if (mtmp.mtame || (game.u?.ux === mx && game.u?.uy === my)) {
         mtmp.mux = game.u.ux; mtmp.muy = game.u.uy; return;
@@ -781,7 +782,7 @@ function sobj_at_otyp(x, y, otyp) {
 // tracked) and `ep->guardobjects` (Vlad's Tower guard exemption); the
 // Elbereth match also doesn't model gradual engraving decay (any surviving
 // "Elbereth" substring counts, matching the common case).
-function onscary(x, y, mtmp) {
+export function onscary(x, y, mtmp) {
     const auditory_scare = (x === 0 && y === 0);
     const magical_scare = !auditory_scare;
     if (mtmp.iswiz || is_lminion(mtmp) || mtmp.data?.name === 'Angel'
@@ -818,7 +819,11 @@ function holds_up_web(x, y) {
     // or ladder anchors a web.  Stairways live on game.stairs with .sx/.sy/.up
     // (see dungeon.js On_stairs).
     if (typ === STAIRS || typ === LADDER) {
-        for (const s of (game.stairs || [])) if (s.sx === x && s.sy === y && s.up) return true;
+        // game.stairs is a singly-linked list (mklev.js stairway_add), not an
+        // array — iterating it with for..of threw.  Unreachable until a WEB
+        // spider was actually placed on the level, which is why it survived.
+        for (let s = game.stairs; s; s = s.next)
+            if (s.sx === x && s.sy === y && s.up) return true;
     }
     if (typ === IRONBARS) return true;
     return false;
@@ -1529,10 +1534,22 @@ function deltrap_local(trap) {
 // unlocks+opens a locked one (key-carriers / Wizard / Riders), or smashes it
 // down (doorbusters), announcing the result to a hero who can see it
 // ("<mon> opens a door.") or, failing that, hear it ("You hear a door
-// open.").  UnblockDoor mirrors the hero's doopen() side effects: set the
-// doormask, redraw the square, and vision_recalc(0).  The amorphous
-// flow-under case and the D_TRAPPED explosion (mb_trapped) don't occur at the
-// depths these sessions reach, so they're left as documented no-ops.
+// open.").  UnblockDoor sets the doormask, redraws the square, retires the
+// square's LOS blockage (recalc_block_point) and re-runs vision_recalc(0).
+// The amorphous flow-under case and the D_TRAPPED explosion (mb_trapped)
+// don't occur at the depths these sessions reach, so they're left as
+// documented no-ops.
+//
+// The recalc_block_point() step is load-bearing and easy to miss: while the
+// door was CLOSED it blocked light, and NetHack's vision algorithm always
+// grants IN_SIGHT to a blocking square that bounds a lit region the hero can
+// see (that is how you see a lit room's walls from inside).  The instant it
+// opens it becomes a transparent square, so it is only seen when there is a
+// genuine clear LOS to it — which, for a door in a room's wall, there usually
+// ISN'T from anywhere but straight on.  Skipping the recalc leaves the door
+// "wall-visible", which both mis-renders the monster standing in the doorway
+// and flips the canseeit/canspotmon feedback from "You see a door open." to
+// "<Mon> opens a door.".
 async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
     const here = game.level?.at(mtmp.mx, mtmp.my);
     // C: IS_DOOR(...) && !passes_walls(ptr) && !can_tunnel  (tunnellers dig
@@ -1545,10 +1562,17 @@ async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
     // pre-open value; UnblockDoor refreshes canseeit after vision_recalc().
     const didseeit = cansee(mtmp.mx, mtmp.my);
     let canseeit = didseeit;
-    // C ref: UnblockDoor(where,who,what)
+    // C ref: monmove.c:1528 UnblockDoor(where,who,what) — doormask, newsym,
+    // recalc_block_point, vision_recalc(0), then refresh canseeit.  The
+    // recalc_block_point() step is what actually makes the opened door
+    // transparent in viz_clear; without it vision_recalc() still treats the
+    // square as opaque, so everything beyond the doorway stays out of the
+    // hero's line of sight (no infravision glyph, and the pet's own
+    // sight-driven move choices diverge from C's).
     const UnblockDoor = (what) => {
         here.doormask = what;
         newsym(mtmp.mx, mtmp.my);
+        recalc_block_point(mtmp.mx, mtmp.my);
         vision_recalc(0);
         canseeit = didseeit || cansee(mtmp.mx, mtmp.my);
     };
@@ -2056,6 +2080,42 @@ function hostileFlag(ptr) {
     const HOSTILE_PMIDX = new Set([12, 13, 59, 88, 116, 158, 322]);
     return HOSTILE_PMIDX.has(ptr.pmidx) ? M2_HOSTILE : 0;
 }
+
+// C ref: monmove.c:307 mon_regen(mon, digest_meal) — a monster's once-per-turn
+// hit-point regeneration, called from mon.c m_calcdistress() for every live
+// monster.  Consumes NO RNG, but it is NOT cosmetic: every monster on the level
+// heals 1 hp on each 20th move (and M1_REGEN species heal every move), so
+// omitting it leaves every wounded monster permanently one or more hp below C.
+// That silently changes how many blows are needed to kill it, which pet, hero
+// and hostile all diverge from as soon as a fight lasts past move 20.
+//
+// `digest_meal` is FALSE at the only C call site (m_calcdistress); the meating
+// countdown is ported anyway so the function matches the C, and finish_meating
+// is inlined because its only other effect (dropping a mimic's appearance) is
+// display bookkeeping already handled where m_ap_type is cleared.
+export function mon_regen(mon, digest_meal) {
+    if (!mon) return;
+    if ((game.moves || 0) % 20 === 0 || regenerates_flag(mon.data))
+        healmon(mon, 1, 0);
+    if (mon.mspec_used) mon.mspec_used--;
+    if (digest_meal) {
+        if (mon.meating) {
+            mon.meating--;
+            if (mon.meating <= 0) {
+                // C ref: dogmove.c finish_meating(mtmp)
+                mon.meating = 0;
+                if (mon.m_ap_type && mon.data?.mcls !== S_MIMIC_MCLS) {
+                    mon.m_ap_type = 0;
+                    mon.mappearance = 0;
+                    newsym(mon.mx, mon.my);
+                }
+            }
+        }
+    }
+}
+
+// C ref: monsym.h S_MIMIC — used only by mon_regen's finish_meating tail.
+const S_MIMIC_MCLS = 13;
 
 // C ref: monmove.c dochug(mtmp).  Faithful control flow: PHASE ONE pre-move
 // adjustments, PHASE TWO set_apparxy + distfleeck, PHASE THREE m_move (guarded

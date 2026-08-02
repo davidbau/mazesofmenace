@@ -11,6 +11,7 @@
 // (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
 
 import { game } from './gstate.js';
+import { rnd } from './rng.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
 
@@ -89,4 +90,60 @@ export async function fall_asleep(how_long, wakeup_msg) {
     /* early wakeup from combat won't be possible until next monster turn */
     game.u.usleep = game.moves;
     game.nomovemsg = wakeup_msg ? "You wake up." : "You can move again.";
+}
+
+// src/timeout.c:660 nh_timeout() — the per-turn countdown of intrinsic
+// timeouts. Only the intrinsic-timer loop is live; the luck rebalancing,
+// storm/fumaroles arms and most expiry cases need absent state and are
+// recorded when their trigger appears.
+export async function nh_timeout() {
+    const intr = game.u.intrinsic;
+    if (game.u.uluck)
+        note_unported_timeout('nh_timeout:luck_rebalance');
+    if (!intr)
+        return;
+
+    for (const key of Object.keys(intr)) {
+        const v = intr[key];
+        if (typeof v !== 'number' || v <= 0)
+            continue;
+        intr[key] = v - 1;
+        if (intr[key] > 0)
+            continue;
+        /* the timeout just ran out */
+        switch (key) {
+        case 'HConfusion': {
+            const { make_confused } = await import('./potion.js');
+            intr.HConfusion = 1; /* so make_confused works properly */
+            await make_confused(0, true);
+            if (!game.u.uprops?.CONFUSION) {
+                const { stop_occupation } = await import('./allmain.js');
+                await stop_occupation();
+            }
+            break;
+        }
+        default:
+            note_unported_timeout(`nh_timeout:${key}`);
+            break;
+        }
+    }
+}
+
+function note_unported_timeout(what) {
+    (game.unported ||= new Set()).add(what);
+}
+
+// src/timeout.c:981 attach_egg_hatch_timeout() — decide if and when the egg
+// hatches: one rnd(i) per age 151..200 until a roll exceeds 150.
+export function attach_egg_hatch_timeout(egg, when = 0) {
+    /* stop_timer: no previous timer exists at creation */
+    if (!when) {
+        for (let i = (200 - 50) + 1; i <= 200; i++)
+            if (rnd(i) > 150) {
+                when = i;
+                break;
+            }
+    }
+    if (when)
+        start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
 }

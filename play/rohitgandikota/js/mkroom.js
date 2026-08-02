@@ -297,6 +297,7 @@ export function fill_zoo(sroom) {
                 : (type === COCKNEST)  ? game.mons[PMNAMES.PM_COCKATRICE]
                 : (type === ANTHOLE)   ? antholemon()
                 : null;
+
             const mon = ptr ? makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP) : null;
             if (mon) {
                 mon.msleeping = 1;
@@ -425,6 +426,7 @@ export function courtmon() {
 // rn2(level_difficulty()).
 export function morguemon() {
     const i = rn2(100), hd = rn2(level_difficulty());
+
 
     if (hd > 10 && i < 10) {
         if (Inhell() || In_endgame(game.u.uz))

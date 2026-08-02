@@ -200,6 +200,19 @@ export function find_level(s) {
     return (game.sp_levchn || []).find((lev) => lev.proto.toLowerCase() === s.toLowerCase()) || null;
 }
 
+// C ref: dungeon.c In_hell(lev) = dungeons[lev->dnum].flags.hellish.
+export function In_hell(lev) {
+    const dnum = lev?.dnum;
+    if (dnum == null) return false;
+    return !!game.dungeons?.[dnum]?.hellish;
+}
+
+// C ref: dungeon.h Is_valley(x) = Lcheck(x, &valley_level) — same dnum+dlevel.
+export function Is_valley(lev) {
+    const vl = game.valley_level;
+    return !!vl && !!lev && lev.dnum === vl.dnum && lev.dlevel === vl.dlevel;
+}
+
 // C ref: dungeon.c Is_special(lev) — return the s_level for this position if it
 // is a special (named) level, else null.  Used by makelevel() to dispatch into
 // the special-level (Lua) loader instead of ordinary room generation.

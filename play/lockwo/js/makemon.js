@@ -25,9 +25,17 @@ import {
     DUNGEON_ALIGN_BY_DNUM,
     GEHENNOM,
     In_endgame, Is_astralevel, Is_rogue_level,
+    Is_airlevel, Is_firelevel, Is_earthlevel, Is_waterlevel,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
     STRAT_CLOSE, STRAT_WAITFORU,
 } from './const.js';
+import {
+    mflags2_of, mflags3_of, msound_of,
+    M2_LORD, M2_PRINCE, M2_NASTY, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
+    M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN,
+    M3_CLOSE, M3_WAITFORU,
+    MS_LEADER, MS_GUARDIAN, MS_NEMESIS,
+} from './monflags_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
@@ -42,6 +50,7 @@ const G_FREQ = 0x0007;
 export const MM_ASLEEP = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP = 0x00002000; // suppress creation of monster groups
 const MM_ANGRY = 0x00000020; // monster is created angry
+const MM_ADJACENTOK = 0x00000010; // C ref: makemon.h — ok to displace to an adjacent square
 const G_IGNORE = 0x8000;
 const G_GONE = 0x03; // mvflags G_GENOD | G_EXTINCT
 const G_GENOD = 0x02;
@@ -1053,6 +1062,10 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
 // C ref: mongets() (makemon.c:2181). Creates obj via mksobj and gives it to
 // mtmp. We only need the RNG-consuming mksobj() call; the post-creation
 // blessing/spe tweaks in C don't consume RNG for the low-level cases here.
+// C ref: makemon.c mongets() — exported for mkroom.c's fill_zoo(), which hands
+// the throne room's monarch a mace.
+export function mongets_pub(mtmp, otyp) { return mongets(mtmp, otyp); }
+
 function mongets(_mtmp, otyp) {
     if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
@@ -1112,31 +1125,86 @@ function adj_lev(ptr) {
     return tmp > upper ? upper : (tmp > 0 ? tmp : 0);
 }
 
+// C ref: defsym.h MONSYM() — monster class indices.  Our permonst records carry
+// the same numbering in .mcls.
+const S_DRAGON = 30, S_ELEMENTAL = 31, S_GOLEM = 55;
+
+// C ref: mondata.h is_rider(ptr) — the three Riders of the Apocalypse, compared
+// by identity in C (&mons[PM_DEATH] etc.), so by pmidx here.
+const PM_DEATH = name_to_pmidx('Death'),
+    PM_FAMINE = name_to_pmidx('Famine'),
+    PM_PESTILENCE = name_to_pmidx('Pestilence');
+function is_rider(ptr) {
+    return ptr.pmidx === PM_DEATH || ptr.pmidx === PM_FAMINE
+        || ptr.pmidx === PM_PESTILENCE;
+}
+
+// C ref: monsters.h — PM_GRAY_DRAGON is the first ADULT dragon; every baby
+// dragon sorts before it, which is exactly what newmonhp()'s
+// `mndx >= PM_GRAY_DRAGON` test relies on.
+const PM_GRAY_DRAGON = name_to_pmidx('gray dragon');
+
+// C ref: makemon.c is_home_elemental() — an elemental standing on its own
+// Elemental Plane.  The endgame is not reachable in the covered sessions, so
+// all four predicates are false there; kept faithful for correctness.
+const PM_AIR_ELEMENTAL = name_to_pmidx('air elemental'),
+    PM_FIRE_ELEMENTAL = name_to_pmidx('fire elemental'),
+    PM_EARTH_ELEMENTAL = name_to_pmidx('earth elemental'),
+    PM_WATER_ELEMENTAL = name_to_pmidx('water elemental');
+function is_home_elemental(ptr) {
+    if (ptr.mcls !== S_ELEMENTAL) return false;
+    const uz = game.u?.uz;
+    switch (ptr.pmidx) {
+    case PM_AIR_ELEMENTAL: return Is_airlevel(uz);
+    case PM_FIRE_ELEMENTAL: return Is_firelevel(uz);
+    case PM_EARTH_ELEMENTAL: return Is_earthlevel(uz);
+    case PM_WATER_ELEMENTAL: return Is_waterlevel(uz);
+    default: return false;
+    }
+}
+
 // C ref: newmonhp() (makemon.c:1012). Sets mon.m_lev / mhp / mhpmax and
-// returns mhp. Only the general (non-golem, non-rider, non-special, non-dragon)
-// paths are reachable by the low-level slice.
+// returns mhp.
 export function newmonhp(mon) {
     const isMon = mon && mon.data !== undefined;
     const ptr = isMon ? mon.data : mon;
     const out = isMon ? mon : {};
     if (!ptr) return 0;
 
+    // C: `int basehp = 0;` — only the branches that roll dice raise it, and the
+    // "all 1s" bump below compares against it, so the no-roll branches (golem,
+    // mlevel > 49) can never trigger that bump.
+    let basehp = 0;
     out.m_lev = adj_lev(ptr);
-    let basehp;
-    // C ref: newmonhp() golem branch — golems have fixed HP (golemhp), consuming
-    // NO RNG (no rnd(4)/d() roll).  mcls 55 == S_GOLEM.
-    if (ptr.mcls === 55 /*S_GOLEM*/) {
+    if (ptr.mcls === S_GOLEM) {
+        // Golems have a fixed amount of HP, varying by golem type.  No RNG.
         out.mhpmax = out.mhp = golemhp_js(ptr.pmidx);
-        return out.mhp;
-    }
-    if (!out.m_lev) {
-        basehp = 1;
+    } else if (is_rider(ptr)) {
+        // Low HP but a high mlevel so they can still attack well.
+        basehp = 10;
+        out.mhpmax = out.mhp = d(basehp, 8);
+    } else if (ptr.mlevel > 49) {
+        // "Special" fixed-hp monster (the named demon lords): the hit points
+        // are encoded in mlevel above the normal 1..49 range.
+        out.mhpmax = out.mhp = 2 * (ptr.mlevel - 6);
+        out.m_lev = Math.trunc(out.mhp / 4); // approximation
+    } else if (ptr.mcls === S_DRAGON && ptr.pmidx >= PM_GRAY_DRAGON) {
+        // Adult dragons: N*(4+rnd(4)) before the endgame, N*8 once there.
+        basehp = out.m_lev; // not really applicable; isolates the cast
+        out.mhpmax = out.mhp = In_endgame(game.u?.uz) ? (8 * basehp)
+            : (4 * basehp + d(basehp, 4));
+    } else if (!out.m_lev) {
+        basehp = 1; // minimum is 1, increased to 2 below
         out.mhpmax = out.mhp = rnd(4);
     } else {
-        basehp = out.m_lev;
+        basehp = out.m_lev; // minimum possible is one per level
         out.mhpmax = out.mhp = d(basehp, 8);
+        if (is_home_elemental(ptr))
+            out.mhpmax = (out.mhp *= 3); // leave 'basehp' as-is
     }
 
+    // If d(X,8) rolled a 1 all X times, give a boost; most beneficial for level
+    // 0 and level 1 monsters, making mhpmax and mhp always be at least 2.
     if (out.mhpmax === basehp) {
         out.mhpmax += 1;
         out.mhp = out.mhpmax;
@@ -1162,7 +1230,7 @@ function m_initweap_angel(mtmp, ptr) {
     // same three are precisely the AT_WEAP members, so ARMED_NAMES — which is
     // attacktype(ptr, AT_WEAP) — doubles as the humanoid test for this class.
     if (!ARMED_NAMES.has(ptr.name)) return;
-    const is_lord = M2_LORD_NAMES.has(ptr.name);
+    const is_lord = (mflags2_of(ptr) & M2_LORD) !== 0;
 
     const typ = rn2(3) ? W_LONG_SWORD : W_SILVER_MACE;          // makemon.c:333
     const nam = (typ === W_LONG_SWORD) ? 'Sunsword' : 'Demonbane';
@@ -1311,30 +1379,15 @@ function strongmonst_js(ptr) {
 }
 
 // Full C-faithful m_initweap for Big Room monsters.
-// C ref: mondata.h is_lord/is_prince/extra_nasty (M2_LORD/M2_PRINCE/M2_NASTY).
-// The JS monster table does not carry the M2 flag bits, so the lord/prince/nasty
-// status of the monsters that reach m_initweap's generic default case is keyed
-// by canonical species name.  bias = is_lord + is_prince*2 + extra_nasty.
-const M2_LORD_NAMES = new Set([
-    'gnome leader', 'dwarf leader', 'ogre leader', 'kobold leader',
-    'elf-noble', 'orc-captain',
-    // S_ANGEL M2_LORD members (include/monsters.h): only these two of the five
-    // angelic beings carry M2_LORD, which the S_ANGEL branch consults for both
-    // the artifact-promotion test and the shield choice.
-    'ki-rin', 'Archon',
-]);
-const M2_PRINCE_NAMES = new Set([
-    'gnome ruler', 'dwarf ruler', 'ogre tyrant', 'Vlad the Impaler',
-]);
-const M2_NASTY_NAMES = new Set([
-    'Elvenking', 'water demon', 'Vlad the Impaler',
-]);
+// C ref: mondata.h is_lord/is_prince/extra_nasty (M2_LORD/M2_PRINCE/M2_NASTY),
+// read straight off mflags2 (js/monflags_data.js).  bias = is_lord +
+// is_prince*2 + extra_nasty.
 function m_initweap_bias(ptr) {
-    const n = ptr?.name;
+    const f2 = mflags2_of(ptr);
     let bias = 0;
-    if (M2_LORD_NAMES.has(n)) bias += 1;
-    if (M2_PRINCE_NAMES.has(n)) bias += 2;
-    if (M2_NASTY_NAMES.has(n)) bias += 1;
+    if (f2 & M2_LORD) bias += 1;
+    if (f2 & M2_PRINCE) bias += 2;
+    if (f2 & M2_NASTY) bias += 1;
     return bias;
 }
 
@@ -1511,9 +1564,7 @@ function m_initweap_full(mtmp) {
         break;
     default: {
         // C ref: makemon.c m_initweap default — bias = is_lord(ptr)
-        // + is_prince(ptr)*2 + extra_nasty(ptr).  Detected by canonical name
-        // for the (currently low-level) lord/prince/nasty monsters that reach
-        // this generic path (e.g. the Gnomish Mines gnome/dwarf leaders/rulers).
+        // + is_prince(ptr)*2 + extra_nasty(ptr).
         const bias = m_initweap_bias(ptr);
         switch (rnd(14 - 2 * bias)) {
         case 1:
@@ -1872,90 +1923,59 @@ function rndmonnum_local() {
 }
 
 // C ref: makemon.c peace_minded() — full version for the Big Room path,
-// including the always_hostile (M2_HOSTILE) / always_peaceful (M2_PEACEFUL)
-// short-circuits that return WITHOUT consuming RNG (e.g. a hostile lizard).
-// Keyed by NAME (all NAMS() variants), extracted from include/monsters.h, since
-// the JS pmidx scheme is a reordered subset of the C mons[] table.
-const M2_HOSTILE_NAMES = new Set(["giant ant","killer bee","soldier ant","fire ant","giant beetle","queen bee","quivering blob","gelatinous cube","chickatrice","cockatrice","pyrolisk","jackal","fox","coyote","werejackal","dingo","wolf","werewolf","winter wolf cub","warg","winter wolf","hell hound pup","hell hound","Cerberus","gas spore","floating eye","freezing sphere","flaming sphere","shocking sphere","beholder","jaguar","lynx","panther","tiger","displacer beast","gargoyle","winged gargoyle","mind flayer","master mind flayer","manes","lemure","blue jelly","spotted jelly","ochre jelly","kobold","large kobold","kobold lord","kobold lady","kobold leader","kobold shaman","leprechaun","small mimic","large mimic","giant mimic","wood nymph","water nymph","mountain nymph","rock piercer","iron piercer","glass piercer","rothe","mumak","leocrotta","wumpus","titanothere","baluchitherium","mastodon","sewer rat","giant rat","rabid rat","wererat","rock mole","woodchuck","cave spider","centipede","giant spider","scorpion","lurker above","trapper","fog cloud","dust vortex","ice vortex","energy vortex","steam vortex","fire vortex","baby long worm","baby purple worm","long worm","purple worm","grid bug","xan","yellow light","black light","zruty","giant bat","raven","vampire bat","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","stalker","lichen","brown mold","yellow mold","green mold","red mold","shrieker","violet fungus","ettin","minotaur","jabberwock","vorpal jabberwock","Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","lich","demilich","master lich","arch-lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy","elf mummy","human mummy","ettin mummy","giant mummy","gray ooze","brown pudding","green slime","black pudding","quantum mechanic","genetic engineer","rust monster","disenchanter","snake","water moccasin","python","pit viper","cobra","troll","ice troll","rock troll","water troll","Olog-hai","vampire","vampire lord","vampire lady","vampire leader","vampire mage","Vlad the Impaler","barrow wight","wraith","Nazgul","xorn","owlbear","yeti","carnivorous ape","kobold zombie","gnome zombie","orc zombie","dwarf zombie","elf zombie","human zombie","ettin zombie","ghoul","giant zombie","skeleton","straw golem","paper golem","rope golem","gold golem","leather golem","wood golem","flesh golem","clay golem","stone golem","glass golem","iron golem","doppelganger","soldier","sergeant","nurse","lieutenant","captain","Medusa","Wizard of Yendor","Croesus","ghost","shade","water demon","incubus","succubus","amorous demon","horned devil","barbed devil","marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","balrog","Juiblex","Yeenoghu","Orcus","Geryon","Dispater","Baalzebub","Asmodeus","Demogorgon","Death","Pestilence","Famine","jellyfish","piranha","shark","giant eel","electric eel","kraken","newt","gecko","iguana","baby crocodile","lizard","chameleon","crocodile","salamander","Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One","ninja"]);
-const M2_PEACEFUL_NAMES = new Set(["shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","watchman","watch captain","Charon","mail daemon","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
-
-// C ref: include/monsters.h mflags2 race flags (M2_GNOME/M2_ORC/M2_ELF/
-// M2_DWARF/M2_HUMAN), keyed by monster NAME (the JS MONS pmidx scheme is a
-// reordered subset of the C mons[] table, so name is the stable key).  Used by
-// peace_minded()'s race_peaceful()/race_hostile() short-circuits, which fire
-// against the hero's race lovemask/hatemask (role.c races[]).
-const M2_GNOME_NAMES = new Set(["gnome","gnome lord","gnome lady","gnome leader","gnomish wizard","gnome king","gnome queen","gnome ruler","gnome mummy","gnome zombie"]);
-const M2_ORC_NAMES = new Set(["goblin","hobgoblin","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","orc mummy","orc zombie","Goblin King"]);
-const M2_ELF_NAMES = new Set(["elf mummy","elf zombie","elf","Woodland-elf","Green-elf","Grey-elf","elf-lord","elf-lady","elf-noble","Elvenking","Elvenqueen","elven monarch","Earendil","Elwing","High-elf"]);
-const M2_DWARF_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","dwarf mummy","dwarf zombie"]);
+// including the always_hostile (M2_HOSTILE) / always_peaceful (M2_PEACEFUL) /
+// msound leader-guardian-nemesis short-circuits that return WITHOUT consuming
+// RNG (e.g. a hostile lizard).  Read straight off mflags2/msound
+// (js/monflags_data.js) rather than a name-keyed guess.
 export const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","human","wererat","werejackal","werewolf","doppelganger","shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","Wizard of Yendor","Croesus","Charon","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","monk","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Thoth Amon","Master Kaen","Master Assassin","Ashikaga Takauji","Dark One","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
-// C ref: M2_MINION; SIZ() msound MS_LEADER/MS_GUARDIAN (peaceful) / MS_NEMESIS
-// (hostile).  is_minion()'s result depends on u.ualign.record >= 0.
 export const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
-const MS_LEADERGUARD_NAMES = new Set(["Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","student","chieftain","neanderthal","High-elf","attendant","page","abbot","acolyte","hunter","thug","roshi","guide","warrior","apprentice"]);
-const MS_NEMESIS_NAMES = new Set(["Minion of Huhetotl","Thoth Amon","Chromatic Dragon","Goblin King","Cyclops","Ixoth","Master Kaen","Nalzok","Scorpius","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One"]);
 
-// C ref: include/monsters.h mflags3 M3_CLOSE — set on "prisoner" and the one
-// named quest-leader monster per role.  makemon() ORs STRAT_CLOSE into
-// mstrategy for these; dochug() (monmove.js) then freezes them in place
-// (mstrategy & STRAT_WAITMASK) until the hero is adjacent, at which point
-// quest_talk() lets a leader speak.  Keyed by NAME (see M2_PEACEFUL_NAMES
-// above for why: the JS pmidx scheme is a reordered subset of mons[]).
-const M3_CLOSE_NAMES = new Set(["prisoner", "Lord Carnarvon", "Pelias", "Shaman Karnov", "Earendil", "Elwing", "Hippocrates", "King Arthur", "Grand Master", "Arch Priest", "Orion", "Master of Thieves", "Lord Sato", "Twoflower", "Norn", "Neferet the Green"]);
-// C ref: mflags3 M3_WAITFORU — the 13 quest nemeses (MS_NEMESIS_NAMES) plus
-// the non-quest "waits until it notices you" uniques.
-const M3_WAITFORU_NAMES = new Set(["Vlad the Impaler", "Medusa", "Wizard of Yendor", "Juiblex", "Orcus", "Baalzebub", "Asmodeus", ...MS_NEMESIS_NAMES]);
-
-// C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  Returns the
-// M2 race flag-name sets the hero loves / hates.  Transcribed directly from
-// the races[] table (lovemask, hatemask fields, in that order):
-//   human: lovemask 0,               hatemask MH_GNOME|MH_ORC
-//   elf:   lovemask MH_ELF,           hatemask MH_ORC
-//   dwarf: lovemask MH_DWARF|MH_GNOME, hatemask MH_ORC
-//   gnome: lovemask MH_DWARF|MH_GNOME, hatemask MH_HUMAN
-//   orc:   lovemask 0,               hatemask MH_HUMAN|MH_ELF|MH_DWARF
-// (orcs do NOT automatically love other orc-tagged monsters — lovemask is 0 —
-// and instead hate humans/elves/dwarves; a prior version of this table had
-// orc's love/hate reversed and dwarf/gnome's masks swapped between each
-// other, which shortcircuits peace_minded()'s race_peaceful/race_hostile
-// check without rolling the RNG C actually rolls for these pairings.)
-function urace_race_sets() {
+// C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  race_hostile
+// /race_peaceful (mondata.h) test `ptr->mflags2 & mask` directly, so the masks
+// below are transcribed straight from the races[] table (lovemask, hatemask
+// fields, in that order) instead of enumerating names per race:
+//   human: lovemask 0,                hatemask M2_GNOME|M2_ORC
+//   elf:   lovemask M2_ELF,           hatemask M2_ORC
+//   dwarf: lovemask M2_DWARF|M2_GNOME, hatemask M2_ORC
+//   gnome: lovemask M2_DWARF|M2_GNOME, hatemask M2_HUMAN
+//   orc:   lovemask 0,                hatemask M2_HUMAN|M2_ELF|M2_DWARF
+function urace_masks() {
     const adj = String(game.urace?.adj || game.urace?.noun || 'human').toLowerCase();
     switch (adj) {
     case 'elven': case 'elf':
-        return { love: [M2_ELF_NAMES], hate: [M2_ORC_NAMES] };
+        return { lovemask: M2_ELF, hatemask: M2_ORC };
     case 'dwarvish': case 'dwarf':
-        return { love: [M2_DWARF_NAMES, M2_GNOME_NAMES], hate: [M2_ORC_NAMES] };
+        return { lovemask: M2_DWARF | M2_GNOME, hatemask: M2_ORC };
     case 'gnomish': case 'gnome':
-        return { love: [M2_DWARF_NAMES, M2_GNOME_NAMES], hate: [M2_HUMAN_NAMES] };
+        return { lovemask: M2_DWARF | M2_GNOME, hatemask: M2_HUMAN };
     case 'orcish': case 'orc':
-        return { love: [], hate: [M2_HUMAN_NAMES, M2_ELF_NAMES, M2_DWARF_NAMES] };
+        return { lovemask: 0, hatemask: M2_HUMAN | M2_ELF | M2_DWARF };
     case 'human': default:
-        return { love: [], hate: [M2_GNOME_NAMES, M2_ORC_NAMES] };
+        return { lovemask: 0, hatemask: M2_GNOME | M2_ORC };
     }
 }
-function name_in_any(name, sets) { for (const s of sets) if (s.has(name)) return true; return false; }
 
 function peace_minded_bigrm(ptr) {
-    const nm = ptr.name;
-    if (M2_PEACEFUL_NAMES.has(nm)) return true;   // always_peaceful, no RNG
-    if (M2_HOSTILE_NAMES.has(nm)) return false;   // always_hostile, no RNG
+    const f2 = mflags2_of(ptr);
+    if (f2 & M2_PEACEFUL) return true;   // always_peaceful, no RNG
+    if (f2 & M2_HOSTILE) return false;   // always_hostile, no RNG
     // msound leader/guardian -> peaceful; nemesis -> hostile (no RNG).
-    if (MS_LEADERGUARD_NAMES.has(nm)) return true;
-    if (MS_NEMESIS_NAMES.has(nm)) return false;
+    const snd = msound_of(ptr);
+    if (snd === MS_LEADER || snd === MS_GUARDIAN) return true;
+    if (snd === MS_NEMESIS) return false;
     // PM_ERINYS: return !u.ualign.abuse; abuse is 0 in the slice -> peaceful (no RNG).
-    if (nm === 'erinys') return !(game.u?.ualign?.abuse);
+    if (ptr.name === 'erinys') return !(game.u?.ualign?.abuse);
     // race_peaceful / race_hostile against the hero's race love/hate masks (no RNG).
-    const rs = urace_race_sets();
-    if (name_in_any(nm, rs.love)) return true;
-    if (name_in_any(nm, rs.hate)) return false;
+    const rm = urace_masks();
+    if (f2 & rm.lovemask) return true;
+    if (f2 & rm.hatemask) return false;
     const mal = ptr.maligntyp ?? 0;
     const ual = game.u?.ualign?.type ?? 0;
     if (sgn(mal) !== sgn(ual)) return false;          // differently aligned, no RNG
     if (mal < 0 && game.u?.uhave?.amulet) return false;
     const record = game.u?.ualign?.record ?? 0;
     // is_minion -> result is record>=0, NO RNG.
-    if (M2_MINION_NAMES.has(nm)) return record >= 0;
+    if (f2 & M2_MINION) return record >= 0;
     const a = !!rn2(16 + (record < -15 ? -15 : record));
     const b = !!rn2(2 + Math.abs(mal));
     return a && b;
@@ -2032,6 +2052,20 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     const ptr = mdat ?? rndmonst();
     if (!ptr) return null;
     let allow_minvent = true;
+
+    // C ref: makemon.c:1194 — "Does monster already exist at the position?"
+    // Without MM_ADJACENTOK this is a bare early return that consumes NO RNG,
+    // and it is load-bearing for fill_zoo(): C tries to stock every square of a
+    // COURT including the one the throne monster already occupies, and that
+    // makemon call must fail silently rather than draw next_ident/newmonhp.
+    // (x==0,y==0 means "caller wants a random location", which this port
+    // resolves in makemon_rnd_spawn() before reaching here.)
+    if (x > 0 && mm_mon_at(x, y)) {
+        if (!(mmflags & MM_ADJACENTOK)) return null;
+        const cc = enexto_spawn(x, y, ptr);
+        if (!cc) return null;
+        x = cc.x; y = cc.y;
+    }
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags };
     mtmp.m_id = next_ident();
@@ -2207,21 +2241,31 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // newcham() clears.  For every non-shapeshifter path allow_minvent stays
     // TRUE, so behaviour is unchanged.
     if (allow_minvent) {
-        if (game._bigrm_gen || game._full_mon_gen) {
-            if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
-            m_initinv_full(mtmp);
-        } else {
-            if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
-            m_initinv(ptr);
-        }
+        // C ref: makemon.c:1442 — `if (is_armed(ptr)) m_initweap(mtmp);`, one
+        // code path for every monster.  m_initweap_full() is the faithful port;
+        // the old conservative variant only had bodies for S_KOBOLD/S_ORC/
+        // S_ANGEL and was gated on that same short class list, so any other
+        // armed monster generated outside the Big Room / shop-stocking paths
+        // skipped BOTH its class case and the shared
+        // `m_lev > rn2(75) -> rnd_offensive_item` tail.
+        if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
+        // C ref: makemon.c:1443 m_initinv(mtmp) — one code path for every
+        // monster.  m_initinv_full() is the faithful port (per-class branches
+        // plus the rnd_defensive_item / rnd_misc_item / likes_gold tail); the
+        // old two-draw approximation dropped the S_GNOME/S_LEPRECHAUN/... class
+        // cases and the `likes_gold(ptr) && !findgold(...) && !rn2(5)` gold roll,
+        // so any greedy monster (dragons, orcs, dwarves, ogres, ...) generated
+        // outside the Big Room / shop-stocking paths lost an rn2(5).
+        m_initinv_full(mtmp);
         rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     }
     // C ref: makemon.c:1460-1466 — mflags3 STRAT_WAITFORU/STRAT_CLOSE (no RNG).
     // STRAT_APPEARMSG is not modeled: no covered session reaches a "materializes
     // in a cloud of smoke" first-appearance message for one of these monsters.
     if (!(mmflags & MM_NOWAIT)) {
-        if (M3_WAITFORU_NAMES.has(ptr.name)) mtmp.mstrategy = (mtmp.mstrategy | STRAT_WAITFORU) >>> 0;
-        if (M3_CLOSE_NAMES.has(ptr.name)) mtmp.mstrategy = (mtmp.mstrategy | STRAT_CLOSE) >>> 0;
+        const f3 = mflags3_of(ptr);
+        if (f3 & M3_WAITFORU) mtmp.mstrategy = (mtmp.mstrategy | STRAT_WAITFORU) >>> 0;
+        if (f3 & M3_CLOSE) mtmp.mstrategy = (mtmp.mstrategy | STRAT_CLOSE) >>> 0;
     }
     // C ref: makemon.c:1248 — the new monster is linked into fmon (placed on the
     // level).  For Big Room generation and shop stocking, place it so the

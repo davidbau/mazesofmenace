@@ -169,9 +169,21 @@ function pet_base_level(pettype) {
 // so callers can store it; the hp roll is the same RNG either way.
 function newmonhp_for_pet(pettype, mtmp) {
     const mlev = adj_lev(pet_base_level(pettype));
-    let hp;
-    if (!mlev) hp = rnd(4);
-    else hp = logged_d(mlev, 8);
+    let basehp, hp;
+    if (!mlev) {
+        basehp = 1; // C: minimum is 1, increased to 2 below
+        hp = rnd(4);
+    } else {
+        basehp = mlev; // C: minimum possible is one per level
+        hp = logged_d(mlev, 8);
+    }
+    // C ref: makemon.c newmonhp() trailing block — "if d(X,8) rolled a 1 all X
+    // times, give a boost", so mhpmax/mhp are never below 2 for a level 0/1
+    // monster.  makemon.js's newmonhp() has this; this pet-only copy did not,
+    // so a starting pet that rolled the minimum came out with 1 hp instead of
+    // 2 — one hit from death, and the divergence then cascades through every
+    // fight the pet takes part in.  Consumes no RNG.
+    if (hp === basehp) hp = basehp + 1;
     if (mtmp) {
         // C ref: makemon.c newmonhp — m_lev is adj_lev(ptr); a starting pet on
         // dlvl 1 with u.ulevel 1 decrements to base-1 (kitten/dog 1, pony 2).

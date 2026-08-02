@@ -112,6 +112,22 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
     (game.visited_ledgers ||= new Set());
 
+    /* src/do.c:1678 — track the deepest level reached in this dungeon
+       (builds_up dungeons track their SHALLOWEST dlevel instead) */
+    {
+        const dgn = game.dungeons?.[game.u.uz.dnum];
+        const { builds_up } = await import('./dungeon.js');
+        if (dgn) {
+            if (!builds_up(game.u.uz)) {
+                if (game.u.uz.dlevel > (dgn.dunlev_ureached ?? 0))
+                    dgn.dunlev_ureached = game.u.uz.dlevel;
+            } else if (!dgn.dunlev_ureached
+                       || game.u.uz.dlevel < dgn.dunlev_ureached) {
+                dgn.dunlev_ureached = game.u.uz.dlevel;
+            }
+        }
+    }
+
     /* src/do.c:1690 — reset the default level change destination areas;
        the special level code may override these */
     game.updest = { lx: 0, ly: 0, hx: 0, hy: 0,
@@ -443,4 +459,29 @@ export function canletgo(obj, word) {
         return false;
     }
     return true;
+}
+
+// src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a
+// spottable hostile (flags.safe_wait defaults On).
+async function cmd_safety_prevention(ucverb, cmddesc, act) {
+    if ((game.flags?.safe_wait ?? true) && !game.iflags_menu_requested
+        && !(game.multi ?? 0)) {
+        const { monster_nearby } = await import('./hack.js');
+        /* iflags.cmdassist defaults On, so the hint suffix always prints */
+        const buf = `  Use 'm' prefix to force ${cmddesc}.`;
+        if (monster_nearby()) {
+            await pline(`${act}${buf}`);
+            return true;
+        }
+        /* danger_uprops(): Stoned/Slimed/Strangled/Sick — none tracked */
+    }
+    return false;
+}
+
+// src/do.c:2350 donull() — the '.' command: do nothing == rest.
+export async function donull() {
+    if (await cmd_safety_prevention('Waiting', 'a no-op (to rest)',
+                                    'Are you waiting to get hit?'))
+        return ECMD_OK;
+    return ECMD_TIME; /* Do nothing, but let other things happen */
 }

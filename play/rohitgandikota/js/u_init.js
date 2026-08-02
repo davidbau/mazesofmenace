@@ -18,7 +18,7 @@
 // everything after it.
 
 import { game } from './gstate.js';
-import { mergable, reorder_invent } from './invent.js';
+import { mergable, reorder_invent, assigninvlet, addinv } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
@@ -189,49 +189,8 @@ function ini_inv_adjust_obj(trop, obj) {
    and, being the more permissive of the two, would fold starting-inventory
    stacks that C keeps apart. */
 
-// src/invent.c:230 assigninvlet() — sequential from lastinvnr, gold gets '$'.
-const GOLD_SYM = '$';
-function assigninvlet(otmp) {
-    if (otmp.oclass === COIN_CLASS) {
-        otmp.invlet = GOLD_SYM;
-        return;
-    }
-    const inuse = new Array(52).fill(false);
-    for (const o of game.invent || []) {
-        if (o === otmp) continue;
-        const c = o.invlet;
-        if (c >= 'a' && c <= 'z') inuse[c.charCodeAt(0) - 97] = true;
-        else if (c >= 'A' && c <= 'Z') inuse[c.charCodeAt(0) - 65 + 26] = true;
-    }
-    let i;
-    const last = game.lastinvnr ?? -1;
-    for (i = last + 1; i !== last; i++) {
-        if (i === 52) { i = -1; continue; }
-        if (!inuse[i]) break;
-    }
-    otmp.invlet = inuse[i] ? '#'
-                : (i < 26) ? String.fromCharCode(97 + i)
-                           : String.fromCharCode(65 + i - 26);
-    game.lastinvnr = i;
-}
-
-// src/invent.c:600 addinv() — merge into an existing stack if possible,
-// otherwise take the next inventory letter.
-function addinv(obj) {
-    game.invent ||= [];
-    for (const otmp of game.invent) {
-        if (mergable(otmp, obj)) {
-            otmp.quan += obj.quan;
-            return otmp;
-        }
-    }
-    assigninvlet(obj);
-    game.invent.push(obj);
-    /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
-       is kept in inv_rank order (gold first). */
-    reorder_invent();
-    return obj;
-}
+/* assigninvlet() and addinv() now live in js/invent.js, their C home
+   (src/invent.c:230, :600). */
 
 // include/you.h:247,297 Role_if() / Race_if(). The role tables store mnum as a
 // number, so accept either the PM_ name or the number a caller already resolved.

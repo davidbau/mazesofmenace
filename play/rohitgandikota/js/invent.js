@@ -41,6 +41,59 @@ export function reorder_invent() {
     (game.invent || []).sort((a, b) => inv_rank(a) - inv_rank(b));
 }
 
+// src/invent.c:230 assigninvlet() — sequential from lastinvnr, gold gets '$'.
+// The rolling counter means a new item takes the letter AFTER the last one
+// assigned, even when earlier letters have been freed in the meantime.
+export function assigninvlet(otmp) {
+    if (otmp.oclass === OCLASSES.COIN_CLASS) {
+        otmp.invlet = '$';
+        return;
+    }
+    const inuse = new Array(52).fill(false);
+    for (const o of game.invent || []) {
+        if (o === otmp) continue;
+        const c = o.invlet;
+        if (c >= 'a' && c <= 'z') inuse[c.charCodeAt(0) - 97] = true;
+        else if (c >= 'A' && c <= 'Z') inuse[c.charCodeAt(0) - 65 + 26] = true;
+    }
+    let i;
+    const last = game.lastinvnr ?? -1;
+    for (i = last + 1; i !== last; i++) {
+        if (i === 52) { i = -1; continue; }
+        if (!inuse[i]) break;
+    }
+    otmp.invlet = inuse[i] ? '#'
+                : (i < 26) ? String.fromCharCode(97 + i)
+                           : String.fromCharCode(65 + i - 26);
+    game.lastinvnr = i;
+}
+
+// src/invent.c:600 addinv() — merge into an existing stack if possible,
+// otherwise take the next inventory letter.
+export function addinv(obj) {
+    game.invent ||= [];
+    for (const otmp of game.invent) {
+        if (mergable(otmp, obj)) {
+            otmp.quan += obj.quan;
+            return otmp;
+        }
+    }
+    return addinv_nomerge(obj);
+}
+
+// src/invent.c addinv_nomerge() — the no-merge arm touchfood needs so a
+// split-off portion keeps its own slot.
+export function addinv_nomerge(obj) {
+    game.invent ||= [];
+    assigninvlet(obj);
+    obj.where = 3;                      /* OBJ_INVENT */
+    game.invent.push(obj);
+    /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
+       is kept in inv_rank order (gold first). */
+    reorder_invent();
+    return obj;
+}
+
 // src/invent.c:4104 look_here()
 //
 // The engulfed arm, gas regions, cockatrice touches and Blind feel-arms are

@@ -685,3 +685,9 @@ export function reset_windows() {
     windows = [];
     nextWinId = 1;
 }
+
+// win/tty/wintty.c tty_raw_print() — text straight to the terminal, used
+// after the game windows are gone (topten's wizard-mode notice).
+export function tty_raw_print(str) {
+    tty_putstr_base(str ?? '');
+}

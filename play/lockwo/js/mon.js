@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit } from './const.js';
-import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm } from './monmove.js';
+import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen } from './monmove.js';
 import { cansee } from './vision.js';
 import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
@@ -317,10 +317,34 @@ function canseemon_mon(mtmp) {
     return !!cansee(mtmp.mx, mtmp.my);
 }
 
+// C ref: mon.c:4596 healmon(mtmp, amt, overheal) — give a monster hit points,
+// capped at mhpmax (+overheal, which also raises mhpmax).  Consumes no RNG.
+// The &youmonst branch is the hero's healup(); no caller in this port passes
+// the hero, so only the monster arm is needed.
+export function healmon(mtmp, amt, overheal) {
+    const oldhp = mtmp.mhp || 0;
+    const mhpmax = mtmp.mhpmax || 0;
+    if (oldhp + amt > mhpmax + overheal) {
+        mtmp.mhpmax = mhpmax + overheal;
+        mtmp.mhp = mtmp.mhpmax;
+    } else {
+        mtmp.mhp = oldhp + amt;
+        if (mtmp.mhp > mhpmax) mtmp.mhpmax = mtmp.mhp;
+    }
+    return mtmp.mhp - oldhp;
+}
+
 // C ref: mon.c m_calcdistress(mtmp) — per-turn timeouts/regen/shapeshift.
 // mon_regen and decide_to_shapeshift consume no RNG for the species our
 // sessions exercise; were_change DOES (see above).
 async function m_calcdistress(mtmp) {
+    // C ref: mon.c:1193 — regenerate hit points, BEFORE the shapeshift and
+    // timeout blocks.  RNG-free but state-critical: see monmove.js mon_regen.
+    // (The leading `data->mmove == 0 -> minliquid()` guard covers immobile
+    // species drowning/burning in liquid; no covered session has a sessile
+    // monster standing in water or lava, and minliquid is not ported, so that
+    // branch is deliberately omitted rather than guessed at.)
+    mon_regen(mtmp, false);
     await were_change(mtmp);
     if (mtmp.mblinded && !--mtmp.mblinded) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !--mtmp.mfrozen) mtmp.mcanmove = 1;

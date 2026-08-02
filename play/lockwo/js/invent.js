@@ -78,6 +78,7 @@ import {
     POOL, MOAT, WATER,
     IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
     DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
+    PLNMSG_MON_TAKES_OFF_ITEM,
 } from './const.js';
 import { engr_at } from './engrave.js';
 
@@ -3026,6 +3027,112 @@ async function Blindf_off(obj) {
         vision_recalc(0);
     }
 }
+
+// C ref: do_wear.c Ring_off_or_gone(obj, gone) — the shared tail of Ring_off()
+// (the hero deliberately removes it) and Ring_gone() (it leaves the finger
+// without being taken off: stolen, destroyed, polymorphed).  Both clear the
+// worn slot and then undo whatever on-effect Ring_on() applied.
+function Ring_off_or_gone(obj, _gone) {
+    // setnotworn(obj) / setworn(0, owornmask): either way the finger is freed
+    // and the extrinsic (carried by the owornmask here) goes with it.
+    clearworn_accessory(obj);
+    const spe = obj.spe | 0;
+    switch (obj.otyp) {
+    case RIN_PROTECTION:
+        if (spe) find_ac();
+        break;
+    case RIN_GAIN_STRENGTH:
+    case RIN_GAIN_CONSTITUTION:
+    case RIN_ADORNMENT:
+        adjust_attrib(obj, obj.otyp, -spe); break;
+    case RIN_INCREASE_ACCURACY:
+        if (game.u) game.u.uhitinc = (game.u.uhitinc | 0) - spe; break;
+    case RIN_INCREASE_DAMAGE:
+        if (game.u) game.u.udaminc = (game.u.udaminc | 0) - spe; break;
+    default:
+        break; // teleportation/regeneration/searching/etc.: extrinsic only
+    }
+}
+// C ref: do_wear.c Ring_off(obj) / Ring_gone(obj).
+export function Ring_off(obj) { Ring_off_or_gone(obj, false); }
+export function Ring_gone(obj) { Ring_off_or_gone(obj, true); }
+
+// C ref: do_wear.c Amulet_off() — the special-effect amulets (ESP, life saving,
+// change, unchanging, guarding) aren't exercised by these sessions, so this
+// reduces to setworn((struct obj *) 0, W_AMUL).
+function Amulet_off() {
+    if (game.uamul) clearworn_accessory(game.uamul);
+}
+
+// C ref: steal.c remove_worn_item(obj, unchain_ball) — an item the hero is
+// wearing/wielding has been taken away (theft, seduction, stone-to-flesh).
+// Clears the slot through the same per-slot *_off() routines the deliberate
+// take-off path uses, so the extrinsics and AC follow.  No RNG, no message.
+export async function remove_worn_item(obj, unchain_ball) {
+    // donning(obj) -> cancel_don(): a multi-turn dressing maneuver in progress
+    // on this very object is aborted.  The occupation machinery is the port's
+    // start_occupation(); a stolen item is never mid-don in these sessions.
+    if (!(obj.owornmask || 0)) return;
+
+    // obj->in_use guards emergency_disrobe()/lava_effects() from dropping or
+    // destroying the item mid-removal; neither is reachable here.
+    const armorMask = (obj.owornmask || 0) & WA_ARMOR_ALL;
+    if (armorMask) {
+        // Armor_off/Cloak_off/Boots_off/Gloves_off/Helmet_off/Shield_off/
+        // Shirt_off all reduce to clearing the slot and recomputing AC for the
+        // pieces these sessions wear (the dragon-scale and levitation-boots
+        // side effects are handled by their own on/off helpers elsewhere).
+        obj.owornmask = (obj.owornmask || 0) & ~armorMask;
+        worn_slot_clear(armorMask);
+        find_ac();
+    } else if ((obj.owornmask || 0) & W_AMUL) {
+        Amulet_off();
+    } else if ((obj.owornmask || 0) & (W_RINGL | W_RINGR)) {
+        Ring_gone(obj);
+    } else if ((obj.owornmask || 0) & W_BLINDF) {
+        await Blindf_off(obj);
+    } else if ((obj.owornmask || 0) & W_WEAPONS) {
+        if (obj === game.uwep) setuwep_slot(null);
+        if (obj === game.uswapwep) setuswapwep(null);
+        if (obj === game.uquiver) setuqwep(null);
+    }
+
+    // Ball & chain (W_BALL|W_CHAIN) -> unpunish(); the hero is never Punished
+    // in the covered sessions.
+    void unchain_ball;
+    if (obj.owornmask) setnotworn(obj);   /* catchall */
+    if (game._allow_inventory_update !== undefined) update_inventory();
+}
+
+// C ref: steal.c worn_item_removal(mon, obj) — remove_worn_item() prefaced by
+// "<Mon> takes off/removes/disarms your <item>."  The object description is
+// massaged: the leading article becomes "your", the worn/alternate-weapon
+// suffixes are dropped, and "(on left hand)" becomes "(from left hand)".
+export async function worn_item_removal(mon, obj) {
+    let objbuf = doname_invent(obj);
+    // convert "a/an/the <object>" to "your <object>"
+    if (objbuf.startsWith('the ')) objbuf = 'your ' + objbuf.slice(4);
+    else if (objbuf.startsWith('an ')) objbuf = 'your ' + objbuf.slice(3);
+    else if (objbuf.startsWith('a ')) objbuf = 'your ' + objbuf.slice(2);
+    objbuf = objbuf.replace(' (being worn)', '');
+    objbuf = objbuf.replace(' (alternate weapon; not wielded)', '');
+    // "ring (on left hand)" -> "ring (from left hand)"
+    objbuf = objbuf.replace(/ \(on (left |right )/, ' (from $1');
+
+    const worn = obj.owornmask || 0;
+    const verb = (worn & W_WEAPONS) ? 'disarms'
+        : (worn & W_ACCESSORY) ? 'removes'
+            : 'takes off';
+    const { Some_Monnam } = await import('./steal.js');
+    await update_topl(`${Some_Monnam(mon)} ${verb} ${objbuf}.`);
+    game.last_msg = PLNMSG_MON_TAKES_OFF_ITEM;
+    // Removal might trigger more messages (loss of Lev|Fly); not reachable for
+    // the items these sessions lose.
+    await remove_worn_item(obj, true);
+}
+
+// C ref: invent.c inv_cnt(incl_gold) — number of carried objects.
+export { inv_cnt };
 
 // C ref: do_wear.c on_msg() — for rings/amulets show the prinv add-to-invent
 // line ("<let> - <name> (on right hand)."); for worn tools when !verbose the

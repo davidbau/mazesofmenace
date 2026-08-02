@@ -27,7 +27,7 @@ import { healup } from './potion.js';
 import { findit } from './detect.js';
 import { readobjnam } from './objnam.js';
 import { getlin } from './cmd.js';
-import { prinv, reorder_invent } from './invent.js';
+import { prinv, reorder_invent, addinv } from './invent.js';
 import { makeknown, observe_object } from './o_init.js';
 import { more_experienced } from './exper.js';
 import { exercise } from './attrib.js';
@@ -183,6 +183,21 @@ export async function zapyourself(obj, ordinary) {
         await fall_asleep(-rnd(50), true);
         break;
     }
+    case ONAMES.WAN_DEATH:
+    case ONAMES.SPE_FINGER_OF_DEATH: {
+        /* nonliving()/is_demon() hero forms are not reachable un-polymorphed */
+        learn_it = true;
+        game.killer ||= {};
+        game.killer.name = `shot ${game.flags?.female ? 'her' : 'him'}self`
+                           + ' with a death ray';
+        game.killer.format = 2; /* NO_KILLER_PREFIX */
+        await pline('You irradiate yourself with pure energy!');
+        await pline('You die.');
+        /* They might survive with an amulet of life saving */
+        const { done, DIED } = await import('./end.js');
+        await done(DIED);
+        break;
+    }
     case ONAMES.SPE_HEALING:
     case ONAMES.SPE_EXTRA_HEALING: {
         learn_it = true; /* (no effect for spells...) */
@@ -266,7 +281,7 @@ export async function makewish() {
     const raw = await getlin('For what do you wish?', null);
     const wishtext = (raw === '\x1b' || raw === '\u001b') ? ''
                      : String(raw).replace(/\s+/g, ' ').trim();
-    const otmp = readobjnam(wishtext);
+    let otmp = readobjnam(wishtext);
     if (otmp === 'nothing')
         return;                         /* declined; keeps wishless conduct */
     if (!otmp) {
@@ -280,13 +295,7 @@ export async function makewish() {
     /* wish history and livelog carry no draws */
 
     /* hold_another_object(): into inventory with the new letter shown */
-    const used = new Set((game.invent || []).map(o => o.invlet));
-    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    for (const ch of letters)
-        if (!used.has(ch)) { otmp.invlet = ch; break; }
-    otmp.where = 3;                     /* OBJ_INVENT */
-    (game.invent ||= []).push(otmp);
-    reorder_invent();                   /* invlet_constant keeps rank order */
+    otmp = addinv(otmp);
     update_inventory();
     await prinv(null, otmp, 0);
 

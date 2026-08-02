@@ -19,7 +19,9 @@ import { rnl } from './rng.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
-import { get_level, depth, print_dungeon } from './dungeon.js';
+import { get_level, depth, print_dungeon, dunlevs_in_dungeon } from './dungeon.js';
+import { rnd } from './rng.js';
+import { Is_knox_level } from './const.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 
 // include/hack.h:1204-1210
@@ -169,6 +171,7 @@ export async function level_tele() {
     const newlevel = { dnum: 0, dlevel: 0 };
     let force_dest = false;
     let buf = '';
+    let random_port = false;    /* C: goto random_levtport */
 
     if ((game.u.uhave?.amulet || In_endgame(game.u.uz) || In_sokoban(game.u.uz))
         && !game.wizard) {
@@ -189,12 +192,12 @@ export async function level_tele() {
             buf = await getlin(qbuf);
 
             if (buf === '*') {
-                note_unported_tele('level_tele:random_levtport');
-                return;
+                random_port = true;
+                break;
             } else if (Confusion() && rnl(5)) {
                 await pline('Oops...');
-                note_unported_tele('level_tele:random_levtport');
-                return;
+                random_port = true;
+                break;
             } else if (buf === '\x1b') {        /* cancelled */
                 return;
             }
@@ -219,17 +222,27 @@ export async function level_tele() {
         } while (!newlev && !isdigit(buf[0])
                  && (buf[0] !== '-' || !isdigit(buf[1])) && trycnt < 10);
 
-        if (newlev === 0) {
-            /* "Go to Nowhere" and the suicide it performs */
-            note_unported_tele('level_tele:Nowhere');
+        if (!random_port) {
+            if (newlev === 0) {
+                /* "Go to Nowhere" and the suicide it performs */
+                note_unported_tele('level_tele:Nowhere');
+                return;
+            }
+
+            if (In_quest(game.u.uz) && newlev > 0)
+                newlev = newlev + game.dungeons[game.u.uz.dnum].depth_start - 1;
+        }
+    } else { /* involuntary level tele */
+        random_port = true;
+    }
+
+    if (random_port) {
+        /* teleport.c:1293 random_levtport: */
+        newlev = random_teleport_level();
+        if (newlev === depth(game.u.uz)) {
+            await You('shudder for a moment.');
             return;
         }
-
-        if (In_quest(game.u.uz) && newlev > 0)
-            newlev = newlev + game.dungeons[game.u.uz.dnum].depth_start - 1;
-    } else {
-        note_unported_tele('level_tele:random_teleport_level');
-        return;
     }
 
     if (!next_to_u() && !force_dest) {
@@ -295,4 +308,60 @@ const Confusion = () => !!game.u?.uprops?.CONFUSION;
 
 function note_unported_tele(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/teleport.c:2190 random_teleport_level()
+export function random_teleport_level() {
+    const uz = game.u.uz;
+    let nlev, max_depth, min_depth;
+    const cur_depth = depth(uz);
+
+    /* single_level_branch() is Is_knox() in C (dungeon.c:1967) */
+    if (!rn2(5) || Is_knox_level(uz) || In_endgame(uz))
+        return cur_depth;
+
+    if (In_quest(uz)) {
+        let bottom = dunlevs_in_dungeon(uz);
+        const qlocate_depth = game.qlocate_level?.dlevel ?? 0;
+        /* if hero hasn't reached the middle locate level yet,
+           no one can randomly teleport past it */
+        if ((game.dungeons[uz.dnum].dunlev_ureached ?? 0) < qlocate_depth)
+            bottom = qlocate_depth;
+        min_depth = game.dungeons[uz.dnum].depth_start;
+        max_depth = bottom + (game.dungeons[uz.dnum].depth_start - 1);
+    } else {
+        min_depth = 1;
+        max_depth = dunlevs_in_dungeon(uz)
+                    + (game.dungeons[uz.dnum].depth_start - 1);
+        /* can't reach Sanctum if the invocation hasn't been performed */
+        if (game.dungeons[uz.dnum].flags?.hellish && !game.u.uevent?.invoked)
+            max_depth -= 1;
+    }
+
+    /* Get a random value relative to the current dungeon.
+       Range is 1 to current+3, current not counting */
+    nlev = rn2(cur_depth + 3 - min_depth) + min_depth;
+    if (nlev >= cur_depth)
+        nlev++;
+
+    if (nlev > max_depth) {
+        nlev = max_depth;
+        /* teleport up if already on bottom */
+        if (Is_botlevel_tele(uz))
+            nlev -= rnd(3);
+    }
+    if (nlev < min_depth) {
+        nlev = min_depth;
+        if (nlev === cur_depth) {
+            nlev += rnd(3);
+            if (nlev > max_depth)
+                nlev = max_depth;
+        }
+    }
+    return nlev;
+}
+
+// src/dungeon.c Is_botlevel() — bottom of its dungeon
+function Is_botlevel_tele(lev) {
+    return lev.dlevel === dunlevs_in_dungeon(lev);
 }

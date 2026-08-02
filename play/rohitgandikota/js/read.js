@@ -100,11 +100,34 @@ async function seffects(sobj) {
     case ONAMES.SPE_MAGIC_MAPPING:
         await seffect_magic_mapping(sobj);
         break;
+    case ONAMES.SCR_TELEPORTATION:
+    case ONAMES.SPE_TELEPORT_AWAY:
+        await seffect_teleportation(sobj);
+        break;
     default:
         note_unported_read(`seffects:otyp=${otyp}`);
         break;
     }
     return false;
+}
+
+// src/read.c:2015 seffect_teleportation()
+async function seffect_teleportation(sobj) {
+    const scursed = !!sobj.cursed;
+    const confused = !!game.u.uprops?.CONFUSION?.intrinsic
+                     || !!game.u.intrinsic?.HConfusion;
+
+    if (confused || scursed) {
+        const { level_tele } = await import('./teleport.js');
+        await level_tele();
+        /* gives "materialize on different/same level!" message, must
+           be a teleport scroll */
+        game.known = true;
+    } else {
+        /* scrolltele(): getpos-controlled or random in-level teleport;
+           not ported yet — recorded so the gap is visible */
+        note_unported_read('seffect_teleportation:scrolltele');
+    }
 }
 
 // src/read.c:2100 seffect_magic_mapping()

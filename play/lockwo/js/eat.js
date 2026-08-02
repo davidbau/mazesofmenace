@@ -28,7 +28,7 @@ const CRAM_RATION = 292, K_RATION = 294, C_RATION = 295; // mkobj.js rations
 // C ref: mondata.c olfaction(mdat) — most monsters can smell; golems, eyes,
 // jellies, puddings, blobs, vortices, elementals, fungi and lights cannot.
 // Keyed by the makemon data record's monster-class letter (mlet / S_*).
-function olfaction(mdat) {
+export function olfaction(mdat) {
     const mlet = mdat?.mlet;
     // defsym.h MONSYM indices (every one of these was wrong before).
     const S_GOLEM = 55, S_EYE = 5, S_JELLY = 10, S_PUDDING = 42, S_BLOB = 2,

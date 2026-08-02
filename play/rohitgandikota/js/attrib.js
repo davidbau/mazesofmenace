@@ -403,9 +403,13 @@ export function exerper() {
            cannot have before the property subsystem lands, so none can fire
            yet. They are written out rather than elided so the order of draws
            is already right when it does. */
-        if (game.u.uprops?.CLAIRVOYANT && !game.u.uprops?.BLOCKED_CLAIRVOYANT)
+        /* src/attrib.c — HClairvoyant & (INTRINSIC|TIMEOUT) and plain
+           HRegeneration: INTRINSIC-only masks. A worn ring's extrinsic
+           grant (uprops) must NOT trigger these. */
+        if (game.u.intrinsic?.HClairvoyant
+            && !game.u.uprops?.BLOCKED_CLAIRVOYANT)
             exercise(A_WIS, true);
-        if (game.u.uprops?.REGENERATION)
+        if (game.u.intrinsic?.HRegeneration)
             exercise(A_STR, true);
         if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
             exercise(A_CON, false);
@@ -419,6 +423,7 @@ export function exerper() {
 
 // src/attrib.c exerchk() — apply the accumulated exercise when due.
 export function exerchk() {
+    globalThis.__EC = (globalThis.__EC ?? 0) + 1;
     /*  Check out the periodic accumulations */
     exerper();
 

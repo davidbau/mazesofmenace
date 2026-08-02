@@ -112,8 +112,16 @@ const CTRL_RUSH_DIR = (() => {
 export function blocksMove(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (loc.typ === STONE) return true;
-    if (IS_WALL(loc.typ)) return true;
+    // C ref: hack.c test_move() first physical-obstacle test —
+    //     if (IS_OBSTRUCTED(tmpr->typ) || tmpr->typ == IRONBARS) { ... return FALSE }
+    // with IS_OBSTRUCTED(typ) == ((typ) < POOL), i.e. STONE, every wall type,
+    // TREE, and the two *secret* terrains SDOOR and SCORR.  A secret door is
+    // drawn as the wall it hides, so it looks passable to a test that only
+    // rejects IS_WALL — the hero would walk straight through an unfound secret
+    // door while C bumps and loses no turn.  The Passes_walls / tunnels /
+    // autodig / metallivorous escapes all need an intrinsic or a wielded pick
+    // that no covered hero has, so the obstruction is unconditional here.
+    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
 }

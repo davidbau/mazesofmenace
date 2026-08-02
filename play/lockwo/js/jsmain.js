@@ -133,6 +133,15 @@ export class NethackGame {
                 mpeaceful: b(m.mpeaceful),
                 msleeping: b(m.msleeping),
                 mcanmove: (m.mcanmove == null ? 1 : b(m.mcanmove)),
+                // C recorder's NHOBJDUMP emits these too; without them a
+                // position divergence can't be told apart from a movement-point
+                // phase offset (mon.c mcalcmove) or a stale mux/muy belief
+                // (monmove.c set_apparxy).
+                movement: n(m.movement),
+                mux: n(m.mux),
+                muy: n(m.muy),
+                mcansee: (m.mcansee == null ? 1 : b(m.mcansee)),
+                mundetected: b(m.mundetected),
                 dead: (n(m.mhp) < 1) ? 1 : 0,
             });
         }

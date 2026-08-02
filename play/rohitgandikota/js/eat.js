@@ -1,5 +1,5 @@
-import { exercise } from './attrib.js';
-import { A_CON } from './const.js';
+import { exercise, near_capacity } from './attrib.js';
+import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
 // eat.js — nutrition.
 // C ref: src/eat.c
 //
@@ -22,7 +22,7 @@ import { set_occupation } from './allmain.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, freeinv, update_inventory, reorder_invent } from './invent.js';
+import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, freeinv, update_inventory, reorder_invent, addinv_nomerge } from './invent.js';
 import { pline } from './display.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
@@ -49,12 +49,70 @@ export function gethungry() {
     /* src/eat.c:3191 — rn2(20) replaces the old (int) (svm.moves % 20L) */
     const accessorytime = rn2(20);
 
-    if (accessorytime % 2) {
-        /* regeneration and encumbrance burn food; neither is ported */
-    } else {
-        /* ring of hunger / conflict / charged rings; not ported */
+    if (accessorytime % 2) { /* odd */
+        /* Regeneration uses up food, unless due to an artifact; the
+           FROMFORM/W_ARTI source masks need states that are absent */
+        if (u.uprops?.REGENERATION)
+            u.uhunger--;
+        if (near_capacity() > SLT_ENCUMBER)
+            u.uhunger--;
+    } else { /* even */
+        if (u.uprops?.HUNGER)
+            u.uhunger--;
+        /* Conflict uses up food too */
+        if (u.uprops?.CONFLICT)
+            u.uhunger--;
+        const uleft = worn_eat(W_RINGL), uright = worn_eat(W_RINGR),
+              uamul = worn_eat(W_AMUL);
+        switch (accessorytime) { /* note: use even cases among 0..19 only */
+        case 0:
+            if (u.uprops?.SLOW_DIGESTION
+                && (!uright || uright.otyp !== ONAMES.RIN_SLOW_DIGESTION)
+                && (!uleft || uleft.otyp !== ONAMES.RIN_SLOW_DIGESTION))
+                u.uhunger--;
+            break;
+        case 4:
+            /* the +0 ring of protection "only source of MC" corner needs
+               the EProtection source masks; a +0 protection ring here is
+               treated as hungerless and recorded */
+            if (uleft && uleft.otyp !== ONAMES.MEAT_RING
+                && (uleft.spe
+                    || !game.objects[uleft.otyp].oc_charged
+                    || (uleft.otyp === ONAMES.RIN_PROTECTION
+                        && note_unported_eat('gethungry:protection_mc'))))
+                u.uhunger--;
+            break;
+        case 8:
+            if (uamul && uamul.otyp !== ONAMES.FAKE_AMULET_OF_YENDOR)
+                u.uhunger--;
+            break;
+        case 12:
+            if (uright && uright.otyp !== ONAMES.MEAT_RING
+                && (uright.spe
+                    || !game.objects[uright.otyp].oc_charged
+                    || (uright.otyp === ONAMES.RIN_PROTECTION
+                        && note_unported_eat('gethungry:protection_mc'))))
+                u.uhunger--;
+            break;
+        case 16:
+            if (u.uhave?.amulet)
+                u.uhunger--;
+            break;
+        default:
+            break;
+        }
     }
+    newuhs(true);
 }
+
+/* the worn-slot lookup, local to avoid importing do_wear (cycle) */
+function worn_eat(mask) {
+    for (const o of (game.invent || []))
+        if ((o.owornmask ?? 0) & mask)
+            return o;
+    return null;
+}
+
 
 // src/eat.c:3347 is_fainted()
 export function is_fainted() {
@@ -174,12 +232,7 @@ function touchfood(otmp) {
             note_unported_eat('touchfood:overflow_drop');
         } else {
             /* addinv_nomerge: own slot, no merging back into the stack */
-            const used = new Set((game.invent || []).map(o => o.invlet));
-            const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            for (const ch of letters)
-                if (!used.has(ch)) { otmp.invlet = ch; break; }
-            game.invent.push(otmp);
-            reorder_invent();   /* invlet_constant keeps rank order */
+            addinv_nomerge(otmp);
             update_inventory();
         }
     }

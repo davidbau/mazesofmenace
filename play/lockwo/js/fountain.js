@@ -11,7 +11,8 @@ import { update_topl, newsym, m_at } from './display.js';
 import { hliquid, builds_up } from './dungeon.js';
 import { water_damage, t_at, delfloortrap } from './trap.js';
 import { find_ac } from './u_init.js';
-import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, BOULDER } from './mkobj.js';
+import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, mksobj_at,
+    rnd_class, DILITHIUM_CRYSTAL, LUCKSTONE, BOULDER } from './mkobj.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { newuhs } from './eat.js';
@@ -21,6 +22,7 @@ import { clear_area_cells } from './vision.js';
 import { nexttodoor } from './mkroom.js';
 import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { x_monnam, canspotmon } from './uhitm.js';
+import { create_gas_cloud } from './region.js';
 import { monster_detect } from './hack.js';
 import { observe_object } from './o_init.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
@@ -348,8 +350,20 @@ async function dowaternymph() {
 async function dowatersnakes() {
     await update_topl('An endless stream of snakes pours forth!');
 }
+// C ref: fountain.c dofindgem() — quaffing/dipping turns up a random gem.
+// RNG (in this exact order, before exercise's rn2):
+//   rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1)  -> rnd(862), the oc_prob sum
+//                                                   over the 31 gem/glass types
+//   mksobj_at(..., init=FALSE)                   -> next_ident's rnd(2)
+// Both were missing, so every later draw in the turn was read by the wrong
+// caller.  init is FALSE, so mksobj_init (blessorcurse etc.) is NOT run.
 async function dofindgem() {
-    await update_topl('You spot a gem in the sparkling waters!');
+    if (!Blind())
+        await update_topl('You spot a gem in the sparkling waters!');
+    else
+        await update_topl('You feel a gem here!');
+    mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
+              game.u.ux, game.u.uy, false, false);
     const loc = game.level?.at(game.u.ux, game.u.uy);
     if (loc) loc.looted = (loc.looted || 0) | F_LOOTED;
     newsym(game.u.ux, game.u.uy);
@@ -507,10 +521,11 @@ async function spawnAtHeroSquare(pmidx) {
 
 // C ref: fountain.c drinksink() — quaff from a sink the hero stands on.
 // fate = rn2(20) selects the outcome.  Branches driving subsystems this port
-// doesn't model yet (random-form polyself, the poison-gas region) still spend
-// their observable message; create_gas_cloud(x,y,1,damage)'s single-square
-// case spends no RNG (its BFS growth loop breaks before the first
-// direction-shuffle draw), so that branch needs no extra roll either.
+// doesn't model yet (random-form polyself) still spend their observable
+// message; case 13's create_gas_cloud(x,y,1,4) DOES still draw RNG even
+// though its single-square BFS breaks before the first direction-shuffle
+// draw — the cloud's ttl = rn1(3,4) roll happens unconditionally after the
+// (possibly empty) growth loop, so it must be called, not skipped.
 export async function drinksink() {
     const u = game.u;
     if (u.uprops?.Levitation) {
@@ -610,8 +625,7 @@ export async function drinksink() {
         break;
     case 13:
         await update_topl('Ew, what a stench!');
-        // create_gas_cloud(u.ux, u.uy, 1, 4): cloudsize 1 spends no RNG (see
-        // header comment); the lingering poison-gas region isn't modeled.
+        await create_gas_cloud(u.ux, u.uy, 1, 4);
         break;
     case 19:
         if (Hallucination()) {

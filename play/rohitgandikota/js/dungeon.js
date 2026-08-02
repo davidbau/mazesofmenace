@@ -646,8 +646,7 @@ export function Can_fall_thru(lev) {
 // include/dungeon.h:126 Is_botlevel(x) — the bottom level of its dungeon.
 function Is_botlevel(lev) {
     return lev && game.dungeons?.[lev.dnum]
-        && lev.dlevel === (game.dungeons[lev.dnum].dunlev_ureached
-                           ?? game.dungeons[lev.dnum].num_dunlevs);
+        && lev.dlevel === game.dungeons[lev.dnum].num_dunlevs;
 }
 
 // include/dungeon.h Invocation_lev(x) / Is_stronghold(x) — both name levels

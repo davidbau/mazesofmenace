@@ -42,7 +42,7 @@ import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, getRngLog } from './rng.js';
 import { dist2, sgn } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
 import { doname } from './objnam.js';

@@ -246,6 +246,8 @@ export class NethackGame {
     _installCaptureHook() {
         const nhGame = this;
         game._preNhgetchHook = async () => {
+            if (process.env.TLDBG) process.stderr.write(`TLDBG  NHGETCH moves=${game.moves} rngidx=${getRngLog().length}
+`);
             const disp = game?.nhDisplay;
             const term = disp?.terminal || disp;
             nhGame._nhgetchCount++;

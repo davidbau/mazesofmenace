@@ -832,7 +832,7 @@ function select_from_class(oclass) {
     return entries[0]?.otyp ?? STRANGE_OBJECT;
 }
 
-function rnd_class(first, last) {
+export function rnd_class(first, last) {
     if (last > first) {
         let sum = 0;
         for (let i = first; i <= last; i++)

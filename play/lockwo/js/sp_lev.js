@@ -12,28 +12,34 @@ import {
     ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM, SHARED,
     OROOM, THEMEROOM, ZOO, ROOMOFFSET, isok, IS_DOOR,
     VAULT, SHOPBASE, BEEHIVE, FILL_NONE, FILL_NORMAL,
+    COURT, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
     TELEP_TRAP, D_SECRET, D_CLOSED, IS_OBSTRUCTED,
-    IS_STWALL, IS_TREE, W_NONDIGGABLE, W_NONPASSWALL,
+    IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     PIT, NO_TRAP, is_pit, BURN,
 } from './const.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
          FOOD_CLASS, RING_CLASS, WAND_CLASS, BAG_OF_HOLDING, SCR_SCARE_MONSTER,
+         GOLD_PIECE, add_to_container, weight,
          uncurse, curse } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
-         mkclass, mm_mon_at, enexto_spawn, newmonhp, newcham_vamp,
+         mkclass, mm_mon_at, enexto_spawn, newmonhp, newcham_vamp, mongets_pub,
          MM_ASLEEP, MM_NOGRP } from './makemon.js';
-import { somexy, inside_room } from './mkroom.js';
+import { somexy, inside_room, occupied } from './mkroom.js';
 import { maketrap } from './trap.js';
 import { stock_room } from './shknam.js';
 import { Is_special } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import { make_engr_at } from './engrave.js';
+import { match_maptyps,
+         selection_new as selection_new_var,
+         selection_setpoint as selection_setpoint_var,
+         selection_recalc_bounds } from './selvar.js';
 
 const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -45,7 +51,7 @@ function reset_xystart_size() {
     gy.ysize = ROWNO;
 }
 
-function mapfrag_fromstr(str) {
+export function mapfrag_fromstr(str) {
     let data = String(str).replace(/\r/g, '').replace(/[0-9]/g, '');
     if (data.startsWith('\n')) data = data.slice(1);
     if (data.endsWith('\n')) data = data.slice(0, -1);
@@ -96,11 +102,51 @@ function mapfrag_get(mf, x, y) {
     return splev_chr2typ(ch);
 }
 
-function set_levltyp_lit(x, y, typ, lit) {
+// C ref: sp_lev.c mapfrag_match() — is the map fragment centred on (x,y) an
+// exact terrain match?  The fragment's centre cell is (wid/2, hei/2), so an
+// even-sided fragment is biased one cell right/down, exactly as in C.
+export function mapfrag_match(mf, x, y) {
+    const hw = Math.trunc(mf.wid / 2), hh = Math.trunc(mf.hei / 2);
+    for (let rx = -hw; rx <= hw; rx++)
+        for (let ry = -hh; ry <= hh; ry++) {
+            const mapc = mapfrag_get(mf, rx + hw, ry + hh);
+            const loc = game.level?.at(x + rx, y + ry);
+            const levc = (isok(x + rx, y + ry) && loc) ? loc.typ : STONE;
+            if (!match_maptyps(mapc, levc)) return false;
+        }
+    return true;
+}
+
+// C ref: nhlsel.c l_selection_match() — selection.match([[frag]]).  Scans
+// y = 0..hei (C's inclusive off-by-one; the extra row is clamped away by
+// selection_setpoint) and x = 1..wid-1, then recalculates the bounds.
+export function selection_match(fragstr) {
+    const sel = selection_new_var();
+    const mf = mapfrag_fromstr(fragstr);
+    for (let y = 0; y <= sel.hei; y++)
+        for (let x = 1; x < sel.wid; x++)
+            selection_setpoint_var(x, y, sel, mapfrag_match(mf, x, y) ? 1 : 0);
+    selection_recalc_bounds(sel);
+    return sel;
+}
+
+// C ref: rm.h — the two sentinel light states understood by set_levltyp_lit().
+export const SET_LIT_RANDOM = -1;
+export const SET_LIT_NOCHANGE = -2;
+
+// C ref: mkmaze.c set_levltyp() + set_levltyp_lit().  set_levltyp() forces
+// lava lit unconditionally; set_levltyp_lit() then applies the caller's light
+// state unless it asked for "no change".
+export function set_levltyp_lit(x, y, typ, lit) {
     const loc = game.level?.at(x, y);
     if (!loc || typ === INVALID_TYPE || typ >= MAX_TYPE) return false;
     loc.typ = typ;
-    loc.lit = !!lit;
+    if (IS_LAVA(typ)) loc.lit = true;   // set_levltyp(): lava is always lit
+    if (lit !== SET_LIT_NOCHANGE) {
+        if (IS_LAVA(typ)) lit = 1;
+        else if (lit === SET_LIT_RANDOM) lit = rn2(2);
+        loc.lit = !!lit;
+    }
     if (typ === SDOOR) loc.doormask = 0x04;
     if (typ === HWALL || typ === IRONBARS) loc.horizontal = true;
     else if (typ === VWALL) loc.horizontal = false;
@@ -737,59 +783,197 @@ function create_storeroom(croom) {
     }
 }
 
-// C ref: sp_lev.c fill_special_room() — fills vaults, zoos, shops, etc.
-// C ref: mkroom.c fill_zoo(sroom) — the BEEHIVE case only (see the default arm of
-// fill_special_room for why the other room types stay unported).
+// C ref: include/defsym.h MONSYM() — monster-class (S_*) indices, as used by
+// mkclass().  js/makemon.js keys its per-class switches off the same numbers.
+const S_KOBOLD = 11, S_ORC = 15, S_CENTAUR = 29, S_DRAGON = 30, S_GNOME = 33,
+    S_GIANT = 34, S_TROLL = 46;
+// C ref: include/onames.h MACE (mkobj.js OBJECT_DATA otyp column).
+const MACE_OTYP = 73;
+
+// C ref: mkroom.c mk_zoo_thronemon(x, y) — the sleeping monarch who sits on the
+// throne of a COURT.  rnd(level_difficulty()) picks the species; the mace is
+// "a sceptre to pound in judgment".  set_malign() only writes mtmp->malign (the
+// alignment-record delta applied when the hero kills it), which this port does
+// not model and which draws no RNG.
+function mk_zoo_thronemon(x, y) {
+    const i = rnd(level_difficulty_ext());
+    const name = (i > 9) ? 'ogre tyrant'
+        : (i > 5) ? 'elven monarch'
+            : (i > 2) ? 'dwarf ruler'
+                : 'gnome ruler';
+    const ptr = monster_by_pmidx(name_to_pmidx(name));
+    const mon = makemon(ptr, x, y, 0 /* NO_MM_FLAGS */);
+    if (mon) {
+        mon.msleeping = 1;
+        mon.mpeaceful = false;
+        mongets_pub(mon, MACE_OTYP); /* a sceptre to pound in judgment */
+    }
+}
+
+// C ref: mkroom.c courtmon() — the throne room's rank and file.  Both rn2()s
+// are always drawn (C sums them before any test), and each mkclass() draw
+// happens inside mkclass_aligned().
+function courtmon() {
+    const i = rn2(60) + rn2(3 * level_difficulty_ext());
+    if (i > 100) return mkclass(S_DRAGON, 0);
+    if (i > 95) return mkclass(S_GIANT, 0);
+    if (i > 85) return mkclass(S_TROLL, 0);
+    if (i > 75) return mkclass(S_CENTAUR, 0);
+    if (i > 60) return mkclass(S_ORC, 0);
+    if (i > 45) return monster_by_pmidx(name_to_pmidx('bugbear'));
+    if (i > 30) return monster_by_pmidx(name_to_pmidx('hobgoblin'));
+    if (i > 15) return mkclass(S_GNOME, 0);
+    return mkclass(S_KOBOLD, 0);
+}
+
+// C ref: mkroom.c fill_zoo(sroom) head — the per-type preamble that runs before
+// the stocking loop.  Returns the {tx,ty} the loop needs (the throne square for
+// COURT, the queen's square for BEEHIVE), or null when this room type is not
+// ported.  COURT's `goto throne_placed` is expressed as an early return from
+// the maze scan.
+function fill_zoo_head(sroom, type) {
+    const g = game;
+    if (type === COURT) {
+        // A maze-style level may have an explicitly placed throne; use it and
+        // skip the random search entirely (C's `goto throne_placed`).
+        if (g.level?.flags?.is_maze_lev) {
+            for (let tx = sroom.lx; tx <= sroom.hx; tx++)
+                for (let ty = sroom.ly; ty <= sroom.hy; ty++)
+                    if (g.level.at(tx, ty)?.typ === THRONE)
+                        return { x: tx, y: ty };
+        }
+        // "don't place throne on top of stairs"
+        const mm = { x: 0, y: 0 };
+        let i = 100;
+        do {
+            somexyspace(sroom, mm);
+        } while (occupied(mm.x, mm.y) && --i > 0);
+        return { x: mm.x, y: mm.y };
+    }
+    if (type === BEEHIVE) {
+        const tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
+        const ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
+        if (sroom.irregular) {
+            // C relocates the queen only when the arithmetic centre falls
+            // outside an irregular room; we have no verified stream through
+            // that path, so leave an irregular beehive alone rather than spend
+            // a somexyspace() draw on a guess.
+            return null;
+        }
+        return { x: tx, y: ty };
+    }
+    // ZOO / LEPREHALL would set goldlim here; MORGUE / BARRACKS / COCKNEST /
+    // ANTHOLE have no preamble at all.  All of them still need their species
+    // picker (morguemon/squadmon/antholemon) ported before their stocking loop
+    // can be run — see fill_special_room's default arm.
+    return null;
+}
+
+// C ref: mkroom.c fill_zoo(sroom) — stock a special room.  COURT and BEEHIVE
+// are ported; the remaining types bail out of fill_zoo_head() above rather than
+// emit draws we cannot verify.
 //
-// BEEHIVE consumes NO RNG in fill_zoo's head: tx/ty is the room's arithmetic
-// centre, and only an irregular room would need somexyspace() to relocate the
-// queen.  Then, for every stockable square in row-major order, C runs
-//   makemon(sx==tx && sy==ty ? &mons[PM_QUEEN_BEE] : &mons[PM_KILLER_BEE],
-//           sx, sy, MM_ASLEEP | MM_NOGRP);
-//   if (!rn2(3)) mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, TRUE, FALSE);
+// BEEHIVE consumes NO RNG in the head: tx/ty is the room's arithmetic centre.
+// COURT spends somexyspace() per throne-placement attempt plus
+// mk_zoo_thronemon()'s rnd(level_difficulty()).
+//
+// Then, for every stockable square in row-major order, C runs
+//   makemon(<per-type species>, sx, sy, MM_ASLEEP | MM_NOGRP);
+//   <per-type object roll>
 // MM_NOGRP is load-bearing: it suppresses makemon's G_SGROUP/G_LGROUP draws,
-// which killer bees would otherwise trigger.  MM_ASLEEP only sets msleeping,
-// which fill_zoo assigns explicitly right afterwards anyway.
-function fill_zoo_beehive(sroom) {
+// which killer bees (and orcs in a court) would otherwise trigger.  MM_ASLEEP
+// only sets msleeping, which fill_zoo assigns explicitly right afterwards.
+function fill_zoo(sroom) {
+    const g = game;
+    // Stocking a special room runs the fully C-faithful monster path (the same
+    // flag stock_room() and the special-level generators use): peace_minded(),
+    // the MON_AT collision check and placement on the level all matter here,
+    // and C's fill_zoo depends on all three.
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    try {
+        fill_zoo_core(sroom);
+    } finally {
+        g._full_mon_gen = was_full;
+    }
+}
+
+function fill_zoo_core(sroom) {
     const g = game;
     const LUMP_OF_ROYAL_JELLY = 286;
-    const queen = monster_by_pmidx(name_to_pmidx('queen bee'));
-    const killer = monster_by_pmidx(name_to_pmidx('killer bee'));
-    if (!queen || !killer) return;
+    const type = sroom.rtype;
+    const rmno = (g.level?.rooms?.indexOf(sroom) ?? -1) + ROOMOFFSET;
 
-    const tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
-    const ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
-    // C relocates the queen only for an irregular room; we have no verified
-    // stream through that path, so leave an irregular beehive alone rather than
-    // spend a somexyspace() draw on a guess.
-    if (sroom.irregular) return;
+    const centre = fill_zoo_head(sroom, type);
+    if (!centre) return;
+    const tx = centre.x, ty = centre.y;
+    if (type === COURT)
+        mk_zoo_thronemon(tx, ty);
+
+    const queen = (type === BEEHIVE) ? monster_by_pmidx(name_to_pmidx('queen bee')) : null;
+    const killer = (type === BEEHIVE) ? monster_by_pmidx(name_to_pmidx('killer bee')) : null;
+    if (type === BEEHIVE && (!queen || !killer)) return;
 
     const sh = sroom.fdoor;
     const door = g.level?.doors?.[sh];
     for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
         for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
-            // C: `!SPACE_POS(levl[sx][sy].typ) || (doorct && <square abuts the
-            // first door from outside>)` -> skip.
-            const typ = g.level?.at(sx, sy)?.typ;
-            if (typ == null || !SPACE_POS(typ)) continue;
-            if (sroom.doorct && door
-                && ((sx === sroom.lx && door.x === sx - 1)
-                    || (sx === sroom.hx && door.x === sx + 1)
-                    || (sy === sroom.ly && door.y === sy - 1)
-                    || (sy === sroom.hy && door.y === sy + 1)))
-                continue;
+            if (sroom.irregular) {
+                const loc = g.level?.at(sx, sy);
+                if (!loc || loc.roomno !== rmno || loc.edge
+                    || (sroom.doorct && door
+                        && distmin(sx, sy, door.x, door.y) <= 1))
+                    continue;
+            } else {
+                // C: `!SPACE_POS(levl[sx][sy].typ) || (doorct && <square abuts
+                // the first door from outside>)` -> skip.
+                const typ = g.level?.at(sx, sy)?.typ;
+                if (typ == null || !SPACE_POS(typ)) continue;
+                if (sroom.doorct && door
+                    && ((sx === sroom.lx && door.x === sx - 1)
+                        || (sx === sroom.hx && door.x === sx + 1)
+                        || (sy === sroom.ly && door.y === sy - 1)
+                        || (sy === sroom.hy && door.y === sy + 1)))
+                    continue;
+            }
+            /* don't place a monster on an explicitly placed throne */
+            if (type === COURT && g.level?.at(sx, sy)?.typ === THRONE) continue;
 
-            const isQueen = (sx === tx && sy === ty);
-            const mon = makemon(isQueen ? queen : killer, sx, sy,
-                                MM_ASLEEP | MM_NOGRP);
-            if (mon) mon.msleeping = 1;
-            if (!rn2(3))
+            const ptr = (type === COURT) ? courtmon()
+                : ((sx === tx && sy === ty) ? queen : killer);
+            const mon = makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
+            if (mon) {
+                mon.msleeping = 1;
+                if (type === COURT && mon.mpeaceful) {
+                    mon.mpeaceful = false;
+                    /* set_malign(mon) — see mk_zoo_thronemon */
+                }
+            }
+            if (type === BEEHIVE && !rn2(3))
                 mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, true, false);
         }
     }
-    if (g.level?.flags) g.level.flags.has_beehive = true;
+
+    if (type === COURT) {
+        // The throne, and the royal coffers beside it.
+        const loc = g.level?.at(tx, ty);
+        if (loc) loc.typ = THRONE;
+        const mm = { x: 0, y: 0 };
+        somexyspace(sroom, mm);
+        const gold = mksobj(GOLD_PIECE, true, false);
+        gold.quan = 10 + rn2(50 * level_difficulty_ext()); // rn1(50*ld, 10)
+        gold.owt = weight(gold);
+        const chest = mksobj_at(CHEST, mm.x, mm.y, true, false);
+        add_to_container(chest, gold);
+        chest.owt = weight(chest);
+        chest.spe = 2; /* so it can be found later */
+        if (g.level?.flags) g.level.flags.has_court = true;
+    } else if (type === BEEHIVE) {
+        if (g.level?.flags) g.level.flags.has_beehive = true;
+    }
 }
 
+// C ref: sp_lev.c fill_special_room() — fills vaults, zoos, shops, etc.
 export function fill_special_room(croom) {
     if (!croom) return;
 
@@ -825,20 +1009,31 @@ export function fill_special_room(croom) {
             }
             break;
         }
+        case COURT:
+        case ZOO:
         case BEEHIVE:
-            fill_zoo_beehive(croom);
+        case ANTHOLE:
+        case COCKNEST:
+        case LEPREHALL:
+        case MORGUE:
+        case BARRACKS:
+            // C ref: sp_lev.c fill_special_room() -> fill_zoo(croom).  fill_zoo
+            // itself implements COURT and BEEHIVE and returns early for the
+            // rest: ZOO/LEPREHALL/MORGUE/BARRACKS/COCKNEST/ANTHOLE each need
+            // their own species picker (squadmon/morguemon/antholemon) whose
+            // draw counts we cannot verify without a recorded stream that
+            // reaches them, and guessing would consume RNG C does not.
+            fill_zoo(croom);
             break;
         default:
-            // ZOO, COURT, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE →
-            // fill_zoo's other per-square cases are NOT ported.  Each needs its
-            // own species picker (courtmon/squadmon/morguemon/antholemon) whose
-            // draw counts we cannot verify without a recorded stream that
-            // reaches them, and guessing would consume RNG C does not.  Leave
-            // them no-ops rather than emit wrong draws.
             break;
         }
     }
 
+    // C ref: sp_lev.c fill_special_room() trailing switch — the per-type
+    // svl.level.flags bits.  fill_zoo() already sets has_court / has_beehive
+    // for the two types it stocks; the rest of the bits belong to room types
+    // whose fill is not ported, so only VAULT is meaningful here.
     switch (croom.rtype) {
     case VAULT:
         if (game.level?.flags) game.level.flags.has_vault = true;
@@ -927,15 +1122,33 @@ export function themeroom_map_contents(name, fx, fy) {
     filler_region(fx, fy);
 }
 
+// C ref: sp_lev.c lspo_map() halign/valign codes.
+const SPLEV_LEFT = 0, SPLEV_H_LEFT = 1, SPLEV_CENTER = 2, SPLEV_H_RIGHT = 3,
+      SPLEV_RIGHT = 4, SPLEV_TOP = 5, SPLEV_BOTTOM = 6;
+const HALIGN2I = { left: SPLEV_LEFT, 'half-left': SPLEV_H_LEFT,
+                   center: SPLEV_CENTER, 'half-right': SPLEV_H_RIGHT,
+                   right: SPLEV_RIGHT, none: -1 };
+const VALIGN2I = { top: SPLEV_TOP, center: SPLEV_CENTER,
+                   bottom: SPLEV_BOTTOM, none: -1 };
+
+// Where the last des.map() landed — map-relative coords inside a contents()
+// callback are resolved against this (C ref: sp_lev.c get_location(), which
+// adds gx.xstart/gy.ystart when there is no enclosing room).
+export function splev_map_origin() {
+    return { xstart: gx.xstart, ystart: gy.ystart,
+             xsize: gx.xsize, ysize: gy.ysize };
+}
+
 export function lspo_map({ map, x = -1, y = -1, halign = 'none',
-                           valign = 'none', lit = false, contents = null }) {
-    if (game.themeroom_failed) return null;
+                           valign = 'none', lit = false, contents = null,
+                           in_themerooms = true }) {
+    if (in_themerooms && game.themeroom_failed) return null;
 
     const mf = mapfrag_fromstr(map);
     if (!mf || !mf.wid || !mf.hei) return null;
 
-    const lr = halign === 'none' ? -1 : 0;
-    const tb = valign === 'none' ? -1 : 0;
+    const lr = HALIGN2I[halign] ?? -1;
+    const tb = VALIGN2I[valign] ?? -1;
     const sel = selection_new();
     const ox = x;
     const oy = y;
@@ -946,21 +1159,58 @@ export function lspo_map({ map, x = -1, y = -1, halign = 'none',
         gy.ysize = mf.hei;
 
         if (lr === -1 && tb === -1) {
-            if (ox === -1) x = 1 + rn2(COLNO - 1 - mf.wid);
-            if (oy === -1) y = rn2(ROWNO - mf.hei);
+            if (in_themerooms) {
+                if (ox === -1) x = 1 + rn2(COLNO - 1 - mf.wid);
+                if (oy === -1) y = rn2(ROWNO - mf.hei);
+            }
             if (!isok(x, y)) {
                 reset_xystart_size();
                 return null;
             }
             gx.xstart = x;
             gy.ystart = y;
+        } else {
+            // C ref: sp_lev.c lspo_map() — "place map starting at
+            // halign,valign".  x_maze_max/y_maze_max here are the decl.c
+            // defaults ((COLNO-1)&~1 and (ROWNO-1)&~1); no RNG is involved.
+            const xmm = (COLNO - 1) & ~1, ymm = (ROWNO - 1) & ~1;
+            switch (lr) {
+            case SPLEV_LEFT: gx.xstart = 1; break;
+            case SPLEV_H_LEFT:
+                gx.xstart = 2 + Math.trunc((xmm - 2 - gx.xsize) / 4); break;
+            case SPLEV_CENTER:
+                gx.xstart = 2 + Math.trunc((xmm - 2 - gx.xsize) / 2); break;
+            case SPLEV_H_RIGHT:
+                gx.xstart = 2 + Math.trunc((xmm - 2 - gx.xsize) * 3 / 4); break;
+            case SPLEV_RIGHT: gx.xstart = xmm - gx.xsize - 1; break;
+            default: break;
+            }
+            switch (tb) {
+            case SPLEV_TOP: gy.ystart = 3; break;
+            case SPLEV_CENTER:
+                gy.ystart = 2 + Math.trunc((ymm - 2 - gy.ysize) / 2); break;
+            case SPLEV_BOTTOM: gy.ystart = ymm - gy.ysize - 1; break;
+            default: break;
+            }
+            if (!(gx.xstart % 2)) gx.xstart++;
+            if (!(gy.ystart % 2)) gy.ystart++;
         }
 
         if (gy.ystart < 0 || gy.ystart + gy.ysize > ROWNO) {
-            game.themeroom_failed = true;
-            reset_xystart_size();
-            return null;
+            if (in_themerooms) {
+                game.themeroom_failed = true;
+                reset_xystart_size();
+                return null;
+            }
+            // C: "try to move the start a bit"
+            gy.ystart += (gy.ystart > 0) ? -2 : 2;
+            if (gy.ysize === ROWNO) gy.ystart = 0;
+            if (gy.ystart < 0 || gy.ystart + gy.ysize > ROWNO) gy.ystart = 0;
         }
+
+        // C ref: "Themed rooms should never overwrite anything" — this
+        // collision check runs only for themeroom maps.
+        if (!in_themerooms) break;
 
         let isokp = true;
         for (let yy = gy.ystart - 1;

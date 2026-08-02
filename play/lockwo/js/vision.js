@@ -93,6 +93,14 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
+// C ref: vision.c does_block(x, y, lev) — whether <x,y> obstructs line of
+// sight from its terrain/contents alone (independent of any region overlay).
+// Exported for region.js's remove_region()/expire_gas_cloud() unblock passes,
+// which must not unblock a point still legitimately blocked by real terrain.
+export function does_block(x, y) {
+    return _blocks(game.level, x, y);
+}
+
 // Simplified blockage check: walls, closed doors, stone
 function _blocks(level, x, y) {
     const loc = level.at(x, y);

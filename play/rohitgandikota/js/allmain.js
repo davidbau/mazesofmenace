@@ -84,6 +84,7 @@ function init_sound_disp_gamewindows() {
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { dosounds } from './sounds.js';
+import { nh_timeout } from './timeout.js';
 import { age_spells } from './spell.js';
 import { gethungry } from './eat.js';
 import { makemon, NO_MM_FLAGS } from './makemon.js';
@@ -487,6 +488,15 @@ function maybe_generate_rnd_mon() {
 export async function moveloop_core() {
     const g = game;
 
+    /* src/end.c nh_terminate(): after really_done the process has exited;
+       a replayed segment's remaining keys reach a dead terminal and are
+       swallowed without any game reaction. */
+    if (g.program_state_gameover) {
+        const { nhgetch } = await import('./input.js');
+        await nhgetch();
+        return;
+    }
+
     if (g.context?.move) {
         /* src/allmain.c:205 — actual time passed */
         g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
@@ -529,8 +539,9 @@ export async function moveloop_core() {
                    first increment landed on 2 either way. */
                 g.moves++;
 
-                /* src/allmain.c:275 — the prayer timeout ticks down every
-                   turn (it sits beside nh_timeout in the same block). */
+                /* src/allmain.c:275 — nh_timeout() then the prayer
+                   timeout, every turn. */
+                await nh_timeout();
                 if (g.u.ublesscnt)
                     g.u.ublesscnt--;
 
@@ -542,7 +553,7 @@ export async function moveloop_core() {
                                      : (g.u.mh < g.u.mhmax)))
                     await regen_hp(near_capacity());
 
-                dosounds();
+                await dosounds();
                 gethungry();
 
                 /* src/allmain.c:354 — age_spells() then exerchk(). exerchk

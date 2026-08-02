@@ -1466,3 +1466,157 @@ export function mnexto(mtmp, rlocflags) {
     place_monster(mtmp, mm.x, mm.y);
     newsym(mtmp.mx, mtmp.my);
 }
+
+/* ==== shapechanger creation (src/mon.c) ==== */
+
+/* animal_list for pick_animal(): every is_animal permonst, built once */
+let _animal_list = null;
+function mon_animal_list() {
+    _animal_list = [];
+    for (let i = 0; i < SPECIAL_PM_MON; i++)
+        if (game.mons[i] && (game.mons[i].mflags1 & M1_ANIMAL_MON))
+            _animal_list.push(i);
+}
+const SPECIAL_PM_MON = 381;   /* PM_LONG_WORM_TAIL */
+const M1_ANIMAL_MON = 0x10000;  /* include/monflag.h M1_ANIMAL */
+
+// src/mon.c:4855 pick_animal()
+function pick_animal() {
+    if (!_animal_list)
+        mon_animal_list();
+    return _animal_list[rn2(_animal_list.length)];
+}
+
+// src/mon.c:4941 pickvampshape()
+function pickvampshape(mon) {
+    let mndx = mon.cham, wolfchance = 10;
+    const PM_VLAD = PMNAMES.PM_VLAD_THE_IMPALER,
+          PM_VLORD = PMNAMES.PM_VAMPIRE_LEADER,
+          PM_VAMP = PMNAMES.PM_VAMPIRE;
+
+    switch (mndx) {
+    case PM_VLAD:
+        wolfchance = 3;
+        /* FALLTHRU */
+    case PM_VLORD:
+        if (!rn2(wolfchance)
+            && !is_pool_or_lava_mon(mon.mx, mon.my)) {
+            mndx = PMNAMES.PM_WOLF;
+            break;
+        }
+        /* FALLTHRU */
+    case PM_VAMP:
+        mndx = !rn2(4) ? PMNAMES.PM_FOG_CLOUD : PMNAMES.PM_VAMPIRE_BAT;
+        break;
+    }
+    /* return to base form if the target is gone, or randomly when already
+       in an alternate form */
+    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & 0x02 /* G_GENOD */)
+        || (mon.mnum !== mon.cham && !rn2(4)))
+        mndx = mon.cham;
+    return mndx;
+}
+
+function is_pool_or_lava_mon(x, y) {
+    const t = game.level?.at(x, y)?.typ ?? 0;
+    return t === 16 /* POOL */ || t === 17 /* MOAT */ || t === 19 /* WATER */
+        || t === 21 /* LAVAPOOL */;
+}
+
+// src/mon.c:5171 select_newcham_form() — creation-relevant arms.
+function select_newcham_form(mon) {
+    let mndx = -1;
+    switch (mon.cham) {
+    case PMNAMES.PM_SANDESTIN:
+    case PMNAMES.PM_DOPPELGANGER:
+        note_unported_mon(`select_newcham_form:cham=${mon.cham}`);
+        break;
+    case PMNAMES.PM_CHAMELEON:
+        if (!rn2(3))
+            mndx = pick_animal();
+        break;
+    case PMNAMES.PM_VLAD_THE_IMPALER:
+    case PMNAMES.PM_VAMPIRE_LEADER:
+    case PMNAMES.PM_VAMPIRE:
+        mndx = pickvampshape(mon);
+        break;
+    default:
+        break;
+    }
+    /* the NON_PM dragon-armor arm needs worn dragon scales */
+    if (mndx === -1) {
+        /* "if no form was specified above, pick one at random now" —
+           rndmonst via the makemon wire */
+        const pm = mon_fns_cham?.rndmonst?.();
+        mndx = pm ? game.mons.indexOf(pm) : -1;
+    }
+    return mndx;
+}
+
+// src/mon.c:5255 mgender_from_permonst()
+export function mgender_from_permonst(mtmp, mdat) {
+    if (mdat.mflags2 & 0x10000 /* M2_MALE */) {
+        mtmp.female = 0;
+    } else if (mdat.mflags2 & 0x20000 /* M2_FEMALE */) {
+        mtmp.female = 1;
+    } else if (!(mdat.mflags2 & 0x40000 /* M2_NEUTER */)) {
+        /* the roll fires before the vampire exemption is tested */
+        if (!rn2(10) && !(mtmp.cham >= 0
+                          && is_vampshifter_mon(mtmp)))
+            mtmp.female = mtmp.female ? 0 : 1;
+    }
+}
+
+const is_vampshifter_mon = (m) => m.cham === PMNAMES.PM_VAMPIRE
+    || m.cham === PMNAMES.PM_VAMPIRE_LEADER
+    || m.cham === PMNAMES.PM_VLAD_THE_IMPALER;
+
+/* rndmonst/newmonhp live in makemon.js which imports this file; wired */
+let mon_fns_cham = null;
+export function mon_wire_cham(fns) { mon_fns_cham = fns; }
+
+// src/mon.c:5278 newcham() — the creation path: caller wants a random shape.
+export function newcham(mtmp, mdat, ncflags) {
+    let mndx = -1;
+
+    if (!mdat) {
+        let tryct = 20;
+        do {
+            mndx = select_newcham_form(mtmp);
+            /* accept_newcham_form: genocided or !polyok rejects */
+            if (mndx >= 0
+                && !((game.mvitals?.[mndx]?.mvflags ?? 0) & 0x02)) {
+                mdat = game.mons[mndx];
+                break;
+            }
+            mdat = null;
+        } while (--tryct > 0);
+        if (!mdat)
+            return 0;
+    } else {
+        mndx = game.mons.indexOf(mdat);
+    }
+
+    if (mdat === game.mons[mtmp.mnum])
+        return 0;
+
+    mgender_from_permonst(mtmp, mdat);
+
+    /* hp: same fraction of max as before */
+    const hpn = mtmp.mhp, hpd = mtmp.mhpmax;
+    mon_fns_cham?.newmonhp?.(mtmp, mndx);
+    mtmp.mhp = Math.trunc((hpn * mtmp.mhp) / hpd);
+    if (mtmp.mhp < 0 || mtmp.mhp > mtmp.mhpmax)
+        mtmp.mhp = mtmp.mhpmax;
+    if (!mtmp.mhp)
+        mtmp.mhp = 1;
+
+    /* take on the new form */
+    mtmp.mnum = mndx;
+    mtmp.data = mdat;
+
+    /* light sources, leashes, mimicry, worm shrink: recorded when reached */
+    return 1;
+}
+
+

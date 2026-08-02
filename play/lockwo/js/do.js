@@ -23,16 +23,20 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, rnl } from './rng.js';
-import { print_dungeon, builds_up } from './dungeon.js';
+import { print_dungeon, builds_up, In_hell, Is_valley } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
-         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest } from './const.js';
-import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym } from './display.js';
+         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_endgame,
+         MAGIC_PORTAL } from './const.js';
+import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
+         see_nearby_objects } from './display.js';
+import { seetrap } from './trap.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
+import { olfaction } from './eat.js';
 
 // C ref: dungeon.c level_difficulty() — factor of difficulty from depth,
 // bumped in a "builds up" branch (Sokoban / Vlad's Tower) to compensate for
@@ -130,6 +134,29 @@ function place_hero_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy) {
                 game.u.ux = x; game.u.uy = y;
                 return;
             }
+}
+
+// C ref: dungeon.c u_on_newpos(x, y) — put the hero on a specific square.
+// The off-map validation is a panic()/impossible() in C, i.e. never reached
+// with a legal argument.  The "still on same level" arm is the one hack.c's
+// domove_core() takes (see cmd.js, which inlines it); goto_level() always takes
+// the other arm, because u.uz was already switched to the destination and u.uz0
+// still names the level being left.  There map_location() only seeds
+// lastseentyp for a later switch_terrain(), and the subsequent docrt() repaints
+// the whole level anyway, so it has no observable effect here.  Consumes no RNG.
+function u_on_newpos(x, y) {
+    const u = game.u;
+    u.ux = x;
+    u.uy = y;
+    u.uundetected = 0;
+    /* a ridden steed always shares the hero's location */
+    if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
+    if (u.uz?.dnum !== u.uz0?.dnum || u.uz?.dlevel !== u.uz0?.dlevel) {
+        /* changing levels: don't leave the old position set with stale values */
+        u.ux0 = u.ux; u.uy0 = u.uy;
+    } else {
+        see_nearby_objects();
+    }
 }
 
 // C ref: dungeon.c u_on_rndspot().  Level-teleport / fall arrival uses the
@@ -474,6 +501,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     }
 
+    // C ref: do.c goto_level() ~1499 — `prev_temperature = level.flags.temperature`
+    // captured before the level switch (still the DEPARTING level's value here:
+    // g.level hasn't been reassigned yet — that happens inside mklev()'s
+    // clear_level_structures()/getlev_restore() below).
+    const prevTemperature = g.level?.flags?.temperature ?? 0;
+
     if (firstVisit) {
         g._visited_levels[ledger] = true;
         // C: mklev() — getbones() rn2(3) + makelevel() structural generation.
@@ -505,8 +538,30 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await getlev_restore(ledger);
     }
 
-    // Hero placement.  C ref: do.c goto_level() arrival block.
-    if (at_stairs) {
+    // Hero placement.  C ref: do.c goto_level() arrival block, whose three arms
+    // are tested in this order: portal, then at_stairs, then everything else.
+    if (portal && !In_endgame(u.uz)) {
+        // C ref: do.c:1722-1745 — "find the portal on the new level".  A
+        // BR_PORTAL branch has a matching MAGIC_PORTAL on each side (mkportal(),
+        // called from place_branch()), and there is at most one per level, so
+        // the first one in the trap list is the way back in; the hero comes out
+        // standing on it.
+        let ttrap = null;
+        for (const t of g.level?.traps ?? [])
+            if (t.ttyp === MAGIC_PORTAL) { ttrap = t; break; }
+
+        if (!ttrap) {
+            // No portal here.  C only expects this after expulsion(TRUE) sealed
+            // the quest off — it deletes the near portal itself and the far one
+            // on arrival — in which case it lands the hero at random without
+            // complaint; otherwise it is an impossible() and lands the hero at
+            // random anyway.  Either way, the placement is the same.
+            u_on_rndspot(0);
+        } else {
+            seetrap(ttrap);
+            u_on_newpos(ttrap.tx, ttrap.ty);
+        }
+    } else if (at_stairs) {
         // Prefer the stairway on the new level that leads back to the level we
         // just left (uz0) — for a branch crossing this is the branch staircase.
         const back = stairway_find_to(u.uz0);
@@ -519,7 +574,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             u_on_upstairs(); /* descent lands on the new level's UP stair */
         }
     } else {
-        // trap door / level teleport / portal arrival
+        // trap door / level teleport.  (The was_in_W_tower `| 2` flag of C's
+        // u_on_rndspot() call is Vlad's-Tower-only and never set here.)
         u_on_rndspot((up ? 1 : 0));
     }
 
@@ -546,6 +602,46 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
+
+    // C ref: do.c goto_level() ~1861 — "Check whether we just entered
+    // Gehennom."  No RNG.  Fires once, the first time In_hell flips from
+    // false to true (the Valley of the Dead is Gehennom's own entry level).
+    g._goto_valley_msg = null;
+    if (!In_hell(u.uz0) && In_hell(u.uz) && Is_valley(u.uz)) {
+        g._goto_valley_msg = [
+            'You arrive at the Valley of the Dead...',
+            'The odor of burnt flesh and decay pervades the air.',
+        ];
+        // C ref: pline.c You_hear() — gated on Deaf/acoustics (unlike the two
+        // plines above, which always print).
+        if (!game.u?.Deaf && game.flags?.acoustics !== false)
+            g._goto_valley_msg.push('You hear groans and moans everywhere.');
+    }
+
+    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
+    // called after the familiar-level message and the quest/endgame arrival
+    // block (do.js models both with no visible output for a Gehennom filler
+    // level, so the ordering collapses to: familiar msg, then this).  Every
+    // Gehennom level starts "hot" (mklev.js clear_level_structures) unless its
+    // own generator marks it cold/temperate, so this fires on nearly every
+    // first-time Gehennom arrival.
+    g._goto_temperature_msg = null;
+    {
+        const newTemperature = g.level?.flags?.temperature ?? 0;
+        if (prevTemperature !== newTemperature) {
+            if (newTemperature) {
+                const msgs = [`It is ${newTemperature > 0 ? 'hot' : 'cold'} here.`];
+                if (In_hell(u.uz) && newTemperature > 0) {
+                    msgs.push(`You ${olfaction(game.u?.data) ? 'smell' : 'sense'} smoke...`);
+                }
+                g._goto_temperature_msg = msgs;
+            } else if (prevTemperature > 0) {
+                g._goto_temperature_msg = [`The heat ${In_hell(u.uz0) ? 'and smoke are' : 'is'} gone.`];
+            } else if (prevTemperature < 0) {
+                g._goto_temperature_msg = ['You are out of the cold.'];
+            }
+        }
+    }
 
     // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` draws
     // its rn2(4) right here, BEFORE the Tourist reward-XP block below (which
@@ -762,6 +858,11 @@ export async function wiz_level_tele(readLevel) {
         // (or force its own --More--), exactly like C's pline() calls both do.
         if (game.flags?.verbose !== false)
             await update_topl('You materialize on a different level!');
+        // C ref: do.c goto_level() ~1861 — the Valley-of-the-Dead Gehennom-entry
+        // message, delivered right after the arrival message and before the
+        // familiar-level message (do.c order: maybe_lvltport_feedback ->
+        // deliver_splev_message -> Gehennom-entry check -> familiar_level_msg).
+        if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
         // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
         // right after the deferred arrival message and before the quest/endgame
         // arrival checks.  The rn2(4) was already drawn inside goto_level();
@@ -772,6 +873,9 @@ export async function wiz_level_tele(readLevel) {
         // the "You materialize..." topline so its window flushes that topline
         // with --More-- first.
         await onquest();
+        // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
+        // delivered after the quest/endgame arrival block.
+        if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
         // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — the wizard-mode
         // level teleport does NOT cost a game turn (no movemon / gethungry /
         // monster-spawn pass).  Returning ECMD_TIME here advanced moves by one
@@ -786,18 +890,21 @@ export async function wiz_level_tele(readLevel) {
     let newlev = parseInt(m[1], 10);
     if (newlev === 0) return 0; // "Go to Nowhere" path not modelled
 
-    // Translate the logical depth the player typed into a (dnum, dlevel).
-    // For the main Dungeons of Doom (dnum 0, depth_start 1) the logical depth
-    // equals the dlevel.  Negative levels (heaven/clouds) are not modelled.
+    // Negative levels (heaven/clouds) are not modelled.
     if (newlev < 0) return 0;
 
-    const dng = game.dungeons?.[u.uz.dnum];
-    const numlevs = dng?.num_dunlevs ?? 1;
-    let dlevel = newlev - (dng?.depth_start ?? 1) + 1;
-    if (dlevel > numlevs) dlevel = numlevs;
-    if (dlevel < 1) dlevel = 1;
+    // C ref: teleport.c level_tele() — "if in Quest, the player sees 'Home 1',
+    // etc., on the status line, instead of the logical depth of the level.
+    // [...] it should be incremented to the value of the logical depth of the
+    // target level": a typed destination is relative to that "Home N" display,
+    // so convert it to an absolute logical depth before the generic
+    // depth->(dnum,dlevel) translation below (get_level() subtracts
+    // depth_start right back out, so for same-dungeon targets this nets out
+    // to "dlevel = the typed number").
+    if (In_quest(u.uz) && newlev > 0)
+        newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
 
-    newlevel = { dnum: u.uz.dnum, dlevel };
+    newlevel = get_level(newlev);
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return 0; // can't get there from here
 
@@ -811,12 +918,17 @@ export async function wiz_level_tele(readLevel) {
     // --More--, matching C's pline()/update_topl() for both messages.
     if (game.flags?.verbose !== false)
         await update_topl('You materialize on a different level!');
+    // C ref: do.c goto_level() ~1861 — Valley-of-the-Dead Gehennom-entry
+    // message; see the "?"-menu branch above for the full ordering note.
+    if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
     // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
     // right after the deferred arrival message and before the quest/endgame
     // arrival checks.  The rn2(4) was already drawn inside goto_level(); this
     // only displays the resolved text.
     if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
     await onquest();
+    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
+    if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
 }
@@ -898,6 +1010,12 @@ export async function level_tele(readLevel) {
                 break;
         }
         if (cancelled) return;
+        // C ref: teleport.c level_tele() — the same "Home N" -> logical-depth
+        // conversion as wiz_level_tele() (see get_level() below), applied only
+        // to a genuine typed destination (not the '*'/confused-mispronounce
+        // random paths, which C reaches via a goto that skips this).
+        if (!gotoRandom && newlev > 0 && In_quest(u.uz))
+            newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
     } else {
         // Involuntary level teleport (no control): straight to a random level.
         gotoRandom = true;
@@ -957,9 +1075,14 @@ export async function run_deferred_lvltport() {
     // after this one can share the line or force its own --More--, matching
     // C's pline()/update_topl() for both messages.
     if (pend.post_msg) await update_topl(pend.post_msg);
+    // C ref: do.c goto_level() ~1861 — Valley-of-the-Dead Gehennom-entry
+    // message (see wiz_level_tele's "?"-menu branch for the full ordering note).
+    if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
     // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();`.  The
     // rn2(4) was already drawn inside goto_level(); this only shows the text.
     if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
+    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
+    if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
 }
 
 // C ref: dungeon.c Is_botlevel — is <lev> the bottom level of its dungeon?

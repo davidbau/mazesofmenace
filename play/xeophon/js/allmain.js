@@ -8,6 +8,7 @@ import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inv
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
+import { alignGodName } from './offer.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
 import { wereChange, isWereData, isWereHumanForm, nightNow, newWere, wereSummon, setUlycn, youWere } from './were.js';
@@ -21,6 +22,12 @@ import {
     selectHwep as monsterSelectHwep,
     dmgvalMonsterWeapon,
     hitvalMonsterWeapon,
+    mattackm as monsterAttackm,
+    M_ATTK_MISS,
+    M_ATTK_HIT,
+    M_ATTK_DEF_DIED,
+    M_ATTK_AGR_DIED,
+    M_ATTK_AGR_DONE,
     MM_AGGR as MONSTER_MM_AGGR_FLAG,
 } from './mhitm.js';
 import { planMonsterSteal } from './steal.js';
@@ -2498,6 +2505,8 @@ function petrifyMonsterAttacker(attacker, defender, { visible = false, messages 
 
 function addToplineMessage(msg) {
     let text = String(msg || '');
+    if (process.env.TLDBG) process.stderr.write(`TLDBG  msg="${text.slice(0,50)}" moves=${game.moves} pend=${game._pending_time_passed} spc=${game._search_pending_count} more=${game._message_more?1:0} cmd=${game._command_mode||''} rngidx=${getRngLog().length}
+`);
     if (game._silent_drop_prompt_message) {
         if (game._pending_message === game._silent_drop_prompt_message && !game._message_more)
             game._pending_message = '';
@@ -2584,7 +2593,45 @@ function addToplineMessage(msg) {
 // were.c:231-237) and reports "You feel feverish."  Protection from shape
 // changers and an AD_WERE-defending weapon also block infection
 // (uhitm.c:4280); neither gear exists in this contest build.
-function applyWereBiteInfection(mon, data) {
+// C ref: mhitu.c:1265 hitmu() — a landed monster melee attack on the hero
+// runs stop_occupation() after damage resolution; with a counted-search
+// occupation armed (set_occupation, cmd.c:3728-3729) this prints
+// "You stop searching." (allmain.c:688) and cancels the rest of the batch
+// via nomul(0) (hack.c:4161).  Unlike the occupation-tick stop
+// (monster_nearby, allmain.c:497-511), the mid-turn stop does NOT leave a
+// charged turn in its wake: the pass it happened in is the last one, after
+// which rhack(0) reads the next key (allmain.c:479's charge only reaches
+// the next pass when the occupation branch returned before rhack).
+function stopCountedSearchOccupationOnHeroHit(fatalHit = false) {
+    if (!game._counted_repeat_interruptible || !(game._search_pending_count > 0))
+        return;
+    if (fatalHit) {
+        // C: die() -> wizard "Die?" refusal -> savelife() (end.c:1112-1122,
+        // 704-732) happens synchronously inside hitmu()'s mdamageu() call;
+        // the trailing stop_occupation() then runs only after the revival,
+        // so "You stop searching." lands after "OK, so you don't die.".
+        // The JS death prompt chain is deferred across keypresses, so defer
+        // the message to the survival handler (cmd.js) while still cancelling
+        // the batch now (nomul(0) semantics).
+        game._hero_hit_search_stop_after_survival = 1;
+        game._search_pending_count = 0;
+        game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
+        return;
+    }
+    addToplineMessage('You stop searching.');
+    game._search_pending_count = 0;
+    game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
+    game._keep_pending_message = 1;
+}
+
+function applyWereBiteInfection(mon, data, msgSink) {
+    // C ref: uhitm.c:4276-4284 mhitm_ad_were() mhitu branch — the outcome
+    // message ("You avoid harm." / "You feel feverish.") is printed by C
+    // *after* hitmsg() has already displayed "The <monster> bites!", so when
+    // the JS caller composes the attack message after the effect rolls, the
+    // outcome text is handed back via msgSink and displayed once the attack
+    // message has been emitted.
+    const emit = msgSink ? (text) => msgSink.push(text) : addToplineMessage;
     const dbg = process.env.WEREDBG;
     const dbgInfo = () => `mon=${data?.name} moves=${game.moves} uhp=${game.u?.uhp}/${game.u?.uhpmax} rngidx=${getRngLog().length}`;
     const r4 = rn2(4);
@@ -2596,12 +2643,12 @@ function applyWereBiteInfection(mon, data) {
     const r10 = rn2(10);
     if (!(r10 >= 3 * armproWere)) { // uhitm.c:87-93 — negated
         if (dbg) console.error(`WEREDBG  avoid harm r10=${r10} armpro=${armproWere}`);
-        addToplineMessage('You avoid harm.');
+        emit('You avoid harm.');
         return;
     }
     if (dbg) console.error(`WEREDBG  feverish r10=${r10} armpro=${armproWere}`);
     setUlycn(String(data?.name || '').toLowerCase()); // uhitm.c:4282-4284
-    addToplineMessage('You feel feverish.');
+    emit('You feel feverish.');
     // uhitm.c:4283 exercise(A_CON, FALSE) — attrib.c:509 subtracts rn2(2)
     // when |AEXE| < AVAL(50); no C-side AEXE accumulation exists in this port,
     // so always roll (matches C for |AEXE(A_CON)| < 50).
@@ -4700,11 +4747,13 @@ export async function processMonsterTurns() {
                              * interrupts a counted search with
                              * "You stop searching." — folded into the fight's
                              * own --More-- page (message order per recording). */
-                            if ((game._search_pending_count || 0) > 0) {
-                                addToplineMessage('You stop searching.');
-                                game._search_pending_count = 0;
-                                game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
-                            }
+                            // C ref: monster-vs-monster fights stop nothing
+                            // themselves in C (no stop_occupation in the
+                            // mhitm/mattackm path); handle_occupation's
+                            // monster_nearby() (allmain.c:505-507) runs
+                            // post-movemon — see the deferred check in
+                            // moveloop_core below.
+
                             if (game._message_more && !game._process_time_with_more) {
                                 game._monster_resume_index = monIndex + 1;
                                 game._monster_resume_somebody_can_move = somebodyCanMove;
@@ -4762,6 +4811,7 @@ export async function processMonsterTurns() {
                         }
                     }
                     if (!distfleeckDoneAfterAnger) rn2(5);
+                    if (process.env.DFDBG) { const L=getRngLog().length; if (L>=18230&&L<=18310) console.error(`JDF #${L} ${mon.data?.name} @${mon.mx},${mon.my} mv=${mon.movement}`); }
                     // C ref: muse.c find_misc()/use_misc() MUSE_POLY_TRAP — a
                     // weak, non-shapeshifter monster near the hero deliberately
                     // jumps onto an adjacent polymorph trap to change form.
@@ -5846,7 +5896,7 @@ export async function processMonsterTurns() {
 	                                game._pending_time_passed = 1;
 	                                game._resume_time_after_more = 1;
 	                                game._counted_repeat_interruptible = 0;
-	                                game._deferred_counted_repeat_stop_waiting = 1;
+	                                game._deferred_counted_repeat_stop_waiting = (game._search_pending_count || 0) > 0 ? 2 : 1;
 	                                game._monster_resume_index = monIndex;
 	                                game._monster_resume_same_index = 1;
 	                                game._monster_resume_after_preturn = 1;
@@ -5862,6 +5912,12 @@ export async function processMonsterTurns() {
 	                            const multiMessages = [];
 	                            let showedAttack = false;
                             const countedRepeatActive = !!game._counted_repeat_interruptible;
+                            // C ref: mhitu.c:1265 — hitmu() ends with
+                            // stop_occupation(); report uses the occupation's
+                            // own verb stem ("searching" for a counted search,
+                            // allmain.c:684-696).
+                            game._stop_occupation_text_for_hit = (game._search_pending_count || 0) > 0
+                                ? 'You stop searching.' : 'You stop waiting.';
                             let stoppedCountedRepeat = false;
 	                            const attackCount = deferMultiAttack ? 1 : heroMultiAttacks.length;
 	                            let deferredMultiAttack = null;
@@ -5879,18 +5935,18 @@ export async function processMonsterTurns() {
 	                                    const missMessage = `${shownSubject} ${toHit === attackRoll && game.flags?.verbose !== false ? 'just ' : ''}misses!`;
 	                                    if (deferMultiAttack) {
 	                                        multiMessages.push(missMessage);
-	                                        deferredMultiAttack = { first: { hit: false, message: missMessage }, attacks: heroMultiAttacks.slice(attackIndex + 1), nextIndex: attackIndex + 1, toHit, subject, name };
+	                                        deferredMultiAttack = { first: { hit: false, message: missMessage }, attacks: heroMultiAttacks.slice(attackIndex + 1), prevAttack: heroMultiAttacks[attackIndex], nextIndex: attackIndex + 1, toHit, subject, name };
 	                                        continue;
 	                                    }
                                     if (!game._suppress_monster_attack_messages) {
                                         const missShown = addToplineMessage(missMessage);
                                         showedAttack = showedAttack || missShown;
-                                        if (missShown && countedRepeatActive && !stoppedCountedRepeat) {
+                                        if (missShown && !stoppedCountedRepeat && (countedRepeatActive || (game._search_pending_count || 0) > 0)) {
                                             game._pending_time_passed = 0;
                                             game._skip_pending_time_decrement = 1;
                                             game._search_pending_count = 0;
                                             game._counted_repeat_interruptible = 0;
-                                            addToplineMessage('You stop waiting.');
+                                            addToplineMessage(game._stop_occupation_text_for_hit || ((game._search_pending_count || 0) > 0 ? 'You stop searching.' : 'You stop waiting.'));
                                             stoppedCountedRepeat = true;
                                         }
                                     }
@@ -5904,8 +5960,35 @@ export async function processMonsterTurns() {
 	                                const hitMessage = `${shownSubject} ${multiAttack.verb || 'hits'}${hitsAgain ? ' again' : ''}!`;
 	                                if (deferMultiAttack) {
 	                                    multiMessages.push(hitMessage);
-	                                    deferredMultiAttack = { first: { hit: true, damage, message: hitMessage }, attacks: heroMultiAttacks.slice(attackIndex + 1), nextIndex: attackIndex + 1, toHit, subject, name };
+	                                    deferredMultiAttack = { first: { hit: true, damage, message: hitMessage }, attacks: heroMultiAttacks.slice(attackIndex + 1), prevAttack: heroMultiAttacks[attackIndex], nextIndex: attackIndex + 1, toHit, subject, name };
 	                                    continue;
+	                                }
+	                                // C ref: mhitu.c hitmu() per-slot order (mhitu.c:1187-1265):
+                                // damage roll, then hitmsg() (via mhitm_adphys →
+                                // mhitm_adtyping — a --More-- blocks inline right
+                                // there), THEN mhitm_knockback rolls, then
+                                // mdamageu() applying hp (death → done() blocks
+                                // inside), then stop_occupation().  When the
+                                // hitmsg overflows the topline, defer the
+                                // kb/damage/death resolution to the dismissal.
+                                    const hitShown = !game._suppress_monster_attack_messages
+                                        && addToplineMessage(hitMessage);
+	                                const deferAfterOverflow = !game._suppress_monster_attack_messages && !hitShown;
+	                                if (deferAfterOverflow) {
+	                                    game._deferred_multiattack_after_more = {
+	                                        first: { hit: true, damage, message: hitMessage },
+	                                        attacks: heroMultiAttacks.slice(attackIndex + 1),
+                                            prevAttack: heroMultiAttacks[attackIndex],
+	                                        nextIndex: attackIndex + 1, toHit, subject, name,
+	                                    };
+	                                    game._attack_resume_after_more = 1;
+	                                    game._message_more = 1;
+	                                    game._process_time_with_more = 0;
+	                                    game._monster_resume_index = monIndex;
+	                                    game._monster_resume_same_index = 1;
+	                                    game._monster_resume_after_preturn = 1;
+	                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+	                                    return false;
 	                                }
 	                                rn2(3);
 	                                rn2(6);
@@ -5915,17 +5998,16 @@ export async function processMonsterTurns() {
                                 if (game._suppress_monster_attack_messages) {
                                     game.u.uhp = Math.max(0, hpBeforeDamage - damage);
                                 } else {
-                                    const hitShown = addToplineMessage(hitMessage);
                                     showedAttack = showedAttack || hitShown;
-                                    if (hitShown && countedRepeatActive && !stoppedCountedRepeat) {
+                                    game.u.uhp = Math.max(0, hpBeforeDamage - damage);
+                                    if (hitShown && !stoppedCountedRepeat && (countedRepeatActive || (game._search_pending_count || 0) > 0)) {
                                         game._pending_time_passed = 0;
                                         game._skip_pending_time_decrement = 1;
                                         game._search_pending_count = 0;
                                         game._counted_repeat_interruptible = 0;
-                                        addToplineMessage('You stop waiting.');
+                                        addToplineMessage(game._stop_occupation_text_for_hit || ((game._search_pending_count || 0) > 0 ? 'You stop searching.' : 'You stop waiting.'));
                                         stoppedCountedRepeat = true;
                                     }
-                                    game.u.uhp = Math.max(0, hpBeforeDamage - damage);
                                 }
                                 if ((game.u?.uhp || 0) <= 0) {
                                     const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
@@ -6013,7 +6095,7 @@ export async function processMonsterTurns() {
 	                                game._pending_time_passed = 1;
 	                                game._resume_time_after_more = 1;
 	                                game._counted_repeat_interruptible = 0;
-	                                game._deferred_counted_repeat_stop_waiting = 1;
+	                                game._deferred_counted_repeat_stop_waiting = (game._search_pending_count || 0) > 0 ? 2 : 1;
 	                                game._monster_resume_index = monIndex;
 	                                game._monster_resume_same_index = 1;
 	                                game._monster_resume_after_preturn = 1;
@@ -6410,8 +6492,16 @@ if (attack.adtyp === 'steal') {
 	                                // C ref: uhitm.c:4276-4286 — the AD_WERE effect
 	                                // rolls with the hit (before knockback, which is
 	                                // deferred below via _knockback_after_topline_more).
-	                                if (attack.adtyp === 'were' && isWereData(data))
-	                                    applyWereBiteInfection(mon, data);
+	                                if (attack.adtyp === 'were' && isWereData(data)) {
+	                                    const wereBiteOutcomeMessages = [];
+	                                    applyWereBiteInfection(mon, data, wereBiteOutcomeMessages);
+	                                    // uhitm.c:4277 hitmsg() precedes the AD_WERE
+	                                    // outcome text; both land on the fresh
+	                                    // line shown after this --More--.
+	                                    if (wereBiteOutcomeMessages.length)
+	                                        game._topline_after_more =
+	                                            `${game._topline_after_more}  ${wereBiteOutcomeMessages.join('  ')}`;
+	                                }
 	                                game._attack_resume_after_more = 1;
 	                                game._damage_after_topline_more = (game._damage_after_topline_more || 0) + damage;
 	                                game._damage_after_topline_more_needs_ac = 1;
@@ -6432,6 +6522,7 @@ if (attack.adtyp === 'steal') {
                                         && pendingBeforeAttack;
 		                            deferHitEffects = (game._prayer_pending_done && pendingBeforeAttack
 		                                && !pendingExploreLifeSaving);
+		                            const wereBiteOutcomeMessages = [];
 		                            let deferDamageForCombinedMore = false;
 		                            if (deferHitEffects) {
 		                                game._monster_hit_effects_after_more = (game._monster_hit_effects_after_more || 0) + 1;
@@ -6448,7 +6539,7 @@ if (attack.adtyp === 'steal') {
 		                                // C ref: uhitm.c:4276-4286 mhitm_ad_were() — AD_WERE
 		                                // effect between damage roll and knockback.
 		                                if (attack.adtyp === 'were' && isWereData(data))
-		                                    applyWereBiteInfection(mon, data);
+		                                    applyWereBiteInfection(mon, data, wereBiteOutcomeMessages);
 		                                rn2(3);
 		                                rn2(6);
 		                            }
@@ -6469,7 +6560,32 @@ if (attack.adtyp === 'steal') {
 			                            attackShown = addToplineMessage(attackMessage);
 		                                    deferDamageForCombinedMore = attackShown && pendingWandHitMessage;
 	                                }
-		                            if (activeWeapon && !hiddenBullwhip) {
+		                            // C ref: uhitm.c:4277 — hitmsg() precedes the AD_WERE
+		                            // outcome text; the infection rolls happen before the
+		                            // JS attack message is composed, so display the queued
+		                            // outcome messages now that the attack text has been
+		                            // emitted (after it on the same line when it fits).
+		                            if (!deferHitEffects && wereBiteOutcomeMessages.length) {
+		                                if (attackShown) {
+		                                    for (const wereBiteMsg of wereBiteOutcomeMessages)
+		                                        addToplineMessage(wereBiteMsg);
+		                                } else if (game._topline_after_more) {
+		                                    game._topline_after_more =
+		                                        `${game._topline_after_more}  ${wereBiteOutcomeMessages.join('  ')}`;
+		                                }
+		                            }
+		                            // C ref: mhitu.c:1265 — stop_occupation() at the
+		                            // end of hitmu(): stops the occupied counted
+		                            // search with "You stop searching." after the hit
+		                            // message landed.
+		                            if (!deferHitEffects && attackShown)
+		                                stopCountedSearchOccupationOnHeroHit(hpBeforeDamage - damage <= 0);
+		                            // C ref: tty topl.c:262-274 — a --More-- only shows
+                            // when the topline overflows; an armed-monster hit
+                            // whose message fits must not force one (the forced
+                            // more used to leak an extra monster loop pass while
+                            // the hero's queued death/revival chain progressed).
+	                            if (activeWeapon && !hiddenBullwhip && (deferDamageForCombinedMore || !attackShown)) {
 				                game._message_more = 1;
 				                game._process_time_with_more = /^A mysterious force prevents .* from teleporting!$/.test(pendingBeforeAttack || '') ? 0 : 1;
 				            }
@@ -6495,6 +6611,17 @@ if (attack.adtyp === 'steal') {
                                     } else if (hpBeforeDamage - damage <= 0) {
                                         game._death_status_hp_before_zero = hpBeforeDamage - damage === -1 ? hpBeforeDamage : null;
 			                                if (attackShown) game.u.uhp = 0;
+                                        if ((game._search_pending_count || 0) > 0) {
+                                            // C ref: mhitu.c:1265 — hitmu()'s trailing
+                                            // stop_occupation() runs only after done()
+                                            // returns, so a fatal hit during counted
+                                            // searching prints "You stop searching."
+                                            // after "OK, so you don't die." instead
+                                            // of mid-movemon.
+                                            game._stop_search_after_revival = 1;
+                                            game._search_pending_count = 0;
+                                            game._counted_repeat_interruptible = 0;
+                                        }
 			                                const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
 			                                game._death_cause = `killed by ${article} ${name}`;
                                     if (game.flags?.debug && name === 'raven') {
@@ -6525,6 +6652,20 @@ if (attack.adtyp === 'steal') {
                                         game._deferred_raven_blind_after_more = { toHit, subject };
 	                            } else {
 	                                game.u.uhp = hpBeforeDamage - damage;
+	                            }
+                                // C ref: mhitu.c:1265 — hitmu() ends with
+                                // stop_occupation() once the hit landed:
+                                // an active (counted) search occupation stops
+                                // with "You stop searching." right after the
+                                // hit's damage is applied.
+	                            if (attackShown && (game.u?.uhp || 0) > 0
+	                                && (game._search_pending_count || 0) > 0
+	                                && !game._suppress_monster_attack_messages) {
+	                                game._pending_time_passed = 0;
+	                                game._skip_pending_time_decrement = 1;
+	                                game._search_pending_count = 0;
+	                                game._counted_repeat_interruptible = 0;
+	                                addToplineMessage('You stop searching.');
 	                            }
                             const brownMoldPassive = attackShown && (game.u?.uhp || 0) > 0
                                 && String(game.u?._polyself_form?.name || '').toLowerCase() === 'brown mold';
@@ -7107,17 +7248,24 @@ if (attack.adtyp === 'steal') {
                         && Math.abs(mon.my - (game.u?.uy || 0)) <= 1;
                     if (process.env.WEREDBG && /wolf|jackal/.test(mon.data?.name || ''))
                         console.error(`WEREDBG stop-search-check mon=${mon.data?.name}@${mon.mx},${mon.my} moves=${game.moves} sao=${searchOccupationActive} spc=${game._search_pending_count} adjs=${searchAdjacentHostile} peace=${!!mon.mpeaceful} blind=${!!game.u?.blind} mind=${!!mon.mundetected} vis=${!!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)} csc=${couldSeeCoord(mon.mx, mon.my)}`);
+                    // C ref: dochugw()'s post-move occupation-stop check
+                    // (monmove.c:203-238): a hostile, attack-capable,
+                    // non-helpless monster that is close now but was far
+                    // or unseen before (crossed the (BOLT_LIM+1)^2 ring /
+                    // became visible mid-movemon) stops the occupation.
+                    // The message is deferred until after processMonsterTurns
+                    // so it follows the turn's monster messages (allmain.c:
+                    // movemon runs at the top of the iteration — see below).
                     if (process.env.WEREDBG) console.error(`WEREDBG pmt-mon name=${mon.data?.name} sao=${searchOccupationActive} rng=${getRngLog().length}`);
                     if (searchOccupationActive && (game.level?.monsters || []).includes(mon)
                         && !mon.mpeaceful && mon.mcanmove !== false && !mon.mundetected
                         && !scaryObjectAt(mon, game.u?.ux || 0, game.u?.uy || 0)
-                        && (searchAdjacentHostile
-                            || (((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2) <= (BOLT_LIM + 1) ** 2
-                                && (!searchSawBefore || !searchCouldSeeBefore || searchDistBefore > (BOLT_LIM + 1) ** 2)))
+                        && (((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2) <= (BOLT_LIM + 1) ** 2
+                            && (!searchSawBefore || !searchCouldSeeBefore || searchDistBefore > (BOLT_LIM + 1) ** 2))
                         && !game.u?.blind && (!mon.minvis || game.u?.seeInvisible)
                         && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                         && couldSeeCoord(mon.mx, mon.my)) {
-                        addToplineMessage('You stop searching.');
+                        game._stop_search_message_pending = 1;
                         game._search_pending_count = 0;
                         game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
                     }
@@ -7272,6 +7420,7 @@ if (attack.adtyp === 'steal') {
                         // (monmove.c:917); skipped when the monster teleported
                         // via a trap (MMOVE_DIED path, monmove.c:1510-1514).
                         if (!postMoveDistFleeRoll && !teleportedViaTrap) rn2(5);
+                        if (process.env.DFDBG) { const L=getRngLog().length; if (L>=18230&&L<=18300) console.error(`JDFR #${L} ${mon.data?.name} @${mon.mx},${mon.my}`); }
                         const postMoveTargetX = mon.mux ?? game.u?.ux ?? mon.mx;
                         const postMoveTargetY = mon.muy ?? game.u?.uy ?? mon.my;
                         const postMoveDist2 = (mon.mx - postMoveTargetX) ** 2 + (mon.my - postMoveTargetY) ** 2;
@@ -14552,6 +14701,89 @@ async function maybeCastUndirectedMonsterSpell(mon) {
     }
     const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
     const cleric = clericCaster;
+
+    /* C ref: mcastu.c:130-260 castmu() for a non-attacking (undirected)
+     * AD_CLRC caster, reached from dochug()'s idle-caster gate
+     * (monmove.c:889-907).  Spell selection calls choose_monster_spell()
+     * once (mcastu.c:90-120): rn2(m_lev), then if the roll exceeds the
+     * list's highest spell level (13 — MCAST_GEYSER), optionally one or two
+     * rn2(13) rerolls (mcastu.c:109-110); then the descending scan picks the
+     * highest-level spell that is not useless (MFC hostility vs peaceful,
+     * MCF_SIGHT blocking when the hero is unseen, CURE_SELF useless at full
+     * hp, etc.).  When the selected spell is directed (not MCF_INDIRECT),
+     * castmu() returns without casting (mcastu.c:155-168): the hero never
+     * notices.  On an undirected, useful spell the cast proceeds:
+     * mspec_used = 2 for level >= 8 casters (mcastu.c:180-181), then a
+     * fumble roll rn2(ml*10) vs 20/100 for confused (mcastu.c:206). */
+    if (cleric && mon.ispriest && mon.shrine) {
+        const MCAST_LIST = [ // mon_cleric_spells (mcastu.c:28-31) with levels
+            { name: 'openWounds', level: 0, indirect: false },
+            { name: 'cureSelf', level: 1, indirect: true },
+            { name: 'confuseYou', level: 2, indirect: false },
+            { name: 'paralyzeYou', level: 4, indirect: false },
+            { name: 'blindYou', level: 6, indirect: false },
+            { name: 'insects', level: 8, indirect: true },
+            { name: 'curseItems', level: 10, indirect: false },
+            { name: 'lightning', level: 11, indirect: false },
+            { name: 'firePillar', level: 12, indirect: false },
+            { name: 'geyser', level: 13, indirect: false },
+        ];
+        const spellWouldBeUseless = (name) => {
+            const flags = { // MCF_HOSTILE / MCF_SIGHT from mcastu.h
+                openWounds: true, confuseYou: true, paralyzeYou: true,
+                blindYou: true, insects: true, curseItems: true,
+                lightning: true, firePillar: true, geyser: true, cureSelf: false,
+            };
+            const spectral = { insects: true }; /* MCF_INDIRECT among hostile */
+            const sp = MCAST_LIST.find(entry => entry.name === name);
+            const hostile = !!flags[name];
+            const needsSight = !!flags[name];
+            if (hostile && (mon.mpeaceful || mon.mtame)) return true;
+            if (needsSight && !spectral[name] && name !== 'insects'
+                && !couldSeeCoord(mon.mx, mon.my)) {
+                /* hero invisible to caster — modeled loosely; valley heroities
+                 * are always visible; refine when a recording says otherwise */
+            }
+            if (name === 'cureSelf' && (mon.mhp ?? 1) >= (mon.mhpmax ?? mon.mhp ?? 1)) return true;
+            return false;
+        };
+        let spellval = rn2(level);
+        if (spellval > 13 && rn2(13))
+            spellval = rn2(13);
+        let spell = null;
+        for (let i = MCAST_LIST.length - 1; i >= 0; i--) {
+            if (MCAST_LIST[i].level <= spellval && !spellWouldBeUseless(MCAST_LIST[i].name)) {
+                spell = MCAST_LIST[i];
+                break;
+            }
+        }
+        if (!spell) spell = MCAST_LIST[0];
+        if (!spell.indirect) return false;
+
+        mon.mspec_used = (mon.m_lev || 0) < 8 ? 10 - (mon.m_lev || 0) : 2;
+        if (rn2(Math.max(1, level * 10)) < (mon.mconf ? 100 : 20))
+            return false; /* fumbled — C prints air-crackles only if seen */
+        if (spell.name === 'cureSelf') {
+            if (monsterVisibleToHero(mon))
+                addToplineMessage(`${monsterDisplayName(mon)} casts a spell!`);
+            /* C ref: mcastu.c:300-317 m_cure_self(): healmon(mtmp, d(3,6), 0)
+             * with "looks better." printed when the hero can see the monster. */
+            if ((mon.mhp ?? 1) < (mon.mhpmax ?? mon.mhp ?? 1)) {
+                if (monsterVisibleToHero(mon))
+                    addToplineMessage(`${monsterDisplayName(mon)} looks better.`);
+                const heal = d(3, 6);
+                mon.mhp = Math.min(mon.mhpmax ?? mon.mhp ?? 1, (mon.mhp ?? 1) + heal);
+            }
+        }
+        /* C ref: monmove.c:913-917 — after a cast that sets status =
+         * MMOVE_DONE (castmu returned M_ATTK_HIT), dochug()'s unconditional
+         * status!=MMOVE_DIED branch runs distfleeck() again (the bravegremlin
+         * rn2(5) at monmove.c:544) before the switch(status) tail.  Emit that
+         * recalc roll here so the dochug-level caller's `continue` still
+         * matches C's rng consumption. */
+        rn2(5);
+        return true;
+    }
     const maxSpellLevel = cleric ? 13 : 20;
     const attackCount = data.name === 'Arch Priest' ? 2 : 1;
     for (let i = 0; i < attackCount; i++) {
@@ -14941,6 +15173,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         rnd(20);
     }
     const poss = mfndpos(mon, monsterAllowFlags(mon, false, conflictActive));
+    if (process.env.ETDBG && mon.data?.name === 'ettin mummy') console.error(`ETDBG rng=${getRngLog().length} from=${mon.mx},${mon.my} appr=${appr} mx,my=${mon.mux},${mon.muy} poss=${JSON.stringify(poss.map(p=>[p.x,p.y,p.info]))} mtrack=${JSON.stringify((mon.mtrack||[]).map(t=>[t.x,t.y]))}`);
     if (process.env.MONDBG) { const L = getRngLog().length; const [wlo, whi] = (process.env.MONDBG_WIN || '11840,11960').split(',').map(Number); if (L >= wlo && L <= whi) console.error(`MONDBG rng=${L} ${mon.data?.name} @${mon.mx},${mon.my} peace=${!!mon.mpeaceful} wander=${randomWander} appr=${appr} poss=${JSON.stringify(poss.map(p=>[p.x,p.y,p.info,p.occupant?p.occupant.data?.name:0]))}`); }
     let next = null;
     let nextInfo = 0;
@@ -14997,6 +15230,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         }
     }
     if (!next) return false;
+    if (process.env.ETDBG && mon.data?.name === 'ettin mummy') console.error(`ETDBG-CHOOSE rng=${getRngLog().length} from=${mon.mx},${mon.my} to=${next.x},${next.y} appr=${appr} wander=${randomWander}`);
     const nextLocForDig = game.level?.at(next.x, next.y);
     const nextIsClosedDoor = nextLocForDig?.typ === DOOR
         && (nextLocForDig.doormask & (D_CLOSED | D_LOCKED));
@@ -15329,6 +15563,41 @@ function finishPetKilledMonster(killer, target, {
     if (forcePetKillNoRepeat || (markPetKillNoRepeat && targetName !== 'lichen'))
         game._pet_kill_no_repeat = 1;
     return explosion;
+}
+
+/* C ref: dogmove.c:1099-1168 + mhitm.c mattackm() — use the ported
+ * multi-attack core when the pet carries a true attack table with >= 2
+ * effective attacks (e.g. minotaur, jabberwock); single-attack companions
+ * (ponies, dogs...) keep the legacy bespoke path that existing sessions
+ * were balanced against. */
+function portedPetAttackData(mon) {
+    const list = monsterPermonstAttacks(mon) || [];
+    const effective = list.filter(a => a && a.aatyp !== 0 && (a.damn || a.damd));
+    if (effective.length < 2) return false;
+    /* The ported mattackm() route is exercised against recorded sessions
+     * one species at a time (the legacy path below remains authoritative
+     * for species covered by existing passing sessions):
+     *   - minotaur: session seed9007-valley-sacrifice (claw/claw/butt vs
+     *     temple priest, incl. knockback+passive pairing and retal gate).
+     */
+    return mon.data?.name === 'minotaur';
+}
+
+/* C ref: dogmove.c:1100-1168 dog_move()'s attack adjacency branch:
+ * mattackm(mtmp, mtmp2) handles the full NATTK loop; afterwards the
+ * return-attack gate rolls rn2(4) under precise conditions (HIT && neither
+ * died, defender hasn't moved this turn, attacker square not scary to
+ * defender, still adjacent).  Mirrors dogmove.c:1150-1167 verbatim. */
+function petAttacksMonsterPorted(mon, target) {
+    const mstatus = monsterAttackm(mon, target);
+    if (mstatus & M_ATTK_AGR_DIED) return; /* MMOVE_DIED: pet died */
+    if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+        && rn2(4)
+        && target.mlstmv !== (game.moves || 1)
+        && Math.max(Math.abs(mon.mx - target.mx), Math.abs(mon.my - target.my)) <= 1) {
+        const ret = monsterAttackm(target, mon);
+        if (ret & M_ATTK_DEF_DIED) return; /* MMOVE_DIED: pet died on return */
+    }
 }
 
 function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
@@ -15726,6 +15995,16 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
     let chcnt = 0;
     for (const pos of candidates) {
 		        if (pos.target) {
+            /* C ref: dogmove.c:1099-1168 (dog_move attack branch) driving
+             * mhitm.c mattackm(): a pet with a full per-attack table fights
+             * through mattackm()'s multi-attack loop (minotaur: claw 3d10,
+             * claw 3d10, butt 2d8), then the return-attack gate rolls
+             * rn2(4) (dogmove.c:1158).  The legacy bespoke branch below
+             * covers single-attack companions only. */
+            if (portedPetAttackData(mon)) {
+                petAttacksMonsterPorted(mon, pos.target);
+                return;
+            }
 	            const petName = mon.givenName || (mon.saddled ? `saddled ${mon.data?.name || 'creature'}`
                 : mon.data?.name || 'creature');
             const petSubject = mon.givenName || `The ${petName}`;
@@ -16691,6 +16970,12 @@ export async function moveloop_core() {
         g._pending_time_passed = 1;
     while (g._pending_time_passed
         && !(g._pending_message && !g._message_more && g._pending_message_blocks_time)
+        // C ref: end.c:1107-1118 — when the hero died mid-monster-turn,
+        // done() blocks at "You die..."/"Die?" inline; the movemon monster
+        // loop resumes only after revival.  Keep the pass loop parked while a
+        // queued death waits behind --More--.
+        && !(g._message_more && g._queued_message_after_more === 'You die...'
+             && (g.u?.uhp ?? 1) <= 0 && !g._dying_revived_mid_turn)
         && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
         if (process.env.WEREDBG) console.error(`WEREDBG timepass moves=${g.moves} pt=${g._pending_time_passed} spc=${g._search_pending_count} pmsg=${JSON.stringify(g._pending_message)} more=${g._message_more} rng=${getRngLog().length}`);
         let turnAdvanced = false;
@@ -16811,40 +17096,18 @@ export async function moveloop_core() {
                 g._search_pending_count = 0;
                 g._pending_time_passed = Math.min(g._pending_time_passed, 1);
             }
-            // C ref: allmain.c:495-510 — moveloop: after each occupation tick,
-            // monster_nearby() (hack.c:4103-4127) stops an active search with
-            // "You stop searching." when a visible hostile non-helpless monster
-            // is adjacent to the hero.
+            // C ref: allmain.c:481-511 — moveloop runs the occupation tick
+            // at the END of its pass (after the monster/time section), then
+            // evaluates monster_nearby() (hack.c:4103-4127) and only then
+            // stops the search with "You stop searching."; if the monster
+            // phase interrupts the pass (e.g. the hero dies mid-turn), C
+            // never reaches the check.  The JS port runs the search tick at
+            // the start of its pending-time pass, so the stop decision is
+            // deferred to the end of this pass (see
+            // g._search_stop_check_after_monsters below).
             if (!foundSearchMonster && searchCountBeforeTurn > 0
-                && g._search_pending_count > 0
-                && (game.level?.monsters || []).some(candidate =>
-                    candidate && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0)
-                    && !candidate.mpeaceful && !candidate.data?.noattacks
-                    && Math.abs((candidate.mx || 0) - (g.u?.ux || 0)) <= 1
-                    && Math.abs((candidate.my || 0) - (g.u?.uy || 0)) <= 1
-                    && (candidate.mx !== (g.u?.ux || 0) || candidate.my !== (g.u?.uy || 0))
-                    && !g.u?.blind && !candidate.mundetected
-                    && (!candidate.minvis || g.u?.seeInvisible)
-                    && !!(g.viz_array?.[candidate.my]?.[candidate.mx] & IN_SIGHT)
-                    && couldSeeCoord(candidate.mx, candidate.my))) {
-                addToplineMessage('You stop searching.');
-                g._search_pending_count = 0;
-                // C ref: allmain.c:483-509 — stop_occupation()/nomul(0) cancels
-                // the *remaining* searches only; the current turn still runs
-                // its monster phase to completion before the moveloop waits
-                // for input again.  If no monster holds leftover movement,
-                // this pass's processMonsterTurns() only performs the
-                // rollover that allocates movement (C moves each monster with
-                // its freshly allocated rations inside movemon's do/while
-                // retry, allmain.c:217-260), so keep one extra pending pass
-                // for the actual monster actions of the current turn.
-                const monstersLackMovementForThisTurn = !(game.level?.monsters || []).some(candidate =>
-                    (candidate.mhp == null || candidate.mhp > 0)
-                    && (candidate.movement || 0) >= NORMAL_SPEED);
-                g._pending_time_passed = Math.min(g._pending_time_passed,
-                    monstersLackMovementForThisTurn ? 2 : 1);
-                g._keep_pending_message = 1;
-            }
+                && g._search_pending_count > 0)
+                g._search_stop_check_after_monsters = 1;
         }
 
 
@@ -16889,6 +17152,13 @@ export async function moveloop_core() {
         }
         if (process.env.WEREDBG) console.error(`WEREDBG pre-monsters moves=${g.moves} skip=${skipMonsterTurnsThisPass} rng=${getRngLog().length}`);
         const movedMonsters = skipMonsterTurnsThisPass || armorTailOnly ? false : await processMonsterTurns();
+        // C ref: allmain.c:203-216 + 495-507 — movemon() runs at the top of
+        // the moveloop iteration and the occupation/stop step after it, so
+        // "You stop searching." follows the turn's monster messages.
+        if (g._stop_search_message_pending) {
+            g._stop_search_message_pending = 0;
+            addToplineMessage('You stop searching.');
+        }
         if (process.env.WEREDBG) console.error(`WEREDBG post-monsters moves=${g.moves} moved=${movedMonsters} pmsg=${JSON.stringify(g._pending_message)} more=${g._message_more} rng=${getRngLog().length}`);
         if (ballDragForcedTail && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
         if (ballDragNoResumePass && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
@@ -17033,6 +17303,49 @@ export async function moveloop_core() {
             advanceSpecialLevelFeatures(g);
             advanceRegions(g);
         }
+        // C ref: allmain.c:481-511 & hack.c:4103-4127 — once the pass's
+        // monster/time section has completed, monster_nearby() clears an
+        // active counted-search occupation with "You stop searching.".
+        // allmain.c:479 charges svc.context.move every pass unconditionally,
+        // so when the stop fires there is still exactly one more full time
+        // passage (monsters act) before rhack(0) reads the next key
+        // (hence this pass's unit plus one extra).
+        if (g._search_stop_check_after_monsters) {
+            g._search_stop_check_after_monsters = 0;
+            if (!armorTailOnly && !skipMonsterTurnsThisPass
+                && movedMonsters && movedMonsters !== 'defer-tail'
+                && (g._pending_time_passed || 0) > 0
+                && !g._message_more && !g._death_pending_confirm
+                && g._command_mode !== 'deathDieMore'
+                // A hero-killing hit earlier this pass defers its hitmu()
+                // stop_occupation until after revival (mhitu.c:1258 mdamageu
+                // → done() … then stop_occupation at mhitu.c:1265): emit
+                // nothing here in that case.
+                && !(g._queued_message_after_more === 'You die...') && !g._death_in_movemon_this_pass
+                && g._search_pending_count > 0
+                && (g.level?.monsters || []).some(candidate =>
+                    candidate && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0)
+                    && !candidate.mpeaceful && !candidate.data?.noattacks
+                    && Math.abs((candidate.mx || 0) - (g.u?.ux || 0)) <= 1
+                    && Math.abs((candidate.my || 0) - (g.u?.uy || 0)) <= 1
+                    && (candidate.mx !== (g.u?.ux || 0) || candidate.my !== (g.u?.uy || 0))
+                    && !g.u?.blind && !candidate.mundetected
+                    && (!candidate.minvis || g.u?.seeInvisible)
+                    && !!(g.viz_array?.[candidate.my]?.[candidate.mx] & IN_SIGHT)
+                    && couldSeeCoord(candidate.mx, candidate.my))) {
+                addToplineMessage('You stop searching.');
+                g._search_pending_count = 0;
+                g._pending_time_passed = Math.min(g._pending_time_passed, 2);
+                g._keep_pending_message = 1;
+                // C ref: allmain.c:483 + 509-510 — unlike a mid-movemon
+                // dochugw stop, the handle_occupation stop_occupation()
+                // returns from moveloop_core with svc.context.move still 1,
+                // so the next key-free iteration runs its movemon header
+                // before the hero's next command is read (guarantee one extra
+                // pass even when this pass had a single time unit left).
+                g._stop_search_extra_pass = 1;
+            }
+        }
 	        if (turnAdvanced && g._helpless_time > 0) {
 	            g._helpless_time--;
 	            if (g._sleeping_time > 0) g._sleeping_time--;
@@ -17064,6 +17377,10 @@ export async function moveloop_core() {
 	        else {
 	            g._pet_resume_keep_time_count = 0;
 	            g._pending_time_passed--;
+	        }
+	        if (g._stop_search_extra_pass) {
+	            g._stop_search_extra_pass = 0;
+	            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
 	        }
         // C ref: allmain.c:483-510 — while an occupation is armed the
         // moveloop charges a full turn automatically (svc.context.move = 1
@@ -17471,6 +17788,10 @@ export async function moveloop_core() {
 	    g._process_time_with_more = g._message_more && g._continue_monsters_after_more
 	        && !g._pet_inventory_resume && !g._monster_resume_index && !g._monster_resume_same_index
 	        && !g._attack_resume_after_more && !g._pickup_resume_after_more
+	        // C ref: end.c:1107-1118 — when the hero died mid-movemon, done()
+	        // blocks at "You die..."/"Die?" BEFORE the monster loop resumes;
+	        // keep the resume state frozen until revival lets it continue.
+	        && !(g._queued_message_after_more === 'You die...' && (g.u?.uhp || 0) <= 0)
 	        && !(g._queued_message_after_more && g._search_pending_count > 0) ? 1 : 0;
     g._dismissed_more_this_command = 0;
     g._resume_run_after_queued_dead_more = 0;

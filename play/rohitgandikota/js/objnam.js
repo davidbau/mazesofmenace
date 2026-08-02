@@ -20,7 +20,7 @@ import { is_ammo, is_missile } from './wield.js';
 import { is_weptool, is_rustprone, is_corrodeable, is_flammable,
          is_crackable, is_rottable } from './mkobj.js';
 import { bimanual } from './obj.js';
-import { W_ARMOR, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP } from './const.js';
+import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
@@ -453,9 +453,21 @@ export function doname(obj) {
         if (known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         break;
     case TOOL_CLASS:
+        /* src/objnam.c:1486 — a worn tool (blindfold, lenses, towel) */
+        if (obj.owornmask & W_TOOL)
+            bp += ' (being worn)';
         /* charged tools show "(0:n)" once the count is known */
         if (ocl.oc_charged && known)
             bp += ` (${obj.recharged || 0}:${obj.spe})`;
+        break;
+    case RING_CLASS:
+        /* src/objnam.c:1494 — "(on right hand)" / "(on left hand)" */
+        if (obj.owornmask & W_RINGR)
+            bp += ' (on right hand)';
+        if (obj.owornmask & W_RINGL)
+            bp += ' (on left hand)';
+        if (known && ocl.oc_charged)
+            prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         break;
     case WAND_CLASS:
         /* src/objnam.c:1483 — a wand always shows its charges once known;
@@ -1235,4 +1247,17 @@ export function the(str) {
             return 'the ' + str;
     }
     return str;
+}
+
+// src/objnam.c:5532 gloves_simple_name() — gloves vs gauntlets; depends upon
+// discovery state.
+export function gloves_simple_name(gloves) {
+    if (gloves && gloves.dknown) {
+        const ocl = objects[gloves.otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+        const shown = ocl.oc_name_known ? actualn : descrpn;
+        if (shown && shown.toLowerCase().includes('gauntlets'))
+            return 'gauntlets';
+    }
+    return 'gloves';
 }

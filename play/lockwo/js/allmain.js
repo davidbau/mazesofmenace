@@ -16,6 +16,7 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
 import { movemon, mcalcdistress, mcalcmove } from './mon.js';
+import { run_regions } from './region.js';
 import { makemon_rnd_spawn } from './makemon.js';
 import { SPEED_BOOTS } from './mkobj.js';
 import { dosounds } from './sounds.js';
@@ -847,6 +848,12 @@ export async function moveloop_turn() {
             // trap's WOUNDED_LEGS -> heal_legs(0), which restores the -1 Dx BEFORE
             // the later u_wipe_engr rn2(40 + ACURR(A_DEX)*3) roll depends on it.
             await nh_timeout();
+
+            // C ref: allmain.c moveloop_core():274 — run_regions() ages every
+            // active gas-cloud region and fires its per-turn inside-effect for
+            // the hero/monsters it currently contains, right after nh_timeout()
+            // and before the ublesscnt countdown.
+            await run_regions();
 
             // C ref: allmain.c moveloop_core() — once-per-turn "if (u.ublesscnt)
             // u.ublesscnt--;" (the prayer timeout countdown), between run_regions

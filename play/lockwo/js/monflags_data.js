@@ -246,12 +246,47 @@ export const MFLAGS3 = [
     0x200, 0x200, 0x200, 0x200, 0x200, 0x200,
 ];
 
+export const MS_LEADER = 36;
+export const MS_NEMESIS = 37;
+export const MS_GUARDIAN = 38;
+
+// ptr->msound (mons[].msound) — peace_minded()'s leader/guardian/nemesis
+// short-circuits key off this scalar field directly, not a bitmask.
+export const MSOUND = [
+    0, 10, 0, 0, 0, 10, 0, 0, 0, 9, 9, 9, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+    2, 2, 5, 5, 5, 2, 5, 5, 20, 11, 11, 25, 25, 5, 25, 25,
+    9, 9, 0, 0, 34, 0, 0, 7, 0, 0, 0, 24, 24, 24, 24, 20,
+    0, 0, 0, 31, 31, 31, 24, 24, 24, 24, 24, 24, 24, 24, 0, 0,
+    0, 13, 17, 22, 16, 4, 4, 17, 6, 6, 6, 6, 0, 0, 0, 0,
+    0, 0, 0, 0, 12, 12, 12, 12, 12, 12, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 10, 10, 0, 0, 0, 9, 22, 34, 42, 34, 6, 6,
+    7, 6, 25, 25, 25, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 18, 0, 24, 24, 24, 24, 43, 43, 43, 43, 43, 11, 43,
+    42, 13, 16, 26, 26, 26, 26, 21, 21, 21, 21, 0, 0, 0, 0, 0,
+    0, 0, 0, 21, 21, 21, 21, 21, 21, 21, 21, 11, 11, 11, 0, 0,
+    0, 0, 25, 25, 0, 5, 9, 9, 9, 9, 9, 9, 11, 11, 11, 11,
+    11, 0, 32, 32, 32, 42, 0, 42, 3, 5, 5, 3, 5, 5, 5, 44,
+    44, 44, 44, 44, 44, 44, 0, 44, 19, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 25, 23, 23, 23, 25, 25, 25, 25, 25, 25, 22, 39,
+    28, 29, 40, 41, 41, 27, 27, 30, 27, 27, 27, 27, 9, 34, 28, 0,
+    14, 29, 31, 0, 0, 0, 34, 0, 0, 0, 0, 42, 5, 34, 0, 15,
+    24, 24, 33, 33, 33, 33, 5, 35, 35, 35, 29, 0, 0, 0, 0, 0,
+    0, 0, 6, 0, 8, 0, 0, 4, 21, 0, 25, 25, 25, 25, 25, 25,
+    25, 25, 25, 25, 25, 25, 25, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+    36, 36, 36, 36, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37,
+    38, 38, 38, 38, 38, 38, 38, 38, 38, 25, 38, 38, 38, 38,
+];
+
 const f1 = (ptr) => (ptr?.pmidx != null ? (MFLAGS1[ptr.pmidx] || 0) : 0);
 const f2 = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] || 0) : 0);
 const f3 = (ptr) => (ptr?.pmidx != null ? (MFLAGS3[ptr.pmidx] || 0) : 0);
+const fsound = (ptr) => (ptr?.pmidx != null ? MSOUND[ptr.pmidx] : undefined);
 export const mflags1_of = f1;
 export const mflags2_of = f2;
 export const mflags3_of = f3;
+export const msound_of = fsound;
 
 // C ref: include/mondata.h — the predicates that are simple flag tests.
 export const is_animal = (ptr) => (f1(ptr) & M1_ANIMAL) !== 0;

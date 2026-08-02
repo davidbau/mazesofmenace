@@ -31,6 +31,8 @@ import { monster_by_pmidx, infravisible } from './makemon.js';
 import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { visible_region_at, show_region } from './region.js';
+import { ACCESSIBLE, IS_POOL, IS_LAVA } from './const.js';
 
 const COIN_CLASS = 12;
 const ROCK_CLASS = 14;
@@ -892,6 +894,57 @@ export function terrain_background_glyph(loc, x, y) {
 // C ref: display.c newsym — draw the glyph stack for one cell with the
 // hero-memory + visibility semantics.  Display priority is
 // monster > (remembered background: object > trap > terrain).
+// C ref: attrib.c *_abil[] — the experience level at which each role gains
+// intrinsic Warning (HWarning).  Roles absent from this map never gain it.
+// Keyed by role mnum, matching allmain.js's FAST_AT_LEVEL table.
+const WARNING_AT_LEVEL = Object.freeze({
+    2: 15,   // Caveman (cav_abil)
+    3: 15,   // Healer  (hea_abil)
+    5: 7,    // Monk    (mon_abil)
+    6: 15,   // Priest  (pri_abil)
+    12: 15,  // Wizard  (wiz_abil)
+});
+
+// C ref: hack.h Warning — HWarning|EWarning.  Only the role-granted intrinsic
+// is modelled; the extrinsic (ring of warning, warned-of-monster artifacts) is
+// not, so MATCH_WARN_OF_MON never applies either.
+function have_warning() {
+    const lvl = WARNING_AT_LEVEL[game.urole?.mnum];
+    if (lvl == null) return false;
+    return (game.u?.ulevel ?? 1) >= lvl;
+}
+
+// C ref: display.h _mon_warning(mon) —
+//   Warning && !mon->mpeaceful && mdistu(mon) < 100
+//     && ((int)(mon->m_lev / 4)) >= svc.context.warnlevel
+// svc.context.warnlevel is set to 1 by newgame() (allmain.c:774) and nothing
+// in a normal game changes it.
+const WARNLEVEL = 1;
+function mon_warning(mon) {
+    if (!mon || mon.mpeaceful) return false;
+    if (!have_warning()) return false;
+    const dx = mon.mx - (game.u?.ux ?? 0), dy = mon.my - (game.u?.uy ?? 0);
+    if (dx * dx + dy * dy >= 100) return false;
+    return Math.trunc((mon.m_lev || 0) / 4) >= WARNLEVEL;
+}
+
+// C ref: drawing.c def_warnsyms[] — the six warning levels, '0'..'5'.
+const WARNSYMS = [
+    { ch: '0', color: CLR_WHITE }, { ch: '1', color: CLR_RED },
+    { ch: '2', color: CLR_RED }, { ch: '3', color: CLR_RED },
+    { ch: '4', color: CLR_MAGENTA }, { ch: '5', color: CLR_BRIGHT_MAGENTA },
+];
+const WARNCOUNT = 6;
+
+// C ref: display.c display_warning() / warning_of() — a warning glyph floats
+// above the map wherever an unseen threatening monster is sensed.  No RNG.
+function display_warning(mon, x, y) {
+    const tmp = Math.trunc((mon.m_lev || 0) / 4);
+    const wl = (tmp > WARNCOUNT - 1) ? WARNCOUNT - 1 : tmp;
+    const sym = WARNSYMS[wl];
+    show_glyph_cell(x, y, sym.ch, sym.color, false);
+}
+
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -937,6 +990,22 @@ export function newsym(x, y) {
         // giant eel submerged in water) is NOT shown; the background shows
         // through instead.
         const mon = m_at(x, y);
+        // C ref: display.c newsym — a visible gas-cloud region drawn on top of
+        // the background, UNLESS a directly-occupying monster overrides it
+        // (mon_overrides_region()).  SCOPE: mon_overrides_region's adjacent-
+        // monster / sensemon / mon_warning / xray_range cases are not modeled
+        // — only the simple "a normally-visible monster stands exactly here"
+        // override — since no covered session has needed the richer form yet.
+        // This is never reached for the hero's own square (handled earlier),
+        // so C's region-overrides-the-hero-glyph ordering nuance is also not
+        // replicated (see region.js's file header for the broader scope note).
+        const reg = visible_region_at(x, y);
+        if (reg && (ACCESSIBLE(loc.typ) || (reg.visible && (IS_POOL(loc.typ) || IS_LAVA(loc.typ))))
+            && !(mon && !mon.mundetected)) {
+            const rg = show_region(reg);
+            show_glyph_cell(x, y, rg.ch, rg.color, false);
+            return;
+        }
         if (mon && !mon.mundetected) {
             // Remember the background (not the monster — monsters move).
             if (game.level?.flags?.hero_memory) {
@@ -952,6 +1021,10 @@ export function newsym(x, y) {
             // monster's color.
             const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
+        } else if (mon && mon_warning(mon)) {
+            // C ref: display.c newsym:1030 — `else if (mon && mon_warning(mon)
+            // && !worm_tail) display_warning(mon)`.
+            display_warning(mon, x, y);
         } else if (loc.invisMon) {
             // C ref: display.c newsym — else if (glyph_is_invisible(lev->glyph))
             // map_invisible(x,y): a square remembered as holding a sensed-but-
@@ -979,6 +1052,11 @@ export function newsym(x, y) {
             const mg = monster_glyph(mon);
             const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
+        } else if (mon && mon_warning(mon)) {
+            // C ref: display.c newsym:1055 — the out-of-sight arm of the same
+            // rule: a threatening monster the hero cannot see still shows its
+            // warning glyph, on top of whatever the square is remembered as.
+            display_warning(mon, x, y);
         } else if (loc.remembered_glyph) {
             // C ref: display.c newsym else-branch (~1087) — a cell out of sight
             // remembered as a lit corridor (S_litcorr) re-darkens to S_corr when

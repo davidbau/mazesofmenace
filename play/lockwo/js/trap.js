@@ -19,13 +19,14 @@ import {
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
-    LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC,
+    LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
     POT_WATER,
 } from './mkobj.js';
+import { In_hell as dungeon_In_hell } from './dungeon.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
 const DART = 24;
@@ -38,10 +39,22 @@ export function t_at(x, y) {
     return null;
 }
 
+// C ref: trap.h unhideable_trap(ttyp) — a trap that is visible from the moment
+// it is created (maketrap() seeds ttmp->tseen with it).  Only HOLE qualifies;
+// note in particular that MAGIC_PORTAL does NOT, so a freshly generated portal
+// is invisible until seetrap() reveals it.
+export function unhideable_trap(ttyp) { return ttyp === HOLE; }
+
+// C ref: trap.h undestroyable_trap(ttyp) — a trap that maketrap()/
+// put_lregion_here() must not overwrite or remove.
+export function undestroyable_trap(ttyp) {
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
 // C ref: trap.c deltrap() — unlink and free a trap.  The lightweight port keeps
 // traps in a flat array, so removal is a splice; Sokoban/conjoined-pit bookwork
 // is not exercised by the owned sessions.
-function deltrap(trap) {
+export function deltrap(trap) {
     const list = game.level?.traps;
     if (!list) return;
     const i = list.indexOf(trap);
@@ -96,13 +109,12 @@ function dunlev_reached(lev) {
 }
 
 function In_hell(lev) {
-    const dnum = lev?.dnum ?? 0;
-    return dnum === (game.gehennom_dnum ?? -1);
+    return dungeon_In_hell(lev);
 }
 
 // C ref: dungeon.c Invocation_lev(lev) — the vibrating-square level, i.e. the
 // level just above Gehennom's bottom.
-function Invocation_lev(lev) {
+export function Invocation_lev(lev) {
     return In_hell(lev) && (lev?.dlevel ?? 0) === dunlevs_in_dungeon(lev) - 1;
 }
 
@@ -294,8 +306,10 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
 }
 
 export async function maketrap(x, y, typ) {
+    // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
+    // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
     const trap = {
-        ttyp: typ, tx: x, ty: y, tseen: false, once: false,
+        ttyp: typ, tx: x, ty: y, tseen: unhideable_trap(typ), once: false,
         launch: { x: 0, y: 0 },
         dst: { dnum: -1, dlevel: -1 },
     };

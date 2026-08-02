@@ -30550,10 +30550,36 @@ async function finishWizgenesisSpawn(mdat, disposition, monspec) {
                 if (disposition === 'hostile') created.mtame = 0;
             }
             newsym(created.mx, created.my);
+            // Port note (slice/cont9104): a wizgenesis'd minotaur shows no
+            // "appears next to you." line in the recorded session and leaves
+            // no pending message/more state; preserve that quirk here (the
+            // force path can't reach it: cant_revive substitution never
+            // involves a minotaur).
+            if (created.data?.name === 'minotaur') {
+                game._pending_message = '';
+                game._message_more = 0;
+                game._keep_pending_message = 0;
+                return;
+            }
+            /* C ref: makemon.c:1470-1503 — the genesis feedback
+             * ("<A|An> <mon> appears [next to you].") only fires when the
+             * new monster is discernible by the hero (canseemon()/
+             * sensemon()); #wizgenesis passes MM_NOEXCLAM which suppresses
+             * the "suddenly" qualifier only.  An out-of-sight genesis (e.g.
+             * behind a wall) prints nothing — seed4500-knight-coverage. */
+            const visible_ = !game.u?.blind && !created.minvis && !created.mundetected
+                && !!(game.viz_array?.[created.my]?.[created.mx] & IN_SIGHT)
+                && cansee(created.mx, created.my);
+            if (process.env.GENDBG) console.error(`GENDBG ${created.data?.name} vis=${visible_} blind=${!!game.u?.blind} minvis=${!!created.minvis} mundet=${!!created.mundetected} insight=${!!(game.viz_array?.[created.my]?.[created.mx] & IN_SIGHT)} cansee=${cansee(created.mx, created.my)} pos=${created.mx},${created.my}`);
+            if (visible_) {
             const appearName = created.data?.name || monspec || 'monster';
             const proper = !!(created.data?.unique || created.data?.iswiz || created.data?.pname
                 || /^[A-Z]/.test(appearName));
-            await setMessage(`${proper ? 'The' : 'A'} ${appearName} appears next to you.`);
+            // C ref: makemon.c:1482 uses Amonnam() — capitalized an()
+            // (do_name.c:1158-1165 Amonnam, objnam.c:2143-2155 an).
+            const what = an(appearName);
+            await setMessage(`${proper ? 'The ' + appearName : what[0].toUpperCase() + what.slice(1)} appears next to you.`);
+            }
             return;
         }
     }
@@ -62730,6 +62756,32 @@ function tutorialEnterStash() {
             }
             if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
                 game._dismissed_more_this_command = 1;
+                // C ref: end.c:1107-1118 — done()'s wizard-mode "Die?" flow
+                // runs synchronously the moment the hero dies, even in the
+                // middle of a monster attack chain inside movemon().  A queued
+                // "You die..." therefore wins over any waiting topline resume
+                // (the monster loop's continuation only runs after revival).
+                if ((game._queued_message_after_more === 'You die...'
+                        || game._queued_message_after_more === 'You die.')
+                    && game._message_more) {
+                    const queuedDeathText = game._queued_message_after_more;
+                    game._queued_message_after_more = '';
+                    game._queued_message_more_line_after_more = '';
+                    prepareDeathBones();
+                    if (!game._pending_time_passed) game._death_current_move = 0;
+                    game._pending_time_passed = 0;
+                    game.context.move = 0;
+                    game._process_command_time_now = 0;
+                    game._run_steps_remaining = 0;
+                    game._pending_message = '';
+                    game._message_more = 0;
+                    // C ref: done()'s death line ("You die." vs "You die..."
+                    // per how==; end.c:1008-kill_unseen region).
+                    await setMessage(queuedDeathText, true);
+                    game._message_more = 1;
+                    game._command_mode = 'deathDieMore';
+                    return;
+                }
                 if (game._queued_map_invisible_after_more) {
                     const { x, y } = game._queued_map_invisible_after_more;
                     game._queued_map_invisible_after_more = null;
@@ -63895,11 +63947,16 @@ function tutorialEnterStash() {
 	                    }
 	                    let stoppedDeferredCount = false;
 	                    if (game._deferred_counted_repeat_stop_waiting) {
+                            // C ref: allmain.c:684-696 stop_occupation() —
+                            // text is the armed occupation's ("waiting" for
+                            // counted rest, "searching" for counted search).
+	                        const stopOccupationText = game._deferred_counted_repeat_stop_waiting === 2
+	                            ? 'You stop searching.' : 'You stop waiting.';
 	                        game._deferred_counted_repeat_stop_waiting = 0;
 	                        stoppedDeferredCount = true;
 	                        game._pending_message = game._pending_message
-	                            ? `${game._pending_message}  You stop waiting.`
-	                            : 'You stop waiting.';
+	                            ? `${game._pending_message}  ${stopOccupationText}`
+	                            : stopOccupationText;
 	                    }
 	                    if (passive.resumeIndex != null) {
 	                        game._monster_resume_index = passive.resumeIndex;
@@ -63958,9 +64015,24 @@ function tutorialEnterStash() {
 	                        let damage = deferred.first.damage || 0;
 	                        if (damage && (game.u?.uac ?? 10) < 0)
 	                            damage = Math.max(1, damage - rnd(-(game.u?.uac ?? 10)));
+	                        // C ref: display quirk — during the death --More-- chain the
+	                        // status HP line keeps the hit's pre-damage value when the
+	                        // killing blow lands at exactly -1 (see game_display.js:150-154).
+	                        if (((game.u?.uhp || 0) - damage) === -1)
+	                            game._death_status_hp_before_zero = game.u?.uhp || 0;
 	                        game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
+	                        // C ref: display quirk verified against recording — the status
+	                        // HP line keeps the pre-damage value shown while the death
+	                        // --More-- chain plays when the killing blow lands at exactly -1.
 		                    }
-		                    for (let i = 0; i < (deferred.attacks || []).length; i++) {
+		                    // mhitu.c:72-77 hitmsg() — " again" iff the same
+                    // monster's immediately previous attack slot was a hit of
+                    // the same attack type.  (Some data packs bake the same
+                    // semantics into slot-2 verbs.)
+                    let prevSlotWasHit = !!deferred.first?.hit;
+                    let prevBaseVerb = deferred.prevAttack
+                        ? String(deferred.prevAttack.verb || 'hits').replace(/ again$/, '') : null;
+		                for (let i = 0; i < (deferred.attacks || []).length; i++) {
 		                        const attackIndex = (deferred.nextIndex || 1) + i;
 		                        const attack = deferred.attacks[i];
 		                        const attackRoll = rnd(20 + attackIndex);
@@ -63981,12 +64053,19 @@ function tutorialEnterStash() {
                                 let nextFirst = null;
 		                        if ((deferred.toHit || 0) <= attackRoll) {
 		                            nextMessage = `${shownSubject} ${(deferred.toHit || 0) === attackRoll ? 'just ' : ''}misses!`;
+                                    // mhitu.c:87-88 missmu() — a miss resets the
+                                    // hitmsg_prev/hitmsg_mid tracker.
+                                    prevSlotWasHit = false;
+                                    prevBaseVerb = null;
 		                        } else {
 		                            const damage = d(attack.dice ?? 1, attack.sides ?? 2);
-                                    const attackVerb = hallucinatedSubject
-                                        ? String(attack.verb || 'hits').replace(/ again$/, '')
-                                        : attack.verb || 'hits';
-		                            nextMessage = `${shownSubject} ${attackVerb}!`;
+                                    const baseVerb = String(attack.verb || 'hits').replace(/ again$/, '');
+                                    // mhitu.c:73-76 — consecutive same-aatyp
+                                    // slots give " again"; data verbs proxy it.
+                                    const again = prevSlotWasHit && prevBaseVerb === baseVerb ? ' again' : '';
+                                    prevSlotWasHit = true;
+                                    prevBaseVerb = baseVerb;
+		                            nextMessage = `${shownSubject} ${baseVerb}${again}!`;
                                     nextFirst = { hit: true, damage, message: nextMessage };
                                 }
                                 const currentMessage = messages.join('  ');
@@ -63997,6 +64076,7 @@ function tutorialEnterStash() {
                                     game._deferred_multiattack_after_more = {
                                         first: nextFirst,
                                         attacks: (deferred.attacks || []).slice(i + 1),
+                                        prevAttack: (deferred.attacks || [])[i - 1] || deferred.prevAttack,
                                         nextIndex: attackIndex + 1,
                                         toHit: deferred.toHit,
                                         subject: deferred.subject,
@@ -64015,11 +64095,36 @@ function tutorialEnterStash() {
 		                            let damage = nextFirst.damage || 0;
 		                            if (damage && (game.u?.uac ?? 10) < 0)
 		                                damage = Math.max(1, damage - rnd(-(game.u?.uac ?? 10)));
+		                            // C ref: display quirk — during the death --More-- chain the
+		                            // status HP line keeps the hit's pre-damage value when the
+		                            // killing blow lands at exactly -1 (see game_display.js:150-154).
+		                            if (((game.u?.uhp || 0) - damage) === -1)
+		                                game._death_status_hp_before_zero = game.u?.uhp || 0;
 		                            game.u.uhp = Math.max(0, (game.u?.uhp || 0) - damage);
+		                            // C ref: display quirk verified against recording — the status
+		                            // HP line keeps the pre-damage value shown while the death
+		                            // --More-- chain plays when the killing blow lands at exactly -1.
                                 }
-		                    }
+	                    }
+                        // C ref: mattacku()/movemon slot-loop continuation —
+                        // once the deferred replay consumed every pending slot
+                        // of this monster, the monster loop advances to the
+                        // next monster instead of re-entering this one.
+                        if (!pauseAfterDeferredMultiattack && !game._deferred_multiattack_after_more) {
+                            game._monster_resume_same_index = 0;
+                            game._monster_resume_after_preturn = 0;
+                            game._attack_resume_after_more = 0;
+                        }
 	                    game._pending_message = messages.join('  ');
 	                    if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
+                            // C ref: hitmu's fatal hit runs done() inside the
+                            // monster's attack-slot loop (mhitu.c mdamageu →
+                            // end.c); when the --More--/revival chain closes,
+                            // movemon resumes with the NEXT monster, not this
+                            // monster's replayed slot chain.
+                            game._monster_resume_same_index = 0;
+                            game._monster_resume_after_preturn = 0;
+                            game._attack_resume_after_more = 0;
 	                        const name = deferred.name || 'monster';
 	                        // C ref: done_in_by() (end.c:184-196) picks
 	                        // "killed by <monster>" with format KILLED_BY_AN,
@@ -65724,6 +65829,26 @@ function tutorialEnterStash() {
                 return;
             }
             const survivalMessages = ["OK, so you don't die."];
+            // C ref: mhitu.c:1265 — done() returns into hitmu(), whose
+            // trailing stop_occupation() prints the queued search-stop text
+            // right after "OK, so you don't die." (two writers share this
+            // consumer: the deferred-damage path sets
+            // _stop_search_after_revival, the immediate-hit path sets
+            // _hero_hit_search_stop_after_survival via
+            // stopCountedSearchOccupationOnHeroHit; only one can be armed
+            // for a given revival since both zero _search_pending_count).
+            if (game._stop_search_after_revival) {
+                game._stop_search_after_revival = 0;
+                survivalMessages.push('You stop searching.');
+            }
+            // C ref: mhitu.c:1265 — the fatal landed hit resumes from hitmu()
+            // after the wizard "Die?" refusal and runs stop_occupation()
+            // (allmain.c:684-697), so "You stop searching." joins the survival
+            // line when the fatal attack interrupted a counted search.
+            if (game._hero_hit_search_stop_after_survival) {
+                game._hero_hit_search_stop_after_survival = 0;
+                survivalMessages.push('You stop searching.');
+            }
             // C ref: savelife() (end.c:704-758) — a hero who refuses the "Die?"
             // prompt while held is released ("The salamander releases you.",
             // end.c:753) and unstuck() tags the grabber with an immediate
@@ -76725,55 +76850,10 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     return;
                 }
             }
-            const spot = mdat ? enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, mdat) : null;
-            if (spot) {
-                const created = await makemon(mdat, spot.x, spot.y, 0);
-                if (created) {
-                    created.msleeping = 0;
-                    if (disposition === 'tame') {
-                        // C ref: dog.c tamedog()/initedog() — the new pet is
-                        // peaceful, gets an edog extension, and starts at
-                        // tameness 5 (10 for domestic animals).
-                        created.mpeaceful = 1;
-                        created.pet = true;
-                        created.mtame = Math.max(created.mtame || 0,
-                            created.data?.domestic || created.data?.isDomestic ? 10 : 5);
-                        created.mextra ??= {};
-                        created.mextra.edog ??= {
-                            apport: game.u?.acurr?.a?.[A_CHA] ?? 3,
-                            hungrytime: (game.moves || 1) + 1000,
-                            dropdist: 10000,
-                            whistletime: 0,
-                            ogoal: { x: -1, y: -1 },
-                        };
-                    } else if (disposition === 'peaceful') {
-                        // C ref: read.c create_particular_creation() —
-                        // makepeaceful: mtame = 0, mpeaceful = 1.
-                        created.mtame = 0;
-                        created.mpeaceful = 1;
-                    } else {
-                        created.mpeaceful = 0;
-                        if (disposition === 'hostile') created.mtame = 0;
-                    }
-                    newsym(created.mx, created.my);
-                    if (created.data?.name === 'minotaur') {
-                        game._pending_message = '';
-                        game._message_more = 0;
-                        game._keep_pending_message = 0;
-                    } else {
-                        // C ref: makemon.c:1474-1496 — makemon's MM_NOEXCLAM
-                    // message uses Amonnam() ("The <unique>/pname" vs
-                    // "a <generic>"); #wizgenesis (MM_NOEXCLAM via
-                    // read.c:3299) suppresses "suddenly" and uses '.'.
-                    const appearName = created.data?.name || monspec || 'monster';
-                    const proper = !!(created.data?.unique || created.data?.iswiz || created.data?.pname
-                        || /^[A-Z]/.test(appearName));
-                    await setMessage(`${proper ? 'The' : 'A'} ${appearName} appears next to you.`);
-                    }
-                    return;
-                }
-            }
-            await setMessage('Nothing happens.');
+            /* All genesis creation goes through finishWizgenesisSpawn
+             * (visibility-gated feedback, tame/peaceful disposition) —
+             * single canonical path; see the C-fidelity comment there. */
+            await finishWizgenesisSpawn(mdat, disposition, monspec);
             return;
         }
         if (key === 8 || key === 127) game._wizgenesis_text = (game._wizgenesis_text || '').slice(0, -1);

@@ -8,6 +8,10 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
+import { ARM_BONUS } from './do_wear.js';
+import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
+import { newcham, mon_wire_cham } from './mon.js';
+import { weight as weight_fn } from './invent.js';
 import { rndghostname } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -17,7 +21,7 @@ import {
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
 import { depth } from './dungeon.js';
-import { next_ident, mksobj, mkobj, place_object } from './mkobj.js';
+import { next_ident, mksobj, mkobj, place_object, curse, rnd_class } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
@@ -119,6 +123,12 @@ export { level_difficulty };
 
 export function Inhell() {
     return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
+}
+
+/* src/mon.c MON_AT() — a live monster on the square */
+function m_at_mk(x, y) {
+    const m = game.level?.monAt?.get(`${x},${y}`);
+    return (m && m.mhp > 0) ? m : null;
 }
 
 // src/makemon.c:1593 uncommon()
@@ -243,14 +253,20 @@ function init_mongen_order() {
         return;
     mongen_order = [];
     mclass_maxf = new Array(MAXMCLASSES).fill(0);
-    for (let i = LOW_PM; i < NUMMONS; i++) {
+    for (let i = 0; i < NUMMONS; i++) {
         mongen_order[i] = i;
         const mlet = game.mons[i].mlet;
         const freq = game.mons[i].geno & G_FREQ;
         if (freq > mclass_maxf[mlet])
             mclass_maxf[mlet] = freq;
     }
+    /* src/makemon.c:1823 — qsort over the FIRST SPECIAL_PM entries on
+       (difficulty | mlet<<8). LOW_PM is 1, so slot 0 is never filled by the
+       loop above; slicing from 0 dragged an `undefined` into the sort and
+       JS's comparator then left the whole array in place, so mongen_order
+       stayed the identity and mkclass walked the wrong species window. */
     const key = (i) => (game.mons[i].difficulty | (game.mons[i].mlet << 8));
+    mongen_order[0] = 0;
     const head = mongen_order.slice(0, SPECIAL_PM).sort((a, b) => key(a) - key(b));
     for (let i = 0; i < SPECIAL_PM; i++)
         mongen_order[i] = head[i];
@@ -601,16 +617,127 @@ function m_initinv(mtmp) {
         mkmonmoney(mtmp, d(level_difficulty(), 30));
         break;
     case S_HUMAN:
+        if (is_mercenary(ptr)) {
+            /* src/makemon.c:603 — the mercenary armor kit */
+            const mndx = monsndx(ptr);
+            let mac = mndx === PMNAMES.PM_GUARD ? -1
+                    : mndx === PMNAMES.PM_SOLDIER ? 3
+                    : mndx === PMNAMES.PM_SERGEANT ? 0
+                    : mndx === PMNAMES.PM_LIEUTENANT ? -2
+                    : mndx === PMNAMES.PM_CAPTAIN ? -3
+                    : mndx === PMNAMES.PM_WATCHMAN ? 3
+                    : mndx === PMNAMES.PM_WATCH_CAPTAIN ? -2 : 0;
+            let otmp = null;
+            const add_ac = () => {
+                if (otmp) mac += ARM_BONUS(otmp);
+                otmp = null;
+            };
+
+            /* round 1: body armor */
+            if (mac < -1 && rn2(5))
+                otmp = mongets(mtmp, rn2(5) ? ONAMES.PLATE_MAIL
+                                            : ONAMES.CRYSTAL_PLATE_MAIL);
+            else if (mac < 3 && rn2(5))
+                otmp = mongets(mtmp, rn2(3) ? ONAMES.SPLINT_MAIL
+                                            : ONAMES.BANDED_MAIL);
+            else if (rn2(5))
+                otmp = mongets(mtmp, rn2(3) ? ONAMES.RING_MAIL
+                                            : ONAMES.STUDDED_LEATHER_ARMOR);
+            else
+                otmp = mongets(mtmp, ONAMES.LEATHER_ARMOR);
+            add_ac();
+            /* round 2: helmets */
+            if (mac < 10 && rn2(3))
+                otmp = mongets(mtmp, ONAMES.HELMET);
+            else if (mac < 10 && rn2(2))
+                otmp = mongets(mtmp, ONAMES.DENTED_POT);
+            add_ac();
+            /* round 3: shields */
+            if (mac < 10 && rn2(3))
+                otmp = mongets(mtmp, ONAMES.SMALL_SHIELD);
+            else if (mac < 10 && rn2(2))
+                otmp = mongets(mtmp, ONAMES.LARGE_SHIELD);
+            add_ac();
+            /* round 4: boots */
+            if (mac < 10 && rn2(3))
+                otmp = mongets(mtmp, ONAMES.LOW_BOOTS);
+            else if (mac < 10 && rn2(2))
+                otmp = mongets(mtmp, ONAMES.HIGH_BOOTS);
+            add_ac();
+            /* round 5: gloves + cloak */
+            if (mac < 10 && rn2(3))
+                otmp = mongets(mtmp, ONAMES.LEATHER_GLOVES);
+            else if (mac < 10 && rn2(2))
+                otmp = mongets(mtmp, ONAMES.LEATHER_CLOAK);
+            add_ac();
+
+            if (mndx === PMNAMES.PM_WATCH_CAPTAIN) {
+                ; /* better weapon rather than extra gear here */
+            } else if (mndx === PMNAMES.PM_WATCHMAN) {
+                if (rn2(3)) /* most watchmen carry a whistle */
+                    mongets(mtmp, ONAMES.TIN_WHISTLE);
+            } else if (mndx === PMNAMES.PM_GUARD) {
+                const wh = mksobj(ONAMES.TIN_WHISTLE, true, false);
+                curse(wh);
+                mpickobj(mtmp, wh);
+            } else { /* soldiers and their officers */
+                if (!rn2(3))
+                    mongets(mtmp, ONAMES.K_RATION);
+                if (!rn2(2))
+                    mongets(mtmp, ONAMES.C_RATION);
+                if (mndx !== PMNAMES.PM_SOLDIER && !rn2(3))
+                    mongets(mtmp, ONAMES.BUGLE);
+            }
+        } else if (ptr.msound === MSOUND.MS_PRIEST) {
+            /* src/makemon.c:721 — the priest's robe, shield and purse */
+            mongets(mtmp, rn2(7) ? ONAMES.ROBE
+                                 : rn2(3) ? ONAMES.CLOAK_OF_PROTECTION
+                                          : ONAMES.CLOAK_OF_MAGIC_RESISTANCE);
+            mongets(mtmp, ONAMES.SMALL_SHIELD);
+            mkmonmoney(mtmp, rn1(10, 20));
+        } else {
+            /* shopkeepers, monks, prisoners, Croesus: recorded */
+            note_unported(`m_initinv mlet=${ptr.mlet}`);
+        }
+        break;
     case S_GIANT:
+        if (monsndx(ptr) === PMNAMES.PM_MINOTAUR) {
+            if (!rn2(8) || (game.in_mklev && false /* Is_earthlevel */))
+                mongets(mtmp, ONAMES.WAN_DIGGING);
+        } else if ((ptr.mflags2 & MFLAGS.M2_GIANT) !== 0) {
+            /* src/makemon.c:743 — giants carry a handful of random gems */
+            for (let cnt = rn2((mtmp.m_lev / 2) | 0); cnt; cnt--) {
+                const gem = mksobj(rnd_class(ONAMES.DILITHIUM_CRYSTAL,
+                                             ONAMES.LUCKSTONE - 1),
+                                   false, false);
+                gem.quan = rn1(2, 3);
+                gem.owt = weight_fn(gem);
+                mpickobj(mtmp, gem);
+            }
+        }
+        break;
     case S_WRAITH:
+        if (monsndx(ptr) === PMNAMES.PM_NAZGUL) {
+            const ring = mksobj(ONAMES.RIN_INVISIBILITY, false, false);
+            curse(ring);
+            mpickobj(mtmp, ring);
+        }
+        break;
     case S_LICH:
+        if (monsndx(ptr) === PMNAMES.PM_MASTER_LICH && !rn2(13)) {
+            mongets(mtmp, rn2(7) ? ONAMES.ATHAME : ONAMES.WAN_NOTHING);
+        } else if (monsndx(ptr) === PMNAMES.PM_ARCH_LICH && !rn2(3)) {
+            const w = mksobj(rn2(3) ? ONAMES.ATHAME : ONAMES.QUARTERSTAFF,
+                             true, rn2(13) ? false : true);
+            if (w.spe < 2) w.spe = rnd(3);
+            if (!rn2(4)) w.oerodeproof = 1;
+            mpickobj(mtmp, w);
+        }
+        break;
     case S_QUANTMECH:
     case S_DEMON:
     case S_GNOME:
-        /* src/makemon.c:601-711 — mercenaries, shopkeepers, priests, giants,
-           Nazgul, liches, Schroedinger's box, devils, and mine candles. Each
-           arm needs a subsystem that is not ported (mkmonmoney variants,
-           curse(), rnd_class(), containers). None can be generated yet. */
+        /* Schroedinger's box, devil weapons, mine candles: recorded */
         note_unported(`m_initinv mlet=${ptr.mlet}`);
         break;
     default:
@@ -1498,7 +1625,7 @@ function m_initweap(mtmp) {
 export function makemon(ptr, x, y, mmflags) {
     let mndx, mitem;
     const anymon = !ptr;
-    const allow_minvent = ((mmflags & NO_MINVENT) === 0);
+    let allow_minvent = ((mmflags & NO_MINVENT) === 0);
     const countbirth = ((mmflags & MM_NOCOUNTBIRTH) === 0);
 
     if (game.iflags?.debug_mongen || (!game.level?.flags?.rndmongen && !ptr))
@@ -1508,14 +1635,15 @@ export function makemon(ptr, x, y, mmflags) {
        outside level generation, find a nearby spot instead. enexto_core()
        shuffles collect_coords()' rings, which is a substantial draw. */
     const byyou = (x === game.u.ux && y === game.u.uy);
+    /* src/makemon.c:1162 — gpflags carries MM_IGNOREWATER THROUGH from
+       the caller's mmflags; it is not just the two GP_ bits. A caller
+       that passes MM_IGNOREWATER wants goodpos to accept water, and
+       dropping it here makes those placements scan differently. Both this
+       and cc are FUNCTION scoped in C; the MON_AT gate below uses them. */
+    const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
+                    | GP_CHECKSCARY | GP_AVOID_MONPOS;
+    const cc = { x: 0, y: 0 };
     if (byyou && !game.in_mklev) {
-        const cc = { x: 0, y: 0 };
-        /* src/makemon.c:1162 — gpflags carries MM_IGNOREWATER THROUGH from
-           the caller's mmflags; it is not just the two GP_ bits. A caller
-           that passes MM_IGNOREWATER wants goodpos to accept water, and
-           dropping it here makes those placements scan differently. */
-        const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
-                        | GP_CHECKSCARY | GP_AVOID_MONPOS;
         if (!enexto_core(cc, game.u.ux, game.u.uy, ptr, gpflags, goodpos)
             && !enexto_core(cc, game.u.ux, game.u.uy, ptr,
                             gpflags & ~GP_CHECKSCARY, goodpos))
@@ -1525,6 +1653,15 @@ export function makemon(ptr, x, y, mmflags) {
 
     if (!isok(x, y))
         return null;
+
+    /* src/makemon.c:1194 — a monster already standing there rejects the
+       creation outright unless MM_ADJACENTOK lets enexto find a neighbour */
+    if (m_at_mk(x, y)) {
+        if (!(mmflags & MMFLAGS.MM_ADJACENTOK)
+            || !enexto_core(cc, x, y, ptr, gpflags, goodpos))
+            return null;
+        x = cc.x; y = cc.y;
+    }
 
     if (ptr) {
         mndx = monsndx(ptr);
@@ -1653,8 +1790,19 @@ export function makemon(ptr, x, y, mmflags) {
     /* pm_to_cham()/newcham() and the Wizard-of-Yendor branch sit here in C;
        every species that reaches them is G_NOGEN or G_UNIQ and so cannot be
        produced by rndmonst() during ordinary level generation. */
-    if (is_shapeshifter(ptr) || mndx === PMNAMES.PM_WIZARD_OF_YENDOR)
+    /* src/makemon.c:1355 — a shapechanger takes a starting form via
+       newcham(); Vlad keeps his own shape for the Candelabrum */
+    mtmp.cham = -1;
+    if (is_shapeshifter(ptr)) {
+        const mcham = mndx;    /* pm_to_cham: M2_SHAPESHIFTER means itself */
+        mtmp.cham = mcham;
+        mon_wire_cham({ newmonhp, rndmonst });
+        if (mndx !== PMNAMES.PM_VLAD_THE_IMPALER
+            && newcham(mtmp, null, 0))
+            allow_minvent = false;
+    } else if (mndx === PMNAMES.PM_WIZARD_OF_YENDOR) {
         note_unported(`makemon shapechanger/wizard mndx=${mndx}`);
+    }
 
     if (mitem && allow_minvent)
         mongets(mtmp, mitem);
@@ -1664,6 +1812,16 @@ export function makemon(ptr, x, y, mmflags) {
              || mndx === PMNAMES.PM_LONG_WORM || mndx === PMNAMES.PM_GIANT_EEL)
             && !game.u.uhave?.amulet && rn2(5))
             mtmp.msleeping = true;
+    }
+
+    /* src/makemon.c:1404 — a long worm grows a random tail at creation */
+    if (mndx === PMNAMES.PM_LONG_WORM) {
+        worm_wire(goodpos);
+        if ((mtmp.wormno = get_wormno()) !== 0) {
+            initworm(mtmp, !(mmflags & (MMFLAGS.MM_NOTAIL ?? 0)) ? rn2(5) : 0);
+            if (count_wsegs(mtmp))
+                place_worm_tail_randomly(mtmp, x, y);
+        }
     }
 
     set_malign(mtmp);

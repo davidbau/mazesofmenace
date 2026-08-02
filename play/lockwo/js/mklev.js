@@ -9,13 +9,24 @@ import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level } from './hacklib.js';
-import { filler_region, lspo_map, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, shuffle } from './sp_lev.js';
-import { Is_special, builds_up } from './dungeon.js';
-import { In_quest } from './const.js';
+import { depth as depth_of_level, distmin } from './hacklib.js';
+import { filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, shuffle,
+         mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
+         splev_map_origin, SET_LIT_NOCHANGE } from './sp_lev.js';
+import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
+import {
+    selection_new, selection_clone, selection_clear, selection_setpoint,
+    selection_getpoint, selection_getbounds, selection_iterate,
+    selection_numpoints, selection_rndcoord, selection_filter_percent,
+    selection_filter_mapchar, l_selection_negate, l_selection_and,
+    l_selection_or, l_selection_grow, l_selection_fillrect, l_selection_rect,
+    l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
+} from './selvar.js';
+import { Is_special, builds_up, In_hell, Is_valley } from './dungeon.js';
+import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
 import { roles } from './role.js';
-import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room } from './mkroom.js';
-import { maketrap, Can_fall_thru } from './trap.js';
+import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room, nexttodoor } from './mkroom.js';
+import { maketrap, Can_fall_thru, t_at, Invocation_lev } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { m_at } from './display.js';
@@ -24,7 +35,7 @@ import { set_corpsenm } from './mkobj.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph } from './engrave.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
-    SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, SPBOOK_no_NOVEL,
+    SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, ROCK_CLASS, SPBOOK_no_NOVEL,
     ARROW, DART, BOULDER, GOLD_PIECE, ROCK, KELP_FROND,
     SCR_TELEPORTATION, BELL, CORPSE, STATUE, POT_HEALING,
     POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY, SCR_ENCHANT_WEAPON,
@@ -49,7 +60,8 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_ROOM,
     IS_SDOOR,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL, OBJ_AT,
+    MATCH_WALL, INVALID_TYPE,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR, TREE,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -340,7 +352,12 @@ function clear_level_structures() {
     lf.has_town = false;
     lf.wizard_bones = false;
     lf.corrmaze = false;
-    lf.temperature = 0;
+    // C ref: mklev.c clear_level_structures() — svl.level.flags.temperature =
+    // In_hell(&u.uz) ? 1 : 0.  Every Gehennom level starts "hot" (overridden by
+    // a special level's own "cold"/"temperate" level_flags, e.g. hellfill's
+    // cold-maze style) — this drives hellish_smoke_mesg()/temperature_change_msg()
+    // on arrival (do.js goto_level).
+    lf.temperature = In_hell(g.u?.uz) ? 1 : 0;
     lf.rndmongen = true;
     lf.deathdrops = true;
     lf.noautosearch = false;
@@ -393,7 +410,7 @@ async function makelevel() {
         // C ref: place_lregions() at level finalize — place the registered
         // "branch" levregion.  A 1-cell region so place_lregion's rn1 loop draws
         // exactly rn2(1) for x and rn2(1) for y (mkmaze.c:396/397).
-        quest_place_branch();
+        await quest_place_branch();
         return;
     }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Barbarian quest "locate"
@@ -410,7 +427,7 @@ async function makelevel() {
     // (gold/gem seeding is suppressed on this special level), matching the trace.
     if (slev && slev.proto === 'Arc-strt') {
         await makemaz_arc_strt();
-        quest_place_branch();
+        await quest_place_branch();
         // C ref: mineralize() (moat kelp) is NOT called here — the JS engine
         // defers the fill phase (fill_special_room loop + mineralize) into
         // fastforward_fill_mineralize(), which runs at C's level_finalize_topology
@@ -422,7 +439,7 @@ async function makelevel() {
     // place the 1-cell "branch" levregion (place_lregion rn2(1)/rn2(1)).
     if (slev && slev.proto === 'Pri-strt') {
         await makemaz_pri_strt();
-        quest_place_branch();
+        await quest_place_branch();
         return;
     }
     // C ref: mklev.c:1269 makemaz(slev->proto) — Vlad's Tower upper stage.
@@ -432,7 +449,7 @@ async function makelevel() {
         // place_lregion(0,0,0,0,...,LR_BRANCH) runs its whole-level rn1 loop
         // (mkmaze.c:396/397) until it lands on a valid ROOM/CORR cell.  This is
         // exactly the mines' mk_fixup_branch() whole-level probabilistic loop.
-        mk_fixup_branch();
+        await mk_fixup_branch();
         // C ref: lspo_finalize_level -> level_finalize_topology -> set_wall_state()
         // assigns the WM_MASK wall-mode bits that wall_angle() needs to render
         // cross/T-junction walls correctly (the tower's internal walls).
@@ -449,6 +466,16 @@ async function makelevel() {
         const fill = g.dungeons?.[dnum0]?.fill_lvl;
         if (!slev && fill && fill.toLowerCase() === 'minefill') {
             await makemaz_minefill();
+            return;
+        }
+        // C ref: mklev.c:1273-1274 — svd.dungeons[dnum].fill_lvl[0] dispatch,
+        // Gehennom's own filler (js/dungeon.js:57 already carries
+        // lvlfill:'hellfill').  This branch sits BEFORE the below-Medusa
+        // rn2(5) check below, so (matching C's if/else-if chain) taking it
+        // here means that check's rn2(5) is correctly never drawn for any
+        // ordinary (non-named) Gehennom level.
+        if (!slev && fill && fill.toLowerCase() === 'hellfill') {
+            await makemaz_hellfill();
             return;
         }
     }
@@ -471,10 +498,15 @@ async function makelevel() {
         }
     }
 
-    // C ref: mklev.c:1295 — check for below-Medusa maze level
-    // This rn2(5) is consumed even when the condition fails (short-circuit)
+    // C ref: mklev.c:1286-1288 — `In_hell(&u.uz) || (rn2(5) && ...)`.  This is
+    // a logical OR: when the level is In_hell, the right-hand side (including
+    // the rn2(5) draw) is never evaluated at all.  Every Gehennom level takes
+    // an earlier branch (slev or the fill_lvl check above) in practice, so
+    // this line is normally unreachable for In_hell levels anyway — but guard
+    // it explicitly too, for any not-yet-ported named Gehennom special that
+    // falls through to here.
     const medusa = g.medusa_level;
-    if (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
+    if (!In_hell(g.u?.uz) && rn2(5) && g.u?.uz?.dnum === medusa?.dnum
         && (g.u?.uz?.dlevel ?? 1) > (medusa?.dlevel ?? 999)) {
         // Would generate maze — not applicable for contest level 1
     }
@@ -553,37 +585,37 @@ async function makelevel() {
             ? depth_of_level(g.medusa_level) : 999;
         const wizardEnv = false; // contest build never sets SHOPTYPE env
         if (g.flags?.debug && wizardEnv) {
-            do_mkroom(SHOPBASE);
+            await do_mkroom(SHOPBASE);
         } else if (u_depth > 1 && u_depth < medusaDepth
                    && g.level.nroom >= room_threshold && rn2(u_depth) < 3) {
-            do_mkroom(SHOPBASE);
+            await do_mkroom(SHOPBASE);
         } else if (u_depth > 4 && !rn2(6)) {
-            do_mkroom(COURT);
+            await do_mkroom(COURT);
         } else if (u_depth > 5 && !rn2(8) && !mvitals_gone(PM_LEPRECHAUN)) {
-            do_mkroom(LEPREHALL);
+            await do_mkroom(LEPREHALL);
         } else if (u_depth > 6 && !rn2(7)) {
-            do_mkroom(ZOO);
+            await do_mkroom(ZOO);
         } else if (u_depth > 8 && !rn2(5)) {
-            do_mkroom(TEMPLE);
+            await do_mkroom(TEMPLE);
         } else if (u_depth > 9 && !rn2(5) && !mvitals_gone(PM_KILLER_BEE)) {
-            do_mkroom(BEEHIVE);
+            await do_mkroom(BEEHIVE);
         } else if (u_depth > 11 && !rn2(6)) {
-            do_mkroom(MORGUE);
+            await do_mkroom(MORGUE);
         } else if (u_depth > 12 && !rn2(8) && antholemon()) {
-            do_mkroom(ANTHOLE);
+            await do_mkroom(ANTHOLE);
         } else if (u_depth > 14 && !rn2(4) && !mvitals_gone(PM_SOLDIER)) {
-            do_mkroom(BARRACKS);
+            await do_mkroom(BARRACKS);
         } else if (u_depth > 15 && !rn2(6)) {
-            do_mkroom(SWAMP);
+            await do_mkroom(SWAMP);
         } else if (u_depth > 16 && !rn2(8) && !mvitals_gone(PM_COCKATRICE)) {
-            do_mkroom(COCKNEST);
+            await do_mkroom(COCKNEST);
         }
     }
 
     // Place dungeon branch
     if (branchp) {
         const prevstairs = g.stairs; /* test for place_branch() success */
-        place_branch(branchp);
+        await place_branch(branchp);
         // C ref: mklev.c:1382-1387 — for main dungeon level 1, the up stairs
         // where the hero starts are branch stairs; treat them as if the hero
         // had just come down them by marking them traversed.  This makes
@@ -1489,7 +1521,7 @@ function antholemon() {
 }
 
 // C ref: mkroom.c do_mkroom()
-function do_mkroom(roomtype) {
+async function do_mkroom(roomtype) {
     if (roomtype >= SHOPBASE) {
         mkshop();
     } else {
@@ -1499,7 +1531,7 @@ function do_mkroom(roomtype) {
         case BEEHIVE: mkzoo(BEEHIVE); break;
         case MORGUE: mkzoo(MORGUE); break;
         case BARRACKS: mkzoo(BARRACKS); break;
-        case SWAMP: mkswamp(); break;
+        case SWAMP: await mkswamp(); break;
         case TEMPLE: mktemple(); break;
         case LEPREHALL: mkzoo(LEPREHALL); break;
         case COCKNEST: mkzoo(COCKNEST); break;
@@ -1630,12 +1662,53 @@ function mktemple() {
     if (g.level.flags) g.level.flags.has_temple = true;
 }
 
-// C ref: mkroom.c mkswamp().  Only reachable at u_depth > 15, beyond any
-// parity-tested session's correct-RNG range; modeled minimally (terrain +
-// eel/fungus RNG is owned by makemon.js and intentionally not replayed here).
-function mkswamp() {
+// S_* monster-class index for mold/fungus (mkclass's `klass` argument).
+// C ref: include/monsym.h MONSYM(32, 'F', FUNGUS, S_FUNGUS, ...).
+const S_FUNGUS = 32;
+const PM_GIANT_EEL = name_to_pmidx('giant eel');
+const PM_PIRANHA = name_to_pmidx('piranha');
+const PM_ELECTRIC_EEL = name_to_pmidx('electric eel');
+
+// C ref: mkroom.c mkswamp() — turn up to 5 eligible OROOMs into swamps: a
+// checkerboard of POOL cells (each maybe stocked with an eel) alternating
+// with dry cells (maybe stocked with a mold), skipping any cell that already
+// holds an object, monster, trap, or sits next to a door.
+async function mkswamp() {
     const g = game;
-    if (g.level.flags) g.level.flags.has_swamp = true;
+    let eelct = 0;
+    for (let i = 0; i < 5; i++) {
+        const sroom = g.level.rooms[rn2(g.level.nroom)];
+        if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM
+            || has_upstairs(sroom) || has_dnstairs(sroom))
+            continue;
+
+        const rmno = g.level.rooms.indexOf(sroom) + ROOMOFFSET;
+        sroom.rtype = SWAMP;
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+                const loc = g.level.at(sx, sy);
+                if (!loc || !IS_ROOM(loc.typ) || loc.roomno !== rmno) continue;
+                if (OBJ_AT(sx, sy) || m_at(sx, sy) || t_at(sx, sy) || nexttodoor(sx, sy))
+                    continue;
+                if ((sx + sy) % 2) {
+                    if (g.level.engravings) {
+                        g.level.engravings = g.level.engravings.filter(
+                            (ep) => ep.engr_x !== sx || ep.engr_y !== sy);
+                    }
+                    loc.typ = POOL;
+                    if (!eelct || !rn2(4)) {
+                        const pm = rn2(5) ? PM_GIANT_EEL
+                            : rn2(2) ? PM_PIRANHA : PM_ELECTRIC_EEL;
+                        await makemon(monster_by_pmidx(pm), sx, sy, 0);
+                        eelct++;
+                    }
+                } else if (!rn2(4)) {
+                    await makemon(mkclass(S_FUNGUS, 0), sx, sy, 0);
+                }
+            }
+        }
+        if (g.level.flags) g.level.flags.has_swamp = true;
+    }
 }
 
 // C ref: mklev.c add_room()
@@ -2860,7 +2933,7 @@ async function makemaz_minefill() {
 
     // fixup_special: place the dungeon branch staircase (place_lregion LR_BRANCH
     // probabilistic loop, since join_map_cleanup left svn.nroom == 0).
-    mk_fixup_branch();
+    await mk_fixup_branch();
 
     // NOTE: level_finalize_topology -> mineralize() is NOT called here; the JS
     // engine factors mineralize() into fastforward_fill_mineralize(), which
@@ -2868,6 +2941,795 @@ async function makemaz_minefill() {
     // loop there is a no-op (join_map_cleanup left nroom == 0) and only
     // mineralize() runs, matching C's level_finalize_topology ordering.
 }
+
+// ============================================================
+// dat/hellfill.lua — the "fill" level for Gehennom: every Gehennom dlvl that
+// is not one of the ~9 named specials (valley/sanctum/juiblex/baalz/asmodeus/
+// wizard1-3) routes here via svd.dungeons[dnum].fill_lvl.
+//
+// C ref: dat/hellfill.lua + dat/nhlib.lua (hell_tweaks, percent, shuffle),
+// executed by the des.* engine in src/sp_lev.c, on top of src/mkmaze.c
+// (create_maze/walkfrom), src/mkmap.c (mkmap) and src/selvar.c (selections).
+//
+// The .lua picks one of 7 "hells" styles uniformly and runs it, then places
+// the stairs (or the vibrating square on the invocation level) and finally
+// populatemaze()'s object/monster/gold/trap budget.
+// ============================================================
+
+// C ref: sp_lev.c get_location() with croom == NULL — a des.* coordinate is
+// relative to the last des.map() origin (gx.xstart / gy.ystart), which is
+// (1, 0) at a level script's top level.
+function hf_loc(x, y) {
+    const o = splev_map_origin();
+    return { x: x + o.xstart, y: y + o.ystart };
+}
+
+// C ref: nhlsel.c l_selection_fillrect / l_selection_rect — both run their
+// corner coordinates through get_location_coord() first.
+function hf_sel_area(x1, y1, x2, y2) {
+    const a = hf_loc(x1, y1), b = hf_loc(x2, y2);
+    return l_selection_fillrect(null, a.x, a.y, b.x, b.y);
+}
+function hf_sel_rect(x1, y1, x2, y2) {
+    const a = hf_loc(x1, y1), b = hf_loc(x2, y2);
+    return l_selection_rect(null, a.x, a.y, b.x, b.y);
+}
+
+// C ref: sp_lev.c lspo_terrain() — des.terrain(selection, "X") and
+// des.terrain({selection=..., typ="X", lit=N}).  No RNG.
+function hf_terrain_sel(sel, typ, tolit = SET_LIT_NOCHANGE) {
+    selection_iterate(sel, (x, y) => set_levltyp_lit(x, y, typ, tolit));
+}
+
+// C ref: sp_lev.c lspo_terrain() 3-argument form des.terrain(x, y, "X") — the
+// coordinate goes through get_location_coord(), so it is map-origin relative.
+function hf_terrain_at(x, y, typ) {
+    const c = hf_loc(x, y);
+    set_levltyp_lit(c.x, c.y, typ, SET_LIT_NOCHANGE);
+}
+
+// C ref: sp_lev.c lspo_replace_terrain().  One rn2(100) per cell that matches
+// `fromtyp` / the map fragment — the roll happens even at chance == 100.
+// With neither region nor selection given the scan covers the whole map.
+function hf_replace_terrain({ totyp, fromtyp = INVALID_TYPE, mapfragstr = null,
+                              chance = 100, tolit = SET_LIT_NOCHANGE,
+                              region = null, sel: selIn = null }) {
+    const mf = (fromtyp === INVALID_TYPE && mapfragstr != null)
+        ? mapfrag_fromstr(mapfragstr) : null;
+
+    let sel = selIn;
+    if (!sel) {
+        sel = selection_new();
+        if (!region) {
+            selection_clear(sel, 1);
+        } else {
+            const a = hf_loc(region[0], region[1]);
+            const b = hf_loc(region[2], region[3]);
+            for (let x = Math.max(a.x, 0); x <= Math.min(b.x, COLNO - 1); x++)
+                for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++)
+                    selection_setpoint(x, y, sel, 1);
+        }
+    }
+
+    const rect = selection_getbounds(sel);
+    for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (!selection_getpoint(x, y, sel)) continue;
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (mf) {
+                if (mapfrag_match(mf, x, y) && rn2(100) < chance)
+                    set_levltyp_lit(x, y, totyp, tolit);
+            } else if (((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
+                        || loc.typ === fromtyp)
+                       && rn2(100) < chance) {
+                set_levltyp_lit(x, y, totyp, tolit);
+            }
+        }
+}
+
+// C ref: sp_lev.c lvlfill_solid() — des.level_init({style="solidfill"}).
+function hf_lvlfill_solid(filling, lit) {
+    for (let x = 2; x <= mz.x_maze_max; x++)
+        for (let y = 0; y <= mz.y_maze_max; y++) {
+            if (!set_levltyp_lit(x, y, filling, lit)) continue;
+            const loc = game.level.at(x, y);
+            loc.flags = 0;
+            loc.horizontal = false;
+            loc.roomno = 0;
+            loc.edge = false;
+        }
+}
+
+// C ref: sp_lev.c lvlfill_maze_grid() — des.level_init({style="mazegrid"}).
+function hf_lvlfill_maze_grid(x1, y1, x2, y2, filling) {
+    const corrmaze = !!game.level?.flags?.corrmaze;
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = game.level.at(x, y);
+            if (!loc) continue;
+            loc.typ = corrmaze ? STONE
+                : ((y < 2 || ((x % 2) && (y % 2))) ? STONE : filling);
+        }
+}
+
+// C ref: sp_lev.c lspo_mazewalk().  hellfill's only call passes an explicit
+// direction and stocked=false, so neither random_wdir() nor fill_empty_maze()
+// runs; the RNG cost is entirely walkfrom()'s.
+function hf_mazewalk(mx, my, dir, ftyp) {
+    const c = hf_loc(mx, my);
+    let x = c.x, y = c.y;
+    if (!isok(x, y)) return;
+    if (ftyp == null || ftyp < 1)
+        ftyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+
+    switch (dir) {
+    case W_NORTH: y--; break;
+    case W_SOUTH: y++; break;
+    case W_EAST: x++; break;
+    case W_WEST: x--; break;
+    default: break;
+    }
+
+    let loc = game.level?.at(x, y);
+    if (loc && !IS_DOOR(loc.typ)) { loc.typ = ftyp; loc.flags = 0; }
+
+    // walkfrom() needs odd parity, biased away from the entry direction.
+    if (!(x % 2)) {
+        x += (dir === W_EAST) ? 1 : -1;
+        loc = game.level?.at(x, y);
+        if (loc) { loc.typ = ftyp; loc.flags = 0; }
+    }
+    if (!(y % 2)) y += (dir === W_SOUTH) ? 1 : -1;
+
+    walkfrom(x, y, ftyp);
+}
+
+// C ref: include/defsym.h MONSYM() — monster class letter -> S_* index, used
+// by des.monster("X") to pick a class rather than a species.
+const HF_MONSYM = {
+    a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10,
+    k: 11, l: 12, m: 13, n: 14, o: 15, p: 16, q: 17, r: 18, s: 19, t: 20,
+    u: 21, v: 22, w: 23, x: 24, y: 25, z: 26,
+    A: 27, B: 28, C: 29, D: 30, E: 31, F: 32, G: 33, H: 34, I: 35, J: 36,
+    K: 37, L: 38, M: 39, N: 40, O: 41, P: 42, Q: 43, R: 44, S: 45, T: 46,
+    U: 47, V: 48, W: 49, X: 50, Y: 51, Z: 52,
+    '@': 53, ' ': 54, "'": 55, '&': 56, ';': 57, ':': 58, '~': 59, ']': 60,
+};
+
+// des.monster("X", x, y) — a monster CLASS at a fixed (map-relative) spot.
+// C ref: sp_lev.c create_monster(): induced_align first, then mkclass, then
+// the location, then makemon.
+function hf_monster_class_at(classChar, x, y, peacefulOverride) {
+    oracle_induced_align();
+    const data = mkclass(HF_MONSYM[classChar] ?? 0, 0x0200 /* G_NOGEN */);
+    const c = hf_loc(x, y);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
+}
+
+// des.monster("name", x, y) — a named species at a fixed (map-relative) spot.
+function hf_monster_named_at(name, x, y, peacefulOverride) {
+    const data = mk_find_montype(name);
+    oracle_induced_align();
+    const c = hf_loc(x, y);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
+}
+
+function hf_monster_at(spec, x, y, peacefulOverride) {
+    if (spec.length === 1) return hf_monster_class_at(spec, x, y, peacefulOverride);
+    return hf_monster_named_at(spec, x, y, peacefulOverride);
+}
+
+// des.object("boulder", x, y) — a named object at a fixed (map-relative) spot.
+function hf_object_at(objId, x, y) {
+    const c = hf_loc(x, y);
+    return mksobj_at(objId, c.x, c.y, true, true);
+}
+
+// des.gold() with neither amount nor coord: DRY random location FIRST, then
+// rnd(200) for the amount (C ref: lspo_gold's call order).
+function mk_gold() {
+    const c = mk_get_location_random(mk_ok_dry);
+    mkgold(rnd(200), c.x, c.y);
+}
+
+// des.monster({peaceful=...}) with neither class nor id: a fully random
+// monster.  C ref: sp_lev.c create_monster() — amask (induced_align rn2(3))
+// is computed FIRST regardless of class/id, then (pm == NULL) the location is
+// picked DRY, then makemon(NULL, ...) chooses the species.
+function mk_monster_random(peacefulOverride) {
+    oracle_induced_align();
+    const c = mk_get_location_random(mk_ok_dry);
+    const mtmp = make_monster(null, c.x, c.y, 0);
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
+}
+
+// ── nhlib.lua hell_tweaks(protected_area) ────────────────────────────────
+// Random lava pools, a lava river, and wall-to-boulder / wall-to-iron-bars
+// substitutions.  Shared by hellfill style 2 and several named Gehennom
+// levels (asmodeus/orcus/wizard1-3/fakewiz1-2).
+function hf_hell_tweaks(protected_area) {
+    const liquid = LAVAPOOL, ground = ROOM;
+    const n_prot = selection_numpoints(protected_area);
+    const prot = l_selection_negate(protected_area);
+    const depth = depth_of_level(game.u?.uz);
+
+    // random pools
+    if (mk_percent(20 + depth)) {
+        let pools = selection_new();
+        const maxpools = 5 + mk_mrandom(1, depth);
+        for (let i = 0; i < maxpools; i++) hf_sel_set_random(pools);
+        pools = l_selection_or(pools,
+            l_selection_grow(hf_sel_set_random(selection_new()), W_WEST));
+        pools = l_selection_or(pools,
+            l_selection_grow(hf_sel_set_random(selection_new()), W_NORTH));
+        pools = l_selection_or(pools,
+            l_selection_grow(hf_sel_set_random(selection_new()), W_RANDOM));
+        pools = l_selection_and(pools, prot);
+
+        if (mk_percent(80)) {
+            const poolground = l_selection_and(
+                l_selection_grow(selection_clone(pools), W_ANY), prot);
+            const pval = mk_mrandom(1, 8) * 10;
+            hf_terrain_sel(selection_filter_percent(poolground, pval), ground);
+        }
+        hf_terrain_sel(pools, liquid);
+    }
+
+    // river
+    if (mk_percent(50)) {
+        let allrivers = selection_new();
+        const reqpts = ((COLNO * ROWNO) - n_prot) / 12;
+        let rpts = 0, rivertries = 0;
+        do {
+            const floor = selection_match('.');
+            const a = hf_rndcoord(floor);
+            const b = hf_rndcoord(floor);
+            const ca = hf_loc(a.x, a.y), cb = hf_loc(b.x, b.y);
+            let lavariver = l_selection_randline(selection_new(),
+                                                 ca.x, ca.y, cb.x, cb.y, 10);
+            if (mk_percent(50)) lavariver = l_selection_grow(lavariver, W_NORTH);
+            if (mk_percent(50)) lavariver = l_selection_grow(lavariver, W_WEST);
+            allrivers = l_selection_or(allrivers, lavariver);
+            allrivers = l_selection_and(allrivers, prot);
+            rpts = selection_numpoints(allrivers);
+            rivertries++;
+        } while (!(rpts > reqpts || rivertries > 7));
+
+        if (mk_percent(60)) {
+            const prc = 10 * mk_mrandom(1, 6);
+            let riverbanks = l_selection_grow(allrivers, W_ANY);
+            riverbanks = l_selection_and(riverbanks, prot);
+            hf_terrain_sel(selection_filter_percent(riverbanks, prc), ground);
+        }
+        hf_terrain_sel(allrivers, liquid);
+    }
+
+    // replacing some walls with boulders
+    if (mk_percent(20)) {
+        const amount = 3 * mk_mrandom(1, 8);
+        let bwalls = l_selection_or(
+            selection_filter_percent(selection_match('.w.'), amount),
+            selection_filter_percent(selection_match('.\nw\n.'), amount));
+        bwalls = l_selection_and(bwalls, prot);
+        // NOTE: iterate() hands back ABSOLUTE coordinates, which des.terrain /
+        // des.object then run through get_location_coord() again — so both
+        // land one column right of the selected wall.  Faithful to the .lua.
+        const pts = [];
+        selection_iterate(bwalls, (x, y) => pts.push({ x, y }));
+        for (const p of pts) {
+            hf_terrain_at(p.x, p.y, ROOM);
+            hf_object_at(BOULDER, p.x, p.y);
+        }
+    }
+
+    // replacing some walls with iron bars
+    if (mk_percent(20)) {
+        const amount = 3 * mk_mrandom(1, 8);
+        let fwalls = l_selection_or(
+            selection_filter_percent(selection_match('.w.'), amount),
+            selection_filter_percent(selection_match('.\nw\n.'), amount));
+        fwalls = l_selection_and(l_selection_grow(fwalls, W_ANY),
+                                 selection_match('w'));
+        fwalls = l_selection_and(fwalls, prot);
+        hf_terrain_sel(fwalls, IRONBARS);
+    }
+}
+
+// C ref: nhlsel.c l_selection_setpoint() called as sel:set() — a random
+// ANY_LOC spot, i.e. two rn2 draws against the current map origin/size.
+function hf_sel_set_random(sel) {
+    const o = splev_map_origin();
+    const x = o.xstart + rn2(o.xsize);
+    const y = o.ystart + rn2(o.ysize);
+    selection_setpoint(x, y, sel, 1);
+    return sel;
+}
+
+// C ref: nhlsel.c l_selection_rndcoord() — the returned coordinate is made
+// map-origin RELATIVE before it goes back to Lua.
+function hf_rndcoord(sel) {
+    const c = selection_rndcoord(sel, false);
+    if (c.x === -1 && c.y === -1) return c;
+    const o = splev_map_origin();
+    return { x: c.x - o.xstart, y: c.y - o.ystart };
+}
+
+// ── hell prefabs (hellfill.lua hell_prefabs[]) ───────────────────────────
+
+// rnd_halign()/rnd_valign(): one math.random(1,3) each.
+const HF_HALIGNS = ['half-left', 'center', 'half-right'];
+const HF_VALIGNS = ['top', 'center', 'bottom'];
+function hf_rnd_halign() { return HF_HALIGNS[mk_mrandom(1, 3) - 1]; }
+function hf_rnd_valign() { return HF_VALIGNS[mk_mrandom(1, 3) - 1]; }
+
+const HF_PREFAB1_MAP = Array(16).fill('......').join('\n');
+
+const HF_PREFAB2_MAP = [
+    'xxxxxx.....xxxxxx',
+    'xxxx.........xxxx',
+    'xx.............xx',
+    'xx.............xx',
+    'x...............x',
+    'x...............x',
+    '.................',
+    '.................',
+    '.................',
+    '.................',
+    '.................',
+    'x...............x',
+    'x...............x',
+    'xx.............xx',
+    'xx.............xx',
+    'xxxx.........xxxx',
+    'xxxxxx.....xxxxxx',
+].join('\n');
+
+const HF_PREFAB3_MAP = [
+    'xxxxxx.xxxxxx',
+    'xLLLLLLLLLLLx',
+    'xL---------Lx',
+    'xL|.......|Lx',
+    'xL|.......|Lx',
+    '.L|.......|L.',
+    'xL|.......|Lx',
+    'xL|.......|Lx',
+    'xL---------Lx',
+    'xLLLLLLLLLLLx',
+    'xxxxxx.xxxxxx',
+].join('\n');
+
+const HF_PREFAB4_MAP = Array(5).fill('.'.repeat(62)).join('\n');
+
+const HF_PREFAB5_MAP = [
+    'x.....x', '.......', '.......', '.......', '.......', '.......', 'x.....x',
+].join('\n');
+
+const HF_PREFAB6_MAP = [
+    'BBBBBBB', 'B.....B', 'B.....B', 'B.....B', 'B.....B', 'B.....B', 'BBBBBBB',
+].join('\n');
+
+const HF_PREFAB7_MAP = [
+    '..........', '..........', '..........', '...FFFF...', '...F..F...',
+    '...F..F...', '...FFFF...', '..........', '..........', '..........',
+].join('\n');
+
+const HF_PREFAB8_MAP = [
+    '.........',
+    '.}}}}}}}.',
+    '.}}---}}.',
+    '.}--.--}.',
+    '.}|...|}.',
+    '.}--.--}.',
+    '.}}---}}.',
+    '.}}}}}}}.',
+    '.........',
+].join('\n');
+
+const HF_PREFAB9_LAVA = ['.....', '.LLL.', '.LZL.', '.LLL.', '.....'].join('\n');
+const HF_PREFAB9_WATER = ['.....', '.PPP.', '.PWP.', '.PPP.', '.....'].join('\n');
+const HF_PREFAB10_MAP = Array(17).fill('...').join('\n');
+
+// A des.map() call from inside a hell prefab: never a themeroom, so C's
+// "never overwrite anything" retry check does not apply.
+function hf_map(opts) {
+    return lspo_map({ ...opts, in_themerooms: false });
+}
+
+// hell_prefabs[3] — the lava-moated inner keep with drawbridges.
+function hf_prefab_keep(coldhell) {
+    const halign = hf_rnd_halign(), valign = hf_rnd_valign();
+    hf_map({
+        halign, valign, map: HF_PREFAB3_MAP,
+        contents: () => {
+            set_wallprop_selection(hf_sel_area(2, 2, 10, 8), W_NONDIGGABLE);
+            hf_region_lit(hf_sel_area(4, 4, 8, 6));
+            hf_exclusion('teleport', 2, 2, 10, 8);
+            if (coldhell) {
+                hf_replace_terrain({ region: [1, 1, 11, 9],
+                                     fromtyp: LAVAPOOL, totyp: POOL });
+            }
+            const dblocs = [
+                { x: 1, y: 5, dir: 'east' }, { x: 11, y: 5, dir: 'west' },
+                { x: 6, y: 1, dir: 'south' }, { x: 6, y: 9, dir: 'north' },
+            ];
+            shuffle(dblocs);
+            const nbridge = mk_mrandom(1, dblocs.length);
+            for (let i = 0; i < nbridge; i++) hf_drawbridge(dblocs[i]);
+            const mons = ['H', 'T', '@'];
+            shuffle(mons);
+            const nmon = 3 + mk_mrandom(1, 5);
+            for (let i = 0; i < nmon; i++) hf_monster_at(mons[0], 6, 5);
+        },
+    });
+}
+
+// hell_prefabs[6] — Moloch's little shrine.
+function hf_prefab_shrine() {
+    const halign = hf_rnd_halign(), valign = hf_rnd_valign();
+    hf_map({
+        halign, valign, map: HF_PREFAB6_MAP,
+        contents: () => {
+            lspo_region({ region: [2, 2, 2, 2], type: 'temple',
+                          filled: 1, irregular: true });
+            const shrine = mk_percent(75) ? 0 : 1;   // "altar" or "shrine"
+            hf_altar(3, 3, shrine);
+        },
+    });
+}
+
+// hell_prefabs[7] — an iron-barred cell with one big monster inside.
+function hf_prefab_cage() {
+    const halign = hf_rnd_halign(), valign = hf_rnd_valign();
+    hf_map({
+        halign, valign, map: HF_PREFAB7_MAP,
+        contents: () => {
+            hf_exclusion('teleport', 4, 4, 5, 5);
+            const mons = ['Angel', 'D', 'H', 'L'];
+            hf_monster_at(mons[mk_mrandom(1, mons.length) - 1], 4, 4);
+        },
+    });
+}
+
+// hell_prefabs[8] — a moated vault with a lich in it.
+function hf_prefab_moat() {
+    const halign = hf_rnd_halign(), valign = hf_rnd_valign();
+    hf_map({
+        halign, valign, map: HF_PREFAB8_MAP,
+        contents: () => {
+            hf_exclusion('teleport', 3, 3, 5, 5);
+            hf_monster_at('L', 4, 4);
+        },
+    });
+}
+
+// hell_prefabs[9] — five little lava (or water) pockets across the level.
+function hf_prefab_pockets() {
+    const mapstr = mk_percent(30) ? HF_PREFAB9_LAVA : HF_PREFAB9_WATER;
+    for (let dx = 1; dx <= 5; dx++)
+        hf_map({ x: dx * 14 - 4, y: mk_mrandom(3, 15), map: mapstr,
+                 contents: () => {} });
+}
+
+// hell_prefabs[10] — three tall 3-wide open shafts.
+function hf_prefab_shafts() {
+    for (let dx = 1; dx <= 3; dx++)
+        hf_map({ x: mk_mrandom(3, 75), y: 3, map: HF_PREFAB10_MAP,
+                 contents: () => {} });
+}
+
+// The hell_prefabs[] table itself.  `repeatable` entries can be stamped more
+// than once; plain functions always end the loop.
+const HF_PREFABS = [
+    { repeatable: true, contents: () => hf_map({
+        halign: hf_rnd_halign(), valign: 'center', map: HF_PREFAB1_MAP,
+        contents: () => {} }) },
+    { repeatable: true, contents: () => hf_map({
+        halign: hf_rnd_halign(), valign: 'center', map: HF_PREFAB2_MAP,
+        contents: () => {} }) },
+    hf_prefab_keep,
+    { repeatable: true, contents: () => hf_map({
+        halign: 'center', valign: 'center', map: HF_PREFAB4_MAP,
+        contents: () => {} }) },
+    { repeatable: true, contents: () => hf_map({
+        halign: hf_rnd_halign(), valign: hf_rnd_valign(), lit: true,
+        map: HF_PREFAB5_MAP, contents: () => {} }) },
+    hf_prefab_shrine,
+    hf_prefab_cage,
+    hf_prefab_moat,
+    hf_prefab_pockets,
+    { repeatable: true, contents: hf_prefab_shafts },
+];
+
+// C ref: dat/hellfill.lua rnd_hell_prefab().
+function hf_rnd_hell_prefab(coldhell) {
+    let dorepeat = true;
+    let nloops = 0;
+    do {
+        nloops++;
+        const pf = mk_mrandom(1, HF_PREFABS.length);
+        const fab = HF_PREFABS[pf - 1];
+        if (typeof fab === 'function') {
+            fab(coldhell);
+            dorepeat = false;
+        } else {
+            fab.contents(coldhell);
+            dorepeat = !(fab.repeatable && mk_mrandom(0, nloops * 2) === 0);
+        }
+    } while (!(!dorepeat || nloops > 5));
+}
+
+// ── the 7 hells[] styles ─────────────────────────────────────────────────
+//
+// Every style opens with the same two statements:
+//   des.level_init({ style = "solidfill", fg = " ", lit = 0 });
+//   des.level_flags("mazelevel", "noflip");
+// `lit = 0` is explicit, so SOLIDFILL draws NO rn2(2) here (unlike minefill's
+// implicit BOOL_RANDOM).  "noflip" only clears coder->allow_flips.
+function hf_style_prologue(...flags) {
+    hf_lvlfill_solid(STONE, 0);
+    const lf = game.level.flags;
+    for (const f of flags) {
+        if (f === 'mazelevel') lf.is_maze_lev = true;
+        else if (f === 'cold') lf.temperature = -1;
+    }
+}
+
+// hells[1]: "mines"-style cavern flooded with lava.
+function hf_style_mines_lava() {
+    hf_style_prologue('mazelevel');
+    // MINES: lit=0 explicit (no roll); filling defaults to fg (".") so the map
+    // is pre-filled with floor, then mkmap() re-initialises it from bg anyway.
+    hf_lvlfill_solid(ROOM, 0);
+    mk_mkmap(false, STONE, ROOM, true);
+    hf_replace_terrain({ fromtyp: STONE, totyp: LAVAPOOL });
+    hf_replace_terrain({ fromtyp: ROOM, totyp: LAVAPOOL, chance: 5 });
+    hf_replace_terrain({ mapfragstr: 'w', totyp: LAVAPOOL, chance: 20 });
+    hf_replace_terrain({ mapfragstr: 'w', totyp: ROOM, chance: 15 });
+}
+
+// hells[2]: a mazegrid walked east from the left edge, then hell_tweaks().
+function hf_style_mazegrid_tweaks() {
+    hf_style_prologue('mazelevel');
+    hf_lvlfill_maze_grid(2, 0, mz.x_maze_max, mz.y_maze_max, HWALL);
+    hf_mazewalk(1, 10, W_EAST, ROOM);
+    const tmpbounds = selection_match('-');
+    const bnds = selection_getbounds(tmpbounds);
+    // NOTE: bnds is already absolute, and selection.fillrect() adds the map
+    // origin again — reproduced verbatim (hf_sel_area does the same shift).
+    const protected_area = hf_sel_area(bnds.lx, bnds.ly + 1,
+                                       bnds.hx - 2, bnds.hy - 1);
+    hf_hell_tweaks(l_selection_negate(protected_area));
+    if (mk_percent(25)) hf_rnd_hell_prefab(false);
+}
+
+// hells[3]: plain maze, wall thickness 1, random corridor width.
+function hf_style_plain_maze() {
+    hf_style_prologue('mazelevel');
+    create_maze(-1, 1, false);
+}
+
+// hells[4]: maze whose walls become iron bars or lava.
+function hf_style_bars_or_lava_maze() {
+    const cwid = mk_mrandom(1, 4);
+    hf_style_prologue('mazelevel');
+    create_maze(cwid, 1, false);
+    const outside_walls = selection_match(' ');
+    const wallterrain = ['F', 'L'];
+    shuffle(wallterrain);
+    const wt = wallterrain[0] === 'F' ? IRONBARS : LAVAPOOL;
+    hf_replace_terrain({ mapfragstr: 'w', totyp: wt });
+    if (cwid === 1) {
+        if (wallterrain[0] === 'F' && mk_percent(80)) {
+            // knock holes in some horizontal iron-bar walls
+            hf_replace_terrain({ mapfragstr: '.\nF\n.', totyp: ROOM,
+                                 chance: 25 * mk_mrandom(1, 4) });
+        } else if (mk_percent(25)) {
+            hf_rnd_hell_prefab(false);
+        }
+    }
+    hf_terrain_sel(outside_walls, STONE);   // return the outside to solid wall
+}
+
+// hells[5]: thick-walled maze, sometimes with lava walls and lava-wall blocks.
+function hf_style_thick_maze() {
+    const wwid = 1 + mk_mrandom(1, 2);
+    hf_style_prologue('mazelevel');
+    create_maze(mk_mrandom(1, 2), wwid, false);
+    if (mk_percent(50)) {
+        const outside_walls = selection_match(' ');
+        hf_replace_terrain({ mapfragstr: 'w', totyp: LAVAPOOL });
+        hf_terrain_sel(outside_walls, STONE);
+        if (wwid === 3 && mk_percent(40)) {
+            const sel = selection_match('LLL\nLLL\nLLL');
+            hf_terrain_sel(selection_filter_percent(sel, 30 * mk_mrandom(1, 4)),
+                           LAVAWALL);
+        }
+    }
+}
+
+// hells[6]: the cold maze — ice, water walls and a few pools.
+function hf_style_cold_maze() {
+    const cwid = mk_mrandom(1, 4);
+    hf_style_prologue('mazelevel', 'cold');
+    create_maze(cwid, 1, false);
+    const outside_walls = selection_match(' ');
+    const icey = selection_filter_mapchar(
+        l_selection_grow(selection_filter_percent(l_selection_negate(null), 10),
+                         W_ANY),
+        ROOM);
+    hf_terrain_sel(icey, ICE);
+    if (cwid > 1) hf_terrain_sel(selection_filter_percent(icey, 1), WATER);
+    hf_terrain_sel(selection_filter_percent(icey, 5), POOL);
+    if (mk_percent(25)) hf_terrain_sel(selection_match('w'), WATER);
+    if (cwid === 1 && mk_percent(25)) hf_rnd_hell_prefab(true);
+    hf_terrain_sel(outside_walls, STONE);
+}
+
+// hells[7]: open cavern — "mines" with wider corridors; walls stone or lava.
+function hf_style_open_cavern() {
+    const wter = mk_percent(50) ? STONE : LAVAPOOL;
+    hf_style_prologue('mazelevel');
+    hf_lvlfill_solid(ROOM, 0);
+    mk_mkmap(false, wter, ROOM, false);
+    const sel = l_selection_grow(selection_match('.'), W_ANY);
+    hf_terrain_sel(sel, ROOM, 0);
+    const border = hf_sel_rect(0, 0, 78, 20);
+    hf_terrain_sel(border, wter, 0);
+    // des.wallify() with no args: wallify_map(xstart-1, ystart-1,
+    // xstart+xsize+1, ystart+ysize+1), which clamps to the whole map.
+    const o = splev_map_origin();
+    mk_wallify_map(o.xstart - 1, o.ystart - 1,
+                   o.xstart + o.xsize + 1, o.ystart + o.ysize + 1);
+}
+
+// C ref: dat/hellfill.lua populatemaze() — the object/monster/gold/trap
+// budget shared by every hellfill style.
+async function hf_populatemaze() {
+    let n = mk_mrandom(1, 8) + 11;
+    for (let i = 0; i < n; i++) {
+        if (mk_percent(50)) mk_object(GEM_CLASS);
+        else mk_object(RANDOM_CLASS);
+    }
+    n = mk_mrandom(1, 10) + 2;
+    for (let i = 0; i < n; i++) mk_object(ROCK_CLASS);
+    n = mk_mrandom(1, 3);
+    for (let i = 0; i < n; i++) mk_monster('minotaur', false);
+    n = mk_mrandom(1, 5) + 7;
+    for (let i = 0; i < n; i++) mk_monster_random(false);
+    n = mk_mrandom(1, 6) + 7;
+    for (let i = 0; i < n; i++) mk_gold();
+    n = mk_mrandom(1, 6) + 7;
+    for (let i = 0; i < n; i++) await mk_trap();
+}
+
+// C ref: dat/hellfill.lua — the file's top level.
+async function makemaz_hellfill() {
+    const g = game;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    const align = ['law', 'neutral', 'chaos'];
+    shuffle(align);
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    reset_maze_bounds();
+    try {
+        const hellno = mk_mrandom(1, 7);
+        switch (hellno) {
+        case 1: hf_style_mines_lava(); break;
+        case 2: hf_style_mazegrid_tweaks(); break;
+        case 3: hf_style_plain_maze(); break;
+        case 4: hf_style_bars_or_lava_maze(); break;
+        case 5: hf_style_thick_maze(); break;
+        case 6: hf_style_cold_maze(); break;
+        default: hf_style_open_cavern(); break;
+        }
+
+        mk_stair(true);
+        if (Invocation_lev(g.u?.uz)) await maketrap_vibrating_square();
+        else mk_stair(false);
+
+        await hf_populatemaze();
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: !corrmaze -> wallification(1,0,COLNO-1,ROWNO-1).
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    // fixup_special: place the dungeon branch staircase if this level is one.
+    await mk_fixup_branch();
+}
+
+// C ref: mkmaze.c pick_vibrasquare_location() — VIBRATING_SQUARE is special-
+// cased ahead of create_trap()'s normal DRY-location loop (sp_lev.c
+// create_trap(): `if (t->type == VIBRATING_SQUARE) { pick_vibrasquare_location();
+// maketrap(...); return; }`), so it does NOT go through mk_get_location_random.
+function hf_pick_vibrasquare_location() {
+    const X_MAZE_MIN = 2, Y_MAZE_MIN = 2;
+    const INVPOS_X_MARGIN = 4, INVPOS_Y_MARGIN = 3, INVPOS_DISTANCE = 11;
+    const x_range = mz.x_maze_max - X_MAZE_MIN - 2 * INVPOS_X_MARGIN - 1;
+    const y_range = mz.y_maze_max - Y_MAZE_MIN - 2 * INVPOS_Y_MARGIN - 1;
+    let x = 0, y = 0, trycnt = 0;
+    for (;;) {
+        x = (X_MAZE_MIN + INVPOS_X_MARGIN + 1) + rn2(x_range);
+        y = (Y_MAZE_MIN + INVPOS_Y_MARGIN + 1) + rn2(y_range);
+        if (++trycnt > 1000) break;
+        const stway = stairway_find_dir(true);
+        if (!stway) break;
+        const reject = (x === stway.sx || y === stway.sy
+            || Math.abs(x - stway.sx) === Math.abs(y - stway.sy)
+            || distmin(x, y, stway.sx, stway.sy) <= INVPOS_DISTANCE
+            || !SPACE_POS(game.level.at(x, y)?.typ) || occupied(x, y));
+        if (!reject) break;
+    }
+    return { x, y };
+}
+
+// des.trap("vibrating square").  C ref: lspo_trap's named-type path ->
+// create_trap() -> the VIBRATING_SQUARE special case above.
+async function maketrap_vibrating_square() {
+    const c = hf_pick_vibrasquare_location();
+    await maketrap(c.x, c.y, VIBRATING_SQUARE);
+}
+
+// ── small des.* helpers used only by the hell prefabs ────────────────────
+
+// C ref: sp_lev.c set_wallprop_in_selection() — des.non_diggable(sel).  No RNG.
+function set_wallprop_selection(sel, prop) {
+    selection_iterate(sel, (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (loc && IS_STWALL(loc.typ)) loc.wall_info = (loc.wall_info || 0) | prop;
+    });
+}
+
+// C ref: sp_lev.c lspo_region() two-argument form des.region(sel, "lit") —
+// clone, grow in every direction, light every cell.  No RNG.
+function hf_region_lit(sel) {
+    const grown = l_selection_grow(sel, W_ANY);
+    selection_iterate(grown, (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (loc) loc.lit = true;
+    });
+}
+
+// C ref: sp_lev.c lspo_exclusion() — registers a no-teleport zone.  No RNG.
+function hf_exclusion(zonetype, x1, y1, x2, y2) {
+    const a = hf_loc(x1, y1), b = hf_loc(x2, y2);
+    const g = game;
+    if (!g.exclusion_zones) g.exclusion_zones = [];
+    g.exclusion_zones.push({ zonetype, lx: a.x, ly: a.y, hx: b.x, hy: b.y });
+}
+
+// C ref: sp_lev.c create_altar() — with an explicit `type` there is no rn2(2)
+// shrine roll here; the percent(75) that chose altar-vs-shrine was already
+// drawn by the .lua.  NOTE: the shrine branch's priestini() (which would spawn
+// Moloch's priest, and draw RNG) is not ported — see RECON_NOTES.
+function hf_altar(x, y, shrine) {
+    const c = hf_loc(x, y);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc) return;
+    loc.typ = ALTAR;
+    loc.altarmask = Align2amask(0 /* A_NONE: "noalign" */);
+    if (shrine) game.level.flags.has_temple = true;
+}
+
+// C ref: sp_lev.c lspo_drawbridge() — state="closed"/dir explicit, so no RNG.
+// NOTE: dbridge.c create_drawbridge() itself is not ported; the wall/portcullis
+// terrain it would stamp is missing (it consumes no RNG) — see RECON_NOTES.
+function hf_drawbridge(_db) {
+    /* deliberately empty: no RNG, terrain-only effect not yet ported */
+}
+
 
 // C ref: mklev.c makelevel() `In_quest(&u.uz)` branch — a quest-branch level
 // that is NOT one of the three named levels (start/locate/goal) dispatches to
@@ -2935,7 +3797,7 @@ async function makemaz_bar_fila() {
     // fixup_special: place the dungeon branch staircase, if this level happens
     // to be one (it isn't, for the Barbarian's Bar-fila — the quest branch
     // point is Bar-strt — but mirrors minefill's unconditional call).
-    mk_fixup_branch();
+    await mk_fixup_branch();
 }
 
 // C ref: dat/Bar-filb.lua — the "at/after locate" quest filler.  Same engine
@@ -2994,7 +3856,7 @@ async function makemaz_bar_filb() {
 
     // fixup_special: place the dungeon branch staircase (not applicable here
     // either — mirrors minefill's/Bar-fila's unconditional call).
-    mk_fixup_branch();
+    await mk_fixup_branch();
 }
 
 // C ref: mkmaze.c fixup_special() — for a branch level with no rooms left
@@ -3004,19 +3866,19 @@ async function makemaz_bar_filb() {
 // rn1 loop: x = rn1(79,1), y = rn1(21,0) until put_lregion_here succeeds.
 // put_lregion_here(LR_BRANCH): valid iff !bad_location -> !occupied && typ==ROOM
 // (cavernous, not is_maze_lev), then place_branch(branchp, x, y).
-function mk_fixup_branch() {
+async function mk_fixup_branch() {
     const branchp = is_branchlev();
     if (!branchp) return;
     let x = 0, y = 0;
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         x = rn1(COLNO - 1 - 1 + 1, 1);  // rn1((hx-lx)+1, lx) = rn1(79, 1)
         y = rn1(ROWNO - 1 - 0 + 1, 0);  // rn1((hy-ly)+1, ly) = rn1(21, 0)
-        if (mk_put_branch_here(x, y, branchp)) return;
+        if (await mk_put_branch_here(x, y, branchp)) return;
     }
     // deterministic fallback (no PRNG)
     for (x = 1; x <= COLNO - 1; x++)
         for (y = 0; y <= ROWNO - 1; y++)
-            if (mk_put_branch_here(x, y, branchp, true)) return;
+            if (await mk_put_branch_here(x, y, branchp, true)) return;
 }
 
 function mk_bad_branch_location(x, y) {
@@ -3035,7 +3897,7 @@ function mk_bad_branch_location(x, y) {
 // on a quest home level.  game._quest_branch holds the (already flipped) 1-cell
 // region; place_lregion's probabilistic loop therefore draws rn1(1,x)=rn2(1)+x
 // and rn1(1,y)=rn2(1)+y, then put_lregion_here(LR_BRANCH) -> place_branch.
-function quest_place_branch() {
+async function quest_place_branch() {
     const br = game._quest_branch;
     if (!br) return;
     const branchp = is_branchlev();
@@ -3049,7 +3911,7 @@ function quest_place_branch() {
         const loc = game.level?.at(x, y);
         if (loc && !occupied(x, y)
             && (loc.typ === ROOM || (loc.typ === CORR && game.level?.flags?.is_maze_lev))) {
-            mk_place_branch_at(branchp, x, y);
+            await mk_place_branch_at(branchp, x, y);
             return;
         }
     }
@@ -3057,29 +3919,33 @@ function quest_place_branch() {
         for (let y = ly; y <= hy; y++) {
             const loc = game.level?.at(x, y);
             if (loc && !occupied(x, y) && loc.typ === ROOM) {
-                mk_place_branch_at(branchp, x, y);
+                await mk_place_branch_at(branchp, x, y);
                 return;
             }
         }
 }
 
-function mk_put_branch_here(x, y, branchp) {
+async function mk_put_branch_here(x, y, branchp) {
     if (mk_bad_branch_location(x, y)) return false;
-    mk_place_branch_at(branchp, x, y);
+    await mk_place_branch_at(branchp, x, y);
     return true;
 }
 
 // C ref: mklev.c place_branch(br, x, y) with explicit coords.
-function mk_place_branch_at(branchp, x, y) {
+async function mk_place_branch_at(branchp, x, y) {
     const g = game;
     if (!branchp || g.made_branch) return;
     const onEnd1 = (branchp.end1?.dnum === g.u?.uz?.dnum
                     && branchp.end1?.dlevel === g.u?.uz?.dlevel);
     const dest = onEnd1 ? branchp.end2 : branchp.end1;
-    const makeStairs = onEnd1 ? (branchp.type !== 1 /*BR_NO_END1*/)
-                              : (branchp.type !== 2 /*BR_NO_END2*/);
-    if (branchp.type === 3 /*BR_PORTAL*/) {
-        // mkportal — not exercised for the mines branch.
+    const makeStairs = onEnd1 ? (branchp.type !== BR_NO_END1)
+                              : (branchp.type !== BR_NO_END2);
+    if (branchp.type === BR_PORTAL) {
+        // C ref: mklev.c place_branch()'s BR_PORTAL arm.  The debug_fuzzer
+        // u.ucamefrom variant is dead here (the fuzzer is never enabled), so
+        // the portal always leads to the other end of the branch.  No terrain
+        // change and no stairway record: the way through is the trap itself.
+        await mkportal(x, y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
     } else if (makeStairs) {
         const goes_up = onEnd1 ? !!branchp.end1_up : !branchp.end1_up;
         stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
@@ -3417,7 +4283,14 @@ function find_branch_room(mp) {
     return croom;
 }
 
-function place_branch(branchp) {
+// C ref: mklev.c place_branch(br, 0, 0) — the makelevel() call, which picks
+// random coordinates via find_branch_room() instead of being handed a spot.
+// The `br->type` dispatch below is the same one mk_place_branch_at() runs for
+// the explicit-coordinate callers: a BR_PORTAL branch (the Quest) puts a
+// MAGIC_PORTAL trap on the square and leaves the terrain alone, everything
+// else gets a staircase — and a BR_NO_END1/BR_NO_END2 branch gets neither on
+// the end that was declared stairless.
+async function place_branch(branchp) {
     const g = game;
     const mp = { x: 0, y: 0 };
     const croom = find_branch_room(mp);
@@ -3425,15 +4298,21 @@ function place_branch(branchp) {
         const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
             && branchp.end1?.dlevel === g.u?.uz?.dlevel);
         const dest = on_end1 ? branchp.end2 : branchp.end1;
-        const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-        const loc = g.level?.at(mp.x, mp.y);
-        if (loc) {
-            loc.typ = STAIRS;
-            loc.ladder = goes_up ? 1 : 2;
+        const make_stairs = on_end1 ? (branchp.type !== BR_NO_END1)
+                                    : (branchp.type !== BR_NO_END2);
+        if (branchp.type === BR_PORTAL) {
+            await mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
+        } else if (make_stairs) {
+            const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
+            const loc = g.level?.at(mp.x, mp.y);
+            if (loc) {
+                loc.typ = STAIRS;
+                loc.ladder = goes_up ? 1 : 2;
+            }
+            stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+            if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
+            else g.level.dnstair = { x: mp.x, y: mp.y };
         }
-        stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-        if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
-        else g.level.dnstair = { x: mp.x, y: mp.y };
     }
     g.made_branch = true;
 }
@@ -3661,7 +4540,26 @@ async function mktrap_room(croom) {
     if (!somexyspace(croom, pos)) return;
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
-    const lvl = game.u?.uz?.dlevel ?? 1;
+    // C ref: mklev.c mktrap() — `if (kind == WEB && !(mktrapflags &
+    // MKTRAP_NOSPIDERONWEB)) makemon(&mons[PM_GIANT_SPIDER], m.x, m.y,
+    // NO_MM_FLAGS);`.  fill_ordinary_room() calls mktrap() with mktrapflags
+    // 0, so the flag is clear and the spider is always made.  This is the
+    // same call the maze (mk_trap) and des.trap (oracle_trap) paths already
+    // make; it was missing only here.
+    if (kind === WEB) {
+        const spiderPm = monster_by_pmidx(name_to_pmidx('giant spider'));
+        // Through the local makemon() wrapper, not the bare make_monster():
+        // C links the spider into fmon like any other monster, and calling
+        // make_monster() directly created it (consuming the right RNG) but
+        // never put it on the level — so it was absent from the map and, more
+        // damagingly, missing from every later movemon()/mcalcmove() pass,
+        // which costs one rn2(12) per turn for the rest of the level.
+        if (spiderPm) await makemon(spiderPm, pos.x, pos.y, 0);
+    }
+    // C ref: mklev.c mktrap() — `unsigned lvl = level_difficulty();`, not the
+    // raw dlevel: in a branch dungeon (Mines/Quest/Gehennom) depth differs
+    // from dlevel, and Sokoban/Vlad's Tower build upwards.
+    const lvl = level_difficulty();
     const was_in_mklev = game.in_mklev;
     game.in_mklev = true;
     try {
