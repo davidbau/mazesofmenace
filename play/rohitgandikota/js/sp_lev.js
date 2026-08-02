@@ -30,7 +30,8 @@ import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD } from './const.js';
    level is generated, so they come in through a wire like somexy and okdoor.
    Declared here, above every use, because a `let` used before its declaration
    line is itself a TDZ error. */
-let mon_fns = { is_pool: () => false, is_lava: () => false, m_at: () => null };
+/* var, not let: wired from cmd.js's top level (see the add_room_fn note). */
+var mon_fns;
 export function sp_lev_wire_mon(fns) { mon_fns = fns; }
 import { NON_PM, SPACE_POS, ALTAR, STAIRS, LADDER, W_RANDOM, W_ANY, W_NORTH, W_SOUTH,
          W_EAST, W_WEST, D_LOCKED, D_TRAPPED } from './const.js';
@@ -67,6 +68,24 @@ import {
     MAXNROFROOMS, IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_STWALL,
     D_ISOPEN, D_NODOOR, D_BROKEN, D_SECRET,
 } from './const.js';
+
+/* mklev.js owns add_room/add_door/somexy; they are wired in by sp_lev_wire()
+   from mklev.js's TOP LEVEL to avoid an import cycle. This file also sits in
+   a cycle with mklev.js through other imports, so WHICH body evaluates first
+   is not fixed: index.html boots through Promise.all of five parallel
+   dynamic imports, and whichever import's traversal reaches the shared
+   subgraph first sets the evaluation order — a fetch-timing race that
+   varies run to run and between Node and the browser. On the unlucky order
+   mklev.js's body runs while this module's body has not evaluated at all,
+   and a `let` here is still in its temporal dead zone AT ANY POSITION IN
+   THE FILE, so the wire assignment throws "Cannot access 'add_room_fn'
+   before initialization" — which is what made the fork unplayable. Every
+   holder assigned by a top-level wire call MUST therefore be a bare `var`:
+   var bindings exist from module instantiation, before any body in the
+   graph runs, so the assignment is legal in every order; and no initializer
+   means this body evaluating second cannot clobber a value the wire already
+   installed. One clean load proves nothing — the order is a race. */
+var add_room_fn, add_door_fn, somexy_fn;
 
 // src/sp_lev.c:2731 fill_special_room()
 export function fill_special_room(croom) {
@@ -342,7 +361,7 @@ function maybe_add_door(x, y, croom) {
 }
 
 /* mklev.js owns add_room/add_door; wired at load to avoid an import cycle */
-let add_room_fn = () => {}, add_door_fn = () => {};
+/* add_room_fn/add_door_fn/somexy_fn are declared at the top of this file */
 export function sp_lev_wire(addRoom, addDoor, someXY) {
     add_room_fn = addRoom;
     add_door_fn = addDoor;
@@ -352,7 +371,7 @@ export function sp_lev_wire(addRoom, addDoor, someXY) {
 /* somexy() lives in js/mklev.js and mklev.js imports this file, so importing it
    back directly is a cycle: it resolves to a TDZ error on this module's own
    consts. The established fix here is the wire above, same as add_room. */
-let somexy_fn = null;
+/* somexy_fn declared at the top of this file (see note above) */
 
 // src/sp_lev.c:4978 lspo_terrain() — set the terrain of every square in a
 // selection. `des.terrain(sel, "I")` is the argc == 2 form.
@@ -749,7 +768,9 @@ export function lspo_engraving(opts) {
 
 /* mktrap() lives in js/mklev.js, which imports this file; routed through the
    wire for the same cycle reason as somexy. */
-let mktrap_fn = null;
+/* var, not let: wired from mklev.js's top level, which can run before this
+   body evaluates in the browser's module order (see add_room_fn above). */
+var mktrap_fn;
 export function sp_lev_wire_mktrap(fn) { mktrap_fn = fn; }
 
 // src/sp_lev.c:3662 — the class/id fixup lspo_object applies AFTER parsing all
@@ -1838,16 +1859,18 @@ function rnddoor() {
     return state[rn2(state.length)];
 }
 
-/* okdoor() lives in js/mklev.js; routed through the wire like somexy. */
-let okdoor_fn = () => true;
+/* okdoor() lives in js/mklev.js; routed through the wire like somexy.
+   var, not let, for all three below: wired from mklev.js's top level
+   (see the add_room_fn note). */
+var okdoor_fn;
 export function sp_lev_wire_okdoor(fn) { okdoor_fn = fn; }
 
-let create_subroom_fn = null;
+var create_subroom_fn;
 export function sp_lev_wire_subroom(fn) { create_subroom_fn = fn; }
 
 /* makecorridors/wallification/mkstairs/litstate live in js/mklev.js; routed
    through the wire like somexy, for the same import-cycle reason. */
-let mklev_fns = {};
+var mklev_fns;
 export function sp_lev_wire_mklev(fns) { mklev_fns = fns; }
 
 // src/sp_lev.c:3759 lspo_level_flags()
@@ -2265,7 +2288,7 @@ export async function load_special(name) {
 
 /* ==== the map-based special-level verbs the castle needs ==== */
 
-import { W_NONDIGGABLE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+import { W_NONDIGGABLE, W_NONPASSWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
          DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, DB_MOAT,
          IS_DOOR as C_IS_DOOR, IS_WALL as C_IS_WALL } from './const.js';
 const C_STONE = STONE, C_HWALL = HWALL, C_ROOM = ROOM, C_CORR = CORR,
@@ -2473,7 +2496,8 @@ export function lspo_mazewalk(mx, my, dirname) {
     fill_empty_maze();
 }
 
-let walkfrom_fn = null;
+/* var, not let: wired from mklev.js's top level (see the add_room_fn note). */
+var walkfrom_fn;
 export function sp_lev_wire_walkfrom(fn) { walkfrom_fn = fn; }
 
 // src/sp_lev.c:2900 maze1xy() — random untouched maze spot.
@@ -2578,6 +2602,38 @@ function Can_dig_down_sp() {
 
 const is_pit_sp = (t) => t === 11 /* PIT */ || t === 12 /* SPIKED_PIT */;
 const is_hole_sp = (t) => t === 13 /* HOLE */ || t === 14 /* TRAPDOOR */;
+
+// src/sp_lev.c:1006 lspo_non_passwall() — W_NONPASSWALL over a selection.
+//
+// C routes both this and non_diggable through set_wallprop_in_selection(), so
+// the per-cell test is sel_set_wall_property()'s (sp_lev.c:986):
+//     IS_STWALL(typ) || IS_TREE(typ) || typ == IRONBARS
+// Draws nothing.
+export function lspo_non_passwall(x1, y1, x2, y2) {
+    for (let x = x1 + game.xstart; x <= x2 + game.xstart; x++)
+        for (let y = y1 + game.ystart; y <= y2 + game.ystart; y++) {
+            const loc = game.level.at(x, y);
+            if (loc && (IS_STWALL(loc.typ) || loc.typ === TREE
+                        || loc.typ === IRONBARS))
+                loc.wall_info = (loc.wall_info | 0) | W_NONPASSWALL;
+        }
+}
+
+/* src/sp_lev.c:1090 lspo_exclusion() — record an exclusion zone. C keeps these
+   on sve.exclusion_zones and consults them when placing monsters, teleport
+   destinations and so on (sp_lev.c:877). Draws nothing; the region corners go
+   through get_location_coord, i.e. the map's xstart/ystart offset. */
+const EZ_TYPES = { teleport: 0, 'teleport-up': 1, 'teleport-down': 2,
+                   'monster-generation': 3 };
+
+export function lspo_exclusion(opts) {
+    const r = opts.region || [];
+    (game.exclusion_zones ||= []).push({
+        zonetype: EZ_TYPES[opts.type ?? 'teleport'] ?? 0,
+        lx: r[0] + game.xstart, ly: r[1] + game.ystart,
+        hx: r[2] + game.xstart, hy: r[3] + game.ystart,
+    });
+}
 
 // src/sp_lev.c lspo_non_diggable() — W_NONDIGGABLE on every wall in the area
 // (absolute selection).

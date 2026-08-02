@@ -171,8 +171,10 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
 }
 
 /* mkstairs/place_branch live in js/mklev.js, which imports this file;
-   wired to keep the import one-way. */
-let mkmaze_mklev_fns = null;
+   wired to keep the import one-way.
+   var, not let: wired from mklev.js's top level, which can run before this
+   body evaluates (see the add_room_fn note in js/sp_lev.js). */
+var mkmaze_mklev_fns;
 export function mkmaze_wire_mklev(fns) { mkmaze_mklev_fns = fns; }
 
 // src/mkmaze.c:570 fixup_special() — post-script placement of lregions and

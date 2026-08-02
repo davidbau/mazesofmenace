@@ -18,7 +18,7 @@ import {
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
     TELEP_TRAP, D_SECRET, D_CLOSED, IS_OBSTRUCTED, A_NONE, In_endgame,
-    AM_NONE, AM_SHRINE,
+    AM_NONE, AM_SHRINE, AM_SANCTUM,
     IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     PIT, NO_TRAP, is_pit, BURN,
@@ -1197,6 +1197,20 @@ export function splev_map_origin() {
              xsize: gx.xsize, ysize: gy.ysize };
 }
 
+// C ref: sp_lev.c `static char SpLev_Map[COLNO][ROWNO]` — every square the
+// level loader wrote.  load_special() memsets it at entry; lspo_map(),
+// sel_set_door(), l_create_stairway() and lspo_drawbridge() set it; maze1xy()
+// and fill_empty_maze() read it to find the parts of the maze the special
+// level did NOT claim.  Modelled as a Set of "x,y" keys.
+export function splev_map_reset() { game._splev_map = new Set(); }
+export function splev_map_mark(x, y) {
+    if (!game._splev_map) game._splev_map = new Set();
+    game._splev_map.add(x + ',' + y);
+}
+export function splev_map_at(x, y) {
+    return !!game._splev_map?.has(x + ',' + y);
+}
+
 export function lspo_map({ map, x = -1, y = -1, halign = 'none',
                            valign = 'none', lit = false, contents = null,
                            in_themerooms = true }) {
@@ -1311,6 +1325,7 @@ export function lspo_map({ map, x = -1, y = -1, halign = 'none',
             loc.horizontal = false;
             loc.roomno = 0;
             loc.edge = false;
+            splev_map_mark(xx, yy);          // C: SpLev_Map[x][y] = 1
             selection_setpoint(xx, yy, sel, 1);
             sel_set_ter(xx, yy, { ter: mptyp, tlit: lit });
         }
@@ -3060,7 +3075,7 @@ async function bigrm_run(variant) {
 // C ref: mkmaze.c get_level_extends() — bounding box of the non-STONE area,
 // padded by 1 (maze edge) or 2 (open level) on each side.  Mirrors mklev.js's
 // copy so the flip transform uses the identical extents the C engine does.
-function bigrm_get_level_extends() {
+export function bigrm_get_level_extends() {
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
     let found = false, nonwall = false;
@@ -3103,7 +3118,7 @@ function bigrm_get_level_extends() {
 // map cells, monsters, objects, traps, stairs, rooms and doors within the level
 // extents.  Restricted to the entity kinds the Big Room generates (extras=FALSE,
 // so the #wizfliplevel-only branches and vault/shk/worm fixups are inapplicable).
-function flip_level(flp) {
+export function flip_level(flp) {
     if ((flp & 3) === 0) return;
     const g = game;
     const map = g.level;
@@ -4112,7 +4127,11 @@ function flood_fill_rm(sx, sy, rmno, lit, anyroom, ext) {
 // its needfill is recorded for the level-finalize fill_special_room() pass, and
 // add_doors_to_room() attaches any door squares already on the map.  litstate is
 // an explicit 0/1 here, so litstate_rnd() draws nothing.
-function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) {
+//
+// Generic despite the vly_ prefix: the named Gehennom levels in mklev.js
+// (sanctum/orcus/wizard1-3/...) create their morgues, zoos, beehives, temples
+// and shops through this same entry point.
+export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) {
     const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
     let croom;
     if (irregular) {
@@ -4146,8 +4165,10 @@ function vly_teleport_region(mx1, my1, mx2, my2) {
 
 // C ref: sp_lev.c create_altar() with croom == NULL — an explicit coordinate
 // (no RNG), the altarmask from the requested alignment, and, when the square
-// falls inside a TEMPLE region and shrine is set, priestini().
-function vly_altar(mx, my, amask, shrine) {
+// falls inside a TEMPLE region and shrine is set, priestini().  Generic
+// despite the prefix — sanctum.lua and orcus.lua use it for their `type=
+// "sanctum"` altars (shrine == 2, which also sets AM_SANCTUM).
+export function vly_altar(mx, my, amask, shrine) {
     const c = vly_abs(mx, my);
     if (!set_levltyp_lit(c.x, c.y, ALTAR, SET_LIT_NOCHANGE)) return;
     const loc = game.level.at(c.x, c.y);
@@ -4159,6 +4180,10 @@ function vly_altar(mx, my, amask, shrine) {
     if (!croom || croom.rtype !== TEMPLE_RTYPE || !shrine) return;
     priestini(game.u?.uz, croom, c.x, c.y, shrine > 1);
     loc.altarmask |= AM_SHRINE;
+    // C ref: create_altar()'s tail — `shrine == 2` is a high altar / sanctum,
+    // and either way the level is now known to hold a temple.  No RNG.
+    if (shrine === 2) loc.altarmask |= AM_SANCTUM;
+    if (game.level?.flags) game.level.flags.has_temple = true;
 }
 
 // C ref: sp_lev.c lspo_non_diggable() -> set_wall_property(W_NONDIGGABLE) over

@@ -16,7 +16,7 @@ import { newsym } from './display.js';
 import {
     M_AP_MONSTER, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG,
     STRAT_NONE, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSCAND, M3_WANTSBOOK,
-    M3_WANTSARTI, MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, MAGIC_PORTAL,
+    M3_WANTSARTI, MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, MAGIC_PORTAL, IN_SIGHT,
     Is_astralevel, Is_rogue_level,
 } from './const.js';
 import {
@@ -431,6 +431,7 @@ export async function nasty(summoner) {
     const MAXNASTIES = 10;
     const census = monsterCensus();
     let count = 0;
+    const nastyMessages = [];
 
     if (!rn2(10) && inHell()) {
         /* wizard.c:668-670: this might summon a demon prince or lord.
@@ -452,9 +453,9 @@ export async function nasty(summoner) {
                 }
             }
             if (count) count = monsterCensus() - census;
-            return count;
+            return { count, messages: [] };
         }
-        return 0;
+        return { count: 0, messages: [] };
     }
 
     const sCls = summoner ? (summoner.data?.mlet || '') : '';
@@ -487,12 +488,26 @@ export async function nasty(summoner) {
             if (!spot) continue;
             /* MM_NOMSG when a monster cast the spell; plain flags for
                harassment (wizard.c:655-656). */
-            mtmp = await makemon(makeData, spot.x, spot.y, summoner ? MM_NOMSG : NO_MM_FLAGS);
+            const nastyFlags = summoner ? MM_NOMSG : NO_MM_FLAGS;
+            mtmp = await makemon(makeData, spot.x, spot.y, nastyFlags);
             if (mtmp) {
                 mtmp.msleeping = 0;
                 mtmp.mpeaceful = 0;
                 mtmp.mtame = 0;
                 set_malign(mtmp);
+                /* C ref: makemon.c:1474-1500 — a mid-game (!in_mklev) spawn
+                 * without MM_NOMSG announces itself when visible:
+                 * "A leocrotta suddenly appears next to you!" (" close by"
+                 * within BOLT_LIM*2 distance, plain "appears!" beyond). */
+                if (!summoner) newsym(mtmp.mx ?? spot.x, mtmp.my ?? spot.y);
+                if (!summoner && !game.in_mklev && !mtmp.mundetected && !mtmp.minvis
+                    && !game.u?.blind
+                    && !!(game.viz_array?.[spot.y]?.[spot.x] & IN_SIGHT)) {
+                    const du = ((spot.x ?? 0) - (game.u?.ux ?? 0)) ** 2
+                        + ((spot.y ?? 0) - (game.u?.uy ?? 0)) ** 2;
+                    const where = du <= 2 ? ' next to you' : du <= 64 ? ' close by' : '';
+                    nastyMessages.push(`A ${mtmp.data?.name || makeData.name || 'creature'} suddenly appears${where}!`);
+                }
             } else {
                 /* wizard.c:716-727: random substitute for a genocided pick. */
                 const sub = await makemon(null, spot.x, spot.y, 0);
@@ -526,7 +541,7 @@ export async function nasty(summoner) {
     }
 
     if (count) count = monsterCensus() - census;
-    return count;
+    return { count, messages: nastyMessages };
 }
 
 function IsEndgameLocal() {
@@ -694,9 +709,11 @@ export async function intervene() {
     case 3:
         aggravate();
         break;
-    case 4:
-        await nasty(null);
+    case 4: {
+        const nastyResult = await nasty(null);
+        messages.push(...(nastyResult?.messages || []));
         break;
+    }
     case 5: {
         const result = await resurrect();
         messages.push(...result.messages);

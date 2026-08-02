@@ -1,4 +1,58 @@
+// mcastu.c:800-895 mcast_spell() effects — castmu computes dmg=d(ml/2+1, 6)
+// (mcastu.c:240-243, mattk->damd==0 for ATTK(AT_MAGC, AD_SPEL, 0, 0)) right
+// before dispatching here.  Only the branches the recorded sessions exercise
+// are meaningful; the rest are best-effort placeholders (see the audit doc).
+async function wizardMonsterSpellEffect(mon, spell) {
+    const ml = Math.max(0, mon.m_lev ?? mon.data?.mlevel ?? 0);
+    const dmg = d(Math.trunc(ml / 2) + 1, 6);             // mcastu.c:240-243
+    switch (spell) {
+    case 'CURSE_ITEMS': {                                 // mcastu.c:831-834
+        (game._queued_messages_after_more ??= []).push(
+            { text: 'You feel as if you need some help.', more: true, lichChain: 1 },
+            { text: 'You feel a malignant aura surround you.', more: true, lichCastRndcurse: 1, lichChain: 1 });
+        break;
+    }
+    case 'SUMMON_MONS': {                                 // mcastu.c:822-824
+        const count = await monsterSummonNasties(mon);
+        if (process.env.NH_DBG_TRACE) (game._traceLog ??= []).push(`[summon] count=${count} pend=${JSON.stringify(game._pending_message||'')}`);
+        // mcast_summon_mons() (mcastu.c:418-449) plines the appearance right
+        // after the cast line; the tty folds them together when they fit.
+        const summonMsg = count === 1 ? 'A monster appears from nowhere!' : 'Monsters appear from nowhere!';
+        game._lichCastEffectCombine = summonMsg;
+        break;
+    }
+    case 'DESTRY_ARMR': {                                 // mcastu.c:450-468
+        (game._queued_messages_after_more ??= []).push({
+            text: heroHasAntimagic() ? 'A field of force surrounds you!' : 'Your skin itches.',
+            more: true, lichChain: 1,
+        });
+        break;
+    }
+    case 'AGGRAVATION': {                                 // mcastu.c:826-828
+        (game._queued_messages_after_more ??= []).push({
+            text: 'You feel that monsters are aware of your presence.', more: true, lichChain: 1,
+        });
+        for (const other of game.level?.monsters || []) {
+            other.msleeping = 0;
+            if (other.mfrozen) other.mfrozen = 0;
+        }
+        break;
+    }
+    case 'PSI_BOLT': {                                    // mcastu.c:606-622 mcast_psi_bolt
+        (game._queued_messages_after_more ??= []).push({
+            text: dmg <= 5 ? 'You get a slight headache.' : dmg <= 10 ? 'Your brain is on fire!' : dmg <= 20 ? 'Your head suddenly aches painfully!' : 'Your head suddenly aches very painfully!',
+            more: true, lichChain: 1,
+        });
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - dmg);
+        break;
+    }
+    default:                                              // unported branches — see audit
+        break;
+    }
+}
+
 // cmd.js — Command dispatch and movement.
+const BISD_REV = !!process.env.BISD_REV;
 // C refs: src/cmd.c:rhack(), src/hack.c:domove().
 
 import { game } from './gstate.js';
@@ -8,7 +62,7 @@ import { MONS } from './permonst.js'; // js port of include/monsters.h rows (nat
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, pickNasty, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, randomHallucinatedShopkeeperName, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DELPHI, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, GLOC_DOOR, GLOC_EXPLORE, GLOC_MONS, GLOC_OBJS, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SOFT, IS_STWALL, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_firelevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, LUCKMAX, LUCKMIN, MAGIC_PORTAL, MARK, MAXULEV, MAX_EGG_HATCH_TIME, MIGR_LADDER_UP, MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_UP, MM_ADJACENTOK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, MOAT, MON_LIMBO, MON_MIGRATING, MORGUE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEED_WEAPON, N_DIRS, NEW_MOON, NO_MINVENT, NORMAL_SPEED, OBJ_INVENT, OROOM, OVERLOADED, MAX_CARR_CAP, WT_BABY_DRAGON, WT_DRAGON, WT_HUMAN, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_EXPERT, P_GRAND_MASTER, P_HAMMER, P_KNIFE, P_LANCE, P_LONG_SWORD, P_MASTER, P_NONE, P_PICK_AXE, P_POLEARMS, P_RIDING, P_SABER, P_SHORT_SWORD, P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT, P_UNSKILLED, PIT, POOL, REPAIR_DELAY, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SHOP_DOOR_COST, SINK, SPIKED_PIT, STAIRS, STONE, STR18, STR19, STRAT_APPEARMSG, STRAT_ARRIVE, STRAT_WAITFORU, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, WT_TO_DMG, WT_TOOMUCH_DIAGONAL, W_ARMF, W_NONDIGGABLE, W_NONPASSWALL, W_SADDLE, W_TOOL, ZAP_POS, is_hole, is_pit, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz, getRngLog } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -7757,6 +7811,14 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
                 }
             }
             await setMessage(`You remember this level as ${targetAnnotation}.`, true);
+        } else if (arrivalObjects.length === 1) {
+            // C ref: do.c goto_level tail — `(void) pickup(1)` (do.c:1996)
+            // with !flags.pickup (!autopickup option) -> pickup.c pickup()
+            // check_here(FALSE) branch (pickup.c:724-730) -> check_here()
+            // ct>0 -> look_here(ct=1, LOOKHERE_NOFLAGS) (pickup.c:447-453)
+            // -> invent.c look_here single-object branch
+            // `You("see here %s.", doname_with_price(otmp))` (invent.c:4282).
+            await setMessage(`You ${game.u?.blind ? 'feel' : 'see'} here ${pickupObjectPhrase(arrivalObjects[0])}.`);
         } else if (arrivalObjects.length > 1) {
             const rows = arrivalObjectListRows(arrivalObjects);
             setOverlay(rows, rows.length, false, 39);
@@ -12569,6 +12631,231 @@ function coldDamageInventory(origDamage) {
     return { messages, damage, deathCause };
 }
 
+// C ref: destroy_items(&gy.youmonst, AD_COLD, dmg) — zap.c:5965-6110, and
+// maybe_destroy_item (zap.c:5798-5954).  Returns the per-stack destruction
+// results in inventory order; callers are responsible for pline/--More--
+// staging.  RNG order per stack: inventory_resistance_check roll (only when
+// something protects, zap.c:5816-5818 / uhitm.c mhitm_ad_cold), rnd(4) damage
+// (zap.c:5821-5824), rn2(3) per item in the stack (zap.c:5894-5898).
+export function coldTouchDestroyItemsProgram(origDamage) {
+    const entries = [];
+    for (const item of coldDestroyInventorySelection(game.inventory || [], origDamage)) {
+        if (coldInventoryItemProtected()) continue;
+        const itemDamage = rnd(4);
+        const stackQuan = Math.max(0, (item.quan || 1) - (item.in_use ? 1 : 0));
+        let destroyedCount = 0;
+        for (let qi = 0; qi < stackQuan; qi++) if (!rn2(3)) destroyedCount++;
+        if (!destroyedCount) continue; // zap.c:5900-5901 — resisted stack is silent
+        const plural = destroyedCount > 1;
+        const stackName = coldPotionDisplayName(item, plural);
+        // zap.c:5903-5911 — subject count phrases.
+        const subject = destroyedCount === 1 && stackQuan === 1 ? `Your ${stackName}`
+            : destroyedCount === 1 ? `One of your ${stackName}`
+            : destroyedCount < stackQuan ? `Some of your ${stackName}`
+            : stackQuan === 2 ? `Both of your ${stackName}`
+            : `All of your ${stackName}`;
+        removeInventoryItem(item, destroyedCount); // zap.c:5929-5934 useup()
+        entries.push({ text: `${subject} ${coldInventoryDestroyVerb(plural)}!`, damage: itemDamage });
+    }
+    return entries;
+}
+
+// ---------------------------------------------------------------------------
+// mcastu.c monster wizard spellcasting — scoped port of what the arch-lich
+// session exercises: castmu() (mcastu.c:129-330) after hitmu() from the
+// AT_MAGC/AD_SPEL attack slot (monsters.h:1889-1891), choose_monster_spell()
+// (mcastu.c:96-128), the wizard spell table (mcastu.c:31-35 with levels/flags
+// from include/mcastu.h:22-42), cursetxt() (mcastu.c:66-95), and the
+// session-exercised spell effects: CURSE_ITEMS (mcastu.c:831-834 → rndcurse()
+// sit.c:571-617) and SUMMON_MONS (mcastu.c:822-824 → mcast_summon_mons()
+// mcastu.c:418-449 → nasty() wizard.c:590-712).  Effects not exercised by the
+// recorded sessions are left unported (see the audit doc).
+
+const MCAST_WIZARD_SPELLS = ['PSI_BOLT', 'CURE_SELF', 'HASTE_SELF', 'STUN_YOU',
+    'DISAPPEAR', 'WEAKEN_YOU', 'DESTRY_ARMR', 'CURSE_ITEMS',
+    'AGGRAVATION', 'SUMMON_MONS', 'CLONE_WIZ', 'DEATH_TOUCH']; // mcastu.c:31-35 order
+const MCAST_WIZARD_LEVEL = new Map([ // include/mcastu.h levels
+    ['PSI_BOLT', 0], ['CURE_SELF', 1], ['HASTE_SELF', 2], ['STUN_YOU', 3],
+    ['DISAPPEAR', 4], ['WEAKEN_YOU', 6], ['DESTRY_ARMR', 8], ['CURSE_ITEMS', 10],
+    ['AGGRAVATION', 13], ['SUMMON_MONS', 15], ['CLONE_WIZ', 18], ['DEATH_TOUCH', 20]]);
+const MCAST_INDIRECT = new Set(['CURE_SELF', 'HASTE_SELF', 'DISAPPEAR',
+    'AGGRAVATION', 'SUMMON_MONS', 'CLONE_WIZ']); // include/mcastu.h MCF_INDIRECT
+
+// wizard.c:467-489 has_aggravatables()
+function monsterHasAggravatables(caster) {
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (mtmp === caster) continue;
+        if (mtmp.dead || (mtmp.mhp ?? 1) <= 0) continue;
+        if (mtmp.msleeping || mtmp.mfrozen || mtmp.mstone) return true;
+    }
+    return false;
+}
+
+// mcastu.c:908-988 spell_would_be_useless() — wizard-list cases only.
+function monsterSpellWouldBeUseless(mon, spell) {
+    if (mon.mpeaceful && spell !== 'CURE_SELF' && spell !== 'HASTE_SELF'
+        && spell !== 'DISAPPEAR')
+        return true; // MCF_HOSTILE (include/mcastu.h)
+    if (spell === 'CLONE_WIZ') return !mon.iswiz;          // mcastu.c:941-945
+    if (spell === 'AGGRAVATION') // mcastu.c:946-954
+        return monsterHasAggravatables(mon) ? false : rn2(100) !== 0;
+    if (spell === 'HASTE_SELF') return false; // permspeed MFAST unused here
+    if (spell === 'DISAPPEAR') return !!(mon.minvis || mon.invis_blkd); // mcastu.c:960-968
+    if (spell === 'CURE_SELF') return (mon.mhp || 0) >= (mon.mhpmax || 0); // mcastu.c:969-972
+    return false;
+}
+
+// mcastu.c:96-128 choose_monster_spell() for AD_SPEL (wizard list).
+function chooseWizardMonsterSpell(mon) {
+    const ml = mon.m_lev ?? mon.data?.hpLevel ?? mon.data?.mlevel ?? 0;
+    const maxlev = MCAST_WIZARD_LEVEL.get('DEATH_TOUCH'); // 20 — last list entry (mcastu.c:107)
+    let spellval = rn2(ml);                               // mcastu.c:111
+    if (spellval > maxlev && rn2(maxlev)) spellval = rn2(maxlev); // mcastu.c:112-113
+    for (let i = MCAST_WIZARD_SPELLS.length - 1; i >= 0; i--) { // mcastu.c:116-119
+        const spell = MCAST_WIZARD_SPELLS[i];
+        if (MCAST_WIZARD_LEVEL.get(spell) <= spellval && !monsterSpellWouldBeUseless(mon, spell))
+            return spell;
+    }
+    return MCAST_WIZARD_SPELLS[0];                        // mcastu.c:123
+}
+
+// sit.c:571-617 rndcurse() — rolls only; messages are staged by the caller so
+// the rolls land in the boundary where "malignant aura" displays (sit.c:584-586
+// You() first, and the tty pauses on that pline before the count/curse rolls).
+// Antimagic/Half_spell_damage shrink the count (sit.c:593).
+function monsterCastRndcurseItems() {
+    const withoutCoins = (game.inventory || []).filter(it => it.cls !== 'gold' && it.glyph !== '$');
+    const cnt = rnd(Math.trunc(6 / ((heroHasAntimagic() ? 1 : 0) + 1))); // sit.c:593
+    const inventory = withoutCoins;
+    if (!inventory.length) return;                        // sit.c:594 — the loop is nobj-gated
+    for (let left = cnt; left > 0; left--) {
+        let onum = rnd(inventory.length);                 // sit.c:596
+        let otmp = null;
+        for (const item of inventory) if (--onum === 0) { otmp = item; break; }
+        if (!otmp || otmp.cursed) continue;               // sit.c:606-608
+        if (otmp.blessed) otmp.blessed = 0;
+        else otmp.cursed = 1;
+    }
+}
+
+// mcastu.c:418-449 mcast_summon_mons() → wizard.c:590-712 nasty() — scoped to
+// what the session reaches: 10%-in-hell msummon skipped (not Gehennom),
+// pick_nasty() (mklev) for the summon list, enextoMonsterSpot, makemon.
+async function monsterSummonNasties(summoner) {
+    // wizard.c:603-605 — 10%-in-hell demon summoning (msummon) replaced by a
+    // plain nasties loop; not Gehennom here, so just the roll.
+    rn2(10);
+    const outer = rnd((game.u?.ulevel || 1) > 3 ? Math.trunc((game.u?.ulevel || 1) / 3) : 1); // wizard.c:625
+    let difcap = summoner.data?.difficulty || 0;          // wizard.c:627
+    let count = 0;
+    for (let i = outer; i > 0 && count < 10; --i) {
+        for (let j = 0; j < 20; ++j) {                    // wizard.c:629 tries
+            let makeData = null;
+            let trylimit = 11;                            // wizard.c:637
+            do {
+                if (!--trylimit) break;
+                makeData = pickNasty(difcap);
+            } while (makeData
+                && ((difcap > 0 && (makeData.difficulty || 0) >= difcap
+                        && monsterDataHasWizardSpellAttack(makeData)) // wizard.c:640-649
+                    || (summoner.data?.mlet === '&' && makeData.mlet === 'A')
+                    || (summoner.data?.mlet === 'A' && makeData.mlet === '&'))); // wizard.c:651-654
+            if (!trylimit || !makeData) continue;
+            const spot = enextoMonsterSpot(game.u?.ux ?? summoner.mx, game.u?.uy ?? summoner.my, makeData);
+            if (!spot) continue;
+            const mon = await makemon(makeData, spot.x, spot.y, MM_NOMSG);
+            if (!mon) continue;
+            mon.msleeping = 0;                            // wizard.c:685
+            mon.mpeaceful = 0;
+            mon.mtame = 0;
+            const mname = mon.data?.name || '';
+            if (mname === 'arch-lich' || mname === 'Archon') // wizard.c:730-737
+                difcap = (!difcap || difcap > 26) ? 26 : difcap;
+            mon.mspec_used = rnd(4);                      // wizard.c:692-693
+            count++;
+            // wizard.c:694-698 — stop at MAXNASTIES, or a neutrally-aligned
+            // summon, or one matching the caster's alignment (sgn).
+            if (count >= 10 || (mon.data?.maligntyp || 0) === 0
+                || Math.sign(mon.data?.maligntyp || 0) === Math.sign(summoner.data?.maligntyp || 0))
+                return count;
+        }
+    }
+    return count;
+}
+
+function monsterDataHasWizardSpellAttack(data) {
+    // attacktype(magr, AT_MAGC) approximation for nasty()'s chain-summoner cap
+    // (wizard.c:640-649): spellcasting nasties.
+    return !!data?.mcastWizardSpells || data?.name === 'gnomish wizard';
+}
+
+// mcastu.c:129-330 castmu() AD_SPEL branch, reached from mattacku()'s attack
+// loop (mhitu.c:763-946) after slot 0 (hitmu) returns — including via a
+// refused wizard-mode done().  Scoped port; all rolls happen synchronously
+// here; generated messages go through the pending-message/--More-- staging so
+// each pline lands on its own input boundary like tty pline().
+// mcastu.c:129-330 castmu() AD_SPEL branch, reached from mattacku()'s attack
+// loop (mhitu.c:763-946) after slot 0 (hitmu) returns — including via a
+// refused wizard-mode done().  Scoped port; all rolls happen synchronously
+// here; generated messages go through the pending-message/--More-- staging so
+// each pline lands on its own input boundary like tty pline().
+async function wizardMonsterCastResolvedAfterTouch(mon) {
+    const ml = Math.max(0, mon.m_lev ?? mon.data?.mlevel ?? 0);
+    if (!ml) return;
+    // mcastu.c:150-172 — do/while with the uselessness re-pick guard.
+    let spell = null;
+    let cnt = 40;
+    do {
+        spell = chooseWizardMonsterSpell(mon);
+        if (!monsterSpellWouldBeUseless(mon, spell)) break;
+    } while (--cnt > 0);
+    if (cnt <= 0) return;
+    if (mon.mcan || mon.mspec_used) {                     // mcastu.c:174-181
+        // mcastu.c:66-85 cursetxt(), canspotmon branch (caster is visible).
+        const subject = mon.givenName || `The ${mon.data?.name || 'monster'}`;
+        const undirected = MCAST_INDIRECT.has(spell);
+        (game._queued_messages_after_more ??= []).push({
+            text: `${subject} points ${undirected ? 'all around, then curses' : 'at you, then curses'}.`,
+            more: true, lichChain: 1,
+        });
+        game._message_more = 1;
+        return;
+    }
+    // mcastu.c:183-186; monst->m_lev is uchar — no clamp needed for the lich.
+    mon.mspec_used = ml < 8 ? 10 - ml : 2;
+    if (rn2(ml * 10) < (mon.mconf ? 100 : 20)) return;    // mcastu.c:211-214 fumble
+    const subject = mon.givenName || `The ${mon.data?.name || 'monster'}`;
+    // mcastu.c:216-227 — "casts a spell!" / "casts a spell at you!" pline.
+    const castMsg = `${subject} casts a spell${MCAST_INDIRECT.has(spell) ? '' : ' at you'}!`;
+    // C tty sequencing: the spell effect's rolls happen in whatever input
+    // window the cast line becomes the displayed top line.  When it combines
+    // with the current line (fits), that is *now*; otherwise it waits for a
+    // queue entry (lichCastEffect drains on the cast line's own boundary).
+    const pend = game._pending_message || '';
+    const width = game.nhDisplay?.cols || 80;
+    if (pend && pend.length + castMsg.length + 3 < width - 8) {
+        game._pending_message = `${pend}  ${castMsg}`;
+        game._message_more = 1;
+        await wizardMonsterSpellEffect(mon, spell);
+        const combineText = game._lichCastEffectCombine || '';
+        game._lichCastEffectCombine = '';
+        if (combineText) {
+            const pendNow = game._pending_message || '';
+            const widthNow = game.nhDisplay?.cols || 80;
+            if (pendNow && pendNow.length + combineText.length + 3 < widthNow - 8)
+                game._pending_message = `${pendNow}  ${combineText}`;
+            else
+                (game._queued_messages_after_more ??= []).push({ text: combineText, more: true, lichChain: 1 });
+        }
+    } else {
+        (game._queued_messages_after_more ??= []).push({
+            text: castMsg, more: true, lichChain: 1,
+            lichCastEffect: { spell, monId: mon.m_id },
+        });
+        game._message_more = 1;
+    }
+}
+
 function electricInventoryDisplayName(item) {
     return pickupObjectName({ ...item, line: '', quan: 1 });
 }
@@ -14857,6 +15144,7 @@ function preservesTrapmoveRepeatMessage(msg) {
 }
 
 async function setMessage(msg, more = false) {
+    if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'setMessage', text:String(msg||''), more:!!more, moves:game.moves, uhp:game.u?.uhp, pend:game._pending_message, mm:game._message_more});
     const text = String(msg || '');
     if (game._silent_drop_prompt_message) {
         if (game._pending_message === game._silent_drop_prompt_message && !game._message_more)
@@ -63798,9 +64086,55 @@ function tutorialEnterStash() {
                             }
                         }
                         if (game._cold_destroy_after_topline_more != null) {
-                            const coldLevel = game._cold_destroy_after_topline_more;
+                            const coldInfo = game._cold_destroy_after_topline_more;
                             game._cold_destroy_after_topline_more = null;
-                            if (coldLevel > rn2(20)) rn2(5);
+                            const coldLevel = typeof coldInfo === 'object' && coldInfo ? (coldInfo.level || 0) : coldInfo;
+                            // C ref: uhitm.c:2659-2661 mhitm_ad_cold mhitu branch —
+                            // destroy_items(&gy.youmonst, AD_COLD, orig_dmg) when
+                            // `(int) magr->m_lev > rn2(20)`.
+                            if (coldLevel > rn2(20)) {
+                                if (typeof coldInfo === 'object' && coldInfo) {
+                                    // Lich frost touch: full per-stack program
+                                    // (zap.c:5965-6110).  Each destroyed stack's
+                                    // shatter message is its own tty --More--
+                                    // boundary (zap.c:5906-5912 pline); the
+                                    // touch's damage tail (mhitm_knockback
+                                    // uhitm.c:5258/5269, mdamageu mhitu.c:1194+)
+                                    // rides the last entry.
+                                    const lichShatterEntries = coldTouchDestroyItemsProgram(coldInfo.damage || 0);
+                                    if (lichShatterEntries.length) {
+                                        game._queued_messages_after_more ??= [];
+                                        lichShatterEntries.forEach((entry, idx) =>
+                                            game._queued_messages_after_more.push({
+                                                text: entry.text,
+                                                more: true,
+                                                lichColdShatter: {
+                                                    damage: entry.damage,
+                                                    touchDamage: idx === lichShatterEntries.length - 1 ? (game._damage_after_topline_more || 0) : 0,
+                                                    touchNeedsAc: idx === lichShatterEntries.length - 1 && !!game._damage_after_topline_more_needs_ac,
+                                                    touchKnockBack: idx === lichShatterEntries.length - 1 && !!game._knockback_after_topline_more,
+                                                    isLast: idx === lichShatterEntries.length - 1,
+                                                },
+                                            }));
+                                        game._damage_after_topline_more = 0;
+                                        game._damage_after_topline_more_needs_ac = 0;
+                                        game._knockback_after_topline_more = 0;
+                                        // C: the tty pauses inside pline() during
+                                        // destroy_items (zap.c:5906) — monsters
+                                        // after the caster (movemon iteration,
+                                        // mon.c:1214-1330) are NOT evaluated while
+                                        // the shatter --More-- chain is pending, so
+                                        // strip the engine's more-continuation resume
+                                        // markers here.
+                                        game._continue_monsters_after_more = 0;
+                                        game._attack_resume_after_more = 0;
+                                        game._monster_resume_index = 0;
+                                        game._monster_resume_same_index = 0;
+                                        game._monster_resume_after_preturn = 0;
+                                        keepMore = true;
+                                    }
+                                } else rn2(5);
+                            }
                         }
                 if (promoteLethalProjectileAfterMore()) {
                     keepMore = true;
@@ -64279,7 +64613,12 @@ function tutorialEnterStash() {
 	                        // C ref: display quirk verified against recording — the status
 	                        // HP line keeps the pre-damage value shown while the death
 	                        // --More-- chain plays when the killing blow lands at exactly -1.
+                            // C ref: mdamageu() -> done() -> savelife() is *synchronous*
+                            // mid-mattakm/mwildmw burst: on a wizard-mode "Die?" refusal
+                            // the hero is healed before the NEXT attack slot is rolled.
+                            if (BISD_REV && (game.u?.uhp || 0) <= 0) restoreHeroHpForUnresolvedWizardDeath();
 		                    }
+		                    const hitsSoFar = [...(deferred.hitsSoFar || [])];
 		                    // mhitu.c:72-77 hitmsg() — " again" iff the same
                     // monster's immediately previous attack slot was a hit of
                     // the same attack type.  (Some data packs bake the same
@@ -64287,10 +64626,28 @@ function tutorialEnterStash() {
                     let prevSlotWasHit = !!deferred.first?.hit;
                     let prevBaseVerb = deferred.prevAttack
                         ? String(deferred.prevAttack.verb || 'hits').replace(/ again$/, '') : null;
+                    // C ref: mhitu.c:72-76 hitmsg() also requires the SAME
+                    // ATTACK TYPE as the previous slot (mattk->aatyp ==
+                    // hitmsg_prev->aatyp) for " again".
+                    let prevAatyp = deferred.prevAttack?.aatyp ?? null;
 		                for (let i = 0; i < (deferred.attacks || []).length; i++) {
 		                        const attackIndex = (deferred.nextIndex || 1) + i;
-		                        const attack = deferred.attacks[i];
-		                        const attackRoll = rnd(20 + attackIndex);
+		                        let attack = deferred.attacks[i];
+                                // C ref: mhitu.c:372-390 getmattk() — while
+                                // mspec_used > 0, grabs/engulfs/sticks/poly
+                                // downgrade to a plain 1d6 claw, and the
+                                // downgraded slot then takes the normal AT_CLAW
+                                // to-hit roll path.
+                                if (deferred.mon?.mspec_used && (attack.aatyp === 'engl' || attack.aatyp === 'hugs'
+                                    || attack.adtyp === 'stck' || attack.adtyp === 'poly'))
+                                    attack = { ...attack, aatyp: 'claw', adtyp: 'phys', dice: 1, sides: 6, verb: 'hits' };
+                                // C ref: mhitu.c:822-826 AT_HUGS — automatic hit
+                                // when the previous two attacks both hit; no
+                                // rnd(20+i) to-hit roll in that case.
+                                const hugAutoHit = attack.aatyp === 'hugs'
+                                    && attackIndex >= 2
+                                    && hitsSoFar[hitsSoFar.length - 1] && hitsSoFar[hitsSoFar.length - 2];
+		                        const attackRoll = hugAutoHit ? 999 : rnd(20 + attackIndex);
                                 let shownSubject = deferred.subject || 'It';
                                 let hallucinatedSubject = false;
                                 if ((game.u?._statusSuffix || '').includes('Hallu') && !game.u?.blind) {
@@ -64307,19 +64664,25 @@ function tutorialEnterStash() {
                                 let nextMessage;
                                 let nextFirst = null;
 		                        if ((deferred.toHit || 0) <= attackRoll) {
+		                            hitsSoFar.push(false);
 		                            nextMessage = `${shownSubject} ${(deferred.toHit || 0) === attackRoll ? 'just ' : ''}misses!`;
                                     // mhitu.c:87-88 missmu() — a miss resets the
                                     // hitmsg_prev/hitmsg_mid tracker.
                                     prevSlotWasHit = false;
                                     prevBaseVerb = null;
+                                    prevAatyp = null;
 		                        } else {
+		                            hitsSoFar.push(true);
 		                            const damage = d(attack.dice ?? 1, attack.sides ?? 2);
                                     const baseVerb = String(attack.verb || 'hits').replace(/ again$/, '');
-                                    // mhitu.c:73-76 — consecutive same-aatyp
-                                    // slots give " again"; data verbs proxy it.
-                                    const again = prevSlotWasHit && prevBaseVerb === baseVerb ? ' again' : '';
+                                    // mhitu.c:73-76 — consecutive slots give
+                                    // " again" only on the same attack type
+                                    // (mattk->aatyp == hitmsg_prev->aatyp).
+                                    const again = prevSlotWasHit && prevBaseVerb === baseVerb
+                                        && (attack.aatyp ?? null) === prevAatyp ? ' again' : '';
                                     prevSlotWasHit = true;
                                     prevBaseVerb = baseVerb;
+                                    prevAatyp = attack.aatyp ?? null;
 		                            nextMessage = `${shownSubject} ${baseVerb}${again}!`;
                                     nextFirst = { hit: true, damage, message: nextMessage };
                                 }
@@ -64336,6 +64699,8 @@ function tutorialEnterStash() {
                                         toHit: deferred.toHit,
                                         subject: deferred.subject,
                                         name: deferred.name,
+                                        mon: deferred.mon,
+                                        hitsSoFar: [...hitsSoFar],
                                     };
                                     game._attack_resume_after_more = 1;
                                     game._hallu_display_after_deferred_multiattack = 1;
@@ -64359,6 +64724,11 @@ function tutorialEnterStash() {
 		                            // C ref: display quirk verified against recording — the status
 		                            // HP line keeps the pre-damage value shown while the death
 		                            // --More-- chain plays when the killing blow lands at exactly -1.
+                                    // C ref: mdamageu() -> done() -> savelife() is
+                                    // synchronous mid-burst (end.c:704-758): on a
+                                    // wizard-mode "Die?" refusal the hero is healed
+                                    // before the NEXT attack slot is rolled.
+                                    if (BISD_REV && (game.u?.uhp || 0) <= 0) restoreHeroHpForUnresolvedWizardDeath();
                                 }
 	                    }
                         // C ref: mattacku()/movemon slot-loop continuation —
@@ -64375,7 +64745,8 @@ function tutorialEnterStash() {
                     // any queued non-fatal followup; only an already-queued death line defers a
                     // second.  When this fires, movemon must resume with the NEXT monster, not this
                     // monster's replayed slot chain (see resume-index resets below).
-                    if ((game.u?.uhp || 0) <= 0
+                    const deferredHeroHpHitZero = (game.u?.uhp || 0) <= 0;
+                    if (deferredHeroHpHitZero
                         && !(game._queued_message_after_more || '').startsWith('You die')) {
                             game._monster_resume_same_index = 0;
                             game._monster_resume_after_preturn = 0;
@@ -64389,6 +64760,15 @@ function tutorialEnterStash() {
 	                        game._queued_message_after_more = 'You die...';
 	                        keepMore = true;
 	                    }
+                    if (deferredHeroHpHitZero && BISD_REV) {
+                        // C ref: done() -> die() -> savelife() (end.c:704-758,
+                        // 1108-1116): a wizard/explore "Die?" refusal heals the hero
+                        // immediately and the interrupted monster attack chain resumes
+                        // with the restored hp; every fresh zero-crossing during the
+                        // pending "You die..." stretch is another refusal+revival (the
+                        // recorder answers 'no' with plain space).
+                        restoreHeroHpForUnresolvedWizardDeath();
+                    }
 	                }
 	                game._pending_fumble_turn_message = toplineHadFumbleTurnMessage ? 1 : 0;
                 game._pending_fumble_turn_message_starts = toplineFumbleStartedMessage ? 1 : 0;
@@ -64697,6 +65077,67 @@ function tutorialEnterStash() {
                         }
                     }
                     exerciseAttribute(A_STR, false);
+                }
+                if (next.lichColdShatter) {
+                    const fx = next.lichColdShatter;
+                    // C ref: zap.c:5936-5949 (maybe_destroy_item) — losehp() of
+                    // the shattering potion's rnd(4) damage, then
+                    // exercise(A_STR, FALSE) whose only PRNG is rn2(2)
+                    // (attrib.c:508).
+                    if (fx.damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - fx.damage);
+                    exerciseAttribute(A_STR, false);
+                    if (fx.isLast) {
+                        // C ref: mhitu.c:1192-1195 — hitmu() calls
+                        // mhitm_knockback() after mhitm_adtyping(); the two
+                        // rolls are uhitm.c:5258 (rn2(3)) and uhitm.c:5269
+                        // (rn2(6)).
+                        if (fx.touchKnockBack) { rn2(3); rn2(6); }
+                        // mhitu.c:1203-1207: negative-AC damage reduction,
+                        // then mdamageu (mhitu.c:1258).
+                        let lichDeferredDamage = fx.touchDamage || 0;
+                        if (lichDeferredDamage && fx.touchNeedsAc && (game.u?.uac ?? 10) < 0)
+                            lichDeferredDamage = Math.max(1, lichDeferredDamage - rnd(-(game.u?.uac ?? 10)));
+                        const lichHpBefore = game.u?.uhp || 0;
+                        if (lichDeferredDamage) {
+                            game.u.uhp = Math.max(0, lichHpBefore - lichDeferredDamage);
+                            game.nhDisplay?.renderStatus?.(game.u);
+                        }
+                        if ((game.u?.uhp || 0) <= 0 && !game._queued_message_after_more) {
+                            if (lichHpBefore - lichDeferredDamage === -1)
+                                game._death_status_hp_before_zero = lichHpBefore;
+                            game._death_current_move = 1;
+                            game._death_moves = game.moves || 1;
+                            game._queued_message_after_more = 'You die...';
+                            next.more = true;
+                        }
+                    }
+                }
+                if (process.env.NH_DBG_TRACE) (game._traceLog ??= []).push(`[queue-shift] nxt=${JSON.stringify((next.text||'').slice(0,40))} qleft=${(game._queued_messages_after_more||[]).length} qmsg=${JSON.stringify(game._queued_message_after_more||'')}`);
+                if (process.env.NH_DBG_TRACE) (game._traceLog ??= []).push(`[cast-eff] spell=${next.lichCastEffect?.spell} pend=${JSON.stringify(game._pending_message||'')} qq=${(game._queued_messages_after_more||[]).length}`);
+                if (next.lichCastEffect) {
+                    // C: castmu()'s mcast_spell() dispatch (mcastu.c:229-243,
+                    // 800-895) runs once the cast line displays — the tty
+                    // pause inside the pline keeps its rolls on this
+                    // boundary.  mcast_summon_mons (mcastu.c:418-449) plines
+                    // the appearance right after the cast line; fold it into
+                    // this boundary's text when it fits.
+                    const castMon = (game.level?.monsters || []).find(m => m.m_id === next.lichCastEffect.monId);
+                    if (castMon) await wizardMonsterSpellEffect(castMon, next.lichCastEffect.spell);
+                    const combineText = game._lichCastEffectCombine || '';
+                    game._lichCastEffectCombine = '';
+                    const widthForCombine = game.nhDisplay?.cols || 80;
+                    if (combineText && nextText.length + combineText.length + 3 < widthForCombine - 8)
+                        nextText = `${nextText}  ${combineText}`;
+                    else if (combineText)
+                        game._queued_messages_after_more.unshift({ text: combineText, more: true, lichChain: 1 });
+                }
+                if (next.lichCastRndcurse) {
+                    // C ref: sit.c:571-617 rndcurse() — the "malignant aura"
+                    // pline (sit.c:584-586) pauses the tty boundary first; its
+                    // rnd(6/R) + per-pick rnd(nobj) rolls resolve as that line
+                    // displays.
+                    monsterCastRndcurseItems();
+                    next.processTime = true;
                 }
                 if (next.clearBeam) game._transient_beam_cells = null;
                 if (next.beamCells !== undefined) game._transient_beam_cells = next.beamCells;
@@ -66141,6 +66582,16 @@ function tutorialEnterStash() {
                 // allmain.c:381-383 ++gm.multi/unmul path while the hero keeps
                 // a multi-turn (search) count running — arm its late print.
                 game._survivor_via_search_stop = 1;
+            // C ref: hitmu() ends with stop_occupation() (mhitu.c:1265) —
+            // when the monster attack that killed the hero via a lich's cast
+            // ran while a counted search was active, its stop message surfaces
+            // here at the refusal (recorded sessions show it folded into the
+            // survival line).  Mutually exclusive with the flag path above:
+            // stopCountedSearchOccupationOnHeroHit clears the search count.
+            } else if ((game._search_pending_count || 0) > 0 && game._lichCastMonster) {
+                survivalMessages.push('You stop searching.');
+                game._search_pending_count = 0;
+                game._counted_repeat_interruptible = 0;
             }
             // C ref: savelife() (end.c:704-758) — a hero who refuses the "Die?"
             // prompt while held is released ("The salamander releases you.",
@@ -66184,6 +66635,7 @@ function tutorialEnterStash() {
             game._command_mode = null;
             await setMessage(survivalMessages.join('  '), landing?.more || landing?.trapResult);
             if (landing?.trapResult && applyLifeSavingOrFatalCommandMode(landing.trapResult)) return;
+
             if (game._deferred_raven_blind_after_more) {
                 const ravenAttack = game._deferred_raven_blind_after_more;
                 game._deferred_raven_blind_after_more = null;
@@ -66223,6 +66675,29 @@ function tutorialEnterStash() {
             // hero (gm.multi = -1); the next completed immobile moveloop pass
             // counts it up to 0 and unmul(NULL) prints nomovemsg.
             game._survivor_emit_after_moves = (game.moves || 0) + 1;
+            // C ref: mattacku() attack-slot loop (mhitu.c:763-946) — after
+            // slot 0's hitmu() returns (even through a refused done()), slot 1
+            // ATTK(AT_MAGC, AD_SPEL, 0, 0) (monsters.h:1889-1891) runs
+            // castmu() (mcastu.c:129-330) for wizard-spell casters.  When the
+            // spell messages queue up behind a --More-- the survival line
+            // rides the same queue AFTER them instead of preempting it; in
+            // that case it already hit the message stream, so disarm the
+            // unmul-cadence late print armed above (end.c:727 stays printed
+            // exactly once, last).
+            if (game._lichCastMonster && (game.level?.monsters || []).includes(game._lichCastMonster)
+                && (game._lichCastMonster.mhp || 0) > 0) {
+                const lichMon = game._lichCastMonster;
+                game._lichCastMonster = null;
+                await wizardMonsterCastResolvedAfterTouch(lichMon);
+                if (game._queued_messages_after_more?.length) {
+                    game._queued_messages_after_more.push({
+                        text: game._queued_message_after_more, more: false, lichChain: 1,
+                    });
+                    game._queued_message_after_more = '';
+                    game._survivor_emit_after_moves = 0;
+                    game._survivor_via_search_stop = 0;
+                }
+            }
             game._command_mode = null;
             if (game._prayer_pending_done) game._prayer_pending_done_delay = 3;
             game.context.move = 1;

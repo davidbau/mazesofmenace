@@ -18,6 +18,7 @@ import {
     D_CLOSED,
     HEADSTONE,
     INVIS,
+    IS_FURNITURE,
     MMOVE_NOTHING,
     MON_FLOOR,
     MON_MIGRATING,
@@ -25,7 +26,6 @@ import {
     NORMAL_SPEED,
     OBJ_MINVENT,
     ROOM,
-    STAIRS,
     STRAT_CLOSE,
 } from './const.js';
 import { newsym } from './display.js';
@@ -557,14 +557,25 @@ function assertSimpleDestination(monster, x, y, env) {
     const { state } = env;
     const location = state.level.at(x, y);
     const doorMask = location?.flags || location?.doormask || 0;
-    // STAIRS is ordinary terrain for a monster that is not covetous: it is
-    // ACCESSIBLE, so mon.c mfndpos() and teleport.c goodpos() admit it with no
-    // stair-specific branch, and monmove.c postmov() has none either. No
-    // ordinary movement path changes a monster's level; every
+    // Every IS_FURNITURE type is ordinary terrain for a monster that is not
+    // covetous: all seven are ACCESSIBLE, so mon.c mfndpos() and teleport.c
+    // goodpos() admit them with no furniture branch, and monmove.c postmov()
+    // has none either. Three furniture tests do sit on the monster-move path.
+    // monmove.c:274 onscary()'s vampire-fears-altar arm is ported in
+    // js/monmove.js; monmove.c:1233 holds_up_web() is reached only from
+    // maybe_spin_web(), which js/monmove.js refuses for every webmaker; and
+    // mon.c:973 minliquid_core()'s `infountain` feeds the gremlin split at
+    // :987, whose rn2(3) neither minLiquid owner draws. That last one is a
+    // standing gap rather than a new one -- makemon() can place a monster on
+    // a fountain without any move at all -- and it is tracked as the
+    // gremlin-in-a-fountain deferral.
+    //
+    // No ordinary movement path changes a monster's level; every
     // migrate_to_level() caller is item use (muse.c), digging (dig.c),
     // teleportation (teleport.c), a shopkeeper (shk.c), or a wizard command.
     // dogmove.c reads stairs only through dog_goal()'s On_stairs(u.ux, u.uy),
-    // which asks where the hero stands, not where the pet steps.
+    // which asks where the hero stands, not where the pet steps, and names no
+    // other furniture at all.
     // A doorway a monster can stand in without acting on it, or a closed one
     // it opens. INERT_DOOR_MASKS names the first set; js/monmove.js owns it
     // beside the block that skips them.
@@ -574,7 +585,7 @@ function assertSimpleDestination(monster, x, y, env) {
     const ordinaryDestination = location
         && (location.typ === ROOM
             || location.typ === CORR
-            || location.typ === STAIRS
+            || IS_FURNITURE(location.typ)
             || inertDoorway
             || opensDoor);
     if (!ordinaryDestination)
@@ -788,14 +799,21 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
 async function planningEveryTurnEffect(monster, env) {
     await m_everyturn_effect(monster, {
         ...env,
-        // The live owner passes region.c's real block_point(), which rebuilds
-        // vision.c's transparency index and sets vision_full_recalc, so every
-        // monster after this one in the live scan sees a darker map. Planning
-        // cannot reproduce that: rebuildVisionPoint() refuses any state other
-        // than the live game. Stubbing it out instead would admit a scan whose
-        // later monsters then take different vision-dependent dochug()
-        // branches live, spending PRNG the dry run never charged. Stop here so
-        // the whole scan stays retryable.
+        // C ref: monmove.c:657-661. A fog cloud lays a one-square vapour
+        // region through create_gas_cloud(). The PRNG is not what stops the
+        // dry run following it: at cloudsize 1 that is a single rn1(3, 4)
+        // (region.c:1303), which the cloned ISAAC context can afford.
+        // add_region() is. For a visible region it calls block_point() on the
+        // inside square (region.c:326-328), and js/vision.js keeps the
+        // transparency index that rebuilds in module constants (64-66), which
+        // the caller's restore below repairs only for a planned door opening;
+        // and it repaints through newsym() (region.c:329-330), for which
+        // js/allmain.js regionEffectEnv() is the live owner and the plan has
+        // no counterpart.
+        //
+        // The reason this comment used to give was that rebuildVisionPoint()
+        // refuses a state other than the live game. It does not; js/vision.js
+        // takes a state, and the door path already runs it against the clone.
         createGasCloud: () => unsupported('monster region creation'),
     });
 }
@@ -804,13 +822,20 @@ async function planSimpleMonsterScan(monster, env) {
     return movemon_singlemon(monster, {
         ...env,
         everyTurnEffect: planningEveryTurnEffect,
-        // C ref: mon.c movemon_singlemon() runs vision_recalc(0) for the first
-        // ration-spending monster after movemon()'s tail set
-        // vision_full_recalc. That rebuilds vision.c's live global buffers, so
-        // the dry run cannot reproduce it; a later monster in the same scan,
-        // or in the scan after the next allocation, would then test visibility
-        // against an index the live pass has already replaced. Refuse rather
-        // than model the rebuild as a no-op.
+        // C ref: mon.c:1258-1259. movemon()'s tail sets vision_full_recalc
+        // whenever a light source exists (mon.c:1332-1333), and the next
+        // ration-spending monster clears it with vision_recalc(0). That spends
+        // no randomness, but it writes seenv and waslit on the map cells and
+        // swaps the COULD_SEE pair.
+        //
+        // planningVisionRecalc() cannot stand in here, which is what the
+        // sentence this replaces got wrong. It is safe only after
+        // isolatePlannedVision(), which gives the clone its own COULD_SEE
+        // buffers and its own level.locations; admitDoorOpening() is that
+        // function's only caller, and this arm can be the first vision work in
+        // a plan where no door was opened. Without the isolation
+        // visionBuffers() falls back to the live pair and GameMap.at() reads
+        // the live cells, so the plan would write through to the running game.
         visionRecalc: () => unsupported(
             'monster light-source vision recalculation',
         ),
@@ -854,7 +879,15 @@ export async function preflightSimpleMonsterActions(
     state = game,
     { advanceRound = null } = {},
 ) {
-    if (state.context?.bypasses || state.u?.utotype || state.occupation)
+    // The two terms are allmain.c moveloop_core()'s own preamble:
+    // `if (svc.context.bypasses) clear_bypasses();` at 193 and the deferred
+    // level transition u.utotype records. A third term named an occupation,
+    // which C gates nothing on here -- allmain.c mentions go.occupation only
+    // at 332, 485-506 and 684-689, all after this point in the turn -- and it
+    // read a field nothing assigns, so it stopped nothing. monmove.c
+    // dochugw() carries the per-monster occupation test, and stopOccupation
+    // refuses there for the one monster that C would stop the meal for.
+    if (state.context?.bypasses || state.u?.utotype)
         unsupported('deferred monster cleanup or level transition');
     const planned = planningState(state);
     const random = clonedRandom(planned);

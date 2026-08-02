@@ -147,14 +147,24 @@ function weapon_descr(obj) {
 // safe for every reachable case.
 function is_sword(_obj) { return false; }
 
-// C ref: mkobj.c dropx() jacket used by break_armor()/drop_weapon() — place a
-// worn/wielded item that's being forcibly shed onto the floor under the hero.
-function dropp(obj) {
+// C ref: polyself.c dropp(obj) — the dropx() jacket used by break_armor()/
+// drop_weapon() to put a worn/wielded item the new form can't keep onto the
+// floor under the hero.  C chains dropp -> dropx -> dropy -> dropz, and
+// do.c dropz() ends with encumber_msg(): shedding armor mid-polymorph is
+// exactly when the new form's much smaller weight_cap() first gets compared
+// against the load, so the "Your movements are slowed slightly because of
+// your load." line belongs HERE (inside break_armor, before polymon's own
+// find_ac()) rather than at polymon's trailing encumber_msg().  That ordering
+// is observable: the status line bot() last wrote is the one from the
+// "You shrink out of your cloak!" pline, i.e. with the cloak's AC still
+// counted, and the encumbrance message's own --More-- freezes it there.
+async function dropp(obj) {
     if (!obj) return;
     const u = game.u;
     freeinv(obj);
     place_object(obj, u.ux, u.uy);
     newsym(u.ux, u.uy);
+    await encumber_msg();
 }
 
 // C ref: polyself.c break_armor() — shed worn armor that no longer fits the
@@ -170,14 +180,14 @@ async function break_armor() {
             const otmp = game.uarm;
             game.uarm = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarmc) {
             await pline(`Your ${cloak_simple_name(game.uarmc)} tears apart!`);
             const otmp = game.uarmc;
             game.uarmc = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarmu) {
             await pline('Your shirt rips to shreds!');
@@ -189,7 +199,7 @@ async function break_armor() {
             const otmp = game.uarm;
             game.uarm = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarmc) {
             const otmp = game.uarmc;
@@ -197,7 +207,7 @@ async function break_armor() {
             else await pline(`You shrink out of your ${cloak_simple_name(otmp)}!`);
             game.uarmc = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarmu) {
             if (is_whirly(mdat)) await pline('You seep right through your shirt!');
@@ -212,21 +222,21 @@ async function break_armor() {
             const otmp = game.uarmg;
             game.uarmg = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarms) {
             await pline("You can no longer hold your shield!");
             const otmp = game.uarms;
             game.uarms = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
         if (game.uarmh) {
             await pline('Your helmet falls to the ground!');
             const otmp = game.uarmh;
             game.uarmh = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
     }
     if (nohands(mdat) || mdat?.verysmall) {
@@ -236,7 +246,7 @@ async function break_armor() {
             const otmp = game.uarmf;
             game.uarmf = null;
             otmp.owornmask = 0;
-            dropp(otmp);
+        await dropp(otmp);
         }
     }
     // ublindf (blindfold/towel/lenses) not modeled: no covered session wears
@@ -260,7 +270,7 @@ async function drop_weapon(alone) {
         const otmp = game.uwep;
         game.uwep = null;
         otmp.owornmask = 0;
-        dropp(otmp);
+        await dropp(otmp);
     }
 }
 

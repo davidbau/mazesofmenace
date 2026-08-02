@@ -145,8 +145,10 @@ import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
 
 /* mktrap()'s "no traps in pools" test needs mon.js's terrain predicates, and
-   mklev.js is reached FROM mon.js's import graph, so they arrive by wire. */
-let mklev_mon = { is_pool: () => false, is_lava: () => false };
+   mklev.js is reached FROM mon.js's import graph, so they arrive by wire.
+   var, not let: wired from cmd.js's top level, which can run before this
+   body evaluates (see the add_room_fn note in js/sp_lev.js). */
+var mklev_mon;
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level, Is_special } from './dungeon.js';
 import { Is_oracle_level, In_mines } from './const.js';

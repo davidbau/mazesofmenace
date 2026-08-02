@@ -26,14 +26,17 @@ import { rn2, rnd } from './rng.js';
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
    A dynamic import() here hits the same partially-initialised module the
    somexy cycle did, so it goes through a wire like everything else. */
-let mklev_fn = null;
+/* var, not let: wired from cmd.js's top level, which can run before this
+   body evaluates (see the add_room_fn note in js/sp_lev.js). */
+var mklev_fn;
 export function do_wire_mklev(fn) { mklev_fn = fn; }
 
 /* js/dokick.js holds ship_object(), which dropx() calls. It is wired rather
    than imported: importing it here re-enters do.js during its own
    initialisation and hits the mklev_fn dead zone above. js/cmd.js does the
    wiring, as it already does for mklev and sp_lev. */
-let ship_object_fn = null;
+/* var, not let: same reason as mklev_fn above. */
+var ship_object_fn;
 export function do_wire_dokick(fn) { ship_object_fn = fn; }
 
 function note_unported_do(what) {

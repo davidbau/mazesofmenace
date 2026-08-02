@@ -33,15 +33,27 @@ import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
 import { gettrack } from './track.js';
 import { DEADMONSTER, healmon, base_mmove, curr_mon_load, max_mon_load,
     can_carry as mon_can_carry, can_touch_safely } from './mon.js';
-import { regenerates_flag, mflags1_of, mflags2_of, is_mercenary_flag, mindless, is_animal,
-    likes_gold_flag, likes_gems_flag, M1_THICK_HIDE, M1_TPORT, M2_COLLECT, M2_MAGIC } from './monflags_data.js';
+import { regenerates_flag as regenerates_raw, mflags1_of as mflags1_raw,
+    mflags2_of as mflags2_raw, mflags3_of as mflags3_raw, msound_of as msound_raw,
+    is_mercenary_flag as is_mercenary_raw, mindless as mindless_raw,
+    is_animal as is_animal_raw,
+    likes_gold_flag as likes_gold_raw, likes_gems_flag as likes_gems_raw,
+    M1_THICK_HIDE, M1_TPORT, M2_COLLECT, M2_MAGIC,
+    M1_FLY, M1_SWIM, M1_AMORPHOUS, M1_WALLWALK, M1_CLING, M1_TUNNEL, M1_NEEDPICK,
+    M1_CONCEAL, M1_HIDE, M1_AMPHIBIOUS, M1_BREATHLESS, M1_NOTAKE, M1_NOEYES,
+    M1_NOHANDS, M1_NOLIMBS, M1_MINDLESS, M1_SLITHY, M1_UNSOLID, M1_REGEN,
+    M1_SEE_INVIS, M1_CARNIVORE, M1_METALLIVORE,
+    M2_UNDEAD, M2_HUMAN, M2_MINION, M2_GIANT, M2_WANDER, M2_ROCKTHROW,
+    M2_JEWELS, M2_MERC, M2_STALK, M2_NASTY, M2_STRONG,
+    M3_COVETOUS, M3_DISPLACES, M3_WAITMASK } from './monflags_data.js';
 import { is_armed, mattk_of,
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_TENT, AT_WEAP, AT_MAGC, AT_SPIT, AT_BREA, AT_GAZE,
     AD_PHYS, AD_ELEC, AD_DRST, AD_STUN, AD_DISE, AD_PEST, AD_FAMN, AD_STCK,
-    AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX } from './monattk_data.js';
+    AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX,
+    AD_RUST, AD_CORR } from './monattk_data.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
-import { mon_msize, monster_by_pmidx, M2_HUMAN_NAMES, M2_MINION_NAMES } from './makemon.js';
+import { mon_msize, monster_by_pmidx } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
@@ -56,9 +68,78 @@ import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_D
 import { wipe_engr_at, engr_at } from './engrave.js';
 import { discover_object } from './o_init.js';
 
+// ── permonst resolution ─────────────────────────────────────────────────────
+// Every C predicate below is a bit test on mons[].mflags{1,2,3}; the generated
+// js/monflags_data.js table is indexed by the same pmidx makemon.js uses, so a
+// flag test is exact where a species-name / pmidx enumeration silently answers
+// FALSE for everything the author forgot (see the ROCKTHROW, M1_FLY and
+// OPENDOOR sets this replaced, each of which was wrong for real species).
+//
+// One wrinkle: js/dog.js synthesizes a partial `data` record for the starting
+// pets whose pmidx follows a DIFFERENT table (16 little dog, but 34 for the
+// kitten and 102 for the pony, which are jaguar and gray unicorn in mons[]).
+// Reading mflags straight off such a record answers for the wrong species, so
+// resolve any record that is not literally a mons[] row back to the real one
+// by its species name first.  Genuine records are returned unchanged (identity
+// check against the table), so this costs one map probe for pets only.
+let PERMONST_BY_NAME = null;
+function permonst_by_name(name) {
+    if (!PERMONST_BY_NAME) {
+        PERMONST_BY_NAME = new Map();
+        for (let i = 0; i < 400; i++) {
+            const r = monster_by_pmidx(i);
+            if (r && !PERMONST_BY_NAME.has(r.name)) PERMONST_BY_NAME.set(r.name, r);
+        }
+    }
+    return PERMONST_BY_NAME.get(name) || null;
+}
+function permonst_of(ptr) {
+    if (!ptr) return null;
+    if (ptr.pmidx != null && monster_by_pmidx(ptr.pmidx) === ptr) return ptr;
+    return (ptr.name ? permonst_by_name(ptr.name) : null) || ptr;
+}
+const mflags1_of = (ptr) => mflags1_raw(permonst_of(ptr));
+const mflags2_of = (ptr) => mflags2_raw(permonst_of(ptr));
+const mflags3_of = (ptr) => mflags3_raw(permonst_of(ptr));
+const msound_of = (ptr) => msound_raw(permonst_of(ptr));
+const regenerates_flag = (ptr) => regenerates_raw(permonst_of(ptr));
+const is_mercenary_flag = (ptr) => is_mercenary_raw(permonst_of(ptr));
+const mindless = (ptr) => mindless_raw(permonst_of(ptr));
+const is_animal = (ptr) => is_animal_raw(permonst_of(ptr));
+const likes_gold_flag = (ptr) => likes_gold_raw(permonst_of(ptr));
+const likes_gems_flag = (ptr) => likes_gems_raw(permonst_of(ptr));
+// mons[] index of a species, resolved through permonst_of so a pet record
+// reports the index C would have (monsndx(ptr) in the C macros below).
+function monsndx_of(ptr) { return permonst_of(ptr)?.pmidx ?? -1; }
+// C ref: include/monflag.h MZ_* body sizes.
+const MZ_TINY = 0, MZ_SMALL = 1, MZ_LARGE = 3;
+function mon_size(ptr) {
+    const p = permonst_of(ptr);
+    return (p?.msize != null) ? p.msize : 2 /* MZ_MEDIUM */;
+}
+// C ref: mondata.h verysmall(ptr) / bigmonst(ptr).
+function verysmall(ptr) { return mon_size(ptr) < MZ_SMALL; }
+function bigmonst(ptr) { return mon_size(ptr) >= MZ_LARGE; }
+
 // C ref: include/monsters.h — grid bug's index (makemon.js MONS convention).
 // The only NODIAG monster the contest sessions place on dlvl 1.
 const PM_GRID_BUG = 116;
+// C ref: include/monflag.h — the msound enum values monmove.c gates on.
+// (MS_CUSS was previously written as 35 in phase_four; the enum says 34, and
+// the mons[] record carried no msound at all, so the cuss roll never fired.)
+const MS_BRIBE = 33, MS_CUSS = 34, MS_LEADER = 36, MS_NEMESIS = 37;
+
+// C ref: include/monsters.h — the mons[] indices the monmove.c macros compare
+// pointers against (is_rider / is_watch / is_mind_flayer / webmaker / ...).
+const PM_KILLER_BEE = 1, PM_QUEEN_BEE = 5, PM_GELATINOUS_CUBE = 8,
+      PM_FLOATING_EYE = 28, PM_DISPLACER_BEAST = 39, PM_GREMLIN = 40,
+      PM_MIND_FLAYER = 48, PM_MASTER_MIND_FLAYER = 49, PM_TENGU = 55,
+      PM_LEPRECHAUN = 63, PM_SHRIEKER = 76,
+      PM_BABY_PURPLE_WORM = 113, PM_PURPLE_WORM = 115,
+      PM_ANGEL = 123, PM_ETTIN = 174, PM_MINOTAUR = 177, PM_JABBERWOCK = 178,
+      PM_XORN = 232, PM_GHOUL = 246, PM_WATCHMAN = 282, PM_WATCH_CAPTAIN = 283,
+      PM_VROCK = 295, PM_DEATH = 311, PM_PESTILENCE = 312, PM_FAMINE = 313,
+      PM_PIRANHA = 316;
 
 // C ref: monmove.c:1871 m_move() — the "flutters randomly" appr=0 gate fires for
 // a hostile sighted giant bat (S_BAT), a will-o-wisp/light (S_LIGHT) or the
@@ -70,40 +151,35 @@ const PM_STALKER = 153; // makemon.js MONS index of "stalker"
 // C ref: mon.c mon_allowflags() — a monster gets OPENDOOR (and thus may step
 // onto a *closed* (but not locked) door, opening it) when
 //   can_open = !(nohands(ptr) || verysmall(ptr)).
-// makemon.js exposes `data.verysmall` (MZ_TINY) but not the M1_NOHANDS /
-// M1_NOLIMBS flags, so this Set lists the pmidx (makemon MONS convention) of
-// every species with hands and size >= MZ_SMALL — i.e. those for which
-// can_open is TRUE — derived straight from include/monsters.h flag/size data.
-// Used only to decide closed-door passability in mfndpos (matching C's cnt).
-const CAN_OPEN_DOOR_PMIDX = new Set([
-    15, 21, 40, 41, 42, 43, 44, 45, 48, 49, 50, 53, 54, 55, 59, 60, 62, 67, 68,
-    69, 70, 71, 72, 73, 74, 75, 76, 77, 91, 120, 122, 123, 125, 130, 131, 132,
-    153, 165, 167, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
-    181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 203,
-    210, 211, 213, 220, 221, 222, 223, 224, 225, 226, 228, 229, 230, 231, 232,
-    233, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248,
-    249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263,
-    264, 265, 266, 267, 270, 271, 272, 273, 274, 277, 278, 279, 280, 281, 282,
-    283, 284, 285, 286, 287, 288, 289, 291, 292, 293, 294, 295, 296, 297, 298,
-    299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 311, 312, 313, 314,
-    328, 329,
-]);
-
-// The three starting pets — little dog (16), kitten (34), pony (102) — are all
-// M1_NOHANDS animals, so C's `can_open = !(nohands || verysmall)` is FALSE for
-// them: a pet CANNOT open a closed door (it must wait for the hero / route
-// around).  Earlier this incorrectly granted pets OPENDOOR, which kept a
-// closed door in the pet's mfndpos candidate list (an extra square) and threw
-// off dog_move's choice-loop rn2 count on the 2nd movemon pass.
-
-// C ref: mon.c mon_allowflags() can_open / can_unlock.  OPENDOOR lets a
-// monster treat a *closed* door as passable; UNLOCKDOOR additionally for a
-// *locked* door (only key-carriers, the Wizard, and Riders — none of the
-// dlvl-1 dungeon monsters), so closed-but-not-locked is the only case we add.
+// This used to be a hand-listed pmidx set, which both omitted ~60 species
+// (every quest/role human, the dwarf/gnome/ogre leaders, apes, Cyclops, Lord
+// Surtur, …) and wrongly INCLUDED the M1_NOHANDS animal forms of the three
+// lycanthropes and the long worm tail.  Each error changes mfndpos's candidate
+// count, and cnt feeds m_move's rn2(4*(cnt-j)) — so it moved the RNG stream,
+// not just the map.  Both halves now come from the generated flag table.
+//
+// The three starting pets — little dog, kitten, pony — are all M1_NOHANDS
+// animals, so can_open is FALSE for them: a pet CANNOT open a closed door (it
+// must wait for the hero / route around).
 function mon_can_open_door(mon) {
-    const pm = mon?.data?.pmidx;
-    return CAN_OPEN_DOOR_PMIDX.has(pm);
+    const ptr = mon?.data;
+    return !(nohands(ptr) || verysmall(ptr));
 }
+
+// C ref: mondata.h — the plain mflags1 bit tests.  nohands/verysmall gate
+// can_open above; the rest are consumed by mfndpos, postmov and m_move.
+function nohands(ptr) { return (mflags1_of(ptr) & M1_NOHANDS) !== 0; }
+function nolimbs(ptr) { return (mflags1_of(ptr) & M1_NOLIMBS) === M1_NOLIMBS; }
+function notake(ptr) { return (mflags1_of(ptr) & M1_NOTAKE) !== 0; }
+function haseyes(ptr) { return (mflags1_of(ptr) & M1_NOEYES) === 0; }
+function amorphous(ptr) { return (mflags1_of(ptr) & M1_AMORPHOUS) !== 0; }
+function unsolid(ptr) { return (mflags1_of(ptr) & M1_UNSOLID) !== 0; }
+function slithy(ptr) { return (mflags1_of(ptr) & M1_SLITHY) !== 0; }
+function is_clinger(ptr) { return (mflags1_of(ptr) & M1_CLING) !== 0; }
+function is_swimmer(ptr) { return (mflags1_of(ptr) & M1_SWIM) !== 0; }
+function amphibious(ptr) { return (mflags1_of(ptr) & M1_AMPHIBIOUS) !== 0; }
+function is_hider(ptr) { return (mflags1_of(ptr) & M1_HIDE) !== 0; }
+function carnivorous(ptr) { return (mflags1_of(ptr) & M1_CARNIVORE) !== 0; }
 
 // C ref: mondata.h dist2(x0,y0,x1,y1).
 export function dist2(x0, y0, x1, y1) {
@@ -144,12 +220,9 @@ function terrainTyp(x, y) {
 function doormask(x, y) {
     return game.level?.at(x, y)?.doormask || 0;
 }
-// C ref: mondata.h passes_walls(ptr) = (mflags1 & M1_WALLWALK).  makemon carries
-// no mflags1, so the four M1_WALLWALK species are identified by pmidx (the same
-// set mon_allows_rock uses): earth elemental(156), xorn(232), ghost(287),
-// shade(288).
+// C ref: mondata.h passes_walls(ptr) = (mflags1 & M1_WALLWALK).
 function passes_walls(data) {
-    return !!data && WALLWALK_PMIDX.has(data.pmidx);
+    return (mflags1_of(data) & M1_WALLWALK) !== 0;
 }
 // C ref: hack.c:939 may_passwall(x,y) — a stone wall is phaseable unless it is
 // flagged W_NONPASSWALL (the level border / permanent walls).  Our mklev does
@@ -161,19 +234,12 @@ function may_passwall(x, y) {
     return !(IS_STWALL(loc.typ) && ((loc.wall_info || 0) & W_NONPASSWALL));
 }
 
-// C ref: mondata.h tunnels(ptr) = (mflags1 & M1_TUNNEL).  makemon carries no
-// mflags1, so the M1_TUNNEL species are identified by pmidx (makemon MONS
-// convention): dwarf(44), dwarf leader(46), dwarf ruler(47) [M1_TUNNEL|
-// M1_NEEDPICK]; rock mole(92), woodchuck(93), umber hulk(225) [M1_TUNNEL only];
-// and the pick-wielding human role monsters archeologist(330), Lord
-// Carnarvon(343), student(368) [M1_TUNNEL|M1_NEEDPICK].
-const TUNNELS_PMIDX = new Set([44, 46, 47, 92, 93, 225, 330, 343, 368]);
-// C ref: mondata.h needspick(ptr) = (mflags1 & M1_NEEDPICK) — a tunneller that
-// requires a pick/axe to dig (dwarves + the human role diggers, NOT the animal
-// tunnellers rock mole / woodchuck / umber hulk which gnaw through unaided).
-const NEEDPICK_PMIDX = new Set([44, 46, 47, 330, 343, 368]);
-function tunnels(ptr) { return !!ptr && TUNNELS_PMIDX.has(ptr.pmidx); }
-function needspick(ptr) { return !!ptr && NEEDPICK_PMIDX.has(ptr.pmidx); }
+// C ref: mondata.h tunnels(ptr) = (mflags1 & M1_TUNNEL) — dwarves and their
+// leaders, rock mole / woodchuck / umber hulk, and the pick-wielding human
+// role monsters.  needspick(ptr) = (mflags1 & M1_NEEDPICK) — the subset that
+// requires a pick/axe to dig (the animal tunnellers gnaw through unaided).
+function tunnels(ptr) { return (mflags1_of(ptr) & M1_TUNNEL) !== 0; }
+function needspick(ptr) { return (mflags1_of(ptr) & M1_NEEDPICK) !== 0; }
 
 // Object otyps a digger looks for (mkobj.js objects table).
 const PICK_AXE_OTYP = 259, DWARVISH_MATTOCK_OTYP = 71,
@@ -325,19 +391,204 @@ function mon_pmidx(mtmp, is_u) {
     return is_u ? (game.u?.umonnum ?? -1) : (mtmp?.data?.pmidx ?? -1);
 }
 
-// C ref: monmove.c distfleeck(mtmp, &inrange, &nearby, &scared).
-// Always rolls rn2(5) (bravegremlin) first; the monflee roll only happens
-// when the monster is actually scared (not for the peaceful/level monsters
-// our sessions exercise).
-function distfleeck(mtmp) {
-    rn2(5); // bravegremlin
+// C ref: monmove.c:532 distfleeck(mtmp, &inrange, &nearby, &scared).
+//
+// The scared half is now real.  `scared` was previously hard-wired to 0, which
+// meant a monster standing next to an Elbereth engraving, a scroll of scare
+// monster or a temple sanctuary never fled and never rolled monflee()'s two
+// dice -- and `scared` also gates dochug's may-move branch, its weapon-wield
+// branch and PHASE FOUR's attack, so the whole turn took the wrong shape.
+//
+// RNG order matters: rn2(5) (bravegremlin) is drawn FIRST, unconditionally,
+// because C evaluates it in the declaration initializer before anything else.
+async function distfleeck(mtmp) {
+    const bravegremlin = (rn2(5) === 0);
+
     const inrange = dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
         <= BOLT_LIM * BOLT_LIM;
     const nearby = inrange && monnear(mtmp, mtmp.mux, mtmp.muy);
+
+    // C ref: monmove.c:551 — a monster that cannot see (or an invisible hero it
+    // cannot perceive) reads the scare source at where it THINKS the hero is;
+    // otherwise at the hero's real square.
+    let seescaryx, seescaryy;
+    if (!mtmp.mcansee || (Invis() && !perceives(mtmp.data))) {
+        seescaryx = mtmp.mux; seescaryy = mtmp.muy;
+    } else {
+        seescaryx = game.u?.ux; seescaryy = game.u?.uy;
+    }
+
+    const sawscary = onscary(seescaryx, seescaryy, mtmp);
     let scared = 0;
-    // onscary / sanctuary / flees_light all false for ordinary monsters.
-    // (When implemented, scared would trigger monflee(rnd(rn2(7)?10:100)).)
+    if (nearby && (sawscary
+                   || (flees_light(mtmp) && !bravegremlin)
+                   || (!mtmp.mpeaceful && in_your_sanctuary(mtmp, 0, 0)))) {
+        scared = 1;
+        // C ref: monmove.c:564 monflee(mtmp, rnd(rn2(7) ? 10 : 100), TRUE, TRUE)
+        // — TWO draws, the rn2(7) selector then the rnd() itself.
+        await monflee(mtmp, rnd(rn2(7) ? 10 : 100), true, true);
+    }
     return { inrange, nearby, scared };
+}
+
+// C ref: monmove.c:450 flees_light(mon) — a gremlin flees the painful light of
+// an artifact light source the hero is wielding or wearing (Sunsword, gold
+// dragon scales).  No artifact light source exists in the port yet
+// (artifact_light() has no JS counterpart), so the disjunction's first half is
+// FALSE and the macro reduces to FALSE; the gremlin/mcansee/couldsee terms are
+// written out so the shape matches when artifact light lands.
+function flees_light(mon) {
+    if (monsndx_of(mon.data) !== PM_GREMLIN) return false;
+    const uwep = game.u?.uwep, uarm = game.u?.uarm;
+    const lit = (o) => !!o && !!o.lamplit && artifact_light(o);
+    return (lit(uwep) || lit(uarm)) && !!mon.mcansee && couldsee(mon.mx, mon.my);
+}
+// C ref: artifact.c artifact_light(obj) — TRUE for Sunsword / gold dragon
+// scales(+mail).  No artifact carries the light property in this port.
+function artifact_light(_obj) { return false; }
+
+// C ref: priest.c in_your_sanctuary(mon, x, y) — is <x,y> (or mon's square) a
+// co-aligned temple whose peaceful priest still guards an unprofaned shrine,
+// with the hero not in sin?  Temples exist on the level map (mkroom TEMPLE)
+// but the priest/shrine bookkeeping (findpriest / has_shrine / p_coaligned)
+// is not ported, so the final clause cannot be evaluated and this answers
+// FALSE.  Written out so the reachable early-outs (minion/rider exemption,
+// hero's alignment record) are already in place.
+const ALGN_SINNED = -1; /* align.h ALGN_SINNED */
+function in_your_sanctuary(mon, x, y) {
+    if (mon) {
+        if (is_minion(mon.data) || is_rider(mon.data)) return false;
+        x = mon.mx; y = mon.my;
+    }
+    if ((game.u?.ualign?.record ?? 0) <= ALGN_SINNED) return false;
+    void x; void y;
+    return false; /* no priest/shrine model: see comment */
+}
+
+// C ref: monmove.c:78 mon_track_add(mtmp, x, y) — push <x,y> onto the
+// monster's MTSZ-deep breadcrumb ring (most recent first).
+function mon_track_add(mtmp, x, y) {
+    const tr = mtmp.mtrack || [];
+    mtmp.mtrack = [{ x, y }, ...tr].slice(0, MTSZ);
+}
+// C ref: monmove.c:89 mon_track_clear(mtmp) — memset(mtrack, 0, ...).  C zeroes
+// the ring rather than emptying it, and <0,0> is never a legal monster square,
+// so an empty list is the faithful equivalent.
+function mon_track_clear(mtmp) { mtmp.mtrack = []; }
+
+// C ref: monmove.c:361 release_hero(mon) — a monster that is holding or has
+// swallowed the hero lets go.  Neither engulfing nor sticking is modeled (no
+// recorded session is grabbed), so this only clears u.ustuck.
+async function release_hero(mon) {
+    if (mon !== game.u?.ustuck) return;
+    if (game.u.uswallow) {
+        /* expels(mon, mon->data, TRUE) — engulfing not modeled */
+        game.u.uswallow = 0;
+        game.u.ustuck = null;
+    } else {
+        game.u.ustuck = null;
+        await emitU('You get released!');
+    }
+}
+
+// C ref: monmove.c:461 monflee(mtmp, fleetime, first, fleemsg) — put a monster
+// to flight.  The reduced copy in js/uhitm.js (kept for its own sync callers)
+// skips three things this one does: it never accumulates onto an existing
+// mfleetim, it never bumps a 1-turn flee to 2, and it never calls
+// mon_track_clear() — and clearing the breadcrumb ring is exactly what changes
+// how many rn2(4*(cnt-j)) rolls m_move's candidate loop makes next turn.
+async function monflee(mtmp, fleetime, first, fleemsg) {
+    if (DEADMONSTER(mtmp)) return;
+    if (mtmp === game.u?.ustuck) await release_hero(mtmp);
+
+    if (!first || !mtmp.mflee) {
+        if (!fleetime) {
+            mtmp.mfleetim = 0;          /* don't lose an untimed scare */
+        } else if (!mtmp.mflee || mtmp.mfleetim) {
+            fleetime += (mtmp.mfleetim || 0);
+            /* ensure monster flees long enough to visibly stop fighting */
+            if (fleetime === 1) fleetime++;
+            mtmp.mfleetim = Math.min(fleetime, 127);
+        }
+        if (!mtmp.mflee && fleemsg && canseemon_mm(mtmp)
+            && mtmp.m_ap_type !== M_AP_FURNITURE
+            && mtmp.m_ap_type !== M_AP_OBJECT) {
+            if (!mtmp.mcanmove || !base_mmove(mtmp)) {
+                await emitU(`${Adjmonnam_mm(mtmp, 'immobile')} seems to flinch.`);
+            } else if (flees_light(mtmp)) {
+                /* unreachable: artifact_light() is always FALSE here */
+                if (game.u?.Unaware) {
+                    await emitU(`${Monnam(mtmp)} is frightened.`);
+                } else if (rn2(10) || game.u?.Deaf) {
+                    await emitU(`${Monnam(mtmp)} flees from the painful light`
+                                + ` of ${'[its imagination?]'}.`);
+                } else {
+                    await emitU('"Bright light!"');
+                }
+            } else {
+                await emitU(`${Monnam(mtmp)} turns to flee.`);
+            }
+        }
+
+        // C ref: monmove.c:521 — a vrock that starts fleeing spews a gas cloud.
+        if (monsndx_of(mtmp.data) === PM_VROCK && !mtmp.mspec_used) {
+            mtmp.mspec_used = 75 + rn2(25);
+            const { create_gas_cloud } = await import('./region.js');
+            await create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+        }
+
+        mtmp.mflee = 1;
+    }
+    /* ignore recently-stepped spaces when made to flee */
+    mon_track_clear(mtmp);
+}
+// C ref: monst.h M_AP_TYPE values.
+const M_AP_NOTHING = 0, M_AP_FURNITURE = 1, M_AP_OBJECT = 2, M_AP_MONSTER = 3;
+
+// C ref: monmove.c:326 disturb(mtmp) — possibly wake a sleeping monster.
+// Returns 1 if it woke.  This was a bare `return false`, so no sleeping monster
+// in the port ever woke on its own AND the rn2(7) that C draws for nearly every
+// sleeper in line of sight was never drawn -- one missing roll per sleeping
+// monster per turn, which desynchronises the stream from the first sleeper on.
+//
+//  wake up if: in direct LOS, within 10 squares, not stealthy (an ettin
+//  resists 9/10), not a nymph/jabberwock/leprechaun (those resist 49/50), and
+//  either Aggravate_monster, or a dog/human, or 1/7 while not mimicking
+//  furniture or an object.
+const S_NYMPH_MCLS = 14, S_DOG_MCLS = 4, S_LEPRECHAUN_MCLS = 12;
+async function disturb(mtmp) {
+    const u = game.u;
+    if (!(couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100)) return 0;
+    // Stealth: hero's stealth intrinsic.  An ettin is hard to surprise, so it
+    // rolls rn2(10) even against a stealthy hero.
+    const Stealth = !!u?.uStealth;
+    if (!(!Stealth || (monsndx_of(mtmp.data) === PM_ETTIN && rn2(10)))) return 0;
+    const mcls = permonst_of(mtmp.data)?.mcls;
+    const heavySleeper = (mcls === S_NYMPH_MCLS
+                          || monsndx_of(mtmp.data) === PM_JABBERWOCK
+                          || mcls === S_LEPRECHAUN_MCLS);
+    if (!(!heavySleeper || !rn2(50))) return 0;
+    const Aggravate_monster = !!u?.uAggravate_monster;
+    if (!(Aggravate_monster
+          || (mcls === S_DOG_MCLS || mcls === S_HUMAN_MCLS)
+          || (!rn2(7) && mtmp.m_ap_type !== M_AP_FURNITURE
+              && mtmp.m_ap_type !== M_AP_OBJECT)))
+        return 0;
+    await wake_msg(mtmp, !mtmp.mpeaceful);
+    mtmp.msleeping = 0;
+    return 1;
+}
+
+// C ref: mon.c wake_msg(mtmp, interesting) — "<Mon> wakes up." when the hero
+// can see the monster and the waking is worth reporting.  No RNG.
+async function wake_msg(mtmp, interesting) {
+    if (mtmp.msleeping && interesting && canseemon_mm(mtmp))
+        await emitU(`${Monnam(mtmp)} wakes up.`);
+}
+
+// C ref: include/hack.h mdistu(mon) == distu(mon->mx, mon->my).
+function mdistu(mtmp) {
+    return dist2(mtmp.mx, mtmp.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
 }
 
 // C ref: hacklib.c online2 — are two points on a straight (orthogonal or
@@ -386,7 +637,7 @@ async function m_break_boulder(mtmp, x, y) {
 }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) list — every floor object at (x,y).
-function objectsAt(x, y) {
+export function objectsAt(x, y) {
     const objs = game.level?.objects;
     if (!objs) return [];
     return objs.filter((o) => o.where === 'floor' && o.ox === x && o.oy === y);
@@ -744,54 +995,84 @@ function sobj_at_boulder(x, y) {
 // C ref: mon.c mon_allowflags() — a monster receives ALLOW_ROCK when it
 //   passes_walls(M1_WALLWALK) || throws_rocks(M2_ROCKTHROW)
 //   || m_can_break_boulder(mtmp)   [riders, shopkeepers, priests, leaders].
-// makemon.js doesn't carry the M1/M2 flag bitfields, so the wall-walkers and
-// rock-throwers are listed by pmidx (makemon MONS convention); the
-// break-boulder cases use the monster-record booleans we already track.
-const WALLWALK_PMIDX = new Set([156, 232, 287, 288]); // earth elemental, xorn, ghost, shade
-const ROCKTHROW_PMIDX = new Set([169, 170, 171, 172, 173, 174, 175, 176, 177, 359]); // giants, ettin, minotaur, titan, Cyclops
+// Both halves are flag tests now: the old ROCKTHROW pmidx list wrongly counted
+// the ettin (174) and the minotaur (177) as rock throwers and missed Lord
+// Surtur (366), which changes ALLOW_ROCK — and hence whether a boulder square
+// stays in mfndpos's candidate list at all.
 function mon_allows_rock(mon) {
-    const idx = mon.data?.pmidx;
-    if (WALLWALK_PMIDX.has(idx) || ROCKTHROW_PMIDX.has(idx)) return true;
-    // m_can_break_boulder (monmove.c:133): riders / shopkeepers / priests /
-    // quest leaders (msound MS_LEADER) that haven't used their special move.
-    if (!mon.mspec_used && (mon.isshk || mon.ispriest || mon.msound_leader))
-        return true;
-    return false;
+    if (passes_walls(mon.data) || throws_rocks_pm(mon.data)) return true;
+    return m_can_break_boulder(mon);
 }
 
-// C ref: mondata.h is_giant/is_rider/is_unicorn/is_undead/is_human — makemon.js
-// carries no raw mflags2 bitfield, so these are keyed by monster NAME (the
-// established convention in this file: see makemon.js's M2_HOSTILE_NAMES /
-// M2_HUMAN_NAMES / M2_MINION_NAMES), scanned straight out of
-// include/monsters.h's M2_GIANT / is_rider() / M2_JEWELS(+S_UNICORN) /
-// M2_UNDEAD entries.
+// C ref: monmove.c:133 m_can_break_boulder(mtmp) — Riders always; otherwise a
+// shopkeeper / priest / quest leader whose special-move cooldown has expired.
+function m_can_break_boulder(mtmp) {
+    return is_rider(mtmp.data)
+        || (!mtmp.mspec_used
+            && (!!mtmp.isshk || !!mtmp.ispriest
+                || msound_of(mtmp.data) === MS_LEADER));
+}
+
+// C ref: mondata.h is_giant/is_unicorn/is_undead/is_human/is_minion — mflags2
+// bit tests, and is_rider() a pointer comparison against the three Rider rows.
+// These were species-NAME sets, which is the classic silent-FALSE failure:
+// GIANT_NAMES forgot the giant mummy and the giant zombie (both M2_GIANT, so
+// both doorbusters), UNDEAD_NAMES listed three vampire ranks this build does
+// not even have, and M2_HUMAN_NAMES cannot tell a werewolf's human form from
+// its wolf form because they share a name.
 const S_HUMAN_MCLS = 53, S_VAMPIRE_MCLS = 48, S_GHOST_MCLS = 54;
-const GIANT_NAMES = new Set(["giant", "stone giant", "hill giant", "fire giant",
-    "frost giant", "storm giant", "Cyclops", "Lord Surtur"]);
-const RIDER_NAMES = new Set(["Death", "Famine", "Pestilence"]);
-const UNICORN_NAMES = new Set(["white unicorn", "gray unicorn", "black unicorn"]);
-const UNDEAD_NAMES = new Set(["lich", "demilich", "master lich", "arch-lich",
-    "kobold mummy", "gnome mummy", "orc mummy", "dwarf mummy", "elf mummy",
-    "human mummy", "ettin mummy", "giant mummy", "vampire", "vampire lord",
-    "vampire lady", "vampire leader", "vampire mage", "Vlad the Impaler",
-    "barrow wight", "wraith", "Nazgul", "kobold zombie", "gnome zombie",
-    "orc zombie", "dwarf zombie", "elf zombie", "human zombie", "ettin zombie",
-    "ghoul", "giant zombie", "skeleton", "ghost", "shade"]);
-function is_giant(ptr) { return !!ptr && GIANT_NAMES.has(ptr.name); }
-function is_rider(ptr) { return !!ptr && RIDER_NAMES.has(ptr.name); }
-function is_unicorn(ptr) { return !!ptr && UNICORN_NAMES.has(ptr.name); }
-function is_undead(ptr) { return !!ptr && UNDEAD_NAMES.has(ptr.name); }
-function is_human(ptr) { return !!ptr && M2_HUMAN_NAMES.has(ptr.name); }
-// C ref: mondata.h is_minion(ptr) = mflags2&M2_MINION.  makemon.js's
-// M2_MINION_NAMES set (couatl/Aleax/Angel/ki-rin/Archon/high priest(ess)/high
-// cleric) is reused here.
-function is_minion(ptr) { return !!ptr && M2_MINION_NAMES.has(ptr.name); }
-// C ref: monst.h is_lminion(mon) = is_minion(mon->data) && lawful-aligned.
-// Minion alignment isn't tracked on our monster record, so this drops the
-// "&& lawful" restriction — the only effect is exempting a (very rare,
-// never-recorded) non-lawful minion from scaring too, which is conservative
-// (never wrongly excludes a candidate square C would have kept).
+const S_UNICORN_MCLS = 21;  // monsym.h S_UNICORN
+function is_giant(ptr) { return (mflags2_of(ptr) & M2_GIANT) !== 0; }
+function is_rider(ptr) {
+    const i = monsndx_of(ptr);
+    return i === PM_DEATH || i === PM_FAMINE || i === PM_PESTILENCE;
+}
+// C ref: mondata.h is_unicorn(ptr) = (mlet == S_UNICORN && likes_gems(ptr)) —
+// the mlet alone would also catch ponies/horses, which are NOT unicorns.
+function is_unicorn(ptr) {
+    return permonst_of(ptr)?.mcls === S_UNICORN_MCLS && likes_gems_flag(ptr);
+}
+function is_undead(ptr) { return (mflags2_of(ptr) & M2_UNDEAD) !== 0; }
+function is_human(ptr) { return (mflags2_of(ptr) & M2_HUMAN) !== 0; }
+function is_minion(ptr) { return (mflags2_of(ptr) & M2_MINION) !== 0; }
+// C ref: monst.h is_lminion(mon) = mon->isminion && EMIN(mon)->min_align ==
+// A_LAWFUL.  Minion alignment isn't tracked on our monster record, so this
+// drops the "&& lawful" restriction — the only effect is exempting a (very
+// rare, never-recorded) non-lawful minion from scaring too, which is
+// conservative (never wrongly excludes a candidate square C would have kept).
 function is_lminion(mon) { return is_minion(mon.data); }
+// C ref: mondata.h is_watch / is_mind_flayer / telepathic / is_covetous /
+// is_displacer — the remaining monmove.c gate predicates.
+function is_watch(ptr) {
+    const i = monsndx_of(ptr);
+    return i === PM_WATCHMAN || i === PM_WATCH_CAPTAIN;
+}
+function is_mind_flayer(ptr) {
+    const i = monsndx_of(ptr);
+    return i === PM_MIND_FLAYER || i === PM_MASTER_MIND_FLAYER;
+}
+function telepathic(ptr) {
+    const i = monsndx_of(ptr);
+    return i === PM_FLOATING_EYE || i === PM_MIND_FLAYER
+        || i === PM_MASTER_MIND_FLAYER;
+}
+function is_covetous(ptr) { return (mflags3_of(ptr) & M3_COVETOUS) !== 0; }
+function is_displacer(ptr) { return (mflags3_of(ptr) & M3_DISPLACES) !== 0; }
+// C ref: mondata.h corpse_eater(ptr) — the four species that eat corpses off
+// the floor in postmov (purple worm, baby purple worm, ghoul, piranha).
+function corpse_eater(ptr) {
+    const i = monsndx_of(ptr);
+    return i === PM_PURPLE_WORM || i === PM_BABY_PURPLE_WORM
+        || i === PM_GHOUL || i === PM_PIRANHA;
+}
+// C ref: mondata.h noncorporeal(ptr) = (mlet == S_GHOST);
+//         is_whirly(ptr) = (mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]).
+const S_VORTEX_MCLS = 22, PM_AIR_ELEMENTAL = 154;
+function noncorporeal(ptr) { return permonst_of(ptr)?.mcls === S_GHOST_MCLS; }
+function is_whirly(ptr) {
+    return permonst_of(ptr)?.mcls === S_VORTEX_MCLS
+        || monsndx_of(ptr) === PM_AIR_ELEMENTAL;
+}
 // C ref: monst.h is_vampshifter(mon) = mon->cham in {vampire, vampire
 // leader, Vlad}.  mon.cham is populated by makemon.js's vampire-shift code.
 const PM_VAMPIRE = 226, PM_VAMPIRE_LEADER = 227, PM_VLAD_THE_IMPALER = 228;
@@ -807,17 +1088,26 @@ function unique_corpstat(ptr) { return !!ptr && ((ptr.geno ?? 0) & G_UNIQ) !== 0
 // (unconverted) temple is the only case this affects, and it is not reachable
 // in the recorded sessions.
 function inhistemple(_mon) { return false; }
-// C ref: mondata.h passes_bars(ptr) = passes_walls||amorphous||unsolid||
-// is_whirly||verysmall||dmgtype(AD_RUST/AD_CORR)||metallivorous||
-// (slithy&&!bigmonst).  Only the two cheapest/most common disjuncts are
-// modeled (wall-passers, tiny creatures); IRONBARS terrain (Vlad's Tower)
-// never appears in the recorded sessions, so this is untestable in practice.
-function passes_bars(ptr) { return passes_walls(ptr) || !!ptr?.verysmall; }
-// C ref: mon.c monhaskey(mon, quietly) — does mon carry an unlocking tool?
+// C ref: mondata.h passes_bars(ptr) = passes_walls || amorphous || unsolid ||
+// is_whirly || verysmall || dmgtype(AD_RUST) || dmgtype(AD_CORR) ||
+// metallivorous || (slithy && !bigmonst).  Now complete, off the flag table.
+function passes_bars(ptr) {
+    return passes_walls(ptr) || amorphous(ptr) || unsolid(ptr) || is_whirly(ptr)
+        || verysmall(ptr) || dmgtype(ptr, AD_RUST) || dmgtype(ptr, AD_CORR)
+        || metallivorous(ptr) || (slithy(ptr) && !bigmonst(ptr));
+}
+// C ref: mondata.c dmgtype(ptr, dtyp) — does any attack deal that damage type?
+function dmgtype(ptr, dtyp) {
+    return mon_attacks(permonst_of(ptr)).some((a) => a.adtyp === dtyp);
+}
+// C ref: mon.c monhaskey(mon, for_unlocking) — does mon carry an unlocking
+// tool?  A credit card only counts when the goal is UNLOCKING (it can't lock a
+// door), which is exactly how mon_allowflags calls it.
 const SKELETON_KEY_OTYP = 221, LOCK_PICK_OTYP = 222, CREDIT_CARD_OTYP = 223;
-function monhaskey(mon) {
-    return !!(m_carrying(mon, SKELETON_KEY_OTYP) || m_carrying(mon, LOCK_PICK_OTYP)
-        || m_carrying(mon, CREDIT_CARD_OTYP));
+function monhaskey(mon, for_unlocking) {
+    if (for_unlocking && m_carrying(mon, CREDIT_CARD_OTYP)) return true;
+    return !!(m_carrying(mon, SKELETON_KEY_OTYP)
+        || m_carrying(mon, LOCK_PICK_OTYP));
 }
 // C ref: dungeon.h Inhell == In_hell(&u.uz) == dungeons[u.uz.dnum].flags.hellish.
 // The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
@@ -947,13 +1237,9 @@ async function maybe_spin_web(mtmp) {
     }
 }
 
-// C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  The monster
-// data here carries no mflags1, so identify the concealing species by pmidx
-// (the 8 M1_CONCEAL entries in include/monsters.h: cave spider, centipede,
-// scorpion, garter snake, snake, water moccasin, pit viper, cobra).
-const M1_CONCEAL_PMIDX = new Set([94, 95, 97, 214, 215, 216, 218, 219]);
+// C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).
 export function hides_under_pm(ptr) {
-    return ptr != null && M1_CONCEAL_PMIDX.has(ptr.pmidx);
+    return (mflags1_of(ptr) & M1_CONCEAL) !== 0;
 }
 
 // C ref: monsym.h S_EEL=57.  C ref: monst.h helpless(mon) = msleeping||!mcanmove.
@@ -972,10 +1258,8 @@ function mon_helpless(mtmp) {
 }
 
 // C ref: mondata.h breathless(ptr) = (mflags1 & M1_BREATHLESS) — golems,
-// elementals, vortices, gas spores, etc.  makemon carries no mflags1 and none
-// of the shallow-depth species reachable by the modeled sessions (pets,
-// dungeon vermin/humanoids) are breathless, so this is always false here.
-function breathless(_ptr) { return false; }
+// elementals, vortices, gas spores, etc.
+function breathless(ptr) { return (mflags1_of(ptr) & M1_BREATHLESS) !== 0; }
 
 // C ref: monmove.c:2121 can_hide_under_obj(obj) — a monster can hide under a
 // floor object unless: there's no object, it sits on a non-pit trap, or the
@@ -1100,13 +1384,13 @@ const FLOOR_TRIGGER = new Set([
     SPIKED_PIT, HOLE, TRAPDOOR,
 ]);
 
-// C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY); is_floater = S_EYE/
-// floating eye.  Used by check_in_air() to let airborne monsters skip floor
-// triggers.  Identify the M1_FLY species by pmidx (the contest's low-level
-// flyers: bat/giant bat 49/50, fog cloud 220, lurker above 98, the gargoyle/
-// winged species and the assorted demons/dragons aren't placed this shallow).
-const M1_FLY_PMIDX = new Set([49, 50, 98, 220]);
-function is_flyer(ptr) { return ptr != null && M1_FLY_PMIDX.has(ptr.pmidx); }
+// C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY).  Used by check_in_air()
+// to let airborne monsters skip floor triggers.  The hand-listed pmidx set this
+// replaces named FOUR species (and two of them -- manes and troll -- are not
+// even flyers), where the real flag marks 79: every bat, the killer bee, the
+// floating eye, the vortices, the lights, every dragon.  A land-bound "flyer"
+// walks into floor traps C's flies straight over.
+function is_flyer(ptr) { return (mflags1_of(ptr) & M1_FLY) !== 0; }
 // C ref: mondata.h `#define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet
 // == S_LIGHT)`.  defsym.h MONSYM indices: S_EYE is 5 and S_LIGHT is 25 — this
 // used to test `mcls === 18` with a comment claiming 18 was S_EYE.  18 is
@@ -1116,7 +1400,15 @@ function is_flyer(ptr) { return ptr != null && M1_FLY_PMIDX.has(ptr.pmidx); }
 // onto a trapdoor at (45,12) and, instead of falling through to Dlvl 4 and
 // leaving the level as C's does, it shrugged the trap off and kept moving for
 // the rest of the episode.
-function is_floater(ptr) { return ptr != null && (ptr.mcls === 5 /* S_EYE */ || ptr.mcls === 25 /* S_LIGHT */); }
+function is_floater(ptr) {
+    const mcls = permonst_of(ptr)?.mcls;
+    return mcls === 5 /* S_EYE */ || mcls === 25 /* S_LIGHT */;
+}
+// C ref: mondata.h grounded(ptr) — neither flying nor floating nor clinging to
+// a ceiling that exists.  Read by dochug's disturb_buried_zombies() call.
+function grounded(ptr) {
+    return !is_flyer(ptr) && !is_floater(ptr) && !is_clinger(ptr);
+}
 
 // C ref: trap.c check_in_air(mtmp, trflags) — is the monster airborne?  No
 // HURTLING / TOOKPLUNGE / VIASITTING flags reach a monster that simply walked
@@ -1127,7 +1419,7 @@ function mon_check_in_air(mtmp) {
 
 // C ref: mondata.c mon_knows_traps(mtmp, ttyp) — has this monster seen this
 // trap type before?  mtrapseen is a bitmask, bit (ttyp-1).  Defaults to 0.
-function mon_knows_traps(mtmp, ttyp) {
+export function mon_knows_traps(mtmp, ttyp) {
     const seen = mtmp.mtrapseen || 0;
     if (ttyp === ALL_TRAPS) return seen !== 0;
     if (ttyp === NO_TRAP) return seen === 0;
@@ -1135,7 +1427,7 @@ function mon_knows_traps(mtmp, ttyp) {
 }
 
 // C ref: mondata.c mon_learns_traps(mtmp, ttyp) — record knowledge of a trap.
-function mon_learns_traps(mtmp, ttyp) {
+export function mon_learns_traps(mtmp, ttyp) {
     if (ttyp === ALL_TRAPS) { mtmp.mtrapseen = ~0; return; }
     if (ttyp === NO_TRAP) { mtmp.mtrapseen = 0; return; }
     mtmp.mtrapseen = (mtmp.mtrapseen || 0) | (1 << (ttyp - 1));
@@ -1688,7 +1980,7 @@ function mon_allowflags(mtmp) {
     let allowflags = 0;
     const ptr = mtmp.data;
     const can_open = mon_can_open_door(mtmp);
-    const can_unlock = (can_open && monhaskey(mtmp)) || !!mtmp.iswiz || is_rider(ptr);
+    const can_unlock = (can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz || is_rider(ptr);
     const doorbuster = is_giant(ptr);
     let can_tunnel = tunnels(ptr) && !Is_rogue_level();
     const Conflict = false; // not modeled
@@ -2235,11 +2527,10 @@ export async function dochug(mtmp) {
         return 0;
     }
 
-    if (mtmp.msleeping) {
-        // disturb() may wake it; for our (already-noticed) hostile monsters
-        // disturb consumes no RNG and the monster stays asleep -> returns 0.
-        if (!disturb(mtmp)) return 0;
-    }
+    // C ref: monmove.c:727 — "there is a chance we will wake it".  disturb()
+    // draws (for nearly every sleeper in line of sight) an rn2(7).
+    if (mtmp.msleeping && !(await disturb(mtmp)))
+        return 0;
 
     // C ref: monmove.c:733-734 — "not frozen or sleeping: wipe out texts
     // written in the dust".  Every monster that reaches this point erodes any
@@ -2275,7 +2566,7 @@ export async function dochug(mtmp) {
 
     // PHASE TWO — set_apparxy (sets mux/muy) then distance/scariness check.
     set_apparxy(mtmp);
-    const { inrange, nearby, scared } = distfleeck(mtmp);
+    const { inrange, nearby, scared } = await distfleeck(mtmp);
 
     // C ref: monmove.c:793-800 — "search for and potentially use defensive or
     // miscellaneous items", immediately after distfleeck and before Demonic
@@ -2332,7 +2623,7 @@ export async function dochug(mtmp) {
         // (undirected-spell casting omitted — our monsters have no AT_MAGC)
         status = await m_move(mtmp);
         if (status === MMOVE_DIED) return 1;
-        const r = distfleeck(mtmp); /* recalc */
+        const r = await distfleeck(mtmp); /* recalc */
 
         // C ref monmove.c switch(status): MMOVE_MOVED returns 0 directly
         // (without reaching PHASE FOUR / mattacku) UNLESS the monster moved
@@ -2379,13 +2670,80 @@ async function phase_four(mtmp, mdat, status, inrange, nearby, scared) {
         // (wormhitu omitted — no long worms in these sessions)
     }
 
-    const MS_CUSS = 35;
-    if (inrange && mdat?.msound === MS_CUSS && !mtmp.mpeaceful
-        && !mtmp.minvis) {
-        rn2(5);
+    // C ref: monmove.c:983 — the couldsee() term was missing here, so an
+    // out-of-sight cusser drew an rn2(5) C never draws; and mons[] carries no
+    // .msound field in our table, so the test could never be true at all.  Both
+    // now come from the generated MSOUND table + the real enum value.
+    if (inrange && msound_of(mdat) === MS_CUSS && !mtmp.mpeaceful
+        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5)) {
+        await cuss(mtmp);
     }
     return (status === MMOVE_DIED) ? 1 : 0;
 }
+
+// C ref: wizard.c:846 cuss(mtmp) — a vile monster insults the hero.  Only the
+// non-Wizard, non-lawful-minion branch is reachable from monmove.c's MS_CUSS
+// gate (the Wizard is iswiz and takes the first branch inside cuss itself, but
+// he is also MS_CUSS so his rolls are reproduced).  RNG-critical: the branch
+// selector `rn2(is_minion ? 100 : 5)` is drawn on every call.
+//
+// GAP: the else branch is com_pager("demon_cuss"), which reads a random line
+// out of the quest-text Lua database; that database (and its selection roll)
+// is not ported, so the insult text is dropped rather than invented.  The
+// branch roll itself is drawn, so the stream stays aligned to that point.
+async function cuss(mtmp) {
+    const Deaf = !!game.u?.Deaf;
+    if (Deaf) return;
+    if (mtmp.iswiz) {
+        // C ref: wizard.c:850-866 — the Wizard's own ladder of taunts.  Each
+        // rung is a separate roll; reproduce the draws in order.
+        if (!rn2(5)) {
+            await emitU(`${Monnam(mtmp)} laughs fiendishly.`);
+        } else if (game.u?.uhave?.amulet && !rn2(RANDOM_INSULT_COUNT)) {
+            /* verbalize("Relinquish the amulet, <insult>!") */
+        } else if ((game.u?.uhp ?? 99) < 5 && !rn2(2)) {
+            rn2(2); /* which panic line */
+        } else if (mtmp.mhp < 5 && !rn2(2)) {
+            rn2(2); /* "I shall return." / "I'll be back." */
+        } else {
+            /* ROLL_FROM(random_malediction) + ROLL_FROM(random_insult) */
+            rn2(RANDOM_MALEDICTION_COUNT);
+            rn2(RANDOM_INSULT_COUNT);
+        }
+    } else if (is_lminion(mtmp)) {
+        /* com_pager("angel_cuss") — see GAP above */
+    } else {
+        if (!rn2(is_minion(mtmp.data) ? 100 : 5))
+            await emitU(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
+        /* else com_pager("demon_cuss") — see GAP above */
+    }
+    wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
+}
+// C ref: wizard.c random_insult[] / random_malediction[] — ROLL_FROM() is
+// rn2(SIZE(array)), so only the array LENGTHS matter for the RNG stream.
+const RANDOM_INSULT_COUNT = 28, RANDOM_MALEDICTION_COUNT = 11;
+
+// C ref: mon.c wake_nearto_core(x, y, distance, FALSE) — wake every monster
+// within `distance` (squared) of <x,y>; mfrozen monsters are deliberately left
+// alone (mfrozen doubles as paralysis).  Non-unique monsters also lose their
+// STRAT_WAITMASK "meditation".  Consumes no RNG (wake_msg only prints, and
+// only when the hero can see the monster wake).  The petcall half is skipped:
+// every caller in this file passes petcall == FALSE.
+function wake_nearto(x, y, distance) {
+    for (const m of (game.level?.monsters || [])) {
+        if (DEADish(m)) continue;
+        if (distance === 0 || dist2(m.mx, m.my, x, y) < distance) {
+            m.msleeping = 0;
+            if (!unique_corpstat(m.data)) m.mstrategy &= ~STRAT_WAITMASK;
+        }
+    }
+    disturb_buried_zombies(x, y);
+}
+
+// C ref: mon.c disturb_buried_zombies(x, y) — a buried zombie under or beside
+// <x,y> claws its way out.  Buried monsters are not modeled (nothing in the
+// port buries one), so this is inert; kept so the call sites read like C.
+function disturb_buried_zombies(_x, _y) { /* no buried monsters are modeled */ }
 
 // C ref: include/you.h m_next2u(m) — distu(mx,my) <= 2 (the monster's REAL
 // position is orthogonally/diagonally adjacent to the hero).
@@ -2747,8 +3105,8 @@ function m_balks_at_approaching(oldappr, mtmp) {
 }
 const MON_POLE_DIST = 5; // include/hack.h MON_POLE_DIST
 
-// C ref: mondata.h throws_rocks() — M2_ROCKTHROW species (giants/ettin/etc.).
-function throws_rocks_pm(ptr) { return !!ptr && ROCKTHROW_PMIDX.has(ptr.pmidx); }
+// C ref: mondata.h throws_rocks(ptr) = (mflags2 & M2_ROCKTHROW).
+function throws_rocks_pm(ptr) { return (mflags2_of(ptr) & M2_ROCKTHROW) !== 0; }
 
 // C ref: attrib.h ACURRSTR — hero's current strength as a 3..25 scalar.
 function acurrstr() {
@@ -2771,15 +3129,10 @@ function acurrstr() {
 // DO fire — the in-shop rn2(25) and the finish_search appr/goal override — are
 // reproduced faithfully.  (If monster item-grabbing parity is ever needed, port
 // the OBJ_AT pile loop here; it changes ggx/ggy, not the rng stream.)
-// C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).  Only
-// three species carry the flag (include/monsters.h): rock mole, rust monster,
-// xorn.  Name-keyed for stability, mirroring dogmove.js's identical table for
-// the (unreachable, since none is ever a pet) DOGFOOD-vs-MANFOOD split.
-const M1_METALLIVORE_NAMES = new Set(["rock mole", "rust monster", "xorn"]);
-function metallivorous(ptr) { return M1_METALLIVORE_NAMES.has(ptr?.name); }
+// C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).
+function metallivorous(ptr) { return (mflags1_of(ptr) & M1_METALLIVORE) !== 0; }
 const PM_RUST_MONSTER_NAME = "rust monster";
-const PM_GELATINOUS_CUBE_NAME = "gelatinous cube";
-function is_gelatinous_cube(ptr) { return ptr?.name === PM_GELATINOUS_CUBE_NAME; }
+function is_gelatinous_cube(ptr) { return monsndx_of(ptr) === PM_GELATINOUS_CUBE; }
 
 // C ref: objclass.h obj_material_types — the material band tests meatmetal/
 // meatobj consult.  IRON..MITHRIL is_metallic; NO_MATERIAL..WOOD is_organic.
@@ -3028,7 +3381,7 @@ function likes_magic(ptr) { return (mflags2_of(ptr) & M2_MAGIC) !== 0; }
 // which is what sends a quantum mechanic after a potion of healing and an
 // elf-noble after a sack.  With only the gold/gems slice implemented, every
 // such monster walked at the hero instead.
-function mon_would_take_item(mtmp, otmp) {
+export function mon_would_take_item(mtmp, otmp) {
     const ptr = mtmp.data;
     const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
 
@@ -3054,7 +3407,7 @@ function mon_would_take_item(mtmp, otmp) {
     if (throws_rocks_pm(ptr) && otmp.otyp === BOULDER && pctload < 50
         && !Sokoban())
         return true;
-    if (ptr?.name === 'gelatinous cube' && otmp.oclass !== ROCK_CLASS
+    if (is_gelatinous_cube(ptr) && otmp.oclass !== ROCK_CLASS
         && otmp.oclass !== BALL_CLASS
         && !(otmp.otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0
              && corpse_touch_petrifies(otmp.corpsenm)))
@@ -3067,13 +3420,11 @@ function mon_would_take_item(mtmp, otmp) {
 // EAT the object where it lies rather than carry it off.  The tame/dogfood half
 // only fires for pets, which never reach m_search_items (m_move hands them to
 // dog_move first), so the reachable half is the corpse-eater test.
-const CORPSE_EATER_NAMES = new Set(['purple worm', 'baby purple worm', 'ghoul',
-    'piranha']);
 function mon_would_consume_item(mtmp, otmp) {
     if (otmp.otyp === CORPSE
         && !(otmp.corpsenm != null && otmp.corpsenm >= 0
              && corpse_touch_petrifies(otmp.corpsenm))
-        && CORPSE_EATER_NAMES.has(mtmp.data?.name))
+        && corpse_eater(mtmp.data))
         return true;
     return false;
 }
@@ -3270,16 +3621,11 @@ function levl_lit(x, y) { return !!game.level?.at(x, y)?.lit; }
 // fungi, oozes/puddings, mimics, piercers, lurker/trapper, vortices, lights,
 // elementals).  Indexed by makemon.js pmidx (mapped by name from
 // include/monsters.h).  haseyes(ptr) == !M1_NOEYES.
-const NOEYES_PMIDX = new Set([
-    6, 7, 8, 56, 57, 58, 64, 65, 66, 78, 79, 80, 98, 99, 106, 107, 108, 109,
-    110, 111, 118, 119, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
-    206, 207, 208, 209,
-]);
 // C ref: mondata.c:623 can_track(ptr) — u_wield_art(EXCALIBUR) || haseyes(ptr).
 // The hero never wields Excalibur in the recorded sessions, so this reduces to
 // haseyes(ptr): an eyeless monster (M1_NOEYES) cannot follow the hero's scent
 // trail and never takes the gettrack() redirect in m_move().
-function can_track(ptr) { return !NOEYES_PMIDX.has(ptr?.pmidx); }
+function can_track(ptr) { return haseyes(ptr); }
 
 // C ref: mondata.h mon->data->mattk[] — the monster's attack list, as
 // {aatyp, adtyp, damn, damd} records in monsters.h slot order.
@@ -3735,7 +4081,8 @@ const HWEP_PRIORITY = [55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/,
 
 // C ref: weapon.c m_carrying(mon, otyp) — the monster's first minvent obj of
 // that type, else null.
-function m_carrying(mon, otyp) {
+// Exported for muse.js: C's m_carrying() is used all over muse.c's item search.
+export function m_carrying(mon, otyp) {
     for (const o of (mon?.minvent || [])) if (o.otyp === otyp) return o;
     return null;
 }
@@ -4152,7 +4499,7 @@ const WAN_STRIKING_OTYP = 417; // objects[].oc_name index for wand of striking
 // block") unless the monster throws rocks or carries a wand of striking, in which
 // case boulders are ignored (1).  (The Upolyd concealment rn2(25) guard has no
 // effect for a non-polymorphed hero and is omitted.)
-function m_lined_up(mtmp) {
+export function m_lined_up(mtmp) {
     const u = game.u;
     const tx = mtmp.mux ?? u.ux, ty = mtmp.muy ?? u.uy;
     const ignore_boulders = throws_rocks_pm(mtmp.data)
@@ -4381,7 +4728,6 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
 async function mhitm_ad_sedu(mtmp, mattk, mhm) {
     const { steal } = await import('./steal.js');
     const { rloc, tele_restrict, RLOC_MSG } = await import('./teleport.js');
-    const { monflee } = await import('./uhitm.js');
 
     if (is_animal(mtmp.data)) {
         // A monkey just grabs: it gets the ordinary hit message first and then
@@ -4428,7 +4774,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
         await emitU(`${Monnam(mtmp)} tries to `
             + `${locomotion(mtmp.data, 'run')} away with ${objnambuf.value}.`);
     }
-    monflee(mtmp, 0, false, false);
+    await monflee(mtmp, 0, false, false);
     mhm.hitflags = M_ATTK_AGR_DONE;
     mhm.done = true;
 }
@@ -4626,46 +4972,15 @@ async function emitU(msg) {
     await update_topl(msg);
 }
 
-// C ref: monmove.c disturb(mtmp) — wake-up check for sleeping monsters.
-// For ordinary hostile monsters that the hero has already encountered this
-// consumes no RNG; default to "stays asleep" so we don't fabricate rolls.
-function disturb(_mtmp) {
-    return false;
-}
-
-// C ref: mondata.h is_wanderer(ptr) — M2_WANDER flag.  The RNDMONST data
-// objects don't carry mflags2, so recognize the M2_WANDER monsters our
-// sessions actually place by pmidx (kitten and pony starting pets; bats and
-// felines wander too).  Hostile RNDMONST monsters (newt, kobold, jackal, …)
-// are NOT wanderers, so the rn2(4) at monmove.c:886 never fires for them.
-const M2_WANDER_PMIDX = new Set([
-    34,  // kitten
-    35,  // housecat
-    36,  // large cat (jaguar/etc. share S_FELINE wander)
-    102, // pony
-    103, // white unicorn
-    104, // gray unicorn
-    105, // black unicorn
-    // C ref: include/monsters.h — every S_BAT (bat/giant bat/raven/vampire bat)
-    // carries M2_WANDER, and so do the S_LIGHT lights and the (S_ELEMENTAL)
-    // stalker (M2_WANDER | M2_STALK).  A giant bat is fast (speed 22) so it acts
-    // twice per turn; getting is_wanderer right makes its second dochug enter
-    // the move block (the rn2(4) at monmove.c:886 + the flutter rn2(3) at
-    // monmove.c:1871) instead of attacking — the seed5002 step-190 divergence.
-    126, // bat
-    127, // giant bat
-    128, // raven
-    129, // vampire bat
-    118, // yellow light
-    119, // black light
-    153, // stalker
-]);
-function is_wanderer(ptr) {
-    const M2_WANDER = 0x00800000; // monflag.h M2_WANDER
-
-    if (ptr?.mflags2 != null) return !!(ptr.mflags2 & M2_WANDER);
-    return M2_WANDER_PMIDX.has(ptr?.pmidx);
-}
+// C ref: mondata.h is_wanderer(ptr) = (mflags2 & M2_WANDER).  The pmidx set
+// this replaces was assembled by guesswork and got ten species wrong in both
+// directions: it counted the felines (jaguar/lynx/panther), the vampire bat
+// and the two lights as wanderers when C does not, and it missed the kitten,
+// the pony, the white unicorn, the blobs, the gelatinous cube, the imp, the
+// lemure, the woodchuck, the Kops, the ghoul, the skeleton and the shade.
+// Every one of those flips the `is_wanderer(mdat) && !rn2(4)` term in dochug's
+// may-move gate, i.e. whether an rn2(4) is drawn at all.
+function is_wanderer(ptr) { return (mflags2_of(ptr) & M2_WANDER) !== 0; }
 
 // C ref: dungeon.h Is_rogue_level(uz) — the special Rogue-emulation level.
 // Our gameplay sessions stay on the upper Dungeons of Doom (dlvl 1), never the

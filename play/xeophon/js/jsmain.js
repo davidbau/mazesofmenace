@@ -114,6 +114,7 @@ export class NethackGame {
         // previous one, in emit order.  Populated by animationFrame()
         // calls; committed at each input boundary.
         this._animFramesByStep = [];
+        this._traceSteps = [];
         this._pendingAnimFrames = [];
         this._lastRngIdx = 0;
         this._nhgetchCount = 0;
@@ -158,6 +159,14 @@ export class NethackGame {
     async start() {
         const oldGame = game;
         const g = resetGame();
+        if (process.env.NH_DBG_PTT) {
+            let _ptwm;
+            Object.defineProperty(g, '_process_time_with_more', {
+                configurable: true,
+                get() { return _ptwm; },
+                set(v) { if (v) (g._traceLog ??= []).push(`ptwm<= ${new Error().stack.split('\n').slice(2,3).join('')}`); _ptwm = v; },
+            });
+        }
         if (this._storage) g.mockStorage = this._storage;
         g._datetime = this._datetime;
 
@@ -271,6 +280,8 @@ export class NethackGame {
             // snapshot and reset here so the next step starts empty.
             nhGame._animFramesByStep.push(nhGame._pendingAnimFrames);
             nhGame._pendingAnimFrames = [];
+            nhGame._traceSteps.push(game._traceLog || []);
+            game._traceLog = [];
 
             if (game._clear_wiz_intrinsic_more_after_capture) {
                 game._clear_wiz_intrinsic_more_after_capture = 0;
@@ -793,6 +804,7 @@ export class NethackGame {
     }
 
     getScreens() { return this._screens; }
+    getTraceSteps() { return this._traceSteps; }
     getCursors() { return this._cursors; }
     getRngLog() { return getRngLog(); }
     // Per-step PRNG slices, parallel to getScreens(). Each entry is the

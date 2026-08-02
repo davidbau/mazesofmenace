@@ -147,11 +147,19 @@ export class GameDisplay {
         );
         const line1 = `${title}St:${str} Dx:${stats[3] || '?'} Co:${stats[4] || '?'} In:${stats[1] || '?'} Wi:${stats[2] || '?'} Ch:${stats[5] || '?'} ${align}`;
 
-        const deathMoreHp = game._death_status_hp_before_zero != null
-            && (game._command_mode === 'deathDieMore'
-                || game._queued_message_after_more === 'You die...'
-                || game._pending_message === 'You die...');
-        const hp = deathMoreHp ? game._death_status_hp_before_zero : u.uhp || 0;
+        // C ref: mhitu.c mdamageu() -> end.c done()/die() — between the fatal
+        // blow and the wizard-mode "Die?" refusal, C's status line shows the
+        // hp floor of 0 even though the pending refusal will revive via
+        // savelife() (end.c:704-758).  The JS revival restores u.uhp early
+        // (mid-burst chain rng depends on it), so hold the *display* at 0
+        // until the prompt resolves (_death_pending_confirm cleared there).
+        const deathMoreHp = (game._death_status_hp_before_zero != null
+                && (game._command_mode === 'deathDieMore'
+                    || game._queued_message_after_more === 'You die...'
+                    || game._pending_message === 'You die...'))
+            || game._death_pending_confirm;
+        const hp = deathMoreHp ? (game._death_pending_confirm && game._death_status_hp_before_zero == null
+            ? 0 : game._death_status_hp_before_zero) : u.uhp || 0;
         const heldUac = game._message_more && game._status_uac_before_more != null;
         const displayAc = heldUac ? game._status_uac_before_more : u.uac ?? 10;
         let line2;

@@ -635,8 +635,11 @@ function invalid_shop_shape(sroom) {
 }
 
 /* topologize() lives in js/mklev.js, which imports this file; the wire keeps
-   the cycle from forming, following the sp_lev_wire pattern already here. */
-let _topologize = null;
+   the cycle from forming, following the sp_lev_wire pattern already here.
+   var, not let: mklev.js wires this from its top level, which in the
+   browser's module order can run before this body evaluates (see the
+   add_room_fn note in js/sp_lev.js). */
+var _topologize;
 export function mkroom_wire(fns) { _topologize = fns.topologize; }
 function topologize_wire(croom) {
     if (_topologize) _topologize(croom);

@@ -61,7 +61,9 @@ async function display_nhwindow_message() {
 //
 // stairway_at() and t_at() arrive through the wiring below rather than by
 // import, for the reason in the file header.
-let stairway_at_fn = null, t_at_fn = null;
+// var, not let: cmd.js wires these from its top level, which can run before
+// this body evaluates (see the add_room_fn note in js/sp_lev.js).
+var stairway_at_fn, t_at_fn;
 export function dokick_wire(fns) {
     stairway_at_fn = fns.stairway_at;
     t_at_fn = fns.t_at;

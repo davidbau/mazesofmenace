@@ -102,9 +102,28 @@ function addtopl(bp) {
 }
 
 // win/tty/topl.c:96 remember_topl() — push the current line into ^P history.
-// The history buffer is not modelled yet; nothing reads it.
+//
+// gt.toplines is game._pending_message (see update_topl). The load-bearing
+// part is not the history ring, which nothing reads yet, but the CLEAR: C
+// empties toplines after banking it, and advances maxrow/maxcol around the
+// ring. Leaving it set meant the previous message stayed live and could be
+// appended to or re-painted after it should have been retired.
+//
+// Draws nothing.
 function remember_topl() {
-    (game.unported ||= new Set()).add('topl:remember_topl');
+    const rows = game.iflags?.msg_history || 20;
+    const idx = game._msg_maxrow || 0;
+    const toplines = game._pending_message || '';
+
+    /* WIN_LOCKHISTORY, or nothing to remember */
+    if (game._win_lockhistory || !toplines)
+        return;
+
+    (game._msg_history ||= [])[idx] = toplines;
+
+    /* program_state.in_checkpoint is never set on this path */
+    game._pending_message = '';
+    game._msg_maxcol = game._msg_maxrow = (idx + 1) % rows;
 }
 
 // win/tty/topl.c:129 redotoplin() — repaint the line and set the flag that

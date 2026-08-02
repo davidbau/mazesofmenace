@@ -48,7 +48,20 @@ export function time_from_yyyymmddhhmmss(buf) {
 // datetime when one is supplied. `game.fixed_datetime` is set from
 // input.datetime by the segment runner.
 export function getnow() {
-    return time_from_yyyymmddhhmmss(game.fixed_datetime);
+    const fixed = time_from_yyyymmddhhmmss(game.fixed_datetime);
+    if (fixed)
+        return fixed;
+
+    /* src/calendar.c:31 — unpatched, getnow() is `(void) time(&datetime)`,
+       i.e. the host clock. Patch 001 overrides it with a fixed datetime when
+       one is supplied, and the session runner ALWAYS supplies one, so scoring
+       never reaches this branch. Free play in the browser supplies nothing,
+       and throwing there killed the game the first time anything asked for
+       the date (moon phase, Friday the 13th, the tombstone) — which is what
+       made the fork fail the leaderboard's playability check. */
+    const d = new Date();
+    return makeTm(d.getFullYear(), d.getMonth() + 1, d.getDate(),
+                  d.getHours(), d.getMinutes(), d.getSeconds());
 }
 
 // src/calendar.c:40 getlt() — localtime(getnow()).
@@ -56,13 +69,9 @@ export function getnow() {
 // local time, so the calendar fields round-trip unchanged and we can work
 // directly with the parsed struct.
 export function getlt() {
-    const tm = getnow();
-    if (!tm) {
-        // No datetime supplied. Failing loudly beats inventing one: a silent
-        // fallback to the host clock would make output depend on run time.
-        throw new Error('getlt(): no fixed datetime set; game.fixed_datetime is required');
-    }
-    return tm;
+    /* getnow() supplies the fixed datetime under scoring and the host clock
+       in free play, so this never has to invent anything. */
+    return getnow();
 }
 
 // src/calendar.c:48 getyear()

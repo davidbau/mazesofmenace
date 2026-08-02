@@ -5912,6 +5912,29 @@ function monsterFromRndMeta(row) {
         // C ref: include/monsters.h:1615 — ATTK(AT_TUCH, AD_STCK, 0, 0).
         ptr.attack = { dice: 0, sides: 0, verb: 'touches you', adtyp: 'stck' };
     }
+    // C ref: include/monsters.h:1889-1891 — arch-lich attack slot 0 is
+    // ATTK(AT_TUCH, AD_COLD, 5, 6); hitmsg() verb for AT_TUCH is
+    // "touches you" (mhitu.c:56-58).  Slot 1 is ATTK(AT_MAGC, AD_SPEL, 0, 0),
+    // handled by the castmu() path (mcastu.c:129) adjacent to the hero.
+    if (name === 'arch-lich') {
+        ptr.attack = { dice: 5, sides: 6, verb: 'touches you', aatyp: 'tuch', adtyp: 'cold' };
+        ptr.mcastWizardSpells = true;
+        ptr.hostile = true;
+    }
+    // C ref: include/monsters.h:2402-2405 — carnivorous ape attacks:
+    // AT_CLAW AD_PHYS 1d4, AT_CLAW AD_PHYS 1d4, AT_HUGS AD_PHYS 1d8.
+    // hitmsg() uses "hits" for claw (" again" when consecutive,
+    // mhitu.c:73-76) and "hits" for hugs via the default: arm
+    // (mhitu.c:65-66).  getmattk() substitutes a 1d6 claw when
+    // mspec_used > 0 (mhitu.c:372-390).
+    if (name === 'carnivorous ape') {
+        ptr.mac = 6;
+        ptr.attacks = [
+            { dice: 1, sides: 4, verb: 'hits', aatyp: 'claw', adtyp: 'phys' },
+            { dice: 1, sides: 4, verb: 'hits again', aatyp: 'claw', adtyp: 'phys' },
+            { dice: 1, sides: 8, verb: 'hits', aatyp: 'hugs', adtyp: 'phys' },
+        ];
+    }
     if (name === 'pony') ptr.mac = 6;
     if (name === 'horse') ptr.mac = 5;
     if (name === 'warhorse') ptr.mac = 4;
@@ -7605,6 +7628,9 @@ export async function makemon(mdat, x, y, mmflags) {
         if (ptr.hidesUnder) mon.mundetected = canHideUnderObjAt(x, y);
     }
     if (game.in_mklev && ptr.mlet === ';') mon.mundetected = !!IS_POOL(game.level?.at(x, y)?.typ);
+    // C ref: makemon.c:1327-1329 — the whole S_LEPRECHAUN class (mlet 'l':
+    // leprechauns, lurkers above, trappers) always spawns asleep.
+    if (ptr.mlet === 'l') mon.msleeping = 1;
     if (ptr.mlet === S_NYMPH || ptr.mlet === 'J') {
         if (rn2(5) && !game.u?.uhave?.amulet) mon.msleeping = 1;
     }
@@ -15670,6 +15696,15 @@ export async function make_castle_level() {
     }
     const scare = mksobj_at(SCR_SCARE_MONSTER, towerX, towerY, true, false);
     Object.assign(scare, { blessed: false, cursed: true });
+    // C ref: dat/castle.lua:147-149 — des.engraving({ coord = loc,
+    // type = "burn", text = "Elbereth" }) marks the wand-of-wishing tower
+    // square.  It stays unrevealed until seen/mapped (display.c
+    // map_engraving; wizcmds.c wiz_map reveals it).  Same handling as the
+    // Sokoban prize engraving in make_sokoban_reward_objects.
+    make_engr_at(towerX, towerY, 'Elbereth', false, 0, BURN);
+    const prizeEngraving = (g.level?.engravings || [])
+        .find(engr => engr.x === towerX && engr.y === towerY);
+    if (prizeEngraving) prizeEngraving.erevealed = false;
     mksobj_at(CHEST, castleX(37), castleY(8), true, false);
 
     for (const [x, y] of [[40, 8], [44, 8], [48, 8], [52, 8], [55, 8]]) {
