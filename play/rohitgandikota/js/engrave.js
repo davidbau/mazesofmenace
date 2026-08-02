@@ -7,8 +7,9 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
+import { can_reach_floor } from './pickup.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
-import { DUST, BURN, HEADSTONE, ENGR_BLOOD, N_ENGRAVE, ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
+import { DUST, ENGRAVE, BURN, MARK, HEADSTONE, ENGR_BLOOD, N_ENGRAVE, ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
 import { getobj, GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, hands_obj } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_pool, is_lava } from './mon.js';
@@ -158,10 +159,17 @@ export async function read_engr_at(x, y) {
                     + `${false ? 'melted' : 'burned'} into the ${eloc} here.`);
             }
             break;
+        case ENGRAVE:
         case HEADSTONE:
             if (!game.u.ublind) {
                 sensed = 1;
                 await pline(`Something is engraved here on the ${eloc}.`);
+            }
+            break;
+        case MARK:
+            if (!game.u.ublind) {
+                sensed = 1;
+                await pline(`There's some graffiti on the ${eloc} here.`);
             }
             break;
         case ENGR_BLOOD:
@@ -171,12 +179,8 @@ export async function read_engr_at(x, y) {
             }
             break;
         default:
-            /* ENGRAVE and MARK share the shapes above; only the types the
-               port can create are spelled out */
-            if (!game.u.ublind) {
-                sensed = 1;
-                await pline(`Something is engraved here on the ${eloc}.`);
-            }
+            /* impossible("%s is written in a very strange way.") */
+            sensed = 1;
             break;
         }
 
@@ -256,6 +260,12 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     }
 
     (game.level.lev_engr ||= []).push(ep);
+}
+
+// src/engrave.c:250 u_wipe_engr() — rub out part of what is under the hero.
+export function u_wipe_engr(cnt) {
+    if (can_reach_floor(true))
+        wipe_engr_at(game.u.ux, game.u.uy, cnt, false);
 }
 
 // src/engrave.c wipe_engr_at() — age an engraving by rubbing out `cnt` of its

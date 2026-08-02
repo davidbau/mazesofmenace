@@ -57,15 +57,27 @@ async function auto_describe(cx, cy) {
     const cc = { x: cx, y: cy };
     const res = do_screen_description(cc, true, 0);
     if (res.found) {
-        /* coord_desc() with the default whatis_coord ('none') is empty;
-           the getpos_getvalid suffix needs a caller that sets a validator */
+        /* coord_desc() with the default whatis_coord ('none') is empty */
         if (game.iflags?.getloc_travelmode)
             /* " (no travel path)" needs is_valid_travelpt(); absent */
             note_unported_getpos('auto_describe:travelmode');
-        await pline(res.firstmatch);
+        /* src/getpos.c:655 — a command that set a validator through
+           getpos_sethilite() marks squares it cannot use. */
+        const invalid = (game.iflags?.autodescribe !== false
+                         && getpos_getvalid && !getpos_getvalid(cx, cy))
+                        ? ' (invalid target)' : '';
+        await pline(`${res.firstmatch}${invalid}`);
         curs_map(cx, cy);
         flush_screen(0);
     }
+}
+
+/* src/getpos.c gp_getvalid — the validator the current command installed. */
+let getpos_getvalid = null;
+
+// src/getpos.c:1560 getpos_sethilite()
+export function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
+    getpos_getvalid = gp_getvalidfunc || null;
 }
 
 // src/getpos.c:729 truncate_to_map() — clamp a step to the map, adjusting the

@@ -15,7 +15,9 @@ import { cansee } from './vision.js';
 import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          FOOD_CLASS, RING_CLASS, POT_OIL, POT_WATER, GLOB_OF_GREEN_SLIME,
          SPBOOK_CLASS, mkobj as _mkobj, place_object, objects,
-         mkcorpstat, CORPSE } from './mkobj.js';
+         mkcorpstat, CORPSE, AMULET_OF_YENDOR, BELL_OF_OPENING,
+         CANDELABRUM_OF_INVOCATION, SPE_BOOK_OF_THE_DEAD,
+         is_rider_pm } from './mkobj.js';
 import { A_WIS, A_STR, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, IS_WALL, isok, ROOM, STONE,
          D_CLOSED, D_LOCKED, CORPSTAT_INIT } from './const.js';
 import { CLR_ORANGE } from './terminal.js';
@@ -27,35 +29,33 @@ import { killed, canspotmon, mon_nam, Monnam } from './uhitm.js';
 // Object-type numbers for the directional wands/spells that zapyourself() gives
 // a special self-inflicted effect.  C ref: include/objects.h (WAN_DEATH),
 // generated onames.h.  Match the JS objects table (mkobj.js): SPE_FINGER_OF_DEATH
-// = 370, WAN_DEATH = 432.
-const SPE_FINGER_OF_DEATH = 370;
-const WAN_DEATH = 432;
+// = 371, WAN_DEATH = 433.
+const SPE_FINGER_OF_DEATH = 371;
+const WAN_DEATH = 433;
 // C ref: objects.h — WAN_SLEEP / SPE_SLEEP fire a sleep ray; zapping at self
-// puts the hero to sleep.  (JS objects table: WAN_SLEEP 431, SPE_SLEEP 369.)
-const WAN_SLEEP = 431;
-const SPE_SLEEP = 369;
-
-// Object-type numbers that unconditionally resist (never rolled).
-// C ref: zap.c obj_resists().  AMULET_OF_YENDOR / SPE_BOOK_OF_THE_DEAD /
-// CANDELABRUM_OF_INVOCATION / BELL_OF_OPENING / a Rider corpse.
-const AMULET_OF_YENDOR = 155;
-const SPE_BOOK_OF_THE_DEAD = 355;
-const CANDELABRUM_OF_INVOCATION = 360;
-const BELL_OF_OPENING = 359;
+// puts the hero to sleep.  (JS objects table: WAN_SLEEP 432, SPE_SLEEP 370.)
+const WAN_SLEEP = 432;
+const SPE_SLEEP = 370;
 
 // C ref: zap.c obj_resists(obj, ochance, achance) — chance an object resists
-// (e.g. destruction / theft).  The invocation items always resist.  Everything
-// else rolls rn2(100) and resists when the roll lands below the per-object
-// chance (achance for artifacts, ochance otherwise).
+// (e.g. destruction / theft).  The Amulet, the invocation items and Rider
+// corpses always resist and are NOT rolled for; everything else rolls rn2(100)
+// and resists when the roll lands below the per-object chance (achance for
+// artifacts, ochance otherwise).
+//
+// The otyps come from mkobj.js's object table rather than local literals: the
+// four that used to live here (155/355/360/359) were 3.4-era indices naming an
+// orcish shield and three unused scroll slots, so the early return never fired
+// and every invocation item burned an extra rn2(100).
 export function obj_resists(obj, ochance, achance) {
     const otyp = obj?.otyp;
     if (otyp === AMULET_OF_YENDOR
         || otyp === SPE_BOOK_OF_THE_DEAD
         || otyp === CANDELABRUM_OF_INVOCATION
-        || otyp === BELL_OF_OPENING) {
+        || otyp === BELL_OF_OPENING
+        || (otyp === CORPSE && is_rider_pm(obj.corpsenm))) {
         return true;
     }
-    // (Rider-corpse check omitted: no Rider corpses on the starting level.)
     const chance = rn2(100);
     return chance < (obj?.oartifact ? achance : ochance);
 }
@@ -68,13 +68,13 @@ const ECMD_TIME = 1;
 const NODIR = 1;
 const IMMEDIATE = 2;
 
-const WAN_SECRET_DOOR_DETECTION = 410;
+const WAN_SECRET_DOOR_DETECTION = 411;
 const WAND_WREST_CHANCE = 121;
 const WAND_BACKFIRE_CHANCE = 100;
 
 // otyps consulted by the IMMEDIATE wand path.  C ref: include/objects.h enum.
-const WAN_POLYMORPH = 421;
-const SPE_POLYMORPH = 398;
+const WAN_POLYMORPH = 422;
+const SPE_POLYMORPH = 399;
 const POT_POLYMORPH = 316;
 const AMULET_OF_UNCHANGING = 210;
 
@@ -210,7 +210,7 @@ function poly_obj(obj) {
         else if (otmp.otyp === 242 /*MAGIC_MARKER*/) otmp.recharged = 1;
         break;
     case WAND_CLASS:
-        while (otmp.otyp === 413 /*WAN_WISHING*/ || otmp.otyp === WAN_POLYMORPH)
+        while (otmp.otyp === 414 /*WAN_WISHING*/ || otmp.otyp === WAN_POLYMORPH)
             otmp.otyp = rnd_class_wand();
         if ((otmp.recharged | 0) < rn2(7)) otmp.recharged = (otmp.recharged | 0) + 1;
         break;
@@ -221,11 +221,11 @@ function poly_obj(obj) {
     case SPBOOK_CLASS:
         while (otmp.otyp === SPE_POLYMORPH)
             otmp.otyp = rnd_class_spbook();
-        if (otmp.otyp !== 406 /*SPE_BLANK_PAPER*/ && otmp.otyp !== 407 /*SPE_NOVEL*/) {
+        if (otmp.otyp !== 407 /*SPE_BLANK_PAPER*/ && otmp.otyp !== 408 /*SPE_NOVEL*/) {
             otmp.spestudied = (obj.spestudied | 0) + 1;
             if (otmp.spestudied > 4 /*MAX_SPELL_STUDY*/) {
                 otmp.spestudied = rn2(otmp.spestudied);
-                otmp.otyp = 406 /*SPE_BLANK_PAPER*/;
+                otmp.otyp = 407 /*SPE_BLANK_PAPER*/;
             }
         }
         break;
@@ -264,9 +264,9 @@ function rnd_class_range(first, last) {
     for (let i = first; i <= last; i++) { x -= objects[i]?.oc_prob || 0; if (x <= 0) return i; }
     return first;
 }
-function rnd_class_wand()   { return rnd_class_range(409 /*WAN_LIGHT*/, 433 /*WAN_LIGHTNING*/); }
+function rnd_class_wand()   { return rnd_class_range(410 /*WAN_LIGHT*/, 434 /*WAN_LIGHTNING*/); }
 function rnd_class_potion() { return rnd_class_range(297 /*POT_GAIN_ABILITY*/, 322 /*POT_WATER*/); }
-function rnd_class_spbook() { return rnd_class_range(365, 406 /*SPE_BLANK_PAPER*/); }
+function rnd_class_spbook() { return rnd_class_range(366, 407 /*SPE_BLANK_PAPER*/); }
 
 // Like delobj() but without the obj_resists() RNG / newsym (used to discard a
 // freshly mkobj'd candidate during poly_obj's magic-matching retry loop.
@@ -437,10 +437,10 @@ async function weffects(obj) {
 // C ref: include/hack.h BZ_OFS_WAN(otyp) = abs(otyp - WAN_MAGIC_MISSILE) % 10.
 // Wand order in objects.h: MAGIC_MISSILE(0) FIRE(1) COLD(2) SLEEP(3) DEATH(4)
 // LIGHTNING(5); the resulting offset is the abstract zap type (ZT_FIRE etc.).
-const WAN_MAGIC_MISSILE = 428;
+const WAN_MAGIC_MISSILE = 429;
 // C ref: objects.h — the two RAY-class dig items dispatched to zap_dig().
-const WAN_DIGGING = 427;
-const SPE_DIG = 365;
+const WAN_DIGGING = 428;
+const SPE_DIG = 366;
 function BZ_OFS_WAN(otyp) { return Math.abs(otyp - WAN_MAGIC_MISSILE) % 10; }
 
 // Abstract damage types (zaptype % 10), C ref: monattk.h AD_* minus 1.
@@ -448,7 +448,7 @@ const ZT_MAGIC_MISSILE = 0, ZT_FIRE = 1, ZT_COLD = 2, ZT_SLEEP = 3,
       ZT_DEATH = 4, ZT_LIGHTNING = 5;
 
 // otyps consulted by destroy path naming.  C ref: objects.h.
-const SCR_FIRE = 339, SPE_FIREBALL = 367, POT_INVISIBILITY = 305;
+const SCR_FIRE = 339, SPE_FIREBALL = 368, POT_INVISIBILITY = 305;
 
 // C ref: zap.c ubuzz(type, nd) -> dobuzz(type, nd, u.ux, u.uy, u.dx, u.dy, ...).
 async function ubuzz(type, nd) {
@@ -999,7 +999,7 @@ function destroyable(obj, adtyp) {
     } else if (adtyp === AD_ELEC) {
         if (obj.oclass !== RING_CLASS && obj.oclass !== WAND_CLASS) return false;
         // RIN_SHOCK_RESISTANCE / WAN_LIGHTNING immune
-        if (obj.otyp !== 207 /*RIN_SHOCK_RESISTANCE*/ && obj.otyp !== 433 /*WAN_LIGHTNING*/)
+        if (obj.otyp !== 207 /*RIN_SHOCK_RESISTANCE*/ && obj.otyp !== 434 /*WAN_LIGHTNING*/)
             return true;
     }
     return false;
@@ -1020,8 +1020,8 @@ const DESTROY_STRINGS = [
 function yname_for(obj) {
     const NAMES = {
         305: 'potion of invisibility', 321: 'potion of oil', 322: 'potion of water',
-        323: 'scroll of enchant armor', 373: 'spellbook of healing',
-        375: 'spellbook of force bolt',
+        323: 'scroll of enchant armor', 374: 'spellbook of healing',
+        376: 'spellbook of force bolt',
     };
     return 'Your ' + (NAMES[obj.otyp] || (objects[obj.otyp]?.name || 'item'));
 }

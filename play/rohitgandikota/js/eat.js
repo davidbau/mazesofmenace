@@ -9,7 +9,11 @@ import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
 
 import { game } from './gstate.js';
 import { Race_if } from './u_init.js';
-import { carnivorous, herbivorous, metallivorous } from './mondata.js';
+import { carnivorous, herbivorous, metallivorous, acidic, poisonous,
+         flesh_petrifies, vegan, vegetarian, type_is_pname } from './mondata.js';
+import { can_reach_floor } from './pickup.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { tty_yn_function } from './tty/topl.js';
 import { Unaware, Hallucination } from './youprop.js';
 import { singular, xname, doname } from './objnam.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -141,16 +145,43 @@ export function init_uhunger() {
 // Only the clean case is ported — nothing edible underfoot, straight to
 // getobj — and anything else is recorded.
 export async function floorfood(verb, corpsecheck) {
-    const here = (game.level?.objects || [])
-        .filter(o => o.ox === game.u.ux && o.oy === game.u.uy);
-    const trap = (game.level?.traps || [])
-        .find(t => t.tx === game.u.ux && t.ty === game.u.uy);
+    const feeding = (verb === 'eat');           /* corpsecheck == 0 */
 
-    if (trap || here.length) {
-        note_unported_eat('floorfood:floor prompts');
-        return null;
+    /* if we can't touch floor objects then use inventory food only */
+    if (!can_reach_floor(true)
+        || (is_pool_or_lava(game.u.ux, game.u.uy)))
+        return await getobj(verb, eat_ok, 0);   /* goto skipfloor */
+
+    /* src/eat.c — the metallivore arms (bear trap, iron bars, gold) come
+       first and each spends a prompt; no ported hero is metallivorous. */
+    if (feeding && metallivorous(game.youmonst.data))
+        note_unported_eat('floorfood:metallivorous');
+
+    /* C walks level.objects[x][y] via nexthere, which is the pile in
+       top-first order; our list is newest-first for the same reason. */
+    for (const otmp of (game.level?.objects || [])) {
+        if (otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
+            continue;
+        const wanted = corpsecheck
+            ? (otmp.otyp === ONAMES.CORPSE && corpsecheck === 1)
+            : feeding ? (otmp.oclass !== OCLASSES.COIN_CLASS
+                         && is_edible(otmp))
+                      : otmp.oclass === OCLASSES.FOOD_CLASS;
+        if (!wanted)
+            continue;
+
+        const one = (otmp.quan === 1);
+        /* "There is <an object> here; <verb> it?" */
+        const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)}`
+                     + ` here; ${verb} ${one ? 'it' : 'one'}?`;
+        const c = await tty_yn_function(qbuf, 'ynq', 'n');
+        if (c === 'y')
+            return otmp;
+        else if (c === 'q')
+            return null;
     }
 
+ /* skipfloor: */
     return await getobj(verb, eat_ok, 0);
 }
 
@@ -239,6 +270,125 @@ function touchfood(otmp) {
     return otmp;
 }
 
+// include/eat.c:58 nonrotting_corpse() — the species whose corpses never rot.
+const nonrotting_corpse = (mnum) =>
+    mnum === PMNAMES.PM_LIZARD || mnum === PMNAMES.PM_LICHEN
+    || mnum === PMNAMES.PM_ACID_BLOB;   /* is_rider() is recorded below */
+
+// src/eat.c:217 food_xname() — the name a meal is announced under. For a
+// corpse that is corpse_xname()'s singular form; for anything else the
+// ordinary singular xname.
+function food_xname(food, the_pfx) {
+    let result;
+
+    if (food.otyp === ONAMES.CORPSE) {
+        /* corpse_xname(food, NULL, CXN_SINGULAR) */
+        const mnam = game.mons[food.corpsenm]?.pmnames?.[0]
+                     ?? game.mons[food.corpsenm]?.mname
+                     ?? 'monster';
+        result = `${mnam} corpse`;
+        if (type_is_pname(game.mons[food.corpsenm]))
+            the_pfx = false;
+    } else {
+        result = singular(food, xname);
+    }
+    if (the_pfx)
+        result = `the ${result}`;
+    return result;
+}
+
+// src/eat.c:1855 eatcorpse() — a corpse was chosen as food.
+//
+// Draw order is the whole point of this function: the rot age rn2(20) comes
+// first and is skipped entirely for a non-rotting species, then the tainted,
+// acidic, poisonous and mildly-ill arms each draw only on their own branch,
+// then the rn2(7) rotten gate, and finally the palatability pair. Returns 2
+// when the corpse is used up, 1 when a message already landed, 0 otherwise.
+async function eatcorpse(otmp) {
+    let retcode = 0, tp = 0;
+    const mnum = otmp.corpsenm;
+    let rotted = 0;
+    const glob = !!otmp.globby;
+    const mdat = game.mons[mnum];
+
+    if (flesh_petrifies(mdat) || mnum === PMNAMES.PM_GREEN_SLIME)
+        note_unported_eat('eatcorpse:stoneable_or_slimeable');
+
+    if (!nonrotting_corpse(mnum)) {
+        /* peek_at_iced_corpse_age(otmp) — plain age unless the corpse is on
+           ice, which nothing ported creates */
+        const age = otmp.age || 0;
+
+        rotted = Math.trunc((game.moves - age) / (10 + rn2(20)));
+        if (otmp.cursed)
+            rotted += 2;
+        else if (otmp.blessed)
+            rotted -= 2;
+    }
+
+    if (!glob && rotted > 5) {
+        note_unported_eat('eatcorpse:tainted');
+        return 2;
+    } else if (acidic(mdat)) {
+        tp++;
+        note_unported_eat('eatcorpse:acidic');
+    } else if (poisonous(mdat) && rn2(5)) {
+        tp++;
+        note_unported_eat('eatcorpse:poisonous');
+    /* now any corpse left too long will make you mildly ill */
+    } else if (rotted > 5 || (rotted > 3 && rn2(5))) {
+        tp++;
+        note_unported_eat('eatcorpse:mildly_ill');
+    }
+
+    /* delay is weight dependent */
+    game.context.victual = game.context.victual || {};
+    game.context.victual.reqtime =
+        3 + ((!glob ? mdat.cwt : otmp.owt) >> 6);
+
+    if (!tp && !nonrotting_corpse(mnum) && (otmp.orotten || !rn2(7))) {
+        note_unported_eat('eatcorpse:rottenfood');
+        otmp.orotten = true;
+        retcode = 1;
+
+        if (!mdat.cnutrit) {
+            note_unported_eat('eatcorpse:rots_away');
+            retcode = 2;
+        }
+        if (!retcode)
+            consume_oeaten(otmp, 2);    /* oeaten >>= 2 */
+    } else if (tp) {
+        ; /* a message already landed; don't add "it tastes okay" */
+    } else {
+        /* yummy is always false for omnivores, palatable always true */
+        const you = game.youmonst.data;
+        const yummy = (vegan(mdat)
+                       ? (!carnivorous(you) && herbivorous(you))
+                       : (carnivorous(you) && !herbivorous(you)));
+        const palatable = ((vegetarian(mdat) ? herbivorous(you)
+                                             : carnivorous(you))
+                           && rn2(10)
+                           && (rotted < 1 || !rn2(rotted + 1)));
+        /* first char: T = tastes ... , I = is ... ; veggies are just "okay" */
+        const palatable_msgs = ['Tokay', 'Istringy', 'Igamey', 'Ifatty',
+                                'Itough'];
+        const idx = vegetarian(mdat) ? 0 : rn2(palatable_msgs.length);
+        const palat_msg = palatable_msgs[idx];
+        const use_is = (palatable && palat_msg[0] === 'I');
+        let pmxnam = food_xname(otmp);
+
+        if (pmxnam.slice(0, 4).toLowerCase() === 'the ')
+            pmxnam = pmxnam.slice(4);
+        await pline(`${type_is_pname(mdat) ? '' : 'This '}${pmxnam} ${
+            use_is ? 'is' : 'tastes'} ${
+            yummy ? 'delicious'
+                  : palatable ? palat_msg.slice(1) : 'terrible'}${
+            (yummy || !palatable) ? '!' : '.'}`);
+    }
+
+    return retcode;
+}
+
 export async function doeat() {
     let otmp = await floorfood('eat', 0);
 
@@ -260,9 +410,40 @@ export async function doeat() {
     /* src/eat.c doeat() tail — the tin, corpse and conduct arms above this
        need their own subsystems; what is ported is the ordinary-food path,
        which is the one that reaches choke(). */
-    if (otmp.otyp === ONAMES.TIN || otmp.otyp === ONAMES.CORPSE
-        || otmp.globby) {
-        note_unported_eat('doeat:tin_or_corpse');
+    if (otmp.otyp === ONAMES.TIN) {
+        note_unported_eat('doeat:tin');
+        return ECMD_TIME;
+    }
+
+    let dont_start = false;
+    if (otmp.otyp === ONAMES.CORPSE || otmp.globby) {
+        /* src/eat.c:2946 — eatcorpse() sets up victual.reqtime itself unless
+           the corpse was used up (2) or a message already landed (1). */
+        const tmp = await eatcorpse(otmp);
+
+        if (tmp === 2) {
+            game.context.victual = game.context.victual || {};
+            game.context.victual.piece = null;
+            game.context.victual.o_id = 0;
+            return ECMD_TIME;
+        } else if (tmp) {
+            dont_start = true;
+        }
+        const v0 = (game.context.victual ||= {});
+        v0.piece = otmp;
+        v0.o_id = otmp.o_id;
+        v0.usedtime = 0;
+        v0.canchoke = (game.u.uhs === SATIATED);
+        if (!otmp.oeaten)
+            otmp.oeaten = game.mons[otmp.corpsenm]?.cnutrit ?? 0;
+        if (v0.reqtime === 0 || !otmp.oeaten)
+            v0.nmod = 0;
+        else if (otmp.oeaten >= v0.reqtime)
+            v0.nmod = -Math.trunc(otmp.oeaten / v0.reqtime);
+        else
+            v0.nmod = v0.reqtime % otmp.oeaten;
+        if (!dont_start)
+            await start_eating(otmp, false);
         return ECMD_TIME;
     }
 

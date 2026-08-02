@@ -163,3 +163,30 @@ export function place_worm_tail_randomly(worm, x, y) {
         }
     }
 }
+
+// src/worm.c:898 worm_cross() — would a diagonal step pass BETWEEN two
+// consecutive segments of the same long worm? Adjacent monsters may be
+// attacked that way but not moved through.
+export function worm_cross(x1, y1, x2, y2) {
+    /* only diagonals can pass between segments */
+    if (x1 === x2 || y1 === y2)
+        return false;
+
+    const at = (x, y) => game.level?.monAt?.get(`${x},${y}`) ?? null;
+    const worm = at(x1, y2);
+    if (!worm || at(x2, y1) !== worm)
+        return false;
+
+    const w = wstate();
+    for (let curr = w.wtails[worm.wormno]; curr; ) {
+        const wnxt = curr.nseg;
+        if (!wnxt)
+            break;
+        if (curr.wx === x1 && curr.wy === y2)
+            return wnxt.wx === x2 && wnxt.wy === y1;
+        if (curr.wx === x2 && curr.wy === y1)
+            return wnxt.wx === x1 && wnxt.wy === y2;
+        curr = wnxt;
+    }
+    return false;
+}

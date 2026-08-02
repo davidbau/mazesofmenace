@@ -28,9 +28,11 @@ import {
     worn_item_removal, oc_delay, W_ARMOR_WORN, W_ACCESSORY_WORN,
 } from './invent.js';
 
-// C ref: monsym.h S_NYMPH — the class whose "<Mon> takes off ..." preface makes
-// the follow-up theft message use "She" instead of repeating the name.
-const S_NYMPH_MCLS = 12;
+// C ref: defsym.h MONSYM(14, 'n', NYMPH, S_NYMPH, "nymph") — the class whose
+// "<Mon> takes off ..." preface makes the follow-up theft message use "She"
+// instead of repeating the name.  (This was 12, which is S_LEPRECHAUN's
+// neighbourhood, not S_NYMPH: the test silently never fired.)
+const S_NYMPH_MCLS = 14;
 // C ref: obj.h how_lost values.
 const LOST_NONE = 0, LOST_STOLEN = 2;
 

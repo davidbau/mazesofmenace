@@ -145,6 +145,22 @@ export class NethackGame {
                 dead: (n(m.mhp) < 1) ? 1 : 0,
             });
         }
+        // The C recorder's NHOBJDUMP line also carries the floor-object list
+        // (otyp/oclass/ox/oy/quan).  Monster movement goals depend on it
+        // (monmove.c m_search_items redirects a monster toward loot it wants),
+        // so a position divergence cannot be told apart from a floor-object
+        // divergence without it.  Same NHJSDUMP gate as the monster list.
+        const fobjs = [];
+        for (const o of ((game.level && game.level.objects) || [])) {
+            if (!o) continue;
+            fobjs.push({
+                otyp: (o.otyp | 0),
+                oclass: (o.oclass | 0),
+                ox: (o.ox | 0),
+                oy: (o.oy | 0),
+                quan: (o.quan == null ? 1 : (o.quan | 0)),
+            });
+        }
         this._stateDumps.push({
             seq: this._stateDumps.length + 1,
             rng: rngCount | 0,
@@ -159,6 +175,7 @@ export class NethackGame {
             multi: (game.multi == null ? 0 : (game.multi | 0)),
             mons: out,
             nmon: out.length,
+            objs: fobjs,
         });
     }
 

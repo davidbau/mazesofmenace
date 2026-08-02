@@ -9,6 +9,10 @@ import { delobj, t_at, is_pool, is_lava } from './mon.js';
 import { costly_spot } from './shk.js';
 import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
 import { hides_under } from './mondata.js';
+import { worn } from './do_wear.js';
+import { empty_handed } from './wield.js';
+import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+         W_RINGL, W_RINGR, W_AMUL } from './const.js';
 import { Hallucination } from './youprop.js';
 import { doname, an } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -229,7 +233,7 @@ export async function dolook() {
 // ---------------------------------------------------------------------------
 
 // src/decl.c flags.inv_order — the default packorder.
-function inv_order() {
+export function inv_order() {
     const O = OCLASSES;
     return [O.COIN_CLASS, O.AMULET_CLASS, O.WEAPON_CLASS, O.ARMOR_CLASS,
             O.FOOD_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS, O.POTION_CLASS,
@@ -245,7 +249,7 @@ const CLASS_NAMES = {
     ROCK_CLASS: 'Boulders/Statues', BALL_CLASS: 'Iron balls',
     CHAIN_CLASS: 'Chains', VENOM_CLASS: 'Venoms',
 };
-function let_to_name(oclass) {
+export function let_to_name(oclass) {
     for (const [k, v] of Object.entries(OCLASSES))
         if (v === oclass && CLASS_NAMES[k]) return CLASS_NAMES[k];
     return '';
@@ -844,14 +848,19 @@ export function obj_extract_self(obj) {
 // include/mondata.h:170 is_reviver()
 const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TROLL);
 
-/* Blind/Hallucination/Role_if and erosion_matters need property and shop state
-   that is not ported; all three only ever make mergable STRICTER, so a false
-   here can merge two stacks C would keep apart in those rare states. */
-function Blind() { return false; }
-function Role_if(role) { return false; }
-/* erosion_matters() is fully ported in js/mkobj.js (its C home is
-   src/mkobj.c); it was stubbed here by mistake. */
-const PM_CLERIC = 0;
+/* Blind() needs the blindness property plumbing; it only ever makes mergable
+   STRICTER, so a false here can merge two stacks C would keep apart while the
+   hero is blind. */
+function Blind() { return !!game.u?.ublind; }
+
+/* src/role.c Role_if() — this used to be hardcoded `return false`, which
+   silently disabled every role test in this file. C switches on a PM number;
+   our role table carries the display name, and PM_CLERIC's role is spelled
+   "Priest". */
+function Role_if(role) {
+    return game.urole?.name?.m === role;
+}
+const PM_CLERIC = 'Priest';
 
 function note_unported_invent(what) {
     (game.unported ||= new Set()).add(what);
@@ -1000,4 +1009,144 @@ export function update_inventory() {
         return;
 
     note_unported_invent('update_inventory:win_update_inventory');
+}
+
+
+// src/invent.c:4550 doprwep() — the ')' command. No draws.
+export async function doprwep() {
+    if (!game.u.uwep) {
+        await You(`are ${empty_handed()}.`);
+    } else {
+        await prinv(null, game.u.uwep, 0);
+        if (game.u.twoweap)
+            await prinv(null, game.u.uswapwep, 0);
+    }
+    return ECMD_OK;
+}
+
+// src/invent.c:4601 doprarm() — the '[' command.
+export async function doprarm() {
+    const lets = [W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU]
+        .map(m => worn(m)).filter(Boolean);
+
+    if (!lets.length) {
+        /* noarmor(TRUE) */
+        await You('are not wearing any armor.');
+    } else {
+        note_unported_invent('doprarm:dispinv_with_action');
+    }
+    return ECMD_OK;
+}
+
+// src/invent.c:4642 doprring() — the '=' command.
+export async function doprring() {
+    if (!worn(W_RINGL) && !worn(W_RINGR))
+        await You('are not wearing any rings.');
+    else
+        note_unported_invent('doprring:dispinv_with_action');
+    return ECMD_OK;
+}
+
+// src/invent.c:4679 dopramulet() — the '"' command.
+export async function dopramulet() {
+    if (!worn(W_AMUL))
+        await You('are not wearing an amulet.');
+    else
+        note_unported_invent('dopramulet:dispinv_with_action');
+    return ECMD_OK;
+}
+
+// src/invent.c:4715 doprtool() — the '(' command.
+export async function doprtool() {
+    const ct = (game.invent || []).filter(o => o.owornmask
+                                               || o.lamplit).length;
+    if (!ct)
+        await You('are not using any tools.');
+    else
+        note_unported_invent('doprtool:dispinv_with_action');
+    return ECMD_OK;
+}
+
+// src/invent.c:4740 doprinuse() — the '*' command: everything in use.
+export async function doprinuse() {
+    const ct = (game.invent || []).filter(o => o.owornmask
+                                               || o === game.u.uwep
+                                               || o.lamplit).length;
+    if (!ct)
+        await You('are not wearing or wielding anything.');
+    else
+        note_unported_invent('doprinuse:dispinv_with_action');
+    return ECMD_OK;
+}
+
+
+// src/invent.c:1546 currency() — "zorkmid"/"zorkmids"; the hallucinatory
+// currency roll is recorded because it DRAWS.
+export function currency(amount) {
+    if (game.u.uprops?.HALLUC)
+        note_unported_invent('currency:hallucinatory');
+    return amount !== 1 ? 'zorkmids' : 'zorkmid';
+}
+
+// src/invent.c doprgold() — the '$' command. No draws.
+export async function doprgold() {
+    const umoney = money_cnt(game.invent || []);
+    /* hidden_gold(FALSE) — gold inside carried containers; containers are
+       not carried on this tree, so it is zero */
+    if (game.flags?.verbose !== false) {
+        const buf = !umoney ? 'Your wallet is empty'
+                            : `Your wallet contains ${umoney} ${currency(umoney)}`;
+        await pline(`${buf}.`);
+    } else {
+        note_unported_invent('doprgold:terse');
+    }
+    return ECMD_OK;
+}
+
+
+// src/objnam.c:1787 not_fully_identified() — is anything about this object
+// still unknown? The rknown tail (erosion-proofing) needs the erodeable
+// predicates and is recorded.
+export function not_fully_identified(otmp) {
+    /* gold doesn't have any interesting attributes */
+    if (otmp.oclass === OCLASSES.COIN_CLASS)
+        return false;
+    if (!otmp.known || !otmp.dknown || !otmp.bknown
+        || !game.objects[otmp.otyp].oc_name_known)
+        return true;
+    /* include/obj.h:338 Is_box() */
+    const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
+    if ((!otmp.cknown && Is_container(otmp))
+        || (!otmp.lknown && Is_box(otmp)))
+        return true;
+    if (otmp.oartifact)
+        note_unported_invent('not_fully_identified:artifact');
+    return false;
+}
+
+// src/invent.c:2698 count_unidentified()
+export function count_unidentified(objchn) {
+    let unid_cnt = 0;
+    for (const obj of objchn || [])
+        if (not_fully_identified(obj))
+            ++unid_cnt;
+    return unid_cnt;
+}
+
+// src/invent.c:2711 identify_pack() — identify up to id_limit items.
+//
+// id_limit 0 means all. The "already identified" line is the one an
+// identify scroll hits once the pack is clean; the selection paths
+// (ggetobj and menu_identify) are recorded.
+export async function identify_pack(id_limit, learning_id) {
+    const unid_cnt = count_unidentified(game.invent);
+
+    if (!unid_cnt) {
+        await You(`have already identified ${
+            !learning_id ? 'all' : 'the rest'} of your possessions.`);
+    } else if (!id_limit || id_limit >= unid_cnt) {
+        note_unported_invent('identify_pack:identify_everything');
+    } else {
+        note_unported_invent('identify_pack:menu');
+    }
 }

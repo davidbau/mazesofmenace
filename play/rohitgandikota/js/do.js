@@ -10,14 +10,17 @@ import { stackobj } from './invent.js';
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
-import { reset_occupations } from './cmd.js';
+import { reset_occupations, set_move_cmd } from './cmd.js';
 import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
 import { encumber_msg } from './attrib.js';
 import { freeinv, getobj, any_obj_ok } from './invent.js';
 import { place_object } from './mkobj.js';
 import { pline, newsym } from './display.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR } from './const.js';
+import { You, You_cant } from './pline.js';
+import { near_capacity } from './attrib.js';
+import { u_locomotion } from './hack.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER } from './const.js';
 import { rn2, rnd } from './rng.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
@@ -50,7 +53,32 @@ export function stairway_at(x, y) {
 // Only the plain staircase path is ported. dodown's own two draws are the
 // !rn2(3) / rnd(4) pair for falling through a trapdoor, which is a different
 // branch; the staircase path spends none.
+// src/do.c:1660 doup() — the '<' command.
+//
+// The pit climb, stuck-steed, held-by-monster and no-return confirmation arms
+// are recorded. prev_level() needs goto_level's reload path, which is not
+// ported, so climbing an actual staircase records; the common
+// "You can't go up here." is real.
+export async function doup() {
+    const stway = stairway_at(game.u.ux, game.u.uy);
+
+    set_move_cmd(DIR_UP, 0);
+
+    if (!stway || !stway.up) {
+        await You_cant('go up here.');
+        return ECMD_OK;
+    }
+    if (near_capacity() > SLT_ENCUMBER) {
+        note_unported_do('doup:load_too_heavy');
+        return ECMD_TIME;
+    }
+    note_unported_do('doup:prev_level');
+    return ECMD_TIME;
+}
+
 export async function dodown() {
+    set_move_cmd(DIR_DOWN, 0);
+
     let stairs_down = false, ladder_down = false;
     const stway = stairway_at(game.u.ux, game.u.uy);
 
@@ -149,6 +177,24 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (at_stairs) {
         u_on_dnstairs();
+
+        /* src/do.c:1774 — the arrival message. Levitation, Flying and the
+           encumbered/Punished/Fumbling fall are all recorded; the ordinary
+           descent is the one every recorded game takes. `at_ladder` is
+           false for a staircase. */
+        if (!game.u.dz) {
+            ; /* stayed on same level? (no transit effects) */
+        } else if (up) {
+            if (game.flags?.verbose)
+                await pline(`You ${u_locomotion('climb')} up the stairs.`);
+        } else if (game.u.uprops?.FLYING || game.u.uprops?.LEVITATION
+                   || near_capacity() > UNENCUMBERED || game.uball
+                   || game.u.uprops?.FUMBLING) {
+            note_unported_do('goto_level:fly_or_fall_arrival');
+        } else { /* ordinary descent */
+            if (game.flags?.verbose)
+                await You('descend the stairs.');
+        }
     } else { /* trap door or level_tele or In_endgame */
         const { u_on_rndspot } = await import('./dungeon.js');
         await u_on_rndspot(up ? 1 : 0);

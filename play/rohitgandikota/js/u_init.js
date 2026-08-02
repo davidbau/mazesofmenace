@@ -204,6 +204,56 @@ export function Race_if(pm) {
     return m === pm || m === PMNAMES[pm];
 }
 
+/* src/u_init.c:222 inv_subs[] — race-based substitutions for initial
+   inventory; the weaker cloak for elven rangers is intentional, they shoot
+   better. The two commented-out rows are commented out in the C too. */
+const inv_subs = [
+    ['PM_ELF', 'DAGGER', 'ELVEN_DAGGER'],
+    ['PM_ELF', 'SPEAR', 'ELVEN_SPEAR'],
+    ['PM_ELF', 'SHORT_SWORD', 'ELVEN_SHORT_SWORD'],
+    ['PM_ELF', 'BOW', 'ELVEN_BOW'],
+    ['PM_ELF', 'ARROW', 'ELVEN_ARROW'],
+    ['PM_ELF', 'HELMET', 'ELVEN_LEATHER_HELM'],
+    /* ['PM_ELF', 'SMALL_SHIELD', 'ELVEN_SHIELD'], */
+    ['PM_ELF', 'CLOAK_OF_DISPLACEMENT', 'ELVEN_CLOAK'],
+    ['PM_ELF', 'CRAM_RATION', 'LEMBAS_WAFER'],
+    ['PM_ORC', 'DAGGER', 'ORCISH_DAGGER'],
+    ['PM_ORC', 'SPEAR', 'ORCISH_SPEAR'],
+    ['PM_ORC', 'SHORT_SWORD', 'ORCISH_SHORT_SWORD'],
+    ['PM_ORC', 'BOW', 'ORCISH_BOW'],
+    ['PM_ORC', 'ARROW', 'ORCISH_ARROW'],
+    ['PM_ORC', 'HELMET', 'ORCISH_HELM'],
+    ['PM_ORC', 'SMALL_SHIELD', 'ORCISH_SHIELD'],
+    ['PM_ORC', 'RING_MAIL', 'ORCISH_RING_MAIL'],
+    ['PM_ORC', 'CHAIN_MAIL', 'ORCISH_CHAIN_MAIL'],
+    ['PM_ORC', 'CRAM_RATION', 'TRIPE_RATION'],
+    ['PM_ORC', 'LEMBAS_WAFER', 'TRIPE_RATION'],
+    ['PM_DWARF', 'SPEAR', 'DWARVISH_SPEAR'],
+    ['PM_DWARF', 'SHORT_SWORD', 'DWARVISH_SHORT_SWORD'],
+    ['PM_DWARF', 'HELMET', 'DWARVISH_IRON_HELM'],
+    /* ['PM_DWARF', 'SMALL_SHIELD', 'DWARVISH_ROUNDSHIELD'], */
+    /* ['PM_DWARF', 'PICK_AXE', 'DWARVISH_MATTOCK'], */
+    ['PM_DWARF', 'LEMBAS_WAFER', 'CRAM_RATION'],
+    ['PM_GNOME', 'BOW', 'CROSSBOW'],
+    ['PM_GNOME', 'ARROW', 'CROSSBOW_BOLT'],
+];
+
+// src/u_init.c:1181 ini_inv_obj_substitution() — substitute an object with
+// something else based on race. Only changes otyp, and returns it.
+//
+// C applies this to EVERY starting object, including randomly generated ones,
+// which is why it lives here rather than inside the UNDEF_TYP branch.
+function ini_inv_obj_substitution(trop, obj) {
+    if (!Race_if('PM_HUMAN')) {
+        for (const [race_pm, item_otyp, subs_otyp] of inv_subs)
+            if (Race_if(race_pm) && obj.otyp === ONAMES[item_otyp]) {
+                obj.otyp = ONAMES[subs_otyp];
+                break;
+            }
+    }
+    return obj.otyp;
+}
+
 // src/artifact.c:2808 is_art()
 function is_art(obj, art) {
     return !!(obj && obj.oartifact === art);
@@ -316,12 +366,7 @@ export function ini_inv(trop_table) {
                 game.nocreate4 = otyp;
         }
 
-        /* ini_inv_obj_substitution() handles race-specific swaps (elven and
-           orcish gear). No public session uses a race that triggers it, and it
-           draws nothing, so it is recorded rather than guessed at. */
-        if (game.urace && (game.urace.mnum === 'PM_ELF'
-                        || game.urace.mnum === 'PM_ORC'))
-            (game.unported ||= new Set()).add('ini_inv_obj_substitution');
+        ini_inv_obj_substitution(trop, obj);
 
         if (ini_inv_adjust_obj(trop, obj))
             quan = 1;

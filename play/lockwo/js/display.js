@@ -36,8 +36,8 @@ import { ACCESSIBLE, IS_POOL, IS_LAVA } from './const.js';
 
 const COIN_CLASS = 12;
 const ROCK_CLASS = 14;
-const STATUE_OTYP = 475;
-const BOULDER_OTYP = 474;
+const STATUE_OTYP = 476;
+const BOULDER_OTYP = 475;
 
 // ── Object class display symbols ──
 // C ref: drawing.c def_oc_syms (defsym.h OBJCLASS table).  Index by oclass.
@@ -96,8 +96,8 @@ const POTION_CLASS = 8;
 const CORPSE_OTYP = 265;
 // C ref: include/objects.h FIRST_REAL_GEM..LAST_GLASS_GEM and FIRST_SPELL..
 // LAST_SPELL (the otyp ranges that obj_is_generic hides until seen up close).
-const FIRST_SPELL = 365, LAST_SPELL = 406;        // SPE_DIG..SPE_BLANK_PAPER
-const FIRST_REAL_GEM = 438, LAST_GLASS_GEM = 468; // DILITHIUM_CRYSTAL..WORTHLESS_VIOLET_GLASS
+const FIRST_SPELL = 366, LAST_SPELL = 407;        // SPE_DIG..SPE_BLANK_PAPER
+const FIRST_REAL_GEM = 439, LAST_GLASS_GEM = 469; // DILITHIUM_CRYSTAL..WORTHLESS_VIOLET_GLASS
 // C ref: include/objects.h GENERIC() macro — every generic class placeholder
 // object (otyp 1..MAXOCLASSES-1) is declared with oc_color = CLR_GRAY, so a
 // generic-object glyph always renders as CLR_GRAY (which the contest tty's

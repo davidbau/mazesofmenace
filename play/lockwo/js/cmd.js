@@ -1777,6 +1777,15 @@ export async function domove(dx, dy) {
     u.uy = newy;
     u.umoved = true; // C ref: hack.c:2968 — position changed
 
+    // C ref: hack.c:2877 — `m_postmove_effect(&gy.youmonst)` fires immediately
+    // after the tentative position update and before the steed follows; it reads
+    // u.ux0/u.uy0, so a hero polymorphed into a hezrou / steam vortex leaves its
+    // cloud on the square just vacated.
+    {
+        const { m_postmove_effect } = await import('./monmove.js');
+        await m_postmove_effect(u);
+    }
+
     // C ref: hack.c:2879-2884 — a ridden steed moves with the hero, so its map
     // position is kept synced to the hero's.  Without this the steed's mx/my go
     // stale after the first ride step and its per-turn distfleeck nearby/monnear
@@ -1932,12 +1941,12 @@ function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
 async function climb_pit_min() { /* no RNG; position unchanged */ }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — the topmost boulder lying on the floor
-// at (x,y), or null.  BOULDER otyp is 474 (mkobj.js).  vobj_at-style scan of the
+// at (x,y), or null.  BOULDER otyp is 475 (mkobj.js).  vobj_at-style scan of the
 // flat level object list, returning the last (top-of-pile) match.
 function boulder_at(x, y) {
     let found = null;
     for (const o of (game.level?.objects || []))
-        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === 474)
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === 475)
             found = o;
     return found;
 }

@@ -982,7 +982,12 @@ export async function dochug(mtmp) {
                 if (status === MMOVE_MOVED) {
                     newsym(omx, omy); /* update the old position */
                     newsym(mtmp.mx, mtmp.my);
-                    note_unported_monmove('dochug:postmov_pet_mintrap');
+                    /* src/trap.c mintrap() returns at once when there is no
+                       trap under the monster, so only record when one is
+                       actually there — otherwise the note fires on every pet
+                       step and buries the case that matters. */
+                    if (t_at(mtmp.mx, mtmp.my))
+                        note_unported_monmove('dochug:postmov_pet_mintrap');
                 }
             } else {
                 status = m_move(mtmp, 0);
@@ -1249,9 +1254,6 @@ export function m_move(mtmp, after) {
             mtmp.muy = game.u.uy;
             return MMOVE_NOTHING;
         }
-        mtmp.mtrack = mtmp.mtrack || [];
-        mtmp.mtrack.unshift({ x: omx, y: omy });
-        if (mtmp.mtrack.length > MTSZ) mtmp.mtrack.length = MTSZ;
         /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
            the move. Writing mx/my alone leaves m_at() answering with the old
            square. */
@@ -1260,6 +1262,12 @@ export function m_move(mtmp, after) {
         /* the newsym for the vacated square is in postmov(), not here --
            src/monmove.c:1508 sits inside postmov so that EVERY path returning
            through it redraws, including dog_move's at :1773. */
+
+        /* src/monmove.c:2062 — the monster remembers where it came from.
+           m_move's mtrack loop draws rn2(4 * (cnt - j)) against the index of
+           the matching remembered square, so an unmaintained track makes
+           every match land on j=0 and draws the wrong modulus. */
+        mon_track_add(mtmp, omx, omy);
     }
 
     return postmov(mtmp, ptr, omx, omy, mmoved);

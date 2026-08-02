@@ -1162,6 +1162,16 @@ export async function moveloop_core() {
         g.vision_full_recalc = 0;
     }
     await bot();
+
+    // C ref: allmain.c:481 — `m_everyturn_effect(&gy.youmonst)` runs after bot()
+    // and before the next command is read, so a hero polymorphed into a fog
+    // cloud lays down its trail of vapor (and rolls the cloud's rn1(3,4)
+    // lifespan) BEFORE this turn's screen is captured.
+    {
+        const { m_everyturn_effect } = await import('./monmove.js');
+        await m_everyturn_effect(g.u);
+    }
+
     await flush_screen(1);
 
     // C ref: allmain.c moveloop_core():513 — `u.umoved = FALSE;` is set BEFORE

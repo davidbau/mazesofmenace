@@ -284,7 +284,7 @@ function MON_AT(x, y) {
 function mkshobj_at(shp, shp_indx, sx, sy, mkspecl) {
     // 3.6 tribute: rare/secondhand bookstore special spot gets a novel.
     if (mkspecl && (shp.name === 'rare books' || shp.name === 'second-hand bookstore')) {
-        const novel = mksobj_at(407 /* SPE_NOVEL (384 is SPE_CLAIRVOYANCE) */, sx, sy, false, false);
+        const novel = mksobj_at(408 /* SPE_NOVEL (385 is SPE_CLAIRVOYANCE) */, sx, sy, false, false);
         if (novel) game._tribute_bookstock = true;
         return;
     }
@@ -349,7 +349,7 @@ function shkinit(shp, sroom) {
     // C ref: mkmonmoney(shk, 1000 + 30 * rnd(100)) — initial capital.  The gold
     // is a real mksobj(GOLD_PIECE, FALSE) -> next_ident rnd(2).
     const amount = 1000 + 30 * rnd(100);
-    if (amount > 0) mksobj(/*GOLD_PIECE*/ 437, false, false);
+    if (amount > 0) mksobj(/*GOLD_PIECE*/ 438, false, false);
 
     if (shp.shknms === 'rings') mongets_shk(shk, TOUCHSTONE);
     if (shp.shknms === 'tools' || shp.shknms === 'wands'

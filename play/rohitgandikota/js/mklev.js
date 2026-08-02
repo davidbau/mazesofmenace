@@ -23,11 +23,12 @@ import { mongone } from './mon.js';
 import { sgn } from './hacklib.js';
 import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
-import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest } from './sp_lev.js';
+import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest, reset_xystart_size } from './sp_lev.js';
 import { walkfrom, mkmaze_wire_mklev } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
 import { goodpos } from './makemon.js';
 import { GP_CHECKSCARY as GP_CHECKSCARY_MK } from './const.js';
+import { breaktest } from './dothrow.js';
 import {
     mkgold, place_object, mkobj_at, mksobj_at, add_to_container, curse,
 } from './mkobj.js';
@@ -131,6 +132,7 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { themerooms, themeroom_fills } from './themerms_data.js';
 import { make_engr_at, wipe_engr_at, engr_at, del_engr } from './engrave.js';
+import { MARK } from './const.js';
 import { get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
 import { DUST, HEADSTONE, OBJ_CONTAINED } from './const.js';
 import { hole_destination } from './trap.js';
@@ -171,8 +173,8 @@ const RANDOM_CLASS = 0;
 // wands where C generates spellbooks, in 3 of the 10 table slots.
 /* SPBOOK_no_NOVEL is imported from js/mkobj.js, where it lives. */
 
-// Supply chest items
-const MARK = 6;
+/* MARK (engrave.h:29) comes from js/const.js; a local `const MARK = 6`
+   used to shadow it here, and 6 is HEADSTONE, not MARK. */
 
 const XLIM = 4;
 const YLIM = 3;
@@ -591,6 +593,7 @@ async function makelevel() {
            room-building middle and fill_ordinary_room are regular-only. */
         for (let i = 0; i < g.level.nroom; i++)
             fill_special_room(g.level.rooms[i]);
+        reset_xystart_size();
         post_level_generate();
         return;
     }
@@ -757,7 +760,10 @@ async function makelevel() {
 
     /* src/mklev.c:1420 themerooms_post_level_generate() — drain the handlers
        the fills queued. It runs AFTER every room is filled, which is the point:
-       make_a_trap picks its teleport destination from the finished map. */
+       make_a_trap picks its teleport destination from the finished map.
+       src/mklev.c:1183 resets xstart/ystart first, so the coordinates the
+       handlers get back are measured from the map origin. */
+    reset_xystart_size();
     post_level_generate();
 
     /* src/mklev.c:1190 — the WHOLE-LEVEL wallification pass, run after the
@@ -2235,18 +2241,30 @@ function mktrap_victim(trap) {
 
     /* Not all trap types drop an item; only the ones that kill in a way
        that is obvious after the fact. */
+    let otmp = null;
     switch (kind) {
-    case ARROW_TRAP: mksobj(ONAMES.ARROW, true, false); break;
-    case DART_TRAP: mksobj(ONAMES.DART, true, false); break;
-    case ROCKTRAP: mksobj(ONAMES.ROCK, true, false); break;
-    default: break;
+    case ARROW_TRAP:
+        otmp = mksobj(ONAMES.ARROW, true, false);
+        otmp.opoisoned = 0;
+        break;
+    case DART_TRAP: otmp = mksobj(ONAMES.DART, true, false); break;
+    case ROCKTRAP: otmp = mksobj(ONAMES.ROCK, true, false); break;
+    default: break;                     /* no item dropped by the trap */
     }
+    if (otmp)
+        place_object(otmp, x, y);
 
     /* Place a random possession: weapon, tool, food or gem. */
     do {
         const poss_class = [WEAPON_CLASS, TOOL_CLASS, FOOD_CLASS, GEM_CLASS][rn2(4)];
-        const otmp = mkobj(poss_class, false);
+        otmp = mkobj(poss_class, false);
         curse(otmp);
+        /* for mktrap_victim(), PIT is actually an exploded LANDMINE: a
+           fragile object created there was destroyed by the blast */
+        if (trap.ttyp === PIT && breaktest(otmp))
+            ;                           /* dealloc_obj(otmp) */
+        else
+            place_object(otmp, x, y);
         /* 20% chance of placing an additional item, recursively */
     } while (!rn2(5));
 
@@ -2263,11 +2281,16 @@ function mktrap_victim(trap) {
     case 3: case 4: case 5: victim_mnum = PMNAMES.PM_ORC; break;
     case 6: case 7: case 8: case 9:
         victim_mnum = PMNAMES.PM_GNOME;
+        /* 10% chance of a candle too */
         if (!rn2(10)) {
-            const otmp = mksobj(rn2(4) ? ONAMES.TALLOW_CANDLE
-                                       : ONAMES.WAX_CANDLE, true, false);
+            otmp = mksobj(rn2(4) ? ONAMES.TALLOW_CANDLE
+                                 : ONAMES.WAX_CANDLE, true, false);
             otmp.quan = 1;
+            otmp.owt = weight(otmp);
             curse(otmp);
+            place_object(otmp, x, y);
+            if (!g.level.at(x, y)?.lit)
+                note_unported_lev('mktrap_victim:begin_burn');
         }
         break;
     default: victim_mnum = PMNAMES.PM_HUMAN; break;
@@ -2276,7 +2299,7 @@ function mktrap_victim(trap) {
     if (victim_mnum === PMNAMES.PM_HUMAN && rn2(25))
         victim_mnum = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST,
                           PMNAMES.PM_ARCHEOLOGIST);
-    const otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, CORPSTAT_INIT);
+    otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, CORPSTAT_INIT);
     otmp.age -= (TAINT_AGE + 1); /* died too long ago to safely eat */
 }
 
@@ -2541,12 +2564,19 @@ async function fill_ordinary_room(croom, bonus_items) {
     }
     // Graffiti
     if (!rn2(27 + 3 * Math.abs(depth_of_level(g.u.uz)))) {
-        const { text: engrText } = random_engraving();
+        const { text: engrText, pristine } = random_engraving();
         if (engrText) {
+            /* src/mklev.c:1147 — pick a spot, retrying while it is not
+               plain room floor; the rn2(40) is the retry gate, so the loop
+               exits either on ROOM or on a failed roll. */
+            let x, y;
             do {
                 somexyspace(croom, pos);
-                if (g.level?.at(pos.x, pos.y)?.typ === ROOM) break;
-            } while (!rn2(40));
+                x = pos.x;
+                y = pos.y;
+            } while (g.level?.at(x, y)?.typ !== ROOM && !rn2(40));
+            if (g.level?.at(x, y)?.typ === ROOM)
+                make_engr_at(x, y, engrText, pristine, 0, MARK);
         }
     }
     /* src/mklev.c:1156 — random objects. Plain `!rn2(3)`, with NO Amulet

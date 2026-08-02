@@ -1300,21 +1300,21 @@ function rnd_offensive_item(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr || rnd_item_excluded(ptr)) return 0;
     const difficulty = ptr.difficulty ?? 0;
-    if (difficulty > 7 && !rn2(35)) return /*WAN_DEATH*/ 432;
+    if (difficulty > 7 && !rn2(35)) return /*WAN_DEATH*/ 433;
     const roll = rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0));
     switch (roll) {
     case 0:  // SCR_EARTH only when hard-helmeted/amorphous/etc.; else FALLTHRU
-    case 1: return /*WAN_STRIKING*/ 416;
+    case 1: return /*WAN_STRIKING*/ 417;
     case 2: return /*POT_ACID*/ 320;
     case 3: return /*POT_CONFUSION*/ 299;
     case 4: return /*POT_BLINDNESS*/ 300;
     case 5: return /*POT_SLEEPING*/ 314;
     case 6: return /*POT_PARALYSIS*/ 301;
-    case 7: case 8: return /*WAN_MAGIC_MISSILE*/ 428;
-    case 9: return /*WAN_SLEEP*/ 431;
-    case 10: return /*WAN_FIRE*/ 429;
-    case 11: return /*WAN_COLD*/ 430;
-    case 12: return /*WAN_LIGHTNING*/ 433;
+    case 7: case 8: return /*WAN_MAGIC_MISSILE*/ 429;
+    case 9: return /*WAN_SLEEP*/ 432;
+    case 10: return /*WAN_FIRE*/ 430;
+    case 11: return /*WAN_COLD*/ 431;
+    case 12: return /*WAN_LIGHTNING*/ 434;
     default: return 0;
     }
 }
@@ -1324,7 +1324,7 @@ function rnd_offensive_item(mtmp) {
 // affect the RNG stream of any other session's ordinary level generation.
 
 // m_initweap object-type indices (mkobj.js OBJECT_DATA otyp column).
-const W_BOULDER = 474, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
+const W_BOULDER = 475, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_PARTISAN = 59, W_BEC_DE_CORBIN = 70, W_DAGGER = 34, W_KNIFE = 40,
     W_SPEAR = 27, W_SHORT_SWORD = 46, W_FLAIL = 81, W_MACE = 73,
     W_BROADSWORD = 52, W_LONG_SWORD = 54, W_SILVER_SABER = 51,
@@ -1336,7 +1336,7 @@ const W_BOULDER = 474, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_AXE = 44, W_DWARVISH_CLOAK = 141, W_DWARVISH_SHORT_SWORD = 49,
     W_DWARVISH_MATTOCK = 71, W_DWARVISH_SPEAR = 30, W_DWARVISH_ROUNDSHIELD = 157,
     W_DWARVISH_IRON_HELM = 91, W_DWARVISH_MITHRIL_COAT = 126, W_IRON_SHOES = 164,
-    W_SLING = 87, W_FLINT = 472, W_ROCK = 473, W_CREAM_PIE = 287,
+    W_SLING = 87, W_FLINT = 473, W_ROCK = 474, W_CREAM_PIE = 287,
     W_RUBBER_HOSE = 78, W_ORCISH_HELM = 90, W_SCIMITAR = 50, W_ORCISH_SHIELD = 155,
     W_ORCISH_CHAIN_MAIL = 129, W_ORCISH_CLOAK = 140, W_ORCISH_SHORT_SWORD = 48,
     W_ORCISH_BOW = 85, W_ORCISH_ARROW = 20, W_URUK_HAI_SHIELD = 154,
@@ -1618,9 +1618,9 @@ function rnd_defensive_item(mtmp) {
         switch (roll) {
         case 6: case 9:
             if (noteleport && ++trycnt < 2) continue;   // goto try_again
-            return (!rn2(3)) ? 423 : 333;
+            return (!rn2(3)) ? 424 : 333;
         case 0: case 1: return 333;
-        case 8: case 10: return (!rn2(3)) ? 412 : 329;
+        case 8: case 10: return (!rn2(3)) ? 413 : 329;
         case 2: return 329;
         case 3: return 307;
         case 4: return 308;
@@ -1628,7 +1628,7 @@ function rnd_defensive_item(mtmp) {
         case 7:
             if (inSokoban && rn2(4)) continue;          // goto try_again
             if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) return 0;
-            return 427;
+            return 428;
         default: return 0;
         }
     }
@@ -1637,11 +1637,11 @@ function rnd_misc_item(mtmp) {
     const pm = mtmp?.data;
     if (!pm || rnd_item_excluded(pm)) return 0;
     const d = pm.difficulty ?? 0;
-    if (d < 6 && !rn2(30)) return rn2(6) ? 305 : 421;
+    if (d < 6 && !rn2(30)) return rn2(6) ? 305 : 422;
     if (!rn2(40)) return 211;
     switch (rn2(3)) {
-    case 0: return rn2(6) ? 302 : 419;
-    case 1: if (mtmp.mpeaceful) return 0; return rn2(6) ? 303 : 417;
+    case 0: return rn2(6) ? 302 : 420;
+    case 1: if (mtmp.mpeaceful) return 0; return rn2(6) ? 303 : 418;
     case 2: return 309;
     }
     return 0;
@@ -1742,10 +1742,10 @@ function m_initinv_full(mtmp) {
         } else if (mm === 271 /*PM_SHOPKEEPER*/) {
             mongets(mtmp, 221 /*SKELETON_KEY*/);
             switch (rn2(4)) { // makemon.c:704
-            case 0: mongets(mtmp, 428 /*WAN_MAGIC_MISSILE*/); /* FALLTHRU */
+            case 0: mongets(mtmp, 429 /*WAN_MAGIC_MISSILE*/); /* FALLTHRU */
             case 1: mongets(mtmp, 308 /*POT_EXTRA_HEALING*/); /* FALLTHRU */
             case 2: mongets(mtmp, 307 /*POT_HEALING*/);       /* FALLTHRU */
-            case 3: mongets(mtmp, 416 /*WAN_STRIKING*/);
+            case 3: mongets(mtmp, 417 /*WAN_STRIKING*/);
             }
         } else if (ptr.name === 'Arch Priest') {
             // C ref: makemon.c m_initinv() S_HUMAN `msound == MS_PRIEST ||
@@ -1760,7 +1760,7 @@ function m_initinv_full(mtmp) {
             // quest_drop_default_invent's mdrop_special_objs walk counts it.
             const amt = rn1(10, 20);
             if (amt > 0) {
-                const gold = mksobj(437 /*GOLD_PIECE*/, false, false);
+                const gold = mksobj(438 /*GOLD_PIECE*/, false, false);
                 gold.quan = amt;
                 mpickobj(mtmp, gold);
             }
@@ -1786,7 +1786,7 @@ function m_initinv_full(mtmp) {
         break;
     case 12: { // S_LEPRECHAUN — mkmonmoney(d(level_difficulty(), 30))
         const amt = d(level_difficulty_ext(), 30);
-        if (amt > 0) mksobj(437 /*GOLD_PIECE*/, false, false); // next_ident rnd(2)
+        if (amt > 0) mksobj(438 /*GOLD_PIECE*/, false, false); // next_ident rnd(2)
         mtmp._hasgold = true;
         break;
     }
@@ -1802,16 +1802,16 @@ function m_initinv_full(mtmp) {
         const amt = d(level_difficulty_ext(), mtmp._hasinv ? 5 : 10);
         // C ref: mkmonmoney -> if (amount>0) mksobj(GOLD_PIECE, FALSE, FALSE)
         // (one next_ident rnd(2); no mksobj_init since init==FALSE).
-        if (amt > 0) mksobj(437 /*GOLD_PIECE*/, false, false);
+        if (amt > 0) mksobj(438 /*GOLD_PIECE*/, false, false);
         mtmp._hasgold = true;
     }
 }
 function In_mines_js() { return game.u?.uz?.dnum === game.mines_dnum; }
 
 // Object/furniture appearance constants used by set_mimic_sym.
-const SMS_STATUE = 475, SMS_FIGURINE = 241, SMS_CORPSE = 265, SMS_EGG = 266,
+const SMS_STATUE = 476, SMS_FIGURINE = 241, SMS_CORPSE = 265, SMS_EGG = 266,
     SMS_TIN = 296, SMS_SLIME_MOLD = 285, SMS_STRANGE_OBJECT = 0,
-    SMS_GOLD_PIECE = 437, SMS_BOULDER = 474, SMS_LUMP_OF_ROYAL_JELLY = 286;
+    SMS_GOLD_PIECE = 438, SMS_BOULDER = 475, SMS_LUMP_OF_ROYAL_JELLY = 286;
 const S_MIMIC_DEF = 60;          // monsym.h S_MIMIC_DEF
 const ROOMOFFSET_JS = 3;         // rm.h ROOMOFFSET
 const SHOPBASE_RT = 14;          // mkroom.h SHOPBASE

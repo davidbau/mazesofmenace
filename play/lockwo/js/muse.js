@@ -27,8 +27,18 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { is_animal, mindless, nohands } from './monflags_data.js';
-import { POT_SPEED, LARGE_BOX, BAG_OF_TRICKS } from './mkobj.js';
+import { is_animal, mindless, nohands, mflags1_of, mflags2_of, msound_of,
+    M1_NEEDPICK, M1_BREATHLESS, M1_NOHEAD, M1_ACID,
+    M2_JEWELS, M2_UNDEAD } from './monflags_data.js';
+import { attacktype, AT_GAZE } from './monattk_data.js';
+import { POT_SPEED, LARGE_BOX, BAG_OF_TRICKS, objects as OBJECTS } from './mkobj.js';
+import { monster_by_pmidx } from './makemon.js';
+// onscary() is an `export function` declaration in monmove.js, so the
+// monmove -> muse -> monmove import cycle resolves through a hoisted binding
+// (unlike a `const` arrow, which would be in its temporal dead zone here).
+import { onscary } from './monmove.js';
+// base_mmove() is likewise a hoisted `export function`, so the cycle is safe.
+import { base_mmove } from './mon.js';
 // C ref: pline() -> vpline() -> update_topl(): a new topline message shows
 // --More-- for the UNACKNOWLEDGED previous one first (or appends to it when both
 // fit).  js/display.js pline() only overwrites the pending text, so monster
@@ -104,7 +114,12 @@ export async function mon_adjust_speed(mon, adjust, _obj) {
     // aren't modelled, so mspeed follows permspeed.
     mon.mspeed = mon.permspeed | 0;
 
-    if (give_msg && mon.mspeed !== oldspeed && mon.data?.mmove
+    // C ref: worn.c — `mon->data->mmove` gates the message on the species being
+    // mobile at all (a mold's speed change is never announced).  makemon.js's
+    // permonst records carry no mmove field, so read it through mon.js's
+    // base_mmove() table; testing `mon.data.mmove` directly is always undefined
+    // and silently swallowed EVERY speed message.
+    if (give_msg && mon.mspeed !== oldspeed && base_mmove(mon)
         && !(mon.mfrozen || mon.msleeping) && canseemon(mon)) {
         const howmuch = (mon.mspeed + oldspeed === MFAST + MSLOW) ? 'much ' : '';
         if (adjust > 0 || mon.mspeed === MFAST)
@@ -204,7 +219,7 @@ export function find_misc(mtmp) {
         // contents aren't tracked for monsters, so Has_contents is FALSE and the
         // pick never lands; the ROLL still has to happen, because C makes it.
         if (m.has_misc !== MUSE_BAG
-            && is_container_otyp(obj.otyp) && obj.otyp !== BAG_OF_TRICKS_OTYP
+            && is_container_otyp(obj.otyp) && obj.otyp !== BAG_OF_TRICKS
             && !rn2(5)) {
             const hasContents = !!(obj.cobj && obj.cobj.length);
             if (!m.has_misc && hasContents && !obj.olocked && !obj.otrapped) {
@@ -237,16 +252,244 @@ export async function use_misc(mtmp) {
 // otyps referenced above, read straight off the js/mkobj.js OBJECTS rows rather
 // than restated from memory — every value I first wrote here by inference was
 // wrong (BULLWHIP is 82 not 208, POT_GAIN_LEVEL 309 not 297, WAN_MAKE_INVISIBLE
-// 417 not 349), which is the exact shadowed-constant failure the port keeps
+// 418 not 349), which is the exact shadowed-constant failure the port keeps
 // getting bitten by.  LARGE_BOX/BAG_OF_TRICKS come from mkobj.js's own exports.
 const BULLWHIP_OTYP = 82;              // mkobj.js OBJECTS[82]  "bullwhip"
 const POT_INVISIBILITY_OTYP = 305;     // mkobj.js OBJECTS[305] "invisibility"
 const POT_GAIN_LEVEL_OTYP = 309;       // mkobj.js OBJECTS[309] "gain level"
-const WAN_MAKE_INVISIBLE_OTYP = 417;   // mkobj.js OBJECTS[417] "make invisible"
-const WAN_SPEED_MONSTER_OTYP = 419;    // mkobj.js OBJECTS[419] "speed monster"
+const WAN_MAKE_INVISIBLE_OTYP = 418;   // mkobj.js OBJECTS[418] "make invisible"
+const WAN_SPEED_MONSTER_OTYP = 420;    // mkobj.js OBJECTS[420] "speed monster"
 // C ref: objclass.h Is_container(o) == (otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS).
 // mkobj.js has a private copy of this; mirror it off the same two exports so the
 // bound can never drift from the table it indexes.
 function is_container_otyp(otyp) {
     return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
+}
+
+/* ------------------------------------------------------------------------ *
+ * muse.c:2706 searches_for_item(mon, obj)
+ *
+ * "Would this monster walk over and pick this thing up because it could USE
+ * it?"  Nothing here draws RNG, but it is the widest branch of monmove.c's
+ * mon_would_take_item(): every non-mindless, non-animal monster consults it for
+ * every object within five squares, and a TRUE answer re-points that monster's
+ * movement goal at the object.  With this missing, a quantum mechanic standing
+ * two squares from a potion of healing walks at the hero instead of at the
+ * potion — which is exactly the seed0399 boundary-113 divergence.
+ * ------------------------------------------------------------------------ */
+
+// otyps this function switches on, resolved by the C constant NAME recorded in
+// each mkobj.js OBJECTS row's `sym` field.  Looking them up by name (rather
+// than pasting integers) is what keeps this table from silently rotting the way
+// the hand-written constants just above it did.
+const SFI_NAMES = [
+    'WAN_DIGGING', 'WAN_POLYMORPH', 'WAN_STRIKING', 'WAN_UNDEAD_TURNING',
+    'WAN_TELEPORTATION', 'WAN_CREATE_MONSTER',
+    'POT_HEALING', 'POT_EXTRA_HEALING', 'POT_FULL_HEALING', 'POT_POLYMORPH',
+    'POT_GAIN_LEVEL', 'POT_PARALYSIS', 'POT_SLEEPING', 'POT_ACID',
+    'POT_CONFUSION', 'POT_BLINDNESS',
+    'SCR_TELEPORTATION', 'SCR_CREATE_MONSTER', 'SCR_EARTH', 'SCR_FIRE',
+    'AMULET_OF_LIFE_SAVING', 'AMULET_OF_REFLECTION', 'AMULET_OF_GUARDING',
+    'PICK_AXE', 'UNICORN_HORN', 'FROST_HORN', 'FIRE_HORN', 'EXPENSIVE_CAMERA',
+    'TIN_OPENER', 'BAG_OF_HOLDING', 'BAG_OF_TRICKS',
+    'CORPSE', 'TIN', 'EGG', 'GLOB_OF_GREEN_SLIME',
+];
+// Resolved on first use, not at module-evaluation time: muse.js sits inside an
+// import cycle, so OBJECTS may still be uninitialized while this module's body
+// runs.
+let SFI_CACHE = null;
+function sfi() {
+    if (!SFI_CACHE) {
+        const out = {};
+        for (const n of SFI_NAMES) out[n] = OBJECTS.findIndex((o) => o && o.sym === n);
+        SFI_CACHE = Object.freeze(out);
+    }
+    return SFI_CACHE;
+}
+
+// C ref: objclass.h oc_dir values.
+const RAY = 3;
+// C ref: objclass.h oc_class values / weapon.h skill ids.
+const WEAPON_CLASS = 2, AMULET_CLASS = 5, TOOL_CLASS = 6, FOOD_CLASS = 7,
+    POTION_CLASS = 8, SCROLL_CLASS = 9, WAND_CLASS = 11;
+const P_DAGGER = 1, P_KNIFE = 2;
+// C ref: defsym.h MONSYM() indices (permonst.mcls).
+const S_EYE = 5, S_NYMPH_MCLS = 14, S_UNICORN = 21, S_LIGHT = 25,
+    S_VORTEX = 22, S_EEL = 57, S_GOLEM = 55;
+// C ref: monflag.h MS_SILENT / MS_BUZZ.
+const MS_SILENT = 0, MS_BUZZ = 10;
+// C ref: monflag.h MZ_SMALL, monst.h W_ARMG.
+const MZ_SMALL = 1, W_ARMG_BIT = 0x00000010;
+// C ref: monst.h MR_STONE.
+const MR_STONE_BIT = 0x80;
+
+// C ref: mondata.h is_floater(ptr) — eyes/spheres and lights hover, so a wand
+// of digging is useless to them.
+function is_floater(ptr) { return ptr?.mcls === S_EYE || ptr?.mcls === S_LIGHT; }
+// C ref: mondata.h needspick(ptr) == (mflags1 & M1_NEEDPICK).
+function needspick(ptr) { return (mflags1_of(ptr) & M1_NEEDPICK) !== 0; }
+// C ref: mondata.h is_unicorn(ptr) == (mlet == S_UNICORN && likes_gems(ptr)).
+function is_unicorn(ptr) {
+    return ptr?.mcls === S_UNICORN && (mflags2_of(ptr) & M2_JEWELS) !== 0;
+}
+// C ref: mondata.h is_golem/is_whirly/nonliving.  PM_MANES and the vortices are
+// spelled by name/class exactly as monsters.h groups them.
+function nonliving(ptr) {
+    if (!ptr) return false;
+    if ((mflags2_of(ptr) & M2_UNDEAD) !== 0) return true;
+    if (ptr.name === 'manes') return true;
+    return ptr.mcls === S_GOLEM || ptr.mcls === S_VORTEX; /* weirdnonliving */
+}
+// C ref: monst.h is_vampshifter(mon).
+const PM_VAMPIRE_M = 226, PM_VAMPIRE_LEADER_M = 227, PM_VLAD_M = 228;
+function is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE_M || mon.cham === PM_VAMPIRE_LEADER_M
+        || mon.cham === PM_VLAD_M;
+}
+// C ref: monst.h resists_ston(mon) — species bit only (see js/mon.js for why
+// the acquired sources are not modeled).
+function resists_ston(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_STONE_BIT) !== 0;
+}
+// C ref: mondata.h touch_petrifies(ptr) / acidic(ptr) / slimeproof(ptr).
+function touch_petrifies_pm(corpsenm) {
+    const nm = monster_by_pmidx(corpsenm)?.name;
+    return nm === 'cockatrice' || nm === 'chickatrice';
+}
+function acidic_pm(corpsenm) {
+    return (mflags1_of(monster_by_pmidx(corpsenm)) & M1_ACID) !== 0;
+}
+function is_lizard_pm(corpsenm) {
+    return monster_by_pmidx(corpsenm)?.name === 'lizard';
+}
+function slimeproof(ptr) {
+    // flaming(ptr) / noncorporeal(ptr) reduce to the fire species and the
+    // ghost/shade pair; green slime itself is the third disjunct.
+    if (!ptr) return false;
+    if (ptr.name === 'green slime') return true;
+    if (ptr.name === 'ghost' || ptr.name === 'shade') return true;
+    return ptr.name === 'fire elemental' || ptr.name === 'fire vortex'
+        || ptr.name === 'flaming sphere' || ptr.name === 'salamander';
+}
+// C ref: mon.c can_blow(mtmp) — can it blow a horn?
+function can_blow(mtmp) {
+    const ptr = mtmp.data;
+    const silent = (msound_of(ptr) === MS_SILENT) || (msound_of(ptr) === MS_BUZZ);
+    const verysmall = (ptr?.msize | 0) < MZ_SMALL;
+    const breathless = (mflags1_of(ptr) & M1_BREATHLESS) !== 0;
+    const headless = (mflags1_of(ptr) & M1_NOHEAD) !== 0;
+    if (silent && (breathless || verysmall || headless || ptr?.mcls === S_EEL))
+        return false;
+    return true;
+}
+// C ref: mon.c mwelded(otmp).
+function mwelded_obj(o) {
+    const W_WEP = 0x1;
+    return !!o && ((o.owornmask || 0) & W_WEP) !== 0 && !!o.cursed;
+}
+// C ref: muse.c:2797 mcould_eat_tin(mon).
+function mcould_eat_tin(mon) {
+    if (is_animal(mon.data)) return false;
+    const mwep = (mon.minvent || []).find((o) => ((o.owornmask || 0) & 0x1) !== 0) || null;
+    const welded_wep = !!mwep && mwelded_obj(mwep);
+    for (const obj of (mon.minvent || [])) {
+        if (welded_wep && obj !== mwep) continue;
+        if (obj.otyp === sfi().TIN_OPENER
+            || (obj.oclass === WEAPON_CLASS
+                && (OBJECTS[obj.otyp]?.oc_skill === P_DAGGER
+                    || OBJECTS[obj.otyp]?.oc_skill === P_KNIFE)))
+            return true;
+    }
+    return false;
+}
+// C ref: muse.c cures_stoning(mon, obj, tinok).
+function cures_stoning(mon, obj, tinok) {
+    if (obj.otyp === sfi().POT_ACID) return true;
+    if (obj.otyp === sfi().GLOB_OF_GREEN_SLIME) return slimeproof(mon.data);
+    if (obj.otyp !== sfi().CORPSE && (obj.otyp !== sfi().TIN || !tinok)) return false;
+    if (obj.corpsenm == null || obj.corpsenm < 0) return false; /* NON_PM */
+    return is_lizard_pm(obj.corpsenm) || acidic_pm(obj.corpsenm);
+}
+// C ref: objclass.h Is_mbag(o).
+function is_mbag(obj) {
+    return obj.otyp === sfi().BAG_OF_HOLDING || obj.otyp === sfi().BAG_OF_TRICKS;
+}
+
+export function searches_for_item(mon, obj) {
+    const typ = obj.otyp;
+
+    /* don't let monsters interact with protected items on the floor */
+    if (obj.where === 'floor' && obj.ox === mon.mx && obj.oy === mon.my
+        && onscary(obj.ox, obj.oy, mon))
+        return false;
+
+    if (is_animal(mon.data) || mindless(mon.data)
+        || mon.data?.name === 'ghost') /* don't loot bones piles */
+        return false;
+
+    if (typ === WAN_MAKE_INVISIBLE_OTYP || typ === POT_INVISIBILITY_OTYP)
+        return !mon.minvis && !mon.invis_blkd && !attacktype(mon.data, AT_GAZE);
+    if (typ === WAN_SPEED_MONSTER_OTYP || typ === POT_SPEED)
+        return (mon.mspeed | 0) !== MFAST;
+
+    switch (obj.oclass) {
+    case WAND_CLASS:
+        if ((obj.spe | 0) <= 0) return false;
+        if (typ === sfi().WAN_DIGGING) return !is_floater(mon.data);
+        if (typ === sfi().WAN_POLYMORPH) return (mon.data?.difficulty | 0) < 6;
+        if (OBJECTS[typ]?.dir === RAY || typ === sfi().WAN_STRIKING
+            || typ === sfi().WAN_UNDEAD_TURNING
+            || typ === sfi().WAN_TELEPORTATION || typ === sfi().WAN_CREATE_MONSTER)
+            return true;
+        break;
+    case POTION_CLASS:
+        if (typ === sfi().POT_HEALING || typ === sfi().POT_EXTRA_HEALING
+            || typ === sfi().POT_FULL_HEALING || typ === sfi().POT_POLYMORPH
+            || typ === sfi().POT_GAIN_LEVEL || typ === sfi().POT_PARALYSIS
+            || typ === sfi().POT_SLEEPING || typ === sfi().POT_ACID
+            || typ === sfi().POT_CONFUSION)
+            return true;
+        if (typ === sfi().POT_BLINDNESS && !attacktype(mon.data, AT_GAZE))
+            return true;
+        break;
+    case SCROLL_CLASS:
+        if (typ === sfi().SCR_TELEPORTATION || typ === sfi().SCR_CREATE_MONSTER
+            || typ === sfi().SCR_EARTH || typ === sfi().SCR_FIRE)
+            return true;
+        break;
+    case AMULET_CLASS:
+        if (typ === sfi().AMULET_OF_LIFE_SAVING)
+            return !(nonliving(mon.data) || is_vampshifter(mon));
+        if (typ === sfi().AMULET_OF_REFLECTION || typ === sfi().AMULET_OF_GUARDING)
+            return true;
+        break;
+    case TOOL_CLASS:
+        if (typ === sfi().PICK_AXE) return needspick(mon.data);
+        if (typ === sfi().UNICORN_HORN)
+            return !obj.cursed && !is_unicorn(mon.data)
+                && mon.data?.name !== 'ki-rin';
+        if (typ === sfi().FROST_HORN || typ === sfi().FIRE_HORN)
+            return (obj.spe | 0) > 0 && can_blow(mon);
+        if (is_container_otyp(typ) && !(is_mbag(obj) && obj.cursed)
+            && !obj.olocked)
+            return true;
+        if (typ === sfi().EXPENSIVE_CAMERA) return (obj.spe | 0) > 0;
+        break;
+    case FOOD_CLASS:
+        if (typ === sfi().CORPSE)
+            return (((mon.misc_worn_check ?? 0) & W_ARMG_BIT) !== 0
+                    && obj.corpsenm != null && obj.corpsenm >= 0
+                    && touch_petrifies_pm(obj.corpsenm))
+                || (!resists_ston(mon) && cures_stoning(mon, obj, false));
+        if (typ === sfi().TIN)
+            return mcould_eat_tin(mon)
+                && !resists_ston(mon) && cures_stoning(mon, obj, true);
+        if (typ === sfi().EGG && obj.corpsenm != null && obj.corpsenm >= 0)
+            return touch_petrifies_pm(obj.corpsenm);
+        break;
+    default:
+        break;
+    }
+
+    return false;
 }

@@ -29,7 +29,7 @@ export const roles = [
         // C ref: role.c roles[] spell-statistics block (drives spell.c
         // percent_success): { base, heal, shld, armr, stat (A_INT=1/A_WIS=2),
         // spec (special-spell otyp), sbon }.
-        spel: { base: 5, heal: 0, shld: 2, armr: 10, stat: 1, spec: 395 /*magic mapping*/, sbon: -4 },
+        spel: { base: 5, heal: 0, shld: 2, armr: 10, stat: 1, spec: 396 /*magic mapping*/, sbon: -4 },
     },
     {
         name: { m: 'Barbarian', f: null },
@@ -39,7 +39,7 @@ export const roles = [
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Mitra', 'Crom', 'Set'],
         xlev: 10, initrecord: 10,
-        spel: { base: 14, heal: 0, shld: 0, armr: 8, stat: 1, spec: 387 /*haste self*/, sbon: -4 },
+        spel: { base: 14, heal: 0, shld: 0, armr: 8, stat: 1, spec: 388 /*haste self*/, sbon: -4 },
     },
     {
         name: { m: 'Caveman', f: 'Cavewoman' },
@@ -49,7 +49,7 @@ export const roles = [
         allow: MH_HUMAN | MH_DWARF | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
         gods: ['Anu', '_Ishtar', 'Anshar'],
         xlev: 10, initrecord: 0,
-        spel: { base: 12, heal: 0, shld: 1, armr: 8, stat: 1, spec: 365 /*dig*/, sbon: -4 },
+        spel: { base: 12, heal: 0, shld: 1, armr: 8, stat: 1, spec: 366 /*dig*/, sbon: -4 },
     },
     {
         name: { m: 'Healer', f: null },
@@ -59,7 +59,7 @@ export const roles = [
         allow: MH_HUMAN | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
         gods: ['_Athena', 'Hermes', 'Poseidon'],
         xlev: 20, initrecord: 10,
-        spel: { base: 3, heal: -3, shld: 2, armr: 10, stat: 2, spec: 385 /*cure sickness*/, sbon: -4 },
+        spel: { base: 3, heal: -3, shld: 2, armr: 10, stat: 2, spec: 386 /*cure sickness*/, sbon: -4 },
     },
     {
         name: { m: 'Knight', f: null },
@@ -69,7 +69,7 @@ export const roles = [
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
         gods: ['Lugh', '_Brigit', 'Manannan Mac Lir'],
         xlev: 10, initrecord: 10,
-        spel: { base: 8, heal: -2, shld: 0, armr: 9, stat: 2, spec: 397 /*turn undead*/, sbon: -4 },
+        spel: { base: 8, heal: -2, shld: 0, armr: 9, stat: 2, spec: 398 /*turn undead*/, sbon: -4 },
     },
     {
         name: { m: 'Monk', f: null },
@@ -79,7 +79,7 @@ export const roles = [
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Shan Lai Ching', 'Chih Sung-tzu', 'Huan Ti'],
         xlev: 10, initrecord: 10,
-        spel: { base: 8, heal: -2, shld: 2, armr: 20, stat: 2, spec: 391 /*restore ability*/, sbon: -4 },
+        spel: { base: 8, heal: -2, shld: 2, armr: 20, stat: 2, spec: 392 /*restore ability*/, sbon: -4 },
     },
     {
         name: { m: 'Priest', f: 'Priestess' },
@@ -89,7 +89,7 @@ export const roles = [
         allow: MH_HUMAN | MH_ELF | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: null,
         xlev: 10, initrecord: 0,
-        spel: { base: 3, heal: -2, shld: 2, armr: 10, stat: 2, spec: 394 /*remove curse*/, sbon: -4 },
+        spel: { base: 3, heal: -2, shld: 2, armr: 10, stat: 2, spec: 395 /*remove curse*/, sbon: -4 },
     },
     {
         name: { m: 'Rogue', f: null },
@@ -99,7 +99,7 @@ export const roles = [
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_CHAOTIC,
         gods: ['Issek', 'Mog', 'Kos'],
         xlev: 11, initrecord: 10,
-        spel: { base: 8, heal: 0, shld: 1, armr: 9, stat: 1, spec: 393 /*detect treasure*/, sbon: -4 },
+        spel: { base: 8, heal: 0, shld: 1, armr: 9, stat: 1, spec: 394 /*detect treasure*/, sbon: -4 },
     },
     {
         name: { m: 'Ranger', f: null },
@@ -109,7 +109,7 @@ export const roles = [
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Mercury', '_Venus', 'Mars'],
         xlev: 12, initrecord: 10,
-        spel: { base: 9, heal: 2, shld: 1, armr: 10, stat: 1, spec: 392 /*invisibility*/, sbon: -4 },
+        spel: { base: 9, heal: 2, shld: 1, armr: 10, stat: 1, spec: 393 /*invisibility*/, sbon: -4 },
     },
     {
         name: { m: 'Samurai', f: null },
@@ -119,7 +119,7 @@ export const roles = [
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
         gods: ['_Amaterasu Omikami', 'Raijin', 'Susanowo'],
         xlev: 11, initrecord: 10,
-        spel: { base: 10, heal: 0, shld: 0, armr: 8, stat: 1, spec: 384 /*clairvoyance*/, sbon: -4 },
+        spel: { base: 10, heal: 0, shld: 0, armr: 8, stat: 1, spec: 385 /*clairvoyance*/, sbon: -4 },
     },
     {
         name: { m: 'Tourist', f: null },
@@ -129,7 +129,7 @@ export const roles = [
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
         gods: ['Blind Io', '_The Lady', 'Offler'],
         xlev: 14, initrecord: 0,
-        spel: { base: 5, heal: 1, shld: 2, armr: 10, stat: 1, spec: 386 /*charm monster*/, sbon: -4 },
+        spel: { base: 5, heal: 1, shld: 2, armr: 10, stat: 1, spec: 387 /*charm monster*/, sbon: -4 },
     },
     {
         name: { m: 'Valkyrie', f: null },
@@ -139,7 +139,7 @@ export const roles = [
         allow: MH_HUMAN | MH_DWARF | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
         gods: ['Tyr', 'Odin', 'Loki'],
         xlev: 10, initrecord: 0,
-        spel: { base: 10, heal: -2, shld: 0, armr: 9, stat: 2, spec: 368 /*cone of cold*/, sbon: -4 },
+        spel: { base: 10, heal: -2, shld: 0, armr: 9, stat: 2, spec: 369 /*cone of cold*/, sbon: -4 },
     },
     {
         name: { m: 'Wizard', f: null },
@@ -149,7 +149,7 @@ export const roles = [
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
         gods: ['Ptah', 'Thoth', 'Anhur'],
         xlev: 12, initrecord: 0,
-        spel: { base: 1, heal: 0, shld: 3, armr: 10, stat: 1, spec: 366 /*magic missile*/, sbon: -4 },
+        spel: { base: 1, heal: 0, shld: 3, armr: 10, stat: 1, spec: 367 /*magic missile*/, sbon: -4 },
     },
 ];
 

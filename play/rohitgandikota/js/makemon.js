@@ -25,6 +25,8 @@ import { next_ident, mksobj, mkobj, place_object, curse, rnd_class } from './mko
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
+import { cansee } from './vision.js';
+import { COLNO, ROWNO } from './const.js';
 import { attacktype, is_neuter, is_floater } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { t_at } from './mon.js';
@@ -1622,6 +1624,71 @@ function m_initweap(mtmp) {
 //   rndmonst()  ->  next_ident()  ->  newmonhp()  ->  [rn2(2) gender]
 //   ->  [peace_minded]  ->  m_initinv()  ->  rn2(100) saddle
 // Verified against seed8000 calls 1428-1441.
+// src/makemon.c:1075 makemon_rnd_goodpos()
+//
+// Pick a random map square for a monster with no caller-chosen position.
+// Fifty tries at rn1(COLNO-3, 2) / rn2(ROWNO); squares the hero can see are
+// rejected outright outside level generation. If all fifty fail, sweep the
+// whole map twice from the last random square as the offset — first pass
+// skipping visible squares and dropping GP_CHECKSCARY, second pass taking
+// anything — and between the passes try a random same-dungeon stairway.
+function makemon_rnd_goodpos(mon, gpflags, cc) {
+    let tryct = 0;
+    let nx, ny;
+    let good;
+
+    gpflags |= GP_AVOID_MONPOS;
+    do {
+        nx = rn1(COLNO - 3, 2);
+        ny = rn2(ROWNO);
+        good = (!game.in_mklev && cansee(nx, ny)) ? false
+                                                 : goodpos(nx, ny, mon, gpflags);
+    } while ((++tryct < 50) && !good);
+
+    if (!good) {
+        const xofs = nx;
+        const yofs = ny;
+        const bl0 = (game.in_mklev || game.u?.ublind) ? 1 : 0;
+
+        for (let bl = bl0; bl < 2; bl++) {
+            if (!bl)
+                gpflags &= ~GP_CHECKSCARY; /* perhaps should be a 3rd pass */
+            for (let dx = 0; dx < COLNO; dx++)
+                for (let dy = 0; dy < ROWNO; dy++) {
+                    nx = ((dx + xofs) % (COLNO - 1)) + 1;
+                    ny = ((dy + yofs) % (ROWNO - 1)) + 1;
+                    if (bl === 0 && cansee(nx, ny))
+                        continue;
+                    if (goodpos(nx, ny, mon, gpflags)) {
+                        cc.x = nx;
+                        cc.y = ny;
+                        return true;
+                    }
+                }
+            if (bl === 0 && (!mon || mon.data.mmove)) {
+                /* all map positions are visible (or not good),
+                   try to pick something logical */
+                for (let stway = game.stairs; stway; stway = stway.next) {
+                    if (stway.tolev.dnum === game.u.uz.dnum && !rn2(2)) {
+                        nx = stway.sx;
+                        ny = stway.sy;
+                        break;
+                    }
+                }
+                if (goodpos(nx, ny, mon, gpflags)) {
+                    cc.x = nx;
+                    cc.y = ny;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    cc.x = nx;
+    cc.y = ny;
+    return true;
+}
+
 export function makemon(ptr, x, y, mmflags) {
     let mndx, mitem;
     const anymon = !ptr;
@@ -1643,7 +1710,14 @@ export function makemon(ptr, x, y, mmflags) {
     const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
                     | GP_CHECKSCARY | GP_AVOID_MONPOS;
     const cc = { x: 0, y: 0 };
-    if (byyou && !game.in_mklev) {
+
+    /* src/makemon.c:1176 — if caller wants random location, do it here */
+    if (x === 0 && y === 0) {
+        if (!makemon_rnd_goodpos(ptr ? { data: ptr, wormno: 0 } : null,
+                                 gpflags, cc))
+            return null;
+        x = cc.x; y = cc.y;
+    } else if (byyou && !game.in_mklev) {
         if (!enexto_core(cc, game.u.ux, game.u.uy, ptr, gpflags, goodpos)
             && !enexto_core(cc, game.u.ux, game.u.uy, ptr,
                             gpflags & ~GP_CHECKSCARY, goodpos))
@@ -1856,6 +1930,13 @@ export function makemon(ptr, x, y, mmflags) {
             mtmp.mstrategy |= STRAT_APPEARMSG;
     }
 
+    /* src/makemon.c:1472 — "make sure the mon shows up". A monster created
+       mid-game is drawn immediately; during level generation nothing is on
+       screen yet. The arrival MESSAGE that follows this in C is emitted by
+       the create_particular caller instead, because our makemon is sync. */
+    if (!game.in_mklev)
+        newsym(mtmp.mx, mtmp.my);
+
     return mtmp;
 }
 
@@ -1915,7 +1996,7 @@ export function grow_up(mtmp, victim) {
             mtmp.mnum = newtype;
             mtmp.data = ptr;
             const { mondied } = mondied_ref();
-            mondied(mtmp);
+            mondied(mtmp);   /* grow_up is sync in C's call chain */
             return null;
         } else if (canspotmon(mtmp)) {
             /* pline_mon "%s grows up into %s." */

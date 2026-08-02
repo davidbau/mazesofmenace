@@ -15,7 +15,7 @@ import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
-    addinv, prinv, let_to_name, report_merge_discovery,
+    addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
@@ -34,7 +34,7 @@ import { doride } from './steed.js';
 import { doenhance } from './enhance.js';
 import { dorub, dowipe, ECMD as APPLY_ECMD } from './apply.js';
 import { readobjnam } from './readobjnam.js';
-import { hold_another_object } from './invent.js';
+import { hold_another_object, encumber_msg } from './invent.js';
 import { rn1 } from './rng.js';
 import { dopray as pray_dopray, dosacrifice } from './pray.js';
 import { dosit } from './sit.js';
@@ -608,6 +608,13 @@ const MAXWISHTRY = 5;
 export async function wiz_wish() {
     if (!isWizard()) return 0;
     await makewish();
+    // C ref: wizcmds.c:40 — wiz_wish() calls encumber_msg() itself, right after
+    // makewish() returns and before the command yields.  The wish takes no game
+    // time, so the moveloop's own encumber_msg() (allmain.c:208, inside the
+    // `if (context.move)` block) never runs for it; without this call a wish
+    // heavy enough to cross a capacity threshold would defer its load message
+    // to whichever later command finally does consume a move.
+    await encumber_msg();
     return 0;
 }
 
@@ -1351,13 +1358,9 @@ async function menu_loot_out(box) {
         const otmp = addinv(obj);
         await report_merge_discovery();
         // No encumbrance change here, so pickup_prinv's load prefix is absent.
-        // prinv() formats "<letter> - <name>." into _pending_message; capture it
-        // and feed update_topl so successive lines accumulate / page correctly.
-        const acc = game._pending_message;
-        prinv(null, otmp, count);
-        const line = game._pending_message;
-        game._pending_message = acc;
-        await update_topl(line);
+        // prinv_fmt() renders "<letter> - <name>." without touching the topline
+        // state; update_topl does the emit so successive lines accumulate/page.
+        await update_topl(prinv_fmt(null, otmp, count));
         n++;
     }
     return n;

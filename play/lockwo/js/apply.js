@@ -33,7 +33,7 @@ import {
 // row [237, "STETHOSCOPE", ...]).  Defined locally to avoid threading a new
 // export through mkobj.js.
 const STETHOSCOPE = 237;
-const SPE_NOVEL = 405; // mkobj.js OBJECT_DATA — novel (a spellbook subtype)
+const SPE_NOVEL = 406; // mkobj.js OBJECT_DATA — novel (a spellbook subtype)
 
 // C ref: include/onames.h — lamp/lantern object types rubbed by dorub().
 const BRASS_LANTERN = 226, OIL_LAMP = 227, MAGIC_LAMP = 228;
@@ -516,7 +516,7 @@ export async function wipeoff() {
 // prompt — matching the recorded "What do you want to rub? [n or ?*]").
 const LUMP_OF_ROYAL_JELLY = LUMP_OF_ROYAL_JELLY_OTYP; // mkobj.js index 286
 // graystones (mkobj.js indices) — rub_ok SUGGESTs these (not exercised here).
-const LUCKSTONE = 469, LOADSTONE = 470, TOUCHSTONE = 471, FLINT = 472;
+const LUCKSTONE = 470, LOADSTONE = 471, TOUCHSTONE = 472, FLINT = 473;
 function is_graystone_otyp(otyp) {
     return otyp === FLINT || otyp === LUCKSTONE || otyp === LOADSTONE
         || otyp === TOUCHSTONE;

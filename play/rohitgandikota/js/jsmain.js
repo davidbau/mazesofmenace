@@ -15,6 +15,7 @@ import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { wd_message } from './unixmain.js';
 import { parseNethackrc, optValue } from './options.js';
+import { assign_graphics } from './symbols.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { reset_windows } from './tty/wintty.js';
@@ -106,6 +107,11 @@ export class NethackGame {
 
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
+        /* src/symbols.c init_symbols() then assign_graphics(PRIMARYSET).
+           Without OPTIONS=symset:<name> the built-in ASCII defaults stand;
+           DECgraphics is the only alternate set any recorded configuration
+           asks for. */
+        assign_graphics(/^DECgraphics$/i.test(optValue(rc, 'symset') || ''));
         /* Leave plname EMPTY when the rc does not set it: src/allmain.c calls
            askname() in that case, and the session's keystrokes supply the name.
            Defaulting it here made player_selection() skip askname and read the
@@ -166,9 +172,7 @@ export class NethackGame {
            moveloop_preamble() and the first moveloop_core(). This driver calls
            moveloop_core() directly rather than moveloop(), so the query has to
            be invoked here or it never runs. */
-        if (process.env.NHTRACE) process.stdout.write('P3 after newgame n=' + ((g.invent||[]).length) + ' sameObj=' + (g === game) + String.fromCharCode(10));
         await maybe_do_tutorial();
-        if (process.env.NHTRACE) process.stdout.write('P4 after tutorial n=' + ((g.invent||[]).length) + String.fromCharCode(10));
     }
 
     _installCaptureHook() {

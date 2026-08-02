@@ -4438,7 +4438,7 @@ function find_okay_roompos(croom, crd) {
 function breaktest(otmp) {
     const GLASS_MATERIAL = 19; // objclass.h obj_material_types GLASS
     const POT_WATER = 322, EGG = 266, EXPENSIVE_CAMERA = 229;
-    const CREAM_PIE = 287, MELON = 280, ACID_VENOM = 479, BLINDING_VENOM = 478;
+    const CREAM_PIE = 287, MELON = 280, ACID_VENOM = 480, BLINDING_VENOM = 479;
     const od = objects[otmp.otyp] || {};
     let nonbreakchance = 1;
     if (otmp.oclass === ARMOR_CLASS && od.material === GLASS_MATERIAL)

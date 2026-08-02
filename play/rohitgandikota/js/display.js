@@ -21,6 +21,7 @@ import {
 import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
 import { def_monsyms, def_oc_syms, cmap_names } from './drawing_data.js';
+import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, DEC_TO_UNICODE } from './terminal.js';
 
@@ -62,8 +63,26 @@ export function known_branch_stairs(sway) {
 
 const CM = cmap_names;
 
-// ── Terrain to display character + color + DEC flag ──
+// src/display.c:2938 map_glyphinfo() — a glyph becomes a symbol by looking its
+// cmap index up in the ACTIVE symbol set. back_to_glyph() below picks the cmap
+// index and a colour; this applies gs.showsyms[] on top, which is what makes a
+// configuration without OPTIONS=symset:DECgraphics draw '-', '|' and '.'
+// instead of the DEC line-drawing set.
 function terrain_glyph(loc, x, y) {
+    const g = back_to_glyph(loc, x, y);
+    const sym = (g.cmap !== undefined) ? showsym(g.cmap) : null;
+    return sym ? { ...g, ch: sym.ch, dec: sym.dec } : g;
+}
+
+/* src/display.c:2336 — the wall arms of back_to_glyph(). */
+function wall_glyph(loc, ch, cmap) {
+    return loc.seenv
+        ? { ch, color: NO_COLOR, dec: true, cmap }
+        : { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
+}
+
+// ── src/display.c:2302 back_to_glyph() — terrain to cmap index + colour ──
+function back_to_glyph(loc, x, y) {
     const typ = loc.typ;
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
@@ -101,17 +120,13 @@ function terrain_glyph(loc, x, y) {
                      cmap: loc.horizontal ? CM.S_hcdoor : CM.S_vcdoor };
         return { ch: '~', color: NO_COLOR, dec: true, cmap: CM.S_ndoor };
     case STAIRS: {
-        /* Recorded behavior: a staircase the hero has SEEN renders yellow
-           (seed1150 '<' carries SGR 93) and stays yellow in memory, while
-           one known only from a magic map is default (seed2200 step 10's
-           unvisited '>'). Track first direct sight on the cell. */
-        if (cansee(x, y))
-            loc.stair_seen = 1;
-        const scol = loc.stair_seen ? CLR_YELLOW : NO_COLOR;
-        /* src/display.c:2345 back_to_glyph() — the cmap index does come
-           from known_branch_stairs(); only the paint keeps the recorded
-           stair_seen colour model above. */
+        /* include/defsym.h:120 — S_upstair and S_dnstair are CLR_GRAY;
+           S_brupstair and S_brdnstair are CLR_YELLOW. The colour is a
+           property of the SYMBOL, not of whether the hero has seen it: a
+           branch staircase is yellow the moment it is drawn. This used to
+           key off a `stair_seen` flag, which is not a thing C has. */
         const branch = known_branch_stairs(stairway_at(x, y));
+        const scol = branch ? CLR_YELLOW : NO_COLOR;
         if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
             return { ch: '<', color: scol, dec: false,
                      cmap: branch ? CM.S_brupstair : CM.S_upstair };
@@ -119,17 +134,21 @@ function terrain_glyph(loc, x, y) {
                  cmap: branch ? CM.S_brdnstair : CM.S_dnstair };
     }
     // Wall types → DEC line-drawing characters
-    case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true, cmap: CM.S_hwall };  // ─
-    case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true, cmap: CM.S_vwall };  // │
-    case TLCORNER:  return { ch: 'l', color: NO_COLOR, dec: true, cmap: CM.S_tlcorn };  // ┌
-    case TRCORNER:  return { ch: 'k', color: NO_COLOR, dec: true, cmap: CM.S_trcorn };  // ┐
-    case BLCORNER:  return { ch: 'm', color: NO_COLOR, dec: true, cmap: CM.S_blcorn };  // └
-    case BRCORNER:  return { ch: 'j', color: NO_COLOR, dec: true, cmap: CM.S_brcorn };  // ┘
-    case CROSSWALL: return { ch: 'n', color: NO_COLOR, dec: true, cmap: CM.S_crwall };  // ┼
-    case TUWALL:    return { ch: 'v', color: NO_COLOR, dec: true, cmap: CM.S_tuwall };  // ┴
-    case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true, cmap: CM.S_tdwall };  // ┬
-    case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true, cmap: CM.S_tlwall };  // ┤
-    case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true, cmap: CM.S_trwall };  // ├
+    /* src/display.c:2336 — every wall arm is `ptr->seenv ? wall_angle(ptr)
+       : S_stone`. A wall the hero has never seen a FACE of draws as blank,
+       even while it is in sight: walking down a dark corridor lights the
+       corridor squares but leaves the rock beside them unmapped. */
+    case HWALL:     return wall_glyph(loc, 'q', CM.S_hwall);   // ─
+    case VWALL:     return wall_glyph(loc, 'x', CM.S_vwall);   // │
+    case TLCORNER:  return wall_glyph(loc, 'l', CM.S_tlcorn);  // ┌
+    case TRCORNER:  return wall_glyph(loc, 'k', CM.S_trcorn);  // ┐
+    case BLCORNER:  return wall_glyph(loc, 'm', CM.S_blcorn);  // └
+    case BRCORNER:  return wall_glyph(loc, 'j', CM.S_brcorn);  // ┘
+    case CROSSWALL: return wall_glyph(loc, 'n', CM.S_crwall);  // ┼
+    case TUWALL:    return wall_glyph(loc, 'v', CM.S_tuwall);  // ┴
+    case TDWALL:    return wall_glyph(loc, 'w', CM.S_tdwall);  // ┬
+    case TLWALL:    return wall_glyph(loc, 'u', CM.S_tlwall);  // ┤
+    case TRWALL:    return wall_glyph(loc, 't', CM.S_trwall);  // ├
     // src/display.c:2304 — a SECRET door looks exactly like the wall it hides
     // in, so it falls through to the HWALL/VWALL case.
     /* The rest of the terrain, from include/defsym.h with dat/symbols'
@@ -186,15 +205,37 @@ function terrain_glyph(loc, x, y) {
 // its buffer (gbuf) and every classifier (glyph_is_monster & friends) reads
 // it back; this port keeps a descriptor object: { kind: 'hero'|'mon'|'obj'
 // |'cmap'|'nothing', mon?, obj?, cmap? }.
+// src/display.c gbuf[][] — what is currently PAINTED, kept apart from the
+// level so that switching levels does not silently repaint the screen. Only
+// clear_glyph_buffer() empties it, which is what leaves the old map under
+// the "You descend the stairs.--More--" prompt.
+export function gbuf_at(x, y) {
+    const rows = (game.gbuf ||= []);
+    return (rows[y] ||= [])[x];
+}
+
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph = undefined) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    const rows = (game.gbuf ||= []);
+    (rows[y] ||= [])[x] = {
+        disp_ch: ch,
+        disp_color: color,
+        disp_decgfx: !!decgfx,
+        disp_attr: attr | 0,
+        disp_glyph: glyph,
+    };
     loc.disp_ch = ch;
     loc.disp_color = color;
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.disp_glyph = glyph;
     loc.gnew = 1;
+}
+
+// src/display.c:2159 clear_glyph_buffer()
+export function clear_glyph_buffer() {
+    game.gbuf = [];
 }
 
 // C glyph_at() (display.h:200) — what the glyph buffer holds for the spot.
@@ -391,6 +432,13 @@ function engraving_glyph(loc, x, y) {
 // ── docrt ──
 export async function docrt() {
     if (!game.level) return;
+
+    /* src/display.c:1739 — docrt_flags() clears first unless docrtNocls.
+       cls() flushes the message window, so an unacknowledged message gets
+       its --More-- BEFORE the map is wiped and repainted; that is why C
+       shows the old level under "You descend the stairs.--More--". */
+    await cls();
+
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
@@ -417,7 +465,7 @@ function render_map_row(y) {
     if (!game.level) return '';
     let firstCol = -1, lastCol = -1;
     for (let x = 1; x < COLNO; x++) {
-        const loc = game.level.at(x, y);
+        const loc = gbuf_at(x, y);
         if (loc?.disp_ch && loc.disp_ch !== ' ') {
             if (firstCol < 0) firstCol = x;
             lastCol = x;
@@ -435,7 +483,7 @@ function render_map_row(y) {
     else if (gap > 0) output += ' '.repeat(gap);
 
     for (let x = firstCol; x <= lastCol; x++) {
-        const loc = game.level.at(x, y);
+        const loc = gbuf_at(x, y);
         const ch = loc?.disp_ch ?? ' ';
         const color = term_start_color(loc?.disp_color ?? NO_COLOR);
         const dec = !!loc?.disp_decgfx;
@@ -443,7 +491,7 @@ function render_map_row(y) {
         if (ch === ' ') {
             // Space runs
             let run = 1;
-            while (x + run <= lastCol && (game.level.at(x + run, y)?.disp_ch ?? ' ') === ' ') run++;
+            while (x + run <= lastCol && (gbuf_at(x + run, y)?.disp_ch ?? ' ') === ' ') run++;
             if (activeDec) { output += '\x0f'; activeDec = false; }
             if (run > 4) output += `\x1b[${run}C`;
             else output += ' '.repeat(run);
@@ -605,7 +653,7 @@ export function _buildScreenOutput() {
         for (let y = 0; y < ROWNO; y++) {
             if (y + 2 <= msgLines.length) continue;
             for (let x = 1; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
+                const loc = gbuf_at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
                 const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
                 display.setCell(x - 1, y + 1, ch,
@@ -654,7 +702,8 @@ export async function cls() {
         return;
     game._in_cls = true;
 
-    /* display_nhwindow(WIN_MESSAGE, FALSE) */
+    /* display_nhwindow(WIN_MESSAGE, FALSE) — the more() comes FIRST, while
+       the previous map is still painted; only then is the map cleared. */
     if (game._toplin === TOPLINE_NEED_MORE) {
         await more();
         game._toplin = TOPLINE_NEED_MORE;   /* more() reset it; force the erase */
@@ -663,6 +712,8 @@ export async function cls() {
     game._pending_message = '';
     game._toplin = TOPLINE_EMPTY;
 
+    /* clear_nhwindow(WIN_MAP) and clear_glyph_buffer() */
+    clear_glyph_buffer();
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
 
@@ -858,7 +909,7 @@ export function magic_map_background(x, y, show) {
        blank only the unlit ones, so the lit bit stands in for waslit here
        (an unvisited room can never have waslit set). */
     if (!cansee(x, y) && !loc.waslit && !loc.lit) {
-        if (loc.typ === ROOM && tg.ch === '~' && tg.dec)
+        if (loc.typ === ROOM && tg.cmap === cmap_names.S_room)
             tg = null;                          /* GLYPH_NOTHING */
         else if (loc.typ === CORR)
             tg = { ch: '#', color: NO_COLOR, dec: false,

@@ -4,16 +4,21 @@ import { adjabil } from './attrib.js';
 
 import { game } from './gstate.js';
 import { aligns } from './role_data.js';
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, ATTKS as A, MFLAGS, MONSYMS } from './monst_data.js';
 import { rnd, rn1 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS } from './const.js';
+import { A_CON, A_WIS, NORMAL_SPEED, NATTK } from './const.js';
+import { find_mac } from './worn.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
 function enermod(en) {
     switch (game.urole?.name?.m) {
+    /* src/exper.c:28 — PM_CLERIC doubles alongside PM_WIZARD. The role's
+       male name is "Priest", not "Cleric", which is how this arm went
+       missing: the C switches on the role's PM number, not its name. */
+    case 'Priest':
     case 'Wizard':
         return 2 * en;
     case 'Healer':
@@ -224,6 +229,75 @@ export async function pluslvl(incr) {
 
 function note_unported_exper(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/exper.c:85 experience() — the points a kill is worth.
+//
+// No draws: it is arithmetic over the monster's level, AC, speed and attack
+// table, then a halving loop that shrinks the award for repeated kills of the
+// same species. `nk` is mvitals[].died INCLUDING this kill.
+export function experience(mtmp, nk) {
+    const ptr = game.mons[mtmp.mnum];
+    let i, tmp, tmp2;
+
+    tmp = 1 + mtmp.m_lev * mtmp.m_lev;
+
+    /*  For higher ac values, give extra experience */
+    if ((i = find_mac(mtmp)) < 3)
+        tmp += (7 - i) * ((i < 0) ? 2 : 1);
+
+    /*  For very fast monsters, give extra experience */
+    if (ptr.mmove > NORMAL_SPEED)
+        tmp += (ptr.mmove > Math.trunc(3 * NORMAL_SPEED / 2)) ? 5 : 3;
+
+    /*  For each "special" attack type give extra experience */
+    for (i = 0; i < NATTK; i++) {
+        tmp2 = ptr.mattk[i][0];
+        if (tmp2 > A.AT_BUTT) {
+            if (tmp2 === A.AT_WEAP)
+                tmp += 5;
+            else if (tmp2 === A.AT_MAGC)
+                tmp += 10;
+            else
+                tmp += 3;
+        }
+    }
+
+    /*  For each "special" damage type give extra experience */
+    for (i = 0; i < NATTK; i++) {
+        tmp2 = ptr.mattk[i][1];
+        if (tmp2 > A.AD_PHYS && tmp2 < A.AD_BLND)
+            tmp += 2 * mtmp.m_lev;
+        else if (tmp2 === A.AD_DRLI || tmp2 === A.AD_STON || tmp2 === A.AD_SLIM)
+            tmp += 50;
+        else if (tmp2 !== A.AD_PHYS)
+            tmp += mtmp.m_lev;
+        /* extra heavy damage bonus */
+        if (ptr.mattk[i][3] * ptr.mattk[i][2] > 23)
+            tmp += mtmp.m_lev;
+        if (tmp2 === A.AD_WRAP && ptr.mlet === MONSYMS.S_EEL)
+            note_unported_exper('experience:amphibious_eel');
+    }
+
+    /*  For certain "extra nasty" monsters, give even more */
+    if (ptr.mflags2 & MFLAGS.M2_NASTY)
+        tmp += (7 * mtmp.m_lev);
+
+    /*  For higher level monsters, an additional bonus is given */
+    if (mtmp.m_lev > 8)
+        tmp += 50;
+
+    if (mtmp.mrevived || mtmp.mcloned) {
+        /* reduce experience for repeated killings of "the same monster" */
+        for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
+            tmp = Math.trunc((tmp + 1) / 2);
+            nk -= tmp2;
+            if (i & 1)
+                tmp2 += 20;
+        }
+    }
+
+    return tmp;
 }
 
 // src/exper.c more_experienced() — add experience points and score.

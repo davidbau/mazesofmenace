@@ -8,9 +8,10 @@ import { seemimic } from './mon.js';
 
 import { game } from './gstate.js';
 import { dodrop } from './do.js';
-import { any_obj_ok } from './invent.js';
-import { dodown, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
-import { dokick_wire, ship_object } from './dokick.js';
+import { any_obj_ok, doprwep, doprarm, doprring, dopramulet, doprtool,
+         doprinuse, doprgold } from './invent.js';
+import { dodown, doup, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
+import { dokick_wire, ship_object, dokick } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at } from './mon.js';
@@ -20,8 +21,11 @@ import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects } from './hack.js';
+import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup } from './hack.js';
+import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
+import { ECMD_FAIL, ECMD_CANCEL, A_DEX } from './const.js';
+import { ACURR } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { x_monnam, docallcmd } from './do_name.js';
@@ -41,16 +45,17 @@ import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok } from './const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
-import { doread } from './read.js';
+import { doread, wiz_genesis } from './read.js';
 import { dodrink } from './potion.js';
 import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
-import { getpos } from './getpos.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
 import { dowear, doputon, dotakeoff, doremring, canwearobj_core } from './do_wear.js';
 import { show_menu_controls } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
@@ -60,7 +65,8 @@ import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwin
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
-import { doengrave } from './engrave.js';
+import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
+import { rnd } from './rng.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
@@ -220,6 +226,17 @@ async function help_dir(sym, msg) {
     tty_destroy_nhwindow(win);
     await docrt();
     return true;
+}
+
+// src/cmd.c:1386 set_move_cmd() — a movement command records its direction
+// on `u` before it runs, which is what makes u.dz nonzero for '>' and '<'.
+export function set_move_cmd(dir, run) {
+    game.u.dz = zdir[dir];
+    game.u.dx = xdir[dir];
+    game.u.dy = ydir[dir];
+    game.context.travel = game.context.travel1 = 0;
+    game.context.run = run;
+    game.context.nopick = 0;
 }
 
 // src/cmd.c getdir() — read a direction key and set u.dx/u.dy/u.dz.
@@ -594,6 +611,12 @@ export async function doextcmd() {
     /* src/cmd.c extcmdlist — the command's own function runs here. Only the
        ones that consume further input are wired up so far, because those are
        the ones whose absence puts the whole session out of step. */
+    if (name === 'loot')
+        return await doloot();
+    if (name === 'force') {
+        const { doforce } = await import('./lock.js');
+        return await doforce();
+    }
     if (name === 'chat')
         return await dochat();
     if (name === 'name')
@@ -613,11 +636,21 @@ export async function doextcmd() {
 // trap plumbing; what is ported is the getpos() call at src/apply.c:2063, which
 // is where a session's cursor keys and pick go.
 async function dojump() {
-    const cc = { x: game.u.ux, y: game.u.uy };
+    await pline('Where do you want to jump?');
 
-    /* pline("Where do you want to jump?") */
+    const cc = { x: game.u.ux, y: game.u.uy };
+    /* src/apply.c:2062 — the cursor marks squares the jump cannot reach.
+       display_jump_positions (the tmp_at beam) is not ported; the validator
+       is, because getpos' auto-describe prints "(invalid target)" from it. */
+    getpos_sethilite(null, get_valid_jump_position);
+
     if (await getpos(cc, true, 'the desired position') < 0)
-        return ECMD_OK; /* ECMD_CANCEL — user pressed ESC */
+        return ECMD_CANCEL; /* user pressed ESC */
+
+    /* src/apply.c:2065 — the same validator again, this time with its
+       messages; a rejected target ends the command without a turn. */
+    if (!(await is_valid_jump_pos(cc.x, cc.y, game.jumping_is_magic, true)))
+        return ECMD_FAIL;
 
     note_unported_cmd('jump:movement');
     return ECMD_OK;
@@ -762,6 +795,22 @@ export async function rhack(key) {
     } else if (ch === '\x17') {
         // src/cmd.c:2000 — C('w') is wizwish / wiz_wish.
         game.context.move = ((await wiz_wish()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === ',') {
+        // src/cmd.c:1799 cmdlist — ',' is dopickup.
+        game.context.move = (await dopickup() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'O') {
+        // src/cmd.c:1780 cmdlist — 'O' is doset_simple.
+        const { doset_simple } = await import('./options.js');
+        game.context.move = (await doset_simple() === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x04') {
+        // src/cmd.c cmdlist — C('d') is dokick.
+        game.context.move = (await dokick() === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x07') {
+        // src/cmd.c:1962 cmdlist — C('g') is wiz_genesis.
+        game.context.move = ((await wiz_genesis()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '<') {
+        // src/cmd.c cmdlist — '<' is doup.
+        game.context.move = (await doup() === ECMD_TIME ? 1 : 0);
     } else if (ch === '>') {
         // src/cmd.c cmdlist — '>' is dodown.
         game.context.move = (await dodown() === ECMD_TIME ? 1 : 0);
@@ -901,6 +950,47 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — 'o' is doopen. It reads a direction key of its
         // own, so skipping it would put the whole session out of step.
         game.context.move = (await doopen() === ECMD_TIME ? 1 : 0);
+    } else if (ch === ')') {
+        // src/cmd.c cmdlist — ')' is doprwep.
+        game.context.move = ((await doprwep()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '[') {
+        // src/cmd.c cmdlist — '[' is doprarm.
+        game.context.move = ((await doprarm()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '=') {
+        // src/cmd.c cmdlist — '=' is doprring.
+        game.context.move = ((await doprring()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '"') {
+        // src/cmd.c cmdlist — '"' is dopramulet.
+        game.context.move = ((await dopramulet()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '(') {
+        // src/cmd.c cmdlist — '(' is doprtool.
+        game.context.move = ((await doprtool()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '*') {
+        // src/cmd.c cmdlist — '*' is doprinuse.
+        game.context.move = ((await doprinuse()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '$') {
+        // src/cmd.c:1868 cmdlist — GOLD_SYM is doprgold.
+        game.context.move = ((await doprgold()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '@') {
+        /* src/options.c:9256 dotogglepickup — flips flags.pickup and says
+           so. C's FIELD is flags.pickup but the rc OPTION is named
+           "autopickup", and our option parser stores it under the option
+           name, so flags.autopickup is the one field; toggling a separate
+           flags.pickup left pickup() reading the untouched rc value. */
+        game.flags.autopickup = !game.flags.autopickup;
+        if (game.flags.autopickup) {
+            /* src/options.c:9262 — oc_to_str(flags.pickup_types) is empty
+               when no types are configured, and C then says "all". The
+               autopickup-exception suffix needs an apelist, which no
+               recorded rc defines. */
+            const ocl = game.flags.pickup_types || '';
+            if (game.apelist)
+                note_unported_cmd('dotogglepickup:exceptions');
+            await pline(`Autopickup: ON, for ${ocl || 'all'} objects.`);
+        } else {
+            await pline('Autopickup: OFF.');
+        }
+        game.context.move = 0;
     } else if (ch === ':') {
         // src/cmd.c cmdlist — ':' is dolook. It returns ECMD_OK when not
         // blind, so looking does not consume a turn.
@@ -919,7 +1009,30 @@ export async function rhack(key) {
 }
 
 // C ref: hack.c domove — execute a movement
+// src/hack.c:2694 domove() — the wrapper around domove_core(). It records
+// where the hero started and, if the move actually happened, smudges any
+// engraving on the square left behind and the one arrived at.
 export async function domove() {
+    const ux1 = game.u.ux, uy1 = game.u.uy;
+    await domove_core();
+    /* gd.domove_succeeded & (DOMOVE_RUSH | DOMOVE_WALK): the move counts as
+       taken when the hero's position actually changed */
+    if (game.u.ux !== ux1 || game.u.uy !== uy1)
+        await maybe_smudge_engr(ux1, uy1, game.u.ux, game.u.uy);
+}
+
+// src/hack.c:3020 maybe_smudge_engr()
+async function maybe_smudge_engr(x1, y1, x2, y2) {
+    /* can_reach_floor(TRUE): true for an ordinary walking hero */
+    let ep = engr_at(x1, y1);
+    if (ep && ep.engr_type !== HEADSTONE)
+        wipe_engr_at(x1, y1, rnd(5), false);
+    if ((x2 !== x1 || y2 !== y1)
+        && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
+        wipe_engr_at(x2, y2, rnd(5), false);
+}
+
+async function domove_core() {
     const u = game.u;
     /* C's domove() takes no arguments and reads u.dx/u.dy, which movecmd()
        set from the key. moveloop's run branch calls it the same way, so the
@@ -995,22 +1108,17 @@ export async function domove() {
     }
 
     /* src/hack.c:2790 — domove_attackmon_at() gates walking into an occupied
-       square. Wired for SAFE monsters only: the pet-displacement rn2(7),
-       the flee arm and the frozen-pet arm live in do_attack and draw exactly
-       as C. A HOSTILE target keeps the old blocked path, because do_attack's
-       combat tail (hmon, the kill path, retaliation) is unported and wiring
-       it measured -23 screens pre-reset; that gap stays recorded. */
+       square, for a hostile target as well as a safe one. do_attack's combat
+       tail runs attack_checks(), the overexertion() hunger tick, u_wipe_engr
+       and hitum(), so the whole hero-attacks-monster chain is live. */
     {
         const mtmp_atk = m_at(newx, newy);
-        if (mtmp_atk && is_safemon(mtmp_atk) && !game.context.forcefight) {
+        if (mtmp_atk) {
             const displaceu = { value: false };
             if (await domove_attackmon_at(mtmp_atk, newx, newy, displaceu)) {
-                /* the move was used up (pet refused to budge, message shown);
-                   C's domove returns here with the turn consumed */
+                /* the move was used up; C's domove returns here */
                 return;
             }
-        } else if (mtmp_atk && !is_safemon(mtmp_atk)) {
-            note_unported_cmd('domove:attack_hostile');
         }
     }
 
@@ -1032,6 +1140,28 @@ export async function domove() {
      * opens it and consumes the turn, and that must NOT stop a run. */
     if (blocksMove(newx, newy, dx, dy)) {
         // Can't move there
+        /* src/hack.c:1058 — with mention_walls the blocked move says what
+           stopped it, naming the background glyph. Only the solid-stone and
+           wall cases are reachable here; anything else records. */
+        const bloc = game.level?.at(newx, newy);
+        /* src/hack.c:1113 — an orthogonal walk into a closed door that
+           autoopen did not handle (autoopen is off while running) says so,
+           unless the hero is clumsy enough to walk into it instead. */
+        if (closed_door(newx, newy) && !game.context.door_opened
+            && (newx === u.ux || newy === u.uy)) {
+            if (u.ublind || game.u.uprops?.STUNNED || ACURR(A_DEX) < 10
+                || game.u.uprops?.FUMBLING)
+                note_unported_cmd('test_move:walk_into_door');
+            else
+                await pline('That door is closed.');
+        } else if (game.flags?.mention_walls && !game.context.door_opened) {
+            if (!bloc || bloc.typ === STONE)
+                await pline("It's solid stone.");
+            else if (IS_WALL(bloc.typ))
+                await pline("It's a wall.");
+            else
+                note_unported_cmd('test_move:mention_walls_other');
+        }
         if (!game.context.door_opened) {
             game.context.move = 0;
             nomul(0);

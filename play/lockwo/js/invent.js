@@ -84,7 +84,7 @@ import { engr_at } from './engrave.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
-const SPE_BOOK_OF_THE_DEAD = 408;
+const SPE_BOOK_OF_THE_DEAD = 409;
 
 // Armor / eyewear otyps used by the wear ('W') and take-off ('T') commands.
 // C ref: include/onames.h (mirrors u_init.js).
@@ -253,7 +253,7 @@ const PM_MONK = 5;
 const PM_TOURIST = 10;
 const PM_WIZARD = 12;
 const FAKE_AMULET_OF_YENDOR_OTYP = 212; // objects.h FAKE_AMULET_OF_YENDOR
-function confers_luck(obj) { return obj?.otyp === 469; }
+function confers_luck(obj) { return obj?.otyp === 470; }
 function set_moreluck() {}
 function record_achievement(_ach) {}
 function is_quest_artifact(_obj) { return false; }
@@ -2757,6 +2757,11 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
 const WA_ARM = 0x01, WA_ARMC = 0x02, WA_ARMH = 0x04, WA_ARMS = 0x08,
     WA_ARMG = 0x10, WA_ARMF = 0x20, WA_ARMU = 0x40;
 const WA_ARMOR_ALL = 0x7f;
+// Re-exported for js/steal.js, whose steal() tests `owornmask & (W_ARMOR |
+// W_ACCESSORY)` the way steal.c does.  Exporting the live values (rather than
+// letting steal.js keep its own copies) is what stops the two files' bit
+// assignments from drifting apart.
+export { WA_ARMOR_ALL as W_ARMOR_WORN, W_ACCESSORY as W_ACCESSORY_WORN };
 
 // C ref: include/objects.h ARMOR()/HELM()/...() oc_delay — the per-turn
 // donning/doffing delay (negated by do_wear.c into a positive nomul count).
@@ -2798,6 +2803,10 @@ for (let otyp = LOW_BOOTS; otyp <= LEVITATION_BOOTS; otyp++) ARMOR_OC_DELAY.set(
 // dwarvish iron helm (91), cornuthaum, dunce cap, helm of brilliance/caution/
 // opposite-alignment/telepathy, in addition to the plain helmet (97) above.
 for (let otyp = 89; otyp <= 100; otyp++) ARMOR_OC_DELAY.set(otyp, 1);
+
+// C ref: objects.h objects[otyp].oc_delay — the donning/doffing delay, read by
+// steal.c's ARMOR_CLASS branch (`armordelay = objects[otmp->otyp].oc_delay`).
+export function oc_delay(otyp) { return ARMOR_OC_DELAY.get(otyp) || 0; }
 ARMOR_OC_DELAY.set(FEDORA, 0);   // fedora: HELM() delay field 0
 ARMOR_OC_DELAY.set(95, 0);       // dented pot (no named otyp constant here): delay 0
 
@@ -3391,7 +3400,13 @@ async function armoroff(otmp) {
         worn_slot_clear(mask);
         find_ac();
         // off_msg after removal -> no redundant "(being worn)" suffix.
-        await pline(`You were wearing ${doname_invent(otmp)}.`);
+        //
+        // C ref: do_wear.c:71 `You("were wearing %s.", doname(otmp))` — a real
+        // pline(), i.e. update_topl().  It must go through update_topl() and not
+        // the deferred `pline()` slot: taking armor off costs a turn, so the
+        // monsters move next, and their messages have to APPEND to this one (or
+        // push it out behind a --More--) instead of silently replacing it.
+        await update_topl(`You were wearing ${doname_invent(otmp)}.`);
         if (game._allow_inventory_update !== undefined) update_inventory();
     }
 }
@@ -4277,11 +4292,7 @@ export async function pick_one_obj(obj) {
         // "You learn more..." message first, then route the pickup line
         // through update_topl() so it pages/accumulates after it correctly.
         await report_merge_discovery();
-        const acc = game._pending_message;
-        prinv(liftPrefix, held, quan);
-        const line = game._pending_message;
-        game._pending_message = acc;
-        await update_topl(line);
+        await update_topl(prinv_fmt(liftPrefix, held, quan));
     } else {
         // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a following
         // same-turn message (e.g. a monster opening a door -> "You hear a door
@@ -4636,7 +4647,11 @@ export function update_inventory() { if (!program_state().in_moveloop && !game._
 export function doperminv() { return ECMD_OK; }
 export function obj_to_let(obj) { if (!flags().invlet_constant) reassign(); return obj?.invlet || NOINVSYM; }
 
-export function prinv(prefix, obj, quan = 0) {
+// The text prinv() would print, with no display side effects.  Callers that
+// want to route the line through update_topl() themselves (so successive
+// pickups accumulate onto one topline) format with this instead of calling
+// prinv() and then undoing its writes.
+export function prinv_fmt(prefix, obj, quan = 0) {
     // C ref: invent.c prinv()/xprname() — the per-item line uses the full
     // doname() form (BUC, enchant, erosion, and worn-status suffix such as
     // "(at the ready)"), not the bare object name.
@@ -4649,7 +4664,19 @@ export function prinv(prefix, obj, quan = 0) {
     const text = xprname(obj, doname_invent_quan(obj, quan), obj_to_let(obj), !total_of, 0, quan);
     const totalbuf = (total_of && flags().verbose !== false)
         ? ` (${obj.quan} in total).` : '';
-    game._pending_message = `${prefix ? `${prefix} ` : ''}${text}${totalbuf}`;
+    return `${prefix ? `${prefix} ` : ''}${text}${totalbuf}`;
+}
+
+export function prinv(prefix, obj, quan = 0) {
+    game._pending_message = prinv_fmt(prefix, obj, quan);
+    // C ref: invent.c prinv() emits its line with pline(), which routes through
+    // topl.c update_topl() and leaves gt.toplin == TOPLIN_NEED_MORE.  Any
+    // message printed afterwards in the same command therefore either merges
+    // onto this line or fires --More-- first; without recording the state the
+    // follow-up (e.g. wizcmds.c wiz_wish()'s encumber_msg()) silently
+    // overwrites the item line instead.
+    game._toplines = game._pending_message;
+    game._toplin = 1; // TOPLIN_NEED_MORE
 }
 
 // doname_invent for a (temporarily) overridden quantity, restoring it after.

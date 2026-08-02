@@ -10,7 +10,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { find_misc, use_misc } from './muse.js';
+import { find_misc, use_misc, searches_for_item } from './muse.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
     D_ISOPEN, D_NODOOR, D_TRAPPED,
@@ -31,19 +31,28 @@ import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DAR
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
 import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
 import { gettrack } from './track.js';
-import { DEADMONSTER, healmon } from './mon.js';
-import { regenerates_flag } from './monflags_data.js';
-import { dog_move, can_carry, m_cansee } from './dogmove.js';
+import { DEADMONSTER, healmon, base_mmove, curr_mon_load, max_mon_load,
+    can_carry as mon_can_carry, can_touch_safely } from './mon.js';
+import { regenerates_flag, mflags1_of, mflags2_of, is_mercenary_flag, mindless, is_animal,
+    likes_gold_flag, likes_gems_flag, M1_THICK_HIDE, M1_TPORT, M2_COLLECT, M2_MAGIC } from './monflags_data.js';
+import { is_armed, mattk_of,
+    AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
+    AT_TENT, AT_WEAP, AT_MAGC, AT_SPIT, AT_BREA, AT_GAZE,
+    AD_PHYS, AD_ELEC, AD_DRST, AD_STUN, AD_DISE, AD_PEST, AD_FAMN, AD_STCK,
+    AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX } from './monattk_data.js';
+import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
 import { mon_msize, monster_by_pmidx, M2_HUMAN_NAMES, M2_MINION_NAMES } from './makemon.js';
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
-    weight, base_oc_weight } from './mkobj.js';
+    weight, base_oc_weight, BOULDER, WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS,
+    AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS,
+    SPBOOK_CLASS, BALL_CLASS } from './mkobj.js';
 import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
 import { clear_path, couldsee, cansee, vision_recalc, recalc_block_point, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
-import { M_ATTK_AGR_DIED, M_ATTK_DEF_DIED } from './const.js';
+import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED } from './const.js';
 import { wipe_engr_at, engr_at } from './engrave.js';
 import { discover_object } from './o_init.js';
 
@@ -268,6 +277,54 @@ function closed_door_at(x, y) {
     return IS_DOOR(t) && ((doormask(x, y) & (D_CLOSED | D_LOCKED)) !== 0);
 }
 
+// C ref: include/monsters.h PM_FOG_CLOUD / PM_HEZROU / PM_STEAM_VORTEX — the
+// three species whose mere presence leaves a gas cloud behind.
+const PM_FOG_CLOUD = 106, PM_STEAM_VORTEX = 110, PM_HEZROU = 296;
+
+// C ref: monmove.c:650 m_everyturn_effect(mtmp) — "called every turn for each
+// living monster on the map, and the hero".  A fog cloud trails harmless vapor.
+// The cloud's rn1(3,4) lifespan roll fires every turn the emitter stands on a
+// square that has no visible region yet, so omitting this desyncs the whole
+// stream for as long as a fog cloud (or a hero polymorphed into one) is alive.
+export async function m_everyturn_effect(mtmp) {
+    const is_u = (mtmp === game.u) || mtmp?._isyou;
+    const x = is_u ? game.u?.ux : mtmp?.mx;
+    const y = is_u ? game.u?.uy : mtmp?.my;
+    if (x == null || y == null) return;
+    if (mon_pmidx(mtmp, is_u) !== PM_FOG_CLOUD) return;
+    const { visible_region_at, create_gas_cloud } = await import('./region.js');
+    // Don't stack a second cloud on a square that already shows one, and don't
+    // trail vapor while flowing under a closed door.
+    if (!closed_door_at(x, y) && !visible_region_at(x, y))
+        await create_gas_cloud(x, y, 1, 0);   /* harmless vapor */
+}
+
+// C ref: monmove.c:672 m_postmove_effect(mtmp) — run for monsters just before
+// they change square, and for the hero just after.  A hezrou leaves a cloud of
+// stench (damage 8), a non-cancelled steam vortex leaves harmless vapor.
+export async function m_postmove_effect(mtmp) {
+    const is_u = (mtmp === game.u) || mtmp?._isyou;
+    // For the hero C reads u.ux0/u.uy0 (the square just left), for a monster the
+    // square it is still standing on.
+    const x = is_u ? game.u?.ux0 : mtmp?.mx;
+    const y = is_u ? game.u?.uy0 : mtmp?.my;
+    if (x == null || y == null) return;
+    const pmidx = mon_pmidx(mtmp, is_u);
+    if (pmidx === PM_HEZROU) {
+        const { create_gas_cloud } = await import('./region.js');
+        await create_gas_cloud(x, y, 1, 8);        /* stench */
+    } else if (pmidx === PM_STEAM_VORTEX && !mtmp.mcan) {
+        const { create_gas_cloud } = await import('./region.js');
+        await create_gas_cloud(x, y, 1, 0);       /* harmless vapor */
+    }
+}
+
+// The species index behind `mtmp->data`; for the hero that is u.umonnum (which
+// equals u.umonster while unpolymorphed).
+function mon_pmidx(mtmp, is_u) {
+    return is_u ? (game.u?.umonnum ?? -1) : (mtmp?.data?.pmidx ?? -1);
+}
+
 // C ref: monmove.c distfleeck(mtmp, &inrange, &nearby, &scared).
 // Always rolls rn2(5) (bravegremlin) first; the monflee roll only happens
 // when the monster is actually scared (not for the peaceful/level monsters
@@ -334,7 +391,7 @@ function objectsAt(x, y) {
     if (!objs) return [];
     return objs.filter((o) => o.where === 'floor' && o.ox === x && o.oy === y);
 }
-const ROCK_BOULDER = 474; // mkobj.js BOULDER otyp (matches sobj_at_boulder)
+const ROCK_BOULDER = 475; // mkobj.js BOULDER otyp (matches sobj_at_boulder)
 
 // C ref: priest.c move_special(mtmp, in_his_shop, appr, uondoor, avoid, omx,
 // omy, ggx, ggy) — shared "walk toward a fixed goal inside a room" algorithm
@@ -674,12 +731,12 @@ function m_harmless_trap(mtmp, ttmp) {
 }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — is there a boulder lying on the
-// floor at (x,y)?  BOULDER otyp is 474 (mkobj.js).
+// floor at (x,y)?  BOULDER otyp is 475 (mkobj.js).
 function sobj_at_boulder(x, y) {
     const objs = game.level?.objects;
     if (!objs) return false;
     for (const o of objs)
-        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === 474)
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === 475)
             return true;
     return false;
 }
@@ -897,9 +954,18 @@ export function hides_under_pm(ptr) {
 }
 
 // C ref: monsym.h S_EEL=57.  C ref: monst.h helpless(mon) = msleeping||!mcanmove.
+//
+// mcanmove is TRUE from makemon() onward in C, but our monster records only
+// acquire the field when initMonMoveState() first runs for that monster (i.e.
+// when it takes its own turn).  Reading a still-undefined mcanmove as "cannot
+// move" makes every not-yet-moved monster look paralysed — which is only
+// observable when something asks about a monster OTHER than the one acting,
+// as m_search_items() does ("is the object pinned under an immobile monster?").
+// Default the missing field to C's TRUE rather than to 0.
 const S_EEL_MCLS = 57;
 function mon_helpless(mtmp) {
-    return !!mtmp.msleeping || !mtmp.mcanmove;
+    const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
+    return !!mtmp.msleeping || !canmove;
 }
 
 // C ref: mondata.h breathless(ptr) = (mflags1 & M1_BREATHLESS) — golems,
@@ -1935,6 +2001,11 @@ async function m_move(mtmp) {
         // ends its move with NO move and NO RNG (invisible inside rock).
         if (m_digweapon_check(mtmp, nix, niy))
             return MMOVE_DONE;
+        // C ref: monmove.c:2047 — m_postmove_effect() runs while the monster is
+        // still on its OLD square (a hezrou / steam vortex leaves its cloud
+        // behind, rolling that cloud's rn1(3,4) lifespan) and must therefore come
+        // before the position commit below.
+        await m_postmove_effect(mtmp);
         // record track history (most-recent first, length MTSZ)
         mtmp.mtrack = [{ x: omx, y: omy }, ...mtrack].slice(0, MTSZ);
         mtmp.mx = nix; mtmp.my = niy;
@@ -2121,14 +2192,11 @@ const S_MIMIC_MCLS = 13;
 // adjustments, PHASE TWO set_apparxy + distfleeck, PHASE THREE m_move (guarded
 // by the same "opportunity to move" predicate as C, which decides whether the
 // recalculating second distfleeck runs), PHASE FOUR attacks.
-// C ref: mondata.h can_teleport(ptr) = (mflags1 & M1_TPORT).  The monster data
-// carries no mflags1 here, so identify the M1_TPORT species by name (tengu,
-// leprechaun, the teleporting nymphs, succubus/incubus, the Wizard).
-const M1_TPORT_NAMES = new Set([
-    'tengu', 'leprechaun', 'wood nymph', 'water nymph', 'mountain nymph',
-    'succubus', 'incubus', 'Wizard of Yendor',
-]);
-function can_teleport(mdat) { return !!mdat && M1_TPORT_NAMES.has(mdat.name); }
+// C ref: mondata.h can_teleport(ptr) = (mflags1 & M1_TPORT).  Read the generated
+// flag table rather than a species-name list: a name set answers FALSE for every
+// teleporter it forgets, and the miss is invisible (the monster simply never
+// teleports) while silently changing the RNG stream from that turn on.
+function can_teleport(mdat) { return !!mdat && (mflags1_of(mdat) & M1_TPORT) !== 0; }
 
 // C ref: teleport.c noteleport_level() — TRUE on levels that forbid teleport
 // (e.g. some special levels).  The contest fleeing monsters are on ordinary
@@ -2189,11 +2257,13 @@ export async function dochug(mtmp) {
     // does whenever a monster is fleeing (the seed0367 step-61 divergence).
     if (mtmp.mflee && !rn2(40) && can_teleport(mdat)
         && !mtmp.iswiz && !noteleport_level()) {
-        // The teleport itself (rloc) is reached only when the roll is 0 AND the
-        // species can teleport; the contest sessions' fleeing monsters either
-        // roll non-zero or aren't teleporters, so the rloc path isn't exercised.
-        // If it ever fires, fall through (no relocation modeled) rather than
-        // silently consuming a different RNG amount than C.
+        // C ref monmove.c:747 — `if (rloc(mtmp, RLOC_MSG)) leppie_stash(mtmp);`
+        // then `return 0`: teleporting costs the monster its whole turn.
+        // leppie_stash() (a leprechaun burying its gold in a wall) needs a
+        // leprechaun with gold; skipping it costs no RNG.
+        const { rloc, RLOC_MSG } = await import('./teleport.js');
+        await rloc(mtmp, RLOC_MSG);
+        return 0;
     }
 
     // fleeing monsters might regain courage
@@ -2326,7 +2396,6 @@ export function m_next2u(mtmp) {
 // the monster class (mcls); every S_ORC monster has M2_ORC, and the only other
 // M2_ORC species are orc-mummy / orc-zombie (matched by name).
 const S_ORC = 15;
-const S_KOBOLD = 11;  // monsym.h S_KOBOLD
 function is_orc(mdat) {
     if (!mdat) return false;
     if (mdat.mcls === S_ORC) return true;
@@ -2349,7 +2418,6 @@ function noattacks(mdat) {
 }
 
 // C ref: monattk.h AT_WEAP / mondata.c attacktype(ptr, AT_WEAP).
-const AT_WEAP = 254;
 function attacktype_weap(mdat) {
     return mon_attacks(mdat).some((a) => a.aatyp === AT_WEAP);
 }
@@ -2357,7 +2425,6 @@ function attacktype_weap(mdat) {
 // C ref: mhitu.c ranged_attk_available(mtmp) — TRUE only for AT_SPIT / AT_BREA
 // / AT_GAZE attackers (DISTANCE_ATTK_TYPE).  None of the monsters in the steed
 // combat sessions have such attacks, so this is FALSE (no RNG).
-const AT_SPIT = 10, AT_BREA = 12, AT_GAZE = 15;
 function ranged_attk_available(mtmp) {
     return mon_attacks(mtmp.data).some(
         (a) => a.aatyp === AT_SPIT || a.aatyp === AT_BREA || a.aatyp === AT_GAZE);
@@ -2921,17 +2988,90 @@ async function meatobj(mtmp) {
     return (count > 0 || ecount > 0) ? 1 : 0;
 }
 
-// C ref: monmove.c:1054 mon_would_take_item(mtmp, otmp).  Reproduced for the
-// gold/gem-loving species the mines exercise: dwarves & gnomes are
-// M2_GREEDY|M2_JEWELS; leprechauns/soldiers/watchmen are M2_GREEDY.  The pctload
-// gates (<95 gold, <85 gems) are subsumed by the caller's can_carry() weight
-// test; ROCK is filtered by the caller.  Keyed on the species name (data.name).
+// C ref: monmove.c:991 — the two oclass sets mon_would_take_item() consults.
+//   practical: what an M2_COLLECT monster (elves, orcs, soldiers, ...) hauls off
+//   magical:   what an M2_MAGIC monster hoards
+const PRACTICAL_CLASSES = [WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS, FOOD_CLASS];
+const MAGICAL_CLASSES = [AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS,
+    RING_CLASS, SPBOOK_CLASS];
+
+// C ref: objclass.h obj_material_types — the two bands the gem/unicorn rules
+// distinguish (worthless glass is GLASS, a real gem is GEMSTONE, a rock or
+// luckstone is MINERAL).
+const MAT_GEMSTONE = 20, MAT_MINERAL = 21;
+
+// C ref: dungeon.h Sokoban — In_sokoban(&u.uz).  makemon.js records the branch's
+// dnum on the game object when the branch is generated.
+function Sokoban() {
+    return game.sokoban_dnum != null && game.u?.uz?.dnum === game.sokoban_dnum;
+}
+
+// C ref: mondata.h likes_gold/likes_gems/likes_objs/likes_magic.  Note
+// likes_objs is NOT a plain flag: `(mflags2 & M2_COLLECT) || is_armed(ptr)`, so
+// every weapon-wielding species collects practical items whether or not it
+// carries M2_COLLECT.
+function likes_gold(ptr) { return likes_gold_flag(ptr); }
+function likes_gems(ptr) { return likes_gems_flag(ptr); }
+function likes_objs(ptr) {
+    return (mflags2_of(ptr) & M2_COLLECT) !== 0 || is_armed(ptr);
+}
+function likes_magic(ptr) { return (mflags2_of(ptr) & M2_MAGIC) !== 0; }
+
+// C ref: monmove.c:998 mon_would_take_item(mtmp, otmp).
+//
+// This is the FULL predicate, not the gold/gems slice the mines needed.  The
+// widest branch by far is the first one — any non-mindless, non-animal monster
+// under 75% load that could USE the object (muse.c searches_for_item) wants it,
+// which is what sends a quantum mechanic after a potion of healing and an
+// elf-noble after a sack.  With only the gold/gems slice implemented, every
+// such monster walked at the hero instead.
 function mon_would_take_item(mtmp, otmp) {
-    const nm = mtmp.data?.name || '';
-    const greedy = /dwarf|dwarvish|gnome|gnomish|leprechaun|soldier|watch/i.test(nm);
-    const jewels = /dwarf|dwarvish|gnome|gnomish/i.test(nm);
-    if (greedy && otmp.otyp === GOLD_PIECE) return true;
-    if (jewels && otmp.oclass === GEM_CLASS && otmp.otyp !== ROCK) return true;
+    const ptr = mtmp.data;
+    const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
+
+    // C ref: uball/uchain — the punishment ball and chain are never a target.
+    if (otmp === game.u?.uball || otmp === game.u?.uchain) return false;
+    if (mtmp.mtame && otmp.cursed) return false;
+    if (is_unicorn(ptr) && OBJECTS[otmp.otyp]?.material !== MAT_GEMSTONE)
+        return false;
+    if (!mindless(ptr) && !is_animal(ptr) && pctload < 75
+        && searches_for_item(mtmp, otmp))
+        return true;
+    if (likes_gold(ptr) && otmp.otyp === GOLD_PIECE && pctload < 95)
+        return true;
+    if (likes_gems(ptr) && otmp.oclass === GEM_CLASS
+        && OBJECTS[otmp.otyp]?.material !== MAT_MINERAL && pctload < 85)
+        return true;
+    if (likes_objs(ptr) && PRACTICAL_CLASSES.includes(otmp.oclass)
+        && pctload < 75)
+        return true;
+    if (likes_magic(ptr) && MAGICAL_CLASSES.includes(otmp.oclass)
+        && pctload < 85)
+        return true;
+    if (throws_rocks_pm(ptr) && otmp.otyp === BOULDER && pctload < 50
+        && !Sokoban())
+        return true;
+    if (ptr?.name === 'gelatinous cube' && otmp.oclass !== ROCK_CLASS
+        && otmp.oclass !== BALL_CLASS
+        && !(otmp.otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0
+             && corpse_touch_petrifies(otmp.corpsenm)))
+        return true;
+
+    return false;
+}
+
+// C ref: monmove.c:1048 mon_would_consume_item(mtmp, otmp) — the monster would
+// EAT the object where it lies rather than carry it off.  The tame/dogfood half
+// only fires for pets, which never reach m_search_items (m_move hands them to
+// dog_move first), so the reachable half is the corpse-eater test.
+const CORPSE_EATER_NAMES = new Set(['purple worm', 'baby purple worm', 'ghoul',
+    'piranha']);
+function mon_would_consume_item(mtmp, otmp) {
+    if (otmp.otyp === CORPSE
+        && !(otmp.corpsenm != null && otmp.corpsenm >= 0
+             && corpse_touch_petrifies(otmp.corpsenm))
+        && CORPSE_EATER_NAMES.has(mtmp.data?.name))
+        return true;
     return false;
 }
 
@@ -2943,65 +3083,25 @@ function mon_would_take_item(mtmp, otmp) {
 // to the monster's minvent, so on the next turn the square is clear and the
 // monster resumes normal movement (reaching the candidate loop) instead of
 // forever re-detecting the item underfoot.
-// C ref: mon.c curr_mon_load(mtmp) — the summed owt of a monster's inventory
-// (boulders carried by a rock-thrower are weightless to it; no such monster
-// reaches this pickup path).
-function curr_mon_load(mtmp) {
-    let curload = 0;
-    for (const o of (mtmp.minvent || [])) curload += (o.owt ?? (o.quan || 1));
-    return curload;
-}
+// curr_mon_load() / max_mon_load() / can_carry() / can_touch_safely() now live
+// in js/mon.js, where their C originals live (mon.c).  The copies that used to
+// sit here were scoped to the mines gold/gem looters: max_mon_load approximated
+// M2_STRONG with `msize >= MZ_HUGE` (so every strong human-sized species — every
+// elf, orc and soldier — got half the real capacity) and used WT_HUMAN 1500
+// instead of 1450, and can_carry approximated the NOHANDS glomper rule with a
+// has-hands set.  Those approximations only ever fed a boolean `> 0`, but
+// mon_would_take_item's pctload gates read the numbers directly.
 
-// C ref: mon.c max_mon_load(mtmp).  Base = human carry cap, halved when the
-// monster is not strong, scaled by the monster's corpse weight (cwt) vs a human
-// (or by relative size for corpseless monsters).  MZ_HUMAN==2, WT_HUMAN==1500,
-// MAX_CARR_CAP==1000.  No would_take looter in these sessions is strongmonst
-// (dwarves/gnomes/leprechauns/soldiers are all M2_STRONG-less), so the strong
-// branches stay conservative; a giant (msize>=MZ_HUGE) would read as strong.
-function max_mon_load(mtmp) {
-    const d = mtmp.data || {};
-    const MAX_CARR_CAP = 1000, WT_HUMAN = 1500, MZ_HUMAN = 2, MZ_HUGE = 4; // monflag.h (7 is MZ_GIGANTIC)
-    const strong = (d.msize | 0) >= MZ_HUGE; // M2_STRONG proxy (none of the looters qualify)
-    let maxload;
-    if (!d.cwt)
-        maxload = (MAX_CARR_CAP * (d.msize | 0)) / MZ_HUMAN;
-    else if (!strong || (strong && d.cwt > WT_HUMAN))
-        maxload = (MAX_CARR_CAP * d.cwt) / WT_HUMAN;
-    else
-        maxload = MAX_CARR_CAP;
-    if (!strong) maxload = maxload / 2;
-    if (maxload < 1) maxload = 1;
-    return Math.floor(maxload);
-}
-
-// C ref: mon.c can_carry(mtmp, otmp) — how many of otmp the monster can carry
-// (0 = none).  Scoped to the mpickstuff caller, where mon_would_take_item has
-// already restricted otmp to gold/gems taken by a greedy humanoid.  The key
-// fidelity point vs the pet-scoped dogmove.can_carry: a monster WITH hands does
-// NOT collapse a stack to 1 (only M1_NOHANDS non-glompers do, mon.c:2026) — it
-// takes the whole stack subject to its load cap.  Hands are detected via
-// CAN_OPEN_DOOR_PMIDX (has-hands & size>=MZ_SMALL); every would_take looter is
-// listed there, so gnomes/dwarves grab both gems of a pair without splitting.
-function mon_can_carry(mtmp, otmp) {
-    const iquan = otmp.quan || 1;
-    const hasHands = CAN_OPEN_DOOR_PMIDX.has(mtmp.data?.pmidx);
-    // mon.c:2013 — NOHANDS non-glomper monsters can carry only one of a stack.
-    if (iquan > 1 && !hasHands) return 1;
-    // mon.c:2035 — a peaceful (non-tame) monster won't pick up (avoid alignment
-    // obligations); the mines looters are hostile, so this is a faithful guard.
-    if (mtmp.mpeaceful && !mtmp.mtame) return 0;
-    // mon.c:2049 — load cap.
-    const newload = otmp.owt ?? iquan;
-    if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp)) return 0;
-    return iquan;
-}
+const S_NYMPH = 14; // defsym.h MONSYM index (permonst.mcls)
 
 function mpickstuff(mtmp) {
-    // prevent shopkeepers from leaving the door of their shop
+    // C ref: mon.c:1858 — prevent shopkeepers from leaving the door of their
+    // shop (inhishop() is not modeled; no recorded shk reaches this).
     if (mtmp.isshk) return false;
     // non-tame monsters normally don't go shopping (rn2(25) in a shop)
     if (!mtmp.mtame && mon_in_shop(mtmp.mx, mtmp.my) && rn2(25)) return false;
-    // (could_reach_item: land monster on ordinary floor always reaches -> true)
+    // C ref: mon.c:1870 — item in a pool the monster can't reach.
+    if (!could_reach_item(mtmp, mtmp.mx, mtmp.my)) return false;
     const arr = game.level?.objects;
     if (!Array.isArray(arr)) return false;
     // Iterate the pile on the monster's square (C: svl.level.objects[mx][my]
@@ -3013,11 +3113,16 @@ function mpickstuff(mtmp) {
         // mines levels these sessions visit.
         if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
         if (mon_would_take_item(mtmp, otmp)) {
-            // most monsters don't pick up corpses (nymphs excepted); a gnome/dwarf
-            // never would_take a corpse anyway, so this guard is a faithful no-op.
-            if (otmp.otyp === CORPSE) continue;
-            // can_touch_safely (gloves/immunity vs. silver/acid) — the grabbed
-            // gems/gold here are always safe to touch.
+            // C ref: mon.c:1881 — nymphs take corpses; everyone else leaves them
+            // unless the corpse is one of the three can_carry() lets through
+            // (petrifying, lizard, acidic).
+            if (otmp.otyp === CORPSE && mtmp.data?.mcls !== S_NYMPH
+                && otmp.corpsenm != null && otmp.corpsenm >= 0
+                && !corpse_touch_petrifies(otmp.corpsenm)
+                && monster_by_pmidx(otmp.corpsenm)?.name !== 'lizard'
+                && !monster_by_pmidx(otmp.corpsenm)?.acidic)
+                continue;
+            if (!can_touch_safely(mtmp, otmp)) continue;
             const carryamt = mon_can_carry(mtmp, otmp);
             if (carryamt === 0) continue;
             let otmp3;
@@ -3057,9 +3162,11 @@ function m_search_items(mtmp, goal, ap) {
 
     // C ref:1345 — cut the search radius when the hero is believed close.
     if (distmin(mux, muy, omx, omy) < SQ && !mtmp.mpeaceful) minr--;
-    // (is_mercenary -> minr = 1 omitted: minr stays < SQ either way, and no
-    //  recorded flee/balk monster is a mercenary; the finish_search branch is
-    //  taken whenever the radius was cut, independent of the exact minr value.)
+    // C ref:1349 — "guards shouldn't get too distracted": a hostile mercenary
+    // looks only at its own eight neighbours.  This used to be dropped as
+    // "minr stays < SQ either way"; that is true of the finish_search branch
+    // but NOT of the rectangle below, which is (2*minr+1)^2 squares wide.
+    if (!mtmp.mpeaceful && is_mercenary_flag(mtmp.data)) minr = 1;
 
     // C ref:1354 — in a shop, usually skip the scan (rolls rn2(25)).  No hostile
     // flee/balk monster stands in a shop in the recorded sessions, so this is a
@@ -3078,26 +3185,50 @@ function m_search_items(mtmp, goal, ap) {
         const objs = game.level?.objects || [];
         for (let xx = lmx; xx <= hmx; xx++) {
             for (let yy = lmy; yy <= hmy; yy++) {
+                /* no object here */
                 if (!OBJ_AT(xx, yy)) continue;
+                /* found an object closer already */
                 if (minr < distmin(omx, omy, xx, yy)) continue;
-                // could_reach_item: land monster in open cave/room reaches it (water/lava rare here).
+                /* flyers can move over water but can't reach what's under it */
+                if (!could_reach_item(mtmp, xx, yy)) continue;
+                /* hiders avoid the hero's line of sight */
                 if (hides_under_pm(ptr) && cansee(xx, yy)) continue;
-                // m_at immobile/hidden guard + onscary(Elbereth) omitted (not present here).
+                /* don't circle an object pinned under an immobile or hidden
+                   monster (paralysis victims excluded) */
+                const mtoo = m_at(xx, yy);
+                if (mtoo && (mon_helpless(mtoo) || mtoo.mundetected
+                             || (mtoo.mappearance && !mtoo.iswiz)
+                             || !base_mmove(mtoo)))
+                    continue;
+                /* don't get stuck circling an Elbereth */
+                if (onscary(xx, yy, mtmp)) continue;
+                /* ignore the pile if a trap it knows about sits on it */
                 const ttmp = t_at(xx, yy);
                 if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
                     if (goal.x === xx && goal.y === yy) { goal.x = mux; goal.y = muy; }
                     continue;
                 }
+                /* avoid getting stuck on eg. items in niches */
                 if (!m_cansee(mtmp, xx, yy)) continue;
-                // costly_spot (shop) omitted -> false.
+
+                const costly = costly_spot(xx, yy);
+
                 for (const otmp of objs) {
                     if (otmp.ox !== xx || otmp.oy !== yy) continue;
+                    /* monsters will pick a rock up but won't detour for one */
                     if (otmp.otyp === ROCK) continue;
-                    // is_mines_prize/is_soko_prize (luckstone/amulet) omitted — rare.
-                    if (mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0) {
+                    if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
+                    /* skip shop merchandise */
+                    if (costly && !otmp.no_charge) continue;
+
+                    if (((mon_would_take_item(mtmp, otmp)
+                          && mon_can_carry(mtmp, otmp) > 0)
+                         || mon_would_consume_item(mtmp, otmp))
+                        && can_touch_safely(mtmp, otmp)) {
                         minr = distmin(omx, omy, xx, yy);
                         goal.x = otmp.ox; goal.y = otmp.oy;
                         if (goal.x === omx && goal.y === omy) return true;
+                        /* found an item of interest; skip the rest of the pile */
                         break;
                     }
                 }
@@ -3124,6 +3255,11 @@ function m_search_items(mtmp, goal, ap) {
 // is needed.
 function mon_in_shop(_x, _y) { return false; }
 
+// C ref: shk.c costly_spot(x, y) — is the square shop floor whose contents the
+// shopkeeper owns?  Same missing shop-room wiring as mon_in_shop() above, so
+// conservatively FALSE: a monster never skips a pile as "merchandise".
+function costly_spot(_x, _y) { return false; }
+
 // C ref: levl[x][y].lit — is the map square lit?  Mirrors dogmove.js isLit().
 function levl_lit(x, y) { return !!game.level?.at(x, y)?.lit; }
 
@@ -3142,121 +3278,18 @@ const NOEYES_PMIDX = new Set([
 // trail and never takes the gettrack() redirect in m_move().
 function can_track(ptr) { return !NOEYES_PMIDX.has(ptr?.pmidx); }
 
-// Attack-type metadata (aatyp only — the to-hit gate and the MMOVE_MOVED
-// "can shoot after move" decision only need attack TYPES, not damage).  Keyed
-// by monster class (mcls / S_* index) for the orc class (all AT_WEAP), with a
-// physical-melee default for the ordinary low-level dungeon monsters.  Ported
-// from include/monsters.h mattk[] lists.
-const AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3;
-// C ref: monattk.h — additional attack types used by the S_SNAKE family.
-const AT_TUCH = 5, AT_HUGS = 7;
-// C ref: monattk.h damage-type indices used by mhitm_adtyping().
-const AD_PHYS = 0, AD_ELEC = 6;
-// C ref: monattk.h AD_DRST (drains str / poison), AD_BLND (blinds), AD_WRAP.
-const AD_DRST = 7, AD_BLND = 11, AD_WRAP = 28;
-
-// Per-monster attack records (aatyp, adtyp, damn, damd) for the hostile
-// monsters our move loop drives into mattacku().  Ported verbatim from
-// include/monsters.h MON(...,ATTK(...)) lists, keyed by species name.  Each
-// record carries the damage dice so hitmu() can roll d(damn,damd) faithfully.
-// (uhitm.js keeps a parallel table for the hero-attack XP path; this one is
-// for the monster-attacks-hero direction, where the dice must be rolled.)
-function MA(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
-const AD_STCK = 19; // monattk.h AD_STCK (sticky/holding) — large mimic claw; was 12
-const MON_HITU_ATTACKS = {
-    // grid bug — single AT_BITE / AD_ELEC, 1d1 (include/monsters.h grid bug).
-    'grid bug': [MA(AT_BITE, AD_ELEC, 1, 1)],
-    // S_BAT family (include/monsters.h): a bite whose dice differ per species.
-    'bat': [MA(AT_BITE, AD_PHYS, 1, 4)],
-    'giant bat': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    'vampire bat': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    // S_MIMIC family — a single claw; small=3d4 phys, large/giant=3d4/3d6 sticky.
-    'small mimic': [MA(AT_CLAW, AD_PHYS, 3, 4)],
-    'large mimic': [MA(AT_CLAW, AD_STCK, 3, 4)],
-    'giant mimic': [MA(AT_CLAW, AD_STCK, 3, 6)],
-    // S_RODENT rats — single AT_BITE / AD_PHYS, 1d3 (NOT the generic 1d4).
-    'sewer rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
-    'giant rat': [MA(AT_BITE, AD_PHYS, 1, 3)],
-    // S_LIZARD family (include/monsters.h): a single AT_BITE / AD_PHYS whose
-    // dice differ from the generic 1d4 — the newt bites for 1d2 and the gecko
-    // for 1d3, so a wrong die changes the rolled value even at aligned RNG
-    // (RND(x) modulo differs) — seed0002 newt = 1d2.
-    'newt': [MA(AT_BITE, AD_PHYS, 1, 2)],
-    'gecko': [MA(AT_BITE, AD_PHYS, 1, 3)],
-    // S_DOG family (include/monsters.h): a single AT_BITE whose dice vary per
-    // species — the generic fallback below is 1d4, but the jackal (1d2), fox
-    // (1d3), little dog/dog (1d6) and large dog (2d4) differ, so name them here.
-    // The bite damage d(damn,damd) is rolled in hitmu; a wrong die changes the
-    // value even at aligned RNG (RND(x) modulo differs) — seed0007 fox = 1d3.
-    'jackal': [MA(AT_BITE, AD_PHYS, 1, 2)],
-    'fox': [MA(AT_BITE, AD_PHYS, 1, 3)],
-    'coyote': [MA(AT_BITE, AD_PHYS, 1, 4)],
-    'little dog': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    'dog': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    'large dog': [MA(AT_BITE, AD_PHYS, 2, 4)],
-    // S_FELINE family (include/monsters.h): AT_BITE (cats) — kitten/housecat
-    // 1d6, large cat 2d4 (the bigger cats above are AT_CLAW, not placed here).
-    'kitten': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    'housecat': [MA(AT_BITE, AD_PHYS, 1, 6)],
-    'large cat': [MA(AT_BITE, AD_PHYS, 2, 4)],
-    // S_ORC family (include/monsters.h): a single AT_WEAP attack whose dice
-    // vary per species — the generic S_ORC fallback below is 1d6, but the
-    // goblin (1d4), orc (1d8) and Uruk-hai (1d8) differ, so name them here.
-    // The base damage d(damn,damd) is rolled in hitmu BEFORE the wielded
-    // weapon's dmgval is added, so the dice must be exact (seed0360 goblin).
-    'goblin': [MA(AT_WEAP, AD_PHYS, 1, 4)],
-    'hobgoblin': [MA(AT_WEAP, AD_PHYS, 1, 6)],
-    'orc': [MA(AT_WEAP, AD_PHYS, 1, 8)],
-    'hill orc': [MA(AT_WEAP, AD_PHYS, 1, 6)],
-    'Mordor orc': [MA(AT_WEAP, AD_PHYS, 1, 6)],
-    'Uruk-hai': [MA(AT_WEAP, AD_PHYS, 1, 8)],
-    // S_GNOME family (include/monsters.h): the Mines' weapon-wielding gnomes.
-    // A plain gnome has a single AT_WEAP/AD_PHYS attack — it "hits" (not the
-    // generic "bites"); the lord/king dice differ (seed0030 step-47 gnome,
-    // d(1,6) base before any wielded-weapon dmgval).  gnomish wizard is AT_MAGC
-    // (spellcaster, handled elsewhere) so it is intentionally not listed here.
-    'gnome': [MA(AT_WEAP, AD_PHYS, 1, 6)],
-    'gnome lord': [MA(AT_WEAP, AD_PHYS, 1, 8)],
-    'gnome king': [MA(AT_WEAP, AD_PHYS, 2, 6)],
-    // S_SNAKE family (include/monsters.h).  The cobra's AT_SPIT (AD_BLND) is the
-    // distance attack that makes ranged_attk_available() TRUE, so a hostile cobra
-    // that can see the hero balks (m_balks_at_approaching -> appr=-1) and keeps
-    // its range instead of closing in.  The two blue 'S' species (pit viper /
-    // cobra) MUST be distinguished by name: only the cobra spits.
-    'garter snake': [MA(AT_BITE, AD_PHYS, 1, 2)],
-    'snake': [MA(AT_BITE, AD_DRST, 1, 6)],
-    'water moccasin': [MA(AT_BITE, AD_DRST, 1, 6)],
-    'python': [MA(AT_BITE, AD_PHYS, 1, 4), MA(AT_TUCH, AD_PHYS, 0, 0),
-        MA(AT_HUGS, AD_WRAP, 1, 4), MA(AT_HUGS, AD_PHYS, 2, 4)],
-    'pit viper': [MA(AT_BITE, AD_DRST, 1, 4), MA(AT_BITE, AD_DRST, 1, 4)],
-    'cobra': [MA(AT_BITE, AD_DRST, 2, 4), MA(AT_SPIT, AD_BLND, 0, 0)],
-    // S_ELEMENTAL earth elemental (include/monsters.h): a single AT_CLAW /
-    // AD_PHYS 4d6 attack — it "hits", not "bites" (seed4500 step-268).
-    'earth elemental': [MA(AT_CLAW, AD_PHYS, 4, 6)],
-    // (major) demon "water demon" (include/monsters.h): AT_WEAP/AT_CLAW/AT_BITE,
-    // all AD_PHYS 1d3 — it is_armed (m_initweap_full may give it a weapon, e.g.
-    // a dagger stack via the S_DEMON default-bias case4), so the AT_WEAP slot
-    // must be listed first to match C's attack order (wield-then-claw within
-    // the same turn when AT_WEAP only wields, seed0006 step-103).
-    'water demon': [MA(AT_WEAP, AD_PHYS, 1, 3), MA(AT_CLAW, AD_PHYS, 1, 3),
-        MA(AT_BITE, AD_PHYS, 1, 3)],
-};
+// C ref: mondata.h mon->data->mattk[] — the monster's attack list, as
+// {aatyp, adtyp, damn, damd} records in monsters.h slot order.
+//
+// This MUST come from the generated table (js/monattk_data.js, built from the
+// recorder's include/monsters.h) rather than a species-name lookup: every
+// predicate below (noattacks / attacktype / attacktype_weap /
+// ranged_attk_available) and hitmu()'s d(damn, damd) roll are silently wrong
+// for any monster a name-keyed table forgets to list, and the failure is
+// invisible (a generic bite instead of AD_SITM/AT_MAGC/AT_SPIT).
 function mon_attacks(mdat) {
     if (!mdat) return [];
-    const named = MON_HITU_ATTACKS[mdat.name];
-    if (named) return named;
-    // Orc class (goblin/hobgoblin/orc/hill orc/...) — single AT_WEAP attack.
-    if (mdat.mcls === S_ORC) return [MA(AT_WEAP, AD_PHYS, 1, 6)];
-    // Kobold class — single AT_WEAP attack (include/monsters.h: kobold 1d4,
-    // large kobold 1d6, kobold leader 2d4).  Carries darts via m_initthrow, so
-    // at range it throws (thrwmu) rather than melees.  The base 1d4 covers the
-    // common kobold; larger variants aren't placed by the low-level slice.
-    if (mdat.mcls === S_KOBOLD) return [MA(AT_WEAP, AD_PHYS, 1, 4)];
-    // The remaining monsters our move loop drives use simple physical melee
-    // (AT_BITE / AT_CLAW / AT_KICK) with no AT_WEAP / ranged component, so the
-    // weapon / ranged gates are FALSE for them.  We return a generic single
-    // melee attack: enough to make noattacks() FALSE without claiming AT_WEAP.
-    return [MA(AT_BITE, AD_PHYS, 1, 4)];
+    return mattk_of(mdat);
 }
 
 // C ref: mhitu.c:489 mattacku(mtmp) — a monster attacks the hero.  Returns 1
@@ -3340,21 +3373,47 @@ async function mattacku(mtmp, mdat) {
 
     const atks = mon_attacks(mdat);
     let skipnonmagc = false;
-    const AT_MAGC = 255; // monattk.h AT_MAGC (was 8; cf. AT_WEAP 254 above)
+    // C ref mhitu.c:769 — sum[] holds each attack's M_ATTK_* result; the AT_HUGS
+    // case and the end-of-iteration AGR_DIED/AGR_DONE tests both read it.
+    const sum = atks.map(() => M_ATTK_MISS);
     for (let i = 0; i < atks.length; i++) {
-        const mattk = atks[i];
-        // C ref mhitu.c:786 — after a wildmiss, skip later non-spell attacks.
+        // C ref mhitu.c:771 — a counterattack against attack [i-1] may have
+        // killed the aggressor.
+        if (DEADMONSTER(mtmp)) return 1;
+        // C ref mhitu.c:786 getmattk() — attack substitution.  Every branch is
+        // RNG-free; the ones that can fire for the monsters this port drives are
+        // ported in getmattk() below.
+        const mattk = getmattk(mtmp, i, sum);
+        // C ref mhitu.c:787 — u.uswallow (never here) and the post-wildmiss
+        // "spells only" skip.
         if (skipnonmagc && mattk.aatyp !== AT_MAGC) continue;
         switch (mattk.aatyp) {
+        // C ref mhitu.c:794 — the "hand to hand" attacks all share one case.
+        // AT_STNG / AT_TUCH / AT_BUTT / AT_TENT resolve exactly like a claw or a
+        // bite, so they must be listed: leaving them out makes a jellyfish or a
+        // giant eel swing for free (no rnd(20), no damage roll) and desyncs the
+        // stream for the rest of the turn.
         case AT_CLAW:
         case AT_KICK:
-        case AT_BITE: {
+        case AT_BITE:
+        case AT_STNG:
+        case AT_TUCH:
+        case AT_BUTT:
+        case AT_TENT: {
+            // C ref mhitu.c:801 — a monster stuck in a pit can't kick.
+            if (mattk.aatyp === AT_KICK && mtrapped_in_pit(mtmp)) continue;
+            // C ref mhitu.c:803 — a weapon-wielding monster balks at punching a
+            // petrifying hero; !touch_petrifies(hero) is TRUE for every role the
+            // contest plays, so the guard passes.
             if (!range2) {
                 if (foundyou) {
                     const j = rnd(20 + i);          // mhitu.c:806
                     if (tmp > j) {
-                        // mhitu.c:812 — sum[i] = hitmu(mtmp, mattk).
-                        if (await hitmu(mtmp, mdat, mattk)) return 1;
+                        // unsolid(hero)/failed_grab: the hero is never unsolid.
+                        // C ref mhitu.c:810 — thick_skinned(hero) blocks a kick.
+                        if (mattk.aatyp !== AT_KICK || !thick_skinned_hero()) {
+                            sum[i] = await hitmu(mtmp, mdat, mattk); // mhitu.c:812
+                        }
                     } else {
                         // mhitu.c:814 — missmu(mtmp, tmp==j, mattk).
                         await missmu(mtmp, tmp === j);
@@ -3363,6 +3422,16 @@ async function mattacku(mtmp, mdat) {
                     // wildmiss(): no RNG; skip remaining non-magic attacks.
                     skipnonmagc = true;
                 }
+            }
+            break;
+        }
+        // C ref mhitu.c:823 — AT_HUGS is automatic (no to-hit roll) once the two
+        // preceding attacks both connected, or while the hero is already held.
+        case AT_HUGS: {
+            if ((!range2 && i >= 2 && sum[i - 1] && sum[i - 2])
+                || mtmp === game.u?.ustuck) {
+                // failed_grab() needs an unsolid/amorphous hero: never here.
+                sum[i] = await hitmu(mtmp, mdat, mattk);
             }
             break;
         }
@@ -3401,7 +3470,7 @@ async function mattacku(mtmp, mdat) {
                 }
                 const j = rnd(20 + i);          // mhitu.c:912
                 if (tmp > j) {
-                    if (await hitmu(mtmp, mdat, mattk)) return 1;
+                    sum[i] = await hitmu(mtmp, mdat, mattk);
                 } else {
                     await missmu(mtmp, tmp === j);
                 }
@@ -3417,14 +3486,99 @@ async function mattacku(mtmp, mdat) {
             // AD_BLND) spits at the hero when range2 (not adjacent to the
             // hero's believed square).  spitmu -> spitmm.
             if (range2) {
-                if (await spitmu(mtmp, mattk)) return 1;
+                sum[i] = await spitmu(mtmp, mattk);
             }
             break;
         default:
+            // C ref mhitu.c:832-931 — AT_GAZE (gazemu), AT_EXPL (explmu),
+            // AT_ENGL (gulpmu), AT_BREA (breamu) and AT_MAGC (buzzmu/castmu)
+            // are separate subsystems this port does not carry yet.  Doing
+            // nothing is the honest stand-in: it leaves an explicit screen
+            // divergence for the monsters that own those attacks rather than
+            // inventing rolls, and (unlike the old generic-bite fallback) it no
+            // longer lies about what the species can do.
             break;
         }
+        // C ref mhitu.c:936 — `if (disp.botl) bot();` after each attack.  Our
+        // status line is rebuilt from u.* on every frame, so there is nothing to
+        // flush here.
+        // C ref mhitu.c:939 — the u.usleep "combat awakens you" rn2(10) needs a
+        // sleeping hero (u.usleep is never set in these sessions).
+        if (sum[i] & M_ATTK_AGR_DIED) return 1;   // mhitu.c:945 attacker dead
+        if (sum[i] & M_ATTK_AGR_DONE) break;      // mhitu.c:947 attacker teleported
     }
     return 0;
+}
+
+// C ref: mhitu.c:310 getmattk(magr, mdef, indx, prev_result, alt_attk_buf) —
+// pick the monster's attack for slot `indx`, substituting for its usual one in a
+// few cases.  Every branch is RNG-free.  Ported branches:
+//   * consecutive AD_DISE/AD_PEST/AD_FAMN -> AD_STUN for the second one;
+//   * a held/engulfed-then-released holder (mspec_used) downgrades AT_ENGL /
+//     AT_HUGS / AD_STCK / AD_POLY to a plain 1d6 claw (or a touch);
+//   * a cancelled weapon-attacker with a non-physical damage type is forced to
+//     AD_PHYS.
+// Not ported (and unreachable for the monsters this port drives): the
+// SEDUCE=0 AD_SSEX substitution (no succubus/incubus), the AD_DREN energy
+// proportioning, the lich AT_TUCH/AD_COLD downgrade, and the home-elemental
+// double damage (needs an elemental plane).
+function getmattk(magr, indx, prev_result) {
+    const list = mon_attacks(magr.data);
+    const base = list[indx];
+    if (!base) return { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
+    const attk = { ...base };
+
+    if (indx > 0 && (prev_result[indx - 1] | 0) > M_ATTK_MISS
+        && (attk.adtyp === AD_DISE || attk.adtyp === AD_PEST
+            || attk.adtyp === AD_FAMN)
+        && attk.adtyp === list[indx - 1].adtyp) {
+        attk.adtyp = AD_STUN;
+    } else if (magr.mspec_used
+               && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
+                   || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
+        const wimpy = (attk.damd === 0);   /* lichen, violet fungus */
+        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
+            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
+            attk.aatyp = AT_TUCH;
+        } else {
+            attk.aatyp = AT_CLAW;          /* message becomes "<foo> hits" */
+            attk.adtyp = AD_PHYS;
+        }
+        attk.damn = 1; attk.damd = 6;
+        if (wimpy && attk.aatyp === AT_CLAW) {
+            attk.aatyp = AT_TUCH;
+            attk.damn = attk.damd = 0;
+        }
+    } else if (indx === 0 && attk.aatyp === AT_WEAP && attk.adtyp !== AD_PHYS
+               && !(list[1]?.aatyp === AT_WEAP && list[1]?.adtyp === AD_PHYS)
+               && magr.mcan) {
+        // The weap-based half of the guard (petrifying corpse / Stormbringer /
+        // Vorpal Blade wielded) needs artifacts no monster here carries.
+        attk.adtyp = AD_PHYS;
+    }
+    return attk;
+}
+
+// C ref: trap.h mtrapped_in_pit(mon) — a monster held by a pit/spiked pit can't
+// kick.  mtrapped is a plain flag on our monster record, so read the trap type
+// under the monster.
+function mtrapped_in_pit(mtmp) {
+    if (!mtmp.mtrapped) return false;
+    const t = t_at(mtmp.mx, mtmp.my);
+    return !!t && (t.ttyp === PIT_TTYP || t.ttyp === SPIKED_PIT_TTYP);
+}
+// C ref: trap.h PIT / SPIKED_PIT.
+const PIT_TTYP = 12, SPIKED_PIT_TTYP = 13;
+
+// C ref: mondata.h thick_skinned(ptr) — (mflags1 & M1_THICK_HIDE); a kick does
+// nothing to it.  The hero's form is the reference here (mhitu.c:811 passes
+// gy.youmonst.data), which is the human role unless polymorphed.
+function thick_skinned_hero() {
+    // gy.youmonst.data is mons[u.umonnum] whether or not the hero is polymorphed
+    // (set_uasmon keeps umonnum == umonster for the role's own form).
+    const pmidx = game.u?.umonnum;
+    const data = (pmidx != null) ? monster_by_pmidx(pmidx) : null;
+    return data ? ((mflags1_of(data) & M1_THICK_HIDE) !== 0) : false;
 }
 
 // C ref: mthrowu.c:1268 spitmu(mtmp, mattk) -> spitmm(mtmp, mattk, &youmonst).
@@ -3982,7 +4136,7 @@ function select_rwep(mtmp) {
     return null;
 }
 
-const WAN_STRIKING_OTYP = 416; // objects[].oc_name index for wand of striking
+const WAN_STRIKING_OTYP = 417; // objects[].oc_name index for wand of striking
 
 // C ref: mthrowu.c m_lined_up()/linedup() — is the hero on a straight row,
 // column, or diagonal from the monster (within BOLT_LIM), with a usable line?
@@ -4137,14 +4291,15 @@ function canseemon_mm(mtmp) {
 // C ref: mhitu.c:1144 hitmu(mtmp, mattk) — a monster lands a melee hit on the
 // hero.  Rolls the base damage d(damn,damd), dispatches the damage-type effect
 // (mhitm_adtyping), the knockback check, then subtracts HP (mdamageu).  Returns
-// 1 if the attacker died (it never does here), else 0.
+// the M_ATTK_* flags (mhm.hitflags), which mattacku() tests for AGR_DIED /
+// AGR_DONE.
 //
 // Faithful to the verified seed0002 step-31 RNG trace (grid bug, AT_BITE/
 // AD_ELEC, 1d1):
 //   d(1,1) [base dmg]; mhitm_ad_elec -> rn2(10) [mgc-negation] + rn2(20)
 //   [m_lev > rn2(20)? destroy_items]; mhitm_knockback -> rn2(3) + rn2(6).
 async function hitmu(mtmp, mdat, mattk) {
-    const mhm = { damage: 0, done: false };
+    const mhm = { damage: 0, done: false, hitflags: M_ATTK_MISS };
 
     // C ref: mhitu.c:1155 — if the hero cannot spot the attacker, remember its
     // square with the 'I' glyph.  Restricted to the blinded hero (the recorded
@@ -4164,7 +4319,7 @@ async function hitmu(mtmp, mdat, mattk) {
     // rn2(chance=6) gate rolls always fire first).
     mhitm_knockback(mtmp, mattk);
 
-    if (mhm.done) return 0;
+    if (mhm.done) return mhm.hitflags;    // mhitu.c:1196
 
     // already-dead short-circuit (uhp<1) not reachable: damage is applied below.
 
@@ -4182,9 +4337,11 @@ async function hitmu(mtmp, mdat, mattk) {
         await mdamageu(mtmp, mhm.damage);
     }
 
-    // passiveum(): the grid bug (and the other modelled victims) have no passive
-    // attack, so no RNG and no message.
-    return 0;
+    // C ref mhitu.c:1261 — `res = mhm.damage ? passiveum(...) : M_ATTK_HIT`.
+    // None of the monsters this path drives has a passive counterattack, and
+    // passiveum() returns M_ATTK_HIT when there is nothing to fire, so both
+    // branches land on M_ATTK_HIT here (no RNG, no message).
+    return M_ATTK_HIT;
 }
 
 // C ref: uhitm.c:4782 mhitm_adtyping() — dispatch on the damage type.  Only the
@@ -4197,11 +4354,96 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
     case AD_PHYS: await mhitm_ad_phys(mtmp, mattk, mhm); break;
     case AD_DRST: // drain strength (poison); AD_DRDX/AD_DRCO share this handler
         await mhitm_ad_drst(mtmp, mattk, mhm); break;
+    case AD_SITM: // steal item (nymphs, monkeys) — uhitm.c:4798 shares one handler
+    case AD_SEDU: // seduce & steal (foocubi, nymphs' second attack)
+        await mhitm_ad_sedu(mtmp, mattk, mhm); break;
     default:
         // Unmodelled adtyp: leave damage as the base roll, emit the hit verb.
         await hitmsg(mtmp, mattk);
         break;
     }
+}
+
+// C ref: uhitm.c:4623 mhitm_ad_sedu() — the `mdef == &gy.youmonst` branch: a
+// thief (nymph / monkey / foocubus) lifts an item off the hero.
+//
+// RNG order, verified against the seed0014 step-415 trace (water nymph, AT_CLAW
+// / AD_SITM):
+//   hitmu   -> d(0,0)                       [no roll: damn == damd == 0]
+//   steal   -> rn2(<inventory weight sum>)  [steal.c:421 item pick]
+//   rloc    -> rnd(COLNO-1) / rn2(ROWNO)    [up to 50 pairs, RLOC_MSG]
+//   knockback -> rn2(3) / rn2(6)            [always, back in hitmu]
+// The messages steal() emits go through update_topl(), so each one that does not
+// fit the top line produces its own --More-- frame exactly where C puts it.
+async function mhitm_ad_sedu(mtmp, mattk, mhm) {
+    const { steal } = await import('./steal.js');
+    const { rloc, tele_restrict, RLOC_MSG } = await import('./teleport.js');
+    const { monflee } = await import('./uhitm.js');
+
+    if (is_animal(mtmp.data)) {
+        // A monkey just grabs: it gets the ordinary hit message first and then
+        // falls through to the steal below (uhitm.c:4633).
+        await hitmsg(mtmp, mattk);
+        if (mtmp.mcan) return;
+    } else if (hero_has_sedu_attack()) {
+        // A hero polymorphed into a foocubus is propositioned instead of robbed;
+        // needs a poly'd hero with an AD_SEDU/AD_SSEX attack (uhitm.c:4636).
+        await emitU(`${Monnam(mtmp)} ${mtmp.minvent?.length
+            ? 'brags about the goods some dungeon explorer provided'
+            : 'makes some remarks about how difficult theft is lately'}.`);
+        if (!tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+        mhm.hitflags = M_ATTK_AGR_DONE;
+        mhm.done = true;
+        return;
+    } else if (mtmp.mcan) {
+        // A cancelled seducer fails and usually teleports off (uhitm.c:4656).
+        if (!Blind()) {
+            await emitU(`${Adjmonnam_mm(mtmp, 'plain')} tries to `
+                + `${game.flags?.female ? 'charm' : 'seduce'} you, but you seem `
+                + `${game.flags?.female ? 'unaffected' : 'uninterested'}.`);
+        }
+        if (rn2(3)) {
+            if (!tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            mhm.done = true;
+        }
+        return;
+    }
+
+    const objnambuf = { value: '' };
+    const res = await steal(mtmp, objnambuf);
+    if (res === -1) {                       // the thief petrified itself
+        mhm.hitflags = M_ATTK_AGR_DIED;
+        mhm.done = true;
+        return;
+    }
+    if (res === 0) return;                  // nothing taken; ordinary damage
+    // Something was stolen: a non-animal thief teleports away, an animal tries
+    // to run off with the loot, and either way it flees (uhitm.c:4680).
+    if (!is_animal(mtmp.data) && !tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+    if (is_animal(mtmp.data) && objnambuf.value && canseemon(mtmp)) {
+        await emitU(`${Monnam(mtmp)} tries to `
+            + `${locomotion(mtmp.data, 'run')} away with ${objnambuf.value}.`);
+    }
+    monflee(mtmp, 0, false, false);
+    mhm.hitflags = M_ATTK_AGR_DONE;
+    mhm.done = true;
+}
+
+// C ref: mondata.c dmgtype(gy.youmonst.data, AD_SEDU/AD_SSEX) — TRUE only while
+// the hero is polymorphed into something with a seduction attack.
+function hero_has_sedu_attack() {
+    const pmidx = game.u?.umonnum;
+    const data = (pmidx != null) ? monster_by_pmidx(pmidx) : null;
+    if (!data) return false;
+    return mattk_of(data).some(a => a.adtyp === AD_SEDU || a.adtyp === AD_SSEX);
+}
+
+// C ref: do_name.c Adjmonnam(mtmp, adj) — "the plain water nymph".  Only used by
+// the cancelled-seducer message.
+function Adjmonnam_mm(mtmp, adj) {
+    const nam = Monnam(mtmp);
+    return `The ${adj} ${nam.replace(/^(The|A|An) /, '').toLowerCase()}`;
 }
 
 // C ref: uhitm.c:2706 mhitm_ad_elec() — mdef == &youmonst branch.

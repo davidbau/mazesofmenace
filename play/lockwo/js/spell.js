@@ -61,12 +61,12 @@ const ECMD_TIME = 1;
 // real objects[] indices (see mkobj.js SPE_* table); a wrong value both mis-keys
 // the applySpell() switch and drops/misapplies the "healing spell" caster bonus
 // in percent_success().
-const SPE_HEALING = 373;
-const SPE_CURE_BLINDNESS = 377;
-const SPE_CURE_SICKNESS = 385;
-const SPE_EXTRA_HEALING = 390;
-const SPE_RESTORE_ABILITY = 391;
-const SPE_REMOVE_CURSE = 394;
+const SPE_HEALING = 374;
+const SPE_CURE_BLINDNESS = 378;
+const SPE_CURE_SICKNESS = 386;
+const SPE_EXTRA_HEALING = 391;
+const SPE_RESTORE_ABILITY = 392;
+const SPE_REMOVE_CURSE = 395;
 
 // spl_book lives on the game object: an array of { sp_id, sp_lev, sp_know }.
 function spl_book() {
@@ -383,18 +383,18 @@ async function getdir() {
 // per-spellbook study delay (parallel to SPELL_META's oc_level).  The JS objects
 // table doesn't carry oc_delay, so it lives here keyed by otyp (SPE_*).
 const SPELL_DELAY = new Map([
-    [365, 6], [366, 2], [367, 4], [368, 7], [369, 1], [370, 10], [371, 1],
-    [372, 1], [373, 2], [374, 1], [375, 2], [376, 2], [377, 2], [378, 2],
-    [379, 2], [380, 3], [381, 3], [382, 3], [383, 3], [384, 3], [385, 3],
-    [386, 3], [387, 4], [388, 4], [389, 4], [390, 5], [391, 5], [392, 5],
-    [393, 5], [394, 5], [395, 7], [396, 6], [397, 8], [398, 8], [399, 6],
-    [400, 7], [401, 8], [402, 3], [403, 3], [404, 1], [405, 4],
+    [366, 6], [367, 2], [368, 4], [369, 7], [370, 1], [371, 10], [372, 1],
+    [373, 1], [374, 2], [375, 1], [376, 2], [377, 2], [378, 2], [379, 2],
+    [380, 2], [381, 3], [382, 3], [383, 3], [384, 3], [385, 3], [386, 3],
+    [387, 3], [388, 4], [389, 4], [390, 4], [391, 5], [392, 5], [393, 5],
+    [394, 5], [395, 5], [396, 7], [397, 6], [398, 8], [399, 8], [400, 6],
+    [401, 7], [402, 8], [403, 3], [404, 3], [405, 1], [406, 4],
 ]);
 function oc_delay_of(otyp) { return SPELL_DELAY.get(otyp) ?? 0; }
 
 const PM_WIZARD = 12; // C ref: include/monsters.h; role check for the difficulty prompt.
 const LENSES = 232; // C ref: include/objects.h otyp; +2 read_ability when worn.
-const SPE_BOOK_OF_THE_DEAD = 408; // C ref: include/objects.h otyp.
+const SPE_BOOK_OF_THE_DEAD = 409; // C ref: include/objects.h otyp.
 
 // C ref: hack.c nomul(nval) — make the hero helpless/busy for |nval| turns.
 // `if (multi < nval) return; multi = nval;` plus clearing travel state.  Set

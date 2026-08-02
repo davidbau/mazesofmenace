@@ -75,17 +75,17 @@ export const SCR_CONFUSE_MONSTER = 325;
 export const SCR_SCARE_MONSTER = 326;
 export const SCR_REMOVE_CURSE = 327;
 export const SCR_TELEPORTATION = 333;
-export const SCR_BLANK_PAPER = 364;
-export const SPE_HEALING = 373;
-export const SPE_NOVEL = 407;
-export const SPE_BLANK_PAPER = 406;
-export const WAN_DIGGING = 427;
-export const WAN_WISHING = 413;
-export const WAN_STASIS = 414;
-export const WAN_FIRE = 429;
-export const WAN_CANCELLATION = 422;
-export const WAN_LIGHT = 409;
-export const WAN_LIGHTNING = 433;
+export const SCR_BLANK_PAPER = 365;
+export const SPE_HEALING = 374;
+export const SPE_NOVEL = 408;
+export const SPE_BLANK_PAPER = 407;
+export const WAN_DIGGING = 428;
+export const WAN_WISHING = 414;
+export const WAN_STASIS = 415;
+export const WAN_FIRE = 430;
+export const WAN_CANCELLATION = 423;
+export const WAN_LIGHT = 410;
+export const WAN_LIGHTNING = 434;
 export const RIN_TELEPORTATION = 194;
 export const RIN_POLYMORPH = 196;
 export const RIN_AGGRAVATE_MONSTER = 185;
@@ -115,6 +115,8 @@ export const HORN_OF_PLENTY = 252;
 export const FIGURINE = 241;
 export const BELL = 255;
 export const BELL_OF_OPENING = 263;
+export const CANDELABRUM_OF_INVOCATION = 262;
+export const SPE_BOOK_OF_THE_DEAD = 409;
 export const MAGIC_FLUTE = 248;
 export const MAGIC_HARP = 254;
 export const FROST_HORN = 250;
@@ -131,19 +133,19 @@ export const LEVITATION_BOOTS = 172;
 export const HELM_OF_OPPOSITE_ALIGNMENT = 99;
 export const GAUNTLETS_OF_FUMBLING = 160;
 export const SPLINT_MAIL = 124;
-export const DILITHIUM_CRYSTAL = 438;
-export const FIRST_REAL_GEM = 438;
-export const LAST_REAL_GEM = 459;
-export const LUCKSTONE = 469;
-export const LOADSTONE = 470;
-export const ROCK = 473;
-export const GOLD_PIECE = 437;
-export const BOULDER = 474;
-export const STATUE = 475;
-export const HEAVY_IRON_BALL = 476;
-export const IRON_CHAIN = 477;
-export const BLINDING_VENOM = 478;
-export const ACID_VENOM = 479;
+export const DILITHIUM_CRYSTAL = 439;
+export const FIRST_REAL_GEM = 439;
+export const LAST_REAL_GEM = 460;
+export const LUCKSTONE = 470;
+export const LOADSTONE = 471;
+export const ROCK = 474;
+export const GOLD_PIECE = 438;
+export const BOULDER = 475;
+export const STATUE = 476;
+export const HEAVY_IRON_BALL = 477;
+export const IRON_CHAIN = 478;
+export const BLINDING_VENOM = 479;
+export const ACID_VENOM = 480;
 
 const F_CHARGED = 1;
 const F_MULTIGEN = 2;
@@ -554,122 +556,123 @@ const OBJECT_DATA = [
   [361, "SC18", 9, 0, 32, 5, 0, ""],
   [362, "SC19", 9, 0, 32, 5, 0, ""],
   [363, "SC20", 9, 0, 32, 5, 0, ""],
-  [364, "SCR_BLANK_PAPER", 9, 28, 32, 5, 0, "blank paper"],
-  [365, "SPE_DIG", 10, 20, 0, 5, 3, "dig"],
-  [366, "SPE_MAGIC_MISSILE", 10, 45, 0, 5, 3, "magic missile"],
-  [367, "SPE_FIREBALL", 10, 20, 0, 5, 3, "fireball"],
-  [368, "SPE_CONE_OF_COLD", 10, 10, 0, 5, 3, "cone of cold"],
-  [369, "SPE_SLEEP", 10, 30, 0, 5, 3, "sleep"],
-  [370, "SPE_FINGER_OF_DEATH", 10, 5, 0, 5, 3, "finger of death"],
-  [371, "SPE_LIGHT", 10, 45, 0, 5, 1, "light"],
-  [372, "SPE_DETECT_MONSTERS", 10, 43, 0, 5, 1, "detect monsters"],
-  [373, "SPE_HEALING", 10, 40, 0, 5, 2, "healing"],
-  [374, "SPE_KNOCK", 10, 25, 0, 5, 2, "knock"],
-  [375, "SPE_FORCE_BOLT", 10, 30, 0, 5, 2, "force bolt"],
-  [376, "SPE_CONFUSE_MONSTER", 10, 49, 0, 5, 2, "confuse monster"],
-  [377, "SPE_CURE_BLINDNESS", 10, 25, 0, 5, 2, "cure blindness"],
-  [378, "SPE_DRAIN_LIFE", 10, 10, 0, 5, 2, "drain life"],
-  [379, "SPE_SLOW_MONSTER", 10, 30, 0, 5, 2, "slow monster"],
-  [380, "SPE_WIZARD_LOCK", 10, 25, 0, 5, 2, "wizard lock"],
-  [381, "SPE_CREATE_MONSTER", 10, 35, 0, 5, 1, "create monster"],
-  [382, "SPE_DETECT_FOOD", 10, 30, 0, 5, 1, "detect food"],
-  [383, "SPE_CAUSE_FEAR", 10, 25, 0, 5, 1, "cause fear"],
-  [384, "SPE_CLAIRVOYANCE", 10, 15, 0, 5, 1, "clairvoyance"],
-  [385, "SPE_CURE_SICKNESS", 10, 32, 0, 5, 1, "cure sickness"],
-  [386, "SPE_CHARM_MONSTER", 10, 20, 0, 5, 2, "charm monster"],
-  [387, "SPE_HASTE_SELF", 10, 33, 0, 5, 1, "haste self"],
-  [388, "SPE_DETECT_UNSEEN", 10, 20, 0, 5, 1, "detect unseen"],
-  [389, "SPE_LEVITATION", 10, 20, 0, 5, 1, "levitation"],
-  [390, "SPE_EXTRA_HEALING", 10, 27, 0, 5, 2, "extra healing"],
-  [391, "SPE_RESTORE_ABILITY", 10, 25, 0, 5, 1, "restore ability"],
-  [392, "SPE_INVISIBILITY", 10, 20, 0, 5, 1, "invisibility"],
-  [393, "SPE_DETECT_TREASURE", 10, 20, 0, 5, 1, "detect treasure"],
-  [394, "SPE_REMOVE_CURSE", 10, 25, 0, 5, 1, "remove curse"],
-  [395, "SPE_MAGIC_MAPPING", 10, 18, 0, 5, 1, "magic mapping"],
-  [396, "SPE_IDENTIFY", 10, 20, 0, 5, 1, "identify"],
-  [397, "SPE_TURN_UNDEAD", 10, 16, 0, 5, 2, "turn undead"],
-  [398, "SPE_POLYMORPH", 10, 10, 0, 5, 2, "polymorph"],
-  [399, "SPE_TELEPORT_AWAY", 10, 15, 0, 5, 2, "teleport away"],
-  [400, "SPE_CREATE_FAMILIAR", 10, 10, 0, 5, 1, "create familiar"],
-  [401, "SPE_CANCELLATION", 10, 15, 0, 5, 2, "cancellation"],
-  [402, "SPE_PROTECTION", 10, 18, 0, 5, 1, "protection"],
-  [403, "SPE_JUMPING", 10, 20, 0, 5, 2, "jumping"],
-  [404, "SPE_STONE_TO_FLESH", 10, 15, 0, 5, 2, "stone to flesh"],
-  [405, "SPE_CHAIN_LIGHTNING", 10, 25, 0, 5, 1, "chain lightning"],
-  [406, "SPE_BLANK_PAPER", 10, 18, 0, 5, 0, "blank paper"],
-  [407, "SPE_NOVEL", 10, 1, 0, 5, 0, "novel"],
-  [408, "SPE_BOOK_OF_THE_DEAD", 10, 0, 64, 5, 0, "Book of the Dead"],
-  [409, "WAN_LIGHT", 11, 95, 1, 19, 1, "light"],
-  [410, "WAN_SECRET_DOOR_DETECTION", 11, 50, 1, 8, 1, "secret door detection"],
-  [411, "WAN_ENLIGHTENMENT", 11, 15, 1, 19, 1, "enlightenment"],
-  [412, "WAN_CREATE_MONSTER", 11, 50, 1, 8, 1, "create monster"],
-  [413, "WAN_WISHING", 11, 5, 1, 8, 1, "wishing"],
-  [414, "WAN_STASIS", 11, 45, 1, 8, 1, "stasis"],
-  [415, "WAN_NOTHING", 11, 25, 1, 8, 2, "nothing"],
-  [416, "WAN_STRIKING", 11, 30, 1, 8, 2, "striking"],
-  [417, "WAN_MAKE_INVISIBLE", 11, 45, 1, 21, 2, "make invisible"],
-  [418, "WAN_SLOW_MONSTER", 11, 50, 1, 12, 2, "slow monster"],
-  [419, "WAN_SPEED_MONSTER", 11, 50, 1, 13, 2, "speed monster"],
-  [420, "WAN_UNDEAD_TURNING", 11, 50, 1, 13, 2, "undead turning"],
-  [421, "WAN_POLYMORPH", 11, 45, 1, 14, 2, "polymorph"],
-  [422, "WAN_CANCELLATION", 11, 45, 1, 16, 2, "cancellation"],
-  [423, "WAN_TELEPORTATION", 11, 45, 1, 12, 2, "teleportation"],
-  [424, "WAN_OPENING", 11, 30, 1, 12, 2, "opening"],
-  [425, "WAN_LOCKING", 11, 30, 1, 12, 2, "locking"],
-  [426, "WAN_PROBING", 11, 30, 1, 12, 2, "probing"],
-  [427, "WAN_DIGGING", 11, 40, 1, 11, 3, "digging"],
-  [428, "WAN_MAGIC_MISSILE", 11, 50, 1, 11, 3, "magic missile"],
-  [429, "WAN_FIRE", 11, 40, 1, 11, 3, "fire"],
-  [430, "WAN_COLD", 11, 40, 1, 11, 3, "cold"],
-  [431, "WAN_SLEEP", 11, 50, 1, 11, 3, "sleep"],
-  [432, "WAN_DEATH", 11, 5, 1, 11, 3, "death"],
-  [433, "WAN_LIGHTNING", 11, 40, 1, 11, 3, "lightning"],
-  [434, "WAN1", 11, 0, 1, 8, 0, ""],
-  [435, "WAN2", 11, 0, 1, 11, 0, ""],
-  [436, "WAN3", 11, 0, 1, 11, 0, ""],
-  [437, "GOLD_PIECE", 12, 1000, 32, 15, 0, "gold piece"],
-  [438, "DILITHIUM_CRYSTAL", 13, 2, 32, 20, 0, "dilithium crystal"],
-  [439, "DIAMOND", 13, 3, 32, 20, 0, "diamond"],
-  [440, "RUBY", 13, 4, 32, 20, 0, "ruby"],
-  [441, "JACINTH", 13, 3, 32, 20, 0, "jacinth"],
-  [442, "SAPPHIRE", 13, 4, 32, 20, 0, "sapphire"],
-  [443, "BLACK_OPAL", 13, 3, 32, 20, 0, "black opal"],
-  [444, "EMERALD", 13, 5, 32, 20, 0, "emerald"],
-  [445, "TURQUOISE", 13, 6, 32, 20, 0, "turquoise"],
-  [446, "CITRINE", 13, 4, 32, 20, 0, "citrine"],
-  [447, "AQUAMARINE", 13, 6, 32, 20, 0, "aquamarine"],
-  [448, "AMBER", 13, 8, 32, 20, 0, "amber"],
-  [449, "TOPAZ", 13, 10, 32, 20, 0, "topaz"],
-  [450, "JET", 13, 6, 32, 20, 0, "jet"],
-  [451, "OPAL", 13, 12, 32, 20, 0, "opal"],
-  [452, "CHRYSOBERYL", 13, 8, 32, 20, 0, "chrysoberyl"],
-  [453, "GARNET", 13, 12, 32, 20, 0, "garnet"],
-  [454, "AMETHYST", 13, 14, 32, 20, 0, "amethyst"],
-  [455, "JASPER", 13, 15, 32, 20, 0, "jasper"],
-  [456, "FLUORITE", 13, 15, 32, 20, 0, "fluorite"],
-  [457, "OBSIDIAN", 13, 9, 32, 20, 0, "obsidian"],
-  [458, "AGATE", 13, 12, 32, 20, 0, "agate"],
-  [459, "JADE", 13, 10, 32, 20, 0, "jade"],
-  [460, "WORTHLESS_WHITE_GLASS", 13, 77, 32, 19, 0, "worthless piece of white glass"],
-  [461, "WORTHLESS_BLUE_GLASS", 13, 77, 32, 19, 0, "worthless piece of blue glass"],
-  [462, "WORTHLESS_RED_GLASS", 13, 77, 32, 19, 0, "worthless piece of red glass"],
-  [463, "WORTHLESS_YELLOWBROWN_GLASS", 13, 77, 32, 19, 0, "worthless piece of yellowish brown glass"],
-  [464, "WORTHLESS_ORANGE_GLASS", 13, 76, 32, 19, 0, "worthless piece of orange glass"],
-  [465, "WORTHLESS_YELLOW_GLASS", 13, 77, 32, 19, 0, "worthless piece of yellow glass"],
-  [466, "WORTHLESS_BLACK_GLASS", 13, 76, 32, 19, 0, "worthless piece of black glass"],
-  [467, "WORTHLESS_GREEN_GLASS", 13, 77, 32, 19, 0, "worthless piece of green glass"],
-  [468, "WORTHLESS_VIOLET_GLASS", 13, 77, 32, 19, 0, "worthless piece of violet glass"],
-  [469, "LUCKSTONE", 13, 10, 32, 21, 0, "luckstone"],
-  [470, "LOADSTONE", 13, 10, 32, 21, 0, "loadstone"],
-  [471, "TOUCHSTONE", 13, 8, 32, 21, 0, "touchstone"],
-  [472, "FLINT", 13, 10, 32, 21, 0, "flint"],
-  [473, "ROCK", 13, 100, 32, 21, 0, "rock"],
-  [474, "BOULDER", 14, 100, 0, 21, 0, "boulder"],
-  [475, "STATUE", 14, 900, 8, 21, 0, "statue"],
-  [476, "HEAVY_IRON_BALL", 15, 1000, 0, 11, 0, "heavy iron ball"],
-  [477, "IRON_CHAIN", 16, 1000, 0, 11, 0, "iron chain"],
-  [478, "BLINDING_VENOM", 17, 500, 32, 1, 0, "splash of blinding venom"],
-  [479, "ACID_VENOM", 17, 500, 32, 1, 0, "splash of acid venom"],
+  [364, "SCR_MAIL", 9, 0, 32, 5, 0, "mail"],
+  [365, "SCR_BLANK_PAPER", 9, 28, 32, 5, 0, "blank paper"],
+  [366, "SPE_DIG", 10, 20, 0, 5, 3, "dig"],
+  [367, "SPE_MAGIC_MISSILE", 10, 45, 0, 5, 3, "magic missile"],
+  [368, "SPE_FIREBALL", 10, 20, 0, 5, 3, "fireball"],
+  [369, "SPE_CONE_OF_COLD", 10, 10, 0, 5, 3, "cone of cold"],
+  [370, "SPE_SLEEP", 10, 30, 0, 5, 3, "sleep"],
+  [371, "SPE_FINGER_OF_DEATH", 10, 5, 0, 5, 3, "finger of death"],
+  [372, "SPE_LIGHT", 10, 45, 0, 5, 1, "light"],
+  [373, "SPE_DETECT_MONSTERS", 10, 43, 0, 5, 1, "detect monsters"],
+  [374, "SPE_HEALING", 10, 40, 0, 5, 2, "healing"],
+  [375, "SPE_KNOCK", 10, 25, 0, 5, 2, "knock"],
+  [376, "SPE_FORCE_BOLT", 10, 30, 0, 5, 2, "force bolt"],
+  [377, "SPE_CONFUSE_MONSTER", 10, 49, 0, 5, 2, "confuse monster"],
+  [378, "SPE_CURE_BLINDNESS", 10, 25, 0, 5, 2, "cure blindness"],
+  [379, "SPE_DRAIN_LIFE", 10, 10, 0, 5, 2, "drain life"],
+  [380, "SPE_SLOW_MONSTER", 10, 30, 0, 5, 2, "slow monster"],
+  [381, "SPE_WIZARD_LOCK", 10, 25, 0, 5, 2, "wizard lock"],
+  [382, "SPE_CREATE_MONSTER", 10, 35, 0, 5, 1, "create monster"],
+  [383, "SPE_DETECT_FOOD", 10, 30, 0, 5, 1, "detect food"],
+  [384, "SPE_CAUSE_FEAR", 10, 25, 0, 5, 1, "cause fear"],
+  [385, "SPE_CLAIRVOYANCE", 10, 15, 0, 5, 1, "clairvoyance"],
+  [386, "SPE_CURE_SICKNESS", 10, 32, 0, 5, 1, "cure sickness"],
+  [387, "SPE_CHARM_MONSTER", 10, 20, 0, 5, 2, "charm monster"],
+  [388, "SPE_HASTE_SELF", 10, 33, 0, 5, 1, "haste self"],
+  [389, "SPE_DETECT_UNSEEN", 10, 20, 0, 5, 1, "detect unseen"],
+  [390, "SPE_LEVITATION", 10, 20, 0, 5, 1, "levitation"],
+  [391, "SPE_EXTRA_HEALING", 10, 27, 0, 5, 2, "extra healing"],
+  [392, "SPE_RESTORE_ABILITY", 10, 25, 0, 5, 1, "restore ability"],
+  [393, "SPE_INVISIBILITY", 10, 20, 0, 5, 1, "invisibility"],
+  [394, "SPE_DETECT_TREASURE", 10, 20, 0, 5, 1, "detect treasure"],
+  [395, "SPE_REMOVE_CURSE", 10, 25, 0, 5, 1, "remove curse"],
+  [396, "SPE_MAGIC_MAPPING", 10, 18, 0, 5, 1, "magic mapping"],
+  [397, "SPE_IDENTIFY", 10, 20, 0, 5, 1, "identify"],
+  [398, "SPE_TURN_UNDEAD", 10, 16, 0, 5, 2, "turn undead"],
+  [399, "SPE_POLYMORPH", 10, 10, 0, 5, 2, "polymorph"],
+  [400, "SPE_TELEPORT_AWAY", 10, 15, 0, 5, 2, "teleport away"],
+  [401, "SPE_CREATE_FAMILIAR", 10, 10, 0, 5, 1, "create familiar"],
+  [402, "SPE_CANCELLATION", 10, 15, 0, 5, 2, "cancellation"],
+  [403, "SPE_PROTECTION", 10, 18, 0, 5, 1, "protection"],
+  [404, "SPE_JUMPING", 10, 20, 0, 5, 2, "jumping"],
+  [405, "SPE_STONE_TO_FLESH", 10, 15, 0, 5, 2, "stone to flesh"],
+  [406, "SPE_CHAIN_LIGHTNING", 10, 25, 0, 5, 1, "chain lightning"],
+  [407, "SPE_BLANK_PAPER", 10, 18, 0, 5, 0, "blank paper"],
+  [408, "SPE_NOVEL", 10, 1, 0, 5, 0, "novel"],
+  [409, "SPE_BOOK_OF_THE_DEAD", 10, 0, 64, 5, 0, "Book of the Dead"],
+  [410, "WAN_LIGHT", 11, 95, 1, 19, 1, "light"],
+  [411, "WAN_SECRET_DOOR_DETECTION", 11, 50, 1, 8, 1, "secret door detection"],
+  [412, "WAN_ENLIGHTENMENT", 11, 15, 1, 19, 1, "enlightenment"],
+  [413, "WAN_CREATE_MONSTER", 11, 50, 1, 8, 1, "create monster"],
+  [414, "WAN_WISHING", 11, 5, 1, 8, 1, "wishing"],
+  [415, "WAN_STASIS", 11, 45, 1, 8, 1, "stasis"],
+  [416, "WAN_NOTHING", 11, 25, 1, 8, 2, "nothing"],
+  [417, "WAN_STRIKING", 11, 30, 1, 8, 2, "striking"],
+  [418, "WAN_MAKE_INVISIBLE", 11, 45, 1, 21, 2, "make invisible"],
+  [419, "WAN_SLOW_MONSTER", 11, 50, 1, 12, 2, "slow monster"],
+  [420, "WAN_SPEED_MONSTER", 11, 50, 1, 13, 2, "speed monster"],
+  [421, "WAN_UNDEAD_TURNING", 11, 50, 1, 13, 2, "undead turning"],
+  [422, "WAN_POLYMORPH", 11, 45, 1, 14, 2, "polymorph"],
+  [423, "WAN_CANCELLATION", 11, 45, 1, 16, 2, "cancellation"],
+  [424, "WAN_TELEPORTATION", 11, 45, 1, 12, 2, "teleportation"],
+  [425, "WAN_OPENING", 11, 30, 1, 12, 2, "opening"],
+  [426, "WAN_LOCKING", 11, 30, 1, 12, 2, "locking"],
+  [427, "WAN_PROBING", 11, 30, 1, 12, 2, "probing"],
+  [428, "WAN_DIGGING", 11, 40, 1, 11, 3, "digging"],
+  [429, "WAN_MAGIC_MISSILE", 11, 50, 1, 11, 3, "magic missile"],
+  [430, "WAN_FIRE", 11, 40, 1, 11, 3, "fire"],
+  [431, "WAN_COLD", 11, 40, 1, 11, 3, "cold"],
+  [432, "WAN_SLEEP", 11, 50, 1, 11, 3, "sleep"],
+  [433, "WAN_DEATH", 11, 5, 1, 11, 3, "death"],
+  [434, "WAN_LIGHTNING", 11, 40, 1, 11, 3, "lightning"],
+  [435, "WAN1", 11, 0, 1, 8, 0, ""],
+  [436, "WAN2", 11, 0, 1, 11, 0, ""],
+  [437, "WAN3", 11, 0, 1, 11, 0, ""],
+  [438, "GOLD_PIECE", 12, 1000, 32, 15, 0, "gold piece"],
+  [439, "DILITHIUM_CRYSTAL", 13, 2, 32, 20, 0, "dilithium crystal"],
+  [440, "DIAMOND", 13, 3, 32, 20, 0, "diamond"],
+  [441, "RUBY", 13, 4, 32, 20, 0, "ruby"],
+  [442, "JACINTH", 13, 3, 32, 20, 0, "jacinth"],
+  [443, "SAPPHIRE", 13, 4, 32, 20, 0, "sapphire"],
+  [444, "BLACK_OPAL", 13, 3, 32, 20, 0, "black opal"],
+  [445, "EMERALD", 13, 5, 32, 20, 0, "emerald"],
+  [446, "TURQUOISE", 13, 6, 32, 20, 0, "turquoise"],
+  [447, "CITRINE", 13, 4, 32, 20, 0, "citrine"],
+  [448, "AQUAMARINE", 13, 6, 32, 20, 0, "aquamarine"],
+  [449, "AMBER", 13, 8, 32, 20, 0, "amber"],
+  [450, "TOPAZ", 13, 10, 32, 20, 0, "topaz"],
+  [451, "JET", 13, 6, 32, 20, 0, "jet"],
+  [452, "OPAL", 13, 12, 32, 20, 0, "opal"],
+  [453, "CHRYSOBERYL", 13, 8, 32, 20, 0, "chrysoberyl"],
+  [454, "GARNET", 13, 12, 32, 20, 0, "garnet"],
+  [455, "AMETHYST", 13, 14, 32, 20, 0, "amethyst"],
+  [456, "JASPER", 13, 15, 32, 20, 0, "jasper"],
+  [457, "FLUORITE", 13, 15, 32, 20, 0, "fluorite"],
+  [458, "OBSIDIAN", 13, 9, 32, 20, 0, "obsidian"],
+  [459, "AGATE", 13, 12, 32, 20, 0, "agate"],
+  [460, "JADE", 13, 10, 32, 20, 0, "jade"],
+  [461, "WORTHLESS_WHITE_GLASS", 13, 77, 32, 19, 0, "worthless piece of white glass"],
+  [462, "WORTHLESS_BLUE_GLASS", 13, 77, 32, 19, 0, "worthless piece of blue glass"],
+  [463, "WORTHLESS_RED_GLASS", 13, 77, 32, 19, 0, "worthless piece of red glass"],
+  [464, "WORTHLESS_YELLOWBROWN_GLASS", 13, 77, 32, 19, 0, "worthless piece of yellowish brown glass"],
+  [465, "WORTHLESS_ORANGE_GLASS", 13, 76, 32, 19, 0, "worthless piece of orange glass"],
+  [466, "WORTHLESS_YELLOW_GLASS", 13, 77, 32, 19, 0, "worthless piece of yellow glass"],
+  [467, "WORTHLESS_BLACK_GLASS", 13, 76, 32, 19, 0, "worthless piece of black glass"],
+  [468, "WORTHLESS_GREEN_GLASS", 13, 77, 32, 19, 0, "worthless piece of green glass"],
+  [469, "WORTHLESS_VIOLET_GLASS", 13, 77, 32, 19, 0, "worthless piece of violet glass"],
+  [470, "LUCKSTONE", 13, 10, 32, 21, 0, "luckstone"],
+  [471, "LOADSTONE", 13, 10, 32, 21, 0, "loadstone"],
+  [472, "TOUCHSTONE", 13, 8, 32, 21, 0, "touchstone"],
+  [473, "FLINT", 13, 10, 32, 21, 0, "flint"],
+  [474, "ROCK", 13, 100, 32, 21, 0, "rock"],
+  [475, "BOULDER", 14, 100, 0, 21, 0, "boulder"],
+  [476, "STATUE", 14, 900, 8, 21, 0, "statue"],
+  [477, "HEAVY_IRON_BALL", 15, 1000, 0, 11, 0, "heavy iron ball"],
+  [478, "IRON_CHAIN", 16, 1000, 0, 11, 0, "iron chain"],
+  [479, "BLINDING_VENOM", 17, 500, 32, 1, 0, "splash of blinding venom"],
+  [480, "ACID_VENOM", 17, 500, 32, 1, 0, "splash of acid venom"],
 ];
 
 // Per-object declared display color (oc_color), ported verbatim from the
@@ -679,7 +682,7 @@ const OBJECT_DATA = [
 // object's *declared* color, which for many objects (e.g. apple=CLR_RED on a
 // VEGGY body) differs from the bare material default — so it must override any
 // material-derived fallback.  Value 8 = NO_COLOR (generic placeholders only).
-const OC_COLOR = [8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,6,3,0,7,6,6,6,6,3,6,3,0,6,7,6,6,6,3,0,7,6,6,6,6,15,15,6,6,6,3,0,6,6,7,6,3,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,6,6,3,3,3,6,6,3,3,3,0,3,3,3,3,0,6,3,4,4,0,15,6,2,6,6,7,11,14,1,15,9,0,4,2,11,7,11,14,1,15,9,0,4,2,11,6,15,11,6,6,7,7,6,0,6,3,6,0,3,0,5,15,7,0,0,3,3,1,15,3,3,13,15,3,3,3,3,2,6,1,6,6,7,3,3,3,3,3,6,3,3,3,3,3,3,3,3,3,7,7,1,9,15,7,3,2,11,3,6,4,1,15,15,6,11,11,6,6,14,11,7,10,3,5,14,6,6,6,6,6,6,6,6,6,6,6,6,6,3,3,15,3,3,3,3,6,6,15,15,15,11,11,11,0,7,14,14,0,5,3,3,6,6,6,6,7,1,1,6,6,6,3,3,15,15,15,15,3,3,11,11,3,3,6,6,15,11,7,3,3,15,3,3,3,3,7,3,2,0,2,2,1,9,10,10,11,9,2,15,3,11,15,12,11,11,15,3,3,3,3,6,1,3,9,11,10,2,3,6,3,5,15,2,15,14,15,7,15,7,0,7,3,6,0,15,3,6,15,15,9,15,15,15,3,15,15,14,14,15,15,11,15,15,6,15,15,15,15,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,15,3,6,15,15,6,15,14,3,15,13,1,9,11,5,6,2,3,6,12,4,4,5,5,5,3,2,3,3,7,15,15,11,11,7,11,15,15,15,15,15,7,15,12,15,14,3,14,3,3,1,3,3,7,6,11,11,7,15,14,6,6,6,6,6,6,6,6,6,6,8,8,8,11,15,15,1,9,4,0,2,2,11,2,3,3,0,15,11,1,5,1,5,0,9,2,15,4,1,3,9,11,0,2,5,7,7,7,7,7,7,15,6,6,3,3];
+const OC_COLOR = [8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,6,3,0,7,6,6,6,6,3,6,3,0,6,7,6,6,6,3,0,7,6,6,6,6,15,15,6,6,6,3,0,6,6,7,6,3,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,6,6,3,3,3,6,6,3,3,3,0,3,3,3,3,0,6,3,4,4,0,15,6,2,6,6,7,11,14,1,15,9,0,4,2,11,7,11,14,1,15,9,0,4,2,11,6,15,11,6,6,7,7,6,0,6,3,6,0,3,0,5,15,7,0,0,3,3,1,15,3,3,13,15,3,3,3,3,2,6,1,6,6,7,3,3,3,3,3,6,3,3,3,3,3,3,3,3,3,7,7,1,9,15,7,3,2,11,3,6,4,1,15,15,6,11,11,6,6,14,11,7,10,3,5,14,6,6,6,6,6,6,6,6,6,6,6,6,6,3,3,15,3,3,3,3,6,6,15,15,15,11,11,11,0,7,14,14,0,5,3,3,6,6,6,6,7,1,1,6,6,6,3,3,15,15,15,15,3,3,11,11,3,3,6,6,15,11,7,3,3,15,3,3,3,3,7,3,2,0,2,2,1,9,10,10,11,9,2,15,3,11,15,12,11,11,15,3,3,3,3,6,1,3,9,11,10,2,3,6,3,5,15,2,15,14,15,7,15,7,0,7,3,6,0,15,3,6,15,15,9,15,15,15,3,15,15,14,14,15,15,11,15,15,6,15,15,15,15,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,15,15,3,6,15,15,6,15,14,3,15,13,1,9,11,5,6,2,3,6,12,4,4,5,5,5,3,2,3,3,7,15,15,11,11,7,11,15,15,15,15,15,7,15,12,15,14,3,14,3,3,1,3,3,7,6,11,11,7,15,14,6,6,6,6,6,6,6,6,6,6,8,8,8,11,15,15,1,9,4,0,2,2,11,2,3,3,0,15,11,1,5,1,5,0,9,2,15,4,1,3,9,11,0,2,5,7,7,7,7,7,7,15,6,6,3,3];
 
 // Per-weapon skill subtype (oc_skill == oc_subtyp), ported from the WEAPON/
 // PROJECTILE/BOW macros in include/objects.h.  Ammunition uses the negative of
@@ -700,12 +703,12 @@ const OC_SKILL = {
     // P_UNICORN_HORN=27.
     259: 4 /*pick-axe*/, 260: 13 /*grappling hook*/, 261: 27 /*unicorn horn*/,
 };
-// GEM_CLASS entries (dilithium crystal..rock, otyp 438-473) all carry
+// GEM_CLASS entries (dilithium crystal..rock, otyp 439-474) all carry
 // oc_skill = -P_SLING(-21) via the GEM()/ROCK() macros in objects.h — any real
 // gem, stone, or rock is valid sling ammo (is_ammo/find_launcher).  The
 // otyp==13 "generic gem" placeholder uses the GENERIC() macro instead and
 // keeps oc_skill 0 (not a real, throwable object), so it's excluded here.
-for (let otyp = 438; otyp <= 473; otyp++) OC_SKILL[otyp] = -21;
+for (let otyp = 439; otyp <= 474; otyp++) OC_SKILL[otyp] = -21;
 
 export const objects = OBJECT_DATA.map(([otyp, sym, oclass, prob, flags, material, dir, name]) => ({
     otyp, sym, oclass, oc_class: oclass, oc_prob: prob, flags, material, dir, name,
@@ -748,8 +751,8 @@ const OC_MAGIC_RANGES = [
     [93, 94], [96, 96], [98, 100], [139, 139], [143, 144], [146, 149],
     [151, 152], [158, 158], [160, 162], [166, 211], [219, 220], [228, 228],
     [231, 231], [241, 242], [246, 246], [248, 248], [250, 252], [254, 254],
-    [258, 258], [261, 261], [297, 316], [323, 343], [365, 405], [409, 414],
-    [416, 436], [469, 471],
+    [258, 258], [261, 261], [297, 316], [323, 343], [366, 406], [410, 415],
+    [417, 437], [470, 472],
 ];
 for (const [lo, hi] of OC_MAGIC_RANGES)
     for (let i = lo; i <= hi; i++)
@@ -1048,7 +1051,9 @@ function is_lizard_or_lichen(corpsenm) {
         || corpsenm === PM_LIZARD;
 }
 
-function is_rider_pm(corpsenm) {
+// C ref: mondata.h is_rider(ptr) — Death / Pestilence / Famine.  Exported so
+// zap.c's obj_resists() can apply its Rider-corpse exemption.
+export function is_rider_pm(corpsenm) {
     const name = corpse_mon_name(corpsenm);
     return name === 'Death' || name === 'Pestilence' || name === 'Famine'
         || corpsenm === PM_DEATH || corpsenm === PM_PESTILENCE
@@ -1295,6 +1300,7 @@ const BASE_OC_WEIGHT = Object.freeze({
 // by CLASS_OC_WEIGHT; coins/corpses/containers/statues keep their special
 // cases in weight() regardless of this table.
 const OC_WEIGHT = Object.freeze({
+    364:5, /* SCR_MAIL */
     18:1, 19:1, 20:1, 21:1, 22:1, 23:1, 24:1, 25:1, 26:5, 27:30,
     28:30, 29:30, 30:35, 31:36, 32:20, 33:25, 34:10, 35:10, 36:10, 37:12, 38:10, 39:5, 40:5, 41:5,
     42:20, 43:20, 44:60, 45:120, 46:30, 47:30, 48:30, 49:30, 50:40, 51:40, 52:70, 53:70, 54:40, 55:150,
@@ -1318,18 +1324,16 @@ const OC_WEIGHT = Object.freeze({
     294:10, 295:10, 296:10, 297:20, 298:50, 299:20, 300:20, 301:20, 302:20, 303:50, 304:20, 305:50, 306:20, 307:50,
     308:50, 309:20, 310:7, 311:20, 312:20, 313:20, 314:20, 315:20, 316:7, 317:20, 318:20, 319:20, 320:20, 321:20,
     322:20, 323:5, 324:5, 325:50, 326:5, 327:50, 328:5, 329:7, 330:5, 331:5, 332:7, 333:7, 334:5, 335:5,
-    336:50, 337:50, 338:5, 339:7, 340:5, 341:5, 342:5, 343:5, 364:50, 365:50, 366:7, 367:50, 368:50, 369:7,
-    370:50, 371:7, 372:50, 373:50, 374:50, 375:50, 376:50, 377:50, 378:50, 379:7, 380:50, 381:7, 382:50, 383:50,
-    384:50, 385:50, 386:50, 387:50, 388:50, 389:50, 390:50, 391:50, 392:50, 393:50, 394:50, 395:50, 396:50, 397:50,
-    398:7, 399:50, 400:50, 401:7, 402:50, 403:50, 404:50, 405:50, 406:50, 407:10, 408:50, 409:7, 410:7, 411:7,
-    412:7, 413:7, 414:7, 415:7, 416:7, 417:7, 418:7, 419:7, 420:7, 421:7, 422:7, 423:7, 424:7, 425:7,
-    426:7, 427:7, 428:7, 429:7, 430:7, 431:7, 432:7, 433:7, 437:1, 438:1, 439:1, 440:1, 441:1, 442:1,
-    443:1, 444:1, 445:1, 446:1, 447:1, 448:1, 449:1, 450:1, 451:1, 452:1, 453:1, 454:1, 455:1, 456:1,
-    457:1, 458:1, 459:1, 460:1, 461:1, 462:1, 463:1, 464:1, 465:1, 466:1, 467:1, 468:1, 469:10, 470:500,
-    471:10, 472:10, 473:10, 474:6000, 475:2500, 476:480, 477:120, 478:1, 479:1,
+    336:50, 337:50, 338:5, 339:7, 340:5, 341:5, 342:5, 343:5, 365:50, 366:50, 367:7, 368:50, 369:50, 370:7,
+    371:50, 372:7, 373:50, 374:50, 375:50, 376:50, 377:50, 378:50, 379:50, 380:7, 381:50, 382:7, 383:50, 384:50,
+    385:50, 386:50, 387:50, 388:50, 389:50, 390:50, 391:50, 392:50, 393:50, 394:50, 395:50, 396:50, 397:50, 398:50,
+    399:7, 400:50, 401:50, 402:7, 403:50, 404:50, 405:50, 406:50, 407:50, 408:10, 409:50, 410:7, 411:7, 412:7,
+    413:7, 414:7, 415:7, 416:7, 417:7, 418:7, 419:7, 420:7, 421:7, 422:7, 423:7, 424:7, 425:7, 426:7,
+    427:7, 428:7, 429:7, 430:7, 431:7, 432:7, 433:7, 434:7, 438:1, 439:1, 440:1, 441:1, 442:1, 443:1,
+    444:1, 445:1, 446:1, 447:1, 448:1, 449:1, 450:1, 451:1, 452:1, 453:1, 454:1, 455:1, 456:1, 457:1,
+    458:1, 459:1, 460:1, 461:1, 462:1, 463:1, 464:1, 465:1, 466:1, 467:1, 468:1, 469:1, 470:10, 471:500,
+    472:10, 473:10, 474:10, 475:6000, 476:2500, 477:480, 478:120, 479:1, 480:1,
 });
-
-const CANDELABRUM_OF_INVOCATION = 262;
 
 // C ref: objclass.h Is_container(otmp) — LARGE_BOX..BAG_OF_TRICKS.
 function Is_container(otyp) {

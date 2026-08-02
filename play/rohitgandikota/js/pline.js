@@ -78,3 +78,8 @@ export async function pline_xy(x, y, line) {
 export async function pline_The(line) {
     await pline('The ' + line);
 }
+
+// src/pline.c:425 There() — YouMessage with a "There " prefix.
+export async function There(line) {
+    await pline('There ' + line);
+}

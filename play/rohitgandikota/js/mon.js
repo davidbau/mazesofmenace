@@ -1,7 +1,7 @@
 import { mon_offmap } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear } from './worn.js';
-import { is_hider } from './mondata.js';
+import { is_hider, perceives, is_human, is_unicorn } from './mondata.js';
 import { ceiling_hider } from './mondata.js';
 import { sensemon } from './display.js';
 import { mdistu } from './monmove.js';
@@ -14,27 +14,30 @@ import { mdistu } from './monmove.js';
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { worm_cross } from './worm.js';
 import { adjalign } from './attrib.js';
 import { couldsee, cansee } from './vision.js';
 import { finish_meating } from './dogmove.js';
 import { growl } from './sounds.js';
 import { sengr_at } from './engrave.js';
-import { Monnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam } from './do_name.js';
 import { hot_pursuit } from './shk.js';
 import { is_metallic, is_mines_prize, is_soko_prize } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
-import { mksobj_at, splitobj } from './mkobj.js';
-import { newsym, canseemon, pline } from './display.js';
+import { mksobj_at, splitobj, mkobj, place_object } from './mkobj.js';
+import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
 import { enexto_core } from './teleport.js';
 import { GP_CHECKSCARY } from './const.js';
+import { G_UNIQ } from './const.js';
 import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
-         M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL } from './const.js';
-import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
+         M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL,
+         XKILL_NOMSG, XKILL_NOCORPSE } from './const.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND } from './monst_data.js';
 
 import { has_ceiling } from './dungeon.js';
 import { in_rooms } from './hack.js';
@@ -44,7 +47,8 @@ import { hastrack } from './track.js';
 // include/trap.h:125 fixed_tele_trap()
 const fixed_tele_trap = (t) => t.ttyp === TELEP_TRAP
                             && isok(t.teledest?.x, t.teledest?.y);
-import { sobj_at, obj_extract_self } from './invent.js';
+import { sobj_at, obj_extract_self, stackobj } from './invent.js';
+import { OBJ_FLOOR } from './obj.js';
 import { online2, isok } from './hacklib.js';
 /* onscary() and in_your_sanctuary() are src/monmove.c and src/priest.c
    functions living in js/monmove.js, which imports this file. Both sides
@@ -54,6 +58,8 @@ import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
     is_clinger, is_flyer, is_floater, mindless, dmgtype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
+import { You, You_feel } from './pline.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
 import { is_rider, set_mimic_sym, hideunder, mpickobj } from './makemon.js';
 import { nonliving, is_neuter } from './mondata.js';
@@ -359,7 +365,12 @@ export function mfndpos(mon, data, flag) {
                         /* no diagonal in or out of a doorway on the Rogue
                            level, where the display is the 1980 original */
                         || ((IS_DOOR(nowtyp) || IS_DOOR(ntyp))
-                            && Is_rogue_level())))
+                            && Is_rogue_level())
+                        /* mustn't pass between adjacent long worm segments,
+                           but can attack that way */
+                        || (m_at(x, ny) && m_at(nx, y)
+                            && worm_cross(x, y, nx, ny) && !m_at(nx, ny)
+                            && (nx !== game.u.ux || ny !== game.u.uy))))
                     continue;
 
                 if ((!lavaok || !(flag & ALLOW_WALL)) && ntyp === LAVAWALL)
@@ -372,7 +383,17 @@ export function mfndpos(mon, data, flag) {
                     /* src/mon.c:2277 — Displacement moves the square the
                        scare check is made on, as long as the hero is visible
                        to this monster. Not modelled, so dispx/dispy are nx/ny. */
-                    const dispx = nx, dispy = ny;
+                    /* src/mon.c:2264 — with Displacement the monster tests
+                       the square it BELIEVES the hero occupies against the
+                       hero's real one, so scary checks read u.ux/u.uy. */
+                    const monseeu = (mon.mcansee
+                                     && (!game.u.uprops?.INVIS || perceives(mdat)));
+                    let dispx = nx, dispy = ny;
+                    if (game.u.uprops?.DISPLACED && monseeu
+                        && mon.mux === nx && mon.muy === ny) {
+                        dispx = game.u.ux;
+                        dispy = game.u.uy;
+                    }
 
                     /* src/mon.c:2278 — a scary square (Elbereth, a scroll of
                        scare monster) is rejected unless the monster ignores
@@ -445,9 +466,8 @@ export function mfndpos(mon, data, flag) {
                         info |= ALLOW_ROCK;
                     }
 
-                    /* src/mon.c:2338 — avoid standing in the hero's line.
-                       monseeu is the same test onscary's displacement uses. */
-                    const monseeu = (mon.mcansee && !game.u?.uprops?.INVIS);
+                    /* src/mon.c:2338 — avoid standing in the hero's line;
+                       reuses the monseeu computed above, as C does. */
                     if (monseeu && monlineu(mon, nx, ny)) {
                         if (flag & NOTONL)
                             continue;
@@ -520,8 +540,13 @@ function monlineu(mon, nx, ny) {
 
 /* src/mon.c m_at() */
 export function m_at(x, y) {
-    return (game.level?.monsters || []).find(m => m.mx === x && m.my === y
-                                                  && m.mhp > 0) || null;
+    /* src/rm.h level.monsters[][] — C reads the GRID, not the fmon chain,
+       and the grid holds a long worm at every one of its tail squares as
+       well as at its head. Scanning the chain by mx/my finds only the head,
+       so mfndpos saw tail squares as free and offered a monster more
+       candidate positions than C does. */
+    const m = game.level?.monAt?.get(`${x},${y}`);
+    return (m && m.mhp > 0) ? m : null;
 }
 
 /* src/trap.c t_at() */
@@ -577,10 +602,28 @@ export function m_consume_obj(mtmp, otmp) {
 
 // src/mkobj.c delobj() — take the object off the floor and free it.
 export function delobj(obj) {
+    delobj_core(obj, false);
+}
+
+// src/invent.c:1438 delobj_core() — destroy an object; `force` is for reviving
+// Rider corpses. The obj_resists() guard DRAWS rn2(100) on every call, which
+// is why deleting an object is never draw-neutral.
+export function delobj_core(obj, force) {
+    /* obj_resists(obj,0,0) protects the Amulet, the invocation tools,
+       and Rider corpses */
+    if (!force && obj_resists(obj, 0, 0)) {
+        obj.in_use = 0; /* in case caller has set this to 1 */
+        return;
+    }
+    const update_map = (obj.where === OBJ_FLOOR);
+    obj_extract_self(obj);
     const objs = game.level?.objects;
-    if (!objs) return;
-    const i = objs.indexOf(obj);
-    if (i >= 0) objs.splice(i, 1);
+    if (objs) {
+        const i = objs.indexOf(obj);
+        if (i >= 0) objs.splice(i, 1);
+    }
+    if (update_map)  /* floor object's coordinates are always up to date */
+        newsym(obj.ox, obj.oy);
 }
 
 // src/mon.c:1465 meatmetal() — a rock mole or similar eats the topmost metal
@@ -1170,16 +1213,122 @@ export async function setmangry(mtmp, via_attack) {
 // src/mon.c:3470 killed() — the hero killed this monster, with a message.
 // Three lines in C and a pure delegation; xkilled (263 lines) does the work
 // and is recorded.
-export function killed(mtmp) {
-    xkilled(mtmp, XKILL_GIVEMSG);
+export async function killed(mtmp) {
+    await xkilled(mtmp, XKILL_GIVEMSG);
 }
 
-// src/mon.c:3477 xkilled() — 263 lines: the death message, the corpse and
-// death drop, experience, vanquished-monster bookkeeping, and the special
-// cases for shopkeepers, guards, quest leaders and Riders. Not ported.
-// Recorded with its flags so game.unported says which caller wanted it.
-export function xkilled(mtmp, xkill_flags) {
-    note_unported_mon(`xkilled:flags=${xkill_flags}`);
+// src/mon.c:3477 xkilled() — the hero killed this monster.
+//
+// The spine is the death message, mondead(), the "treasure drop" rn2(6), the
+// corpse, the luck adjustments and the experience award, in that order; the
+// order matters because three of those draw. Petrification (monstone), the
+// engulfer expel, quest leaders, priests, shopkeepers and the murder penalty
+// are recorded.
+export async function xkilled(mtmp, xkill_flags) {
+    const x = mtmp.mx, y = mtmp.my;
+    const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
+    let nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
+
+    /* potential pet message; always clear global flag */
+    const be_sad = game.iflags?.sad_feeling;
+    if (game.iflags) game.iflags.sad_feeling = false;
+
+    mtmp.mhp = 0; /* caller will usually have already done this */
+
+    if (engulfing_u(mtmp))
+        note_unported_mon('xkilled:wasinside');
+
+    if (!nomsg) {
+        const namedpet = mtmp.mgivenname && !game.u.uprops?.HALLUC;
+        await You(`${nonliving(game.mons[mtmp.mnum]) ? 'destroy' : 'kill'} ${
+            !canspotmon(mtmp) ? 'it'
+              : !mtmp.mtame ? mon_nam(mtmp)
+                : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
+                           'poor', namedpet ? SUPPRESS_SADDLE : 0, false)}!`);
+    }
+
+    if (mtmp.mtrapped) {
+        const t = t_at(x, y);
+        if (t && is_pit(t.ttyp)) {
+            if (sobj_at(ONAMES.BOULDER, x, y))
+                nocorpse = true;
+            if (m_carrying(mtmp, ONAMES.BOULDER))
+                note_unported_mon('xkilled:burycorpse');
+        }
+    }
+
+    /* your pet knows who just killed it...watch out */
+    if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
+        mtmp.edog.killed_by_u = 1;
+
+    /* dispose of monster and make cadaver */
+    if (game.stoned)
+        note_unported_mon('xkilled:monstone');
+    await mondead(mtmp);
+
+    if (be_sad)
+        await You('have a sad feeling for a moment, then it passes.');
+
+    const mdat = game.mons[mtmp.mnum]; /* mondead can change mtmp->data */
+    const mndx = mtmp.mnum;
+
+    if (!nocorpse && (ACCESSIBLE(game.level?.at(x, y)?.typ) || is_pool(x, y))) {
+        /* illogical but traditional "treasure drop" */
+        if (!rn2(6) && !((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
+            /* no extra item from swallower or steed */
+            && (x !== game.u.ux || y !== game.u.uy)
+            /* no extra item from kops--too easy to abuse */
+            && mdat.mlet !== MONSYMS.S_KOP
+            /* no items from cloned monsters */
+            && !mtmp.mcloned) {
+            const otmp = mkobj(OCLASSES.RANDOM_CLASS, true);
+            /* don't create large objects from small monsters */
+            const otyp = otmp.otyp;
+            if (otmp.oclass === OCLASSES.FOOD_CLASS && !(mdat.mflags2 & MFLAGS.M2_COLLECT)
+                && !otmp.oartifact) {
+                /* newly created permafood from kills makes too much
+                   nutrition in the late game */
+                delobj(otmp);
+            } else if (mdat.msize < MZ_HUMAN && otyp !== ONAMES.FIGURINE
+                       && (otmp.owt > 30 || game.objects[otyp].oc_big)) {
+                delobj(otmp);
+            } else {
+                /* flooreffects(otmp, x, y, "fall") is recorded; on ordinary
+                   floor it is false and the object simply lands */
+                place_object(otmp, x, y);
+                stackobj(otmp);
+            }
+        }
+        /* corpse--none if hero was inside the monster */
+        if (corpse_chance(mtmp, null, false))
+            make_corpse(mtmp, CORPSTAT_NONE);
+    }
+
+    /* monster is gone, corpse or other object might now be visible */
+    newsym(x, y);
+
+    /* Punish bad behavior. */
+    if (is_human(mdat) && !mtmp.mpeaceful)
+        ; /* the murder arm needs always_hostile/malign; hostile is clear */
+    else if (is_human(mdat))
+        note_unported_mon('xkilled:murder');
+
+    if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame)
+        change_luck(-1);
+    if (is_unicorn(mdat)
+        && sgn(game.u.ualign.type) === sgn(mdat.maligntyp)) {
+        change_luck(-5);
+        await You_feel('guilty...');
+    }
+
+    /* give experience points */
+    const tmp = experience(mtmp, game.mvitals?.[mndx]?.died ?? 0);
+    more_experienced(tmp, 0);
+    await newexplevel(); /* will decide if you go up */
+
+    if (mtmp.ispriest || mdat.msound === MSOUND.MS_NEMESIS
+        || mdat.msound === MSOUND.MS_GUARDIAN)
+        note_unported_mon('xkilled:alignment_arms');
 }
 
 // src/mon.c:6058 shieldeff_mon() — the "resists!" flash.
@@ -1401,19 +1550,33 @@ export function corpse_chance(mon, magr, was_swallowed) {
 // plus the corpse. mondead's full detach (worm segments, shop bookkeeping,
 // vault guards, life-saving) is a slice: the map removal, so the fight's
 // survivor can occupy the square.
-export function mondied(mdef) {
+// src/mon.c:3086 mondead() — the monster dies, WITHOUT a corpse. The slice
+// ported is the map and list removal plus m_detach()'s relobj (mon.c:2779),
+// which drops what the creature carried at the square it died on.
+export async function mondead(mdef) {
     const mx = mdef.mx, my = mdef.my;
 
-    /* mondead() slice: remove from the map and the monster list */
     mdef.mhp = 0;
     remove_monster(mx, my);
     const idx = (game.level?.monsters || []).indexOf(mdef);
     if (idx >= 0)
         game.level.monsters.splice(idx, 1);
 
-    /* "this assumes that the dead monster's map coordinates remain
-       accurate" — corpse placement reads mdef->mx,my after mondead */
+    /* "this assumes that the dead monster's map coordinates remain accurate":
+       both relobj and any corpse read mx,my after this point */
     mdef.mx = mx; mdef.my = my;
+    if ((mdef.minvent || []).length) {
+        const { relobj } = await import('./steal.js');
+        await relobj(mdef, 1, false);
+    }
+}
+
+// src/mon.c:3253 mondied() — mondead() plus, maybe, a corpse.
+export async function mondied(mdef) {
+    const mx = mdef.mx, my = mdef.my;
+
+    await mondead(mdef);
+
     if (corpse_chance(mdef, null, false)
         && (ACCESSIBLE(game.level?.at(mx, my)?.typ) || is_pool(mx, my)))
         make_corpse(mdef, CORPSTAT_NONE);
@@ -1439,7 +1602,7 @@ export async function monkilled(mdef, fltxt, how) {
     else if (mdef.mtame)
         note_unported_mon('monkilled:sad_feeling');
 
-    mondied(mdef);
+    await mondied(mdef);
 }
 
 // src/mon.c:3955 mnexto() — move a monster next to the hero: enexto()'s
@@ -1619,4 +1782,35 @@ export function newcham(mtmp, mdat, ncflags) {
     return 1;
 }
 
+// src/mon.c:4367 wake_nearby() / wake_nearto_core() — noise wakes monsters
+// within u.ulevel*20 squared distance. Draw-neutral, but the waking matters:
+// a monster left asleep moves differently on every later turn.
+export function wake_nearby(petcall) {
+    wake_nearto_core(game.u.ux, game.u.uy, game.u.ulevel * 20, petcall);
+}
 
+function wake_nearto_core(x, y, distance, petcall) {
+    /* C walks the fmon chain; this port keeps it as game.level.monsters,
+       newest-first (see makemon.js's unshift). There is no game.fmon. */
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
+            /* sleep for N turns uses mtmp->mfrozen, but so does paralysis
+               so we leave mfrozen monsters alone */
+            mtmp.msleeping = 0; /* wake indeterminate sleep */
+            if (!(game.mons[mtmp.mnum].geno & G_UNIQ))
+                mtmp.mstrategy &= ~STRAT_WAITMASK; /* wake 'meditation' */
+            if (game.context?.mon_moving || !petcall)
+                continue;
+            if (mtmp.mtame)
+                note_unported_mon('wake_nearto_core:whistletime');
+        }
+    }
+    /* disturb_buried_zombies() needs buried monsters, which nothing makes */
+}
+
+// src/mon.c:4402 wake_nearto()
+export function wake_nearto(x, y, distance) {
+    wake_nearto_core(x, y, distance, false);
+}

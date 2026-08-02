@@ -21,7 +21,7 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO, ROOMOFFSET, MAX_TYPE, MATCH_WALL, IS_STWALL } from './const.js';
 import { rn2 } from './rng.js';
 import { isok } from './hacklib.js';
-import { cvt_to_relcoord } from './sp_lev.js';
+import { cvt_to_relcoord, update_croom } from './sp_lev.js';
 
 // src/selvar.c:15 selection_new()
 export function selection_new() {
@@ -269,7 +269,11 @@ export function selection_rndcoord(ov, removeit) {
                     if (!c) {
                         if (removeit)
                             selection_setpoint(dx, dy, ov, 0);
-                        /* handed to Lua, so RELATIVE — see selection_iterate */
+                        /* handed to Lua, so RELATIVE — see selection_iterate.
+                           src/nhlsel.c:414 refreshes croom off the room stack
+                           first, so once the stack is empty the map origin is
+                           what the coordinate is measured against. */
+                        update_croom();
                         const rc = { x: dx, y: dy };
                         cvt_to_relcoord(rc);
                         return rc;

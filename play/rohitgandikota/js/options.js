@@ -6,13 +6,26 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { more, TOPLINE_NEED_MORE } from './display.js';
 import {
-    NHW_MENU, ATR_NONE,
+    NHW_MENU, ATR_NONE, ATR_INVERSE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
-    tty_add_menu_str, tty_end_menu, tty_display_nhwindow,
+    tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu,
 } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD } from './const.js';
+import {
+    MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, PICK_ONE, ECMD_OK,
+    AUTOUNLOCK_APPLY_KEY,
+} from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
+import { condtests } from './botl.js';
+import {
+    gs_symset, gc_currentgraphics, known_handling, PRIMARYSET,
+} from './symbols.js';
+import { def_char_to_objclass } from './sp_lev.js';
+import { OCLASSES } from './objects_data.js';
+
+function note_unported_options(what) {
+    (game.unported ||= new Set()).add('options:' + what);
+}
 
 // src/options.c:489 parseoptions()
 //
@@ -521,4 +534,325 @@ export async function option_help() {
     }
     tty_destroy_nhwindow(win);
     await docrt();
+}
+
+/* src/options.c:114 OptS_type[] — section headings, indexed by OptSection. */
+const OptS_type = ['General', 'Behavior', 'Map', 'Status', 'Advanced'];
+
+/* src/options.c:207 unlocktypes[][2] — autounlock's flag names. */
+const unlocktypes = [
+    ['untrap', '(might fail)'],
+    ['apply-key', ''],
+    ['kick', '(doors only)'],
+    ['force', '(chests/boxes only)'],
+];
+
+/* src/options.c:340 */
+const n_currently_set = (n) => `(${n} currently set)`;
+
+/* include/global.h:580 enum optset_restrictions — setwhere ordering. */
+const optset_restrictions = {
+    set_in_sysconf: 0, set_in_config: 1, set_viaprog: 2, set_gameview: 3,
+    set_in_game: 4, set_wizonly: 5, set_wiznofuz: 6, set_hidden: 7,
+};
+
+// src/options.c:8508 longest_option_name()
+function longest_option_name(startpass, endpass) {
+    /* spin through the options to find the longest name */
+    let longest_name_len = 0;
+
+    for (let pass = 0; pass < 2; pass++)
+        for (let i = 0; i < allopt.length; i++) {
+            const name = allopt[i].name;
+            if (pass === 0
+                && (allopt[i].type !== 'BoolOpt' || allopt[i].noaddr))
+                continue;
+            const optflags = optset_restrictions[allopt[i].setwhere];
+            if (optflags < startpass || optflags > endpass)
+                continue;
+            /* is_wc_option()/wc_supported(): the tty port supports none of
+               the window-system options, but none of them reach the simple
+               menu's sections either, so the filter has nothing to drop. */
+
+            if (name.length > longest_name_len)
+                longest_name_len = name.length;
+        }
+    return longest_name_len;
+}
+
+/* The value of a boolean option. C reads *allopt[i].addr, a pointer straight
+   at the live variable; our single store is game.flags keyed by the OPTION
+   name (see the note at js/cmd.js dotogglepickup), so an option the rc never
+   mentioned and nothing has toggled falls back to the table's initval. */
+function bool_optval(o) {
+    const v = game.flags?.[o.name];
+    return (v === undefined) ? (o.initval === 'On') : !!v;
+}
+
+/* src/options.c:9179 count_cond() */
+function count_cond() {
+    let cnt = 0;
+    for (const c of condtests)
+        if (c.enabled)
+            cnt++;
+    return cnt;
+}
+
+/* The get_val arm of each compound/other option that reaches the simple
+   menu. C dispatches through allopt[i].optfn; the table's `optfn` column is
+   not carried into js/optlist.js, so the dispatch is by name here. Anything
+   without an arm reports "unknown", which is what C prints when an option
+   function returns anything but optn_ok. */
+function get_option_value(o) {
+    switch (o.name) {
+    case 'fruit':                   /* src/options.c:1769 optfn_fruit */
+        return game.svp?.pl_fruit || 'slime mold';
+    case 'number_pad': {            /* src/options.c:2622 optfn_number_pad */
+        const numpadmodes = [
+            '0=off', '1=on', '2=on, MSDOS compatible',
+            '3=on, phone-style layout',
+            '4=on, phone layout, MSDOS compatible',
+            '-1=off, y & z swapped',
+        ];
+        const Cmd = game.Cmd || {};
+        const indx = Cmd.num_pad
+            ? (Cmd.phone_layout ? (Cmd.pcHack_compat ? 4 : 3)
+                                : (Cmd.pcHack_compat ? 2 : 1))
+            : Cmd.swap_yz ? 5 : 0;
+        return numpadmodes[indx];
+    }
+    case 'autounlock': {            /* src/options.c:1145 optfn_autounlock */
+        /* src/flag.h AUTOUNLOCK_* — initoptions leaves this at APPLY_KEY. */
+        const au = (game.flags?.autounlock === undefined)
+                   ? AUTOUNLOCK_APPLY_KEY : game.flags.autounlock;
+        if (!au)
+            return 'none';
+        const parts = [];
+        for (let b = 0; b < 4; b++)
+            if (au & (1 << b))
+                parts.push(unlocktypes[b][0]);
+        return parts.join(' + ');
+    }
+    case 'pickup_types': {          /* src/options.c:3392 optfn_pickup_types */
+        const ocl = game.flags?.pickup_types || '';
+        return ocl ? ocl : 'all';
+    }
+
+    case 'statuslines':             /* src/options.c:4099 optfn_statuslines */
+        return ((game.iflags?.wc2_statuslines | 0) < 3) ? '2' : '3';
+    case 'symset': {                /* src/options.c:4205 optfn_symset */
+        const ss = gs_symset[PRIMARYSET] || { name: null, handling: 0 };
+        let s = ss.name ? ss.name : 'default';
+        if (gc_currentgraphics.set === PRIMARYSET && ss.name)
+            s += ', active';
+        if (ss.handling)
+            s += `, handler=${known_handling[ss.handling]}`;
+        return s;
+    }
+    /* src/options.c:8314,8379,8430,8461 — the list-valued options report how
+       many entries the player has configured. */
+    case 'autopickup exceptions':
+        return n_currently_set((game.apelist || []).length);
+    case 'menu colors':
+        return n_currently_set((game.menucolors || []).length);
+    case 'status condition fields':
+        return n_currently_set(count_cond());
+    case 'status highlight rules':
+        return n_currently_set((game.status_hilites || []).length);
+    default:
+        return null;            /* optn_err -> "unknown" */
+    }
+}
+
+// src/options.c:8536 doset_simple_menu() — guts of doset_simple(), called
+// repeatedly until no choice is made.
+async function doset_simple_menu() {
+    /* unlike doset()'s fmtstr, there is no leading %s for indentation */
+    let fmtstr_doset_simple;
+    let toggled_help = false;
+
+    /* we do this each time we're called instead of once in doset_simple()
+       in case 'menu_tab_sep' ever gets included in the simple menu so
+       becomes subject to being changed while doset_simple() is running */
+    const pad = longest_option_name(optset_restrictions.set_gameview,
+                                    optset_restrictions.set_in_game);
+    if (!game.iflags?.menu_tab_sep)
+        fmtstr_doset_simple = (name, val) =>
+            `${name.padEnd(pad)} [${val}]`;
+    else
+        fmtstr_doset_simple = (name, val) => `${name}\t[${val}]`;
+    const fmtstr = fmtstr_doset_simple;
+
+    let pick_cnt;
+ redo_opt_help:
+    for (;;) {
+        const tmpwin = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+        /* when showing 'help', also describe how to run full doset() */
+        if (game.simple_options_help)
+            tty_add_menu_str(tmpwin, "Use command '#optionsfull'"
+                                     + ' to get the complete options list.');
+        tty_add_menu(tmpwin, null, -2 + 1, '?', 0, ATR_NONE, NO_COLOR,
+                     game.simple_options_help ? 'hide help' : 'show help',
+                     MENU_ITEMFLAGS_NONE);
+
+        for (let section = 0; section < 4 /* OptS_Advanced */; section++) {
+            tty_add_menu_str(tmpwin, '');
+            /* src/windows.c:1816 add_menu_heading() — iflags.menu_headings
+               carries ATR_INVERSE, which is what puts the section name in
+               reverse video. */
+            tty_add_menu(tmpwin, null, 0, 0, 0, ATR_INVERSE, NO_COLOR,
+                         ` ${OptS_type[section].padEnd(30)} `,
+                         MENU_ITEMFLAGS_NONE);
+            for (let i = 0; i < allopt.length; i++) {
+                const o = allopt[i];
+                if (o.section !== OptS_type[section])
+                    continue;
+                /* is_wc_option()/wc_supported() — see longest_option_name() */
+
+                let buf;
+                switch (o.type) {
+                case 'BoolOpt':
+                    if (o.noaddr)
+                        continue;
+                    buf = fmtstr(o.name, bool_optval(o) ? 'X' : ' ');
+                    break;
+                case 'CompOpt':
+                case 'OthrOpt': {
+                    /* the Is_rogue_level() swap to 'roguesymset' needs a
+                       rogue level, which nothing generates yet */
+                    const v = get_option_value(o);
+                    buf = fmtstr(o.name, (v !== null && v !== '') ? v
+                                                                  : 'unknown');
+                    break;
+                }
+                default:
+                    buf = 'ERROR';
+                    break;
+                }
+                /* pickup_types is separated from autopickup due to the
+                   spelling of their names; emphasize what it means */
+                if (o.name === 'pickup_types' || o.name === 'pickup_thrown'
+                    || o.name === 'pickup_stolen'
+                    || o.name === 'dropped_nopick')
+                    buf += '  (for autopickup)';
+                tty_add_menu(tmpwin, null, i + 1, 0, 0, ATR_NONE, NO_COLOR,
+                             buf, MENU_ITEMFLAGS_NONE);
+                if (game.simple_options_help && o.descr) {
+                    tty_add_menu_str(tmpwin, `    ${o.descr}`);
+                    tty_add_menu_str(tmpwin, '');
+                }
+            }
+        }
+        tty_end_menu(tmpwin, 'Options');
+
+        const picks = await tty_select_menu(tmpwin, PICK_ONE);
+        pick_cnt = picks ? picks.length : 0;
+        /* note:  without the complication of a preselected entry, a PICK_ONE
+           menu returning pick_cnt > 0 implies exactly 1 */
+        if (pick_cnt > 0) {
+            const k = picks[0] - 1;
+
+            if (k === -2) {
+                game.simple_options_help = !game.simple_options_help;
+                toggled_help = true;
+            } else if (allopt[k].type === 'BoolOpt') {
+                /* boolean option */
+                parseoptions(`${bool_optval(allopt[k]) ? '!' : ''}${
+                                 allopt[k].name}`, false, false, game.rc);
+            } else if (allopt[k].name === 'pickup_types') {
+                /* compound option with a handler: src/options.c:6114
+                   handler_pickup_types() just re-enters parseoptions with a
+                   bare "pickup_types", which takes optfn_pickup_types()'s
+                   do_set arm and prompts. */
+                await optfn_pickup_types_do_set();
+            } else {
+                note_unported_options(`doset_simple:set=${allopt[k].name}`);
+            }
+        }
+        /* tear down this instance of the menu; if pick_cnt is 1, caller
+           will immediately call us back to put up another instance */
+        tty_destroy_nhwindow(tmpwin);
+
+        if (toggled_help) {
+            toggled_help = false;
+            continue redo_opt_help;
+        }
+        break;
+    }
+
+    return pick_cnt;
+}
+
+// src/options.c:8707 doset_simple() — #options, the user friendly version:
+// get one option from a subset of the zillion choices, act upon it, and
+// prompt for another.
+export async function doset_simple() {
+    let pickedone = 0;
+
+    if (game.iflags?.menu_requested) {
+        /* doset() checks for 'm' and calls doset_simple(); clear the
+           menu-requested flag to avoid doing that recursively */
+        game.iflags.menu_requested = false;
+        note_unported_options('doset_simple:menu_requested->doset');
+        return ECMD_OK;
+    }
+
+    /* select and change one option at a time, then reprocess the menu
+       with updated settings to offer chance for further change */
+    do {
+        pickedone = await doset_simple_menu();
+        /* go.opt_need_redraw drives reset_needed_visuals()+flush_screen(1);
+           nothing ported sets it, and the flush-model audit this port still
+           owes C is the blocker for adding it (see docs/plan/NOTES.md). */
+    } while (pickedone > 0);
+    return ECMD_OK;
+}
+
+/* src/options.c:118 def_inv_order[] — the object classes in the order the
+   pickup-types menu offers them. C holds class numbers; this port holds the
+   symbols throughout (oc_to_str() converts one to the other at every C
+   display site, and nothing here needs the numbers), so the table is spelled
+   with the symbols def_oc_syms[] gives those classes. */
+const def_inv_order = '$")[%?+!=/(*`0_';
+
+// src/options.c:3321 optfn_pickup_types(), the do_set arm reached with no
+// value: put up the class menu and rebuild flags.pickup_types from the picks.
+//
+// Only the menu branch is live. C falls back to a getlin prompt when
+// menu_style is MENU_TRADITIONAL or MENU_COMBINATION; the default style takes
+// the menu, and no recorded rc changes it.
+async function optfn_pickup_types_do_set() {
+    const { choose_classes_menu } = await import('./windows.js');
+
+    /* oc_to_str(flags.pickup_types, tbuf); flags.pickup_types[0] = 0 */
+    const tbuf = { s: game.flags?.pickup_types || '' };
+    game.flags.pickup_types = '';
+
+    if (game.flags?.menu_style === 'traditional'
+        || game.flags?.menu_style === 'combination') {
+        note_unported_options('pickup_types:getlin_prompt');
+        game.flags.pickup_types = tbuf.s;
+        return;
+    }
+    /* the wizard-mode VENOM_SYM addition is skipped: no recorded game with
+       wizard mode opens this menu */
+    if (game.wizard)
+        note_unported_options('pickup_types:venom_sym');
+    await choose_classes_menu('Autopickup what?', 1, true, def_inv_order, tbuf);
+    let op = tbuf.s;
+
+    while (op[0] === ' ')
+        op = op.slice(1);
+    if (op[0] !== 'a' && op[0] !== 'A') {
+        let types = '';
+        for (const ch of op) {
+            const oc_sym = def_char_to_objclass(ch);
+            /* make sure all are valid obj symbols occurring once */
+            if (oc_sym !== OCLASSES.MAXOCLASSES && !types.includes(ch))
+                types += ch;
+        }
+        game.flags.pickup_types = types;
+    }
 }

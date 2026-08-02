@@ -6,8 +6,11 @@ import { dist2 } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at } from './mon.js';
-import { pickup } from './pickup.js';
-import { is_pit } from './const.js';
+import { pickup, can_reach_floor } from './pickup.js';
+import { dotrap } from './trap.js';
+import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT } from './const.js';
+import { near_capacity } from './attrib.js';
+import { gethungry } from './eat.js';
 import { cmdq_clear, closed_door } from './cmd.js';
 // hack.js — the hero's movement and the terrain predicates that go with it.
 // C ref: src/hack.c
@@ -230,7 +233,7 @@ export async function spoteffects(pick) {
     if (pick && !pit)
         await pickup(1);
     if (trap)
-        note_unported_hack('spoteffects:dotrap');
+        await dotrap(trap, 0);
     if (pick && pit)
         await pickup(1);
 
@@ -690,4 +693,86 @@ export function monster_nearby() {
         }
     }
     return false;
+}
+
+// src/hack.c:1817 u_locomotion() — the verb for the hero's own movement.
+//
+// Levitation and Flying override the polyform's; locomotion() would need the
+// hero's monster data, which for an unpolymorphed hero always yields `def`.
+export function u_locomotion(def) {
+    const capitalize = (def[0] === def[0].toUpperCase());
+
+    return game.u.uprops?.LEVITATION ? (capitalize ? 'Float' : 'float')
+         : game.u.uprops?.FLYING ? (capitalize ? 'Fly' : 'fly')
+         : def;
+}
+
+
+// src/hack.c:4399 check_capacity() — refuse an action when overloaded.
+export function check_capacity(str) {
+    if (near_capacity() >= EXT_ENCUMBER) {
+        note_unported_hack('check_capacity:message');
+        return 1;
+    }
+    return 0;
+}
+
+// src/hack.c:3051 overexertion() — the hunger tick an attack costs.
+//
+// gethungry() DRAWS, so this is the reason attacking a monster spends more
+// from the stream than stepping onto an empty square does.
+export async function overexertion() {
+    gethungry();
+    if ((game.moves % 3) !== 0 && near_capacity() >= HVY_ENCUMBER)
+        note_unported_hack('overexertion:overexert_hp');
+    return game.multi < 0; /* might have fainted */
+}
+
+
+// src/hack.c:3788 pickup_checks() — everything that can stop a pickup before
+// it starts. Returns 0 or 1 to mean "handled, that many moves", -2 to loot an
+// engulfer's inventory, and -1 for "go ahead and pick up".
+//
+// Draws nothing; every arm is a message.
+function pickup_checks() {
+    if (game.u.uswallow) {
+        note_unported_hack('pickup_checks:uswallow');
+        return 1;
+    }
+    if (is_pool(game.u.ux, game.u.uy) || is_lava(game.u.ux, game.u.uy)) {
+        note_unported_hack('pickup_checks:pool_or_lava');
+        return 0;
+    }
+    if (!OBJ_AT(game.u.ux, game.u.uy)) {
+        const lev = game.level?.at(game.u.ux, game.u.uy);
+        /* the furniture arms each have their own line; only the plain case
+           is reachable without those subsystems */
+        if (lev && (IS_FURNITURE(lev.typ) || lev.typ === STAIRS))
+            note_unported_hack('pickup_checks:furniture_message');
+        else
+            note_unported_hack('pickup_checks:nothing_here');
+        return 0;
+    }
+    const traphere = t_at(game.u.ux, game.u.uy);
+    if (!can_reach_floor(!!(traphere && is_pit(traphere.ttyp)))) {
+        note_unported_hack('pickup_checks:cannot_reach');
+        return 0;
+    }
+    return -1; /* can do normal pickup */
+}
+
+// src/hack.c:3876 dopickup() — the ',' command.
+export async function dopickup() {
+    const count = game.command_count | 0;
+    game.multi = 0; /* always reset */
+
+    const ret = pickup_checks();
+    if (ret >= 0)
+        return ret ? ECMD_TIME : ECMD_OK;
+    if (ret === -2) {
+        note_unported_hack('dopickup:loot_mon');
+        return ECMD_OK;
+    }
+    /* else ret == -1 */
+    return (await pickup(-count)) ? ECMD_TIME : ECMD_OK;
 }

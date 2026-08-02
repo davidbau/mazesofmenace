@@ -22,7 +22,9 @@ import { tty_clear_nhwindow_message } from './../display.js';
 import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
-import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './../const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+         MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
+         PICK_ONE, PICK_ANY, GOLD_SYM } from './../const.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
 // frozen terminal's bit flags; win/tty/wintty.c term_start_attr() translates
@@ -587,44 +589,174 @@ export async function tty_display_nhwindow(window) {
     render_page(cw, 0, display);
 }
 
-// Advance to the next page; returns false when the window is done.
-// win/tty/wintty.c tty_select_menu() — display the menu and run the key loop.
+// win/tty/wintty.c:1246 invert_all_on_page()
+function invert_all_on_page(window, page, acc, count) {
+    const items = menu_page_items(window, page);
+    items.forEach((curr, n) => {
+        if (!curr.identifier || (acc ? curr.gselector !== acc
+                                     : !menuitem_invert_test(0, curr.itemflags,
+                                                             curr.selected)))
+            return;
+        if (curr.selected) {
+            curr.selected = false;
+            curr.count = -1;
+        } else {
+            curr.selected = true;
+            if (count > 0)
+                curr.count = count;
+        }
+        set_item_state(window, n, curr);
+    });
+}
+
+// win/tty/wintty.c:1270 invert_all() — the current page, then the rest with
+// no screen updating.
+function invert_all(window, page, acc, count) {
+    const cw = windows[window];
+    invert_all_on_page(window, page, acc, count);
+
+    const onpage = new Set(menu_page_items(window, page));
+    for (let curr = cw.mlist; curr; curr = curr.next) {
+        if (onpage.has(curr) || !curr.identifier
+            || (acc ? curr.gselector !== acc
+                    : !menuitem_invert_test(0, curr.itemflags, curr.selected)))
+            continue;
+        if (curr.selected) {
+            curr.selected = false;
+            curr.count = -1;
+        } else {
+            curr.selected = true;
+            if (count > 0)
+                curr.count = count;
+        }
+    }
+}
+
+// win/tty/wintty.c:1214 menuitem_invert_test() — MENU_ITEMFLAGS_SKIPINVERT
+// entries sit out bulk toggling but can still be picked by their own letter.
+function menuitem_invert_test(mode, itemflags, is_selected) {
+    if ((itemflags & MENU_ITEMFLAGS_SKIPINVERT) === 0)
+        return true;
+    return (mode === 0) ? false : !is_selected;
+}
+
+// win/tty/wintty.c:1329 process_menu_window() — display the menu and run the
+// key loop, then win/tty/wintty.c tty_select_menu() collects what is selected.
 //
-// PICK_ONE subset: an accelerator (or group accelerator) picks its entry and
-// returns immediately; ESC cancels with no picks; space and return finish
-// (advancing the page first on a multi-page menu). Counts, PICK_ANY
-// toggling and menu search are not reached by any ported caller yet.
-// Returns the identifiers of the picked entries, so the C's
-// `select_menu(...) > 0` test becomes `.length > 0`.
+// Counts and menu search are not reached by any ported caller yet. Returns the
+// identifiers of the picked entries, so C's `select_menu(...) > 0` test
+// becomes `.length > 0`.
 export async function tty_select_menu(window, how) {
     const cw = windows[window];
     if (!cw) return [];
+    cw.how = how;
     await tty_display_nhwindow(window);
-    const picks = [];
-    for (;;) {
+
+    /* collect group accelerators: every distinct gselector that is not also
+       the item's own selector (see the GOLD_SYM note in the C — '$' is both,
+       and is kept so gold stays group-selectable off-page) */
+    let gacc = '';
+    const gcnt = new Map();
+    let ngroup = 0;
+    for (let curr = cw.mlist; curr; curr = curr.next)
+        if (curr.gselector && curr.gselector !== curr.selector) {
+            ngroup++;
+            gcnt.set(curr.gselector, (gcnt.get(curr.gselector) | 0) + 1);
+        }
+    if (ngroup > 0)
+        for (let curr = cw.mlist; curr; curr = curr.next)
+            if (curr.gselector
+                && (curr.gselector !== curr.selector
+                    || curr.gselector === GOLD_SYM)
+                && !gacc.includes(curr.gselector)
+                && (how === PICK_ANY || gcnt.get(curr.gselector) === 1))
+                gacc += curr.gselector;
+
+    let finished = false;
+    while (!finished) {
         const c = await nhgetch();
-        if (c === 27) {                      /* ESC — cancel */
-            cw.cancelled = true;
-            return [];
-        }
-        if (c === 32 || c === 13 || c === 10) {  /* space / return */
-            if (tty_next_page(window))
-                continue;
-            return picks;
-        }
-        const ch = String.fromCharCode(c);
-        let hit = false;
-        for (let it = cw.mlist; it; it = it.next) {
-            if (it.identifier && (it.selector === ch || it.gselector === ch)) {
-                picks.push(it.identifier);
-                hit = true;
-                break;
+        const morc = String.fromCharCode(c);
+
+        if (morc === '\x1b') {                  /* cancel */
+            for (let curr = cw.mlist; curr; curr = curr.next) {
+                curr.selected = false;
+                curr.count = -1;
             }
+            cw.cancelled = true;
+            finished = true;
+        } else if (morc === '\n' || morc === '\r' || c === 0) {
+            finished = true;                    /* commit */
+        } else if (morc === ' ' || morc === MENU_NEXT_PAGE) {
+            if (cw.npages > 0 && cw.curr_page !== cw.npages - 1)
+                tty_next_page(window);
+            else if (morc === ' ')
+                /* ' ' finishes menus here, but stop '>' doing the same. */
+                finished = true;
+        } else if (morc === MENU_PREVIOUS_PAGE) {
+            if (cw.npages > 0 && cw.curr_page !== 0)
+                tty_prev_page(window);
+        } else if (gacc.includes(morc)) {
+            /* group accelerator; for the PICK_ONE case, we know that it
+               matches exactly one item in order to be in gacc[] */
+            invert_all(window, cw.curr_page, morc, -1);
+            if (how === PICK_ONE)
+                finished = true;
+        } else {
+            /* find, toggle, and possibly update */
+            const items = menu_page_items(window, cw.curr_page);
+            const n = items.findIndex(it => it.identifier
+                                            && it.selector === morc);
+            if (n >= 0) {
+                const curr = items[n];
+                if (curr.selected) {
+                    curr.selected = false;
+                    curr.count = -1;
+                } else {
+                    curr.selected = true;
+                }
+                set_item_state(window, n, curr);
+                if (how === PICK_ONE)
+                    finished = true;
+            }
+            /* unacceptable input: C rings the bell and keeps reading */
         }
-        if (hit)
-            return picks;                    /* PICK_ONE: first hit wins */
-        /* unrecognised key: C beeps and keeps reading */
     }
+
+    /* win/tty/wintty.c:2794 — dismiss (not destroy) before returning, so the
+       screen underneath is restored while the caller still holds the window.
+       Skipping this leaves the menu painted behind whatever the caller opens
+       next, e.g. doset_simple_menu()'s handler menus.
+
+       erase_menu_or_text()'s offx==0 arm is `docrt(); flush_screen(1);`, but
+       docrt() is async here while tty_dismiss_nhwindow() is called from sync
+       destroy sites, so that arm runs at this boundary instead. It repaints
+       the MAP only -- the status rows stay as the full-screen menu left them
+       until the next bot(), which is what C's recordings show. */
+    const full_screen = (cw.offx === 0 && !cw.offy && !game.in_role_selection);
+    tty_dismiss_nhwindow(window);
+    if (full_screen) {
+        const { docrt } = await import('./../display.js');
+        await docrt();
+    }
+
+    if (cw.cancelled)
+        return [];
+    const picks = [];
+    for (let curr = cw.mlist; curr; curr = curr.next)
+        if (curr.identifier && curr.selected)
+            picks.push(curr.identifier);
+    return picks;
+}
+
+export function tty_prev_page(window) {
+    const cw = windows[window];
+    const display = game?.nhDisplay;
+    if (!cw || !display) return false;
+    if (cw.curr_page <= 0) return false;
+    cw.curr_page--;
+    if (cw.mlist) process_menu_window(cw, cw.curr_page, display);
+    else render_page(cw, cw.curr_page, display);
+    return true;
 }
 
 export function tty_next_page(window) {

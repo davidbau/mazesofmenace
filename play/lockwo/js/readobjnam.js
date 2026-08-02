@@ -41,7 +41,11 @@ import {
     VENOM_CLASS,
     MAXOCLASSES,
     AMULET_OF_YENDOR,
+    ROCK,
+    TALLOW_CANDLE,
+    WAX_CANDLE,
 } from './mkobj.js';
+import { P_BOOMERANG, P_DART, P_BOW, P_CROSSBOW } from './const.js';
 import {
     rnd_otyp_by_namedesc,
     o_ranges,
@@ -154,7 +158,7 @@ const ARTILIST = [
     ['Snickersnee', 56 /*KATANA*/, 19],
     ['Sunsword', 54 /*LONG_SWORD*/, 20],
     ['The Orb of Detection', 231 /*CRYSTAL_BALL*/, 21],
-    ['The Heart of Ahriman', 469 /*LUCKSTONE*/, 22],
+    ['The Heart of Ahriman', 470 /*LUCKSTONE*/, 22],
     ['The Sceptre of Might', 73 /*MACE*/, 23],
     ['The Palantir of Westernesse', 231 /*CRYSTAL_BALL*/, 24],
     ['The Staff of Aesculapius', 79 /*QUARTERSTAFF*/, 25],
@@ -657,8 +661,35 @@ function finalize(d, anyRandom) {
         d.oclass = otmp.oclass;
     }
 
-    // count: in wizard mode quantity isn't restricted.
-    if (d.cnt > 0 && objects[d.typ].oc_merge) otmp.quan = d.cnt;
+    // C ref: objnam.c:5071 — the requested quantity is honoured only for a
+    // mergeable object, and then only in wizard mode / for small counts /
+    // candles / rocks / ammo.  `objects[].oc_merge` is not a field of the
+    // js/mkobj.js rows: the bitfield lives in `flags` (F_MERGE), so the old
+    // `objects[d.typ].oc_merge` test read `undefined` and EVERY multi-count
+    // wish silently produced a single item ("blessed 20 daggers" -> "a
+    // dagger", seed0399 step 138).
+    // C ref: objclass.h Bitfield(oc_merge) — js/mkobj.js packs it as bit 5 of
+    // the row's `flags` word (F_MERGE, the same value mkobj.js uses privately).
+    const F_MERGE = 32;
+    // FLINT has no named export in mkobj.js; resolve it by its C constant name
+    // off the OBJECTS row `sym` field rather than pasting the index.
+    const FLINT_OTYP = objects.findIndex((o) => o && o.sym === 'FLINT');
+    if (d.cnt > 0 && (objects[d.typ].flags & F_MERGE)) {
+        const skill = objects[d.typ].oc_skill ?? 0;
+        // C ref: obj.h is_missile/is_ammo/Is_candle.
+        const is_missile = (d.oclass === WEAPON_CLASS || d.oclass === TOOL_CLASS)
+            && skill >= -P_BOOMERANG && skill <= -P_DART;
+        const is_ammo = (d.oclass === WEAPON_CLASS || d.oclass === GEM_CLASS)
+            && skill >= -P_CROSSBOW && skill <= -P_BOW;
+        const Is_candle = d.typ === TALLOW_CANDLE || d.typ === WAX_CANDLE;
+        if (wizard()
+            || d.cnt < rnd(6)
+            || (d.cnt <= 7 && Is_candle)
+            || (d.cnt <= 20
+                && (d.typ === ROCK || d.typ === FLINT_OTYP || is_missile
+                    || (d.oclass === WEAPON_CLASS && is_ammo))))
+            otmp.quan = d.cnt;
+    }
 
     // spe: wizard mode keeps requested spe (clamped to SPE_LIM) else random.
     let spe = d.spe;

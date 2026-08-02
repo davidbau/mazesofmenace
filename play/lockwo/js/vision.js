@@ -120,7 +120,7 @@ function _blocks(level, x, y) {
     const objs = level.objects;
     if (objs) {
         for (const o of objs) {
-            if (o.otyp === 474 /*BOULDER*/ && o.where === 'floor'
+            if (o.otyp === 475 /*BOULDER*/ && o.where === 'floor'
                 && o.ox === x && o.oy === y) return true;
         }
     }

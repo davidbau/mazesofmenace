@@ -120,29 +120,29 @@ const FOOD_RATION = 293;
 const POT_HEALING = 307;
 const POT_EXTRA_HEALING = 308;
 const SCR_MAGIC_MAPPING = 337;
-const SPE_HEALING = 373;
-const SPE_CONFUSE_MONSTER = 376;
-const SPE_EXTRA_HEALING = 390;
-const SPE_PROTECTION = 402;
-const SPE_STONE_TO_FLESH = 404;
-const WAN_SLEEP = 431;
-const TOUCHSTONE = 471;
-const FLINT = 472;
-const ROCK = 473;
+const SPE_HEALING = 374;
+const SPE_CONFUSE_MONSTER = 377;
+const SPE_EXTRA_HEALING = 391;
+const SPE_PROTECTION = 403;
+const SPE_STONE_TO_FLESH = 405;
+const WAN_SLEEP = 432;
+const TOUCHSTONE = 472;
+const FLINT = 473;
+const ROCK = 474;
 const POT_HALLUCINATION = 304;
 const POT_POLYMORPH = 316;
 const POT_ACID = 320;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_AMNESIA = 338;
 const SCR_FIRE = 339;
-const SCR_BLANK_PAPER = 364;
-const SPE_FORCE_BOLT = 375;
-const SPE_POLYMORPH = 398;
-const SPE_BLANK_PAPER = 406;
-const SPE_NOVEL = 407;
-const WAN_WISHING = 413;
-const WAN_NOTHING = 415;
-const WAN_POLYMORPH = 421;
+const SCR_BLANK_PAPER = 365;
+const SPE_FORCE_BOLT = 376;
+const SPE_POLYMORPH = 399;
+const SPE_BLANK_PAPER = 407;
+const SPE_NOVEL = 408;
+const WAN_WISHING = 414;
+const WAN_NOTHING = 416;
+const WAN_POLYMORPH = 422;
 const RIN_LEVITATION = 183;
 const RIN_HUNGER = 184;
 const RIN_AGGRAVATE_MONSTER = 185;
@@ -817,47 +817,47 @@ const P_NONE = 0;
 // otyp.  spell_skilltype(otyp)==objects[otyp].oc_skill (spell.c:856); the JS
 // objects table doesn't carry oc_skill/oc_level, so they live here.
 export const SPELL_META = new Map([
-    [365, { skill: 34, level: 5 }], // SPE_DIG
-    [366, { skill: 28, level: 2 }], // SPE_MAGIC_MISSILE
-    [367, { skill: 28, level: 4 }], // SPE_FIREBALL
-    [368, { skill: 28, level: 4 }], // SPE_CONE_OF_COLD
-    [369, { skill: 31, level: 3 }], // SPE_SLEEP
-    [370, { skill: 28, level: 7 }], // SPE_FINGER_OF_DEATH
-    [371, { skill: 30, level: 1 }], // SPE_LIGHT
-    [372, { skill: 30, level: 1 }], // SPE_DETECT_MONSTERS
-    [373, { skill: 29, level: 1 }], // SPE_HEALING
-    [374, { skill: 34, level: 1 }], // SPE_KNOCK
-    [375, { skill: 28, level: 1 }], // SPE_FORCE_BOLT
-    [376, { skill: 31, level: 1 }], // SPE_CONFUSE_MONSTER
-    [377, { skill: 29, level: 2 }], // SPE_CURE_BLINDNESS
-    [378, { skill: 28, level: 2 }], // SPE_DRAIN_LIFE
-    [379, { skill: 31, level: 2 }], // SPE_SLOW_MONSTER
-    [380, { skill: 34, level: 2 }], // SPE_WIZARD_LOCK
-    [381, { skill: 32, level: 2 }], // SPE_CREATE_MONSTER
-    [382, { skill: 30, level: 2 }], // SPE_DETECT_FOOD
-    [383, { skill: 31, level: 3 }], // SPE_CAUSE_FEAR
-    [384, { skill: 30, level: 3 }], // SPE_CLAIRVOYANCE
-    [385, { skill: 29, level: 3 }], // SPE_CURE_SICKNESS
-    [386, { skill: 31, level: 5 }], // SPE_CHARM_MONSTER
-    [387, { skill: 33, level: 3 }], // SPE_HASTE_SELF
-    [388, { skill: 30, level: 3 }], // SPE_DETECT_UNSEEN
-    [389, { skill: 33, level: 4 }], // SPE_LEVITATION
-    [390, { skill: 29, level: 3 }], // SPE_EXTRA_HEALING
-    [391, { skill: 29, level: 4 }], // SPE_RESTORE_ABILITY
-    [392, { skill: 33, level: 4 }], // SPE_INVISIBILITY
-    [393, { skill: 30, level: 4 }], // SPE_DETECT_TREASURE
-    [394, { skill: 32, level: 3 }], // SPE_REMOVE_CURSE
-    [395, { skill: 30, level: 5 }], // SPE_MAGIC_MAPPING
-    [396, { skill: 30, level: 3 }], // SPE_IDENTIFY
-    [397, { skill: 32, level: 6 }], // SPE_TURN_UNDEAD
-    [398, { skill: 34, level: 6 }], // SPE_POLYMORPH
-    [399, { skill: 33, level: 6 }], // SPE_TELEPORT_AWAY
-    [400, { skill: 32, level: 6 }], // SPE_CREATE_FAMILIAR
-    [401, { skill: 34, level: 7 }], // SPE_CANCELLATION
-    [402, { skill: 32, level: 1 }], // SPE_PROTECTION
-    [403, { skill: 33, level: 1 }], // SPE_JUMPING
-    [404, { skill: 29, level: 3 }], // SPE_STONE_TO_FLESH
-    [405, { skill: 28, level: 2 }], // SPE_CHAIN_LIGHTNING
+    [366, { skill: 34, level: 5 }], // SPE_DIG
+    [367, { skill: 28, level: 2 }], // SPE_MAGIC_MISSILE
+    [368, { skill: 28, level: 4 }], // SPE_FIREBALL
+    [369, { skill: 28, level: 4 }], // SPE_CONE_OF_COLD
+    [370, { skill: 31, level: 3 }], // SPE_SLEEP
+    [371, { skill: 28, level: 7 }], // SPE_FINGER_OF_DEATH
+    [372, { skill: 30, level: 1 }], // SPE_LIGHT
+    [373, { skill: 30, level: 1 }], // SPE_DETECT_MONSTERS
+    [374, { skill: 29, level: 1 }], // SPE_HEALING
+    [375, { skill: 34, level: 1 }], // SPE_KNOCK
+    [376, { skill: 28, level: 1 }], // SPE_FORCE_BOLT
+    [377, { skill: 31, level: 1 }], // SPE_CONFUSE_MONSTER
+    [378, { skill: 29, level: 2 }], // SPE_CURE_BLINDNESS
+    [379, { skill: 28, level: 2 }], // SPE_DRAIN_LIFE
+    [380, { skill: 31, level: 2 }], // SPE_SLOW_MONSTER
+    [381, { skill: 34, level: 2 }], // SPE_WIZARD_LOCK
+    [382, { skill: 32, level: 2 }], // SPE_CREATE_MONSTER
+    [383, { skill: 30, level: 2 }], // SPE_DETECT_FOOD
+    [384, { skill: 31, level: 3 }], // SPE_CAUSE_FEAR
+    [385, { skill: 30, level: 3 }], // SPE_CLAIRVOYANCE
+    [386, { skill: 29, level: 3 }], // SPE_CURE_SICKNESS
+    [387, { skill: 31, level: 5 }], // SPE_CHARM_MONSTER
+    [388, { skill: 33, level: 3 }], // SPE_HASTE_SELF
+    [389, { skill: 30, level: 3 }], // SPE_DETECT_UNSEEN
+    [390, { skill: 33, level: 4 }], // SPE_LEVITATION
+    [391, { skill: 29, level: 3 }], // SPE_EXTRA_HEALING
+    [392, { skill: 29, level: 4 }], // SPE_RESTORE_ABILITY
+    [393, { skill: 33, level: 4 }], // SPE_INVISIBILITY
+    [394, { skill: 30, level: 4 }], // SPE_DETECT_TREASURE
+    [395, { skill: 32, level: 3 }], // SPE_REMOVE_CURSE
+    [396, { skill: 30, level: 5 }], // SPE_MAGIC_MAPPING
+    [397, { skill: 30, level: 3 }], // SPE_IDENTIFY
+    [398, { skill: 32, level: 6 }], // SPE_TURN_UNDEAD
+    [399, { skill: 34, level: 6 }], // SPE_POLYMORPH
+    [400, { skill: 33, level: 6 }], // SPE_TELEPORT_AWAY
+    [401, { skill: 32, level: 6 }], // SPE_CREATE_FAMILIAR
+    [402, { skill: 34, level: 7 }], // SPE_CANCELLATION
+    [403, { skill: 32, level: 1 }], // SPE_PROTECTION
+    [404, { skill: 33, level: 1 }], // SPE_JUMPING
+    [405, { skill: 29, level: 3 }], // SPE_STONE_TO_FLESH
+    [406, { skill: 28, level: 2 }], // SPE_CHAIN_LIGHTNING
     // SPE_BLANK_PAPER(406)/SPE_NOVEL(407)/SPE_BOOK_OF_THE_DEAD(408): P_NONE, level 0.
 ]);
 
@@ -1224,7 +1224,7 @@ export function u_init_role() {
             ini_inv(Magicmarker);
         // C ref: u_init.c — archeologists know sacks and touchstone (no RNG).
         knows_object(217 /*SACK*/);
-        knows_object(471 /*TOUCHSTONE*/);
+        knows_object(472 /*TOUCHSTONE*/);
         break;
     case PM_BARBARIAN:
         if (rn2(100) >= 50)

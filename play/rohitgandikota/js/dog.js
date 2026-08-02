@@ -26,7 +26,7 @@ import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
-import { newsym } from './display.js';
+import { newsym, canspotmon, mon_visible, pline } from './display.js';
 import { splitobj } from './mkobj.js';
 import { m_consume_obj, is_pick, check_gear_next_turn } from './mon.js';
 import {
@@ -46,10 +46,10 @@ import { rn2, rnd, getRngLog } from './rng.js';
 import { dist2, sgn } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
 import { doname } from './objnam.js';
-import { Monnam, christen_monst } from './do_name.js';
+import { Monnam, noit_Monnam, christen_monst } from './do_name.js';
 import { pline_xy } from './pline.js';
 import { relobj } from './steal.js';
-import { set_apparxy } from './monmove.js';
+import { set_apparxy, mon_track_add } from './monmove.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { PMNAMES } from './monst_data.js';
@@ -581,7 +581,7 @@ function dog_nutrition(mtmp, obj) {
 // Not ported, each recorded rather than faked: the killer-bee royal jelly
 // bypass, the rust monster's erodeproof branch, shop billing (unpaid,
 // costly_alteration, unpaid_cost) and the eating messages.
-function dog_eat(mtmp, obj, x, y, devour) {
+async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = mtmp.edog;
     let nutrit;
 
@@ -622,6 +622,28 @@ function dog_eat(mtmp, obj, x, y, devour) {
 
     if (obj.unpaid)
         note_unported('dog_eat:shop');
+
+    /* src/dogmove.c:264 — announce the meal. The food is at the pet's
+       CURRENT square; <x,y> is where it started the turn, and the two differ
+       when it moved and ate on the same turn. */
+    if (is_pool(mtmp.mx, mtmp.my) && !game.u.uinwater) {
+        /* Don't print obj */
+    } else {
+        const seeobj = cansee(mtmp.mx, mtmp.my);
+        const sawpet = cansee(x, y) && mon_visible(mtmp);
+
+        if (sawpet || (seeobj && canspotmon(mtmp))) {
+            const obj_name = doname(obj);   /* distant_name(obj, doname) */
+            if (tunnels(game.mons[mtmp.mnum]))
+                await pline(`${noit_Monnam(mtmp)} digs in.`);
+            else
+                await pline(`${noit_Monnam(mtmp)} ${
+                    devour ? 'devours' : 'eats'} ${obj_name}.`);
+        } else if (seeobj) {
+            const obj_name = doname(obj);
+            await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
+        }
+    }
 
     if (game.mons[mtmp.mnum] === game.mons[PMNAMES.PM_RUST_MONSTER]
         && obj.oerodeproof) {
@@ -672,6 +694,12 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
             const otyp = dogfood(mtmp, obj);
             /* skip inferior goals */
             if (otyp > gtyp || otyp === UNDEF)
+                continue;
+            /* src/dogmove.c:536 — avoid cursed items unless starving. This
+               `continue` is NOT draw-neutral: it skips the APPORT arm below,
+               whose `apport > rn2(8)` is a draw. */
+            if (cursed_object_at(nx, ny)
+                && !(mtmp.edog?.mhpmax_penalty && otyp < MANFOOD))
                 continue;
             if (!could_reach_item(mtmp, nx, ny)
                 || !can_reach_location(mtmp, mtmp.mx, mtmp.my, nx, ny))
@@ -1043,7 +1071,14 @@ export async function dog_move(mtmp, after) {
     const omx = mtmp.mx, omy = mtmp.my;
     const udist = distu(omx, omy);
 
-    await dog_invent(mtmp, edog, udist);
+    /* src/dogmove.c:1032 — a pet that ate or picked something up is done for
+       the turn; `goto newdogpos` with nix,niy still at omx,omy, so the
+       movement block reduces to the leash kludge and it returns MMOVE_MOVED. */
+    const j_inv = await dog_invent(mtmp, edog, udist);
+    if (j_inv === 2)
+        return DEADMONSTER(mtmp) ? MMOVE_DIED : MMOVE_DONE;
+    else if (j_inv === 1)
+        return MMOVE_MOVED;
 
     /* src/dogmove.c:1038 — whappr is TRUE for the five turns after the pet was
        whistled for, and edog->whistletime starts at 0, so it is TRUE for the
@@ -1277,10 +1312,9 @@ export async function dog_move(mtmp, after) {
             await mattacku(mtmp);
             return MMOVE_DONE;
         }
-        /* src/monmove.c mtrack — remember where we came from, newest first */
-        mtmp.mtrack = mtmp.mtrack || [];
-        mtmp.mtrack.unshift({ x: omx, y: omy });
-        if (mtmp.mtrack.length > MTSZ) mtmp.mtrack.length = MTSZ;
+        /* src/dogmove.c:1313 mon_track_add() — remember where we came
+           from, newest first */
+        mon_track_add(mtmp, omx, omy);
 
         /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
            the move. Writing mx/my alone leaves m_at() answering with the old
@@ -1296,7 +1330,7 @@ export async function dog_move(mtmp, after) {
            after being moved. Thus the do_eat flag." omx,omy is where the pet
            STARTED the turn, which is what dog_eat wants for its newsym pair. */
         if (do_eat) {
-            if (dog_eat(mtmp, eat_obj, omx, omy, false) === 2)
+            if (await dog_eat(mtmp, eat_obj, omx, omy, false) === 2)
                 return MMOVE_DIED;
         }
         return MMOVE_MOVED;
@@ -1366,11 +1400,8 @@ export async function dog_invent(mtmp, edog, udist) {
             if ((edible <= CADAVER
                  /* a starving pet is more aggressive about eating */
                  || (edog.mhpmax_penalty && edible === ACCFOOD))
-                && could_reach_item(mtmp, obj.ox, obj.oy)) {
-                /* dog_eat() draws; stop rather than guess its numbers. */
-                note_unported('dog_eat');
-                return 0;
-            }
+                && could_reach_item(mtmp, obj.ox, obj.oy))
+                return await dog_eat(mtmp, obj, omx, omy, false);
 
             /* src/dogmove.c:443 — the fetch. can_carry() and
                could_reach_item() draw nothing, but they gate TWO draws that

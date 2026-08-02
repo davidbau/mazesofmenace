@@ -31,7 +31,7 @@ import { xname } from './objnam.js';
 import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
-import { mhitm_ad_phys, mhitm_knockback } from './uhitm.js';
+import { mhitm_ad_phys, mhitm_ad_elec, mhitm_knockback } from './uhitm.js';
 import { t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
 
@@ -683,6 +683,9 @@ async function hitmu(mtmp, mattk, indx) {
     /* mhitm_adtyping: dispatch on the damage type */
     if (mattk[1] === A.AD_PHYS) {
         await mhitm_ad_phys(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_ELEC) {
+        mhm.indx = indx;
+        await mhitm_ad_elec(mtmp, mattk, game.youmonst, mhm);
     } else {
         note_unported_mhitu(`hitmu:adtyp=${mattk[1]}`);
         /* the generic arms still print the plain hit message */

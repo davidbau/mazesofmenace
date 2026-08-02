@@ -235,9 +235,9 @@ export const o_ranges = [
     ['dragon scales', 3, 111 /*GRAY_DRAGON_SCALES*/, 120 /*YELLOW_DRAGON_SCALES*/],
     ['dragon scale mail', 3, 101 /*GRAY_DRAGON_SCALE_MAIL*/, 110 /*YELLOW_DRAGON_SCALE_MAIL*/],
     ['sword', 2 /*WEAPON_CLASS*/, 46 /*SHORT_SWORD*/, 56 /*KATANA*/],
-    ['venom', 17 /*VENOM_CLASS*/, 478 /*BLINDING_VENOM*/, 479 /*ACID_VENOM*/],
-    ['gray stone', 13 /*GEM_CLASS*/, 469 /*LUCKSTONE*/, 472 /*FLINT*/],
-    ['grey stone', 13, 469, 472],
+    ['venom', 17 /*VENOM_CLASS*/, 479 /*BLINDING_VENOM*/, 480 /*ACID_VENOM*/],
+    ['gray stone', 13 /*GEM_CLASS*/, 470 /*LUCKSTONE*/, 473 /*FLINT*/],
+    ['grey stone', 13, 470, 473],
 ];
 
 // Alternate spellings.  C ref: objnam.c spellings[].  (otyp numbers.)
@@ -249,7 +249,7 @@ export const spellings = [
     ['smooth shield', 158 /*SHIELD_OF_REFLECTION*/],
     ['grey dragon scale mail', 101 /*GRAY_DRAGON_SCALE_MAIL*/],
     ['grey dragon scales', 111 /*GRAY_DRAGON_SCALES*/],
-    ['iron ball', 476 /*HEAVY_IRON_BALL*/],
+    ['iron ball', 477 /*HEAVY_IRON_BALL*/],
     ['lantern', 226 /*BRASS_LANTERN*/],
     ['mattock', 71 /*DWARVISH_MATTOCK*/],
     ['amulet of poison resistance', 205 /*AMULET_VERSUS_POISON*/],
@@ -263,7 +263,7 @@ export const spellings = [
     ['potion of sleep', 314 /*POT_SLEEPING*/],
     ['scroll of recharging', 342 /*SCR_CHARGING*/],
     ['recharging', 342],
-    ['stone', 473 /*ROCK*/],
+    ['stone', 474 /*ROCK*/],
     ['camera', 229 /*EXPENSIVE_CAMERA*/],
     ['tee shirt', 137 /*T_SHIRT*/],
     ['can', 296 /*TIN*/],
@@ -284,10 +284,10 @@ export const spellings = [
     ['protection from shape shifters', 200 /*RIN_PROTECTION_FROM_SHAPE_CHAN*/],
     ['accuracy', 176 /*RIN_INCREASE_ACCURACY*/],
     ['box', 214 /*LARGE_BOX*/],
-    ['luck stone', 469 /*LUCKSTONE*/],
-    ['load stone', 470 /*LOADSTONE*/],
-    ['touch stone', 471 /*TOUCHSTONE*/],
-    ['flintstone', 472 /*FLINT*/],
+    ['luck stone', 470 /*LUCKSTONE*/],
+    ['load stone', 471 /*LOADSTONE*/],
+    ['touch stone', 472 /*TOUCHSTONE*/],
+    ['flintstone', 473 /*FLINT*/],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────

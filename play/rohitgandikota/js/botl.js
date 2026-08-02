@@ -10,6 +10,44 @@ import { roles } from './role_data.js';
 import { near_capacity } from './attrib.js';
 import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE } from './const.js';
 
+/* src/botl.c:817 condtests[] — one row per status condition. `enabled`
+   defaults to !opt_in and the 'status condition fields' option edits it; the
+   options menu reports how many are on. Only id/useropt/optin/enabled are
+   carried: the per-turn `test` fields belong to the status line, which is not
+   driven from this table yet. */
+export const condtests = [
+    { id: 'bl_bareh',     useropt: 'barehanded',  optin: true,  enabled: false },
+    { id: 'bl_blind',     useropt: 'blind',       optin: false, enabled: true },
+    { id: 'bl_busy',      useropt: 'busy',        optin: true,  enabled: false },
+    { id: 'bl_conf',      useropt: 'conf',        optin: false, enabled: true },
+    { id: 'bl_deaf',      useropt: 'deaf',        optin: false, enabled: true },
+    { id: 'bl_elf_iron',  useropt: 'iron',        optin: false, enabled: true },
+    { id: 'bl_fly',       useropt: 'fly',         optin: false, enabled: true },
+    { id: 'bl_foodpois',  useropt: 'foodPois',    optin: false, enabled: true },
+    { id: 'bl_glowhands', useropt: 'glowhands',   optin: true,  enabled: false },
+    { id: 'bl_grab',      useropt: 'grab',        optin: false, enabled: true },
+    { id: 'bl_hallu',     useropt: 'hallucinat',  optin: false, enabled: true },
+    { id: 'bl_held',      useropt: 'held',        optin: true,  enabled: false },
+    { id: 'bl_icy',       useropt: 'ice',         optin: true,  enabled: false },
+    { id: 'bl_inlava',    useropt: 'lava',        optin: false, enabled: true },
+    { id: 'bl_lev',       useropt: 'levitate',    optin: false, enabled: true },
+    { id: 'bl_parlyz',    useropt: 'paralyzed',   optin: true,  enabled: false },
+    { id: 'bl_ride',      useropt: 'ride',        optin: false, enabled: true },
+    { id: 'bl_sleeping',  useropt: 'sleep',       optin: true,  enabled: false },
+    { id: 'bl_slime',     useropt: 'slime',       optin: false, enabled: true },
+    { id: 'bl_slippery',  useropt: 'slip',        optin: true,  enabled: false },
+    { id: 'bl_stone',     useropt: 'stone',       optin: false, enabled: true },
+    { id: 'bl_strngl',    useropt: 'strngl',      optin: false, enabled: true },
+    { id: 'bl_stun',      useropt: 'stun',        optin: false, enabled: true },
+    { id: 'bl_submerged', useropt: 'submerged',   optin: true,  enabled: false },
+    { id: 'bl_termill',   useropt: 'termIll',     optin: false, enabled: true },
+    { id: 'bl_tethered',  useropt: 'tethered',    optin: true,  enabled: false },
+    { id: 'bl_trapped',   useropt: 'trap',        optin: true,  enabled: false },
+    { id: 'bl_unconsc',   useropt: 'unconscious', optin: true,  enabled: false },
+    { id: 'bl_woundedl',  useropt: 'woundedlegs', optin: true,  enabled: false },
+    { id: 'bl_holding',   useropt: 'holding',     optin: true,  enabled: false },
+];
+
 // src/botl.c:298 xlev_to_rank()
 //
 //   1..2 => 0,  3..5 => 1,  6..9 => 2,  10..13 => 3, ... 26..29 => 7, 30 => 8

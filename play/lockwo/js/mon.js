@@ -8,12 +8,19 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit } from './const.js';
-import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen } from './monmove.js';
+import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
+    W_ARMG } from './const.js';
+import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
+    m_everyturn_effect } from './monmove.js';
 import { cansee } from './vision.js';
 import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
-import { is_were_flag, is_human_flag } from './monflags_data.js';
+import { is_were_flag, is_human_flag, mflags1_of, mflags2_of, mflags3_of,
+    M1_NOTAKE, M1_NOHANDS, M2_DEMON, M3_COVETOUS,
+    strongmonst_flag, throws_rocks_flag } from './monflags_data.js';
+import { attacktype, AT_ENGL } from './monattk_data.js';
+import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
+    COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './mkobj.js';
 import { monster_by_pmidx } from './makemon.js';
 import { newsym, pline } from './display.js';
 import { Monnam } from './uhitm.js';
@@ -454,6 +461,11 @@ async function movemon_singlemon(mtmp) {
     if (DEADMONSTER(mtmp)) return false;
     if (mtmp.mx == null || mtmp.mx <= 0) return false; // off-map
 
+    // C ref: mon.c:1248 — m_everyturn_effect() runs BEFORE the movement-point
+    // gate, so a fog cloud trails vapor every turn even on turns it is too slow
+    // to act (and rolls that cloud's rn1(3,4) lifespan).
+    await m_everyturn_effect(mtmp);
+
     // C: monster only acts once its accumulated movement reaches NORMAL_SPEED.
     if ((mtmp.movement || 0) < NORMAL_SPEED) return false;
 
@@ -524,4 +536,165 @@ async function movemon_pass() {
 // and enabling it without that regresses pet-position screens.)
 export async function movemon() {
     return await movemon_pass();
+}
+
+/* ------------------------------------------------------------------------ *
+ * mon.c — object-pickup capability.
+ *
+ * curr_mon_load() / max_mon_load() / can_touch_safely() / can_carry() are the
+ * four mon.c predicates that decide whether a monster may take a floor object.
+ * They are the load half of monmove.c's mon_would_take_item(): the `pctload`
+ * that gates every branch of that function is curr_mon_load*100/max_mon_load,
+ * and m_search_items() only redirects a monster's goal toward loot when
+ * can_carry() comes back positive.  Getting them wrong therefore moves
+ * monsters, not just inventories.
+ * ------------------------------------------------------------------------ */
+
+// C ref: objclass.h obj_material_types.  mkobj.js keeps these private, so the
+// three bands mon.c's pickup rules consult are restated here.
+const SILVER = 14;
+// C ref: monflag.h MZ_MEDIUM (== MZ_HUMAN).
+const MZ_HUMAN = 2;
+// C ref: defsym.h MONSYM() indices — the same numbering makemon.js stores in
+// permonst.mcls (C's ptr->mlet).
+const S_DRAGON = 30, S_NYMPH = 14;
+
+// C ref: mondata.h notake(ptr) == (mflags1 & M1_NOTAKE).
+export function notake(ptr) { return (mflags1_of(ptr) & M1_NOTAKE) !== 0; }
+
+// C ref: mondata.h touch_petrifies(ptr) — cockatrice / chickatrice.
+function touch_petrifies_pm(corpsenm) {
+    const nm = monster_by_pmidx(corpsenm)?.name;
+    return nm === 'cockatrice' || nm === 'chickatrice';
+}
+// C ref: mondata.h is_rider(ptr) — Death / Famine / Pestilence.
+function is_rider_pm(corpsenm) {
+    const nm = monster_by_pmidx(corpsenm)?.name;
+    return nm === 'Death' || nm === 'Famine' || nm === 'Pestilence';
+}
+// C ref: monst.h is_vampshifter(mon) — mon->cham is a vampire form.  The same
+// three pmidx monmove.js uses; kept local so mon.js does not have to reach into
+// monmove.js for a two-line predicate.
+const PM_VAMPIRE = 226, PM_VAMPIRE_LEADER = 227, PM_VLAD_THE_IMPALER = 228;
+function is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LEADER
+        || mon.cham === PM_VLAD_THE_IMPALER;
+}
+// C ref: mondata.c:524 hates_silver(ptr).
+const S_VAMPIRE = 48, S_IMP = 9;
+function hates_silver(ptr) {
+    if (!ptr) return false;
+    if (is_were_flag(ptr)) return true;
+    if (ptr.mcls === S_VAMPIRE) return true;
+    if ((mflags2_of(ptr) & M2_DEMON) !== 0) return true;
+    if (ptr.name === 'shade') return true;
+    if (ptr.mcls === S_IMP && ptr.name !== 'tengu') return true;
+    return false;
+}
+// C ref: mondata.c:517 mon_hates_silver(mon).
+export function mon_hates_silver(mon) {
+    return is_vampshifter(mon) || hates_silver(mon.data);
+}
+// C ref: monst.h resists_ston(mon) == Resists_Elem(mon, STONE_RES), i.e.
+// (mresists | mextrinsics | mintrinsics) & MR_STONE.  Monster extrinsics from
+// worn gear are not tracked on our monster record, so this reads the species
+// bit only — the two acquired sources (an amulet of ... / eating a lizard) are
+// not reachable for a floor-scanning monster in the recorded sessions.
+const MR_STONE = 0x80;
+export function resists_ston(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_STONE) !== 0;
+}
+// C ref: artifact.c touch_artifact(obj, mon).  An ordinary object is always
+// safe; the alignment/role blast that can reject an ARTIFACT is not modeled
+// (no monster in the recorded sessions ever stands next to a loose artifact),
+// so an artifact conservatively reads as touchable, exactly as before this
+// function existed.
+function touch_artifact(_otmp, _mtmp) { return true; }
+
+// C ref: mon.c:1960 can_touch_safely(mtmp, otmp).
+export function can_touch_safely(mtmp, otmp) {
+    const otyp = otmp.otyp;
+    const mdat = mtmp.data;
+    if (otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0
+        && touch_petrifies_pm(otmp.corpsenm)
+        && !((mtmp.misc_worn_check ?? 0) & W_ARMG) && !resists_ston(mtmp))
+        return false;
+    if (otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0
+        && is_rider_pm(otmp.corpsenm))
+        return false;
+    if (OBJECTS[otyp]?.material === SILVER && mon_hates_silver(mtmp)
+        && (otyp !== BELL_OF_OPENING || (mflags3_of(mdat) & M3_COVETOUS) === 0))
+        return false;
+    if (!touch_artifact(otmp, mtmp))
+        return false;
+    return true;
+}
+
+// C ref: mon.c:1903 curr_mon_load(mtmp) — summed owt of the monster's
+// inventory, with boulders free for a rock-thrower.
+export function curr_mon_load(mtmp) {
+    let curload = 0;
+    for (const obj of (mtmp.minvent || [])) {
+        if (obj.otyp !== BOULDER || !throws_rocks_flag(mtmp.data))
+            curload += Math.max(1, obj.owt ?? 1);
+    }
+    return curload;
+}
+
+// C ref: mon.c:1917 max_mon_load(mtmp).
+export function max_mon_load(mtmp) {
+    const d = mtmp.data || {};
+    const strong = strongmonst_flag(d);
+    let maxload;
+    if (!d.cwt)
+        maxload = (MAX_CARR_CAP * (d.msize | 0)) / MZ_HUMAN;
+    else if (!strong || (strong && d.cwt > WT_HUMAN))
+        maxload = (MAX_CARR_CAP * d.cwt) / WT_HUMAN;
+    else
+        maxload = MAX_CARR_CAP; /* strong monsters w/cwt <= WT_HUMAN */
+    // C does these in long arithmetic, so each step truncates toward zero.
+    maxload = Math.trunc(maxload);
+    if (!strong) maxload = Math.trunc(maxload / 2);
+    if (maxload < 1) maxload = 1;
+    return maxload;
+}
+
+// C ref: mon.c:1997 can_carry(mtmp, otmp) — how many of otmp mtmp could take
+// off the floor (0 = none).  Note the ORDER: the NOHANDS "only one of a stack"
+// rule returns BEFORE the peaceful and load-cap tests, so a handless hostile
+// always manages a single item from a pile however overloaded it is.
+export function can_carry(mtmp, otmp) {
+    const otyp = otmp.otyp;
+    const newload = Math.max(1, otmp.owt ?? 1);
+    const mdat = mtmp.data;
+
+    if (notake(mdat)) return 0;
+    if (!can_touch_safely(mtmp, otmp)) return 0;
+
+    // C's `quan > LARGEST_INT` branch (a 2-billion-item stack) cannot arise
+    // here — nothing in the port creates one — so the plain cast is exact.
+    const iquan = otmp.quan || 1;
+
+    if (iquan > 1) {
+        let glomper = false;
+        if (mdat?.mcls === S_DRAGON
+            && (otmp.oclass === COIN_CLASS || otmp.oclass === GEM_CLASS))
+            glomper = true;
+        else if (attacktype(mdat, AT_ENGL))
+            glomper = true;
+        if ((mflags1_of(mdat) & M1_NOHANDS) !== 0 && !glomper)
+            return 1;
+    }
+
+    // C ref: steeds don't pick things up.  u.usteed is not tracked as a monster
+    // pointer here; a ridden pony is mtame and never reaches m_move's scan.
+    if (mtmp.isshk) return iquan; /* no limit */
+    if (mtmp.mpeaceful && !mtmp.mtame) return 0;
+
+    if (throws_rocks_flag(mdat) && otyp === BOULDER) return iquan;
+    if (mdat?.mcls === S_NYMPH) return (otmp.oclass === ROCK_CLASS) ? 0 : iquan;
+
+    if (curr_mon_load(mtmp) + newload > max_mon_load(mtmp)) return 0;
+
+    return iquan;
 }

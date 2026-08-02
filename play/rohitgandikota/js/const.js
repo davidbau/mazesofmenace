@@ -103,7 +103,7 @@ export const STATUS_ROW_2 = 23;
 
 
 // Direction arrays (decl.h, hack.c)
-// Index: 0=W, 1=NW, 2=N, 3=NE, 4=E, 5=SE, 6=S, 7=SW, 8=up, 9=down
+// Index: 0=W, 1=NW, 2=N, 3=NE, 4=E, 5=SE, 6=S, 7=SW, 8=down, 9=up
 export const xdir = [-1, -1,  0,  1,  1,  1,  0, -1, 0,  0];
 export const ydir = [ 0, -1, -1, -1,  0,  1,  1,  1, 0,  0];
 export const zdir = [0, 0, 0, 0, 0, 0, 0, 0, 1, -1];
@@ -117,8 +117,8 @@ export const DIR_E = 4;
 export const DIR_SE = 5;
 export const DIR_S = 6;
 export const DIR_SW = 7;
-export const DIR_UP = 8;
-export const DIR_DOWN = 9;
+export const DIR_DOWN = 8;
+export const DIR_UP = 9;
 export const N_DIRS = 8;
 export const N_DIRS_Z = 10;
 export function DIR_180(dir) { return (dir + 4) % N_DIRS; }
@@ -1039,6 +1039,8 @@ export const NUM_MOUSE_BUTTONS = 2;
 export const WIN_ERR = (-1);
 export const MENU_FIRST_PAGE = '^';
 export const MENU_LAST_PAGE = '|';
+/* include/defsym.h:479 OBJCLASS2(12, '$', COIN, GOLD_SYM, ...) */
+export const GOLD_SYM = '$';
 export const MENU_NEXT_PAGE = '>';
 export const MENU_PREVIOUS_PAGE = '<';
 export const MENU_SELECT_ALL = '.';

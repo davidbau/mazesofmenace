@@ -11,8 +11,11 @@
 // js/o_init.js shuffles at game start — so a correct label here is also a
 // direct check that the o_init port is right.
 
+import { carried } from './obj.js';
 import { game } from './gstate.js';
-import { vegetarian, name_to_monplus } from './mondata.js';
+import { vegetarian, name_to_monplus, type_is_pname } from './mondata.js';
+import { MFLAGS } from './monst_data.js';
+import { pmname } from './do_name.js';
 import { rn2, rnd } from './rng.js';
 import { mksobj, rnd_class, curse } from './mkobj.js';
 import { Is_candle, Is_container } from './obj.js';
@@ -20,7 +23,8 @@ import { is_ammo, is_missile } from './wield.js';
 import { is_weptool, is_rustprone, is_corrodeable, is_flammable,
          is_crackable, is_rottable } from './mkobj.js';
 import { bimanual } from './obj.js';
-import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP } from './const.js';
+import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP,
+         MALE, FEMALE, NEUTER, CORPSTAT_MALE, CORPSTAT_FEMALE } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
@@ -371,8 +375,82 @@ export function xname(obj) {
 
 // src/eat.c tin_details() — " of <monster>" or " of spinach".
 // src/objnam.c singular() — name one item of a stack.
+/* include/obj.h — corpse_xname() flags */
+export const CXN_NORMAL = 0, CXN_NOCORPSE = 1, CXN_PFX_THE = 2,
+             CXN_ARTICLE = 4, CXN_NOARTICLE = 8, CXN_SINGULAR = 16;
+
+// src/objnam.c:1121 the_unique_pm() — a unique monster that wants "the";
+// one with a personal name wants neither article.
+function the_unique_pm(ptr) {
+    if (type_is_pname(ptr))
+        return false;
+    return (ptr.geno & MFLAGS.G_UNIQ) !== 0;
+}
+
+// src/objnam.c:1824 corpse_xname() — "<species> corpse", with the article and
+// "the" handling C spells out for unique and personal-name monsters.
+//
+// The possessive form (Medusa's corpse), the adjective positioning and the
+// ghost/statue callers are recorded; what is ported is the ordinary
+// "a goblin corpse" that every kill produces.
+export function corpse_xname(otmp, adjective, cxn_flags) {
+    const omndx = otmp.corpsenm;
+    const the_prefix0 = (cxn_flags & CXN_PFX_THE) !== 0;
+    const article = (cxn_flags & CXN_ARTICLE) !== 0;
+    const omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0;
+    const ignore_quan = (cxn_flags & CXN_SINGULAR) !== 0;
+    let no_prefix = (cxn_flags & CXN_NOARTICLE) !== 0;
+    let any_prefix = !no_prefix && article;
+    let the_prefix = the_prefix0;
+
+    const mdat = game.mons[omndx];
+    /* src/do_name.c:1321 obj_pmname() — the corpse's own recorded gender
+       picks the pmnames[] slot; CORPSTAT_GENDER lives in obj->spe. */
+    const cgend = (otmp.spe | 0) & (CORPSTAT_MALE | CORPSTAT_FEMALE);
+    const mgend = (cgend === CORPSTAT_MALE) ? MALE
+                : (cgend === CORPSTAT_FEMALE) ? FEMALE
+                : NEUTER;
+    const mnam = mdat ? pmname(mdat, mgend) : 'thing';
+
+    if (mdat && type_is_pname(mdat)) {
+        no_prefix = true;
+    } else if (mdat && the_unique_pm(mdat) && !no_prefix) {
+        the_prefix = true;
+    }
+    if (no_prefix)
+        the_prefix = any_prefix = false;
+    else if (the_prefix)
+        any_prefix = false;             /* mutually exclusive */
+
+    let nambuf = the_prefix ? 'the ' : '';
+
+    if (!adjective || !adjective.trim()) {
+        nambuf += mnam;                 /* normal case: newt corpse */
+    } else {
+        nambuf += `${adjective.trim()} ${mnam}`;
+        /* doname() may pass a count as the adjective; then no article */
+        if (/^\d/.test(adjective.trim()))
+            any_prefix = false;
+    }
+
+    if (!omit_corpse) {
+        nambuf += ' corpse';
+        if (otmp.quan > 1 && !ignore_quan)
+            nambuf += 's';
+    }
+
+    return any_prefix ? an(nambuf) : nambuf;
+}
+
 // The CORPSE arm redirects xname to cxname for the monster type; corpses on
 // this tree go through the same xname, so the redirect has nothing to change.
+/* src/objnam.c yname() — "your <name>" when carried, "the <name>" otherwise.
+   C routes the prefix through shk_your(), whose shop-ownership, monster-
+   ownership and unique-corpse arms are not reached by anything ported. */
+export function yname(obj) {
+    return `${carried(obj) ? 'your' : 'the'} ${xname(obj)}`;
+}
+
 export function singular(otmp, func) {
     const savequan = otmp.quan;
     otmp.quan = 1;
@@ -400,6 +478,9 @@ function tin_details(obj) {
 // or enchantment is KNOWN and which is oc_charged — unless it is armour or a
 // ring. That is why a +2 dart and an expensive camera show no BUC while a
 // credit card and a food ration do.
+/* include/obj.h:338 Is_box() */
+const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
+
 export function doname(obj) {
     const ocl = game.objects[obj.otyp];
     const known = obj.known, bknown = obj.bknown, dknown = obj.dknown;
@@ -409,9 +490,17 @@ export function doname(obj) {
     if (obj.quan !== 1)
         prefix = `${obj.quan} `;
     else if (obj.otyp === ONAMES.CORPSE)
-        ;                              /* no article */
+        ;                              /* corpse_xname supplies the article */
     else
         prefix = 'a ';                 /* recomputed at the end */
+
+    /* src/objnam.c:1507 — the FOOD_CLASS arm's corpse case. xname() has
+       already put "corpse" in the buffer, so corpse_xname supplies the
+       species and, for a single corpse, the article. */
+    if (obj.otyp === ONAMES.CORPSE)
+        prefix = corpse_xname(obj, prefix,
+                              (obj.quan !== 1 ? 0 : CXN_ARTICLE)
+                              | CXN_NOCORPSE) + ' ';
 
     /* src/objnam.c:1300 — "empty" goes at the beginning: a container known
        to have no contents (bag of tricks and horn of plenty key on charges
@@ -428,10 +517,31 @@ export function doname(obj) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
         else if (!game.flags.implicit_uncursed
+                 /* src/objnam.c:1339 — the trailing terms of C's condition.
+                    A Priest senses BUC innately, so "uncursed" is never
+                    printed for one; the two Amulet types are also excluded.
+                    Role_if(PM_CLERIC) is the role whose name is "Priest". */
                  || ((!known || !ocl.oc_charged
                       || obj.oclass === ARMOR_CLASS
-                      || obj.oclass === RING_CLASS)))
+                      || obj.oclass === RING_CLASS)
+                     && obj.otyp !== ONAMES.FAKE_AMULET_OF_YENDOR
+                     && obj.otyp !== ONAMES.AMULET_OF_YENDOR
+                     && game.urole?.name?.m !== 'Priest'))
             prefix += 'uncursed ';
+    }
+
+    /* src/objnam.c:1358 — a box whose lock state is known says so. This
+       runs after the BUC words and before greased, which is where C has it. */
+    if (obj.lknown && Is_box(obj)) {
+        if (obj.obroken)
+            /* 3.6.0 used "unlockable" here but that could be misunderstood
+               to mean "capable of being unlocked" rather than the intended
+               "not capable of being locked" */
+            prefix += 'broken ';
+        else if (obj.olocked)
+            prefix += 'locked ';
+        else
+            prefix += 'unlocked ';
     }
 
     /* src/objnam.c:1183 add_erosion_words — erodeproofing shows once rknown.

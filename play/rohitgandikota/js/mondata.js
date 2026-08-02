@@ -627,3 +627,25 @@ export function name_to_monplus(in_str, rest_box) {
     if (rest_box) rest_box.at = skipped + len;
     return mntmp;
 }
+
+
+// include/mondata.h:101 is_human()
+export const is_human = (ptr) => (ptr.mflags2 & MFLAGS.M2_HUMAN) !== 0;
+
+// include/mondata.h:149 is_unicorn() — the unicorn class AND likes_gems().
+export const is_unicorn = (ptr) =>
+    ptr.mlet === MONSYMS.S_UNICORN && (ptr.mflags2 & MFLAGS.M2_JEWELS) !== 0;
+
+
+// include/mondata.h:88 acidic() / :89 poisonous()
+export const acidic    = (d) => (d.mflags1 & MFLAGS.M1_ACID) !== 0;
+export const poisonous = (d) => (d.mflags1 & MFLAGS.M1_POIS) !== 0;
+
+// include/mondata.h:200 touch_petrifies() — the two identities C names, not
+// a flag; Medusa is added by flesh_petrifies() at :203 because she petrifies
+// when eaten but not when touched.
+export const touch_petrifies = (d) =>
+    d === game.mons?.[PMNAMES.PM_COCKATRICE]
+    || d === game.mons?.[PMNAMES.PM_CHICKATRICE];
+export const flesh_petrifies = (d) =>
+    touch_petrifies(d) || d === game.mons?.[PMNAMES.PM_MEDUSA];

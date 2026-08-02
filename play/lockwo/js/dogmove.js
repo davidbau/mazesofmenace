@@ -29,6 +29,8 @@ import {
     GOLD_PIECE, COIN_CLASS, BOULDER,
 } from './mkobj.js';
 import { may_dig } from './dig.js';
+import { mflags1_of, msound_of, perceives_flag, M1_NOEYES } from './monflags_data.js';
+import { max_passive_dmg } from './mondata.js';
 import { gettrack } from './track.js';
 import { monster_by_pmidx, mon_msize, mon_cwt } from './makemon.js';
 
@@ -71,10 +73,22 @@ const FOOD_OC_DELAY = {
 // fed to a contest pet always classifies MANFOOD.  Name-keyed for stability.
 const M1_METALLIVORE_NAMES = new Set(["rock mole", "rust monster", "xorn"]);
 
-// C ref: mondata.h haseyes(ptr) — monster has eyes (not NOEYES).  For the pets
-// our sessions drive (dog/cat/pony) this is always true; M1_NOEYES monsters
-// (e.g. blobs) never reach dogfood here, so a constant TRUE is faithful.
-function haseyes(_mdat) { return true; }
+// C ref: mondata.h haseyes(ptr) == !(mflags1 & M1_NOEYES).  Reads the generated
+// flag table (identical to the old constant TRUE for every pet, but correct for
+// the arbitrary monsters dog_attack_mon() now inspects).
+function haseyes(mdat) { return (mflags1_of(mdat) & M1_NOEYES) === 0; }
+
+// C ref: monflag.h MS_LEADER / MS_GUARDIAN — the quest leader and its guards,
+// which a pet refuses to attack while the pet is peaceful toward them.
+const MS_LEADER = 36, MS_GUARDIAN = 38;
+// C ref: mondata.h touch_petrifies(ptr) / monst.h resists_ston(mon).
+const MR_STONE = 0x80;
+function touch_petrifies_data(ptr) {
+    return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+function resists_ston_mon(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_STONE) !== 0;
+}
 
 // C ref: include/monsters.h MON() M1_POIS / M1_ACID flag bits.  dog.c dogfood()
 // CORPSE branch returns POISON when the corpse's monster (corpsenm) is acidic or
@@ -717,7 +731,7 @@ function cri_Is_rogue_level() {
 // C ref: dogmove.c could_reach_item(mon, nx, ny) — can a monster pick up an
 // object at (nx,ny)?  FALSE on water (unless swimmer), lava (unless lava-liker),
 // or under a boulder (unless rock-thrower).
-function could_reach_item(mon, nx, ny) {
+export function could_reach_item(mon, nx, ny) {
     const d = mon.data;
     return (!cri_is_pool(nx, ny) || cri_is_swimmer(d))
         && (!cri_is_lava(nx, ny) || cri_likes_lava(d))
@@ -1325,19 +1339,31 @@ async function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
     const defLev = mtmp2.m_lev ?? mtmp2.data?.mlevel ?? 0;
 
     // C dogmove.c:1121 — refuse the fight under any of these conditions.
+    // max_passive_dmg() is the one that matters most in practice: it is what
+    // stops a 2 hp kitten from swatting the adjacent green mold whose AD_ACID
+    // passive would kill it outright (seed0399 step 117).
     if (defLev >= balk
         || (mtmp2.mtame && mtmp.mtame /* && !Conflict */)
-        // max_passive_dmg(mtmp2) >= mtmp.mhp: the modeled hostiles (newt/fox/
-        // jackal/rat/gecko) have no passive attack, so this is 0 — never balks.
+        || (max_passive_dmg(mtmp2, mtmp) >= (mtmp.mhp | 0))
         || (mtmp2.mpeaceful /* guardian/leader or low-HP peaceful */
             && ((mtmp.mhp != null && mtmp.mhpmax && mtmp.mhp * 4 < mtmp.mhpmax)
-                || mtmp2.data?.msound === 'guardian'
-                || mtmp2.data?.msound === 'leader'))) {
+                || msound_of(mtmp2.data) === MS_GUARDIAN
+                || msound_of(mtmp2.data) === MS_LEADER))) {
         return null;
     }
 
-    // Floating-eye / cube / cockatrice ranged-only avoidance (rn2(10) gazes)
-    // isn't reachable for the modeled foes; skip.
+    // C dogmove.c:1131 — foes a pet only ever engages at range (which, per C's
+    // own FIXME, means "not at all": `ranged_only` always falls through to the
+    // same `continue`).  The rn2(10) rolls are real and are drawn only after the
+    // species test short-circuits, so they must be emitted in the same order.
+    if ((mtmp2.data?.name === 'floating eye' && rn2(10)
+         && mtmp.mcansee !== 0 && haseyes(mtmp.data) && mtmp2.mcansee !== 0
+         && (!mtmp2.minvis || perceives_flag(mtmp.data))
+         /* mon_reflects(): no pet in the corpus carries a reflecting item */)
+        || (mtmp2.data?.name === 'gelatinous cube' && rn2(10))
+        || (touch_petrifies_data(mtmp2.data) && !resists_ston_mon(mtmp))) {
+        return null;
+    }
 
     if (after) return MMOVE_NOTHING; // hit only once each move
 

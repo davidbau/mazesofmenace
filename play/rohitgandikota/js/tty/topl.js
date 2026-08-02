@@ -91,7 +91,7 @@ export async function update_topl(bp) {
     }
 
     game._pending_message = out;
-    redotoplin(out);
+    await redotoplin(out);
 }
 
 // win/tty/topl.c:229 addtopl() — append to the line already being shown.
@@ -107,12 +107,21 @@ function remember_topl() {
     (game.unported ||= new Set()).add('topl:remember_topl');
 }
 
-// win/tty/topl.c:196 redotoplin() — repaint the line and set the flag that
+// win/tty/topl.c:129 redotoplin() — repaint the line and set the flag that
 // decides whether the NEXT message has to prompt first.
-function redotoplin(str) {
+//
+// putsyms() advances cury past every '\n' it writes, so a message long
+// enough to wrap leaves cury > 0 and the tail of the function prompts
+// immediately: a wrapped message always carries its own --More--, without
+// waiting for a second message to collide with it.
+async function redotoplin(str) {
+    const otoplin = game._toplin;
+
     game._toplin = str ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
     game._topl_curx = 0;
     game._topl_cury = (str.match(/\n/g) || []).length;
+    if (game._topl_cury && otoplin !== TOPLINE_SPECIAL_PROMPT)
+        await more();
 }
 
 // include/decl.h TBUFSZ

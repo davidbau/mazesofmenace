@@ -178,11 +178,18 @@ function note_unported_do_wear(what) {
 
 /* ---- the wear/take-off command layer (src/do_wear.c:1729-2489) ---- */
 
-/* include/objclass.h armour categories via oc_subtyp */
-const is_suit   = (o) => objects[o.otyp].oc_subtyp === 0; /* ARM_SUIT */
-const is_shield = (o) => objects[o.otyp].oc_subtyp === 1;
-const is_helmet = (o) => objects[o.otyp].oc_subtyp === 2;
-const is_gloves = (o) => objects[o.otyp].oc_subtyp === 3;
+/* include/obj.h:278 — each of these is TWO tests in C: the object is armour
+   AND its oc_armcat matches. oc_subtyp is a union field that means the weapon
+   skill for a weapon, so without the class test a weapon whose skill happens
+   to be 1 reads as a shield. */
+const is_suit   = (o) => o.oclass === OCLASSES.ARMOR_CLASS
+                         && objects[o.otyp].oc_subtyp === 0; /* ARM_SUIT */
+const is_shield = (o) => o.oclass === OCLASSES.ARMOR_CLASS
+                         && objects[o.otyp].oc_subtyp === 1;
+const is_helmet = (o) => o.oclass === OCLASSES.ARMOR_CLASS
+                         && objects[o.otyp].oc_subtyp === 2;
+const is_gloves = (o) => o.oclass === OCLASSES.ARMOR_CLASS
+                         && objects[o.otyp].oc_subtyp === 3;
 const is_boots  = (o) => objects[o.otyp].oc_subtyp === 4;
 const is_cloak  = (o) => objects[o.otyp].oc_subtyp === 5;
 const is_shirt  = (o) => objects[o.otyp].oc_subtyp === 6;

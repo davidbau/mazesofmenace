@@ -44,7 +44,7 @@ const HELMET = 97, HELM_OF_TELEPATHY = 100;
 const LEATHER_GLOVES = 159, GAUNTLETS_OF_DEXTERITY = 162;
 const CLOAK_OF_PROTECTION = 146, CLOAK_OF_DISPLACEMENT = 149;
 const SPEED_BOOTS = 166, LEVITATION_BOOTS = 172;
-const WAN_NOTHING = 415;
+const WAN_NOTHING = 416;
 // objclass.h: NODIR=1, IMMEDIATE=2, RAY=3.  These were 0/1, which wrote oc_dir
 // values that zap.js (which uses the correct 1/2) then misread.
 const NODIR = 1, IMMEDIATE = 2;
@@ -82,7 +82,7 @@ const RING_DATA = [
     [CLR_BRIGHT_GREEN, 8], [HI_METAL, 5], [HI_METAL, 5], [CLR_BRIGHT_CYAN, 5],
 ];
 // Scrolls 323..363 (real + extra labels), all PAPER -> HI_PAPER, tough 0.
-// Spellbooks 365..405, colors below; all LEATHER/PAPER, tough 0.
+// Spellbooks 366..406, colors below; all LEATHER/PAPER, tough 0.
 const SPBOOK_COLOR = [
     HI_LEATHER, HI_LEATHER, HI_PAPER, HI_PAPER, HI_PAPER, HI_PAPER, HI_CLOTH,
     HI_LEATHER, CLR_WHITE, CLR_BRIGHT_MAGENTA, CLR_RED, CLR_ORANGE, CLR_YELLOW,
@@ -92,7 +92,7 @@ const SPBOOK_COLOR = [
     HI_COPPER, HI_COPPER, HI_SILVER, HI_GOLD, CLR_WHITE, CLR_WHITE, HI_PAPER,
     HI_PAPER, HI_PAPER, CLR_GRAY,
 ];
-// Wands 409..436 (full class), colors below; tough 0.
+// Wands 410..437 (full class), colors below; tough 0.
 const WAND_COLOR = [
     HI_GLASS, HI_WOOD, HI_GLASS, HI_WOOD, HI_WOOD, CLR_RED, HI_WOOD, HI_WOOD,
     HI_MINERAL, HI_METAL, HI_COPPER, HI_COPPER, HI_SILVER, CLR_WHITE,
@@ -115,7 +115,7 @@ const BOOTS_COLOR = [
     HI_LEATHER, HI_LEATHER, HI_LEATHER, HI_LEATHER, CLR_BROWN, HI_LEATHER,
     HI_LEATHER,
 ];
-// Venom 478..479: blinding / acid venom, HI_ORGANIC.
+// Venom 479..480: blinding / acid venom, HI_ORGANIC.
 const VENOM_COLOR = [HI_ORGANIC, HI_ORGANIC];
 
 // Build per-object initial appearance attributes onto objects[].
@@ -153,13 +153,13 @@ function seedAppearance() {
     apply(173, RING_DATA);
     for (let i = 323; i <= 363; i++)
         if (objects[i]) objects[i].oc_color = HI_PAPER;
-    apply(365, SPBOOK_COLOR);
-    apply(409, WAND_COLOR);
+    apply(366, SPBOOK_COLOR);
+    apply(410, WAND_COLOR);
     apply(HELMET, HELMET_COLOR);
     apply(LEATHER_GLOVES, GLOVES_COLOR);
     apply(CLOAK_OF_PROTECTION, CLOAK_COLOR);
     apply(SPEED_BOOTS, BOOTS_COLOR);
-    apply(478, VENOM_COLOR);
+    apply(479, VENOM_COLOR);
 
     // oc_magic / oc_unique flags needed by obj_shuffle_range() to find the
     // hi boundary for AMULET / SCROLL / SPBOOK classes.  The loop walks from
@@ -169,11 +169,13 @@ function seedAppearance() {
     //  Amulets 201..211 are magic; FAKE_AMULET_OF_YENDOR (212) is non-magic
     //  (deliberately placed before the real, unique Amulet at 213 so the
     //  shuffle stops there) -> amulet shuffle range = 201..211 (11).
-    //  Scrolls 323..363 (real + extra labels) are magic; blank paper (364)
-    //  is non-magic -> scroll shuffle range = 323..363 (41).
-    //  Spellbooks 365..405 are magic; blank paper (406) is non-magic ->
-    //  spellbook shuffle range = 365..405 (41).  novel (407) is non-magic
-    //  and Book of the Dead (408) is unique+magic, both after the boundary.
+    //  Scrolls 323..363 (real + extra labels) are magic; mail (364) and blank
+    //  paper (365)
+    //  is non-magic -> scroll shuffle range = 323..363 (41).  (mail, 364, is
+    //  non-magic too and likewise sits outside the shuffled run.)
+    //  Spellbooks 366..406 are magic; blank paper (407) is non-magic ->
+    //  spellbook shuffle range = 366..406 (41).  novel (408) is non-magic
+    //  and Book of the Dead (409) is unique+magic, both after the boundary.
     const setMagic = (loInclusive, hiInclusive) => {
         for (let i = loInclusive; i <= hiInclusive; i++)
             if (objects[i]) objects[i].oc_magic = 1;
@@ -181,8 +183,8 @@ function seedAppearance() {
     setMagic(201, 211);   // magic amulets (FAKE_YENDOR 212 stays non-magic)
     if (objects[213]) objects[213].oc_unique = 1; // Amulet of Yendor
     setMagic(323, 363);   // magic scrolls + extra labels
-    setMagic(365, 405);   // magic spellbooks
-    if (objects[408]) { objects[408].oc_magic = 1; objects[408].oc_unique = 1; } // Book of the Dead
+    setMagic(366, 406);   // magic spellbooks
+    if (objects[409]) { objects[409].oc_magic = 1; objects[409].oc_unique = 1; } // Book of the Dead
 }
 
 // Class bases: bases[oclass] = otyp of first object of that class.
@@ -207,8 +209,8 @@ function computeBases() {
 // Emits rn2(2), rn2(2), rn2(4) in that order and copies both description and
 // color from the selected source gem.
 function randomize_gem_colors() {
-    const TURQUOISE = 445, AQUAMARINE = 447, FLUORITE = 456;
-    const SAPPHIRE = 442, DIAMOND = 439, EMERALD = 444;
+    const TURQUOISE = 446, AQUAMARINE = 448, FLUORITE = 457;
+    const SAPPHIRE = 443, DIAMOND = 440, EMERALD = 445;
     const copyDescr = (dst, src) => {
         objects[dst].oc_descr_idx = objects[src].oc_descr_idx;
         objects[dst].oc_color = objects[src].oc_color;
@@ -505,7 +507,7 @@ function disco_obj_typename(otyp) {
         buf = 'wand';
         break;
     case SPBOOK_CLASS:
-        if (otyp === 407) {
+        if (otyp === 408) {
             buf = nn ? 'novel' : 'book';
             if (un) buf += ` called ${un}`;
             if (dn) buf += ` (${dn})`;
