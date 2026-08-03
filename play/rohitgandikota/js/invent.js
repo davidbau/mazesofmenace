@@ -19,6 +19,7 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { MONSYMS, NUMMONS } from './monst_data.js';
 import { erosion_matters, curse, splitobj } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding } from './obj.js';
+import { setnotworn } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
@@ -26,6 +27,7 @@ import { pline, docrt } from './display.js';
 import { observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
+import { recalc_block_point } from './vision.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
 // a move, which is what makes moveloop advance svm.moves.
@@ -907,6 +909,10 @@ export function obj_extract_self(obj) {
             const i = objs.indexOf(obj);
             if (i >= 0) objs.splice(i, 1);
         }
+        /* src/mkobj.c:2517 remove_object() — a boulder leaving the floor may
+           open the point up again (or not, if another boulder remains). */
+        if (obj.otyp === ONAMES.BOULDER)
+            recalc_block_point(obj.ox, obj.oy); /* vision */
         break;
     }
     }
@@ -994,7 +1000,20 @@ function freeinv_core(obj) {
         (game.disp ||= {}).botl = true;
         return;
     }
-    note_unported_invent('freeinv_core:uhave_artifacts');
+    else if (obj.otyp === ONAMES.AMULET_OF_YENDOR) {
+        /* C: impossible("don't have amulet?") when the flag is unset */
+        (game.u.uhave ||= {}).amulet = 0;
+    } else if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        (game.u.uhave ||= {}).menorah = 0;
+    } else if (obj.otyp === ONAMES.BELL_OF_OPENING) {
+        (game.u.uhave ||= {}).bell = 0;
+    } else if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+        (game.u.uhave ||= {}).book = 0;
+    } else if (obj.oartifact) {
+        /* is_quest_artifact/u.uhave.questart and set_artifact_intrinsic
+           need the artifact tables; reached only for artifacts. */
+        note_unported_invent('freeinv_core:uhave_artifacts');
+    }
 
     if (obj.otyp === ONAMES.LOADSTONE)
         curse(obj);
@@ -1031,9 +1050,17 @@ export function freeinv(obj) {
 // setnotworn first (a worn item must stop being worn before it stops
 // existing), then freeinv, then obfree which deletes contents recursively.
 export function useupall(obj) {
-    note_unported_invent('useupall:setnotworn');
+    setnotworn(obj);
     freeinv(obj);
-    note_unported_invent('useupall:obfree');
+    /* obfree() (src/shk.c:1187) unleashes, stops food/book timers, deletes
+       container contents and handles the shop bill; for an ordinary object
+       none of its arms act, so it records only when one could. */
+    if ((obj.otyp === ONAMES.LEASH && obj.leashmon)
+        || obj.oclass === OCLASSES.FOOD_CLASS
+        || obj.oclass === OCLASSES.SPBOOK_CLASS
+        || (obj.cobj && obj.cobj.length) || Is_container(obj)
+        || obj.otyp === ONAMES.BOULDER || obj.unpaid)
+        note_unported_invent('useupall:obfree');
 }
 
 // src/invent.c useup() — consume ONE of a stack, or all of it.
@@ -1221,4 +1248,11 @@ export async function identify_pack(id_limit, learning_id) {
     } else {
         note_unported_invent('identify_pack:menu');
     }
+}
+
+// src/invent.c:1664 splittable() — can this stack be split off from?
+import { welded } from './wield.js';
+export function splittable(obj) {
+    return !((obj.otyp === ONAMES.LOADSTONE && obj.cursed)
+             || (obj === game.u.uwep && welded(game.u.uwep)));
 }

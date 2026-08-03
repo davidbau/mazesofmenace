@@ -15,7 +15,7 @@ import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     IS_OBSTRUCTED, LAVAWALL,
     P_DAGGER, P_KNIFE,
-    AM_SHRINE, Amask2align, ROOMOFFSET
+    AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M
 } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
@@ -228,7 +228,7 @@ function leppie_avoidance(mtmp) {
 // The hero-concealment arm draws rn2(25) but is gated on Upolyd, which no
 // recorded session reaches. Everything else is geometry, now that clear_path
 // exists to answer linedup()'s line-of-sight test.
-function lined_up(mtmp) {
+export function lined_up(mtmp) {
     const tx = mtmp.mux, ty = mtmp.muy;
     const ignore_boulders = throws_rocks(game.mons[mtmp.mnum])
                          || m_carrying(mtmp, ONAMES.WAN_STRIKING);
@@ -247,6 +247,9 @@ function lined_up(mtmp) {
 // line counting boulders; mode 2 then draws rn2(2 + boulderspots).
 function linedup(ax, ay, bx, by, boulderhandling) {
     const tbx = ax - bx, tby = ay - by;
+    /* C stores the deltas in gt.tbx/gt.tby; monshoot reads their signs */
+    game.tbx = tbx;
+    game.tby = tby;
 
     /* displacement can make a monster think you are at its own location */
     if (!tbx && !tby)
@@ -1144,6 +1147,13 @@ export async function m_move(mtmp, after) {
     if (hides_under(ptr) && OBJ_AT(omx, omy) && rn2(10))
         return MMOVE_NOTHING;      /* do not leave hiding place */
 
+    /* src/monmove.c:1761 — "Where does 'mtmp' think you are?  Not necessary
+       if m_move() called from this file, but needed for other calls." C runs
+       it unconditionally, so a monster whose guess is stale re-rolls it (and
+       DRAWS the gotu/candidate dice) at the top of every move, pets included,
+       before the tame dispatch below. */
+    set_apparxy(mtmp);
+
     /* src/monmove.c:1772 — my dog gets special treatment. Routing pets here
        rather than straight from dochug() is what puts them through the
        mtrapped and meating blocks above, exactly as C does. */
@@ -1251,8 +1261,22 @@ export async function m_move(mtmp, after) {
 
     let mmoved = MMOVE_NOTHING;
 
+    /* src/monmove.c:1945 should_displace() — displacing another monster is
+       only worth it when every non-displacing path is longer. Vacuous until
+       mfndpos sets ALLOW_MDISP, but the loop below tests it as C does. */
+    const better_with_displacing = should_displace(mtmp, mfp, ggx, ggy, cnt);
+
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
+
+        /* src/monmove.c:1953 — a peaceful or tame monster avoids the square
+           the hero just kicked it from */
+        if (m_avoid_kicked_loc(mtmp, nx, ny))
+            continue;
+
+        if (m_at(nx, ny) && (mfp.info[i] & ALLOW_MDISP)
+            && !(mfp.info[i] & ALLOW_M) && !better_with_displacing)
+            continue;
 
         if (appr !== 0) {
             const track = mtmp.mtrack || [];
@@ -1315,6 +1339,29 @@ export async function m_move(mtmp, after) {
     }
 
     return await postmov(mtmp, ptr, omx, omy, mmoved);
+}
+
+// src/monmove.c:1070 should_displace() — is displacing a monster the only
+// way (or the shortest way) toward the goal? undesirable_disp is recorded
+// through the same gate C reads it in.
+function should_displace(mtmp, data, ggx, ggy, cnt) {
+    let shortest_with = -1, shortest_without = -1, count_without = 0;
+
+    for (let i = 0; i < cnt; i++) {
+        const nx = data.poss[i].x, ny = data.poss[i].y;
+        const ndist = dist2(nx, ny, ggx, ggy);
+        if (m_at(nx, ny) && (data.info[i] & ALLOW_MDISP)
+            && !(data.info[i] & ALLOW_M)) {
+            if (shortest_with === -1 || ndist < shortest_with)
+                shortest_with = ndist;
+        } else {
+            if (shortest_without === -1 || ndist < shortest_without)
+                shortest_without = ndist;
+            count_without++;
+        }
+    }
+    return shortest_with > -1
+           && (shortest_with < shortest_without || !count_without);
 }
 
 // src/monmove.c:1455 postmov() — everything a monster does after arriving.

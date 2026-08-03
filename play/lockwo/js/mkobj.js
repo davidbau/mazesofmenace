@@ -1735,7 +1735,14 @@ function mksobj_init(otmp, artif) {
 export function mksobj(otyp, init = true, artif = false) {
     const obj = objects[otyp] || objects[STRANGE_OBJECT];
     const otmp = {
-        otyp, oclass: obj.oclass, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false,
+        // C ref: mksobj() starts from `*otmp = cg.zeroobj`, so owt is 0 here, not
+        // 1.  That matters for exactly one object: weight()'s
+        //     if (obj->otyp == HEAVY_IRON_BALL && obj->owt) return obj->owt;
+        // kludge (which exists so a ball made heavier by a second scroll of
+        // punishment keeps its increased weight).  With owt seeded to 1 the
+        // kludge fired during mksobj itself and every iron ball weighed 1
+        // instead of 480, so it never became a "very heavy iron ball".
+        otyp, oclass: obj.oclass, ox: 0, oy: 0, quan: 1, owt: 0, cursed: false,
         blessed: false, olocked: false, otrapped: false, spe: 0, age: Math.max(game.moves ?? 1, 1),
         corpsenm: null,
     };

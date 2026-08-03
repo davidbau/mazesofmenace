@@ -96,10 +96,45 @@ function endsWithCI(s, suffix) {
     return s.length >= suffix.length
         && s.slice(s.length - suffix.length).toLowerCase() === suffix.toLowerCase();
 }
+// C ref: objnam.c singplur_compound(str) — find where a compound phrase starts
+// ("lump OF royal jelly", "scroll LABELED KIRJE", "lurker ABOVE) so that
+// makesingular()/makeplural() can work on the head noun alone.  Returns the
+// index of the compound marker, or -1.
+const SINGPLUR_COMPOUNDS = [
+    ' of ', ' labeled ', ' called ',
+    ' named ', ' above',            /* lurkers above */
+    ' versus ', ' from ', ' in ',
+    ' on ', ' a la ', ' with',      /* " with "? */
+    ' de ', " d'", ' du ',
+    ' au ', '-in-', '-at-',
+];
+const SINGPLUR_COMPOUND_START = ' -';
+function singplur_compound(str) {
+    for (let p = 0; p < str.length; ++p) {
+        if (!SINGPLUR_COMPOUND_START.includes(str[p])) continue;
+        for (const cmpd of SINGPLUR_COMPOUNDS)
+            if (str.slice(p, p + cmpd.length).toLowerCase() === cmpd) return p;
+    }
+    return -1;
+}
+
 function makesingular_local(oldstr) {
     if (oldstr == null) return oldstr;
     let s = oldstr.replace(/^ +/, '');
     if (!s) return oldstr;
+    // C ref: makesingular() "check for 'foo of bar' so that we can focus on
+    // 'foo'" — singularize the head, then re-append the excess at `bottom:`.
+    // Without this the whole string was inspected and only its TAIL tested, so
+    // "scrolls of punishment" came back unchanged: readobjnam's class search
+    // then matched the word "scroll" inside "scrolls", stripped six characters
+    // and was left with "s of punishment", whose " of " test fails, so actualn
+    // was never set and the wish fell through to a random object.  seed4500's
+    // `#wizwish 3 scrolls of punishment` diverged there.
+    const cut = singplur_compound(s);
+    if (cut >= 0) {
+        const head = s.slice(0, cut), excess = s.slice(cut);
+        return makesingular_local(head) + excess;
+    }
     const lower = s.toLowerCase();
     for (const w of AS_IS) if (endsWithCI(s, w)) return s; /* stays plural */
     for (const [sing, plur] of ONE_OFF) {

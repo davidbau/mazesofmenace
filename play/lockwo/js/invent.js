@@ -55,6 +55,7 @@ import {
     weight,
     next_ident,
     place_object as mkobj_place_object,
+    base_oc_weight,
 } from './mkobj.js';
 
 import { getpos, getpos_render } from './hack.js';
@@ -162,7 +163,19 @@ const W_RINGL = 0x00020000;
 const W_RINGR = 0x00040000;
 const W_AMUL = 0x00080000;
 const W_TOOL = 0x00100000;
-const W_BLINDF = 0x00200000;
+// W_BLINDF was 0x00200000, which is prop.h:126 W_BALL — the PUNISHMENT BALL
+// slot.  Harmless while nothing in this file read W_BALL, but doname() now has
+// to tell a worn blindfold from a chained iron ball, so the two need distinct
+// bits.  Following this block's existing remapping convention (see the accessory
+// comment above), W_BLINDF moves to a free high bit while W_BALL/W_CHAIN keep
+// prop.h's real values, which is what read.js stamps into owornmask via
+// const.js.  0x00080000 is NOT available here: this file already uses it for
+// W_AMUL, and reusing it made an amulet answer the blindfold test (-7 on
+// seed5006 before the collision was spotted).
+const W_BLINDF = 0x00800000;
+const W_BALL = 0x00200000;   // C ref: prop.h:126 — punishment ball
+const BALL_CLASS_INV = 15;   // C ref: objclass.h BALL_CLASS
+const W_CHAIN = 0x00400000;  // C ref: prop.h:127 — punishment chain
 const W_ACCESSORY = W_RINGL | W_RINGR | W_AMUL | W_BLINDF;
 const W_WEAPONS = W_WEP | W_SWAPWEP | W_QUIVER;
 const WORN_ARMOR = W_ARMOR;
@@ -1150,6 +1163,17 @@ export function objectBaseName(obj) {
     if (obj.otyp === GOLD_PIECE || obj.oclass === COIN_CLASS)
         return `${obj.quan || 0} gold piece${(obj.quan || 0) === 1 ? '' : 's'}`;
 
+    // C ref: objnam.c xname_flags() case BALL_CLASS:
+    //     Sprintf(buf, "%sheavy iron ball", (obj->owt > ocl->oc_weight) ? "very " : "");
+    // A ball made heavier by a second scroll of punishment (owt 480 -> 640)
+    // becomes a "very heavy iron ball" — seed4500 reads two such scrolls.
+    if (obj.oclass === BALL_CLASS_INV) {
+        // objects[].oc_weight comes from mkobj.js's base_oc_weight() table (the
+        // JS OBJECT_DATA rows carry no weight column).
+        const base_wt = base_oc_weight(obj);
+        return `${(obj.owt ?? 0) > base_wt ? 'very ' : ''}heavy iron ball`;
+    }
+
     // C ref: objects.c xname() CORPSE — "<species> corpse" (e.g. "goblin
     // corpse").  The species comes from corpsenm; mons[] name via makemon.
     if (obj.otyp === CORPSE && obj.corpsenm != null && obj.corpsenm >= 0) {
@@ -1522,6 +1546,11 @@ function worn_status_suffix(obj) {
     if (m & W_RINGL) return ` (on left ${body_part(6)})`;
     if (m & W_AMUL) return ' (being worn)';
     if (m & W_BLINDF) return ' (being worn)';
+    // C ref: objnam.c doname_base():1543 — the punishment ball and chain read
+    // "(chained to you)" / "(attached to you)", not the generic worn suffix.
+    // W_BALL takes precedence: `(owornmask & W_BALL) ? "chained" : "attached"`.
+    if (m & (W_BALL | W_CHAIN))
+        return (m & W_BALL) ? ' (chained to you)' : ' (attached to you)';
     return '';
 }
 
@@ -4488,8 +4517,16 @@ function padStart(s, n) { return s.length >= n ? s : ' '.repeat(n - s.length) + 
 // selector prefix, which the tty menu prepends).
 function buildSpellMenuLines(nspells, book, meta) {
     // Header: "    %-20s Level %-12s Fail Retention" (Name, Category).
-    const header = '    ' + padEnd('Name', 20) + ' Level ' + padEnd('Category', 12)
+    let header = '    ' + padEnd('Name', 20) + ' Level ' + padEnd('Category', 12)
         + ' Fail Retention';
+    // C ref: spell.c dospellmenu — `if (wizard) Sprintf(eos(buf), "%c%6s", sep,
+    // "turns");` and, per row, `"%c%6d"` with the raw spellknow() value.
+    // `wizard` is C's debug-mode flag, which options.c set_playmode() sets from
+    // OPTIONS=playmode:debug — the same thing js/options.js records as
+    // flags.debug.  Omitting the column also shifted the whole menu 7 columns
+    // right, because the tty derives offx from the widest line.
+    const wiz = !!game.flags?.debug;
+    if (wiz) header += ' ' + padStart('turns', 6);
     // Row fmt: "%-20s  %2d   %-12s %3d%% %9s".
     const rows = [];
     for (let i = 0; i < nspells; i++) {
@@ -4499,8 +4536,9 @@ function buildSpellMenuLines(nspells, book, meta) {
         const cat = meta.category(ent.sp_id);
         const fail = meta.fail(i);
         const reten = meta.retention(i);
-        const buf = padEnd(name, 20) + '  ' + padStart(String(lev), 2) + '   '
+        let buf = padEnd(name, 20) + '  ' + padStart(String(lev), 2) + '   '
             + padEnd(cat, 12) + ' ' + padStart(`${fail}%`, 4) + ' ' + padStart(reten, 9);
+        if (wiz) buf += ' ' + padStart(String(meta.turns ? meta.turns(i) : 0), 6);
         rows.push(buf);
     }
     return { header, rows };
@@ -4536,10 +4574,39 @@ export async function spell_menu(prompt, nspells, book, meta) {
         for (let c = 0; c < text.length && offx + c < 80; c++)
             display.setCell(offx + c, row, text[c], NO_COLOR, attr);
     };
+    // C ref: win/tty/wintty.c — a menu heading is shown with ATR_INVERSE, but
+    // the recorder serializes space-runs longer than 4 columns as cursor-forwards
+    // (which decode as default attr) while runs of <= 4 spaces keep the inverse
+    // bit.  Same treatment dovspell's menu already uses.
+    const drawHeading = (text, row) => {
+        for (let c = 0; c < text.length && offx + c < 80; c++) {
+            let attr = ATR_INVERSE;
+            if (text[c] === ' ') {
+                let s = c; while (s > 0 && text[s - 1] === ' ') s--;
+                let e = c; while (e + 1 < text.length && text[e + 1] === ' ') e++;
+                if (e - s + 1 > 4) attr = 0;
+            }
+            display.setCell(offx + c, row, text[c], NO_COLOR, attr);
+        }
+    };
+    // C ref: win/tty/topl.c — displaying the menu clears the message window, so
+    // the previous command's topline is gone rather than showing through to the
+    // left of the prompt.
+    game._pending_message = '';
+    for (let c = 0; c < offx && c < 80; c++)
+        display.setCell(c, 0, ' ', NO_COLOR, 0);
+    // C ref: win/tty/wintty.c — a menu window paints its full rectangle: every
+    // row is cleared from offx to offx+maxcol before the text is written, so a
+    // short row like "(end)" hides the map beneath instead of letting it show.
+    const winRight = Math.min(offx + maxcol, 80);
+    const totalRows = 3 + itemLines.length + 1;
+    for (let r = 0; r < totalRows; r++)
+        for (let c = offx; c < winRight; c++)
+            display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
-    draw(prompt, row++, ATR_INVERSE);
+    drawHeading(prompt, row++);
     draw('', row++, 0);
-    draw(header, row++, ATR_INVERSE);
+    drawHeading(header, row++);
     for (const ln of itemLines) draw(ln, row++, 0);
     draw('(end)', row, 0);
     if (offx > 0) putStatusLines(display);
@@ -4608,7 +4675,18 @@ export function askchain(_objchn, _olets, _allflag, _fn, _ckfn, _mx, _word) { re
 export function reroll_menu() { return false; }
 export function set_cknown_lknown(obj) { if (Is_container(obj) || obj?.otyp === STATUE) obj.cknown = obj.lknown = 1; else if (obj?.otyp === TIN) obj.cknown = 1; }
 export function fully_identify_obj(otmp) { makeknown(otmp?.otyp); observe_object(otmp); if (otmp) otmp.known = otmp.bknown = otmp.rknown = 1; set_cknown_lknown(otmp); if (otmp?.otyp === EGG) learn_egg_type(otmp.corpsenm); }
-export function identify(otmp) { fully_identify_obj(otmp); prinv(null, otmp, 0); return 1; }
+// C ref: invent.c identify(otmp) — fully_identify_obj() then prinv(), whose
+// pline() routes through update_topl().  That routing is load-bearing: an
+// identify scroll announces every item it names, each line is ~45 columns, so two
+// of them cannot share the 80-column topline and C emits a --More-- between
+// them — one captured frame per identified item (seed4500 steps 494-497).
+// prinv() assigns _pending_message directly, which silently overwrites the
+// previous item instead, so use update_topl() here.
+export async function identify(otmp) {
+    fully_identify_obj(otmp);
+    await update_topl(prinv_fmt(null, otmp, 0));
+    return 1;
+}
 export function menu_identify(id_limit) { identify_pack(id_limit, false); }
 export function count_unidentified(objchn) { let n = 0; for (const obj of iterateObjects(objchn)) if (not_fully_identified(obj)) ++n; return n; }
 // C ref: invent.c identify_pack(id_limit, learning_id).  id_limit==0 OR >=
@@ -4629,7 +4707,7 @@ export async function identify_pack(id_limit = 0, learning_id = false) {
     if (!id_limit || id_limit >= unid_cnt) {
         let remaining = unid_cnt;
         for (const obj of inventoryArray()) {
-            if (not_fully_identified(obj)) { identify(obj); if (--remaining < 1) break; }
+            if (not_fully_identified(obj)) { await identify(obj); if (--remaining < 1) break; }
         }
     } else {
         // limited identify: identify up to id_limit items (menu selection in C;
@@ -4637,7 +4715,7 @@ export async function identify_pack(id_limit = 0, learning_id = false) {
         // id_limit unidentified items in pack order).
         let n = id_limit;
         for (const obj of inventoryArray()) {
-            if (n > 0 && not_fully_identified(obj)) { identify(obj); --n; }
+            if (n > 0 && not_fully_identified(obj)) { await identify(obj); --n; }
         }
     }
     update_inventory();

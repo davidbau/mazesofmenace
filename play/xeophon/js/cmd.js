@@ -58,7 +58,7 @@ const BISD_REV = !!process.env.BISD_REV;
 import { game } from './gstate.js';
 import { wizardCussMessage, wizdeadorgone } from './wizard.js';
 import { WERE_SPECIES } from './were.js';
-import { MONS } from './permonst.js'; // js port of include/monsters.h rows (natural AC via .ac)
+import { MONS, MZ_MEDIUM, amorphous, humanoid, is_whirly, noncorporeal, unsolid } from './permonst.js'; // js port of include/monsters.h rows (natural AC via .ac)
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, monsterGlyph, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeMonsters, seeNearbyObjects, sensesTelepathically, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
@@ -12766,6 +12766,7 @@ async function monsterSummonNasties(summoner) {
             const mon = await makemon(makeData, spot.x, spot.y, MM_NOMSG);
             if (!mon) continue;
             mon.msleeping = 0;                            // wizard.c:685
+            newsym(mon.mx, mon.my);                       // makemon.c:1472 — in-game spawn shows immediately
             mon.mpeaceful = 0;
             mon.mtame = 0;
             const mname = mon.data?.name || '';
@@ -15085,31 +15086,290 @@ async function dismountSteed() {
     game.context.move = 1;
 }
 
-async function mountSteed(mon) {
-    if (!mon) {
+// C ref: steed.c:8-11 `steeds[]` — classes that can potentially be ridden:
+// S_QUADRUPED('q'), S_UNICORN('u'), S_ANGEL('A'), S_CENTAUR('C'),
+// S_DRAGON('D'), S_JABBERWOCK('J').
+const STEEDABLE_CLASS_SYMS = new Set(['q', 'u', 'A', 'C', 'D', 'J']);
+
+// Resolve a monster to its full js/permonst.js record (MONS row) so class
+// predicates (mflags) become available for data objects produced by the
+// name tables (mklev.js monsterByRndName()).
+function permonstRowForMonster(mon) {
+    const name = mon?.data?.name;
+    if (!name) return null;
+    return MONS.find(entry => entry.name === name) || null;
+}
+
+// C ref: steed.c:27-33 can_saddle()
+function monsterCanBeSaddled(mon) {
+    const row = permonstRowForMonster(mon);
+    if (!row || !STEEDABLE_CLASS_SYMS.has(row.sym)) return false;
+    return row.size >= MZ_MEDIUM
+        && (!humanoid(row) || row.sym === 'C')
+        && !amorphous(row) && !noncorporeal(row) && !is_whirly(row) && !unsolid(row);
+}
+
+// C ref: steed.c:820-841 maybewakesteed() — wake an (intended) steed and
+// terminate any meal in progress.
+function maybewakeSteed(mon) {
+    const frozen = mon.mfrozen || 0;
+    mon.msleeping = 0;
+    if (frozen > 0) {
+        const halved = Math.floor((frozen + 1) / 2);
+        if (!rn2(halved)) {
+            mon.mfrozen = 0;
+            mon.mcanmove = 1;
+        } else {
+            mon.mfrozen = halved;
+        }
+    }
+    mon.meating = 0; // finish_meating() clears the meal timer
+}
+
+// C ref: do_name.c mon_nam()/Monnam() for an unnamed tame steed:
+// "the [saddled ]pony" / "The [saddled ]pony" (pets show <given name> when
+// christened, without an article).
+function steedMonNam(mon) {
+    if (mon?.givenName) return mon.givenName;
+    return `the ${monsterHasWornSaddle(mon) ? 'saddled ' : ''}${mon?.data?.name || 'creature'}`;
+}
+function steedMonnam(mon) {
+    const name = steedMonNam(mon);
+    return name[0].toUpperCase() + name.slice(1);
+}
+
+// C ref: steed.c:36-141 use_saddle() — the apply-a-saddle verb.
+// Returns ECMD-style time usage through context.move (1 = turn passes).
+async function heroUseSaddle(item, dx, dy) {
+    if (dx === 0 && dy === 0) {
+        // steed.c:50-53
+        await setMessage('Saddle yourself?  Very funny...');
+        return;
+    }
+    const tx = (game.u?.ux || 0) + dx;
+    const ty = (game.u?.uy || 0) + dy;
+    const mon = isok(tx, ty)
+        ? (game.level?.monsters || []).find(m => m !== game.u?.usteed && m.mx === tx && m.my === ty)
+        : null;
+    // steed.c:55-58 — must be able to spot the monster (canspotmon).
+    const spotVisible = mon && !mon.mundetected && !mon.minvis
+        && !game.u?.blind && couldsee(tx, ty);
+    if (!mon || !spotVisible) {
+        await setMessage('I see nobody there.');
+        game.context.move = 1;
+        return;
+    }
+    // steed.c:61-65
+    if (monsterHasWornSaddle(mon)) {
+        await setMessage(`${steedMonnam(mon)} doesn't need another one.`);
+        game.context.move = 1;
+        return;
+    }
+    // steed.c:84-86 — shopkeepers, priests, minions, quest deities, the
+    // Wizard of Yendor all refuse a saddle.
+    if (mon.isminion || mon.isshk || mon.ispriest || mon.isgd || mon.iswiz) {
+        await setMessage(`I think ${steedMonNam(mon)} would mind.`);
+        game.context.move = 1;
+        return;
+    }
+    // steed.c:87-89
+    if (!monsterCanBeSaddled(mon)) {
+        await setMessage(`You can't saddle such a creature.`);
+        game.context.move = 1;
+        return;
+    }
+    /* Calculate your chance (steed.c:92-117) */
+    let chance = (game.u?.acurr?.a?.[A_DEX] ?? 10)
+        + Math.floor((game.u?.acurr?.a?.[A_CHA] ?? 10) / 2)
+        + 2 * (mon.mtame || 0);
+    chance += (game.u?.ulevel || 1) * (mon.mtame ? 20 : 5);
+    if (!mon.mtame) chance -= 10 * (mon.m_lev ?? mon.data?.mlevel ?? 1);
+    if ((game._startup_role || '') === 'Knight') chance += 20;
+    switch (heroRidingSkillLevel()) {
+    case P_UNSKILLED:
+    case P_NONE:
+    default:
+        chance -= 20;
+        break;
+    case P_BASIC:
+        break;
+    case P_SKILLED:
+        chance += 15;
+        break;
+    case P_EXPERT:
+        chance += 30;
+        break;
+    }
+    if (item.cursed) chance -= 50;
+
+    maybewakeSteed(mon); // steed.c:120
+    // steed.c:123 — the attempt roll
+    if (rn2(100) < chance) {
+        await setMessage(`You put the saddle on ${steedMonNam(mon)}.`);
+        if (item.owornmask) { item.owornmask = 0; item.worn = false; }
+        // freeinv(otmp)
+        game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
+        game._pet_food_scan_inventory = game.inventory;
+        // put_saddle_on_mon() (steed.c:144-163): mpickobj + W_SADDLE flagging
+        (mon.minvent ||= []).push(item);
+        item.ox = mon.mx; item.oy = mon.my;
+        item.owornmask = W_SADDLE;
+        item.worn = true;
+        item.oslot = 'saddle';
+        mon.misc_worn_check = (mon.misc_worn_check || 0) | W_SADDLE;
+        mon.saddled = true;
+    } else {
+        await setMessage(`${steedMonnam(mon)} resists!`);
+    }
+    game.context.move = 1;
+}
+
+// C ref: do.c:2428-2448 set_wounded_legs(BOTH_SIDES, ...) — wizard session's
+// thrown-off leg damage; rn1(5,5) roll consumed at steed.c:614.
+function heroSetWoundedLegsBothSides(extraTurns) {
+    if (!(game.u?._woundedLegTurns || 0) && game.u?.acurr?.a && !game.u._woundedDexPenalty) {
+        game.u._woundedDexPenalty = 1;
+        game.u.acurr.a[A_DEX] = Math.max(1, game.u.acurr.a[A_DEX] - 1);
+    }
+    game.u._woundedLegTurns = Math.max(game.u?._woundedLegTurns || 0, extraTurns || 0);
+    if (game.u) game.u._woundedLegSide = '';
+}
+
+// C ref: steed.c:565-816 dismount_steed(DISMOUNT_THROWN), restricted to the
+// "thrown off" case reached from kick_steed()/steed.c:434-447.
+// The landing spot is chosen first (steed.c:591 -> 479-560 landing_spot),
+// damage can kill the hero before the wounded-legs roll (die-at-losehp), so
+// a wizard-mode death interrupts here and is resumed via
+// _steed_thrown_resume from the "Die?" refusal handler.
+async function dismountSteedThrown(messages) { // messages begins with "You kick <steed>."
+    const steed = game.u?.usteed;
+    if (!steed) return;
+    game.context.move = 1; // kick consumed the turn even if the hero dies
+    const spot = landingSpot(); // steed.c:598+ ongoing -> landing_spot rolls
+    const steedNameNow = steedMonNam(steed);
+    // steed.c:631-636 — You("are thrown off of %s!", ...)
+    const landingDamage = rn2(10) + 10; // losehp(Maybe_Half_Phys(rn1(10,10)))
+    game.u.uhp = Math.max(0, (game.u.uhp || 0) - landingDamage);
+    messages.push(`You are thrown off of ${steedNameNow}!`);
+    if (game.u.uhp <= 0) {
+        game._steed_thrown_resume = { spot };
+        await setMessage(messages.join('  '), true);
+        game._command_mode = 'deathSlipMore';
+        return;
+    }
+    await setMessage(messages.join('  '));
+    finishSteedThrownDismount(spot);
+}
+
+function finishSteedThrownDismount(spot) {
+    const steed = game.u?.usteed;
+    if (!steed) return;
+    // steed.c:614 — set_wounded_legs(BOTH_SIDES, HWounded_legs + rn1(5,5))
+    heroSetWoundedLegsBothSides((game.u?._woundedLegTurns || 0) + (rn2(5) + 5));
+    const steedX = game.u.ux;
+    const steedY = game.u.uy;
+    // steed.c:657-662 — release the steed (usteed = NULL, ugallop = 0,
+    // steed_vs_stealth() has no random calls)
+    game.u.usteed = null;
+    game.u.ugallop = 0;
+    // steed.c:697-704 — steed goes onto the hero's (its own) square
+    steed.mx = steedX;
+    steed.my = steedY;
+    if (!(game.level?.monsters || []).includes(steed)) game.level.monsters.push(steed);
+    // steed.c:748-758 — hero moves to the landing spot (teleds)
+    if (spot) {
+        game.u.ux0 = steedX;
+        game.u.uy0 = steedY;
+        game.u.ux = spot.x;
+        game.u.uy = spot.y;
+    }
+    newsym(steedX, steedY);
+    if (spot) newsym(spot.x, spot.y);
+    vision_recalc(0);
+}
+
+// C ref: steed.c:414-449 kick_steed() joined with dokick.c:1271-1276.
+async function kickSteed() {
+    const steed = game.u?.usteed;
+    if (!steed) return;
+    const messages = [`You kick ${steedMonNam(steed)}.`];
+    if (steed.mtame) steed.mtame--;
+    if (!steed.mtame && steed.mleashed) steed.mleashed = 0;
+    // steed.c:441 — buck check against rnd(MAXULEV/2 + 5) == rnd(20)
+    if (!steed.mtame || ((game.u?.ulevel || 1) + (steed.mtame || 0) < rnd(Math.trunc(MAXULEV / 2) + 5))) {
+        newsym(steed.mx ?? game.u?.ux ?? 0, steed.my ?? game.u?.uy ?? 0);
+        await dismountSteedThrown(messages);
+        return;
+    }
+    messages.push(`${steedMonnam(steed)} gallops!`);
+    await setMessage(messages.join('  '));
+    game.u.ugallop = (game.u?.ugallop || 0) + rn2(20) + 30; // rn1(20,30), steed.c:448
+    game.context.move = 1;
+}
+
+// C ref: steed.c:201-394 mount_steed(). Order of checks mirrors C exactly.
+// Returns true when mounting succeeded (ECMD_TIME in C).
+async function mountSteed(mon, { force = false } = {}) {
+    if (!mon || (!force && mon.mundetected)) {
+        // steed.c:246-249
         await setMessage('I see nobody there.');
         game._command_mode = null;
-        return;
+        return false;
     }
-    const steedName = `${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'creature'}`;
-    if (!mon.saddled) {
-        await setMessage(`${mon.data?.name || 'It'} is not saddled.`);
+    // Wounded legs (steed.c:224-247): print legs_in_no_shape("riding", ...)
+    // first (do.c:2408-2425); the "Heal your leg?" y_n only fires when the
+    // mount is a forced one in wizard mode.
+    if ((game.u?._woundedLegTurns || 0) > 0) {
+        if (force && (game.flags?.debug || game.flags?.explore)) {
+            game._ride_heal_steed = { mon, spot: { x: mon.mx, y: mon.my } };
+            await setMessage(heroLegsInNoShapeMessage('riding'), true);
+            game._command_mode = 'rideHealLegMore';
+            return false;
+        }
+        await setMessage(heroLegsInNoShapeMessage('riding'));
         game._command_mode = null;
-        return;
+        return false;
     }
-    if (!mon.pet || !mon.mtame) {
-        await setMessage(`I think the ${mon.data?.name || 'creature'} would mind.`);
+    // steed.c:294-298 — monster must be saddled
+    if (!monsterHasWornSaddle(mon)) {
+        await setMessage(`${steedMonnam(mon)} is not saddled.`);
         game._command_mode = null;
-        return;
+        return false;
     }
-
-    if ((game.u?.ulevel || 1) + (mon.mtame || 0) < rnd(20)) {
+    // steed.c:305-308 — untame monsters and minions refuse
+    if (!mon.mtame || mon.isminion) {
+        await setMessage(`I think ${steedMonNam(mon)} would mind.`);
+        game._command_mode = null;
+        return false;
+    }
+    // steed.c:308-314 — an unforced mount (except by a Knight) erodes
+    // tameness and bottoms out into refusal.
+    if (!force && (game._startup_role || '') !== 'Knight' && !(mon.mtame = Math.max(0, (mon.mtame || 0) - 1))) {
+        newsym(mon.mx, mon.my);
+        await setMessage(`${steedMonnam(mon)} resists${mon.mleashed ? ' and its leash comes off' : ''}!`);
+        if (mon.mleashed) mon.mleashed = 0;
+        game._command_mode = null;
+        return false;
+    }
+    if (!monsterCanBeSaddled(mon)) {
+        await setMessage("You can't ride such a creature.");
+        game._command_mode = null;
+        return false;
+    }
+    // steed.c:332-362 — impairment/slip branch (skipped entirely for a
+    // forced wizard mount).
+    if (!force
+        && ((game.u?.confused || game.u?.fumbling || game.u?.glib)
+            || (mon.saddle?.cursed || monsterWornSaddleForPotionHit(mon)?.cursed)
+            || ((game.u?.ulevel || 1) + (mon.mtame || 0) < rnd(Math.trunc(MAXULEV / 2) + 5)))) {
         game.u.uhp = Math.max(0, (game.u.uhp || 0) - (rn2(5) + 10));
-        await setMessage(`You slip while trying to get on the ${steedName}.`, game.u.uhp <= 0);
+        await setMessage(`You slip while trying to get on ${steedMonNam(mon)}.`, game.u.uhp <= 0);
         game._command_mode = game.u.uhp <= 0 ? 'deathSlipMore' : null;
-        return;
+        return false;
     }
 
+    // steed.c:365-388 — success
+    maybewakeSteed(mon);
     const oldx = game.u.ux;
     const oldy = game.u.uy;
     game.u.usteed = mon;
@@ -15120,9 +15380,34 @@ async function mountSteed(mon) {
     newsym(oldx, oldy);
     newsym(game.u.ux, game.u.uy);
     vision_recalc(0);
-    await setMessage(`You mount the ${steedName}.`);
+    if (!force) await setMessage(`You mount ${steedMonNam(mon)}.`);
+    else game._keep_pending_message = 1; // C forced mount prints nothing; the yn prompt stays on screen
     game._command_mode = null;
     game.context.move = 1;
+    return true;
+}
+
+// C ref: do.c:2408-2425 legs_in_no_shape("riding", FALSE)
+function heroLegsInNoShapeMessage(verb) {
+    const side = game.u?._woundedLegSide === 'left' ? 'left '
+        : game.u?._woundedLegSide === 'right' ? 'right ' : '';
+    return `Your ${side}leg${side ? '' : 's'} ${side ? 'is' : 'are'} in no shape for ${verb}.`;
+}
+
+// C ref: do.c:2449-2484 heal_legs(0) joined with the forced-mount path.
+async function finishRideHealLegsAndMount() {
+    const info = game._ride_heal_steed;
+    game._ride_heal_steed = null;
+    if (game.u?.acurr?.a && game.u._woundedDexPenalty) {
+        game.u.acurr.a[A_DEX]++;       // ATEMP(A_DEX)++ via acurr mirror
+        game.u._woundedDexPenalty = 0;
+    } else if (game.u?.acurr?.a) {
+        game.u._woundedDexPenalty = 0;
+    }
+    game.u._woundedLegTurns = 0;
+    game.u._woundedLegSide = '';
+    await setMessage('Your legs feel better.');
+    if (info?.mon) await mountSteed(info.mon, { force: true });
 }
 
 async function rideDirection(ch) {
@@ -15133,8 +15418,20 @@ async function rideDirection(ch) {
     }
     const x = (game.u?.ux || 0) + dir.dx;
     const y = (game.u?.uy || 0) + dir.dy;
-    const mon = game.level?.monsters?.find(mtmp => mtmp.mx === x && mtmp.my === y);
-    await mountSteed(mon);
+    if (!isok(x, y)) {
+        game._command_mode = null;
+        return;
+    }
+    // C ref: steed.c:184-193 doride() — wizard mode offers to force the
+    // mount before mount_steed() runs.
+    if (game.flags?.debug || game.flags?.explore) {
+        game._ride_target = { x, y };
+        await setMessage('Force the mount to succeed? [yn] (n)');
+        game._command_mode = 'rideForceConfirm';
+        return;
+    }
+    const mon = (game.level?.monsters || []).find(mtmp => mtmp.mx === x && mtmp.my === y);
+    await mountSteed(mon, { force: false });
 }
 
 function preservesTrapmoveRepeatMessage(msg) {
@@ -41690,6 +41987,16 @@ function sellobjReturnUnpaidToShop(obj, x, y) {
     return true;
 }
 
+// C ref: src/steed.c + src/dokick.c — riding-port surface exercised by
+// test/steed-kick.test.mjs (saddle attempts, mounting, steed kicks).
+export const __steedTestHooks = {
+    heroUseSaddle,
+    kickSteed,
+    monsterCanBeSaddled,
+    heroLegsInNoShapeMessage,
+    steedMonNam,
+};
+
 export const __shopBillingTestHooks = {
     addContainerTakeoutObjectToInventory,
     addContainerTakeoutObjectToShopBill,
@@ -63265,6 +63572,7 @@ function tutorialEnterStash() {
 	        && game._command_mode !== 'terrainKnownDoneMore'
 		        && game._command_mode !== 'whatDoesIntro'
 		        && game._command_mode !== 'exploreModeMore'
+		        && game._command_mode !== 'rideHealLegMore'
 		    ) {
 		        if (ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
 		            game._keep_pending_message = 1;
@@ -64595,6 +64903,17 @@ function tutorialEnterStash() {
                 }
                 let pauseAfterDeferredMultiattack = false;
 		                if (game._deferred_multiattack_after_more) {
+	                    /* mhitu.c:1253+ mdamageu() -> done() (end.c:1025+) -> die()
+                     * -> wizard "Die?" -> savelife() (end.c:1108-1116,
+                     * 704-758) runs SYNCHRONOUSLY inside the fatal slot: the
+                     * refusal heals the hero before any later slot resolves. */
+                    let deathHealedThisResume = false;
+                    /* C's refused done() interrupts mattacku's slot loop
+                     * (mhitu.c:763-946) mid-chain — the tty stops at the
+                     * hitmsg/--More-- of the fatal slot, and the remaining
+                     * slots' hitmsg()s print only after "OK, so you don't
+                     * die."  Park those message texts until the refusal. */
+                    let deathChainMessageSink = null;
 	                    const deferred = game._deferred_multiattack_after_more;
 	                    game._deferred_multiattack_after_more = null;
 	                    const messages = game._pending_message ? [game._pending_message] : [];
@@ -64613,10 +64932,18 @@ function tutorialEnterStash() {
 	                        // C ref: display quirk verified against recording — the status
 	                        // HP line keeps the pre-damage value shown while the death
 	                        // --More-- chain plays when the killing blow lands at exactly -1.
-                            // C ref: mdamageu() -> done() -> savelife() is *synchronous*
-                            // mid-mattakm/mwildmw burst: on a wizard-mode "Die?" refusal
-                            // the hero is healed before the NEXT attack slot is rolled.
-                            if (BISD_REV && (game.u?.uhp || 0) <= 0) restoreHeroHpForUnresolvedWizardDeath();
+                            // C ref: end.c:1108-1116 + 704-758 — the refusal
+                            // heal lands BEFORE the chain's remaining slots,
+                            // so their damage applies to the restored hp.
+                            if ((game.u?.uhp || 0) <= 0 && !deathHealedThisResume
+                                && (game.flags?.debug || game.flags?.explore)
+                                && (deferred.attacks || []).length) {
+                                deathHealedThisResume = true;
+                                game._death_healed_at_chain_crossing = 1;
+                                restoreHeroHpForUnresolvedWizardDeath();
+                                deathChainMessageSink
+                                    = game._death_chain_after_refusal_messages = [];
+                            }
 		                    }
 		                    const hitsSoFar = [...(deferred.hitsSoFar || [])];
 		                    // mhitu.c:72-77 hitmsg() — " again" iff the same
@@ -64630,6 +64957,17 @@ function tutorialEnterStash() {
                     // ATTACK TYPE as the previous slot (mattk->aatyp ==
                     // hitmsg_prev->aatyp) for " again".
                     let prevAatyp = deferred.prevAttack?.aatyp ?? null;
+                    /* mhitu.c:74 — " again" requires mattk == hitmsg_prev + 1;
+                     * getmattk()'s mspec_used substitution (mhitu.c:371-390)
+                     * swaps the attack for a scratch-buffer copy
+                     * (alt_attk_buf), which is never adjacent to the previous
+                     * entry: neither a substituted slot nor its successor can
+                     * print " again". */
+                    const isSubstitutableAttack = (attk) => !!attk
+                        && (attk.aatyp === 'engl' || attk.aatyp === 'hugs'
+                            || attk.adtyp === 'stck' || attk.adtyp === 'poly');
+                    let prevWasSubstituted = !!(deferred.mon?.mspec_used
+                        && isSubstitutableAttack(deferred.prevAttack));
 		                for (let i = 0; i < (deferred.attacks || []).length; i++) {
 		                        const attackIndex = (deferred.nextIndex || 1) + i;
 		                        let attack = deferred.attacks[i];
@@ -64638,8 +64976,9 @@ function tutorialEnterStash() {
                                 // downgrade to a plain 1d6 claw, and the
                                 // downgraded slot then takes the normal AT_CLAW
                                 // to-hit roll path.
-                                if (deferred.mon?.mspec_used && (attack.aatyp === 'engl' || attack.aatyp === 'hugs'
-                                    || attack.adtyp === 'stck' || attack.adtyp === 'poly'))
+                                const slotWasSubstituted = !!(deferred.mon?.mspec_used
+                                    && isSubstitutableAttack(attack));
+                                if (slotWasSubstituted)
                                     attack = { ...attack, aatyp: 'claw', adtyp: 'phys', dice: 1, sides: 6, verb: 'hits' };
                                 // C ref: mhitu.c:822-826 AT_HUGS — automatic hit
                                 // when the previous two attacks both hit; no
@@ -64671,6 +65010,7 @@ function tutorialEnterStash() {
                                     prevSlotWasHit = false;
                                     prevBaseVerb = null;
                                     prevAatyp = null;
+                                    prevWasSubstituted = false;
 		                        } else {
 		                            hitsSoFar.push(true);
 		                            const damage = d(attack.dice ?? 1, attack.sides ?? 2);
@@ -64678,11 +65018,18 @@ function tutorialEnterStash() {
                                     // mhitu.c:73-76 — consecutive slots give
                                     // " again" only on the same attack type
                                     // (mattk->aatyp == hitmsg_prev->aatyp).
+                                    // mhitu.c:73-76 — " again" also requires
+                                    // adjacent *natural* attack table slots
+                                    // (mattk == hitmsg_prev + 1); a getmattk
+                                    // scratch-buffer substitution breaks the
+                                    // chain on both sides.
                                     const again = prevSlotWasHit && prevBaseVerb === baseVerb
-                                        && (attack.aatyp ?? null) === prevAatyp ? ' again' : '';
+                                        && (attack.aatyp ?? null) === prevAatyp
+                                        && !slotWasSubstituted && !prevWasSubstituted ? ' again' : '';
                                     prevSlotWasHit = true;
                                     prevBaseVerb = baseVerb;
                                     prevAatyp = attack.aatyp ?? null;
+                                    prevWasSubstituted = slotWasSubstituted;
 		                            nextMessage = `${shownSubject} ${baseVerb}${again}!`;
                                     nextFirst = { hit: true, damage, message: nextMessage };
                                 }
@@ -64708,7 +65055,7 @@ function tutorialEnterStash() {
                                     pauseAfterDeferredMultiattack = true;
                                     break;
                                 }
-		                        messages.push(nextMessage);
+		                        (deathChainMessageSink || messages).push(nextMessage);
                                 if (nextFirst?.hit) {
 		                            rn2(3);
 		                            rn2(6);
@@ -64725,10 +65072,17 @@ function tutorialEnterStash() {
 		                            // HP line keeps the pre-damage value shown while the death
 		                            // --More-- chain plays when the killing blow lands at exactly -1.
                                     // C ref: mdamageu() -> done() -> savelife() is
-                                    // synchronous mid-burst (end.c:704-758): on a
-                                    // wizard-mode "Die?" refusal the hero is healed
-                                    // before the NEXT attack slot is rolled.
-                                    if (BISD_REV && (game.u?.uhp || 0) <= 0) restoreHeroHpForUnresolvedWizardDeath();
+                                    // synchronous mid-burst (end.c:704-758 +
+                                    // end.c:1108-1116): the refusal heal lands
+                                    // before the NEXT attack slot resolves.
+                                    if ((game.u?.uhp || 0) <= 0 && !deathHealedThisResume
+                                        && (game.flags?.debug || game.flags?.explore)) {
+                                        deathHealedThisResume = true;
+                                        game._death_healed_at_chain_crossing = 1;
+                                        restoreHeroHpForUnresolvedWizardDeath();
+                                        deathChainMessageSink
+                                            = game._death_chain_after_refusal_messages = [];
+                                    }
                                 }
 	                    }
                         // C ref: mattacku()/movemon slot-loop continuation —
@@ -64745,7 +65099,8 @@ function tutorialEnterStash() {
                     // any queued non-fatal followup; only an already-queued death line defers a
                     // second.  When this fires, movemon must resume with the NEXT monster, not this
                     // monster's replayed slot chain (see resume-index resets below).
-                    const deferredHeroHpHitZero = (game.u?.uhp || 0) <= 0;
+                    const deferredHeroHpHitZero = deathHealedThisResume
+                        || (game.u?.uhp || 0) <= 0;
                     if (deferredHeroHpHitZero
                         && !(game._queued_message_after_more || '').startsWith('You die')) {
                             game._monster_resume_same_index = 0;
@@ -66049,6 +66404,7 @@ function tutorialEnterStash() {
         && game._command_mode !== 'terrainKnownDoneMore'
         && game._command_mode !== 'whatDoesIntro'
         && game._command_mode !== 'exploreModeMore'
+        && game._command_mode !== 'rideHealLegMore'
     ) {
         const welcome = game._welcome_message;
         game._pending_message = '';
@@ -66478,7 +66834,9 @@ function tutorialEnterStash() {
             game.context.move = 0;
             game._process_command_time_now = 0;
             game._run_steps_remaining = 0;
-            if (game.u) game.u.uhp = 0;
+            // end.c:704-758 — a chain-crossing heal already restored hp
+            // synchronously; don't re-zero it for the prompt.
+            if (game.u && !game._death_healed_at_chain_crossing) game.u.uhp = 0;
             game._death_status_hp_before_zero = null;
             const deathTurn = game.moves || 1;
             game._death_moves ||= game._death_current_move ? deathTurn : Math.max(1, deathTurn - 1);
@@ -66506,8 +66864,12 @@ function tutorialEnterStash() {
 
     if (game._command_mode === 'wizardDieConfirm') {
         if (process.env.WEREDBG) console.error(`WEREDBG wizardDieConfirm key=${JSON.stringify(ch)} moves=${game.moves} rngidx=${getRngLog().length}`);
-        game._death_pending_confirm = false;
+        /* keys that don't answer the prompt (e.g. stray '5'/'s') must not
+         * disturb the pending-death display/zero state — C re-asks "Die?"
+         * and the status line keeps showing HP 0 until refusal prints. */
         if (ch === 'y') {
+        game._death_healed_at_chain_crossing = 0;
+        game._death_pending_confirm = false;
             game._gas_spore_explode_exercise_pending = 0;
             game._gas_spore_deferred_experience_mon = null;
             game._wizard_lava_refusal_clear_trap = 0;
@@ -66525,6 +66887,9 @@ function tutorialEnterStash() {
             return;
         }
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            const healedAtChainCrossing = !!game._death_healed_at_chain_crossing;
+            game._death_healed_at_chain_crossing = 0;
+            game._death_pending_confirm = false;
             if (game._gas_spore_explode_exercise_pending) {
                 game._gas_spore_explode_exercise_pending = 0;
                 // C ref: exercise(A_STR, FALSE) — explode.c:678, reached as
@@ -66537,8 +66902,21 @@ function tutorialEnterStash() {
             game._wizard_lava_refusal_clear_trap = 0;
             game._wizard_lava_refusal_safe_teleport = 0;
             game._wizard_lava_refusal_fatal_entry = 0;
-            restoreHeroHpAfterLifeSaving();
+            // end.c:1108-1116 — savelife() healed synchronously at the fatal
+            // slot already (restoreHeroHpForUnresolvedWizardDeath); healing
+            // again here would erase the chain's post-refusal damage.
+            if (!healedAtChainCrossing) restoreHeroHpAfterLifeSaving();
             clearLifeSavedDeathState();
+            if (game._steed_thrown_resume) {
+                // C ref: done() (end.c:1107-1118) returns into losehp() ->
+                // dismount_steed() (steed.c:612-815), which only now rolls
+                // rn2(5) for the wounded-legs timer (steed.c:614),
+                // releases the steed, parks it on the hero's old square and
+                // relocates the hero to the precomputed landing spot.
+                const resume = game._steed_thrown_resume;
+                game._steed_thrown_resume = null;
+                finishSteedThrownDismount(resume.spot);
+            }
             if (lavaRefusalClearTrap || game.u?.utraptype === TT_LAVA) {
                 game.u.utrap = 0;
                 game.u.utraptype = null;
@@ -66632,8 +67010,24 @@ function tutorialEnterStash() {
                     return;
                 }
             }
+            /* mhitu.c:763-946 + end.c:1108-1116 — the interrupted attack
+             * chain resumes from its fatal slot right after "OK, so you
+             * don't die.": its parked hitmsg()s print into the refusal line,
+             * and the survivor nomovemsg (end.c:727) follows past a forced
+             * --More-- (allmain.c:381-383 unmul cadence). */
+            const chainSlotMessages = game._death_chain_after_refusal_messages || [];
+            game._death_chain_after_refusal_messages = null;
+            if (chainSlotMessages.length)
+                survivalMessages.push(...chainSlotMessages);
             game._command_mode = null;
-            await setMessage(survivalMessages.join('  '), landing?.more || landing?.trapResult);
+            await setMessage(survivalMessages.join('  '), landing?.more || landing?.trapResult
+                || (chainSlotMessages.length ? true : undefined));
+            /* C's tty blocks only at getch: the refusal window completes the
+             * interrupted movemon pass and the new-turn block (allmain.c:
+             * 227-253 mcalcdistress/mcalcmove/svm.moves++) behind the pending
+             * --More--, so the status line shows the advanced turn while the
+             * chain's last hitmsg is still parked for dismissal. */
+
             if (landing?.trapResult && applyLifeSavingOrFatalCommandMode(landing.trapResult)) return;
 
             if (game._deferred_raven_blind_after_more) {
@@ -72493,6 +72887,15 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         }
         const name = inventoryItemName(item).toLowerCase();
         game._command_mode = null;
+        // C ref: apply.c:4301 (use_tool SADDLE case) -> steed.c:36-141
+        // use_saddle() — a saddle is applied to an adjacent monster after
+        // getdir(); u_handsy() holds for an unpolymorphed humanoid hero.
+        if (objectKindKey(item) === 'saddle' || name === 'saddle') {
+            game._apply_saddle_letter = item.letter;
+            await setMessage('In what direction?');
+            game._command_mode = 'applySaddleDirection';
+            return;
+        }
         if (isApplyCoinObject(item)) {
             const messages = applyCoinFlip(item);
             await setMessage(messages.join('  '), messages.length > 1);
@@ -74435,6 +74838,24 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         }
         await setMessage(`You ${game.u?.ublind ? 'feel' : 'see'} no door there.`);
         game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'applySaddleDirection') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_saddle_letter);
+        game._apply_saddle_letter = null;
+        game._command_mode = null;
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            // C ref: getdir() cancel -> Never_mind, ECMD_CANCEL (no time)
+            await setMessage('Never mind.');
+            return;
+        }
+        const dir = commandDirection(ch);
+        if (!dir || dir.dz !== 0) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        await heroUseSaddle(item, dir.dx, dir.dy);
         return;
     }
 
@@ -77980,6 +78401,71 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
         return;
     }
 
+    // C ref: steed.c:185-193 — wizard "Force the mount to succeed? [yn]"
+    if (game._command_mode === 'rideForceConfirm') {
+        const target = game._ride_target;
+        game._ride_target = null;
+        game._command_mode = null;
+        const mon = target
+            ? (game.level?.monsters || []).find(mtmp => mtmp.mx === target.x && mtmp.my === target.y)
+            : null;
+        if (ch === 'y') {
+            await mountSteed(mon, { force: true });
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ' || '\r\n'.includes(ch)) {
+            await mountSteed(mon, { force: false });
+            return;
+        }
+        game._ride_target = target;
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    // C ref: steed.c:224-247 — "Heal your leg?" during a forced remount
+    if (game._command_mode === 'rideHealLegMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._dismissed_more_this_command = 1;
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 0;
+            await setMessage('Heal your leg? [yn] (n)');
+            game._command_mode = 'rideHealLegConfirm';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'rideHealLegConfirm') {
+        if (ch === 'y') {
+            game._command_mode = null;
+            await finishRideHealLegsAndMount();
+            return;
+        }
+        game._ride_heal_steed = null;
+        game._command_mode = null;
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ') return;
+        // keep waiting for a yn answer on other keys
+        game._ride_heal_steed = game._ride_heal_steed;
+        game._command_mode = 'rideHealLegConfirm';
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    // C ref: dokick.c:1271-1278 dokick() while mounted.
+    if (game._command_mode === 'kickSteedConfirm') {
+        game._command_mode = null;
+        if (ch === 'y' || ch === '\r' || ch === '\n') {
+            await kickSteed();
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ') return; // ECMD_OK, no time
+        game._command_mode = 'kickSteedConfirm';
+        game._keep_pending_message = 1;
+        return;
+    }
+
     if (game._command_mode === 'kickDirection') {
         const dir = movementDirection(ch);
         if (!dir) {
@@ -78204,6 +78690,14 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
     }
 
     if (ch === '\x04' && !game._command_mode) {
+        // C ref: dokick.c:1270-1278 — while mounted dokick() checks with
+        // yn_function("Kick your steed?", ynchars, 'y') before any
+        // wounded-legs/encumbrance check.
+        if (game.u?.usteed) {
+            await setMessage('Kick your steed? [yn] (y)');
+            game._command_mode = 'kickSteedConfirm';
+            return;
+        }
         if (game.u?._woundedLegTurns) {
             const side = game.u._woundedLegSide === 'left' ? 'left '
                 : game.u._woundedLegSide === 'right' ? 'right ' : '';

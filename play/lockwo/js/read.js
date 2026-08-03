@@ -16,10 +16,12 @@ import { erode_obj, obj_erode_type, goodpos_for_hero, t_at, spoteffects } from '
 import { find_ac } from './u_init.js';
 import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
          SCR_DESTROY_ARMOR, SCR_REMOVE_CURSE, SCR_ENCHANT_WEAPON,
+         BALL_CLASS, CHAIN_CLASS, HEAVY_IRON_BALL, mkobj, place_object,
          WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, objects } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, A_DEX, CORR, Is_rogue_level, Is_waterlevel,
          ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED,
-         COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole, SPE_LIM } from './const.js';
+         COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole, SPE_LIM,
+         W_BALL, W_CHAIN } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
 
 const ECMD_CANCEL = 0;
@@ -29,6 +31,8 @@ const ECMD_TIME = 1;
 const SCR_MAGIC_MAPPING = 337;
 const SCR_IDENTIFY = 336;
 const SCR_LIGHT = 332;
+const SCR_PUNISHMENT = 341;      // C ref: include/objects.h otyp
+const WT_IRON_BALL_INCR = 160;   // C ref: include/obj.h WT_IRON_BALL_INCR
 
 // C ref: topl.c update_topl — within a single turn, consecutive messages
 // concatenate on the top line (separated by two spaces) while there's room
@@ -136,11 +140,67 @@ async function seffects(sobj) {
         if (consumed) return true;
         break;
     }
+    case SCR_PUNISHMENT:
+        // C ref: read.c seffect_punishment — a confused OR blessed read only
+        // makes the hero feel guilty; otherwise punish(sobj).  gk.known is set
+        // either way.
+        game.known = true;
+        if (Confused() || sobj.blessed) {
+            await pline('You feel guilty.');
+            break;
+        }
+        await punish(sobj);
+        break;
     default:
         // Uncovered scroll effects: no-op (object still consumed by doread).
         break;
     }
     return false;
+}
+
+// C ref: read.c punish(sobj) — chain the hero to a heavy iron ball.
+//
+// This was missing entirely: seed4500 reads a scroll of punishment at step 492
+// and C drew 12 PRNG calls there (two mkobj(class, TRUE) — the chain then the
+// ball — each worth rnd(1000) for the in-class probability walk plus next_ident
+// and mkobj_erosions' four draws) while we drew none, and the ball and chain
+// never appeared on the floor or in the "Things that are here" list.
+async function punish(sobj) {
+    const u = game.u;
+    // angrygods() passes a null sobj; only the HEAVY_IRON_BALL re-use case
+    // recycles the object it was handed.
+    const reuse_ball = (sobj && sobj.otyp === HEAVY_IRON_BALL) ? sobj : null;
+    const cursed_levy = (sobj && sobj.cursed) ? 1 : 0;
+
+    // update_topl(), not pline(): C's You()/Your() append to the topline that
+    // doread() has already written ("As you read the scroll, it disappears."),
+    // and page with a --More-- — its own captured frame — when the two don't fit
+    // in 80 columns.  seed4500 step 491 is exactly that --More--, with the whole
+    // punish() PRNG landing in step 492 after the space.
+    if (!reuse_ball)
+        await update_topl('You are being punished for your misbehavior!');
+    if (u?.uball) {
+        // Already Punished: the existing ball just gets heavier.  No RNG.
+        await update_topl('Your iron ball gets heavier.');
+        u.uball.owt += WT_IRON_BALL_INCR * (1 + cursed_levy);
+        return;
+    }
+    // The amorphous/whirly/unsolid hero branch ("A ball and chain appears, then
+    // falls away.") needs a polymorphed form; a normal hero always gets chained.
+    const uchain = mkobj(CHAIN_CLASS, true);
+    uchain.owornmask = W_CHAIN;
+    u.uchain = uchain;
+    const uball = reuse_ball || mkobj(BALL_CLASS, true);
+    uball.owornmask = W_BALL;
+    u.uball = uball;
+
+    // C ref: ball.c placebc_core() — both objects go on the hero's square (the
+    // ball first, so the chain ends up above it: u.bc_order = BCPOS_CHAIN).
+    // flooreffects() can rust them, but not on a dry square, and it draws no RNG
+    // there.
+    place_object(uball, u.ux, u.uy);
+    place_object(uchain, u.ux, u.uy);
+    newsym(u.ux, u.uy);
 }
 
 // C ref: objclass.h erosion_matters() — only weapons and armor erode (this
@@ -500,9 +560,9 @@ async function seffect_identify(sobj) {
     useup(sobj);
 
     if (confused || (scursed && !already_known)) {
-        await pline_append('You identify this as an identify scroll.');
+        await update_topl('You identify this as an identify scroll.');
     } else if (!already_known) {
-        await pline_append('This is an identify scroll.');
+        await update_topl('This is an identify scroll.');
     }
     if (!already_known) {
         // learnscrolltyp -> makeknown -> discover_object(credit_hero=TRUE):
@@ -524,7 +584,7 @@ async function seffect_identify(sobj) {
         }
         await identify_pack(cval, !already_known);
     } else {
-        await pline_append('You\'re not carrying anything else to be identified.');
+        await update_topl("You're not carrying anything else to be identified.");
     }
 }
 

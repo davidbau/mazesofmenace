@@ -9,7 +9,7 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
-import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
+import { OCLASSES, ONAMES, MATERIALS, SKILLS, objects } from './objects_data.js';
 import { MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
 import { humanoid, noncorporeal } from './mondata.js';
 
@@ -107,3 +107,42 @@ export const is_elven_weapon = (otmp) =>
     otmp.otyp === ONAMES.ELVEN_ARROW || otmp.otyp === ONAMES.ELVEN_SPEAR
     || otmp.otyp === ONAMES.ELVEN_DAGGER || otmp.otyp === ONAMES.ELVEN_SHORT_SWORD
     || otmp.otyp === ONAMES.ELVEN_BROADSWORD || otmp.otyp === ONAMES.ELVEN_BOW;
+
+// include/obj.h:421 is_plural() — a stack, or the (discovered) Eyes of the
+// Overworld. undiscovered_artifact scans artidisco[], which nothing ported
+// records into, so an artifact is always still "undiscovered" here; the term
+// is exact until artifact discovery lands.
+import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
+export const is_plural = (o) =>
+    o.quan !== 1
+    || (o.oartifact === ART_EYES_OF_THE_OVERWORLD
+        && !undiscovered_artifact_obj(ART_EYES_OF_THE_OVERWORLD));
+function undiscovered_artifact_obj(m) {
+    (game.unported ||= new Set()).add('obj:undiscovered_artifact');
+    return true;    /* empty artidisco[]: everything is undiscovered */
+}
+
+// include/obj.h:427 pair_of()
+export const pair_of = (o) =>
+    o.otyp === ONAMES.LENSES || is_gloves(o) || is_boots(o);
+
+// include/obj.h:217 is_axe()
+export const is_axe = (otmp) =>
+    (otmp.oclass === OCLASSES.WEAPON_CLASS
+     || otmp.oclass === OCLASSES.TOOL_CLASS)
+    && objects[otmp.otyp].oc_skill === SKILLS.P_AXE;
+
+// include/obj.h:274 stone_missile() — gemstone/mineral thing that can be
+// launched; rings are excluded even when made of gemstone.
+export const stone_missile = (o) =>
+    (objects[o.otyp].oc_material === MATERIALS.GEMSTONE
+     || objects[o.otyp].oc_material === MATERIALS.MINERAL)
+    && o.oclass !== OCLASSES.RING_CLASS;
+
+// include/obj.h:264 is_poisonable() — launcher ammo classes only.
+// permapoisoned() reads an artifact property table that is not ported; it
+// is false for every ordinary object, so the || term is vacuous for now.
+export const is_poisonable = (otmp) =>
+    otmp.oclass === OCLASSES.WEAPON_CLASS
+    && objects[otmp.otyp].oc_skill >= -SKILLS.P_SHURIKEN
+    && objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW;

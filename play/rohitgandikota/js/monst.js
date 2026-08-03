@@ -16,7 +16,8 @@ export const MON_WEP = (mon) => mon.mw || null;
 // because it reads cham (what the creature really is) rather than data (what
 // shape it currently wears).
 import { PMNAMES, MONSYMS } from './monst_data.js';
-import { M_AP_TYPE, M_AP_FURNITURE } from './const.js';
+import { M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+import { ONAMES } from './objects_data.js';
 export const is_vampshifter = (mon) =>
     mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
     || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;
@@ -30,6 +31,22 @@ export const is_vampshifter = (mon) =>
 // branches -- find_roll_to_hit gives a to-hit bonus against the helpless, and
 // growl() returns silently for them.
 export const helpless = (mon) => !!(mon.msleeping || !mon.mcanmove);
+
+// include/monst.h:244 is_obj_mappear() — a mimic currently imitating one
+// specific object type.
+export const is_obj_mappear = (mon, otyp) =>
+    M_AP_TYPE(mon) === M_AP_OBJECT && mon.mappearance === otyp;
+
+// include/monst.h:233 is_lightblocker_mappear() — mimic appearances that block
+// vision/light: a fake boulder, closed door, wall, or tree. does_block() asks
+// this for every mimic it finds on a square.
+export const is_lightblocker_mappear = (mon) =>
+    is_obj_mappear(mon, ONAMES.BOULDER)
+    || (M_AP_TYPE(mon) === M_AP_FURNITURE
+        && (mon.mappearance === MONSYMS.S_hcdoor
+            || mon.mappearance === MONSYMS.S_vcdoor
+            || mon.mappearance < MONSYMS.S_ndoor /* = walls */
+            || mon.mappearance === MONSYMS.S_tree));
 
 // include/monst.h:240 is_door_mappear() — a mimic currently imitating a closed
 // door. lookaround() needs it: a mimicking door stops a run exactly as a real

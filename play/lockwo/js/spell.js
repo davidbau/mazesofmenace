@@ -156,6 +156,10 @@ async function getspell() {
         category: (otyp) => spelltypemnemonic(otyp),
         fail: (i) => 100 - percent_success(i),  // displayed Fail%
         retention: (i) => spellretention(i),
+        // wizard-mode "turns" column: C prints spellknow(i) raw (note it uses
+        // the LOOP index i here while the other fields use the sort-order index;
+        // with no custom sort the two coincide).
+        turns: (i) => spellknow(i),
     };
     return await spell_menu('Choose which spell to cast', nspells, spl_book(), meta);
 }
@@ -285,7 +289,11 @@ async function spelleffects(spell_otyp, atme, force) {
     const spell = spell_idx(spell_otyp);
     const chk = spelleffects_check(spell);
     if (chk.fail) {
-        await pline('You fail to cast the spell correctly.');
+        // update_topl(), not pline(): the monsters that move during this same
+        // turn write their own messages onto the SAME topline, and C's You()
+        // appends ("You fail to cast the spell correctly.  The newt misses!").
+        // pline() replaces the line, so only the monster's half survived.
+        await update_topl('You fail to cast the spell correctly.');
         game.u.uen -= (chk.energy / 2) | 0;
         return chk.code;
     }
@@ -395,6 +403,7 @@ function oc_delay_of(otyp) { return SPELL_DELAY.get(otyp) ?? 0; }
 const PM_WIZARD = 12; // C ref: include/monsters.h; role check for the difficulty prompt.
 const LENSES = 232; // C ref: include/objects.h otyp; +2 read_ability when worn.
 const SPE_BOOK_OF_THE_DEAD = 409; // C ref: include/objects.h otyp.
+const MAX_SPELL_STUDY = 3;  // C ref: include/spell.h:12
 
 // C ref: hack.c nomul(nval) — make the hero helpless/busy for |nval| turns.
 // `if (multi < nval) return; multi = nval;` plus clearing travel state.  Set
@@ -485,6 +494,7 @@ async function cursed_book(bp) {
 // success-path memorization occupation (learn) are not yet ported.  Returns 1
 // if a game turn was used, 0 otherwise.
 export async function study_book(spellbook) {
+    if (process?.env?.NHDBG_SB) console.error('[study_book] otyp=%s delay_ctx=%s book=%s moves=%s', spellbook.otyp, game.context?.spbook?.delay, game.context?.spbook?.book?.otyp, game.moves);
     const { makeknown, useup, trycall } = await import('./invent.js');
     const { y_n } = await import('./display.js');
     const u = game.u;
@@ -568,11 +578,129 @@ export async function study_book(spellbook) {
         }
         return 1;
     }
-    // Success path (uncursed easy / blessed book) and confused_book reading are
-    // not yet ported (memorization occupation via learn()); preserve prior
-    // behaviour of consuming the turn without the multi-turn study.
+    // C ref: spell.c study_book tail — the SUCCESS path.  Used to be a stub that
+    // just consumed the turn, so a successful read drew the rnd(20) difficulty
+    // roll and then nothing: no "begin to memorize" message, no multi-turn study
+    // (so no monster turns elapsed), and no spell added.  On seed4500 step 474 C
+    // drew 37 calls where we drew 1, and every later `Z` cast of the book's spell
+    // diverged too because the spell was never in the repertoire.
     spellbook.in_use = false;
+    // update_topl(), not pline(): the study's completion message arrives on the
+    // SAME topline, and C emits a --More-- (its own captured frame) when the two
+    // together overflow 80 columns.  pline() replaces the line instead of
+    // appending, so that boundary was missing.
+    await update_topl(`You begin to ${booktype === SPE_BOOK_OF_THE_DEAD ? 'recite' : 'memorize'} the runes.`);
+
+    game.context = game.context || {};
+    game.context.spbook = game.context.spbook || {};
+    game.context.spbook.delay = delay;
+    game.context.spbook.book = spellbook;
+    game.context.spbook.o_id = spellbook.o_id;
+    // C ref: cmd.c set_occupation(learn, "studying", 0) — an untimed occupation:
+    // the move loop calls learn() each turn instead of reading a command, so the
+    // whole study produces ONE captured screen at the next command boundary.
+    game._study_occupation = true;
+    game.occupation_txt = 'studying';
     return 1;
+}
+
+// C ref: spell.c learn() — the studying occupation.  Returns 1 while still busy,
+// 0 when the study is over (the move loop then clears go.occupation).
+export async function learn_step() {
+    const { makeknown, useup, trycall, check_unpaid } = await import('./invent.js');
+    const g = game;
+    const sb = g.context?.spbook;
+    const book = sb?.book;
+    if (!book) return 0;
+    const u = g.u;
+
+    // "JDS: lenses give 50% faster reading; 33% smaller read time" — the rn2(2)
+    // is drawn only while delay is still nonzero AND lenses are worn.
+    if (sb.delay && u?.ublindf && u.ublindf.otyp === LENSES && rn2(2))
+        sb.delay++;
+    if (u?.uconf || u?.HConfusion) {          /* became confused while learning */
+        await confused_book(book);
+        sb.book = 0; sb.o_id = 0;
+        nomul(sb.delay);                      /* remaining delay is uninterrupted */
+        g.multi_reason = 'reading a book';
+        g.nomovemsg = 'You can move again.';
+        sb.delay = 0;
+        return 0;
+    }
+    if (sb.delay) {
+        // "not if (delay++), so at end delay == 0" — delay is negative and
+        // counts UP toward zero, one turn per occupation call.
+        sb.delay++;
+        return 1;                             /* still busy */
+    }
+    exercise(A_WIS, true);                    /* you're studying */
+    let booktype = book.otyp;
+    if (booktype === SPE_BOOK_OF_THE_DEAD) {
+        // deadbook() is the Book of the Dead ritual; not reachable here.
+        sb.book = 0; sb.o_id = 0;
+        return 0;
+    }
+
+    const known = !!objects[booktype]?.oc_name_known;
+    const splname = known ? `"${objects[booktype]?.name}"`
+                          : `the "${objects[booktype]?.name}" spell`;
+    let i = 0;
+    for (; i < MAXSPELL; i++)
+        if (spellid(i) === booktype || spellid(i) === NO_SPELL) break;
+
+    let faded_to_blank = false;
+    const book_arr = spl_book();
+    if (i === MAXSPELL) {
+        /* C: impossible("Too many spells memorized!") */
+    } else if (spellid(i) === booktype) {
+        // A normal book can be read and re-read a total of MAX_SPELL_STUDY times.
+        if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
+            await pline('This spellbook is too faint to be read any more.');
+            book.otyp = booktype = SPE_BLANK_PAPER;
+            faded_to_blank = true;
+            book.spestudied = rn2(book.spestudied);
+        } else {
+            await update_topl(`Your knowledge of ${splname} is ${spellknow(i) ? 'keener' : 'restored'}.`);
+            book_arr[i].sp_know = KEEN + 1;   /* incrnknow(i, 1) */
+            book.spestudied = (book.spestudied | 0) + 1;
+            exercise(A_WIS, true);            /* extra study */
+        }
+    } else {                                  /* spellid(i) === NO_SPELL */
+        if ((book.spestudied | 0) >= MAX_SPELL_STUDY) {
+            await pline('This spellbook is too faint to read even once.');
+            book.otyp = booktype = SPE_BLANK_PAPER;
+            faded_to_blank = true;
+            book.spestudied = rn2(book.spestudied);
+        } else {
+            book_arr[i].sp_id = booktype;
+            book_arr[i].sp_lev = spell_level_of(booktype);
+            book_arr[i].sp_know = KEEN + 1;   /* incrnknow(i, 1) */
+            book.spestudied = (book.spestudied | 0) + 1;
+            if (!i)
+                /* first is always 'a', so no need to mention the letter */
+                await update_topl(`You learn ${splname}.`);
+            else
+                await update_topl(`You add ${splname} to your repertoire, as '${spellet(i)}'.`);
+        }
+    }
+    if (i < MAXSPELL) makeknown(booktype);
+    void faded_to_blank;                      /* update_inventory: no perm_invent */
+
+    if (book.cursed) {                        /* maybe a demon cursed it */
+        if (await cursed_book(book)) {
+            useup(book);
+            sb.book = 0; sb.o_id = 0;
+            return 0;
+        }
+    }
+    if (check_unpaid) check_unpaid(book);
+    sb.book = 0; sb.o_id = 0;
+    return 0;
+}
+
+// C ref: spell.c spellet(spell) — the inventory-style letter for spell slot i.
+function spellet(i) {
+    return i < 26 ? String.fromCharCode(97 + i) : String.fromCharCode(65 + i - 26);
 }
 
 export { spellid, spellev, spellknow };

@@ -8,6 +8,7 @@
 // exact C decision point, so game.unported names what a divergence wanted.
 
 import { game } from './gstate.js';
+import { thrwmu } from './mthrowu.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
@@ -159,7 +160,7 @@ export async function mswings(mtmp, otemp, bash) {
 export function mpoisons_subj(mtmp, mattk) {
     const A = ATTKS;
     if (mattk[0] === A.AT_WEAP) {
-        const mwep = (mtmp === game.youmonst) ? game.uwep : MON_WEP(mtmp);
+        const mwep = (mtmp === game.youmonst) ? game.u.uwep : MON_WEP(mtmp);
         /* "Foo's attack was poisoned." is pretty lame, but at least
            it's better than "sting" when not a stinging attack... */
         return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
@@ -528,7 +529,7 @@ export async function mattacku(mtmp) {
         case A.AT_WEAP:
             if (v.range2) {
                 if (!game.level?.flags?.is_rogue_level)
-                    note_unported_mhitu('mattacku:thrwmu');
+                    await thrwmu(mtmp);
             } else {
                 let hittmp = 0;
 

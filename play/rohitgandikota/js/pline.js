@@ -83,3 +83,12 @@ export async function pline_The(line) {
 export async function There(line) {
     await pline('There ' + line);
 }
+
+
+// src/pline.c Norep() — pline unless the text matches the message already
+// on the top line, so a struggle repeated every turn does not stack --More--
+// prompts. gt.toplines is tracked as game._toplines by update_topl.
+export async function Norep(line) {
+    if ((game._toplines || '') !== line)
+        await pline(line);
+}

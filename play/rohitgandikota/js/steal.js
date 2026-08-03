@@ -13,6 +13,17 @@ import { pline_xy } from './pline.js';
 import { newsym } from './display.js';
 import { place_object } from './mkobj.js';
 import { stackobj, obj_extract_self } from './invent.js';
+import { flooreffects } from './do.js';
+/* src/light.c obj_sheds_light() == obj_is_burning(): a lit lamp/candle/
+   artifact. The port tracks lamplit; artifact light records elsewhere. */
+const obj_sheds_light = (o) => !!o.lamplit;
+import { attacktype } from './mondata.js';
+import { ATTKS } from './monst_data.js';
+import { canseemon } from './display.js';
+import { merged } from './invent.js';
+import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN,
+         OBJ_MINVENT } from './const.js';
+import { ONAMES } from './objects_data.js';
 import { droppables } from './dog.js';
 import { costly_spot } from './shk.js';
 import { W_SADDLE } from './const.js';
@@ -48,11 +59,12 @@ export async function mdrop_obj(mon, obj, verbosely) {
         /* pline_mon(mon, ...) — a message anchored at the monster */
         await pline_xy(omx, omy, `${Monnam(mon)} drops ${obj_name}.`);
 
-    /* flooreffects(obj, x, y, "fall") consumes the object when it lands in
-       water, lava or on an altar; every current drop square is plain floor. */
-    note_unported_steal('mdrop_obj:flooreffects');
-    place_object(obj, omx, omy);
-    stackobj(obj);
+    /* src/steal.c — flooreffects(obj, x, y, "fall") consumes the object when
+       it lands in water, lava or a pit; only place it when it survived */
+    if (!await flooreffects(obj, omx, omy, 'fall')) {
+        place_object(obj, omx, omy);
+        stackobj(obj);
+    }
 
     /* removing worn gear adjusts the monster's properties */
     if (mon.mhp > 0 && unwornmask)
@@ -74,4 +86,51 @@ export async function relobj(mtmp, show, is_pet) {
 
     if (show && cansee(omx, omy))
         newsym(omx, omy);
+}
+
+// src/steal.c:618 mpickobj() — a monster takes possession of an object.
+// Returns 1 when the object merged into an existing stack (and is gone).
+//
+// subfrombill (shop billing), unknow_object, the engulfer light snuff and
+// the cursed-figurine timer record, each behind its own gate.
+export function mpickobj(mtmp, otmp) {
+    /* C: impossible() on null or on taking the hero's ball & chain */
+    /* if monster is acquiring a thrown or kicked object, the throwing
+       or kicking code shouldn't continue to track and place it */
+    if (otmp === game.thrownobj)
+        game.thrownobj = null;
+    else if (otmp === game.kickedobj)
+        game.kickedobj = null;
+    /* an unpaid item can be on the floor; if a monster picks it up, take
+       it off the shop bill */
+    if (otmp.unpaid)
+        note_unported_steal('mpickobj:subfrombill');
+    /* don't want hidden light source inside the monster */
+    if (obj_sheds_light(otmp)
+        && attacktype(game.mons[mtmp.mnum], ATTKS.AT_ENGL))
+        note_unported_steal('mpickobj:snuff_light');
+    /* for hero owned object on shop floor, mtmp is taking possession */
+    otmp.no_charge = 0;
+    /* some object handling is only done if mtmp isn't a pet */
+    if (!mtmp.mtame) {
+        if (!canseemon(mtmp) && mtmp !== game.u.ustuck)
+            note_unported_steal('mpickobj:unknow_object');
+        if (otmp.how_lost === LOST_THROWN)
+            otmp.how_lost = LOST_STOLEN;
+        else if (otmp.how_lost === LOST_DROPPED)
+            otmp.how_lost = LOST_NONE;
+    }
+    /* Must do carrying effects on object prior to add_to_minv() */
+    if (otmp.otyp === ONAMES.FIGURINE && otmp.cursed
+        && (otmp.corpsenm ?? -1) !== -1)
+        note_unported_steal('mpickobj:fig_transform');
+    /* add_to_minv (src/mkobj.c:2648): merge if possible, else insert */
+    for (const held of (mtmp.minvent || [])) {
+        if (merged({ o: held }, { o: otmp }))
+            return 1; /* obj merged and then free'd */
+    }
+    (mtmp.minvent ||= []).push(otmp);
+    otmp.where = OBJ_MINVENT;
+    otmp.ocarry = mtmp;
+    return 0;
 }

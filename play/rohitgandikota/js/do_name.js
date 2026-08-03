@@ -16,6 +16,7 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { game } from './gstate.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
+import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
@@ -386,4 +387,32 @@ export function hcolor(colorpref) {
     return (Hallucination || !colorpref)
         ? hcolors[rn2_on_display_rng(hcolors.length)]
         : colorpref;
+}
+
+/* src/do_name.c:1478 hliquids[] */
+const hliquids = [
+    "yoghurt", "oobleck", "clotted blood", "diluted water", "purified water",
+    "instant coffee", "tea", "herbal infusion", "liquid rainbow",
+    "creamy foam", "mulled wine", "bouillon", "nectar", "grog", "flubber",
+    "ketchup", "slow light", "oil", "vinaigrette", "liquid crystal", "honey",
+    "caramel sauce", "ink", "aqueous humour", "milk substitute",
+    "fruit juice", "glowing lava", "gastric acid", "mineral water",
+    "cough syrup", "quicksilver", "sweet vitriol", "grey goo", "pink slime",
+    "cosmic latte", "bone oil", "custard", "lard", "vinegar", "creosote",
+];
+
+// src/do_name.c:1493 hliquid() — a random liquid when hallucinating.
+// The index comes from the DISPLAY rng, not the game stream.
+export function hliquid(liquidpref) {
+    const hallucinate = Hallucination() && !game.program_state_gameover;
+
+    if (hallucinate || !liquidpref) {
+        let count = hliquids.length;
+        if (liquidpref)
+            ++count;
+        const indx = rn2_on_display_rng(count);
+        if (indx >= 0 && indx < hliquids.length)
+            return hliquids[indx];
+    }
+    return liquidpref;
 }

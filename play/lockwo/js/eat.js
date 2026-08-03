@@ -24,6 +24,11 @@ const FORTUNE_COOKIE = 289; // objects.h FORTUNE_COOKIE
 const CLOVE_OF_GARLIC = 284; // mkobj.js CLOVE_OF_GARLIC
 const APPLE = 277;          // mkobj.js APPLE
 const CRAM_RATION = 292, K_RATION = 294, C_RATION = 295; // mkobj.js rations
+const LEMBAS_WAFER = 291;   // objects.h LEMBAS_WAFER
+// C ref: eat.c:65 nonrotting_food(otyp) — only these two never spoil.
+function nonrotting_food(otyp) {
+    return otyp === LEMBAS_WAFER || otyp === CRAM_RATION;
+}
 
 // C ref: mondata.c olfaction(mdat) — most monsters can smell; golems, eyes,
 // jellies, puddings, blobs, vortices, elementals, fungi and lights cannot.
@@ -434,9 +439,35 @@ export async function doeat() {
     // C: otmp = touchfood(otmp) -> the single rnd(2) for a quan>1 split.
     const piece = touchfood(stack);
 
-    // reqtime = oc_delay; for fresh, non-rotten, non-fortune food we take the
-    // fprefx() branch (no RNG) rather than the rottenfood rn2(7) branch (the
-    // food is too young for it to trigger).
+    // C ref: eat.c:3027-3038 — the first-bite rot check.  This used to be
+    // skipped outright ("the food is too young for it to trigger"), which is
+    // only true of the starter apple: seed4500 eats a food item old enough to
+    // rot and C drew the rn2(7) plus rottenfood()'s whole roll chain there.
+    //
+    //   if (otyp != FORTUNE_COOKIE
+    //       && (cursed || (!nonrotting_food(otyp)
+    //                      && (moves - age) > (blessed ? 50 : 30)
+    //                      && (orotten || !rn2(7)))))
+    //
+    // The && chain is what decides whether the rn2(7) is drawn at all: a cursed
+    // item short-circuits before it, and food younger than its threshold never
+    // reaches it.
+    let dont_start = false;
+    const rotCheck = piece.otyp !== FORTUNE_COOKIE
+        && (piece.cursed
+            || (!nonrotting_food(piece.otyp)
+                && ((game.moves ?? 0) - (piece.age ?? 0)) > (piece.blessed ? 50 : 30)
+                && (piece.orotten || !rn2(7))));
+    if (rotCheck) {
+        if (await rottenfood_eat()) {
+            piece.orotten = true;
+            dont_start = true;
+        }
+        // C ref: consume_oeaten(otmp, 1) — oeaten >>= 1.  No RNG.
+        if (piece.oeaten) piece.oeaten = piece.oeaten >> 1;
+    }
+
+    // reqtime = oc_delay.
     let reqtime = food_delay(piece.otyp);
     const basenutrit = obj_nutrition(piece);
     // rounddiv(reqtime * oeaten, basenutrit)
@@ -473,8 +504,10 @@ export async function doeat() {
     // C ref: eat.c doeat() -> fprefx(otmp) — the per-otyp "first bite" feedback
     // (present tense), issued once on the first bite (not on resume), before the
     // possibly-multi-turn meal completes.  RNG-free for the foods reached here.
+    // C's if/else-if: fprefx() runs ONLY when the rot check did NOT fire — a
+    // rotten first bite prints "Blecch!" instead of the food's own flavour text.
     const nm = objName(piece);
-    if (!already_partly_eaten) await fprefx(piece);
+    if (!rotCheck && !already_partly_eaten) await fprefx(piece);
 
     if (reqtime <= 1 || finished) {
         // C ref: eat.c eatfood()/start_eating() -> done_eating(message), with
@@ -638,7 +671,19 @@ async function rottenfood_eat() {
         const what = blind ? 'you slap against the' : 'goes';
         const where = blind ? (u?.usteed ? 'saddle' : 'floor') : 'dark';
         await update_topl(`The world spins and ${what} ${where}.`);
+        // C ref: eat.c:1843-1847 — incr_itimeout(&HDeaf, duration) then
+        // nomul(-duration) with afternmv = Hear_again.  Both matter for RNG:
+        // while Deaf, dosounds() returns before its ambient rolls, and while
+        // unconscious gethungry() draws its extra Unaware rn2(10).  Hear_again
+        // then draws rn2(2) when the hero comes to.
+        if (u) {
+            if (!u.uprops) u.uprops = {};
+            u.uprops.HDeaf = (u.uprops.HDeaf || 0) + dur;
+        }
         if ((game.multi ?? 0) >= -dur) game.multi = -dur;        // nomul(-dur)
+        game.multi_reason = 'unconscious from rotten food';
+        game.nomovemsg = 'You are conscious again.';
+        game.afternmv = Hear_again;
         return true; // eat.c:1848 — passed out; meal aborted
     }
     return false;
@@ -942,3 +987,14 @@ function mon_cwt_of(mnum) {
     return (c != null) ? c : monCwtFallback(mnum);
 }
 function monCwtFallback(_mnum) { return 100; } // goblin cwt
+
+// C ref: eat.c Hear_again() — the afternmv callback run by unmul() when the hero
+// wakes from fainting: a 1-in-2 chance that the deafness clears early.  The
+// rn2(2) is drawn unconditionally, so it must fire even when it loses.
+export function Hear_again() {
+    if (!rn2(2)) {
+        const u = game.u;
+        if (u?.uprops) u.uprops.HDeaf = 0;   /* make_deaf(0L, FALSE) */
+    }
+    return 0;
+}

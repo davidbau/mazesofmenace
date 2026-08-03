@@ -22,10 +22,14 @@ import {
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
 } from './const.js';
 import {
-    objects, mksobj, weight, place_object, BOULDER,
+    objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
+    mkcorpstat,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
     POT_WATER,
 } from './mkobj.js';
+import { makemon, rndmonst_adj, monster_by_pmidx } from './makemon.js';
+import { likes_gems_flag } from './monflags_data.js';
+import { MM_NOCOUNTBIRTH, MM_NOMSG, STATUE_TRAP } from './const.js';
 import { In_hell as dungeon_In_hell } from './dungeon.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
@@ -305,6 +309,59 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
     return 1;
 }
 
+// C ref: trap.c mk_trap_statue(x, y) — a STATUE_TRAP holds a statue of a real
+// monster, made by generating that monster, moving its inventory into the
+// statue and then removing it.  RNG-wise that is: up to ten rndmonnum_adj(3,6)
+// species scans (the loop rejects a co-aligned unicorn), mkcorpstat(), and a
+// FULL makemon() at a random location — position search, HP, gender, starting
+// inventory and all.  Leaving it unimplemented cost seed4500 the tail of its
+// Dlvl 40 generation: our traptype_rnd() rolled STATUE_TRAP right alongside C
+// and then simply moved on to the next trap.
+async function mk_trap_statue(x, y) {
+    let mptr = null, trycount = 10;
+    do {
+        mptr = monster_by_pmidx(rndmonst_adj(3, 6)?.pmidx ?? 0);
+    } while (--trycount > 0 && mptr && is_unicorn_pm(mptr)
+             && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(mptr.maligntyp ?? 0));
+    if (!mptr) return;
+    const statue = mkcorpstat(STATUE_OTYP, null, mptr, x, y, 0 /*CORPSTAT_NONE*/);
+    if (!statue) return;
+    // MM_NOCOUNTBIRTH | MM_NOMSG, at a random spot (x==0,y==0).
+    const mtmp = makemon(monster_by_pmidx(statue.corpsenm), 0, 0,
+                         MM_NOCOUNTBIRTH | MM_NOMSG);
+    if (!mtmp) return;                  /* should never happen */
+    // Everything the statue's monster was carrying goes inside the statue.
+    // No RNG; container contents only matter for weight and later looting.
+    const inv = mtmp.minvent || [];
+    while (inv.length) {
+        const otmp = inv.shift();
+        otmp.owornmask = 0;
+        otmp.where = 'contained';
+        otmp.ocontainer = statue;
+        (statue.cobj || (statue.cobj = [])).push(otmp);
+    }
+    statue.owt = weight(statue);
+    trap_mongone(mtmp);
+}
+
+// C ref: mondata.h is_unicorn(ptr) = (mlet == S_UNICORN && likes_gems(ptr)) —
+// the horse half of the 'u' class is excluded by the M2_JEWELS test.
+const S_UNICORN_CLS = 21;       // defsym.h MONSYM(21, 'u', UNICORN, S_UNICORN)
+function is_unicorn_pm(ptr) {
+    return ptr?.mcls === S_UNICORN_CLS && likes_gems_flag(ptr);
+}
+
+// C ref: mon.c mongone(mtmp) — the monster leaves without dying and without a
+// corpse.  Its inventory has already been moved into the statue by the caller.
+function trap_mongone(mtmp) {
+    const lvl = game.level;
+    if (lvl?.monsters) {
+        const i = lvl.monsters.indexOf(mtmp);
+        if (i >= 0) lvl.monsters.splice(i, 1);
+    }
+    if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+}
+
 export async function maketrap(x, y, typ) {
     // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
     // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
@@ -322,6 +379,10 @@ export async function maketrap(x, y, typ) {
     switch (typ) {
     case SQKY_BOARD:
         trap.tnote = choose_trapnote(trap);
+        break;
+    case STATUE_TRAP:
+        // C ref: maketrap():508 — create a "living" statue.
+        await mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP:
         // C ref: maketrap():512 — boulder will roll towards the trigger.

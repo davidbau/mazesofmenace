@@ -122,3 +122,10 @@ export function mungspaces(bp) {
     if (was_space && out.length) out = out.slice(0, -1);
     return out;
 }
+
+// src/hacklib.c ordin() — ordinal suffix; n should be non-negative.
+export function ordin(n) {
+    const dd = n % 10;
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
+               : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
+}

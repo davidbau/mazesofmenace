@@ -8,16 +8,28 @@
 
 import { game } from './gstate.js';
 import { OBJ_NAME, doname, xname, the } from './objnam.js';
-import { def_oc_syms } from './drawing_data.js';
+/* include/defsym.h OBJCLASS rows, the `name` column — C's def_oc_syms[].name
+   (js/drawing_data.js keeps only the symbol chars). Index = oclass. Used by
+   weapon_descr() below, same as C's object_detect(). */
+const def_oc_syms_name = ["", "illegal objects", "weapons", "armor", "rings",
+    "amulets", "tools", "food", "potions", "scrolls", "spellbooks", "wands",
+    "coins", "rocks", "large stones", "iron balls", "chains", "venoms"];
 import { STR18, P_SKILL_LIMIT, P_LAST_WEAPON, P_UNSKILLED, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SLING, P_FLAIL, P_PICK_AXE } from './const.js';
 import { MONSYMS } from './monst_data.js';
-import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer, strongmonst, attacktype } from './mondata.js';
+import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer, strongmonst, attacktype, is_wooden, hates_light, throws_rocks, mindless, is_animal } from './mondata.js';
+import { is_axe } from './obj.js';
+import { greatest_erosion } from './do_wear.js';
 import { ATTKS } from './monst_data.js';
 import { is_spear } from './u_init.js';
 import { is_pool, is_pick, m_carrying, can_touch_safely, resists_ston } from './mon.js';
 import { is_weptool } from './mkobj.js';
 import { MON_WEP } from './monst.js';
 import { mon_hates_silver, touch_petrifies } from './dog.js';
+import { hands_obj } from './invent.js';
+import { couldsee } from './vision.js';
+import { likes_gems } from './makemon.js';
+import { dist2 } from './hacklib.js';
+import { ART_SNICKERSNEE } from './artilist_data.js';
 import { which_armor } from './worn.js';
 import { canseemon, pline } from './display.js';
 import { Monnam } from './do_name.js';
@@ -25,9 +37,11 @@ import { W_ARMS, W_ARMG, W_WEP, NO_WEAPON_WANTED, NEED_WEAPON,
          NEED_RANGED_WEAPON, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE,
          NEED_PICK_OR_AXE } from './const.js';
 import { ACURR } from './attrib.js';
+import { You_feel } from './pline.js';
+import { P_LAST_SPELL } from './const.js';
 import { A_STR, A_DEX } from './const.js';
 import { AKLYS_LIM } from './const.js';
-import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
+import { ONAMES, OCLASSES, MATERIALS, SKILLS } from './objects_data.js';
 import { bigmonst } from './mondata.js';
 import { rnd, d } from './rng.js';
 import { spell_skilltype } from './spell.js';
@@ -203,6 +217,155 @@ export function autoreturn_weapon(otmp) {
     return null;
 }
 
+/* src/weapon.c:498 rwep[] — ranged weapons in order of preference. */
+const rwep = () => {
+    const O = ONAMES;
+    return [
+        O.DWARVISH_SPEAR, O.SILVER_SPEAR, O.ELVEN_SPEAR, O.SPEAR,
+        O.ORCISH_SPEAR, O.JAVELIN, O.SHURIKEN, O.YA, O.SILVER_ARROW,
+        O.ELVEN_ARROW, O.ARROW, O.ORCISH_ARROW, O.CROSSBOW_BOLT,
+        O.SILVER_DAGGER, O.ELVEN_DAGGER, O.DAGGER, O.ORCISH_DAGGER, O.KNIFE,
+        O.FLINT, O.ROCK, O.LOADSTONE, O.LUCKSTONE, O.DART, O.CREAM_PIE,
+    ];
+};
+
+/* src/weapon.c:506 pwep[] — polearms. */
+const pwep = () => {
+    const O = ONAMES;
+    return [
+        O.HALBERD, O.BARDICHE, O.SPETUM, O.BILL_GUISARME, O.VOULGE,
+        O.RANSEUR, O.GUISARME, O.GLAIVE, O.LUCERN_HAMMER, O.BEC_DE_CORBIN,
+        O.FAUCHARD, O.PARTISAN, O.LANCE,
+    ];
+};
+
+// src/weapon.c:531 select_rwep() — select a ranged weapon for the monster.
+// Sets game.propellor: the launcher to use, hands_obj when none is needed,
+// or null when one was needed and missing (C's gp.propellor trichotomy).
+export function select_rwep(mtmp) {
+    let otmp;
+    const mdat = game.mons[mtmp.mnum];
+    const mlet = mdat.mlet;
+
+    game.propellor = hands_obj;
+    if ((otmp = oselect(mtmp, ONAMES.EGG)) != null) /* cockatrice egg */
+        return otmp;
+    if (mlet === MONSYMS.S_KOP  /* pies are first choice for Kops */
+        && (otmp = oselect(mtmp, ONAMES.CREAM_PIE)) != null)
+        return otmp;
+    if (throws_rocks(mdat)     /* ...boulders for giants */
+        && (otmp = oselect(mtmp, ONAMES.BOULDER)) != null)
+        return otmp;
+
+    /* Select polearms first; they do more damage and aren't expendable.
+       The limit of 13 is the monster polearm range limit (5 in mthrowu.c):
+       3^2+2^2=13 is one space beyond knight's-move range. */
+    const mwep = MON_WEP(mtmp);
+    /* NO_WEAPON_WANTED means we already tried to wield and failed */
+    const mweponly = (mwelded_weapon(mwep)
+                      && mtmp.weapon_check === NO_WEAPON_WANTED);
+    if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
+        && couldsee(mtmp.mx, mtmp.my)) {
+        if (mwep && mwep.oartifact === ART_SNICKERSNEE) {
+            game.propellor = mwep;
+            return mwep;
+        }
+
+        for (const p of pwep()) {
+            /* Only strong monsters can wield big (esp. long) weapons.
+             * All monsters can wield the remaining weapons. */
+            if (((strongmonst(mdat)
+                  && ((mtmp.misc_worn_check ?? 0) & W_ARMS) === 0)
+                 || !game.objects[p].oc_bimanual)
+                && (game.objects[p].oc_material !== MATERIALS.SILVER
+                    || !mon_hates_silver(mtmp))) {
+                if ((otmp = oselect(mtmp, p)) != null
+                    && (otmp === mwep || !mweponly)) {
+                    game.propellor = otmp; /* force the monster to wield it */
+                    return otmp;
+                }
+            }
+        }
+    }
+    /* Next, try to select a throw-and-return weapon, since they are
+     * also not as expendable. */
+    for (const arw of arwep) {
+        if (!mindless(mdat) && !is_animal(mdat) && !mweponly
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= arw.range
+            && couldsee(mtmp.mx, mtmp.my)) {
+            if ((((mtmp.misc_worn_check ?? 0) & W_ARMS) === 0
+                 || !game.objects[arw.otyp].oc_bimanual)
+                && (game.objects[arw.otyp].oc_material !== MATERIALS.SILVER
+                    || !mon_hates_silver(mtmp))) {
+                if ((otmp = oselect(mtmp, arw.otyp)) != null
+                    && (otmp === mwep || !mweponly)) {
+                    game.propellor = otmp; /* force the monster to wield it */
+                    return otmp;
+                }
+            }
+        }
+    }
+
+    /* other than the specific cases above, always select the
+     * most potent ranged weapon to hand. */
+    for (const r of rwep()) {
+        /* shooting gems from slings; this goes just before the darts */
+        if (r === ONAMES.DART && !likes_gems(mdat)
+            && m_carrying(mtmp, ONAMES.SLING)) { /* propellor */
+            for (const g of (mtmp.minvent || []))
+                if (g.oclass === OCLASSES.GEM_CLASS
+                    && (g.otyp !== ONAMES.LOADSTONE || !g.cursed)) {
+                    game.propellor = m_carrying(mtmp, ONAMES.SLING);
+                    return g;
+                }
+        }
+
+        /* KMH -- This belongs here so darts will work */
+        game.propellor = hands_obj;
+
+        const prop = game.objects[r].oc_skill;
+        if (prop < 0) {
+            switch (-prop) {
+            case SKILLS.P_BOW:
+                game.propellor = oselect(mtmp, ONAMES.YUMI);
+                if (!game.propellor)
+                    game.propellor = oselect(mtmp, ONAMES.ELVEN_BOW);
+                if (!game.propellor)
+                    game.propellor = oselect(mtmp, ONAMES.BOW);
+                if (!game.propellor)
+                    game.propellor = oselect(mtmp, ONAMES.ORCISH_BOW);
+                break;
+            case SKILLS.P_SLING:
+                game.propellor = oselect(mtmp, ONAMES.SLING);
+                break;
+            case SKILLS.P_CROSSBOW:
+                game.propellor = oselect(mtmp, ONAMES.CROSSBOW);
+            }
+            const wep = MON_WEP(mtmp);
+            if (wep && mwelded_weapon(wep) && wep !== game.propellor
+                && mtmp.weapon_check === NO_WEAPON_WANTED)
+                game.propellor = null;
+        }
+        /* propellor = obj: propellor to use; hands_obj: doesn't need one;
+           null: needed one and didn't have one */
+        if (game.propellor != null) {
+            if (r !== ONAMES.LOADSTONE) {
+                /* Don't throw a cursed weapon-in-hand or an artifact */
+                if ((otmp = oselect(mtmp, r)) && !otmp.oartifact
+                    && !(otmp === MON_WEP(mtmp) && mwelded_weapon(otmp)))
+                    return otmp;
+            } else {
+                for (const l of (mtmp.minvent || []))
+                    if (l.otyp === ONAMES.LOADSTONE && !l.cursed)
+                        return l;
+            }
+        }
+    }
+
+    /* failure */
+    return null;
+}
+
 // src/weapon.c:950 abon() — the hero's to-hit bonus from Str and Dex.
 //
 // No draws; pure arithmetic, so its correctness is checked by value rather
@@ -356,7 +519,7 @@ export function weapon_descr(obj) {
                  || obj.otyp === ONAMES.BOULDER || obj.otyp === ONAMES.TOWEL
                  || obj.otyp === ONAMES.TIN_OPENER)
                 ? OBJ_NAME(game.objects[obj.otyp])
-                : def_oc_syms[obj.oclass].name;
+                : def_oc_syms_name[obj.oclass];
         break;
     case P_SLING:
         if (is_ammo(obj))
@@ -364,7 +527,7 @@ export function weapon_descr(obj) {
                         ? "stone"
                         : (obj.oclass === OCLASSES.GEM_CLASS)
                             ? "gem"
-                            : def_oc_syms[obj.oclass].name;
+                            : def_oc_syms_name[obj.oclass];
         break;
     case P_BOW:
         if (is_ammo(obj))
@@ -615,13 +778,14 @@ export function dmgval(otmp, mon) {
 
         if (otmp.blessed && mon_hates_blessings(mon))
             bonus += rnd(4);
-        if (note_dmgval_unported('is_axe') && note_dmgval_unported('is_wooden'))
+        if (is_axe(otmp) && is_wooden(ptr))
             bonus += rnd(4);
-        if (oc.oc_material === MATERIALS.SILVER
-            && note_dmgval_unported('mon_hates_silver'))
+        if (oc.oc_material === MATERIALS.SILVER && mon_hates_silver(mon))
             bonus += rnd(20);
-        if (note_dmgval_unported('artifact_light') && otmp.lamplit
-            && note_dmgval_unported('hates_light'))
+        /* artifact_light() is true only for lit Sunsword; gate the record on
+           the pieces that exist so it cannot fire for ordinary weapons */
+        if (otmp.oartifact && otmp.lamplit && hates_light(ptr)
+            && note_dmgval_unported('artifact_light'))
             bonus += rnd(8);
 
         /* if the weapon is going to get a double damage bonus, adjust this
@@ -634,7 +798,7 @@ export function dmgval(otmp, mon) {
     }
 
     if (tmp > 0) {
-        tmp -= note_dmgval_unported('greatest_erosion') ? 1 : 0;
+        tmp -= greatest_erosion(otmp);
         if (tmp < 1)
             tmp = 1;
     }
@@ -781,8 +945,8 @@ export async function mon_wield_item(mon) {
         obj = select_hwep(mon);
         break;
     case NEED_RANGED_WEAPON:
-        note_unported_weapon('mon_wield_item:select_rwep');
-        obj = null;
+        select_rwep(mon);
+        obj = game.propellor;
         break;
     case NEED_PICK_AXE:
         obj = m_carrying(mon, ONAMES.PICK_AXE);
@@ -814,7 +978,7 @@ export async function mon_wield_item(mon) {
         /* impossible("weapon_check %d for %s?") */
         return 0;
     }
-    if (obj) {
+    if (obj && obj !== hands_obj) {
         const mw_tmp = MON_WEP(mon);
 
         if (mw_tmp && mw_tmp.otyp === obj.otyp) {
@@ -893,3 +1057,108 @@ export function setmnotwielded(mon, obj) {
         mon.mw = null; /* MON_NOWEP */
     obj.owornmask = (obj.owornmask ?? 0) & ~W_WEP;
 }
+
+// src/weapon.c uwep_skill_type()
+function uwep_skill_type() {
+    if (game.u.twoweap)
+        return P_TWO_WEAPON_COMBAT;
+    return weapon_type(game.u.uwep);
+}
+
+// src/weapon.c weapon_dam_bonus() — the DAMAGE adjustment from skill.
+// Draws nothing; three ladders plus the riding rider.
+export function weapon_dam_bonus(weapon) {
+    let type, skill, bonus = 0;
+
+    const wep_type = weapon_type(weapon);
+    /* use two weapon skill only if attacking with one of the wielded ones */
+    type = (game.u.twoweap
+            && (weapon === game.u.uwep || weapon === game.u.uswapwep))
+               ? P_TWO_WEAPON_COMBAT
+               : wep_type;
+    if (type === P_NONE) {
+        bonus = 0;
+    } else if (type <= P_LAST_WEAPON) {
+        switch (P_SKILL(type)) {
+        default: /* impossible("weapon_dam_bonus: bad skill") */
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -2;
+            break;
+        case P_BASIC:
+            bonus = 0;
+            break;
+        case P_SKILLED:
+            bonus = 1;
+            break;
+        case P_EXPERT:
+            bonus = 2;
+            break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        skill = P_SKILL(P_TWO_WEAPON_COMBAT);
+        if (P_SKILL(wep_type) < skill)
+            skill = P_SKILL(wep_type);
+        switch (skill) {
+        default:
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            bonus = -3;
+            break;
+        case P_BASIC:
+            bonus = -1;
+            break;
+        case P_SKILLED:
+            bonus = 0;
+            break;
+        case P_EXPERT:
+            bonus = 1;
+            break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        bonus = P_SKILL(type);
+        bonus = Math.max(bonus, P_UNSKILLED) - 1; /* unskilled => 0 */
+        bonus = Math.trunc((bonus + 1) * (martial_bonus() ? 3 : 1) / 2);
+    }
+
+    /* KMH -- Riding gives some thrusting damage */
+    if (game.u.usteed && type !== P_TWO_WEAPON_COMBAT) {
+        switch (P_SKILL(P_RIDING)) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED:
+            break;
+        case P_BASIC:
+            break;
+        case P_SKILLED:
+            bonus += 1;
+            break;
+        case P_EXPERT:
+            bonus += 2;
+            break;
+        }
+    }
+
+    return bonus;
+}
+
+// src/weapon.c:1130 give_may_advance_msg()
+async function give_may_advance_msg(skill) {
+    await You_feel(`more confident in your ${
+        (skill === P_NONE) ? ''
+            : (skill <= P_LAST_WEAPON) ? 'weapon '
+                : (skill <= P_LAST_SPELL) ? 'spell casting '
+                    : 'fighting '}skills.`);
+}
+
+// src/weapon.c use_skill() — practice toward the next skill level.
+export async function use_skill(skill, degree) {
+    if (skill !== P_NONE
+        && P_SKILL(skill) !== P_ISRESTRICTED) {
+        const advance_before = can_advance(skill, false);
+        game.u.weapon_skills[skill].advance += degree;
+        if (!advance_before && can_advance(skill, false))
+            await give_may_advance_msg(skill);
+    }
+}
+
+export { uwep_skill_type };

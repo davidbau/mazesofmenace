@@ -35,6 +35,10 @@ import { A_WIS } from './const.js';
 import { rn1 } from './rng.js';
 import { pline_The, You, You_feel } from './pline.js';
 import { pline } from './display.js';
+import { The, vtense } from './objnam.js';
+import { mon_nam } from './do_name.js';
+import { canspotmon } from './display.js';
+import { engulfing_u } from './const.js';
 import { nothing_happens, ECMD_TIME, ECMD_CANCEL, NODIR } from './const.js';
 
 // src/zap.c:1459 obj_resists() — does this object survive being destroyed?
@@ -456,3 +460,21 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobjRef) {
     return result;
 }
 const FLASHED_LIGHT_BHIT = 2;    /* include/hack.h bhit_call_types */
+
+// src/zap.c:3556 hit() / :3571 miss() — the missile/zap contact messages.
+export async function hit(str, mtmp, force) {
+    const verbosely = (mtmp === game.youmonst
+                       || (game.flags.verbose
+                           && (cansee(game.bhitpos?.x, game.bhitpos?.y)
+                               || canspotmon(mtmp) || engulfing_u(mtmp))));
+
+    await pline(`${The(str)} ${vtense(str, 'hit')} `
+                + `${verbosely ? mon_nam(mtmp) : 'it'}${force}`);
+}
+
+export async function miss(str, mtmp) {
+    await pline(`${The(str)} ${vtense(str, 'miss')} `
+                + `${((cansee(game.bhitpos?.x, game.bhitpos?.y)
+                       || canspotmon(mtmp)) && game.flags.verbose)
+                    ? mon_nam(mtmp) : 'it'}.`);
+}

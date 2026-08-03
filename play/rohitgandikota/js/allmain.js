@@ -47,6 +47,7 @@ import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          FULL_MOON, NEW_MOON, COLNO, A_CON, MOD_ENCUMBER,
+         UNENCUMBERED, SLT_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, A_DEX,
          Upolyd } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
@@ -92,6 +93,7 @@ import { makemon, NO_MM_FLAGS } from './makemon.js';
 import { depth } from './dungeon.js';
 import { rnd } from './rng.js';
 import { find_ac } from './do_wear.js';
+import { clear_splitobjs } from './mkobj.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
@@ -401,18 +403,49 @@ export async function newgame() {
 
 // src/allmain.c:118 u_calc_moveamt()
 //
-// The only draw is the free-action roll, and it only happens for a hero with
-// speed. Samurai and Monk have intrinsic Fast from experience level 1, so for
-// them this fires every turn; a Tourist never reaches it.
-function u_calc_moveamt() {
-    let moveamt = 12;                 /* youmonst.data->mmove */
+// The draw is the free-action roll (Samurai and Monk have intrinsic Fast
+// from level 1). The encumbrance switch draws nothing but is LOAD-BEARING
+// for turn structure: a Burdened hero gets 12 - 12/4 = 9 movement, so
+// roughly every fourth keystroke the outer moveloop runs a SECOND full
+// turn cycle before the hero can act, and every monster with banked
+// movement gets an extra action between two hero commands. Omitting it
+// collapsed those double cycles and reordered the whole monster
+// interleave for encumbered heroes.
+function u_calc_moveamt(wtcap) {
+    let moveamt = 0;
 
-    if (Very_fast()) {
-        if (rn2(3) !== 0) moveamt += 12;
-    } else if (Fast()) {
-        if (rn2(3) === 0) moveamt += 12;
+    if (game.u.usteed && game.u.umoved) {
+        /* your speed doesn't augment steed's speed */
+        moveamt = mcalcmove(game.u.usteed, true);
+    } else {
+        moveamt = 12;                 /* youmonst.data->mmove */
+
+        if (Very_fast()) {            /* speed boots, potion, or spell */
+            if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
+        } else if (Fast()) {          /* intrinsic */
+            if (rn2(3) === 0) moveamt += NORMAL_SPEED;
+        }
     }
-    /* the encumbrance switch scales moveamt but draws nothing */
+
+    switch (wtcap) {
+    case UNENCUMBERED:
+        break;
+    case SLT_ENCUMBER:
+        moveamt -= Math.trunc(moveamt / 4);
+        break;
+    case MOD_ENCUMBER:
+        moveamt -= Math.trunc(moveamt / 2);
+        break;
+    case HVY_ENCUMBER:
+        moveamt -= Math.trunc((moveamt * 3) / 4);
+        break;
+    case EXT_ENCUMBER:
+        moveamt -= Math.trunc((moveamt * 7) / 8);
+        break;
+    default:
+        break;
+    }
+
     game.u.umovement = (game.u.umovement || 0) + moveamt;
     if (game.u.umovement < 0) game.u.umovement = 0;
 }
@@ -529,7 +562,7 @@ export async function moveloop_core() {
                    effectively loses its first turn */
                 maybe_generate_rnd_mon();
 
-                u_calc_moveamt();
+                u_calc_moveamt(near_capacity());
                 /* src/allmain.c:242 — record the square the hero just left, so
                    a monster that cannot see the hero has a trail to follow. */
                 settrack();
@@ -555,7 +588,7 @@ export async function moveloop_core() {
                     await regen_hp(near_capacity());
 
                 await dosounds();
-                gethungry();
+                await gethungry();
 
                 /* src/allmain.c:354 — age_spells() then exerchk(). exerchk
                    runs exerper(), which every tenth move exercises whichever
@@ -570,7 +603,7 @@ export async function moveloop_core() {
                    degraded: an "Elbereth" stayed pristine forever and kept
                    scaring monsters through onscary(), which C's scuffed copy
                    no longer matches. */
-                if (!rn2(40 + (g.u.acurr.a[3] * 3)))   /* A_DEX */
+                if (!rn2(40 + (ACURR(A_DEX) * 3)))
                     u_wipe_engr(rnd(3));
 
                 /* src/allmain.c:380 — when immobile, count is in turns */
@@ -603,6 +636,14 @@ export async function moveloop_core() {
            stale flag and burns a phantom turn before the prompt resumes. */
         g.context.move = 0;
     }
+
+    /* src/allmain.c:441-453 — once-per-player-input things: forget the last
+       splitobj() pair, then re-derive the hero's AC from what is worn now.
+       This per-input find_ac() is what makes AC changes from multi-turn
+       dressing show on the status line the turn they complete. The amulet
+       wish arm needs makewish and is not ported. */
+    clear_splitobjs();
+    find_ac();
 
     /* C bumps hero_seq inside the move gate (moves*8 + n); this port's
        counter ticks every core because use_stethoscope's first-use-free

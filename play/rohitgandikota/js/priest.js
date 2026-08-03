@@ -6,7 +6,8 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
-import { makemon, mpickobj } from './makemon.js';
+import { makemon } from './makemon.js';
+import { mpickobj } from './steal.js';
 import { mkobj, curse, SPBOOK_no_NOVEL } from './mkobj.js';
 import { pm_good_location } from './sp_lev.js';
 import { PMNAMES, MMFLAGS } from './monst_data.js';

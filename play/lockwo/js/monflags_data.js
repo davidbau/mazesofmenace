@@ -313,6 +313,9 @@ export const can_teleport_flag = (ptr) => (f1(ptr) & M1_TPORT) !== 0;
 export const control_teleport_flag = (ptr) => (f1(ptr) & M1_TPORT_CNTRL) !== 0;
 export const perceives_flag = (ptr) => (f1(ptr) & M1_SEE_INVIS) !== 0;
 export const polyok_flag = (ptr) => (f2(ptr) & M2_NOPOLY) === 0;
+// C ref: mondata.h is_shapeshifter(ptr) — pm_to_cham() tests exactly this flag
+// rather than enumerating shapeshifter species (see the 3.6.0 comment in mon.c).
+export const is_shapeshifter_flag = (ptr) => (f2(ptr) & M2_SHAPESHIFTER) !== 0;
 export const strongmonst_flag = (ptr) => (f2(ptr) & M2_STRONG) !== 0;
 export const is_male_flag = (ptr) => (f2(ptr) & M2_MALE) !== 0;
 export const is_female_flag = (ptr) => (f2(ptr) & M2_FEMALE) !== 0;
@@ -323,4 +326,9 @@ export const is_dwarf_flag = (ptr) => (f2(ptr) & M2_DWARF) !== 0;
 export const is_gnome_flag = (ptr) => (f2(ptr) & M2_GNOME) !== 0;
 export const is_giant_flag = (ptr) => (f2(ptr) & M2_GIANT) !== 0;
 export const is_undead_flag = (ptr) => (f2(ptr) & M2_UNDEAD) !== 0;
+// C ref: mondata.h is_demon(ptr) = (mflags2 & M2_DEMON).  js/zap.js and
+// js/monmove.js each carry a local `mcls === 56` guess for this; the flag is the
+// real test (56 is S_DEMON in defsym.h, but the flag also covers the mail daemon
+// and friends that are not in that class).
+export const is_demon_flag = (ptr) => (f2(ptr) & M2_DEMON) !== 0;
 export const is_mercenary_flag = (ptr) => (f2(ptr) & M2_MERC) !== 0;

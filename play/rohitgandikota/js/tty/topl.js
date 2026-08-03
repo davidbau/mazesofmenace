@@ -12,7 +12,7 @@
 
 import { game } from '../gstate.js';
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
-         _buildScreenOutput } from '../display.js';
+         paint_topline } from '../display.js';
 import { nhgetch } from '../input.js';
 
 // win/tty/topl.c:251 update_topl() — put `bp` on the top line.
@@ -48,8 +48,10 @@ export async function update_topl(bp) {
         && notdied) {
         game._pending_message = toplines + '  ' + bp;
         game._topl_curx = (game._topl_curx || 0) + 2;
-        if (!skip)
+        if (!skip) {
             addtopl(bp);
+            paint_topline();    /* addtopl() -> topl_putsym: painted at once */
+        }
         return;
     }
 
@@ -63,6 +65,7 @@ export async function update_topl(bp) {
     }
 
     remember_topl();
+    game._toplines = bp;    /* gt.toplines: strncpy(gt.toplines, bp, TBUFSZ) */
 
     /* C wraps a message longer than CO by REPLACING a space with '\n', walking
        back from column CO - 1 to find one; a token longer than the whole line
@@ -139,6 +142,8 @@ async function redotoplin(str) {
     game._toplin = str ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
     game._topl_curx = 0;
     game._topl_cury = (str.match(/\n/g) || []).length;
+    paint_topline();    /* home(); putsyms(str); cl_end(); — the tty paints
+                           the message NOW, not at the next screen flush */
     if (game._topl_cury && otoplin !== TOPLINE_SPECIAL_PROMPT)
         await more();
 }
@@ -179,7 +184,7 @@ export async function tty_yn_function(query, resp, def) {
 
     game._pending_message = prompt;
     game._toplin = TOPLINE_SPECIAL_PROMPT;
-    _buildScreenOutput();
+    paint_topline();
 
     const display = game?.nhDisplay;
     if (display)

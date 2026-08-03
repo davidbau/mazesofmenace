@@ -1,4 +1,4 @@
-import { setuqwep } from './wield.js';
+import { setuqwep, setuwep, setuswapwep, weldmsg } from './wield.js';
 import { impact_disturbs_zombies } from './hack.js';
 import { stackobj } from './invent.js';
 // do.js — commands that move the hero between levels, and the level change
@@ -17,10 +17,14 @@ import { encumber_msg } from './attrib.js';
 import { freeinv, getobj, any_obj_ok } from './invent.js';
 import { place_object } from './mkobj.js';
 import { pline, newsym } from './display.js';
-import { You, You_cant } from './pline.js';
+import { You, You_cant, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES } from './const.js';
+import { t_at, m_at, is_pool, is_lava } from './mon.js';
+import { is_pick } from './mon.js';
+import { cansee } from './vision.js';
+import { OCLASSES } from './objects_data.js';
 import { rn2, rnd } from './rng.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
@@ -41,6 +45,57 @@ export function do_wire_dokick(fn) { ship_object_fn = fn; }
 
 function note_unported_do(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/do.c:162 flooreffects() — what happens to an object landing at (x,y).
+// Returns true when the object is consumed (drowned, burned, plugged a pit,
+// shattered), so the caller must not place it. The common case, plain floor,
+// takes no arm, draws nothing, and returns false.
+//
+// The deep arms record, each gated on the terrain or object that would need
+// it: boulder_hits_pool and the pit-plugging boulder block, lava_damage,
+// water_damage, the teetering-hero tumble, glob merging, doaltarobj, and the
+// 5.0 hot-ground potion shatter (level.flags.temperature > 0, Gehennom).
+export async function flooreffects(obj, x, y, verb) {
+    let t, res = false;
+
+    /* C: panic("flooreffects: obj not free") */
+    /* make sure things like water_damage() have no pointers to follow;
+       this port's objects have no nobj/nexthere chain links to clear */
+    const save_bhitpos = game.bhitpos;
+    game.bhitpos = { x, y };
+
+    if (obj.otyp === ONAMES.BOULDER && (is_pool(x, y) || is_lava(x, y))) {
+        note_unported_do('flooreffects:boulder_hits_pool');
+    } else if (obj.otyp === ONAMES.BOULDER && (t = t_at(x, y)) != null
+               && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+        /* the trapped-victim damage, the plug message and delfloortrap */
+        note_unported_do('flooreffects:boulder_plug');
+    } else if (is_lava(x, y)) {
+        note_unported_do('flooreffects:lava_damage');
+    } else if (is_pool(x, y)) {
+        note_unported_do('flooreffects:water_damage');
+    } else if (u_at(x, y) && (t = t_at(x, y)) != null
+               && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+        /* C gates on uteetering_at_seen_pit(t) || uescaped_shaft(t) */
+        if (is_pit(t.ttyp)) {
+            note_unported_do('flooreffects:pit_tumble_msg');
+        } else if (ship_object_fn && ship_object_fn(obj, x, y, false)) {
+            /* ship_object prints "the item falls through the hole" */
+            res = true;
+        }
+    } else if (obj.globby) {
+        note_unported_do('flooreffects:obj_meld');
+    } else if (game.context?.mon_moving
+               && IS_ALTAR(game.level.at(x, y)?.typ) && cansee(x, y)) {
+        note_unported_do('flooreffects:doaltarobj');
+    } else if (obj.oclass === OCLASSES.POTION_CLASS
+               && (game.level?.flags?.temperature ?? 0) > 0) {
+        note_unported_do('flooreffects:hot_ground_potion');
+    }
+
+    game.bhitpos = save_bhitpos;
+    return res;
 }
 
 // src/dungeon.c stairway_at() — the staircase on this square, or null.
@@ -90,10 +145,27 @@ export async function dodown() {
         ladder_down = !stairs_down;
     }
 
-    /* levitation, being stuck, u_rooted, trapdoors and holes each have their
-       own arm above this in C; none is reachable without those subsystems */
+    /* levitation, being stuck, u_rooted and the hider arms sit above this
+       in C; none is reachable without those subsystems */
     if (!stairs_down && !ladder_down) {
-        note_unported_do('dodown:not_on_stairs');
+        const trap = t_at(game.u.ux, game.u.uy);
+        if (trap && is_pit(trap.ttyp) && trap.tseen) {
+            /* C: uteetering_at_seen_pit/uescaped_shaft -> dotrap(TOOKPLUNGE) */
+            note_unported_do('dodown:pit_plunge');
+            return ECMD_TIME;
+        } else if (!trap || !is_hole(trap.ttyp) || !trap.tseen) {
+            if (game.flags.autodig && !game.context?.nopick
+                && game.u.uwep && is_pick(game.u.uwep)) {
+                note_unported_do('dodown:autodig');
+                return ECMD_OK;
+            } else {
+                await You_cant(`go down here${
+                    (trap && trap.ttyp === VIBRATING_SQUARE) ? ' yet' : ''}.`);
+                return ECMD_OK;
+            }
+        }
+        /* a seen hole or trapdoor: the descent needs goto_level's fall arm */
+        note_unported_do('dodown:fall_through_hole');
         return ECMD_OK;
     }
 
@@ -177,6 +249,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* entering this level for the first time; make it now */
     await mklev_fn();
+
+    /* src/do.c:1716-1720 — do this prior to level-change pline messages:
+       clear the old level's line-of-sight and POSTPONE all map flushes.
+       Every pline between here and the closing flush_screen(-1) paints its
+       text over the OLD level's map, which is what the recordings show
+       under "You descend the stairs.--More--". */
+    {
+        const { vision_reset } = await import('./vision.js');
+        const { flush_screen } = await import('./display.js');
+        vision_reset();
+        game.vision_full_recalc = 0;
+        await flush_screen(-1);
+    }
 
     if (at_stairs) {
         u_on_dnstairs();
@@ -341,18 +426,18 @@ export async function deferred_goto() {
 // The engulfer branch, flooreffects, container impact, zombie disturbance,
 // ball dropping, shop selling, stackobj and the blind-levitation map_object
 // are recorded.
-export function dropz(obj, with_impact) {
-    if (obj === game.uwep)
-        note_unported_do('dropz:setuwep');
-    if (obj === game.uquiver)
-        setuqwep(null);         /* src/do.c -- ported at wield.js:113 */
-    if (obj === game.uswapwep)
-        note_unported_do('dropz:setuswapwep');
+export async function dropz(obj, with_impact) {
+    if (obj === game.u.uwep)
+        setuwep(null);          /* src/do.c:810 */
+    if (obj === game.u.uquiver)
+        setuqwep(null);         /* src/do.c:812 */
+    if (obj === game.u.uswapwep)
+        setuswapwep(null);      /* src/do.c:814 */
 
     if (game.u.uswallow) {
         note_unported_do('dropz:engulfer_branch');
     } else {
-        if (note_unported_do('dropz:flooreffects'))
+        if (await flooreffects(obj, game.u.ux, game.u.uy, 'drop'))
             return;
         place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
@@ -369,8 +454,8 @@ export function dropz(obj, with_impact) {
 }
 
 // src/do.c dropy() — dropz with no impact.
-export function dropy(obj) {
-    dropz(obj, false);
+export async function dropy(obj) {
+    await dropz(obj, false);
 }
 
 // src/do.c dropx() — take it out of inventory, then put it down.
@@ -379,7 +464,7 @@ export function dropy(obj) {
 // an object on a Sokoban or level-teleporter square and RETURNS EARLY, so
 // nothing reaches the floor there; doaltarobj sets bknown when it lands on
 // an altar.
-export function dropx(obj) {
+export async function dropx(obj) {
     freeinv(obj);
     if (!game.u.uswallow) {
         /* src/do.c:298 — ship_object() sends the object down a hole or
@@ -390,7 +475,7 @@ export function dropx(obj) {
         if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ))
             note_unported_do('dropx:doaltarobj');   /* sets bknown */
     }
-    dropy(obj);
+    await dropy(obj);
 }
 
 // src/do.c drop() — the guards, then dropx().
@@ -410,7 +495,7 @@ export function dropx(obj) {
 // The engulfed branch, the Heart of Ahriman levitation dance (ELevitation is
 // forced so hitfloor happens before float_down), doname messages, canletgo,
 // welded/weldmsg and hitfloor are recorded.
-export function drop(obj) {
+export async function drop(obj) {
     if (!obj)
         return ECMD_FAIL;
     if (!canletgo(obj, 'drop'))
@@ -418,17 +503,17 @@ export function drop(obj) {
     if (obj.otyp === ONAMES.CORPSE
         && note_unported_do('drop:better_not_try_to_drop_that'))
         return ECMD_FAIL;
-    if (obj === game.uwep) {
-        if (welded(obj)) {
-            note_unported_do('drop:weldmsg');
+    if (obj === game.u.uwep) {
+        if (welded(game.u.uwep)) {
+            await weldmsg(obj);
             return ECMD_FAIL;
         }
-        note_unported_do('drop:setuwep');
+        setuwep(null);          /* src/do.c:727 */
     }
-    if (obj === game.uquiver)
-        setuqwep(null);         /* src/do.c -- ported at wield.js:113 */
-    if (obj === game.uswapwep)
-        note_unported_do('drop:setuswapwep');
+    if (obj === game.u.uquiver)
+        setuqwep(null);
+    if (obj === game.u.uswapwep)
+        setuswapwep(null);
 
     if (game.u.uswallow) {
         note_unported_do('drop:engulfed_branch');
@@ -436,7 +521,7 @@ export function drop(obj) {
         note_unported_do('drop:levitation_and_message');
     }
     obj.how_lost = LOST_DROPPED;
-    dropx(obj);
+    await dropx(obj);
     return ECMD_TIME;
 }
 
@@ -448,7 +533,7 @@ export function drop(obj) {
 export async function dodrop() {
     if (game.u.ushops?.length)
         note_unported_do('dodrop:sellobj_state:DELIBERATE');
-    const result = drop(await getobj('drop', any_obj_ok,
+    const result = await drop(await getobj('drop', any_obj_ok,
                                      GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
     if (game.u.ushops?.length)
         note_unported_do('dodrop:sellobj_state:NORMAL');
@@ -483,7 +568,7 @@ export function canletgo(obj, word) {
         if (word) note_unported_do('canletgo:wearing_msg');
         return false;
     }
-    if (obj === game.uwep && welded(game.uwep)) {
+    if (obj === game.u.uwep && welded(game.u.uwep)) {
         /* no weldmsg(), so uwep bknown might become set silently */
         if (word) note_unported_do('canletgo:welded_msg');
         return false;
@@ -533,4 +618,43 @@ export async function donull() {
                                     'Are you waiting to get hit?'))
         return ECMD_OK;
     return ECMD_TIME; /* Do nothing, but let other things happen */
+}
+
+
+// src/do.c:2426 set_wounded_legs() — wound the hero's leg(s): one temporary
+// Dex point the first time, a recovery timer (kept at the max of old and
+// new), and which side, tracked with the worn-ring bits.
+export function set_wounded_legs(side, timex) {
+    game.disp ||= {};
+    game.disp.botl = true;
+    const intr = (game.u.intrinsic ||= {});
+    const wounded = (intr.HWounded_legs || 0) > 0 || (game.u.EWounded_legs || 0);
+    if (!wounded)
+        game.u.atemp.a[A_DEX]--;
+
+    if (!wounded || (intr.HWounded_legs || 0) < timex)
+        intr.HWounded_legs = timex;
+    game.u.EWounded_legs = (game.u.EWounded_legs || 0) | side;
+    /* encumber_msg(): carrying capacity shifts with the Dex change */
+}
+
+// src/do.c:2449 heal_legs() — 0: ordinary, 1: dismounting, 2: petrifying.
+export async function heal_legs(how) {
+    const intr = game.u.intrinsic || {};
+    const wounded = (intr.HWounded_legs || 0) > 0 || (game.u.EWounded_legs || 0);
+    if (wounded) {
+        game.disp ||= {};
+        game.disp.botl = true;
+        if (game.u.atemp.a[A_DEX] < 0)
+            game.u.atemp.a[A_DEX]++;
+
+        if (!game.u.usteed && how !== 2) {
+            const both = (game.u.EWounded_legs & BOTH_SIDES) === BOTH_SIDES;
+            const legs = both ? 'legs' : 'leg';
+            await Your(`${legs} ${both ? 'feel' : 'feels'} better.`);
+        }
+
+        intr.HWounded_legs = 0;
+        game.u.EWounded_legs = 0;
+    }
 }

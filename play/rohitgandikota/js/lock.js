@@ -32,9 +32,9 @@ import { can_reach_floor } from './pickup.js';
 import { set_occupation } from './allmain.js';
 import { obj_resists } from './zap.js';
 import { There } from './pline.js';
+import { block_point, recalc_block_point } from './vision.js';
 import { tty_yn_function } from './tty/topl.js';
-/* is_drawbridge_wall — drawbridges are not generated yet */
-const is_drawbridge_wall = (x, y) => -1;
+import { is_drawbridge_wall } from './dbridge.js';
 
 function note_unported_lock(what) {
     (game.unported ||= new Set()).add(what);
@@ -84,6 +84,7 @@ export async function doopen_indir(x, y) {
             door.doormask = D_ISOPEN;
         }
         newsym(cc.x, cc.y); /* feel_newsym: the hero knows she opened it */
+        recalc_block_point(cc.x, cc.y); /* vision: new see through there */
     } else {
         exercise(A_STR, true);
         await pline_xy(cc.x, cc.y, 'The door resists!');
@@ -195,7 +196,7 @@ export async function doclose() {
             await pline_The("door closes.");
             door.doormask = D_CLOSED;
             newsym(x, y); /* feel_newsym: the hero knows she closed it */
-            note_unported('doclose:block_point'); /* vision shadow map absent */
+            block_point(x, y); /* vision:  no longer see there */
         } else {
             exercise(A_STR, true);
             await pline_The("door resists!");

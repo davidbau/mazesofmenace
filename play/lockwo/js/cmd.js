@@ -1765,6 +1765,17 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // C ref: hack.c domove_core():2860 — "Move ball and chain."  This runs
+    // BEFORE the hero relocates (drag_ball wants the hero's OLD square for the
+    // chain) and can abort the move entirely, e.g. "You cannot drag the heavy
+    // iron ball."
+    let bc = null;
+    if (u.uball && u.uchain) {
+        const { drag_ball } = await import('./ball.js');
+        bc = await drag_ball(newx, newy, true);
+        if (!bc) return;
+    }
+
     // The move actually happens -> a game turn elapses.  C ref: hack.c domove
     // sets svc.context.move=1 on a successful step.
     game.context.move = 1;
@@ -1814,11 +1825,36 @@ export async function domove(dx, dy) {
     // dart trap fires on the same square — and so a fall-into-water/crawl-out
     // re-entry (pooleffects -> drown -> teleds -> spoteffects again) picks up
     // at the square the hero actually lands on, not the one it fell into.
+    // C ref: hack.c domove_core():2976 — `if (Punished) move_bc(0, ...)`, i.e.
+    // put the ball and chain back down at the positions drag_ball() picked.
+    // This happens BEFORE spoteffects(), so the pile the hero steps onto
+    // already includes anything the chain landed on.
+    if (bc) {
+        const { move_bc } = await import('./ball.js');
+        move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
+    }
+
     await spoteffects(pickup_after_move);
     // C ref: end.c really_done() longjmps out; if spoteffects() (e.g.
     // lava_effects()) just ended the game, none of domove()'s post-move work
     // (engraving smudge) runs.
     if (game.program_state?.gameover) return;
+
+    // C ref: hack.c domove_core():2984 — "delay next move because of ball
+    // dragging; must come after we finished picking up, in spoteffects()".
+    // nomul(-2) makes the hero helpless for two turns, so ONE movement command
+    // runs TWO moveloop iterations (monsters move twice, the hunger/sounds rolls
+    // fire twice).  Leaving this out is what desynchronised seed4500 from step
+    // 514: C advanced T:87 -> 89 for a single 'l' keypress.
+    if (bc?.cause_delay) {
+        // C ref: hack.c nomul(nval) — `if (gm.multi < nval) return; gm.multi =
+        // nval;`.  multi is 0 on a normal step, so this always takes.  The
+        // moveloop's `if (multi < 0) ++multi` countdown (allmain.js) then runs
+        // the extra turn(s) with no command read in between.
+        if ((game.multi ?? 0) >= -2) game.multi = -2;
+        game.multi_reason = 'dragging an iron ball';
+        game.nomovemsg = '';
+    }
 
     // C ref: hack.c domove() — after domove_core() (movement + spoteffects,
     // i.e. everything above) completes, a successful WALK/RUSH smudges any
@@ -2108,7 +2144,13 @@ async function moverock(otmp, sx, sy, dx, dy) {
 // landed on the dismount square.
 export async function pickup_after_move(x, y) {
     const ctx = game.context || {};
-    const hasObj = (game.level?.objects || []).some(
+    // C ref: pickup.c check_here() counts the objects here EXCLUDING uchain:
+    //     for (obj = level.objects[u.ux][u.uy]; obj; obj = obj->nexthere)
+    //         if (obj != uchain) ct++;
+    // so a hero who steps onto the trailing end of the punishment chain gets no
+    // "You see here an iron chain." — seed4500 step 517 shows an empty topline.
+    const not_uchain = (o) => o !== game.u?.uchain;
+    const hasObj = (game.level?.objects || []).filter(not_uchain).some(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     // C ref: hack.c spoteffects() -> pickup(1) -> describe_decor() (pickup.c),
     // and check_here() -> describe_decor(): with the 'mention_decor' option on,
@@ -2151,17 +2193,20 @@ export async function pickup_after_move(x, y) {
         // so an item can remain even with autopickup on.  When nothing is left,
         // C reads any engraving instead.
         const remain = (game.level?.objects || []).filter(
-            (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+            (o) => not_uchain(o) && o.where === 'floor' && o.ox === x && o.oy === y);
         if (remain.length > 0) {
             await look_here_after_move(x, y, nPicked > 0, decorAnnounced);
         } else {
             await read_engr_at(x, y);
         }
     } else if (ctx.run !== 8) {
-        await look_here_after_move(x, y, false, decorAnnounced);
-        // C ref: pickup.c check_here() — when there are no objects here it
-        // reads any engraving aloud; a run halts on it (read_engr_at -> nomul).
-        if (!hasObj) await read_engr_at(x, y);
+        // C ref: pickup.c check_here() — `if (ct) look_here(ct, lhflags); else
+        // read_engr_at(...)`, with ct counting everything but uchain.  The
+        // look_here() call was unconditional here, so a square holding only the
+        // punishment chain still got a "You see here an iron chain." line that C
+        // never prints.
+        if (hasObj) await look_here_after_move(x, y, false, decorAnnounced);
+        else await read_engr_at(x, y);
     }
 }
 

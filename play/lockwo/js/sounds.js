@@ -54,9 +54,22 @@ const SHOP_MSG = [
     'the chime of a cash register.', 'Neiman and Marcus arguing!',
 ];
 
+// C ref: youprop.h Deaf — HDeaf (an intrinsic timeout) or EDeaf (worn).  Only
+// the timed intrinsic is reachable here (rotten food, and the "deafness going
+// away" roll in Hear_again).
+function Deaf_hero() {
+    const u = game.u;
+    return ((u?.uprops?.HDeaf ?? 0) > 0) || !!u?.Deaf;
+}
+
 export async function dosounds() {
     const g = game;
-    if (g.flags?.acoustics === false || g.u?.uswallow || g.u?.uunderwater)
+    // C ref: sounds.c:208 — `if (Deaf || !flags.acoustics || u.uswallow ||
+    // Underwater) return;`.  The Deaf test was missing, so a hero deafened by
+    // rotten food (eat.c rottenfood -> incr_itimeout(&HDeaf, duration)) kept
+    // rolling the ambient-sound draws C skips: seed4500's unconscious turns draw
+    // no rn2(200) at all.
+    if (Deaf_hero() || g.flags?.acoustics === false || g.u?.uswallow || g.u?.uunderwater)
         return;
 
     const lf = g.level?.flags || {};

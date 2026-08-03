@@ -499,7 +499,9 @@ export async function nasty(summoner) {
                  * without MM_NOMSG announces itself when visible:
                  * "A leocrotta suddenly appears next to you!" (" close by"
                  * within BOLT_LIM*2 distance, plain "appears!" beyond). */
-                if (!summoner) newsym(mtmp.mx ?? spot.x, mtmp.my ?? spot.y);
+                /* makemon.c:1472-1473 — non-mklev spawns are newsym'd unconditionally,
+                 * including summons with a caster (summoner) present. */
+                newsym(mtmp.mx ?? spot.x, mtmp.my ?? spot.y);
                 if (!summoner && !game.in_mklev && !mtmp.mundetected && !mtmp.minvis
                     && !game.u?.blind
                     && !!(game.viz_array?.[spot.y]?.[spot.x] & IN_SIGHT)) {

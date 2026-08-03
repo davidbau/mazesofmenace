@@ -1041,6 +1041,9 @@ export const MENU_FIRST_PAGE = '^';
 export const MENU_LAST_PAGE = '|';
 /* include/defsym.h:479 OBJCLASS2(12, '$', COIN, GOLD_SYM, ...) */
 export const GOLD_SYM = '$';
+
+/* include/hack.h:584 — a...zA..Z inventory letters */
+export const invlet_basic = 52;
 export const MENU_NEXT_PAGE = '>';
 export const MENU_PREVIOUS_PAGE = '<';
 export const MENU_SELECT_ALL = '.';

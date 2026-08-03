@@ -216,11 +216,19 @@ export async function pluslvl(incr) {
         if (game.u.ulevelmax < game.u.ulevel)
             game.u.ulevelmax = game.u.ulevel;
 
-        /* src/exper.c:355 — adjabil() grants the new intrinsics, and it is
-           ported in js/attrib.js; only the achievement, sound and livelog
-           calls that follow it need subsystems this port lacks. */
+        /* src/exper.c:355 — adjabil() grants the new intrinsics. The tail:
+           SoundAchievement is audio-only and livelog_printf writes the
+           out-of-band log, so neither can touch the terminal; the rank
+           achievement's u.uachieved state has no ported reader and records
+           only when a rank boundary is actually crossed. */
         await adjabil(game.u.ulevel - 1, game.u.ulevel); /* give new intrinsics */
-        note_unported_exper('pluslvl:achievements_livelog');
+        /* src/botl.c xlev_to_rank() */
+        const xlev_to_rank = (xlev) =>
+            (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
+        if (xlev_to_rank(game.u.ulevel) > xlev_to_rank(game.u.ulevel - 1))
+            note_unported_exper('pluslvl:record_achievement');
+        if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
+            game.u.ulevelpeak = game.u.ulevel;
 
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
             game.u.ulevelpeak = game.u.ulevel;

@@ -23,6 +23,8 @@ export function initRng(seed) {
 }
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
+/* debug-only: current draw count, for probe scripts */
+export function rngLogLength() { return _rngLog.length; }
 
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
@@ -56,8 +58,21 @@ export function rn2_on_display_rng(x) {
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
+    if (_rngLogEnabled) _rngLog.push(_site(`rn2(${x})=${val}`));
     return val;
+}
+
+/* Debug-only: when game.rng_trace_sites is set (never during scoring), tag
+   each logged draw with its first js/ caller so probe harnesses can
+   attribute OUR draws the way C's recordings attribute theirs. */
+function _site(entry) {
+    if (!globalThis.__rng_trace_sites)
+        return entry;
+    const line = (new Error().stack || '').split('\n')
+        .find(l => l.includes('/js/') && !l.includes('/js/rng.js')
+                   && !l.includes('/js/zap.js'));
+    return entry + ' @' + (line || '').trim().replace(/^at /, '')
+        .replace(/.*\/js\//, 'js/').replace(/\)?$/, '');
 }
 
 // C ref: rnd(x) — random number 1..x

@@ -22,6 +22,11 @@ import { outrumor } from './rumors.js';
 import { BY_COOKIE } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { done } from './end.js';
+import { end_running } from './hack.js';
+import { sgn } from './hacklib.js';
+import { ACURR } from './attrib.js';
+import { bot } from './display.js';
+import { A_STR, STARVING } from './const.js';
 import { set_occupation } from './allmain.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { You_feel } from './pline.js';
@@ -36,7 +41,7 @@ import { carried } from './obj.js';
 import { splitobj, bcsign } from './mkobj.js';
 
 // src/eat.c:3170 gethungry()
-export function gethungry() {
+export async function gethungry() {
     const u = game.u;
 
     if (u.uinvulnerable)
@@ -109,7 +114,7 @@ export function gethungry() {
             break;
         }
     }
-    newuhs(true);
+    await newuhs(true);
 }
 
 /* the worn-slot lookup, local to avoid importing do_wear (cycle) */
@@ -760,10 +765,10 @@ export async function bite() {
        eating even though the occupation check would not; see lesshungry. */
     game.force_save_hs = true;
     if (v.nmod < 0) {
-        lesshungry(adj_victual_nutrition());
+        await lesshungry(adj_victual_nutrition());
         consume_oeaten(v.piece, v.nmod);        /* -= -nmod */
     } else if (v.nmod > 0 && (v.usedtime % v.nmod)) {
-        lesshungry(1);
+        await lesshungry(1);
         consume_oeaten(v.piece, -1);            /* -= 1 */
     }
     game.force_save_hs = false;
@@ -817,7 +822,7 @@ export async function done_eating(message) {
     if (piece)
         piece.in_use = true;
     game.occupation = null;             /* early, so newuhs knows we're done */
-    newuhs(false);
+    await newuhs(false);
 
     if (game.nomovemsg) {
         if (message)
@@ -884,7 +889,7 @@ export function do_reset_eat() {
 // because start_eating calls bite() before setting the occupation.
 let save_hs = 0, saved_hs = false;
 
-export function newuhs(incr) {
+export async function newuhs(incr) {
     const h = game.u.uhunger;
     const newhs = (h > 1000) ? SATIATED
                 : (h > 150)  ? NOT_HUNGRY
@@ -902,18 +907,106 @@ export function newuhs(incr) {
         return;
     }
     if (saved_hs) {
+        /* the whole-meal comparison: restore the status the meal started
+           at, so the message switch below sees start -> end */
+        game.u.uhs = save_hs;
         saved_hs = false;
-        /* the "you only feel hungry now" decision compares save_hs to newhs;
-           the messages need pline plumbing this path does not have yet */
-        note_unported_eat('newuhs:end_of_meal_message');
     }
 
-    /* the FAINTING/FAINTED arms nomul() the hero and draw; WEAK's warnings and
-       the Hallucination arm need their own state. */
-    if (newhs >= WEAK && game.u.uhs < WEAK)
-        note_unported_eat('newuhs:weak_or_fainting');
+    let newhs2 = newhs;
+    if (newhs2 === FAINTING) {
+        /* u.uhunger is likely to be negative at this point */
+        const uhunger_div_by_10 = sgn(game.u.uhunger)
+            * Math.trunc((Math.abs(game.u.uhunger) + 5) / 10);
 
-    game.u.uhs = newhs;
+        if (is_fainted())
+            newhs2 = FAINTED;
+        if (game.u.uhs <= WEAK
+            || rn2(20 - uhunger_div_by_10) >= 19) {
+            if (!is_fainted() && (game.multi ?? 0) >= 0) {
+                const duration = 10 - uhunger_div_by_10;
+
+                /* stop what you're doing, then faint */
+                await stop_occupation();
+                await You('faint from lack of food.');
+                /* incr_itimeout(&HDeaf, duration) and afternmv=unfaint need
+                   the deafness timer and the faint callback */
+                note_unported_eat('newuhs:faint_machinery');
+                (game.disp ||= {}).botl = true;
+                nomul(-duration);
+                game.multi_reason = 'fainted from lack of food';
+                game.nomovemsg = 'You regain consciousness.';
+                newhs2 = FAINTED;
+            }
+        } else if (game.u.uhunger
+                   < -(100 + 10 * Number(ACURR(A_CON)))) {
+            game.u.uhs = STARVED;
+            (game.disp ||= {}).botl = true;
+            await bot();
+            await You('die from starvation.');
+            game.killer = { format: KILLED_BY, name: 'starvation' };
+            await done(STARVING);
+            /* if we return, we lifesaved, and that calls newuhs */
+            return;
+        }
+    }
+
+    if (newhs2 !== game.u.uhs) {
+        if (newhs2 >= WEAK && game.u.uhs < WEAK) {
+            /* temporary Str loss overrides Fixed_abil */
+            game.u.atemp.a[A_STR] = -1;
+        } else if (newhs2 < WEAK && game.u.uhs >= WEAK) {
+            game.u.atemp.a[A_STR] = 0;
+        }
+
+        switch (newhs2) {
+        case HUNGRY:
+            if (Hallucination()) {
+                await You(!incr ? 'now have a lesser case of the munchies.'
+                                : 'are getting the munchies.');
+            } else
+                await You(`${!incr ? 'only feel hungry now'
+                           : (game.u.uhunger < 145) ? 'feel hungry'
+                             : 'are beginning to feel hungry'}.`);
+            if (incr && game.occupation
+                && (game.occupation !== eatfood
+                    && game.occupation !== opentin))
+                await stop_occupation();
+            end_running(true);
+            break;
+        case WEAK:
+            if (Hallucination())
+                await pline(!incr ? 'You still have the munchies.'
+                    : 'The munchies are interfering with your motor '
+                      + 'capabilities.');
+            else if (incr && (game.urole?.name?.m === 'Wizard'
+                              || Race_if(PMNAMES.PM_ELF)
+                              || game.urole?.name?.m === 'Valkyrie'))
+                await pline(`${(game.urole?.name?.m === 'Wizard'
+                                || game.urole?.name?.m === 'Valkyrie')
+                               ? game.urole.name.m : 'Elf'}`
+                            + ' needs food, badly!');
+            else
+                await You(`${!incr ? 'are still'
+                           : (game.u.uhunger < 45) ? 'feel'
+                             : 'are beginning to feel'} weak.`);
+            if (incr && game.occupation
+                && (game.occupation !== eatfood
+                    && game.occupation !== opentin))
+                await stop_occupation();
+            end_running(true);
+            break;
+        }
+        game.u.uhs = newhs2;
+        (game.disp ||= {}).botl = true;
+        await bot();
+        if (game.u.uhp < 1) {
+            await You('die from hunger and exhaustion.');
+            game.killer = { format: KILLED_BY, name: 'exhaustion' };
+            await done(STARVING);
+            return;
+        }
+    }
 }
 
 // src/eat.c maybe_finished_meal() — finish a meal that consume_oeaten has
@@ -940,9 +1033,9 @@ export async function maybe_finished_meal(stopping) {
 
 // src/eat.c morehungry() — spend nutrition and re-evaluate the hunger state.
 // newuhs() can draw through its fainting arm, so this is not bookkeeping.
-export function morehungry(num) {
+export async function morehungry(num) {
     game.u.uhunger -= num;
-    newuhs(true);
+    await newuhs(true);
 }
 
 // src/eat.c recalc_wt() — the piece being eaten gets lighter.
@@ -1008,7 +1101,7 @@ export function adj_victual_nutrition() {
 //
 // reset_eat and paranoid_query are not ported and are recorded; the messages
 // need nomovemsg/multi plumbing and are recorded too.
-export function lesshungry(num) {
+export async function lesshungry(num) {
     /* see comments in newuhs() for discussion on force_save_hs */
     const iseating = (game.occupation === eatfood) || game.force_save_hs;
 
@@ -1039,7 +1132,7 @@ export function lesshungry(num) {
             }
         }
     }
-    newuhs(false);
+    await newuhs(false);
 }
 
 // src/eat.c consume_oeaten() — reduce a partly-eaten object's remaining food.

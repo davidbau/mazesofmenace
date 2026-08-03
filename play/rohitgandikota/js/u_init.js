@@ -24,9 +24,13 @@ import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP} from './const.js';
-import { Is_container, bimanual } from './obj.js';
-import { is_missile } from './wield.js';
+import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP, W_ARMS, W_ARMH, W_ARMG,
+         W_ARMU, W_ARMC, W_ARMF, W_ARM } from './const.js';
+import { Is_container, bimanual, is_shield, is_helmet, is_gloves, is_shirt,
+         is_cloak, is_boots, is_suit } from './obj.js';
+import { is_missile, set_twoweap, setuqwep, setuwep,
+         setuswapwep } from './wield.js';
+import { setworn } from './worn.js';
 import { is_weptool } from './mkobj.js';
 import { skill_init } from './weapon.js';
 import { spell_skilltype, initialspell, num_spells,
@@ -34,17 +38,13 @@ import { spell_skilltype, initialspell, num_spells,
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
 import { discover_object } from './o_init.js';
-import {
-    OBJ_DESCR, ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS,
-    ARM_CLOAK, ARM_SHIRT,
-} from './objnam.js';
+import { OBJ_DESCR } from './objnam.js';
 
 // include/prop.h:101-107 — worn-equipment slot masks.
 /* W_QUIVER was 0x0800 here and in js/objnam.js; include/prop.h:111 says
    0x0200. They agreed with each other so the "(at the ready)" suffix still
    showed, but neither agreed with js/const.js. */
-const W_ARM = 0x01, W_ARMC = 0x02, W_ARMH = 0x04, W_ARMS = 0x08,
-      W_ARMG = 0x10, W_ARMF = 0x20, W_ARMU = 0x40;
+/* W_ARM..W_ARMU now come from js/const.js with the rest of the slot masks. */
 
 const {
     WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS, TOOL_CLASS, GEM_CLASS,
@@ -580,18 +580,30 @@ export function ini_inv_use_obj(obj) {
         discover_object(obj.otyp, true, true, false);
     if (obj.otyp === ONAMES.OIL_LAMP)
         discover_object(ONAMES.POT_OIL, true, true, false);
-    /* src/u_init.c:1264 — the hero puts on what they can. No draw, but it is
-       directly visible: ^X reports "You are not wearing any armor" when every
-       slot is empty, and a Tourist's Hawaiian shirt is what suppresses it. */
+    /* src/u_init.c:1264 — the hero puts on what they can, through setworn()
+       exactly as C does, which is what grants each item's oc_oprop extrinsic
+       (a Ranger's starting cloak of displacement) and fills the worn[] slot
+       pointers. No draw, but directly visible: ^X reports "You are not
+       wearing any armor" when every slot is empty. */
     if (obj.oclass === ARMOR_CLASS) {
-        const cat = game.objects[obj.otyp].oc_subtyp;
-        const slot =
-            cat === ARM_SHIELD ? W_ARMS : cat === ARM_HELM ? W_ARMH
-          : cat === ARM_GLOVES ? W_ARMG : cat === ARM_SHIRT ? W_ARMU
-          : cat === ARM_CLOAK ? W_ARMC : cat === ARM_BOOTS ? W_ARMF
-          : cat === ARM_SUIT ? W_ARM : 0;
-        if (slot && !(worn_slots() & slot))
-            obj.owornmask = slot;
+        if (is_shield(obj) && !game.u.uarms
+            && !(game.u.uwep && bimanual(game.u.uwep))) {
+            /* just make sure we aren't two-weaponing (academic; no one
+               starts that way) */
+            set_twoweap(false); /* u.twoweap = FALSE */
+            setworn(obj, W_ARMS);
+        } else if (is_helmet(obj) && !game.u.uarmh)
+            setworn(obj, W_ARMH);
+        else if (is_gloves(obj) && !game.u.uarmg)
+            setworn(obj, W_ARMG);
+        else if (is_shirt(obj) && !game.u.uarmu)
+            setworn(obj, W_ARMU);
+        else if (is_cloak(obj) && !game.u.uarmc)
+            setworn(obj, W_ARMC);
+        else if (is_boots(obj) && !game.u.uarmf)
+            setworn(obj, W_ARMF);
+        else if (is_suit(obj) && !game.u.uarm)
+            setworn(obj, W_ARM);
     }
     obj.owornmask ||= 0;
     ini_inv_wield(obj);
@@ -612,25 +624,16 @@ function ini_inv_wield(obj) {
           || obj.otyp === ONAMES.FLINT || obj.otyp === ONAMES.ROCK))
         return;
     if (is_ammo(obj) || is_missile(obj)) {
-        if (!game.u.uquiver) { obj.owornmask |= W_QUIVER; game.u.uquiver = obj; }
+        if (!game.u.uquiver)
+            setuqwep(obj);
     } else if (!game.u.uwep && (!game.u.uarms || !bimanual(obj))) {
-        obj.owornmask |= W_WEP; game.u.uwep = obj;
+        setuwep(obj);
     } else if (!game.u.uswapwep) {
         /* src/u_init.c:1291 — the SECOND weapon becomes the alternate. A
            Ranger's bow lands here, and ready_ok's ammo_and_launcher test
            reads uswapwep to decide whether the arrows are suggested. */
-        obj.owornmask |= W_SWAPWEP; game.u.uswapwep = obj;
+        setuswapwep(obj);
     }
-}
-
-// include/prop.h — quiver and wielded slots.
-
-// src/worn.c — which slots are currently filled.
-function worn_slots() {
-    let mask = 0;
-    for (const o of game.invent || [])
-        mask |= (o.owornmask || 0);
-    return mask;
 }
 
 // src/u_init.c:1246 u_init_skills_discoveries()

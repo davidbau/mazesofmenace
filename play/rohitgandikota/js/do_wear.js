@@ -10,10 +10,15 @@ import { game } from './gstate.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES, OCLASSES } from './objects_data.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
-         W_RINGL, W_RINGR, W_AMUL, W_WEP, AC_MAX, ECMD_TIME,
-         TT_BEARTRAP, TT_INFLOOR } from './const.js';
+         W_RINGL, W_RINGR, W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER, AC_MAX,
+         ECMD_TIME, TT_BEARTRAP, TT_INFLOOR, I_SPECIAL,
+         WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
+         WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
+         LEFT_RING, RIGHT_RING } from './const.js';
+import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
 import { bimanual } from './obj.js';
+import { Is_dragon_armor } from './mondata.js';
 import { sgn } from './hacklib.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant, Your } from './pline.js';
@@ -32,7 +37,7 @@ export function worn(mask) {
 }
 
 // include/obj.h:126 greatest_erosion()
-function greatest_erosion(obj) {
+export function greatest_erosion(obj) {
     const a = obj.oeroded || 0, b = obj.oeroded2 || 0;
     return a > b ? a : b;
 }
@@ -82,21 +87,27 @@ export function find_ac() {
 // "begins to shine" message) are recorded; neither fires for ordinary
 // starting armour.
 export function Armor_on() {
-    if (!game.uarm)     /* no known instances of !uarm here but play it safe */
+    if (!game.u.uarm)   /* no known instances of !uarm here but play it safe */
         return 0;
-    if (!game.uarm.known) {
-        game.uarm.known = 1;   /* +/- evident because of status line AC */
+    if (!game.u.uarm.known) {
+        game.u.uarm.known = 1; /* +/- evident because of status line AC */
         note_unported_do_wear('Armor_on:update_inventory');
     }
-    note_unported_do_wear('Armor_on:dragon_armor_handling');
-    note_unported_do_wear('Armor_on:artifact_light');
+    /* C calls dragon_armor_handling(uarm, TRUE, TRUE) unconditionally, but
+       the function is a switch over dragon scale types and does nothing for
+       any other suit; the artifact-light branch needs artifact_light().
+       Both record only when they could actually act. */
+    if (Is_dragon_armor(game.u.uarm))
+        note_unported_do_wear('Armor_on:dragon_armor_handling');
+    if (game.u.uarm.oartifact)
+        note_unported_do_wear('Armor_on:artifact_light');
     return 0;
 }
 
 /* include/prop.h enum prop_types, index -> uprops key. The flat uprops map
    keys by the C constant's name; setworn's generic property arm (src/worn.c)
    writes through this table when gear is put on. Index 0 is unused in C. */
-const PROP_KEYS = [null,
+export const PROP_KEYS = [null,
     'FIRE_RES', 'COLD_RES', 'SLEEP_RES', 'DISINT_RES', 'SHOCK_RES',
     'POISON_RES', 'ACID_RES', 'STONE_RES', 'DRAIN_RES', 'SICK_RES',
     'INVULNERABLE', 'ANTIMAGIC', 'STUNNED', 'CONFUSION', 'BLINDED', 'DEAF',
@@ -111,16 +122,6 @@ const PROP_KEYS = [null,
     'ENERGY_REGENERATION', 'PROTECTION', 'PROT_FROM_SHAPE_CHANGERS',
     'POLYMORPH', 'POLYMORPH_CONTROL', 'UNCHANGING', 'FAST', 'REFLECTING',
     'FREE_ACTION', 'FIXED_ABIL', 'LIFESAVED'];
-
-/* src/worn.c setworn() — the generic arm: wearing an object grants its
-   oc_oprop as an extrinsic. This is what makes a Ranger's starting cloak of
-   displacement register as Displaced (a 5.0 kit change set_apparxy exposed:
-   monsters aim rn2-scattered guesses at a displaced hero every turn). */
-function apply_worn_oprop(o) {
-    const p = o ? objects[o.otyp].oc_oprop : 0;
-    if (p && PROP_KEYS[p])
-        (game.u.uprops ||= {})[PROP_KEYS[p]] = 1;
-}
 
 // src/do_wear.c set_wear() — apply the on-effects of worn gear.
 //
@@ -137,35 +138,31 @@ export function set_wear(obj) {
     game.initial_don = !obj;
     const slotobj = (mask) => worn(mask);
 
-    if (game.ublindf && (!obj || obj === game.ublindf))
+    if (game.u.ublindf && (!obj || obj === game.u.ublindf))
         note_unported_do_wear('set_wear:Blindf_on');
     for (const mask of [W_RINGR, W_RINGL]) {
         const o = slotobj(mask);
-        if (o && (!obj || obj === o)) {
-            apply_worn_oprop(o);
+        if (o && (!obj || obj === o))
             note_unported_do_wear('set_wear:Ring_on');
-        }
     }
     {
         const o = slotobj(W_AMUL);
-        if (o && (!obj || obj === o)) {
-            apply_worn_oprop(o);
+        if (o && (!obj || obj === o))
             note_unported_do_wear('set_wear:Amulet_on');
-        }
     }
 
+    /* the worn items' oc_oprop extrinsics were granted by setworn() when
+       u_init dressed the hero, exactly as in C; the handlers here add only
+       their slot-specific side effects (messages are suppressed at initial
+       don, C gates them on gi.initial_don) */
     for (const [mask, arm] of [[W_ARMU, 'Shirt_on'], [W_ARM, 'Armor_on'],
                                [W_ARMC, 'Cloak_on'], [W_ARMF, 'Boots_on'],
                                [W_ARMG, 'Gloves_on'], [W_ARMH, 'Helmet_on'],
                                [W_ARMS, 'Shield_on']]) {
         const o = slotobj(mask);
         if (o && (!obj || obj === o)) {
-            apply_worn_oprop(o);
             if (arm === 'Armor_on')
                 Armor_on();
-            /* the slot handlers' messages are suppressed at initial don
-               (C gates them on gi.initial_don), so the property grant is
-               the whole observable effect for a starting kit */
         }
     }
 
@@ -194,36 +191,90 @@ const is_boots  = (o) => objects[o.otyp].oc_subtyp === 4;
 const is_cloak  = (o) => objects[o.otyp].oc_subtyp === 5;
 const is_shirt  = (o) => objects[o.otyp].oc_subtyp === 6;
 
-/* src/worn.c setworn()/setnotworn(), reduced to the fields this port keeps:
-   the object's owornmask, its oc_oprop as a uprops flag, and the AC. */
-export function setworn(obj, mask) {
-    const old = worn(mask);
-    if (old && old !== obj) {
-        old.owornmask &= ~mask;
-        remove_worn_oprop(old);
-    }
-    if (obj) {
-        obj.owornmask = (obj.owornmask || 0) | mask;
-        apply_worn_oprop(obj);
-    }
-    find_ac();
-    update_inventory();
+/* setworn()/setnotworn() live in js/worn.js (src/worn.c), imported above.
+   The reduced local copies that only tracked owornmask and a boolean
+   property flag were replaced when the worn[] table landed there. */
+
+/* src/do_wear.c:1574 donning() — is a multi-turn wear of otmp in progress?
+   ga.afternmv can only hold a handler this port has; comparisons against
+   unported handlers are vacuously false, exactly as if they could never be
+   in progress (they cannot: nothing sets afternmv to a missing function). */
+export function donning(otmp) {
+    let result = false;
+
+    if (doffing(otmp))
+        result = true;
+    else if (otmp === game.u.uarm)
+        result = (game.afternmv === Armor_on);
+    else if (otmp === game.u.uarmf)
+        result = (game.afternmv === Boots_on);
+    /* Shirt_on/Cloak_on/Helmet_on/Gloves_on/Shield_on are not ported */
+
+    return result;
 }
 
-function setnotworn(obj, mask) {
-    if (!obj) return;
-    obj.owornmask &= ~mask;
-    remove_worn_oprop(obj);
-    find_ac();
-    update_inventory();
+// src/do_wear.c:1603 doffing() — is removal of otmp in progress or pending?
+export function doffing(otmp) {
+    const what = game.context_takeoff?.what || 0;
+    let result = false;
+
+    /* 'T' (or 'R' used for armor) sets ga.afternmv, 'A' sets takeoff.what */
+    if (otmp === game.u.uarmf)
+        result = (what === WORN_BOOTS);   /* Boots_off is not an afternmv */
+    else if (otmp === game.u.uarm)
+        result = (what === WORN_ARMOR);
+    else if (otmp === game.u.uarmu)
+        result = (what === WORN_SHIRT);
+    else if (otmp === game.u.uarmc)
+        result = (what === WORN_CLOAK);
+    else if (otmp === game.u.uarmh)
+        result = (what === WORN_HELMET);
+    else if (otmp === game.u.uarmg)
+        result = (what === WORN_GLOVES);
+    else if (otmp === game.u.uarms)
+        result = (what === WORN_SHIELD);
+    /* these 1-turn items don't need 'ga.afternmv' checks */
+    else if (otmp === game.u.uamul)
+        result = (what === WORN_AMUL);
+    else if (otmp === game.u.uleft)
+        result = (what === LEFT_RING);
+    else if (otmp === game.u.uright)
+        result = (what === RIGHT_RING);
+    else if (otmp === game.u.ublindf)
+        result = (what === WORN_BLINDF);
+    else if (otmp === game.u.uwep)
+        result = (what === W_WEP);
+    else if (otmp === game.u.uswapwep)
+        result = (what === W_SWAPWEP);
+    else if (otmp === game.u.uquiver)
+        result = (what === W_QUIVER);
+
+    return result;
 }
 
-/* undo apply_worn_oprop; a single boolean flag stands in for C's extrinsic
-   mask, which is exact while only one worn item grants a property */
-function remove_worn_oprop(o) {
-    const p = o ? objects[o.otyp].oc_oprop : 0;
-    if (p && PROP_KEYS[p] && game.u.uprops)
-        delete game.u.uprops[PROP_KEYS[p]];
+// src/do_wear.c:1664 cancel_don() — the piece being donned/doffed vanished.
+export function cancel_don() {
+    const tk = (game.context_takeoff ||= { mask: 0 });
+    /* afternmv never has some of these values because every item of the
+       corresponding armor category takes 1 turn to wear, but check all of
+       them anyway (only the ported handlers can appear on this tree) */
+    tk.cancelled_don = (game.afternmv === Armor_on
+                        || game.afternmv === Boots_on);
+    game.afternmv = null;
+    game.nomovemsg = null;
+    game.multi = 0;
+    tk.delay = 0;
+    tk.what = 0;
+}
+
+// src/do_wear.c:1645 cancel_doff() — called by setworn() for the old item in
+// a slot, or by setnotworn() for a specific item.
+export function cancel_doff(obj, slotmask) {
+    const tk = (game.context_takeoff ||= { mask: 0 });
+
+    if (!(tk.mask & I_SPECIAL) && donning(obj))
+        cancel_don(); /* applies to doffing too */
+    tk.mask &= ~slotmask;
 }
 
 // src/do_wear.c:68 off_msg() / :76 on_msg()
@@ -302,6 +353,7 @@ async function Boots_off(otmp) {
 // src/do_wear.c:963 Amulet_on() — setworn and on_msg are its own business.
 export async function Amulet_on(amul) {
     setworn(amul, W_AMUL);
+    find_ac();  /* C: the AMULET_OF_GUARDING arm recomputes AC */
     switch (amul.otyp) {
     case ONAMES.AMULET_OF_ESP:
     case ONAMES.AMULET_OF_LIFE_SAVING:
@@ -332,7 +384,8 @@ async function Amulet_off() {
         note_unported_do_wear(`Amulet_off:otyp=${uamul.otyp}`);
         break;
     }
-    setnotworn(uamul, W_AMUL);
+    setworn(null, W_AMUL);   /* src/do_wear.c:1100 */
+    find_ac();
 }
 
 // src/do_wear.c Ring_on()/Ring_off() — only the property grant and the
@@ -352,7 +405,8 @@ async function Ring_on(obj) {
 }
 
 async function Ring_off(obj) {
-    setnotworn(obj, obj.owornmask & (W_RINGL | W_RINGR));
+    setworn(null, obj.owornmask & (W_RINGL | W_RINGR));
+    find_ac();  /* C: Ring_off_or_gone's RIN_PROTECTION arm */
     note_unported_do_wear(`Ring_off:otyp=${obj.otyp}`);
 }
 
@@ -669,7 +723,7 @@ async function select_off(otmp) {
 }
 
 // src/do_wear.c:3016 reset_remarm()
-function reset_remarm() {
+export function reset_remarm() {
     game.context_takeoff = { mask: 0 };
 }
 
@@ -707,7 +761,7 @@ async function slot_off(otmp) {
         & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU);
     if (otmp.owornmask & W_ARMF)
         await Boots_off(otmp);
-    setnotworn(otmp, mask);
+    setworn(null, mask);   /* each C *_off handler does setworn(NULL, W_x) */
 }
 
 // src/do_wear.c:1771 armor_or_accessory_off()
@@ -754,7 +808,7 @@ export async function armor_or_accessory_off(obj) {
 export async function Blindf_off(otmp) {
     const was_blind = !!game.u.ublind;
 
-    setnotworn_tool(otmp);
+    setworn(null, W_TOOL);   /* src/do_wear.c Blindf_off */
     await off_msg(otmp);
 
     if (otmp.otyp === ONAMES.BLINDFOLD || otmp.otyp === ONAMES.TOWEL)
@@ -773,11 +827,6 @@ export async function Blindf_off(otmp) {
         await You('can see again.');
         game.vision_full_recalc = 1;
     }
-}
-
-/* setworn(null, W_TOOL): clear the tool slot */
-function setnotworn_tool(otmp) {
-    otmp.owornmask = (otmp.owornmask ?? 0) & ~W_TOOL;
 }
 
 /* src/do_wear.c:1733 count_worn_stuff() */

@@ -18,6 +18,10 @@ import { m_at } from './mon.js';
 import { Deaf, Hallucination } from './youprop.js';
 import { pline_The, You_hear } from './pline.js';
 import { pline } from './display.js';
+import { Monnam } from './do_name.js';
+import { vtense } from './objnam.js';
+import { wake_nearto } from './mon.js';
+import { nomul } from './hack.js';
 
 // src/sounds.c:202 dosounds()
 export async function dosounds() {
@@ -183,25 +187,116 @@ function note_unported_sounds(what) {
 //
 // ROLL_FROM(h_sounds) is a draw but only under Hallucination. growl_sound
 // (a table lookup on msound) and wake_nearto are recorded.
-export function growl(mtmp) {
+// src/sounds.c growl_sound() — the verb for a growl, by msound class.
+function growl_sound(mtmp) {
+    let ret;
+
+    switch (game.mons[mtmp.mnum].msound) {
+    case MFLAGS.MS_MEW:
+    case MFLAGS.MS_HISS:
+        ret = "hiss";
+        break;
+    case MFLAGS.MS_BARK:
+    case MFLAGS.MS_GROWL:
+        ret = "growl";
+        break;
+    case MFLAGS.MS_ROAR:
+        ret = "roar";
+        break;
+    case MFLAGS.MS_BELLOW:
+        ret = "bellow";
+        break;
+    case MFLAGS.MS_BUZZ:
+        ret = "buzz";
+        break;
+    case MFLAGS.MS_SQEEK:
+        ret = "squeal";
+        break;
+    case MFLAGS.MS_SQAWK:
+        ret = "screech";
+        break;
+    case MFLAGS.MS_NEIGH:
+        ret = "neigh";
+        break;
+    case MFLAGS.MS_WAIL:
+        ret = "wail";
+        break;
+    case MFLAGS.MS_GROAN:
+        ret = "groan";
+        break;
+    case MFLAGS.MS_MOO:
+        ret = "low";
+        break;
+    case MFLAGS.MS_SILENT:
+        ret = "commotion";
+        break;
+    default:
+        ret = "scream";
+    }
+    return ret;
+}
+
+export async function growl(mtmp) {
     let growl_verb = 0;
 
     if (helpless(mtmp) || game.mons[mtmp.mnum].msound === MFLAGS.MS_SILENT)
         return;
 
     /* presumably nearness and soundok checks have already been made */
-    if (game.u.uprops?.HALLUC)
+    if (Hallucination())
         growl_verb = note_sounds_unported('growl:h_sounds');   /* ROLL_FROM */
     else
-        growl_verb = note_sounds_unported('growl:growl_sound');
+        growl_verb = growl_sound(mtmp);
     if (growl_verb) {
-        if (canseemon(mtmp) || !game.u.uprops?.DEAF) {
-            note_sounds_unported('growl:pline');
+        if (canseemon(mtmp) || !Deaf()) {
+            await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
+            /* C sets iflags.last_msg = PLNMSG_GROWL; nothing reads it here */
             if (game.context?.run)
-                note_sounds_unported('growl:nomul');
+                nomul(0);
         }
         /* OUTSIDE the canseemon check on purpose */
-        note_sounds_unported('growl:wake_nearto');
+        wake_nearto(mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 18);
+    }
+}
+
+// src/sounds.c yelp() — a pet's yelp when abused. The Soundeffect() calls
+// are audio-only and leave no terminal output.
+export async function yelp(mtmp) {
+    let yelp_verb = 0;
+
+    if (helpless(mtmp) || game.mons[mtmp.mnum].msound === MFLAGS.MS_SILENT)
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (Hallucination())
+        yelp_verb = note_sounds_unported('yelp:h_sounds');     /* ROLL_FROM */
+    else
+        switch (game.mons[mtmp.mnum].msound) {
+        case MFLAGS.MS_MEW:
+            yelp_verb = !Deaf() ? "yowl" : "arch";
+            break;
+        case MFLAGS.MS_BARK:
+        case MFLAGS.MS_GROWL:
+            yelp_verb = !Deaf() ? "yelp" : "recoil";
+            break;
+        case MFLAGS.MS_ROAR:
+            yelp_verb = !Deaf() ? "snarl" : "bluff";
+            break;
+        case MFLAGS.MS_SQEEK:
+            yelp_verb = !Deaf() ? "squeal" : "quiver";
+            break;
+        case MFLAGS.MS_SQAWK:
+            yelp_verb = !Deaf() ? "screak" : "thrash";
+            break;
+        case MFLAGS.MS_WAIL:
+            yelp_verb = !Deaf() ? "wail" : "cringe";
+            break;
+        }
+    if (yelp_verb) {
+        await pline(`${Monnam(mtmp)} ${vtense(null, yelp_verb)}!`);
+        if (game.context?.run)
+            nomul(0);
+        wake_nearto(mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 12);
     }
 }
 

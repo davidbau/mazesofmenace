@@ -18,13 +18,13 @@
 
 import { game } from './../gstate.js';
 import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
-import { tty_clear_nhwindow_message } from './../display.js';
+import { tty_clear_nhwindow_message, row_refresh, bot } from './../display.js';
 import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
-         PICK_ONE, PICK_ANY, GOLD_SYM } from './../const.js';
+         PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
 // frozen terminal's bit flags; win/tty/wintty.c term_start_attr() translates
@@ -727,17 +727,9 @@ export async function tty_select_menu(window, how) {
        Skipping this leaves the menu painted behind whatever the caller opens
        next, e.g. doset_simple_menu()'s handler menus.
 
-       erase_menu_or_text()'s offx==0 arm is `docrt(); flush_screen(1);`, but
-       docrt() is async here while tty_dismiss_nhwindow() is called from sync
-       destroy sites, so that arm runs at this boundary instead. It repaints
-       the MAP only -- the status rows stay as the full-screen menu left them
-       until the next bot(), which is what C's recordings show. */
-    const full_screen = (cw.offx === 0 && !cw.offy && !game.in_role_selection);
+       erase_menu_or_text() handles the repaint (its offx==0 arm is C's
+       `docrt(); flush_screen(1);` restructured for a sync context). */
     tty_dismiss_nhwindow(window);
-    if (full_screen) {
-        const { docrt } = await import('./../display.js');
-        await docrt();
-    }
 
     if (cw.cancelled)
         return [];
@@ -771,8 +763,8 @@ export function tty_next_page(window) {
 }
 
 // win/tty/wintty.c:4210 docorner() — blank the columns a corner window
-// occupied. The C also refreshes the map underneath; during role selection the
-// glyph buffer is empty, so blanking is all of it.
+// occupied, refresh the map underneath from the glyph buffer (row_refresh),
+// and redraw the status rows if the window overlapped them.
 function docorner(xmin, ymax, display) {
     let y = 0;
     for (; y < Math.min(ymax, ROWS); y++) {
@@ -783,14 +775,39 @@ function docorner(xmin, ymax, display) {
         tty_curs_base(xmin, y);
         for (let x = xmin; x < COLS; x++)
             display.setCell(x, y, ' ', NO_COLOR, 0);
+        /* row_refresh(xmin - offx, COLNO-1, y - offy): terminal row y maps to
+           map row y-1; the first map column whose cell sits at or right of
+           terminal column xmin is x = xmin + 1 */
+        if (y >= 1 && y - 1 < ROWNO)
+            row_refresh(Math.max(1, xmin + 1), COLNO - 1, y - 1);
     }
+    /* "we scribbled over the status line; redraw it" */
+    if (ymax >= 22)
+        bot();
 }
 
-// win/tty/wintty.c erase_menu_or_text()
+// win/tty/wintty.c:966 erase_menu_or_text()
 function erase_menu_or_text(cw, display, clear) {
     if (cw.offx === 0) {
-        if (clear) display.clearScreen();
-        /* else docrt(), which is the caller's business */
+        if (cw.offy) {
+            /* tty_curs(window, 1, 0); cl_eos(); */
+            for (let r = cw.offy; r < ROWS; r++)
+                for (let c = 0; c < COLS; c++)
+                    display.setCell(c, r, ' ', NO_COLOR, 0);
+        } else if (clear) {
+            display.clearScreen();
+        } else {
+            /* C: docrt(); flush_screen(1); — async in this port and this
+               runs under synchronous destroy sites, so repaint the same
+               pixels directly: wipe, redraw every map row from the glyph
+               buffer, redraw the status rows, cursor back on the hero. */
+            display.clearScreen();
+            for (let y = 0; y < ROWNO; y++)
+                row_refresh(1, COLNO - 1, y);
+            bot();
+            if (game.u?.ux > 0)
+                display.setCursor(game.u.ux - 1, game.u.uy + 1);
+        }
     } else {
         docorner(cw.offx, cw.maxrow + 1, display);
     }

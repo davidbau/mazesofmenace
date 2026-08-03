@@ -194,6 +194,14 @@ export class NethackGame {
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             nhGame._rngSlices.push(slice);
 
+            /* Debug-only probe seam (never set during scoring): snapshot
+               the live game at an exact input boundary on a FULL replay,
+               avoiding the step-vs-char truncation trap documented in
+               STATUS. */
+            if (globalThis.__step_snapshot
+                && nhGame._screens.length - 1 === globalThis.__step_snapshot.step)
+                globalThis.__step_snapshot.cb(game, nhGame._screens.length - 1);
+
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
             nhGame._cursors.push(cursor);
 

@@ -14,7 +14,8 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban } from './const.js';
+import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
+         NO_MM_FLAGS } from './const.js';
 import { rnl } from './rng.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant } from './pline.js';
@@ -516,7 +517,7 @@ async function dotele(break_the_rules) {
     /* next_to_u() drags adjacent pets along */
     note_unported_teleport('dotele:next_to_u');
 
-    morehungry(100);
+    await morehungry(100);
     return 1;
 }
 
@@ -534,4 +535,10 @@ export async function dotelecmd() {
     }
     const res = await dotele(true);
     return res ? ECMD_TIME : ECMD_OK;
+}
+
+// src/teleport.c:196 enexto() — scary-aware first, then unrestricted.
+export function enexto(cc, xx, yy, mdat) {
+    return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY, goodpos)
+            || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS, goodpos));
 }

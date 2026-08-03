@@ -17,7 +17,7 @@ import { game } from './gstate.js';
 import { helpless, MON_WEP } from './monst.js';
 import { rn1 } from './rng.js';
 import { dmgtype } from './mondata.js';
-import { touch_petrifies } from './dog.js';
+import { touch_petrifies, abuse_dog } from './dog.js';
 import { which_armor } from './worn.js';
 import { hitmsg, magic_negation } from './mhitu.js';
 import { You, Your } from './pline.js';
@@ -27,6 +27,14 @@ import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './disp
 import { wakeup, killed, xkilled, seemimic } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { is_pole } from './u_init.js';
+import { bimanual } from './obj.js';
+import { is_ammo, is_missile, ammo_and_launcher, uwepgone } from './wield.js';
+import { useup } from './invent.js';
+import { rnl } from './rng.js';
+import { ART_SNICKERSNEE } from './artilist_data.js';
+import { yname, cxname } from './objnam.js';
+import { mintrap } from './trap.js';
+import { clone_mon } from './makemon.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_safemon } from './display.js';
 import { monflee } from './monmove.js';
@@ -34,17 +42,20 @@ import { IS_OBSTRUCTED, MON_POLE_DIST, M_ATTK_HIT, M_ATTK_MISS,
          NATTK } from './const.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { adjalign, near_capacity } from './attrib.js';
-import { abon, hitval, weapon_hit_bonus, dmgval } from './weapon.js';
+import { abon, hitval, weapon_hit_bonus, dmgval, weapon_dam_bonus, use_skill, uwep_skill_type, weapon_type } from './weapon.js';
 import { find_mac } from './worn.js';
 import { worn } from './do_wear.js';
-import { is_orc, unsolid, noncorporeal, thick_skinned, attacktype, sticks } from './mondata.js';
+import { is_orc, unsolid, noncorporeal, amorphous, thick_skinned, attacktype, sticks } from './mondata.js';
+import { mon_hates_silver } from './dog.js';
+import { s_suffix } from './hacklib.js';
+import { vtense } from './objnam.js';
 import { hides_under } from './mondata.js';
 import { MONSYMS } from './monst_data.js';
 import { u_wipe_engr } from './engrave.js';
 import { check_capacity, overexertion } from './hack.js';
 import { is_blade, is_axe, set_ustuck, m_at } from './mon.js';
 import { is_weptool } from './mkobj.js';
-import { OCLASSES, MATERIALS, ONAMES } from './objects_data.js';
+import { OCLASSES, MATERIALS, ONAMES, SKILLS } from './objects_data.js';
 import { sgn } from './hacklib.js';
 import { ATTKS } from './monst_data.js';
 import { STR18 } from './const.js';
@@ -463,7 +474,8 @@ export async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty,
                damage was applied. */
             if (mon.mhp === oldhp) {
                 mhit[0] = 0;
-                game.u.uconduct.weaphit = oldweaphit;  /* a miss is not a hit */
+                /* a miss is not a hit; uconduct is a zeroed struct in C */
+                (game.u.uconduct ||= {}).weaphit = oldweaphit;
             }
             if (mon.wormno && mhit[0])
                 note_unported_uhitm('known_hitum:cutworm');
@@ -659,8 +671,7 @@ export function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
         }
         break;
     default:
-        note_unported_uhitm(`passive:adtyp=${adtyp}`);
-        break;
+        break;      /* C's default arm is empty (src/uhitm.c passive()) */
     }
 
     /*  These only affect you if they still live.
@@ -675,7 +686,19 @@ export function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
            not maliveb. M_ATTK_MISS is 0x0 and M_ATTK_HIT is 0x1, so their
            truthiness is identical and this is behaviourally the same; written
            as C writes it so a grep for the C line finds this one. */
-        note_unported_uhitm(`passive:alive_switch:adtyp=${adtyp}`);
+        switch (adtyp) {
+        case ATTKS.AD_PLYS:
+        case ATTKS.AD_COLD:
+        case ATTKS.AD_STUN:
+        case ATTKS.AD_FIRE:
+        case ATTKS.AD_ELEC:
+            /* the five arms of C's second switch (paralysis, brown mold or
+               blue jelly chill, yellow mold stun, fire, shock) */
+            note_unported_uhitm(`passive:alive_switch:adtyp=${adtyp}`);
+            break;
+        default:
+            break;  /* C's default arm is empty */
+        }
     }
 
     return malive | mhit;
@@ -786,7 +809,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         return hmd.retval;
 
     if (hmd.dmg > 0)
-        hmon_hitmon_dmg_recalc(hmd, obj);
+        await hmon_hitmon_dmg_recalc(hmd, obj);
 
     if (hmd.ispoisoned)
         note_unported_uhitm('hmon_hitmon:poison');
@@ -831,9 +854,45 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
     if (DEADMONSTER(mon))
         hmd.destroyed = true;
 
-    note_unported_uhitm('hmon_hitmon:pet');
-    note_unported_uhitm('hmon_hitmon:splitmon');
+    /* src/uhitm.c hmon_hitmon_pet() — abuse and flight, even if the pet is
+       being killed (affects revival) */
+    if (mon.mtame && hmd.dmg > 0) {
+        await abuse_dog(mon); /* reduces tameness */
+        /* flee if still alive and still tame */
+        if (mon.mtame && !hmd.destroyed)
+            monflee(mon, 10 * rnd(hmd.dmg), false, false);
+    }
+
+    /* src/uhitm.c hmon_hitmon_splitmon() — puddings split on iron/metal
+       melee hits from the wielded weapon (or either hand when twoweap) */
+    if ((hmd.mdat === game.mons[PMNAMES.PM_BLACK_PUDDING]
+         || hmd.mdat === game.mons[PMNAMES.PM_BROWN_PUDDING])
+        /* pudding is alive and healthy enough to split */
+        && mon.mhp > 1 && !mon.mcan && !hmd.offmap
+        && obj && (obj === game.u.uwep
+                   || (game.u.twoweap && obj === game.u.uswapwep))
+        && ((hmd.material === MATERIALS.IRON
+             /* allow scalpel and tsurugi to split puddings */
+             || hmd.material === MATERIALS.METAL)
+            /* but not bashing with darts, arrows or ya */
+            && !(is_ammo(obj) || is_missile(obj)))
+        && hmd.hand_to_hand) {
+        const mclone = clone_mon(mon, 0, 0);
+
+        if (mclone) {
+            let withwhat = '';
+            if (game.u.twoweap && game.flags.verbose)
+                withwhat = ` with ${yname(obj)}`;
+            await pline(`${Monnam(mon)} divides as you hit it${withwhat}!`);
+            hmd.hittxt = true;
+            /* mintrap(mclone, NO_TRAP_FLAGS) */
+            await mintrap(mclone, 0);
+        }
+    }
     await hmon_hitmon_msg_hit(hmd, mon, obj);
+
+    if (hmd.silvermsg)
+        await hmon_hitmon_msg_silver(hmd, mon, obj);
 
     /* src/uhitm.c:1897 -- the kill/survive tail.
        poiskilled and destroyed are separate branches, and BOTH check
@@ -911,12 +970,17 @@ async function hmon_hitmon_do_hit(hmd, mon, obj) {
             hmd.retval = true;
             return;
         }
-        /* remember obj's name since it might end up being destroyed */
-        note_unported_uhitm('hmon_hitmon:saved_oname');
+        /* remember obj's name since it might end up being destroyed and
+           we'll want to use it after that. bare_artifactname needs a lit
+           artifact light, which no object here can be yet. */
+        if (obj.oartifact && obj.lamplit)
+            note_unported_uhitm('hmon_hitmon:bare_artifactname');
+        else
+            hmd.saved_oname = cxname(obj);
 
         if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects)
             || obj.oclass === OCLASSES.GEM_CLASS) {
-            hmon_hitmon_weapon(hmd, mon, obj);
+            await hmon_hitmon_weapon(hmd, mon, obj);
             if (hmd.doreturn)
                 return;
         /* attacking with non-weapons */
@@ -936,7 +1000,7 @@ async function hmon_hitmon_do_hit(hmd, mon, obj) {
 
 // include/mondata.h:208 passes_rocks() — a header macro with no JS home yet.
 // Both halves exist: passes_walls is in this file, unsolid in js/mondata.js.
-const passes_rocks = (ptr) => passes_walls(ptr) && !unsolid(ptr);
+export const passes_rocks = (ptr) => passes_walls(ptr) && !unsolid(ptr);
 
 // src/dothrow.c stone_missile() /
 // src/uhitm.c shade_aware() — recorded.
@@ -945,6 +1009,34 @@ function note_stone_missile_unported(obj) {
     return false;
 }
 const shade_aware = (o) => { note_unported_uhitm('hmon_hitmon:shade_aware'); return false; };
+
+// src/uhitm.c:1663 hmon_hitmon_msg_silver() — "Your silver X sears ...".
+async function hmon_hitmon_msg_silver(hmd, mon, obj) {
+    let fmt_head;
+    let whom = mon_nam(mon);
+
+    if (canspotmon(mon)) {
+        if (hmd.barehand_silver_rings === 1)
+            fmt_head = 'Your silver ring sears ';
+        else if (hmd.barehand_silver_rings === 2)
+            fmt_head = 'Your silver rings sear ';
+        else if (hmd.silverobj && hmd.saved_oname) {
+            fmt_head = `Your ${hmd.saved_oname.includes('silver') ? ''
+                              : 'silver '}${hmd.saved_oname} `
+                       + `${vtense(hmd.saved_oname, 'sear')} `;
+        } else
+            fmt_head = 'The silver sears ';
+    } else {
+        whom = whom[0].toUpperCase() + whom.slice(1); /* "it" -> "It" */
+        fmt_head = null; /* "%s is seared!" */
+    }
+    if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
+        whom = s_suffix(whom) + ' flesh';
+    if (fmt_head === null)
+        await pline(`${whom} is seared!`);
+    else
+        await pline(`${fmt_head}${whom}!`);
+}
 
 // src/uhitm.c:1570 hmon_hitmon_stagger() — a very small chance of stunning an
 // unarmed opponent. The rnd(100) is spent BEFORE the size and hide tests, so
@@ -994,7 +1086,7 @@ function hmon_hitmon_barehands(hmd, mon) {
     }
 
     /* gloves shadow rings; two silver rings do not stack */
-    const spcdmgflg = game.uarmg ? W_ARMG
+    const spcdmgflg = game.u.uarmg ? W_ARMG
                     : (((hmd.twohits === 0 || hmd.twohits === 1) ? W_RINGR : 0)
                        | ((hmd.twohits === 0 || hmd.twohits === 2) ? W_RINGL : 0));
     note_unported_uhitm('hmon_hitmon:special_dmgval');
@@ -1037,17 +1129,19 @@ function hmon_hitmon_barehands(hmd, mon) {
 // recorded, so today every weapon blow routes to the melee arm -- which is
 // the correct behaviour for an ordinary weapon and wrong only for the four
 // cases above, none of which can arise before those predicates exist.
-function hmon_hitmon_weapon(hmd, mon, obj) {
+async function hmon_hitmon_weapon(hmd, mon, obj) {
     /* is it not a melee weapon? */
-    if (note_pred('is_launcher', obj)
-        || (!hmd.thrown && (note_pred('is_missile', obj)
-                            || note_pred('is_ammo', obj)))
-        || (!hmd.thrown && !game.u.usteed && note_pred('is_pole', obj)
-            && !note_pred('is_art:SNICKERSNEE', obj))
-        || (note_pred('is_ammo', obj)
-            && (hmd.thrown !== HMON_THROWN
-                || !note_pred('ammo_and_launcher', obj)))) {
-        note_unported_uhitm('hmon_hitmon:weapon_ranged');
+    if (/* if you strike with a bow... */
+        is_launcher_w(obj)
+        /* or strike with a missile in your hand... */
+        || (!hmd.thrown && (is_missile(obj) || is_ammo(obj)))
+        /* or use a pole at short range and not mounted... */
+        || (!hmd.thrown && !game.u.usteed && is_pole(obj)
+            && obj.oartifact !== ART_SNICKERSNEE)
+        /* or throw a missile without the proper bow... */
+        || (is_ammo(obj) && (hmd.thrown !== HMON_THROWN
+                             || !ammo_and_launcher(obj, game.u.uwep)))) {
+        await hmon_hitmon_weapon_ranged(hmd, mon, obj);
     } else {
         hmon_hitmon_weapon_melee(hmd, mon, obj);
         if (hmd.doreturn)
@@ -1055,12 +1149,40 @@ function hmon_hitmon_weapon(hmd, mon, obj) {
     }
 }
 
-// The object predicates this routing needs, none of them ported. Each is
-// recorded by name so game.unported says which one a divergence wanted.
-function note_pred(name, obj) {
-    note_unported_uhitm('hmon_hitmon:' + name);
-    return false;
+// src/uhitm.c:891 hmon_hitmon_weapon_ranged() — 1-2 points, no skill use.
+async function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
+    /* shade_glare() (silver/blessed passes) is recorded; a shade takes 0 */
+    if (hmd.mdat === game.mons[PMNAMES.PM_SHADE]
+        && !shade_aware(obj))
+        hmd.dmg = 0;
+    else
+        hmd.dmg = rnd(2);
+    if (hmd.material === MATERIALS.SILVER && mon_hates_silver(mon)) {
+        hmd.silvermsg = hmd.silverobj = true;
+        /* if it will already inflict dmg, make it worse */
+        hmd.dmg += rnd(hmd.dmg ? 20 : 10);
+    }
+    if (!hmd.thrown && obj === game.u.uwep
+        && obj.otyp === ONAMES.BOOMERANG && rnl(4) === 4 - 1) {
+        const more_than_1 = (obj.quan > 1);
+
+        await pline(`As you hit ${mon_nam(mon)}, `
+                    + `${more_than_1 ? 'one of ' : ''}${yname(obj)}`
+                    + ` breaks into splinters.`);
+        if (!more_than_1)
+            uwepgone(); /* set gu.unweapon */
+        useup(obj);
+        hmd.hittxt = true;
+        if (hmd.mdat !== game.mons[PMNAMES.PM_SHADE])
+            hmd.dmg++;
+    }
 }
+
+/* include/obj.h:235 is_launcher() — same one-liner js/wield.js keeps. */
+const is_launcher_w = (o) =>
+    o.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[o.otyp].oc_skill >= SKILLS.P_BOW
+    && game.objects[o.otyp].oc_skill <= SKILLS.P_CROSSBOW;
 
 // src/uhitm.c:934 hmon_hitmon_weapon_melee() — "normal" weapon usage.
 //
@@ -1098,6 +1220,13 @@ function hmon_hitmon_weapon_melee(hmd, mon, obj) {
     } else {
         note_unported_uhitm('hmon_hitmon:special_attacks');
     }
+
+    /* src/uhitm.c:1035 — silver weapon against a silver-hater flags the
+       sear message; the extra damage itself came from dmgval's rnd(20) */
+    if (hmd.material === MATERIALS.SILVER && mon_hates_silver(mon))
+        hmd.silvermsg = hmd.silverobj = true;
+    if (obj.oartifact && obj.lamplit)
+        note_unported_uhitm('hmon_hitmon:lightobj'); /* artifact_light */
 }
 
 // src/uhitm.c:1436 hmon_hitmon_dmg_recalc() — damage, strength and skill
@@ -1121,7 +1250,7 @@ function hmon_hitmon_weapon_melee(hmd, mon, obj) {
 //
 // dbon, weapon_dam_bonus, ammo_and_launcher, PROJECTILE, weapon_type,
 // uwep_skill_type and use_skill are recorded.
-function hmon_hitmon_dmg_recalc(hmd, obj) {
+async function hmon_hitmon_dmg_recalc(hmd, obj) {
     let dmgbonus = 0, strbonus, absbonus;
 
     if (hmd.get_dmg_bonus) {
@@ -1129,27 +1258,37 @@ function hmon_hitmon_dmg_recalc(hmd, obj) {
            weapons use it as-is */
         dmgbonus = game.u.udaminc || 0;
         if (hmd.thrown !== HMON_THROWN
-            || !obj || !game.uwep
-            || !note_unported_uhitm('dmg_recalc:ammo_and_launcher')) {
+            || !obj || !game.u.uwep
+            || !ammo_and_launcher(obj, game.u.uwep)) {
             strbonus = dbon();
             absbonus = Math.abs(strbonus);
             if (hmd.twohits)
                 strbonus = (((3 * absbonus + 2) / 4) | 0) * sgn(strbonus);
-            else if (hmd.thrown === HMON_MELEE && game.uwep
-                     && note_unported_uhitm('dmg_recalc:bimanual'))
+            else if (hmd.thrown === HMON_MELEE && game.u.uwep
+                     && bimanual(game.u.uwep))
                 strbonus = (((3 * absbonus + 1) / 2) | 0) * sgn(strbonus);
             dmgbonus += strbonus;
         }
     }
 
     if (hmd.use_weapon_skill) {
-        note_unported_uhitm('dmg_recalc:weapon_dam_bonus');
+        let skillwep = obj;
+
+        /* PROJECTILE() null-guards in C: bare-handed hits pass obj null */
+        if (obj && (is_ammo(obj) || is_missile(obj))
+            && ammo_and_launcher(obj, game.u.uwep))
+            skillwep = game.u.uwep;
+        dmgbonus += weapon_dam_bonus(skillwep);
 
         /* hit for more than minimal damage (before being adjusted for
            damage or skill bonus) trains the skill toward future
            enhancement */
-        if (hmd.train_weapon_skill)
-            note_unported_uhitm('dmg_recalc:use_skill');
+        if (hmd.train_weapon_skill) {
+            /* [this assumes that `!thrown' implies wielded...] */
+            const wtype = hmd.thrown ? weapon_type(skillwep)
+                                     : uwep_skill_type();
+            await use_skill(wtype, 1);
+        }
     }
 
     /* apply combined damage+strength and skill bonuses */

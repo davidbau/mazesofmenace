@@ -19,6 +19,8 @@ import { newsym } from './display.js';
 import { Levitation } from './youprop.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { doswapweapon, dowield, doquiver_core, is_ammo } from './wield.js';
+import { greatest_erosion } from './do_wear.js';
+import { rnl } from './rng.js';
 import { is_pole, is_spear } from './u_init.js';
 import { You } from './pline.js';
 import { ammo_and_launcher } from './wield.js';
@@ -27,7 +29,9 @@ import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { throws_rocks } from './mondata.js';
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, MFLAGS } from './monst_data.js';
+import { is_weptool } from './mkobj.js';
+import { hitval } from './weapon.js';
 import { getdir } from './cmd.js';
 
 // dothrow.js — throwing, firing, and the path a thrown thing takes.
@@ -576,4 +580,66 @@ export async function dofire() {
     /* fire can take time by filling quiver (if that causes something which
        was wielded to be unwielded) even if the throw itself gets cancelled */
     return (res === ECMD_TIME) ? res : altres;
+}
+
+// src/dothrow.c should_mulch_missile() — does fired/thrown ammo break?
+export function should_mulch_missile(obj) {
+    /* only ammo (excluding magic stones) or missiles will break */
+    if (!obj || !(is_ammo(obj) || is_missile(obj))
+        || obj.otyp === ONAMES.BOOMERANG
+        || game.objects[obj.otyp].oc_magic)
+        return false;
+
+    /* we need ammo to stay around longer on average */
+    const chance = 3 + greatest_erosion(obj) - (obj.spe || 0);
+    let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
+    if (obj.blessed && (game.context?.mon_moving ? !rn2(3) : !rnl(4)))
+        broken = false;
+
+    /* Flint and hard gems don't break easily */
+    if (((obj.oclass === OCLASSES.GEM_CLASS && game.objects[obj.otyp].oc_tough)
+         || obj.otyp === ONAMES.FLINT)
+        && !rn2(2))
+        broken = false;
+
+    return broken;
+}
+
+// src/dothrow.c:1913 omon_adj() — to-hit adjustment for a monster target.
+// The !rn2(10) wake-up is a draw, fired only for a frozen mover that is
+// allowed to notice.
+export function omon_adj(mon, obj, mon_notices) {
+    const mdat = game.mons[mon.mnum];
+    let tmp = 0;
+
+    /* size of target affects the chance of hitting */
+    tmp += mdat.msize - MFLAGS.MZ_MEDIUM; /* -2..+5 */
+    /* sleeping target is more likely to be hit */
+    if (mon.msleeping)
+        tmp += 2;
+    /* ditto for immobilized target */
+    if (!mon.mcanmove || !mdat.mmove) {
+        tmp += 4;
+        if (mon_notices && mdat.mmove && !rn2(10)) {
+            mon.mcanmove = 1;
+            mon.mfrozen = 0;
+        }
+    }
+    /* some objects are more likely to hit than others */
+    switch (obj.otyp) {
+    case ONAMES.HEAVY_IRON_BALL:
+        if (obj !== game.u.uball)
+            tmp += 2;
+        break;
+    case ONAMES.BOULDER:
+        tmp += 6;
+        break;
+    default:
+        if (obj.oclass === OCLASSES.WEAPON_CLASS
+            || is_weptool(obj, game.objects)
+            || obj.oclass === OCLASSES.GEM_CLASS)
+            tmp += hitval(obj, mon);
+        break;
+    }
+    return tmp;
 }

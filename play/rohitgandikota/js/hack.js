@@ -1,5 +1,5 @@
 import { is_flimsy } from './obj.js';
-import { You, pline_xy, pline_The, set_msg_xy } from './pline.js';
+import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { a_monnam, upstart } from './do_name.js';
 import { is_door_mappear, helpless } from './monst.js';
 import { dist2 } from './hacklib.js';
@@ -8,7 +8,7 @@ import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at } from './mon.js';
 import { pickup, can_reach_floor } from './pickup.js';
 import { dotrap } from './trap.js';
-import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT } from './const.js';
+import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { near_capacity } from './attrib.js';
 import { gethungry } from './eat.js';
 import { cmdq_clear, closed_door } from './cmd.js';
@@ -727,7 +727,7 @@ export function check_capacity(str) {
 // gethungry() DRAWS, so this is the reason attacking a monster spends more
 // from the stream than stepping onto an empty square does.
 export async function overexertion() {
-    gethungry();
+    await gethungry();
     if ((game.moves % 3) !== 0 && near_capacity() >= HVY_ENCUMBER)
         note_unported_hack('overexertion:overexert_hp');
     return game.multi < 0; /* might have fainted */
@@ -780,4 +780,84 @@ export async function dopickup() {
     }
     /* else ret == -1 */
     return (await pickup(-count)) ? ECMD_TIME : ECMD_OK;
+}
+
+// src/hack.c:4496 inv_cnt() — number of carried items, gold optional.
+export function inv_cnt(incl_gold) {
+    let ct = 0;
+    for (const otmp of game.invent || [])
+        if (incl_gold || otmp.invlet !== GOLD_SYM)
+            ct++;
+    return ct;
+}
+
+// src/hack.c:4551 rounddiv() — divide and round to nearest, sign-aware.
+export function rounddiv(x, y) {
+    let divsgn = 1;
+
+    /* C panics on y == 0 */
+    if (y < 0) {
+        divsgn = -divsgn;
+        y = -y;
+    }
+    if (x < 0) {
+        divsgn = -divsgn;
+        x = -x;
+    }
+    let r = Math.trunc(x / y);
+    const m = x % y;
+    if (2 * m >= y)
+        r++;
+
+    return divsgn * r;
+}
+
+
+// src/hack.c:1550 trapmove() — the hero is stuck in a trap and tries to
+// move: TRUE means the move may proceed, FALSE means the struggle consumed
+// it. The bear-trap and pit arms are live; web's Sting shortcut, lava,
+// in-floor and buried-ball need subsystems that are recorded at the exact
+// C position.
+export async function trapmove(x, y, desttrap) {
+    if (!game.u.utrap)
+        return true; /* sanity check */
+
+    switch (game.u.utraptype) {
+    case TT_BEARTRAP:
+        if (game.flags?.verbose !== false) {
+            await Norep('You are caught in a bear trap.');
+        }
+        /* [why does diagonal movement give quickest escape?] */
+        if ((game.u.dx && game.u.dy) || !rn2(5))
+            game.u.utrap--;
+        if (!game.u.utrap) {
+            await You('finally wriggle free.');
+        }
+        break;
+    case TT_PIT: {
+        const { is_pit_ttyp, climb_pit } = await import('./trap.js');
+        if (desttrap && desttrap.tseen && is_pit_ttyp(desttrap.ttyp))
+            return true; /* move into adjacent pit */
+        /* try to escape; position stays same regardless of success */
+        await climb_pit();
+        break;
+    }
+    case TT_WEB:
+        /* u_wield_art(ART_STING) cuts free; no artifact exists yet */
+        if (--game.u.utrap) {
+            if (game.flags?.verbose !== false)
+                await Norep('You are stuck to the web.');
+        } else {
+            await You('disentangle yourself.');
+        }
+        break;
+    case TT_LAVA:
+    case TT_INFLOOR:
+    case TT_BURIEDBALL:
+        (game.unported ||= new Set()).add('trapmove:' + game.u.utraptype);
+        break;
+    default:
+        break;
+    }
+    return false;
 }

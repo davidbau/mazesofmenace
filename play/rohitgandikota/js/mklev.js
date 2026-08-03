@@ -22,6 +22,7 @@ import { do_mkroom, antholemon, mkroom_wire } from './mkroom.js';
 import { SPBOOK_no_NOVEL } from './mkobj.js';
 import { mongone } from './mon.js';
 import { sgn } from './hacklib.js';
+import { set_wall_state } from './display.js';
 import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest, reset_xystart_size } from './sp_lev.js';
@@ -72,7 +73,29 @@ function mk_knox_portal(x, y) {
        place during that tour; the portal itself is recorded. */
     if (source.dnum < game.n_dgns || (rn2(3) && !game.wizard))
         return;
-    note_unported_lev('mk_knox_portal place_branch')
+
+    /* src/mklev.c:2647 — qualify the level: main dungeon, not the Quest's
+       entry level, deeper than 10 and above Medusa. All plain comparisons. */
+    const oracle = game.special_levels?.oracle_level;
+    const medusa = game.special_levels?.medusa_level;
+    const questbr = (game.branches || []).find(
+        b => b.end2 && b.end2.dnum === game.quest_dnum);
+    const at_quest_entrance = !!(questbr
+        && game.u.uz.dnum === questbr.end1.dnum
+        && game.u.uz.dlevel === questbr.end1.dlevel);
+    const u_depth = depth_of_level(game.u.uz);
+    if (!(oracle && game.u.uz.dnum === oracle.dnum   /* in main dungeon */
+          && !at_quest_entrance
+          && u_depth > 10
+          && medusa && u_depth < depth_of_level(medusa)))
+        return;
+
+    /* Adjust source to be current level and re-insert branch. */
+    source.dnum = game.u.uz.dnum;
+    source.dlevel = game.u.uz.dlevel;
+    insert_branch(br, true);
+
+    place_branch(br, x, y);
 }
 import { random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
@@ -150,7 +173,7 @@ import { lua_shuffle } from './nhlua.js';
    body evaluates (see the add_room_fn note in js/sp_lev.js). */
 var mklev_mon;
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
-import { depth as depth_of_level, Is_special } from './dungeon.js';
+import { depth as depth_of_level, Is_special, insert_branch } from './dungeon.js';
 import { Is_oracle_level, In_mines } from './const.js';
 
 /* include/dungeon.h In_hell() — the Gehennom branch. js/trap.js has a private
@@ -2738,7 +2761,6 @@ function bound_digging() {
         }
 }
 
-function set_wall_state() { /* no-op for contest */ }
 
 function level_finalize_topology() {
     bound_digging();

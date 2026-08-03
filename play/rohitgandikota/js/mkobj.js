@@ -26,7 +26,7 @@ import { is_neuter } from './mondata.js';
 
 import { game } from './gstate.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
-import { Is_rogue_level, NODIR, OBJ_FLOOR, In_quest } from './const.js';
+import { Is_rogue_level, NODIR, OBJ_FLOOR, OBJ_INVENT, In_quest } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
@@ -36,9 +36,10 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
    Both sides export function DECLARATIONS, which hoist, so each module sees the
    other's bindings by the time anything is called. */
-import { merged, weight } from './invent.js';
+import { merged, weight, update_inventory } from './invent.js';
 import { OBJ_CONTAINED, Is_pudding, Is_candle } from './obj.js';
 import { depth } from './dungeon.js';
+import { block_point } from './vision.js';
 
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
 // A NEGATED class, not an index past the real ones. It is the one caller-facing
@@ -255,6 +256,21 @@ function is_poisonable(otmp, objects) {
 // src/mkobj.c bcsign()
 export function bcsign(otmp) {
     return (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
+}
+
+// src/mkobj.c:626 clear_splitobjs() — forget the last splitobj() pair.
+export function clear_splitobjs() {
+    game.context.objsplit = { parent_oid: 0, child_oid: 0 };
+}
+
+// src/mkobj.c:1864 set_bknown() — set the bless/curse-state known flag.
+// bknown is a 1-bit field in C, so an absent flag compares as 0.
+export function set_bknown(obj, onoff) {
+    if ((obj.bknown ? 1 : 0) !== onoff) {
+        obj.bknown = onoff;
+        if (obj.where === OBJ_INVENT && game.moves > 1)
+            update_inventory();
+    }
 }
 
 // src/mkobj.c:1783 curse() and :1745 bless(). Both return early for gold,
@@ -1025,8 +1041,20 @@ export function mkobj_at(oclass, x, y, artif) {
 // it calling dogfood() on each, and dogfood() draws, so the order is part of
 // the PRNG contract.
 export function place_object(otmp, x, y) {
+    /* src/mkobj.c:2328 — otmp2 is the head of the cell's pile chain; in the
+       flat floor list the first entry at (x,y) plays that role. */
+    const otmp2 = (game.level.objects || []).find(o => o.ox === x && o.oy === y);
+
     otmp.ox = x;
     otmp.oy = y;
+
+    /* src/mkobj.c:2331 — a boulder landing on a cell that doesn't already
+       show a boulder makes the point opaque. */
+    if (otmp.otyp === ONAMES.BOULDER) {
+        if (!otmp2 || otmp2.otyp !== ONAMES.BOULDER)
+            block_point(x, y); /* vision */
+    }
+
     /* src/mkobj.c place_object() tail — without this, an object that was
        extracted (where == OBJ_FREE) and then re-floored can't be extracted
        again: obj_extract_self's OBJ_FREE arm leaves it in level.objects. */
@@ -1194,3 +1222,20 @@ export function add_to_container(container, obj) {
     return obj;
 }
 
+
+/* src/mkobj.c:2391 — rotting on ice takes 2 times as long */
+const ROT_ICE_ADJUSTMENT = 2;
+
+// src/mkobj.c:2394 peek_at_iced_corpse_age() — the age a corpse on ice
+// reports, without modifying it. C's integer division floors toward zero.
+export function peek_at_iced_corpse_age(otmp) {
+    let retval = otmp.age ?? 0;
+
+    if (otmp.otyp === ONAMES.CORPSE && otmp.on_ice) {
+        /* Adjust the age; must be same as obj_timer_checks() for off ice */
+        const age = game.moves - (otmp.age ?? 0);
+        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1)
+                             / ROT_ICE_ADJUSTMENT);
+    }
+    return retval;
+}

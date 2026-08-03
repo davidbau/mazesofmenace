@@ -112,6 +112,13 @@ export async function nh_timeout() {
             continue;
         /* the timeout just ran out */
         switch (key) {
+        case 'HWounded_legs': {
+            /* src/timeout.c nh_timeout WOUNDED_LEGS arm: heal_legs(0) */
+            const { heal_legs } = await import('./do.js');
+            intr.HWounded_legs = 1; /* Wounded_legs still true for the heal */
+            await heal_legs(0);
+            break;
+        }
         case 'HConfusion': {
             const { make_confused } = await import('./potion.js');
             intr.HConfusion = 1; /* so make_confused works properly */

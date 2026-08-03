@@ -1,25 +1,30 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no light sources, boulders,
-// mimics, underwater, blindness, or pit handling.
-// Contestants should port the full vision.c for complete parity.
+// does_block() and the incremental blocked-point updaters are real now;
+// light sources and pit handling are still absent.
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
-    D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, MAX_RADIUS,
+    COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
+    D_CLOSED, D_LOCKED, D_TRAPPED, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
+    IS_WALL, MAX_RADIUS, CROSSWALL, TRWALL,
 } from './const.js';
 import { newsym } from './display.js';
+import { ONAMES } from './objects_data.js';
+import { m_at } from './mon.js';
+import { is_lightblocker_mappear } from './monst.js';
+import { See_invisible, Underwater } from './youprop.js';
+import { is_moat } from './dbridge.js';
+import { visible_region_at } from './region.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
-    [SV2, SV1, SV0],
-    [SV3, 0,   SV7],
-    [SV4, SV5, SV6],
+    [SV2, SV1,   SV0],
+    [SV3, SVALL, SV7],
+    [SV4, SV5,   SV6],
 ];
 
 // Circle data for range limits (C vision.c:27-70)
@@ -57,8 +62,57 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
+// src/vision.c:414 new_angle() — extra seen-angle bits for crosswalls and
+// T walls viewed from an angle. `sv` is the base seenv_matrix entry.
+function new_angle(lev, sv, row, col) {
+    let res = sv;
+
+    /*
+     * Do extra checks for crosswalls and T walls if we see them from
+     * an angle.
+     */
+    if (lev.typ >= CROSSWALL && lev.typ <= TRWALL) {
+        switch (res) {
+        case SV0:
+            if (col > 0 && viz_clear[row][col - 1])
+                res |= SV7;
+            if (row > 0 && viz_clear[row - 1][col])
+                res |= SV1;
+            break;
+        case SV2:
+            if (row > 0 && viz_clear[row - 1][col])
+                res |= SV1;
+            if (col < COLNO - 1 && viz_clear[row][col + 1])
+                res |= SV3;
+            break;
+        case SV4:
+            if (col < COLNO - 1 && viz_clear[row][col + 1])
+                res |= SV3;
+            if (row < ROWNO - 1 && viz_clear[row + 1][col])
+                res |= SV5;
+            break;
+        case SV6:
+            if (row < ROWNO - 1 && viz_clear[row + 1][col])
+                res |= SV5;
+            if (col > 0 && viz_clear[row][col - 1])
+                res |= SV7;
+            break;
+        }
+    }
+    return res;
+}
+
+/* src/vision.c:1143-1144 — set by view_from() for the quadrant scans.
+   When vis_func is set the scans report positions to it instead of
+   painting the could-see rows (do_clear_area's area walk). */
+var vis_func = null, varg = null;
+
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    if (vis_func) {
+        for (let i = left; i <= right; i++) vis_func(i, row, varg);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -66,17 +120,36 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
-// Simplified blockage check: walls, closed doors, stone
-function _blocks(level, x, y) {
-    const loc = level.at(x, y);
-    if (!loc) return true;
-    const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
-    if (typ === DOOR) {
-        const mask = loc.doormask ?? 0;
-        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
-    }
-    return false;
+// src/vision.c:153 does_block() — returns 0 if nothing at (x,y) blocks
+// sight, 1 if anything other than an opaque region blocks it, 2 for an
+// opaque region. Callers only distinguish 0 from non-0.
+export function does_block(x, y, lev) {
+    /* Features that block . . */
+    if (IS_OBSTRUCTED(lev.typ) || lev.typ === TREE
+        || (IS_DOOR(lev.typ)
+            && ((lev.doormask ?? 0) & (D_CLOSED | D_LOCKED | D_TRAPPED))))
+        return 1;
+
+    if (lev.typ === CLOUD || IS_WATERWALL(lev.typ) || lev.typ === LAVAWALL
+        || (Underwater() && is_moat(x, y)))
+        return 1;
+
+    /* Boulders block light. C walks the per-cell nexthere chain; the port
+       keeps one flat floor list, so membership is the ox/oy filter. */
+    for (const obj of game.level.objects || [])
+        if (obj.ox === x && obj.oy === y && obj.otyp === ONAMES.BOULDER)
+            return 1;
+
+    /* Mimics mimicking a door or boulder or ... block light. */
+    const mon = m_at(x, y);
+    if (mon && (!mon.minvis || See_invisible()) && is_lightblocker_mappear(mon))
+        return 1;
+
+    /* Clouds (poisonous or not) block light. */
+    if (visible_region_at(x, y))
+        return 2;
+
+    return 0;
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -89,7 +162,9 @@ export function vision_reset() {
         let dig_left = 0;
         let block = true;
         for (let x = 1; x < COLNO; x++) {
-            const cur_block = _blocks(level, x, y);
+            const loc = level.at(x, y);
+            const cur_block = !loc
+                || !!(IS_OBSTRUCTED(loc.typ) || does_block(x, y, loc));
             if (block !== cur_block) {
                 if (block) {
                     for (let i = dig_left; i < x; i++) {
@@ -119,6 +194,202 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+}
+
+/* Debug seam, no C counterpart: read-only view of the shadow arrays for
+   probe scripts. Opt-in via globalThis, never touched during scoring. */
+export function __debug_arrays() {
+    return { viz_clear, left_ptrs, right_ptrs };
+}
+
+// src/vision.c:967 dig_point() — make (row,col) clear and repair the
+// left/right run pointers around it. Note the (row,col) argument order:
+// everything in C below the pointer-update banner uses (y,x).
+function dig_point(row, col) {
+    let i;
+
+    if (viz_clear[row][col])
+        return; /* already done */
+
+    viz_clear[row][col] = 1;
+
+    /*
+     * Boundary cases first.
+     */
+    if (col === 0) { /* left edge */
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = right_ptrs[row][1];
+        } else {
+            right_ptrs[row][0] = 1;
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 1;
+        }
+    } else if (col === COLNO - 1) { /* right edge */
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+        } else {
+            left_ptrs[row][COLNO - 1] = COLNO - 2;
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 2;
+        }
+
+    /*
+     * At this point, we know we aren't on the boundaries.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        }
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+        }
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = col + 1;
+        }
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = col - 1;
+        }
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        left_ptrs[row][col] = col - 1;
+        right_ptrs[row][col] = col + 1;
+    }
+}
+
+// src/vision.c:1051 fill_point() — make (row,col) blocked and repair the
+// run pointers. The two stray `[i]` stores after loop exit are C's own
+// quirks, kept verbatim: `i` holds the loop's exit value there.
+function fill_point(row, col) {
+    let i;
+
+    if (!viz_clear[row][col])
+        return;
+
+    viz_clear[row][col] = 0;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) { /* adjacent is clear */
+            right_ptrs[row][0] = 0;
+        } else {
+            right_ptrs[row][0] = right_ptrs[row][1];
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 0;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) { /* adjacent is clear */
+            left_ptrs[row][COLNO - 1] = COLNO - 1;
+        } else {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 1;
+        }
+
+    /*
+     * Else we know that we are not on an edge.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1] + 1; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][0] = col;
+
+        for (i = col; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][COLNO - 1] = col;
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        for (i = left_ptrs[row][col - 1] + 1; i < col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][i] = col;
+
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        for (i = col + 1; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][i] = col;
+
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+    }
+}
+
+// src/vision.c:865 block_point() — (x,y) becomes opaque. A full recalc is
+// forced if the hero could see the point: an opening out of night-vision
+// range closing (or opening) still changes what is lit for the hero.
+export function block_point(x, y) {
+    fill_point(y, x);
+
+    /* recalc light sources here? */
+
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
+
+// src/vision.c:899 unblock_point() — (x,y) becomes see-through.
+export function unblock_point(x, y) {
+    dig_point(y, x);
+
+    /* recalc light sources here? */
+
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
+
+// src/vision.c:911 recalc_block_point() — recalc if point should be
+// blocked or unblocked.
+export function recalc_block_point(x, y) {
+    if (does_block(x, y, game.level.at(x, y)))
+        block_point(x, y);
+    else
+        unblock_point(x, y);
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
@@ -351,12 +622,14 @@ function left_side(row, left_mark, right, limitsIdx) {
 }
 
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, func = null, arg = null) {
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
+    vis_func = func;
+    varg = arg;
 
     let left, right;
     if (viz_clear[srow][scol]) {
@@ -476,7 +749,7 @@ export function vision_recalc(control = 0) {
                 if (nv & IN_SIGHT) {
                     const oldseenv = loc.seenv || 0;
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                    loc.seenv = (loc.seenv || 0) | sv;
+                    loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
@@ -489,7 +762,7 @@ export function vision_recalc(control = 0) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                            loc.seenv = (loc.seenv || 0) | sv;
+                            loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
@@ -497,7 +770,7 @@ export function vision_recalc(control = 0) {
                         next_row[col] |= IN_SIGHT;
                         const oldseenv = loc.seenv || 0;
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                        loc.seenv = (loc.seenv || 0) | sv;
+                        loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                         if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                             newsym(col, row);
                     }
@@ -607,14 +880,15 @@ function circle_ptr(z) {
 }
 
 // src/vision.c:2107 do_clear_area() — apply `func` to every square within
-// `range` of (scol,srow) that the hero could see.
-//
-// Only the hero-centred arm is ported. The off-hero arm needs view_from(),
-// which this tree does not have; it is recorded rather than approximated
-// because it would change WHICH squares are affected, not just a message.
+// `range` of (scol,srow) that can be seen from there. An off-hero center
+// runs the real view_from() scan with the callback (dog_goal's wantdoor
+// walk); the hero-centred arm reads viz_array directly. The detecting()
+// underwater override needs detection callbacks that do not exist yet.
 export function do_clear_area(scol, srow, range, func, arg) {
     if (scol !== game.u.ux || srow !== game.u.uy) {
-        (game.unported ||= new Set()).add('vision:do_clear_area:view_from');
+        view_from(srow, scol, null, null, null, range, func, arg);
+        vis_func = null;
+        varg = null;
         return;
     }
     if (range > MAX_RADIUS || range < 1)

@@ -24,6 +24,7 @@ import { game } from './gstate.js';
 import { heal_legs } from './trap.js';
 import { run_object_timers } from './mkobj.js';
 import { update_topl } from './display.js';
+import { Unaware } from './const.js';
 
 // C ref: youprop.h Hallucination — the expiry messages swap in hallucinating
 // variants.
@@ -92,6 +93,23 @@ const TIMED_PROPS = [
       get: (u) => u.uprops?.Hallucination || 0,
       set: (u, v) => { u.uprops.Hallucination = v; },
       expire: expire_hallucination },
+    // C ref: timeout.c:752 case DEAF — set_itimeout(&HDeaf, 1) then make_deaf(0,
+    // TRUE), which prints "You can hear again." and stops any occupation.  A
+    // timed deafness comes from eat.c rottenfood(); while it runs, sounds.c
+    // dosounds() returns before ANY of its ambient rolls, so the countdown is
+    // load-bearing for the PRNG stream, not just for the message.
+    { name: 'DEAF',
+      get: (u) => u.uprops?.HDeaf || 0,
+      set: (u, v) => { u.uprops.HDeaf = v; },
+      // C: set_itimeout(&HDeaf, 1L); make_deaf(0L, TRUE).  potion.c make_deaf()
+      // suppresses its message while Unaware — which the rotten-food case always
+      // is — so the deafness clears silently and creates no --More-- boundary.
+      expire: async () => {
+          const u = game.u;
+          const old = u?.uprops?.HDeaf || 0;
+          if (u?.uprops) u.uprops.HDeaf = 0;
+          if (!Unaware() && old) await update_topl('You can hear again.');
+      } },
 ];
 
 export async function nh_timeout() {

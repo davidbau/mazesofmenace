@@ -20,6 +20,10 @@ import {
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
 import { create_particular_monster } from './makemon.js';
+import { mon_mr } from './monmr_data.js';
+import { is_undead_flag, is_demon_flag } from './monflags_data.js';
+import { couldsee } from './vision.js';
+import { align_gname } from './role.js';
 import { newsym } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
@@ -27,7 +31,7 @@ import { delobj, stackobj } from './invent.js';
 import { count_unpaid } from './invent.js';
 import { exercise } from './attrib.js';
 import { rn2 } from './rng.js';
-import { A_STR, A_DEX } from './const.js';
+import { A_STR, A_WIS, A_DEX } from './const.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos, getpos_render, jump_landing, jump_hilite_first_cursor } from './hack.js';
 import { dotwoweapon } from './wield.js';
 import { doride } from './steed.js';
@@ -408,6 +412,145 @@ export async function yn_function(query, resp, def) {
 }
 
 // ── individual extended commands ──
+
+// C ref: zap.c resist(mtmp, oclass, damage, tell) — the generic
+// magic-resistance check.  `oclass` picks the attack level, the monster's m_lev
+// is the defense level, and the single draw is
+//     rn2(100 + alev - dlev) < mtmp->data->mr
+// so a monster with mr 0 still costs a draw.  Ported here because #turn needs
+// it; damage is always 0 for #turn so the damage/kill tail is a no-op.
+function resist(mtmp, oclass, damage, tell) {
+    let alev;
+    switch (oclass) {
+    case 'wand':   alev = 12; break;
+    case 'tool':   alev = 10; break;   /* instrument */
+    case 'weapon': alev = 10; break;   /* artifact */
+    case 'scroll': alev = 9; break;
+    case 'potion': alev = 6; break;
+    case 'ring':   alev = 5; break;
+    default:       alev = game.u?.ulevel ?? 1; break;   /* spell / '\0' */
+    }
+    let dlev = mtmp.m_lev | 0;
+    if (dlev > 50) dlev = 50;
+    else if (dlev < 1) dlev = 1;       /* is_mplayer would use u.ulevel */
+    // permonst.mr — the magic-resistance PERCENTAGE from monsters.h's LVL(), NOT
+    // makemon.js's MONS[].mresists, which is the MR_* bitmask (a wraith's
+    // mresists is 166 while its mr is 15).
+    const resisted = rn2(100 + alev - dlev) < mon_mr(mtmp.data);
+    void damage; void tell;             /* #turn passes 0 / TELL only */
+    return resisted;
+}
+
+// C ref: pray.c doturn() — the #turn command (Knights and Priests; other roles
+// fall back to the turn-undead spell).  Was entirely unimplemented, so
+// seed4500's `#turn` drew none of C's stream: the exercise(A_WIS, TRUE) rn2(19)
+// at step 643, plus whatever the per-monster iteration costs, plus the
+// nomul(-(5 - (ulevel-1)/6)) paralysis that makes the command span turns.
+async function doturn() {
+    const g = game, u = g.u;
+    const roleMnum = g.urole?.mnum ?? -1;
+    const PM_CLERIC_ROLE = 6, PM_KNIGHT_ROLE = 4;   // roles[] indices
+    if (roleMnum !== PM_CLERIC_ROLE && roleMnum !== PM_KNIGHT_ROLE) {
+        // C: if the hero knows the turn-undead spell, cast it instead.
+        const { spellid_at } = await import('./spell.js');
+        const SPE_TURN_UNDEAD = 398;
+        let known = false;
+        for (let i = 0; i < 25; i++) if (spellid_at(i) === SPE_TURN_UNDEAD) { known = true; break; }
+        if (known) {
+            // C: spelleffects(SPE_TURN_UNDEAD, FALSE, FALSE).
+            const sp = await import('./spell.js');
+            if (sp.spelleffects_ext) return await sp.spelleffects_ext(SPE_TURN_UNDEAD);
+        }
+        await pline("You don't know how to turn undead!");
+        return 0;
+    }
+
+    // halu_gname(): the hero's god, or a hallucinatory one.  align_gname reads
+    // the role's deity names; no RNG while not hallucinating.
+    const Gname = align_gname(g.urole?.mnum ?? 0, u?.ualign?.type ?? 0);
+
+    // can_chant(): only a Strangled hero fails, which none of these do.
+    // The demon/undead-self and ugangr > 6 "seems to ignore you" arms and the
+    // Inhell arm all end the command early; Inhell is the reachable one.
+    const { In_hell } = await import('./dungeon.js');
+    if (In_hell(u?.uz)) {
+        await update_topl(`Since you are in Gehennom, ${Gname} can't help you.`);
+        // aggravate() wakes every monster on the level; no RNG.
+        for (const m of g.level?.monsters || []) m.msleeping = 0;
+        return 1;
+    }
+
+    await update_topl(`Calling upon ${Gname}, you chant an arcane formula.`);
+    exercise(A_WIS, true);
+
+    // turn_undead_range = (BOLT_LIM + ulevel/5) squared — 8..14 before squaring.
+    let range = BOLT_LIM + Math.trunc((u?.ulevel ?? 1) / 5);
+    range *= range;
+    let msg_cnt = 0;
+    const confused = (u?.uprops?.Confusion || 0) > 0;
+    const MAXULEV_HALF = Math.trunc(MAXULEV / 2);
+
+    // C ref: iter_mons(maybe_turn_mon_iter) — walks fmon in list order, so the
+    // per-monster resist() draws happen in that order.
+    for (const mtmp of [...(g.level?.monsters || [])]) {
+        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+        // "used to use cansee() here but the purpose is to prevent #turn
+        // operating through walls, not to require that the hero be able to see"
+        if (!couldsee(mtmp.mx, mtmp.my)) continue;
+        const dx = mtmp.mx - u.ux, dy = mtmp.my - u.uy;
+        if (dx * dx + dy * dy > range) continue;
+        const isUndead = is_undead_flag(mtmp.data);
+        const isDemon = is_demon_flag(mtmp.data);
+        if (mtmp.mpeaceful) continue;
+        if (!(isUndead || (isDemon && (u.ulevel ?? 1) > MAXULEV_HALF))) continue;
+
+        mtmp.msleeping = 0;
+        if (confused) {
+            if (!msg_cnt++) await update_topl('Unfortunately, your voice falters.');
+            mtmp.mflee = 0; mtmp.mfrozen = 0; mtmp.mcanmove = 1;
+        } else if (!resist(mtmp, '\0', 0, 1)) {
+            // Class-keyed threshold: zombie 6, mummy 8, wraith 10, vampire 12,
+            // ghost 14, lich 16 (C's cascading FALLTHROUGHs).
+            const xlev = turn_xlev(mtmp.data?.mcls);
+            if (xlev != null && (u.ulevel ?? 1) >= xlev
+                && !resist(mtmp, '\0', 0, 0)) {
+                if ((u.ualign?.type ?? 0) === -1 /* A_CHAOTIC */) {
+                    mtmp.mpeaceful = 1;
+                } else {
+                    // C: killed(mtmp) — the hero destroys the undead outright.
+                    const mon = await import('./mon.js');
+                    const kill = mon.killed || mon.xkilled;
+                    if (kill) await kill(mtmp);
+                }
+            } else {
+                // monflee(mtmp, 0, FALSE, TRUE): untimed scare, no RNG.
+                mtmp.mflee = 1; mtmp.mfleetim = 0;
+            }
+        }
+    }
+
+    // C ref: nomul(-(5 - ((u.ulevel - 1) / 6))) — -5 at level 1 up to -1 at 25+.
+    const dur = -(5 - Math.trunc(((u?.ulevel ?? 1) - 1) / 6));
+    if ((g.multi ?? 0) >= dur) g.multi = dur;
+    g.multi_reason = 'trying to turn the monsters';
+    g.nomovemsg = 'You can move again.';
+    return 1;
+}
+
+// C ref: pray.c maybe_turn_mon_iter()'s switch — the minimum hero level needed
+// to destroy (rather than merely scare) each undead class, built by C's
+// cascading FALLTHROUGHs from S_ZOMBIE upward.  monsym.h class indices.
+function turn_xlev(mcls) {
+    switch (mcls) {
+    case 38: return 16;  // S_LICH    (defsym.h MONSYM(38, 'L', ...))
+    case 54: return 14;  // S_GHOST   (MONSYM(54, ' ', ...))
+    case 48: return 12;  // S_VAMPIRE (MONSYM(48, 'V', ...))
+    case 49: return 10;  // S_WRAITH  (MONSYM(49, 'W', ...))
+    case 39: return 8;   // S_MUMMY   (MONSYM(39, 'M', ...))
+    case 52: return 6;   // S_ZOMBIE  (MONSYM(52, 'Z', ...))
+    default: return null; /* C's `default: monflee()` arm */
+    }
+}
 
 // C ref: apply.c dojump()/jump().  For the recorded knight (innate Jumping)
 // this reaches the "Where do you want to jump?" prompt and then enters
@@ -1773,6 +1916,7 @@ const HANDLERS = {
     quit: doquit_extcmd,
     polyself: wiz_polyself,
     monster: domonability_extcmd,
+    turn: doturn,
 };
 
 // C ref: cmd.c domonability() return convention — ECMD_OK(0)/ECMD_TIME(1);

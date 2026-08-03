@@ -207,7 +207,8 @@ const Is_dragon_scales = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALES
                                && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALES;
 const Is_dragon_mail = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALE_MAIL
                              && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALE_MAIL;
-const Is_dragon_armor = (obj) => Is_dragon_scales(obj) || Is_dragon_mail(obj);
+export const Is_dragon_armor = (obj) =>
+    Is_dragon_scales(obj) || Is_dragon_mail(obj);
 
 // src/mondata.c:91 defended() — is `mon` protected against `adtyp` by an
 // artifact it wields or by dragon scales it wears?
@@ -436,6 +437,13 @@ export function pronoun_gender(mtmp, pg_flags) {
 // include/mondata.h:123 cantwield()
 export const cantwield = (ptr) => nohands(ptr) || verysmall(ptr);
 
+// include/mondata.h:129 could_twoweap() — more than one AT_WEAP attack.
+// mattk entries are 4-element arrays: [aatyp, adtyp, damn, damd].
+export const could_twoweap = (ptr) =>
+    ((ptr.mattk[0][0] === ATTKS.AT_WEAP ? 1 : 0)
+     + (ptr.mattk[1][0] === ATTKS.AT_WEAP ? 1 : 0)
+     + (ptr.mattk[2][0] === ATTKS.AT_WEAP ? 1 : 0)) > 1;
+
 // include/mondata.h:223 — golems that leave nothing behind for the listed
 // damage type.
 export const completelyburns = (ptr) =>
@@ -649,3 +657,37 @@ export const touch_petrifies = (d) =>
     || d === game.mons?.[PMNAMES.PM_CHICKATRICE];
 export const flesh_petrifies = (d) =>
     touch_petrifies(d) || d === game.mons?.[PMNAMES.PM_MEDUSA];
+
+// include/mondata.h:68 is_wooden() / :215 hates_light() — C compares
+// &mons[PM_x] pointers; pmidx is this port's identity for the same test.
+export const is_wooden = (ptr) => ptr.pmidx === PMNAMES.PM_WOOD_GOLEM;
+export const hates_light = (ptr) => ptr.pmidx === PMNAMES.PM_GREMLIN;
+
+// include/mondata.h:46 haseyes()
+export const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
+
+// include/mondata.h:178 emits_light() — 1-square light radius for these.
+export const emits_light = (ptr) =>
+    (ptr.mlet === MONSYMS.S_LIGHT
+     || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
+     || ptr.pmidx === PMNAMES.PM_SHOCKING_SPHERE
+     || ptr.pmidx === PMNAMES.PM_BABY_GOLD_DRAGON
+     || ptr.pmidx === PMNAMES.PM_FIRE_VORTEX) ? 1
+    : (ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
+       || ptr.pmidx === PMNAMES.PM_GOLD_DRAGON) ? 1 : 0;
+
+// include/mondata.h:97,99,136,137 — race and rank flags.
+export const is_elf    = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
+export const is_gnome  = (ptr) => (ptr.mflags2 & MFLAGS.M2_GNOME) !== 0;
+export const is_lord   = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
+export const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;
+
+// include/mondata.h:157 is_mplayer() — the fake-player range of mons[].
+export const is_mplayer = (ptr) =>
+    ptr.pmidx >= PMNAMES.PM_ARCHEOLOGIST && ptr.pmidx <= PMNAMES.PM_WIZARD;
+
+// include/you.h:323 mhim() — object-case pronoun for a monster.
+export function mhim(mtmp) {
+    return genders_tbl[pronoun_gender(mtmp, PRONOUN_HALLU)].him;
+}
+import { genders as genders_tbl } from './role_data.js';

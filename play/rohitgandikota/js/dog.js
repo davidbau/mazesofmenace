@@ -27,7 +27,8 @@ import { may_dig } from './hack.js';
 import { is_metallic } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline } from './display.js';
-import { splitobj } from './mkobj.js';
+import { splitobj, peek_at_iced_corpse_age } from './mkobj.js';
+import { yelp, growl } from './sounds.js';
 import { m_consume_obj, is_pick, check_gear_next_turn } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
@@ -50,8 +51,10 @@ import { Monnam, noit_Monnam, christen_monst } from './do_name.js';
 import { pline_xy } from './pline.js';
 import { relobj } from './steal.js';
 import { set_apparxy, mon_track_add } from './monmove.js';
+import { gettrack } from './track.js';
+import { do_clear_area } from './vision.js';
 import { mattackm } from './mhitm.js';
-import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
+import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import {
     makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj } from './makemon.js';
@@ -252,10 +255,7 @@ const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
    through a corpse, egg or tin, none of which exists before the death-drop and
    cooking code lands, so recording keeps the gap visible without inventing a
    branch. */
-function peek_at_iced_corpse_age(obj) {
-    note_unported('peek_at_iced_corpse_age');
-    return obj.age ?? 0;
-}
+/* peek_at_iced_corpse_age() now lives in js/mkobj.js (its src/mkobj.c home) */
 
 function stale_egg(obj) {
     note_unported('stale_egg');
@@ -795,11 +795,63 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     if (mtmp.mconf)
         appr = 0;
 
+    /* src/dogmove.c:611-641 — the goal is the hero but the master cannot
+       see the pet: aim at the hero's trail instead, then at the remembered
+       ogoal, then at the point of the pet's sight area nearest the hero
+       (wantdoor over do_clear_area radius 9 — in practice the room exit),
+       and only give up and target the hero directly from a vault. */
+    const FARAWAY = COLNO + 2; /* position outside screen */
+    if (gx === game.u.ux && gy === game.u.uy && !in_masters_sight) {
+        const cp = gettrack(omx, omy);
+        if (cp) {
+            gx = cp.x;
+            gy = cp.y;
+            if (edog)
+                edog.ogoal = { x: 0, y: 0 };
+        } else {
+            /* assume master hasn't moved far, and reuse previous goal */
+            if (edog && edog.ogoal && edog.ogoal.x
+                && (edog.ogoal.x !== omx || edog.ogoal.y !== omy)) {
+                gx = edog.ogoal.x;
+                gy = edog.ogoal.y;
+                edog.ogoal = { x: 0, y: 0 };
+            } else {
+                const fard = { dist: FARAWAY * FARAWAY, x: FARAWAY, y: FARAWAY };
+                do_clear_area(omx, omy, 9, wantdoor, fard);
+                gx = fard.x;
+                gy = fard.y;
+
+                /* here gx == FARAWAY e.g. when dog is in a vault */
+                if (gx === FARAWAY || (gx === omx && gy === omy)) {
+                    gx = game.u.ux;
+                    gy = game.u.uy;
+                } else if (edog) {
+                    edog.ogoal = { x: gx, y: gy };
+                }
+            }
+        }
+    } else if (edog) {
+        edog.ogoal = { x: 0, y: 0 };
+    }
+
     /* src/dogmove.c — gg is ONE struct shared by dog_goal and dog_move; our
        dog_move reads it through GDIST(), so publish the goal rather than
        leaving the two halves out of step. */
     game.gg = { gx, gy, gtyp };
     return appr;
+}
+
+// src/dogmove.c:1470 wantdoor() — do_clear_area callback: remember the
+// position closest to the hero. C writes straight into gg.gx/gg.gy; the
+// port carries them in the arg so dog_goal's locals stay the source of
+// truth until it publishes game.gg.
+function wantdoor(x, y, dd) {
+    const ndist = distu(x, y);
+    if (dd.dist > ndist) {
+        dd.x = x;
+        dd.y = y;
+        dd.dist = ndist;
+    }
 }
 
 /* src/stairs.c:148 On_stairs() — stairway_at(x, y) != NULL.
@@ -1001,7 +1053,7 @@ function best_target(mtmp, forced) {
 // dog_move calls this AFTER its position loop and BEFORE committing the move
 // (src/dogmove.c:1273). We were not calling it at all, which is why seed0102
 // and seed0105 both stop at score_targ's rnd(5).
-function pet_ranged_attk(mtmp, forced) {
+async function pet_ranged_attk(mtmp, forced) {
     let hungry = false;
 
     /* How hungry is the pet? */
@@ -1012,8 +1064,49 @@ function pet_ranged_attk(mtmp, forced) {
 
     /* Hungry pets are unlikely to use breath/spit attacks */
     if (mtarg && (!hungry || !rn2(5))) {
-        /* the attack itself needs mattacku / the monster attack code */
-        note_unported('pet_ranged_attk:attack');
+        let mstatus = M_ATTK_MISS;
+
+        if (mtarg === game.youmonst) {
+            /* same dynamic import this file already uses for mattacku */
+            const { mattacku } = await import('./mhitu.js');
+            if (await mattacku(mtmp))
+                return MMOVE_DIED;
+            /* Treat this as the pet having initiated an attack even if it
+             * didn't, so it will lose its move. */
+            mstatus = M_ATTK_HIT;
+        } else {
+            game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+            game.notonhead = false;
+            mstatus = await mattackm(mtmp, mtarg);
+
+            /* Shouldn't happen, really */
+            if (mstatus & M_ATTK_AGR_DIED)
+                return MMOVE_DIED;
+
+            /* Allow the targeted nasty to strike back - if
+             * the targeted beast doesn't have a ranged attack,
+             * nothing will happen. */
+            if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
+                && rn2(4) && mtarg !== game.youmonst) {
+                /* if it can see, it can retaliate even if the pet is
+                   invisible: it saw the direction the attack came from */
+                if (mtarg.mcansee && haseyes(game.mons[mtarg.mnum])) {
+                    game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+                    game.notonhead = false;
+                    const mresp = await mattackm(mtarg, mtmp);
+                    if (mresp & M_ATTK_DEF_DIED)
+                        return MMOVE_DIED;
+                }
+            }
+        }
+        /* Only return MMOVE_DONE if the pet actually made a ranged attack,
+         * and thus should lose the rest of its move. */
+        if (mstatus !== M_ATTK_MISS)
+            return MMOVE_DONE;
+    } else if (forced) {
+        /* domonnoise() (src/sounds.c) is not ported; only #chat-forced
+           calls pass forced=TRUE and none does yet */
+        note_unported('pet_ranged_attk:domonnoise');
     }
     return MMOVE_NOTHING;
 }
@@ -1292,7 +1385,7 @@ export async function dog_move(mtmp, after) {
     if (!do_eat) {      /* C's `goto newdogpos` at dogmove.c:1231 jumps OVER
                            this call, so a pet that is about to eat never
                            reaches it and never spends score_targ's rnd(5) */
-        const i = pet_ranged_attk(mtmp, false);
+        const i = await pet_ranged_attk(mtmp, false);
         if (i !== MMOVE_NOTHING)
             return i;
     }
@@ -1646,4 +1739,36 @@ function mon_arrive(mtmp, with_you) {
 // src/monmove.c:88 mon_track_clear()
 function mon_track_clear_dog(mtmp) {
     mtmp.mtrack = [];
+}
+
+// src/dog.c abuse_dog() — hitting your own pet reduces tameness.
+export async function abuse_dog(mtmp) {
+    if (!mtmp.mtame)
+        return;
+
+    if (game.u.uprops?.AGGRAVATE_MONSTER || game.u.uprops?.CONFLICT)
+        mtmp.mtame = (mtmp.mtame / 2) | 0;
+    else
+        mtmp.mtame--;
+
+    if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
+        mtmp.edog.abuse++;
+
+    if (!mtmp.mtame && mtmp.mleashed)
+        note_unported('abuse_dog:m_unleash');
+
+    /* don't make a sound if pet is in the middle of leaving the level */
+    /* newsym isn't necessary in this case either */
+    if (mtmp.mx !== 0) {
+        if (mtmp.mtame && rn2(mtmp.mtame))
+            await yelp(mtmp);
+        else
+            await growl(mtmp); /* give them a moment's worry */
+
+        if (!mtmp.mtame) {
+            newsym(mtmp.mx, mtmp.my);
+            if (mtmp.wormno)
+                note_unported('abuse_dog:redraw_worm');
+        }
+    }
 }

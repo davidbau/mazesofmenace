@@ -416,7 +416,7 @@ export async function spelleffects_check(spell, energyRef) {
         /* do not put the hero quite into fainting */
         if (hungr > game.u.uhunger - 3)
             hungr = game.u.uhunger - 3;
-        morehungry(hungr);
+        await morehungry(hungr);
     }
 
     const chance = percent_success(spell);

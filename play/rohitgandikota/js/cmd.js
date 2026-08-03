@@ -21,7 +21,7 @@ import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup } from './hack.js';
+import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove } from './hack.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, A_DEX } from './const.js';
@@ -61,7 +61,7 @@ import { show_menu_controls } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, _buildScreenOutput, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
+import { newsym, flush_screen, pline, docrt, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
@@ -72,7 +72,7 @@ import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
-import { dowieldquiver } from './wield.js';
+import { dowieldquiver, dowield, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
 
 // Direction deltas: y u k
@@ -258,6 +258,12 @@ export async function getdir(s) {
     const dirsym = await tty_yn_function(
         (s && s[0] !== '^') ? s : 'In what direction?', null, '\0');
 
+    /* src/cmd.c:4011 — "remove the prompt string so caller won't have to":
+       clear_nhwindow(WIN_MESSAGE) physically blanks the topline on every
+       exit path, so the answered prompt is gone by the next boundary. */
+    tty_clear_nhwindow_message(game._topl_cury || 0);
+    game._pending_message = '';
+
     if (dirsym === '.' || dirsym === 's') {
         game.u.dx = game.u.dy = game.u.dz = 0;
         return true;
@@ -356,7 +362,7 @@ export async function getlin(query, hook) {
          */
         game._pending_message = `${query} ${buf}`;
         game._toplin = TOPLINE_SPECIAL_PROMPT;
-        _buildScreenOutput();
+        paint_topline();
         const display = game?.nhDisplay;
         if (display) {
             const CO = display.cols ?? 80;
@@ -565,14 +571,11 @@ export const takeoff_ok = (o) => equip_ok(o, true,  false);
    is offered. A missing filter offers the WHOLE inventory, which is what
    js/cmd.js used to do by passing null.
 
-   'q', 'r' and 'd' carry their real filters. 'w', 'W', 'P' and 'R' all route
-   through C's equip_ok(obj, taking_off, is_accessory), which is a larger
-   function and is not ported, so they stay null and still offer the whole
-   inventory; their VERBS are correct. */
+   'q', 'r' and 'd' carry their real filters. 'w' is dispatched to dowield()
+   and no longer routes through here. */
 const GETOBJ_CMD = {
     q: { word: 'drink',   ok: drink_ok, flags: GETOBJ_NOFLAGS },
     r: { word: 'read',    ok: read_ok,  flags: GETOBJ_PROMPT },
-    w: { word: 'wield',   ok: null,      flags: GETOBJ_PROMPT | GETOBJ_ALLOWCNT },
     W: { word: 'wear',    ok: wear_ok,   flags: GETOBJ_NOFLAGS },
     P: { word: 'put on',  ok: puton_ok,  flags: GETOBJ_NOFLAGS },
     R: { word: 'remove',  ok: remove_ok, flags: GETOBJ_NOFLAGS },
@@ -621,6 +624,8 @@ export async function doextcmd() {
     }
     if (name === 'chat')
         return await dochat();
+    if (name === 'twoweapon')
+        return await dotwoweapon();
     if (name === 'name')
         return await docallcmd();
     if (name === 'jump')
@@ -687,7 +692,7 @@ async function dojump() {
     nomul(-1);
     game.multi_reason = 'jumping around';
     game.nomovemsg = '';
-    morehungry(rnd(25));
+    await morehungry(rnd(25));
     return ECMD_TIME;
 }
 
@@ -779,7 +784,7 @@ export async function rhack(key) {
                 const ctext = `Count: ${cnt}`;
                 game._pending_message = ctext;
                 game._toplin = TOPLINE_SPECIAL_PROMPT;
-                _buildScreenOutput();
+                paint_topline();
                 const display = game?.nhDisplay;
                 if (display)
                     display.setCursor(
@@ -850,6 +855,9 @@ export async function rhack(key) {
     } else if (ch === 'Q') {
         // src/cmd.c cmdlist — 'Q' is dowieldquiver.
         game.context.move = ((await dowieldquiver()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'X') {
+        // src/cmd.c:1913 cmdlist — 'X' is dotwoweapon.
+        game.context.move = ((await dotwoweapon()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Z') {
         // src/cmd.c cmdlist — 'Z' is docast.
         game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
@@ -873,6 +881,7 @@ export async function rhack(key) {
     } else if (ch === '\x04') {
         // src/cmd.c cmdlist — C('d') is dokick.
         game.context.move = (await dokick() === ECMD_TIME ? 1 : 0);
+        game._cmd_was_kick = true;
     } else if (ch === '\x07') {
         // src/cmd.c:1962 cmdlist — C('g') is wiz_genesis.
         game.context.move = ((await wiz_genesis()) === ECMD_TIME ? 1 : 0);
@@ -995,6 +1004,9 @@ export async function rhack(key) {
             game.context.move = ((await dotakeoff()) === ECMD_TIME ? 1 : 0);
         else if (ch === 'R')
             game.context.move = ((await doremring()) === ECMD_TIME ? 1 : 0);
+        else if (ch === 'w')
+            // src/cmd.c cmdlist — 'w' is dowield.
+            game.context.move = ((await dowield()) === ECMD_TIME ? 1 : 0);
         else
             game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
     } else if (ch === '.') {
@@ -1074,6 +1086,14 @@ export async function rhack(key) {
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+
+    /* src/cmd.c:3820-3825 — "hero did something else than kicking a
+       location; reset the location, so pets don't avoid it". Without this
+       the square of a long-ago kick stayed poisoned forever and every pet
+       pathfinding pass silently skipped it as a candidate. */
+    if (game.context.move && !game._cmd_was_kick)
+        game.kickedloc = { x: 0, y: 0 };
+    game._cmd_was_kick = false;
 }
 
 // C ref: hack.c domove — execute a movement
@@ -1083,6 +1103,9 @@ export async function rhack(key) {
 export async function domove() {
     const ux1 = game.u.ux, uy1 = game.u.uy;
     await domove_core();
+    /* src/hack.c:2708 — the tail of C's domove() zeroes gk.kickedloc on
+       every hero move attempt, kick follow-through over. */
+    game.kickedloc = { x: 0, y: 0 };
     /* gd.domove_succeeded & (DOMOVE_RUSH | DOMOVE_WALK): the move counts as
        taken when the hero's position actually changed */
     if (game.u.ux !== ux1 || game.u.uy !== uy1)
@@ -1188,6 +1211,20 @@ async function domove_core() {
                 return;
             }
         }
+    }
+
+    /* src/hack.c:2831 — when u.utrap is true the struggle may consume the
+       move: trapmove() returns FALSE to stay put (time passes), TRUE when
+       the hero escaped or may proceed. */
+    if (game.u.utrap) {
+        const desttrap = t_at(newx, newy);
+        const moved = await trapmove(newx, newy, desttrap);
+        if (!game.u.utrap) {
+            (game.disp ||= {}).botl = true;
+            game.u.utraptype = 0;   /* reset_utrap */
+        }
+        if (!moved)
+            return;
     }
 
     /* src/hack.c:2846 — the blocked-move exit.

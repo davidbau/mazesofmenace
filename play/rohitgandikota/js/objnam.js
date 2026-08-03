@@ -27,6 +27,8 @@ import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAP
          MALE, FEMALE, NEUTER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
+import { ordin, distu } from './hacklib.js';
+import { cansee as cansee_o } from './vision.js';
 import { ART_ORB_OF_DETECTION, ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
 import { OCLASSES, ONAMES, MATERIALS, obj_descr } from './objects_data.js';
@@ -551,6 +553,12 @@ export function Tobjnam(otmp, verb) {
 /* src/objnam.c yname() — "your <name>" when carried, "the <name>" otherwise.
    C routes the prefix through shk_your(), whose shop-ownership, monster-
    ownership and unique-corpse arms are not reached by anything ported. */
+// src/objnam.c:2378 Yname2() — capitalized variant of yname().
+export function Yname2(obj) {
+    const s = yname(obj);
+    return s ? s[0].toUpperCase() + s.slice(1) : s;   /* *s = highc(*s) */
+}
+
 export function yname(obj) {
     return `${carried(obj) ? 'your' : 'the'} ${xname(obj)}`;
 }
@@ -1633,4 +1641,35 @@ export function gloves_simple_name(gloves) {
             return 'gauntlets';
     }
     return 'gloves';
+}
+
+// src/objnam.c:1090 mshot_xname() — "the Nth arrow" during a volley.
+export function mshot_xname(obj) {
+    let onm = xname(obj);
+
+    if ((game.m_shot?.n ?? 0) > 1 && game.m_shot.o === obj.otyp)
+        onm = `the ${game.m_shot.i}${ordin(game.m_shot.i)} ` + onm;
+    return onm;
+}
+
+// src/objnam.c distant_name() — format an object the hero may only see from
+// afar. Within touch range (xray-adjusted knight's-move ring) the normal
+// name; beyond it the C sets gd.distantname so xname skips the dknown
+// side-effects. This port's xname does not set dknown (observe_object does,
+// separately), so the flag is carried for fidelity and future readers.
+export function distant_name(obj, func) {
+    const r = ((game.u.xray_range ?? 0) > 2) ? game.u.xray_range : 2;
+    const neardist = (r * r) * 2 - r;
+    const ox = obj.ox ?? 0, oy = obj.oy ?? 0;
+    let str;
+
+    if (ox && cansee_o(ox, oy)
+        && (obj.oartifact || distu(ox, oy) <= neardist)) {
+        str = func(obj);
+    } else {
+        game.distantname = (game.distantname ?? 0) + 1;
+        str = func(obj);
+        game.distantname--;
+    }
+    return str;
 }

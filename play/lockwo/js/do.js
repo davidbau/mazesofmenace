@@ -1104,20 +1104,41 @@ function is_botlevel(lev) {
 }
 
 // C ref: dungeon.c get_level(newlevel, levnum) — translate a logical depth into
-// a (dnum, dlevel).  Only the same-dungeon and clamp-to-bottom cases are needed
-// (the covered teleport stays within the Dungeons of Doom); the branch-walk for
-// shallower parent dungeons is not exercised.
+// a (dnum, dlevel).
+//
+// The branch-walk used to be omitted as "not exercised", but a level-teleport
+// that asks for a depth ABOVE the current dungeon's start needs it: seed4500
+// does `^V 1` from Dlvl 40, which is Gehennom (dnum 1, depth_start 27).  Without
+// the walk, `levnum - depth_start + 1` produced dlevel -25, so the ledger was
+// "1:-25" — a level never visited — and the port ran a full mklev() (6588 RNG
+// draws) where C reloaded the saved Dlvl 1 with 28.  Every screen from there on
+// was on a different dungeon.
 function get_level(levnum) {
     const u = game.u;
-    const dgn = u.uz.dnum;
-    const dng = game.dungeons[dgn];
+    let dgn = u.uz.dnum;
+    const dngOf = (d) => game.dungeons?.[d];
+    let dng = dngOf(dgn);
     if (levnum <= 0) {
+        /* can only currently happen in endgame */
         levnum = u.uz.dlevel;
     } else if (levnum > (dng.depth_start + dng.num_dunlevs - 1)) {
+        /* beyond end of dungeon, jump to last level */
         levnum = dng.num_dunlevs;
     } else {
-        // within the same dungeon (levnum >= depth_start on the covered starts).
-        levnum = levnum - dng.depth_start + 1;
+        // "The desired level is in this dungeon or a 'higher' one."  Branch up
+        // the tree until we reach a dungeon that contains levnum; C assumes
+        // end2 is always the unique child, so the parent of `dgn` is the end1
+        // of the branch whose end2.dnum is dgn.
+        if (levnum < dng.depth_start) {
+            do {
+                const br = (game.branches || []).find((b) => b?.end2?.dnum === dgn);
+                if (!br) break;         /* C panics; nothing better to do here */
+                dgn = br.end1.dnum;
+                dng = dngOf(dgn);
+            } while (dng && levnum < dng.depth_start);
+        }
+        /* We're within the same dungeon; calculate the level. */
+        levnum = levnum - (dng?.depth_start ?? 1) + 1;
     }
     return { dnum: dgn, dlevel: levnum };
 }

@@ -13,7 +13,7 @@ import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire 
 import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn } from './invent.js';
 import { In_mines } from './const.js';
-import { rndghostname } from './do_name.js';
+import { rndghostname, christen_monst } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
@@ -26,14 +26,15 @@ import { next_ident, mksobj, mkobj, place_object, curse, rnd_class } from './mko
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
-import { cansee } from './vision.js';
+import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO } from './const.js';
-import { attacktype, is_neuter, is_floater } from './mondata.js';
+import { attacktype, is_neuter, is_floater, emits_light } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
-import { enexto_core } from './teleport.js';
+import { enexto_core, enexto } from './teleport.js';
+import { mon_track_clear } from './monmove.js';
 
 // include/hack.h:1174-1175
 const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
@@ -585,16 +586,10 @@ export function mongets(mtmp, otyp) {
 }
 
 // src/mon.c mpickobj() — returns true when otmp was freed by merging.
-export function mpickobj(mtmp, otmp) {
-    if (!mtmp.minvent) mtmp.minvent = [];
-    mtmp.minvent.push(otmp);
-    /* src/steal.c add_to_minv() — the object's where/ocarry move with it;
-       obj_extract_self's OBJ_MINVENT arm depends on both. Stack merging
-       (merged()) is not ported; each pickup keeps its own object. */
-    otmp.where = OBJ_MINVENT;
-    otmp.ocarry = mtmp;
-    return false;
-}
+/* mpickobj() moved to js/steal.js, its src/steal.c home, with add_to_minv
+   merging; this file re-imports it for mongets. */
+import { mpickobj } from './steal.js';
+export { mpickobj };
 
 // src/makemon.c:589 m_initinv() — species-specific starting inventory.
 //
@@ -691,16 +686,34 @@ function m_initinv(mtmp) {
                 if (mndx !== PMNAMES.PM_SOLDIER && !rn2(3))
                     mongets(mtmp, ONAMES.BUGLE);
             }
-        } else if (ptr.msound === MSOUND.MS_PRIEST) {
+        } else if (ptr.pmidx === PMNAMES.PM_SHOPKEEPER) {
+            /* src/makemon.c:702 — key plus the healing/wand fall-through */
+            mongets(mtmp, ONAMES.SKELETON_KEY);
+            switch (rn2(4)) {
+            /* MAJOR fall through ... */
+            case 0:
+                mongets(mtmp, ONAMES.WAN_MAGIC_MISSILE);
+                /* FALLTHRU */
+            case 1:
+                mongets(mtmp, ONAMES.POT_EXTRA_HEALING);
+                /* FALLTHRU */
+            case 2:
+                mongets(mtmp, ONAMES.POT_HEALING);
+                /* FALLTHRU */
+            case 3:
+                mongets(mtmp, ONAMES.WAN_STRIKING);
+            }
+        } else if (ptr.msound === MSOUND.MS_PRIEST
+                   || quest_mon_represents_role(ptr, 'Priest')) {
             /* src/makemon.c:721 — the priest's robe, shield and purse */
             mongets(mtmp, rn2(7) ? ONAMES.ROBE
                                  : rn2(3) ? ONAMES.CLOAK_OF_PROTECTION
                                           : ONAMES.CLOAK_OF_MAGIC_RESISTANCE);
             mongets(mtmp, ONAMES.SMALL_SHIELD);
             mkmonmoney(mtmp, rn1(10, 20));
-        } else {
-            /* shopkeepers, monks, prisoners, Croesus: recorded */
-            note_unported(`m_initinv mlet=${ptr.mlet}`);
+        } else if (quest_mon_represents_role(ptr, 'Monk')) {
+            mongets(mtmp, rn2(11) ? ONAMES.ROBE
+                                  : ONAMES.CLOAK_OF_MAGIC_RESISTANCE);
         }
         break;
     case S_GIANT:
@@ -994,6 +1007,13 @@ const may_passwall = () => false;   /* needs level.flags.noteleport wall data */
 // src/quest.c quest_info() — the quest leader/nemesis for the hero's role.
 // Both are G_NOGEN, so neither can appear from rndmonst(); the lookups exist so
 // the gender branches read as C does.
+/* src/makemon.c:11 quest_mon_represents_role() — this game's quest leader
+   or nemesis standing in for a role's class monster. Role_if follows the
+   urole.name.m convention established in js/invent.js. */
+const quest_mon_represents_role = (mptr, roleName) =>
+    mptr.mlet === MONSYMS.S_HUMAN && game.urole?.name?.m === roleName
+    && (mptr.msound === MS_LEADER || mptr.msound === MS_NEMESIS);
+
 const quest_info_leader = () => pmIndexOf(game.urole?.ldrnum);
 const quest_info_nemesis = () => pmIndexOf(game.urole?.neminum);
 function pmIndexOf(name) {
@@ -1163,6 +1183,11 @@ export function set_mimic_sym(mtmp) {
         note_unported('set_mimic_sym:altar_align');
         rn2(3);                 /* algn = rn2(3) - 1; the draw is spent */
     }
+
+    /* src/makemon.c:2548 — a mimic that now looks like a wall, door,
+       boulder or tree makes its square opaque. */
+    if (does_block(mx, my, game.level.at(mx, my)))
+        block_point(mx, my);
 }
 // src/makemon.c:79 m_initgrp() — populate a monster's birth group. rnd(n)
 // first, the low-level swarm reduction, then one enexto_gpflags (which
@@ -1218,9 +1243,9 @@ const strongmonst = (ptr) => (ptr.mflags2 & M2_STRONG) !== 0;
 const is_lord = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
 const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;
 
-// src/quest.c — true when this monster stands in for the given role's quest
-// guardian. Every such species is G_NOGEN, so rndmonst() cannot produce one.
-const quest_mon_represents_role = () => false;
+/* quest_mon_represents_role() now has its real body above (makemon.c:11);
+   the old always-false stub assumed quest leaders could never be generated,
+   but the quest-tour sessions walk right up to them. */
 
 // src/makemon.c:481 m_initthrow() — a stack of missiles.
 function m_initthrow(mtmp, otyp, oquan) {
@@ -2057,4 +2082,92 @@ function mondied_ref() {
 
 function note_unported_makemon(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/makemon.c clone_mon() — split a new monster off `mon`, at (x,y) or
+// nearby. The rnd(2) inside next_ident() and the tame/peaceful rn2 draws
+// are the RNG shape; keep their order exactly.
+export function clone_mon(mon, x, y) {
+    const mm = { x: 0, y: 0 };
+
+    /* may be too weak or have been extinguished for population control */
+    if (mon.mhp <= 1
+        || ((game.mvitals?.[mon.mnum]?.mvflags ?? 0) & MFLAGS.G_EXTINCT) !== 0)
+        return null;
+
+    if (x === 0) {
+        mm.x = mon.mx;
+        mm.y = mon.my;
+    } else {
+        mm.x = x;
+        mm.y = y;
+    }
+    if (!isok(mm.x, mm.y)) { /* paranoia; C: impossible() */
+        return null;
+    }
+    if (m_at(mm.x, mm.y)) { /* (always True for the x==0 case) */
+        if (!enexto(mm, mm.x, mm.y, game.mons[mon.mnum]) || m_at(mm.x, mm.y))
+            return null;
+    }
+
+    const m2 = { ...mon };      /* newmonst() + *m2 = *mon */
+    /* m2->mextra = 0: the clone keeps no name, edog or minion state */
+    m2.mgivenname = undefined;
+    m2.edog = null;
+    m2.emin = null;
+    (game.level.monsters ||= []).unshift(m2);   /* m2->nmon = fmon; fmon = m2 */
+    m2.m_id = next_ident();
+    m2.mx = mm.x;
+    m2.my = mm.y;
+
+    m2.mundetected = 0;
+    m2.mtrapped = 0;
+    m2.mcloned = 1;
+    m2.minvent = null;          /* objects don't clone */
+    m2.mleashed = 0;
+    /* Max HP the same, but current HP halved for both. When current HP is
+       odd, the original keeps the extra point. */
+    m2.mhpmax = mon.mhpmax;
+    m2.mhp = Math.trunc(mon.mhp / 2);
+    mon.mhp -= m2.mhp;
+
+    /* clone doesn't have mextra so mustn't retain special monster flags */
+    m2.isshk = 0;
+    m2.isgd = 0;
+    m2.ispriest = 0;
+
+    /* clone shouldn't be reluctant to move on spots 'parent' just moved on */
+    mon_track_clear(m2);
+
+    place_monster(m2, m2.mx, m2.my);
+    if (emits_light(game.mons[m2.mnum]))
+        note_unported_makemon('clone_mon:new_light_source');
+    /* if 'parent' is named, give the clone the same name */
+    if (mon.mgivenname) {
+        christen_monst(m2, mon.mgivenname);
+    } else if (mon.isshk) {
+        note_unported_makemon('clone_mon:shkname');
+    }
+
+    /* not all clones caused by player are tame or peaceful */
+    if (!game.context?.mon_moving && mon.mpeaceful) {
+        if (mon.mtame)
+            m2.mtame = rn2(Math.max(2 + (game.u.uluck || 0), 2)) ? mon.mtame : 0;
+        else if (mon.mpeaceful)
+            m2.mpeaceful = rn2(Math.max(2 + (game.u.uluck || 0), 2)) ? 1 : 0;
+    }
+    /* isminion takes precedence over mtame */
+    if (m2.isminion) {
+        note_unported_makemon('clone_mon:newemin');
+    } else if (m2.mtame) {
+        /* C zeroes mtame then re-tames through tamedog() and copies EDOG;
+           tamedog is not ported, so the clone ends up untame and the gap
+           is recorded */
+        m2.mtame = 0;
+        note_unported_makemon('clone_mon:tamedog');
+    }
+    set_malign(m2);
+    newsym(m2.mx, m2.my); /* display the new monster */
+
+    return m2;
 }

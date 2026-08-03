@@ -24,7 +24,8 @@ import { age_spells } from './spell.js';
 import { find_ac, u_init_skills_discoveries } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
-import { ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_DEX, A_CON,
+import { Unaware,
+         ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_INT, A_DEX, A_CON,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './const.js';
 import { near_capacity } from './invent.js';
 import { exercise, acurr_eff } from './attrib.js';
@@ -873,6 +874,14 @@ export async function moveloop_turn() {
             // for the injured hero on those turns.
             if (!g.u.uinvulnerable) regen_hp();
 
+            // C ref: allmain.c:305 regen_pw(wtcap) — power regeneration, called
+            // right after the regen_hp/overexert block and BEFORE dosounds.  Was
+            // missing entirely: seed4500 step 515 draws rn2(2) here (Knight at
+            // ulevel 15 => period 15, upper 2 from Wi:14 + In:7) between
+            // regen_hp's rn2(100) and dosounds' rn2(200), and skipping it shifted
+            // the rest of that turn and every turn after it.
+            regen_pw();
+
             // C ref: allmain.c moveloop_core() — intrinsic autosearch.  Runs
             // every turn before dosounds when the hero has Searching (and the
             // level isn't noautosearch and multi >= 0).  dosearch0(1) consumes
@@ -965,8 +974,7 @@ export async function moveloop_turn() {
 export function gethungry() {
     const u = game.u;
     if (!u || u.uinvulnerable) return;
-    const unaware = !!(u.usleep || u.uunconscious || u.ufrozen);
-    const consume = unaware ? (rn2(10) === 0) : true;
+    const consume = Unaware() ? (rn2(10) === 0) : true;
     if (consume) u.uhunger = (u.uhunger ?? 900) - 1;
     const accessorytime = rn2(20);
     if ((accessorytime & 1) && near_capacity() > 1 /* SLT_ENCUMBER */)
@@ -1000,6 +1008,44 @@ function regen_hp() {
         u.uhp += heal;
         if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
     }
+}
+
+// C ref: allmain.c regen_pw(wtcap) — periodic power regeneration.  Fires only
+// while uen < uenmax AND either Energy_regeneration or the move counter hits a
+// role/level-dependent period:
+//
+//     !(moves % ((MAXULEV + 8 - u.ulevel) * (Role_if(PM_WIZARD) ? 3 : 4) / 6))
+//
+// so a level-15 Knight regenerates every (30 + 8 - 15) * 4 / 6 == 15 moves.  The
+// single draw is rn1(upper, 1) where upper = (WIS + INT) / 15 + 1, which for
+// Wi:14 In:7 is 2 — the rn2(2) seed4500 records at allmain.c:612.  The int
+// division is deliberate (C integer arithmetic), and the guard order matters:
+// the modulo is only evaluated when uen < uenmax, so a hero at full power draws
+// nothing.
+const MAXULEV = 30;             // C ref: include/you.h MAXULEV
+const PM_WIZARD_ROLE = 12;      // roles[] index, not a mons[] index
+function regen_pw() {
+    const g = game, u = g.u;
+    if (!u) return;
+    if (!(u.uen < u.uenmax)) return;
+    const wizard_role = (g.urole?.mnum ?? -1) === PM_WIZARD_ROLE;
+    const period = Math.trunc((MAXULEV + 8 - (u.ulevel || 1))
+                              * (wizard_role ? 3 : 4) / 6);
+    const energy_regen = !!u.uprops?.Energy_regeneration;
+    // C: `(wtcap < MOD_ENCUMBER && !(moves % period)) || Energy_regeneration`.
+    // wtcap is UNENCUMBERED for the covered heroes; a period of 0 would be a
+    // division by zero in C, which cannot happen for ulevel <= MAXULEV.
+    const due = period > 0 && ((g.moves ?? 0) % period) === 0;
+    if (!due && !energy_regen) return;
+    let upper = Math.trunc(((u.acurr?.a?.[A_WIS] ?? 0)
+                            + (u.acurr?.a?.[A_INT] ?? 0)) / 15) + 1;
+    // EMagical_breathing (+2) comes from an amulet of magical breathing, which
+    // no covered hero wears.
+    u.uen += rn1(upper, 1);
+    if (u.uen > u.uenmax) u.uen = u.uenmax;
+    // C also sets disp.botl and, at full power, interrupt_multi("You feel full
+    // of energy.").  The status line is recomputed each frame here, and the
+    // interrupt only matters mid-occupation.
 }
 
 // C ref: youprop.h Regeneration — the hero has the REGENERATION extrinsic.  For
@@ -1256,6 +1302,21 @@ export async function moveloop_core() {
         g.context.move = 1;
         g._pendingTurn = true;
         if (!busy) g._eat_occupation = null;
+        return;
+    }
+
+    // C ref: allmain.c moveloop_core():485 — the learn() occupation (set by
+    // spell.c study_book()).  An UNTIMED occupation: learn() counts
+    // context.spbook.delay up toward zero itself, one turn per call, so the move
+    // loop runs a game turn per step with no nhgetch between them and the whole
+    // multi-turn study yields a single captured frame.
+    if (g._study_occupation) {
+        const { learn_step } = await import('./spell.js');
+        const busy = await learn_step();
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._study_occupation = null;
         return;
     }
 

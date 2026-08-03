@@ -29,9 +29,19 @@ import {
     GEHENNOM,
     In_endgame, Is_astralevel, Is_rogue_level, MM_NONAME,
     Is_airlevel, Is_firelevel, Is_earthlevel, Is_waterlevel,
+    In_mines, In_sokoban, Align2amask,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
+    HWALL, TLCORNER, BLCORNER, CROSSWALL, TUWALL, TDWALL, TRWALL, DBWALL,
+    SDOOR, SCORR,
     STRAT_CLOSE, STRAT_WAITFORU,
 } from './const.js';
+import { In_hell } from './dungeon.js';
+// set_mimic_sym() needs the room/trap/vision helpers.  These modules sit below
+// makemon.js in the import graph except vision.js, which imports two function
+// declarations from here — a cycle that resolves cleanly because both sides are
+// hoisted `function` declarations used only at call time, never at module init.
+import { inside_room, t_at as t_at_local } from './mkroom.js';
+import { does_block, block_point } from './vision.js';
 import {
     mflags2_of, mflags3_of, msound_of,
     M2_LORD, M2_PRINCE, M2_NASTY, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
@@ -39,6 +49,11 @@ import {
     M3_CLOSE, M3_WAITFORU,
     MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
     is_undead_flag, is_giant_flag,
+    // set_mimic_sym()/newcham() predicates, read from the real mflags tables
+    // rather than species-name sets (see LESSONS: the name-regex bug class).
+    is_shapeshifter_flag, humanoid as humanoid_flag, polyok_flag, is_animal,
+    is_swimmer_flag, is_flyer_flag, amorphous_flag, passes_walls_flag,
+    throws_rocks_flag,
 } from './monflags_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
@@ -90,6 +105,15 @@ const PM_FOG_CLOUD = 106;
 const PM_VAMPIRE_BAT = 129;
 const PM_VAMPIRE = 226;
 const PM_VAMPIRE_LEADER = 227; /* also "vampire lord"/"vampire lady" */
+// Shapechanger cham values and the two difficulty anchors select_newcham_form
+// passes to pick_nasty().  mons[] indices, verified against name_to_pmidx().
+const PM_SANDESTIN = 301, PM_DOPPELGANGER = 270, PM_CHAMELEON = 326;
+const PM_ARCHON = 125, PM_JABBERWOCK = 178;
+// mondata.h is_placeholder(): mons[] entries that exist only so zombie/mummy
+// corpses have something to point at.  PM_DWARF and PM_GNOME are NOT among them.
+const S_EEL_CLS = 57;            // monsym.h S_EEL
+const PM_ORC_PLACEHOLDER = 72, PM_GIANT_PLACEHOLDER = 169,
+      PM_ELF_PLACEHOLDER = 264, PM_HUMAN_PLACEHOLDER = 260;
 const PM_VLAD_THE_IMPALER = 228;
 const CANDELABRUM_OF_INVOCATION = 262;
 
@@ -1935,7 +1959,42 @@ const SMS_STATUE = 476, SMS_FIGURINE = 241, SMS_CORPSE = 265, SMS_EGG = 266,
     SMS_GOLD_PIECE = 438, SMS_BOULDER = 475, SMS_LUMP_OF_ROYAL_JELLY = 286;
 const S_MIMIC_DEF = 60;          // monsym.h S_MIMIC_DEF
 const ROOMOFFSET_JS = 3;         // rm.h ROOMOFFSET
+// mkroom.h room types (enum at mkroom.h:52).  SHOPBASE is the shop threshold.
+const VAULT_RT = 4, ZOO_RT = 8, DELPHI_RT = 9, TEMPLE_RT = 10;
 const SHOPBASE_RT = 14;          // mkroom.h SHOPBASE
+// defsym.h screen-symbol indices used for M_AP_FURNITURE appearances.
+const SMS_S_VWALL = 1, SMS_S_HWALL = 2, SMS_S_VCDOOR = 15, SMS_S_HCDOOR = 16,
+    SMS_S_ALTAR = 33, SMS_S_FOUNTAIN = 37;
+// mons[] indices of the player-monster block (monsters.h, the "archeologist"
+// .. "wizard" run), used by the nocorpse-CORPSE fallback and by tt_doppel().
+// NOT the role indices: js/exper.js also defines PM_ARCHEOLOGIST/PM_WIZARD as
+// 0/12, but those index roles[], while C's PM_* here index mons[].  Getting the
+// two confused turns rn1(13, 330) into rn1(13, 0) — same draw, wrong species.
+const PM_ARCHEOLOGIST_MON = 330, PM_WIZARD_MON = 342;
+
+// C ref: rm.h IS_WALL(typ) = ((typ) && (typ) <= DBWALL).  STONE is 0, so the
+// leading truthiness test is what excludes solid stone from the door/wall arm.
+function IS_WALL_TYP(typ) { return typ > 0 && typ <= DBWALL; }
+
+// C ref: hack.c in_town() — the Gnomish Mines town.  A room WITH subrooms is
+// the town; if the level has no subroomed rooms at all, the whole level counts.
+// Only ever consulted alongside In_mines(), so it costs nothing off the mines
+// branch, but it is the real predicate rather than a constant `false`: a mimic
+// generated inside Mine Town must NOT take the maze-statue branch.
+function in_town_js(x, y) {
+    const lvl = game.level;
+    if (!lvl?.flags?.has_town) return false;
+    let has_subrooms = false;
+    for (let i = 0; i < (lvl.nroom ?? 0); i++) {
+        const sroom = lvl.rooms[i];
+        if (!sroom || (sroom.hx ?? 0) <= 0) break;
+        if ((sroom.nsubrooms ?? 0) > 0) {
+            has_subrooms = true;
+            if (inside_room(sroom, x, y)) return true;
+        }
+    }
+    return !has_subrooms;
+}
 // C ref: makemon.c syms[] — class/furniture symbols selected for a mimic
 // appearance.  Index 0/1 are MAXOCLASSES (furniture), tail two are S_MIMIC_DEF.
 const SMS_SYMS = [
@@ -1945,34 +2004,100 @@ const SMS_SYMS = [
     S_MIMIC_DEF, S_MIMIC_DEF,
 ];
 
-// C ref: makemon.c set_mimic_sym().  Only the cases reachable from stock_room
-// (a mimic placed on a shop square, rt >= SHOPBASE) plus the shared assign_sym
-// / trailing object-shape RNG are ported.  The room is a regular shop, so the
-// door/wall/maze/zoo/temple/delphi branches above the SHOPBASE branch never
-// fire for a mimic that stock_room creates on a solid floor square.
+// C ref: makemon.c set_mimic_sym() — the FULL branch chain.
+//
+// This used to port only the two branches a mines shop reaches (OBJ_AT and
+// rt >= SHOPBASE), with everything else falling through to ROLL_FROM(syms).
+// That silently mis-drew on every maze level: C's chain reaches
+//
+//     } else if (svl.level.flags.is_maze_lev
+//                && !(In_mines(&u.uz) && in_town(u.ux, u.uy))
+//                && !In_sokoban(&u.uz) && rn2(2)) {
+//
+// BEFORE the ROLL_FROM fallback, so a mimic generated in Gehennom draws rn2(2)
+// (and on success becomes a STATUE, whose trailing rndmonnum() then draws a
+// whole species scan) where we drew a single rn2(SIZE(syms)).  That was the
+// first RNG divergence on seed4500 — step 326, call 4127 of 14047, the Dlvl 40
+// level-teleport — and everything after it, 1488 screens across seed4500 and
+// seed0360, was downstream of the shifted stream.
+//
+// Every branch below is now present in C's order, because the order IS the
+// semantics: each test can consume RNG, so skipping a branch that C evaluates
+// shifts the stream even when the outcome would have been the same.
 function set_mimic_sym(mtmp) {
+    // C ref: `if (!mtmp || Protection_from_shape_changers) return;` — extrinsic
+    // ring property, read inline rather than importing mon.js (which imports
+    // this module).  No RNG either way.
+    if (!mtmp || game.u?.uprops?.Protection_from_shape_changers) return;
     const mx = mtmp.mx, my = mtmp.my;
     const loc = game.level?.at(mx, my);
     if (!loc) return;
+    const typ = loc.typ ?? 0;
     const roomno = (loc.roomno ?? 0) - ROOMOFFSET_JS;
+    // C ref: the #ifdef SPECIALIZATION `else if (IS_ROOM(typ))` arm is dead —
+    // global.h:120 ships SPECIALIZATION commented out — so roomno < 0 gives
+    // rt = 0 (OROOM) and leaves roomno negative for the BOULDER test below.
     const rt = roomno >= 0 ? (game.level.rooms[roomno]?.rtype ?? 0) : 0;
     const dep = depth_of_level(game.u?.uz);
+    const lflags = game.level?.flags || {};
 
     let ap_type, appear, s_sym;
     let assign = false;   // emulate C goto assign_sym
     let resolved = false; // ap_type/appear resolved by an early branch (no assign)
-    // C ref: makemon.c:2416 — if there is already an object on the mimic's
-    // square, it mimics that object's type, consuming NO RNG.  This fires for a
-    // storeroom mimic (themerms.lua "Storeroom") whose random in-room spot lands
-    // on a chest dropped earlier in the same iterate loop.  The intervening C
-    // branches (door/wall, is_maze_lev STATUE, roomno<0 BOULDER, ZOO/VAULT,
-    // DELPHI, TEMPLE) are not reachable in this slice: mines storeroom mimics on
-    // bare ROOM floor go straight to ROLL_FROM(syms) below (empirically no
-    // rn2(2) precedes their rn2(SIZE(syms)) draw, i.e. is_maze_lev is off here).
+    // C ref: makemon.c:2416 OBJ_AT(mx, my) — if there is already an object on
+    // the mimic's square it mimics that object's type, consuming NO RNG.  Fires
+    // for a storeroom mimic (themerms.lua "Storeroom") whose random in-room spot
+    // lands on a chest dropped earlier in the same iterate loop.
     const topobj = loc.objects || null;
     if (topobj) {
         ap_type = 'obj';
         appear = topobj.otyp;
+        resolved = true;
+    } else if (typ === DOOR || IS_WALL_TYP(typ) || typ === SDOOR || typ === SCORR) {
+        // C ref: M_AP_FURNITURE — a mimic standing in a doorway or wall square
+        // impersonates a closed door (a wall on the rogue level, which has no
+        // closed doors).  A wall to the LEFT that connects to this location
+        // means a horizontal door; otherwise vertical.  No RNG.
+        ap_type = 'furniture';
+        const left = mx !== 0 ? (game.level?.at(mx - 1, my)?.typ ?? 0) : 0;
+        const connects = mx !== 0 && (left === HWALL || left === TLCORNER
+            || left === TRWALL || left === BLCORNER || left === TDWALL
+            || left === CROSSWALL || left === TUWALL);
+        const rogue = Is_rogue_level(game.u?.uz);
+        appear = connects ? (rogue ? SMS_S_HWALL : SMS_S_HCDOOR)
+                          : (rogue ? SMS_S_VWALL : SMS_S_VCDOOR);
+        resolved = true;
+    } else if (lflags.is_maze_lev
+               && !(In_mines(game.u?.uz) && in_town_js(game.u?.ux, game.u?.uy))
+               && !In_sokoban(game.u?.uz) && rn2(2)) {
+        // C ref: on a maze level (all of Gehennom, the big mazes below Medusa,
+        // Vlad's, the planes) a mimic is a STATUE half the time.  The rn2(2) is
+        // evaluated ONLY after the three cheap non-RNG tests, exactly as C's &&
+        // chain orders them — that ordering is why a maze mimic costs one draw
+        // here and a mines-town mimic costs none.
+        ap_type = 'obj';
+        appear = SMS_STATUE;
+        resolved = true;
+    } else if (roomno < 0 && !t_at_local(mx, my)) {
+        // C ref: outside any room and no trap here -> a boulder.  No RNG.
+        ap_type = 'obj';
+        appear = SMS_BOULDER;
+        resolved = true;
+    } else if (rt === ZOO_RT || rt === VAULT_RT) {
+        // C ref: treasure zoo / vault -> a pile of gold.  No RNG.
+        ap_type = 'obj';
+        appear = SMS_GOLD_PIECE;
+        resolved = true;
+    } else if (rt === DELPHI_RT) {
+        // C ref: Delphi -> statue or fountain, one rn2(2).
+        if (rn2(2)) { ap_type = 'obj'; appear = SMS_STATUE; }
+        else { ap_type = 'furniture'; appear = SMS_S_FOUNTAIN; }
+        resolved = true;
+    } else if (rt === TEMPLE_RT) {
+        // C ref: temple -> the altar.  No RNG here; the altar-alignment roll is
+        // in the trailing block below, which C reaches for ANY furniture altar.
+        ap_type = 'furniture';
+        appear = SMS_S_ALTAR;
         resolved = true;
     } else if (rt >= SHOPBASE_RT) {
         if (rn2(10) >= dep) {
@@ -2019,23 +2144,51 @@ function set_mimic_sym(mtmp) {
 
     mtmp.m_ap_type = ap_type;
     mtmp.mappearance = appear;
-    // C ref: when appearing as an object based on a monster type, pick a shape.
+    // C ref: "when appearing as an object based on a monster type, pick a shape"
+    // — makemon.c:2515-2545.  Ported in full: each arm's RNG is conditional on
+    // the shape, so the STATUE arm a maze mimic now reaches draws rndmonnum()
+    // and, for a nocorpse CORPSE, a second rn1().
     if (ap_type === 'obj'
         && (appear === SMS_STATUE || appear === SMS_FIGURINE
             || appear === SMS_CORPSE || appear === SMS_EGG || appear === SMS_TIN)) {
         let mndx = rndmonnum_local();
-        // nocorpse / can_be_hatched refinements consume further RNG only in the
-        // CORPSE-of-a-nocorpse-species path; that requires species data not
-        // tracked here.  The shop mimic appearances reached in this slice never
-        // select a nocorpse corpse, so the conservative single rndmonnum draw
-        // matches the recorded stream.
-        void mndx;
+        // C reads svm.mvitals[mndx].mvflags & G_NOCORPSE.  allmain.c:781 seeds
+        // every mvitals[i].mvflags from mons[i].geno & G_NOCORPSE at newgame and
+        // nothing clears that bit, so mon_nocorpse() (which reads mons[].geno)
+        // is the same predicate without depending on mvitals being populated.
+        const nocorpse_ndx = mon_nocorpse(mndx);
+        if (appear === SMS_CORPSE && nocorpse_ndx) {
+            // rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST): a random
+            // player-role human corpse, since the rolled species leaves none.
+            mndx = rn1(PM_WIZARD_MON - PM_ARCHEOLOGIST_MON + 1, PM_ARCHEOLOGIST_MON);
+        } else if ((appear === SMS_EGG && can_be_hatched(mndx) === NON_PM)
+                   || (appear === SMS_TIN && nocorpse_ndx)) {
+            // revert to a generic egg or an empty tin.  can_be_hatched() itself
+            // draws rn2(77) for an egg-laying species — that draw is C's too.
+            mndx = NON_PM;
+        }
+        mtmp.mcorpsenm = mndx;
     } else if (ap_type === 'obj' && appear === SMS_SLIME_MOLD) {
-        // current_fruit assignment — no RNG.
-    } else if (ap_type === 'furniture' && appear === 33 /*S_altar*/) {
-        // C ref: altar alignment roll (Inhell branch never taken in this slice).
-        rn2(3);
+        // C ref: MCORPSENM = context.current_fruit, and flags.made_fruit = TRUE
+        // so the player can no longer re-use that fruit slot.  No RNG.
+        mtmp.mcorpsenm = game.context?.current_fruit ?? 0;
+        if (game.flags) game.flags.made_fruit = true;
+    } else if (ap_type === 'furniture' && appear === SMS_S_ALTAR) {
+        // C ref: `int algn = rn2(3) - 1;` then
+        //        MCORPSENM = (Inhell && rn2(3)) ? AM_NONE : Align2amask(algn);
+        // The second rn2(3) is guarded by Inhell, so it is drawn ONLY in
+        // Gehennom — where a mimicked altar is usually Moloch's.
+        const algn = rn2(3) - 1;
+        mtmp.mcorpsenm = (In_hell(game.u?.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
+    } else if (mtmp.mcorpsenm != null) {
+        // C ref: "don't retain stale value from a previously mimicked shape".
+        mtmp.mcorpsenm = NON_PM;
     }
+
+    // C ref: `if (does_block(mx, my, &levl[mx][my])) block_point(mx, my);` — a
+    // mimic disguised as a boulder or statue blocks line of sight, which changes
+    // what the map shows behind it.  No RNG.
+    if (does_block(mx, my)) block_point(mx, my);
 }
 
 // C ref: makemon.c rndmonnum() — rndmonst() species index, RNG-faithful.
@@ -2144,34 +2297,240 @@ function mgender_from_permonst(mtmp, mdat) {
     }
 }
 
-// C ref: mon.c newcham() restricted to the vampire-shapeshift cases used by
-// Vlad's Tower.  mdat === null -> pick a shape via pickvampshape; otherwise
-// take the given form (the create_monster waiting-revert path).  Returns 1 if
-// the form changed.  Consumes: pickvampshape (when mdat null) + mgender rn2(10)
-// (conditional) + newmonhp d(m_lev,8) for the new form.
-export function newcham_vamp(mtmp, mdat) {
+// ── shapechangers ────────────────────────────────────────────────────────────
+// C ref: mon.c pm_to_cham() — "as of 3.6.0 we just check M2_SHAPESHIFTER
+// instead of having a big switch statement with hardcoded shapeshifter types".
+// The JS port used to test `ptr.mcls === S_VAMPIRE`, which is the same
+// name-keyed guess that flag exists to replace: it misses the chameleon, the
+// doppelganger and the sandestin, so makemon() left them non-shapechangers and
+// skipped the newcham() their creation is supposed to run.
+export function pm_to_cham(mndx) {
+    const ptr = monster_by_pmidx(mndx);
+    return (ptr && is_shapeshifter_flag(ptr)) ? mndx : NON_PM;
+}
+
+// C ref: mon.c mon_animal_list()/pick_animal().  animal_list[] is every
+// mons[] index below SPECIAL_PM (the long worm tail, the first non-normal
+// entry) with M1_ANIMAL set, built once and cached exactly as C caches
+// ga.animal_list.  The list's ORDER and LENGTH are load-bearing: pick_animal
+// draws rn2(animal_list_count) and indexes straight into it.
+let animal_list = null;
+function mon_animal_list() {
+    if (animal_list) return animal_list;
+    animal_list = [];
+    for (let i = 0; i < SPECIAL_PM; i++) {
+        const p = monster_by_pmidx(i);
+        if (p && is_animal(p)) animal_list.push(i);
+    }
+    return animal_list;
+}
+function pick_animal() {
+    const list = mon_animal_list();
+    let res = list[rn2(list.length)];
+    // Rogue level wants uppercase symbols; C retries exactly once.
+    if (Is_rogue_level(game.u?.uz) && !is_upper_monsym(res))
+        res = list[rn2(list.length)];
+    return res;
+}
+function is_upper_monsym(mndx) {
+    const c = monster_by_pmidx(mndx)?.mlet || '?';
+    return c >= 'A' && c <= 'Z';
+}
+
+// C ref: wizard.c nasties[] — 44 entries in the C source order (neutral block,
+// then chaotic, then lawful).  ROLL_FROM(nasties) is rn2(44), so both the
+// contents and the order matter; resolved by name so a shifted mons[] index
+// can't silently corrupt the table.
+const NASTY_NAMES = [
+    /* neutral */
+    'cockatrice', 'ettin', 'stalker', 'minotaur',
+    'owlbear', 'purple worm', 'xan', 'umber hulk',
+    'xorn', 'zruty', 'leocrotta', 'baluchitherium',
+    'carnivorous ape', 'fire elemental', 'jabberwock',
+    'iron golem', 'ochre jelly', 'green slime',
+    'displacer beast', 'genetic engineer',
+    /* chaotic */
+    'black dragon', 'red dragon', 'arch-lich', 'vampire lord',
+    'master mind flayer', 'disenchanter', 'winged gargoyle',
+    'storm giant', 'Olog-hai', 'elf-noble', 'elven monarch',
+    'ogre tyrant', 'captain', 'gremlin',
+    /* lawful */
+    'silver dragon', 'orange dragon', 'green dragon',
+    'yellow dragon', 'guardian naga', 'fire giant',
+    'Aleax', 'couatl', 'horned devil', 'barbed devil',
+];
+let nasties_idx = null;
+function nasties_table() {
+    if (!nasties_idx) nasties_idx = NASTY_NAMES.map((n) => name_to_pmidx(n));
+    return nasties_idx;
+}
+
+// C ref: wizard.c pick_nasty(difcap).  One ROLL_FROM, an extra ROLL_FROM on the
+// rogue level, then a NON-RNG substitution pass (arch-lich -> master lich etc).
+function pick_nasty(difcap) {
+    const nasties = nasties_table();
+    let res = nasties[rn2(nasties.length)];
+    if (Is_rogue_level(game.u?.uz) && !is_upper_monsym(res))
+        res = nasties[rn2(nasties.length)];
+
+    // Substitute a lesser form when the pick is genocided, too difficult, or
+    // out of place for this half of the dungeon.  No RNG in any of this.
+    let alt = res;
+    const rp = monster_by_pmidx(res);
+    const hell = In_hell(game.u?.uz);
+    if ((mvflags(res) & G_GENOD) !== 0
+        || (difcap > 0 && (rp?.difficulty ?? 0) >= difcap)
+        || ((rp?.geno ?? 0) & (hell ? G_NOHELL : G_HELL)) !== 0)
+        alt = big_to_little(res);
+    if (alt !== res && (mvflags(alt) & G_GENOD) === 0) {
+        const mnam = monster_by_pmidx(alt)?.name || '';
+        const lastspace = mnam.lastIndexOf(' ');
+        const tail = lastspace < 0 ? '' : mnam.slice(lastspace);
+        // only non-juveniles can become the alternate choice
+        if (!mnam.startsWith('baby ')
+            && (lastspace < 0
+                || (tail !== ' hatchling' && tail !== ' pup' && tail !== ' cub')))
+            res = alt;
+    }
+    return res;
+}
+
+// C ref: topten.c get_rnd_toptenentry().  Draws rnd(sysopt.tt_oname_maxrank)
+// — 10 in the shipped sysconf — and then reads that many entries from the
+// score file.  Our port keeps no score file, which is the same state C is in
+// for a fresh installation: readentry() yields points == 0 on the first entry,
+// so the `rank > 1` retry rewinds, hits points == 0 again, and returns NULL.
+// Neither the rewind nor the second scan draws anything, so the whole call is
+// worth exactly one rnd(10) regardless of how the file reads.
+const TT_ONAME_MAXRANK = 10;    // sysconf `tt_oname_maxrank`
+function get_rnd_toptenentry() {
+    rnd(TT_ONAME_MAXRANK);
+    return null;
+}
+
+// C ref: topten.c tt_doppel() — a doppelganger impersonating a past player.
+// With no score entries the `!tt` arm always fires, and its rn1() is the second
+// of the two rn2(13)-shaped draws C records at topten.c:1446 and :1450.
+function tt_doppel(_mon) {
+    const tt = rn2(13) ? get_rnd_toptenentry() : null;
+    if (!tt)
+        return rn1(PM_WIZARD_MON - PM_ARCHEOLOGIST_MON + 1, PM_ARCHEOLOGIST_MON);
+    return NON_PM; /* unreachable while the score file is empty */
+}
+
+// Quest-guardian pmidx block (monsters.h "student" .. "apprentice").
+const PM_STUDENT_MON = 368, PM_APPRENTICE_MON = 381;
+
+// C ref: mon.c select_newcham_form() — the full cham switch.  Every arm's RNG
+// is distinct, and this is the function seed4500 diverged on at step 326: a
+// doppelganger generated on Dlvl 40 draws rn2(7) then rn2(3) then tt_doppel's
+// pair, none of which our port made.
+function select_newcham_form(mon) {
+    let mndx = NON_PM, tryct;
+    switch (mon.cham) {
+    case PM_SANDESTIN:
+        if (rn2(7))
+            mndx = pick_nasty((monster_by_pmidx(PM_ARCHON)?.difficulty ?? 0) - 1);
+        break;
+    case PM_DOPPELGANGER:
+        if (!rn2(7)) {
+            mndx = pick_nasty((monster_by_pmidx(PM_JABBERWOCK)?.difficulty ?? 0) - 1);
+        } else if (rn2(3)) {            /* role monsters */
+            mndx = tt_doppel(mon);
+        } else if (!rn2(3)) {           /* quest guardians */
+            mndx = rn1(PM_APPRENTICE_MON - PM_STUDENT_MON + 1, PM_STUDENT_MON);
+            if (mndx === game.urole?.guardnum) mndx = NON_PM; /* not own role's */
+        } else {                        /* general humanoids */
+            tryct = 5;
+            do {
+                mndx = rn1(SPECIAL_PM - 0 /*LOW_PM*/, 0 /*LOW_PM*/);
+                const p = monster_by_pmidx(mndx);
+                if (p && humanoid_flag(p) && polyok_flag(p)) break;
+            } while (--tryct > 0);
+            if (!tryct) mndx = NON_PM;
+        }
+        break;
+    case PM_CHAMELEON:
+        if (!rn2(3)) mndx = pick_animal();
+        break;
+    case PM_VLAD_THE_IMPALER:
+    case PM_VAMPIRE_LEADER:
+    case PM_VAMPIRE:
+        mndx = pickvampshape(mon);
+        break;
+    case NON_PM:                        /* ordinary monster */
+        // C consults worn dragon scales/mail here.  A freshly created monster
+        // has no armor yet (m_initinv runs later, and newcham disables it), so
+        // this arm leaves mndx as NON_PM and draws nothing.
+        break;
+    }
+    return mndx;
+}
+
+// C ref: mon.c accept_newcham_form().  Pure predicate, no RNG.
+function accept_newcham_form(mon, mndx) {
+    if (mndx === NON_PM) return null;
+    const mdat = monster_by_pmidx(mndx);
+    if (!mdat) return null;
+    if ((mvflags(mndx) & G_GENOD) !== 0) return null;
+    // placeholder entries (orc/giant/elf/human) exist only for corpses
+    if (mndx === PM_ORC_PLACEHOLDER || mndx === PM_GIANT_PLACEHOLDER
+        || mndx === PM_ELF_PLACEHOLDER || mndx === PM_HUMAN_PLACEHOLDER)
+        return null;
+    // select_newcham_form() may deliberately pick a player-monster type, which
+    // polyok() rejects — C special-cases it, so we must too.
+    if (mndx >= PM_ARCHEOLOGIST_MON && mndx <= PM_WIZARD_MON) return mdat;
+    // a shapeshifter is allowed back into its own natural form
+    if (is_shapeshifter_flag(mdat) && mon.cham !== NON_PM && mndx === mon.cham)
+        return mdat;
+    return polyok_flag(mdat) ? mdat : null;
+}
+
+// C ref: mon.c newcham() — the random-shape path (mdat == 0), which is the one
+// makemon.c:1367 uses for every newly created shapechanger.  Returns 1 if the
+// form actually changed.  The retry loop is C's: select_newcham_form() can
+// return a form accept_newcham_form() rejects, and each retry re-draws.
+export function newcham(mtmp, mdat) {
     const olddata = mtmp.data;
     if (mdat == null) {
-        const mndx = pickvampshape(mtmp);
-        mdat = monster_by_pmidx(mndx);
-    }
-    if (!mdat || mdat === olddata || mdat.pmidx === olddata.pmidx)
+        let tryct = 20, mndx;
+        do {
+            mndx = select_newcham_form(mtmp);
+            mdat = accept_newcham_form(mtmp, mndx);
+            // for the first several tries require upper-case on the rogue level
+            if (tryct > 15 && Is_rogue_level(game.u?.uz)
+                && mdat && !is_upper_monsym(mdat.pmidx))
+                mdat = null;
+            if (mdat) break;
+        } while (--tryct > 0);
+        if (!tryct) return 0;
+    } else if ((mvflags(mdat.pmidx) & G_GENOD) !== 0) {
         return 0;
+    }
+    if (!mdat || mdat === olddata || mdat.pmidx === olddata?.pmidx)
+        return 0;                       /* still the same monster */
+
     mgender_from_permonst(mtmp, mdat);
-    // same fraction of max HP as before (no RNG); newmonhp draws d(m_lev,8).
+    // "give the new form the same proportion of HP as its old one had" — no
+    // RNG in the arithmetic; newmonhp() draws d(m_lev, 8) for the new form.
     const hpn = mtmp.mhp, hpd = mtmp.mhpmax || 1;
     const tmp = { data: mdat };
     newmonhp(tmp);
     mtmp.m_lev = tmp.m_lev;
     mtmp.mhpmax = tmp.mhpmax;
-    mtmp.mhp = Math.floor((hpn * tmp.mhp) / hpd) || 1;
+    let nhp = Math.floor((hpn * tmp.mhp) / hpd);
+    if (nhp < 0 || nhp > mtmp.mhpmax) nhp = mtmp.mhpmax;
+    mtmp.mhp = nhp || 1;
     mtmp.data = mdat;
     return 1;
 }
 
+// Retained name for the Vlad's-Tower call sites; newcham() now covers every
+// shapechanger, vampires included.
+export function newcham_vamp(mtmp, mdat) { return newcham(mtmp, mdat); }
+
 export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
-    const ptr = mdat ?? rndmonst();
-    if (!ptr) return null;
+    let ptr = mdat;
     let allow_minvent = true;
 
     // C ref: makemon.c:1194 — "Does monster already exist at the position?"
@@ -2181,12 +2540,59 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // makemon call must fail silently rather than draw next_ident/newmonhp.
     // (x==0,y==0 means "caller wants a random location", which this port
     // resolves in makemon_rnd_spawn() before reaching here.)
+    //
+    // This runs BEFORE the species roll, as it does in C: for a random monster
+    // C has not called rndmonst() yet at this point, so an occupied square
+    // costs no RNG at all.
+    //
+    // C ref: makemon.c:1172 — "if caller wants random location, do it here",
+    // i.e. x == 0 && y == 0 resolves through makemon_rnd_goodpos() BEFORE
+    // anything else.  makemon_rnd_spawn() is the pre-resolved entry point used
+    // by the movemon spawn path, but callers that pass a known species and no
+    // position (mk_trap_statue's `makemon(&mons[...], 0, 0, ...)`) reach here
+    // with x == y == 0 and must get the position search, which draws
+    // rn1(COLNO-3,2)/rn2(ROWNO) per attempt.
+    if (x === 0 && y === 0) {
+        const pos = makemon_rnd_goodpos(ptr);
+        if (!pos) return null;
+        x = pos.x; y = pos.y;
+    }
     if (x > 0 && mm_mon_at(x, y)) {
         if (!(mmflags & MM_ADJACENTOK)) return null;
         const cc = enexto_spawn(x, y, ptr);
         if (!cc) return null;
         x = cc.x; y = cc.y;
     }
+
+    if (!ptr) {
+        // C ref: makemon.c:1218-1231 — "make a random (common) monster that can
+        // survive here.  (the special levels ask for random monsters at specific
+        // positions, causing mass drowning on the medusa level, for instance.)"
+        //
+        //     do {
+        //         if (!(ptr = rndmonst())) return NULL;
+        //         fakemon.data = ptr;
+        //     } while (++tryct <= 50
+        //              && ((tryct == 1 && throws_rocks(ptr) && In_sokoban(&u.uz))
+        //                  || !goodpos(x, y, &fakemon, gpflags)));
+        //
+        // The re-roll is not cosmetic: each retry is a fresh rndmonst() species
+        // scan, ~150 rn2() draws.  Taking the first roll unconditionally is what
+        // desynced seed4500 on Dlvl 40 once the earlier mimic/shapechanger bugs
+        // were fixed — C rejected its first pick for the square and rolled
+        // again while we kept ours.  goodpos() itself can draw (the eel rn2(13)).
+        let tryct = 0;
+        for (;;) {
+            ptr = rndmonst();
+            if (!ptr) return null;               /* no more monsters! */
+            if (++tryct > 50) break;
+            const balks = (tryct === 1 && throws_rocks_flag(ptr)
+                           && In_sokoban(game.u?.uz))
+                || !goodpos_spawn(x, y, ptr);
+            if (!balks) break;
+        }
+    }
+    if (!ptr) return null;
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags };
     mtmp.m_id = next_ident();
@@ -2301,9 +2707,19 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         let mitem = 0;
         if (ptr.pmidx === PM_VLAD_THE_IMPALER) mitem = CANDELABRUM_OF_INVOCATION;
         mtmp.cham = NON_PM;                     /* default: not a shapechanger */
-        if (ptr.mcls === S_VAMPIRE) {           /* pm_to_cham() != NON_PM */
-            mtmp.cham = ptr.pmidx;
-            if (ptr.pmidx !== PM_VLAD_THE_IMPALER && newcham_vamp(mtmp, null))
+        // C ref: makemon.c:1356 `if (!Protection_from_shape_changers
+        //   && (mcham = pm_to_cham(mndx)) != NON_PM)`.  pm_to_cham() is the
+        // M2_SHAPESHIFTER flag test, so this arm covers the chameleon, the
+        // doppelganger and the sandestin as well as the vampires — each of
+        // which then immediately picks a shape via newcham().  Restricting it
+        // to mcls === S_VAMPIRE skipped that call for the other three, which is
+        // where seed4500 lost the stream on Dlvl 40.
+        const mcham = game.u?.uprops?.Protection_from_shape_changers
+            ? NON_PM : pm_to_cham(ptr.pmidx);
+        if (mcham !== NON_PM) {
+            mtmp.cham = mcham;
+            // Vlad stays in his normal shape so he can carry the Candelabrum.
+            if (ptr.pmidx !== PM_VLAD_THE_IMPALER && newcham(mtmp, null))
                 allow_minvent = false;
         } else if (ptr.name === 'ghost' && !(mmflags & MM_NONAME)) {
             // C ref: makemon.c:1374 `christen_monst(mtmp, rndghostname())` —
@@ -2440,24 +2856,71 @@ export function mm_mon_at(x, y) {
     return null;
 }
 
-// C ref: teleport.c goodpos(x,y,mtmp,gpflags) for a to-be-created monster
+// C ref: teleport.c goodpos(x, y, mtmp, gpflags) for a to-be-created monster
 // (fakemon carries the chosen permonst; GP_AVOID_MONPOS|GP_CHECKSCARY set).
-// The slice's spawn levels carry no water/lava/boulders, so the eel/water/lava
-// branches and the boulder/exclusion-zone gates are inert; we keep the load-
-// bearing tests: in-bounds, not the hero, no monster present, accessible.
+//
+// teleport.js exports the general goodpos(), but importing it here forms a
+// cycle through mkobj.js that dies with a top-level TDZ, so the makemon-side
+// predicate lives here.  It is the same C function with the flags makemon
+// actually passes folded in, and — unlike the old version — it keeps the
+// branches that DRAW: an eel offered a dry square costs rn2(13) whether or not
+// it takes it, and the species retry loop calls this once per candidate.
 function goodpos_spawn(x, y, ptr) {
     if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return false; // !isok
     if (game.u?.ux === x && game.u?.uy === y) return false;       // u_at
-    if (mm_mon_at(x, y)) return false;                            // MON_AT + AVOID_MONPOS
-    // water/lava handled by accessible() below for non-swimmers; the spawn
-    // levels here have neither, so accessible() == ACCESSIBLE(typ).
+    if (mm_mon_at(x, y)) return false;                            // GP_AVOID_MONPOS
+    if (ptr) {
+        if (mm_is_pool(x, y)) {
+            // a swimmer may land in water; anyone else must be airborne, and a
+            // freshly rolled monster never is (m_in_air is levitation/flight
+            // state it does not have yet).
+            return is_swimmer_flag(ptr) || is_flyer_flag(ptr);
+        } else if (ptr.mcls === S_EEL_CLS && rn2(13)) {
+            // C: an eel out of water usually refuses — and this rn2(13) fires
+            // whenever an eel is offered a square, so it must not be skipped.
+            return false;
+        } else if (mm_is_lava(x, y)) {
+            return is_flyer_flag(ptr) || mm_likes_lava(ptr);
+        }
+        if (passes_walls_flag(ptr) && mm_may_passwall(x, y)) return true;
+        if (amorphous_flag(ptr) && mm_closed_door(x, y)) return true;
+        // onscary(): Elbereth/scare-monster only exist once the hero has acted;
+        // during level generation there is nothing scary on the map.
+    }
     const typ = game.level?.at(x, y)?.typ;
     if (typ == null) return false;
-    if (typ < DOOR) {            // !accessible
-        if (!mm_is_pool(x, y) && !mm_is_lava(x, y)) return false;
-        return false;            // pool/lava: non-swimmer random mon rejected
-    }
+    if (typ < DOOR) return false;                                 // !accessible
+    // C ref: `if (sobj_at(BOULDER, x, y) && !throws_rocks(mdat)) return FALSE;`
+    if (!(ptr && throws_rocks_flag(ptr)) && mm_boulder_at(x, y)) return false;
     return true;
+}
+
+// C ref: mondata.h likes_lava(ptr) — the fire elemental and the salamander,
+// which C spells out as two mons[] pointer comparisons rather than a flag.
+function mm_likes_lava(ptr) {
+    return ptr?.name === 'fire elemental' || ptr?.name === 'salamander';
+}
+
+// C ref: rm.h may_passwall(x,y) — a wall-walker still can't enter solid stone
+// that has no room behind it; on the generated levels here the relevant test is
+// simply "is this a wall/stone square inside the level".
+function mm_may_passwall(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return typ != null && typ <= DBWALL;
+}
+// C ref: rm.h closed_door(x,y) — a DOOR whose doormask has D_CLOSED|D_LOCKED.
+function mm_closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && loc.typ === DOOR && ((loc.doormask ?? 0) & (2 /*D_CLOSED*/ | 4 /*D_LOCKED*/)) !== 0;
+}
+// C ref: sobj_at(BOULDER, x, y).
+function mm_boulder_at(x, y) {
+    const objs = game.level?.objects;
+    if (!objs) return false;
+    for (const o of objs)
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === SMS_BOULDER)
+            return true;
+    return false;
 }
 
 // C ref: makemon.c makemon_rnd_goodpos() — find a random good position for a
@@ -2469,14 +2932,20 @@ function makemon_rnd_goodpos(ptr) {
     do {
         nx = rn2(COLNO - 3) + 2;   // rn1(COLNO-3, 2)
         ny = rn2(ROWNO);           // rn2(ROWNO)
-        good = mm_cansee(nx, ny) ? false : goodpos_spawn(nx, ny, ptr);
+        // C ref: `good = (!gi.in_mklev && cansee(nx,ny)) ? FALSE : goodpos(...)`
+        // — during level generation the in-sight rejection does NOT apply, so a
+        // statue-trap monster placed inside mklev() accepts visible squares.
+        good = (!game.in_mklev && mm_cansee(nx, ny))
+            ? false : goodpos_spawn(nx, ny, ptr);
     } while ((++tryct < 50) && !good);
 
     if (!good) {
-        // Full-map scan (twice; first pass skips in-sight squares).  Blind is
-        // FALSE here, in_mklev is FALSE.
+        // Full-map scan (twice; the first pass skips in-sight squares).
+        // C ref: `int bl = (gi.in_mklev || Blind) ? 1 : 0;` — inside mklev()
+        // there is no first pass at all, so a level-generation placement never
+        // skips a visible square here either.
         const xofs = nx, yofs = ny;
-        for (let bl = 0; bl < 2 && !good; bl++) {
+        for (let bl = game.in_mklev ? 1 : 0; bl < 2 && !good; bl++) {
             for (let dx = 0; dx < COLNO && !good; dx++) {
                 for (let dy = 0; dy < ROWNO && !good; dy++) {
                     const cx = ((dx + xofs) % (COLNO - 1)) + 1;
