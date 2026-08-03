@@ -510,6 +510,35 @@ export async function nasty(summoner) {
                     const where = du <= 2 ? ' next to you' : du <= 64 ? ' close by' : '';
                     nastyMessages.push(`A ${mtmp.data?.name || makeData.name || 'creature'} suddenly appears${where}!`);
                 }
+                /* C ref: makemon.c:1497-1500 — makemon_common's in-game
+                 * (!in_mklev) tail runs dochugw(mtmp, FALSE) (monmove.c:
+                 * 204-238): a freshly appeared, visible, hostile, mobile monster
+                 * close enough to be a threat stops the hero's occupation via
+                 * stop_occupation() (allmain.c:684-697: "You stop searching.",
+                 * nomul(0)).  Unlike the moveloop occupation gate (allmain.c:
+                 * 502-512, fired after a tick when a monster was already
+                 * adjacent), this fires mid-once-per-turn inside makemon, so a
+                 * counted-search batch loses its remaining ticks WITHOUT
+                 * charging another turn — the pass loop ends right after the
+                 * current turn's tail (no extra take/phase pair). */
+                if (!summoner && !game.in_mklev
+                    && (game._search_pending_count || 0) > 0
+                    && !mtmp.mpeaceful && !(mtmp.data?.noattacks)
+                    && (((mtmp.mx ?? spot.x) - (game.u?.ux ?? 0)) ** 2
+                        + ((mtmp.my ?? spot.y) - (game.u?.uy ?? 0)) ** 2) <= (7 + 1) * (7 + 1)
+                    && !game.u?.blind && !mtmp.mundetected
+                    && (game.u?.seeInvisible || !mtmp.minvis)
+                    && !!(game.viz_array?.[mtmp.my]?.[mtmp.mx] & IN_SIGHT)
+                    && (mtmp.mcanmove ?? 1) > 0 && !mtmp.mfrozen) {
+                    nastyMessages.push('You stop searching.');
+                    game._search_pending_count = 0;
+                    game._counted_repeat_interruptible = 0;
+                    /* nomul(0) — drop the batch's remaining charged time so the
+                     * pending-time loop exits after the current phase. */
+                    game._pending_time_passed = 0;
+                    game._skip_pending_time_decrement = 1;
+                    game._stop_search_extra_pass = 0;
+                }
             } else {
                 /* wizard.c:716-727: random substitute for a genocided pick. */
                 const sub = await makemon(null, spot.x, spot.y, 0);

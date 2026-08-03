@@ -25,7 +25,14 @@ export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 
+let _dbgN = 0;
+const _DBG = process?.env?.RNG_STACK_AT ? process.env.RNG_STACK_AT.split('-').map(Number) : null;
 function RND(x) {
+    if (_DBG) {
+        _dbgN++;
+        if (_dbgN >= _DBG[0] && _dbgN <= (_DBG[1] ?? _DBG[0]))
+            console.error(`#${_dbgN} mod=${x}\n` + new Error().stack.split('\n').slice(2, 8).join('\n'));
+    }
     const val = isaac64_next_uint64(game.coreCtx);
     return Number(val % BigInt(x));
 }

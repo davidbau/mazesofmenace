@@ -162,6 +162,63 @@ export function newuexp(lev) {
 }
 
 // src/attrib.c setuhpmax() — set max HP, tracking the peak.
+// src/exper.c:207 losexp() — lose an experience level (or, at level 1 with
+// no drainer, just all experience). resists_drli needs the drain-resistance
+// worn scan; nothing grants it to a fresh hero, so the real reads run.
+export async function losexp(drainer) {
+    const u = game.u;
+
+    /* resists_drli(youmonst) — worn drain-resistance not modelled */
+
+    if (u.ulevel > 1 || drainer)
+        await pline(`Goodbye level ${u.ulevel}.`);
+
+    if (u.ulevel > 1) {
+        u.ulevel -= 1;
+        (game.unported ||= new Set()).add('losexp:adjabil');
+    } else {
+        if (drainer) {
+            game.killer = { format: 1 /* KILLED_BY */, name: drainer };
+            const { done } = await import('./end.js');
+            const { DIED } = await import('./const.js');
+            await done(DIED);
+        }
+        u.uexp = 0;
+    }
+
+    const olduhpmax = u.uhpmax;
+    /* src/attrib.c:1147 minuhpmax(10) — max(u.ulevel, 10) */
+    const uhpmin = Math.max(u.ulevel, 10);
+    let num = (u.uhpinc?.[u.ulevel] ?? 0);
+    u.uhpmax -= num;
+    if (u.uhpmax < uhpmin)
+        setuhpmax(uhpmin, true);
+    if (u.uhpmax > olduhpmax)
+        setuhpmax(olduhpmax, true);
+
+    u.uhp -= num;
+    if (u.uhp < 1)
+        u.uhp = 1;
+    else if (u.uhp > u.uhpmax)
+        u.uhp = u.uhpmax;
+
+    num = (u.ueninc?.[u.ulevel] ?? 0);
+    u.uenmax -= num;
+    if (u.uenmax < 0)
+        u.uenmax = 0;
+    u.uen -= num;
+    if (u.uen < 0)
+        u.uen = 0;
+    else if (u.uen > u.uenmax)
+        u.uen = u.uenmax;
+
+    if (u.uexp > 0)
+        u.uexp = newuexp(u.ulevel) - 1;
+
+    /* Upolyd mh adjustment — polymorph not modelled */
+    (game.disp ||= {}).botl = true;
+}
+
 export function setuhpmax(newmax, even_when_polyd) {
     /* Upolyd is false in this port; the else arm needs polymorph state. */
     if (newmax !== game.u.uhpmax) {

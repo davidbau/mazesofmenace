@@ -21,7 +21,7 @@ import { You_cant, You, pline_The } from './pline.js';
 import { getdir } from './cmd.js';
 import { ECMD_CANCEL, TT_PIT, isok, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { Monnam } from './do_name.js';
-import { pline, canseemon } from './display.js';
+import { pline, canseemon, feel_location } from './display.js';
 import { rn2 } from './rng.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { xname, doname, singular, An, the, yname } from './objnam.js';
@@ -71,8 +71,32 @@ export async function doopen_indir(x, y) {
     if (!door || !IS_DOOR(door.typ))
         return res;
 
-    if (!(door.doormask & D_CLOSED))
-        return res; /* broken / doorless / already open / locked messages */
+    if (!(door.doormask & D_CLOSED)) {
+        /* src/lock.c:855-876 — say why the door won't open. */
+        let mesg;
+        let locked = false;
+        switch (door.doormask) {
+        case D_BROKEN:
+            mesg = ' is broken';
+            break;
+        case D_NODOOR:
+            mesg = 'way has no door';
+            break;
+        case D_ISOPEN:
+            mesg = ' is already open';
+            break;
+        default:
+            mesg = ' is locked';
+            locked = true;
+            break;
+        }
+        await pline_xy(cc.x, cc.y, `This door${mesg}.`);
+        /* flags.autounlock (apply key / kick prompts): no recorded rc sets
+           autounlock, and the arms prompt, so record if one ever does. */
+        if (locked && game.flags?.autounlock)
+            note_unported_lock('doopen_indir:autounlock');
+        return res;
+    }
 
     /* door is known to be CLOSED */
     if (rnl(20) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
@@ -245,9 +269,18 @@ export async function pick_lock(pick, rx, ry, container) {
 
     const door = game.level?.at(cc.x, cc.y);
     if (!door || !IS_DOOR(door.typ)) {
+        /* src/lock.c:578-593 — the attempt FEELS the location; if the map
+           memory changes, the hero learned something and time passes. */
+        let res = PICKLOCK_DID_NOTHING;
+        const before = JSON.stringify(door?.remembered_glyph ?? null);
+        const beforetyp = door?.lastseentyp;
+        feel_location(cc.x, cc.y);
+        if (JSON.stringify(door?.remembered_glyph ?? null) !== before
+            || door?.lastseentyp !== beforetyp)
+            res = PICKLOCK_LEARNED_SOMETHING;
         await You(`see no ${is_drawbridge_wall(cc.x, cc.y) >= 0
                             ? 'lock on the drawbridge' : 'door there'}.`);
-        return PICKLOCK_DID_NOTHING;
+        return res;
     }
     switch (door.doormask) {
     case D_NODOOR:

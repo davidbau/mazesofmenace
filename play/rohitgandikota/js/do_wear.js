@@ -488,7 +488,7 @@ function bimanual_obj(o) {
             && objects[o.otyp].oc_big);
 }
 
-function helm_simple_name(h) {
+export function helm_simple_name(h) {
     /* "hat" for flimsy headgear, else "helmet" */
     return objects[h.otyp].oc_material <= 3 ? 'hat' : 'helmet';
 }

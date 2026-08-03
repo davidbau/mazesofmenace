@@ -9,6 +9,7 @@ import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
 import { cansee, vision_recalc } from './vision.js';
+import { ACURR } from './attrib.js';
 import { t_at } from './mon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -1072,7 +1073,7 @@ function render_map_row(y) {
 // "St:19" where C shows "St:18/01" — the value was right, the rendering wasn't.
 function get_strength_str() {
     const STR18 = (x) => 18 + x;
-    const st = game.u.acurr?.a?.[0] ?? 0;   /* A_STR */
+    const st = ACURR(0);                    /* ACURR(A_STR) as in C botl.c */
 
     if (st > 18) {
         if (st > STR18(100))
@@ -1104,7 +1105,9 @@ function _statusLine1() {
        which only worked while the values were a hardcoded array already
        written in display order. */
     const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
-    const at = (i) => u.acurr?.a?.[i] ?? '?';
+    /* src/botl.c:87 prints ACURR(x), never the raw array: abon and atemp
+       (wounded legs' temporary Dex loss) are part of the shown value. */
+    const at = (i) => (game.u?.acurr ? ACURR(i) : '?');
     const stats = `St:${get_strength_str()} Dx:${at(A_DEX)} Co:${at(A_CON)} `
                 + `In:${at(A_INT)} Wi:${at(A_WIS)} Ch:${at(A_CHA)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
@@ -1171,6 +1174,54 @@ function _paint_map_cell(display, x, y) {
     display.setCell(x - 1, y + 1, ch,
                     term_start_color(g.disp_color ?? NO_COLOR),
                     g.disp_attr ?? 0);
+}
+
+// src/display.c:3365 set_seenv() — set the seen vector of lev as if seen
+// from (x0,y0) to (x,y). Note dy is inverted, as in C.
+const seenv_matrix_d = [
+    [SV2, SV1,   SV0],
+    [SV3, 0xFF,  SV7],   /* SVALL center */
+    [SV4, SV5,   SV6],
+];
+export function set_seenv(lev, x0, y0, x, y) {
+    const dx = x - x0, dy = y0 - y;
+    lev.seenv = (lev.seenv || 0)
+        | seenv_matrix_d[Math.sign(dy) + 1][Math.sign(dx) + 1];
+}
+
+// src/display.c:746 feel_location() — the hero maps a square by touch:
+// seen vector set as if seen, then the memory written from the level's
+// truth (top object, else seen trap, else engraving/terrain), regardless
+// of vision. The levitation feel rules and the underwater arm are gated.
+export function feel_location(x, y) {
+    if (!isok(x, y))
+        return;
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return;
+
+    set_seenv(loc, game.u.ux, game.u.uy, x, y);
+
+    if (game.u.uprops?.LEVITATION)
+        (game.unported ||= new Set()).add('feel_location:levitation');
+
+    /* _map_location(x, y, 1) */
+    const obj = (game.level?.objects || [])
+                    .find(o => o.ox === x && o.oy === y);
+    const trap = t_at(x, y);
+    const memg = obj ? floor_object_glyph(obj)
+        : (trap && trap.tseen) ? trap_glyph(trap)
+        : (engraving_glyph(loc, x, y) || terrain_glyph(loc, x, y));
+    if (game.level?.flags?.hero_memory)
+        loc.remembered_glyph = { ch: memg.ch, color: memg.color,
+                                 decgfx: memg.dec,
+                                 glyph: memg.glyph
+                                     ?? { kind: 'cmap', cmap: memg.cmap } };
+    /* map_background()/map_location() record the terrain type the hero
+       has last seen here (svl.lastseentyp); callers compare it to learn
+       whether feeling the spot taught the hero anything. */
+    loc.lastseentyp = loc.typ;
+    newsym(x, y);
 }
 
 // src/display.c:2147 row_refresh() — repaint map row y, columns start..stop,

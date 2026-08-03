@@ -196,6 +196,14 @@ export async function newgame() {
         // src/u_init.c:991 — u.umonnum = u.umonster = urole.mnum. find_ac()
         // starts from mons[u.umonnum].ac, so a hero without it has no base AC.
         g.u.umonnum = g.u.umonster = g.urole.mnum;
+        /* src/decl.c go.oldcap — zero-initialised; encumber_msg() compares
+           against it and undefined breaks the first transition message. */
+        g.oldcap = 0;
+        /* src/decl.c u.uluck/u.moreluck — zero-initialised; change_luck()
+           adds to them, and the moon/friday13 start bonuses go through it,
+           so undefined turns the whole luck system into NaN. */
+        g.u.uluck = 0;
+        g.u.moreluck = 0;
         // src/mondata.c set_uasmon() — gy.youmonst.data = &mons[u.umonnum].
         // The hero-as-monster struct: combat code passes it to the same
         // functions that take a real monster (dmgval, mhitm_ad_phys,
@@ -552,7 +560,7 @@ export async function moveloop_core() {
             if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
                 /* src/allmain.c:222 — both hero and monsters are out of
                    steam this round, so set up a new turn */
-                mcalcdistress();
+                await mcalcdistress();
 
                 /* src/allmain.c:232 — reallocate movement rations */
                 for (const mtmp of g.level?.monsters || [])
@@ -684,6 +692,11 @@ export async function moveloop_core() {
         g.context.move = 1;             /* the occupation took this turn */
         return;
     }
+
+    /* src/allmain.c:513 — cleared before each command; domove sets it back
+       when the hero's position actually changed. u_calc_moveamt reads it to
+       decide whether a mounted hero's budget comes from the steed. */
+    g.u.umoved = false;
 
     /* src/allmain.c:515 — the run/rush loop. While multi is positive the hero
        keeps moving WITHOUT reading another key, which is what makes one

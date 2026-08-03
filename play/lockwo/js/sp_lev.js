@@ -12,7 +12,7 @@ import {
     ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM, SHARED,
     OROOM, THEMEROOM, ZOO, ROOMOFFSET, isok, IS_DOOR,
     VAULT, SHOPBASE, BEEHIVE, FILL_NONE, FILL_NORMAL,
-    COURT, MORGUE, BARRACKS, LEPREHALL, COCKNEST, ANTHOLE,
+    COURT, SWAMP, MORGUE, BARRACKS, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
@@ -21,8 +21,14 @@ import {
     AM_NONE, AM_SHRINE, AM_SANCTUM,
     IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
+    ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, SLP_GAS_TRAP, ANTI_MAGIC,
     PIT, NO_TRAP, is_pit, BURN,
 } from './const.js';
+// readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
+// rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
+// so this is not a cycle.
+import { readobjnam } from './readobjnam.js';
+import { objects as OBJDATA } from './mkobj.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, LARGE_BOX, mk_tt_object,
          WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
@@ -282,6 +288,11 @@ function percent(n) {
 // math.random(i) is the 1-arg form: 1 + nh.rn2(i). So each iteration emits one
 // rn2(i) for i from len down to 2 (len-1 calls total). We mutate `list` in place
 // using a 0-based JS array; the swap index j maps Lua j∈[1,i] → JS j-1.
+// mklev.js injects its mktrap_victim() at import time; a direct import would make
+// the existing mklev -> sp_lev edge bidirectional.
+let _mktrap_victim = null;
+export function set_mktrap_victim(fn) { _mktrap_victim = fn; }
+
 export function shuffle(list) {
     for (let i = list.length; i >= 2; i--) {
         const j = 1 + rn2(i); // math.random(i) == 1 + rn2(i), Lua 1-based
@@ -406,6 +417,28 @@ function mkobj_erosions() {
     rn2(1000);
 }
 
+// C: themerms.lua:101 "Trap room".  des.trap() is not RNG-free: mklev.c:2135's
+// victim gate evaluates `lvl <= rnd(4)` BEFORE the kind tests, so every call
+// draws rnd(4) and may then build a victim.
+function fill_trap_room(croom) {
+    const traps = [ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP,
+                   LANDMINE, SLP_GAS_TRAP, RUST_TRAP, ANTI_MAGIC];
+    shuffle(traps);
+    const kind = traps[0];
+    const sel = [];
+    for (const c of selection_room(croom)) if (rn2(100) < 30) sel.push(c);
+    const lvl = level_difficulty_ext();
+    for (const c of sel) {
+        const t = maketrap(c.x, c.y, kind);
+        const k = t ? t.ttyp : NO_TRAP;
+        if (k !== NO_TRAP && lvl <= rnd(4)
+            && k !== SQKY_BOARD && k !== RUST_TRAP
+            && !is_pit(k) && (k < HOLE || k === MAGIC_TRAP)
+            && _mktrap_victim)
+            _mktrap_victim(t);
+    }
+}
+
 export function themeroom_fill(croom) {
     const fills = [
         { name: 'Ice room' },
@@ -437,7 +470,12 @@ export function themeroom_fill(croom) {
             pick = fill;
         }
     }
-    if (game.currentSeed === 2600 && pick?.name === 'Temple of the gods') {
+    // C ref: dat/themerms.lua:213 "Temple of the gods" contents = three
+    // des.altar() calls, dispatched whenever themerooms_generate()'s weighted
+    // walk picks that entry — on ANY seed or level.  This was gated on
+    // `game.currentSeed === 2600`, so every other seed silently skipped the fill
+    // (and its somexyspace() position draws).
+    if (pick?.name === 'Temple of the gods') {
         for (const al of (game.splev_align || [0, 0, 0])) {
             const pos = { x: 0, y: 0 };
             if (!somexyspace(croom, pos)) continue;
@@ -459,6 +497,8 @@ export function themeroom_fill(croom) {
         create_teleportation_hub(croom);
     } else if (pick?.name === 'Storeroom') {
         create_storeroom(croom);
+    } else if (pick?.name === 'Trap room') {
+        fill_trap_room(croom);
     }
 }
 
@@ -1031,6 +1071,91 @@ function fill_zoo_core(sroom) {
     }
 }
 
+// C ref: mkroom.c squadprob[] — the soldier mix a barracks is filled with.
+const SQUADPROB = [
+    ['soldier', 80], ['sergeant', 15], ['lieutenant', 4], ['captain', 1],
+];
+
+// C ref: mkroom.c squadmon() — one rnd(80 + level_difficulty()) picks the rank
+// off the cumulative table; a roll past the table's total falls back to a flat
+// rn2(SIZE) pick (the ROLL_FROM macro).
+function squadmon() {
+    const sel_prob = rnd(80 + level_difficulty_ext());
+    let cpro = 0;
+    for (const [name, prob] of SQUADPROB) {
+        cpro += prob;
+        if (cpro > sel_prob) return monster_by_pmidx(name_to_pmidx(name));
+    }
+    return monster_by_pmidx(name_to_pmidx(SQUADPROB[rn2(SQUADPROB.length)][0]));
+}
+
+// C ref: mkroom.c fill_zoo() — the BARRACKS case.  Every eligible square gets a
+// sleeping soldier, and 1 in 20 also gets the payroll box.  The head of
+// fill_zoo() draws nothing for BARRACKS (only COURT/BEEHIVE/ZOO/LEPREHALL do).
+function fill_zoo_barracks(sroom) {
+    const g = game;
+    const sh = sroom.fdoor;
+    const door = g.level?.doors?.[sh];
+    for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
+        for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+            // C ref: fill_zoo() mkroom.c:331-340 — the non-irregular skip.  Note
+            // the door test compares only the door's x (or y) against the room
+            // edge, so a door beside one corner blanks that whole edge column.
+            const typ = g.level?.at(sx, sy)?.typ;
+            if (typ == null || !SPACE_POS(typ)) continue;
+            if (sroom.doorct && door
+                && ((sx === sroom.lx && door.x === sx - 1)
+                    || (sx === sroom.hx && door.x === sx + 1)
+                    || (sy === sroom.ly && door.y === sy - 1)
+                    || (sy === sroom.hy && door.y === sy + 1)))
+                continue;
+            const mon = makemon(squadmon(), sx, sy, MM_ASLEEP | MM_NOGRP);
+            if (mon) mon.msleeping = 1;
+            if (!rn2(20))
+                mksobj_at(rn2(3) ? LARGE_BOX : CHEST, sx, sy, true, false);
+        }
+    }
+    if (g.level?.flags) g.level.flags.has_barracks = true;
+}
+
+// C ref: sp_lev.c add_doors_to_room() — register every door on (or just
+// outside) the room's boundary with the room.  No RNG.
+export function add_doors_to_room(croom) {
+    if (!croom) return;
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
+            const typ = game.level?.at(x, y)?.typ;
+            if (typ == null) continue;
+            if (IS_DOOR(typ) || typ === SDOOR) sp_add_door(x, y, croom);
+        }
+    for (let i = 0; i < (croom.nsubrooms || 0); i++)
+        add_doors_to_room(croom.sbrooms[i]);
+}
+
+// C ref: mklev.c add_door() — append to the level's door list, keeping each
+// room's doors contiguous from its fdoor index.  No RNG.
+function sp_add_door(x, y, aroom) {
+    const lev = game.level;
+    if (!lev) return;
+    if (!lev.doors) lev.doors = [];
+    if (lev.doorindex == null) lev.doorindex = lev.doors.length;
+    for (let i = 0; i < aroom.doorct; i++) {
+        const d = lev.doors[aroom.fdoor + i];
+        if (d && d.x === x && d.y === y) return;
+    }
+    if (aroom.doorct === 0) aroom.fdoor = lev.doorindex;
+    aroom.doorct++;
+    for (let tmp = lev.doorindex; tmp > aroom.fdoor; tmp--)
+        lev.doors[tmp] = lev.doors[tmp - 1];
+    for (let i = 0; i < lev.nroom; i++) {
+        const broom = lev.rooms[i];
+        if (broom && broom !== aroom && broom.doorct && broom.fdoor >= aroom.fdoor)
+            broom.fdoor++;
+    }
+    lev.doorindex++;
+    lev.doors[aroom.fdoor] = { x, y };
+}
+
 // C ref: sp_lev.c fill_special_room() — fills vaults, zoos, shops, etc.
 export function fill_special_room(croom) {
     if (!croom) return;
@@ -1074,7 +1199,6 @@ export function fill_special_room(croom) {
         case COCKNEST:
         case LEPREHALL:
         case MORGUE:
-        case BARRACKS:
             // C ref: sp_lev.c fill_special_room() -> fill_zoo(croom).  fill_zoo
             // itself implements COURT and BEEHIVE and returns early for the
             // rest: ZOO/LEPREHALL/MORGUE/BARRACKS/COCKNEST/ANTHOLE each need
@@ -1083,27 +1207,57 @@ export function fill_special_room(croom) {
             // reaches them, and guessing would consume RNG C does not.
             fill_zoo(croom);
             break;
+        case BARRACKS:
+            // C ref: mkroom.c fill_zoo()'s BARRACKS arm, which this port has as
+            // its own function (squadmon + the payroll box).
+            fill_zoo_barracks(croom);
+            break;
         default:
+            // The remaining fill_zoo per-square cases (ZOO, LEPREHALL, COCKNEST,
+            // ANTHOLE) are NOT ported: each needs its own species picker
+            // (courtmon/morguemon/antholemon) whose draw counts we cannot verify
+            // without a recorded stream that reaches them, and guessing would
+            // consume RNG C does not.  Leave them no-ops rather than emit wrong
+            // draws.
             break;
         }
     }
 
-    // C ref: sp_lev.c fill_special_room() trailing switch — the per-type
-    // svl.level.flags bits.  fill_zoo() already sets has_court / has_beehive
-    // for the two types it stocks; the rest of the bits belong to room types
-    // whose fill is not ported, so only VAULT is meaningful here.
+    // C ref: sp_lev.c fill_special_room():2778-2803 — the level flags are set
+    // for EVERY special room, outside the needfill == FILL_NORMAL block.  A
+    // `filled = 2` room (castle.lua's throne room) therefore still flags the
+    // level even though nothing is spawned in it; dosounds() reads these.
+    const lf = game.level?.flags;
+    if (!lf) return;
     switch (croom.rtype) {
-    case VAULT:
-        if (game.level?.flags) game.level.flags.has_vault = true;
-        break;
+    case VAULT: lf.has_vault = true; break;
+    case ZOO: lf.has_zoo = true; break;
+    case COURT: lf.has_court = true; break;
+    case MORGUE: lf.has_morgue = true; break;
+    case BEEHIVE: lf.has_beehive = true; break;
+    case BARRACKS: lf.has_barracks = true; break;
+    case TEMPLE: lf.has_temple = true; break;
+    case SWAMP: lf.has_swamp = true; break;
+    default: break;
     }
 }
+
+// C ref: sp_lev.c room_types[] — the des-file room-type names, in the order
+// get_table_roomtype_opt() searches them.  Only the types the ported levels
+// actually name are listed; anything else falls back to OROOM exactly as an
+// unrecognised name would.
+const ROOM_TYPE_BY_NAME = {
+    ordinary: OROOM, themed: THEMEROOM, throne: COURT, swamp: SWAMP,
+    vault: VAULT, beehive: BEEHIVE, morgue: MORGUE, barracks: BARRACKS,
+    zoo: ZOO, temple: TEMPLE, anthole: ANTHOLE, cocknest: COCKNEST,
+    leprehall: LEPREHALL, shop: SHOPBASE,
+};
 
 export function lspo_region({ region, type = 'ordinary', irregular = false,
                               filled = 0, joined = true, lit = -1,
                               contents = null }) {
     let [dx1, dy1, dx2, dy2] = region;
-    const rtype = type === 'themed' ? THEMEROOM : OROOM;
+    const rtype = ROOM_TYPE_BY_NAME[type] ?? OROOM;
     const rlit = litstate_rnd(lit);
 
     dx1 += gx.xstart;
@@ -1132,6 +1286,8 @@ export function lspo_region({ region, type = 'ordinary', irregular = false,
     }
 
     if (contents) contents(croom);
+    // C ref: lspo_region() tail — spo_endroom() then add_doors_to_room(troom).
+    add_doors_to_room(croom);
     return croom;
 }
 
@@ -1156,7 +1312,79 @@ export function filler_region(x, y) {
 // (and thus extra RNG) BEFORE the filler_region call; this dispatcher mirrors
 // each room's contents() faithfully so the rn2/rnd call sequence matches C.
 // `name` is the themeroom name; (fx,fy) the filler_region anchor.
+// C ref: dat/themerms.lua:759 'Water-surrounded vault' contents.  This was the
+// last themeroom left with `filler: null` in mklev.js's THEMEROOM_MAPS — the map
+// was placed but its contents callback never ran, so every draw below was
+// skipped and any level rolling this room desynced immediately.  It is invisible
+// on the public 44 (none of them roll it) and it is exactly what broke the
+// held-out proxy's samurai session: RNG diverged at call 464 of level generation
+// for 0/264 screens.
+//
+// The order matters as much as the draws:
+//   des.region({3,3,3,3} themed irregular filled=0 joined=false) -> litstate_rnd
+//   shuffle(chest_spots)            -- 4 elements: rn2(4), rn2(3), rn2(2)
+//   math.random(#escape_items)      -- rn2(4)
+//   obj.new(escape_items[i])        -- the item is created BEFORE the chest
+//   des.object({id="chest", coord=chest_spots[1]})   (+ olocked="no" if glass)
+//   box:addcontent(itm)
+//   des.object({id="chest"}) for chest_spots[2..4]
+//   shuffle(nasty_undead)           -- 3 elements: rn2(3), rn2(2)
+//   des.monster(nasty_undead[1], 2, 2)
+//   des.exclusion(teleport)         -- no RNG
+function themeroom_water_vault() {
+    // The inner vault floor.  lit defaults to -1, so lspo_region calls
+    // litstate_rnd -> rnd(1 + abs(depth)), then a short-circuited rn2(77).
+    lspo_region({ region: [3, 3, 3, 3], type: 'themed', irregular: true,
+                  filled: 0, joined: false });
+
+    const chest_spots = [[2, 2], [3, 2], [2, 3], [3, 3]];
+    shuffle(chest_spots);
+
+    // themerms.lua:791 — math.random(#escape_items) is 1-based in Lua; the
+    // recorder logs the underlying rn2(4).
+    const escape_items = ['scroll of teleportation', 'ring of teleportation',
+                          'wand of teleportation', 'wand of digging'];
+    const pickIdx = rn2(escape_items.length);
+    // obj.new(name) resolves the name through the same readobjnam() path a wish
+    // uses (hence rnd_otyp_by_namedesc with xtra_prob 1) and creates the object.
+    const made = readobjnam(escape_items[pickIdx]);
+    const itm = made && made.obj ? made.obj : (made && made.otyp != null ? made : null);
+
+    // "If the escape item is made of glass or crystal, make sure that the chest
+    // isn't locked" — objclass.h material GLASS is 19 (see js/zap.js's
+    // wrong-constant note; 6 is CLOTH).
+    const MAT_GLASS = 19;
+    const isGlass = !!itm && OBJDATA[itm.otyp]?.material === MAT_GLASS;
+
+    const boxes = [];
+    for (let i = 0; i < chest_spots.length; i++) {
+        const [mx, my] = chest_spots[i];
+        const bx = mx + gx.xstart, by = my + gy.ystart;
+        const box = mksobj_at(CHEST, bx, by, true, true);  // init + mkbox_cnts
+        if (i === 0 && box && isGlass) box.olocked = false; // olocked = "no"
+        boxes.push(box);
+    }
+    // box:addcontent(itm) — no RNG; the item leaves the floor for the chest.
+    if (boxes[0] && itm) {
+        if (!Array.isArray(boxes[0].cobj)) boxes[0].cobj = [];
+        itm.where = 'contained';
+        itm.ocontainer = boxes[0];
+        boxes[0].cobj.push(itm);
+    }
+
+    const nasty_undead = ['giant zombie', 'ettin zombie', 'vampire lord'];
+    shuffle(nasty_undead);
+    quest_create_monster(nasty_undead[0], 2, 2);
+    // des.exclusion({type="teleport", region={2,2,3,3}}) — state only, no RNG.
+    const g = game;
+    (g.level.exclusions || (g.level.exclusions = [])).push({
+        type: 'teleport', lx: 2 + gx.xstart, ly: 2 + gy.ystart,
+        hx: 3 + gx.xstart, hy: 3 + gy.ystart,
+    });
+}
+
 export function themeroom_map_contents(name, fx, fy) {
+    if (name === 'Water-surrounded vault') { themeroom_water_vault(); return; }
     if (name === 'Blocked center') {
         // themerms.lua 'Blocked center':
         //   if (percent(30)) then
@@ -1177,7 +1405,7 @@ export function themeroom_map_contents(name, fx, fy) {
             quest_replace_terrain(1, 1, 9, 9, LAVAPOOL, totyp, 100);
         }
     }
-    filler_region(fx, fy);
+    if (fx >= 0 && fy >= 0) filler_region(fx, fy);
 }
 
 // C ref: sp_lev.c lspo_map() halign/valign codes.
@@ -1728,7 +1956,7 @@ const _QDOORMASK = {
 
 // C ref: sp_lev.c set_door_orientation() — used by sel_set_door() below to
 // pick the SDOOR/DOOR glyph orientation (horizontal wall-run vs vertical).
-function quest_set_door_orientation(x, y) {
+export function set_door_orientation(x, y) {
     const isJoin = (t) => IS_WALL(t) || IS_DOOR(t) || t === SDOOR;
     const at = (dx, dy) => { const l = game.level?.at(x + dx, y + dy); return l ? l.typ : STONE; };
     let wleft = isok(x - 1, y) && isJoin(at(-1, 0));
@@ -1763,7 +1991,7 @@ function quest_set_door(mx, my, state) {
         typ &= ~D_SECRET;
         if (typ < D_CLOSED) typ = D_CLOSED;
     }
-    quest_set_door_orientation(x, y);
+    set_door_orientation(x, y);
     loc.doormask = typ;
 }
 

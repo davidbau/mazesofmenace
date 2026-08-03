@@ -410,9 +410,16 @@ export function lspo_replace_terrain(opts) {
     const r = opts.region || [];
     /* C runs both corners through get_location(), which applies the map's
        xstart/ystart offset; without it the scan covers the wrong columns and
-       misses matching squares at the map's right edge. */
-    const rx1 = r[0] + game.xstart, ry1 = r[1] + game.ystart;
-    const rx2 = r[2] + game.xstart, ry2 = r[3] + game.ystart;
+       misses matching squares at the map's right edge. With NO region at all
+       C fills a whole-map selection (selection_clear(sel, 1)) whose bounds
+       are the raw map, no offset. */
+    let rx1, ry1, rx2, ry2;
+    if (r.length === 4) {
+        rx1 = r[0] + game.xstart; ry1 = r[1] + game.ystart;
+        rx2 = r[2] + game.xstart; ry2 = r[3] + game.ystart;
+    } else {
+        rx1 = 0; ry1 = 0; rx2 = COLNO - 1; ry2 = ROWNO - 1;
+    }
 
     for (let x = Math.max(1, rx1); x <= Math.min(rx2, COLNO - 1); x++)
         for (let y = Math.max(0, ry1); y <= Math.min(ry2, ROWNO - 1); y++) {
@@ -2638,6 +2645,18 @@ export function lspo_exclusion(opts) {
 // src/sp_lev.c lspo_non_diggable() — W_NONDIGGABLE on every wall in the area
 // (absolute selection).
 export function lspo_non_diggable(x1, y1, x2, y2) {
+    /* C with no selection argument stamps the whole map (selection_clear
+       with value 1), raw coordinates, no xstart shift. */
+    if (x1 === undefined) {
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level.at(x, y);
+                if (loc && (C_IS_WALL(loc.typ) || loc.typ === DBWALL
+                            || loc.typ === SDOOR))
+                    loc.wall_info = (loc.wall_info | 0) | W_NONDIGGABLE;
+            }
+        return;
+    }
     for (let x = x1 + game.xstart; x <= x2 + game.xstart; x++)
         for (let y = y1 + game.ystart; y <= y2 + game.ystart; y++) {
             const loc = game.level.at(x, y);

@@ -14,6 +14,8 @@ import { game } from './gstate.js';
 // that leave a tombstone/bones from the ones that don't (QUIT/ESCAPED/
 // ASCENDED); PANICKED separates "real" deaths from program panics in done().
 const DIED = 0;
+const ESCAPED = 14;   // C: hack.h:497
+const ASCENDED = 15;  // C: hack.h:498
 const GENOCIDED = 10;
 const PANICKED = 11;
 const QUIT = 13;
@@ -128,15 +130,25 @@ export async function outrip_and_score(how) {
 
     // ── build the endgame TEXT window (24 lines), C ref rip.c + end.c ──
     const lines = [];
-    lines.push('');                                    // 0 (genl_outrip leading "")
-    for (const r of genl_outrip(plname, umoney, deathText, year))
-        lines.push(r);                                 // 1..15 (stone)
-    lines.push('');                                    // 16 (genl_outrip trailing "")
-    lines.push('');                                    // 17
+    // C: end.c really_done() draws the stone only for a death (how <= GENOCIDED);
+    // ESCAPED/ASCENDED/QUIT get the text summary alone, and their middle line is
+    // "You escaped from the dungeon with N points," (end.c:1475) rather than the
+    // "in <dungeon> on dungeon level N" form.
+    const stone = how <= GENOCIDED;
+    if (stone) {
+        lines.push('');                                // 0 (genl_outrip leading "")
+        for (const r of genl_outrip(plname, umoney, deathText, year))
+            lines.push(r);                             // 1..15 (stone)
+        lines.push('');                                // 16 (genl_outrip trailing "")
+        lines.push('');                                // 17
+    }
     lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`); // 18
     lines.push('');                                    // 19
-    lines.push(`You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
-        + ` with ${urexp} point${plur(urexp)},`);      // 20
+    lines.push(stone
+        ? `You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
+          + ` with ${urexp} point${plur(urexp)},`
+        : `You ${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
+          + ` with ${urexp} point${plur(urexp)},`);    // 20
     lines.push(`and ${umoney} piece${plur(umoney)} of gold, after ${moves} move${plur(moves)}.`); // 21
     lines.push(`You were level ${u?.ulevel || 1} with a maximum of ${u?.uhpmax || 0}`
         + ` hit point${plur(u?.uhpmax || 0)} when you ${ENDS[how]}.`); // 22
@@ -226,13 +238,17 @@ async function done(how) {
     // how < PANICKED: force HP to zero (it may already be <= 0) and redraw
     // bot.  Skip the forced status update when quitting via a 'q' answer to
     // "Dump core?" (done_stopprint) — end.c done(): disp.botl = FALSE etc.
+    // C ref: end.c:1044 — the forced status update comes FIRST (end.c:1048),
+    // and only then does end.c:1071 zero u.uhp, with no second bot().  Doing it
+    // in the other order let the zeroed HP reach the endgame screens.
+    if (!(how === QUIT && stopprint)) {
+        d.freeze_botl();
+        await d.bot();
+        await d.flush_screen(1);
+    }
     if (how < PANICKED) {
         u.uhp = 0;
         if (u.mh != null) u.mh = 0;
-    }
-    if (!(how === QUIT && stopprint)) {
-        await d.bot();
-        await d.flush_screen(1);
     }
 
     // Lifesaved (amulet) path not reachable for the starter heroes.
@@ -308,6 +324,11 @@ async function done(how) {
                 game._toplin = 0;
                 game._pending_message = '';
             }
+            // Acking that --More-- is where the deferred status redraw lands:
+            // every frame from the first disclosure prompt on shows the zeroed
+            // HP, while the "You die..." --More-- frames still show the value
+            // done()'s own bot() left (nothing, when uhp was exactly -1).
+            delete game._botlFrozen;
             // C ref: end.c really_done() — "needed for both inventory
             // disclosure and dumplog": for how != PANICKED, fully identify
             // every inventory object (discover_object + known/bknown/dknown/
@@ -464,8 +485,23 @@ async function disclose(how) {
     }
 
     {
-        const { anyVanquished, anyGenocidedOrExtinct } = await import('./insight.js');
-        if (anyVanquished() && disclose_ask(settings.v).ask) return false;
+        // C ref: insight.c:2826 list_vanquished() — the prompt exists only when
+        // some species has died; ntypes > 1 widens the answer set to ynaqchars,
+        // which shows as "[ynaq]".  'a' means "choose a sort order first".
+        const { vanquished_ntypes, anyGenocidedOrExtinct, list_vanquished_screen }
+            = await import('./insight.js');
+        const ntypes = vanquished_ntypes();
+        if (ntypes > 0) {
+            const { ask, defquery } = disclose_ask(settings.v);
+            const resp = (ntypes > 1) ? 'ynaq\x1b' : 'ynq\x1b a';
+            const c = ask
+                ? await d.y_n('Do you want an account of creatures vanquished?', resp, defquery)
+                : defquery;
+            if (c === 'y' || c === 'a') await list_vanquished_screen();
+            if (c === 'q') return true;
+        }
+        // list_genocided() prints nothing at all when nothing was genocided or
+        // went extinct, so there is no prompt in that case.
         if (anyGenocidedOrExtinct() && disclose_ask(settings.g).ask) return false;
     }
 
@@ -536,14 +572,21 @@ async function real_death_epilogue(how) {
     const moves = (game.moves == null ? 0 : (game.moves | 0));
 
     const lines = [];
-    lines.push('');
-    for (const r of genl_outrip(plname, umoney, deathText, year)) lines.push(r);
-    lines.push('');
-    lines.push('');
+    // Stone only for a death (how <= GENOCIDED); see outrip_and_score().
+    const stone = how <= GENOCIDED;
+    if (stone) {
+        lines.push('');
+        for (const r of genl_outrip(plname, umoney, deathText, year)) lines.push(r);
+        lines.push('');
+        lines.push('');
+    }
     lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`);
     lines.push('');
-    lines.push(`You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
-        + ` with ${urexp} point${plur(urexp)},`);
+    lines.push(stone
+        ? `You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
+          + ` with ${urexp} point${plur(urexp)},`
+        : `You ${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
+          + ` with ${urexp} point${plur(urexp)},`);
     lines.push(`and ${umoney} piece${plur(umoney)} of gold, after ${moves} move${plur(moves)}.`);
     lines.push(`You were level ${u?.ulevel || 1} with a maximum of ${u?.uhpmax || 0}`
         + ` hit point${plur(u?.uhpmax || 0)} when you ${ENDS[how]}.`);
@@ -724,4 +767,4 @@ export async function done_in_by(mtmp, how = DIED) {
     await done(how);
 }
 
-export { done, savelife, DIED };
+export { done, savelife, DIED, ESCAPED };

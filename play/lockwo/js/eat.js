@@ -117,7 +117,7 @@ const NON_PM = -1;
 // authoritative path, but correct numeric indices avoid false positives
 // (e.g. killer bee == 1 must NOT be mistaken for acid blob).
 const PM_LICHEN = 158;
-const PM_LIZARD = 325;
+const PM_LIZARD = 326;
 const PM_DEATH = 311;
 const PM_PESTILENCE = 312;
 const PM_FAMINE = 313;
@@ -144,10 +144,39 @@ function ismnum(mnum) {
     return mnum >= 0;
 }
 
+// C ref: mondata.h:232 vegan(ptr) — a class test with three named exceptions.
+// defsym.h MONSYM indices: S_BLOB 2, S_JELLY 10, S_VORTEX 22, S_LIGHT 25,
+// S_ELEMENTAL 31, S_FUNGUS 32, S_PUDDING 42, S_GHOST 54, S_GOLEM 55.
+const S_BLOB_C = 2, S_JELLY_C = 10, S_VORTEX_C = 22, S_LIGHT_C = 25,
+      S_ELEMENTAL_C = 31, S_FUNGUS_C = 32, S_PUDDING_C = 42, S_GHOST_C = 54,
+      S_GOLEM_C = 55;
+export function vegan(ptr) {
+    if (!ptr) return false;
+    const c = ptr.mcls, nm = ptr.name;
+    if (c === S_BLOB_C || c === S_JELLY_C || c === S_FUNGUS_C
+        || c === S_VORTEX_C || c === S_LIGHT_C) return true;
+    // the stalker is the one non-vegan elemental; flesh and leather golems are
+    // the two non-vegan golems
+    if (c === S_ELEMENTAL_C) return nm !== 'stalker';
+    if (c === S_GOLEM_C) return nm !== 'flesh golem' && nm !== 'leather golem';
+    return c === S_GHOST_C;   // noncorporeal(ptr)
+}
+
+// C ref: mondata.h:239 vegetarian(ptr) = vegan(ptr) || (mlet == S_PUDDING &&
+// ptr != &mons[PM_BLACK_PUDDING]).
+//
+// This used to `return false` unconditionally, described as a "conservative
+// default" only consulted for HEALTHY_TIN.  It is not: eat.c tin_details()
+// reads it to decide whether a tin's name gets " meat" appended
+//     vegetarian(&mons[mnum]) ? "%s" : "%s meat"
+// so with the stub EVERY tin was named "<species> meat" — C calls a lichen tin
+// "a tin of lichen".  That was invisible on public only because the seed8000
+// Tourist's inventory listing (the one session showing a lichen tin) was served
+// from a memorised literal.
 export function vegetarian(ptr) {
-    // C ref: vegetarian() in eat.c; only consulted for HEALTHY_TIN, which
-    // is not used at object creation. Conservative default.
-    return false;
+    if (!ptr) return false;
+    if (vegan(ptr)) return true;
+    return ptr.mcls === S_PUDDING_C && ptr.name !== 'black pudding';
 }
 
 // C ref: eat.c tin_variety(obj, displ)

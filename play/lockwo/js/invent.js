@@ -75,6 +75,7 @@ import {
     A_CON, A_STR, LEFT_SIDE, RIGHT_SIDE,
     CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
     IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
+    AM_SHRINE, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
     TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
     POOL, MOAT, WATER,
     IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
@@ -82,6 +83,8 @@ import {
     PLNMSG_MON_TAKES_OFF_ITEM,
 } from './const.js';
 import { engr_at } from './engrave.js';
+// role.js imports only gstate/rng/const, so this is cycle-safe.
+import { roles, align_gname } from './role.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
@@ -1645,31 +1648,14 @@ function putStatusLines(display, bandStart = null, menuLastRow = -1) {
     display.putstr(0, 23, (bandStart != null && menuLastRow >= 23) ? s2.slice(0, bandStart) : s2, NO_COLOR);
 }
 
-function touristFallbackRows() {
-    if ((game.urole?.rank?.m || '') !== 'Rambler' || (game._goldCount || 0) !== 757)
-        return null;
-    return [
-        ['Coins', '$ - 757 gold pieces'],
-        ['Weapons', 'a - 27 +2 darts (at the ready)'],
-        ['Armor', 'j - an uncursed +0 Hawaiian shirt (being worn)'],
-        ['Comestibles',
-            'b - 6 uncursed food rations',
-            'c - an uncursed apple',
-            'd - 2 uncursed fortune cookies',
-            'e - an uncursed clove of garlic',
-            'f - an uncursed slime mold',
-            'g - 2 uncursed tins of lichen'],
-        ['Scrolls', 'i - 4 uncursed scrolls of magic mapping'],
-        ['Potions', 'h - 2 uncursed potions of extra healing'],
-        ['Tools',
-            'k - an expensive camera (0:34)',
-            'l - an uncursed credit card'],
-    ];
-}
-
 function inventoryRows(lets = null) {
-    const fallback = touristFallbackRows();
-    if (fallback && !lets) return fallback;
+    // There used to be a touristFallbackRows() short-circuit here returning a
+    // VERBATIM memorised inventory listing (exact letters, "27 +2 darts", "an
+    // expensive camera (0:34)") whenever rank === 'Rambler' && gold === 757 —
+    // the seed8000 Tourist's fingerprint.  invent.c display_pickinv() has no
+    // role/rank/gold special case; it always walks gi.invent through doname().
+    // The literal was worth points on one public session and nothing anywhere
+    // else, while hiding every real doname()/inv_order bug for that role.
 
     const rows = [];
     const inv = [...inventoryArray()].filter((obj) => !lets || String(lets).includes(obj.invlet));
@@ -1727,10 +1713,14 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     for (let r = 0; r <= menuLastRow && r < 24; r++)
         for (let c = bandStart; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
+    // C ref: windows.c:1816 add_menu_heading() — `if (program_state.gameover)
+    // attr = ATR_NONE`, so the end-of-game disclosure lists draw class headers
+    // PLAIN.
+    const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
     let row = 0;
     for (const group of lines) {
         const [heading, ...items] = group;
-        display.putstr(col, row++, heading, NO_COLOR, ATR_INVERSE);
+        display.putstr(col, row++, heading, NO_COLOR, headAttr);
         for (const item of items)
             display.putstr(col, row++, item, NO_COLOR);
     }
@@ -1863,49 +1853,20 @@ export async function disco_window_advance() {
 // display.  In-game (final == 0) it is a paged NHW_MENU; each page clears the
 // screen and shows "(N of M)" at the bottom.
 //
-// The tourist starter (seed8000) carries two attributes the port doesn't yet
-// derive from live state — the randomly-assigned handedness (rn2(10) at
-// chargen, recorded but not stored) and bare-handed-combat phrasing — so its
-// ^X text is reproduced from the recorded lines.  Every other role is built
-// faithfully from game state via insight.js::enlightenment_lines().
-const TOURIST_ATTR_LINES = [
-    'Contestant the Tourist\'s attributes:',
-    '',
-    'Background:',
-    ' You are a Rambler, a level 1 female human Tourist.',
-    ' You are neutral, on a mission for The Lady',
-    ' who is opposed by Blind Io (lawful) and Offler (chaotic).',
-    ' You are left-handed.',
-    ' You are in the Dungeons of Doom, on level 1.',
-    ' You entered the dungeon 11 turns ago.',
-    ' You have 0 experience points.',
-    '',
-    'Basics:',
-    ' You have all 10 hit points.',
-    ' You have both energy points (spell power).',
-    ' Your armor class is 10.',
-    ' Your wallet contains 757 zorkmids.',
-    ' Autopickup is off.',
-    '',
-    'Characteristics:',
-    ' Your strength is 9.',
-    ' Your dexterity is 14.',
-    ' Your constitution is 12.',
-    ' Your intelligence is 11.',
-    ' Your wisdom is 16.',
-    ' Your charisma is 16.',
-    '',
-    'Status:',
-    ' You aren\'t hungry.',
-    ' You are unencumbered.',
-    ' You are bare handed.',
-    ' You are unskilled in bare handed combat.',
-    '',
-    'Miscellaneous:',
-    ' Total elapsed playing time is none.',
-];
+// A memorised copy of the seed8000 Tourist's ^X screen lived here — 38 lines
+// verbatim, down to "Contestant the Tourist's attributes:", "You are
+// left-handed." and "Your wallet contains 757 zorkmids." — selected by the same
+// rank==='Rambler' && gold===757 fingerprint as the inventory listing.
+// insight.c enlightenment() has no per-role literal block; every line is built
+// from live u.*/flags state, so enlightenment_lines() is now used for all roles.
+//
+// The two attributes it was covering for are derivable: handedness from
+// game.u.uleft_handed (chargen's rn2(10)) and the bare-handed phrasing from the
+// per-role skill table in js/uhitm.js.  If a line is still wrong, fix
+// enlightenment_lines() — that fix transfers to every role and every session,
+// which a literal never can.
 function attributesPages() {
-    const lines = touristFallbackRows() ? TOURIST_ATTR_LINES : enlightenment_lines();
+    const lines = enlightenment_lines();
     if (!lines || !lines.length) return null;
     const lmax = (game.nhDisplay?.rows ?? 24) - 1; // 23 lines/page (menu paging)
     const pages = [];
@@ -2024,9 +1985,13 @@ export async function dovspell() {
     // recorder serializes space-runs longer than 4 columns as cursor-forwards
     // (which decode as default attr); runs of <= 4 spaces stay literal and keep
     // the inverse bit.  Mirror that so the decoded grids agree on the interior.
+    // C ref: windows.c:1816 add_menu_heading() — `if (program_state.gameover)
+    // attr = ATR_NONE, color = NO_COLOR`, so the end-of-game disclosure lists
+    // draw their class headers PLAIN.
+    const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
     const drawHeading = (text, row) => {
         for (let c = 0; c < text.length && offx + c < 80; c++) {
-            let attr = ATR_INVERSE;
+            let attr = headAttr;
             if (text[c] === ' ') {
                 // Measure the contiguous space run containing this column.
                 let s = c; while (s > 0 && text[s - 1] === ' ') s--;
@@ -5218,7 +5183,11 @@ export function display_pickinv(lets = null, xtra_choice = null, query = null, a
         game._pending_message = 'Not carrying anything.';
         return '\0';
     }
-    renderMenuScreen(rows, touristFallbackRows() ? [38, 20] : null);
+    // Pass null EXPLICITLY, not nothing: renderMenuScreen's default parameter is
+    // itself a hardcoded [36, 8], and only an explicit null reaches the derived
+    // tty position (offx + len("(end)") + 1, on the (end) row).  This used to
+    // pass a hardcoded [38, 20] for the seed8000 Tourist fingerprint.
+    renderMenuScreen(rows, null);
     if (out_cnt) out_cnt.value = -1;
     return '\0';
 }
@@ -5298,6 +5267,27 @@ function stairs_description(sway, stcase = true) {
     return `${stairs} ${updown}`;
 }
 
+// C ref: insight.c align_str().
+function align_str(a) {
+    return a === A_CHAOTIC ? 'chaotic' : a === A_NEUTRAL ? 'neutral'
+        : a === A_LAWFUL ? 'lawful' : a === A_NONE ? 'unaligned' : 'unknown';
+}
+
+// C ref: invent.c:4075 dfeature_at()'s IS_ALTAR arm — "%saltar to %s (%s)" from
+// a_gname() and align_str().  The altarmask lives in struct rm's flags union
+// (rm.h: `#define altarmask flags`), and this port writes it under BOTH names
+// (mklev.js mkaltar/mktemple use loc.flags; sp_lev.js's builders use
+// loc.altarmask), so read either.  align_gname() indexes the roles[] ARRAY, not
+// the PM_ mnum — they differ for Rogue/Ranger — hence the findIndex.
+function altar_description(loc) {
+    const amask = loc.altarmask ?? loc.flags ?? 0;
+    const align = Amask2align(amask & ~AM_SHRINE);
+    const rolemnum = game.urole?.mnum ?? game.u?.umonnum ?? 0;
+    const ri = roles.findIndex((r) => r.mnum === rolemnum);
+    const gname = align_gname(ri >= 0 ? ri : rolemnum, align);
+    return `${(amask & AM_SANCTUM) ? 'high ' : ''}altar to ${gname} (${align_str(align)})`;
+}
+
 // C ref: invent.c dfeature_at() — the dungeon feature at (x,y).  Ports the
 // staircase/ladder branch (via game.stairs) used by look_here on the dungeon
 // entrance, then falls back to the cell's typName for other features.
@@ -5327,6 +5317,8 @@ export function dfeature_at(x, y, buf = '') {
         else if (ltyp === ICE) feature = 'ice';
         else if (ltyp === POOL || ltyp === MOAT || ltyp === WATER) feature = 'pool of water';
         else if (IS_SINK(ltyp)) feature = 'sink';
+        // C ref: invent.c:4075 — ALTAR sits between SINK and the stairway arm.
+        else if (IS_ALTAR(ltyp)) feature = altar_description(loc);
         else if (ltyp === DRAWBRIDGE_DOWN) feature = 'lowered drawbridge';
         else if (ltyp === DBWALL) feature = 'raised drawbridge';
         else if (IS_GRAVE(ltyp)) feature = 'grave';

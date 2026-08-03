@@ -65,6 +65,7 @@ export const POT_PARALYSIS = 301;
 export const POT_WATER = 322;
 export const POT_HEALING = 307;
 export const POT_EXTRA_HEALING = 308;
+export const POT_GAIN_LEVEL = 309;
 export const POT_SPEED = 302;
 export const POT_GAIN_ENERGY = 313;
 export const POT_BOOZE = 317;
@@ -742,6 +743,15 @@ const OC_CAN = {
 };
 for (const otyp in OC_CAN)
     if (objects[otyp]) objects[otyp].oc_can = OC_CAN[otyp];
+
+// C ref: include/objects.h — the COMPLETE set of items whose oc_oprop is
+// ANTIMAGIC (objects.h:502, :530, :645); no other object grants it.  Keyed by
+// NAME because the JS otyp numbering diverges from C after 363.
+const ANTIMAGIC_PROP = 12; // prop.h ANTIMAGIC
+for (const o of objects)
+    if (o && (o.name === 'gray dragon scale mail' || o.name === 'gray dragon scales'
+              || o.name === 'cloak of magic resistance'))
+        o.oc_oprop = ANTIMAGIC_PROP;
 
 // C ref: include/objects.h BITS() mgc field — oc_magic, the "magic" flag used
 // by poly_obj() (zap.c) to keep a polymorphed object's magic-or-not status the

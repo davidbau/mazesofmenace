@@ -1430,11 +1430,9 @@ export function render_map_to_grid() {
             display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
         }
     }
-    const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+    const [s1, s2] = botl_lines();
     for (let c = 0; c < Math.min(s1.length, display.cols); c++)
         display.setCell(c, 22, s1[c], NO_COLOR, 0);
-    const s2 = _statusLine2();
     for (let c = 0; c < Math.min(s2.length, display.cols); c++)
         display.setCell(c, 23, s2[c], NO_COLOR, 0);
 }
@@ -1454,8 +1452,8 @@ function _buildScreenOutput() {
     }
 
     // Row 22-23: status
-    output += _statusLine1() + '\n';
-    output += _statusLine2();
+    output += (game._botlFrozen ? game._botlFrozen[0] : _statusLine1()) + '\n';
+    output += (game._botlFrozen ? game._botlFrozen[1] : _statusLine2());
 
     game._screen_output = output;
 
@@ -1486,13 +1484,11 @@ function _buildScreenOutput() {
             }
         }
         // Status lines
-        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
-        for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-            display.setCell(c, 22, s1[c], NO_COLOR, 0);
-        const s2 = _statusLine2();
-        for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-            display.setCell(c, 23, s2[c], NO_COLOR, 0);
+        const [gs1, gs2] = botl_lines();
+        for (let c = 0; c < Math.min(gs1.length, display.cols); c++)
+            display.setCell(c, 22, gs1[c], NO_COLOR, 0);
+        for (let c = 0; c < Math.min(gs2.length, display.cols); c++)
+            display.setCell(c, 23, gs2[c], NO_COLOR, 0);
         // Cursor at hero
         if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -1502,13 +1498,35 @@ function _buildScreenOutput() {
 // Write the two status lines (rows 22-23) to the terminal grid. Used by
 // the legend/welcome startup rendering, which overlays a window region
 // but must keep the status visible underneath.
+// C ref: botl.c:253 bot() — rows 22/23 are only rewritten when bot() runs.  We
+// rebuild them live every frame instead, equivalent while the game is running
+// (moveloop_core calls bot() each turn) but NOT after done(): end.c:1071 forces
+// u.uhp to 0 and sets disp.botl WITHOUT calling bot() again, so the rows keep
+// whatever the last real bot() drew.  freeze_botl() captures that.
+function botl_lines() {
+    if (game._botlFrozen) return game._botlFrozen;
+    const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, (m) =>
+        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+    game._botlLast = [s1, _statusLine2()];
+    return game._botlLast;
+}
+
+// C ref: end.c:1048 `disp.botlx = TRUE; bot();` — the last bot() of the game.
+// When u.uhp is exactly -1 (botl.c:259's dosave() sentinel, which a hit landing
+// HP on -1 collides with) that bot() draws NOTHING, so the frozen text is the
+// previous turn's line: a hero killed from 1 HP by 2 damage keeps showing HP:1
+// through every endgame screen.
+export function freeze_botl() {
+    const u = game.u || {};
+    if ((u.Upolyd ? u.mh : u.uhp) !== -1) botl_lines();
+    game._botlFrozen = game._botlLast || null;
+}
+
 export function renderStatusLines(display) {
     if (!display?.setCell) return;
-    const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+    const [s1, s2] = botl_lines();
     for (let c = 0; c < Math.min(s1.length, display.cols); c++)
         display.setCell(c, 22, s1[c], NO_COLOR, 0);
-    const s2 = _statusLine2();
     for (let c = 0; c < Math.min(s2.length, display.cols); c++)
         display.setCell(c, 23, s2[c], NO_COLOR, 0);
 }
@@ -1695,6 +1713,11 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
     if (game._yn_need_more) {
         game._yn_need_more = false;
         await topl_more();
+        // Acking a deferred --More-- is where a pending status redraw lands:
+        // the --More-- frames still show the pre-done() line, this prompt's
+        // frames show the current one.  (end.c: done() sets disp.botl at :1071
+        // without calling bot(); the next real bot() is the one that pages.)
+        delete game._botlFrozen;
     }
     // Build the displayed prompt (hidden ESC-and-after choices are stripped).
     const shown = resp.split('\x1b')[0];

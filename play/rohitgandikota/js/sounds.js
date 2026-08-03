@@ -12,7 +12,10 @@ import { MFLAGS, PMNAMES } from './monst_data.js';
 import { canseemon } from './display.js';
 import { helpless, DEADMONSTER } from './monst.js';
 import { rn2 } from './rng.js';
-import { ECMD_OK, IS_WALL, SDOOR, isok } from './const.js';
+import { ECMD_OK, ECMD_TIME, IS_WALL, SDOOR, isok, M_AP_TYPE,
+         M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK } from './const.js';
+import { MSOUND } from './monst_data.js';
+import { canspotmon } from './display.js';
 import { getdir } from './cmd.js';
 import { m_at } from './mon.js';
 import { Deaf, Hallucination } from './youprop.js';
@@ -160,11 +163,121 @@ export async function dochat() {
         }
     }
 
-    if (!mtmp || mtmp.mundetected)
+    if (!mtmp || mtmp.mundetected
+        || M_AP_TYPE(mtmp) === M_AP_FURNITURE
+        || M_AP_TYPE(mtmp) === M_AP_OBJECT)
         return ECMD_OK; /* "talking to thin air" */
 
-    note_unported_sounds('dochat:domonnoise');
-    return ECMD_OK;
+    /* sleeping monsters won't talk, except priests (who wake up) */
+    if (helpless(mtmp) && !mtmp.ispriest) {
+        if (canspotmon(mtmp))
+            await pline(`${Monnam(mtmp)} seems not to notice you.`);
+        return ECMD_OK;
+    }
+
+    /* if this monster is waiting for something, prod it into action */
+    mtmp.mstrategy &= ~STRAT_WAITMASK;
+
+    if (!Deaf() && mtmp.mtame && mtmp.meating) {
+        await pline(`${Monnam(mtmp)} is eating noisily.`);
+        return ECMD_OK;
+    }
+    if (Deaf()) {
+        note_unported_sounds('dochat:deaf');
+        return ECMD_OK;
+    }
+
+    return await domonnoise(mtmp);
+}
+
+// src/sounds.c:679 domonnoise() — what the monster says. The animal arms
+// live here (bark, mew, neigh, growl, moo); the speaking-monster arms
+// (shopkeeper, priest, quest, vampire, humanoid smalltalk) sit on unported
+// subsystems and record themselves. Always costs the turn.
+export async function domonnoise(mtmp) {
+    const ptr = game.mons[mtmp.mnum];
+    let msound = ptr.msound;
+    let pline_msg = null, verbl_msg = null;
+
+    /* presumably nearness and sleep checks have already been made */
+    if (Deaf())
+        return ECMD_OK;
+    if (msound === MSOUND.MS_SILENT && !mtmp.isshk)
+        return ECMD_OK;
+
+    if (mtmp.isshk)
+        msound = MSOUND.MS_SELL;
+    else if (msound === MSOUND.MS_MOO && !mtmp.mtame)
+        msound = MSOUND.MS_BELLOW;
+
+    if (!canspotmon(mtmp))
+        note_unported_sounds('domonnoise:map_invisible');
+
+    const edog = mtmp.edog || {};
+    switch (msound) {
+    case MSOUND.MS_BARK:
+        if (game.flags?.moonphase === 4 /* FULL_MOON */ && night_snd()) {
+            pline_msg = 'howls.';
+        } else if (mtmp.mpeaceful) {
+            if (mtmp.mtame
+                && (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
+                    || game.moves > (edog.hungrytime || 0)
+                    || mtmp.mtame < 5))
+                pline_msg = 'whines.';
+            else if (mtmp.mtame
+                     && (edog.hungrytime || 0) > game.moves + 1000)
+                pline_msg = 'yips.';
+            else if (mtmp.mnum !== PMNAMES.PM_DINGO)
+                pline_msg = 'barks.';
+        } else {
+            pline_msg = 'growls.';
+        }
+        break;
+    case MSOUND.MS_MEW:
+        if (mtmp.mtame) {
+            if (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
+                || mtmp.mtame < 5)
+                pline_msg = 'yowls.';
+            else if (game.moves > (edog.hungrytime || 0))
+                pline_msg = 'meows.';
+            else if ((edog.hungrytime || 0) > game.moves + 1000)
+                pline_msg = 'purrs.';
+            else
+                pline_msg = 'mews.';
+            break;
+        }
+        /* FALLTHRU */
+    case MSOUND.MS_GROWL:
+        pline_msg = mtmp.mpeaceful ? 'snarls.' : 'growls!';
+        break;
+    case MSOUND.MS_NEIGH:
+        if (mtmp.mtame < 5)
+            pline_msg = 'neighs.';
+        else if (game.moves > (edog.hungrytime || 0))
+            pline_msg = 'whinnies.';
+        else
+            pline_msg = 'whickers.';
+        break;
+    case MSOUND.MS_MOO:
+        pline_msg = 'moos.';
+        break;
+    default:
+        note_unported_sounds(`domonnoise:msound=${msound}`);
+        break;
+    }
+
+    if (pline_msg)
+        await pline(`${Monnam(mtmp)} ${pline_msg}`);
+    else if (verbl_msg)
+        await pline(`"${verbl_msg}"`);
+    return ECMD_TIME;
+}
+
+/* src/hacklib.c night() — hour outside 06..21; the recorder's fixed
+   datetime makes this deterministic. */
+function night_snd() {
+    const hh = Math.trunc((game.datetime_hhmmss ?? 90000) / 10000);
+    return hh < 6 || hh > 21;
 }
 
 function note_unported_sounds(what) {

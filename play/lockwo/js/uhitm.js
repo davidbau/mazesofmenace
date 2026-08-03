@@ -9,6 +9,7 @@
 // the downstream RNG stays in lockstep.
 
 import { game } from './gstate.js';
+import { WEP_SDAM, WEP_LDAM } from './weapondmg_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee } from './vision.js';
 import { m_at, newsym, map_invisible } from './display.js';
@@ -17,7 +18,11 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
          engulfing_u } from './const.js';
 import { Blind } from './vision.js';
 import { exercise } from './attrib.js';
-import { DEADMONSTER, Protection_from_shape_changers } from './mon.js';
+import { DEADMONSTER, Protection_from_shape_changers, mmove_of, mvitals_died } from './mon.js';
+import { MFLAGS2, M2_NASTY } from './monflags_data.js';
+const mflags2_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] ?? 0) : 0);
+import { dmgtype, attacktype, AT_ENGL, AT_HUGS, AD_STCK } from './monattk_data.js';
+import { mattk_of, AT_BUTT, AT_WEAP, AT_MAGC, AD_PHYS, AD_BLND, AD_DRLI, AD_STON, AD_SLIM } from './monattk_data.js';
 import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
          objects, COIN_CLASS, STRANGE_OBJECT } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
@@ -833,6 +838,21 @@ function passive(mon, mhit, malive) {
     rn2(3);                                    // uhitm.c:6019
 }
 
+// C ref: mon.c:3438 unstuck(mtmp) — the monster is no longer holding the hero.
+// The rnd(2) fires only for a species that can hold (AD_STCK / AT_ENGL /
+// AT_HUGS) and only if mspec_used is still 0.
+function unstuck_mon(mtmp) {
+    const u = game.u;
+    if (u.ustuck !== mtmp) return;
+    u.ustuck = null;
+    u.uswallow = 0;
+    // The swallowed branch (repositioning the hero + docrt) needs an engulfer.
+    if (!mtmp.mspec_used
+        && (dmgtype(mtmp.data, AD_STCK) || attacktype(mtmp.data, AT_ENGL)
+            || attacktype(mtmp.data, AT_HUGS)))
+        mtmp.mspec_used = rnd(2);                            // mon.c:3465
+}
+
 // ── kill aftermath: killed -> xkilled -> mondead + make_corpse ──
 // C ref: mon.c killed()/xkilled().  Emits "You kill the <mon>!", rolls the
 // treasure-drop gate rn2(6), removes the monster, and (corpse_chance rn2(2))
@@ -865,9 +885,16 @@ export async function killed(mon, opts) {
             await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} it!`);
     }
 
+    // C ref: mon.c:3438 unstuck(mtmp), reached via mondead -> m_detach ->
+    // mon_leaving_level (mon.c:2703).  A holder the hero kills gets
+    // mspec_used = rnd(2) so it can't immediately re-grab; that rnd(2) is a
+    // real draw in the kill turn.
+    unstuck_mon(mon);
+
     // mondead(): detach the monster from the level BEFORE the once-per-turn
     // mcalcmove realloc (allmain.js) so that loop iterates the post-kill set,
     // matching C (fmon has the dead monster purged by the next round).
+    mvitals_died(mon);                 // mon.c:3135
     const list = game.level?.monsters;
     if (list) {
         const idx = list.indexOf(mon);
@@ -963,40 +990,9 @@ function relobj(mon, x, y) {
     mon.minvent = [];
 }
 
-// C ref: monattk.h attack-type / damage-type constants used by experience().
-const AT_BUTT = 4, AT_WEAP = 254, AT_MAGC = 255;
-const AD_PHYS = 0, AD_BLND = 11, AD_DRLI = 15, AD_STON = 18, AD_SLIM = 40;
-
-// Per-monster attack list (aatyp, adtyp, damn, damd) for the monsters the hero
-// kills across the contest sessions, ported verbatim from include/monsters.h
-// ATTK() entries.  experience() iterates these exactly like C's ptr->mattk[].
-// Monsters not listed are ordinary single physical-melee attackers (AT_BITE/
-// AT_CLAW, AD_PHYS) which contribute no attack/damage-type bonus, so the
-// fallback (empty list) reproduces their XP value (1 + m_lev^2 + AC bonus).
-function A(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
-const MON_ATTACKS = {
-    // AT_WEAP attackers (+5 each) — kobolds/orcs/gnomes/dwarves.
-    'kobold':       [A(AT_WEAP, 0, 1, 4)],
-    'large kobold': [A(AT_WEAP, 0, 1, 6)],
-    'goblin':       [A(AT_WEAP, 0, 1, 4)],
-    'gnome':        [A(AT_WEAP, 0, 1, 6)],
-    'gnome lord':   [A(AT_WEAP, 0, 1, 8)],
-    'gnome king':   [A(AT_WEAP, 0, 2, 6)],
-    'dwarf':        [A(AT_WEAP, 0, 1, 8)],
-    // AT_TUCH/AD_STCK (lichen) — AT_TUCH(5) > AT_BUTT so +3.
-    'lichen':       [A(5 /*AT_TUCH*/, 19 /*AD_STCK*/, 0, 0)],
-    // AT_BOOM (gas spore) — AT_BOOM(14) > AT_BUTT so +3; damd*damn=24>23 -> +m_lev.
-    'gas spore':    [A(14 /*AT_BOOM*/, 0, 4, 6)],
-    // nymphs — twin AT_CLAW with AD_SITM/AD_SEDU (each non-PHYS -> +m_lev).
-    'water nymph':  [A(1 /*AT_CLAW*/, 21 /*AD_SITM*/, 0, 0), A(1, 22 /*AD_SEDU*/, 0, 0)],
-    'wood nymph':   [A(1, 21, 0, 0), A(1, 22, 0, 0)],
-    'mountain nymph':[A(1, 21, 0, 0), A(1, 22, 0, 0)],
-    // AT_BITE/AD_ELEC (grid bug) — BITE adds no attack bonus; AD_ELEC -> +2*m_lev.
-    'grid bug':     [A(2 /*AT_BITE*/, 6 /*AD_ELEC*/, 1, 1)],
-    // earth elemental — AT_CLAW/AD_PHYS 4d6: no attack/damage-type bonus, but
-    // damd*damn=24>23 gives the heavy-damage +m_lev (seed4500 step-269 XP=78).
-    'earth elemental': [A(1 /*AT_CLAW*/, 0 /*AD_PHYS*/, 4, 6)],
-};
+// C ref: monsters.h LVL() mmove, keyed by pmidx.  mon.js owns the audited copy
+// (MMOVE_BY_PMIDX); re-exported there rather than duplicated here.
+function species_mmove(data) { return mmove_of(data); }
 
 // C ref: exper.c experience(mtmp, nk) — the XP value of a slain monster.  No
 // RNG.  Iterates the monster's actual mattk[] list for the special attack-type
@@ -1011,12 +1007,14 @@ function experience(mtmp) {
     const i = find_mac(mtmp);
     if (i < 3) tmp += (7 - i) * ((i < 0) ? 2 : 1);
 
-    // very-fast-monster bonus (data carries mmove for the few fast monsters).
-    const mmove = data.mmove ?? 0;
+    // ptr->mmove — the SPECIES speed, not the monster's adjusted movement.
+    // MONS[] carries no mmove field, so `data.mmove ?? 0` silently dropped this
+    // bonus for every fast monster (a fox is 1 XP instead of 4).
+    const mmove = species_mmove(data);
     if (mmove > NORMAL_SPEED_C)
         tmp += (mmove > (3 * NORMAL_SPEED_C / 2)) ? 5 : 3;
 
-    const attacks = MON_ATTACKS[data.name] || [];
+    const attacks = mattk_of(data);
 
     // special attack-type bonus (exper.c:101).  AT_WEAP -> +5; AT_MAGC -> +10;
     // other types > AT_BUTT -> +3.  Ordinary AT_BITE/AT_CLAW add nothing.
@@ -1039,7 +1037,13 @@ function experience(mtmp) {
         // AD_WRAP/S_EEL term not reachable for these monsters.
     }
 
+    // extra_nasty(ptr) == (mflags2 & M2_NASTY) (mondata.h:120) — was missing
+    // entirely, so every M2_NASTY kill was short 7*m_lev XP.
+    if ((mflags2_of(data) & M2_NASTY) !== 0) tmp += 7 * m_lev;
+
     if (m_lev > 8) tmp += 50;
+    // mrevived/mcloned halving and the PM_MAIL_DAEMON tmp=1 override are below
+    // this in C; neither state is reachable for a hero kill in these sessions.
     return tmp;
 }
 
@@ -1098,29 +1102,57 @@ export function make_corpse(mon, x, y) {
 // damage roll (oc_wsdam / oc_wldam dice) plus the per-weapon "extra" additions
 // for weapons whose damage isn't an even die, plus enchantment.  The
 // strength/skill bonuses are applied separately by hmon_hitmon_dmg_recalc().
+// C: weapon.c dmgval() bonus-group otyps (our numbering; see mkobj.js).
+const W = {
+    CROSSBOW_BOLT: 23, TRIDENT: 33, BATTLE_AXE: 45, BROADSWORD: 52,
+    ELVEN_BROADSWORD: 53, TWO_HANDED_SWORD: 55, TSURUGI: 57, RUNESWORD: 58,
+    PARTISAN: 59, RANSEUR: 60, SPETUM: 61, HALBERD: 63, BARDICHE: 64,
+    VOULGE: 65, GUISARME: 67, BILL_GUISARME: 68, LUCERN_HAMMER: 69,
+    DWARVISH_MATTOCK: 71, MACE: 73, SILVER_MACE: 74, MORNING_STAR: 75,
+    WAR_HAMMER: 76, FLAIL: 81, IRON_CHAIN: 478,
+    ACID_VENOM: 480,   // mkobj.js ACID_VENOM
+};
+
 export function dmgval(otmp, mon) {
-    if (!otmp) return 1; // bare-handed minimum
-    const mdat = mon?.data;
-    const large = largemonst(mdat);
-    const w = WEAP[otmp.otyp];
+    if (!otmp) return 1;
     const otyp = otmp.otyp;
+    const large = largemonst(mon?.data);
     let tmp = 0;
 
+    // C: weapon.c:220-300 dmgval().  Dice come from the generated oc_wsdam /
+    // oc_wldam; the per-otyp bonus groups differ between the large and small arms
+    // and are NOT symmetric, so both are transcribed separately.
     if (large) {
-        if (w && w.wl) tmp = rnd(w.wl);          // large-monster damage die
-        // weapon.c large-monster "extra" additions:
+        const d0 = WEP_LDAM[otyp];
+        if (d0) tmp = rnd(d0);
         switch (otyp) {
-        case 50: case 54: tmp += 0; break;       // SCIMITAR/LONG_SWORD: none
-        case 56: tmp += 0; break;                // KATANA: none
-        case 55: tmp += d(2, 6); break;          // TWO_HANDED_SWORD: +2d6
+        case W.CROSSBOW_BOLT: case W.MORNING_STAR: case W.PARTISAN:
+        case W.RUNESWORD: case W.ELVEN_BROADSWORD: case W.BROADSWORD:
+            tmp++; break;
+        case W.FLAIL: case W.RANSEUR: case W.VOULGE:
+            tmp += rnd(4); break;
+        case W.ACID_VENOM: case W.HALBERD: case W.SPETUM:
+            tmp += rnd(6); break;
+        case W.BATTLE_AXE: case W.BARDICHE: case W.TRIDENT:
+            tmp += d(2, 4); break;
+        case W.TSURUGI: case W.DWARVISH_MATTOCK: case W.TWO_HANDED_SWORD:
+            tmp += d(2, 6); break;
         default: break;
         }
     } else {
-        if (w && w.ws) tmp = rnd(w.ws);          // small-monster damage die
-        // weapon.c small-monster "extra" additions (weapon.c:266-295):
+        const d0 = WEP_SDAM[otyp];
+        if (d0) tmp = rnd(d0);
         switch (otyp) {
-        case 73: tmp += 1; break;                // MACE (mkobj.js otyp 73): +1
-        case 27: tmp += 0; break;                // SPEAR: none
+        case W.IRON_CHAIN: case W.CROSSBOW_BOLT: case W.MACE: case W.SILVER_MACE:
+        case W.WAR_HAMMER: case W.FLAIL: case W.SPETUM: case W.TRIDENT:
+            tmp++; break;
+        case W.BATTLE_AXE: case W.BARDICHE: case W.BILL_GUISARME:
+        case W.GUISARME: case W.LUCERN_HAMMER: case W.MORNING_STAR:
+        case W.RANSEUR: case W.BROADSWORD: case W.ELVEN_BROADSWORD:
+        case W.RUNESWORD: case W.VOULGE:
+            tmp += rnd(4); break;
+        case W.ACID_VENOM:
+            tmp += rnd(6); break;
         default: break;
         }
     }

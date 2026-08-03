@@ -352,6 +352,13 @@ function m_search_items(mtmp, goal, st) {
                     continue;
                 }
 
+                /* src/monmove.c:1403 — avoid getting stuck on eg. items in
+                   niches; the monster must be able to SEE the square. This
+                   was missing, and a kobold walked toward a scroll two dark
+                   rooms away while C's kept chasing the hero (seed0004). */
+                if (!clear_path(omx, omy, xx, yy))
+                    continue;
+
                 /* look through the items on this location */
                 for (const otmp of objects_at(xx, yy)) {
                     /* monsters may pick rocks up, but won't go out of their
@@ -808,6 +815,12 @@ export function set_apparxy(mtmp) {
        know where you are don't suddenly forget, if you haven't moved away */
     if (mtmp.mtame || mtmp === game.u.ustuck
         || (game.u.ux === mx && game.u.uy === my)) {
+        if (globalThis.__gate_log && mtmp.mnum === 100) {
+            const { rngLogLength } = globalThis.__rng_mod || {};
+            const idx = rngLogLength ? rngLogLength() : -1;
+            if (idx >= 4150 && idx <= 4260)
+                console.error(`APX idx=${idx} u=(${game.u.ux},${game.u.uy}) stack=${new Error().stack.split('\n')[2].trim()}`);
+        }
         mtmp.mux = game.u.ux;
         mtmp.muy = game.u.uy;
         return;
@@ -878,7 +891,7 @@ export function set_apparxy(mtmp) {
 
 // src/monmove.c:2188 accessible() — uses the terrain in front of a closed
 // drawbridge, not the drawbridge itself.
-function accessible(x, y) {
+export function accessible(x, y) {
     const levtyp = game.level.at(x, y)?.typ;
     return ACCESSIBLE(levtyp) && !closed_door_mm(x, y);
 }
@@ -894,7 +907,7 @@ function closed_door_mm(x, y) {
 // src/monmove.c:2356 can_ooze() — squeeze under a door.
 // stuff_prevents_passage() needs the inventory-bulk rules; it is recorded
 // rather than assumed, since assuming FALSE would let a laden monster ooze.
-function can_ooze(mtmp) {
+export function can_ooze(mtmp) {
     if (!amorphous(game.mons[mtmp.mnum]))
         return false;
     if (mtmp.minvent && mtmp.minvent.length)
@@ -975,6 +988,12 @@ export async function dochug(mtmp) {
         }
     }
 
+    if (globalThis.__gate_log) {
+        const { rngLogLength } = await import('./rng.js');
+        const idx = rngLogLength();
+        if (idx >= 4240 && idx <= 4260)
+            console.error(`GATE idx=${idx} mnum=${mtmp.mnum} at(${mtmp.mx},${mtmp.my}) mux=(${mtmp.mux},${mtmp.muy}) nearby=${nearby} inrange=${inrange} tame=${mtmp.mtame|0} peaceful=${mtmp.mpeaceful|0}`);
+    }
     /* src/monmove.c:882 — a monster only gets to move if it passes this. Each
        arm that draws does so ONLY because the arms before it were false, so
        dropping the whole condition (as we did) loses a draw on any turn a
@@ -1282,8 +1301,13 @@ export async function m_move(mtmp, after) {
             const track = mtmp.mtrack || [];
             let skip = false;
             for (let j = 0; j < jcnt; j++)
-                if (track[j] && nx === track[j].x && ny === track[j].y)
+                if (track[j] && nx === track[j].x && ny === track[j].y) {
+                    if (globalThis.__mm_probe) {
+                        const { rngLogLength } = globalThis.__rng_mod || {};
+                        console.error('MMPROBE', JSON.stringify({ idx: rngLogLength ? rngLogLength() : -1, mon: mtmp.mnum, at: [mtmp.mx, mtmp.my], appr, gg: [ggx, ggy], mux: [mtmp.mux, mtmp.muy], flee: mtmp.mflee || 0, cnt, j, nx, ny }));
+                    }
                     if (rn2(4 * (cnt - j))) { skip = true; break; }
+                }
             if (skip) continue;
         }
 
@@ -1391,7 +1415,8 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
     if (mmoved === MMOVE_MOVED) {
         const { mintrap } = await import('./trap.js');
         const trapret = await mintrap(mtmp, 0 /* NO_TRAP_FLAGS */);
-        if (trapret === 3 /* Trap_Killed_Mon */ || trapret === 4 /* Moved */) {
+        /* include/trap.h:101-102 — Trap_Killed_Mon = 2, Trap_Moved_Mon = 3 */
+        if (trapret === 2 /* Trap_Killed_Mon */ || trapret === 3 /* Moved */) {
             if (mtmp.mx)
                 newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;

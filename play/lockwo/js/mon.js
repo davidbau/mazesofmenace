@@ -107,6 +107,23 @@ export function base_mmove(mon) {
     return byIdx != null ? byIdx : NORMAL_SPEED;
 }
 
+// C ref: monsters.h LVL() mmove — the SPECIES base speed, which is what
+// exper.c experience() reads (not the monster's adjusted movement).
+export function mmove_of(data) {
+    return MMOVE_BY_PMIDX[data?.pmidx] ?? PET_MMOVE_BY_PMIDX[data?.pmidx] ?? NORMAL_SPEED;
+}
+
+// C ref: mon.c:3135 — mondead() tallies svm.mvitals[monsndx(data)].died
+// (capped at 255) for EVERY monster death, not just the hero's kills; it drives
+// insight.c list_vanquished()'s ntypes/total and extinction.
+export function mvitals_died(mon) {
+    const mndx = mon?.data?.pmidx;
+    if (mndx == null) return;
+    const mv = (game.mvitals = game.mvitals || []);
+    const e = (mv[mndx] = mv[mndx] || { died: 0, mvflags: 0 });
+    if (e.died < 255) e.died++;
+}
+
 // C ref: mon.c DEADMONSTER(mon) — hp <= 0.
 export function DEADMONSTER(mon) {
     return !mon || (mon.mhp != null && mon.mhp <= 0);

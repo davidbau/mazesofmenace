@@ -1630,6 +1630,19 @@ export function The(str) {
     return highc(tmp.charAt(0)) + tmp.slice(1);
 }
 
+// src/objnam.c:5471 suit_simple_name() — "mail"/"jacket"/"suit"; dragon
+// armor names need Is_dragon_mail, recorded when it first matters.
+export function suit_simple_name(suit) {
+    if (suit) {
+        const suitnm = OBJ_NAME(game.objects[suit.otyp]) || '';
+        if (suitnm.length > 5 && suitnm.endsWith(' mail'))
+            return 'mail';
+        if (suitnm.length > 7 && suitnm.endsWith(' jacket'))
+            return 'jacket';
+    }
+    return 'suit';
+}
+
 // src/objnam.c:5532 gloves_simple_name() — gloves vs gauntlets; depends upon
 // discovery state.
 export function gloves_simple_name(gloves) {

@@ -25,12 +25,14 @@ import {
     NOGARLIC, IS_ALTAR, In_endgame, GEHENNOM, HEADSTONE, u_at,
     STAIRS, LADDER, IRONBARS, WEB,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_WAITMASK,
+    TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, ANTI_MAGIC, POLY_TRAP, ACCESSIBLE,
 } from './const.js';
 import { quest_talk } from './questpgr.js';
 import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
     GLOB_OF_GREEN_SLIME, SCR_SCARE_MONSTER, AMULET_OF_STRANGULATION, mksobj_at } from './mkobj.js';
 import { t_at, t_missile, Can_fall_thru, maketrap } from './trap.js';
 import { gettrack } from './track.js';
+import { mvitals_died } from './mon.js';
 import { DEADMONSTER, healmon, base_mmove, curr_mon_load, max_mon_load,
     can_carry as mon_can_carry, can_touch_safely } from './mon.js';
 import { regenerates_flag as regenerates_raw, mflags1_of as mflags1_raw,
@@ -45,15 +47,17 @@ import { regenerates_flag as regenerates_raw, mflags1_of as mflags1_raw,
     M1_SEE_INVIS, M1_CARNIVORE, M1_METALLIVORE,
     M2_UNDEAD, M2_HUMAN, M2_MINION, M2_GIANT, M2_WANDER, M2_ROCKTHROW,
     M2_JEWELS, M2_MERC, M2_STALK, M2_NASTY, M2_STRONG,
-    M3_COVETOUS, M3_DISPLACES, M3_WAITMASK } from './monflags_data.js';
+    M3_COVETOUS, M3_DISPLACES, M3_WAITMASK, humanoid } from './monflags_data.js';
 import { is_armed, mattk_of,
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
-    AT_TENT, AT_WEAP, AT_MAGC, AT_SPIT, AT_BREA, AT_GAZE,
+    AT_TENT, AT_WEAP, AT_MAGC, AT_SPIT, AT_BREA, AT_GAZE, AT_EXPL, AT_BOOM,
     AD_PHYS, AD_ELEC, AD_DRST, AD_STUN, AD_DISE, AD_PEST, AD_FAMN, AD_STCK,
     AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX,
-    AD_RUST, AD_CORR } from './monattk_data.js';
+    AD_RUST, AD_CORR, AD_MAGM, AD_RBRE } from './monattk_data.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
 import { mon_msize, monster_by_pmidx } from './makemon.js';
+// polyself.c mbodypart needs the mlet of a pet, whose .data lacks .mcls.
+const mon_mlet = (pmidx) => monster_by_pmidx(pmidx)?.mcls;
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
@@ -61,6 +65,8 @@ import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, obje
     AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS,
     SPBOOK_CLASS, BALL_CLASS } from './mkobj.js';
 import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
+// m_harmless_trap's FIRE_TRAP arm; mondata.js reads permonst.mresists (MR_FIRE).
+import { resists_fire } from './mondata.js';
 import { clear_path, couldsee, cansee, vision_recalc, recalc_block_point, Blind } from './vision.js';
 import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
@@ -139,13 +145,21 @@ const PM_KILLER_BEE = 1, PM_QUEEN_BEE = 5, PM_GELATINOUS_CUBE = 8,
       PM_ANGEL = 123, PM_ETTIN = 174, PM_MINOTAUR = 177, PM_JABBERWOCK = 178,
       PM_XORN = 232, PM_GHOUL = 246, PM_WATCHMAN = 282, PM_WATCH_CAPTAIN = 283,
       PM_VROCK = 295, PM_DEATH = 311, PM_PESTILENCE = 312, PM_FAMINE = 313,
-      PM_PIRANHA = 316;
+      PM_PIRANHA = 317;
 
 // C ref: monmove.c:1871 m_move() — the "flutters randomly" appr=0 gate fires for
 // a hostile sighted giant bat (S_BAT), a will-o-wisp/light (S_LIGHT) or the
 // (invisible) stalker (PM_STALKER).  monsym.h class indices / makemon.js pmidx.
-const S_BAT = 28;       // monsym.h S_BAT (giant bat, bat)
-const S_LIGHT = 25;     // monsym.h S_LIGHT (yellow/black light)
+// C ref: defsym.h MONSYM indices == permonst.mcls.  One canonical block: six
+// separate alias sets for this enum had accumulated in this file.
+const S_BLOB = 2, S_COCKATRICE = 3, S_DOG = 4, S_EYE = 5, S_FELINE = 6,
+    S_JELLY = 10, S_LEPRECHAUN = 12, S_MIMIC = 13, S_NYMPH = 14, S_ORC = 15,
+    S_RODENT = 18, S_SPIDER = 19, S_UNICORN = 21, S_VORTEX = 22, S_WORM = 23,
+    S_LIGHT = 25, S_ANGEL = 27, S_BAT = 28, S_CENTAUR = 29, S_DRAGON = 30,
+    S_ELEMENTAL = 31, S_FUNGUS = 32, S_GIANT = 34, S_MUMMY = 39,
+    S_PUDDING = 42, S_QUANTMECH = 43, S_VAMPIRE = 48, S_YETI = 51,
+    S_ZOMBIE = 52, S_HUMAN = 53, S_GHOST = 54, S_GOLEM = 55, S_DEMON = 56,
+    S_EEL = 57;
 const PM_STALKER = 153; // makemon.js MONS index of "stalker"
 
 // C ref: mon.c mon_allowflags() — a monster gets OPENDOOR (and thus may step
@@ -555,7 +569,6 @@ const M_AP_NOTHING = 0, M_AP_FURNITURE = 1, M_AP_OBJECT = 2, M_AP_MONSTER = 3;
 //  resists 9/10), not a nymph/jabberwock/leprechaun (those resist 49/50), and
 //  either Aggravate_monster, or a dog/human, or 1/7 while not mimicking
 //  furniture or an object.
-const S_NYMPH_MCLS = 14, S_DOG_MCLS = 4, S_LEPRECHAUN_MCLS = 12;
 async function disturb(mtmp) {
     const u = game.u;
     if (!(couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100)) return 0;
@@ -564,13 +577,13 @@ async function disturb(mtmp) {
     const Stealth = !!u?.uStealth;
     if (!(!Stealth || (monsndx_of(mtmp.data) === PM_ETTIN && rn2(10)))) return 0;
     const mcls = permonst_of(mtmp.data)?.mcls;
-    const heavySleeper = (mcls === S_NYMPH_MCLS
+    const heavySleeper = (mcls === S_NYMPH
                           || monsndx_of(mtmp.data) === PM_JABBERWOCK
-                          || mcls === S_LEPRECHAUN_MCLS);
+                          || mcls === S_LEPRECHAUN);
     if (!(!heavySleeper || !rn2(50))) return 0;
     const Aggravate_monster = !!u?.uAggravate_monster;
     if (!(Aggravate_monster
-          || (mcls === S_DOG_MCLS || mcls === S_HUMAN_MCLS)
+          || (mcls === S_DOG || mcls === S_HUMAN)
           || (!rn2(7) && mtmp.m_ap_type !== M_AP_FURNITURE
               && mtmp.m_ap_type !== M_AP_OBJECT)))
         return 0;
@@ -773,29 +786,51 @@ async function shk_move(shkp) {
 // to the hero, or monsters that can see a non-invisible/non-displaced hero,
 // this resolves to the hero's real position with no RNG.  The RNG-consuming
 // guessing branch only runs under invisibility/displacement/underwater.
+// C ref: monmove.c:2215 set_apparxy(mtmp) — where the monster THINKS the hero
+// is.  Previously only the blind-monster arm existed, with a comment conceding
+// "No Invis / Displaced / Underwater modelling here -> displ stays 0", so a
+// sighted monster always knew the hero exactly and took the early return.  That
+// skipped C's whole notthere branch: its rn2(4) "gotu" roll and the rn2(2*displ+1)
+// guess loop, which for a displaced hero runs on EVERY sighted hostile's turn.
 export function set_apparxy(mtmp) {
-    const mx = mtmp.mux, my = mtmp.muy;
-    if (mtmp.mtame || (game.u?.ux === mx && game.u?.uy === my)) {
-        mtmp.mux = game.u.ux; mtmp.muy = game.u.uy; return;
+    const u = game.u;
+    let mx = mtmp.mux, my = mtmp.muy;
+    // A pet knows your smell, a grabber still has hold of you, and a monster
+    // that already has you pinned doesn't suddenly forget.  (money_cnt/umoney
+    // is only read by the xorn arm below.)
+    if (mtmp.mtame || mtmp === u?.ustuck || (u?.ux === mx && u?.uy === my)) {
+        mtmp.mux = u.ux; mtmp.muy = u.uy; return;
     }
-    const notseen = (!mtmp.mcansee);
-    // No Invis / Displaced / Underwater modelling here -> displ stays 0.
-    if (!notseen) {
-        mtmp.mux = game.u.ux; mtmp.muy = game.u.uy; return;
+    const notseen = (!mtmp.mcansee || (Invis() && !perceives(mtmp.data)));
+    // PM_DISPLACER_BEAST (pmidx 39) sees through displacement.
+    const notthere = Displaced() && mtmp.data?.pmidx !== 39;
+    let displ;
+    if (Underwater()) displ = 1;
+    else if (notseen) displ = 1;    // the xorn+umoney "smells gold" arm gives 0
+    else if (notthere) displ = couldsee(mx, my) ? 2 : 1;
+    else displ = 0;
+    if (!displ) { mtmp.mux = u.ux; mtmp.muy = u.uy; return; }
+
+    // Without this, invisibility and displacement would be too powerful.
+    const gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : false;  // monmove.c:2257
+    if (!gotu) {
+        let try_cnt = 0;
+        do {
+            if (++try_cnt > 200) { mx = u.ux; my = u.uy; break; }
+            mx = u.ux - displ + rn2(2 * displ + 1);                // monmove.c:2268
+            my = u.uy - displ + rn2(2 * displ + 1);                // monmove.c:2269
+        } while (!isok(mx, my)
+                 || (displ !== 2 && mx === mtmp.mx && my === mtmp.my)
+                 || ((mx !== u.ux || my !== u.uy) && !passes_walls(mtmp.data)
+                     // C: accessible(mx,my) || (closed_door && (can_ooze||can_fog));
+                     // both ooze/fog need an amorphous or vampshifter monster and
+                     // neither helper exists here yet.
+                     && !(ACCESSIBLE(terrainTyp(mx, my)) && !closed_door_at(mx, my)))
+                 || !couldsee(mx, my));
+    } else {
+        mx = u.ux; my = u.uy;
     }
-    // notseen branch (blind monster): displ = 1, may roll to guess.
-    const displ = 1;
-    const gotu = !rn2(3);
-    if (gotu) {
-        mtmp.mux = game.u.ux; mtmp.muy = game.u.uy; return;
-    }
-    let try_cnt = 0, nx = mx, ny = my;
-    do {
-        if (++try_cnt > 200) { nx = game.u.ux; ny = game.u.uy; break; }
-        nx = game.u.ux - displ + rn2(2 * displ + 1);
-        ny = game.u.uy - displ + rn2(2 * displ + 1);
-    } while (!isok(nx, ny));
-    mtmp.mux = nx; mtmp.muy = ny;
+    mtmp.mux = mx; mtmp.muy = my;
 }
 
 // C ref: mon.c mfndpos(mon, &data, flag).  Returns the list of legal move
@@ -952,33 +987,64 @@ export function m_avoid_kicked_loc(mtmp, nx, ny) {
         && dist2(nx, ny, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2;
 }
 
-// C ref: trap.c m_harmless_trap(mtmp, ttmp) — is trap `ttmp` harmless to `mtmp`?
-// A floor-trigger trap doesn't fire for an airborne monster; a bear trap can't
-// hold a small/amorphous/whirly/unsolid monster; statue/magic/vibrating-square
-// traps never harm a moving monster.  Everything else (arrow/dart/rock/pit/
-// teleport/&c.) is harmful to the grounded, solid monsters the sessions place.
+// C ref: trap.c:1106 m_harmless_trap(mtmp, ttmp).  Every C arm is present: the
+// previous `default: return false` made RUST_TRAP (harmless to anything but an
+// iron golem) look harmful, so a monster that had learned rust traps dropped
+// three squares from its own mfndpos candidate list and m_move's
+// rn2(4*(cnt-j)) rolled mod 20 where C rolls mod 32.
 function m_harmless_trap(mtmp, ttmp) {
     const ttyp = ttmp.ttyp;
+    const mdat = mtmp.data;
     if (FLOOR_TRIGGER.has(ttyp) && mon_check_in_air(mtmp)) return true;
     switch (ttyp) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+    case SQKY_BOARD:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case TELEP_TRAP:
+    case LEVEL_TELEP:
+    case MAGIC_PORTAL:
+    case POLY_TRAP:
+        return false;
     case BEAR_TRAP: {
-        // A starting pet's .data record (dog.js makedog_mon) doesn't carry
-        // its own msize, so fall back to the mons[] table by pmidx — the
-        // same fallback dogmove.js's own bear-trap size check already uses.
-        const msize = (mtmp.data?.msize != null)
-            ? mtmp.data.msize
-            : (mon_msize(mtmp.data?.pmidx) ?? 2);
-        // amorphous / is_whirly / unsolid escapes aren't reachable for the
-        // grounded quadrupeds placed near bear traps here; only the size test.
-        return msize <= 1; /* MZ_SMALL */
+        // A starting pet's .data record (dog.js makedog_mon) carries no msize,
+        // so fall back to the mons[] table by pmidx.
+        const msize = (mdat?.msize != null) ? mdat.msize : (mon_msize(mdat?.pmidx) ?? 2);
+        return msize <= 1 /* MZ_SMALL */ || amorphous(mdat) || is_whirly(mdat)
+            || unsolid(mdat);
     }
+    case SLP_GAS_TRAP:
+        return resists_sleep(mtmp);          // defended(AD_SLEE): no monster wears such gear
+    case RUST_TRAP:
+        return mdat?.name !== 'iron golem';
+    case FIRE_TRAP:
+        return resists_fire(mtmp);
+    case PIT:
+    case SPIKED_PIT:
+    case HOLE:
+    case TRAPDOOR:
+        return is_clinger(mdat);             // !Sokoban: never on these levels
+    case WEB:
+        return amorphous(mdat) || webmaker(mdat) || is_whirly(mdat) || unsolid(mdat);
+    case ANTI_MAGIC:
+        return resists_magm(mtmp);
     case STATUE_TRAP:
     case MAGIC_TRAP:
     case VIBRATING_SQUARE:
         return true;
     default:
-        return false;
+        return false;                        // C: impossible() then FALSE
     }
+}
+
+// C ref: mondata.c:215 resists_magm(mon) — species term only; the wielded/worn
+// ANTIMAGIC and artifact terms need monster gear no session's monster carries.
+function resists_magm(mon) {
+    const ptr = mon?.data;
+    return dmgtype(ptr, AD_MAGM) || dmgtype(ptr, AD_RBRE)
+        || ptr?.name === 'baby gray dragon';
 }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — is there a boulder lying on the
@@ -1020,8 +1086,6 @@ function m_can_break_boulder(mtmp) {
 // both doorbusters), UNDEAD_NAMES listed three vampire ranks this build does
 // not even have, and M2_HUMAN_NAMES cannot tell a werewolf's human form from
 // its wolf form because they share a name.
-const S_HUMAN_MCLS = 53, S_VAMPIRE_MCLS = 48, S_GHOST_MCLS = 54;
-const S_UNICORN_MCLS = 21;  // monsym.h S_UNICORN
 function is_giant(ptr) { return (mflags2_of(ptr) & M2_GIANT) !== 0; }
 function is_rider(ptr) {
     const i = monsndx_of(ptr);
@@ -1030,7 +1094,7 @@ function is_rider(ptr) {
 // C ref: mondata.h is_unicorn(ptr) = (mlet == S_UNICORN && likes_gems(ptr)) —
 // the mlet alone would also catch ponies/horses, which are NOT unicorns.
 function is_unicorn(ptr) {
-    return permonst_of(ptr)?.mcls === S_UNICORN_MCLS && likes_gems_flag(ptr);
+    return permonst_of(ptr)?.mcls === S_UNICORN && likes_gems_flag(ptr);
 }
 function is_undead(ptr) { return (mflags2_of(ptr) & M2_UNDEAD) !== 0; }
 function is_human(ptr) { return (mflags2_of(ptr) & M2_HUMAN) !== 0; }
@@ -1067,10 +1131,10 @@ function corpse_eater(ptr) {
 }
 // C ref: mondata.h noncorporeal(ptr) = (mlet == S_GHOST);
 //         is_whirly(ptr) = (mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL]).
-const S_VORTEX_MCLS = 22, PM_AIR_ELEMENTAL = 154;
-function noncorporeal(ptr) { return permonst_of(ptr)?.mcls === S_GHOST_MCLS; }
+const PM_AIR_ELEMENTAL = 154;
+function noncorporeal(ptr) { return permonst_of(ptr)?.mcls === S_GHOST; }
 function is_whirly(ptr) {
-    return permonst_of(ptr)?.mcls === S_VORTEX_MCLS
+    return permonst_of(ptr)?.mcls === S_VORTEX
         || monsndx_of(ptr) === PM_AIR_ELEMENTAL;
 }
 // C ref: monst.h is_vampshifter(mon) = mon->cham in {vampire, vampire
@@ -1139,13 +1203,13 @@ export function onscary(x, y, mtmp) {
         || is_rider(mtmp.data))
         return false;
     if (magical_scare
-        && (mtmp.data?.mcls === S_HUMAN_MCLS || unique_corpstat(mtmp.data)))
+        && (mtmp.data?.mcls === S_HUMAN || unique_corpstat(mtmp.data)))
         return false;
     if ((mtmp.isshk && inhishop(mtmp)) || (mtmp.ispriest && inhistemple(mtmp)))
         return false;
     if (auditory_scare) return true;
     if (IS_ALTAR(terrainTyp(x, y))
-        && (mtmp.data?.mcls === S_VAMPIRE_MCLS || is_vampshifter(mtmp)))
+        && (mtmp.data?.mcls === S_VAMPIRE || is_vampshifter(mtmp)))
         return true;
     if (sobj_at_otyp(x, y, SCR_SCARE_MONSTER)) return true;
     const ep = engr_at(x, y);
@@ -1251,7 +1315,6 @@ export function hides_under_pm(ptr) {
 // observable when something asks about a monster OTHER than the one acting,
 // as m_search_items() does ("is the object pinned under an immobile monster?").
 // Default the missing field to C's TRUE rather than to 0.
-const S_EEL_MCLS = 57;
 function mon_helpless(mtmp) {
     const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
     return !!mtmp.msleeping || !canmove;
@@ -1291,12 +1354,11 @@ function locomotion(ptr, def) {
     return slithy ? 'slither' : def;
 }
 
-// C ref: do_name.c y_monnam(mtmp) — mid-sentence monster name.  For a plainly
-// visible hostile (non-tame, non-invisible, non-hallucinating) monster this is
-// just "the <name>" (e.g. "the cobra").  The tame/peaceful/steed prefixes and
-// hallucination aren't exercised by the concealing hiders here.
-function y_monnam_local(mtmp) {
-    return `the ${mtmp?.data?.name || 'creature'}`;
+// C ref: do_name.c:1117 y_monnam(mtmp) — mid-sentence monster name; the article
+// is ARTICLE_YOUR for a pet and ARTICLE_THE otherwise.  Invisibility, a given
+// name and hallucination are not modeled.
+export function y_monnam_local(mtmp) {
+    return `${mtmp?.mtame ? 'your' : 'the'} ${mtmp?.data?.name || 'creature'}`;
 }
 
 // C ref: objnam.c ansimpleoname(obj) — an(simpleoname(obj)); simpleoname for a
@@ -1328,7 +1390,7 @@ async function maybe_unhide_at(x, y) {
     const noLongerHidden =
         (hides_under_pm(ptr)
          && (!OBJ_AT(x, y) || m.mtrapped || !can_hide_under_obj_at(x, y)))
-        || (ptr?.mcls === S_EEL_MCLS && !IS_POOL(terrainTyp(x, y)));
+        || (ptr?.mcls === S_EEL && !IS_POOL(terrainTyp(x, y)));
     if (noLongerHidden) await hideunder(m);
 }
 
@@ -1348,7 +1410,7 @@ export async function hideunder(mtmp) {
         /* can't hide while holding / held by the hero */
     } else if (mtmp.mtrapped || (t && !is_pit(t.ttyp))) {
         /* can't hide while trapped or on a non-pit trap */
-    } else if (ptr?.mcls === S_EEL_MCLS) {
+    } else if (ptr?.mcls === S_EEL) {
         /* aquatic hiders (eels) not exercised here */
     } else if (hides_under_pm(ptr) && OBJ_AT(x, y)
                && can_hide_under_obj_at(x, y)
@@ -1604,6 +1666,7 @@ function mon_kill_leaving(mon, nocorpse) {
     // mondead(): detach the monster so the renderer stops drawing it.  Coords
     // are left intact for make_corpse() to place the cadaver.
     const mx = mon.mx, my = mon.my;
+    mvitals_died(mon);                 // mon.c:3135
     const list = game.level?.monsters;
     if (list) {
         const idx = list.indexOf(mon);
@@ -1641,6 +1704,88 @@ async function pline_mon(_mon, msg) {
 // C ref: trap.c trapeffect_selector() for a non-youmonst monster.  Dispatch on
 // trap type; each branch reproduces exactly the RNG the monster path consumes.
 // Implemented incrementally as the sessions exercise each trap type.
+// C ref: hack.h:129 enum bodypart_types.
+const ARM = 0, EYE = 1, FINGER = 3, FINGERTIP = 4, FOOT = 5, HAND = 6,
+    HANDED = 7, HEAD = 8, LEG = 9, TOE = 13, HAIR = 14, NOSE = 17;
+// polyself.c:1974 — index order is the bodypart_types enum.
+const BP = {
+    humanoid: ['arm', 'eye', 'face', 'finger', 'fingertip', 'foot', 'hand', 'handed', 'head', 'leg', 'light headed', 'neck', 'spine', 'toe', 'hair', 'blood', 'lung', 'nose', 'stomach'],
+    jelly: ['pseudopod', 'dark spot', 'front', 'pseudopod extension', 'pseudopod extremity', 'pseudopod root', 'grasp', 'grasped', 'cerebral area', 'lower pseudopod', 'viscous', 'middle', 'surface', 'pseudopod extremity', 'ripples', 'juices', 'surface', 'sensor', 'stomach'],
+    animal: ['forelimb', 'eye', 'face', 'foreclaw', 'claw tip', 'rear claw', 'foreclaw', 'clawed', 'head', 'rear limb', 'light headed', 'neck', 'spine', 'rear claw tip', 'fur', 'blood', 'lung', 'nose', 'stomach'],
+    bird: ['wing', 'eye', 'face', 'wing', 'wing tip', 'foot', 'wing', 'winged', 'head', 'leg', 'light headed', 'neck', 'spine', 'toe', 'feathers', 'blood', 'lung', 'bill', 'stomach'],
+    horse: ['foreleg', 'eye', 'face', 'forehoof', 'hoof tip', 'rear hoof', 'forehoof', 'hooved', 'head', 'rear leg', 'light headed', 'neck', 'backbone', 'rear hoof tip', 'mane', 'blood', 'lung', 'nose', 'stomach'],
+    sphere: ['appendage', 'optic nerve', 'body', 'tentacle', 'tentacle tip', 'lower appendage', 'tentacle', 'tentacled', 'body', 'lower tentacle', 'rotational', 'equator', 'body', 'lower tentacle tip', 'cilia', 'life force', 'retina', 'olfactory nerve', 'interior'],
+    fungus: ['mycelium', 'visual area', 'front', 'hypha', 'hypha', 'root', 'strand', 'stranded', 'cap area', 'rhizome', 'sporulated', 'stalk', 'root', 'rhizome tip', 'spores', 'juices', 'gill', 'gill', 'interior'],
+    vortex: ['region', 'eye', 'front', 'minor current', 'minor current', 'lower current', 'swirl', 'swirled', 'central core', 'lower current', 'addled', 'center', 'currents', 'edge', 'currents', 'life force', 'center', 'leading edge', 'interior'],
+    snake: ['vestigial limb', 'eye', 'face', 'large scale', 'large scale tip', 'rear region', 'scale gap', 'scale gapped', 'head', 'rear region', 'light headed', 'neck', 'length', 'rear scale', 'scales', 'blood', 'lung', 'forked tongue', 'stomach'],
+    worm: ['anterior segment', 'light sensitive cell', 'clitellum', 'setae', 'setae', 'posterior segment', 'segment', 'segmented', 'anterior segment', 'posterior', 'over stretched', 'clitellum', 'length', 'posterior setae', 'setae', 'blood', 'skin', 'prostomium', 'stomach'],
+    spider: ['pedipalp', 'eye', 'face', 'pedipalp', 'tarsus', 'claw', 'pedipalp', 'palped', 'cephalothorax', 'leg', 'spun out', 'cephalothorax', 'abdomen', 'claw', 'hair', 'hemolymph', 'book lung', 'labrum', 'digestive tract'],
+    fish: ['fin', 'eye', 'premaxillary', 'pelvic axillary', 'pelvic fin', 'anal fin', 'pectoral fin', 'finned', 'head', 'peduncle', 'played out', 'gills', 'dorsal fin', 'caudal fin', 'scales', 'blood', 'gill', 'nostril', 'stomach'],
+};
+// polyself.c:2053 — humanoids whose AT_CLAW still reads as "hand".
+const NOT_CLAWS = new Set([S_HUMAN, S_MUMMY, S_ZOMBIE, S_ANGEL, S_NYMPH,
+    S_LEPRECHAUN, S_QUANTMECH, S_VAMPIRE, S_ORC, S_GIANT]);
+
+// C ref: polyself.c:1972 mbodypart(mon, part).  Branch order is load-bearing:
+// the S_DOG/S_FELINE/S_RODENT/owlbear special case runs before the humanoid
+// claw test, and slithy() before the class tests below it.
+export function mbodypart(mon, part) {
+    const mptr = mon?.data;
+    const nm = mptr?.name || '';
+    const mlet = (mptr?.mcls != null) ? mptr.mcls : mon_mlet(mptr?.pmidx);
+    if (mlet === S_DOG || mlet === S_FELINE || mlet === S_RODENT || nm === 'owlbear') {
+        switch (part) {
+        case HAND: return 'paw';
+        case HANDED: return 'pawed';
+        case FOOT: return 'rear paw';
+        case ARM: case LEG: return BP.horse[part];
+        default: break;
+        }
+    } else if (mlet === S_YETI) {
+        return BP.humanoid[part];
+    }
+    if ((part === HAND || part === HANDED)
+        && humanoid(mptr) && attacktype_claw(mptr) && !NOT_CLAWS.has(mlet)
+        && nm !== 'stone golem' && nm !== 'amorous demon')
+        return (part === HAND) ? 'claw' : 'clawed';
+    if ((nm === 'mumak' || nm === 'mastodon') && part === NOSE) return 'trunk';
+    if (nm === 'shark' && part === HAIR) return 'skin';
+    if ((nm === 'jellyfish' || nm === 'kraken')
+        && (part === ARM || part === FINGER || part === HAND || part === FOOT
+            || part === TOE))
+        return 'tentacle';
+    if (nm === 'floating eye' && part === EYE) return 'cornea';
+    if (humanoid(mptr) && (part === ARM || part === FINGER || part === FINGERTIP
+                           || part === HAND || part === HANDED))
+        return BP.humanoid[part];
+    if (mlet === S_COCKATRICE) return (part === HAIR) ? BP.snake[part] : BP.bird[part];
+    if (nm === 'raven') return BP.bird[part];
+    if (mlet === S_CENTAUR || mlet === S_UNICORN || nm === 'ki-rin'
+        || (nm === 'rothe' && part !== HAIR))
+        return BP.horse[part];
+    if (mlet === S_LIGHT) {
+        if (part === HANDED) return 'rayed';
+        if (part === ARM || part === FINGER || part === FINGERTIP || part === HAND)
+            return 'ray';
+        return 'beam';
+    }
+    if (nm === 'stalker' && part === HEAD) return 'head';
+    if (mlet === S_EEL && nm !== 'jellyfish') return BP.fish[part];
+    if (mlet === S_WORM) return BP.worm[part];
+    if (mlet === S_SPIDER) return BP.spider[part];
+    if (slithy(mptr) || (mlet === S_DRAGON && part === HAIR)) return BP.snake[part];
+    if (mlet === S_EYE) return BP.sphere[part];
+    if (mlet === S_JELLY || mlet === S_PUDDING || mlet === S_BLOB || nm === 'jellyfish')
+        return BP.jelly[part];
+    if (mlet === S_VORTEX || mlet === S_ELEMENTAL) return BP.vortex[part];
+    if (mlet === S_FUNGUS) return BP.fungus[part];
+    if (humanoid(mptr)) return BP.humanoid[part];
+    return BP.animal[part];
+}
+function attacktype_claw(mdat) {
+    return mon_attacks(mdat).some((a) => a.aatyp === AT_CLAW);
+}
+
 async function mon_trapeffect(mtmp, trap) {
     switch (trap.ttyp) {
     case ROCKTRAP: {
@@ -1728,6 +1873,49 @@ async function mon_trapeffect(mtmp, trap) {
                 await emitU(`You hear ${trapnote(trap, false)} squeak ${near ? 'nearby' : 'in the distance'}.`);
         }
         return Trap_Effect_Finished;
+    }
+    case RUST_TRAP: {
+        // C ref: trapeffect_rust_trap() else-branch (trap.c:1656).  One rn2(5)
+        // picks which body part the gush hits.  water_damage() on a monster's
+        // worn armour reaches erode_obj(), which draws nothing, and the force
+        // arg skips its Luck roll — so the four arms differ only in wording
+        // (the greased / container arms DO roll, but no monster in reach of a
+        // rust trap carries either).
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const { seetrap } = await import('./trap.js');
+        if (in_sight) seetrap(trap);
+        const GUSH = 'A gush of water hits';
+        switch (rn2(5)) {                                    // trap.c:1663
+        case 0:
+            if (in_sight)
+                await pline_mon(mtmp, `${GUSH} ${mon_nam(mtmp)} on the ${mbodypart(mtmp, HEAD)}!`);
+            break;
+        case 1:
+            if (in_sight)
+                await pline_mon(mtmp, `${GUSH} ${mon_nam(mtmp)}'s left ${mbodypart(mtmp, ARM)}!`);
+            break;
+        case 2:
+            if (in_sight)
+                await pline_mon(mtmp, `${GUSH} ${mon_nam(mtmp)}'s right ${mbodypart(mtmp, ARM)}!`);
+            break;
+        default:
+            if (in_sight) await pline(`${GUSH} ${mon_nam(mtmp)}!`);
+            break;
+        }
+        // completelyrusts(ptr) == (ptr == &mons[PM_IRON_GOLEM]) (mondata.h:227).
+        if (mtmp.data?.name === 'iron golem') {
+            // mlifesaver() is FALSE for a trap-generated golem, so C always
+            // says "falls".  monkilled(AD_RUST) leaves no corpse for a golem.
+            if (in_sight)
+                await pline_mon(mtmp, `${Monnam(mtmp)} falls to pieces!`);
+            const xx = mtmp.mx, yy = mtmp.my;
+            mon_kill_leaving(mtmp, true);
+            if (DEADMONSTER(mtmp)) { newsym(xx, yy); return Trap_Killed_Mon; }
+        } else if (mtmp.data?.name === 'gremlin' && rn2(3)) {
+            // split_mon(mtmp, 0) — a second gremlin via clone_mon(); not
+            // modeled, so leave the divergence honest rather than guess.
+        }
+        return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     case MAGIC_TRAP:
         // C ref: trapeffect_magic_trap() else-branch — monsters are usually
@@ -2004,7 +2192,7 @@ function mon_allowflags(mtmp) {
     if (is_minion(ptr) || is_rider(ptr)) allowflags |= ALLOW_SANCT;
     if (is_unicorn(ptr) && !noteleport_level()) allowflags |= NOTONL;
     if (is_human(ptr) || ptr?.name === 'minotaur') allowflags |= ALLOW_SSM;
-    if ((is_undead(ptr) && ptr?.mcls !== S_GHOST_MCLS) || is_vampshifter(mtmp))
+    if ((is_undead(ptr) && ptr?.mcls !== S_GHOST) || is_vampshifter(mtmp))
         allowflags |= NOGARLIC;
     return allowflags;
 }
@@ -2099,6 +2287,13 @@ async function m_move(mtmp) {
         && can_hide_under_obj_at(omx, omy) && rn2(10)) {
         return MMOVE_NOTHING; /* do not leave hiding place */
     }
+
+    // C ref: monmove.c:1779 — m_move re-runs set_apparxy at its top ("not
+    // necessary if m_move() called from this file, but needed for other calls").
+    // dochug already called it, so a displaced hero gets TWO guess rolls per
+    // monster turn, and the second one usually has displ==2 (couldsee(mux,muy)
+    // is now true of the first guess) => rn2(5) rather than rn2(3).
+    set_apparxy(mtmp);
 
     // goal = the hero's apparent position
     let ggx = mtmp.mux ?? game.u.ux;
@@ -2378,7 +2573,7 @@ async function m_move(mtmp) {
         // && rn2(5))) hideunder(mtmp);`.  The rn2(5) fires whenever the monster
         // is revealed and not helpless (sleeping/frozen/can't-move).  Reproduce
         // the roll so the stream stays aligned (the seed4500 step-250 cobras).
-        if (hides_under_pm(ptr) || ptr?.mcls === S_EEL_MCLS) {
+        if (hides_under_pm(ptr) || ptr?.mcls === S_EEL) {
             // C ref: monmove.c:1696 — `if (mtmp->mundetected || (!helpless(mtmp)
             // && rn2(5))) hideunder(mtmp);`.  rn2(5) is rolled only when the
             // monster isn't already hidden and isn't helpless (short-circuit).
@@ -2470,7 +2665,7 @@ export function mon_regen(mon, digest_meal) {
             if (mon.meating <= 0) {
                 // C ref: dogmove.c finish_meating(mtmp)
                 mon.meating = 0;
-                if (mon.m_ap_type && mon.data?.mcls !== S_MIMIC_MCLS) {
+                if (mon.m_ap_type && mon.data?.mcls !== S_MIMIC) {
                     mon.m_ap_type = 0;
                     mon.mappearance = 0;
                     newsym(mon.mx, mon.my);
@@ -2481,7 +2676,6 @@ export function mon_regen(mon, digest_meal) {
 }
 
 // C ref: monsym.h S_MIMIC — used only by mon_regen's finish_meating tail.
-const S_MIMIC_MCLS = 13;
 
 // C ref: monmove.c dochug(mtmp).  Faithful control flow: PHASE ONE pre-move
 // adjustments, PHASE TWO set_apparxy + distfleeck, PHASE THREE m_move (guarded
@@ -2605,7 +2799,6 @@ export async function dochug(mtmp) {
     // OR.  The rn2() terms must only roll when control actually reaches them,
     // so they are evaluated lazily here (mirroring C's || left-to-right order).
     let status = MMOVE_NOTHING;
-    const S_LEPRECHAUN = 12; // defsym.h MONSYM index (27 is S_ANGEL)
     const may_move =
            !nearby
         || mtmp.mflee
@@ -2756,7 +2949,6 @@ export function m_next2u(mtmp) {
 // C ref: mondata.c is_orc(ptr) — (mflags2 & M2_ORC).  The data records carry
 // the monster class (mcls); every S_ORC monster has M2_ORC, and the only other
 // M2_ORC species are orc-mummy / orc-zombie (matched by name).
-const S_ORC = 15;
 function is_orc(mdat) {
     if (!mdat) return false;
     if (mdat.mcls === S_ORC) return true;
@@ -2765,7 +2957,6 @@ function is_orc(mdat) {
 }
 
 // C ref: mondata.c is_demon(ptr) — (mlet == S_DEMON), defsym.h S_DEMON == 56.
-const S_DEMON = 56;
 function is_demon(mdat) {
     return !!mdat && mdat.mcls === S_DEMON;
 }
@@ -3061,6 +3252,16 @@ function m_canseeu(m) {
 // the recorded slices (hero is visible, on dry land; monsters lack ESP), so
 // these are constant here; kept as named helpers matching the C macros.
 function Invis() { return !!game.u?.uinvis; }
+// C ref: youprop.h Displaced == (HDisplaced || EDisplaced).  EDisplaced comes
+// from setworn() on an item whose oc_oprop is DISPLACED — in reach that is only
+// the cloak of displacement (otyp 149), which every non-elf Ranger starts
+// wearing (u_init.c:233 swaps it for an elven cloak on elves, which is why
+// elf-ranger draws no set_apparxy at all and gnome-ranger draws 1258).
+const CLOAK_OF_DISPLACEMENT_OTYP = 149;
+function Displaced() {
+    return game.uarmc?.otyp === CLOAK_OF_DISPLACEMENT_OTYP
+        || !!game.u?.uprops?.HDisplaced;
+}
 function Underwater() { return !!game.u?.uunderwater; }
 function perceives(_data) { return false; } // M2_MIND / telepathy — none here
 
@@ -3446,7 +3647,6 @@ function mon_would_consume_item(mtmp, otmp) {
 // has-hands set.  Those approximations only ever fed a boolean `> 0`, but
 // mon_would_take_item's pctload gates read the numbers directly.
 
-const S_NYMPH = 14; // defsym.h MONSYM index (permonst.mcls)
 
 function mpickstuff(mtmp) {
     // C ref: mon.c:1858 — prevent shopkeepers from leaving the door of their
@@ -3733,6 +3933,7 @@ async function mattacku(mtmp, mdat) {
         // RNG-free; the ones that can fire for the monsters this port drives are
         // ported in getmattk() below.
         const mattk = getmattk(mtmp, i, sum);
+        mattk._slot = i;   // C compares `mattk == gh.hitmsg_prev + 1`
         // C ref mhitu.c:787 — u.uswallow (never here) and the post-wildmiss
         // "spells only" skip.
         if (skipnonmagc && mattk.aatyp !== AT_MAGC) continue;
@@ -4691,7 +4892,13 @@ async function hitmu(mtmp, mdat, mattk) {
     // None of the monsters this path drives has a passive counterattack, and
     // passiveum() returns M_ATTK_HIT when there is nothing to fire, so both
     // branches land on M_ATTK_HIT here (no RNG, no message).
+    await stop_occupation();            // mhitu.c:1265 — after the mhm.done arm
     return M_ATTK_HIT;
+}
+
+// Dynamic import: hack.js -> cmd.js -> monmove.js is a static cycle.
+async function stop_occupation() {
+    await (await import('./hack.js')).stop_occupation();
 }
 
 // C ref: uhitm.c:4782 mhitm_adtyping() — dispatch on the damage type.  Only the
@@ -4707,10 +4914,30 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
     case AD_SITM: // steal item (nymphs, monkeys) — uhitm.c:4798 shares one handler
     case AD_SEDU: // seduce & steal (foocubi, nymphs' second attack)
         await mhitm_ad_sedu(mtmp, mattk, mhm); break;
+    case AD_STCK: await mhitm_ad_stck(mtmp, mattk, mhm); break;
     default:
         // Unmodelled adtyp: leave damage as the base roll, emit the hit verb.
         await hitmsg(mtmp, mattk);
         break;
+    }
+}
+
+// C ref: uhitm.c:3306 mhitm_ad_stck() — the `mdef == &gy.youmonst` branch (a
+// lichen or an acid blob grabs the hero).  The rn2(10) comes BEFORE hitmsg()
+// here, unlike mhitm_ad_elec where it follows — the dispatcher's old
+// `default:` arm emitted the verb and drew nothing, so every AD_STCK touch lost
+// a call and desynced the rest of the turn.
+async function mhitm_ad_stck(mtmp, mattk, _mhm) {
+    const negated = await mhitm_mgc_atk_negated(mtmp, false);   // uhitm.c:3310
+    await hitmsg(mtmp, mattk);
+    const u = game.u;
+    // sticks(youmonst.data) (mondata.c:654) is FALSE for every playable role's
+    // base form; the hero is never polymorphed in these sessions.
+    if (!negated && !u.ustuck) {
+        u.ustuck = mtmp;                                        // set_ustuck
+        game.disp_botl = true;
+        // The PM_BARBED_DEVIL "The barbs stick to you!" line needs magr to be
+        // that species; nothing that deep reaches these levels.
     }
 }
 
@@ -4867,7 +5094,7 @@ async function mhitm_ad_drst(mtmp, mattk, mhm) {
 // (HProtection && u.ublessed>0, or the protection-spell u.uspellprot).  The
 // Protection accounting reads the game-state fields when present; none of the
 // starter heroes carry them, so the result is driven purely by worn armor.
-function magic_negation(_hero) {
+export function magic_negation_hero() {
     const u = game.u || {};
     const EProtection = u.EProtection ?? game.EProtection ?? 0;
     let via_amul = false;
@@ -4905,7 +5132,7 @@ const AMULET_OF_GUARDING_OTYP = 210;                         // onames.h AMULET_
 // sees "You avoid harm." on the top line.  Returns TRUE when thwarted.
 async function mhitm_mgc_atk_negated(mtmp, verbosely = false) {
     if (mtmp.mcan) return true;                      // no message, no roll
-    const armpro = magic_negation();                 // uhitm.c:86
+    const armpro = magic_negation_hero();                 // uhitm.c:86
     const negated = !(rn2(10) >= 3 * armpro);        // uhitm.c:87
     if (negated && verbosely) await emitU('You avoid harm.'); // uhitm.c:92 (mdef==hero)
     return negated;
@@ -4951,19 +5178,38 @@ const DIED_HOW = 0; // end.h DIED
 // C ref: mhitu.c:29 hitmsg(mtmp, mattk) — "<The monster> <verb>!".  Appends to
 // the top line so it concatenates with the hero's prior message this turn.
 const HITMSG_VERB = {
-    [AT_CLAW]: 'hits', [AT_BITE]: 'bites', [AT_KICK]: 'kicks', [AT_WEAP]: 'hits',
+    [AT_BITE]: 'bites', [AT_KICK]: 'kicks', [AT_STNG]: 'stings',
+    [AT_BUTT]: 'butts', [AT_TUCH]: 'touches you',
+    [AT_TENT]: 'tentacles suck your brain',
+    [AT_EXPL]: 'explodes', [AT_BOOM]: 'explodes',
 };
 async function hitmsg(mtmp, mattk) {
-    const verb = HITMSG_VERB[mattk.aatyp] || 'hits';
-    await emitU(`${Monnam(mtmp)} ${verb}!`);
+    // could_seduce()'s "smiles at you seductively" arm needs a foocubus.
+    const verb = HITMSG_VERB[mattk.aatyp] || 'hits';           // mhitu.c:43
+    let name = Monnam(mtmp);
+    if (mattk.aatyp === AT_TENT) name = s_suffix(name);
+    const punct = (mattk.aatyp === AT_KICK && thick_skinned_hero()) ? '.' : '!';
+    // mhitu.c:73 — a second CONSECUTIVE hit from the same monster with the same
+    // attack type, and specifically from the NEXT mattk slot, says "again".
+    const h = game._hitmsg || (game._hitmsg = {});
+    const again = (h.mid === mtmp.m_id && h.slot != null
+                   && mattk._slot === h.slot + 1 && mattk.aatyp === h.aatyp)
+        ? ' again' : '';
+    await emitU(`${name} ${verb}${again}${punct}`);
+    h.mid = mtmp.m_id; h.slot = mattk._slot; h.aatyp = mattk.aatyp;
 }
+
+// C ref: objnam.c s_suffix(s) — possessive form.
+function s_suffix(s) { return /s$/.test(s) ? `${s}'` : `${s}'s`; }
 
 // C ref: mhitu.c:85 missmu(mtmp, nearmiss, mattk) — "<The monster> misses!".
 // No RNG.
 async function missmu(mtmp, nearmiss) {
+    game._hitmsg = {};                  // mhitu.c:87 hitmsg_mid = 0, prev = NULL
     const verbose = game.flags?.verbose !== false;
     const just = (nearmiss && verbose) ? 'just ' : '';
     await emitU(`${Monnam(mtmp)} ${just}misses!`);
+    await stop_occupation();            // mhitu.c:99
 }
 
 // Append a hero-facing message to the top line (C pline -> update_topl).

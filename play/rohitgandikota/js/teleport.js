@@ -386,10 +386,15 @@ function Is_botlevel_tele(lev) {
 //
 // js/mklev.js has a private copy of this from level generation; C keeps the
 // one definition here. They should be consolidated.
-function u_on_newpos(x, y) {
+export function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
-    /* u.usteed follows; cliparound() is a no-op on an 80x21 map */
+    /* src/dungeon.c:1584 — ridden steed always shares hero's location;
+       cliparound() is a no-op on an 80x21 map */
+    if (game.u.usteed) {
+        game.u.usteed.mx = game.u.ux;
+        game.u.usteed.my = game.u.uy;
+    }
 }
 
 // src/teleport.c teleok() — may the hero teleport onto <x,y>?

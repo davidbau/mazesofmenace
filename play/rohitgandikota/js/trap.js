@@ -31,6 +31,27 @@ import { d, rn1 } from './rng.js';
 import { exercise } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { KILLED_BY_AN, A_STR } from './const.js';
+import { W_SADDLE, NO_TRAP_FLAGS, HEAD, ARM, W_ARMH, W_ARMS, W_ARMG,
+         W_ARMC, W_ARM, W_ARMU, W_WEP, W_SWAPWEP, MAX_ERODE,
+         ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
+         EF_NONE, EF_GREASE, EF_VERBOSE, EF_PAY, EF_DESTROY,
+         ER_NOTHING, ER_DAMAGED, ER_DESTROYED } from './const.js';
+import { rnl } from './rng.js';
+import { body_part } from './polyself.js';
+import { mon_nam } from './do_name.js';
+import { MON_WEP, DEADMONSTER } from './monst.js';
+import { erosion_matters } from './mkobj.js';
+import { cxname, vtense, suit_simple_name,
+         gloves_simple_name } from './objnam.js';
+import { helm_simple_name, cloak_simple_name } from './do_wear.js';
+import { update_inventory } from './invent.js';
+import { OCLASSES } from './objects_data.js';
+import { is_pool, is_lava } from './mon.js';
+import { encumber_msg } from './attrib.js';
+import { nomul } from './hack.js';
+import { pickup } from './pickup.js';
+import { surface, In_sokoban } from './dungeon.js';
+import { Is_airlevel, Is_waterlevel } from './const.js';
 
 /* src/trap.h — trapeffect_*() return values. */
 /* include/trap.h:98-101 — Trap_Is_Gone shares 0 with Finished. */
@@ -265,10 +286,81 @@ function t_missile(otyp, trap) {
 //
 // Draw order: the once/tseen rn2(15) disarm check, then t_missile's mksobj,
 // then the rn2(6) poison roll, then dmgval, then thitu's rnd(20).
+// src/trap.c trapeffect_arrow_trap()
+async function trapeffect_arrow_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        if (trap.once && trap.tseen && !rn2(15)) {
+            await You_hear('a loud click!');
+            deltrap(trap);
+            newsym(game.u.ux, game.u.uy);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        seetrap(trap);
+        await pline('An arrow shoots out at you!');
+        const otmp = t_missile(ONAMES.ARROW, trap);
+        const dam = dmgval(otmp, game.youmonst);
+        /* u.usteed && !rn2(2) && steedintrap: no steeds in the traps yet */
+        if (await thitu(8, dam, { obj: otmp }, 'arrow')) {
+            /* obfree(otmp) — the arrow is destroyed */
+        } else {
+            place_object(otmp, game.u.ux, game.u.uy);
+            if (!game.u.ublind)
+                observe_object(otmp);
+            const { stackobj } = await import('./invent.js');
+            stackobj(otmp);
+            newsym(game.u.ux, game.u.uy);
+        }
+        return Trap_Effect_Finished;
+    }
+
+    const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+    const see_it = cansee(mtmp.mx, mtmp.my);
+    let trapkilled = false;
+
+    if (trap.once && trap.tseen && !rn2(15)) {
+        if (in_sight && see_it)
+            await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+        deltrap(trap);
+        newsym(mtmp.mx, mtmp.my);
+        return Trap_Is_Gone;
+    }
+    trap.once = 1;
+    const otmp = t_missile(ONAMES.ARROW, trap);
+    if (in_sight)
+        seetrap(trap);
+    if (await thitm(8, mtmp, otmp, 0, false))
+        trapkilled = true;
+
+    return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+        ? Trap_Caught_Mon : Trap_Effect_Finished;
+}
+
 async function trapeffect_dart_trap(mtmp, trap, trflags) {
     if (mtmp !== game.youmonst) {
-        note_unported_trap('trapeffect_dart_trap:monster');
-        return Trap_Effect_Finished;
+        /* src/trap.c dart monster arm */
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+        let trapkilled = false;
+
+        if (trap.once && trap.tseen && !rn2(15)) {
+            if (in_sight && see_it)
+                await pline(`${Monnam(mtmp)} triggers a trap but nothing happens.`);
+            deltrap(trap);
+            newsym(mtmp.mx, mtmp.my);
+            return Trap_Is_Gone;
+        }
+        trap.once = 1;
+        const otmp = t_missile(ONAMES.DART, trap);
+        if (!rn2(6))
+            otmp.opoisoned = 1;
+        if (in_sight)
+            seetrap(trap);
+        if (await thitm(7, mtmp, otmp, 0, false))
+            trapkilled = true;
+
+        return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+            ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 
     if (trap.once && trap.tseen && !rn2(15)) {
@@ -333,7 +425,7 @@ export async function thitu(tlev, dam, objp, name) {
     else
         await You(`are hit by ${onm}${exclam(dam)}`);
 
-    losehp(dam, name, KILLED_BY_AN);
+    await losehp(dam, name, KILLED_BY_AN);
     exercise(A_STR, false);
     return 1;
 }
@@ -347,12 +439,16 @@ export async function dotrap(trap, trflags) {
     const ttype = trap.ttyp;
 
     game.u.utrap = 0;                   /* reset_utrap() */
+    if (ttype === ARROW_TRAP)
+        return await trapeffect_arrow_trap(game.youmonst, trap, trflags);
     if (ttype === DART_TRAP)
         return await trapeffect_dart_trap(game.youmonst, trap, trflags);
     if (ttype === MAGIC_TRAP)
         return await trapeffect_magic_trap(game.youmonst, trap, trflags);
     if (ttype === BEAR_TRAP)
         return await trapeffect_bear_trap(game.youmonst, trap, trflags);
+    if (ttype === RUST_TRAP)
+        return await trapeffect_rust_trap(game.youmonst, trap, trflags);
 
     note_unported_trap(`dotrap:ttyp=${ttype}`);
     return Trap_Effect_Finished;
@@ -435,7 +531,7 @@ function m_in_air(mtmp) {
 }
 
 // include/mondata.h:23 grounded()
-function grounded(ptr) {
+export function grounded(ptr) {
     return !is_flyer(ptr) && !is_floater(ptr)
            && (!is_clinger(ptr) || !has_ceiling(game.u.uz));
 }
@@ -499,10 +595,13 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
             }
         }
     }
-    /* the missile place/stack arm needs a real obj; none of the live
-       callers pass one */
-    if (obj)
-        note_unported_trap('thitm:missile_placement');
+    /* src/trap.c:3955 — an unfired or force-hit missile lands on the
+       monster's square; a normally-striking one is used up. */
+    if (obj && (!strike || d_override)) {
+        place_object(obj, mon.mx, mon.my);
+        const { stackobj } = await import('./invent.js');
+        stackobj(obj);
+    } /* else dealloc_obj(obj): dropped reference is the JS equivalent */
 
     return trapkilled;
 }
@@ -535,9 +634,9 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
             if (wearing_iron_shoes(mtmp)) {
                 await pline(`${yname_boots()} protects your leg.`);
             } else {
-                set_wounded_legs(rn2(2) ? RIGHT_SIDE : LEFT_SIDE,
-                                 rn1(10, 10));
-                losehp(dmg, 'bear trap', KILLED_BY_AN);
+                await set_wounded_legs(rn2(2) ? RIGHT_SIDE : LEFT_SIDE,
+                                       rn1(10, 10));
+                await losehp(dmg, 'bear trap', KILLED_BY_AN);
             }
         }
         exercise(A_DEX, false);
@@ -646,6 +745,8 @@ function mselftouch_would_fire(mon) {
 // session that lands on one is visibly incomplete rather than silently wrong.
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
+    case ARROW_TRAP:
+        return await trapeffect_arrow_trap(mtmp, trap, trflags);
     case DART_TRAP:
         return await trapeffect_dart_trap(mtmp, trap, trflags);
     case MAGIC_TRAP:
@@ -655,6 +756,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case PIT:
     case SPIKED_PIT:
         return await trapeffect_pit(mtmp, trap, trflags);
+    case RUST_TRAP:
+        return await trapeffect_rust_trap(mtmp, trap, trflags);
     default:
         note_unported_trap(`trapeffect_selector:ttyp=${trap.ttyp}`);
         return Trap_Effect_Finished;
@@ -766,6 +869,523 @@ function fixed_tele_trap(trap) {
 export function is_pit_ttyp(ttyp) {
     return is_pit(ttyp);
 }
+// src/trap.c:6648 uteetering_at_seen_pit() — escaped a pit and standing on
+// the precipice.
+export function uteetering_at_seen_pit(trap) {
+    return !!(trap && is_pit(trap.ttyp) && trap.tseen
+              && game.u.ux === trap.tx && game.u.uy === trap.ty
+              && !(game.u.utrap && game.u.utraptype === TT_PIT));
+}
+
+// src/trap.c:6660 uescaped_shaft() — didn't fall through a hole / didn't
+// release a trap door.
+export function uescaped_shaft(trap) {
+    return !!(trap && is_hole(trap.ttyp) && trap.tseen
+              && game.u.ux === trap.tx && game.u.uy === trap.ty);
+}
+
+// src/apply.c:1518 splash_lit() — a lit lamp/candle hit by water. Only a
+// BRASS_LANTERN survives a rust-trap splash; everything else lamplit goes
+// out. No light-source timers exist in the port yet, so a lamplit object
+// records; an unlit one returns false without drawing, which is the whole
+// path today.
+function splash_lit(obj) {
+    if (!obj || !obj.lamplit)
+        return false;
+    note_unported_trap('splash_lit:lamplit');
+    return false;
+}
+
+// src/mkobj.c:2270 is_flammable()
+export function is_flammable(otmp) {
+    const otyp = otmp.otyp;
+    const omat = game.objects[otyp].oc_material;
+    /* Is_candle */
+    if (otyp === ONAMES.TALLOW_CANDLE || otyp === ONAMES.WAX_CANDLE)
+        return false;
+    if (game.objects[otyp].oc_oprop === 26 /* FIRE_RES */
+        || otyp === ONAMES.WAN_FIRE)
+        return false;
+    return (omat <= MATERIALS.WOOD && omat !== MATERIALS.LIQUID)
+           || omat === MATERIALS.PLASTIC;
+}
+
+// src/mkobj.c:2289 is_rottable()
+export function is_rottable(otmp) {
+    const omat = game.objects[otmp.otyp].oc_material;
+    return omat <= MATERIALS.WOOD && omat !== MATERIALS.LIQUID;
+}
+
+/* include/objclass.h:200 is_rustprone(), :201 is_crackable(),
+   :204 is_corrodeable() */
+const is_rustprone = (otmp) =>
+    game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
+const is_crackable = (otmp) =>
+    game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+    && otmp.oclass === OCLASSES.ARMOR_CLASS;
+const is_corrodeable = (otmp) =>
+    game.objects[otmp.otyp].oc_material === MATERIALS.COPPER
+    || game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
+
+// src/trap.c:171 erode_obj() — generic erode-item function. Draws only the
+// rnl(4) blessed-protection roll. The shop-billing (EF_PAY) and destroy-arm
+// unwearing paths sit on unported subsystems and record themselves.
+export async function erode_obj(otmp, ostr, type, ef_flags) {
+    const action = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
+    const msg = ['burnt', 'rusted', 'rotten', 'corroded', 'cracked'];
+    const bythe = ['heat', 'oxidation', 'decay', 'corrosion', 'impact'];
+
+    if (!otmp)
+        return ER_NOTHING;
+
+    let check_grease = (ef_flags & EF_GREASE) !== 0;
+    const print = (ef_flags & EF_VERBOSE) !== 0;
+    let vulnerable = false, is_primary = true, crackers = false;
+
+    const victim = carried_tr(otmp) ? game.youmonst
+                   : otmp.ocarry ? otmp.ocarry : null;
+    const uvictim = victim === game.youmonst;
+    const vismon = victim && !uvictim && canseemon(victim);
+    const visobj = !victim && cansee(game.bhitpos?.x ?? 0,
+                                     game.bhitpos?.y ?? 0);
+
+    switch (type) {
+    case ERODE_BURN:
+        vulnerable = is_flammable(otmp);
+        check_grease = false;
+        break;
+    case ERODE_RUST:
+        vulnerable = is_rustprone(otmp);
+        break;
+    case ERODE_ROT:
+        vulnerable = is_rottable(otmp);
+        check_grease = false;
+        is_primary = false;
+        break;
+    case ERODE_CORRODE:
+        vulnerable = is_corrodeable(otmp);
+        is_primary = false;
+        break;
+    case ERODE_CRACK:
+        vulnerable = is_crackable(otmp);
+        is_primary = true;
+        crackers = true;
+        break;
+    default:
+        return ER_NOTHING;
+    }
+    const erosion = is_primary ? (otmp.oeroded || 0) : (otmp.oeroded2 || 0);
+
+    if (!ostr)
+        ostr = cxname(otmp);
+
+    if (check_grease && otmp.greased) {
+        note_unported_trap('erode_obj:grease_protect');
+        return 1 /* ER_GREASED */;
+    } else if (!erosion_matters(otmp, game.objects)) {
+        return ER_NOTHING;
+    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        if (game.flags?.verbose && print && (uvictim || vismon))
+            await pline(`${uvictim ? 'Your' : "The"} ${ostr} ${vtense(ostr, 'are')} not affected by ${bythe[type]}.`);
+        return ER_NOTHING;
+    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        if (game.flags?.verbose && (print || otmp.oerodeproof)
+            && (uvictim || vismon || visobj))
+            await pline(`Somehow, ${uvictim ? 'your' : 'the'} ${ostr} ${vtense(ostr, 'are')} not affected by the ${bythe[type]}.`);
+        if (otmp.oerodeproof) {
+            otmp.rknown = 1;
+            if (uvictim)
+                update_inventory();
+        }
+        return ER_NOTHING;
+    } else if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? ' completely'
+                       : erosion ? ' further' : '';
+        if (uvictim || vismon || visobj)
+            await pline(`${uvictim ? 'Your' : vismon ? Monnam(victim) + "'s" : 'The'} ${ostr} ${vtense(ostr, action[type])}${adverb}!`);
+        if (ef_flags & EF_PAY)
+            note_unported_trap('erode_obj:costly_alteration');
+        if (is_primary)
+            otmp.oeroded = (otmp.oeroded || 0) + 1;
+        else
+            otmp.oeroded2 = (otmp.oeroded2 || 0) + 1;
+        if (uvictim)
+            update_inventory();
+        return ER_DAMAGED;
+    } else if (ef_flags & EF_DESTROY) {
+        note_unported_trap('erode_obj:destroy');
+        return ER_NOTHING;
+    } else {
+        if (game.flags?.verbose && print) {
+            if (uvictim)
+                await Your(`${ostr} ${vtense(ostr, game.u.ublind ? 'feel' : 'look')} completely ${msg[type]}.`);
+            else if (vismon || visobj)
+                await pline(`The ${ostr} ${vtense(ostr, game.u.ublind ? 'feel' : 'look')} completely ${msg[type]}.`);
+        }
+        return ER_NOTHING;
+    }
+}
+
+/* include/obj.h carried() — obj is in hero inventory */
+function carried_tr(obj) {
+    return obj.where === 3 /* OBJ_INVENT */ || game.invent.includes(obj);
+}
+
+// src/trap.c:4712 water_damage() — get an object wet and damage it.
+// Draws: greased rn2(2), cursed-container rn2(3), the (Luck+5) > rn2(20)
+// protection roll when force is FALSE, spestudied rn2. The towel and
+// acid-potion arms sit on unported subsystems and record.
+export async function water_damage(obj, ostr, force) {
+    const in_invent = obj && carried_tr(obj);
+    let described = false;
+
+    if (!obj)
+        return ER_NOTHING;
+
+    if (splash_lit(obj))
+        return ER_DAMAGED;
+
+    if (!ostr)
+        ostr = cxname(obj);
+
+    if (obj.otyp === ONAMES.CAN_OF_GREASE && obj.spe > 0) {
+        return ER_NOTHING;
+    } else if (obj.otyp === ONAMES.TOWEL && obj.spe < 7) {
+        note_unported_trap('water_damage:wet_a_towel');
+        /* wet_a_towel(obj, -rnd(7 - obj->spe), TRUE) — the draw is real */
+        rnd(7 - obj.spe);
+        return ER_NOTHING;
+    } else if (obj.greased) {
+        if (!rn2(2)) {
+            obj.greased = 0;
+            if (in_invent) {
+                await pline_The(`grease on ${xname(obj)} washes off.`);
+                described = true;
+                update_inventory();
+            }
+            if (obj.otyp === ONAMES.POT_ACID) {
+                note_unported_trap('water_damage:pot_acid');
+                return ER_DESTROYED;
+            }
+        }
+        return 1 /* ER_GREASED */;
+    } else if (Is_container_tr(obj)
+               && (!Waterproof_container_tr(obj)
+                   || (obj.cursed && !rn2(3)))) {
+        if (in_invent)
+            await pline(`Some water gets into your ${ostr}!`);
+        await water_damage_chain(obj.cobj || [], false);
+        return ER_DAMAGED;
+    } else if (Waterproof_container_tr(obj)) {
+        if (in_invent && !game.u.ublind && !Underwater_tr())
+            await pline_The(`water cannot get into your ${ostr}.`);
+        return ER_DAMAGED;
+    } else if (!force && ((game.u.uluck || 0) + 5) > rn2(20)) {
+        return ER_NOTHING;
+    } else if (obj.oclass === OCLASSES.SCROLL_CLASS) {
+        if (obj.otyp === ONAMES.SCR_BLANK_PAPER)
+            return 0;
+        if (in_invent)
+            await Your(`${ostr} ${vtense(ostr, 'fade')}.`);
+        obj.otyp = ONAMES.SCR_BLANK_PAPER;
+        obj.dknown = 0;
+        obj.spe = 0;
+        if (in_invent)
+            update_inventory();
+        return ER_DAMAGED;
+    } else if (obj.oclass === OCLASSES.SPBOOK_CLASS) {
+        if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+            await pline('Steam rises from the Book of the Dead.');
+            return ER_NOTHING;
+        }
+        if (in_invent)
+            await Your(`${ostr} ${vtense(ostr, 'fade')}.`);
+        if (obj.spestudied)
+            obj.spestudied = rn2(obj.spestudied);
+        obj.otyp = ONAMES.SPE_BLANK_PAPER;
+        obj.dknown = 0;
+        if (in_invent)
+            update_inventory();
+        return ER_DAMAGED;
+    } else if (obj.oclass === OCLASSES.POTION_CLASS) {
+        if (obj.otyp === ONAMES.POT_ACID) {
+            note_unported_trap('water_damage:pot_acid');
+            return ER_DESTROYED;
+        } else if (obj.odiluted) {
+            if (in_invent)
+                await Your(`${ostr} ${vtense(ostr, 'dilute')} further.`);
+            obj.otyp = ONAMES.POT_WATER;
+            obj.dknown = 0;
+            obj.blessed = obj.cursed = 0;
+            obj.odiluted = 0;
+            if (in_invent)
+                update_inventory();
+            return ER_DAMAGED;
+        } else if (obj.otyp !== ONAMES.POT_WATER) {
+            if (in_invent)
+                await Your(`${ostr} ${vtense(ostr, 'dilute')}.`);
+            obj.odiluted = (obj.odiluted || 0) + 1;
+            if (in_invent)
+                update_inventory();
+            return ER_DAMAGED;
+        }
+    } else {
+        return await erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
+    }
+    return ER_NOTHING;
+}
+
+/* include/obj.h Is_container() / Waterproof_container() */
+function Is_container_tr(obj) {
+    return obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.CHEST
+        || obj.otyp === ONAMES.ICE_BOX || obj.otyp === ONAMES.SACK
+        || obj.otyp === ONAMES.OILSKIN_SACK || obj.otyp === ONAMES.BAG_OF_HOLDING
+        || obj.otyp === ONAMES.BAG_OF_TRICKS;
+}
+function Waterproof_container_tr(obj) {
+    return obj.otyp === ONAMES.OILSKIN_SACK || obj.otyp === ONAMES.CHEST
+        || obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.ICE_BOX;
+}
+function Underwater_tr() {
+    return !!game.u?.uinwater;
+}
+
+// src/trap.c:4855 water_damage_chain() — apply water damage down a
+// container's contents chain.
+export async function water_damage_chain(objs, here) {
+    for (const obj of (objs || []))
+        await water_damage(obj, null, false);
+}
+
+// src/trap.c:1602 trapeffect_rust_trap() — a gush of water; one rn2(5)
+// picks the target slot, then water_damage on whatever is there.
+async function trapeffect_rust_trap(mtmp, trap, trflags) {
+    const A_gush = 'A gush of water hits';
+
+    if (mtmp === game.youmonst) {
+        seetrap(trap);
+
+        switch (rn2(5)) {
+        case 0:
+            await pline(`${A_gush} you on the ${body_part(HEAD)}!`);
+            await water_damage(game.u.uarmh,
+                               helm_simple_name(game.u.uarmh), true);
+            break;
+        case 1: {
+            await pline(`${A_gush} your left ${body_part(ARM)}!`);
+            if (await water_damage(game.u.uarms, 'shield', true)
+                !== ER_NOTHING)
+                break;
+            if (game.u.twoweap
+                || (game.u.uwep && bimanual_tr(game.u.uwep)))
+                await water_damage(game.u.twoweap ? game.u.uswapwep
+                                                  : game.u.uwep, null, true);
+            await water_damage(game.u.uarmg,
+                               gloves_simple_name(game.u.uarmg), true);
+            break;
+        }
+        case 2:
+            await pline(`${A_gush} your right ${body_part(ARM)}!`);
+            await water_damage(game.u.uwep, null, true);
+            await water_damage(game.u.uarmg,
+                               gloves_simple_name(game.u.uarmg), true);
+            break;
+        default:
+            await pline(`${A_gush} you!`);
+            for (const otmp of [...game.invent]) {
+                if (otmp.lamplit && otmp !== game.u.uwep
+                    && (otmp !== game.u.uswapwep || !game.u.twoweap))
+                    splash_lit(otmp);
+            }
+            if (game.u.uarmc)
+                await water_damage(game.u.uarmc,
+                                   cloak_simple_name(game.u.uarmc), true);
+            else if (game.u.uarm)
+                await water_damage(game.u.uarm,
+                                   suit_simple_name(game.u.uarm), true);
+            else if (game.u.uarmu)
+                await water_damage(game.u.uarmu, 'shirt', true);
+        }
+        update_inventory();
+
+        if (Upolyd(game.u))
+            note_unported_trap('rust_trap:polyd_iron_golem_gremlin');
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        let trapkilled = false;
+        const mptr = game.mons[mtmp.mnum];
+
+        if (in_sight)
+            seetrap(trap);
+        switch (rn2(5)) {
+        case 0:
+            if (in_sight)
+                await pline(`${A_gush} ${mon_nam(mtmp)} on the head!`);
+            await water_damage(which_armor(mtmp, W_ARMH), 'helmet', true);
+            break;
+        case 1: {
+            if (in_sight)
+                await pline(`${A_gush} ${mon_nam(mtmp)}'s left arm!`);
+            const shield = which_armor(mtmp, W_ARMS);
+            if (await water_damage(shield, 'shield', true) !== ER_NOTHING)
+                break;
+            const wep = MON_WEP(mtmp);
+            if (wep && bimanual_tr(wep))
+                await water_damage(wep, null, true);
+            await water_damage(which_armor(mtmp, W_ARMG), 'gloves', true);
+            break;
+        }
+        case 2:
+            if (in_sight)
+                await pline(`${A_gush} ${mon_nam(mtmp)}'s right arm!`);
+            await water_damage(MON_WEP(mtmp), null, true);
+            await water_damage(which_armor(mtmp, W_ARMG), 'gloves', true);
+            break;
+        default:
+            if (in_sight)
+                await pline(`${A_gush} ${mon_nam(mtmp)}!`);
+            for (const otmp of (mtmp.minvent || []))
+                if (otmp.lamplit && (otmp.owornmask & (W_WEP | W_SWAPWEP)) === 0)
+                    splash_lit(otmp);
+            {
+                let target;
+                if ((target = which_armor(mtmp, W_ARMC)) != null)
+                    await water_damage(target, cloak_simple_name(target), true);
+                else if ((target = which_armor(mtmp, W_ARM)) != null)
+                    await water_damage(target, suit_simple_name(target), true);
+                else if ((target = which_armor(mtmp, W_ARMU)) != null)
+                    await water_damage(target, 'shirt', true);
+            }
+        }
+
+        if (completelyrusts_tr(mptr)) {
+            if (in_sight)
+                await pline(`${Monnam(mtmp)} falls to pieces!`);
+            monkilled(mtmp, null, ATTKS.AD_RUST);
+            if (DEADMONSTER(mtmp))
+                trapkilled = true;
+        } else if (mptr.pmidx === PMNAMES.PM_GREMLIN && rn2(3)) {
+            note_unported_trap('rust_trap:gremlin_split');
+        }
+
+        return trapkilled ? Trap_Killed_Mon
+               : mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+    return Trap_Effect_Finished;
+}
+
+/* include/monst.h completelyrusts() — iron golems */
+function completelyrusts_tr(mptr) {
+    return mptr.pmidx === PMNAMES.PM_IRON_GOLEM;
+}
+
+/* include/obj.h bimanual() — two-handed weapon or polearm */
+function bimanual_tr(obj) {
+    return !!game.objects[obj.otyp]?.oc_bimanual;
+}
+
+// src/trap.c:4024 float_down() — return the hero to the surface when
+// levitation ends (or, with emask W_SADDLE, when dismounting). The
+// levitation-specific arms (BLevitation, BFlying, Punished ball-drag,
+// drown/lava) belong to state the port does not carry yet and record
+// themselves; the dismount path used today runs the trap check and the
+// pickup(1) tail for real.
+export async function float_down(hmask, emask) {
+    let trap = null;
+    let no_msg = false;
+
+    /* HLevitation &= ~hmask; ELevitation &= ~emask; — the flat uprops map
+       has one LEVITATION slot; clear it only when a mask was given and it
+       was set (nothing grants levitation yet, so this is bookkeeping). */
+    if ((hmask || emask) && game.u.uprops?.LEVITATION)
+        note_unported_trap('float_down:levitation_sources');
+    if (game.u.uprops?.LEVITATION)
+        return 0; /* maybe another ring/potion/boots */
+
+    game.disp ||= {};
+    game.disp.botl = true;
+    nomul(0); /* stop running or resting */
+
+    if (game.u.uswallow) {
+        note_unported_trap('float_down:uswallow');
+        await encumber_msg();
+        return 1;
+    }
+
+    if (game.uball)
+        note_unported_trap('float_down:punished_ball_drop');
+
+    /* check for falling into pool - added by GAN 10/20/86 */
+    const Flying = !!game.u.uprops?.FLYING
+        || !!(game.u.usteed && is_flyer(game.u.usteed.data));
+    if (!Flying) {
+        if (!game.u.uswallow && game.u.ustuck) {
+            note_unported_trap('float_down:ustuck_release');
+        }
+        if (is_pool(game.u.ux, game.u.uy) && !game.u.uinwater)
+            note_unported_trap('float_down:drown');
+        if (is_lava(game.u.ux, game.u.uy)) {
+            note_unported_trap('float_down:lava_effects');
+            no_msg = true;
+        }
+    }
+    if (!trap) {
+        trap = t_at_mon(game.u.ux, game.u.uy);
+        if (Is_airlevel(game.u.uz)) {
+            await You('begin to tumble in place.');
+        } else if (Is_waterlevel(game.u.uz) && !no_msg) {
+            await You_feel('heavier.');
+        } else if (!game.u.uinwater && !no_msg) {
+            if (!(emask & W_SADDLE)) {
+                if (In_sokoban(game.u.uz) && trap) {
+                    await You('fall over.');
+                    await losehp(rnd(2), 'dangerous winds', 0 /* KILLED_BY */);
+                    if (game.u.usteed) {
+                        const { dismount_steed } = await import('./steed.js');
+                        await dismount_steed(1 /* DISMOUNT_FELL */);
+                    }
+                    note_unported_trap('float_down:selftouch');
+                } else if (game.u.usteed && (is_floater(game.u.usteed.data)
+                                             || is_flyer(game.u.usteed.data))) {
+                    await You('settle more firmly in the saddle.');
+                } else {
+                    await You(`float gently to the ${surface(game.u.ux, game.u.uy)}.`);
+                }
+            }
+        }
+    }
+
+    /* levitation gives maximum carrying capacity, so having it end
+       potentially triggers greater encumbrance; do this after
+       'come down' messages, before trap activation or autopickup */
+    await encumber_msg();
+
+    const current_dungeon_level = { dnum: game.u.uz.dnum,
+                                    dlevel: game.u.uz.dlevel };
+    if (trap) {
+        switch (trap.ttyp) {
+        case STATUE_TRAP:
+            break;
+        case HOLE:
+        case TRAPDOOR:
+            /* Can_fall_thru(&u.uz) — every level in the sessions can */
+            if (game.u.ustuck)
+                break;
+            /* FALLTHRU */
+        default:
+            if (!game.u.utrap) /* not already in the trap */
+                await dotrap(trap, NO_TRAP_FLAGS);
+        }
+    }
+    /* on_level(&u.uz, &current_dungeon_level) — dungeon.h macro, inline */
+    if (!Is_airlevel(game.u.uz) && !Is_waterlevel(game.u.uz)
+        && !game.u.uswallow
+        && game.u.uz.dnum === current_dungeon_level.dnum
+        && game.u.uz.dlevel === current_dungeon_level.dlevel)
+        await pickup(1);
+    return 1;
+}
+
 
 // src/trap.c:4183 climb_pit() — the hero struggles out of a pit. The
 // Passes_walls, boulder-crevice and flying arms are gated; the ordinary

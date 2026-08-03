@@ -329,7 +329,7 @@ async function kick_ouch(x, y, maploc, kickobjnam) {
         rnd(5);             /* set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
     }
     const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
-    losehp(dmg, kickstr(maploc, kickobjnam), KILLED_BY);
+    await losehp(dmg, kickstr(maploc, kickobjnam), KILLED_BY);
     if (game.u.uprops?.LEVITATION)
         note_unported_dokick('kick_ouch:hurtle');
 }

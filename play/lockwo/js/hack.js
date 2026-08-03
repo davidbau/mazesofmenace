@@ -31,7 +31,7 @@ import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
          IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA,
-         Is_waterlevel, isok } from './const.js';
+         Is_waterlevel, isok, VIBRATING_SQUARE } from './const.js';
 
 // Run direction deltas for the capital-letter run commands (and the
 // 'G'/'g' prefix followed by a movement key).  C: xdir[]/ydir[].
@@ -59,13 +59,18 @@ function is_pool_or_lava(x, y) {
     return IS_POOL(loc.typ) || IS_LAVA(loc.typ);
 }
 
-// C ref: hack.c avoid_moving_on_trap() — true when <x,y> holds a seen trap
-// (other than the vibrating square).  The starter levels have no seen traps
-// along the recorded run paths, but the check is preserved for faithfulness.
-function avoid_moving_on_trap(x, y) {
+// C ref: hack.c:2443-2460 avoid_moving_on_trap() — true when <x,y> holds a seen
+// trap (other than the vibrating square, which is a trap only in implementation
+// and is treated as terrain).  The old `t.ttyp !== undefined` guard was a no-op
+// that let a seen vibrating square stop a run.
+// C's `msg` parameter prints "You stop in front of <a trap>." when
+// flags.mention_walls; that is emitted at cmd.js's avoid_running_into_trap()
+// call site instead, since lookaround() here is synchronous and already omits
+// every mention_walls message (cf. its closed-door arm, hack.c:3968).
+export function avoid_moving_on_trap(x, y) {
     const traps = game.level?.traps || [];
     for (const t of traps) {
-        if (t.tx === x && t.ty === y && t.tseen && t.ttyp !== /*VIBRATING_SQUARE*/ undefined)
+        if (t.tx === x && t.ty === y && t.tseen && t.ttyp !== VIBRATING_SQUARE)
             return true;
     }
     return false;
@@ -92,6 +97,30 @@ function nomul(nval = 0) {
     if ((game.multi ?? 0) < nval) return;
     game.multi = nval;
     game.context.travel = game.context.travel1 = game.context.mv = 0;
+}
+
+// C ref: allmain.c:684 stop_occupation().  This port splits C's single
+// go.occupation into one flag per activity, so the table supplies each one's
+// set_occupation() txt.  _eat_occupation is deliberately absent: C's
+// maybe_finished_meal(TRUE) arm eats the message when the meal is already
+// finished, and eat.c:2072's msgbuf is "eating <food_xname>" — neither is
+// modeled, so an eating hero is interrupted silently rather than with a wrong
+// line.
+const OCC_SLOTS = [
+    ['_search_occupation', 'searching'],           // cmd.c:1847
+    ['_study_occupation', 'studying'],             // spell.c:639
+    ['_wipe_occupation', 'wiping off your face'],  // do.c:2394
+];
+export async function stop_occupation() {
+    for (const [slot, txt] of OCC_SLOTS) {
+        if (!game[slot]) continue;
+        game[slot] = null;
+        await pline(`You stop ${txt}.`);
+        nomul(0);
+        return;
+    }
+    if (game._eat_occupation) { game._eat_occupation = null; nomul(0); return; }
+    if ((game.multi ?? 0) >= 0) nomul(0);
 }
 
 // C ref: hack.c lookaround() — examine the 8 cells around the hero after a

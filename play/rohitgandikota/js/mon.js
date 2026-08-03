@@ -1,7 +1,7 @@
 import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear } from './worn.js';
-import { is_hider, perceives, is_human, is_unicorn } from './mondata.js';
+import { is_hider, perceives, is_human, is_unicorn , regenerates } from './mondata.js';
 import { ceiling_hider } from './mondata.js';
 import { sensemon } from './display.js';
 import { mdistu, mon_track_clear } from './monmove.js';
@@ -115,8 +115,40 @@ export function mcalcmove(mon, m_moving) {
 // src/mon.c mcalcdistress() — per-turn status effects. Everything it touches
 // (stoning, sliming, timed invisibility, ...) needs subsystems that are not
 // ported, and none of them draw for a monster with no such state.
-export function mcalcdistress() {
-    /* nothing to do while no monster carries a timed affliction */
+export async function mcalcdistress() {
+    /* src/mon.c:4527 iter_mons(m_calcdistress) */
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        if (mtmp.mhp <= 0) continue;
+        await m_calcdistress(mtmp);
+    }
+}
+
+// src/mon.c:1180 m_calcdistress() — once per turn per monster: regenerate,
+// shapeshift, and time out temporary maladies.
+async function m_calcdistress(mtmp) {
+    /* non-moving monsters get a liquid check here; minliquid is drawn-free
+       for everything the sessions hold */
+    /* src/monmove.c:307 mon_regen(mtmp, FALSE) */
+    if (game.moves % 20 === 0 || regenerates(game.mons[mtmp.mnum]))
+        healmon(mtmp, 1, 0);
+    if (mtmp.mspec_used)
+        mtmp.mspec_used--;
+
+    /* possibly polymorph shapechangers and lycanthropes */
+    if (mtmp.cham != null && mtmp.cham >= 0)
+        note_unported_mon('m_calcdistress:decide_to_shapeshift');
+    {
+        const { were_change } = await import('./were.js');
+        await were_change(mtmp);
+    }
+
+    /* gradually time out temporary problems */
+    if (mtmp.mblinded && !--mtmp.mblinded)
+        mtmp.mcansee = 1;
+    if (mtmp.mfrozen && !--mtmp.mfrozen)
+        mtmp.mcanmove = 1;
+    if (mtmp.mfleetim && !--mtmp.mfleetim)
+        mtmp.mflee = 0;
 }
 
 // src/mon.c:298 movemon() — let every monster take its turn.

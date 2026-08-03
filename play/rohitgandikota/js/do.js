@@ -624,7 +624,7 @@ export async function donull() {
 // src/do.c:2426 set_wounded_legs() — wound the hero's leg(s): one temporary
 // Dex point the first time, a recovery timer (kept at the max of old and
 // new), and which side, tracked with the worn-ring bits.
-export function set_wounded_legs(side, timex) {
+export async function set_wounded_legs(side, timex) {
     game.disp ||= {};
     game.disp.botl = true;
     const intr = (game.u.intrinsic ||= {});
@@ -635,7 +635,7 @@ export function set_wounded_legs(side, timex) {
     if (!wounded || (intr.HWounded_legs || 0) < timex)
         intr.HWounded_legs = timex;
     game.u.EWounded_legs = (game.u.EWounded_legs || 0) | side;
-    /* encumber_msg(): carrying capacity shifts with the Dex change */
+    await encumber_msg();   /* the Dex loss shifts carrying capacity */
 }
 
 // src/do.c:2449 heal_legs() — 0: ordinary, 1: dismounting, 2: petrifying.
@@ -656,5 +656,8 @@ export async function heal_legs(how) {
 
         intr.HWounded_legs = 0;
         game.u.EWounded_legs = 0;
+
+        if (how === 0)
+            await encumber_msg();
     }
 }

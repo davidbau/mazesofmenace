@@ -28,9 +28,10 @@ import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
 import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
-import { spoteffects } from './trap.js';
+import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation,
+         TRAP_CLEARLY_IMMUNE } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
@@ -38,7 +39,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, IS_POOL, IS_LAVA,
          A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
-         PIT, SPIKED_PIT, TIP_SWIM } from './const.js';
+         PIT, SPIKED_PIT, TIP_SWIM, TRAPNUM } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { HEADSTONE } from './const.js';
@@ -243,6 +244,114 @@ function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
     const here = game.level?.at(ux, uy);
     if (here && IS_DOOR(here.typ) && !doorless_door(ux, uy)) return true;
     return false;
+}
+
+// C ref: hack.c:991 test_move(ux,uy,dx,dy,TEST_MOVE) — "would this step be
+// viable at all", the silent query the paranoid_confirm:trap gate makes before
+// it bothers asking.  TEST_MOVE rejects the same things the DO_MOVE walk in
+// domove() below rejects: an obstruction or iron bars (hack.c:1011), a closed
+// door (hack.c:1075-1136), and a diagonal into or out of an intact doorway
+// (hack.c:1140-1150, 1208-1214) — it just prints nothing and pushes nothing.
+// Not modelled: the boulder arm (hack.c:1216) only rejects when
+// svc.context.run >= 2, which can never reach this gate because a rush over a
+// seen trap already stopped in avoid_running_into_trap(); and the diagonal
+// bad_rock squeeze (hack.c:1153) which this port's DO_MOVE does not model
+// either, so both tests agree.
+function test_move_quiet(x, y) {
+    const u = game.u;
+    if (!isok(x, y)) return false;
+    if (blocksMove(x, y)) return false;
+    if (blocksDiagonalDoor(u.ux, u.uy, x, y, u.dx, u.dy)) return false;
+    return true;
+}
+
+// C ref: hack.c:2494-2509 avoid_running_into_trap_or_liquid(x,y), called from
+// domove_core() at hack.c:2757 — BEFORE the monster-bump block and long before
+// the paranoid prompt.  While running, stepping onto a known trap stops the
+// hero instead of prompting: run >= 2 (rush 'g', run 'G', travel run==8) sets
+// context.move = 0 and returns, so C never asks; run == 1 (shift-direction)
+// only nomul(0)s and walks on, and then the prompt below does fire.
+// The `Blind && avoid_moving_on_liquid()` half of C's test needs
+// Known_wwalking/Known_lwalking, which this port has no predicate for, and is
+// left unported.
+async function avoid_running_into_trap(x, y) {
+    const c = game.context;
+    const would_stop = ((c?.run || 0) >= 2);
+    if (!c?.run) return false;
+    if (!avoid_moving_on_trap(x, y)) return false;
+    // C emits this from inside avoid_moving_on_trap(x, y, msg) (hack.c:2452).
+    if (would_stop && game.flags?.mention_walls) {
+        const t = t_at(x, y);
+        if (t) await pline(`You stop in front of ${an(trap_explanation(t.ttyp))}.`);
+    }
+    game.multi = 0; // C nomul(0)
+    if (!would_stop) return false;
+    c.move = 0;
+    return true;
+}
+
+// C ref: hack.c:2514-2582 avoid_trap_andor_region(x,y) — the
+// paranoid_confirm:trap gate, called from domove_core() at hack.c:2826 (after
+// u_rooted(), before trapmove()/test_move(DO_MOVE)).  TRUE => the hero declined
+// to step onto the trap: no move, no elapsed turn.  options.c:7173 defaults
+// flags.paranoia_bits to PARANOID_PRAY|PARANOID_SWIM|PARANOID_TRAP and no
+// session changes it, so ParanoidTrap is always on.  ParanoidConfirm is NOT
+// among the defaults, so paranoid_query() is the plain
+// yn_function(prompt, "yn", 'n') arm (cmd.c:5645, cmd.c:5657).
+//
+// "Really step" / "Step into" are C's u_locomotion("step") (hack.c:1817) — a
+// levitating hero reads "float", a flying one "fly", a mounted one "ride".
+// Levitation and Flying make every ground trap CLEARLY_IMMUNE, so only a rider
+// could see a different verb on the trap question.
+// The Hallucination arm below is dead in this port: hallucination is fragmented
+// across u.uhallu / u.HHallucination / u.uprops.Hallucination and nothing ever
+// sets any of them, so the rnd(TRAPNUM - 1) name roll never fires.
+async function avoid_trap_andor_region(x, y) {
+    const u = game.u;
+    const c = game.context;
+    const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+    const confused = (u.uprops?.Confusion || 0) > 0;
+    // C: `!svc.context.nopick || svc.context.run` — the 'm' prefix opts out.
+    const nopick_opt_out = (c?.nopick && !c?.run);
+
+    // ── visible gas-cloud region (hack.c:2521-2550) ──  Entering a visible
+    // region is treated like entering a trap.  Moving from one region into
+    // another only asks when the new one damages (poison gas) and the old one
+    // does not (vapor).  Poison resistance deliberately does NOT suppress this:
+    // the cloud blocks vision either way.
+    if (!stunned && !confused && !Blind() && !u.uhallu && !nopick_opt_out) {
+        const { visible_region_at, reg_damg } = await import('./region.js');
+        const newreg = visible_region_at(x, y);
+        const oldreg = newreg ? visible_region_at(u.ux, u.uy) : null;
+        if (newreg && (!oldreg || (reg_damg(newreg) > 0 && reg_damg(oldreg) === 0))
+            && test_move_quiet(x, y)) {
+            // C: Snprintf("%s into that %s cloud?", ...) then upstart().
+            const q = `Step into that ${reg_damg(newreg) > 0 ? 'poison gas' : 'vapor'} cloud?`;
+            if (await y_n(q) !== 'y') {
+                game.multi = 0; // C nomul(0)
+                c.move = 0;
+                return true;
+            }
+        }
+    }
+
+    if (stunned || confused) return false;
+    if (nopick_opt_out) return false;
+    const trap = t_at(x, y);
+    if (!trap || !trap.tseen) return false;
+    if (!test_move_quiet(x, y)) return false;
+    const hallu = !!u.uhallu;
+    // Harmless-to-this-hero traps are stepped on without comment; Hallucination
+    // overrides that because every trap still shows as a bare '^'.
+    if (!hallu && immune_to_trap(u, trap.ttyp) === TRAP_CLEARLY_IMMUNE)
+        return false;
+    const traptype = hallu ? rnd(TRAPNUM - 1) : trap.ttyp;
+    const qbuf = `Really step ${into_vs_onto(traptype) ? 'into' : 'onto'}`
+               + ` that ${trap_explanation(traptype)}?`;
+    if (await y_n(qbuf) === 'y') return false;
+    game.multi = 0; // C nomul(0)
+    c.move = 0;
+    return true;
 }
 
 // C ref: cmd.c get_count() — gather typed digits into a repeat count, echoing
@@ -1519,6 +1628,38 @@ function impaired_movement(x, y) {
     return { x: nx, y: ny };
 }
 
+// C ref: hack.c:2638 escape_from_sticky_mon(x, y) — the hero, held by a
+// sticking monster (lichen / acid blob / owlbear), tries to step away.  Returns
+// TRUE when the attempt costs the turn.
+//
+// The rn2 MODULUS depends on the holder's mcanmove, and case 3 falls through to
+// default, so a sleeping holder both escapes more often and can be woken.
+async function escape_from_sticky_mon(x, y) {
+    const u = game.u;
+    const held = u.ustuck;
+    if (!held || (x === held.mx && y === held.my)) return false;
+    // Dynamic: monmove.js -> ... -> cmd.js is a static cycle.
+    const { m_next2u, y_monnam_local } = await import('./monmove.js');
+    if (!m_next2u(held)) { u.ustuck = null; return false; }
+    // sticks(youmonst.data) is FALSE for every playable base form.
+    const roll = rn2(!held.mcanmove ? 8 : 40);                  // hack.c:2664
+    if (roll === 3 && !held.mcanmove) {
+        held.mfrozen = 1;
+        held.msleeping = 0;
+    }
+    if (roll > 2) {  /* case 3 falls through to default */
+        // Conflict is not modeled; a hostile holder never releases.
+        if (held.mconf || !held.mtame) {
+            await pline(`You cannot escape from ${y_monnam_local(held)}!`);
+            game.multi = 0;                                     // nomul(0)
+            return true;
+        }
+    }
+    u.ustuck = null;
+    await pline(`You pull free from ${y_monnam_local(held)}.`);
+    return false;
+}
+
 // C ref: hack.c domove / domove_core — execute a movement, including the
 // bump-into-a-monster path (attack a hostile, or swap places with a pet).
 export async function domove(dx, dy) {
@@ -1542,6 +1683,15 @@ export async function domove(dx, dy) {
     const redirected = impaired_movement(u.ux + dx, u.uy + dy);
     if (!redirected) return; // 50 tries found no valid square; turn wasted
     const newx = redirected.x, newy = redirected.y;
+
+    // C ref: hack.c:2757 — a run/rush/travel step onto a known trap stops the
+    // hero here, before the monster-bump block, so C never reaches the
+    // paranoid_confirm:trap prompt below while rushing.
+    if (await avoid_running_into_trap(newx, newy)) return;
+
+    // C ref: hack.c:2760 — after the out-of-bounds / avoid-trap checks and
+    // BEFORE bumping into a monster.  Returns TRUE => the turn is spent.
+    if (await escape_from_sticky_mon(newx, newy)) return;
 
     const mtmp = m_at(newx, newy);
 
@@ -1627,6 +1777,11 @@ export async function domove(dx, dy) {
         game.context.move = 1;
         return;
     }
+
+    // ── paranoid_confirm:trap ──  C ref: hack.c:2823-2828 — `if (ParanoidTrap)
+    // { if (avoid_trap_andor_region(x, y)) return; }`, between u_rooted() and
+    // the u.utrap/trapmove() handling below.
+    if (await avoid_trap_andor_region(newx, newy)) return;
 
     // ── trapped hero struggles instead of moving ──  C ref: hack.c
     // domove_core() (hack.c:2830): once past the monster-bump handling, a hero

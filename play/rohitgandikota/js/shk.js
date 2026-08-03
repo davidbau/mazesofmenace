@@ -7,7 +7,8 @@
 // (shtypes, nameshk, stock_room), which is src/shknam.c.
 
 import { game } from './gstate.js';
-import { ESHK } from './const.js';
+import { ESHK, SHOPBASE, IS_DOOR } from './const.js';
+import { in_rooms } from './hack.js';
 
 // src/shk.c:1449 hot_pursuit() — the shopkeeper starts following you.
 //
@@ -60,5 +61,54 @@ export function costly_spot(x, y) {
         return false;
 
     (game.unported ||= new Set()).add('shk:costly_spot');
+    return false;
+}
+
+// src/shk.c:56 IS_SHOP() — local macro: room rtype is a shop type.
+// block_door()/block_entry() pass the roomno with ROOMOFFSET still added,
+// unlike most callers which subtract it first — a C quirk kept as-is: the
+// off-by-ROOMOFFSET slot is usually past nroom, whose rtype reads as
+// ordinary, so these functions almost always see IS_SHOP() false.
+function IS_SHOP(roomidx) {
+    const r = (game.level?.rooms || [])[roomidx];
+    return !!r && r.rtype >= SHOPBASE;
+}
+
+// src/shk.c:5791 block_door() — an angry shopkeeper standing on his usual
+// spot blocks the shop door. The room-type gates answer for every non-shop
+// doorway; a real shop with an owed shopkeeper needs eshk state (shk.x/y,
+// shd, debit/billct/robbed) that the shk port does not carry yet, so that
+// arm records itself instead of guessing.
+export function block_door(x, y) {
+    const rooms = in_rooms(x, y, SHOPBASE);
+    if (!rooms.length)
+        return false;
+    const roomno = rooms.charCodeAt(0);
+    if (roomno < 0 || !IS_SHOP(roomno))
+        return false;
+    if (!IS_DOOR(game.level.at(x, y).typ))
+        return false;
+    if (roomno !== (game.u.ushops?.charCodeAt?.(0) ?? -1))
+        return false;
+
+    note_unported_shk('block_door:shk_on_post');
+    return false;
+}
+
+// src/shk.c:5826 block_entry() — an angry shopkeeper blocks diagonal entry
+// through a broken shop door. Same porting state as block_door() above.
+export function block_entry(x, y) {
+    const ust = game.level.at(game.u.ux, game.u.uy);
+    if (!(IS_DOOR(ust.typ) && ust.doormask === 4 /* D_BROKEN */))
+        return false;
+
+    const rooms = in_rooms(x, y, SHOPBASE);
+    if (!rooms.length)
+        return false;
+    const roomno = rooms.charCodeAt(0);
+    if (roomno < 0 || !IS_SHOP(roomno))
+        return false;
+
+    note_unported_shk('block_entry:shk_on_post');
     return false;
 }

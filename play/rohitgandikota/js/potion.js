@@ -22,7 +22,11 @@ import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
 import { makeknown } from './o_init.js';
 import { more_experienced } from './exper.js';
-import { getobj, useup, ECMD_TIME, ECMD_OK } from './invent.js';
+import { getobj, useup, ECMD_TIME, ECMD_OK,
+         GETOBJ_PROMPT } from './invent.js';
+import { is_pool } from './mon.js';
+import { OCLASSES } from './objects_data.js';
+import { tty_yn_function } from './tty/topl.js';
 import { GETOBJ_NOFLAGS } from './const.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
@@ -263,4 +267,55 @@ export async function strange_feeling(obj, txt) {
         await trycall(obj);
 
     useup(obj);
+}
+
+// src/potion.c:2254 dip_ok() — candidates for dipping: everything except
+// gold (and the hands pseudo-object, which the port does not offer yet).
+function dip_ok(obj) {
+    if (!obj)
+        return 2 /* GETOBJ_EXCLUDE */;
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        return 2;
+    return 1 /* GETOBJ_SUGGEST */;
+}
+
+// src/potion.c:2267 dodip() — the #dip command. The fountain/sink arms
+// prompt first; potion-into-potion mixing needs the interdip machinery and
+// records.
+export async function dodip() {
+    const here = game.level.at(game.u.ux, game.u.uy).typ;
+    const at_pool = is_pool(game.u.ux, game.u.uy);
+    const at_fountain = IS_FOUNTAIN(here);
+    const at_sink = IS_SINK(here);
+
+    const obj = await getobj('dip', dip_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+
+    /* inaccessible_equipment — cursed worn gear check, records via getobj */
+
+    const shortestname = (obj.quan > 1) ? 'them' : 'it';
+
+    if (at_fountain || at_pool || at_sink) {
+        /* can_reach_floor is true for an unimpaired hero */
+        if (at_fountain) {
+            const q = `Dip ${game.flags?.verbose === false ? shortestname
+                             : shortestname} into the fountain?`;
+            const ans = await tty_yn_function(q, 'yn', 'n');
+            if (ans === 'y') {
+                obj.pickup_prev = 0;
+                const { dipfountain } = await import('./fountain.js');
+                await dipfountain(obj);
+                return ECMD_TIME;
+            }
+        } else if (at_sink) {
+            note_unported_potion('dodip:sink');
+        } else if (at_pool) {
+            note_unported_potion('dodip:pool');
+        }
+    }
+
+    /* "What do you want to dip <obj> into?" — the potion-mixing arm */
+    note_unported_potion('dodip:interdip');
+    return ECMD_OK;
 }

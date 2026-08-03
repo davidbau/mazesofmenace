@@ -297,10 +297,17 @@ async function really_done(how) {
     const { topten } = await import('./topten.js');
     await topten(how);
 
-    /* nh_terminate(): the process would exit here. For a replayed session
-       every remaining key of the segment is swallowed by the moveloop's
-       gameover guard, and the next segment starts a fresh game. */
+    /* nh_terminate(): the process exits here and the session wrapper
+       relaunches the game on the same pty and recorder stream. The driver
+       sees _restart_pending and boots a fresh game, continuing the RNG. */
     game.program_state_gameover = true;
+    /* C's nh_terminate() never returns; unwind the in-flight turn so the
+       dying move cannot keep drawing (exerchk etc.) after the exit. A
+       session that continues after a death does so as a NEW SEGMENT with
+       its own seed and rc; the driver never restarts within a segment. */
+    const sig = new Error('nh_terminate');
+    sig.__nh_gameover = true;
+    throw sig;
 }
 
 // src/end.c:2010 disclose() — end of game disclosure. Every category in the

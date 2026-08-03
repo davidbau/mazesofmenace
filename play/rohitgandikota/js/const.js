@@ -1470,6 +1470,9 @@ export const MV_RUN = (MV_WALK + 1);
 export const MV_RUSH = (MV_RUN + 1);
 export const N_MOVEMODES = (MV_RUSH + 1);
 export const DIR_ERR = -1;
+// include/hack.h:658 DIR_LEFT / :659 DIR_RIGHT — rotate a direction code.
+export const DIR_LEFT = (dir) => (dir + 7) % N_DIRS;
+export const DIR_RIGHT = (dir) => (dir + 1) % N_DIRS;
 export const NHCORE_START_NEW_GAME = 0;
 export const NHCORE_RESTORE_OLD_GAME = (NHCORE_START_NEW_GAME + 1);
 export const NHCORE_MOVELOOP_TURN = (NHCORE_RESTORE_OLD_GAME + 1);
@@ -1926,16 +1929,16 @@ export const MAY_HIT = (0x1 | 0x2);
 export const MAY_DESTROY = 0x4;
 export const MAY_FRACTURE = 0x8;
 
-// Steed dismount reason enum (src/steed.c)
-// Runtime fields: dismount_steed(reason) reason selector.
-export const DISMOUNT_BYCHOICE = 0;
-export const DISMOUNT_THROWN = 1;
-export const DISMOUNT_KNOCKED = 2;
-export const DISMOUNT_FELL = 3;
+// include/hack.h:346 dismount_types — causes for no longer riding.
+// (Earlier draft here had invented values; these match the header.)
+export const DISMOUNT_GENERIC = 0;
+export const DISMOUNT_FELL = 1;
+export const DISMOUNT_THROWN = 2;
+export const DISMOUNT_KNOCKED = 3;
 export const DISMOUNT_POLY = 4;
 export const DISMOUNT_ENGULFED = 5;
 export const DISMOUNT_BONES = 6;
-export const DISMOUNT_GENERIC = 7;
+export const DISMOUNT_BYCHOICE = 7;
 
 // Vault guard constants (src/vault.c)
 // Runtime fields: guard timers and guard activity/witness bits.

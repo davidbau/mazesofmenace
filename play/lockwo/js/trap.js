@@ -20,6 +20,7 @@ import {
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
+    ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
@@ -53,6 +54,148 @@ export function unhideable_trap(ttyp) { return ttyp === HOLE; }
 // put_lregion_here() must not overwrite or remove.
 export function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
+// ── paranoid_confirm:trap support ─────────────────────────────────────────
+// C ref: trap.h:105-110 enum trap_immunities.
+export const TRAP_NOT_IMMUNE = 0;
+export const TRAP_CLEARLY_IMMUNE = 1;
+export const TRAP_HIDDEN_IMMUNE = 2;
+
+// C ref: drawing.c:64 defsyms[trap_to_defsym(ttyp)].explanation — the `desc`
+// field of defsym.h:157-182's PCHAR/PCHAR2 entries, S_arrow_trap onward
+// (rm.h:497 `trap_to_defsym(t) (S_arrow_trap + (t) - 1)`).  Complete for
+// ttyp 1..TRAPNUM-1; index 0 (NO_TRAP) is unused.  Note ANTI_MAGIC is the one
+// PCHAR2 entry, so its explanation is "anti-magic field", not its tile name.
+// Same string trap.c:7154 trapname(ttyp, FALSE) returns.
+const TRAP_EXPLANATION = [
+    '',
+    'arrow trap', 'dart trap', 'falling rock trap', 'squeaky board',
+    'bear trap', 'land mine', 'rolling boulder trap', 'sleeping gas trap',
+    'rust trap', 'fire trap', 'pit', 'spiked pit', 'hole', 'trap door',
+    'teleportation trap', 'level teleporter', 'magic portal', 'web',
+    'statue trap', 'magic trap', 'anti-magic field', 'polymorph trap',
+    'vibrating square', 'trapped door', 'trapped chest',
+];
+export function trap_explanation(ttyp) { return TRAP_EXPLANATION[ttyp] ?? ''; }
+
+// C ref: trap.c:5374-5389 into_vs_onto(traptype).
+export function into_vs_onto(traptype) {
+    switch (traptype) {
+    case BEAR_TRAP: case PIT: case SPIKED_PIT: case HOLE:
+    case TELEP_TRAP: case LEVEL_TELEP: case MAGIC_PORTAL: case WEB:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// C ref: trap.c:2782-2934 immune_to_trap(mon, ttype) — would `mon` suffer any
+// adverse effect from a trap of this type?  Its only caller is the
+// paranoid_confirm:trap gate (hack.c:2561), always with &gy.youmonst, and it
+// only distinguishes TRAP_CLEARLY_IMMUNE from everything else — so the arms
+// below note where C's TRAP_HIDDEN_IMMUNE / monster branches are collapsed
+// because they cannot change that answer.
+//
+// gy.youmonst.data is the ROLE monster (u_init.c:991 `u.umonnum = urole.mnum`),
+// which is MZ_HUMAN for all 13 roles (monsters.h:3349 &c) and carries none of
+// amorphous/is_whirly/unsolid/breathless/webmaker/flaming/is_floater/is_flyer/
+// is_clinger.  That is what lets the BEAR_TRAP, SLP_GAS_TRAP and WEB pm tests
+// collapse; a gnome or dwarf hero is STILL MZ_HUMAN here, so this must NOT be
+// "corrected" to test the hero's race.
+export function immune_to_trap(mon, ttype) {
+    const is_you = (mon === game.u);
+
+    switch (ttype) {
+    case ARROW_TRAP:
+    case DART_TRAP:
+    case ROCKTRAP:
+        return TRAP_NOT_IMMUNE;
+    case BEAR_TRAP:
+        // C: msize <= MZ_SMALL (monflag.h:178-180: MZ_SMALL 1, MZ_HUMAN 2) or
+        // amorphous/whirly/unsolid -> CLEARLY_IMMUNE; a role monster is none of
+        // those, so the hero always falls through to the ground-trap group.
+        /* FALLTHROUGH */
+    case SQKY_BOARD:
+    case LANDMINE:
+    case ROLLING_BOULDER_TRAP:
+    case HOLE:
+    case TRAPDOOR:
+    case PIT:
+    case SPIKED_PIT:
+        // ground-based traps: evaded by levitation/flight/ceiling-clinging
+        if (game.level?.flags?.sokoban_rules && (is_pit(ttype) || is_hole(ttype)))
+            return TRAP_NOT_IMMUNE;
+        if (In_sokoban(game.u?.uz) && ttype === ROLLING_BOULDER_TRAP)
+            return TRAP_CLEARLY_IMMUNE;
+        if (is_you && (game.u?.uprops?.Levitation || game.u?.uprops?.Flying))
+            return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case SLP_GAS_TRAP:
+        // C: breathless(pm) -> CLEARLY_IMMUNE (false for a role monster), else
+        // is_you && Sleep_resistance -> HIDDEN_IMMUNE, else NOT_IMMUNE.  Both
+        // reachable results still make the gate ask, so an elf's intrinsic
+        // sleep resistance is deliberately not consulted here.
+        return TRAP_NOT_IMMUNE;
+    case LEVEL_TELEP:
+    case TELEP_TRAP:
+        // C: In_endgame(&u.uz) || mon_has_amulet(mon) -> CLEARLY_IMMUNE.  There
+        // is no mon_has_amulet() in this port and the Amulet is never carried.
+        if (In_endgame(game.u?.uz)) return TRAP_CLEARLY_IMMUNE;
+        return TRAP_NOT_IMMUNE;
+    case POLY_TRAP:
+        // C: resists_magm(mon) -> HIDDEN_IMMUNE for the hero (never CLEARLY).
+        return TRAP_NOT_IMMUNE;
+    case STATUE_TRAP:
+        // C: only the hero is affected; a monster is CLEARLY_IMMUNE.
+        return is_you ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case WEB:
+        // C: webmaker/amorphous/whirly/flaming/unsolid/gelatinous cube ->
+        // CLEARLY_IMMUNE; none apply to a role monster.
+        return TRAP_NOT_IMMUNE;
+    case ANTI_MAGIC:
+        // C hero arms: Antimagic -> NOT_IMMUNE, u.uenmax == 0 -> HIDDEN_IMMUNE,
+        // otherwise NOT_IMMUNE.  None is CLEARLY_IMMUNE, so the gate always
+        // asks about an anti-magic field.
+        return TRAP_NOT_IMMUNE;
+    case RUST_TRAP:
+        // C (trap.c:2878-2892): an iron golem is always harmed; otherwise scan
+        // the inventory for a rust-prone object that is WORN OR WIELDED, and
+        // return CLEARLY_IMMUNE when there is none.  A quivered object and a
+        // secondary weapon that isn't actually being dual-wielded are skipped,
+        // because a rust trap only hits worn armor and the weapon in use — so a
+        // Monk, a quarterstaff Wizard, or a Tourist whose darts are merely
+        // quivered gets no prompt at all.  (PM_IRON_GOLEM needs a polymorphed
+        // hero or a monster caller; neither happens here.)
+        for (const obj of (game.u?.invent || game.invent || [])) {
+            if (is_rustprone(obj) && (obj.owornmask || 0)) {
+                if (is_you && (obj === game.uquiver
+                               || (obj === game.uswapwep && !game.u?.twoweap)))
+                    continue;
+                return TRAP_NOT_IMMUNE;
+            }
+        }
+        return TRAP_CLEARLY_IMMUNE;
+    case MAGIC_TRAP:
+        // C: for the hero, any number of bad effects.
+        if (is_you) return TRAP_NOT_IMMUNE;
+        /* FALLTHROUGH — for a monster a magic trap only replicates a fire trap */
+    case FIRE_TRAP:
+        // C: `is_you ? !Fire_resistance : !resists_fire(mon)` -> NOT_IMMUNE,
+        // else a burnable-inventory scan whose only other result for the hero is
+        // HIDDEN_IMMUNE.  Nothing in this port ever grants the hero
+        // Fire_resistance, and neither result is CLEARLY_IMMUNE.
+        return TRAP_NOT_IMMUNE;
+    case MAGIC_PORTAL:
+        // C: harmless, but the hero is reported non-immune so it can be asked
+        // about entering.
+        return is_you ? TRAP_NOT_IMMUNE : TRAP_CLEARLY_IMMUNE;
+    case VIBRATING_SQUARE:
+        return TRAP_CLEARLY_IMMUNE;
+    default:
+        // C impossible("immune_to_trap: bad ttype") then falls out.
+        return TRAP_NOT_IMMUNE;
+    }
 }
 
 // C ref: trap.c deltrap() — unlink and free a trap.  The lightweight port keeps
@@ -125,7 +268,7 @@ export function Invocation_lev(lev) {
 // C ref: dungeon.c Can_dig_down(lev) = !svl.level.flags.hardfloor
 // && !Is_botlevel(lev) && !Invocation_lev(lev).  Note the hardfloor test reads
 // the CURRENT level's flags in C too (it is svl.level, not lev-relative).
-function Can_dig_down(lev) {
+export function Can_dig_down(lev) {
     return !game.level?.flags?.hardfloor && !Is_botlevel(lev) && !Invocation_lev(lev);
 }
 
@@ -317,7 +460,7 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
 // inventory and all.  Leaving it unimplemented cost seed4500 the tail of its
 // Dlvl 40 generation: our traptype_rnd() rolled STATUE_TRAP right alongside C
 // and then simply moved on to the next trap.
-async function mk_trap_statue(x, y) {
+function mk_trap_statue(x, y) {
     let mptr = null, trycount = 10;
     do {
         mptr = monster_by_pmidx(rndmonst_adj(3, 6)?.pmidx ?? 0);
@@ -362,7 +505,7 @@ function trap_mongone(mtmp) {
     if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
 }
 
-export async function maketrap(x, y, typ) {
+export function maketrap(x, y, typ) {
     // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
     // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
     const trap = {
@@ -382,7 +525,7 @@ export async function maketrap(x, y, typ) {
         break;
     case STATUE_TRAP:
         // C ref: maketrap():508 — create a "living" statue.
-        await mk_trap_statue(x, y);
+        mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP:
         // C ref: maketrap():512 — boulder will roll towards the trigger.
@@ -965,11 +1108,58 @@ async function trapeffect_selector(trap, trflags) {
     case MAGIC_TRAP:
         await trapeffect_magic_trap(trap, trflags);
         break;
+    case ANTI_MAGIC:
+        await trapeffect_anti_magic(trap, trflags);
+        break;
     default:
         // Not yet modeled: reveal the trap but don't simulate its effect.
         seetrap(trap);
         break;
     }
+}
+
+// C ref: trap.c:2346 trapeffect_anti_magic(&youmonst, ...) — the hero branch.
+// The positively-enchanted-iron-shoes bypass (trap.c:2330) and the Antimagic
+// arm (which rolls rnd(4) for implosion damage) both need gear no covered hero
+// wears, so this is the plain energy-drain path.
+async function trapeffect_anti_magic(trap, _trflags) {
+    const u = game.u;
+    seetrap(trap);
+    let drain = d(2, 6);                       // trap.c:2386
+    const halfd = rnd(Math.trunc(drain / 2));  // trap.c:2387 — UNCONDITIONAL
+    let exclaim_it = false;
+    if ((u.uenmax ?? 0) > drain) {
+        u.uenmax -= halfd;
+        drain -= halfd;
+        exclaim_it = true;
+    }
+    await drain_en(drain, exclaim_it);
+}
+
+// C ref: trap.c:5195 drain_en(n, max_already_drained).  The throttle
+// `if (n > (uen + uenmax) / 3) n = rnd(n)` is a real draw, and so is the
+// `uenmax -= rnd(-uen)` overdraw.
+async function drain_en(n, max_already_drained) {
+    const u = game.u;
+    let punct = max_already_drained ? '!' : '.';
+    let mesg;
+    if ((u.uenmax ?? 0) < 1) {
+        if (u.uen || u.uenmax) { u.uen = 0; u.uenmax = 0; }
+        mesg = 'momentarily lethargic';
+    } else {
+        if (n > Math.trunc(((u.uen ?? 0) + u.uenmax) / 3)) n = rnd(n);  // trap.c:5222
+        mesg = 'your magical energy drain away';
+        if (n > (u.uen ?? 0)) punct = '!';
+        u.uen = (u.uen ?? 0) - n;
+        if (u.uen < 0) {
+            u.uenmax -= rnd(-u.uen);
+            if (u.uenmax < 0) u.uenmax = 0;
+            u.uen = 0;
+        } else if (u.uen > u.uenmax) {
+            u.uen = u.uenmax;
+        }
+    }
+    await pline(`You feel ${mesg}${punct}`);
 }
 
 // C ref: trap.c dotrap(trap, trflags) — the hero steps onto / triggers a trap.

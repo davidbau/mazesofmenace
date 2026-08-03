@@ -12,13 +12,14 @@ import { thrwmu } from './mthrowu.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
-         nolimbs, is_undead } from './mondata.js';
+         nolimbs, is_undead, is_orc } from './mondata.js';
 import { is_vampshifter, DEADMONSTER, MON_WEP } from './monst.js';
 import { poly_gender } from './polyself.js';
 import { Invis, See_invisible, Underwater, Deaf } from './youprop.js';
 import { ATTKS, MONSYMS, PMNAMES, MFLAGS } from './monst_data.js';
 import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+         M_ATTK_DEF_DIED,
          TT_PIT, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
          NEED_HTH_WEAPON } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
@@ -358,7 +359,29 @@ export async function mattacku(mtmp) {
         note_unported_mhitu('mattacku:uswallow');
         return 0;
     } else if (game.u.usteed) {
-        note_unported_mhitu('mattacku:usteed');
+        if (mtmp === game.u.usteed)
+            /* Your steed won't attack you */
+            return 0;
+        /* src/mhitu.c:533 — orcs like to steal and eat horses and the like */
+        await load_monmove();
+        if (!rn2(is_orc(game.mons[mtmp.mnum]) ? 2 : 4)
+            && mhitu_monmove.mdistu(mtmp) <= 2 /* m_next2u */) {
+            /* attack your steed instead; 'bhitpos' and 'notonhead' are
+               already set from targeting hero */
+            const { mattackm } = await import('./mhitm.js');
+            const i = await mattackm(mtmp, game.u.usteed);
+            if ((i & M_ATTK_AGR_DIED) !== 0)
+                return 1;
+            /* make sure steed is still alive and within range */
+            if ((i & M_ATTK_DEF_DIED) !== 0 || !game.u.usteed
+                || mhitu_monmove.mdistu(mtmp) > 2)
+                return 0;
+            /* Let your steed retaliate */
+            game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+            game.notonhead = false;
+            return ((await mattackm(game.u.usteed, mtmp))
+                    & M_ATTK_DEF_DIED) ? 1 : 0;
+        }
     }
 
     if (game.u.uundetected && !v.range2 && v.foundyou && !game.u.uswallow) {
@@ -600,7 +623,7 @@ export async function mattacku(mtmp) {
 }
 
 /* include/obj.h is_pole() */
-function is_pole(obj) {
+export function is_pole(obj) {
     return game.objects[obj.otyp].oc_skill === P_POLEARMS
            || obj.otyp === ONAMES.LANCE;
 }

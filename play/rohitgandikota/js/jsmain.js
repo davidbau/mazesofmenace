@@ -152,11 +152,14 @@ export class NethackGame {
         initRng(this._seed);
         enableRngLog();
 
-        // Install display
+        // Install display; keep a handle so an in-segment restart can
+        // rewire the same display into the fresh game object.
         if (this._pendingDisplay) {
-            g.nhDisplay = this._pendingDisplay;
+            this._display = this._pendingDisplay;
             this._pendingDisplay = null;
         }
+        if (this._display)
+            g.nhDisplay = this._display;
 
         // Install capture hook
         this._installCaptureHook();
@@ -278,6 +281,7 @@ export async function runSegment(input) {
         try {
             await moveloop_core();
         } catch (e) {
+            if (e && e.__nh_gameover) continue; /* nh_terminate unwind */
             if (String(e?.message || '').includes('Input queue empty')) break;
             throw e;
         }

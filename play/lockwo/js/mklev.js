@@ -10,14 +10,16 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_valley, shuffle,
+import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_valley, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
-         splev_map_origin, SET_LIT_NOCHANGE } from './sp_lev.js';
+         splev_map_origin, flip_level, set_door_orientation,
+         SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
 import {
     selection_new, selection_clone, selection_clear, selection_setpoint,
     selection_getpoint, selection_getbounds, selection_iterate,
     selection_numpoints, selection_rndcoord, selection_filter_percent,
+    l_selection_iterate,
     selection_filter_mapchar, l_selection_negate, l_selection_and,
     l_selection_or, l_selection_grow, l_selection_fillrect, l_selection_rect,
     l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
@@ -26,7 +28,7 @@ import { Is_special, builds_up, In_hell, Is_valley } from './dungeon.js';
 import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
 import { roles } from './role.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room, nexttodoor } from './mkroom.js';
-import { maketrap, Can_fall_thru, t_at, Invocation_lev } from './trap.js';
+import { maketrap, Can_fall_thru, Can_dig_down, t_at, Invocation_lev } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
 import { m_at } from './display.js';
@@ -38,7 +40,8 @@ import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
     SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, ROCK_CLASS, SPBOOK_no_NOVEL,
     ARROW, DART, BOULDER, GOLD_PIECE, ROCK, KELP_FROND,
-    SCR_TELEPORTATION, BELL, CORPSE, STATUE, POT_HEALING,
+    SCR_TELEPORTATION, BELL, CORPSE, STATUE, POT_HEALING, WAN_WISHING,
+    POT_GAIN_LEVEL,
     POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY, SCR_ENCHANT_WEAPON,
     SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER, SCR_SCARE_MONSTER,
     WAN_DIGGING, SPE_HEALING, LARGE_BOX, CHEST, FOOD_RATION,
@@ -64,12 +67,14 @@ import {
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL, OBJ_AT,
     MATCH_WALL, INVALID_TYPE,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR, TREE,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     A_LAWFUL, Align2amask,
-    LR_UPTELE,
+    LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_UPSTAIR, LR_DOWNSTAIR,
+    In_endgame, BURN,
     DUST, MARK, HEADSTONE,
     TAINT_AGE,
 } from './const.js';
@@ -372,6 +377,12 @@ async function makelevel() {
     }
     if (slev && slev.proto && slev.proto.toLowerCase() === 'oracle') {
         await makemaz_oracle();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the stronghold (castle.lua),
+    // the bottom level of the Dungeons of Doom and the Gehennom branch level.
+    if (slev && slev.proto === 'castle') {
+        await makemaz_castle();
         return;
     }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Sokoban entrance level.
@@ -832,7 +843,6 @@ xxx|...|xxx
 |......|
 |......|
 |......|
-|......|
 |...----
 |...|xxx
 |...|xxx
@@ -952,6 +962,10 @@ xx|.....|xx
     },
 };
 
+// Themerooms whose contents() body is implemented in sp_lev.js even though they
+// declare no filler_region().
+const THEMEROOM_CONTENTS_NAMES = new Set(['Water-surrounded vault']);
+
 function is_themeroom_eligible(room, difficulty) {
     if (room.mindiff != null && difficulty < room.mindiff) return false;
     if (room.maxdiff != null && difficulty > room.maxdiff) return false;
@@ -975,10 +989,17 @@ async function themerooms_generate(difficulty) {
     if (!pick) return false;
     const mapSpec = THEMEROOM_MAPS[pick.name];
     if (mapSpec) {
+        // A themeroom with no filler_region() can still have a contents body of
+        // its own (the Water-surrounded vault builds a vault, four chests and an
+        // undead), so hand the callback over whenever we have an implementation
+        // for the name — not only when there is a filler.
+        const hasContents = !!mapSpec.filler || THEMEROOM_CONTENTS_NAMES.has(pick.name);
         const placed = lspo_map({
             map: mapSpec.map,
-            contents: mapSpec.filler
-                ? () => themeroom_map_contents(pick.name, mapSpec.filler[0], mapSpec.filler[1])
+            contents: hasContents
+                ? () => themeroom_map_contents(pick.name,
+                                               mapSpec.filler ? mapSpec.filler[0] : -1,
+                                               mapSpec.filler ? mapSpec.filler[1] : -1)
                 : null,
         });
         return !!placed && !game.themeroom_failed;
@@ -3212,11 +3233,14 @@ function hf_hell_tweaks(protected_area) {
             selection_filter_percent(selection_match('.w.'), amount),
             selection_filter_percent(selection_match('.\nw\n.'), amount));
         bwalls = l_selection_and(bwalls, prot);
-        // NOTE: iterate() hands back ABSOLUTE coordinates, which des.terrain /
-        // des.object then run through get_location_coord() again — so both
-        // land one column right of the selected wall.  Faithful to the .lua.
+        // C ref: nhlsel.c l_selection_iterate() — the callback gets MAP-RELATIVE
+        // coordinates (cvt_to_relcoord), which des.terrain()/des.object() then
+        // run back through get_location_coord(), so the boulder lands on the
+        // wall square that was selected.  The walk is y-outer / x-inner, which
+        // fixes the order the boulders are created in (and thus their o_ids).
         const pts = [];
-        selection_iterate(bwalls, (x, y) => pts.push({ x, y }));
+        l_selection_iterate(bwalls, splev_map_origin(),
+                            (x, y) => pts.push({ x, y }));
         for (const p of pts) {
             hf_terrain_at(p.x, p.y, ROOM);
             hf_object_at(BOULDER, p.x, p.y);
@@ -3718,11 +3742,628 @@ function hf_altar(x, y, shrine) {
     if (shrine) game.level.flags.has_temple = true;
 }
 
-// C ref: sp_lev.c lspo_drawbridge() — state="closed"/dir explicit, so no RNG.
-// NOTE: dbridge.c create_drawbridge() itself is not ported; the wall/portcullis
-// terrain it would stamp is missing (it consumes no RNG) — see RECON_NOTES.
-function hf_drawbridge(_db) {
-    /* deliberately empty: no RNG, terrain-only effect not yet ported */
+// C ref: sp_lev.c lspo_drawbridge() + dbridge.c create_drawbridge().  With an
+// explicit state and direction there is no RNG; the effect is terrain only —
+// the moat square becomes the bridge and the wall beside it the portcullis.
+// DB_NORTH/SOUTH/EAST/WEST are the rm.h drawbridgemask direction values.
+const DB_NORTH = 0, DB_SOUTH = 1, DB_EAST = 2, DB_WEST = 3, DB_LAVA = 0x40;
+function hf_drawbridge({ x, y, dir, state }) {
+    const c = hf_loc(x, y);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc) return false;
+    const lava = (loc.typ === LAVAPOOL);
+    let x2 = c.x, y2 = c.y, horiz;
+    let dirv;
+    switch (dir) {
+    case 'north': dirv = DB_NORTH; horiz = true; y2--; break;
+    case 'south': dirv = DB_SOUTH; horiz = true; y2++; break;
+    case 'east': dirv = DB_EAST; horiz = false; x2++; break;
+    default: dirv = DB_WEST; horiz = false; x2--; break;
+    }
+    const wall = game.level?.at(x2, y2);
+    if (!wall || !IS_WALL(wall.typ)) return false;
+    if (state === 'open') {
+        loc.typ = DRAWBRIDGE_DOWN;
+        wall.typ = DOOR;
+        wall.doormask = D_NODOOR;
+    } else {
+        loc.typ = DRAWBRIDGE_UP;
+        wall.typ = DBWALL;
+        wall.wall_info = (wall.wall_info || 0) | W_NONDIGGABLE;
+    }
+    loc.horizontal = !horiz;
+    wall.horizontal = horiz;
+    loc.drawbridgemask = dirv | (lava ? DB_LAVA : 0);
+    splev_map_set(c.x, c.y);
+    return true;
+}
+
+// ============================================================
+// dat/castle.lua — the stronghold at the bottom of the Dungeons of Doom, and
+// the level that carries the Gehennom branch.  A fixed 63x17 map laid over a
+// "mazegrid" init, four storerooms, the wand of wishing in one of the four
+// towers, a throne room, two barracks, soldiers/dragons/sea monsters, and two
+// mazewalk-carved moat mazes that fill_empty_maze() then stocks.
+//
+// C ref: mklev.c makelevel() -> makemaz("castle") -> load_special("castle.lua")
+// running the des.* engine in src/sp_lev.c, then the load_special finalize
+// (wallification / flip_level_rnd / fixup_special) and makelevel()'s own
+// fill_special_room loop + level_finalize_topology -> mineralize().
+// ============================================================
+
+// C ref: dat/castle.lua des.map — 63 wide x 17 tall.
+const CASTLE_MAP = [
+    '}}}}}}}}}.............................................}}}}}}}}}',
+    '}-------}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}-------}',
+    '}|.....|-----------------------------------------------|.....|}',
+    '}|.....+...............................................+.....|}',
+    '}-------------------------------+-----------------------------}',
+    '}}}}}}|........|..........+...........|.......S.S.......|}}}}}}',
+    '.....}|........|..........|...........|.......|.|.......|}.....',
+    '.....}|........------------...........---------S---------}.....',
+    '.....}|...{....+..........+.........\\.S.................+......',
+    '.....}|........------------...........---------S---------}.....',
+    '.....}|........|..........|...........|.......|.|.......|}.....',
+    '}}}}}}|........|..........+...........|.......S.S.......|}}}}}}',
+    '}-------------------------------+-----------------------------}',
+    '}|.....+...............................................+.....|}',
+    '}|.....|-----------------------------------------------|.....|}',
+    '}-------}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}-------}',
+    '}}}}}}}}}.............................................}}}}}}}}}',
+].join('\n');
+
+// C ref: sp_lev.c def_char_to_objclass() for the class chars castle.lua uses.
+const CASTLE_OBJCLASS = {
+    '[': ARMOR_CLASS, ')': WEAPON_CLASS, '*': GEM_CLASS, '%': FOOD_CLASS,
+};
+
+// des.object(class, x, y) — an explicit (map-relative) coordinate, so
+// get_location_coord() draws nothing; the only RNG is mkobj_at()'s.
+// C ref: sp_lev.c create_object() with o->class set and o->id == -1.
+function castle_object_class_at(classCh, x, y) {
+    const c = hf_loc(x, y);
+    return mkobj_at(CASTLE_OBJCLASS[classCh] ?? RANDOM_CLASS, c.x, c.y, true);
+}
+
+// One storeroom: 14 objects of one class, two rows of seven.
+function castle_storeroom(classCh, x0, x1, y) {
+    for (let ry = y; ry <= y + 1; ry++)
+        for (let x = x0; x <= x1; x++) castle_object_class_at(classCh, x, ry);
+}
+
+// C ref: sp_lev.c lspo_teleport_region() / lspo_levregion() -> levregion_add().
+// Registration only; place_lregions() (fixup_special) consumes them later.
+// `region_islev` marks the *region* coordinates as already-absolute level
+// coordinates; `exclude` has its own `exclude_islev` flag, which castle.lua
+// never sets — so the exclusion rectangle IS map-relative and goes through
+// get_location() (i.e. gets the des.map origin added).
+function castle_levregion_add(rtype, inarea, delarea) {
+    const g = game;
+    if (!g.lregions) g.lregions = [];
+    const a = hf_loc(delarea[0], delarea[1]), b = hf_loc(delarea[2], delarea[3]);
+    g.lregions.push({
+        rtype,
+        lx: inarea[0], ly: inarea[1], hx: inarea[2], hy: inarea[3],
+        nlx: a.x, nly: a.y, nhx: b.x, nhy: b.y,
+    });
+}
+
+// C ref: sp_lev.c lspo_feature() with an explicit coord — sets the terrain and
+// (for a fountain) bumps the level's fountain count.  No RNG.
+function castle_feature(typ, x, y) {
+    const c = hf_loc(x, y);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc) return;
+    loc.typ = typ;
+    loc.flags = 0;
+    loc.horizontal = false;
+    if (typ === FOUNTAIN && game.level?.flags) {
+        game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
+    }
+}
+
+// C ref: sp_lev.c sel_set_door() — an explicit door state, so rnddoor() is not
+// called and no RNG is drawn.  A cell that is already a (secret) door keeps its
+// terrain; everything else becomes DOOR (or SDOOR for a secret state).
+function castle_door(state, x, y) {
+    const c = hf_loc(x, y);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc) return;
+    let typ = state;
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR)
+        loc.typ = (typ & D_SECRET) ? SDOOR : DOOR;
+    if (typ & D_SECRET) {
+        typ &= ~D_SECRET;
+        if (typ < D_CLOSED) typ = D_CLOSED;
+    }
+    set_door_orientation(c.x, c.y);
+    loc.doormask = typ;
+    splev_map_set(c.x, c.y);
+}
+
+// C ref: sp_lev.c create_monster() for des.monster("name", x, y) — the name is
+// resolved (find_montype, one rn2(2) gender roll for a non-fixed-gender
+// species), then induced_align, then makemon at the explicit coordinate.
+function castle_monster_named_at(name, x, y) {
+    const data = mk_find_montype(name);
+    oracle_induced_align();
+    const c = hf_loc(x, y);
+    return make_monster(data, c.x, c.y, 0);
+}
+
+// C ref: sp_lev.c create_monster() for des.monster("D", x, y) — a class char
+// takes no find_montype gender roll; induced_align runs first, then mkclass
+// picks the species, then makemon at the explicit coordinate.
+function castle_monster_class_at(classCh, x, y) {
+    oracle_induced_align();
+    const data = mkclass(HF_MONSYM[classCh] ?? 0, 0x0200 /* G_NOGEN */);
+    const c = hf_loc(x, y);
+    return make_monster(data, c.x, c.y, 0);
+}
+
+// C ref: dat/castle.lua lines 195-221 — the throne-room court.  Each entry is
+// [1-based index into the shuffled monster[] table, map x, map y].
+const CASTLE_COURT = [
+    [10, 27, 5], [1, 30, 5], [2, 33, 5], [3, 36, 5], [4, 28, 6],
+    [5, 31, 6], [6, 34, 6], [7, 37, 6], [8, 27, 7], [9, 30, 7],
+    [10, 33, 7], [1, 36, 7], [2, 28, 8], [3, 31, 8], [4, 34, 8],
+    [5, 27, 9], [6, 30, 9], [7, 33, 9], [8, 36, 9], [9, 28, 10],
+    [10, 31, 10], [1, 34, 10], [2, 37, 10], [3, 27, 11], [4, 30, 11],
+    [5, 33, 11], [6, 36, 11],
+];
+
+// C ref: dat/castle.lua — the door list (state, map x, map y).
+const CASTLE_DOORS = [
+    [D_CLOSED, 7, 3], [D_CLOSED, 55, 3], [D_LOCKED, 32, 4],
+    [D_LOCKED, 26, 5], [D_LOCKED, 46, 5], [D_LOCKED, 48, 5],
+    [D_LOCKED, 47, 7], [D_CLOSED, 15, 8], [D_CLOSED, 26, 8],
+    [D_LOCKED, 38, 8], [D_LOCKED, 56, 8], [D_LOCKED, 47, 9],
+    [D_LOCKED, 26, 11], [D_LOCKED, 46, 11], [D_LOCKED, 48, 11],
+    [D_LOCKED, 32, 12], [D_CLOSED, 7, 13], [D_CLOSED, 55, 13],
+];
+
+// C ref: dat/castle.lua — the two-argument des.region(selection.area(...),
+// "lit"/"unlit") calls, in file order.  [x1,y1,x2,y2,lit].
+const CASTLE_LIT_REGIONS = [
+    [0, 0, 62, 16, 0],
+    [0, 5, 5, 11, 1], [57, 5, 62, 11, 1],
+    [7, 5, 14, 11, 1],
+    [39, 5, 45, 6, 1], [39, 10, 45, 11, 1],
+    [49, 5, 55, 6, 1], [49, 10, 55, 11, 1],
+    [2, 2, 6, 3, 1], [56, 2, 60, 3, 1], [2, 13, 6, 14, 1], [56, 13, 60, 14, 1],
+    [8, 3, 54, 3, 0], [8, 13, 54, 13, 0],
+    [16, 8, 25, 8, 0], [39, 8, 55, 8, 0],
+    [47, 5, 47, 6, 0], [47, 10, 47, 11, 0],
+];
+
+// C ref: sp_lev.c lspo_region() argc==2 form — clone the selection, grow it in
+// every direction when lighting (NOT when unlighting), then set each cell's
+// lit flag.  No RNG.
+function castle_region_lit(sel, lit) {
+    const s = lit ? l_selection_grow(sel, W_ANY) : sel;
+    selection_iterate(s, (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (loc) loc.lit = !!lit;
+    });
+}
+
+// C ref: dat/castle.lua — the whole des.* program.
+async function makemaz_castle() {
+    const g = game;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    shuffle(['law', 'neutral', 'chaos']);
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    // The later fill_special_room() pass (makelevel's tail) must use the same
+    // faithful makemon path this generator does.
+    if (g.level) g.level._splev_fullmon = true;
+    reset_maze_bounds();
+    try {
+        // des.level_init({ style="mazegrid", bg="-" }) — no RNG.
+        hf_lvlfill_maze_grid(2, 0, mz.x_maze_max, mz.y_maze_max, HWALL);
+        // des.level_flags("mazelevel", "noteleport", "noflipy"): "noflipy"
+        // clears bit 1 of coder->allow_flips, leaving 2 (horizontal flips
+        // still allowed) — that costs exactly one rn2(2) at finalize.
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+
+        // des.map([[...]]) with a bare string argument: halign = valign =
+        // SPLEV_CENTER.  Stamps the fixed castle at (9,3) and returns the
+        // stamped cells — C's SpLev_Map, which maze1xy() must avoid.
+        const stamped = lspo_map({
+            map: CASTLE_MAP, halign: 'center', valign: 'center',
+            in_themerooms: false,
+        });
+        splev_map_reset();
+        for (const p of stamped || []) splev_map_set(p.x, p.y);
+
+        // local object = { "[", ")", "*", "%" }; shuffle(object)
+        const object = ['[', ')', '*', '%'];
+        shuffle(object);
+
+        // local place = selection.new(); place:set(...) x4 — the four tower
+        // interiors.  selection:set() runs its coords through
+        // get_location_coord(), so they are map-relative like everything else.
+        const place = selection_new();
+        for (const [px, py] of [[4, 2], [58, 2], [4, 14], [58, 14]]) {
+            const c = hf_loc(px, py);
+            selection_setpoint(c.x, c.y, place, 1);
+        }
+
+        // local monster = { L,N,E,H,M,O,R,T,X,Z }; shuffle(monster)
+        const monster = ['L', 'N', 'E', 'H', 'M', 'O', 'R', 'T', 'X', 'Z'];
+        shuffle(monster);
+
+        // des.teleport_region x2 + des.levregion("stair-up"): registration
+        // only (region_islev=1, so the coordinates are already absolute).
+        castle_levregion_add(LR_DOWNTELE, [1, 0, 10, 20], [1, 1, 61, 15]);
+        castle_levregion_add(LR_UPTELE, [69, 0, 79, 20], [1, 1, 61, 15]);
+        castle_levregion_add(LR_UPSTAIR, [1, 0, 10, 20], [0, 0, 62, 16]);
+
+        // des.feature("fountain", 10, 8)
+        castle_feature(FOUNTAIN, 10, 8);
+
+        // des.door(state, x, y) x18 — explicit states, no RNG.
+        for (const [st, dx, dy] of CASTLE_DOORS) castle_door(st, dx, dy);
+
+        // des.drawbridge({ dir="east", state="closed", x=5, y=8 }) — no RNG.
+        hf_drawbridge({ x: 5, y: 8, dir: 'east', state: 'closed' });
+
+        // Storerooms 1-4: 14 objects each of the shuffled classes.
+        castle_storeroom(object[0], 39, 45, 5);
+        castle_storeroom(object[1], 49, 55, 5);
+        castle_storeroom(object[2], 39, 45, 10);
+        castle_storeroom(object[3], 49, 55, 10);
+
+        // THE WAND OF WISHING in one of the four towers.
+        // local loc = place:rndcoord(1) — one rn2(4), and the point is removed.
+        const loc = selection_rndcoord(place, true);
+
+        // des.object({ id="chest", trapped=0, locked=1, coord=loc,
+        //              contents = function() ... end })
+        const chest = mksobj_at(CHEST, loc.x, loc.y, true, true);
+        if (chest) {
+            // create_object()'s SP_OBJ_CONTAINER arm: delete_contents() throws
+            // away whatever mkbox_cnts() rolled before the lua contents run.
+            chest.cobj = [];
+            chest.otrapped = 0;
+            chest.olocked = 1;
+        }
+        // The two contained objects.  create_object() picks a random DRY
+        // location for each one FIRST (that is where the RNG goes), makes the
+        // object, then moves it straight into the container.
+        for (const otyp of [WAN_WISHING, POT_GAIN_LEVEL]) {
+            castle_get_location_dry();
+            const o = mksobj(otyp, true, true);
+            if (o && chest) {
+                add_to_container(chest, o);
+                chest.owt = weight(chest);
+            }
+        }
+
+        // des.engraving({ coord=loc, type="burn", text="Elbereth" }) — no RNG.
+        make_engr_at(loc.x, loc.y, 'Elbereth', 0, BURN);
+        // des.object({ id="scroll of scare monster", coord=loc, buc="cursed" })
+        {
+            const s = mksobj_at(SCR_SCARE_MONSTER, loc.x, loc.y, true, true);
+            if (s) curse(s);
+        }
+        // des.object("chest", 37, 8) — the treasure of the lord.
+        { const c = hf_loc(37, 8); mksobj_at(CHEST, c.x, c.y, true, true); }
+
+        // des.trap("trap door", x, y) x5 — create_trap() -> mktrap() with an
+        // explicit type and coordinate.  is_hole(TRAPDOOR) survives because the
+        // stronghold has Can_fall_thru; the only RNG is mktrap()'s victim gate
+        // (mklev.c:2137), whose rnd(4) is drawn before the depth comparison
+        // fails at Dlvl 25.
+        for (const [tx, ty] of [[40, 8], [44, 8], [48, 8], [52, 8], [55, 8]]) {
+            const c = hf_loc(tx, ty);
+            const t = await maketrap(c.x, c.y, TRAPDOOR);
+            const kind = t ? t.ttyp : NO_TRAP;
+            if (kind !== NO_TRAP && level_difficulty() <= rnd(4)
+                && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP))
+                mktrap_victim(t);
+        }
+
+        // Soldiers guarding the entry hall, then the towers.
+        for (const [mx, my] of [[8, 6], [9, 5], [11, 5], [12, 6],
+                                [8, 10], [9, 11], [11, 11], [12, 10]])
+            castle_monster_named_at('soldier', mx, my);
+        castle_monster_named_at('lieutenant', 9, 8);
+        for (const [mx, my] of [[3, 2], [5, 2], [57, 2], [59, 2],
+                                [3, 14], [5, 14], [57, 14], [59, 14]])
+            castle_monster_named_at('soldier', mx, my);
+        // The four dragons guarding the storerooms.
+        for (const [mx, my] of [[47, 5], [47, 6], [47, 10], [47, 11]])
+            castle_monster_class_at('D', mx, my);
+        // Sea monsters in the moat.
+        for (const [mx, my] of [[5, 7], [5, 9], [57, 7], [57, 9]])
+            castle_monster_named_at('giant eel', mx, my);
+        for (const [mx, my] of [[5, 0], [5, 16], [57, 0], [57, 16]])
+            castle_monster_named_at('shark', mx, my);
+        // The throne room court.
+        for (const [li, cx, cy] of CASTLE_COURT)
+            castle_monster_class_at(monster[li - 1], cx, cy);
+
+        // des.mazewalk(x, y, dir) — the 3-argument form defaults stocked=TRUE,
+        // so each call carves its flank maze and then stocks it.
+        await castle_mazewalk(0, 10, W_WEST);
+        await castle_mazewalk(62, 6, W_EAST);
+
+        // des.non_diggable(selection.area(0,0, 62,16)) — no RNG.
+        set_wallprop_selection(hf_sel_area(0, 0, 62, 16), W_NONDIGGABLE);
+
+        // des.region(...) — the lit/unlit areas, then the three real rooms.
+        // File order puts the whole-castle "unlit" first; the throne room and
+        // the two barracks are interleaved with the lit areas but only their
+        // room-creation order matters (they are the only rooms on the level).
+        castle_region_lit(hf_sel_area(0, 0, 62, 16), 0);
+        castle_region_lit(hf_sel_area(0, 5, 5, 11), 1);
+        castle_region_lit(hf_sel_area(57, 5, 62, 11), 1);
+        // des.region({ region={27,05,37,11}, lit=1, type="throne", filled=2 })
+        lspo_region({ region: [27, 5, 37, 11], type: 'throne',
+                      filled: 2, lit: 1 });
+        castle_region_lit(hf_sel_area(7, 5, 14, 11), 1);
+        for (const [x1, y1, x2, y2] of [[39, 5, 45, 6], [39, 10, 45, 11],
+                                        [49, 5, 55, 6], [49, 10, 55, 11],
+                                        [2, 2, 6, 3], [56, 2, 60, 3],
+                                        [2, 13, 6, 14], [56, 13, 60, 14]])
+            castle_region_lit(hf_sel_area(x1, y1, x2, y2), 1);
+        // des.region({ region={16,05,25,06}, lit=1, type="barracks", filled=1 })
+        lspo_region({ region: [16, 5, 25, 6], type: 'barracks',
+                      filled: 1, lit: 1 });
+        lspo_region({ region: [16, 10, 25, 11], type: 'barracks',
+                      filled: 1, lit: 1 });
+        for (const [x1, y1, x2, y2] of [[8, 3, 54, 3], [8, 13, 54, 13],
+                                        [16, 8, 25, 8], [39, 8, 55, 8],
+                                        [47, 5, 47, 6], [47, 10, 47, 11]])
+            castle_region_lit(hf_sel_area(x1, y1, x2, y2), 0);
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // load_special finalize: !corrmaze -> wallification(1,0,COLNO-1,ROWNO-1),
+    // then flip_level_rnd(allow_flips) with allow_flips == 2 ("noflipy"), which
+    // draws exactly one rn2(2) for the horizontal axis.
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    if (rn2(2)) flip_level(2);
+
+    // fixup_special(): walk the registered lregions, then (no LR_BRANCH among
+    // them) place the dungeon branch.
+    castle_place_lregions();
+    castle_place_branch();
+    // Is_stronghold -> level.flags.graveyard = 1.  No RNG.
+    if (g.level?.flags) g.level.flags.graveyard = true;
+}
+
+// C ref: sp_lev.c get_location(DRY) with croom == NULL and a random coord —
+// x = xstart + rn2(xsize), y = ystart + rn2(ysize), retried up to 100 times
+// until is_ok_location(DRY).
+function castle_get_location_dry() {
+    const o = splev_map_origin();
+    let x = o.xstart, y = o.ystart, cpt = 0;
+    do {
+        x = o.xstart + rn2(o.xsize);
+        y = o.ystart + rn2(o.ysize);
+        const loc = game.level?.at(x, y);
+        if (loc && SPACE_POS(loc.typ)) break;
+    } while (++cpt < 100);
+    return { x, y };
+}
+
+// C ref: sp_lev.c lspo_mazewalk() 3-argument form — explicit direction and the
+// default stocked=TRUE, so random_wdir() is not called but fill_empty_maze()
+// is.  Shares hf_mazewalk's carve; only the stocking differs.
+async function castle_mazewalk(mx, my, dir) {
+    hf_mazewalk(mx, my, dir, ROOM);
+    await castle_fill_empty_maze();
+}
+
+// C ref: sp_lev.c maze1xy(m, DRY) — a random odd/odd cell outside every part of
+// the special level (SpLev_Map) that is a DRY spot.
+function castle_maze1xy() {
+    let x = 3, y = 3, tryct = 2000;
+    do {
+        x = rn1(mz.x_maze_max - 3, 3);
+        y = rn1(mz.y_maze_max - 3, 3);
+        if (--tryct < 0) break;
+    } while (!(x % 2) || !(y % 2) || castle_splev_at(x, y)
+             || !castle_ok_dry(x, y));
+    return { x, y };
+}
+
+// C ref: sp_lev.c SpLev_Map[x][y] — "this square was touched by the level
+// loader".  maze1xy() uses it to keep the maze filler out of the special
+// level's own footprint.
+//
+// Stored as `_castle_splev_map`, NOT `_splev_map`: js/sp_lev.js already keeps a
+// Set of "x,y" strings under that name for the same concept, and having two
+// modules write one game field with two different shapes made
+// themerooms_generate()'s splev_map_mark() call `.add()` on a Uint8Array —
+// crashing seed0360/0361/4500 to zero screens.  The grid form is what maze1xy()
+// wants here; the two are kept separate rather than unified because sp_lev's Set
+// is load-bearing for the already-gated themeroom path.
+function splev_map_reset() {
+    game._castle_splev_map = Array.from({ length: COLNO }, () => new Uint8Array(ROWNO));
+}
+function splev_map_set(x, y) {
+    const m = game._castle_splev_map;
+    if (m && m[x] && y >= 0 && y < ROWNO) m[x][y] = 1;
+}
+function castle_splev_at(x, y) {
+    return !!(game._castle_splev_map?.[x]?.[y]);
+}
+
+// is_ok_location(x, y, DRY): SPACE_POS(typ) and no boulder on the square.
+function castle_ok_dry(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !SPACE_POS(loc.typ)) return false;
+    return !castle_sobj_at(BOULDER, x, y);
+}
+
+function castle_sobj_at(otyp, x, y) {
+    for (const o of game.level?.objects || [])
+        if (o.otyp === otyp && o.ox === x && o.oy === y) return true;
+    return false;
+}
+
+// C ref: sp_lev.c fill_empty_maze() — proportionally stock whatever part of the
+// maze the special level did not cover.
+async function castle_fill_empty_maze() {
+    const mapcountmax = Math.trunc(((mz.x_maze_max - 2) * (mz.y_maze_max - 2)) / 2);
+    let mapcount = (mz.x_maze_max - 2) * (mz.y_maze_max - 2);
+    for (let x = 2; x < mz.x_maze_max; x++)
+        for (let y = 0; y < mz.y_maze_max; y++)
+            if (castle_splev_at(x, y)) mapcount--;
+    if (mapcount <= Math.trunc(mapcountmax / 10)) return;
+
+    const mapfact = Math.trunc((mapcount * 100) / mapcountmax);
+    let cnt;
+    for (cnt = rnd(Math.trunc((20 * mapfact) / 100)); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y, true);
+    }
+    for (cnt = rnd(Math.trunc((12 * mapfact) / 100)); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        const tt = t_at(mm.x, mm.y);
+        if (tt && (is_pit(tt.ttyp) || is_hole(tt.ttyp))) continue;
+        mksobj_at(BOULDER, mm.x, mm.y, true, false);
+    }
+    for (cnt = rn2(2); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        make_monster(monster_by_pmidx(name_to_pmidx('minotaur')),
+                     mm.x, mm.y, 0);
+    }
+    for (cnt = rnd(Math.trunc((12 * mapfact) / 100)); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        make_monster(null, mm.x, mm.y, 0);
+    }
+    for (cnt = rn2(Math.trunc((15 * mapfact) / 100)); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        mkgold(0, mm.x, mm.y);
+    }
+    for (cnt = rn2(Math.trunc((15 * mapfact) / 100)); cnt; cnt--) {
+        const mm = castle_maze1xy();
+        let trytrap = castle_rndtrap();
+        if (castle_sobj_at(BOULDER, mm.x, mm.y))
+            while (is_pit(trytrap) || is_hole(trytrap)) trytrap = castle_rndtrap();
+        await maketrap(mm.x, mm.y, trytrap);
+    }
+}
+
+// C ref: sp_lev.c rndtrap() — reroll until a trap type allowed on this level.
+function castle_rndtrap() {
+    let rtrap;
+    do {
+        rtrap = rnd(TRAPNUM - 1);
+        switch (rtrap) {
+        case HOLE: case VIBRATING_SQUARE: case MAGIC_PORTAL:
+            rtrap = NO_TRAP; break;
+        case TRAPDOOR:
+            if (!Can_dig_down(game.u?.uz)) rtrap = NO_TRAP;
+            break;
+        case LEVEL_TELEP: case TELEP_TRAP:
+            if (game.level?.flags?.noteleport) rtrap = NO_TRAP;
+            break;
+        case ROLLING_BOULDER_TRAP: case ROCKTRAP:
+            if (In_endgame(game.u?.uz)) rtrap = NO_TRAP;
+            break;
+        default: break;
+        }
+    } while (rtrap === NO_TRAP);
+    return rtrap;
+}
+
+// C ref: mkmaze.c fixup_special() — walk gl.lregions.  LR_*TELE only records
+// the region for goto_level(); LR_UPSTAIR/LR_DOWNSTAIR/LR_BRANCH place now.
+function castle_place_lregions() {
+    const g = game;
+    for (const r of g.lregions || []) {
+        if (r.rtype === LR_TELE || r.rtype === LR_UPTELE) {
+            g.updest = { lx: r.lx, ly: r.ly, hx: r.hx, hy: r.hy,
+                         nlx: r.nlx, nly: r.nly, nhx: r.nhx, nhy: r.nhy };
+        }
+        if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE) {
+            g.dndest = { lx: r.lx, ly: r.ly, hx: r.hx, hy: r.hy,
+                         nlx: r.nlx, nly: r.nly, nhx: r.nhx, nhy: r.nhy };
+        }
+        if (r.rtype === LR_UPSTAIR || r.rtype === LR_DOWNSTAIR)
+            castle_place_stair_lregion(r);
+    }
+}
+
+// C ref: mkmaze.c place_lregion() + put_lregion_here() for LR_UPSTAIR — the
+// probabilistic loop draws rn1((hx-lx)+1, lx) / rn1((hy-ly)+1, ly) per attempt.
+function castle_place_stair_lregion(r) {
+    const up = (r.rtype === LR_UPSTAIR);
+    const lx = Math.max(r.lx, 1), hx = Math.min(r.hx, COLNO - 1);
+    const ly = Math.max(r.ly, 0), hy = Math.min(r.hy, ROWNO - 1);
+    for (let trycnt = 0; trycnt < 200; trycnt++) {
+        const x = rn1((hx - lx) + 1, lx);
+        const y = rn1((hy - ly) + 1, ly);
+        if (castle_put_stair_here(x, y, r, up)) return;
+    }
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++)
+            if (castle_put_stair_here(x, y, r, up)) return;
+}
+
+function castle_put_stair_here(x, y, r, up) {
+    if (castle_bad_location(x, y, r.nlx, r.nly, r.nhx, r.nhy)) return false;
+    mkstairs(x, y, up ? 1 : 0, null);
+    return true;
+}
+
+// C ref: mkmaze.c bad_location() — occupied, inside the excluded region, or not
+// a ROOM/maze-CORR/AIR square.
+function castle_bad_location(x, y, nlx, nly, nhx, nhy) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    if (occupied(x, y)) return true;
+    if (nlx && x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
+    const is_maze = !!game.level?.flags?.is_maze_lev;
+    return !((loc.typ === CORR && is_maze) || loc.typ === ROOM || loc.typ === AIR);
+}
+
+// C ref: mkmaze.c fixup_special() tail — no LR_BRANCH lregion was registered,
+// so place_lregion(0,...,LR_BRANCH) runs, and because nroom > 0 it delegates
+// straight to place_branch() -> find_branch_room().
+function castle_place_branch() {
+    const branchp = is_branchlev();
+    if (!branchp) return;
+    const croom = castle_find_branch_room();
+    if (!croom) return;
+    const m = { x: 0, y: 0 };
+    if (!somexyspace(croom, m)) return;
+    mk_place_branch_at(branchp, m.x, m.y);
+}
+
+// C ref: mklev.c generate_stairs_find_room() — three relaxation phases over the
+// room list; the first phase with any candidate draws one rn2(candidates).
+function castle_find_branch_room() {
+    const g = game;
+    const nroom = g.level?.nroom || 0;
+    if (!nroom) return null;
+    for (let phase = 2; phase > -1; phase--) {
+        const cand = [];
+        for (let i = 0; i < nroom; i++)
+            if (castle_stairs_room_good(g.level.rooms[i], phase)) cand.push(i);
+        if (cand.length) return g.level.rooms[cand[rn2(cand.length)]];
+    }
+    return g.level.rooms[rn2(nroom)];
+}
+
+// C ref: mklev.c generate_stairs_room_good().
+function castle_stairs_room_good(croom, phase) {
+    if (!croom) return false;
+    if (!(croom.needjoining || phase < 0)) return false;
+    if (!((!has_dnstairs(croom) && !has_upstairs(croom)) || phase < 1)) return false;
+    return croom.rtype === OROOM || (phase < 2 && croom.rtype === THEMEROOM);
 }
 
 
@@ -4475,6 +5116,7 @@ function breaktest(otmp) {
     }
 }
 
+set_mktrap_victim(mktrap_victim);
 function mktrap_victim(trap) {
     const lvl = game.u?.uz?.dlevel ?? 1;
     const kind = trap.ttyp;
@@ -4508,7 +5150,7 @@ function mktrap_victim(trap) {
     // placeholder values (18..22, 338, 350) produced wrong-species corpses (e.g.
     // an "orc" rendered as a gray wolf corpse instead of the red orc C records).
     const PM_ELF = 264, PM_DWARF = 44, PM_ORC = 72, PM_GNOME = 165, PM_HUMAN = 260;
-    const PM_ARCHEOLOGIST = 330, PM_WIZARD = 342;
+    const PM_ARCHEOLOGIST = 331, PM_WIZARD = 343;
     let victim_mnum;
     switch (rn2(15)) {
     case 0:
@@ -4633,6 +5275,15 @@ function mkgrave_room(croom) {
 export async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
+    // C ref: mklev.c:954-963 — subrooms are filled BEFORE the needfill gate, so
+    // an unfilled outer room can't block a fillable inner one.  Omitting this
+    // spent the subroom's draws on the PARENT: somex/somey took the parent's
+    // dimensions as their rn2 modulus, so the objects landed in the wrong room.
+    for (let si = 0; si < (croom.nsubrooms ?? 0); ++si) {
+        const subroom = croom.sbrooms?.[si];
+        if (!subroom) return;               // C: impossible() then return
+        await fill_ordinary_room(subroom, false);
+    }
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };

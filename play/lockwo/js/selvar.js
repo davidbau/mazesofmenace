@@ -367,6 +367,21 @@ export function selection_iterate(ov, fn) {
             if (isok(x, y) && selection_getpoint(x, y, ov)) fn(x, y);
 }
 
+// C ref: nhlsel.c l_selection_iterate() — the LUA-facing iterate, which differs
+// from selvar.c's internal selection_iterate() above in two ways that matter:
+// it walks y-outer / x-inner (starting at max(1, lx)), and it runs each point
+// through cvt_to_relcoord() before handing it to the callback, so a des.* call
+// inside the callback re-adds the map origin and lands on the original square.
+// `origin` is {xstart, ystart}; the callback receives MAP-RELATIVE coords.
+export function l_selection_iterate(ov, origin, fn) {
+    if (!ov) return;
+    const rect = selection_getbounds(ov);
+    for (let y = rect.ly; y <= rect.hy; y++)
+        for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
+            if (selection_getpoint(x, y, ov))
+                fn(x - origin.xstart, y - origin.ystart);
+}
+
 // C ref: nhlsel.c l_selection_numpoints().
 export function selection_numpoints(sel) {
     let ret = 0;

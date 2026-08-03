@@ -20,7 +20,8 @@ import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
-         SUPPRESS_SADDLE, SUPPRESS_IT, has_mgivenname, MGIVENNAME } from './const.js';
+         SUPPRESS_SADDLE, SUPPRESS_IT, has_mgivenname, MGIVENNAME,
+         W_SADDLE } from './const.js';
 import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
 
@@ -100,9 +101,14 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
         return 'it';
     }
 
-    /* Put the adjectives in the buffer; invisible/saddled belong here too
-       but their states are recorded above. */
+    /* Put the adjectives in the buffer; the invisible state is recorded
+       above. src/do_name.c:943 — "saddled" is appended for a steed wearing
+       its saddle unless SUPPRESS_SADDLE, Blind or Hallucination. */
     let buf = adjective ? adjective + ' ' : '';
+    const do_saddle = !((suppress || 0) & SUPPRESS_SADDLE);
+    if (do_saddle && ((mtmp.misc_worn_check || 0) & W_SADDLE)
+        && !game.u.ublind && !game.u.uprops?.HALLUC)
+        buf += 'saddled ';
     const has_adjectives = buf !== '';
 
     /* src/do_name.c:930 — the actual name or type. A given name replaces
@@ -170,11 +176,17 @@ export function christen_monst(mtmp, name) {
 }
 
 // src/do_name.c mon_nam() — ARTICLE_THE, no adjective.
-export const mon_nam = (mtmp) => x_monnam(mtmp, ARTICLE_THE, null, 0, false);
+export const mon_nam = (mtmp) =>
+    x_monnam(mtmp, ARTICLE_THE, null,
+             has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
 
-// src/do_name.c y_monnam() — ARTICLE_YOUR, which x_monnam downgrades to THE
-// for anything not tame.
-export const y_monnam = (mtmp) => x_monnam(mtmp, ARTICLE_YOUR, null, 0, false);
+// src/do_name.c:1117 y_monnam() — ARTICLE_YOUR, which x_monnam downgrades
+// to THE for anything not tame. "saddled" is redundant when mounted, so the
+// steed also suppresses it.
+export const y_monnam = (mtmp) =>
+    x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE, null,
+             (has_mgivenname(mtmp) || mtmp === game.u.usteed)
+                 ? SUPPRESS_SADDLE : 0, false);
 
 // src/do_name.c:1054 noit_mon_nam() — ARTICLE_YOUR with "it" suppressed, so
 // an unseen pet still reads as "your kitten" rather than "it".

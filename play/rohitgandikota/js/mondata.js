@@ -173,6 +173,12 @@ export const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX
                                 || ptr.pmidx === PMNAMES.PM_FLAMING_SPHERE
                                 || likes_lava(ptr);
 
+// include/mondata.h:80 regenerates()
+export const regenerates = (ptr) => (ptr.mflags1 & MFLAGS.M1_REGEN) !== 0;
+
+// include/mondata.h:77 lays_eggs()
+export const lays_eggs = (ptr) => (ptr.mflags1 & MFLAGS.M1_OVIPAROUS) !== 0;
+
 // include/mondata.h likes_lava()
 export const likes_lava = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_ELEMENTAL
                                 || ptr.pmidx === PMNAMES.PM_SALAMANDER;

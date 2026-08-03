@@ -32,6 +32,23 @@ import { depth } from './hacklib.js';
 import { newuexp } from './exper.js';
 import { youHaveSearching } from './allmain.js';
 import { Infravision } from './vision.js';
+import { objects as OBJECTS } from './mkobj.js';
+import { MFLAGS2, M2_PNAME } from './monflags_data.js';
+const G_UNIQ = 0x1000; // monflag.h
+import { magic_negation_hero } from './monmove.js';
+
+// insight.c:1803 mc_types[] — indexed by magic_negation()'s result.
+const MC_TYPES = ['', 'warded', 'guarded', 'protected'];
+const W_ARMOR_MASK = 0x7f; // monst.h W_ARMOR: the seven armour slots
+// C ref: prop.h Antimagic == EAntimagic || HAntimagic.  The extrinsic is worn
+// gear with oc_oprop ANTIMAGIC; no session grants the intrinsic.
+function Antimagic() {
+    for (const o of (game.invent || []))
+        if ((o.owornmask || 0) & W_ARMOR_MASK) {
+            if (OBJECTS[o.otyp]?.oc_oprop === 12 /* ANTIMAGIC */) return true;
+        }
+    return !!(game.u?.HAntimagic);
+}
 import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER } from './livelog.js';
 import { nhgetch } from './input.js';
@@ -167,12 +184,16 @@ export function enlightenment_lines(final = 0) {
         // "is ", "was ", buf, "").  "in effect" (not "tonight") because the phase
         // is the start-of-session value, not necessarily the current real time.
         const which = (moonphase === FULL_MOON) ? 'full' : 'new';
-        enlLine('There ', final ? 'was ' : 'is ', `a ${which} moon in effect`, '');
+        // insight.c:668 — the game-over pass appends " when your adventure ended".
+        const when = final ? ' when your adventure ended' : '';
+        enlLine('There ', final ? 'was ' : 'is ', `a ${which} moon in effect${when}`, '');
     }
     if (friday_13th()) {
-        // C: enlght_out(" Bad things can happen on Friday the 13th.") — a raw
-        // enlght_out() line (its own leading space, no trailing you-are period).
-        out(' Bad things can happen on Friday the 13th.');
+        // insight.c:678 — a raw enlght_out() line (own leading space, no
+        // trailing you-are period).  ENL_GAMEOVERALIVE == 1, DEAD == 2.
+        const did = !final ? 'can happen'
+            : (final === 1) ? 'could have happened' : 'happened';
+        out(` Bad things ${did} on Friday the 13th.`);
     }
 
     // experience (not polymorphed).  C ref: insight.c background_enlightenment —
@@ -302,7 +323,14 @@ export function enlightenment_lines(final = 0) {
         if ((u.ualign?.record ?? 0) >= 0) youAre(pio);
         else youHave(pio);
         if (youHaveSearching()) youHave('automatic searching');
+        // insight.c:1523 — Antimagic is worn gear whose oc_oprop is ANTIMAGIC
+        // (gray DSM/scales, cloak of magic resistance) plus the intrinsic.
+        // from_what() adds no suffix without wizard mode.
+        if (Antimagic()) youAre('magic-protected');
         if (Infravision()) youHave('infravision');
+        // insight.c:1800 — the worn-armour magic-cancellation level.
+        const armpro = magic_negation_hero();
+        if (armpro > 0) youAre(MC_TYPES[Math.min(armpro, MC_TYPES.length - 1)]);
         // C ref: enlightenment() tail — "have been killed .../are dead" via
         // u.umortality; the covered death path always has umortality === 1.
         out(' You are dead.');
@@ -546,16 +574,75 @@ export function anyGenocidedOrExtinct() {
     return false;
 }
 
-// C ref: insight.c list_vanquished() — its whole prompt/listing is gated on
-// "at least one species has svm.mvitals[].died != 0" (ntypes != 0).  This port
-// doesn't tally that per-species death count, but u.uconduct.killer (already
-// tracked for the "pacifist" conduct line) is incremented on every kill the
-// hero makes and is otherwise 0, so it is a safe (if conservative — it misses
-// monster-on-monster deaths the covered sessions never produce) stand-in for
-// "the vanquished list would be non-empty".
-export function anyVanquished() {
-    return !!(game.u?.uconduct?.killer);
+// C ref: insight.c:2814 list_vanquished() — ntypes is the number of DISTINCT
+// species with svm.mvitals[].died != 0 (any death, not just the hero's kills;
+// mon.js mvitals_died() tallies it).  ntypes decides the prompt's allowed
+// answers: ynaqchars when > 1, ynqchars otherwise (insight.c:2834), which is
+// visible as "[ynaq]" vs "[ynq]" in the prompt.
+export function vanquished_ntypes() {
+    const mv = game.mvitals;
+    if (!mv) return 0;
+    let n = 0;
+    for (let i = 0; i < mv.length; i++) if (mv[i]?.died) n++;
+    return n;
 }
+export function anyVanquished() { return vanquished_ntypes() > 0; }
+
+// C ref: insight.c:2784 list_vanquished(defquery, ask) — the "Vanquished
+// creatures:" menu.  Only the DEFAULT sort (VANQ_MLVL_MNDX: mlevel high to low,
+// tiebreak mndx low to high) is implemented; that is the only mode reachable
+// without the 'a' answer's set_vanq_order() menu, and with it class_header and
+// uniq_header are both false so there are no class/uniq separator lines.
+export async function list_vanquished_screen() {
+    const { monster_by_pmidx } = await import('./makemon.js');
+    const { makeplural } = await import('./invent.js');
+    const mv = game.mvitals || [];
+    const idx = [];
+    let total = 0;
+    for (let i = 0; i < mv.length; i++)
+        if (mv[i]?.died) { idx.push(i); total += mv[i].died; }
+    if (!idx.length) return;
+    idx.sort((a, b) => {
+        const ma = monster_by_pmidx(a), mb = monster_by_pmidx(b);
+        const r = (mb?.mlevel ?? 0) - (ma?.mlevel ?? 0);   // mlevel high to low
+        return r !== 0 ? r : a - b;                        // tiebreak: mndx
+    });
+    const lines = ['Vanquished creatures:', ''];
+    for (const i of idx) {
+        const m = monster_by_pmidx(i);
+        const name = m?.name || '';
+        const n = mv[i].died;
+        let buf;
+        if ((m?.geno ?? 0) & G_UNIQ) {
+            // type_is_pname() (M2_PNAME) suppresses the article.
+            buf = `${is_pname(m) ? '' : 'the '}${name}`;
+            if (n > 1) buf += ` (${N_times(n)})`;
+        } else if (n === 1) {
+            buf = an_word(name);
+        } else {
+            buf = `${String(n).padStart(3, ' ')} ${makeplural(name)}`;
+        }
+        // insight.c:2910 — leading spaces so the article lines up with a 3-digit
+        // count column.
+        const pfx = /^the /i.test(buf) ? 0 : /^an /i.test(buf) ? 1
+            : /^a /i.test(buf) ? 2 : !/[0-9]/.test(buf[2] ?? '') ? 4 : 0;
+        lines.push(' '.repeat(pfx) + buf);
+    }
+    if (idx.length > 1) {
+        lines.push('');
+        lines.push(`${total} creatures vanquished.`);
+    }
+    await render_menu_window(lines, '(end)');
+    for (;;) {
+        const key = await nhgetch();
+        if (key === 27 || key === 13 || key === 10 || key === 32) break;
+    }
+    const { flush_screen } = await import('./display.js');
+    await flush_screen(1);
+}
+function an_word(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+// C ref: mondata.h type_is_pname(ptr) == (mflags2 & M2_PNAME).
+function is_pname(m) { return ((MFLAGS2[m?.pmidx] ?? 0) & M2_PNAME) !== 0; }
 
 // C ref: insight.c dogenocided() — the M-g / #genocided command.
 export async function dogenocided() {
@@ -740,7 +827,11 @@ function conduct_lines(final = 0) {
 // right-of-center corner offset and pages with "--More--" (parked right after
 // the last content line, not row 23) rather than the "(end)" a real
 // select_menu()-driven menu (e.g. #overview) uses.
-async function render_conduct_menu(lines) {
+async function render_menu_window(lines, footer) {
+    return await render_conduct_menu(lines, footer);
+}
+
+async function render_conduct_menu(lines, footer = '--More--') {
     const { NO_COLOR } = await import('./terminal.js');
     const disp = game.nhDisplay;
     if (!disp?.setCell) return;
@@ -760,7 +851,6 @@ async function render_conduct_menu(lines) {
     }
     for (let r = 0; r < lines.length; r++)
         disp.putstr(textCol, r, lines[r], NO_COLOR, 0);
-    const footer = '--More--';
     disp.putstr(textCol, moreRow, footer, NO_COLOR, 0);
     disp.setCursor(textCol + footer.length, moreRow);
 }

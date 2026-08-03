@@ -21,7 +21,8 @@ import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove } from './hack.js';
+import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove, doorless_door } from './hack.js';
+import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, A_DEX } from './const.js';
@@ -45,7 +46,7 @@ import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir } from './const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
@@ -66,7 +67,7 @@ import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
-import { rnd } from './rng.js';
+import { rnd, rn2 } from './rng.js';
 import { ACCESSIBLE } from './const.js';
 import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
@@ -139,30 +140,46 @@ function blocksMove(x, y, dx, dy) {
     return false;
 }
 
-// src/hack.c:4063 doorless_door() — no physical door in the frame. Rogue
-// level doors count as present to keep diagonals blocked there.
-function doorless_door(x, y) {
-    const lev_p = game.level?.at(x, y);
-    if (!lev_p || !IS_DOOR(lev_p.typ))
-        return false;
-    /* Is_rogue_level: the rogue level is not modelled yet */
-    return !(lev_p.doormask & ~(D_NODOOR | D_BROKEN));
+/* doorless_door() moved to js/hack.js, its C home (src/hack.c:4063). */
+
+// src/cmd.c:3847 xytodir() — convert an x,y delta into a direction code.
+export function xytodir(x, y) {
+    for (let dd = 0; dd < N_DIRS; dd++)
+        if (x === xdir[dd] && y === ydir[dd])
+            return dd;
+    return DIR_ERR;
 }
 
-// C ref: cmd.c rhack — main command dispatcher
-// src/cmd.c confdir() — a confused or stunned hero moves in a random direction.
-// u_maybe_impaired() is false while the property subsystem is absent, so this
-// draws nothing yet; it is written out so the draw lands in the right place
-// when Confusion becomes reachable.
-function confdir(force_impairment) {
-    if (force_impairment || u_maybe_impaired()) {
-        note_unported_cmd('confdir:impaired');
+// src/cmd.c:3859 dirtocoord() — convert a direction code into an x,y pair.
+export function dirtocoord(cc, dd) {
+    if (dd > DIR_ERR && dd < N_DIRS_Z) {
+        cc.x = xdir[dd];
+        cc.y = ydir[dd];
     }
 }
 
-// src/hack.c u_maybe_impaired()
-function u_maybe_impaired() {
-    return !!(game.u.uprops?.CONFUSION || game.u.uprops?.STUNNED);
+// C ref: cmd.c rhack — main command dispatcher
+// src/cmd.c:4300 confdir() — a confused or stunned hero moves in a random
+// direction: dirs_ord[rn2(8)] (cardinals first), halved for grid bugs.
+const dirs_ord_cmd = [0, 2, 4, 6, 1, 3, 5, 7]; /* W N E S NW NE SE SW */
+export function confdir(force_impairment) {
+    if (force_impairment || u_maybe_impaired()) {
+        const kmax = (game.u.umonnum === PMNAMES.PM_GRID_BUG)
+            ? (N_DIRS / 2) : N_DIRS;
+        const k = dirs_ord_cmd[rn2(kmax)];
+        game.u.dx = xdir[k];
+        game.u.dy = ydir[k];
+    }
+}
+
+// src/hack.c:2418 u_maybe_impaired() — Stunned, or Confusion with the
+// 4-in-5 roll. The rn2(5) draws EVERY move while merely confused.
+export function u_maybe_impaired() {
+    const Stunned = (game.u.intrinsic?.HStun || 0) > 0
+        || !!game.u.uprops?.STUNNED;
+    const Confusion = (game.u.intrinsic?.HConfusion || 0) > 0
+        || !!game.u.uprops?.CONFUSION;
+    return !!(Stunned || (Confusion && !rn2(5)));
 }
 
 // src/cmd.c:3919 show_direction_keys() — the compass rose. The default
@@ -266,6 +283,10 @@ export async function getdir(s) {
 
     if (dirsym === '.' || dirsym === 's') {
         game.u.dx = game.u.dy = game.u.dz = 0;
+        /* src/cmd.c:4116 — getdir's tail runs confdir(FALSE) for every
+           !u.dz result, INCLUDING the self-direction: while confused the
+           rn2(5) inside u_maybe_impaired still draws here. */
+        confdir(false);
         return true;
     }
     if (dirsym === '<' || dirsym === '>') {
@@ -632,8 +653,58 @@ export async function doextcmd() {
         return await dojump();
     if (name === 'levelchange')
         return await wiz_level_change();
+    if (name === 'ride') {
+        const { doride } = await import('./steed.js');
+        return await doride();
+    }
+    if (name === 'sit') {
+        const { dosit } = await import('./sit.js');
+        return await dosit();
+    }
+    if (name === 'pray') {
+        const { dopray } = await import('./pray.js');
+        return await dopray();
+    }
+    if (name === 'dip') {
+        const { dodip } = await import('./potion.js');
+        return await dodip();
+    }
+    if (name === 'annotate') {
+        /* src/dungeon.c:2571 donamelevel() -> query_annotation(): the
+           getlin consumes the annotation text; skipping it fed the typed
+           annotation to the command loop as keystrokes. */
+        const nbuf = await getlin(
+            'What do you want to call this dungeon level?');
+        if (nbuf != null && nbuf !== '' && nbuf !== '\x1b') {
+            const t = nbuf.trim().replace(/ {2,}/g, ' ');
+            if (t && t !== ' ')
+                (game.level_annotations ||= {})[
+                    `${game.u.uz.dnum}:${game.u.uz.dlevel}`] = t;
+        }
+        return ECMD_OK;
+    }
+    if (name === 'version') {
+        /* src/version.c:169 doextversion() — the options text substitutes
+           :LUAVERSION:, and get_lua_version() boots a Lua state the FIRST
+           time, which loads nhlib.lua and spends its 3-item align shuffle
+           (rn2(3), rn2(2)). Cached in gl.lua_ver afterwards. The pager
+           display itself is recorded. */
+        if (!game._lua_ver_known) {
+            game._lua_ver_known = true;
+            const themedAlign = [0, 1, 2];
+            for (let i = themedAlign.length; i > 1; i--) {
+                const j = rn2(i);
+                [themedAlign[i - 1], themedAlign[j]] =
+                    [themedAlign[j], themedAlign[i - 1]];
+            }
+        }
+        note_unported_cmd('extcmd:version_display');
+        return ECMD_OK;
+    }
     if (name === 'wizwish')
         return await wiz_wish();
+    if (name === 'wizgenesis')
+        return await wiz_genesis();
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
@@ -817,9 +888,20 @@ export async function rhack(key) {
        lookaround or a blocked step calls nomul(0). The rush prefix 'g' uses
        run = 2; the only difference between the modes is how lookaround
        decides what is interesting enough to stop at. */
-    const ch = 'HJKLYUBN'.includes(ch0) ? ch0.toLowerCase() : ch0;
+    let ch = 'HJKLYUBN'.includes(ch0) ? ch0.toLowerCase() : ch0;
     if (ch !== ch0 && isMovementKey(ch) && !game.context.run)
         game.context.run = 1;
+
+    /* src/cmd.c:3467 reset_commands() — with !num_pad, C(dirchar) binds the
+       MV_RUSH form: do_rush_south() etc. call set_move_cmd(dir, 3). This is
+       what makes ^J rush south (and ^L rush east, overriding the default
+       redraw binding, ^N rush southeast overriding annotate). */
+    const CTRL_DIR = { '\x08': 'h', '\x19': 'y', '\x0b': 'k', '\x15': 'u',
+                       '\x0c': 'l', '\x0e': 'n', '\x0a': 'j', '\x02': 'b' };
+    if (CTRL_DIR[ch0] !== undefined && !game.context.run) {
+        ch = CTRL_DIR[ch0];
+        game.context.run = 3;
+    }
 
     if (isMovementKey(ch)) {
         /* src/cmd.c movecmd() — the key sets u.dx/u.dy, then domove() reads
@@ -1128,6 +1210,25 @@ async function domove_core() {
     /* C's domove() takes no arguments and reads u.dx/u.dy, which movecmd()
        set from the key. moveloop's run branch calls it the same way, so the
        direction has to live on `u` rather than in a parameter. */
+
+    /* src/hack.c:2747 impaired_movement() — a stunned (always) or confused
+       (4 in 5) hero moves in a random viable direction; the rn2(5) inside
+       u_maybe_impaired() draws on EVERY move while merely confused, and
+       each confdir retry draws rn2(8). */
+    if (u_maybe_impaired()) {
+        let tries = 0;
+        let ix, iy;
+        do {
+            if (tries++ > 50) {
+                nomul(0);
+                return;
+            }
+            confdir(true);
+            ix = u.ux + u.dx;
+            iy = u.uy + u.dy;
+        } while (!isok(ix, iy) || bad_rock(game.youmonst.data, ix, iy));
+    }
+
     const dx = u.dx, dy = u.dy;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
@@ -1295,6 +1396,10 @@ async function domove_core() {
         }
     }
 
+    /* src/hack.c:2934 — full re-position after the tentative move; this is
+       where a ridden steed's mx,my get synced to the hero. */
+    u_on_newpos(u.ux, u.uy);
+
     /* src/hack.c:2936 — the post-move run check.
      *
      *     reset_occupations();
@@ -1323,6 +1428,11 @@ async function domove_core() {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+
+    /* src/hack.c:2968 — u.umoved = TRUE when the position changed; read by
+       u_calc_moveamt (steed budget) and the encumbrance exhaustion arm. */
+    if (u.ux !== u.ux0 || u.uy !== u.uy0)
+        game.u.umoved = true;
 
     /* src/hack.c:2980 — "if (u.umoved) spoteffects(TRUE);". The move above
        either happened or returned early, so reaching here means umoved. */

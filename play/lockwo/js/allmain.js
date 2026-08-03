@@ -157,6 +157,25 @@ export async function newgame() {
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
 
+    // C ref: allmain.c newgame() — role_init() sets gu.urole, gu.urace and
+    // u.ualign.type BEFORE mklev(), and makemon()'s peace_minded() reads all
+    // three: u.ualign.type/.record are the sgn test and the rn2(16 + record)
+    // modulus, and gu.urace supplies race_peaceful/race_hostile's love/hate
+    // masks.  They used to be assigned AFTER fastforward_fill_mineralize(), so
+    // every room-fill monster saw ual=0 and a human hero: an orc Wizard's goblin
+    // hit the human hatemask (M2_GNOME|M2_ORC) and returned hostile with NO
+    // RNG, where C draws rn2(16) and rn2(5).  That one missing pair shifted the
+    // whole rest of chargen, including the attribute rolls.
+    {
+        const at = aligns[game.initalign]?.value;
+        if (at !== undefined) {
+            g.u.ualign = g.u.ualign || {};
+            g.u.ualign.type = at;
+            if (g.u.ualign.record === undefined) g.u.ualign.record = 0;
+        }
+        if (!g.urace) g.urace = { adj: races[game.initrace]?.adj || 'human' };
+    }
+
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
@@ -165,18 +184,6 @@ export async function newgame() {
     // These create objects/monsters that don't affect terrain display
     await fastforward_fill_mineralize();
 
-    // C ref: allmain.c newgame() — u.ualign.type is set (role_init/init_align)
-    // before makedog().  peace_minded() compares the pet's alignment sign to
-    // u.ualign.type, so it must be populated here for non-wizard/knight roles
-    // (e.g. chaotic Rogue, lawful Samurai) to skip the co-align rn2 correctly.
-    {
-        const at = aligns[game.initalign]?.value;
-        if (at !== undefined) {
-            g.u.ualign = g.u.ualign || {};
-            g.u.ualign.type = at;
-            if (g.u.ualign.record === undefined) g.u.ualign.record = 0;
-        }
-    }
     // C ref: dog.c makedog() - create the starting pet after level fill.
     u_on_upstairs();
     makedog();
@@ -229,6 +236,14 @@ async function newgame_real() {
     const g = game;
     const mnum = gameRoleMnum();
     const role = roles[game.initrole];
+
+    // C ref: u_init.c u_init() — flags.initgend is copied to flags.female
+    // BEFORE anything reads a rank title.  It used to be set ~30 lines below
+    // the urole assignment, so `rankName(role, flags.female)` always saw
+    // undefined and every female hero got the male rank ("Plunderer" for an orc
+    // Barbarian where C says "Plunderess").
+    g.flags = g.flags || {};
+    if (g.flags.female === undefined) g.flags.female = (game.initgend === 1);
 
     // Wire up urole/urace/ualign and level for the status line.
     g.urole = { name: { m: role?.name?.m, f: role?.name?.f },

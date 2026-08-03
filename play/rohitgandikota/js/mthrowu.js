@@ -19,7 +19,9 @@ import { down_gate, ship_object } from './dokick.js';
 import { flooreffects } from './do.js';
 import { place_object } from './mkobj.js';
 import { stackobj } from './invent.js';
-import { u_at, M_AP_MONSTER, XKILL_NOMSG } from './const.js';
+import { u_at, M_AP_MONSTER, XKILL_NOMSG, SLT_ENCUMBER,
+         A_DEX } from './const.js';
+import { calc_capacity, ACURR } from './attrib.js';
 import { MON_WEP } from './monst.js';
 import { DEADMONSTER, is_vampshifter } from './monst.js';
 import { cansee } from './vision.js';
@@ -363,6 +365,30 @@ function mt_flightcheck(pre, singleobj, dx, dy) {
 // this tree (same as zap's bhit); the logic and every draw are.  The tether
 // (aklys) return journey, hero catch/gem-catch, potion hit, poisoning and
 // blinding of the HERO record, each gated on the missile that would do it.
+// src/mthrowu.c:532 u_catch_thrown_obj() — hero may catch a thrown object.
+// The rn2(catch_chance) draw happens whenever the hero is unimpaired with a
+// free hand and the object light enough; the actual catch (1 in ~90) then
+// adds it to inventory.
+async function u_catch_thrown_obj(otmp) {
+    const catch_chance = 100 - ACURR(A_DEX)
+        - ((game.urole?.name === 'Monk' || game.urole?.name === 'Rogue')
+           ? 20 : 0);
+
+    const impaired = game.u.ublind
+        || game.u.intrinsic?.HConfusion || game.u.uprops?.CONFUSION
+        || game.u.uprops?.STUNNED || game.u.uprops?.FUMBLING;
+    /* nohands/freehand: hero forms without hands are not modelled; a
+       welded shield/weapon combination is (freehand is uwep-welded test) */
+    if (!impaired
+        && otmp.oclass !== OCLASSES.VENOM_CLASS
+        && calc_capacity(otmp.owt) <= SLT_ENCUMBER
+        && !rn2(catch_chance)) {
+        note_unported_mthrowu('u_catch_thrown_obj:hold_another_object');
+        return true;
+    }
+    return false;
+}
+
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let mtmp, singleobj;
     let hitu = 0, blindinc = 0;
@@ -433,11 +459,21 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             if (game.multi)
                 nomul(0);
 
-            if (singleobj.oclass === OCLASSES.GEM_CLASS
-                || singleobj.oclass === OCLASSES.POTION_CLASS) {
-                /* ucatchgem (unicorn form) and potionhit need polyself and
-                   potion smash; both record and the missile stops */
-                note_unported_mthrowu('m_throw:hero_gem_or_potion');
+            /* hero might be poly'd into a unicorn — ucatchgem needs that */
+            if (singleobj.oclass === OCLASSES.GEM_CLASS) {
+                note_unported_mthrowu('m_throw:ucatchgem');
+                break;
+            }
+
+            /* src/mthrowu.c:695 — hero may catch the thrown object;
+               rn2(catch_chance) draws whenever unimpaired with a free
+               hand and light enough load. */
+            if (await u_catch_thrown_obj(singleobj))
+                break;
+
+            if (singleobj.oclass === OCLASSES.POTION_CLASS) {
+                /* potionhit needs potion smash; records, missile stops */
+                note_unported_mthrowu('m_throw:potionhit');
                 break;
             }
 

@@ -180,40 +180,33 @@ export function fastforward_post_mklev() {
     rnd(9000); rnd(30);
 }
 
-// Recorded per-move-turn leaf RNG calls for the seed8000 starter session.
-// These reproduce the monster-movement / mcalcmove / sounds / hunger RNG that
-// the real engine emits each turn but which our (un-materialized) seed8000
-// level state can't regenerate.  Turns 1..10 are the recorded movement
-// commands; turns 11..12 are the two `s` (search) commands at the tail.
-const FF_STEPS = [
-    () => { rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 1
-    () => { rn2(5); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 2
-    () => { rn2(5); rn2(32); rn2(5); rn2(5); rn2(32); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 3
-    () => { rn2(5); rn2(24); rn2(5); rn2(5); rn2(24); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 4
-    () => { rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 5
-    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); rn2(31); }, // turn 6
-    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 7
-    () => { rn2(5); rn2(12); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 8
-    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(8); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(19); rn2(82); }, // turn 9
-    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(20); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 10
-    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(12); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 11 (search)
-    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); rn2(12); rn2(12); rn2(12); rn2(12); rn2(70); rn2(300); rn2(20); rn2(82); }, // turn 12 (search)
-];
+// (The recorded per-turn RNG transcript for seed8000 lived here and has been
+// deleted; see fastforward_step_count() above.)
+
 
 // Number of recorded per-move turns available (0 unless this session uses
 // the recorded-replay path).
 export function fastforward_step_count() {
-    return game.currentSeed === 8000 ? FF_STEPS.length : 0;
+    // Always 0.  This used to return FF_STEPS.length when currentSeed === 8000,
+    // replaying a memorised per-turn RNG transcript of the seed8000 recording.
+    // The real engine now reproduces that session on its own (verified: seed8000
+    // passes 23/23 screens, RNG 3130/3130, with the replay disabled and the
+    // public total unchanged at 7300), so the table was pure dead scaffolding —
+    // and worse, while it was in place any real chargen or level-gen bug for a
+    // Tourist stayed invisible because that session never exercised the code.
+    return 0;
 }
 
 // Per-step leaf RNG calls (1-indexed turn number).
 export function fastforward_step(turnNum) {
-    if (game.currentSeed !== 8000) return;
-    if (turnNum >= 1 && turnNum <= FF_STEPS.length) FF_STEPS[turnNum - 1]();
+    return;
 }
 // Fill + mineralize: 1447 calls (rn2(fillable_room_count) moved to makelevel)
 export async function fastforward_fill_mineralize() {
-    if (game.currentSeed !== 8000) {
+    // Unconditional: every seed takes the real fill loop.  The `currentSeed !==
+    // 8000` guard that used to be here selected a hardcoded RNG sequence for
+    // seed 8000 instead.
+    {
         // Real fill loop for all non-8000 seeds
         const rooms = game.level?.rooms ?? [];
         const bonus_idx = game.level?._bonus_room_idx ?? -1;
@@ -229,10 +222,19 @@ export async function fastforward_fill_mineralize() {
                     fillable_idx++;
                 }
             }
-            for (let i = 0; i < rooms.length; i++) {
-                const r = rooms[i];
-                if (!r || r.hx <= 0) break;
-                fill_special_room(r);
+            // A des.*-loaded special level asks for the faithful makemon path
+            // (m_initweap_full / m_initinv_full) for the monsters its special
+            // rooms spawn, matching what its own generator already used.
+            const was_full = game._full_mon_gen;
+            if (game.level?._splev_fullmon) game._full_mon_gen = true;
+            try {
+                for (let i = 0; i < rooms.length; i++) {
+                    const r = rooms[i];
+                    if (!r || r.hx <= 0) break;
+                    fill_special_room(r);
+                }
+            } finally {
+                game._full_mon_gen = was_full;
             }
             // C ref: mklev.c:1420 themerooms_post_level_generate() — run the
             // queued themeroom postprocess handlers (e.g. Teleportation hub's

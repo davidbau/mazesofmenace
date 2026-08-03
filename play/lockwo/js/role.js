@@ -20,7 +20,7 @@ const MH_ORC = 0x0080;
 export const roles = [
     {
         name: { m: 'Archeologist', f: null },
-        rank: [{ m: 'Digger', f: null }],
+        rank: [{ m: 'Digger', f: null }, { m: 'Field Worker', f: null }, { m: 'Investigator', f: null }, { m: 'Exhumer', f: null }, { m: 'Excavator', f: null }, { m: 'Spelunker', f: null }, { m: 'Speleologist', f: null }, { m: 'Collector', f: null }, { m: 'Curator', f: null }],
         filecode: 'Arc',
         mnum: 0,
         allow: MH_HUMAN | MH_DWARF | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
@@ -33,7 +33,7 @@ export const roles = [
     },
     {
         name: { m: 'Barbarian', f: null },
-        rank: [{ m: 'Plunderer', f: 'Plunderess' }],
+        rank: [{ m: 'Plunderer', f: 'Plunderess' }, { m: 'Pillager', f: null }, { m: 'Bandit', f: null }, { m: 'Brigand', f: null }, { m: 'Raider', f: null }, { m: 'Reaver', f: null }, { m: 'Slayer', f: null }, { m: 'Chieftain', f: 'Chieftainess' }, { m: 'Conqueror', f: 'Conqueress' }],
         filecode: 'Bar',
         mnum: 1,
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
@@ -43,7 +43,7 @@ export const roles = [
     },
     {
         name: { m: 'Caveman', f: 'Cavewoman' },
-        rank: [{ m: 'Troglodyte', f: null }],
+        rank: [{ m: 'Troglodyte', f: null }, { m: 'Aborigine', f: null }, { m: 'Wanderer', f: null }, { m: 'Vagrant', f: null }, { m: 'Wayfarer', f: null }, { m: 'Roamer', f: null }, { m: 'Nomad', f: null }, { m: 'Rover', f: null }, { m: 'Pioneer', f: null }],
         filecode: 'Cav',
         mnum: 2,
         allow: MH_HUMAN | MH_DWARF | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
@@ -53,7 +53,7 @@ export const roles = [
     },
     {
         name: { m: 'Healer', f: null },
-        rank: [{ m: 'Rhizotomist', f: null }],
+        rank: [{ m: 'Rhizotomist', f: null }, { m: 'Empiric', f: null }, { m: 'Embalmer', f: null }, { m: 'Dresser', f: null }, { m: 'Medicus ossium', f: 'Medica ossium' }, { m: 'Herbalist', f: null }, { m: 'Magister', f: 'Magistra' }, { m: 'Physician', f: null }, { m: 'Chirurgeon', f: null }],
         filecode: 'Hea',
         mnum: 3,
         allow: MH_HUMAN | MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
@@ -63,7 +63,7 @@ export const roles = [
     },
     {
         name: { m: 'Knight', f: null },
-        rank: [{ m: 'Gallant', f: null }],
+        rank: [{ m: 'Gallant', f: null }, { m: 'Esquire', f: null }, { m: 'Bachelor', f: null }, { m: 'Sergeant', f: null }, { m: 'Knight', f: null }, { m: 'Banneret', f: null }, { m: 'Chevalier', f: 'Chevaliere' }, { m: 'Seignieur', f: 'Dame' }, { m: 'Paladin', f: null }],
         filecode: 'Kni',
         mnum: 4,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
@@ -73,7 +73,7 @@ export const roles = [
     },
     {
         name: { m: 'Monk', f: null },
-        rank: [{ m: 'Candidate', f: null }],
+        rank: [{ m: 'Candidate', f: null }, { m: 'Novice', f: null }, { m: 'Initiate', f: null }, { m: 'Student of Stones', f: null }, { m: 'Student of Waters', f: null }, { m: 'Student of Metals', f: null }, { m: 'Student of Winds', f: null }, { m: 'Student of Fire', f: null }, { m: 'Master', f: null }],
         filecode: 'Mon',
         mnum: 5,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
@@ -83,7 +83,7 @@ export const roles = [
     },
     {
         name: { m: 'Priest', f: 'Priestess' },
-        rank: [{ m: 'Aspirant', f: null }],
+        rank: [{ m: 'Aspirant', f: null }, { m: 'Acolyte', f: null }, { m: 'Adept', f: null }, { m: 'Priest', f: 'Priestess' }, { m: 'Curate', f: null }, { m: 'Canon', f: 'Canoness' }, { m: 'Lama', f: null }, { m: 'Patriarch', f: 'Matriarch' }, { m: 'High Priest', f: 'High Priestess' }],
         filecode: 'Pri',
         mnum: 6,
         allow: MH_HUMAN | MH_ELF | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL | ROLE_CHAOTIC,
@@ -93,7 +93,7 @@ export const roles = [
     },
     {
         name: { m: 'Rogue', f: null },
-        rank: [{ m: 'Footpad', f: null }],
+        rank: [{ m: 'Footpad', f: null }, { m: 'Cutpurse', f: null }, { m: 'Rogue', f: null }, { m: 'Pilferer', f: null }, { m: 'Robber', f: null }, { m: 'Burglar', f: null }, { m: 'Filcher', f: null }, { m: 'Magsman', f: 'Magswoman' }, { m: 'Thief', f: null }],
         filecode: 'Rog',
         mnum: 8,
         allow: MH_HUMAN | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_CHAOTIC,
@@ -103,7 +103,7 @@ export const roles = [
     },
     {
         name: { m: 'Ranger', f: null },
-        rank: [{ m: 'Tenderfoot', f: null }],
+        rank: [{ m: 'Tenderfoot', f: null }, { m: 'Lookout', f: null }, { m: 'Trailblazer', f: null }, { m: 'Reconnoiterer', f: 'Reconnoiteress' }, { m: 'Scout', f: null }, { m: 'Arbalester', f: null }, { m: 'Archer', f: null }, { m: 'Sharpshooter', f: null }, { m: 'Marksman', f: 'Markswoman' }],
         filecode: 'Ran',
         mnum: 7,
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
@@ -113,7 +113,7 @@ export const roles = [
     },
     {
         name: { m: 'Samurai', f: null },
-        rank: [{ m: 'Hatamoto', f: null }],
+        rank: [{ m: 'Hatamoto', f: null }, { m: 'Ronin', f: null }, { m: 'Ninja', f: 'Kunoichi' }, { m: 'Joshu', f: null }, { m: 'Ryoshu', f: null }, { m: 'Kokushu', f: null }, { m: 'Daimyo', f: null }, { m: 'Kuge', f: null }, { m: 'Shogun', f: null }],
         filecode: 'Sam',
         mnum: 9,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
@@ -123,7 +123,7 @@ export const roles = [
     },
     {
         name: { m: 'Tourist', f: null },
-        rank: [{ m: 'Rambler', f: null }],
+        rank: [{ m: 'Rambler', f: null }, { m: 'Sightseer', f: null }, { m: 'Excursionist', f: null }, { m: 'Peregrinator', f: 'Peregrinatrix' }, { m: 'Traveler', f: null }, { m: 'Journeyer', f: null }, { m: 'Voyager', f: null }, { m: 'Explorer', f: null }, { m: 'Adventurer', f: null }],
         filecode: 'Tou',
         mnum: 10,
         allow: MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
@@ -133,7 +133,7 @@ export const roles = [
     },
     {
         name: { m: 'Valkyrie', f: null },
-        rank: [{ m: 'Stripling', f: null }],
+        rank: [{ m: 'Stripling', f: null }, { m: 'Skirmisher', f: null }, { m: 'Fighter', f: null }, { m: 'Man-at-arms', f: 'Woman-at-arms' }, { m: 'Warrior', f: null }, { m: 'Swashbuckler', f: null }, { m: 'Hero', f: 'Heroine' }, { m: 'Champion', f: null }, { m: 'Lord', f: 'Lady' }],
         filecode: 'Val',
         mnum: 11,
         allow: MH_HUMAN | MH_DWARF | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL,
@@ -143,7 +143,7 @@ export const roles = [
     },
     {
         name: { m: 'Wizard', f: null },
-        rank: [{ m: 'Evoker', f: null }],
+        rank: [{ m: 'Evoker', f: null }, { m: 'Conjurer', f: null }, { m: 'Thaumaturge', f: null }, { m: 'Magician', f: null }, { m: 'Enchanter', f: 'Enchantress' }, { m: 'Sorcerer', f: 'Sorceress' }, { m: 'Necromancer', f: null }, { m: 'Wizard', f: null }, { m: 'Mage', f: null }],
         filecode: 'Wiz',
         mnum: 12,
         allow: MH_HUMAN | MH_ELF | MH_GNOME | MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL | ROLE_CHAOTIC,
@@ -668,9 +668,12 @@ export function roleName(rolenum, female = false) {
 }
 
 export function rankName(rolenum, female = false) {
-    const rank = roles[rolenum]?.rank?.[0];
-    if (!rank) return roleName(rolenum, female);
-    return (female && rank.f) || rank.m;
+    return rank_of(1, rolenum, female);
+}
+
+// C ref: botl.c:298 xlev_to_rank(xlev) — 1..2 => 0, 3..5 => 1, 6..9 => 2, ...
+export function xlev_to_rank(xlev) {
+    return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
 }
 
 // Player-monster (PM_) numbers, matching roles[].mnum.
@@ -679,10 +682,19 @@ const PM_SAMURAI = 9;
 const PM_TOURIST = 10;
 const PM_VALKYRIE = 11;
 
-// C ref: role.c rank_of() — rank title for a given experience level.
-// At game start (level 1) this is the role's first rank entry.
-export function rank_of(_lev, rolenum, female = false) {
-    return rankName(rolenum, female);
+// C ref: botl.c:332 rank_of(lev, monnum, female) — the rank walks DOWN from
+// xlev_to_rank(lev) until an entry exists, so a role whose rank[i] has no
+// female form falls back to the male form of the SAME index, not to a lower one.
+export function rank_of(lev, rolenum, female = false) {
+    const role = roles[rolenum];
+    if (!role) return 'Player';
+    for (let i = xlev_to_rank(lev); i >= 0; i--) {
+        const r = role.rank?.[i];
+        if (!r) continue;
+        if (female && r.f) return r.f;
+        if (r.m) return r.m;
+    }
+    return (female && role.name?.f) || role.name?.m || 'Player';
 }
 
 // C ref: role.c Hello() — role-specific greeting word for welcome().

@@ -512,8 +512,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // clear_level_structures()/getlev_restore() below).
     const prevTemperature = g.level?.flags?.temperature ?? 0;
 
-    // C ref: do.c goto_level() — "set default level change destination areas;
-    // the special level code may override these": both regions are zeroed
+    // C ref: do.c goto_level():1688-1691 — "set default level change destination
+    // areas; the special level code may override these": both regions are zeroed
     // BEFORE mklev(), so a des.teleport_region() on the level being generated
     // takes effect for this very arrival.
     g.updest = null;
@@ -768,6 +768,14 @@ async function getlev_restore(ledger) {
 // current branch.  goto_level() then reloads/makes the destination.
 export async function prev_level(at_stairs) {
     const u = game.u;
+    // C: dungeon.c:1530 — `if (!u.uz.dnum && u.uz.dlevel == 1 && !u.uhave.amulet)
+    // done(ESCAPED);`.  C reaches it via the branch arm below, but the else arm
+    // would goto_level(dlevel 0) there, so on Dlvl 1 it is unconditional.
+    if (!u.uz.dnum && u.uz.dlevel === 1 && !u.uhave?.amulet) {
+        const { done, ESCAPED } = await import('./end.js');
+        await done(ESCAPED);
+        return;
+    }
     const stway = stairway_at(u.ux, u.uy);
     if (at_stairs && stway) stway.u_traversed = true;
     if (at_stairs && stway && stway.tolev.dnum !== u.uz.dnum) {
@@ -797,6 +805,8 @@ export async function doup() {
         await pline("You can't go up here.");
         return 0; // ECMD_OK
     }
+
+    if (await u_stuck_cannot_go('up')) return 1;     // do.c:1321, ECMD_TIME
 
     // C ref: do.c doup — near_capacity() > SLT_ENCUMBER "load too heavy to climb"
     // check; the light contest heroes never trigger it (not modelled).
@@ -1240,6 +1250,16 @@ function next_to_u() {
 // on a (non-ladder) down staircase, not levitating, and able to bring the pet.
 // Trap-door / hole falls, ladders, Gehennom gate, levitation, polymorph-hiders
 // and stuck states are not exercised by the recorded sessions.
+// C ref: do.c:1110 u_stuck_cannot_go(updn) — a held hero can't take the stairs,
+// and the failed attempt COSTS THE TURN (both callers return ECMD_TIME), so the
+// monsters get a move.  The sticks()/uswallow arms need a polymorphed or
+// engulfed hero, neither of which occurs here.
+async function u_stuck_cannot_go(updn) {
+    if (!game.u.ustuck) return false;
+    await pline(`You are being held, and cannot go ${updn}.`);
+    return true;
+}
+
 export async function dodown() {
     const u = game.u;
 
@@ -1249,6 +1269,8 @@ export async function dodown() {
     const stway = stairway_at(u.ux, u.uy);
     if (stway && !stway.up)
         stairs_down = !stway.isladder;
+
+    if (await u_stuck_cannot_go('down')) return 1;   // do.c:1221, ECMD_TIME
 
     if (!stairs_down) {
         // C ref: do.c dodown "You can't go down here." (no trap/hole/autodig

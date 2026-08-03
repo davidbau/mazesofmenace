@@ -161,8 +161,23 @@ export class NethackGame {
                 quan: (o.quan == null ? 1 : (o.quan | 0)),
             });
         }
+        // NHJSDUMP=map adds levl[][].typ in the C dump's NHMAPDUMP encoding
+        // (ROWNO strings of COLNO hex byte pairs).  Terrain never reaches the
+        // scored screen for an unlit square, but it sets mfndpos()'s cnt, which
+        // IS the modulus of m_move's rn2(4*(cnt-j)).
+        let map;
+        if (process.env.NHJSDUMP === 'map') {
+            map = [];
+            for (let y = 0; y < 21; y++) {
+                let s = '';
+                for (let x = 0; x < 80; x++)
+                    s += ((game.level?.at(x, y)?.typ ?? 0) | 0).toString(16).padStart(2, '0');
+                map.push(s);
+            }
+        }
         this._stateDumps.push({
             seq: this._stateDumps.length + 1,
+            map,
             rng: rngCount | 0,
             moves: (game.moves == null ? 0 : (game.moves | 0)),
             ux: (u.ux == null ? 0 : (u.ux | 0)),

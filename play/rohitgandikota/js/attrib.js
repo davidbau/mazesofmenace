@@ -12,7 +12,7 @@
 
 import { game } from './gstate.js';
 import { You, Your } from './pline.js';
-import { UNENCUMBERED, OVERLOADED } from './const.js';
+import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { rn2 } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
@@ -45,8 +45,14 @@ export function weight_cap() {
         note_unported_attrib('weight_cap:levitation_or_steed');
     if (carrcap > 1000)             /* MAX_CARR_CAP */
         carrcap = 1000;
-    if (game.u.uprops?.WOUNDED_LEGS)
-        note_unported_attrib('weight_cap:wounded_legs');
+    /* include/weight.h WT_WOUNDEDLEG_REDUCT (100) per wounded leg; the
+       side bits live in EWounded_legs (worn-ring bits). Flying negates. */
+    if (!game.u.uprops?.FLYING) {
+        if ((game.u.EWounded_legs || 0) & LEFT_SIDE)
+            carrcap -= 100;
+        if ((game.u.EWounded_legs || 0) & RIGHT_SIDE)
+            carrcap -= 100;
+    }
 
     return Math.max(carrcap, 1);    /* never return 0 */
 }
@@ -224,7 +230,7 @@ export function vary_init_attr() {
 // src/attrib.c:31 adjattrib() — the only draw is the rn2() that decides how
 // much of the excess to take off AMAX when a decrease would go below the
 // racial minimum.
-function adjattrib(ndx, incr, msgflg) {
+export function adjattrib(ndx, incr, msgflg) {
     if (!incr)
         return false;
 
@@ -423,7 +429,8 @@ export function exerper() {
             exercise(A_WIS, false);
         /* src/attrib.c:582 tests plain `HStun`, not `Stunned` — intrinsic
            only, so an extrinsic stun deliberately does not exercise DEX. */
-        if ((game.u.uprops?.WOUNDED_LEGS && !game.u.usteed)
+        if ((((game.u.intrinsic?.HWounded_legs || 0) > 0
+              || (game.u.EWounded_legs || 0)) && !game.u.usteed)
             || game.u.uprops?.FUMBLING || game.u.intrinsic?.HStun)
             exercise(A_DEX, false);
     }

@@ -283,7 +283,7 @@ export async function throwit(obj, wep_mask) {
         range = 20;
 
     const pobjRef = { obj };
-    const mon = bhit(u.dx, u.dy, range, THROWN_WEAPON, null, null, pobjRef);
+    const mon = await bhit(u.dx, u.dy, range, THROWN_WEAPON, null, null, pobjRef);
 
     if (!pobjRef.obj) {
         game.thrownobj = null;

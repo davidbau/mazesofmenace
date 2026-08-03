@@ -7,7 +7,8 @@
 
 import { is_pool, is_lava } from './mon.js';
 import { game } from './gstate.js';
-import { isok, MOAT, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, Is_juiblex_level,
+import { isok, MOAT, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_ICE, ICE,
+         Is_juiblex_level,
          DOOR, DBWALL, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST,
          DB_WEST } from './const.js';
 
@@ -40,6 +41,18 @@ export function is_drawbridge_wall(x, y) {
         return DB_NORTH;
 
     return -1;
+}
+
+// src/dbridge.c:86 is_ice()
+export function is_ice(x, y) {
+    if (!isok(x, y))
+        return false;
+    const ltyp = game.level.at(x, y).typ;
+    if (ltyp === ICE
+        || (ltyp === DRAWBRIDGE_UP
+            && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_ICE))
+        return true;
+    return false;
 }
 
 // src/dbridge.c:100 is_moat()

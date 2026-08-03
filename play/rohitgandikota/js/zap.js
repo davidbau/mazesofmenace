@@ -13,7 +13,8 @@ import { newsym } from './display.js';
 import { closed_door } from './cmd.js';
 
 import { STONE, WATER, LAVAWALL, IRONBARS, IS_SINK, POOL, WEB,
-         THROWN_WEAPON, KICKED_WEAPON, M_AP_TYPE, M_AP_OBJECT } from './const.js';
+         THROWN_WEAPON, KICKED_WEAPON, ZAPPED_WAND, M_AP_TYPE,
+         M_AP_OBJECT } from './const.js';
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER } from './monst.js';
 import { killed, shieldeff_mon } from './mon.js';
@@ -39,7 +40,29 @@ import { The, vtense } from './objnam.js';
 import { mon_nam } from './do_name.js';
 import { canspotmon } from './display.js';
 import { engulfing_u } from './const.js';
-import { nothing_happens, ECMD_TIME, ECMD_CANCEL, NODIR } from './const.js';
+import { nothing_happens, ECMD_TIME, ECMD_CANCEL, NODIR, IMMEDIATE,
+         OBJ_FLOOR } from './const.js';
+import { splitobj, mkobj, mksobj, rnd_class, set_corpsenm,
+         erosion_matters } from './mkobj.js';
+import { delobj } from './mon.js';
+import { weight } from './invent.js';
+import { is_flammable, is_rottable } from './trap.js';
+import { MATERIALS } from './objects_data.js';
+import { PMNAMES } from './monst_data.js';
+
+/* include/objclass.h:200/:201/:204 — local copies of the material
+   predicates trap.js also carries (they are header macros in C). */
+const is_rustprone_zap = (o) =>
+    game.objects[o.otyp].oc_material === MATERIALS.IRON;
+const is_crackable_zap = (o) =>
+    game.objects[o.otyp].oc_material === MATERIALS.GLASS
+    && o.oclass === OCLASSES.ARMOR_CLASS;
+const is_corrodeable_zap = (o) =>
+    game.objects[o.otyp].oc_material === MATERIALS.COPPER
+    || game.objects[o.otyp].oc_material === MATERIALS.IRON;
+const is_poisonable_zap = (o) =>
+    o.oclass === OCLASSES.WEAPON_CLASS
+    && game.objects[o.otyp].oc_dir !== 0 /* piercing weapons */;
 
 // src/zap.c:1459 obj_resists() — does this object survive being destroyed?
 //
@@ -322,6 +345,449 @@ export function learnwand(obj) {
     }
 }
 
+// src/zap.c:1476 obj_shudders() — does the object with polymorph.
+export function obj_shudders(obj) {
+    let zap_odds;
+
+    if (game.context?.bypasses && obj.bypass)
+        return false;
+
+    if (obj.oclass === OCLASSES.WAND_CLASS)
+        zap_odds = 3;       /* half-life = 2 zaps */
+    else if (obj.cursed)
+        zap_odds = 3;
+    else if (obj.blessed)
+        zap_odds = 12;      /* half-life = 8 zaps */
+    else
+        zap_odds = 8;       /* half-life = 6 zaps */
+
+    /* adjust for "large" quantities of identical things */
+    if (obj.quan > 4)
+        zap_odds = Math.trunc(zap_odds / 2);
+
+    return !rn2(zap_odds);
+}
+
+/* module state mirroring go.obj_zapped / gp.poly_zapped */
+let obj_zapped = false;
+let poly_zapped = -1;
+
+// src/zap.c:1637 do_osshock() — object is deleted by the polymorph shock;
+// some of a stack may survive via splitobj, and some material may
+// metamorphose into a golem later (create_polymon via poly_zapped).
+export function do_osshock(obj) {
+    obj_zapped = true;
+
+    if (poly_zapped < 0) {
+        /* some may metamorphose */
+        const Luck = (game.u.uluck || 0) + (game.u.moreluck || 0);
+        for (let i = obj.quan; i; i--)
+            if (!rn2(Luck + 45)) {
+                poly_zapped = game.objects[obj.otyp].oc_material;
+                break;
+            }
+    }
+
+    /* if quan > 1 then some will survive intact */
+    if (obj.quan > 1) {
+        obj = splitobj(obj, rnd(obj.quan - 1));
+    }
+
+    /* costly_spot billing — shops unported, recorded in delobj path */
+    delobj(obj);
+}
+
+// src/zap.c:1678 obj_unpolyable() — resists polymorphing. Draws the
+// obj_resists rn2(100) for every non-unpolyable object.
+export function obj_unpolyable(obj) {
+    /* include/obj.h:429 unpolyable() */
+    const unpoly = obj.otyp === ONAMES.WAN_POLYMORPH
+        || obj.otyp === ONAMES.SPE_POLYMORPH
+        || obj.otyp === ONAMES.POT_POLYMORPH
+        || obj.otyp === ONAMES.AMULET_OF_UNCHANGING;
+    return (unpoly
+            || obj === game.uball || obj === game.uskin
+            || obj_resists(obj, 5, 95));
+}
+
+/* src/zap.c:1688 charged_objs[] */
+const charged_objs = [OCLASSES.WAND_CLASS, OCLASSES.WEAPON_CLASS,
+                      OCLASSES.ARMOR_CLASS];
+
+// src/zap.c:1702 poly_obj() — polymorph obj; STRANGE_OBJECT id means pick a
+// random object of the same class, trying up to 3 times to keep the
+// magic-or-not status. The worn-item tail applies to inventory items only;
+// the floor-pile path (the one live today) swaps the object in place.
+export async function poly_obj(obj, id) {
+    let otmp;
+    const can_merge = (id === ONAMES.STRANGE_OBJECT);
+    const obj_location = obj.where;
+
+    if (obj.otyp === ONAMES.BOULDER)
+        note_unported_zap('poly_obj:sokoban_guilt');
+    if (id === ONAMES.STRANGE_OBJECT) { /* preserve symbol */
+        let try_limit = 3;
+        const magic_obj = game.objects[obj.otyp].oc_magic;
+
+        otmp = null;
+        do {
+            if (otmp)
+                delobj(otmp);
+            otmp = mkobj(obj.oclass, false);
+        } while (--try_limit > 0
+                 && game.objects[otmp.otyp].oc_magic !== magic_obj);
+    } else {
+        /* literally replace obj with this new thing */
+        otmp = mksobj(id, false, false);
+        const USES_CORPSENM = (typ) => typ === ONAMES.CORPSE
+            || typ === ONAMES.STATUE || typ === ONAMES.FIGURINE;
+        if (USES_CORPSENM(obj.otyp) && USES_CORPSENM(id))
+            set_corpsenm(otmp, obj.corpsenm);
+    }
+
+    /* preserve quantity */
+    otmp.quan = obj.quan;
+    /* preserve the shopkeeper's (lack of) interest */
+    otmp.no_charge = obj.no_charge;
+    /* preserve inventory letter if in inventory */
+    if (obj_location === 3 /* OBJ_INVENT */)
+        otmp.invlet = obj.invlet;
+
+    /* avoid abusing eggs laid by you */
+    if (obj.otyp === ONAMES.EGG && obj.spe)
+        note_unported_zap('poly_obj:hero_laid_egg');
+
+    /* keep special fields (including charges on wands) */
+    if (charged_objs.includes(otmp.oclass))
+        otmp.spe = obj.spe;
+    otmp.recharged = obj.recharged;
+
+    otmp.cursed = obj.cursed;
+    otmp.blessed = obj.blessed;
+
+    if (erosion_matters(otmp, game.objects)) {
+        if (is_flammable(otmp) || is_rustprone_zap(otmp)
+            || is_crackable_zap(otmp))
+            otmp.oeroded = obj.oeroded;
+        if (is_corrodeable_zap(otmp) || is_rottable(otmp))
+            otmp.oeroded2 = obj.oeroded2;
+        /* is_damageable */
+        if (is_flammable(otmp) || is_rustprone_zap(otmp)
+            || is_rottable(otmp) || is_corrodeable_zap(otmp)
+            || is_crackable_zap(otmp))
+            otmp.oerodeproof = obj.oerodeproof;
+    }
+
+    /* keep chest/box traps and poisoned ammo if we may */
+    if (obj.otrapped && (otmp.otyp === ONAMES.LARGE_BOX
+                         || otmp.otyp === ONAMES.CHEST
+                         || otmp.otyp === ONAMES.ICE_BOX))
+        otmp.otrapped = 1;
+    if (obj.opoisoned && is_poisonable_zap(otmp))
+        otmp.opoisoned = 1;
+
+    if (id === ONAMES.STRANGE_OBJECT && obj.otyp === ONAMES.CORPSE) {
+        if (obj.corpsenm === PMNAMES.PM_CROCODILE)
+            note_unported_zap('poly_obj:crocodile_shoes');
+    }
+    if (obj.otyp === ONAMES.LEASH && obj.leashmon)
+        note_unported_zap('poly_obj:leash');
+
+    /* no box contents --KAA */
+    if (otmp.cobj?.length)
+        otmp.cobj = [];
+
+    /* 'n' merged objects may be fused into 1 object */
+    if (otmp.quan > 1 && (!game.objects[otmp.otyp].oc_merge
+                          || (can_merge && otmp.quan > rn2(1000))))
+        otmp.quan = 1;
+
+    switch (otmp.oclass) {
+    case OCLASSES.TOOL_CLASS:
+        if (otmp.otyp === ONAMES.MAGIC_LAMP) {
+            otmp.otyp = ONAMES.OIL_LAMP;
+            otmp.age = 1500;
+        } else if (otmp.otyp === ONAMES.MAGIC_MARKER) {
+            otmp.recharged = 1; /* degraded quality */
+        }
+        break;
+
+    case OCLASSES.WAND_CLASS:
+        while (otmp.otyp === ONAMES.WAN_WISHING
+               || otmp.otyp === ONAMES.WAN_POLYMORPH)
+            otmp.otyp = rnd_class(ONAMES.WAN_LIGHT, ONAMES.WAN_LIGHTNING);
+        if ((otmp.recharged || 0) < rn2(7)) /* recharge_limit */
+            otmp.recharged = (otmp.recharged || 0) + 1;
+        break;
+
+    case OCLASSES.POTION_CLASS:
+        while (otmp.otyp === ONAMES.POT_POLYMORPH)
+            otmp.otyp = rnd_class(ONAMES.POT_GAIN_ABILITY, ONAMES.POT_WATER);
+        if (otmp.otyp === ONAMES.POT_OIL || obj.otyp === ONAMES.POT_OIL)
+            note_unported_zap('poly_obj:fixup_oil');
+        break;
+
+    case OCLASSES.SPBOOK_CLASS:
+        while (otmp.otyp === ONAMES.SPE_POLYMORPH)
+            otmp.otyp = rnd_class(game.bases[OCLASSES.SPBOOK_CLASS],
+                                  ONAMES.SPE_BLANK_PAPER);
+        if (otmp.otyp !== ONAMES.SPE_BLANK_PAPER
+            && otmp.otyp !== ONAMES.SPE_NOVEL) {
+            otmp.spestudied = (obj.spestudied || 0) + 1;
+            if (otmp.spestudied > 4 /* MAX_SPELL_STUDY */) {
+                otmp.otyp = ONAMES.SPE_BLANK_PAPER;
+                otmp.spestudied = rn2(otmp.spestudied);
+            }
+        }
+        break;
+
+    case OCLASSES.GEM_CLASS:
+        if (otmp.quan > rnd(4)
+            && game.objects[obj.otyp].oc_material === MATERIALS.MINERAL
+            && game.objects[otmp.otyp].oc_material !== MATERIALS.MINERAL) {
+            otmp.otyp = ONAMES.ROCK; /* transmutation backfired */
+            otmp.quan = Math.trunc(otmp.quan / 2); /* material lost */
+        }
+        break;
+    }
+
+    /* update the weight */
+    otmp.owt = weight(otmp);
+
+    /* replace_object(obj, otmp) — floor swap; the worn-inventory tail
+       (freeinv/addinv, Wear/Takeoff side effects) is inventory-only and
+       recorded when it first matters. */
+    if (obj_location === OBJ_FLOOR) {
+        otmp.ox = obj.ox;
+        otmp.oy = obj.oy;
+        otmp.where = OBJ_FLOOR;
+        const idx = game.level.objects.indexOf(obj);
+        if (idx >= 0)
+            game.level.objects[idx] = otmp;
+        else
+            game.level.objects.unshift(otmp);
+    } else {
+        note_unported_zap('poly_obj:non_floor_swap');
+    }
+
+    if ((otmp.otyp === ONAMES.MIRROR || otmp.otyp === ONAMES.CRYSTAL_BALL)
+        && obj.otyp !== otmp.otyp)
+        note_unported_zap('poly_obj:luck_mirror');
+
+    /* src/zap.c poly_obj tail — delobj(obj) on the original; its
+       obj_resists(0,0) guard DRAWS one rn2(100) every time. The floor swap
+       above already removed obj from the list, so mark it free first so
+       delobj's list splice is a no-op. */
+    obj.where = 0; /* OBJ_FREE */
+    delobj(obj);
+    return otmp;
+}
+
+// src/zap.c:1544 create_polymon() — a golem rises from the polymorphed
+// pile. Draws happen only when do_osshock set poly_zapped, which any
+// session reaching it will show; the golem machinery itself is recorded.
+function create_polymon(pile_head, okind) {
+    note_unported_zap('create_polymon:okind=' + okind);
+}
+
+// src/zap.c:2119 bhito() — zap effect hits an object on the floor.
+// The POLYMORPH arm is live; PROBING learns the object; the other wand
+// types record themselves.
+export async function bhito(obj, otmp) {
+    let res = 1; /* affected object by default */
+    let learn_it = false;
+
+    if (obj === otmp)
+        return 0;
+
+    if (obj.bypass) {
+        if (game.context?.bypasses)
+            return 0;
+        obj.bypass = 0;
+    }
+
+    if (obj === game.uball) {
+        res = 0;
+    } else if (obj === game.uchain) {
+        if (otmp.otyp === ONAMES.WAN_OPENING
+            || otmp.otyp === ONAMES.SPE_KNOCK) {
+            learn_it = true;
+            note_unported_zap('bhito:unpunish');
+        } else
+            res = 0;
+    } else {
+        switch (otmp.otyp) {
+        case ONAMES.WAN_POLYMORPH:
+        case ONAMES.SPE_POLYMORPH:
+            if (obj_unpolyable(obj)) {
+                res = 0;
+                break;
+            }
+            game.u.uconduct ||= {};
+            game.u.uconduct.polypiles =
+                (game.u.uconduct.polypiles || 0) + 1;
+
+            /* any saved lock context will be dangerously obsolete */
+            if (obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.CHEST
+                || obj.otyp === ONAMES.ICE_BOX)
+                note_unported_zap('bhito:boxlock');
+
+            if (obj_shudders(obj)) {
+                if (cansee(obj.ox, obj.oy))
+                    learn_it = true;
+                do_osshock(obj);
+                break;
+            }
+            obj = await poly_obj(obj, ONAMES.STRANGE_OBJECT);
+            newsym(obj.ox, obj.oy);
+            break;
+        case ONAMES.WAN_PROBING:
+            res = obj.dknown ? 0 : 1;
+            observe_object(obj);
+            note_unported_zap('bhito:probing_contents');
+            learn_it = true;
+            break;
+        case ONAMES.WAN_STRIKING:
+        case ONAMES.SPE_FORCE_BOLT:
+            note_unported_zap('bhito:striking');
+            res = 0;
+            break;
+        case ONAMES.WAN_CANCELLATION:
+        case ONAMES.SPE_CANCELLATION:
+            note_unported_zap('bhito:cancellation');
+            res = 0;
+            break;
+        case ONAMES.WAN_TELEPORTATION:
+        case ONAMES.SPE_TELEPORT_AWAY:
+            note_unported_zap('bhito:teleport');
+            res = 0;
+            break;
+        case ONAMES.WAN_MAKE_INVISIBLE:
+            res = 0;
+            break;
+        case ONAMES.WAN_UNDEAD_TURNING:
+        case ONAMES.SPE_TURN_UNDEAD:
+            note_unported_zap('bhito:undead_turning');
+            res = 0;
+            break;
+        case ONAMES.WAN_OPENING:
+        case ONAMES.SPE_KNOCK:
+        case ONAMES.WAN_LOCKING:
+        case ONAMES.SPE_WIZARD_LOCK:
+            note_unported_zap('bhito:locking');
+            res = 0;
+            break;
+        case ONAMES.SPE_STONE_TO_FLESH:
+            note_unported_zap('bhito:stone_to_flesh');
+            res = 0;
+            break;
+        default:
+            res = 0;
+            break;
+        }
+    }
+    if (learn_it)
+        learnwand(otmp);
+    return res;
+}
+
+// src/zap.c:2428 bhitpile() — apply fhito to every object in the pile at
+// (tx,ty). The flat objects list is PREPEND-ordered, so filtering it gives
+// the same order C's per-square nexthere chain would.
+export async function bhitpile(obj, fhito, tx, ty, zz) {
+    let hitanything = 0;
+
+    const pile = (game.level.objects || [])
+        .filter(o => o.where === OBJ_FLOOR && o.ox === tx && o.oy === ty);
+    if (!pile.length)
+        return 0;
+
+    /* hidingunder — hero hiding under the top of the pile; hides_under
+       hero forms are not modelled */
+
+    if (obj.otyp === ONAMES.SPE_FORCE_BOLT
+        || obj.otyp === ONAMES.WAN_STRIKING)
+        note_unported_zap('bhitpile:statue_trap');
+
+    poly_zapped = -1;
+    for (const otmp of pile) {
+        if (otmp.where !== OBJ_FLOOR || otmp.ox !== tx || otmp.oy !== ty)
+            continue;
+        hitanything += await fhito(otmp, obj);
+    }
+    if (poly_zapped >= 0)
+        create_polymon(null, poly_zapped);
+
+    /* boulder re-stack — boulders polymorphed mid-pile; recorded */
+
+    return hitanything;
+}
+
+// src/zap.c:3415 zapsetup() / :3421 zapwrapup()
+export function zapsetup() {
+    obj_zapped = false;
+}
+export async function zapwrapup() {
+    /* if do_osshock() set obj_zapped while polying, give a message now */
+    if (obj_zapped)
+        await You_feel('shuddering vibrations.');
+    obj_zapped = false;
+}
+
+// src/zap.c:1170ish bhitm() — zap effect hits a monster. Nothing that a
+// polymorph-at-pile session reaches; every arm records until its subsystem
+// lands.
+export async function bhitm(mtmp, otmp) {
+    note_unported_zap(`bhitm:otyp=${otmp.otyp}`);
+    return 0;
+}
+
+// src/zap.c:3628 zap_map() — per-square terrain effects of a lateral zap.
+// Trap explosion applies to cancellation only; the engraving arm fires for
+// down zaps only; secret-door reveals belong to striking/opening/locking.
+// A lateral polymorph over plain floor does nothing here.
+export function zap_map(x, y, obj) {
+    const ttmp = t_at(x, y);
+    if (ttmp && (obj.otyp === ONAMES.WAN_CANCELLATION
+                 || obj.otyp === ONAMES.SPE_CANCELLATION))
+        note_unported_zap('zap_map:maybe_explode_trap');
+    if (game.u.dz > 0)
+        note_unported_zap('zap_map:engraving');
+    if (obj.otyp === ONAMES.WAN_STRIKING || obj.otyp === ONAMES.WAN_OPENING
+        || obj.otyp === ONAMES.WAN_LOCKING || obj.otyp === ONAMES.WAN_PROBING)
+        note_unported_zap('zap_map:terrain_reveal');
+}
+
+// src/zap.c:3431 weffects() — dispatch a zap's effect. The IMMEDIATE
+// lateral arm is live (bhit walk with bhitm/bhito); up/down and beams
+// record themselves.
+export async function weffects(obj) {
+    const otyp = obj.otyp;
+    const dirprop = game.objects[otyp].oc_dir;
+
+    /* exercise(A_WIS) is done by dozap before dispatching here, matching
+       C's placement at the head of weffects */
+
+    if (dirprop === IMMEDIATE) {
+        zapsetup(); /* reset obj_zapped */
+        if (game.u.uswallow) {
+            note_unported_zap('weffects:uswallow');
+        } else if (game.u.dz) {
+            note_unported_zap('weffects:zap_updown');
+        } else {
+            await bhit(game.u.dx, game.u.dy, rn1(8, 6), ZAPPED_WAND,
+                       bhitm, bhito, { obj });
+        }
+        await zapwrapup(); /* give feedback for obj_zapped */
+    } else if (dirprop === NODIR) {
+        await zapnodir(obj);
+    } else {
+        /* neither immediate nor directionless: digging and the buzz rays */
+        note_unported_zap(`weffects:ray otyp=${otyp}`);
+    }
+    /* disclose/learnwand for rays is handled per-arm above */
+}
+
 // src/zap.c:2627 dozap() — the 'z' command.
 export async function dozap() {
     /* nohands/check_capacity cannot fire for a fresh hero */
@@ -354,8 +820,7 @@ export async function dozap() {
     } else {
         /* src/zap.c:3436 — weffects() exercises wisdom before the effect */
         exercise(A_WIS, true);
-        /* weffects(): the directional/beam engine, recorded */
-        note_unported_zap(`dozap:weffects otyp=${obj.otyp}`);
+        await weffects(obj);
     }
     if (obj && obj.spe < 0) {
         note_unported_zap('dozap:turns_to_dust');
@@ -372,7 +837,7 @@ export async function dozap() {
 // and gb.bhitpos holds the last good square. The rock-skip arm draws rn2(3)
 // for thrown ROCKs only. The tmp_at() flight animation frames are display
 // work this port does not emit yet; recorded so the gap stays visible.
-export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobjRef) {
+export async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobjRef) {
     const obj = pobjRef.obj;
     let result = null;
 
@@ -423,6 +888,11 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobjRef) {
             break;
         }
 
+        if (weapon === ZAPPED_WAND) {
+            /* cancellation/opening/locking/striking/probing */
+            zap_map(x, y, obj);
+        }
+
         let mtmp = m_at(x, y);
         const ttmp = t_at(x, y);
         if (!mtmp && ttmp && ttmp.ttyp === WEB
@@ -442,10 +912,28 @@ export function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobjRef) {
             mtmp = null;
 
         if (mtmp) {
-            /* map_invisible when unseen is display bookkeeping */
-            result = mtmp;
-            break;
+            game.notonhead = (x !== mtmp.mx || y !== mtmp.my);
+            if (weapon !== ZAPPED_WAND) {
+                /* THROWN_WEAPON, KICKED_WEAPON; map_invisible when unseen
+                   is display bookkeeping */
+                result = mtmp;
+                break;
+            }
+            /* ZAPPED_WAND */
+            if (await fhitm(mtmp, obj)) {
+                result = mtmp;
+                break;
+            }
+            range -= 3;
         }
+        /* C runs the pile hit on every square, monster or not */
+        if (fhito) {
+            if (await bhitpile(obj, fhito, x, y, 0))
+                range--;
+        }
+
+        /* src/zap.c — ZAPPED_WAND door arm (opening/locking/striking)
+           records inside zap_map/bhito already */
 
         if (!(typ >= POOL) /* !ZAP_POS(typ) */ || closed_door(x, y)) {
             game.bhitpos.x -= ddx;

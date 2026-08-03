@@ -348,7 +348,7 @@ async function eatcorpse(otmp) {
                && !game.u.uprops?.[SICK_RES]?.intrinsic) {
         tp++;
         await You_feel(`${game.u.usick ? 'very ' : ''}sick.`);
-        losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
+        await losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
     }
 
     /* delay is weight dependent */

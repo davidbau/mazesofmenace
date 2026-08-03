@@ -27,7 +27,7 @@ import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     M_ATTK_AGR_DONE, W_SADDLE,
 } from './const.js';
-import { DEADMONSTER } from './mon.js';
+import { DEADMONSTER, mvitals_died } from './mon.js';
 import { newsym, map_invisible, unmap_object } from './display.js';
 import { cansee } from './vision.js';
 import { update_topl } from './display.js';
@@ -418,6 +418,7 @@ function killMonster(mdef, defCd) {
     // make_corpse() places the cadaver at those same coordinates.
     const list = game.level?.monsters;
     if (list) {
+        mvitals_died(mdef);            // mon.c:3135
         const idx = list.indexOf(mdef);
         if (idx >= 0) list.splice(idx, 1);
     }

@@ -1,11 +1,19 @@
 import { is_flimsy } from './obj.js';
 import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
+import { feel_location } from './display.js';
+import { can_ooze } from './monmove.js';
+import { worm_cross } from './worm.js';
+import { block_door, block_entry } from './shk.js';
+import { curr_mon_load } from './mon.js';
+import { inv_weight, weight_cap } from './attrib.js';
+import { carrying } from './invent.js';
 import { a_monnam, upstart } from './do_name.js';
 import { is_door_mappear, helpless } from './monst.js';
 import { dist2 } from './hacklib.js';
-import { Levitation, Flying, Fire_resistance } from './youprop.js';
+import { Levitation, Flying, Fire_resistance, Underwater,
+         Hallucination } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
-import { is_pool, is_lava, t_at, m_at } from './mon.js';
+import { is_pool, is_lava, t_at, m_at, is_pick } from './mon.js';
 import { pickup, can_reach_floor } from './pickup.js';
 import { dotrap } from './trap.js';
 import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
@@ -32,13 +40,17 @@ import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
 
-    ROOMOFFSET, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at } from './const.js';
+    ROOMOFFSET, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
+    IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
+    WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP } from './const.js';
 import { sobj_at } from './invent.js';
 import { done } from './end.js';
 import { DIED } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { In_sokoban } from './dungeon.js';
-import { tunnels, needspick, passes_walls } from './mondata.js';
+import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
+         metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
+         is_whirly, noncorporeal, slithy } from './mondata.js';
 
 // src/hack.c:922 may_dig() — intended to be called only on ROCKs or TREEs. A
 // non-diggable wall or tree cannot be tunnelled through, which is what stops
@@ -80,11 +92,307 @@ export function bad_rock(mdat, x, y) {
                 && !(passes_walls(mdat) && may_passwall(x, y))));
 }
 
+// src/hack.c:145 could_move_onto_boulder() — can hero move onto a spot
+// containing one or more boulders? used for m<dir>, travel, and boulder-push
+// failure.
+export function could_move_onto_boulder(sx, sy) {
+    /* can if able to phaze through rock (must be poly'd, so not riding) */
+    if (game.u.uprops?.PASSES_WALLS)
+        return true;
+    /* can't when riding */
+    if (game.u.usteed)
+        return false;
+    /* can if a giant, unless doing so allows hero to pass into a
+       diagonal squeeze at the same time */
+    if (throws_rocks(game.youmonst.data))
+        return (!game.u.dx || !game.u.dy
+                || !(IS_OBSTRUCTED(game.level.at(game.u.ux, sy).typ)
+                     && IS_OBSTRUCTED(game.level.at(sx, game.u.uy).typ)));
+    /* can if tiny (implies carrying very little else couldn't move at all) */
+    if (verysmall(game.youmonst.data))
+        return true;
+    /* can squeeze to spot if carrying extremely little, otherwise can't */
+    /* src/hack.c:139 squeezeablylightinvent() */
+    return !game.invent.length || inv_weight() <= -WT_SQUEEZABLE_INV;
+}
+
+// src/hack.c:953 cant_squeeze_thru() — caller has already decided that it's a
+// tight diagonal; 1: can't fit, 2: possessions won't fit, 3: sokoban,
+// 0: can squeeze through. Handles the hero as well as monsters; js/mon.js has
+// an older private copy for mfndpos which predates this one.
+export function cant_squeeze_thru(mon) {
+    const is_u = mon === game.youmonst;
+    const ptr = is_u ? game.youmonst.data : mon.data;
+
+    if (is_u ? !!game.u.uprops?.PASSES_WALLS : passes_walls(ptr))
+        return 0;
+
+    /* too big? (can_fog needs polymorph-into-fog state, not modelled) */
+    if (bigmonst(ptr)
+        && !(amorphous(ptr) || is_whirly(ptr) || noncorporeal(ptr)
+             || slithy(ptr)))
+        return 1;
+
+    /* lugging too much junk? */
+    const amt = is_u ? inv_weight() + weight_cap() : curr_mon_load(mon);
+    /* (monsters take js/mon.js's private copy via mfndpos; the hero is the
+       only caller that reaches here) */
+    if (amt > WT_TOOMUCH_DIAGONAL)
+        return 2;
+
+    /* Sokoban restriction applies to hero only */
+    if (is_u && In_sokoban(game.u.uz))
+        return 3;
+
+    return 0;
+}
+
+// src/hack.c:4063 doorless_door() — a doorway which lacks its door (NODOOR or
+// BROKEN). All rogue level doors are doorless but disallow diagonal access, so
+// they are treated as if their non-existent doors were actually present; the
+// rogue level itself is not modelled yet.
+export function doorless_door(x, y) {
+    const lev_p = game.level?.at(x, y);
+    if (!lev_p || !IS_DOOR(lev_p.typ))
+        return false;
+    return !(lev_p.doormask & ~(D_NODOOR | D_BROKEN));
+}
+
+// src/hack.c:991 test_move() — is (ux+dx,uy+dy) an OK place to move? mode is
+// DO_MOVE, TEST_MOVE, TEST_TRAV or TEST_TRAP. The DO_MOVE message/side-effect
+// arms whose subsystems are not ported yet (still_chewing, autodig, moverock)
+// record themselves; nothing reaches them today because domove_core in
+// js/cmd.js still carries its own inline blocked-move test.
+export async function test_move(ux, uy, dx, dy, mode) {
+    const x = ux + dx;
+    const y = uy + dy;
+
+    game.context.door_opened = false;
+
+    if (!isok(x, y))
+        return false;
+
+    const tmpr = game.level.at(x, y);
+    const Passes_walls = !!game.u.uprops?.PASSES_WALLS;
+
+    /*
+     *  Check for physical obstacles.  First, the place we are going.
+     */
+    if (IS_OBSTRUCTED(tmpr.typ) || tmpr.typ === IRONBARS) {
+        if (game.u.ublind && mode === DO_MOVE)
+            await feel_location(x, y);
+        if (Passes_walls && may_passwall(x, y)) {
+            ; /* do nothing */
+        } else if (Underwater()) {
+            if (mode === DO_MOVE)
+                await pline('There is an obstacle there.');
+            return false;
+        } else if (tmpr.typ === IRONBARS) {
+            if (mode === DO_MOVE
+                && (dmgtype(game.youmonst.data, AD_RUST)
+                    || dmgtype(game.youmonst.data, AD_CORR)
+                    || metallivorous(game.youmonst.data))) {
+                note_unported_hack('test_move:chew_ironbars');
+                return false;
+            }
+            if (!(Passes_walls || passes_bars(game.youmonst.data))) {
+                if (mode === DO_MOVE && game.flags?.mention_walls)
+                    await You('cannot pass through the bars.');
+                return false;
+            }
+        } else if (tunnels(game.youmonst.data)
+                   && !needspick(game.youmonst.data)) {
+            /* Eat the rock. */
+            if (mode === DO_MOVE) {
+                note_unported_hack('test_move:still_chewing');
+                return false;
+            }
+        } else if (game.flags?.autodig && !game.context.run
+                   && !game.context.nopick
+                   && game.u.uwep && is_pick(game.u.uwep)) {
+            /* MRKR: Automatic digging when wielding the appropriate tool */
+            if (mode === DO_MOVE)
+                note_unported_hack('test_move:autodig');
+            return false;
+        } else {
+            if (mode === DO_MOVE) {
+                /* is_db_wall/Sokoban-passwall/mention_walls flavor */
+                note_unported_hack('test_move:do_move_wall_msg');
+            }
+            return false;
+        }
+    } else if (IS_DOOR(tmpr.typ)) {
+        if (closed_door(x, y)) {
+            if (game.u.ublind && mode === DO_MOVE)
+                await feel_location(x, y);
+            if (Passes_walls) {
+                ; /* do nothing */
+            } else if (can_ooze(game.youmonst)) {
+                if (mode === DO_MOVE)
+                    await You('ooze under the door.');
+            } else if (Underwater()) {
+                if (mode === DO_MOVE)
+                    await pline('There is an obstacle there.');
+                return false;
+            } else if (tunnels(game.youmonst.data)
+                       && !needspick(game.youmonst.data)) {
+                /* Eat the door. */
+                if (mode === DO_MOVE) {
+                    note_unported_hack('test_move:still_chewing');
+                    return false;
+                }
+            } else {
+                let through_testdiag = false;
+                if (mode === DO_MOVE) {
+                    note_unported_hack('test_move:do_move_closed_door');
+                } else if (mode === TEST_TRAV || mode === TEST_TRAP) {
+                    /* C: goto testdiag — on survival, control falls out of
+                       the door branch into the squeeze tests below */
+                    const r = test_move_testdiag(x, y, dx, dy, mode,
+                                                 Passes_walls);
+                    if (r !== 'fallthru')
+                        return r;
+                    through_testdiag = true;
+                }
+                if (!through_testdiag)
+                    return false;
+            }
+        } else {
+            const r = test_move_testdiag(x, y, dx, dy, mode, Passes_walls);
+            if (r !== 'fallthru')
+                return r;
+        }
+    }
+    if (dx && dy && bad_rock(game.youmonst.data, ux, y)
+        && bad_rock(game.youmonst.data, x, uy)) {
+        /* Move at a diagonal. */
+        switch (cant_squeeze_thru(game.youmonst)) {
+        case 3:
+            if (mode === DO_MOVE)
+                await You('cannot pass that way.');
+            return false;
+        case 2:
+            if (mode === DO_MOVE)
+                await You('are carrying too much to get through.');
+            return false;
+        case 1:
+            if (mode === DO_MOVE)
+                await pline('Your body is too large to fit through.');
+            return false;
+        default:
+            break; /* can squeeze through */
+        }
+    } else if (dx && dy && worm_cross(ux, uy, x, y)) {
+        /* consecutive long worm segments are at <ux,y> and <x,uy> */
+        if (mode === DO_MOVE)
+            note_unported_hack('test_move:worm_in_way_msg');
+        return false;
+    }
+    /* Pick travel path that does not require crossing a trap.
+     * Avoid water and lava using the usual running rules.
+     * (but not u.ux/u.uy because findtravelpath walks toward u.ux/u.uy) */
+    if (game.context.run === 8 && mode !== DO_MOVE && !u_at(x, y)) {
+        const t = t_at(x, y);
+
+        if (t && t.tseen && t.ttyp !== VIBRATING_SQUARE)
+            return (mode === TEST_TRAP);
+
+        /* src/hack.c:59 Known_wwalking / :63 Known_lwalking */
+        const uarmf = game.u.uarmf;
+        const Known_wwalking =
+            (uarmf && uarmf.otyp === ONAMES.WATER_WALKING_BOOTS
+             && game.objects[ONAMES.WATER_WALKING_BOOTS].oc_name_known
+             && !game.u.usteed);
+        const Known_lwalking =
+            (Known_wwalking && Fire_resistance()
+             && uarmf.oerodeproof && uarmf.rknown);
+        if ((tmpr.seenv && is_pool_or_lava(x, y))
+            && ((IS_WATERWALL(tmpr.typ)
+                 || tmpr.typ === LAVAWALL)
+                || !(Levitation() || Flying()
+                     || (is_pool(x, y) ? Known_wwalking
+                         : (Known_lwalking
+                            && is_lava(game.u.ux, game.u.uy))))))
+            return (mode === TEST_TRAP);
+    }
+
+    if (mode === TEST_TRAP)
+        return false; /* do not move through traps */
+
+    const ust = game.level.at(ux, uy);
+
+    /* Now see if other things block our way . . */
+    if (dx && dy && !Passes_walls && IS_DOOR(ust.typ)
+        && (!doorless_door(ux, uy) || block_entry(x, y))) {
+        /* Can't move at a diagonal out of a doorway with door. */
+        if (mode === DO_MOVE && game.flags?.mention_walls)
+            await pline("You can't move diagonally out of an intact doorway.");
+        return false;
+    }
+
+    if (sobj_at(ONAMES.BOULDER, x, y)
+        && (In_sokoban(game.u.uz) || !Passes_walls)) {
+        if (mode !== TEST_TRAV && game.context.run >= 2
+            && !(game.u.ublind || Hallucination())
+            && !could_move_onto_boulder(x, y)) {
+            if (mode === DO_MOVE && game.flags?.mention_walls)
+                await pline('A boulder blocks your path.');
+            return false;
+        }
+        if (mode === DO_MOVE) {
+            /* tunneling monsters will chew before pushing */
+            if (tunnels(game.youmonst.data) && !needspick(game.youmonst.data)
+                && !In_sokoban(game.u.uz)) {
+                note_unported_hack('test_move:still_chewing');
+                return false;
+            } else {
+                note_unported_hack('test_move:moverock');
+                return false;
+            }
+        } else if (mode === TEST_TRAV) {
+            /* never travel through boulders in Sokoban */
+            if (In_sokoban(game.u.uz))
+                return false;
+
+            /* don't pick two boulders in a row, unless there's a way thru */
+            if (sobj_at(ONAMES.BOULDER, ux, uy) && !In_sokoban(game.u.uz)) {
+                if (!Passes_walls
+                    && !could_move_onto_boulder(ux, uy)
+                    && !(tunnels(game.youmonst.data)
+                         && !needspick(game.youmonst.data))
+                    && !carrying(ONAMES.PICK_AXE)
+                    && !carrying(ONAMES.DWARVISH_MATTOCK)
+                    && !(carrying(ONAMES.WAN_DIGGING)
+                         && !game.objects[ONAMES.WAN_DIGGING].oc_name_known))
+                    return false;
+            }
+        }
+        /* assume you'll be able to push it when you get there... */
+    }
+
+    /* OK, it is a legal place to move. */
+    return true;
+}
+
+// The `testdiag` label inside src/hack.c:1138 test_move(): diagonal moves
+// into an intact doorway are not allowed. Returns 'fallthru' when the C would
+// fall out of the door branch and continue with the squeeze tests.
+function test_move_testdiag(x, y, dx, dy, mode, Passes_walls) {
+    if (dx && dy && !Passes_walls
+        && (!doorless_door(x, y) || block_door(x, y))) {
+        /* Diagonal moves into a door are not allowed. */
+        if (mode === DO_MOVE)
+            note_unported_hack('test_move:diag_door_msg');
+        return false;
+    }
+    return 'fallthru';
+}
+
 // src/hack.c:4256 losehp() — the hero takes damage, and dies if it reaches 0.
 //
 // This is the main route into done(). It draws nothing itself; showdamage and
 // end_running are display and movement bookkeeping.
-export function losehp(n, knam, k_format) {
+export async function losehp(n, knam, k_format) {
     /* Upolyd's rehumanize path needs polymorph state */
     game.u.uhp -= n;
     if (game.u.uhp > game.u.uhpmax)
@@ -92,7 +400,7 @@ export function losehp(n, knam, k_format) {
 
     if (game.u.uhp < 1) {
         game.killer = { format: k_format, name: knam };
-        done(DIED);
+        await done(DIED);
     }
 }
 
