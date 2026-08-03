@@ -35,6 +35,7 @@ import { visible_region_at, show_region } from './region.js';
 import { ACCESSIBLE, IS_POOL, IS_LAVA, In_sokoban,
          Is_knox_level } from './const.js';
 import { In_hell } from './dungeon.js';
+import { observe_object } from './o_init.js';
 
 const COIN_CLASS = 12;
 const ROCK_CLASS = 14;
@@ -160,9 +161,8 @@ export function object_glyph(otmp) {
 // where neardist is the small rounded square around the hero), it is observed:
 // dknown is set so its glyph upgrades from the generic class symbol to the
 // specific object (revealing its appearance color).  Not done while
-// hallucinating (objects are randomized then).  Setting dknown consumes no
-// RNG; the discovery-list (oc_encountered) bookkeeping is a separate '\'-screen
-// concern handled by o_init.observe_object elsewhere and is not needed here.
+// hallucinating (objects are randomized then).  observe_object() also does the
+// '\'-discoveries bookkeeping (oc_encountered); it consumes no RNG.
 function maybe_observe_near_object(x, y) {
     const obj = vobj_at(x, y);
     if (!obj || obj.dknown || !obj_is_generic(obj)) return;
@@ -175,6 +175,7 @@ function maybe_observe_near_object(x, y) {
     const distu = (x - ux) * (x - ux) + (y - uy) * (y - uy);
     if (distu > neardist) return;
     obj.dknown = 1;
+    observe_object(obj);
 }
 
 // C ref: display.c see_nearby_objects() — mark the top object of nearby stacks
@@ -184,10 +185,10 @@ function maybe_observe_near_object(x, y) {
 // so an undescribed potion/gem/spellbook the hero walks *near* (without its own
 // tile being redrawn by newsym) still upgrades from the generic gray class
 // glyph to its appearance color.  Mirrors the neardist square scan around the
-// hero; consumes no RNG.  As in maybe_observe_near_object, we only set dknown
-// (skipping observe_object's discover_object / '\'-list bookkeeping, which is a
-// separate object-identification concern) and only for generic objects, since
-// only those change their on-map appearance when observed.
+// hero; consumes no RNG.  Unlike map_object() this has NO generic-object guard
+// on the observe: every nearby unseen pile-top is observed (which is how e.g. a
+// venom splat reaches the '\' list); only the redisplay is gated on the
+// remembered glyph having been generic.
 export function see_nearby_objects() {
     const u = game.u;
     if (!u || u.ux == null || u.uy == null) return;
@@ -201,15 +202,16 @@ export function see_nearby_objects() {
         for (let ix = x - r; ix <= x + r; ix++) {
             if (!isok(ix, iy)) continue;
             const obj = vobj_at(ix, iy);
-            // skip if no object, already seen up close, or not a generic glyph
-            if (!obj || obj.dknown || !obj_is_generic(obj)) continue;
+            // skip if no object or already seen up close
+            if (!obj || obj.dknown) continue;
             // skip if the spot can't be seen or is too far (diagonal)
             if (!cansee(ix, iy)) continue;
             const distu = (ix - x) * (ix - x) + (iy - y) * (iy - y);
             if (distu > neardist) continue;
-            // observe_object (dknown only) — was generic, so redisplay specific.
+            const wasGeneric = obj_is_generic(obj);
             obj.dknown = 1;
-            newsym(ix, iy);
+            observe_object(obj);
+            if (wasGeneric) newsym(ix, iy);
         }
     }
 }

@@ -93,7 +93,7 @@ function end_running(and_travel) {
 // "busy jumping" for one turn, so the moveloop runs that turn fully WITHOUT the
 // hero acting again — which prevents a Fast hero's leftover movement from being
 // spent as a free action right after the jump (the seed4500 jump turns).
-function nomul(nval = 0) {
+export function nomul(nval = 0) {
     if ((game.multi ?? 0) < nval) return;
     game.multi = nval;
     game.context.travel = game.context.travel1 = game.context.mv = 0;
@@ -252,12 +252,16 @@ function lookaround() {
     }
 }
 
-// C ref: hack.c domove_core() run-stop checks that the shared cmd.js domove()
-// does not perform: while running, if the destination holds a non-safe
-// monster we can see, stop *without* moving (nomul, context.move = 0).
-function senseHostileAtDest() {
-    const u = game.u;
-    const mtmp = m_at(u.ux + u.dx, u.uy + u.dy);
+// C ref: hack.c:2765-2777 domove_core() — "Don't attack if you're running, and
+// can see it; it's fine to displace pets, though".  Called from cmd.js domove()
+// at C's position: AFTER impaired_movement() has redirected a confused hero, so
+// the square tested is the one actually being entered.  (Testing it before the
+// redirect is what made a confused rush swing at its own pet — is_safemon() is
+// FALSE for every monster while Confusion is set, so a pet counts as "hostile"
+// here and stops the rush without spending the turn.)
+export function run_stop_for_monster_at(x, y) {
+    if (!game.context?.run) return false;
+    const mtmp = m_at(x, y);
     if (mtmp && !is_safemon(mtmp) && canspotmon(mtmp)) {
         nomul(0);
         game.context.move = 0;
@@ -327,13 +331,9 @@ async function run_movement(run) {
     u.last_str_turn = 0;
     if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
 
-    // First move (C: performed in rhack()).  If we sense a hostile monster at
-    // the destination while running, we stop without moving.
-    if (senseHostileAtDest()) {
-        end_running(true);
-        c.move = 0;
-        return;
-    }
+    // First move (C: performed in rhack()).  The "monster in the way stops the
+    // run" test lives inside domove(), after impaired_movement() — see
+    // run_stop_for_monster_at().
     await domove(u.dx, u.dy);
 
     // Continuation loop (C: allmain.c moveloop_core while gm.multi > 0).
@@ -358,7 +358,6 @@ async function run_movement(run) {
             game.multi -= 1;
         }
 
-        if (senseHostileAtDest()) break;
         await domove(u.dx, u.dy);
     }
 

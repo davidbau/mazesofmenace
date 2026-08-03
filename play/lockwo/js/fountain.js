@@ -178,17 +178,7 @@ export async function drinkfountain() {
         case 20: /* Foul water */
             await update_topl(`The ${hliquid('water')} is foul!  You gag and vomit.`);
             rn1(20, 11); /* morehungry(rn1(20,11)) */
-            // C ref: eat.c vomit() — cantvomit/Sick/spewed branches don't apply
-            // to a plain human hero, so vomit() reduces to its universal tail:
-            // nomul(-2) freezes the hero for 2 turns with a deferred "You can
-            // move again." (gn.nomovemsg), fired once the countdown reaches 0.
-            if ((game.multi ?? 0) >= -2) {
-                game.multi = -2;
-                game.multi_reason = 'vomiting';
-                game.context = game.context || {};
-                game.context.travel = game.context.travel1 = game.context.mv = 0;
-            }
-            game.nomovemsg = 'You can move again.';
+            vomit();
             break;
         case 21: /* Poisonous */
             await update_topl(`The ${hliquid('water')} is contaminated!`);
@@ -519,6 +509,22 @@ async function spawnAtHeroSquare(pmidx) {
     return mtmp;
 }
 
+// C ref: eat.c:3736 vomit() — retching immobilizes the hero.  For a plain
+// (non-acid-breathing, non-poly'd) hero standing off an altar the cantvomit /
+// Sick / spewed arms draw nothing, so this reduces to C's universal tail:
+// nomul(-2) plus the deferred gn.nomovemsg that unmul() prints once the
+// countdown reaches 0.  RNG-free, but the TWO frozen turns it buys are not —
+// their monster moves belong to the same input boundary.
+function vomit() {
+    if ((game.multi ?? 0) >= -2) {              // eat.c:3759
+        game.multi = -2;
+        game.multi_reason = 'vomiting';
+        game.context = game.context || {};
+        game.context.travel = game.context.travel1 = game.context.mv = 0;
+        game.nomovemsg = 'You can move again.';
+    }
+}
+
 // C ref: fountain.c drinksink() — quaff from a sink the hero stands on.
 // fate = rn2(20) selects the outcome.  Branches driving subsystems this port
 // doesn't model yet (random-form polyself) still spend their observable
@@ -607,9 +613,8 @@ export async function drinksink() {
         break;
     case 9:
         await update_topl('Gaggg... this tastes like sewage!  You vomit.');
-        // morehungry(rn1(30-ACURR(A_CON),11)); vomit() has no observable
-        // effect for a non-acid-breathing, non-poly'd hero off an altar.
-        rn1(30 - acurr_eff(A_CON), 11);
+        rn1(30 - acurr_eff(A_CON), 11);   /* morehungry(rn1(30-ACURR(A_CON),11)) */
+        vomit();
         break;
     case 10:
         await update_topl(`This ${water} contains toxic wastes!`);

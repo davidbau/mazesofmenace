@@ -303,30 +303,39 @@ export function eat_ok(obj) {
 }
 
 // C ref: eat.c touchfood() — split a single item off a stack (consuming the
-// rnd(2) inside next_ident via splitobj/nextoid) and mark its initial
-// nutrition.  Returns the (possibly split-off) single-item object that will be
-// eaten.  The carried/floor distinction and addinv overflow branch don't change
-// the RNG, so we model the common carried case: split, then eat the split-off
-// one.
+// rnd(2) inside next_ident via splitobj/nextoid), mark its initial nutrition,
+// then freeinv() + addinv_nomerge() it.  That round-trip is why eating one item
+// out of a stack gives the bitten piece a BRAND NEW inventory letter (the stack
+// still holds the old one, so assigninvlet() clears it and takes lastinvnr+1) —
+// which is how an interrupted meal shows up as "m - a partly eaten apple".
+// Returns the single-item object that will be eaten.  The inv_cnt >= 52
+// overflow branch (dropy instead of addinv) isn't reached by the sessions.
 function touchfood(otmp) {
+    const was_carried = otmp.where === 'invent';
     if ((otmp.quan || 1) > 1) {
         // C: splitobj(otmp, 1L) -> nextoid() -> next_ident() == one rnd(2).
         // The JS splitobj() in invent.js does not advance context.ident, so we
         // mirror the C o_id machinery explicitly here.
         _mkobj.next_ident();    // the single rnd(2) the C records at this point
+        const stack = otmp;
         otmp = {
-            ...otmp,
+            ...stack,
             quan: 1,
             owt: 0,
             owornmask: 0,
-            o_id: `${otmp.o_id || 'food'}-bite`,
+            where: 'free',
+            o_id: `${stack.o_id || 'food'}-bite`,
         };
         otmp.owt = _mkobj.weight(otmp);
-        // The remaining stack stays in inventory (its quan was already > 1 and
-        // is decremented below by useupf/useup of the eaten single item, which
-        // for the split case is the dropped/eaten single piece).
+        // splitobj() takes the piece out of the stack right away.
+        stack.quan -= 1;
+        stack.owt = _mkobj.weight(stack);
     }
     if (!otmp.oeaten) otmp.oeaten = obj_nutrition(otmp);
+    // freeinv + addinv_nomerge.  For a quan==1 item this is letter-neutral
+    // (nothing else holds its letter, so assigninvlet keeps it and leaves
+    // lastinvnr alone), so only the split piece actually needs re-adding.
+    if (was_carried && otmp.where === 'free') otmp = _invent.addinv_nomerge(otmp);
     return otmp;
 }
 
@@ -460,7 +469,6 @@ export async function doeat() {
     }
 
     const stack = otmp;
-    const stackQuan = stack.quan || 1;
 
     // C: !u.uconduct.food++ (conduct bookkeeping; no RNG).
     const already_partly_eaten = !!stack.oeaten;
@@ -511,24 +519,30 @@ export async function doeat() {
         o_id: piece.o_id,
         usedtime: 0,
         reqtime,
-        eating: 1,
+        eating: dont_start ? 0 : 1,
         canchoke: 0,
         fullwarn: 0,
         doreset: 0,
     };
 
+    if (dont_start) {
+        // C ref: eat.c doeat() tail — `if (!dont_start) start_eating(...) else
+        // otmp->owt = weight(otmp);`.  rottenfood()'s nomul() knocked the hero
+        // out, so no bite is taken: the piece touchfood() re-added stays in
+        // inventory as the partly eaten leftover under its new letter.
+        piece.owt = _mkobj.weight(piece);
+        _invent.update_inventory?.();
+        return true;                                // ECMD_TIME
+    }
+
     // start_eating(): ++usedtime; if usedtime >= reqtime -> done immediately.
     game.context.victual.usedtime = 1;
     const finished = game.context.victual.usedtime >= reqtime;
 
-    // Consume the eaten item from the stack.  Splitting off one piece (above)
-    // leaves the remaining quan-1 in inventory, so decrement the original.
-    if (stackQuan > 1) {
-        stack.quan = stackQuan - 1;
-        stack.owt = _mkobj.weight(stack);
-    } else {
-        _invent.useupall(stack);
-    }
+    // The bitten piece stays in inventory for the whole meal; done_eating()
+    // useup()s it below.  An interrupted meal (rottenfood's nomul, a monster,
+    // ...) therefore leaves a partly eaten leftover, which is C's behaviour.
+    // C ref: eat.c done_eating() `useup(piece)`.
 
     // C ref: eat.c doeat() -> fprefx(otmp) — the per-otyp "first bite" feedback
     // (present tense), issued once on the first bite (not on resume), before the
@@ -551,6 +565,8 @@ export async function doeat() {
         // RNG-bearing one the owned sessions reach is the fortune cookie's
         // outrumor()).
         await fpostfx(piece);
+        // C ref: done_eating() — `if (svc.context.victual.piece) useup(piece)`.
+        _invent.useup(piece);
         game.context.victual = { piece: null, o_id: 0 };
     }
     // else: multi-turn meal in progress — C sets the eatfood occupation and

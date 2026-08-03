@@ -664,7 +664,10 @@ function youHaveVeryFast() {
     // speed boots (oc_oprop FAST) are worn, and manually on the W_ARM slot by
     // dragon_armor_handling() when blue dragon scale mail/scales are worn (their
     // oc_oprop is not FAST, so the extrinsic is applied by hand — u.efastArm).
-    return game.uarmf?.otyp === SPEED_BOOTS || !!game.u?.efastArm;
+    // The (HFast & ~INTRINSIC) term is the TIMEOUT half: a timed FAST (potion of
+    // speed, #wizintrinsic) counts as Very_fast, not merely Fast.
+    return game.uarmf?.otyp === SPEED_BOOTS || !!game.u?.efastArm
+        || (game.u?.uprops?.HFast || 0) > 0;
 }
 export { youHaveVeryFast };
 

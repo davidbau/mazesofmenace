@@ -25,6 +25,7 @@ import { heal_legs } from './trap.js';
 import { run_object_timers } from './mkobj.js';
 import { update_topl } from './display.js';
 import { Unaware } from './const.js';
+import { youHaveFast, youHaveVeryFast } from './allmain.js';
 
 // C ref: youprop.h Hallucination — the expiry messages swap in hallucinating
 // variants.
@@ -72,6 +73,13 @@ function expire_hallucination() {
 // The u.uprops[] timers this port materialises.  `get`/`set` read and write
 // whichever field the rest of the port already uses for that property.
 const TIMED_PROPS = [
+    // prop.h INVULNERABLE = 11, ahead of every other entry here.  Only
+    // #wizintrinsic gives it a timeout, and timeout.c has no case for it, so it
+    // expires silently.
+    { name: 'INVULNERABLE',
+      get: (u) => u.uprops?.Invulnerable || 0,
+      set: (u, v) => { u.uprops.Invulnerable = v; },
+      expire: async () => {} },
     { name: 'CONFUSION',
       get: (u) => u.uprops?.Confusion || 0,
       set: (u, v) => { u.uprops.Confusion = v; u.uconf = v > 0; },
@@ -109,6 +117,18 @@ const TIMED_PROPS = [
           const old = u?.uprops?.HDeaf || 0;
           if (u?.uprops) u.uprops.HDeaf = 0;
           if (!Unaware() && old) await update_topl('You can hear again.');
+      } },
+    // prop.h FAST = 64, after every other entry here.  A timed HFast is what
+    // makes Very_fast true (hack.h Very_fast == ((HFast & ~INTRINSIC) || EFast)),
+    // so this countdown is load-bearing: u_calc_moveamt draws a different roll
+    // while it runs.  C ref: timeout.c case FAST —
+    // `if (!Very_fast) You_feel("yourself slow down%s.", Fast ? " a bit" : "")`.
+    { name: 'FAST',
+      get: (u) => u.uprops?.HFast || 0,
+      set: (u, v) => { u.uprops.HFast = v; },
+      expire: async () => {
+          if (youHaveVeryFast()) return;
+          await update_topl(`You feel yourself slow down${youHaveFast() ? ' a bit' : ''}.`);
       } },
 ];
 

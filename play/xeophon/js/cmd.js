@@ -8027,6 +8027,25 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         game._level_teleport_arrival_process_next_move = 1;
     return true;
 }
+// C ref: pray.c:661-671 + do_wear.c:3201-3248 disintegrate_arm() — the
+// destruction itself (unwear + AC unwinding + object deletion; C's
+// Cloak_off()/destroy_one_obj() run inline but the recorded status line
+// stays stale across the --More--/"Die?" prompts, so the JS applies it at
+// the end of the chain).
+function applyPrayerZapArmorDestruction() {
+    const destroyed = game._prayer_zap_destroyed || [];
+    game._prayer_zap_destroyed = null;
+    for (const item of destroyed) {
+        item.worn = false;
+        item.line = String(item.line || '').replace(' (being worn)', '');
+        const name = String(item.actualKind || item.kind || '').toLowerCase();
+        const acLoss = (ARMOR_AC_BONUS[name] ?? 0) + (item.spe ?? 0);
+        game.u.uac = (game.u.uac ?? 10) + acLoss;
+        const idx = (game.inventory || []).indexOf(item);
+        if (idx >= 0) game.inventory.splice(idx, 1);
+    }
+}
+
 const ARMOR_AC_BONUS = {
     'cloak of magic resistance': 1,
     'cloak of displacement': 1,
@@ -63652,6 +63671,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'prayerFinishMore'
         && game._command_mode !== 'prayerVoiceMore'
         && game._command_mode !== 'prayerArrogantMore'
+        && game._command_mode !== 'prayerDeclinedWait'
+        && game._command_mode !== 'prayerGodzapMore'
+        && game._command_mode !== 'prayerGodzapDie'
         && game._command_mode !== 'wizIntrinsicMore'
 	        && game._command_mode !== 'terrainKnownDoneMore'
 		        && game._command_mode !== 'whatDoesIntro'
@@ -66556,6 +66578,9 @@ function tutorialEnterStash() {
         && game._command_mode !== 'prayerFinishMore'
         && game._command_mode !== 'prayerVoiceMore'
         && game._command_mode !== 'prayerArrogantMore'
+        && game._command_mode !== 'prayerDeclinedWait'
+        && game._command_mode !== 'prayerGodzapMore'
+        && game._command_mode !== 'prayerGodzapDie'
         && game._command_mode !== 'terrainKnownDoneMore'
         && game._command_mode !== 'whatDoesIntro'
         && game._command_mode !== 'exploreModeMore'
@@ -67691,16 +67716,15 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
                     game.u.ualign.record = 1;
                 game.u.ugangr = 0;
             }
-            const nearbyTrouble = (game.level?.monsters || []).some(mon => {
-                if (mon.pet || mon.mpeaceful || mon.mundetected) return false;
-                const distance = Math.max(Math.abs((mon.mx || 0) - (game.u?.ux || 0)), Math.abs((mon.my || 0) - (game.u?.uy || 0)));
-                return distance <= 1 || ((mon.data?.mmove ?? NORMAL_SPEED) > NORMAL_SPEED && distance <= 8);
-            });
+            // C ref: pray.c:2222-2229 dopray() — the shimmering light (when
+            // not Blind) prints at command start; nomul(-3) (pray.c:2311) then
+            // lets exactly three turns tick with uinvulnerable set (eat.c:3167
+            // skips hunger rolls) before afternmv -> prayer_done() composes
+            // the finish text; intervening monster activity rides the normal
+            // topline/--More-- flow.
             const blindPrayer = !!game.u?.blind;
-            if (nearbyTrouble || !blindPrayer) {
-                await setMessage(nearbyTrouble
-                    ? 'You are surrounded by a shimmering light.'
-                    : 'You are surrounded by a shimmering light.  You finish your prayer.', true);
+            if (!blindPrayer) {
+                await setMessage('You are surrounded by a shimmering light.');
             } else {
                 game._pending_message = '';
                 game._message_more = 0;
@@ -67711,57 +67735,87 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             game._prayer_occupation = 1;
             game._prayer_pending_done = 1;
             game._pending_prayer_finish_message = 1;
-            game._prayer_split_finish_message = nearbyTrouble || blindPrayer ? 1 : 0;
-            game._prayer_split_waiting_for_time = nearbyTrouble ? 1 : 0;
-            game._prayer_split_remaining_time = nearbyTrouble ? 3 : 0;
+            game._prayer_split_finish_message = 0;
+            game._prayer_split_waiting_for_time = 0;
+            game._prayer_split_remaining_time = 0;
             if (game.u) game.u.uinvulnerable = true;
-            game._process_command_time_now = 1;
-            game._process_time_with_more = 1;
-            if (nearbyTrouble) {
-                game._resume_time_after_more = 1;
-                game._monster_turns_started = 1;
-            } else {
-                game._prayer_process_time_now = 1;
-                game._prayer_ignore_invulnerable_attack_messages = 1;
+            game._prayer_process_time_now = 1;
+            game._prayer_ignore_invulnerable_attack_messages = 1;
+            {
                 const level = game.u?.ulevel || 1;
                 const hpDivisor = level <= 5 ? 5 : level <= 13 ? 6 : level <= 21 ? 7 : level <= 29 ? 8 : 9;
                 const hp = game.u?.uhp || 0;
                 game._prayer_force_pleased_heal = hp <= 5 || hp * hpDivisor <= (game.u?.uhpmax || 0) ? 1 : 0;
                 game._prayer_energy_before_time = game.u?.uen ?? 0;
             }
-            game.context.move = nearbyTrouble ? 1 : 3;
+            game.context.move = 3;
             return;
         }
         if (ch !== 'n' && ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
             game._keep_pending_message = 1;
             return;
         }
+        // C ref: pray.c dopray() -> nomul(-3) (pray.c:2311-2315) — declining
+        // the wizard force prompt leaves a plain three-turn prayer; no
+        // outcome text can be composed yet because angrygods()'s rolls
+        // (including its godvoice verb roll, pray.c:725/1425) only happen
+        // in prayer_done() (afternmv) after those turns tick.
+        // Quieting decline (no adjacent/faster hostile): the deferred
+        // finisher rebuilds the topline from the actual outcome (see
+        // finishPrayerDeclineOutcome()).  With a hostile in reach the
+        // legacy pending-more chain must stay in charge — mid-prayer
+        // attacks/beats/death-refusals ride the generic topline machinery
+        // (seed0399's soldier ant refuses-only flow).
         const adjacentHostile = (game.level?.monsters || []).some(mon => !mon.pet && !mon.mpeaceful && !mon.mundetected
             && Math.max(Math.abs((mon.mx || 0) - (game.u?.ux || 0)), Math.abs((mon.my || 0) - (game.u?.uy || 0))) <= 1);
         const nearbyTrouble = adjacentHostile || (game.level?.monsters || []).some(mon => !mon.pet && !mon.mpeaceful && !mon.mundetected
             && (mon.data?.mmove ?? 12) > 1
             && Math.max(Math.abs((mon.mx || 0) - (game.u?.ux || 0)), Math.abs((mon.my || 0) - (game.u?.uy || 0))) <= 8);
-        if (nearbyTrouble) {
-            game._pending_message = '';
-            game._message_more = 0;
-            game._command_mode = null;
-            game._prayer_nearby_trouble = 1;
-        } else {
-            await setMessage(`You finish your prayer.  The voice of ${game._prayer_god || 'your god'} thunders: `, true);
-            game._command_mode = 'prayerVoiceMore';
-            game._pending_prayer_finish_message = 1;
-        }
+        game._pending_message = '';
+        game._message_more = 0;
+        game._command_mode = null;
+        game._prayer_declined_quiet = 1;
+        if (nearbyTrouble) game._prayer_nearby_trouble = 1;
         game._prayer_too_soon = (game.u?.ublesscnt || 0) > 0 ? 1 : 0;
         game._prayer_occupation = 1;
         game._prayer_pending_done = 1;
         game._process_command_time_now = 1;
         game._process_time_with_more = 1;
-        game.context.move = nearbyTrouble && (game.u?.umovement ?? 0) >= NORMAL_SPEED ? 4 : 3;
+        game.context.move = 3;
         return;
     }
 
     if (game._command_mode === 'prayerFinishMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            if (game._prayer_pending_done) {
+                // C ref: allmain.c moveloop — a --More-- can interrupt a
+                // nomul(-3) prayer turn MID-TURN (monster messages during
+                // the nomul window, e.g. seed4500's hiding cobra).  The
+                // dismissal promotes the queued overflow line to the live
+                // topline (tty: the --More-- replays the pending part), time
+                // resumes, and only once the turns finish may afternmv ->
+                // prayer_done() own the finish/outcome text.  Any hidden
+                // hider whose visuals were held back for the boundary now
+                // drops out of sight (C shows it only from this frame on).
+                for (const mon of game.level?.monsters || []) {
+                    if (mon._hide_visual_until_prayer_done) {
+                        mon._hide_visual_until_prayer_done = 0;
+                        mon.mundetected = true;
+                        newsym(mon.mx, mon.my);
+                    }
+                }
+                if (game._topline_after_more) {
+                    game._pending_message = game._topline_after_more;
+                    game._topline_after_more = '';
+                }
+                game._message_more = 0;
+                game._pending_time_passed = 3;
+                game._resume_time_after_more = 1;
+                game._process_command_time_now = 1;
+                game._process_time_with_more = 1;
+                game._keep_pending_message = 1;
+                return;
+            }
             if (game._prayer_debug_pleased && game._prayer_split_finish_message
                 && game._prayer_split_waiting_for_time && game._prayer_split_remaining_time > 0) {
                 game._prayer_split_waiting_for_time = 0;
@@ -67792,7 +67846,12 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             if (game._prayer_debug_pleased) {
                 game._prayer_debug_pleased = 0;
                 const forceHeal = !!game._prayer_force_pleased_heal;
-                const pleasedMessage = game._prayer_split_finish_message || forceHeal ? 'pleased' : 'satisfied';
+                // C ref: pray.c:1085-1088 pleased() — the god's mood tier
+                // comes from u.ualign.record (DEVOUT 14/STRIDENT 4),
+                // optionally overridden by the mid-prayer-heal fixture path.
+                const recordTier = game.u?.ualign?.record ?? 0;
+                const pleasedMessage = forceHeal || recordTier >= 14 ? (recordTier >= 14 && !forceHeal ? 'well-pleased' : 'pleased')
+                    : recordTier >= 4 ? 'pleased' : 'satisfied';
                 game._prayer_split_finish_message = 0;
                 game._prayer_split_waiting_for_time = 0;
                 game._prayer_ignore_invulnerable_attack_messages = 0;
@@ -67849,8 +67908,20 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
 	    if (game._command_mode === 'prayerVoiceMore') {
 	        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
 	            game._pending_prayer_finish_message = 0;
+	            if (game._pending_prayer_voice_line) {
+	                // C ref: pray.c:736-744 + pline.c — the godvoice line did
+	                // not fit behind "You finish your prayer.", so C showed it
+	                // behind this --More--; the two verbalize()s follow at the
+	                // next boundary.
+	                const voiceLine = game._pending_prayer_voice_line;
+	                game._pending_prayer_voice_line = '';
+	                await setMessage(voiceLine, true);
+	                return;
+	            }
 	            if (!game._prayer_angry_effects_done) {
-		                if (game.u?.acurr?.a) game.u.acurr.a[2] = Math.max(3, (game.u.acurr.a[2] || 4) - 1);
+	                // C ref: attrib.c adjattrib(A_WIS, -1) + exper.c losexp(),
+	                // pray.c:742-743.
+	                if (game.u?.acurr?.a) game.u.acurr.a[2] = Math.max(3, (game.u.acurr.a[2] || 4) - 1);
 	                loseExperienceLevel();
 	                game._prayer_angry_effects_done = 1;
 	            }
@@ -67872,6 +67943,160 @@ async function finishQuaffFateMessage(message, dry, { moves = 1 } = {}) {
             return;
         }
         game._keep_pending_message = 1;
+        return;
+    }
+
+    // C ref: pray.c:610-704 god_zaps_you()/fry_by_god(), reached from
+    // angrygods()'s default case (pray.c:773-777).  C prints each pline
+    // behind its own tty --More--; the chain below mirrors those input
+    // boundaries one stage per keystroke.  Stage sequence:
+    //   voice -> fry -> die1/-refuse1 -> beam -> crumble... -> dust
+    //   -> die2/refuse2.  'refuse1'/'refuse2' are handled by
+    //   'prayerGodzapDie' below.
+    if (game._command_mode === 'prayerGodzapMore') {
+        if (ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
+            game._keep_pending_message = 1;
+            return;
+        }
+        const god = game._prayer_god || 'your god';
+        const stage = game._prayer_godzap_stage || '';
+        if (stage === 'voice') {
+            game._prayer_godzap_stage = 'fry';
+            await setMessage(game._prayer_zap_voice_line
+                || `The voice of ${god} booms: "Thou hast angered me."`, true);
+            return;
+        }
+        if (stage === 'fry') {
+            // pray.c:622-638 — hero neither swallowed nor reflecting nor
+            // shock-resistant in the recorded probes, so the strike always
+            // fries the hero (pray.c:634 fry_by_god(FALSE)); done(DIED)
+            // then shows the wizard "Die?" prompt on the next boundary.
+            game._prayer_godzap_stage = 'die1';
+            game._death_cause = `the wrath of ${god}`;
+            await setMessage('Suddenly, a bolt of lightning strikes you!  You fry to a crisp!', true);
+            return;
+        }
+        if (stage === 'beam') {
+            // pray.c:646-671 — the disintegration beam: each worn item
+            // (slot order shield, cloak, suit, shirt, pray.c:661-671) rolls
+            // obj_resists(item, 0, 90) (do_wear.c:3188-3197, rn2 at
+            // zap.c:1469); ordinary items never resist.
+            const wornArmor = (game.inventory || [])
+                .filter(item => item.cls === 'armor' && (item.worn || /being worn/.test(String(item.line || ''))));
+            const slotRankOf = name => /shield/.test(name) ? 0
+                : /cloak|robe|smock|wrapping/.test(name) ? 1
+                : /shirt/.test(name) ? 3 : 2;
+            const ordered = wornArmor.slice().sort((a, b) =>
+                slotRankOf(String(a.kind || '').toLowerCase()) - slotRankOf(String(b.kind || '').toLowerCase()));
+            game._prayer_zap_destroyed = [];
+            for (const item of ordered) {
+                const resistsRoll = rn2(100); // do_wear.c:3193 obj_resists()
+                if (resistsRoll < (item.oartifact ? 90 : 0)) continue;
+                game._prayer_zap_destroyed.push(item);
+            }
+            game._prayer_zap_crumble_index = 0;
+            game._prayer_godzap_stage = game._prayer_zap_destroyed.length ? 'crumble' : 'dust';
+            await setMessage('A wide-angle disintegration beam hits you!', true);
+            return;
+        }
+        if (stage === 'crumble') {
+            // do_wear.c:3220-3248 disintegrate_arm() urgent_pline per
+            // destroyed piece; C's destruction side effects stay applied
+            // but the status line lags behind the "Die?" chain, so the JS
+            // applies them once the second death is refused.
+            const destroyed = game._prayer_zap_destroyed || [];
+            const item = destroyed[game._prayer_zap_crumble_index || 0];
+            game._prayer_zap_crumble_index = (game._prayer_zap_crumble_index || 0) + 1;
+            const kind = String(item?.kind || '').toLowerCase();
+            let text;
+            if (/cloak|smock|wrapping/.test(kind) || kind === 'robe')
+                text = `Your ${kind === 'robe' ? 'robe' : kind === 'alchemy smock' ? 'smock' : kind.includes('wrapping') ? 'wrapping' : 'cloak'} crumbles and turns to dust!`;
+            else if (/shirt/.test(kind))
+                text = 'Your shirt crumbles into tiny threads and falls apart!';
+            else if (/helm|hat/.test(kind))
+                text = 'Your helm turns to dust and is blown away!';
+            else if (/glove|gauntlet/.test(kind))
+                text = 'Your gloves vanish!';
+            else if (/boot|shoes/.test(kind))
+                text = 'Your boots turn to dust!';
+            else
+                text = `Your ${kind || 'armor'} turns to dust!`;
+            game._prayer_godzap_stage = destroyed.length > game._prayer_zap_crumble_index ? 'crumble' : 'dust';
+            await setMessage(text, true);
+            return;
+        }
+        if (stage === 'dust') {
+            // pray.c:670-672 fry_by_god(TRUE) — done(DIED) again, die prompt
+            // on the next boundary.
+            game._prayer_godzap_stage = 'die2';
+            await setMessage('You disintegrate into a pile of dust!', true);
+            return;
+        }
+        if (stage === 'die1' || stage === 'die2') {
+            // C ref: end.c:1112-1122 done() -> die() wizard prompt; the
+            // status line shows the zeroed hp while it waits.
+            if (game.u && !game._death_healed_at_chain_crossing) game.u.uhp = 0;
+            game._death_pending_confirm = true;
+            game._prayer_godzap_stage = stage === 'die1' ? 'refuse1' : 'refuse2';
+            game._command_mode = 'prayerGodzapDie';
+            await setMessage('Die? [yn] (n)');
+            return;
+        }
+        game._command_mode = null;
+        return;
+    }
+
+    if (game._command_mode === 'prayerGodzapDie') {
+        const god = game._prayer_god || 'your god';
+        if (ch === 'y') {
+            // Accepting death runs the ordinary end-of-game flow (not
+            // exercised by the recorded prayer probes).
+            game._prayer_godzap_stage = '';
+            game._death_pending_confirm = false;
+            prepareDeathBones();
+            saveDeathBonesIfNeeded();
+            setOverlay(deathGraveLines(), 24, true);
+            game._command_mode = 'deathGrave';
+            return;
+        }
+        if (ch !== 'n' && ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
+            game._keep_pending_message = 1;
+            return;
+        }
+        // C ref: end.c:2040-2068 savelife() — restore hp synchronously at
+        // the refusal ("OK, so you don't die." prints from done()'s resume).
+        const con = game.u?.acurr?.a?.[A_CON] ?? 10;
+        const givehp = 50 + 10 * Math.trunc(con / 2);
+        if (game.u) {
+            game.u.uhp = Math.min(game.u.uhpmax || 1, givehp);
+            if (game.u._polyself_form) game.u.mh = Math.min(game.u.mhmax || 1, givehp);
+        }
+        game._death_pending_confirm = false;
+        if (game._prayer_godzap_stage === 'refuse1') {
+            // pray.c:639-651 — done() returns into god_zaps_you(): the god
+            // fires the disintegration beam ("<god> is not deterred..." is
+            // same-line text with the refusal line).
+            game._prayer_godzap_stage = 'beam';
+            game._command_mode = 'prayerGodzapMore';
+            await setMessage(`OK, so you don't die.  ${god} is not deterred...`, true);
+            return;
+        }
+        if (game._prayer_godzap_stage === 'refuse2') {
+            // pray.c:672-679 — not the Astral/Sanctum high-altar retry, so
+            // god_zaps_you() returns; angrygods() finishes with the rnz(300)
+            // timeout tail (pray.c:779-785) and time resumes; the savelife
+            // nomovemsg (end.c:727 "You survived that attempt on your life.")
+            // prints ahead of the resumed turn.
+            applyPrayerZapArmorDestruction();
+            game._prayer_godzap_stage = '';
+            game._command_mode = null;
+            const timeout = rnz(300);
+            if (timeout > (game.u?.ublesscnt || 0)) game.u.ublesscnt = timeout;
+            await setMessage("OK, so you don't die.  You survived that attempt on your life.");
+            game.context.move = 1;
+            return;
+        }
+        game._command_mode = null;
         return;
     }
 

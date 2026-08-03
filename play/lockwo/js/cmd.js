@@ -12,7 +12,7 @@ import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
+         attr_window_advance, disco_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
          renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
@@ -31,7 +31,7 @@ import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation,
          TRAP_CLEARLY_IMMUNE } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
@@ -470,6 +470,13 @@ export async function rhack(key) {
         // A paged #enhance "Current skills:" window advances/dismisses on
         // space/return/'>' (PICK_NONE menu).  ESC falls through below.
         await skill_window_advance();
+        game.context.move = 0;
+    } else if (game._modal_screen === 'textwin' && game._disco_pages
+        && (ch === ' ' || ch === '\r' || ch === '\n')) {
+        // A multi-page NHW_TEXT window ('\' discoveries) pages on any of
+        // quitchars; only the last page's --More-- dismisses it.
+        // C ref: wintty.c process_text_window() dmore(cw, quitchars).
+        await disco_window_advance();
         game.context.move = 0;
     } else if (ch === '\x1b') {
         // Escape: dismiss any open menu/window; a no-op at top level.
@@ -1695,10 +1702,25 @@ export async function domove(dx, dy) {
 
     const mtmp = m_at(newx, newy);
 
+    // C ref: hack.c:2765 — while running/rushing, a spottable monster that is
+    // not is_safemon() stops the hero here, BEFORE the bump/attack handling and
+    // without spending the turn.  This has to come after impaired_movement()
+    // above: a Confused hero's redirected step is what actually gets tested
+    // (and Confusion also makes is_safemon() FALSE for its own pet).
+    if (run_stop_for_monster_at(newx, newy)) return;
+
+    // C ref: hack.c:2780 — `u.ux0 = u.ux; u.uy0 = u.uy;` is committed HERE,
+    // before the bump/terrain handling, so a move that is later refused (wall,
+    // trapped hero, paranoid-trap decline) still leaves ux0 == ux.  Setting it
+    // only on a successful step left a stale "square just left", which
+    // mthrowu.c's URETREATING() reads: after a rush ended against a wall, a
+    // monster behind the hero wrongly saw them still retreating and drew an
+    // extra rn2(BOLT_LIM - dist) (seed0002 step 269).
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+
     // ── bump into a monster ──  C ref: hack.c domove_core mtmp handling.
     if (mtmp) {
-        u.ux0 = u.ux;
-        u.uy0 = u.uy;
         // domove_attackmon_at(): displacer-beast swap not modelled; for a
         // normal bump we call do_attack().  do_attack() returns TRUE when the
         // hero's move was used up (a real attack, or "in the way" while
@@ -1769,7 +1791,10 @@ export async function domove(dx, dy) {
             buf = 'thin air';
         }
         // C: You("%s%s %s.", solid ? "harmlessly " : "", "attack", buf).
-        await pline(`You ${solid ? 'harmlessly ' : ''}attack ${buf}.`);
+        // update_topl(), not pline(): C's You() leaves toplin == TOPLINE_NEED_MORE,
+        // so the monster turn that follows this wasted move APPENDS after two
+        // spaces ("You attack thin air.  The goblin hits!") instead of replacing.
+        await update_topl(`You ${solid ? 'harmlessly ' : ''}attack ${buf}.`);
         // C nomul(0): no run/multi is active during a plain 'F'+walk, so this is
         // a no-op here; the wasted attack still elapses a game turn.
         game.multi = 0;

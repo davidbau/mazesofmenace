@@ -51,8 +51,12 @@ const NODIR = 1, IMMEDIATE = 2;
 
 // Keep the immutable object-table colors so init_objects() can restore them
 // before each new game.  The shared objects[] entries are mutated by shuffling.
-const DECLARED_COLOR = objects.map((o) => o?.oc_color ?? CLR_GRAY);
-const DECLARED_TOUGH = objects.map((o) => o?.oc_tough ?? 0);
+// Snapshotted lazily on the first seedAppearance() (i.e. before any shuffle
+// has run): display.js now imports this module, which puts o_init.js inside the
+// mkobj.js import cycle, so touching objects[] at module-eval time is a TDZ
+// ReferenceError.
+let DECLARED_COLOR = null;
+let DECLARED_TOUGH = null;
 
 // Per-object appearance data (oc_color / oc_tough / oc_material) for the
 // objects that participate in shuffling.  Only the shuffle ranges need this:
@@ -122,6 +126,10 @@ const VENOM_COLOR = [HI_ORGANIC, HI_ORGANIC];
 // C ref: init_objects() pre-shuffle state (oc_descr_idx = oc_name_idx = i;
 // oc_color / oc_tough / oc_material come from the OBJECT() macro init).
 function seedAppearance() {
+    if (!DECLARED_COLOR) {
+        DECLARED_COLOR = objects.map((o) => o?.oc_color ?? CLR_GRAY);
+        DECLARED_TOUGH = objects.map((o) => o?.oc_tough ?? 0);
+    }
     for (let i = 0; i < objects.length; i++) {
         const o = objects[i];
         if (!o) continue;
@@ -360,7 +368,10 @@ function getBases() {
     return discoBases;
 }
 
-const FIRST_OBJECT = MAXOCLASSES; // generic objects sit below this index
+// generic objects sit below this index.  A function, not a const: this module
+// is now inside the mkobj.js import cycle, so mkobj's bindings are in TDZ at
+// module-eval time.
+const FIRST_OBJECT = () => MAXOCLASSES;
 
 // OBJ_DESCR(obj): the unidentified appearance string for this object's current
 // appearance.  C: obj_descr[objects[i].oc_descr_idx].oc_descr.  After shuffling
@@ -405,7 +416,7 @@ function disco_japanese_name(otyp) {
 // (initial inventory, autodiscovery) pass credit_hero FALSE, so they roll no
 // RNG, matching C.
 export function discover_object(oindx, markKnown, markEncountered, creditHero) {
-    if (oindx < FIRST_OBJECT) return;
+    if (oindx < FIRST_OBJECT()) return;
     const o = objects[oindx];
     if (!o) return;
     if ((!o.oc_name_known && markKnown)
@@ -428,7 +439,7 @@ export function discover_object(oindx, markKnown, markEncountered, creditHero) {
 export function observe_object(obj) {
     if (!obj) return;
     const oindx = obj.otyp;
-    if (oindx >= FIRST_OBJECT) discover_object(oindx, false, true);
+    if (oindx >= FIRST_OBJECT()) discover_object(oindx, false, true);
 }
 
 // C ref: u_init.c knows_object() — mark a type known (not encountered).
@@ -570,7 +581,9 @@ function disco_typename(otyp) {
 
 // Default inv_order (options.c def_inv_order); VENOM_CLASS is appended so any
 // pre-discovered venom shows.  C ref: o_init.c dodiscovered() class loop.
-const DISCO_INV_ORDER = [
+// A function, not a const array: mkobj.js's bindings are in TDZ while this
+// module is evaluated (display.js imports it from inside mkobj's cycle).
+const DISCO_INV_ORDER = () => [
     COIN_CLASS, AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS, 7 /*FOOD*/,
     SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, WAND_CLASS,
     6 /*TOOL*/, GEM_CLASS, 14 /*ROCK*/, 15 /*BALL*/, 16 /*CHAIN*/, VENOM_CLASS,
@@ -584,7 +597,7 @@ export function build_discoveries_rows() {
     getBases();
     const rows = [];
     let ct = 0;
-    for (const oclass of DISCO_INV_ORDER) {
+    for (const oclass of DISCO_INV_ORDER()) {
         let printedHeader = false;
         for (const i of discoveryOrder.get(oclass) || []) {
             if (!interesting_to_discover(i)) continue;

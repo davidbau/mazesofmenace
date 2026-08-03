@@ -110,8 +110,16 @@ export async function do_attack(mtmp) {
 
         if (inshop || foo) {
             // (shk dopay() path omitted — not reachable here.)
-            if (mtmp.mtame) // see 'additional considerations' in C
-                monflee(mtmp, rnd(6), false, false);
+            if (mtmp.mtame) { // see 'additional considerations' in C
+                // Use the FULL monmove.c monflee(), not the reduced copy below:
+                // monflee(mtmp, rnd(6), ...) with rnd(6)==1 hits C's `if
+                // (fleetime == 1) fleetime++` clamp, so the pet flees for TWO
+                // turns.  The reduced copy stored 1, ending the flee a turn
+                // early and dropping the fleeing monster's rn2(40) teleport roll
+                // from dochug (seed0002 step 273).
+                const { monflee: monflee_full } = await import('./monmove.js');
+                await monflee_full(mtmp, rnd(6), false, false);
+            }
             // C ref: uhitm.c:495-499 — You("stop.  %s is in the way!", buf) where
             // buf = highc(y_monnam(mtmp)).  This message is ALWAYS emitted here
             // (not only while running); the following end_running(TRUE) is a
@@ -958,6 +966,30 @@ export async function killed(mon, opts) {
     // value, so every post-kill screen mismatched on that one stat cell.
     more_experienced(experience(mon), 0);
     newexplevel();
+
+    // C ref: mon.c xkilled() "adjust alignment points" — runs right after the
+    // experience award, consumes no RNG.  The quest-leader / MS_NEMESIS /
+    // MS_GUARDIAN arms need a quest monster and aren't reachable from a melee
+    // kill in this corpus; the peaceful/tame/priest ones and the unconditional
+    // adjalign(mtmp->malign) are.  Skipping this left u.ualign.record frozen at
+    // gu.urole.initrecord, which chooses the wrong MODULUS in peace_minded()'s
+    // rn2(16 + u.ualign.record) for every monster generated afterwards.
+    {
+        const { adjalign, ALIGNLIM } = await import('./attrib.js');
+        const { p_coaligned } = await import('./priest.js');
+        if (mon.ispriest) {
+            const co = p_coaligned(mon);
+            adjalign(co ? -2 : 2);
+            if (co) game.u.ublessed = 0;
+            if ((mon.data?.maligntyp ?? 0) === -128 /* A_NONE */)
+                adjalign(Math.trunc(ALIGNLIM() / 4));
+        } else if (mon.mtame) {
+            adjalign(-15);
+        } else if (mon.mpeaceful) {
+            adjalign(-5);
+        }
+        adjalign(mon.malign | 0);
+    }
 
     if (x > 0 && y > 0) newsym(x, y);
 }

@@ -95,3 +95,29 @@ export function poison_strdmg(strloss, dmg) {
     losestr(strloss);
     losehp(dmg);
 }
+
+// C ref: align.h ALIGNLIM = (10L + (svm.moves / 200L)) — the cap on how good
+// the hero's alignment record can get.
+export function ALIGNLIM() {
+    return 10 + Math.floor((game.moves | 0) / 200);
+}
+
+// C ref: attrib.c adjalign(n) — the ONLY writer of u.ualign.record.  A negative
+// n also accumulates u.ualign.abuse (which peace_minded()'s erinys arm reads),
+// and both directions are one-way: a gain that would not raise the record, or a
+// loss that would not lower it, is discarded.
+export function adjalign(n) {
+    const u = game.u;
+    if (!u) return;
+    u.ualign = u.ualign || { type: 0, record: 0 };
+    const cur = u.ualign.record | 0;
+    const newalign = cur + n;
+    if (n < 0) {
+        const newabuse = (u.ualign.abuse | 0) - n;
+        if (newalign < cur) u.ualign.record = newalign;
+        // adj_erinys(newabuse) only arms a future erinys spawn; no RNG here.
+        if (newabuse > (u.ualign.abuse | 0)) u.ualign.abuse = newabuse;
+    } else if (newalign > cur) {
+        u.ualign.record = Math.min(newalign, ALIGNLIM());
+    }
+}

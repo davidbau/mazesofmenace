@@ -608,26 +608,8 @@ async function real_death_epilogue(how) {
 
     // C ref: topten() — "assure minimum number of points": t0->points is
     // floored to 0 when under sysopt.pointsmin (always 1: POINTSMIN's
-    // config-file floor is max(POINTSMIN,1)).  With this harness's scores
-    // file always empty, the fresh entry only "makes the [top ten] list"
-    // (rank0 set, flg incremented, the "You made the top ten list!" banner
-    // shown, outentry's rank==1) when its post-floor points are > 0 — an
-    // empty file's placeholder entry has points 0, and the insertion check
-    // is a strict "<", so a tie (both 0) takes the "didn't reach the list"
-    // fallback instead: no banner, and outentry(rank=0, ...) (blank rank
-    // field).
+    // config-file floor is max(POINTSMIN,1)).
     const scorePoints = urexp < 1 ? 0 : urexp;
-    const madeList = scorePoints > 0;
-
-    // Blank --More-- acknowledgements (endwin teardown): two when the entry
-    // makes the top ten list (seed0030's diverse deaths, each ending with
-    // real points and "You made the top ten list!"), one when it doesn't
-    // (seed0009's Tutorial death, floored to 0 points).
-    for (let b = 0; b < (madeList ? 2 : 1); b++) {
-        disp.clearScreen();
-        drawMore(ROWS - 1);
-        await nhgetch();
-    }
 
     // topten() real (non-wizard) output.
     const roleFC = roles[game.initrole]?.filecode || '?';
@@ -639,19 +621,36 @@ async function real_death_epilogue(how) {
         plgend: genderFC, plalign: alignFC, death: deathText, dungeonName,
         deathdnum: uz.dnum, knoxDnum: -99, // Fort Ludios unreachable here
         deathlev: depth, maxlvl: depth, hp: u?.uhp ?? 0, maxhp: u?.uhpmax ?? 0,
+        urexp,
     };
+    const tt = topten_list(entry);
+
+    // Blank --More-- acknowledgements (endwin teardown): two when the entry
+    // makes the list (each of seed0030's diverse deaths scores real points and
+    // gets the "You made the top ten list!" banner), one when it doesn't
+    // (seed0009's Tutorial death, floored to 0 points; seed0030's Samurai quit).
+    for (let b = 0; b < (tt.banner ? 2 : 1); b++) {
+        disp.clearScreen();
+        drawMore(ROWS - 1);
+        await nhgetch();
+    }
+
     disp.clearScreen();
     let row = 0;
-    disp.putstr(0, row++, '', NO_COLOR, 0);
-    if (madeList) {
-        disp.putstr(0, row++, 'You made the top ten list!', NO_COLOR, 0);
-        disp.putstr(0, row++, '', NO_COLOR, 0);
-    }
-    disp.putstr(0, row++, topten_outheader(COLNO), NO_COLOR, 0);
-    for (const l of topten_outentry(madeList ? 1 : 0, entry, true, COLNO)) {
-        disp.putstr(0, row++, l, NO_COLOR, ATR_BOLD);
+    const printLine = (text, so) => {
+        disp.putstr(0, row++, text, NO_COLOR, so ? ATR_BOLD : 0);
+    };
+    printLine('', false);              // C: HUP topten_print("") before the list
+    if (tt.notbeaten) { printLine(tt.notbeaten, false); printLine('', false); }
+    if (tt.banner) { printLine(tt.banner, false); printLine('', false); }
+    printLine(topten_outheader(COLNO), false);
+    for (const e of tt.shown) {
+        if (e.blank) { printLine('', false); continue; }
+        for (const l of topten_outentry(e.rank, e.entry, e.so, COLNO))
+            printLine(l, e.so);
     }
     disp.setCursor(0, row);
+    topten_record_write(tt);
 
     game.program_state = game.program_state || {};
     game.program_state.gameover = true;
@@ -659,6 +658,112 @@ async function real_death_epilogue(how) {
     // which ends the segment exactly as the moveloop's own command read
     // would).
     await nhgetch();
+}
+
+// ── the persistent 'record' (high-score) file ──
+//
+// C ref: topten.c topten().  RECORD survives from one game to the next, so in a
+// multi-segment session every death after the first prints the WHOLE accumulated
+// list, not just the fresh entry.  The harness shares one Web-Storage handle
+// across a session's segments (frozen/score.sh: "storage ... makes save/restore
+// + bones persist across segments"), which is what stands in for that file here.
+const RECORD_KEY = 'nethack.record';
+// sysopt: sys.c:66-69 clamps the config.h values.  PERS_IS_UID is 1 on unix, and
+// every segment of a session runs as the same uid, so the "same person" half of
+// the PERSMAX test is always TRUE and only the role filecode distinguishes.
+const PERSMAX = 3, ENTRYMAX = 100, POINTSMIN = 1;
+// options.c:7170-7172 defaults.
+const END_TOP = 3, END_AROUND = 2, END_OWN = false;
+
+function topten_record_read() {
+    const storage = game.storage;
+    if (!storage || typeof storage.getItem !== 'function') return [];
+    try {
+        const blob = storage.getItem(RECORD_KEY);
+        const arr = blob ? JSON.parse(blob) : null;
+        return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+}
+
+// C: the record file is rewritten (with the merged list) only when flg was set,
+// i.e. only when this game's entry was inserted or an over-PERSMAX entry dropped.
+function topten_record_write(tt) {
+    const storage = game.storage;
+    if (!tt.flg || !storage || typeof storage.setItem !== 'function') return;
+    try { storage.setItem(RECORD_KEY, JSON.stringify(tt.list)); } catch { /*noop*/ }
+}
+
+// C ref: hacklib.c ordin(n).
+function ordin(n) {
+    const dd = n % 10;
+    return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? 'th'
+         : (dd === 1 ? 'st' : dd === 2 ? 'nd' : 'rd');
+}
+
+// C ref: topten.c topten() — merge t0 into the record list, decide rank0 and
+// which entries get displayed.  Returns { list, shown, banner, notbeaten, flg }.
+function topten_list(t0) {
+    const stored = topten_record_read();
+    const list = [];
+    let rank = 1, occ_cnt = PERSMAX, rank0 = -1, rank1 = 0, flg = 0;
+    let notbeaten = null;
+    for (let i = 0; ; i++) {
+        // i >= stored.length is the zero-points sentinel a short record file
+        // reads back as (readentry() at EOF).
+        const src = i < stored.length ? stored[i] : null;
+        const pts = src ? (src.points < POINTSMIN ? 0 : src.points) : 0;
+        if (rank0 < 0 && pts < t0.points) {
+            rank0 = rank++;
+            list.push(t0);
+            occ_cnt--;
+            flg++;
+        }
+        if (pts === 0) break;
+        const t1 = { ...src, points: pts };
+        if (t1.plrole === t0.plrole && --occ_cnt <= 0) {
+            if (rank0 < 0) {
+                rank0 = 0;
+                rank1 = rank;
+                notbeaten = `You didn't beat your previous score of ${pts} points.`;
+            }
+            // occ_cnt < 0: this entry is over the per-person limit, so it is
+            // dropped from the rewritten file (C reuses the node and continues).
+            if (occ_cnt < 0) { flg++; continue; }
+        }
+        list.push(t1);
+        if (rank <= ENTRYMAX) rank++;
+        if (rank > ENTRYMAX) break;
+    }
+
+    let banner = null;
+    if (flg && rank0 > 0) {
+        banner = rank0 <= 10
+            ? 'You made the top ten list!'
+            : `You reached the ${rank0}${ordin(rank0)} place on the top ${ENTRYMAX} list.`;
+    }
+    if (rank0 === 0) rank0 = rank1;
+    if (rank0 <= 0) rank0 = rank;
+
+    // skip_scores is FALSE with the default end_top=3.
+    const shown = [];
+    for (let i = 0; i < list.length; i++) {
+        const r = i + 1;
+        if (!(r <= END_TOP
+              || (r >= rank0 - END_AROUND && r <= rank0 + END_AROUND)
+              || (END_OWN && list[i].name === t0.name))) continue;
+        if (r === rank0 - END_AROUND && rank0 > END_TOP + END_AROUND + 1 && !END_OWN)
+            shown.push({ rank: -1, entry: null, so: false, blank: true });
+        if (r !== rank0) shown.push({ rank: r, entry: list[i], so: false });
+        else if (!rank1) shown.push({ rank: r, entry: list[i], so: true });
+        else {
+            shown.push({ rank: r, entry: list[i], so: true });
+            shown.push({ rank: 0, entry: t0, so: true });
+        }
+    }
+    // C: "if (rank0 >= rank) outentry(0, t0, TRUE)" — this game's entry did not
+    // make the list (or fell past its end), so it is appended rankless.
+    if (rank0 >= rank) shown.push({ rank: 0, entry: t0, so: true });
+    return { list, shown, banner, notbeaten, flg };
 }
 
 // C ref: topten.c outheader() — the column header line, padded so "Hp [max]"
@@ -674,12 +779,15 @@ function topten_outheader(COLNO) {
 // word-wrapping across as many lines as needed so the "Hp [max]" column
 // stays aligned at the right edge.  Reduced to the death-description branches
 // reachable by a plain "died in <dungeon> [on level N]" contest death
-// (escaped/ascended/quit/starved/choked/poisoned/crushed/petrified and the
+// (escaped/ascended/starved/choked/poisoned/crushed/petrified and the
 // astral-plane wording are not reachable here).  `so` (standout) pads each
 // line to COLNO-1 for the bold render, matching the just-died entry.
 function topten_outentry(rank, entry, so, COLNO) {
     let linebuf = rank ? String(rank).padStart(3) : '   ';
-    linebuf += ` ${String(entry.points).padStart(10)}  ${entry.name.slice(0, 10)}`;
+    // C: "%10ld", t1->points ? t1->points : u.urexp — a points-floored-to-0
+    // entry still shows the raw score it would have had.
+    const pts = entry.points ? entry.points : (entry.urexp || 0);
+    linebuf += ` ${String(pts).padStart(10)}  ${entry.name.slice(0, 10)}`;
     linebuf += `-${entry.plrole}`;
     if (entry.plrace !== '?') linebuf += `-${entry.plrace}`;
     linebuf += `-${entry.plgend}`;
@@ -695,7 +803,10 @@ function topten_outentry(rank, entry, so, COLNO) {
     else if (death.startsWith('crushed')) linebuf += 'was crushed to death';
     else if (death.startsWith('petrified by ')) linebuf += 'turned to stone';
     else linebuf += 'died';
-    linebuf += ` in ${entry.dungeonName}`;
+    // C: svd.dungeons[t1->deathdnum].dname — resolved against the CURRENT game's
+    // dungeon table, so a record entry written by an earlier game re-reads it.
+    const dname = game.dungeons?.[entry.deathdnum]?.dname || entry.dungeonName;
+    linebuf += ` in ${dname}`;
     if (entry.deathdnum !== entry.knoxDnum) linebuf += ` on level ${entry.deathlev}`;
     if (entry.deathlev !== entry.maxlvl) linebuf += ` [max ${entry.maxlvl}]`;
     if (death.startsWith('quit ')) linebuf += death.slice(4);

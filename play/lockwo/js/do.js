@@ -33,6 +33,7 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap } from './trap.js';
+import { near_capacity } from './invent.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -394,6 +395,21 @@ function u_collide_m(mtmp) {
     }
 }
 
+// C ref: hack.c losehp() — HP subtraction only; death handling isn't reached by
+// the covered sessions (matching every other file-local losehp() in this port).
+function losehp_do(n) {
+    const u = game.u;
+    if (!u || n <= 0) return;
+    u.uhp = (u.uhp ?? 0) - n;
+    if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
+    if (u.uhp < 0) u.uhp = 0;
+}
+// C ref: youprop.h Fumbling / Flying — the two transit modifiers do.c:1776-1781
+// tests.  Levitation/Flying is never granted in the covered sessions; Fumbling
+// comes from HFumbling/EFumbling (allmain.js reads the same pair).
+function Fumbling_do() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
+function Flying_do() { return !!(game.u?.HFlying || game.u?.EFlying); }
+
 // ── goto_level (C ref: do.c goto_level) ──
 //
 // Restricted to the level-teleport / first-visit-makelevel path used by the
@@ -430,8 +446,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: do.c goto_level arrival block — the "You descend/climb the stairs."
     // ordinary-transit message is emitted for any at_stairs move (including a
     // branch crossing into the Gnomish Mines), not just same-dungeon descents.
-    if (at_stairs && (game.flags?.verbose !== false)) {
-        if (up) await update_topl('You climb up the stairs.');
+    // C ref: do.c:1780 — an over-loaded (near_capacity() > UNENCUMBERED),
+    // Punished or Fumbling hero FALLS down instead of descending: the message is
+    // printed unconditionally (unlike the flags.verbose-gated ordinary one) and
+    // costs rnd(3) hp.  Only the message can be hoisted to this old-level frame;
+    // the losehp roll stays at C's position, in the at_stairs arrival arm below.
+    const fell_downstairs = at_stairs && !up
+        && !Flying_do() && (near_capacity() > 0 /*UNENCUMBERED*/ || Fumbling_do());
+    if (at_stairs && (fell_downstairs || game.flags?.verbose !== false)) {
+        if (fell_downstairs) await update_topl('You fall down the stairs.');
+        else if (up) await update_topl('You climb up the stairs.');
         else await update_topl('You descend the stairs.');
         await topl_more();          // capture the old-level transit frame
         game._pending_message = '';
@@ -585,6 +609,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } else {
             u_on_upstairs(); /* descent lands on the new level's UP stair */
         }
+        // C ref: do.c:1792 — the fall's damage roll, at its real position in the
+        // stream (after mklev()/placement, before losedogs()).  Maybe_Half_Phys
+        // is the identity here and selftouch("Falling, you") only bites a hero
+        // wielding a petrifying corpse, so neither adds a draw.
+        if (fell_downstairs) losehp_do(rnd(3));
     } else {
         // trap door / level teleport.  (The was_in_W_tower `| 2` flag of C's
         // u_on_rndspot() call is Vlad's-Tower-only and never set here.)

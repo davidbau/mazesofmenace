@@ -1091,11 +1091,18 @@ export function build_overview_lines(final = 0, how = 0) {
         const custom = game._level_annotations?.[p.ledger] || '';
         const onHere = p.ledger === uzLedger;
         const ofInterest = !!(feat.nthrone || feat.nfount || feat.nsink || feat.ngrave || feat.ntree);
-        if (!final && !onHere && !ofInterest && !custom) continue;
-
         const dptr = M.dungeons[p.dnum];
         if (!dptr) continue;
         const dunlevUreached = Math.max(dptr.dunlev_ureached ?? 0, maxDlevelByDnum.get(p.dnum) ?? 0);
+        // C ref: dungeon.c interest_mapseen() last clause — a level is of
+        // interest when it is "the furthest level reached in its branch"
+        // (mptr->lev.dlevel == dungeons[dnum].dunlev_ureached), even with no
+        // features and no annotation.  GAP: C's mptr->br (a known branch
+        // connection) and the auto-annotation flags (oracle / bigroom /
+        // roguelevel / castle / valley / msanctum / vibrating_square /
+        // quest_summons / questing) are not tracked here yet.
+        const isDeepest = p.dlevel === dunlevUreached;
+        if (!final && !onHere && !ofInterest && !custom && !isDeepest) continue;
         const showheader = p.dnum !== lastdun;
         if (showheader) {
             const buf = (dunlevUreached === dptr.entry_lev)

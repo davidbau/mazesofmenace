@@ -112,7 +112,7 @@ function heroGodName() {
 }
 
 // C ref: src/pray.c:60 godvoices[] with ROLL_FROM (rn2(4))
-const GOD_VOICES = ['booms out', 'thunders', 'rings out', 'booms'];
+export const GOD_VOICES = ['booms out', 'thunders', 'rings out', 'booms'];
 
 // C ref: src/pray.c:godvoice()
 function godvoice(align, words) {

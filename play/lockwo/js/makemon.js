@@ -2316,6 +2316,41 @@ function peace_minded_bigrm(ptr) {
     return !!rn2(2 + Math.abs(mal));
 }
 
+// C ref: makemon.c:2321 set_malign(mtmp) — the alignment-point value of KILLING
+// this monster, banked on the monster at creation time (and re-banked whenever
+// its peaceful/tame state changes) because xkilled() reads mtmp->malign long
+// after u.ualign.type could have been consulted.  No RNG.  Without it every kill
+// left u.ualign.record at gu.urole.initrecord, which silently picks the WRONG
+// MODULUS for peace_minded()'s `rn2(16 + u.ualign.record)` on every later
+// makemon (seed0030 seg6: C drew rn2(21), we drew rn2(16)).
+export function set_malign(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr) return;
+    let mal = ptr.maligntyp ?? 0;
+    if (mtmp.ispriest || mtmp.isminion) {
+        if (mtmp.ispriest && mtmp.epri) mal = mtmp.epri.shralign ?? mal;
+        else if (mtmp.isminion && mtmp.emin) mal = mtmp.emin.min_align ?? mal;
+        if (mal !== A_NONE) mal *= 5;
+    }
+    const coaligned = sgn(mal) === sgn(game.u?.ualign?.type ?? 0);
+    const absmal = Math.abs(mal);
+    const f2 = mflags2_of(ptr);
+    if (msound_of(ptr) === MS_LEADER) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE) {
+        mtmp.malign = mtmp.mpeaceful ? 0 : 20; /* really hostile */
+    } else if (f2 & M2_PEACEFUL) {            /* always_peaceful */
+        mtmp.malign = (mtmp.mpeaceful ? -3 : 3) * Math.max(5, absmal);
+    } else if (f2 & M2_HOSTILE) {             /* always_hostile */
+        mtmp.malign = coaligned ? 0 : Math.max(5, absmal);
+    } else if (coaligned) {
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(3, absmal)
+                                     : Math.max(3, absmal); /* renegade */
+    } else {
+        mtmp.malign = absmal;
+    }
+}
+
 // C ref: mon.c pickvampshape().  mtmp.cham holds the base vampire pmidx.
 // Returns the pmidx of the shape to take.  uppercase_only (rogue level) and
 // pool/lava checks are false for Vlad's Tower.
@@ -2867,6 +2902,7 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // let whoever links the leader in splice it ahead of that object — an object
     // anchor rather than an index, because an index goes stale for any monster
     // whose placement happens later (that cost 200 RNG calls when tried).
+    set_malign(mtmp);   // makemon.c:1429 "having finished peaceful changes"
     const grpFirstIdx = game.level?.monsters?.length ?? 0;
     const anymon = (mdat == null);
     if (anymon && !(mmflags & MM_NOGRP)) {
@@ -3159,6 +3195,7 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
             if (mon) {
                 placeOnLevel(mon, spot.x, spot.y);
                 mon.mpeaceful = false;
+                set_malign(mon);
             }
         }
     }
@@ -3234,6 +3271,7 @@ export function makemon_rnd_spawn() {
     else mtmp.female = (ptr.gcode === 2) ? 1 : 0;
 
     mtmp.mpeaceful = peace_minded_spawn(ptr) ? true : false;
+    set_malign(mtmp);   // makemon.c:1429
 
     // Group handling (anymon && !MM_NOGRP).  G_SGROUP -> rn2(2); G_LGROUP ->
     // rn2(3) ? lgrp : sgrp.  Members are created/placed before the top

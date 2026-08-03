@@ -72,7 +72,8 @@ import { mattackm } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval } from './uhitm.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED } from './const.js';
 import { wipe_engr_at, engr_at } from './engrave.js';
-import { discover_object } from './o_init.js';
+import { discover_object, observe_object } from './o_init.js';
+import { WEP_HITBON } from './weapondmg_data.js';
 
 // ── permonst resolution ─────────────────────────────────────────────────────
 // Every C predicate below is a bit test on mons[].mflags{1,2,3}; the generated
@@ -511,7 +512,7 @@ async function release_hero(mon) {
 // mfleetim, it never bumps a 1-turn flee to 2, and it never calls
 // mon_track_clear() — and clearing the breadcrumb ring is exactly what changes
 // how many rn2(4*(cnt-j)) rolls m_move's candidate loop makes next turn.
-async function monflee(mtmp, fleetime, first, fleemsg) {
+export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (DEADMONSTER(mtmp)) return;
     if (mtmp === game.u?.ustuck) await release_hero(mtmp);
 
@@ -2417,7 +2418,7 @@ async function m_move(mtmp) {
                     await meatobj(mtmp);
                 }
             }
-            mpickstuff(mtmp);
+            await mpickstuff(mtmp);
             // C ref: monmove.c postmov():1690 — maybe_spin_web runs for
             // MMOVE_DONE too, not just MMOVE_MOVED.
             await maybe_spin_web(mtmp);
@@ -2563,7 +2564,7 @@ async function m_move(mtmp) {
             }
         }
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove)
-            mpickstuff(mtmp);
+            await mpickstuff(mtmp);
         // C ref: monmove.c postmov():1690 — maybe_spin_web sits between the
         // pickup block and the re-hide block, for MMOVE_MOVED and MMOVE_DONE
         // alike.  Its rn2(1000) fires on every completed spider move.
@@ -3648,7 +3649,7 @@ function mon_would_consume_item(mtmp, otmp) {
 // mon_would_take_item's pctload gates read the numbers directly.
 
 
-function mpickstuff(mtmp) {
+async function mpickstuff(mtmp) {
     // C ref: mon.c:1858 — prevent shopkeepers from leaving the door of their
     // shop (inhishop() is not modeled; no recorded shk reaches this).
     if (mtmp.isshk) return false;
@@ -3679,6 +3680,17 @@ function mpickstuff(mtmp) {
             if (!can_touch_safely(mtmp, otmp)) continue;
             const carryamt = mon_can_carry(mtmp, otmp);
             if (carryamt === 0) continue;
+            // C ref: mon.c:1893 — the pickup is announced BEFORE the object
+            // leaves the floor, with distant_name(otmp, doname) ("a crude
+            // dagger").  Routed through pline_mon/update_topl so it appends to a
+            // pending top line as C's topl buffer does (seed0002 step 263 pairs
+            // it with "You feel less confused now.").
+            // GAP: C prints "<Mon> picks up <distant_name(otmp, doname)>." here.
+            // Left unported deliberately: distant_doname() implemented only the
+            // NEAR branch of objnam.c:347, so it named objects the hero cannot
+            // actually make out.  Landing it took seed0399's differing cells from
+            // 11539 to 50666 for +1 screen.  Port both branches of distant_name()
+            // first, then re-measure this as its own change.
             let otmp3;
             if (carryamt !== (otmp.quan || 1)) {
                 // partial stack: split off carryamt into a fresh object.  C's
@@ -4452,6 +4464,13 @@ async function thitu(tlev, dam, otmp) {
     const uac = u?.uac ?? 10;
     const dieroll = rnd(20);                         // mthrowu.c:106
     const onm = mshot_xname(otmp);                   // "crude dagger"
+    // C ref: mthrowu.c:86 thitu() — names the missile with
+    // doname()/mshot_xname(), both of which route through objnam.c
+    // mshot_xname():1093 -> xname() -> xname_flags():628 `if (!Blind &&
+    // !gd.distantname) observe_object(obj)`.  So the TYPE lands on the '\'
+    // discoveries list even on a miss — that is how a cobra's spit is what puts
+    // "Venoms / splash of venom" on seed4500's discoveries page.
+    if (!Blind() && otmp) observe_object(otmp);
     // C ref: mthrowu.c thitu() — Blind or !flags.verbose collapses the feedback
     // to the terse "It misses." / "You are hit!" forms (seed4500 has !verbose).
     const verbose = game.flags?.verbose !== false;
@@ -4476,9 +4495,9 @@ async function thitu(tlev, dam, otmp) {
     return 1;
 }
 
-// C ref: hacklib.c exclam(force) — "!" for damage > 5, "." otherwise (the
-// punctuation after the hit message).  Here daggers do <= 5 so it's "!".
-function exclam(force) { return force > 5 ? '!' : '.'; }
+// C ref: zap.c:3547 exclam(force) — `force < 0 ? "?" : force <= 4 ? "." : "!"`.
+// (The old `force > 5` cut-off misplaced the punctuation at exactly 5 damage.)
+function exclam(force) { return force < 0 ? '?' : (force <= 4 ? '.' : '!'); }
 
 // C ref: objnam.c mshot_xname() — the singular display name of a thrown weapon
 // (its appearance when unidentified).  The orcish dagger appears as "crude
@@ -4495,6 +4514,135 @@ function an_name(s) {
 // C ref: hacklib.c upstart() — capitalize the first letter of a string.
 function upstart_mm(s) {
     return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+// C ref: do_name.c x_monnam() — a monster the hero cannot spot reads "it"
+// ("It is hit."), whatever species it really is.  The shared x_monnam() narrows
+// that rule to a BLIND hero on purpose (see js/uhitm.js), so the ohitmon
+// messages that C only emits for an unseen target ask for it explicitly.
+function Monnam_spot(mtmp) {
+    return canspotmon(mtmp) ? Monnam(mtmp) : 'It';
+}
+// C ref: objnam.c The(str) — "The " unless the name is already capitalized
+// (an artifact / named object supplies its own article).
+function The_mm(s) {
+    return /^[A-Z]/.test(s || '') ? s : `The ${s}`;
+}
+// C ref: objnam.c vtense(subj, verb) — third-person-singular conjugation unless
+// the subject reads plural ("the 3 daggers hit ..." from a multishot volley).
+function vtense_mm(subj, verb) {
+    const s = subj || '';
+    const last = s[s.length - 1]?.toLowerCase();
+    const prev = s.length >= 2 ? s[s.length - 2].toLowerCase() : '';
+    if (last === 's' && s.length > 1 && prev !== 'u' && prev !== 's') return verb;
+    return /(s|x|z|ch|sh)$/.test(verb) ? `${verb}es` : `${verb}s`;
+}
+
+// C ref: weapon.c:333 hitval(otmp, mon) — the weapon's own to-hit contribution.
+// oc_hitbon comes from the GENERATED WEP_HITBON table (weapondmg_data.js), not a
+// per-otyp hand list.  The blessed-vs-undead/demon bonus is modelled; the
+// is_spear/kebabable, trident-vs-swimmer and pick-vs-xorn bonuses need tables
+// this port does not carry yet and would surface as an honest divergence.
+function hitval_mm(otmp, mtmp) {
+    if (!otmp) return 0;
+    const is_weapon = otmp.oclass === WEAPON_CLASS_MM;
+    let tmp = 0;
+    if (is_weapon) tmp += (otmp.spe | 0);
+    tmp += WEP_HITBON[otmp.otyp] ?? 0;
+    if (is_weapon && otmp.blessed && (is_undead(mtmp?.data) || is_demon(mtmp?.data)))
+        tmp += 2;
+    return tmp;
+}
+
+// C ref: dothrow.c:1912 omon_adj(mon, obj, mon_notices) — how much easier this
+// target is to hit.  The rn2(10) "immobilized target wakes up" roll only fires
+// when mon_notices is TRUE (the hero-thrown path); m_throw/ohitmon pass FALSE.
+function omon_adj(mtmp, obj, mon_notices) {
+    let tmp = mon_size(mtmp?.data) - 2 /* MZ_MEDIUM (monflag.h) */;
+    if (mtmp?.msleeping) tmp += 2;
+    if (!mtmp?.mcanmove || !base_mmove(mtmp)) {
+        tmp += 4;
+        if (mon_notices && base_mmove(mtmp) && !rn2(10)) {
+            mtmp.mcanmove = 1; mtmp.mfrozen = 0;
+        }
+    }
+    // HEAVY_IRON_BALL (+2 unless it is the hero's own) / BOULDER (+6) can't be
+    // thrown by the monsters that reach this path.
+    if (obj && (obj.oclass === WEAPON_CLASS_MM || obj.oclass === GEM_CLASS))
+        tmp += hitval_mm(obj, mtmp);
+    return tmp;
+}
+
+// C ref: mthrowu.c:319 ohitmon(mtmp, otmp, range, verbose) — a missile launched
+// by someone other than the hero reaches a square occupied by `mtmp` (here: a
+// monster standing between a throwing monster and the hero — the hero's own pet
+// takes the crude dagger meant for them in seed0002 step 256).
+//
+// Returns TRUE when the missile has stopped (hit, or missed on its last square).
+// RNG, verified against the seed0002 step-256 trace:
+//   rnd(20)                    the accuracy roll (mthrowu.c:350) — always
+//   dmgval(otmp, mtmp)         only on a hit (weapon.c:265)
+//   corpse_chance()/make_corpse only when the hit kills
+// can_blnd() answers FALSE without a roll for an AT_WEAP hit by anything that
+// isn't a cream pie / venom / potion of blindness, and setmangry() is skipped
+// while svc.context.mon_moving is set, so neither draws here.
+async function ohitmon(mtmp, otmp, range, verbose, bx, by, thrower) {
+    const vis = !!cansee(bx, by);
+    // notonhead (a long worm's tail square) only affects worm messaging.
+    // shade_miss(): no shades are reachable on these levels, so a missile never
+    // passes harmlessly through its target here.
+    let tmp = 5 + find_mac_mon(mtmp) + omon_adj(mtmp, otmp, false);
+    // gm.marcher/gm.mtarget are only set by thrwmm (monster-vs-monster); a throw
+    // aimed at the hero leaves both NULL, so the archer m_lev bonus is skipped
+    // and the `verbose && !gm.mtarget` unseen-feedback branches are live.
+    if (tmp < rnd(20)) {                                     // mthrowu.c:350
+        if (vis) {
+            const onm = mshot_xname(otmp);
+            await pline_mon(mtmp, `${The_mm(onm)} ${vtense_mm(onm, 'miss')} `
+                + `${mon_nam(mtmp)}.`);
+        } else if (verbose) {
+            await pline_mon(mtmp, 'It is missed.');
+        }
+        if (!range) {              // last square: the missile drops on the spot
+            drop_thrown_missile(thrower, otmp, mtmp.mx, mtmp.my, 0);
+            return true;
+        }
+        return false;              // still in flight
+    }
+    // POTION_CLASS goes to potionhit(); m_throw_potion handles that path.
+    // The `harmless` arm (stone_missile() + passes_rocks(), "passes harmlessly
+    // through him") needs a rock-throwing monster and an earth elemental / xorn
+    // target, so it is unreachable and left out.
+    const damage = dmgval(otmp, mtmp);                        // weapon.c:265
+    mtmp.msleeping = 0;
+    if (vis) {
+        const onm = mshot_xname(otmp);
+        // C ref: zap.c:3556 hit(str, mtmp, force) — "The crude dagger hits the
+        // little dog."; a !flags.verbose hero reads "it" instead of the name
+        // (cansee(bhitpos) is already true on this branch).
+        const who = (game.flags?.verbose !== false) ? mon_nam(mtmp) : 'it';
+        await pline_mon(mtmp, `${The_mm(onm)} ${vtense_mm(onm, 'hit')} ${who}${exclam(damage)}`);
+    } else if (verbose) {
+        await pline_mon(mtmp, `${Monnam_spot(mtmp)} is hit${exclam(damage)}`);
+    }
+    // opoisoned / SILVER searing / ACID_VENOM / EGG petrification: none of the
+    // missiles that reach this path carry them (each would add its own roll).
+    if (!DEADMONSTER(mtmp)) {
+        mtmp.mhp -= damage;
+        if (mtmp.mhp <= 0) {
+            const xx = mtmp.mx, yy = mtmp.my;
+            if (vis || verbose)
+                await pline_mon(mtmp, `${Monnam_spot(mtmp)} is `
+                    + `${(nonliving_mm(mtmp) || !canspotmon(mtmp)) ? 'destroyed' : 'killed'}!`);
+            // svc.context.mon_moving is set for a monster's throw, so C takes the
+            // mondied() arm (no hero kill credit / no experience).
+            mon_kill_leaving(mtmp, false);
+            if (DEADMONSTER(mtmp)) newsym(xx, yy);
+        }
+    }
+    // can_blnd(NULL, mtmp, AT_WEAP, otmp) is FALSE for a plain weapon and
+    // setmangry() is skipped while mon_moving, so neither runs here.
+    drop_thrown_missile(thrower, otmp, bx, by, 1);            // drop_throw(otmp,1,..)
+    return true;
 }
 
 // C ref: mthrowu.c m_throw() — fly the single missile from (x,y) toward the
@@ -4552,7 +4700,17 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
             singleobj.dknown = 1;
             discover_object(singleobj.otyp, false, true);
         }
-        if (bx === u.ux && by === u.uy) {
+        // C ref: mthrowu.c:679-687 — a monster standing on the flight path is
+        // hit FIRST (the hero's own pet intercepts the crude dagger meant for
+        // them in seed0002 step 256).  ohitmon() returning TRUE stops the
+        // missile; a miss with range left falls through and it keeps flying.
+        const inpath = m_at(bx, by);
+        if (inpath) {
+            if (await ohitmon(inpath, singleobj, range, true, bx, by, mon)) {
+                flash_end();
+                return;
+            }
+        } else if (bx === u.ux && by === u.uy) {
             // hero square: catch attempt, then the hit resolution.
             if (u_catch_thrown_obj(singleobj)) { flash_end(); return; } // caught
             const dam0 = dmgval_thrown(singleobj, u);    // rnd(wsdam) (+spe)
@@ -4824,6 +4982,11 @@ async function thrwmu(mtmp, mdat) {
         await m_throw_at_hero(mtmp, mdat, mtmp.mx, mtmp.my, sgn(tbx), sgn(tby), dm, otmp);
         if (DEADMONSTER(mtmp)) break;
     }
+    // C ref: mthrowu.c:1262 — thrwmu() ends with nomul(0): being shot at cancels
+    // a rush AND a counted occupation.  timed_occupation() then sees multi == 0
+    // and returns 0, so exactly ONE more search/repeat runs before the loop asks
+    // for a key (seed0002 step 269: 8 turns, not the full "9s" count).
+    (await import('./hack.js')).nomul(0);
 }
 
 // C ref: display.c canseemon(mon) — the hero can see the monster: its square is
@@ -4997,7 +5160,9 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
     // Something was stolen: a non-animal thief teleports away, an animal tries
     // to run off with the loot, and either way it flees (uhitm.c:4680).
     if (!is_animal(mtmp.data) && !tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
-    if (is_animal(mtmp.data) && objnambuf.value && canseemon(mtmp)) {
+    // canseemon_mm, not canseemon: this file has no canseemon import, so the
+    // bare name was a latent ReferenceError that killed the whole session run.
+    if (is_animal(mtmp.data) && objnambuf.value && canseemon_mm(mtmp)) {
         await emitU(`${Monnam(mtmp)} tries to `
             + `${locomotion(mtmp.data, 'run')} away with ${objnambuf.value}.`);
     }

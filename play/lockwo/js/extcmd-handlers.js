@@ -16,6 +16,7 @@ import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
     addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
+    wiz_identify, renderWindowScreen,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
@@ -1911,6 +1912,8 @@ const HANDLERS = {
     chronicle: do_gamelog,
     conduct: doconduct,
     wizgenesis: wiz_genesis,
+    wizidentify: wiz_identify_extcmd,
+    wizintrinsic: wiz_intrinsic,
     overview: dooverview,
     version: doextversion,
     quit: doquit_extcmd,
@@ -1925,6 +1928,212 @@ const HANDLERS = {
 // HANDLERS table above reads the same way as its neighbors).
 async function domonability_extcmd() {
     return await domonability();
+}
+
+// C ref: wizcmds.c wiz_identify() returns ECMD_OK (no turn elapses).
+function wiz_identify_extcmd() {
+    wiz_identify();
+    return 0;
+}
+
+// C ref: timeout.c propertynames[] — the ordered property list #wizintrinsic
+// (and #timeout) walks, "ordered by interest".  Entries are
+// [prop-id, display name, u.uprops timeout field].  The prop-id is the
+// include/prop.h name; only two of them are load-bearing here (HALLUC_RES is
+// skipped, FIRE_RES gets a "--" separator ahead of it, marking the start of the
+// properties that only ever hold timed values in wizard mode).  The timeout
+// field names the u.uprops key this port already reads for that property, so
+// e.g. a timed FAST really does make Very_fast true in u_calc_moveamt.
+const WIZINTRINSIC_PROPS = [
+    ['INVULNERABLE', 'invulnerable', 'Invulnerable'],
+    ['STONED', 'petrifying', 'Stoned'],
+    ['SLIMED', 'becoming slime', 'Slimed'],
+    ['STRANGLED', 'strangling', 'Strangled'],
+    ['SICK', 'fatally sick', 'Sick'],
+    ['STUNNED', 'stunned', 'Stun'],
+    ['CONFUSION', 'confused', 'Confusion'],
+    ['HALLUC', 'hallucinating', 'HHallucination'],
+    ['BLINDED', 'blinded', 'Blinded'],
+    ['DEAF', 'deafness', 'HDeaf'],
+    ['VOMITING', 'vomiting', 'Vomiting'],
+    ['GLIB', 'slippery fingers', 'Glib'],
+    ['WOUNDED_LEGS', 'wounded legs', 'Wounded_legs'],
+    ['SLEEPY', 'sleepy', 'Sleepy'],
+    ['TELEPORT', 'teleporting', 'HTeleportation'],
+    ['POLYMORPH', 'polymorphing', 'HPolymorph'],
+    ['LEVITATION', 'levitating', 'Levitation'],
+    ['FAST', 'very fast', 'HFast'],
+    ['CLAIRVOYANT', 'clairvoyant', 'HClairvoyant'],
+    ['DETECT_MONSTERS', 'monster detection', 'HDetect_monsters'],
+    ['SEE_INVIS', 'see invisible', 'HSee_invisible'],
+    ['INVIS', 'invisible', 'HInvis'],
+    ['ACID_RES', 'acid resistance', 'HAcid_resistance'],
+    ['STONE_RES', 'stoning resistance', 'HStone_resistance'],
+    ['DISPLACED', 'displaced', 'HDisplaced'],
+    ['PASSES_WALLS', 'pass thru walls', 'HPasses_walls'],
+    ['MAGICAL_BREATHING', 'magical breathing', 'HMagical_breathing'],
+    ['WWALKING', 'water walking', 'HWwalking'],
+    ['FIRE_RES', 'fire resistance', 'HFire_resistance'],
+    ['COLD_RES', 'cold resistance', 'HCold_resistance'],
+    ['SLEEP_RES', 'sleep resistance', 'HSleep_resistance'],
+    ['DISINT_RES', 'disintegration resistance', 'HDisint_resistance'],
+    ['SHOCK_RES', 'shock resistance', 'HShock_resistance'],
+    ['POISON_RES', 'poison resistance', 'HPoison_resistance'],
+    ['DRAIN_RES', 'drain resistance', 'HDrain_resistance'],
+    ['SICK_RES', 'sickness resistance', 'HSick_resistance'],
+    ['ANTIMAGIC', 'magic resistance', 'HAntimagic'],
+    ['HALLUC_RES', 'hallucination resistance', 'HHalluc_resistance'],
+    ['BLND_RES', 'light-induced blindness resistance', 'HBlnd_resistance'],
+    ['FUMBLING', 'fumbling', 'HFumbling'],
+    ['HUNGER', 'voracious hunger', 'HHunger'],
+    ['TELEPAT', 'telepathic', 'HTelepat'],
+    ['WARNING', 'warning', 'HWarning'],
+    ['WARN_OF_MON', 'warn: monster type or class', 'HWarn_of_mon'],
+    ['WARN_UNDEAD', 'warn: undead', 'HWarn_undead'],
+    ['SEARCHING', 'searching', 'HSearching'],
+    ['INFRAVISION', 'infravision', 'HInfravision'],
+    ['ADORNED', 'adorned (+/- Cha)', 'HAdorned'],
+    ['STEALTH', 'stealthy', 'HStealth'],
+    ['AGGRAVATE_MONSTER', 'monster aggravation', 'HAggravate_monster'],
+    ['CONFLICT', 'conflict', 'HConflict'],
+    ['JUMPING', 'jumping', 'HJumping'],
+    ['TELEPORT_CONTROL', 'teleport control', 'HTeleport_control'],
+    ['FLYING', 'flying', 'Flying'],
+    ['SWIMMING', 'swimming', 'HSwimming'],
+    ['SLOW_DIGESTION', 'slow digestion', 'HSlow_digestion'],
+    ['HALF_SPDAM', 'half spell damage', 'HHalf_spell_damage'],
+    ['HALF_PHDAM', 'half physical damage', 'HHalf_physical_damage'],
+    ['REGENERATION', 'HP regeneration', 'HRegeneration'],
+    ['ENERGY_REGENERATION', 'energy regeneration', 'Energy_regeneration'],
+    ['PROTECTION', 'extra protection', 'HProtection'],
+    ['PROT_FROM_SHAPE_CHANGERS', 'protection from shape changers', 'HProtection_from_shape_changers'],
+    ['POLYMORPH_CONTROL', 'polymorph control', 'HPolymorph_control'],
+    ['UNCHANGING', 'unchanging', 'HUnchanging'],
+    ['REFLECTING', 'reflecting', 'HReflecting'],
+    ['FREE_ACTION', 'free action', 'HFree_action'],
+    ['FIXED_ABIL', 'fixed abilities', 'HFixed_abil'],
+    ['LIFESAVED', 'life will be saved', 'HLifesaved'],
+];
+
+const DEFAULT_TIMEOUT_INCR = 30;   // C ref: wizcmds.c:945
+
+// Build the #wizintrinsic menu entries.  Non-selectable entries (the end_menu()
+// prompt, its blank line, the "--" separator) carry no `item`.
+// C ref: wizcmds.c wiz_intrinsic() + win/tty/wintty.c tty_end_menu() (the
+// prompt and a blank line are prepended, in that order, to the item list).
+function wizIntrinsicEntries() {
+    const uprops = game.u?.uprops || {};
+    const entries = [
+        { text: 'Which intrinsics?', attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+    ];
+    for (const [propId, name, key] of WIZINTRINSIC_PROPS) {
+        // Grayswandir vs hallucination: never offered.
+        if (propId === 'HALLUC_RES') continue;
+        if (propId === 'FIRE_RES') entries.push({ text: '--', attr: 0 });
+        const oldtimeout = uprops[key] || 0;
+        // C: Sprintf(buf, "%-27s [%li]", propname, oldtimeout)
+        const label = oldtimeout ? `${name.padEnd(27)} [${oldtimeout}]` : name;
+        entries.push({ text: label, attr: 0, item: { propId, name, key, oldtimeout, selected: false } });
+    }
+    return entries;
+}
+
+// C ref: win/tty/wintty.c process_menu_window() — a multi-page NHW_MENU:
+// lmax == min(52, rows-1) == 23 lines per page, accelerators restart at 'a' on
+// every page and are only spent on selectable entries, the morestr is
+// "(N of M)", and a selected entry's '-' marker becomes '+' (set_item_state;
+// '#' when a count was given, which this port does not model).
+async function wizIntrinsicMenu(entries) {
+    const rows = game.nhDisplay?.rows ?? 24;
+    const lmax = Math.min(52, rows - 1);
+    const npages = Math.ceil(entries.length / lmax) || 1;
+    for (let i = 0; i < entries.length; i++) {
+        if (i % lmax === 0) var acc = 97;                              // 'a'
+        if (entries[i].item) {
+            entries[i].item.sel = String.fromCharCode(acc);
+            acc = (acc === 122) ? 65 : acc + 1;                        // z -> A
+        }
+    }
+    let page = 0;
+    for (;;) {
+        const pageEntries = entries.slice(page * lmax, (page + 1) * lmax);
+        renderWindowScreen(pageEntries.map((e) => ({
+            text: e.item ? `${e.item.sel} ${e.item.selected ? '+' : '-'} ${e.text}` : e.text,
+            attr: e.attr,
+        })), {
+            menu: true,
+            footer: npages > 1 ? `(${page + 1} of ${npages})` : '(end)',
+            footerRow: pageEntries.length,
+            footerCol: 1,
+            modal: 'wizintwin',
+        });
+        const c = await nhgetch();
+        const ch = String.fromCharCode(c);
+        const hit = pageEntries.find((e) => e.item && e.item.sel === ch);
+        if (hit) { hit.item.selected = !hit.item.selected; continue; }
+        if (c === 27) return false;                                    // cancel
+        if (c === 13 || c === 10) return true;                         // commit
+        if (ch === ' ' || ch === '>') {
+            if (page < npages - 1) page++;
+            else if (ch === ' ') return true;   // ' ' finishes, '>' does not
+            continue;
+        }
+        if (ch === '<') { if (page > 0) page--; continue; }
+        if (ch === '^') { page = 0; continue; }
+        if (ch === '|') { page = npages - 1; continue; }
+        if (ch === ',') { for (const e of pageEntries) if (e.item) e.item.selected = true; continue; }
+        if (ch === '\\') { for (const e of pageEntries) if (e.item) e.item.selected = false; continue; }
+        if (ch === '~') { for (const e of pageEntries) if (e.item) e.item.selected = !e.item.selected; continue; }
+        if (ch === '.') { for (const e of entries) if (e.item) e.item.selected = true; continue; }
+        if (ch === '-') { for (const e of entries) if (e.item) e.item.selected = false; continue; }
+        if (ch === '@') { for (const e of entries) if (e.item) e.item.selected = !e.item.selected; continue; }
+        // Digits start a count (which would override DEFAULT_TIMEOUT_INCR) and
+        // ':' opens a search prompt; neither is modelled.  Any other key rings
+        // the bell and leaves the page up.
+    }
+}
+
+// C ref: wizcmds.c wiz_intrinsic() — a PICK_ANY menu of every timeable
+// property; each pick adds DEFAULT_TIMEOUT_INCR to that property's intrinsic
+// timeout and plines "Timeout for <prop> set to/increased by N.".
+// GAP: C routes BLINDED/DEAF/HALLUC/SICK/SLIMED/STONED/STUNNED/VOMITING/GLIB/
+// WARN_OF_MON through their make_*() helpers, whose feedback differs from the
+// default "Timeout for ..." line; those helpers are inlined per-call-site in
+// this port, so every pick currently takes C's `default:` arm.
+async function wiz_intrinsic() {
+    const entries = wizIntrinsicEntries();
+    const committed = await wizIntrinsicMenu(entries);
+    delete game._modal_screen;
+    if (!committed) {
+        // ESC deselects everything and cancels; the map is repainted.
+        await flush_screen(1);
+        return 0;
+    }
+    const u = game.u;
+    if (!u.uprops) u.uprops = {};
+    game._toplin = 0;
+    for (const e of entries) {
+        const it = e.item;
+        if (!it || !it.selected) continue;
+        const oldtimeout = u.uprops[it.key] || 0;
+        let newtimeout = oldtimeout + DEFAULT_TIMEOUT_INCR;
+        // C: SICK/SLIMED/STONED never have their existing timeout extended.
+        if ((it.propId === 'SICK' || it.propId === 'SLIMED' || it.propId === 'STONED')
+            && oldtimeout > 0 && newtimeout > oldtimeout)
+            newtimeout = oldtimeout;
+        u.uprops[it.key] = newtimeout;
+        game.botl = true;
+        // update_topl, not pline: the two "Timeout for ..." lines share one
+        // topline (C update_topl appends with two spaces while it fits).
+        await update_topl(`Timeout for ${it.name} ${oldtimeout ? 'increased by' : 'set to'} ${DEFAULT_TIMEOUT_INCR}.`);
+    }
+    // C: docrt() — clears the screen (flushing the topline through --More--)
+    // and repaints the map.
+    await topl_more();
+    game._pending_message = '';
+    await flush_screen(1);
+    return 0;
 }
 
 // C ref: end.c done2() — '#quit'.  Implemented in end.js (it shares state/

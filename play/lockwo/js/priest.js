@@ -36,7 +36,7 @@ function m_at(x, y) {
 
 // C ref: mon.c p_coaligned() — the priest's shrine alignment matches the
 // hero's.  No RNG.
-function p_coaligned(priest) {
+export function p_coaligned(priest) {
     const ualign = game.u?.ualign?.type ?? A_NONE;
     return (priest?.epri?.shralign ?? A_NONE) === ualign;
 }

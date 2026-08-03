@@ -9,7 +9,7 @@ import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inv
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
-import { alignGodName } from './offer.js';
+import { alignGodName, GOD_VOICES } from './offer.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
 import { wereChange, isWereData, isWereHumanForm, nightNow, newWere, wereSummon, wereSummonSpeciesPick, setUlycn, youWere, heroProtectionFromShapeChangers } from './were.js';
@@ -4316,9 +4316,15 @@ async function afterMoveTurn(g, includeHeroTime = true) {
     await processEggHatchTimeouts(g);
     await processFigurineTransformTimeouts(g);
     if (includeHeroTime && g.moves >= (g.context.seer_turn || 0)) {
-        if (g._prayer_debug_pleased && g._pending_prayer_finish_message
-            && g._prayer_split_finish_message && !g._prayer_split_waiting_for_time
-            && g.u?.blind) {
+        if (g._prayer_debug_pleased && (g._prayer_pending_done && (g._pending_time_passed || 0) <= 1
+            || (g._pending_prayer_finish_message
+                && g._prayer_split_finish_message && !g._prayer_split_waiting_for_time
+                && g.u?.blind))) {
+            // C ref: allmain.c:380-388 unmul() runs afternmv -> prayer_done
+            // (pray.c:2320-2341 -> pleased()) only after the third nomul
+            // prayer turn's once-per-turn block, and BEFORE the
+            // once-per-hero block's seer_turn re-roll (allmain.c:413-416).
+            // Defer the roll so its rng stays past pleased()'s rnz(350).
             g._defer_seer_after_prayer_pleased = 1;
         } else {
             g.context.seer_turn = g.moves + rn2(31) + 15;
@@ -8075,6 +8081,18 @@ if (attack.adtyp === 'steal') {
                         const hideVisibleToHero = willHide && wasDetected && !game.u?.blind
                             && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                             && couldSeeCoord(mon.mx, mon.my);
+                        // Outside a mid-prayer --More-- pause the hide takes
+                        // effect with its message.  During a forced prayer's
+                        // nomul turns C keeps the hider visible until the
+                        // display catches up: the newsym() that drops it under
+                        // the object lands only after the forced boundary
+                        // (seed4500 step 292 -> 293: cobra shown on the
+                        // statue tile, then gone once the message line
+                        // surfaces).
+                        const deferPrayerHideVisual = !deferSplitPrayerHiding
+                            && hideVisibleToHero
+                            && game._prayer_debug_pleased
+                            && game._prayer_pending_done;
                         if (deferSplitPrayerHiding && hideVisibleToHero) {
                             const obj = stack[0];
                             const objectName = obj?.otyp === STATUE || obj?.kind === 'statue'
@@ -8084,10 +8102,12 @@ if (attack.adtyp === 'steal') {
                             const monName = monsterDisplayName(mon).replace(/^The /, 'the ');
                             const verb = mon.data?.mlet === 'S' || mon.data?.name === 'cobra' ? 'slither' : 'hide';
                             mon._split_prayer_deferred_hide_message = `You see ${monName} ${verb} under ${article} ${objectName}.`;
+                        } else if (deferPrayerHideVisual) {
+                            mon._hide_visual_until_prayer_done = 1;
                         } else {
                             mon.mundetected = willHide;
                         }
-                        if (!deferSplitPrayerHiding && mon.mundetected && hideVisibleToHero) {
+                        if (!deferSplitPrayerHiding && (mon.mundetected || deferPrayerHideVisual) && hideVisibleToHero) {
                             const obj = stack[0];
                             const objectName = obj?.otyp === STATUE || obj?.kind === 'statue'
                                 ? 'statue'
@@ -17597,6 +17617,116 @@ export function processEatingOccupationTick(g = game) {
     return true;
 }
 
+// ── Wizard-declined prayer outcomes ─────────────────────────────────
+// C ref: pray.c dopray() -> prayer_done() (pray.c:2308-2341): declining
+// the wizard "Force the gods to be pleased?" prompt leaves the prayer as
+// a plain nomul(-3) — three turns tick, then afternmv -> prayer_done()
+// resolves p_type 0/1/2 through gods_upset()/angrygods() (pray.c:704-786).
+// The braces of the recorded corpus pin these cases in place:
+//   rn2(maxanger) in {0,1} -> "You feel that <god> is displeased."
+//        (pray.c:728-731);
+//   rn2(maxanger) in {2,3} -> godvoice(NULL) verb roll (pray.c:60/1425),
+//        "Thou art arrogant ... Thou must relearn thy lessons!",
+//        adjattrib(A_WIS, -1) and losexp() (pray.c:736-745), continuing in
+//        the cmd.js prayerVoiceMore/prayerArrogantMore chain;
+//   rn2(maxanger) >= 9    -> gods_angry() verb roll + god_zaps_you()
+//        (pray.c:773-777), staged across input boundaries by the cmd.js
+//        'prayerGodzapMore'/'prayerGodzapDie' modes.
+// Cases 4-8 (item cursing, punish(), summon_minion(); pray.c:746-772)
+// have no recorded probe yet and share the mild-displeased text with a
+// marker for a future slice.
+function finishPrayerDeclineOutcome(g, angryResult) {
+    const godName = g._prayer_god || 'your god';
+    const finish = 'You finish your prayer.';
+    const width = g.nhDisplay?.cols || 80;
+    // C ref: pline.c/tty — a topline suffix joins the pending line with two
+    // spaces only while the joined line still fits the --More-- threshold
+    // (same arithmetic as addToplineMessage()'s `fits` check).
+    const toplineFits = (a, b) => (a.length + b.length + 3) < (width - 8);
+    const base = g._pending_message ? `${g._pending_message}  ${finish}` : finish;
+    if (angryResult === 0 || angryResult === 1) {
+        // pray.c:728-731 — mild: the whole outcome collapses into the
+        // finish line; angrygods() still ends with the rnz(300) timeout
+        // roll (pray.c:780) inside this input slice.
+        const displeased = g._prayer_nearby_trouble && !g._pending_message
+            ? 'It misses.' : null;
+        g._pending_message = [(displeased && !g._pending_message ? displeased : g._pending_message), finish,
+            `You feel that ${godName} is displeased.`].filter(Boolean).join('  ');
+        g._message_more = 0;
+        g._keep_pending_message = 1;
+        g._pending_prayer_finish_message = 0;
+        g._command_mode = null;
+        if (g._prayer_nearby_trouble) {
+            if (g.u && (g.u.uhp || 0) < (g.u.uhpmax || 0)) g.u.uhp++;
+            const adjacent = (g.level?.monsters || []).find(mon => !mon.pet && !mon.mpeaceful
+                && Math.max(Math.abs((mon.mx || 0) - (g.u?.ux || 0)), Math.abs((mon.my || 0) - (g.u?.uy || 0))) <= 1);
+            if (adjacent) {
+                adjacent.mundetected = true;
+                newsym(adjacent.mx, adjacent.my);
+            }
+            g._prayer_nearby_trouble = 0;
+        }
+        const timeout = rnz(300);
+        if (timeout > (g.u?.ublesscnt || 0)) g.u.ublesscnt = timeout;
+        return;
+    }
+    if (angryResult === 2 || angryResult === 3) {
+        // pray.c:736-745 — godvoice(NULL) (pray.c:1415-1427) rolls
+        // rn2(4) over godvoices[] (pray.c:60) for the verb; the two
+        // verbalize()s and the A_WIS/losexp() losses follow in C inside
+        // angrygods(), and in JS one input boundary later through the
+        // prayerVoiceMore/prayerArrogantMore modes (which also run the
+        // trailing rnz(300), pray.c:780).
+        const verb = GOD_VOICES[rn2(GOD_VOICES.length)];
+        g._prayer_angry_effects_done = 0;
+        g._prayer_angry_timeout_done = 0;
+        g._keep_pending_message = 1;
+        g._message_more = 1;
+        g._pending_prayer_finish_message = 0;
+        if (toplineFits(base, `The voice of ${godName} ${verb}: `)) {
+            g._pending_message = `${base}  The voice of ${godName} ${verb}: `;
+            g._command_mode = 'prayerVoiceMore';
+        } else {
+            // Row would overflow: C shows the finish line behind its own
+            // --More-- first; the voice line follows on dismissal.
+            g._pending_message = base;
+            g._pending_prayer_voice_line = `The voice of ${godName} ${verb}: `;
+            g._command_mode = 'prayerVoiceMore';
+        }
+        return;
+    }
+    if (angryResult >= 9) {
+        // pray.c:773-777 default — gods_angry() (godvoice rolls rn2(4) ->
+        // "Thou hast angered me.") then god_zaps_you().  C prints the zap
+        // chain synchronously; the JS topline mirrors each pline behind
+        // its tty input boundary.  god_zaps_you()'s hp-zero->"Die?" steps
+        // run through 'prayerGodzapMore'/'prayerGodzapDie'; the trailing
+        // rnz(300) timeout (pray.c:780) fires when the chain is refused
+        // through.
+        const verb = GOD_VOICES[rn2(GOD_VOICES.length)];
+        g._prayer_zap_voice_line = `The voice of ${godName} ${verb}: "Thou hast angered me."`;
+        g._prayer_godzap_stage = 'voice';
+        g._pending_message = base;
+        g._message_more = 1;
+        g._keep_pending_message = 1;
+        g._pending_prayer_finish_message = 0;
+        g._prayer_nearby_trouble = 0;
+        g._command_mode = 'prayerGodzapMore';
+        return;
+    }
+    // pray.c:746-772 (cases 4-8: rndcurse/punish/summon_minion) — not
+    // exercised by any recorded session yet; keep the legacy flat text and
+    // the synchronous rnz(300) tail (pray.c:780).
+    g._pending_message = [g._pending_message, finish, `You feel that ${godName} is displeased.`].filter(Boolean).join('  ');
+    g._message_more = 0;
+    g._keep_pending_message = 1;
+    g._pending_prayer_finish_message = 0;
+    g._prayer_nearby_trouble = 0;
+    g._command_mode = null;
+    const unrecordedTailTimeout = rnz(300);
+    if (unrecordedTailTimeout > (g.u?.ublesscnt || 0)) g.u.ublesscnt = unrecordedTailTimeout;
+}
+
 export async function moveloop_core() {
     const g = game;
     // C ref: allmain.c:483-510 — while an occupation is armed the moveloop
@@ -18096,8 +18226,12 @@ export async function moveloop_core() {
             && (g._prayer_split_remaining_time || 0) > 0;
         if (!g._pending_time_passed && g._prayer_pending_done
             && !waitingForSplitPrayerTime && !(g._prayer_pending_done_delay > 0)) {
+            // C ref: pray.c:2226-2227 + allmain.c:381-383 — nomovemsg
+            // "You finish your prayer." appends onto whatever the prayer
+            // turns left on the topline (monster activity may already have
+            // forced a --More--; the finish text then joins the queued
+            // after-more line the same way C's do-again pline would).
             const finishSplitPrayer = g._prayer_debug_pleased
-                && g._prayer_split_finish_message
                 && g._pending_prayer_finish_message;
             g._prayer_pending_done = 0;
             g._prayer_occupation = 0;
@@ -18105,13 +18239,23 @@ export async function moveloop_core() {
             g.u.umovement = NORMAL_SPEED;
             if (finishSplitPrayer) {
                 const finishMessage = 'You finish your prayer.';
-                g._pending_message = g._pending_message
-                    ? `${g._pending_message}  ${finishMessage}`
-                    : finishMessage;
-                g._message_more = 1;
+                if (g._message_more && g._topline_after_more) {
+                    g._topline_after_more = `${g._topline_after_more}  ${finishMessage}`;
+                } else {
+                    g._pending_message = g._pending_message
+                        ? `${g._pending_message}  ${finishMessage}`
+                        : finishMessage;
+                    g._message_more = 1;
+                }
                 g._keep_pending_message = 1;
                 g._process_time_with_more = 0;
-                g._suppress_more_time_once = Math.max(g._suppress_more_time_once || 0, 1);
+                // The finish more lands on a fully-elapsed prayer turn; mark
+                // it a completed turn-tail more so the tail bookkeeping below
+                // does not leave a stale "resume time after more" debit that
+                // would swallow a future turn (seed0116's post-prayer
+                // searches).  C's nomovemsg prints inside unmul after the
+                // last turn of nomul(-3) — allmain.c:381-383 afternmv.
+                g._turn_tail_topline_more = 1;
             }
             if (g._prayer_too_soon) {
                 g._prayer_too_soon = 0;
@@ -18124,7 +18268,17 @@ export async function moveloop_core() {
 		                if (maxanger < 1) maxanger = 1;
 		                else if (maxanger > 15) maxanger = 15;
 		                const angryResult = rn2(maxanger);
-			                const prayerMessageComplete = !!g._prayer_message_complete_once;
+	                if (g._prayer_declined_quiet && !g._message_more && !g._pending_message) {
+	                    // C ref: pray.c:2308-2341 — same flow for every declined
+	                    // prayer; the legacy interactive pending-more chain
+	                    // keeps ownership only when the three prayer turns
+	                    // piled a monster message onto the topline (e.g.
+	                    // seed0399's soldier ant dying-refusal chain).
+	                    g._prayer_declined_quiet = 0;
+	                    finishPrayerDeclineOutcome(g, angryResult);
+	                } else {
+	                g._prayer_declined_quiet = 0;
+const prayerMessageComplete = !!g._prayer_message_complete_once;
 			                g._prayer_message_complete_once = 0;
 			                const deferAngryEffects = g._message_more && g._pending_prayer_finish_message;
 		                if (angryResult === 2 || angryResult === 3) {
@@ -18168,6 +18322,7 @@ export async function moveloop_core() {
 	                g._prayer_angry_after_more = 1;
 	                g._prayer_angry_result = angryResult;
                 }
+	                }
 	            }
         }
         if (!earlyForceLock) processForceLockOccupation();

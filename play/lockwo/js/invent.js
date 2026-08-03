@@ -1565,6 +1565,20 @@ function worn_status_suffix(obj) {
 export function doname_invent(obj) {
     if (!obj) return 'nothing';
     observe_object(obj);
+    return doname_invent_core(obj);
+}
+
+// C ref: objnam.c distant_name(obj, doname) — name an object the hero is only
+// looking at from a distance.  C forces Blinded around the call so the naming
+// routine skips its dknown/discovery reveal; this port's observe_object() IS
+// that reveal, so the distant form is simply "doname without observing".
+// (mon.c mpickstuff() uses it: a monster grabbing an unidentified item must not
+// add its appearance to the hero's '\' discoveries list.)
+export function distant_doname(obj) {
+    return obj ? doname_invent_core(obj) : 'nothing';
+}
+
+function doname_invent_core(obj) {
     const oc = obj.oclass;
     if (oc !== WEAPON_CLASS && oc !== ARMOR_CLASS)
         return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj);
@@ -1648,7 +1662,7 @@ function putStatusLines(display, bandStart = null, menuLastRow = -1) {
     display.putstr(0, 23, (bandStart != null && menuLastRow >= 23) ? s2.slice(0, bandStart) : s2, NO_COLOR);
 }
 
-function inventoryRows(lets = null) {
+function inventoryRows(lets = null, ofilter = null) {
     // There used to be a touristFallbackRows() short-circuit here returning a
     // VERBATIM memorised inventory listing (exact letters, "27 +2 darts", "an
     // expensive camera (0:34)") whenever rank === 'Rambler' && gold === 757 —
@@ -1658,7 +1672,8 @@ function inventoryRows(lets = null) {
     // else, while hiding every real doname()/inv_order bug for that role.
 
     const rows = [];
-    const inv = [...inventoryArray()].filter((obj) => !lets || String(lets).includes(obj.invlet));
+    const inv = [...inventoryArray()].filter((obj) => (!lets || String(lets).includes(obj.invlet))
+        && (!ofilter || ofilter(obj)));
     if (!inv.length) return [];
     // C ref: invent.c display_pickinv() — iterate flags.inv_order (def_inv_order,
     // which already leads with COIN_CLASS) exactly once per class.  classOrder()
@@ -1677,6 +1692,23 @@ function inventoryRows(lets = null) {
 }
 
 function renderMenuScreen(lines, cursor = [36, 8]) {
+    // C ref: windows.c:1816 add_menu_heading() — `if (program_state.gameover)
+    // attr = ATR_NONE`, so the end-of-game disclosure lists draw class headers
+    // PLAIN.
+    const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const flat = [];
+    for (const group of lines) {
+        const [heading, ...items] = group;
+        flat.push({ text: heading, attr: headAttr });
+        for (const item of items) flat.push({ text: item, attr: 0 });
+    }
+    renderMenuLines(flat, cursor);
+}
+
+// The body of renderMenuScreen, over a FLAT list of { text, attr } lines — for
+// menus whose leading lines are add_menu_str()s (ATR_NONE) rather than
+// add_menu_heading()s (e.g. #wizidentify's "Debug Identify" title).
+export function renderMenuLines(flat, cursor = [36, 8]) {
     const display = game.nhDisplay;
     if (!display?.clearScreen) return;
     display.clearScreen();
@@ -1688,8 +1720,7 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     //   max(10, cols - (maxcol+1) - 1) where maxcol is the widest line; the
     //   "+1" is the menu's leading selector column.  (end) participates too.
     let widest = '(end)'.length;
-    for (const group of lines)
-        for (const ln of group) if (ln.length > widest) widest = ln.length;
+    for (const ln of flat) if (ln.text.length > widest) widest = ln.text.length;
     const cols = display.cols ?? 80;
     const rows = display.rows ?? 24;
     let col = Math.max(10, cols - (widest + 1) - 1);
@@ -1698,7 +1729,7 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     // plus the "(end)" line) reaches the screen height; a menu that tall can't
     // float as a partial overlay, so it takes over the whole screen (offx=0,
     // text at offx+1 == col 1) instead of the computed floating position.
-    const nitems = lines.reduce((n, g) => n + g.length, 0);
+    const nitems = flat.length;
     const maxrow = nitems + 1;
     if (maxrow >= rows) col = 1;
     // C ref: the menu window is a rectangle [col-1..cols) x [0..endRow]; it is
@@ -1713,17 +1744,9 @@ function renderMenuScreen(lines, cursor = [36, 8]) {
     for (let r = 0; r <= menuLastRow && r < 24; r++)
         for (let c = bandStart; c < cols; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
-    // C ref: windows.c:1816 add_menu_heading() — `if (program_state.gameover)
-    // attr = ATR_NONE`, so the end-of-game disclosure lists draw class headers
-    // PLAIN.
-    const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
     let row = 0;
-    for (const group of lines) {
-        const [heading, ...items] = group;
-        display.putstr(col, row++, heading, NO_COLOR, headAttr);
-        for (const item of items)
-            display.putstr(col, row++, item, NO_COLOR);
-    }
+    for (const ln of flat)
+        display.putstr(col, row++, ln.text, NO_COLOR, ln.attr || 0);
     const endRow = row;
     display.putstr(col, row++, '(end)', NO_COLOR);
     putStatusLines(display, bandStart, menuLastRow);
@@ -2700,7 +2723,9 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
         const ilet = String.fromCharCode(key);
 
         if (QUITCHARS.includes(ilet)) {
-            await pline('Never mind.');
+            // C ref: invent.c getobj():1950 — `if (flags.verbose) pline1(Never_mind)`.
+            // With verbose off the cancelled prompt just stays on the topline.
+            if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
         }
         if (ilet === HANDS_SYM) {
@@ -4685,6 +4710,38 @@ export async function identify_pack(id_limit = 0, learning_id = false) {
     }
     update_inventory();
 }
+// C ref: wizcmds.c wiz_identify() — sets iflags.override_ID and calls
+// display_inventory(NULL, FALSE); invent.c display_pickinv()'s `wizid` block
+// puts an add_menu_str() title ("Debug Identify", ATR_NONE) at the top and then
+// lists ONLY the not-fully-identified items (`if (wizid &&
+// !not_fully_identified(otmp)) continue`).  With nothing left to identify the
+// list is empty and a single "(all items ...)" line replaces the selector entry.
+// The menu is PICK_ANY, so the dismissal key is handled by the command loop
+// (like the '\' list) rather than a local key loop.
+export function wiz_identify() {
+    const unid_cnt = count_unidentified(inventoryArray());
+    let title = 'Debug Identify';
+    if (unid_cnt)
+        title += ` -- unidentified or partially identified item${unid_cnt === 1 ? '' : 's'}`;
+    const flat = [{ text: title, attr: 0 }];
+    if (!unid_cnt) {
+        flat.push({ text: '(all items are permanently identified already)', attr: 0 });
+    } else {
+        // visctrl(C('I')) == "^I"; the primary selector is '_'.
+        let prompt = `select ${unid_cnt === 1 ? 'it' : 'any or all of them'} to permanently identify`;
+        if (unid_cnt > 1) prompt += ' (^I for all)';
+        flat.push({ text: `_ - ${prompt}`, attr: 0 });
+        const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+        for (const group of inventoryRows(null, not_fully_identified)) {
+            const [heading, ...items] = group;
+            flat.push({ text: heading, attr: headAttr });
+            for (const item of items) flat.push({ text: item, attr: 0 });
+        }
+    }
+    renderMenuLines(flat, null);
+    return ECMD_OK;
+}
+
 export function learn_unseen_invent() { for (const obj of inventoryArray()) observe_object(obj); update_inventory(); }
 export function update_inventory() { if (!program_state().in_moveloop && !game._allow_inventory_update) return; }
 export function doperminv() { return ECMD_OK; }
