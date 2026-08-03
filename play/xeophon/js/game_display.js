@@ -165,6 +165,22 @@ export class GameDisplay {
         let line2;
         const statusTurn = () => {
             let turn = game.moves || 1;
+            // C ref: allmain.c:227-253 — the tty --More-- pauses inside
+            // pline() never halt C's game state: once the parked message is
+            // the LAST pline still owed by the current monster sweep / hero
+            // action (the lich cast chain's final line, or a refused-death
+            // attack-chain continuation), the rest of movemon(), the
+            // new-turn block (mcalcdistress/mcalcmove reallocation) and
+            // svm.moves++ all run *behind* the parked --More--, so C's status
+            // line shows the new turn while trailing messages (the life-saving
+            // nomovemsg etc.) still wait for dismissal.  This engine defers
+            // that tail until the parked queue fully drains; phase-lock the
+            // rendered T field by displaying one turn ahead during the window.
+            // The marker compares against game.moves, so it self-invalidates
+            // as soon as the real moves++ lands.
+            if (game._status_turn_display_ahead_moves != null
+                && game._status_turn_display_ahead_moves === (game.moves || 1))
+                turn++;
             if (game._sanctum_status_turn_offset
                 && turn >= (game._sanctum_status_turn_offset_start || Infinity))
                 turn = Math.max(1, turn - game._sanctum_status_turn_offset);
