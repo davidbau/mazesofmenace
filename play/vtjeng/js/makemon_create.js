@@ -55,6 +55,7 @@ import {
     SDOOR,
     SEE_INVIS,
     SHOPBASE,
+    P_POLEARMS,
     PROT_FROM_SHAPE_CHANGERS,
     TDWALL,
     TLCORNER,
@@ -102,7 +103,10 @@ import {
 import {
     can_be_hatched,
     is_female,
+    is_giant,
     is_male,
+    is_mercenary,
+    is_ndemon,
     is_neuter,
     is_unicorn,
 } from './mondata.js';
@@ -180,6 +184,7 @@ import {
     PM_LITTLE_DOG,
     PM_LONG_WORM,
     PM_MANES,
+    PM_GIANT_EEL,
     PM_MORDOR_ORC,
     PM_SMALL_MIMIC,
     PM_NEWT,
@@ -191,10 +196,12 @@ import {
     PM_PONY,
     PM_SEWER_RAT,
     PM_SHOPKEEPER,
+    PM_SOLDIER,
     PM_SHOCKING_SPHERE,
     PM_SKELETON,
     PM_SNAKE,
     PM_STALKER,
+    PM_STONE_GIANT,
     PM_URUK_HAI,
     PM_VAMPIRE,
     PM_VAMPIRE_BAT,
@@ -202,6 +209,7 @@ import {
     PM_WHITE_UNICORN,
     PM_WOLF,
     PM_WOOD_NYMPH,
+    PM_WUMPUS,
     PM_WIZARD,
     PM_YELLOW_LIGHT,
     PM_YELLOW_MOLD,
@@ -211,6 +219,7 @@ import {
     S_ELEMENTAL,
     S_EYE,
     S_GHOST,
+    S_GIANT,
     S_GNOME,
     S_GOLEM,
     S_HUMAN,
@@ -227,8 +236,10 @@ import {
     S_ORC,
     S_SNAKE,
     S_SPIDER,
+    S_TROLL,
     S_VAMPIRE,
     S_VORTEX,
+    S_WRAITH,
 } from './monsters.js';
 import {
     ARM_BONUS,
@@ -236,6 +247,7 @@ import {
     mkobj_at,
     mksobj,
     next_ident,
+    rnd_class,
     weight,
 } from './obj.js';
 import {
@@ -255,6 +267,8 @@ import {
     ARROW,
     AXE,
     BATTLE_AXE,
+    BEC_DE_CORBIN,
+    BOULDER,
     BOW,
     CLUB,
     COIN_CLASS,
@@ -263,6 +277,8 @@ import {
     CROSSBOW_BOLT,
     DAGGER,
     DART,
+    DENTED_POT,
+    DILITHIUM_CRYSTAL,
     DUNCE_CAP,
     DWARVISH_CLOAK,
     DWARVISH_IRON_HELM,
@@ -287,15 +303,26 @@ import {
     FLINT,
     FOOD_CLASS,
     GEM_CLASS,
+    GLAIVE,
     GOLD_PIECE,
     GLASS,
+    HELMET,
+    HIGH_BOOTS,
     HELM_OF_OPPOSITE_ALIGNMENT,
     IRON_SHOES,
     IRON,
     KNIFE,
+    K_RATION,
+    C_RATION,
     LEATHER,
+    LEATHER_ARMOR,
+    LEATHER_CLOAK,
+    LEATHER_GLOVES,
+    LARGE_SHIELD,
+    LOW_BOOTS,
     LONG_SWORD,
     LUCERN_HAMMER,
+    LUCKSTONE,
     LUMP_OF_ROYAL_JELLY,
     MAXOCLASSES,
     MIRROR,
@@ -309,6 +336,7 @@ import {
     ORCISH_HELM,
     ORCISH_SHIELD,
     ORCISH_SHORT_SWORD,
+    PARTISAN,
     PICK_AXE,
     POT_ACID,
     POT_BLINDNESS,
@@ -325,11 +353,16 @@ import {
     POT_SPEED,
     POTION_CLASS,
     RANDOM_CLASS,
+    RANSEUR,
+    RING_MAIL,
     RING_CLASS,
     ROCK,
     ROCK_CLASS,
     SCIMITAR,
     SKELETON_KEY,
+    SHORT_SWORD,
+    SMALL_SHIELD,
+    SPEAR,
     SCR_CREATE_MONSTER,
     SCR_EARTH,
     SCR_TELEPORTATION,
@@ -337,8 +370,10 @@ import {
     SLIME_MOLD,
     SLING,
     SPBOOK_CLASS,
+    SPETUM,
     SPEED_BOOTS,
     STATUE,
+    STUDDED_LEATHER_ARMOR,
     STRANGE_OBJECT,
     TALLOW_CANDLE,
     TIN,
@@ -1249,8 +1284,45 @@ function m_initweap(monster, normalized) {
     }
 
     switch (ptr.mlet) {
+    case S_GIANT:
+        if (ptr.pmidx !== PM_STONE_GIANT) {
+            throw new UnsupportedMonsterCreationError(
+                `giant weapon branch ${ptr.pmidx}`,
+            );
+        }
+        if (random.rn2(2)) mongets(monster, BOULDER, normalized);
+        if (!random.rn2(5)) {
+            mongets(
+                monster,
+                random.rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE,
+                normalized,
+            );
+        }
+        break;
     case S_HUMAN:
-        if (ptr.mflags2 & M2_ELF) {
+        if (is_mercenary(ptr)) {
+            if (ptr.pmidx !== PM_SOLDIER) {
+                throw new UnsupportedMonsterCreationError(
+                    `mercenary weapon branch ${ptr.pmidx}`,
+                );
+            }
+            let w1 = 0;
+            let w2 = 0;
+            if (!random.rn2(3)) {
+                do {
+                    w1 = random.rn1(
+                        BEC_DE_CORBIN - PARTISAN + 1,
+                        PARTISAN,
+                    );
+                } while (state.objects[w1].oc_skill !== P_POLEARMS);
+                w2 = random.rn2(2) ? DAGGER : KNIFE;
+            } else {
+                w1 = random.rn2(2) ? SPEAR : SHORT_SWORD;
+            }
+            if (w1) mongets(monster, w1, normalized);
+            if (!w2 && w1 !== DAGGER && !random.rn2(4)) w2 = KNIFE;
+            if (w2) mongets(monster, w2, normalized);
+        } else if (ptr.mflags2 & M2_ELF) {
             if (random.rn2(2)) {
                 mongets(
                     monster,
@@ -1392,6 +1464,24 @@ function m_initweap(monster, normalized) {
             normalized,
         );
         break;
+    case S_TROLL:
+        if (!random.rn2(2)) {
+            switch (random.rn2(4)) {
+            case 0:
+                mongets(monster, RANSEUR, normalized);
+                break;
+            case 1:
+                mongets(monster, PARTISAN, normalized);
+                break;
+            case 2:
+                mongets(monster, GLAIVE, normalized);
+                break;
+            case 3:
+                mongets(monster, SPETUM, normalized);
+                break;
+            }
+        }
+        break;
     case S_CENTAUR:
         if (random.rn2(2)) {
             if (ptr.pmidx === PM_FOREST_CENTAUR) {
@@ -1402,6 +1492,10 @@ function m_initweap(monster, normalized) {
                 m_initthrow(monster, CROSSBOW_BOLT, 12, normalized);
             }
         }
+        break;
+    case S_WRAITH:
+        mongets(monster, KNIFE, normalized);
+        mongets(monster, LONG_SWORD, normalized);
         break;
     default:
         if (ptr.mlet !== S_GNOME) {
@@ -1622,10 +1716,87 @@ function m_initinv(monster, normalized) {
     assertSupportedSpecies(ptr);
     if (isRogueLevel(state)) return;
 
-    if (ptr.mlet === S_NYMPH) {
+    if (ptr.mlet === S_HUMAN && is_mercenary(ptr)) {
+        if (ptr.pmidx !== PM_SOLDIER) {
+            throw new UnsupportedMonsterCreationError(
+                `mercenary inventory branch ${ptr.pmidx}`,
+            );
+        }
+        let mac = 3;
+        let obj;
+        const addArmorClass = () => {
+            if (obj) mac += ARM_BONUS(obj, state);
+            obj = null;
+        };
+
+        if (random.rn2(5)) {
+            obj = mongets(
+                monster,
+                random.rn2(3) ? RING_MAIL : STUDDED_LEATHER_ARMOR,
+                normalized,
+            );
+        } else {
+            obj = mongets(monster, LEATHER_ARMOR, normalized);
+        }
+        addArmorClass();
+
+        if (mac < 10 && random.rn2(3)) {
+            obj = mongets(monster, HELMET, normalized);
+        } else if (mac < 10 && random.rn2(2)) {
+            obj = mongets(monster, DENTED_POT, normalized);
+        }
+        addArmorClass();
+
+        if (mac < 10 && random.rn2(3)) {
+            obj = mongets(monster, SMALL_SHIELD, normalized);
+        } else if (mac < 10 && random.rn2(2)) {
+            obj = mongets(monster, LARGE_SHIELD, normalized);
+        }
+        addArmorClass();
+
+        if (mac < 10 && random.rn2(3)) {
+            obj = mongets(monster, LOW_BOOTS, normalized);
+        } else if (mac < 10 && random.rn2(2)) {
+            obj = mongets(monster, HIGH_BOOTS, normalized);
+        }
+        addArmorClass();
+
+        if (mac < 10 && random.rn2(3)) {
+            obj = mongets(monster, LEATHER_GLOVES, normalized);
+        } else if (mac < 10 && random.rn2(2)) {
+            obj = mongets(monster, LEATHER_CLOAK, normalized);
+        }
+        addArmorClass();
+
+        if (!random.rn2(3)) mongets(monster, K_RATION, normalized);
+        if (!random.rn2(2)) mongets(monster, C_RATION, normalized);
+    } else if (ptr.mlet === S_NYMPH) {
         if (!random.rn2(2)) mongets(monster, MIRROR, normalized);
         if (!random.rn2(2))
             mongets(monster, POT_OBJECT_DETECTION, normalized);
+    } else if (ptr.mlet === S_GIANT && is_giant(ptr)) {
+        if (ptr.pmidx !== PM_STONE_GIANT) {
+            throw new UnsupportedMonsterCreationError(
+                `giant inventory branch ${ptr.pmidx}`,
+            );
+        }
+        for (let count = random.rn2(Math.trunc(monster.m_lev / 2));
+            count > 0;
+            --count) {
+            const obj = mksobj(
+                rnd_class(
+                    DILITHIUM_CRYSTAL,
+                    LUCKSTONE - 1,
+                    normalized,
+                ),
+                false,
+                false,
+                normalized,
+            );
+            obj.quan = random.rn1(2, 3);
+            obj.owt = weight(obj, normalized);
+            addFreshMonsterObject(monster, obj, normalized);
+        }
     } else if (ptr.mlet === S_MUMMY) {
         if (random.rn2(7)) mongets(monster, MUMMY_WRAPPING, normalized);
     } else if (ptr.mlet === S_LEPRECHAUN) {
@@ -1670,6 +1841,8 @@ function m_initinv(monster, normalized) {
             begin_burn(carriedCandle, false, normalized);
         }
     }
+
+    if (ptr.pmidx === PM_SOLDIER && random.rn2(13)) return;
 
     if (monster.m_lev > random.rn2(50)) {
         mongets(monster, rnd_defensive_item(monster, normalized), normalized);
@@ -2604,6 +2777,12 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
             updateInventory: () => update_inventory(normalized),
         });
     }
+    if (state.in_mklev
+        && mklevSleeperSpecies(ptr)
+        && !state.u.uhave.amulet
+        && random.rn2(5)) {
+        monster.msleeping = true;
+    }
     if (byHero && !state.in_mklev) {
         // makemon.c calls set_apparxy() here. At initial startup the hero is
         // visible and undisplaced, so the source result is exact and drawless.
@@ -2663,4 +2842,15 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     if (!state.in_mklev) redrawSquare(monster.mx, monster.my, normalized);
 
     return monster;
+}
+
+// C ref: makemon.c makemon() (1385-1392), species half of the mklev-only
+// sleeping predicate. Keeping it pure lets the non-random long-worm and
+// giant-eel membership be pinned without widening either creation lifecycle.
+export function mklevSleeperSpecies(species) {
+    const mndx = species?.pmidx;
+    return is_ndemon(species)
+        || mndx === PM_WUMPUS
+        || mndx === PM_LONG_WORM
+        || mndx === PM_GIANT_EEL;
 }
