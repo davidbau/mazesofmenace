@@ -141,19 +141,23 @@ import {
     PM_BLACK_LIGHT,
     PM_BLACK_UNICORN,
     PM_CAVE_SPIDER,
+    PM_BUGBEAR,
     PM_CENTIPEDE,
     PM_CHAMELEON,
     PM_CHICKATRICE,
     PM_COCKATRICE,
     PM_DEMILICH,
+    PM_DWARF_RULER,
     PM_ELF,
     PM_FIRE_ELEMENTAL,
     PM_FIRE_VORTEX,
     PM_FLAMING_SPHERE,
     PM_FOG_CLOUD,
     PM_FOX,
+    PM_FOREST_CENTAUR,
     PM_GARTER_SNAKE,
     PM_GHOST,
+    PM_GNOME_RULER,
     PM_GIANT,
     PM_GIANT_MUMMY,
     PM_GIANT_MIMIC,
@@ -162,7 +166,9 @@ import {
     PM_GOBLIN,
     PM_GRAY_UNICORN,
     PM_GRID_BUG,
+    PM_HOBBIT,
     PM_HUMAN,
+    PM_HOBGOBLIN,
     PM_JACKAL,
     PM_KOBOLD,
     PM_KOBOLD_MUMMY,
@@ -180,6 +186,8 @@ import {
     PM_ORC,
     PM_ORC_CAPTAIN,
     PM_ORC_SHAMAN,
+    PM_OGRE_LEADER,
+    PM_OGRE_TYRANT,
     PM_PONY,
     PM_SEWER_RAT,
     PM_SHOPKEEPER,
@@ -200,6 +208,7 @@ import {
     PM_GOLD_DRAGON,
     SPECIAL_PM,
     S_CENTAUR,
+    S_ELEMENTAL,
     S_EYE,
     S_GHOST,
     S_GNOME,
@@ -275,6 +284,7 @@ import {
     ELVEN_SHORT_SWORD,
     ELVEN_SPEAR,
     FIGURINE,
+    FLINT,
     FOOD_CLASS,
     GEM_CLASS,
     GOLD_PIECE,
@@ -316,6 +326,7 @@ import {
     POTION_CLASS,
     RANDOM_CLASS,
     RING_CLASS,
+    ROCK,
     ROCK_CLASS,
     SCIMITAR,
     SKELETON_KEY,
@@ -324,6 +335,7 @@ import {
     SCR_TELEPORTATION,
     SCROLL_CLASS,
     SLIME_MOLD,
+    SLING,
     SPBOOK_CLASS,
     SPEED_BOOTS,
     STATUE,
@@ -527,6 +539,14 @@ function isArmed(species) {
     return species.mattk.some((attack) => attack.aatyp === AT_WEAP);
 }
 
+// C ref: makemon.c m_initweap(), S_OGRE.  The tyrant mapping is retained
+// here even though that species remains outside the admitted D:5 reservoir.
+export function ogreWeaponDivisor(species) {
+    return species?.pmidx === PM_OGRE_TYRANT ? 3
+        : species?.pmidx === PM_OGRE_LEADER ? 6
+            : 12;
+}
+
 function setMimicCorpsenm(monster, value) {
     monster.mextra ??= {};
     monster.mextra.mcorpsenm = value;
@@ -548,6 +568,14 @@ function emitsLight(species) {
 function permanentlyInvisible(species) {
     return species?.pmidx === PM_STALKER
         || species?.pmidx === PM_BLACK_LIGHT;
+}
+
+// C ref: makemon.c makemon(), the shared S_LIGHT/S_ELEMENTAL switch arm.
+// The class half matters: ordinary elementals do not inherit invisibility.
+export function startsPermanentlyInvisible(species) {
+    return (species?.mlet === S_LIGHT || species?.mlet === S_ELEMENTAL)
+        && (species?.pmidx === PM_STALKER
+            || species?.pmidx === PM_BLACK_LIGHT);
 }
 
 function redrawSquare(x, y, normalized) {
@@ -886,6 +914,19 @@ function isStatuaryReservoirSpecies(species) {
         && !(species.geno & (G_NOGEN | G_UNIQ | G_HELL));
 }
 
+// The selected ordinary level-teleport boundary generates through D:5. Its
+// rndmonst() reservoir extends below and above the D:1 set but remains in the
+// common non-unique, non-hell generated band. Inventory initialization still
+// fail-closes by source weapon class when a later species needs a new branch.
+function isOrdinaryD5ReservoirSpecies(species) {
+    return species.pmidx >= 0
+        && species.pmidx < SPECIAL_PM
+        && species.difficulty >= 0
+        && species.difficulty <= 9
+        && Boolean(species.geno & G_FREQ)
+        && !(species.geno & (G_NOGEN | G_UNIQ | G_HELL));
+}
+
 // dat/themerms.lua's Mausoleum chooses one of these four classes through
 // mkclass(..., G_NOGEN).  On D:1 the source can reach both ordinary liches,
 // every mummy, both non-unique vampires, and every generated zombie; the
@@ -899,11 +940,21 @@ function isMausoleumSpecies(species) {
 }
 
 function assertSupportedSpecies(species) {
+    const courtSpecies = species
+        && (species.pmidx === PM_BUGBEAR
+            || species.pmidx === PM_DWARF_RULER
+            || species.pmidx === PM_GNOME_RULER
+            || species.pmidx === PM_HOBGOBLIN
+            || species.mlet === S_KOBOLD
+            || species.mlet === S_GNOME
+            || species.mlet === S_ORC);
     if (!species
         || (!INITIAL_LEVEL_MONSTERS.has(species.pmidx)
             && !TUTORIAL_LEVEL_MONSTERS.has(species.pmidx)
             && !isStatuaryReservoirSpecies(species)
-            && !isMausoleumSpecies(species))) {
+            && !isOrdinaryD5ReservoirSpecies(species)
+            && !isMausoleumSpecies(species)
+            && !courtSpecies)) {
         throw new UnsupportedMonsterCreationError(
             `monster ${species?.pmidx ?? 'null'}`,
         );
@@ -1242,7 +1293,29 @@ function m_initweap(monster, normalized) {
         }
         break;
     case S_HUMANOID:
-        if (ptr.mflags2 & M2_DWARF) {
+        if (ptr.pmidx === PM_HOBBIT) {
+            switch (random.rn2(3)) {
+            case 0:
+                mongets(monster, DAGGER, normalized);
+                break;
+            case 1:
+                mongets(monster, ELVEN_DAGGER, normalized);
+                break;
+            case 2:
+                mongets(monster, SLING, normalized);
+                m_initthrow(
+                    monster,
+                    !random.rn2(4) ? FLINT : ROCK,
+                    6,
+                    normalized,
+                );
+                break;
+            }
+            if (!random.rn2(10))
+                mongets(monster, ELVEN_MITHRIL_COAT, normalized);
+            if (!random.rn2(10))
+                mongets(monster, DWARVISH_CLOAK, normalized);
+        } else if (ptr.mflags2 & M2_DWARF) {
             if (random.rn2(7))
                 mongets(monster, DWARVISH_CLOAK, normalized);
             if (random.rn2(7)) mongets(monster, IRON_SHOES, normalized);
@@ -1315,14 +1388,19 @@ function m_initweap(monster, normalized) {
     case S_OGRE:
         mongets(
             monster,
-            !random.rn2(12) ? BATTLE_AXE : CLUB,
+            !random.rn2(ogreWeaponDivisor(ptr)) ? BATTLE_AXE : CLUB,
             normalized,
         );
         break;
     case S_CENTAUR:
         if (random.rn2(2)) {
-            mongets(monster, CROSSBOW, normalized);
-            m_initthrow(monster, CROSSBOW_BOLT, 12, normalized);
+            if (ptr.pmidx === PM_FOREST_CENTAUR) {
+                mongets(monster, BOW, normalized);
+                m_initthrow(monster, ARROW, 12, normalized);
+            } else {
+                mongets(monster, CROSSBOW, normalized);
+                m_initthrow(monster, CROSSBOW_BOLT, 12, normalized);
+            }
         }
         break;
     default:
@@ -1667,6 +1745,21 @@ function armorExtraPreference(monster, obj) {
     return obj.otyp === SPEED_BOOTS && monster.permspeed !== MFAST ? 20 : 0;
 }
 
+// C ref: worn.c racial_exception().  raceptr(monster) is monster.data for a
+// non-hero monster; the source currently has one acceptable combination and
+// no unacceptable ones.
+export function racial_exception(monster, obj) {
+    if (monster.data.pmidx === PM_HOBBIT
+        && (obj.otyp === ELVEN_LEATHER_HELM
+            || obj.otyp === ELVEN_MITHRIL_COAT
+            || obj.otyp === ELVEN_CLOAK
+            || obj.otyp === ELVEN_SHIELD
+            || obj.otyp === ELVEN_BOOTS)) {
+        return 1;
+    }
+    return 0;
+}
+
 // C ref: worn.c update_mon_extrinsics(), for effects reachable from the
 // currently supported creation-time armor set.
 function updateMonsterArmorEffects(monster, obj, on, state) {
@@ -1750,9 +1843,10 @@ function m_dowear_type(
             && !isFlimsy(obj, state)) {
             continue;
         }
-        // No currently supported Statuary species has the hobbit/elven-suit
-        // racial exception, so a race-exception suit remains ineligible.
-        if (mask === W_ARM && racialException) continue;
+        if (mask === W_ARM && racialException
+            && racial_exception(monster, obj) < 1) {
+            continue;
+        }
         if (obj.owornmask) continue;
         if (best
             && ARM_BONUS(best, state) + armorExtraPreference(monster, best)
@@ -2473,11 +2567,9 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
             if (x && y) mkobj_at(RANDOM_CLASS, x, y, true, normalized);
             hideunder(monster, state);
         }
-    } else if (ptr.mlet === S_LIGHT) {
-        if (mndx === PM_BLACK_LIGHT) {
-            monster.perminvis = true;
-            monster.minvis = true;
-        }
+    } else if (startsPermanentlyInvisible(ptr)) {
+        monster.perminvis = true;
+        monster.minvis = true;
     } else if (ptr.mlet === S_LEPRECHAUN) {
         monster.msleeping = true;
     } else if (ptr.mlet === S_ORC && state.urace.mnum === PM_ELF) {
