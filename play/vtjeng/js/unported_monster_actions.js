@@ -29,7 +29,11 @@ import {
     STRAT_CLOSE,
 } from './const.js';
 import { newsym } from './display.js';
-import { dog_move, find_targ } from './dogmove.js';
+import {
+    best_target,
+    dog_move,
+    pet_ranged_attk,
+} from './dogmove.js';
 import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { any_light_source } from './light.js';
@@ -255,33 +259,34 @@ function cloneMonster(monster) {
     };
 }
 
-// Copy every object on this level's floor and in every monster's pack. A
-// monster picking an item up splits a stack, unlinks it from the pile and the
-// level list, and merges it into its own inventory, so without this the dry
-// run would empty the live square and change a live carried stack's quantity.
-// C has no counterpart: the dry run is this port's own device for keeping a
-// refusal atomic, and objects are shared state that device has to isolate,
-// exactly as it already isolates monsters, light sources and timers.
+// Copy every object on this level's floor, in the hero's inventory, and in
+// every monster's pack. A monster picking an item up splits a stack, unlinks
+// it from the pile and the level list, and merges it into its own inventory;
+// a newly created threat can also finish the hero's meal. Without these
+// copies the dry run would empty the live square or change a live carried
+// stack. C has no counterpart: the dry run is this port's own device for
+// keeping a refusal atomic, and objects are shared state that device has to
+// isolate, exactly as it already isolates monsters, light sources and timers.
 //
 // The discovery ledger is cloned beside this, in planningState(): naming an
 // object writes objects[].oc_encountered, svd.disco[] and artiexist[].found,
 // which the spread would otherwise share.
 //
-// The hero's belongings and the buried list stay shared, because no action the
-// scan admits writes to one: mpickstuff() and dog_invent()'s carry arm move an
-// object from the floor into a monster's pack, and dog_invent()'s drop arm
-// moves one back, and neither touches anything else. Extend this walk before
-// admitting an action that steals from the hero or digs.
+// The buried list stays shared because no admitted action digs. Hero inventory
+// must be cloned too: a runtime-created threat can stop an eating occupation,
+// and maybe_finished_meal(TRUE) can consume context.victual.piece. That pointer
+// and every top-level worn/inventory pointer must name this same copied graph.
 //
 // obj.v is C's union: nexthere on the floor, ocontainer inside a container,
 // and ocarry inside a monster's pack, so an inventory object's `v` remaps
 // through the monster map rather than the object map. The matching guard in
 // the walk keeps a carrier out of the object queue; it changes no result on
 // its own, since the remap already discriminates on `where`, and it exists so
-// that no `newObject({ ...monster })` is ever built. The two roots are the
-// level list and each monster's minvent, because obj.js keeps the level list
-// and the coordinate grid in step: place_object() writes both and
-// remove_object() refuses an object missing from either.
+// that no `newObject({ ...monster })` is ever built. The three root families
+// are the level object list, hero inventory, and each monster's minvent. The
+// coordinate grid needs no separate floor-object root because obj.js keeps it
+// in step with the level list: place_object() writes both and remove_object()
+// refuses an object missing from either.
 function cloneObjects(state, monsterMap) {
     const objectMap = new Map();
     const pending = [];
@@ -289,6 +294,7 @@ function cloneObjects(state, monsterMap) {
         if (obj && !objectMap.has(obj)) pending.push(obj);
     };
     enqueue(state.level?.objlist);
+    enqueue(state.invent);
     for (const monster of monsterMap.keys()) enqueue(monster.minvent);
     while (pending.length) {
         const original = pending.pop();
@@ -318,6 +324,22 @@ function planningState(state) {
         monsterMap.set(monster, cloneMonster(monster));
     }
     const objectMap = cloneObjects(state, monsterMap);
+    const context = structuredClone(state.context);
+    const remapContextObject = (target, source, field) => {
+        const original = source?.[field];
+        if (!original) return;
+        const copy = objectMap.get(original);
+        if (!copy)
+            throw new Error(`planning clone: context.${field} outside objects`);
+        target[field] = copy;
+    };
+    remapContextObject(context.victual, state.context?.victual, 'piece');
+    remapContextObject(context.tin, state.context?.tin, 'tin');
+    const topLevelObjectPointers = {};
+    for (const [field, value] of Object.entries(state)) {
+        const copy = objectMap.get(value);
+        if (copy) topLevelObjectPointers[field] = copy;
+    }
     const clonedObject = (obj) => {
         if (!obj) return null;
         const copy = objectMap.get(obj);
@@ -425,7 +447,15 @@ function planningState(state) {
     };
     return {
         ...state,
-        context: structuredClone(state.context),
+        ...topLevelObjectPointers,
+        context,
+        // Hallucinatory runtime creation names use rnd.c's independent
+        // display stream.  A planned appearance must advance only this copy;
+        // otherwise a dry run changes later live glyphs even though every
+        // terminal operation is suppressed.
+        displayCtx: state.displayCtx
+            ? cloneIsaacContext(state.displayCtx)
+            : state.displayCtx,
         disp: structuredClone(state.disp),
         flags: structuredClone(state.flags),
         // distant_name() raises gd.distantname around a name it must not let
@@ -436,7 +466,12 @@ function planningState(state) {
         // has created it, and the leak needs both. The frozen-state case in
         // scripts/unported-monster-actions.test.mjs seeds gd to reach it.
         gd: { ...(state.gd ?? {}) },
+        gb: state.gb ? {
+            ...state.gb,
+            bhitpos: { ...(state.gb.bhitpos ?? {}) },
+        } : state.gb,
         gg: { ...state.gg },
+        gn: { ...(state.gn ?? {}) },
         gl: state.gl ? {
             ...state.gl,
             light_base: cloneLightList(state.gl.light_base),
@@ -447,6 +482,8 @@ function planningState(state) {
             timer_base: cloneTimerList(state.gt.timer_base),
         } : state.gt,
         gw: { ...(state.gw ?? {}) },
+        gs: { ...(state.gs ?? {}) },
+        gv: { ...(state.gv ?? {}) },
         head_engr: structuredClone(state.head_engr),
         iflags: structuredClone(state.iflags),
         level,
@@ -647,21 +684,6 @@ async function moveSimpleOrdinary(monster, env) {
     });
 }
 
-function rejectPetRangedTarget(monster, _forced, env) {
-    if (!monster.mcansee) return MMOVE_NOTHING;
-    for (let dy = -1; dy <= 1; ++dy) {
-        for (let dx = -1; dx <= 1; ++dx) {
-            if (!dx && !dy) continue;
-            const target = find_targ(monster, dx, dy, 7, env);
-            // score_targ() rejects the remembered hero before its random
-            // fuzz. Any monster target enters the unowned scoring branch.
-            if (target && target !== env.state.youmonst)
-                unsupported('pet ranged targeting');
-        }
-    }
-    return MMOVE_NOTHING;
-}
-
 async function moveSimplePet(monster, after, env) {
     return dog_move(monster, after, {
         ...env,
@@ -671,7 +693,7 @@ async function moveSimplePet(monster, after, env) {
             m_avoid_kicked_loc(subject, x, y, env.state),
         avoidSokobanPush: (subject, x, y) =>
             m_avoid_soko_push_loc(subject, x, y, env.state),
-        bestTarget: () => unsupported('pet ranged targeting'),
+        bestTarget: best_target,
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         digWeaponCheck: () => false,
         displaceMonster: () => unsupported('pet displacement'),
@@ -687,7 +709,7 @@ async function moveSimplePet(monster, after, env) {
         // may still refuse.
         message: env.planning ? async () => {} : ttyPline,
         monsterReflects: () => unsupported('pet combat evaluation'),
-        petRangedAttack: rejectPetRangedTarget,
+        petRangedAttack: pet_ranged_attk,
         redraw: env.planning ? () => {} : newsym,
         reportCursedStep: () => unsupported('pet cursed-object feedback'),
         resistsStone: () => unsupported('pet combat evaluation'),

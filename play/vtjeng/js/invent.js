@@ -1457,10 +1457,12 @@ export function obfree(obj, merge = null, rawEnv = {}) {
     dealloc_obj(obj, env);
 }
 
-// C ref: invent.c merged(). Returns true when `obj` was absorbed into otmp.
-export function merged(otmp, obj, env = {}) {
+// Mutation prefix of invent.c merged(), through the point immediately before
+// its comparison-discovery pline().  The live pickup path can suspend at that
+// call boundary before obfree() deletes the incoming object.
+function beginMerged(otmp, obj, env = {}) {
     const normalized = inventoryEnv(env);
-    if (!preflightMerged(otmp, obj, normalized)) return false;
+    if (!preflightMerged(otmp, obj, normalized)) return null;
 
     if (!obj.lamplit && !obj.globby) {
         obj.age = Math.trunc(obj.age);
@@ -1521,20 +1523,62 @@ export function merged(otmp, obj, env = {}) {
         }
         if (otmp.where === OBJ_DELETED || otmp.where === OBJ_LUAFREE)
             throw new Error('absorbGlob must preserve the target object');
-        return true;
+        return { normalized, target: otmp, object: null };
     }
-    if (discovered
+    const comparisonDiscovered = discovered
         && otmp.where === OBJ_INVENT
         && obj.how_lost !== LOST_THROWN
-        && otmp.how_lost !== LOST_THROWN) {
-        requiredHook(
-            normalized,
-            'inventoryComparisonDiscovered',
-            otmp,
-        )(otmp, normalized);
-    }
-    obfree(obj, otmp, normalized);
+        && otmp.how_lost !== LOST_THROWN;
+    return {
+        comparisonDiscovered,
+        normalized,
+        target: otmp,
+        object: obj,
+    };
+}
+
+function finishMerged(plan) {
+    if (plan.object)
+        obfree(plan.object, plan.target, plan.normalized);
     return true;
+}
+
+function isThenable(value) {
+    return typeof value?.then === 'function';
+}
+
+// C ref: invent.c merged(). Returns true when `obj` was absorbed into otmp.
+export function merged(otmp, obj, env = {}) {
+    const plan = beginMerged(otmp, obj, env);
+    if (!plan) return false;
+    if (plan.comparisonDiscovered) {
+        requiredHook(
+            plan.normalized,
+            'inventoryComparisonDiscovered',
+            plan.target,
+        )(plan.target, plan.normalized);
+    }
+    return finishMerged(plan);
+}
+
+// Runtime counterpart of merged().  ttyPline() can wait for --More--, and C
+// does not execute obfree() until that wait has finished.  Non-waiting merges
+// still complete synchronously so merely scanning incompatible stacks cannot
+// introduce an observable scheduling boundary.
+function mergedRuntime(otmp, obj, env = {}) {
+    const plan = beginMerged(otmp, obj, env);
+    if (!plan) return false;
+    if (plan.comparisonDiscovered) {
+        const wait = requiredHook(
+            plan.normalized,
+            'inventoryComparisonDiscovered',
+            plan.target,
+        )(plan.target, plan.normalized);
+        if (isThenable(wait)) {
+            return Promise.resolve(wait).then(() => finishMerged(plan));
+        }
+    }
+    return finishMerged(plan);
 }
 
 // Dependency-only prefix of invent.c merged().  Pickup plans an entire
@@ -1883,17 +1927,17 @@ export function preflight_addinv(obj, env = {}) {
 }
 
 function cloneInventoryForProjection(state) {
-    const sourceByProjected = new Map();
     let projectedHead = null;
     let projectedTail = null;
+    let projectedUquiver = null;
     for (let source = inventoryHead(state); source; source = source.nobj) {
         const projected = { ...source, nobj: null };
-        sourceByProjected.set(projected, source);
+        if (source === state.uquiver) projectedUquiver = projected;
         if (projectedTail) projectedTail.nobj = projected;
         else projectedHead = projected;
         projectedTail = projected;
     }
-    return { projectedHead, sourceByProjected };
+    return { projectedHead, projectedUquiver };
 }
 
 function projectMerge(target, incoming) {
@@ -1919,7 +1963,7 @@ function projectMerge(target, incoming) {
     return target;
 }
 
-function projectAddinv(obj, projectedEnv, sourceByProjected) {
+function projectAddinv(obj, projectedEnv) {
     const { state } = projectedEnv;
     obj.where = OBJ_FREE;
     obj.nobj = null;
@@ -1963,10 +2007,7 @@ function projectAddinv(obj, projectedEnv, sourceByProjected) {
         target.invlet = NOINVSYM;
         reassign(state);
     }
-    return {
-        projectedResult: target,
-        sourceResult: sourceByProjected.get(target) ?? null,
-    };
+    return { projectedResult: target };
 }
 
 // Plan a source-ordered series of invent.c addinv()/prinv() calls without
@@ -1976,7 +2017,7 @@ function projectAddinv(obj, projectedEnv, sourceByProjected) {
 // and every earlier selected object in the projected inventory.
 export function preflight_addinv_sequence(objects, env = {}, options = {}) {
     const normalized = inventoryEnv(env);
-    const { projectedHead, sourceByProjected } = cloneInventoryForProjection(
+    const { projectedHead, projectedUquiver } = cloneInventoryForProjection(
         normalized.state,
     );
     const projectedState = {
@@ -1985,9 +2026,7 @@ export function preflight_addinv_sequence(objects, env = {}, options = {}) {
         invent: projectedHead,
         lastinvnr: normalized.state.lastinvnr,
     };
-    projectedState.uquiver = [...sourceByProjected.entries()].find(
-        ([, source]) => source === normalized.state.uquiver,
-    )?.[0] ?? null;
+    projectedState.uquiver = projectedUquiver;
     const projectedEnv = { ...normalized, state: projectedState };
     resetJustPicked(projectedHead);
 
@@ -1998,21 +2037,16 @@ export function preflight_addinv_sequence(objects, env = {}, options = {}) {
             ...source,
             oextra: source.oextra ? { ...source.oextra } : source.oextra,
         };
-        sourceByProjected.set(projected, source);
         if (options.observeObjects && !isHallucinating(projectedEnv))
             projected.dknown = true;
-        const result = projectAddinv(
-            projected,
-            projectedEnv,
-            sourceByProjected,
-        );
+        const result = projectAddinv(projected, projectedEnv);
         plans.push({ ...plan, ...result });
     }
     return plans;
 }
 
-// C ref: invent.c addinv_core0() and addinv().
-export function addinv(obj, env = {}, prepared = null) {
+// Shared prefix of invent.c addinv_core0(), through addinv_core1().
+function beginAddinv(obj, env, prepared) {
     const plan = prepared ?? preflight_addinv(obj, env);
     if (prepared && plan.object !== obj)
         throw new Error('addinv: prepared plan belongs to another object');
@@ -2043,8 +2077,55 @@ export function addinv(obj, env = {}, prepared = null) {
         resetJustPicked(inventoryHead(state));
     }
 
-    let inserted = false;
     addinvCore1(obj, normalized, addinvFacts);
+    return {
+        addinvFacts,
+        carryEffects,
+        normalized,
+        state,
+        willConsiderAutoquiver,
+    };
+}
+
+function insertInventoryObject(obj, previous, state) {
+    assigninvlet(obj, state);
+    const fixedLetters = state.flags?.invlet_constant ?? true;
+    if (fixedLetters || !previous) {
+        obj.nobj = inventoryHead(state);
+        setInventoryHead(state, obj);
+        if (fixedLetters) reorderInventory(state);
+    } else {
+        previous.nobj = obj;
+        obj.nobj = null;
+    }
+    obj.where = OBJ_INVENT;
+}
+
+function finishAddinv(context, obj, inserted) {
+    const {
+        addinvFacts,
+        carryEffects,
+        normalized,
+        state,
+        willConsiderAutoquiver,
+    } = context;
+    if (inserted
+        && willConsiderAutoquiver
+        && shouldAutoquiver(obj, state))
+        setQuiver(obj, normalized);
+    obj.pickup_prev = true;
+    addinvCore2(obj, normalized, addinvFacts);
+    carry_obj_effects(obj, normalized, carryEffects);
+    update_inventory(normalized);
+    return obj;
+}
+
+// C ref: invent.c addinv_core0() and addinv().
+export function addinv(obj, env = {}, prepared = null) {
+    const context = beginAddinv(obj, env, prepared);
+    if (!context) return null;
+    const { normalized, state } = context;
+    let inserted = false;
     if (state.uquiver && merged(state.uquiver, obj, normalized)) {
         obj = state.uquiver;
     } else {
@@ -2057,30 +2138,48 @@ export function addinv(obj, env = {}, prepared = null) {
         if (current) {
             obj = current;
         } else {
-            assigninvlet(obj, state);
-            const fixedLetters = state.flags?.invlet_constant ?? true;
-            if (fixedLetters || !previous) {
-                obj.nobj = inventoryHead(state);
-                setInventoryHead(state, obj);
-                if (fixedLetters) reorderInventory(state);
-            } else {
-                previous.nobj = obj;
-                obj.nobj = null;
-            }
-            obj.where = OBJ_INVENT;
+            insertInventoryObject(obj, previous, state);
             inserted = true;
         }
     }
+    return finishAddinv(context, obj, inserted);
+}
 
-    if (inserted
-        && willConsiderAutoquiver
-        && shouldAutoquiver(obj, state))
-        setQuiver(obj, normalized);
-    obj.pickup_prev = true;
-    addinvCore2(obj, normalized, addinvFacts);
-    carry_obj_effects(obj, normalized, carryEffects);
-    update_inventory(normalized);
-    return obj;
+// Live pickup counterpart of addinv().  It preserves the synchronous API for
+// generation and startup callers while allowing invent.c merged()'s pline()
+// to suspend before obfree() and the addinv_core0() tail.
+export async function addinv_runtime(obj, env = {}, prepared = null) {
+    const context = beginAddinv(obj, env, prepared);
+    if (!context) return null;
+    const { normalized, state } = context;
+    let inserted;
+    let mergedObject;
+
+    if (state.uquiver) {
+        mergedObject = mergedRuntime(state.uquiver, obj, normalized);
+        if (isThenable(mergedObject))
+            mergedObject = await mergedObject;
+        if (mergedObject) obj = state.uquiver;
+    }
+    if (!mergedObject) {
+        let previous = null;
+        let current = inventoryHead(state);
+        while (current) {
+            mergedObject = mergedRuntime(current, obj, normalized);
+            if (isThenable(mergedObject))
+                mergedObject = await mergedObject;
+            if (mergedObject) break;
+            previous = current;
+            current = current.nobj;
+        }
+        if (current) {
+            obj = current;
+        } else {
+            insertInventoryObject(obj, previous, state);
+            inserted = true;
+        }
+    }
+    return finishAddinv(context, obj, inserted);
 }
 
 export function addinv_nomerge(obj, env = {}) {

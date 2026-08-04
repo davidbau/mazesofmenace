@@ -1146,7 +1146,7 @@ async function fprefx(otmp, state) {
 // from the command or from the occupation. Only statusRefresh differs, because
 // display.c bot() would close an import cycle with this file and arrives from
 // the caller instead.
-function eatOperations(state, statusRefresh) {
+function eatOperations(state, statusRefresh, message = ttyPline) {
     return {
         state,
         // C ref: mkobj.c weight()'s partly-eaten arms, which reach eat.c
@@ -1156,7 +1156,7 @@ function eatOperations(state, statusRefresh) {
         // splitobj() and obfree() each take their hookless path, and a hook
         // this meal did need would stop the command rather than be skipped.
         hooks: { eatenStat: eaten_stat },
-        message: ttyPline,
+        message,
         endRunning,
         // newuhs() resolves this only when the meal moves the hunger status,
         // which is the one place C's doeat() reaches bot().
@@ -1168,10 +1168,11 @@ function eatOperations(state, statusRefresh) {
 // installs at the end of start_eating(). allmain.c moveloop_core() runs it once
 // a turn and clears go.occupation when it answers 0.
 //
-// `env` carries only statusRefresh; every other operation is this file's own.
+// `env` carries the display operations that differ for the live game and an
+// atomic planning clone; every other operation is this file's own.
 export async function eatfood(state = game, env = {}) {
     const meal = victual(state);
-    const eatEnv = eatOperations(state, env.statusRefresh);
+    const eatEnv = eatOperations(state, env.statusRefresh, env.message);
     const food = meal.piece;
 
     // C ref: `if (food && !carried(food) && !obj_here(food, u.ux, u.uy))
@@ -1279,11 +1280,11 @@ async function start_eating(otmp, already_partly_eaten, state, env) {
 
     // C ref: `Sprintf(msgbuf, "eating %s", food_xname(otmp, TRUE));
     // set_occupation(eatfood, msgbuf, 0);`. msgbuf is a static buffer whose
-    // only reader is stop_occupation()'s "You stop %s." -- unported, so this
-    // text is stored and never printed yet.
+    // only reader is stop_occupation()'s "You stop %s." Runtime monster
+    // creation now reaches that owner through makemon()->dochugw(FALSE).
     //
-    // Three ported paths reach allmain.c stop_occupation() while the meal
-    // runs, and each stops the segment rather than printing:
+    // Three other paths can reach allmain.c stop_occupation() while the meal
+    // runs, and each remains refused before printing:
     //   - allmain.c moveloop_core():505-508, monster_nearby() after a bite,
     //     which js/allmain.js stops with "interrupted by a nearby monster";
     //   - monmove.c dochugw():223-235, a hostile spottable monster newly
@@ -1293,8 +1294,8 @@ async function start_eating(otmp, already_partly_eaten, state, env) {
     //     hack.c monster_nearby() scans the eight adjacent squares alone;
     //   - teleport.c rloc_to_core():1761-1762, whose whole tail js/teleport.js
     //     refuses.
-    // makemon.c:1503 holds a fourth call that cannot fire;
-    // js/makemon_create.js gives the reason where it would go.
+    // makemon.c:1503 is the supported fourth call. js/allmain.js owns its exact
+    // complete-meal versus "You stop eating ..." behavior.
     set_occupation(
         eatfood,
         `eating ${food_xname(otmp, true, state)}`,
@@ -1404,7 +1405,7 @@ export async function floorfood(verb, corpsecheck, state = game) {
 // two operations newuhs() needs are this file's own.
 export async function doeat(state = game, env = {}) {
     const u = state.u;
-    const eatEnv = eatOperations(state, env.statusRefresh);
+    const eatEnv = eatOperations(state, env.statusRefresh, env.message);
 
     if (u.uprops[STRANGLED].intrinsic) {
         await ttyPline(
