@@ -12,6 +12,7 @@ import {
     RUN_LEAP,
     RUN_STEP,
     RUN_TPORT,
+    STONE,
 } from './const.js';
 import {
     ROLE_ALIGNMASK,
@@ -328,6 +329,9 @@ function defaultResult() {
             versinfo: 1,
         },
         iflags: {
+            // options.c initializes instance_flags to zero, which is STONE.
+            // Its boolean handler restores this value on every toggle.
+            prev_decor: STONE,
             wc_color: true,
             wc_inverse: true,
             // optlist.h: use_darkgray is opt_out and defaults On.
@@ -1794,8 +1798,12 @@ function applyBooleanOption(result, name, value, negated, lineNumber) {
             type: 'rest_on_space',
             enabled,
         });
-    }
-    else if (name === 'showdamage') {
+    } else if (name === 'mention_decor') {
+        result.flags.mention_decor = enabled;
+        // C ref: options.c opt_mention_decor. A toggle forgets the terrain
+        // described under the previous setting.
+        result.iflags.prev_decor = STONE;
+    } else if (name === 'showdamage') {
         // optlist.h:654-655 stores showdamage in iflags, not flags, and
         // defaults it Off. hack.c showdamage() is its only reader.
         result.iflags.showdamage = enabled;
@@ -1820,6 +1828,7 @@ const HANDLED_BOOLEAN_OPTIONS = new Set([
     'altmeta', 'autoopen', 'cmdassist', 'extmenu', 'safe_pet', 'safe_wait',
     'pushweapon',
     'rest_on_space',
+    'mention_decor',
     'showdamage', 'showexp', 'time', 'verbose',
 ]);
 
@@ -1835,6 +1844,30 @@ function setWhatisCoord(result, value, negated, lineNumber) {
         optionError(lineNumber, `unknown whatis_coord parameter '${value}'`);
     }
     result.iflags.getpos_coords = mode;
+}
+
+// C ref: options.c optfn_pile_limit(). atoi() accepts an initial signed
+// decimal run and returns zero when there is none; the option handler then
+// replaces negative results with PILE_LIMIT_DFLT. Generic compound-option
+// validation rejects a missing positive value before this handler, while an
+// empty negated spelling means "never skip".
+function setPileLimit(result, value, negated, lineNumber) {
+    if (negated && value != null && value.length > 0) {
+        optionError(
+            lineNumber,
+            "'pile_limit' may not both have a value and be negated",
+        );
+    }
+    if (negated) {
+        result.flags.pile_limit = 0;
+        return;
+    }
+    if (value == null || value.length === 0) {
+        optionError(lineNumber, "'pile_limit' requires a value");
+    }
+    const match = value.match(/^[\t\n\v\f\r ]*[+-]?\d+/u);
+    const parsed = match ? Number.parseInt(match[0], 10) : 0;
+    result.flags.pile_limit = parsed < 0 ? 5 : parsed;
 }
 
 function sourceOptionMatch(parsedName) {
@@ -2085,6 +2118,8 @@ function applyOption(result, optionState, option, lineNumber) {
         setWhatisCoord(result, value, negated, lineNumber);
     } else if (name === 'runmode') {
         setRunmode(result, value, negated, lineNumber);
+    } else if (name === 'pile_limit') {
+        setPileLimit(result, value, negated, lineNumber);
     } else if (HANDLED_BOOLEAN_OPTIONS.has(name)) {
         applyBooleanOption(result, name, value, negated, lineNumber);
     } else if (value != null) {

@@ -137,8 +137,8 @@ import {
 import { curr_mon_load } from './mon.js';
 import { m_at, place_monster, remove_monster } from './monst.js';
 import { can_fog, closed_door, onscary, youHear } from './monmove.js';
-import { check_here } from './pickup.js';
-import { in_out_region, inside_region } from './region.js';
+import { pickup } from './pickup.js';
+import { in_out_region, inside_region, visible_region_at } from './region.js';
 import { rn2, rnd } from './rng.js';
 import { check_special_room } from './rooms.js';
 import {
@@ -607,8 +607,8 @@ function refusedDiagonalDoorway(x, y, state) {
 
 // This repeated-command boundary owns entry into an unoccupied ROOM, CORR, or
 // IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR or
-// D_ISOPEN, plus the ordinary single-object description produced when
-// autopickup is disabled. These checks are a temporary admission seam in front
+// D_ISOPEN, plus the sighted object descriptions produced when autopickup is
+// disabled. These checks are a temporary admission seam in front
 // of hack.c:domove_core(); each rejected branch will move to its upstream owner
 // when that behavior is ported.
 export function requireSimpleHeroDestination(x, y, state) {
@@ -670,22 +670,41 @@ export function requireSimpleHeroDestination(x, y, state) {
         throw new UnsupportedHeroMoveBoundaryError('decor description');
     }
     const floorObject = state.level?.objects?.[x]?.[y] ?? null;
+    // cmd.c set_move_cmd() copies a pending reqmenu prefix to context.nopick
+    // before domove(). executeMovement() runs this temporary admission seam
+    // first, so read the pending prefix as the same movement intent here.
+    const noPickMove = Boolean(
+        state.context?.nopick || state.iflags?.menu_requested,
+    );
     if (sobj_at(BOULDER, x, y, state))
         throw new UnsupportedHeroMoveBoundaryError('boulder movement');
-    if (floorObject && state.flags?.pickup)
+    if (floorObject && state.flags?.pickup && !noPickMove)
         throw new UnsupportedHeroMoveBoundaryError('automatic pickup');
-    if (floorObject?.nexthere) {
+    if (floorObject && !noPickMove && !floorObject.nexthere
+        && state.flags?.pile_limit > 0
+        && state.flags.pile_limit <= 1) {
+        throw new UnsupportedHeroMoveBoundaryError(
+            'single-object skipped-pile count',
+        );
+    }
+    if (floorObject?.nexthere && !noPickMove) {
         let pileCount = 0;
         for (let object = floorObject; object; object = object.nexthere)
             ++pileCount;
-        if (pileCount < 2 || pileCount > 4) {
+        const skipObjects = state.flags?.pile_limit > 0
+            && pileCount >= state.flags.pile_limit;
+        // The count arm deliberately bypasses look_here()'s region line.  A
+        // visible region therefore remains outside this slice even when both
+        // endpoints are already inside it and in_out_region() has no crossing
+        // to report.
+        if (skipObjects && visible_region_at(x, y, state)) {
             throw new UnsupportedHeroMoveBoundaryError(
-                'object pile outside the two-to-four-item window',
+                'visible region over skipped-pile count',
             );
         }
-        if (location.typ !== ROOM && location.typ !== CORR) {
+        if (pileCount < 2 || (!skipObjects && pileCount > 4)) {
             throw new UnsupportedHeroMoveBoundaryError(
-                'decorated object pile',
+                'object pile outside the two-to-four-item window',
             );
         }
         if (state.flags?.mention_decor) {
@@ -696,12 +715,13 @@ export function requireSimpleHeroDestination(x, y, state) {
         if (heroIsBlind(state)) {
             throw new UnsupportedHeroMoveBoundaryError('blind object pile');
         }
-        if (state.flags?.pile_limit > 0
-            && pileCount >= state.flags.pile_limit) {
-            throw new UnsupportedHeroMoveBoundaryError('skipped-pile count');
+        // invent.c look_here() never calls doname_with_price() when the
+        // threshold selects its count line. Keep nameability as a menu-only
+        // preflight so the message path admits every ordinary pile count.
+        if (!skipObjects) {
+            for (let object = floorObject; object; object = object.nexthere)
+                assertObjectNameable(object, state);
         }
-        for (let object = floorObject; object; object = object.nexthere)
-            assertObjectNameable(object, state);
     }
     // invent.c look_here()'s blind arm names what the hero feels underfoot,
     // and dungeon.c surface() (1750-1787) answers per terrain: "altar",
@@ -2007,10 +2027,12 @@ export async function spoteffects(pick, state = game) {
         throw new UnsupportedHeroMoveBoundaryError('dosinkfall()');
     }
     if (!state.in_steed_dismounting) {
-        // C ref: pickup(1) -> check_here(). pickup()'s own arms need
-        // describe_decor(), read_engr_at() and autopickup, all of which
-        // requireSimpleHeroDestination() refuses ahead of this call.
-        if (pick) await check_here(false, state);
+        // C ref: pickup(1). Object-bearing squares use its real movement
+        // consumer so the no-pick arm returns before check_here(). Object-free
+        // ROOM and CORR squares remain inert at this temporary seam until
+        // describe_decor() and prev_decor are ported.
+        const objectHere = state.level?.objects?.[state.u.ux]?.[state.u.uy];
+        if (pick && objectHere) await pickup(1, state);
     }
 }
 
