@@ -2,38 +2,88 @@
 //
 // Runs the generated sys/unix/unixmain.c main() under a libc/tty shim layer,
 // driven by a replay descriptor ({seed, datetime, nethackrc, moves, storage}):
-//   - FS overlay: reads fall through to the real install dir, writes land in
-//     an in-memory overlay; the overlay persists across segments via
-//     input.storage (Web-Storage-shaped handle from the judge).
+//   - VFS: a pure in-memory filesystem. The read-only base layer is the
+//     NetHack playground vendored as JS modules (../../data/nethackdir),
+//     writes land in an overlay that persists across segments via
+//     input.storage (Web-Storage-shaped handle from the judge). Nothing here
+//     touches the real filesystem — the judge runs us under `node
+//     --permission` (no fs writes, reads confined to the fork tree) and the
+//     same code has to work in a browser.
 //   - env table: getenv → TERM, NETHACK_FIXED_DATETIME, NETHACK_SEED, ...
 //   - unix/libc syscalls not in the corpus: users, signals, tty ioctls.
 //   - keyboard input queue: generated tty_nhgetch reads from here.
 //   - screen capture: nomux markers (\x1b]7777;...) parsed from stdout.
 //
-// Each segment boots a FRESH module graph (query-string cache busting), so
-// per-segment C state never leaks across segments of a session.
+// Each segment boots a FRESH copy of the transpiled module graph, so
+// per-segment C state never leaks across segments of a session — see
+// js/boot/isolation.mjs for how that fork is arranged.
 //
 // Used by js/jsmain.js (contest runSegment) and js/boot/boot.mjs (CLI).
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// The vendored playground. Relative specifier so this resolves the same way
+// from Node and from a browser module graph; it lives outside js/ on purpose
+// (baked game data is not hand-written port code — see tools/vendor-data.mjs).
+import { DIRS as VENDORED_DIRS, readVendored, statVendored } from '../../data/nethackdir/index.mjs';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-// nh_getenv() rejects values longer than 128 chars — the real install path is
-// longer than that, so present a short symlink as NETHACKDIR.
-const HACKDIR_REAL = path.join(repoRoot, 'nethack-c/recorder/install/games/lib/nethackdir');
+// Mount point of the playground inside the VFS. nh_getenv() rejects values
+// longer than 128 chars, and the C code copies this into fixed-size buffers,
+// so keep it short. This is a purely virtual path — it never reaches a real
+// filesystem — but it is kept byte-identical to the path the pre-VFS harness
+// symlinked into /tmp so that any C string built from it is unchanged.
 const HACKDIR = '/tmp/c2js-nethackdir';
-try { if (fs.readlinkSync(HACKDIR) !== HACKDIR_REAL) { fs.unlinkSync(HACKDIR); fs.symlinkSync(HACKDIR_REAL, HACKDIR); } }
-catch { fs.symlinkSync(HACKDIR_REAL, HACKDIR); }
+// Likewise virtual $HOME. Purely virtual — it never reaches a real
+// filesystem — but its TEXT is observable: option_help() ('O' then '?')
+// prints "Set options as OPTIONS=<options> in %s" with get_configfile(),
+// i.e. $HOME/.nethackrc, and the tty text window puts an over-long path on
+// its own line truncated to 79 columns. seed2200 step 158 records
+//   /Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/resul
+// so $HOME in the recorder was that directory (visible prefix only; the
+// recording cuts it at 79 chars). Reproducing the recorder's $HOME is the
+// same kind of environment pinning as the fixed datetime/timezone: nothing
+// here touches the host. Keep it >= 79 chars so the truncation still lands
+// in the same place, and keep the basename ".nethackrc" so
+// nh_basename(get_configfile()) — shown in the 'O' menu — is unchanged.
+// Tail beyond the recording's 79-column truncation corroborated against
+// Alex Serrano (serteal)'s fork, which pins the identical string:
+// github.com/serteal/teleport-contest tools/c2js/host/nhjs_tty_api.c:21
+// (NHJS_RC_PATH, commit 1d90456) — derived independently here, cited per
+// project attribution policy.
+const VHOME = '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/results';
 
 let __segCounter = 0;
 
+// Byte<->string helpers. atob/btoa rather than node:Buffer: the whole point of
+// the VFS rework is that this file has no Node-only dependencies left.
+// Node/browser-neutral accessors for the two host bits this file still wants.
+const ENV_C2JS_NOMUX = (typeof process !== 'undefined' && process.env) ? process.env.C2JS_NOMUX : '';
+const traceOut = (typeof process !== 'undefined' && process.stderr)
+  ? (s) => process.stderr.write(s)
+  : (s) => console.error(s);
+
+function bytesOfString(s) {
+  const u = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 0xFF;
+  return u;
+}
+function b64ToBytes(s) {
+  const bin = atob(s);
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i) & 0xFF;
+  return u;
+}
+function bytesToB64(u) {
+  let s = '';
+  // Chunked: String.fromCharCode(...spread) blows the stack on big saves.
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 /**
- * Boot one segment of the transpiled game. NOTE: generated modules are plain
- * imports — C module state persists across calls within one process. For
- * per-segment isolation use js/boot/worker.mjs (one child process per
- * segment), which is what js/jsmain.js's runSegment does.
+ * Boot one segment of the transpiled game. NOTE: the generated modules this
+ * pulls in are per-module-graph state — calling runBootGame twice on the same
+ * copy of this module replays into the previous segment's C globals. Callers
+ * that need per-segment isolation must import this module through
+ * js/boot/isolation.mjs's `?c2jsseg=N` tag (js/jsmain.js does).
  * @param {{seed: number|string, datetime: string, nethackrc: string,
  *          moves: string, storage?: object, trace?: boolean,
  *          stdoutSink?: (s: string) => void}} opts
@@ -49,8 +99,7 @@ export async function runBootGame(opts) {
   const stdoutSink = opts.stdoutSink || null;
   const segId = ++__segCounter;
 
-  const tmpHome = fs.mkdtempSync('/tmp/c2js-boot-');
-  if (opts.nethackrc) fs.writeFileSync(path.join(tmpHome, '.nethackrc'), opts.nethackrc);
+  const tmpHome = VHOME;
   const ENV = {
     TERM: 'ansi',
     HOME: tmpHome,
@@ -58,40 +107,70 @@ export async function runBootGame(opts) {
     NETHACK_FIXED_DATETIME: datetime,
     NETHACK_RNGLOG: 'memory',
     NETHACK_SEED: seed,
-    NOMUX_MARKERS: process.env.C2JS_NOMUX || '1',
+    NOMUX_MARKERS: ENV_C2JS_NOMUX || '1',
   };
 
-  // ---------------- FS overlay (persisted across segments via storage) ------
+  // ---------------- VFS: vendored base + write overlay ----------------------
+  //
+  // Three layers, highest first:
+  //   overlay   writes made by the game (save/level/bones files, record,
+  //             logfile, ...). Persisted across segments via `storage`.
+  //   bootFiles per-boot injected files ($HOME/.nethackrc). Not persisted —
+  //             the judge hands us the rc text on every segment anyway, and
+  //             keeping it out of the overlay keeps `storage` to game state.
+  //   vendored  the read-only playground baked into data/nethackdir.
+  //
+  // unlink() removes only from the overlay, exactly as the pre-VFS harness did
+  // (it could never delete the real install dir either), so a vendored file
+  // stays visible after the game unlinks it. getlock()/eraseoldlocks() depend
+  // on that: the stale alock.* left behind by the C recorder must stay readable.
 
   let currentDir = '/';
   const resolveP = (p) => (p.startsWith('/') ? p : (currentDir === '/' ? '/' + p : currentDir + '/' + p));
+
+  const HACKDIR_PREFIX = HACKDIR + '/';
+  const vendoredName = (p) => (p.startsWith(HACKDIR_PREFIX) ? p.slice(HACKDIR_PREFIX.length) : null);
+  const VFS_DIRS = new Set(['/', '/tmp', HACKDIR, VHOME, ...VENDORED_DIRS.map((d) => HACKDIR_PREFIX + d)]);
+
+  const bootFiles = new Map();
+  if (opts.nethackrc) bootFiles.set(VHOME + '/.nethackrc', bytesOfString(opts.nethackrc));
+
   const overlay = new Map();
   if (storage) {
     try {
       const raw = storage.getItem('c2js-overlay');
-      if (raw) for (const [k, b64] of Object.entries(JSON.parse(raw))) overlay.set(k, new Uint8Array(Buffer.from(b64, 'base64')));
+      if (raw) for (const [k, b64] of Object.entries(JSON.parse(raw))) overlay.set(k, b64ToBytes(b64));
     } catch {}
   }
   const persistOverlay = () => {
     if (!storage) return;
     try {
       const o = {};
-      for (const [k, v] of overlay) o[k] = Buffer.from(v).toString('base64');
+      for (const [k, v] of overlay) o[k] = bytesToB64(v);
       storage.setItem('c2js-overlay', JSON.stringify(o));
     } catch {}
   };
   const realRead = (p) => {
     p = resolveP(p);
     if (overlay.has(p)) return overlay.get(p);
-    try { return new Uint8Array(fs.readFileSync(p)); } catch { return null; }
+    if (bootFiles.has(p)) return bootFiles.get(p).slice();
+    const v = vendoredName(p);
+    // .slice(): callers may mutate what they get back (ungetc pushes a byte
+    // into fd.data), and the vendored decode cache is shared.
+    if (v !== null) { const b = readVendored(v); if (b) return b.slice(); }
+    return null;
   };
   const realStat = (p) => {
     p = resolveP(p);
     if (overlay.has(p)) return { exists: true, size: overlay.get(p).length, isDir: false, isFile: true, mtime: 0 };
-    try {
-      const st = fs.statSync(p);
-      return { exists: true, size: st.size, isDir: st.isDirectory(), isFile: st.isFile(), mtime: Math.floor(st.mtimeMs / 1000) };
-    } catch { return { exists: false, size: 0, isDir: false, isFile: false, mtime: 0 }; }
+    if (bootFiles.has(p)) return { exists: true, size: bootFiles.get(p).length, isDir: false, isFile: true, mtime: 0 };
+    const v = vendoredName(p);
+    if (v !== null) {
+      const st = statVendored(v);
+      if (st) return { exists: true, size: st.size, isDir: false, isFile: true, mtime: st.mtime };
+    }
+    if (VFS_DIRS.has(p)) return { exists: true, size: 0, isDir: true, isFile: false, mtime: 0 };
+    return { exists: false, size: 0, isDir: false, isFile: false, mtime: 0 };
   };
   const realWrite = (p, bytes) => { overlay.set(resolveP(p), bytes); };
 
@@ -106,25 +185,41 @@ export async function runBootGame(opts) {
   function openFd(p, mode) {
     const fd = nextFd++;
     if (mode === 'w' || mode === 'w+') {
-      fds.set(fd, { path: p, pos: 0, written: [], write: true });
+      // truncating open: the file becomes exactly what this fd writes
+      fds.set(fd, { path: p, pos: 0, written: [], write: true, trunc: true, base: null, wbase: 0 });
       realWrite(p, new Uint8Array(0));
     } else {
-      const data = realRead(p);
+      const append = mode === 'a' || mode === 'a+';
+      const data = realRead(p) || (append ? new Uint8Array(0) : null);
       if (!data) { setErrno(2); return -1; }
-      fds.set(fd, { path: p, pos: 0, data, written: [], write: mode !== 'r' });
+      const wbase = append ? data.length : 0;
+      fds.set(fd, { path: p, pos: wbase, data, written: [], write: mode !== 'r', trunc: false, base: data, wbase });
     }
     return fd;
   }
   function fdFlush(fd) {
     const f = fds.get(fd);
-    if (f && f.write) realWrite(f.path, new Uint8Array(f.written));
+    if (!f || !f.write) return;
+    if (f.trunc) { realWrite(f.path, new Uint8Array(f.written)); return; }
+    // Non-truncating open (O_RDWR / "r+" / "a"): the file keeps its existing
+    // bytes and this fd's writes overlay them from the position it opened at.
+    // Flushing `written` wholesale truncated the file instead — files.c
+    // check_recordfile() opens `record` O_RDWR purely to prove it exists and
+    // closes it without writing, which wiped the high-score list at the end
+    // of every segment, so seed0030 showed only the current game's death.
+    if (!f.written.length) return;
+    const base = f.base || new Uint8Array(0);
+    const outb = new Uint8Array(Math.max(base.length, f.wbase + f.written.length));
+    outb.set(base, 0);
+    outb.set(Uint8Array.from(f.written), f.wbase);
+    realWrite(f.path, outb);
   }
 
   // ---------------- output collection + shims ----------------
 
   const stdoutChunks = [];
   const out = (s) => { stdoutChunks.push(s); if (stdoutSink) stdoutSink(s); };
-  const err = (s) => { if (trace) process.stderr.write(s); };
+  const err = (s) => { if (trace) traceOut(s); };
 
   const inputQueue = [];
   // The canonical sessions were captured under tmux, whose pty line discipline
@@ -135,7 +230,7 @@ export async function runBootGame(opts) {
   const g = globalThis;
   const cptr = await import('../cptr.js');
   let __traceN = 0;
-  function __trace(...a) { if (trace && ++__traceN <= 400) process.stderr.write('[trace] ' + a.map(String).join(' ') + '\n'); }
+  function __trace(...a) { if (trace && ++__traceN <= 400) traceOut('[trace] ' + a.map(String).join(' ') + '\n'); }
 
   g.getenv = (name) => { __trace('getenv', name && name.buf ? cptr.cstr(name) : name);
     name = typeof name === 'string' ? name : cptr.cstr(name);
@@ -167,6 +262,7 @@ export async function runBootGame(opts) {
       }
       return dst;
     }
+    dst = cptr.span(dst, n); // subarray views: widen when span crosses the view end
     for (let i = 0; i < n; i++) cptr.st1(cptr.add(dst, i), val);
     return dst;
   }
@@ -222,6 +318,9 @@ export async function runBootGame(opts) {
   g.memchr = (p, c, n) => { c = Number(c) & 0xFF; for (let i = 0; i < Number(n); i++) { if (p.buf[p.off + i] === c) return cptr.add(p, i); } return null; };
   g.memcmp = (a, b, n) => { n = Number(n); for (let i = 0; i < n; i++) { const d = (a.buf[a.off + i] ?? 0) - (b.buf[b.off + i] ?? 0); if (d) return d; } return 0; };
   g.memmove = (dst, src, n) => cptr.memcpy(dst, src, n);
+  g.strspn = (s, accept) => { const a = cptr.cstr(accept); const t = cptr.cstr(s); let i = 0; while (i < t.length && a.includes(t[i])) i++; return BigInt(i); };
+  g.strcspn = (s, reject) => { const r = cptr.cstr(reject); const t = cptr.cstr(s); let i = 0; while (i < t.length && !r.includes(t[i])) i++; return BigInt(i); };
+  g.strpbrk = (s, accept) => { const a = cptr.cstr(accept); const t = cptr.cstr(s); for (let i = 0; i < t.length; i++) if (a.includes(t[i])) return cptr.add(s, i); return null; };
   g.memset = (dst, val, n) => memsetAny(dst, val, Number(n));
   g.atol = (p) => BigInt(g.atoi(p));
   g.strtoul = (p, endptr, base) => {
@@ -488,19 +587,47 @@ export async function runBootGame(opts) {
   g.cfgetispeed = () => 13;
   g.cfgetospeed = () => 13;
 
+  // Timezone the recording was made in, as a fixed offset from UTC.
+  //
+  // NETHACK_FIXED_DATETIME is a *wall-clock* string; calendar.c turns it
+  // into a time_t with mktime(), i.e. through the recording machine's
+  // timezone, and it copies tm_isdst from the real clock at record time,
+  // so one constant offset applies to every session regardless of the
+  // simulated date. Interpreting the string in the *host's* local zone
+  // instead (what this used to do) makes the port's output depend on
+  // where it runs: the absolute value of ubirthday feeds shknam.c's
+  //     nseed = (int)((long) ubirthday / 257L);
+  //     name_wanted += ledger_no() + (nseed % 13) - (nseed % 5);
+  // which picks the shopkeeper's name out of shkarmors[] &c. Recorded
+  // seed0002 names the armor shopkeeper "Ermenak" (index 9); a host in
+  // US Central produced "Kadirli" (index 11), and -04:00 is the offset
+  // that reproduces the recording. Wall-clock-only consumers (night(),
+  // yyyymmddhhmmss(), phase_of_the_moon()) round-trip unchanged because
+  // localtime()/mktime() below use the same constant.
+  const REC_UTC_OFFSET_SEC = -4 * 3600;
+
   g.time = (tloc) => { __trace('time');
-    const t = BigInt(Math.floor(new Date(
+    const t = BigInt(Math.floor(Date.UTC(
       Number(datetime.slice(0, 4)), Number(datetime.slice(4, 6)) - 1, Number(datetime.slice(6, 8)),
       Number(datetime.slice(8, 10)), Number(datetime.slice(10, 12)), Number(datetime.slice(12, 14))
-    ).getTime() / 1000));
+    ) / 1000) - REC_UTC_OFFSET_SEC);
     if (tloc && tloc.isBox) tloc.v = t;
     else if (tloc && tloc.buf !== undefined) cptr.stU64(tloc, t);
     return t;
   };
   g.localtime = (tp) => {
     const t = Number(cptr.ldU64(tp));
-    const d = new Date(t * 1000);
-    const tm = { sec: d.getSeconds(), min: d.getMinutes(), hour: d.getHours(), mday: d.getDate(), mon: d.getMonth(), year: d.getFullYear() - 1900, wday: d.getDay(), yday: 0, isdst: 0 };
+    const d = new Date((t + REC_UTC_OFFSET_SEC) * 1000);
+    // tm_yday must be real: hacklib.c's phase_of_the_moon() is
+    //   ((((tm_yday + epact) * 6) + 11) % 177) / 22) & 7
+    // so a hardcoded 0 silently shifts the moon phase, which decides
+    // whether the game opens with "Be careful!  New moon tonight." /
+    // "You are lucky!  Full moon tonight." — a pline whose --More--
+    // also shifts every following keystroke. Compute it from UTC
+    // midnights so a DST boundary inside the year can't skew the count.
+    const yday = Math.round((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+      - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000);
+    const tm = { sec: d.getUTCSeconds(), min: d.getUTCMinutes(), hour: d.getUTCHours(), mday: d.getUTCDate(), mon: d.getUTCMonth(), year: d.getUTCFullYear() - 1900, wday: d.getUTCDay(), yday, isdst: 0 };
     return makeTm(tm);
   };
   function makeTm(t) {
@@ -512,8 +639,8 @@ export async function runBootGame(opts) {
   }
   g.mktime = (tm) => {
     const rd = (o) => cptr.ldI32(cptr.add(tm, o));
-    const d = new Date(rd(20) + 1900, rd(16), rd(12), rd(8), rd(4), rd(0));
-    return BigInt(Math.floor(d.getTime() / 1000));
+    const ms = Date.UTC(rd(20) + 1900, rd(16), rd(12), rd(8), rd(4), rd(0));
+    return BigInt(Math.floor(ms / 1000) - REC_UTC_OFFSET_SEC);
   };
   g.difftime = (a, b) => Number(a) - Number(b);
   g.strftime = (buf, max, fmt, tm) => { cptr.writeStr(buf, cptr.cstr(fmt)); return 0; };
@@ -646,7 +773,16 @@ export async function runBootGame(opts) {
     ti: '', te: '', ks: '', ke: '', eA: '', Ic: '', vi: '', ve: '', vs: '',
     as: '\x0e', ae: '\x0f', AF: '\x1b[3%dm', Sf: '\x1b[3%dm', AB: '\x1b[4%dm',
   };
-  const TERMCAP_NUM = { co: 80, li: 24, sg: -1, ug: -1, Co: 8, pa: 64, NC: 0 };
+  // "Co" (max colors) has to report a 256-color terminal, the way the
+  // recorder's terminal did. termcap.c stores it in iflags.colorcount, and
+  // wintty.c only honors a glyph's symset custom color when
+  //     (wincap2 & WC2_EXTRACOLORS) && gm.customcolor && colorcount >= 256
+  // With Co=8 that branch never ran, so the per-branch wall colors the
+  // DECgraphics symset defines — "G_vwall_sokoban: /blue",
+  // "G_vwall_mines: /brown", the red Gehennom walls — silently fell back to
+  // wallcolors[], which is CLR_GRAY for every branch. Every Sokoban/Mines/
+  // Gehennom map cell then rendered uncolored against the recording.
+  const TERMCAP_NUM = { co: 80, li: 24, sg: -1, ug: -1, Co: 256, pa: 64, NC: 0 };
   const TERMCAP_FLG = { am: 1, bs: 0, os: 0, ul: 0 };
   g.tgetent = (bp, name) => 1;
   g.tgetstr = (cap, area) => {
@@ -707,6 +843,20 @@ export async function runBootGame(opts) {
   persistOverlay();
 
   // ---- parse nomux markers from stdout ----
+  // Screen-string canonicalization: the recorded C screens are stored in a
+  // canonical wire form where any run of 5 or more spaces on a line is a
+  // cursor-forward escape (ESC[<n>C) rather than literal spaces — verified
+  // over the whole corpus: 271521 recorded lines, zero contain a run of 5
+  // literal spaces, while 4-space runs are common. Cursor-forward leaves
+  // those cells untouched, so they decode as blank with DEFAULT attributes.
+  // Our screen string comes straight out of the transpiled shadow-buffer
+  // serializer (nomux_capture_screen), which writes literal spaces carrying
+  // whatever SGR span was active. Whenever an attribute span covers padding
+  // — an inverse menu heading ("Name<17 spaces>Level Category"), a bold
+  // topten line — those padding cells decode as inverse/bold spaces and
+  // mismatch the recording. Applying the recorder's own collapse rule puts
+  // both sides in the same canonical form.
+  const canonicalizeScreen = (s) => s.replace(/ {5,}/g, (m) => `\x1b[${m.length}C`);
   const stdout = stdoutChunks.join('');
   const frames = [];
   {
@@ -721,7 +871,7 @@ export async function runBootGame(opts) {
       frames.push({
         kind: kv.KIND, seq: Number(kv.SEQ), anim: Number(kv.ANIM),
         cx: Number(kv.CX), cy: Number(kv.CY),
-        screen: stdout.slice(end + 1, end + 1 + len),
+        screen: canonicalizeScreen(stdout.slice(end + 1, end + 1 + len)),
       });
       i = end + 1 + len;
     }

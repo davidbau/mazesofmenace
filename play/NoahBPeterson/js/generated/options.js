@@ -8579,12 +8579,12 @@ function optfn_statushilites(optidx, req, negated, opts, op) {
     }
     if (req == 2) {
         if (negated) {
-            cptr.stU64(cptr.add(iflags, 152), 0n);
+            cptr.stI64(cptr.add(iflags, 152), 0n);
         } else {
             op = string_for_opt(opts, (1));
-            cptr.stU64(cptr.add(iflags, 152), (cptr.eq(op, cptr.decay(empty_optstr)) || !cptr.ld1s(op) ? 1 : 0) ? 3n : atol(op));
+            cptr.stI64(cptr.add(iflags, 152), (cptr.eq(op, cptr.decay(empty_optstr)) || !cptr.ld1s(op) ? 1 : 0) ? 3n : atol(op));
             if (cptr.ldI64(cptr.add(iflags, 152)) < 0n)
-                cptr.stU64(cptr.add(iflags, 152), 1n);
+                cptr.stI64(cptr.add(iflags, 152), 1n);
         }
         if (!cptr.ld1s(cptr.add(go, 525)))
             reset_status_hilites();
@@ -10759,15 +10759,15 @@ export function initoptions_init() {
     switch_symbols(0);
     init_rogue_symbols();
     if ((opts = nh_getenv(__sl825)) && !cptr.strncmp(opts, __sl826, 2n) ? 1 : 0) {
-        if (!cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 0, 48), 44)))
+        if (!(cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 0, 48), 44)) & 1))
             load_symset(__sl827, 0);
-        if (!cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 1, 48), 44)))
+        if (!(cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 1, 48), 44)) & 1))
             load_symset(__sl584, 1);
         switch_symbols(1);
         cptr.st1(cptr.add(iflags, 184), (1));
     }
     if ((((((opts = nh_getenv(__sl825)) && !strncmpi(opts, __sl828, 2) ? 1 : 0) && cptr.ldPtr(cptr.add(gt, 336)) ? 1 : 0) && cptr.ldPtr(cptr.add(cptr.add(gt, 336), 8)) ? 1 : 0) && cptr.strchr(cptr.ldPtr(cptr.add(gt, 336)), 14) ? 1 : 0) && cptr.strchr(cptr.ldPtr(cptr.add(cptr.add(gt, 336), 8)), 15) ? 1 : 0) {
-        if (!cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 0, 48), 44)))
+        if (!(cptr.ldI32(cptr.add(cptr.add(cptr.add(gs, 200), 0, 48), 44)) & 1))
             load_symset(__sl829, 0);
         switch_symbols(1);
     }
@@ -10803,7 +10803,7 @@ export function initoptions_finish() {
     reset_glyphmap(3);
     if (cptr.ldI64(cptr.add(iflags, 152)) && !wc2_supported(__sl351) ? 1 : 0) {
         raw_printf(__sl830, cptr.ldPtr(windowprocs));
-        cptr.stU64(cptr.add(iflags, 152), 0n);
+        cptr.stI64(cptr.add(iflags, 152), 0n);
     }
     update_rest_on_space();
     if (cptr.ld1s(cptr.add(iflags, 187)) && !wc_supported(__sl374) ? 1 : 0)

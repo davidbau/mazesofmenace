@@ -189,11 +189,11 @@ export function dosave0() {
             (cptr.stI32(cptr.add(a11y, 8), cptr.ldI32(cptr.add(a11y, 8)) + 1)) - (1);
         } while (0);
         cptr.stI32(cptr.add(u, 1864), 0);
-        if (cptr.ldI32(cptr.add(iflags, 400)))
+        if ((cptr.ldI32(cptr.add(iflags, 400)) & 1))
             cptr.stI32(cptr.add(u, 1848), 1), cptr.stI32(cptr.add(iflags, 400), 0);
-        if (cptr.ldI32(cptr.add(iflags, 404)))
+        if ((cptr.ldI32(cptr.add(iflags, 404)) & 1))
             cptr.stI32(cptr.add(u, 1852), 1), cptr.stI32(cptr.add(iflags, 404), 0);
-        if (cptr.ldI32(cptr.add(iflags, 408)))
+        if ((cptr.ldI32(cptr.add(iflags, 408)) & 1))
             cptr.stI32(cptr.add(u, 1868), 1), cptr.stI32(cptr.add(iflags, 408), 0);
         done_object_cleanup();
         if (!cptr.ldI32(cptr.add(program_state, 16)) || !cptr.ld1s(cptr.add(cptr.add(gs, 884), 0, 1)) ? 1 : 0)
@@ -226,7 +226,7 @@ export function dosave0() {
             break __lbl_done;
         }
         if (nhfp && cptr.ldPtr(cptr.add(nhfp, 56)) ? 1 : 0) {
-            cptr.stU64(cptr.add(nhfp, 16), cptr.stU64(cptr.add(nhfp, 24), 0n));
+            cptr.stI64(cptr.add(nhfp, 16), cptr.stI64(cptr.add(nhfp, 24), 0n));
         }
         vision_recalc(2);
         if (cptr.ldI32(cptr.add(flags, 64)) == 4)
@@ -239,8 +239,8 @@ export function dosave0() {
         cptr.stI32(cptr.add(nhfp, 4), 2 | 4);
         store_version(nhfp);
         store_plname_in_file(nhfp);
-        cptr.stPtr(cptr.add(gl, 496), ((cptr.ldI32(cptr.add(u, 1848)) | 0 && uball.v ? 1 : 0) && cptr.ld1s(cptr.add(uball.v, 52)) == 0 ? 1 : 0) ? uball.v : null);
-        cptr.stPtr(cptr.add(gl, 504), ((cptr.ldI32(cptr.add(u, 1848)) | 0 && uchain.v ? 1 : 0) && cptr.ld1s(cptr.add(uchain.v, 52)) == 0 ? 1 : 0) ? uchain.v : null);
+        cptr.stPtr(cptr.add(gl, 496), (((cptr.ldI32(cptr.add(u, 1848)) & 1) | 0 && uball.v ? 1 : 0) && cptr.ld1s(cptr.add(uball.v, 52)) == 0 ? 1 : 0) ? uball.v : null);
+        cptr.stPtr(cptr.add(gl, 504), (((cptr.ldI32(cptr.add(u, 1848)) & 1) | 0 && uchain.v ? 1 : 0) && cptr.ld1s(cptr.add(uchain.v, 52)) == 0 ? 1 : 0) ? uchain.v : null);
         savelev(nhfp, schar(ledger_no(cptr.add(u, 24))));
         savegamestate(nhfp);
         cptr.memcpy(cptr.add(gu, 432), cptr.add(u, 24), 4);
@@ -335,8 +335,8 @@ function savegamestate(nhfp) {
     relative_time_to_moves(cptr.add(svc, 48));
     relative_time_to_moves(cptr.add(cptr.add(svc, 96), 16));
     sfo_flag(nhfp, flags, __sl18);
-    cptr.stU64(cptr.add(urealtime, 16), getnow());
-    cptr.stU64(urealtime, cptr.ldI64(urealtime) + timet_delta(cptr.ldI64(cptr.add(urealtime, 16)), cptr.ldI64(cptr.add(urealtime, 8))));
+    cptr.stI64(cptr.add(urealtime, 16), getnow());
+    cptr.stI64(urealtime, cptr.ldI64(urealtime) + timet_delta(cptr.ldI64(cptr.add(urealtime, 16)), cptr.ldI64(cptr.add(urealtime, 8))));
     sfo_long(nhfp, svw, __sl19);
     ;
     sfo_int32(nhfp, cptr.add(svw, 8), __sl20);
@@ -345,7 +345,7 @@ function savegamestate(nhfp) {
     sfo_long(nhfp, urealtime, __sl23);
     ;
     sfo_char(nhfp, yyyymmddhhmmss(cptr.ldI64(cptr.add(urealtime, 8))), __sl24, 14);
-    cptr.stU64(cptr.add(urealtime, 8), cptr.ldI64(cptr.add(urealtime, 16)));
+    cptr.stI64(cptr.add(urealtime, 8), cptr.ldI64(cptr.add(urealtime, 16)));
     save_killers(nhfp);
     save_timers(nhfp, 1);
     save_light_sources(nhfp, 1);
@@ -431,8 +431,8 @@ export function savestateinlock() {
             save_savefile_name(nhfp);
             store_version(nhfp);
             store_plname_in_file(nhfp);
-            cptr.stPtr(cptr.add(gl, 496), ((cptr.ldI32(cptr.add(u, 1848)) | 0 && uball.v ? 1 : 0) && cptr.ld1s(cptr.add(uball.v, 52)) == 0 ? 1 : 0) ? uball.v : null);
-            cptr.stPtr(cptr.add(gl, 504), ((cptr.ldI32(cptr.add(u, 1848)) | 0 && uchain.v ? 1 : 0) && cptr.ld1s(cptr.add(uchain.v, 52)) == 0 ? 1 : 0) ? uchain.v : null);
+            cptr.stPtr(cptr.add(gl, 496), (((cptr.ldI32(cptr.add(u, 1848)) & 1) | 0 && uball.v ? 1 : 0) && cptr.ld1s(cptr.add(uball.v, 52)) == 0 ? 1 : 0) ? uball.v : null);
+            cptr.stPtr(cptr.add(gl, 504), (((cptr.ldI32(cptr.add(u, 1848)) & 1) | 0 && uchain.v ? 1 : 0) && cptr.ld1s(cptr.add(uchain.v, 52)) == 0 ? 1 : 0) ? uchain.v : null);
             savegamestate(nhfp);
         }
         close_nhfile(nhfp);
@@ -717,7 +717,7 @@ function saveobjchn(nhfp, obj_p) {
             cptr.stI32(cptr.add(otmp, 168), 0);
             if ((cptr.ldI64(cptr.add(otmp, 192)) & (2097152n | 4194304n)) != 0n)
                 setworn(null, cptr.ldI64(cptr.add(otmp, 192)) & (2097152n | 4194304n));
-            cptr.stU64(cptr.add(otmp, 192), 0n);
+            cptr.stI64(cptr.add(otmp, 192), 0n);
             (cptr.stI32(cptr.add(program_state, 36), cptr.ldI32(cptr.add(program_state, 36)) + 1)) - (1);
             dealloc_obj(otmp);
             (cptr.stI32(cptr.add(program_state, 36), cptr.ldI32(cptr.add(program_state, 36)) + -1)) - (-1);
@@ -794,7 +794,7 @@ function savemonchn(nhfp, mtmp) {
         mtmp2 = cptr.ldPtr(mtmp);
         if ((cptr.ldI32(cptr.add((nhfp), 4)) & (1 | 2))) {
             cptr.stI16(cptr.add(mtmp, 20), (cptr.ldI32(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 24))));
-            if (cptr.ldI32(cptr.add(mtmp, 192)))
+            if ((cptr.ldI32(cptr.add(mtmp, 192)) & 1))
                 forget_temple_entry(mtmp);
             savemon(nhfp, mtmp);
         }

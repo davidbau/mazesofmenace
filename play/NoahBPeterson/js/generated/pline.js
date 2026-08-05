@@ -342,7 +342,7 @@ export function You_hear(line, ...__va) {
     if ((((cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 16, 24), 16)) || cptr.ldI64(cptr.add(cptr.add(u, 112), 16, 24)) ? 1 : 0) || cptr.ld1s(cptr.add(cptr.add(u, 2112), 2)) ? 1 : 0) && !(cptr.ldI64(cptr.add(gm, 8)) < 0n && (unconscious() || is_fainted() ? 1 : 0) ? 1 : 0) ? 1 : 0) || !cptr.ld1s(flags) ? 1 : 0)
         return;
     the_args = cptr.vaList(__va);
-    if ((cptr.ldI32(cptr.add(u, 1852))))
+    if (((cptr.ldI32(cptr.add(u, 1852)) & 1)))
         void cptr.strcpy((tmp = You_buf(Number(BigInt.asIntN(32, (BigInt.asUintN(64, cptr.strlen(line) + 17n)))))), __sl10);
     else if ((cptr.ldI64(cptr.add(gm, 8)) < 0n && (unconscious() || is_fainted() ? 1 : 0) ? 1 : 0))
         void cptr.strcpy((tmp = You_buf(Number(BigInt.asIntN(32, (BigInt.asUintN(64, cptr.strlen(line) + 25n)))))), __sl11);
@@ -387,8 +387,8 @@ export function gamelog_add(glflags, gltime, str) {
     let tmp;
     let lst = cptr.ldPtr(cptr.add(gg, 94968));
     tmp = alloc(32);
-    cptr.stU64(tmp, gltime);
-    cptr.stU64(cptr.add(tmp, 8), glflags);
+    cptr.stI64(tmp, gltime);
+    cptr.stI64(cptr.add(tmp, 8), glflags);
     cptr.stPtr(cptr.add(tmp, 16), dupstr(str));
     cptr.stPtr(cptr.add(tmp, 24), null);
     while (lst && cptr.ldPtr(cptr.add(lst, 24)) ? 1 : 0)

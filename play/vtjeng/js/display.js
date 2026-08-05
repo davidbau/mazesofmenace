@@ -2215,9 +2215,14 @@ function _hungerStatus(u) {
     return hunger ? ` ${hunger}` : '';
 }
 
-function _capacityStatus(shrinkLevel = 0) {
-    const capacity = near_capacity(game);
+// C refs: botl.c enc_stat[] and wintty.c shrink_enc(). Keeping the lookup
+// separate makes all source vocabulary rows independently testable.
+export function tty_capacity_status(capacity, shrinkLevel) {
     return ENC_STAT_FORMS[shrinkLevel]?.[capacity] ?? '';
+}
+
+function _capacityStatus(shrinkLevel = 0) {
+    return tty_capacity_status(near_capacity(game), shrinkLevel);
 }
 
 const STATUS_CONDITION_SPECS = Object.freeze([
@@ -2364,7 +2369,8 @@ function _statusLine2Configuration() {
         ? ` ${_capacityStatus(capacityLevel)}` : ''}${capacityPadding}${_statusConditions(u, conditionLevel)}${optional}`;
     let status = build();
     // wintty.c make_things_fit() first tries both abbreviated condition
-    // vocabularies, then shortens "Dlvl" to "Dl" before truncating.
+    // vocabularies, then both carrying-capacity abbreviations, and finally
+    // shortens "Dlvl" to "Dl" before truncating.
     while (status.length + versionLength > TTY_STATUS_WIDTH
         && conditionLevel < 2) {
         conditionLevel++;
@@ -2775,7 +2781,7 @@ function _statusLine3VitalsLayout() {
     const hunger = _statusFieldData('hunger').text;
     if (hunger) {
         column = row.write(column, ' ');
-        row.write(column, hunger, _fieldOwner('hunger'));
+        column = row.write(column, hunger, _fieldOwner('hunger'));
     }
     const capacity = _capacityStatus();
     if (capacity) {

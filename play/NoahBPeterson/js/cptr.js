@@ -167,13 +167,25 @@ export function ldU64(p) {
   return v;
 }
 
-/** 64-bit store, little-endian. @param {CPtr} p @param {bigint|number} v */
+/** 64-bit store into an unsigned 64-bit location, little-endian. @param {CPtr} p @param {bigint|number} v */
 export function stU64(p, v) {
   if (p.isBox) { p.v = BigInt.asUintN(64, BigInt(v)); return v; }
   const b = p.buf, o = p.off;
   let x = BigInt(v);
   for (let i = 0; i < 8; i++) { b[o + i] = Number(x & 0xFFn); x >>= 8n; }
   return v;
+}
+
+/**
+ * 64-bit store into a *signed* 64-bit location (long/long long/int64_t).
+ * Byte-identical to stU64 for buffer locations; boxes keep the signed
+ * canonical form so raw `.v` reads see C's value (like stI32's `v|0` and
+ * stI16's sign-extension).
+ * @param {CPtr} p @param {bigint|number} v
+ */
+export function stI64(p, v) {
+  if (p.isBox) { p.v = BigInt.asIntN(64, BigInt(v)); return v; }
+  return stU64(p, v);
 }
 
 // -------------------------------------------- inc/dec on pointer variables ----
@@ -228,6 +240,17 @@ export function ldI64(p) { return BigInt.asIntN(64, ldU64(p)); }
 // bits are registry ids, NOT addresses — do not print them expecting
 // C address values (differential tests must not depend on them).
 const __ptrRegistry = [];
+// Registry ids live above every bit pattern an *integer* union member can
+// produce (any int32/uint32, and negative int32 sign-extended to 64 bits ->
+// 0x00000000_FFFFFFFF at most). Starting ids at 2^40 keeps the two disjoint:
+// a slot holding an integer can never be mistaken for a stored pointer.
+const __PTR_ID_BASE = 1n << 40n;
+// Non-null bit patterns that aren't registry ids (a union's integer member
+// read back through its pointer member -- NetHack's `anything`: a_int is
+// written, a_void is tested). C sees a non-null pointer there, so hand back
+// a stable opaque non-dereferenceable pointer rather than `undefined`, which
+// was falsy and silently flipped control flow (unselectable menu entries).
+const __intPtrs = new Map();
 
 /** store a CPtr into 8 bytes of a byte buffer. @param {CPtr} p @param {CPtr|null} v @returns {*} v */
 export function stPtr(p, v) {
@@ -235,7 +258,7 @@ export function stPtr(p, v) {
   let id;
   if (v === null || v === undefined) id = 0n;
   else {
-    id = BigInt(__ptrRegistry.length + 1);
+    id = __PTR_ID_BASE + BigInt(__ptrRegistry.length);
     __ptrRegistry.push(v);
   }
   stU64(p, id);
@@ -243,11 +266,17 @@ export function stPtr(p, v) {
 }
 
 /** load a CPtr previously stored via stPtr. @param {CPtr} p @returns {CPtr|null} */
-export function ldPtr(p) { 
+export function ldPtr(p) {
   if (p.isBox) return p.v === undefined ? null : p.v;
   const id = ldU64(p);
   if (id === 0n) return null;
-  return __ptrRegistry[Number(id) - 1];
+  if (id >= __PTR_ID_BASE) {
+    const v = __ptrRegistry[Number(id - __PTR_ID_BASE)];
+    if (v !== undefined) return v;
+  }
+  let ip = __intPtrs.get(id);
+  if (ip === undefined) { ip = { intBits: id, buf: undefined, off: 0 }; __intPtrs.set(id, ip); }
+  return ip;
 }
 
 // ------------------------------------------------------------ libc string ----
@@ -319,6 +348,25 @@ export function strstr(haystack, needle) {
 }
 
 /** @param {CPtr} dst @param {CPtr} src @param {number|bigint} n @returns {CPtr} dst */
+/**
+ * Widen a CPtr whose buf is a subarray view when [off, off+n) would cross
+ * the view's end: rebind to the view's underlying ArrayBuffer (same memory,
+ * coherent with every other view over it). C legitimately spans 2D-array row
+ * boundaries through a row pointer — vision.c get_unused_cs does
+ * memset(**rows, 0, ROWNO*COLNO*...) via the row-0 pointer — and typed-array
+ * writes past a view's length are SILENTLY dropped otherwise (this froze
+ * viz_array rows 1..20, leaving stale monsters on captured screens).
+ * @param {CPtr} p @param {number} n @returns {CPtr}
+ */
+export function span(p, n) {
+  const b = p && p.buf;
+  if (b instanceof Uint8Array && p.off + n > b.length
+      && b.byteOffset + p.off + n <= b.buffer.byteLength) {
+    return { buf: new Uint8Array(b.buffer), off: b.byteOffset + p.off };
+  }
+  return p;
+}
+
 export function memcpy(dst, src, n) {
   n = Number(n);
   // boxed scalars (tier-2 &x): stage through a little-endian byte buffer
@@ -337,6 +385,8 @@ export function memcpy(dst, src, n) {
     else { let x = 0n; for (let i = Math.min(n, 8) - 1; i >= 0; i--) x = (x << 8n) | BigInt(tmp.buf[i]); dst.v = x; }
     return r;
   }
+  src = span(src, n); // subarray views: widen when the span crosses the view end
+  dst = span(dst, n);
   const tmp = src.buf.slice(src.off, src.off + n); // slice: safe even if overlapping
   dst.buf.set(tmp, dst.off);
   return dst;
@@ -363,10 +413,20 @@ export function sprintfCore(fmt, args) {
   
   const f = cstr(fmt);
   let ai = 0;
-  return f.replace(/%([+0-]*)(\d*)(?:\.(\d*))?(ll|l|z)?([diuxXscf%])/g, (m, flags, width, prec, len, spec) => {
+  return f.replace(/%([+0-]*)(\*|\d*)(?:\.(\*|\d*))?(ll|l|z)?([diuxXscf%])/g, (m, flags, width, prec, len, spec) => {
     if (spec === '%') return '%';
+    // '*' width/precision take their value from an int argument, consumed
+    // ahead of the value argument (C99 7.19.6.1).
+    let w;
+    if (width === '*') {
+      w = Number(args[ai++]) | 0;
+      if (w < 0) { flags += '-'; w = -w; } // negative width == '-' flag, positive width
+    } else w = Number(width || 0);
+    if (prec === '*') {
+      const p = Number(args[ai++]) | 0;
+      prec = p < 0 ? undefined : String(p); // negative precision == omitted
+    }
     const a = args[ai++];
-    const w = Number(width || 0);
     let s;
     if (spec === 's') { s = cstr(a); if (prec !== undefined && prec !== '') s = s.slice(0, Number(prec)); }
     else if (spec === 'c') s = String.fromCharCode(Number(a) & 0xFF);

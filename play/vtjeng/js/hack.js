@@ -118,6 +118,7 @@ import { is_pick, objectType, sobj_at } from './obj.js';
 import {
     assertObjectNameable,
     assertPricedObjectNameable,
+    UnsupportedObjectNameError,
 } from './objnam.js';
 import {
     BOULDER,
@@ -283,6 +284,19 @@ export class UnsupportedHeroMoveBoundaryError extends Error {
         super(`unsupported hero move: ${reason}`);
         this.name = 'UnsupportedHeroMoveBoundaryError';
         this.reason = reason;
+    }
+}
+
+function assertMovementFloorObjectNameable(object, withShopPrice, state) {
+    try {
+        if (withShopPrice)
+            assertPricedObjectNameable(object, state);
+        else
+            assertObjectNameable(object, state);
+    } catch (error) {
+        if (!(error instanceof UnsupportedObjectNameError)
+            && !(error instanceof UnsupportedShopError)) throw error;
+        throw new UnsupportedHeroMoveBoundaryError(error.branch);
     }
 }
 
@@ -721,9 +735,11 @@ export function requireSimpleHeroDestination(x, y, state) {
         // visible region therefore remains outside this slice even when both
         // endpoints are already inside it and in_out_region() has no crossing
         // to report.
-        if (skipObjects && visible_region_at(x, y, state)) {
+        if (visible_region_at(x, y, state)) {
             throw new UnsupportedHeroMoveBoundaryError(
-                'visible region over skipped-pile count',
+                skipObjects
+                    ? 'visible region over skipped-pile count'
+                    : 'visible region over object-pile menu',
             );
         }
         if (pileCount < 2 || (!skipObjects && pileCount > 4)) {
@@ -745,18 +761,20 @@ export function requireSimpleHeroDestination(x, y, state) {
         if (!skipObjects) {
             const withShopPrice = costly_spot(x, y, state);
             for (let object = floorObject; object; object = object.nexthere) {
-                if (withShopPrice)
-                    assertPricedObjectNameable(object, state);
-                else
-                    assertObjectNameable(object, state);
+                assertMovementFloorObjectNameable(
+                    object,
+                    withShopPrice,
+                    state,
+                );
             }
         }
     }
     if (floorObject && !floorObject.nexthere && !noPickMove) {
-        if (costly_spot(x, y, state))
-            assertPricedObjectNameable(floorObject, state);
-        else
-            assertObjectNameable(floorObject, state);
+        assertMovementFloorObjectNameable(
+            floorObject,
+            costly_spot(x, y, state),
+            state,
+        );
     }
     // invent.c look_here()'s blind arm names what the hero feels underfoot,
     // and dungeon.c surface() (1750-1787) answers per terrain: "altar",

@@ -567,7 +567,7 @@ export function gainstr(otmp, incr, givemsg) {
         else
             num = 1;
     }
-    void adjattrib(0, (otmp && cptr.ldI32(cptr.add(otmp, 56)) | 0 ? 1 : 0) ? -num : num, givemsg ? -1 : 1);
+    void adjattrib(0, (otmp && (cptr.ldI32(cptr.add(otmp, 56)) & 1) | 0 ? 1 : 0) ? -num : num, givemsg ? -1 : 1);
 }
 
 /** C ref: attrib.c:221 — @param {CInt} num @param {CPtr} knam @param {CInt} k_format */
@@ -718,9 +718,9 @@ export function stone_luck(include_uncursed) {
     let bonchance = 0n;
     for (otmp = cptr.ldPtr(cptr.add(gi, 8)); otmp; otmp = cptr.ldPtr(otmp))
         if (confers_luck(otmp)) {
-            if (cptr.ldI32(cptr.add(otmp, 56)))
+            if ((cptr.ldI32(cptr.add(otmp, 56)) & 1))
                 bonchance -= cptr.ldI64(cptr.add(otmp, 40));
-            else if (cptr.ldI32(cptr.add(otmp, 60)) | 0 || include_uncursed ? 1 : 0)
+            else if ((cptr.ldI32(cptr.add(otmp, 60)) & 1) | 0 || include_uncursed ? 1 : 0)
                 bonchance += cptr.ldI64(cptr.add(otmp, 40));
         }
     return sgn(Number(BigInt.asIntN(32, bonchance)));
@@ -940,7 +940,7 @@ export function exerchk() {
             }
             cptr.st1(cptr.add(cptr.add(u, 2142), i, 1), schar(Math.imul(((Math.abs(ax) / 2) | 0), mod_val)));
         }
-        cptr.stU64(cptr.add(svc, 40), cptr.ldI64(cptr.add(svc, 40)) + BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 673, __sl100), rn2(200)) : rn2(200)) + (800)) | 0)));
+        cptr.stI64(cptr.add(svc, 40), cptr.ldI64(cptr.add(svc, 40)) + BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 673, __sl100), rn2(200)) : rn2(200)) + (800)) | 0)));
         do {
             if (debugcore(__sl38, (1))) {
                 let save_plnmsg = cptr.ldI32(cptr.add(iflags, 40));
@@ -1126,7 +1126,7 @@ export function from_what(propidx) {
             else if (innateness == 5)
                 void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl115);
             else if (propidx == 64 && ((cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 64, 24), 16)) & BigInt.asIntN(64, ~(67108864n | 33554432n | 16777216n))) || cptr.ldI64(cptr.add(cptr.add(u, 112), 64, 24)) ? 1 : 0) ? 1 : 0)
-                void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ((cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 64, 24), 16)) & 16777215n) != 0n) ? __sl116 : ((((cptr.ldI64(cptr.add(cptr.add(u, 112), 64, 24)) & 32n) != 0n && cptr.ldI32(cptr.add(uarmf.v, 84)) | 0 ? 1 : 0) && cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(uarmf.v, 32)), 120), 16)) | 0 ? 1 : 0) ? ysimple_name(uarmf.v) : (cptr.ldI64(cptr.add(cptr.add(u, 112), 64, 24)) ? __sl117 : cptr.ldPtr(cptr.add(c_common_strings, 40)))));
+                void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ((cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 64, 24), 16)) & 16777215n) != 0n) ? __sl116 : ((((cptr.ldI64(cptr.add(cptr.add(u, 112), 64, 24)) & 32n) != 0n && (cptr.ldI32(cptr.add(uarmf.v, 84)) & 1) | 0 ? 1 : 0) && (cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(uarmf.v, 32)), 120), 16)) & 1) | 0 ? 1 : 0) ? ysimple_name(uarmf.v) : (cptr.ldI64(cptr.add(cptr.add(u, 112), 64, 24)) ? __sl117 : cptr.ldPtr(cptr.add(c_common_strings, 40)))));
             else if (cptr.ld1s(cptr.add(flags, 10)) && (obj = what_gives(cptr.add(cptr.add(u, 112), propidx, 24))) !== null ? 1 : 0)
                 void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), cptr.ld1s(cptr.add(obj, 51)) ? bare_artifactname(obj) : ysimple_name(obj));
             else if (propidx == 15 && (cptr.ldI64(cptr.add(cptr.add(u, 112), 15, 24)) && !(cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 15, 24), 16)) && !cptr.ldI64(cptr.add(cptr.add(cptr.add(u, 112), 15, 24), 8)) ? 1 : 0) ? 1 : 0) ? 1 : 0)
@@ -1189,15 +1189,15 @@ export function adjabil(oldlevel, newlevel) {
         prevabil = cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8))));
         if (oldlevel < cptr.ld1s(abil) && newlevel >= cptr.ld1s(abil) ? 1 : 0) {
             if (cptr.ld1s(abil) == 1)
-                cptr.stU64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) | (mask | 67108864n));
+                cptr.stI64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) | (mask | 67108864n));
             else
-                cptr.stU64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) | mask);
+                cptr.stI64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) | mask);
             if (!(cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) & (67108864n | 33554432n | 16777216n) & BigInt.asIntN(64, ~mask))) {
                 if (cptr.ld1s((cptr.ldPtr(cptr.add(abil, 16)))))
                     You_feel(__sl121, cptr.ldPtr(cptr.add(abil, 16)));
             }
         } else if (oldlevel >= cptr.ld1s(abil) && newlevel < cptr.ld1s(abil) ? 1 : 0) {
-            cptr.stU64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) & BigInt.asIntN(64, ~mask));
+            cptr.stI64((cptr.ldPtr(cptr.add(abil, 8))), cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) & BigInt.asIntN(64, ~mask));
             if (!(cptr.ldI64((cptr.ldPtr(cptr.add(abil, 8)))) & (67108864n | 33554432n | 16777216n))) {
                 if (cptr.ld1s((cptr.ldPtr(cptr.add(abil, 24)))))
                     You_feel(__sl121, cptr.ldPtr(cptr.add(abil, 24)));
