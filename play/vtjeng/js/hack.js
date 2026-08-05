@@ -115,7 +115,10 @@ import {
     verysmall,
 } from './mondata.js';
 import { is_pick, objectType, sobj_at } from './obj.js';
-import { assertObjectNameable } from './objnam.js';
+import {
+    assertObjectNameable,
+    assertPricedObjectNameable,
+} from './objnam.js';
 import {
     BOULDER,
     COIN_CLASS,
@@ -137,10 +140,19 @@ import {
 import { curr_mon_load } from './mon.js';
 import { m_at, place_monster, remove_monster } from './monst.js';
 import { can_fog, closed_door, onscary, youHear } from './monmove.js';
-import { pickup } from './pickup.js';
+import {
+    pickup,
+    preflight_describe_decor_at,
+    UnsupportedPickupError,
+} from './pickup.js';
 import { in_out_region, inside_region, visible_region_at } from './region.js';
 import { rn2, rnd } from './rng.js';
 import { check_special_room } from './rooms.js';
+import {
+    costly_spot,
+    preflight_shop_transition,
+    UnsupportedShopError,
+} from './shk.js';
 import {
     canSpotMonster,
     collectMonsterNoticeMessages,
@@ -607,8 +619,10 @@ function refusedDiagonalDoorway(x, y, state) {
 
 // This repeated-command boundary owns entry into an unoccupied ROOM, CORR, or
 // IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR or
-// D_ISOPEN, plus the sighted object descriptions produced when autopickup is
-// disabled. These checks are a temporary admission seam in front
+// D_ISOPEN. With autopickup disabled, it also admits the sighted object
+// descriptions and the blind ordinary ROOM/CORR paths with no object or one
+// object. Blind paths that would describe an object pile remain refused.
+// These checks are a temporary admission seam in front
 // of hack.c:domove_core(); each rejected branch will move to its upstream owner
 // when that behavior is ported.
 export function requireSimpleHeroDestination(x, y, state) {
@@ -656,15 +670,10 @@ export function requireSimpleHeroDestination(x, y, state) {
         );
     }
     // pickup.c pickup() returns before look_here() when the square holds no
-    // object, running only describe_decor() and read_engr_at(); pickup.c
-    // check_here() calls describe_decor() too when the square holds one. So a
-    // bare furniture square or doorway prints nothing with mention_decor off.
-    // With it on, describe_decor() owns the line and tracks iflags.prev_decor,
-    // neither of which is ported. The predicate is every type describe_decor()
-    // can speak for here: pickup.c:392-410 mentions a furniture square even
-    // when the terrain has not changed, because its `ltyp == prev_decor` test
-    // carries `&& !IS_FURNITURE(ltyp)`, and it reaches a doorway to blank the
-    // dfeature and rewrite prev_decor.
+    // object, running describe_decor() and read_engr_at(); check_here() calls
+    // describe_decor() before counting when the square holds one. The port
+    // owns the two silent ROOM/CORR results. Every furniture and doorway result
+    // remains outside the boundary because it can print or suppress a feature.
     if (state.flags?.mention_decor
         && (IS_FURNITURE(location.typ) || doorway)) {
         throw new UnsupportedHeroMoveBoundaryError('decor description');
@@ -676,6 +685,21 @@ export function requireSimpleHeroDestination(x, y, state) {
     const noPickMove = Boolean(
         state.context?.nopick || state.iflags?.menu_requested,
     );
+    if (state.flags?.mention_decor && noPickMove) {
+        throw new UnsupportedHeroMoveBoundaryError(
+            'reqmenu with decor description',
+        );
+    }
+    if (state.flags?.mention_decor) {
+        try {
+            preflight_describe_decor_at(x, y, state);
+        } catch (error) {
+            if (!(error instanceof UnsupportedPickupError)) throw error;
+            throw new UnsupportedHeroMoveBoundaryError(
+                error.message,
+            );
+        }
+    }
     if (sobj_at(BOULDER, x, y, state))
         throw new UnsupportedHeroMoveBoundaryError('boulder movement');
     if (floorObject && state.flags?.pickup && !noPickMove)
@@ -707,9 +731,9 @@ export function requireSimpleHeroDestination(x, y, state) {
                 'object pile outside the two-to-four-item window',
             );
         }
-        if (state.flags?.mention_decor) {
+        if (state.flags?.mention_decor && skipObjects) {
             throw new UnsupportedHeroMoveBoundaryError(
-                'decor description before object pile',
+                'mention-decor pile-limit count',
             );
         }
         if (heroIsBlind(state)) {
@@ -719,9 +743,20 @@ export function requireSimpleHeroDestination(x, y, state) {
         // threshold selects its count line. Keep nameability as a menu-only
         // preflight so the message path admits every ordinary pile count.
         if (!skipObjects) {
-            for (let object = floorObject; object; object = object.nexthere)
-                assertObjectNameable(object, state);
+            const withShopPrice = costly_spot(x, y, state);
+            for (let object = floorObject; object; object = object.nexthere) {
+                if (withShopPrice)
+                    assertPricedObjectNameable(object, state);
+                else
+                    assertObjectNameable(object, state);
+            }
         }
+    }
+    if (floorObject && !floorObject.nexthere && !noPickMove) {
+        if (costly_spot(x, y, state))
+            assertPricedObjectNameable(floorObject, state);
+        else
+            assertObjectNameable(floorObject, state);
     }
     // invent.c look_here()'s blind arm names what the hero feels underfoot,
     // and dungeon.c surface() (1750-1787) answers per terrain: "altar",
@@ -764,6 +799,12 @@ export function requireSimpleHeroDestination(x, y, state) {
     }
     if (engr_at(x, y, state))
         throw new UnsupportedHeroMoveBoundaryError('engraving interaction');
+    try {
+        preflight_shop_transition(state.u.ux, state.u.uy, x, y, state);
+    } catch (error) {
+        if (!(error instanceof UnsupportedShopError)) throw error;
+        throw new UnsupportedHeroMoveBoundaryError(error.branch);
+    }
 }
 
 function doorMask(location) {
@@ -1006,16 +1047,19 @@ function requireOrdinaryStartingPetSwap(monster, x, y, state) {
     // carries `&& !IS_FURNITURE(ltyp)` -- so with mention_decor set it always
     // speaks a line this port cannot produce.
     //
-    // Nothing downstream would catch that. spoteffects() calls check_here()
-    // rather than pickup(), and js/pickup.js check_here() has no
-    // mention_decor arm, so an admitted swap would omit C's line in silence
-    // rather than stop. The refusal has to be here, and here it also precedes
-    // the swap and its message. ROOM, CORR and the doorway stay admitted, as
-    // they are at the walking seam: dfeature_at() finds nothing on them, and
-    // describe_decor()'s remaining arm needs iflags.prev_decor to be a pool,
-    // lava or ice, which is the unported prev_decor debt and not this seam's.
-    if (state.flags?.mention_decor && IS_FURNITURE(destination.typ)) {
+    // ROOM and CORR share the walking seam's silent owner. Furniture and
+    // doorways can print or suppress feature feedback and remain refused.
+    if (state.flags?.mention_decor
+        && (IS_FURNITURE(destination.typ) || destination.typ === DOOR)) {
         throw new UnsupportedHeroMoveBoundaryError('decor description');
+    }
+    if (state.flags?.mention_decor) {
+        try {
+            preflight_describe_decor_at(x, y, state);
+        } catch (error) {
+            if (!(error instanceof UnsupportedPickupError)) throw error;
+            throw new UnsupportedHeroMoveBoundaryError(error.message);
+        }
     }
 
     const source = state.level?.at(state.u.ux, state.u.uy);
@@ -2026,14 +2070,7 @@ export async function spoteffects(pick, state = game) {
         && propertyActiveUnblocked(state, LEVITATION)) {
         throw new UnsupportedHeroMoveBoundaryError('dosinkfall()');
     }
-    if (!state.in_steed_dismounting) {
-        // C ref: pickup(1). Object-bearing squares use its real movement
-        // consumer so the no-pick arm returns before check_here(). Object-free
-        // ROOM and CORR squares remain inert at this temporary seam until
-        // describe_decor() and prev_decor are ported.
-        const objectHere = state.level?.objects?.[state.u.ux]?.[state.u.uy];
-        if (pick && objectHere) await pickup(1, state);
-    }
+    if (!state.in_steed_dismounting && pick) await pickup(1, state);
 }
 
 // C ref: flag.h:233 notice_mon_off(). Suspends the accessibility monster

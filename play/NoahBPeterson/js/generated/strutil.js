@@ -44,7 +44,7 @@ export function strbuf_reserve(strbuf, len) {
 
 /** C ref: strutil.c:49 — @param {CPtr} strbuf */
 export function strbuf_empty(strbuf) {
-    if (!cptr.eq(cptr.ldPtr(cptr.add(strbuf, 8)), (null)) && !cptr.eq(cptr.ldPtr(cptr.add(strbuf, 8)), cptr.add(strbuf, 16)))
+    if (!cptr.eq(cptr.ldPtr(cptr.add(strbuf, 8)), (null)) && !cptr.eq(cptr.ldPtr(cptr.add(strbuf, 8)), cptr.add(strbuf, 16)) ? 1 : 0)
         cptr.free(cptr.ldPtr(cptr.add(strbuf, 8)));
     strbuf_init(strbuf);
 }
@@ -85,7 +85,7 @@ export function Strlen_(str, file, line) {
 function pmatch_internal(patrn, strng, ci, sk) {
     let s;
     let p;
-    __lbl_pmatch_top: do {
+    __lbl_pmatch_top: while (true) {
         if (!sk) {
             s = cptr.ld1s(cptr.postinc(() => strng, (v) => { strng = v; }));
             p = cptr.ld1s(cptr.postinc(() => patrn, (v) => { patrn = v; }));
@@ -100,12 +100,13 @@ function pmatch_internal(patrn, strng, ci, sk) {
         if (!p)
             return schar((s == 0));
         else if (p == 42)
-            return schar(((!cptr.ld1s(patrn) || pmatch_internal(patrn, cptr.add(strng, -(1)), ci, sk)) ? 1 : (s ? pmatch_internal(cptr.add(patrn, -(1)), strng, ci, sk) : 0)));
-        else if ((ci ? lowc(p) != lowc(s) : p != s) && (p != 63 || !s))
+            return schar(((!cptr.ld1s(patrn) || pmatch_internal(patrn, cptr.add(strng, -(1)), ci, sk) ? 1 : 0) ? 1 : (s ? pmatch_internal(cptr.add(patrn, -(1)), strng, ci, sk) : 0)));
+        else if ((ci ? lowc(p) != lowc(s) : p != s) && (p != 63 || !s ? 1 : 0) ? 1 : 0)
             return (0);
         else
             continue __lbl_pmatch_top;
-    } while (false);
+        break __lbl_pmatch_top;
+    }
 }
 
 /** C ref: strutil.c:145 — @param {CPtr} patrn @param {CPtr} strng @returns {CInt} */

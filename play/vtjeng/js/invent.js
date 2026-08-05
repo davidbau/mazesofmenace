@@ -34,6 +34,7 @@ import {
     D_NODOOR,
     DRAWBRIDGE_DOWN,
     DRAWBRIDGE_UP,
+    CORR,
     IRONBARS,
     IS_ALTAR,
     IS_DOOR,
@@ -41,6 +42,7 @@ import {
     IS_GRAVE,
     IS_SINK,
     IS_THRONE,
+    ROOM,
     TREE,
     P_BOOMERANG,
     P_BOW,
@@ -145,10 +147,13 @@ import {
 import {
     an,
     assertObjectNameable,
+    assertPricedObjectNameable,
     donameFresh,
+    doname_with_price,
     vtense,
 } from './objnam.js';
 import { ILLOBJ_CLASS, MAXOCLASSES } from './objects.js';
+import { costly_spot } from './shk.js';
 
 export const INVLET_BASIC = 52;
 export const NOINVSYM = '#';
@@ -689,13 +694,13 @@ function activeStoneResistance(state) {
 // excluded from the first two
 // outcomes; a pile reached while blind stops before its tactile preamble
 // because feel_cockatrice() and the tactile menu belong to a later slice. A
-// A liquid square, engraving, non-triggering pile outside two through four,
+// liquid square, engraving, non-triggering pile outside two through four,
 // or picked-some count likewise stops before output.
 //
 // Returns true where C returns ECMD_TIME and false where it returns ECMD_OK,
 // so the caller decides whether the command takes game time.
 export async function look_here(
-    obj_cnt,
+    checkedObjectCount,
     lookhere_flags,
     state = game,
     {
@@ -713,17 +718,24 @@ export async function look_here(
     const verb = blind ? 'feel' : 'see';
     const { ux, uy } = state.u;
     let skip_dfeature = (lookhere_flags & LOOKHERE_SKIP_DFEATURE) !== 0;
+    // pickup.c check_here() supplies this count after excluding uchain. It
+    // selects pile_limit and its message wording independently of the local
+    // chain traversal below.
     // A pile_limit of 0 means "never skip"; the default is 5.
     const skip_objects = state.flags.pile_limit > 0
-        && obj_cnt >= state.flags.pile_limit;
+        && checkedObjectCount >= state.flags.pile_limit;
 
     const otmp = state.level.objects[ux]?.[uy] ?? null;
     const hasPile = Boolean(otmp?.nexthere);
+    const withShopPrice = Boolean(otmp) && costly_spot(ux, uy, state);
     const pickedSome = (lookhere_flags & LOOKHERE_PICKED_SOME) !== 0;
-    let pileCount = 0;
+    let supportedPileCount = 0;
     if (hasPile) {
-        for (let object = otmp; object; object = object.nexthere) ++pileCount;
-        if (pileCount < 2 || (!skip_objects && pileCount > 4)) {
+        for (let object = otmp; object; object = object.nexthere)
+            ++supportedPileCount;
+        // hasPile proves that this count is at least two. The remaining guard
+        // refuses only menu paths above the implemented four-object window.
+        if (!skip_objects && supportedPileCount > 4) {
             throw new UnsupportedFeatureDescriptionError(
                 'an object pile outside the two-to-four-item window',
             );
@@ -739,9 +751,18 @@ export async function look_here(
             );
         }
         if (state.flags.mention_decor) {
-            throw new UnsupportedFeatureDescriptionError(
-                'describe_decor() before an object-pile menu',
-            );
+            const terrain = state.level.at(ux, uy)?.typ;
+            if (skip_objects) {
+                throw new UnsupportedFeatureDescriptionError(
+                    'mention-decor pile-limit count',
+                );
+            }
+            if ((terrain !== ROOM && terrain !== CORR)
+                || state.iflags.prev_decor !== terrain) {
+                throw new UnsupportedFeatureDescriptionError(
+                    'describe_decor() before an object-pile menu',
+                );
+            }
         }
         if (t_at(ux, uy, state)) {
             throw new UnsupportedFeatureDescriptionError(
@@ -760,8 +781,12 @@ export async function look_here(
             );
         }
         if (!skip_objects) {
-            for (let object = otmp; object; object = object.nexthere)
-                assertObjectNameable(object, state);
+            for (let object = otmp; object; object = object.nexthere) {
+                if (withShopPrice)
+                    assertPricedObjectNameable(object, state);
+                else
+                    assertObjectNameable(object, state);
+            }
         }
     }
 
@@ -829,9 +854,9 @@ export async function look_here(
         }
         if (dfeature && !skip_dfeature) await message(fbuf, state);
         await readEngraving(state);
-        const countName = obj_cnt === 2 ? 'two'
-            : obj_cnt < 5 ? 'a few'
-                : obj_cnt < 10 ? 'several' : 'many';
+        const countName = checkedObjectCount === 2 ? 'two'
+            : checkedObjectCount < 5 ? 'a few'
+                : checkedObjectCount < 10 ? 'several' : 'many';
         await message(`There are ${countName} objects here.`, state);
         return blind;
     }
@@ -842,8 +867,11 @@ export async function look_here(
         if (dfeature && !skip_dfeature) lines.push(fbuf, '');
         lines.push(`${(lookhere_flags & LOOKHERE_PICKED_SOME) !== 0
             ? 'Other things' : 'Things'} that are here:`);
-        for (let object = otmp; object; object = object.nexthere)
-            lines.push(donameFresh(object, state));
+        for (let object = otmp; object; object = object.nexthere) {
+            lines.push(withShopPrice
+                ? doname_with_price(object, state, { currencyName: currency })
+                : donameFresh(object, state));
+        }
         await displayObjectPile(lines, state);
         await readEngraving(state);
         return blind;
@@ -853,9 +881,13 @@ export async function look_here(
     // unported, so it stops here, before any of the branch's output.
     if (will_feel_cockatrice(otmp, false, state))
         throw new UnsupportedFeatureDescriptionError('feel_cockatrice()');
+    if (withShopPrice) assertPricedObjectNameable(otmp, state);
     if (dfeature && !skip_dfeature) await message(fbuf, state);
     await readEngraving(state);
-    await message(`You ${verb} here ${donameFresh(otmp, state)}.`, state);
+    const namedObject = withShopPrice
+        ? doname_with_price(otmp, state, { currencyName: currency })
+        : donameFresh(otmp, state);
+    await message(`You ${verb} here ${namedObject}.`, state);
     state.iflags.last_msg = PLNMSG_ONE_ITEM_HERE;
     return blind;
 }
@@ -2179,7 +2211,7 @@ function insertInventoryObject(obj, previous, state) {
     obj.where = OBJ_INVENT;
 }
 
-function finishAddinv(context, obj, inserted) {
+function finishAddinv(context, obj, inserted, updatePermInvent = true) {
     const {
         addinvFacts,
         carryEffects,
@@ -2194,12 +2226,14 @@ function finishAddinv(context, obj, inserted) {
     obj.pickup_prev = true;
     addinvCore2(obj, normalized, addinvFacts);
     carry_obj_effects(obj, normalized, carryEffects);
-    update_inventory(normalized);
+    if (updatePermInvent) update_inventory(normalized);
     return obj;
 }
 
-// C ref: invent.c addinv_core0() and addinv().
-export function addinv(obj, env = {}, prepared = null) {
+// C ref: invent.c addinv_core0().
+function addinvCore0(
+    obj, env = {}, prepared = null, updatePermInvent,
+) {
     const context = beginAddinv(obj, env, prepared);
     if (!context) return null;
     const { normalized, state } = context;
@@ -2220,7 +2254,12 @@ export function addinv(obj, env = {}, prepared = null) {
             inserted = true;
         }
     }
-    return finishAddinv(context, obj, inserted);
+    return finishAddinv(context, obj, inserted, updatePermInvent);
+}
+
+// C ref: invent.c addinv().
+export function addinv(obj, env = {}, prepared = null) {
+    return addinvCore0(obj, env, prepared, true);
 }
 
 // Live pickup counterpart of addinv().  It preserves the synchronous API for
@@ -2366,17 +2405,12 @@ export async function prinv(prefix, obj, quan, env = {}) {
     );
 }
 
-// C ref: invent.c hold_another_object() (1206-1306), its plain addinv arm.
-// The object a wish creates is no artifact, the hero is not Fumbling and has a
-// free slot, so C's artifact block (1216-1244), its Fumbling arm (1245-1249),
-// its wished-for-corpse arm (1250-1256) and the drop_it: tail (1293-1304) each
-// stop here instead.
+// C ref: invent.c hold_another_object() (1206-1306), restricted to the plain
+// addinv arm and the nonmerging heavy-iron-ball route through drop_it. Artifact,
+// Fumbling, fatal-corpse, merging, and other drop routes remain fail-closed.
 //
 // C calls addinv_core0(obj, NULL, FALSE), whose FALSE holds back the
 // permanent-inventory refresh until the explicit update_inventory() below.
-// addinv() makes that refresh unconditionally, but update_inventory() does
-// nothing unless iflags.perm_invent is set with a window to draw into, and
-// throws when it is set without one, so the two orders cannot diverge here.
 function projectsHeavyBallDrop(obj, state) {
     const hadGw = Object.hasOwn(state, 'gw');
     const previousGw = state.gw;
@@ -2405,33 +2439,88 @@ function projectsHeavyBallDrop(obj, state) {
     }
 }
 
+// Prepare the only drop_it route this port can finish. makewish() calls this
+// before doname() records discovery and before it increments wish conduct.
+// The token records both a hold decision and an admitted drop decision so
+// hold_another_object() need not repeat a guard after those source-ordered
+// writes. It also restores near_capacity()'s cache before returning.
+export function prepareHeavyBallDropAdmission(obj, env = {}) {
+    const normalized = inventoryEnv(env);
+    const { state } = normalized;
+    if (!obj || typeof obj !== 'object')
+        throw new TypeError('heavy-drop admission requires an object');
+    if (obj.otyp === HEAVY_IRON_BALL
+        && propertyPresent(state, FUMBLING)) {
+        throw new UnsupportedObjectOperationError('held while fumbling', obj);
+    }
+    if (obj.otyp !== HEAVY_IRON_BALL || obj.quan !== 1
+        || obj.oartifact || state.objects?.[obj.otyp]?.oc_merge) {
+        return null;
+    }
+    const willDrop = projectsHeavyBallDrop(obj, state);
+    let dropObject = null;
+    let dropAdmission = null;
+    if (willDrop) {
+        dropObject = requiredHook(normalized, 'dropObject', obj);
+        dropAdmission = requiredHook(
+            normalized,
+            'preflightDropObject',
+            obj,
+        )(obj, normalized);
+    }
+    return {
+        consumed: false,
+        dropAdmission,
+        dropObject,
+        inventory: state.invent ?? null,
+        object: obj,
+        objectFacts: {
+            oartifact: obj.oartifact,
+            otyp: obj.otyp,
+            owt: obj.owt,
+            quan: obj.quan,
+            where: obj.where,
+        },
+        state,
+        willDrop,
+    };
+}
+
+function consumeHeavyBallDropAdmission(obj, state, admission) {
+    if (!admission) return null;
+    if (admission.object !== obj)
+        throw new Error('heavy-drop admission belongs to another object');
+    if (admission.state !== state)
+        throw new Error('heavy-drop admission belongs to another state');
+    if (admission.consumed)
+        throw new Error('heavy-drop admission was already consumed');
+    const facts = admission.objectFacts;
+    if ((state.invent ?? null) !== admission.inventory
+        || obj.oartifact !== facts.oartifact
+        || obj.otyp !== facts.otyp
+        || obj.owt !== facts.owt
+        || obj.quan !== facts.quan
+        || obj.where !== facts.where) {
+        throw new Error('heavy-drop admission is stale');
+    }
+    admission.consumed = true;
+    return admission;
+}
+
 export async function hold_another_object(
-    obj, drop_fmt, drop_arg, hold_msg, env = {},
+    obj, drop_fmt, drop_arg, hold_msg, env = {}, preparedHeavyDrop = null,
 ) {
     const normalized = inventoryEnv(env);
     const { state } = normalized;
 
-    // The ordinary heavy-ball drop is predictable without linking the object:
-    // oc_merge is false, so calc_capacity(obj->owt) is exactly the capacity C
-    // sees after addinv_core0(). Preflight do.c's whole admitted tail before
-    // observe_object() changes dknown or a missing dependency can leave the
-    // new object in inventory.
-    let preflightedHeavyDrop = false;
-    let heavyDropObject = null;
-    if (obj.otyp === HEAVY_IRON_BALL && obj.quan === 1
-        && !obj.oartifact && !propertyPresent(state, FUMBLING)) {
-        if (projectsHeavyBallDrop(obj, state)) {
-            // Retain both owners now: neither may be discovered after
-            // observe_object(), addinv(), or the drop message has changed
-            // visible state.
-            heavyDropObject = requiredHook(normalized, 'dropObject', obj);
-            requiredHook(normalized, 'preflightDropObject', obj)(
-                obj,
-                normalized,
-            );
-            preflightedHeavyDrop = true;
-        }
-    }
+    // Direct callers retain the old entry contract. makewish() supplies the
+    // prepared token so every refusal occurs before discovery and conduct.
+    const heavyDropAdmission = consumeHeavyBallDropAdmission(
+        obj,
+        state,
+        preparedHeavyDrop
+            ?? prepareHeavyBallDropAdmission(obj, normalized),
+    );
 
     if (!isBlind(normalized))
         observe_object(obj, state); /* maximize mergeability */
@@ -2454,12 +2543,12 @@ export async function hold_another_object(
         /* C copies drop_arg into a local buffer here, because addinv() could
            recycle the obuf[] doname() built it in; JavaScript strings need no
            such copy */
-        obj = addinv(obj, normalized);
+        obj = addinvCore0(obj, normalized, null, false);
         if (inv_cnt(false, state) > INVLET_BASIC
             || ((obj.otyp !== LOADSTONE || !obj.cursed)
                 && near_capacity(state) > prev_encumbr)) {
             /* 1275-1281 undoes any merge that took place and drops it */
-            if (!preflightedHeavyDrop || obj.quan !== oquan) {
+            if (!heavyDropAdmission?.willDrop || obj.quan !== oquan) {
                 throw new UnsupportedObjectOperationError('held object dropped',
                                                           obj);
             }
@@ -2468,7 +2557,11 @@ export async function hold_another_object(
                 await message(drop_fmt.replace('%s', drop_arg ?? ''), state);
             }
             obj.nomerge = 0;
-            await heavyDropObject(obj, normalized);
+            await heavyDropAdmission.dropObject(
+                obj,
+                normalized,
+                heavyDropAdmission.dropAdmission,
+            );
             return null;
         }
         if (state.flags?.autoquiver && !state.uquiver && !obj.owornmask) {
