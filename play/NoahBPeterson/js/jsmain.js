@@ -189,4 +189,98 @@ function warnSharedRealm(why) {
     } catch {}
 }
 
-export { TranspiledGame as NethackGame };
+// -- interactive play ---------------------------------------------------------
+// The judge's replay path stops here. Everything below is the *browser* entry
+// point: index.html and frozen/playability_runner.mjs construct a NethackGame,
+// call start(), and then drive it one keystroke at a time through
+// js/allmain.js's moveloop_core(). None of it is reachable from runSegment().
+
+/**
+ * One interactive game. Owns the resident engine (js/boot/interactive.mjs) and
+ * the display it paints into.
+ *
+ *   const g = new NethackGame({ seed, datetime, nethackrc, storage });
+ *   g._pendingDisplay = display;      // GameDisplay
+ *   await g.start();                  // boots, paints the first frame
+ *   // then: display.pushKey(c); await moveloop_core();
+ */
+export class NethackGame {
+    constructor(opts = {}) {
+        this.seed = opts.seed ?? Math.floor(Math.random() * 100000);
+        this.datetime = opts.datetime || defaultDatetime();
+        this.nethackrc = opts.nethackrc || '';
+        this._storage = opts.storage || null;
+        this._pendingStorage = null;
+        this._pendingDisplay = null;
+        this.display = null;
+        this.engine = null;
+    }
+
+    async start() {
+        const { game } = await import('./gstate.js');
+        const display = this._pendingDisplay || game.nhDisplay;
+        if (!display) throw new Error('NethackGame.start(): no display (set _pendingDisplay)');
+
+        const storage = this._pendingStorage || this._storage;
+        const { startEngine } = await import('./boot/interactive.mjs');
+
+        const engine = await startEngine({
+            seed: this.seed,
+            datetime: this.datetime,
+            nethackrc: this.nethackrc,
+            // The engine runs in another realm/thread, so it cannot hold the
+            // page's localStorage handle: it gets a snapshot in and hands one
+            // back out at game end (same contract as js/boot/frame.mjs).
+            storage: snapshotStorage(storage),
+            onStorage: (after) => applyStorage(storage, {}, after),
+        }, (why) => warnDegradedEngine(why));
+
+        this.display = display;
+        this.engine = engine;
+        game.nhDisplay = display;
+        game.nhEngine = engine;
+        game.program_state = { gameover: false };
+        if (engine.frame) display.applyFrame(engine.frame);
+        return this;
+    }
+
+    /** Stop the engine thread (page teardown / new game). */
+    async stop() {
+        if (!this.engine) return;
+        try { await this.engine.stop(); } catch { /* already gone */ }
+        try { this.engine.destroy(); } catch { /* already gone */ }
+        this.engine = null;
+    }
+}
+
+function defaultDatetime() {
+    const d = new Date();
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
+        + `${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+function warnDegradedEngine(why) {
+    const msg = 'no thread to host the resident engine (' + why + '); '
+        + 'falling back to prefix replay: correct, but a keystroke costs a full '
+        + 'boot plus a replay of every key before it, and it gets worse as you play.';
+    try { console.warn('[c2js] ' + msg); } catch {}
+    // A console warning is invisible to the person whose game just became a
+    // slideshow, and invisible to a harness measuring ms/move. Say it on the
+    // page too, if there is one.
+    try {
+        if (typeof document !== 'undefined' && document.body) {
+            const el = document.createElement('p');
+            el.id = 'engine-degraded';
+            el.style.cssText = 'max-width:50em;margin:0.5em auto;padding:0.6em 1em;border:1px solid #a00;'
+                + 'background:#fee;color:#600;font-family:inherit;font-size:0.9em;text-align:center';
+            el.textContent = 'This browser can’t give the game a thread to run on '
+                + '(no SharedArrayBuffer and no service worker), so it is replaying '
+                + 'your keystrokes from the start after every key. It will work, and it will be very slow.';
+            const c = document.getElementById('game-container');
+            (c && c.parentNode) ? c.parentNode.insertBefore(el, c.nextSibling) : document.body.appendChild(el);
+        }
+    } catch {}
+}
+
+export { TranspiledGame };

@@ -34,6 +34,7 @@ import {
     addinv_runtime,
     dfeature_at,
     look_here,
+    money_cnt,
     obj_extract_self,
     preflight_addinv_sequence,
     preflight_look_here,
@@ -42,7 +43,7 @@ import {
 import { notake } from './mondata.js';
 import { observe_object } from './o_init.js';
 import { objectGenerationEnv } from './object_generation.js';
-import { CORPSE, SCR_SCARE_MONSTER } from './objects.js';
+import { COIN_CLASS, CORPSE, SCR_SCARE_MONSTER } from './objects.js';
 import { assertObjectNameable } from './objnam.js';
 import { costly_spot } from './shk.js';
 import { stairway_at } from './stairs.js';
@@ -64,6 +65,13 @@ const DECREASED_BURDEN_MESSAGES = Object.freeze([
     'You rebalance your load.  Movement is still difficult.',
     'You stagger under your load.  Movement is still very hard.',
 ]);
+
+// pickup.c's local GOLD_WT macro deliberately has no minimum-one clamp.
+// Floor object weight supplies that clamp; carry_count subtracts the overlap
+// between separately rounded carried, picked, and combined coin quantities.
+function pickupGoldWeight(quantity) {
+    return Math.trunc((Math.trunc(quantity) + 50) / 100);
+}
 
 export async function encumber_msg(
     state = game,
@@ -242,7 +250,7 @@ export async function describe_decor(state) {
     return true;
 }
 
-function planAutomaticFloorPickup(state) {
+function planAutomaticFloorPickupAndRefreshCapacityCache(state) {
     const { u } = state;
     const costly = costly_spot(u.ux, u.uy, state);
     const selected = [];
@@ -266,6 +274,7 @@ function planAutomaticFloorPickup(state) {
     // first. This is the narrow fail-closed boundary for special pickup
     // behavior and keeps both floor indexes and discovery state atomic.
     let addedWeight = 0;
+    let projectedGold = money_cnt(state.invent);
     for (const { obj, count } of selected) {
         if (obj.where !== OBJ_FLOOR || !Number.isInteger(count) || count < 1)
             throw new UnsupportedPickupError('pickup() malformed floor object');
@@ -276,10 +285,15 @@ function planAutomaticFloorPickup(state) {
             );
         }
         assertObjectNameable(obj, state);
-        addedWeight += Math.trunc(obj.owt);
-    }
-    if (inv_cnt(false, state) + selected.length > 52) {
-        throw new UnsupportedPickupError('pickup() with a full pack');
+        let objectWeight = Math.trunc(obj.owt);
+        if (obj.oclass === COIN_CLASS) {
+            const combinedGold = projectedGold + count;
+            objectWeight -= pickupGoldWeight(projectedGold)
+                + pickupGoldWeight(count)
+                - pickupGoldWeight(combinedGold);
+            projectedGold = combinedGold;
+        }
+        addedWeight += objectWeight;
     }
     if (inv_weight(state) + addedWeight >= 2 * weight_cap(state)) {
         throw new UnsupportedPickupError(
@@ -309,6 +323,17 @@ function planAutomaticFloorPickup(state) {
         env,
         { observeObjects: !heroIsBlind(state) },
     );
+    // pickup.c lift_object() checks the 52-letter limit in floor order after
+    // merge_choice().  Gold consumes no ordinary slot, and a later floor
+    // object can merge with an earlier projected pickup.  Reject atomically
+    // only at the first projected non-merge addition which C would refuse.
+    let projectedSlots = inv_cnt(false, state);
+    for (const plan of addPlans) {
+        if (!plan.addedOrdinarySlot) continue;
+        if (projectedSlots >= 52)
+            throw new UnsupportedPickupError('pickup() with a full pack');
+        ++projectedSlots;
+    }
     for (const plan of addPlans)
         assertObjectNameable(plan.projectedResult, state);
     return { addPlans, env, remaining, selected };
@@ -317,8 +342,15 @@ function planAutomaticFloorPickup(state) {
 // Random arrival commits placement, room entry and its display before
 // goto_level() reaches pickup(1). Validate the complete supported floor
 // transaction against the projected destination first, so a later naming or
-// pricing refusal cannot leave those earlier writes behind.
-export function preflight_random_arrival_pickup(state = game) {
+// pricing refusal cannot leave those earlier writes behind. Burden calculation
+// writes `state.gw.wc`; callers must supply an isolated projection whose `gw`
+// owner is cloned from live state.
+export function preflight_projected_random_arrival_pickup(state) {
+    if (state === undefined) {
+        throw new TypeError(
+            'preflight_projected_random_arrival_pickup requires projected state',
+        );
+    }
     const { u } = state;
     if (u.uswallow)
         throw new UnsupportedPickupError('pickup() inside a monster');
@@ -362,20 +394,25 @@ export function preflight_random_arrival_pickup(state = game) {
         }
         if (state.flags?.pickup_types)
             throw new UnsupportedPickupError('pickup() with pickup_types');
-        const plan = planAutomaticFloorPickup(state);
+        const plan = planAutomaticFloorPickupAndRefreshCapacityCache(state);
         remaining = plan.remaining;
         pickedSome = Boolean(plan.selected.length);
     }
 
     if (state.flags?.mention_decor)
         preflight_describe_decor_at(u.ux, u.uy, state);
-    const lookhereFlags = pickedSome
-        ? LOOKHERE_PICKED_SOME : LOOKHERE_NOFLAGS;
-    preflight_look_here(remaining.length, lookhereFlags, state, {
-        objects: remaining,
-        decorTerrain: state.flags?.mention_decor
-            ? state.level.at(u.ux, u.uy)?.typ : null,
-    });
+    // pickup.c check_here() calls look_here() only while something remains on
+    // the floor.  Its zero-count arm reads the engraving instead, so a visible
+    // region cannot reject an arrival whose complete pile will be picked up.
+    if (remaining.length) {
+        const lookhereFlags = pickedSome
+            ? LOOKHERE_PICKED_SOME : LOOKHERE_NOFLAGS;
+        preflight_look_here(remaining.length, lookhereFlags, state, {
+            objects: remaining,
+            decorTerrain: state.flags?.mention_decor
+                ? state.level.at(u.ux, u.uy)?.typ : null,
+        });
+    }
 }
 
 // C ref: pickup.c pickup() (672-910), autopick(), pickup_object(), pick_obj()
@@ -450,7 +487,8 @@ export async function pickup(what, state = game) {
         throw new UnsupportedPickupError('pickup() with pickup_types');
     }
 
-    const { addPlans, env, selected } = planAutomaticFloorPickup(state);
+    const { addPlans, env, selected }
+        = planAutomaticFloorPickupAndRefreshCapacityCache(state);
 
     if (selected.length) reset_justpicked(state.invent);
     let picked = 0;

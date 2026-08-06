@@ -710,7 +710,7 @@ export function requireSimpleHeroDestination(x, y, state) {
         } catch (error) {
             if (!(error instanceof UnsupportedPickupError)) throw error;
             throw new UnsupportedHeroMoveBoundaryError(
-                error.message,
+                error.reason,
             );
         }
     }
@@ -770,6 +770,11 @@ export function requireSimpleHeroDestination(x, y, state) {
         }
     }
     if (floorObject && !floorObject.nexthere && !noPickMove) {
+        if (visible_region_at(x, y, state)) {
+            throw new UnsupportedHeroMoveBoundaryError(
+                'visible region over single-object description',
+            );
+        }
         assertMovementFloorObjectNameable(
             floorObject,
             costly_spot(x, y, state),
@@ -788,7 +793,7 @@ export function requireSimpleHeroDestination(x, y, state) {
     // a fountain does ("fountain" both ways) and a grave does not ("grave"
     // against "headstone"). OPTIONS=blind reaches this from turn one through
     // u.uroleplay.blind.
-    if (floorObject && heroIsBlind(state)
+    if (floorObject && !noPickMove && heroIsBlind(state)
         && location.typ !== ROOM && location.typ !== CORR) {
         throw new UnsupportedHeroMoveBoundaryError('blind terrain description');
     }
@@ -802,7 +807,7 @@ export function requireSimpleHeroDestination(x, y, state) {
     // failClosedCommand() wrapper, unlike the extended commands -- so letting
     // it travel would abort the segment instead of ending it on its last
     // matching screen.
-    if (floorObject && location.typ === ALTAR) {
+    if (floorObject && !noPickMove && location.typ === ALTAR) {
         throw new UnsupportedHeroMoveBoundaryError(
             'terrain feature description',
         );
@@ -1076,7 +1081,7 @@ function requireOrdinaryStartingPetSwap(monster, x, y, state) {
             preflight_describe_decor_at(x, y, state);
         } catch (error) {
             if (!(error instanceof UnsupportedPickupError)) throw error;
-            throw new UnsupportedHeroMoveBoundaryError(error.message);
+            throw new UnsupportedHeroMoveBoundaryError(error.reason);
         }
     }
 
