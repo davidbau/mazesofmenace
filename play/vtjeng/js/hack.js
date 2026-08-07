@@ -392,7 +392,13 @@ export function monsterNearby(state = game) {
 // the run ends. nomul() masks half of that by setting disp.botl itself, but the
 // direct callers in js/uhitm.js and js/eat.js reach here without it.
 //
-// gt.travelmap has no ported counterpart, so its selection_free() is absent.
+// state.travelmap stands for gt.travelmap, the selection travel builds and
+// every end_running() disposes of. C frees it here unconditionally, outside
+// both the `context.run` block and the `and_travel` arm, so this clear carries
+// no guard either. Nothing in js/ builds a travel selection yet, so today the
+// field only ever goes from undefined to null; the clear is here because
+// end_running() is where C puts it, and dotravel() will find it already
+// waiting.
 export function endRunning(state = game) {
     if (state.context.run) {
         state.context.run = 0;
@@ -406,13 +412,20 @@ export function endRunning(state = game) {
     state.context.travel = 0;
     state.context.travel1 = 0;
     state.context.mv = 0;
+    state.travelmap = null;
     if (state.multi > 0) state.multi = 0;
 }
 
-// C ref: hack.c nomul(). Interrupts a multi-turn action: a run, a travel, or
-// a counted repeat. Its cmdq_clear(CQ_CANNED) has no ported command queue,
-// and gm.multi_reason/gm.multireasonbuf have no ported reader, so neither is
-// represented here.
+// C ref: hack.c nomul() (4160-4173). Interrupts a multi-turn action: a run, a
+// travel, or a counted repeat. Its cmdq_clear(CQ_CANNED) has no ported command
+// queue, so it is not represented here.
+//
+// gm.multi_reason and gm.multireasonbuf have no ported reader. They are
+// written anyway because they are the reason string for the interrupted
+// action, and losing the clear would leave the previous action's reason
+// standing for the next one that sets it -- the same stale-string defect
+// dropping done_eating()'s nomovemsg reset produces. C zeroes them together
+// and only for nval 0, so both stay under that one guard.
 export function nomul(nval, state = game) {
     const multi = state.multi ?? 0;
     if (multi < nval) return; /* This is a bug fix by ab@unido */
@@ -421,6 +434,10 @@ export function nomul(nval, state = game) {
     state.u.uinvulnerable = false;
     state.u.usleep = 0;
     state.multi = nval;
+    if (nval === 0) {
+        state.multi_reason = null;
+        state.multireasonbuf = '';
+    }
     endRunning(state);
 }
 
@@ -666,8 +683,14 @@ export function requireSimpleHeroDestination(x, y, state) {
     // Only D_NODOOR and D_ISOPEN are admitted, the two masks recorded against
     // the C program. D_BROKEN behaves like D_NODOOR in doorless_door() but
     // differs in dfeature_at(), which returns the literal "broken door" where
-    // the other two go through the cmap; sp_lev.c rnddoor() can produce it on
-    // a themed-room door, so it is refused rather than assumed equivalent.
+    // the other two go through the cmap, so it is refused rather than assumed
+    // equivalent. It is a mask a level really can carry: sp_lev.c
+    // lspo_door():4702 rolls rnddoor() for `state = "random"`, and its
+    // coordinate arm at 4721-4726 hands that roll to sel_set_door() (4646-4662)
+    // to write as the doormask. dat/tut-1.lua:273 takes that arm, so the
+    // tutorial's door at map [40,15] is D_BROKEN on about one seed in five. The
+    // room-door arm at 4704-4720 cannot: it passes `msk`, still -1, to
+    // create_door(), which rerolls a state that has no D_BROKEN in it.
     // D_TRAPPED is excluded too: C admits an open trapped door here because
     // its trap fires from doopen(), not from entry, but that path is not
     // traced yet, so it stays refused.

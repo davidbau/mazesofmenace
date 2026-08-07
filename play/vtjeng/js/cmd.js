@@ -112,6 +112,7 @@ import { UnsupportedExperienceChangeError } from './exper.js';
 import { wiz_level_change, wiz_level_tele, wiz_wish } from './wizcmds.js';
 import { UnsupportedWishError } from './zap.js';
 import { dotwoweapon, UnsupportedTwoWeaponError } from './wield.js';
+import { dotalk, UnsupportedChatError } from './sounds.js';
 import {
     clearTtyMessageWindow,
     ttyNorep,
@@ -745,11 +746,14 @@ export async function parseCommand(state = game) {
 // after the prompt has painted the frames the reference program painted for
 // the same keystrokes.
 //
-// doextcmd() dispatches two commands that are deliberately absent here:
-// '#ride', whose own key is M-R, and '#twoweapon', whose own key is M-2.
-// Reaching doride() or dotwoweapon() from those keystrokes needs rhack()'s arm
-// for each as well as this admission, and nothing in the current goal drives
-// either, so both keys stay on the refusing side while the typed names work.
+// doextcmd() dispatches three commands that are deliberately absent here:
+// '#ride', whose own key is M-R (cmd.c:1833); '#twoweapon', whose own key is
+// 'X' (cmd.c:1913) and which commands_init() binds a second time to M-2
+// (cmd.c:2776); and '#chat', whose own key is M-c (cmd.c:1691). Reaching
+// doride(), dotwoweapon() or dotalk() from any of those four keystrokes needs
+// rhack()'s arm for each as well as this admission, and nothing in the current
+// goal drives any of them, so all four keys stay on the refusing side while
+// the typed names work.
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
     'eat', 'apply', 'down', 'reqmenu', 'options', 'wizwish', 'wizlevelport',
@@ -867,7 +871,9 @@ export function set_move_cmd(dir, run, state = game) {
 }
 
 // C ref: cmd.c set_move_cmd() and rhack()'s DOMOVE_WALK/DOMOVE_RUSH paths.
-async function executeMovement(command, firstTime, state) {
+// `key` is the movement key rhack() dispatched, which the failClosedCommand()
+// wrapper below needs to keep the keystroke retryable.
+async function executeMovement(command, key, firstTime, state) {
     const [dx, dy, run] = MOVEMENT_INTENTS[command];
 
     // moveloop_core() optimistically sets context.move before rhack(), as C
@@ -899,7 +905,15 @@ async function executeMovement(command, firstTime, state) {
         }
         state.context.mv = 1;
     }
-    await domove(state);
+    // Every extended command routes its handler through failClosedCommand();
+    // movement had no equivalent, so a refusal class raised below domove()
+    // that js/jsmain.js does not break on escaped runSegment() and discarded
+    // the segment's matching prefix instead of ending on it. The preflight
+    // above converts by hand the refusals it can see ahead of the move; this
+    // is the backstop for the ones only domove() reaches. rhack() is on the
+    // stack here, so its finally still holds context.pendingCommand and the
+    // keystroke stays retryable, exactly as the '#' arm's wrapper leaves it.
+    await failClosedCommand(key, state, () => domove(state));
     if (!run) state.context.forcefight = 0;
     state.iflags.menu_requested = false;
 }
@@ -938,9 +952,9 @@ function rejectedPhysicalCommand(pending) {
 }
 
 // The classes failClosedCommand() converts. js/jsmain.js breaks the segment
-// only for the three boundary classes, so a class a command handler can raise
-// that is missing from this list escapes as a hard failure and discards the
-// segment's matching prefix instead of stopping on it.
+// only for the boundary classes it lists, so a class a command handler can
+// raise that is missing from this list escapes as a hard failure and discards
+// the segment's matching prefix instead of stopping on it.
 // js/allmain.js elapsedTurnPlanningRefusals() is the same list for the turn
 // loop; a class both paths can reach belongs in both.
 export function failClosedCommandRefusals() {
@@ -965,9 +979,9 @@ export function failClosedCommandRefusals() {
         UnsupportedHungerTransitionError,
         UnsupportedObjectPromptError,
         UnsupportedSteedError,
-        // wield.c can_twoweapon()'s seven refusal messages and
-        // dotwoweapon()'s toggle-off arm, all of which stop before the
-        // command prints anything or draws its rnd(20).
+        // wield.c can_twoweapon()'s artifact and slippery-or-cursed arms,
+        // both of which stop before the command prints anything or draws its
+        // rnd(20).
         UnsupportedTwoWeaponError,
         UnsupportedHitPointLossError,
         UnsupportedArtifactDisplayError,
@@ -1014,6 +1028,10 @@ export function failClosedCommandRefusals() {
         // class, and the note above says a class both paths can reach belongs
         // in both.
         UnsupportedObjectOperationError,
+        // sounds.c dochat() reaches this for a shop's merchandise, for a
+        // steed, and for a monster on the target square, all three of which
+        // continue into a function this goal leaves unported.
+        UnsupportedChatError,
     ];
 }
 
@@ -1210,6 +1228,13 @@ async function runTwoWeaponCommand(key, state) {
     return failClosedCommand(key, state, () => dotwoweapon(state));
 }
 
+// C ref: sounds.c dotalk(). Like dosearch() and doeat() it returns its own
+// ECMD_* result: dochat() answers ECMD_CANCEL for a cancelled direction prompt
+// and ECMD_OK for every arm this goal ports, so #chat never spends a move.
+async function runChatCommand(key, state) {
+    return failClosedCommand(key, state, () => dotalk(state));
+}
+
 // C ref: options.c doset_simple(), the 'O' command. Its menu_requested arm
 // hands off to doset(), whose whole menu is formatted before select_menu()
 // draws anything, so an unported option value stops before any output.
@@ -1381,6 +1406,8 @@ async function doextcmd(key, state) {
         return await doride(state);
     case 'dotwoweapon':
         return await runTwoWeaponCommand(key, state);
+    case 'dotalk':
+        return await runChatCommand(key, state);
     case 'wiz_level_change':
         return await runLevelChangeCommand(key, state);
     case 'wiz_level_tele':
@@ -1654,7 +1681,7 @@ export async function rhack(key, state = game) {
             return;
         }
         if (Object.hasOwn(MOVEMENT_INTENTS, command)) {
-            await executeMovement(command, firstTime, state);
+            await executeMovement(command, key, firstTime, state);
             return;
         }
         if (command !== null) {
