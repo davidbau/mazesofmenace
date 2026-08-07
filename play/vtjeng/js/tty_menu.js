@@ -14,6 +14,7 @@ import {
     clearTtyMessageWindow,
     dismissPendingTtyMessage,
     MORE_PROMPT,
+    TOPLINE_NEED_MORE,
     xwaitforspace,
 } from './tty_message.js';
 import { BUFSZ, PICK_ANY, PICK_NONE, PICK_ONE } from './const.js';
@@ -42,6 +43,7 @@ import {
     CLR_GRAY,
     NO_COLOR,
 } from './terminal.js';
+import { menuitem_invert_test } from './windows.js';
 
 // C ref: win/tty/wintty.c process_menu_window()'s MENU_SEARCH arm, which
 // calls tty_getlin("Search for:") and skips an empty or Escaped answer.
@@ -449,7 +451,12 @@ export function ttyMenuLayout(display, spec, pageIndex = 0) {
     };
 }
 
-export function renderTtyMenu(state = game, spec, pageIndex = 0) {
+// `previous` is the result of the render this one replaces, which
+// process_menu_window() produces when it turns a page. C turns a page inside
+// the window it already opened, so the base window it will repair on dismissal
+// is the one the first page covered; only the first render may measure it.
+export function renderTtyMenu(state = game, spec, pageIndex = 0,
+    previous = null) {
     const display = state.nhDisplay;
     if (!display) throw new Error('tty menu requires an initialized display');
     const layout = ttyMenuLayout(display, spec, pageIndex);
@@ -465,10 +472,25 @@ export function renderTtyMenu(state = game, spec, pageIndex = 0) {
     // tty_dismiss_nhwindow().  Retain the equivalent physical base frame so
     // state-parameterized and focused displays can perform that repair
     // without reaching through the global display singleton.
-    const snapshot = layout.fullScreen
+    const snapshot = previous ? previous.snapshot : (layout.fullScreen
         ? copyRegion(display, 0, display.rows)
-        : copyRegion(display, layout.repairColumn, restoredRows);
-    const baseCursor = [display.cursorCol, display.cursorRow];
+        : copyRegion(display, layout.repairColumn, restoredRows));
+    const baseCursor = previous
+        ? previous.baseCursor
+        : [display.cursorCol, display.cursorRow];
+    // The repair belongs to the window, not to the page on screen: C sizes
+    // cw->offx and cw->maxrow once in tty_end_menu() and docorner() reads
+    // those when the menu is dismissed.  This port recomputes the layout for
+    // every page, and `maxcol` folds in the footer, which is "(1 of 10)" on
+    // one page and "(10 of 10)" on another -- so `offx`, and with it
+    // repairColumn, is page-dependent in principle.  Measure the repair
+    // alongside the frame it restores, so dismissTtyMenu() reads one
+    // self-consistent record.
+    const base = previous ? previous.base : {
+        repairColumn: layout.repairColumn,
+        fullScreen: layout.fullScreen,
+        maxrow: layout.maxrow,
+    };
 
     if (layout.fullScreen) display.clearScreen();
     else clearRegion(display, layout.firstColumn, visibleRows);
@@ -503,13 +525,16 @@ export function renderTtyMenu(state = game, spec, pageIndex = 0) {
         layout.footerRow,
     );
 
-    return { layout, snapshot, baseCursor };
+    return { layout, snapshot, baseCursor, base };
 }
 
+// `rendered.base`, `rendered.snapshot` and `rendered.baseCursor` all describe
+// the frame the menu covered when it opened; `rendered.layout` describes the
+// page on screen and has no part in the repair.
 export function dismissTtyMenu(state = game, rendered) {
     const display = state.nhDisplay;
     if (!display || !rendered) return;
-    if (rendered.layout.fullScreen) {
+    if (rendered.base.fullScreen) {
         if (state.program_state?.in_role_selection) {
             display.clearScreen();
             state._ttyBaseCursorRow = 0;
@@ -523,16 +548,16 @@ export function dismissTtyMenu(state = game, rendered) {
         // clears this slice rather than reconstructing the banner.
         clearRegion(
             display,
-            rendered.layout.repairColumn,
+            rendered.base.repairColumn,
             rendered.snapshot.length,
         );
         // docorner(offx, maxrow + 1, 0) leaves BASE_WINDOW on maxrow.  A
         // subsequent rename's empty tty_putstr() advances from this row.
-        state._ttyBaseCursorRow = rendered.layout.maxrow;
+        state._ttyBaseCursorRow = rendered.base.maxrow;
     } else {
         restoreRegion(
             display,
-            rendered.layout.repairColumn,
+            rendered.base.repairColumn,
             rendered.snapshot,
         );
     }
@@ -792,7 +817,7 @@ function unsetPickOneLines(state, spec, rendered, allPages) {
     if (spec.items) {
         const candidates = allPages
             ? selectableItems(spec) : visibleItems(rendered);
-        const changed = setItems(candidates, false);
+        const changed = setItems(state, candidates, false);
         refreshVisibleSelections(state, rendered, changed);
         return;
     }
@@ -944,7 +969,7 @@ async function selectOneTtyMenu(state, spec) {
             if (pageIndex + 1 < rendered.layout.pageCount) {
                 ++pageIndex;
                 rendered = renderTtyMenu(
-                    state, workingSpec, pageIndex,
+                    state, workingSpec, pageIndex, rendered,
                 );
             } else if (ch === ' ') {
                 // process_menu_window()'s MENU_NEXT_PAGE arm: on the last
@@ -958,20 +983,20 @@ async function selectOneTtyMenu(state, spec) {
         if (ch === MENU_PREVIOUS_PAGE && pageIndex > 0) {
             pendingCount = null;
             --pageIndex;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
         if (ch === MENU_FIRST_PAGE && pageIndex !== 0) {
             pendingCount = null;
             pageIndex = 0;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
         if (ch === MENU_LAST_PAGE
             && pageIndex + 1 !== rendered.layout.pageCount) {
             pendingCount = null;
             pageIndex = rendered.layout.pageCount - 1;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
         if (ch === MENU_UNSELECT_PAGE || ch === MENU_UNSELECT_ALL) {
@@ -1046,10 +1071,17 @@ function toggleItem(item, pendingCount = null) {
     return false;
 }
 
-function setItems(items, selected) {
+// C ref: wintty.c set_all_on_page() (1198-1214) and unset_all_on_page()
+// (1217-1235).  Each skips an item that already holds the value it is setting,
+// so by the time the bulk-restriction test runs the item's selection state is
+// always the negation of the target: set_all_on_page() asks
+// menuitem_invert_test(1, ..., FALSE) and unset_all_on_page() asks
+// menuitem_invert_test(2, ..., TRUE).
+function setItems(state, items, selected) {
     const changed = new Set();
     for (const item of items) {
-        if (item.bulkSelectable === false || item.selected === selected)
+        if (item.selected === selected) continue;
+        if (!menuitem_invert_test(item.skipinvert, !selected, state))
             continue;
         item.selected = selected;
         if (!selected) item.count = -1;
@@ -1058,10 +1090,18 @@ function setItems(items, selected) {
     return changed;
 }
 
-function invertItems(items, pendingCount = null) {
+// C ref: wintty.c invert_all_on_page() (1238-1266) and invert_all()
+// (1269-1311), which share one item test:
+// `acc ? curr->gselector != acc : !menuitem_invert_test(0, itemflags,
+// curr->selected)`.  Group toggling has already picked its items by group
+// accelerator and takes the first arm, so it bypasses the restriction
+// entirely; `groupToggle` is that non-zero `acc`.
+function invertItems(state, items, pendingCount = null, groupToggle = false) {
     const changed = new Set();
     for (const item of items) {
-        if (item.bulkSelectable === false) continue;
+        if (!groupToggle
+            && !menuitem_invert_test(item.skipinvert, item.selected, state))
+            continue;
         if (item.selected) {
             item.selected = false;
             item.count = -1;
@@ -1121,7 +1161,7 @@ async function selectAnyTtyMenu(state, spec) {
             // process_menu_window() gives a digit group accelerator its
             // one special chance before starting a count.
             if (pendingCount === null && grouped.length) {
-                const changed = invertItems(grouped);
+                const changed = invertItems(state, grouped, null, true);
                 refreshVisibleSelections(state, rendered, changed);
                 continue;
             }
@@ -1176,7 +1216,9 @@ async function selectAnyTtyMenu(state, spec) {
             pendingCount = null;
             if (pageIndex + 1 < rendered.layout.pageCount) {
                 ++pageIndex;
-                rendered = renderTtyMenu(state, workingSpec, pageIndex);
+                rendered = renderTtyMenu(
+                    state, workingSpec, pageIndex, rendered,
+                );
             } else if (ch === ' ') {
                 dismissTtyMenu(state, rendered);
                 return allItems
@@ -1188,38 +1230,38 @@ async function selectAnyTtyMenu(state, spec) {
         if (ch === MENU_PREVIOUS_PAGE && pageIndex > 0) {
             pendingCount = null;
             --pageIndex;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
         if (ch === MENU_FIRST_PAGE && pageIndex !== 0) {
             pendingCount = null;
             pageIndex = 0;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
         if (ch === MENU_LAST_PAGE
             && pageIndex + 1 !== rendered.layout.pageCount) {
             pendingCount = null;
             pageIndex = rendered.layout.pageCount - 1;
-            rendered = renderTtyMenu(state, workingSpec, pageIndex);
+            rendered = renderTtyMenu(state, workingSpec, pageIndex, rendered);
             continue;
         }
 
         let changed;
         if (ch === MENU_SELECT_PAGE) {
-            changed = setItems(currentItems, true);
+            changed = setItems(state, currentItems, true);
         } else if (ch === MENU_UNSELECT_PAGE) {
-            changed = setItems(currentItems, false);
+            changed = setItems(state, currentItems, false);
         } else if (ch === MENU_INVERT_PAGE) {
-            changed = invertItems(currentItems);
+            changed = invertItems(state, currentItems);
         } else if (ch === MENU_SELECT_ALL) {
-            changed = setItems(allItems, true);
+            changed = setItems(state, allItems, true);
         } else if (ch === MENU_UNSELECT_ALL) {
-            changed = setItems(allItems, false);
+            changed = setItems(state, allItems, false);
         } else if (ch === MENU_INVERT_ALL) {
-            changed = invertItems(allItems);
+            changed = invertItems(state, allItems);
         } else if (grouped.length) {
-            changed = invertItems(grouped, commandCount);
+            changed = invertItems(state, grouped, commandCount, true);
         } else {
             if (acceptedIncoming) pendingCount = null;
             continue;
@@ -1237,6 +1279,18 @@ async function selectAnyTtyMenu(state, spec) {
 // PICK_ONE loop, which refuses every selection and so always answers
 // cancelValue.
 export async function selectTtyMenu(state = game, spec) {
+    // wintty.c tty_display_nhwindow()'s NHW_MENU arm (1921-1922) flushes an
+    // unacknowledged top line before the menu covers it.  Its NHW_MESSAGE arm
+    // (1874-1877) is `more(); ttyDisplay->toplin = TOPLINE_NEED_MORE;
+    // tty_clear_nhwindow(window);`, and that restore is what makes the clear
+    // take its home()/cl_end() branch: without it this port's dismissal has
+    // already zeroed both fields clearTtyMessageWindow() tests, so row 0 would
+    // keep the acknowledged message for the full-screen menus that do not
+    // clear it again below.
+    if (await dismissPendingTtyMessage(state)) {
+        if (state.nhDisplay) state.nhDisplay.toplin = TOPLINE_NEED_MORE;
+        clearTtyMessageWindow(state);
+    }
     const how = spec.how ?? PICK_ONE;
     return how === PICK_ANY
         ? selectAnyTtyMenu(state, spec)

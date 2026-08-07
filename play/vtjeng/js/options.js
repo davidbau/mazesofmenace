@@ -16,7 +16,9 @@ import {
     GPCOORDS_MAP,
     GPCOORDS_NONE,
     GPCOORDS_SCREEN,
+    MENU_COMBINATION,
     MENU_FULL,
+    MENU_TRADITIONAL,
     MOD_ENCUMBER,
     NUM_DISCLOSURE_OPTIONS,
     PARANOID_AUTOALL,
@@ -125,16 +127,20 @@ import {
     COIN_CLASS,
     FOOD_CLASS,
     GEM_CLASS,
+    MAXOCLASSES,
     POTION_CLASS,
     RING_CLASS,
     ROCK_CLASS,
     SCROLL_CLASS,
     SPBOOK_CLASS,
     TOOL_CLASS,
+    VENOM_CLASS,
     WAND_CLASS,
     WEAPON_CLASS,
 } from './objects.js';
 import { rn2 } from './rng.js';
+import { def_char_to_objclass } from './drawing.js';
+import { choose_classes_menu } from './windows.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
 const PLAYER_NAME_BYTE_LIMIT = 31; // PL_NSIZ - 1
@@ -359,8 +365,10 @@ function defaultResult() {
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
             // C's char array of object-class indices, empty for "all". Its
             // bytes are class numbers rather than class symbols, which is why
-            // oc_to_str() maps them through def_oc_syms[].
-            pickup_types: '',
+            // oc_to_str() maps them through def_oc_syms[]. Spelled as an
+            // array of those numbers, the way flags.inv_order above is.
+            // optfn_pickup_types()'s do_set arm is what rewrites it.
+            pickup_types: [],
             pickup_burden: MOD_ENCUMBER,
             end_disclose: Array(NUM_DISCLOSURE_OPTIONS).fill(
                 DISCLOSE_PROMPT_DEFAULT_NO,
@@ -2287,10 +2295,12 @@ function applyDirectOption(result, key, value) {
 // cnf_line_<NAME>() this port has not ported, and each of those appends to a
 // list the options menu counts.  parse_config_line() matches on the same
 // case-insensitive prefix of at least `minLength` bytes, so these lengths are
-// the C table's: CNFL_N(AUTOCOMPLETE, 5), CNFL_N(MSGTYPE, 7) and
-// CNFL_N(MENUCOLOR, 9).  Recording the statement lets the count refuse rather
-// than report a list the port never built.
+// the C table's: CNFL_N(AUTOPICKUP_EXCEPTION, 5), CNFL_N(AUTOCOMPLETE, 5),
+// CNFL_N(MSGTYPE, 7) and CNFL_N(MENUCOLOR, 9).  Recording the statement lets
+// the readers of the list refuse rather than report a list the port never
+// built.
 const UNPORTED_CONFIG_STATEMENTS = Object.freeze([
+    { name: 'autopickup_exception', minLength: 5, kind: 'unported' },
     { name: 'autocomplete', minLength: 5, kind: 'unported' },
     { name: 'msgtype', minLength: 7, kind: 'unported' },
     { name: 'menucolor', minLength: 9, kind: 'unported' },
@@ -2690,7 +2700,7 @@ function color_attr_to_str(ca) {
 
 // C ref: options.c oc_to_str(), which spells an object-class list with the
 // fixed drawing.c def_oc_syms[] symbols rather than the active symbol set.
-function oc_to_str(classes) {
+export function oc_to_str(classes) {
     return classes
         .map((oclass) => String.fromCharCode(
             DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_O + oclass],
@@ -2792,11 +2802,13 @@ function count_cond(state) {
         .filter(Boolean).length;
 }
 
-// C ref: options.c count_apes(), over ga.apelist.  parseNethackrc() has no
-// AUTOPICKUP_EXCEPTION statement and no ported command adds one, so the list
-// is empty; js/pickup.js refuses the same field where autopickup would read
-// it.
+// C ref: options.c count_apes(), over ga.apelist.  cfgfiles.c
+// cnf_line_AUTOPICKUP_EXCEPTION() is the only thing that appends to that list
+// in reach -- no ported command adds one -- and parseNethackrc() records the
+// statement without interpreting it, so the count stops rather than report an
+// empty list as the session's.
 function count_apes(state) {
+    refuseUnportedConfigStatement(state, 'autopickup_exception');
     let numapes = 0;
     for (let ape = state.ga?.apelist; ape; ape = ape.next) numapes++;
     return numapes;
@@ -2805,8 +2817,12 @@ function count_apes(state) {
 // A configuration statement cfgfiles.c dispatches and parseNethackrc() only
 // records.  The list each one appends to is the list a count below walks, so
 // the count stops here rather than reporting the empty list as the session's.
+export function hasUnportedConfigStatement(state, name) {
+    return Boolean(state.unportedConfigStatements?.includes(name));
+}
+
 function refuseUnportedConfigStatement(state, name) {
-    if (state.unportedConfigStatements?.includes(name)) {
+    if (hasUnportedConfigStatement(state, name)) {
         throw new UnsupportedOptionMenuError(
             `cfgfiles.c cnf_line_${name.toUpperCase()}()`,
         );
@@ -2969,16 +2985,16 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     pickup_types: (state) => {
         // flags.pickup_types holds object-class indices, which
         // optfn_pickup_types()'s do_set arm derives from the option's class
-        // symbols. That arm is not ported, so parseNethackrc() leaves the raw
-        // symbols in the same field and the list is empty for every game this
-        // port can construct.
-        if (state.flags.pickup_types !== '') {
+        // symbols. parseNethackrc() has no arm for this option, so a
+        // configuration file that sets it leaves its raw class symbols in the
+        // same field; a string here is that raw text rather than a parsed
+        // list.
+        if (typeof state.flags.pickup_types === 'string') {
             throw new UnsupportedOptionMenuError(
                 "parseoptions() to interpret 'pickup_types'",
             );
         }
-        const ocl = oc_to_str([...state.flags.pickup_types]
-            .map((symbol) => symbol.charCodeAt(0)));
+        const ocl = oc_to_str(state.flags.pickup_types);
         return ocl || 'all';
     },
     pile_limit: (state) => `${state.flags.pile_limit}`,
@@ -3394,8 +3410,18 @@ function preference_update(state, pref) {
 }
 
 // C ref: options.c optfn_boolean()'s `*(allopt[optidx].addr) = !negated`
-// (5285).  booleanOptionValue() above reads the same field; this is its only
-// writer.
+// (5285).  booleanOptionValue() above reads the address this writes, and this
+// is its only writer.
+//
+// C stores a boolean option once, at allopt[].addr.  This port stores it twice
+// whenever applyBooleanOption()'s final arm handled the configuration file's
+// copy: that arm writes flags.<name>, which is a second field for the 43
+// options whose address is something else.  booleanOptionValue() refuses when
+// the two disagree, because before this writer existed the only way they could
+// was a configuration file the parse had misplaced.  Now that the menu writes
+// the address itself, the parse's copy is a stale duplicate rather than an
+// answer, so drop it and leave the address as the value's only owner --
+// otherwise the next menu build refuses a value the port does hold.
 function setBooleanOptionValue(state, option, value) {
     const path = option.addr.split('.');
     let owner = state;
@@ -3408,6 +3434,9 @@ function setBooleanOptionValue(state, option, value) {
         );
     }
     owner[path[path.length - 1]] = value;
+    const parsedName = option.name.toLowerCase();
+    if (option.addr !== `flags.${parsedName}`)
+        delete state.flags?.[parsedName];
 }
 
 // C ref: options.c optfn_boolean() (5192-5443), the do_set request.  The
@@ -3494,9 +3523,12 @@ async function optfn_boolean(state, optidx, negated, opts) {
         await ttyPline("There is no underlying support for 'idlecheckpoint'"
             + ' compiled in.', state);
         state.iflags.idlecheckpoint = false;
-        // C's give_opt_msg is a file static that starts TRUE; only this arm
-        // and doset_simple()'s loop write it, so once this fires no further
-        // toggle in the same game announces itself.
+        // C's give_opt_msg is a file static that starts TRUE, and only this
+        // arm and doset_simple() write it.  doset_simple() brackets its own
+        // pick loop with FALSE at options.c:8722 and an unconditional TRUE at
+        // :8733, so the suppression this arm starts lasts only until the next
+        // 'O'.  This port has no restore because that loop stops at
+        // doset_simple_menu(); porting it has to bring the trailing TRUE.
         state.give_opt_msg = false;
         break;
     default:
@@ -3612,10 +3644,90 @@ async function optfn_boolean(state, optidx, negated, opts) {
     return optn_ok;
 }
 
+// C ref: options.c optfn_pickup_types() (3307-3402), the do_set request.  The
+// do_init and get_val requests need no arm here: get_val is what
+// OPTION_VALUE_HANDLERS.pickup_types already answers for the menu's value
+// column, and do_init returns at once.
+//
+// handler_pickup_types() below is this arm's only caller, and it always
+// spells the statement 'pickup_types' in full.  Three of C's branches cannot
+// be reached from it and are left out rather than written dead:
+//   - a statement carrying a ':' or '=' value.  The guard below is what would
+//     notice a caller that started passing one.
+//   - options.c:3327-3332, where an empty value means "pick up everything"
+//     rather than "ask".  It needs `compat` -- strlen(opts) <= 6, and the
+//     statement is twelve bytes -- or go.opt_initial, which parseoptions()
+//     refuses along with tinitial, or `negated`.
+//   - options.c:3364-3367's bad_negation() arm.  `negated` cannot be true
+//     here either: allopt[]'s negateok is false for this option, so
+//     parseoptions() rejects a negated statement before the handler runs.
+//     The parameter stays so every OPTION_SET_HANDLERS entry takes C's
+//     argument list.
+async function optfn_pickup_types(state, optidx, negated, opts, helpers) {
+    /* types of objects to pick up automatically */
+    const tbuf = oc_to_str(state.flags.pickup_types);
+    state.flags.pickup_types = []; /* all */
+    if (string_for_opt(opts) !== '') {
+        throw new UnsupportedOptionMenuError(
+            `optfn_${allopt[optidx].optfn}() with an explicit value`,
+        );
+    }
+
+    const inv_order_symbols = oc_to_str(state.flags.inv_order);
+    // VENOM_SYM.  Venom is not in def_inv_order[], so a wizard picking up
+    // splashes of venom needs the class appended by hand.
+    const venom = oc_to_str([VENOM_CLASS]);
+    const ocl = (state.wizard && !inv_order_symbols.includes(venom))
+        ? inv_order_symbols + venom
+        : inv_order_symbols;
+    if (state.flags.menu_style === MENU_TRADITIONAL
+        || state.flags.menu_style === MENU_COMBINATION) {
+        // options.c:3337-3356 asks getlin() for the class list instead, and
+        // only answering 'm' there reaches the menu below.
+        throw new UnsupportedOptionMenuError(
+            'optfn_pickup_types()\'s getlin("New %s: [%s am] (%s)")',
+        );
+    }
+    let op = await choose_classes_menu(
+        state, 'Autopickup what?', ocl, tbuf, helpers,
+    );
+
+    while (op.startsWith(' ')) op = op.slice(1);
+    if (op[0] !== 'a' && op[0] !== 'A') {
+        /* make sure all are valid obj symbols occurring once */
+        const types = [];
+        let badopt = false;
+        for (const symbol of op) {
+            const oc_sym = def_char_to_objclass(symbol);
+            if (oc_sym !== MAXOCLASSES && !types.includes(oc_sym))
+                types.push(oc_sym);
+            else badopt = true;
+        }
+        // C writes each accepted class into flags.pickup_types as it goes, so
+        // a rejected one later in the list does not undo the earlier ones.
+        state.flags.pickup_types = types;
+        if (badopt) {
+            /* config_error_add("Unknown %s parameter '%s'") */
+            return optn_err;
+        }
+    }
+    return optn_ok;
+}
+
+// C ref: options.c parseoptions() (489-681)'s handler table, C's
+// allopt[optidx].optfn(optidx, do_set, ...).  The key is that function's own
+// name, as OPTION_VALUE_HANDLERS' keys are.
+const OPTION_SET_HANDLERS = Object.freeze({
+    boolean: optfn_boolean,
+    pickup_types: optfn_pickup_types,
+});
+
 // C ref: options.c parseoptions() (489-681), the path doset()'s pick loop
 // takes.  `opts` there is always an allopt[] name with an optional leading
 // '!', and both flags arrive FALSE.
-export async function parseoptions(state, statement, tinitial, tfrom_file) {
+export async function parseoptions(
+    state, statement, tinitial, tfrom_file, helpers,
+) {
     if (tinitial || tfrom_file) {
         // The comma recursion at options.c:513-521, duplicate_opt_detection()'s
         // per-option counter and every config_error_add() report belong to the
@@ -3642,9 +3754,6 @@ export async function parseoptions(state, statement, tinitial, tfrom_file) {
         );
         negated = !negated;
     }
-    const optlen = Math.min(opts.length, length_without_val(
-        opts, opts.length,
-    ));
 
     let got_match = false;
     let matchidx = -1;
@@ -3659,11 +3768,12 @@ export async function parseoptions(state, statement, tinitial, tfrom_file) {
         }
         if (got_match) {
             // options.c:583-589 answers "Ambiguous option" here when
-            // optlen < allopt[i].minmatch.  match_optname() has just measured
-            // the same optlen from the same string with the same val_allowed,
-            // and answered true only because that length reached minmatch, so
-            // the test cannot hold and the arm is left out rather than written
-            // unreachable.
+            // length_without_val(opts, strlen(opts)) is below
+            // allopt[i].minmatch.  match_optname() has just measured that same
+            // length from the same string with the same val_allowed, and
+            // answered true only because it reached minmatch, so the test
+            // cannot hold and the arm is left out rather than written
+            // unreachable.  Nothing in this port needs the length itself.
             matchidx = i;
             break;
         }
@@ -3690,7 +3800,8 @@ export async function parseoptions(state, statement, tinitial, tfrom_file) {
         return false;
     }
 
-    if (allopt[matchidx].optfn !== 'boolean') {
+    const optfn = OPTION_SET_HANDLERS[allopt[matchidx].optfn];
+    if (!optfn) {
         // opt_set_in_config[matchidx], which options.c:640 sets after a
         // successful handler call, feeds #saveoptions alone and has no port.
         const prefix = allopt[matchidx].pfx ? 'pfxfn' : 'optfn';
@@ -3698,7 +3809,7 @@ export async function parseoptions(state, statement, tinitial, tfrom_file) {
             `${prefix}_${allopt[matchidx].optfn}()'s do_set request`,
         );
     }
-    const optresult = await optfn_boolean(state, matchidx, negated, opts);
+    const optresult = await optfn(state, matchidx, negated, opts, helpers);
 
     // options.c:670-681.  Every remaining arm reports a configuration error
     // and answers FALSE; only optn_ok answers TRUE, and `retval` is TRUE
@@ -3707,6 +3818,22 @@ export async function parseoptions(state, statement, tinitial, tfrom_file) {
     // at options.c:8929 -- so the arms differ only in the message they add.
     return optresult === optn_ok;
 }
+
+// C ref: options.c handler_pickup_types() (6114-6121).  Rather than edit
+// flags.pickup_types itself, it asks parseoptions() to run the same do_set arm
+// a configuration file would, which is where the class menu lives.  C's
+// comment: "parseoptions will prompt for the list of types".
+async function handler_pickup_types(state, helpers) {
+    await parseoptions(state, 'pickup_types', false, false, helpers);
+    return optn_ok;
+}
+
+// C ref: options.c allopt[optidx].optfn(optidx, do_handler, ...), the
+// interactive editor doset()'s pick loop opens for a compound option.  Keyed
+// on the handler's own option, as OPTION_SET_HANDLERS is.
+const OPTION_HANDLERS = Object.freeze({
+    pickup_types: handler_pickup_types,
+});
 
 // C ref: options.c reset_needed_visuals() (8977-9010), which doset() runs once
 // after its pick loop and doset_simple() runs after every pass of its own.
@@ -3805,12 +3932,16 @@ export async function doset(state, helpers) {
             /* boolean option */
             const buf = (booleanOptionValue(state, option) ? '!' : '')
                 + option.name;
-            await parseoptions(state, buf, false, false);
+            await parseoptions(state, buf, false, false, helpers);
         } else if (option.has_handler) {
             /* compound option */
-            throw new UnsupportedOptionMenuError(
-                `optfn_${option.optfn}()'s do_handler request`,
-            );
+            const handler = OPTION_HANDLERS[option.optfn];
+            if (!handler) {
+                throw new UnsupportedOptionMenuError(
+                    `optfn_${option.optfn}()'s do_handler request`,
+                );
+            }
+            await handler(state, helpers);
         } else {
             throw new UnsupportedOptionMenuError(
                 `getlin("Set ${option.name} to what?")`,
