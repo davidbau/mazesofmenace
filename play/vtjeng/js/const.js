@@ -2000,6 +2000,13 @@ export const quitchars = ' \r\n\x1B';
 
 // Check if position is within map bounds
 // C ref: cmd.c isok() — x >= 1 && x <= COLNO-1 && y >= 0 && y <= ROWNO-1
+//
+// The C owner is cmd.c, so js/cmd.js is where "Keep each source file's port in
+// one place" would put this. It lives here instead because js/cmd.js is itself
+// one of the twenty-one modules that import isok(), and it already imports the
+// other twenty, directly or through another module; moving isok() there would
+// make each of them import the command dispatcher and close a cycle. isok()
+// reads nothing but COLNO and ROWNO, which this module owns.
 export function isok(x, y) {
     return x >= 1 && x <= COLNO - 1 && y >= 0 && y <= ROWNO - 1;
 }
@@ -2869,7 +2876,12 @@ export function Upolyd(player) {
 }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
-export function u_at(x, y) { return game?.u?.ux === x && game?.u?.uy === y; }
+// C ref: you.h:562 u_at(). The optional state argument matches the rest of the
+// port's calling convention; the module-global default preserves the reading
+// every other canonical macro in this block does.
+export function u_at(x, y, state = game) {
+    return state?.u?.ux === x && state?.u?.uy === y;
+}
 export function OBJ_AT(x, y) { return Boolean(game?.level?.objects?.[x]?.[y]); }
 export function Has_contents(obj) { return obj?.cobj != null; }
 // C ref: monst.h:73-74. The mask matters: m_ap_type also carries M_AP_F_DKNOWN

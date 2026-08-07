@@ -5,6 +5,8 @@
 
 import { i16, schar, u16 } from '../cmachine.js';
 import * as cptr from '../cptr.js';
+import * as NHC from './nhconst.js';
+import * as NHM from './nhmacro.js';
 import { You, You_feel, Your, impossible, pline, pline_mon } from './pline.js';
 import { handle_tip } from './hack.js';
 import { obj_descr, objects } from './objects.js';
@@ -150,103 +152,103 @@ const __sl107 = cptr.lit("stop");
 
 /** C ref: weapon.c:38 — short[38] */
 const skill_names_indices = cptr.alloc(38 * 2);
-cptr.stI16(cptr.add(skill_names_indices, 0), 0);
-cptr.stI16(cptr.add(skill_names_indices, 2), 34);
-cptr.stI16(cptr.add(skill_names_indices, 4), 40);
-cptr.stI16(cptr.add(skill_names_indices, 6), 44);
-cptr.stI16(cptr.add(skill_names_indices, 8), 259);
-cptr.stI16(cptr.add(skill_names_indices, 10), 46);
-cptr.stI16(cptr.add(skill_names_indices, 12), 52);
-cptr.stI16(cptr.add(skill_names_indices, 14), 54);
-cptr.stI16(cptr.add(skill_names_indices, 16), 55);
-cptr.stI16(cptr.add(skill_names_indices, 18), -5);
-cptr.stI16(cptr.add(skill_names_indices, 20), 77);
-cptr.stI16(cptr.add(skill_names_indices, 22), 73);
-cptr.stI16(cptr.add(skill_names_indices, 24), 75);
-cptr.stI16(cptr.add(skill_names_indices, 26), 81);
-cptr.stI16(cptr.add(skill_names_indices, 28), -6);
-cptr.stI16(cptr.add(skill_names_indices, 30), 79);
-cptr.stI16(cptr.add(skill_names_indices, 32), -4);
-cptr.stI16(cptr.add(skill_names_indices, 34), 27);
-cptr.stI16(cptr.add(skill_names_indices, 36), 33);
-cptr.stI16(cptr.add(skill_names_indices, 38), 72);
-cptr.stI16(cptr.add(skill_names_indices, 40), 83);
-cptr.stI16(cptr.add(skill_names_indices, 42), 87);
-cptr.stI16(cptr.add(skill_names_indices, 44), 88);
-cptr.stI16(cptr.add(skill_names_indices, 46), 24);
-cptr.stI16(cptr.add(skill_names_indices, 48), 25);
-cptr.stI16(cptr.add(skill_names_indices, 50), 26);
-cptr.stI16(cptr.add(skill_names_indices, 52), -7);
-cptr.stI16(cptr.add(skill_names_indices, 54), 261);
-cptr.stI16(cptr.add(skill_names_indices, 56), -8);
-cptr.stI16(cptr.add(skill_names_indices, 58), -9);
-cptr.stI16(cptr.add(skill_names_indices, 60), -10);
-cptr.stI16(cptr.add(skill_names_indices, 62), -11);
-cptr.stI16(cptr.add(skill_names_indices, 64), -12);
-cptr.stI16(cptr.add(skill_names_indices, 66), -13);
-cptr.stI16(cptr.add(skill_names_indices, 68), -14);
-cptr.stI16(cptr.add(skill_names_indices, 70), -1);
-cptr.stI16(cptr.add(skill_names_indices, 72), -2);
-cptr.stI16(cptr.add(skill_names_indices, 74), -3);
+cptr.stI16o(skill_names_indices, 0, 0);
+cptr.stI16o(skill_names_indices, 2, NHC.DAGGER);
+cptr.stI16o(skill_names_indices, 4, NHC.KNIFE);
+cptr.stI16o(skill_names_indices, 6, NHC.AXE);
+cptr.stI16o(skill_names_indices, 8, NHC.PICK_AXE);
+cptr.stI16o(skill_names_indices, 10, NHC.SHORT_SWORD);
+cptr.stI16o(skill_names_indices, 12, NHC.BROADSWORD);
+cptr.stI16o(skill_names_indices, 14, NHC.LONG_SWORD);
+cptr.stI16o(skill_names_indices, 16, NHC.TWO_HANDED_SWORD);
+cptr.stI16o(skill_names_indices, 18, -5);
+cptr.stI16o(skill_names_indices, 20, NHC.CLUB);
+cptr.stI16o(skill_names_indices, 22, NHC.MACE);
+cptr.stI16o(skill_names_indices, 24, NHC.MORNING_STAR);
+cptr.stI16o(skill_names_indices, 26, NHC.FLAIL);
+cptr.stI16o(skill_names_indices, 28, -6);
+cptr.stI16o(skill_names_indices, 30, NHC.QUARTERSTAFF);
+cptr.stI16o(skill_names_indices, 32, -4);
+cptr.stI16o(skill_names_indices, 34, NHC.SPEAR);
+cptr.stI16o(skill_names_indices, 36, NHC.TRIDENT);
+cptr.stI16o(skill_names_indices, 38, NHC.LANCE);
+cptr.stI16o(skill_names_indices, 40, NHC.BOW);
+cptr.stI16o(skill_names_indices, 42, NHC.SLING);
+cptr.stI16o(skill_names_indices, 44, NHC.CROSSBOW);
+cptr.stI16o(skill_names_indices, 46, NHC.DART);
+cptr.stI16o(skill_names_indices, 48, NHC.SHURIKEN);
+cptr.stI16o(skill_names_indices, 50, NHC.BOOMERANG);
+cptr.stI16o(skill_names_indices, 52, -7);
+cptr.stI16o(skill_names_indices, 54, NHC.UNICORN_HORN);
+cptr.stI16o(skill_names_indices, 56, -8);
+cptr.stI16o(skill_names_indices, 58, -9);
+cptr.stI16o(skill_names_indices, 60, -10);
+cptr.stI16o(skill_names_indices, 62, -11);
+cptr.stI16o(skill_names_indices, 64, -12);
+cptr.stI16o(skill_names_indices, 66, -13);
+cptr.stI16o(skill_names_indices, 68, -14);
+cptr.stI16o(skill_names_indices, 70, -1);
+cptr.stI16o(skill_names_indices, 72, -2);
+cptr.stI16o(skill_names_indices, 74, -3);
 
 /** C ref: weapon.c:52 — char *[15] */
 const odd_skill_names = cptr.alloc(15 * 8);
-cptr.stPtr(cptr.add(odd_skill_names, 0), __sl0);
-cptr.stPtr(cptr.add(odd_skill_names, 8), __sl1);
-cptr.stPtr(cptr.add(odd_skill_names, 16), __sl2);
-cptr.stPtr(cptr.add(odd_skill_names, 24), __sl3);
-cptr.stPtr(cptr.add(odd_skill_names, 32), __sl4);
-cptr.stPtr(cptr.add(odd_skill_names, 40), __sl5);
-cptr.stPtr(cptr.add(odd_skill_names, 48), __sl6);
-cptr.stPtr(cptr.add(odd_skill_names, 56), __sl7);
-cptr.stPtr(cptr.add(odd_skill_names, 64), __sl8);
-cptr.stPtr(cptr.add(odd_skill_names, 72), __sl9);
-cptr.stPtr(cptr.add(odd_skill_names, 80), __sl10);
-cptr.stPtr(cptr.add(odd_skill_names, 88), __sl11);
-cptr.stPtr(cptr.add(odd_skill_names, 96), __sl12);
-cptr.stPtr(cptr.add(odd_skill_names, 104), __sl13);
-cptr.stPtr(cptr.add(odd_skill_names, 112), __sl14);
+cptr.stPtro(odd_skill_names, 0, __sl0);
+cptr.stPtro(odd_skill_names, 8, __sl1);
+cptr.stPtro(odd_skill_names, 16, __sl2);
+cptr.stPtro(odd_skill_names, 24, __sl3);
+cptr.stPtro(odd_skill_names, 32, __sl4);
+cptr.stPtro(odd_skill_names, 40, __sl5);
+cptr.stPtro(odd_skill_names, 48, __sl6);
+cptr.stPtro(odd_skill_names, 56, __sl7);
+cptr.stPtro(odd_skill_names, 64, __sl8);
+cptr.stPtro(odd_skill_names, 72, __sl9);
+cptr.stPtro(odd_skill_names, 80, __sl10);
+cptr.stPtro(odd_skill_names, 88, __sl11);
+cptr.stPtro(odd_skill_names, 96, __sl12);
+cptr.stPtro(odd_skill_names, 104, __sl13);
+cptr.stPtro(odd_skill_names, 112, __sl14);
 
 /** C ref: weapon.c:59 — char *[2] */
 const barehands_or_martial = cptr.alloc(2 * 8);
-cptr.stPtr(cptr.add(barehands_or_martial, 0), __sl15);
-cptr.stPtr(cptr.add(barehands_or_martial, 8), __sl16);
+cptr.stPtro(barehands_or_martial, 0, __sl15);
+cptr.stPtro(barehands_or_martial, 8, __sl16);
 
 /** C ref: weapon.c:71 — char[6] */
-const kebabable = [50, 30, 36, 40, 34, 0];
+const kebabable = [NHC.S_XORN, NHC.S_DRAGON, NHC.S_JABBERWOCK, NHC.S_NAGA, NHC.S_GIANT, 0];
 
 /** C ref: weapon.c:76 — @param {CInt} skill */
 function give_may_advance_msg(skill) {
-    You_feel(__sl17, (skill == 0) ? __sl18 : ((skill <= 27) ? __sl19 : ((skill <= 34) ? __sl20 : __sl21)));
-    void handle_tip(0);
+    You_feel(__sl17, (skill == NHC.P_NONE) ? __sl18 : ((skill <= NHC.P_UNICORN_HORN) ? __sl19 : ((skill <= NHC.P_MATTER_SPELL) ? __sl20 : __sl21)));
+    void handle_tip(NHC.TIP_ENHANCE);
 }
 
 /** C ref: weapon.c:90 — @param {CPtr} obj @returns {CPtr} */
 export function weapon_descr(obj) {
     let skill = weapon_type(obj);
-    let descr = ((cptr.ldI16(cptr.add(skill_names_indices, skill, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 120))), 16))) : ((skill == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 8))));
+    let descr = ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
     switch (skill) {
-        case 0:
-        descr = ((((((cptr.ldI16(cptr.add(obj, 32)) == 265 || cptr.ldI16(cptr.add(obj, 32)) == 296 ? 1 : 0) || cptr.ldI16(cptr.add(obj, 32)) == 266 ? 1 : 0) || cptr.ldI16(cptr.add(obj, 32)) == 476 ? 1 : 0) || cptr.ldI16(cptr.add(obj, 32)) == 475 ? 1 : 0) || cptr.ldI16(cptr.add(obj, 32)) == 234 ? 1 : 0) || cptr.ldI16(cptr.add(obj, 32)) == 239 ? 1 : 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120))), 16))) : ((cptr.ldI32(cptr.add(obj, 136)) & 1) | 0 ? __sl22 : cptr.ldPtr(cptr.add(cptr.add(def_oc_syms, cptr.ld1s(cptr.add(obj, 49)), 24), 8)));
+        case NHC.P_NONE:
+        descr = ((((((cptr.ldI16o(obj, 32) == NHC.CORPSE || cptr.ldI16o(obj, 32) == NHC.TIN ? 1 : 0) || cptr.ldI16o(obj, 32) == NHC.EGG ? 1 : 0) || cptr.ldI16o(obj, 32) == NHC.STATUE ? 1 : 0) || cptr.ldI16o(obj, 32) == NHC.BOULDER ? 1 : 0) || cptr.ldI16o(obj, 32) == NHC.TOWEL ? 1 : 0) || cptr.ldI16o(obj, 32) == NHC.TIN_OPENER ? 1 : 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(obj, 32), 120))), 16)) : ((cptr.ldI32o(obj, 136) & 1) | 0 ? __sl22 : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, 49), 24, 8));
         break;
-        case 21:
-        if ((((cptr.ld1s(cptr.add(obj, 49)) == 2 || cptr.ld1s(cptr.add(obj, 49)) == 13 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) >= -22 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) <= -20 ? 1 : 0))
-            descr = (cptr.ldI16(cptr.add(obj, 32)) == 474 || (((cptr.ldI16(cptr.add((obj), 32)) == 470 || cptr.ldI16(cptr.add((obj), 32)) == 471 ? 1 : 0) || cptr.ldI16(cptr.add((obj), 32)) == 473 ? 1 : 0) || cptr.ldI16(cptr.add((obj), 32)) == 472 ? 1 : 0) ? 1 : 0) ? __sl23 : ((cptr.ld1s(cptr.add(obj, 49)) == 13) ? __sl24 : cptr.ldPtr(cptr.add(cptr.add(def_oc_syms, cptr.ld1s(cptr.add(obj, 49)), 24), 8)));
+        case NHC.P_SLING:
+        if ((((cptr.ld1so(obj, 49) == NHC.WEAPON_CLASS || cptr.ld1so(obj, 49) == NHC.GEM_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) >= -22 ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) <= -20 ? 1 : 0))
+            descr = (cptr.ldI16o(obj, 32) == NHC.ROCK || (((cptr.ldI16o((obj), 32) == NHC.LUCKSTONE || cptr.ldI16o((obj), 32) == NHC.LOADSTONE ? 1 : 0) || cptr.ldI16o((obj), 32) == NHC.FLINT ? 1 : 0) || cptr.ldI16o((obj), 32) == NHC.TOUCHSTONE ? 1 : 0) ? 1 : 0) ? __sl23 : ((cptr.ld1so(obj, 49) == NHC.GEM_CLASS) ? __sl24 : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, 49), 24, 8));
         break;
-        case 20:
-        if ((((cptr.ld1s(cptr.add(obj, 49)) == 2 || cptr.ld1s(cptr.add(obj, 49)) == 13 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) >= -22 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) <= -20 ? 1 : 0))
+        case NHC.P_BOW:
+        if ((((cptr.ld1so(obj, 49) == NHC.WEAPON_CLASS || cptr.ld1so(obj, 49) == NHC.GEM_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) >= -22 ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) <= -20 ? 1 : 0))
             descr = __sl25;
         break;
-        case 22:
-        if ((((cptr.ld1s(cptr.add(obj, 49)) == 2 || cptr.ld1s(cptr.add(obj, 49)) == 13 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) >= -22 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) <= -20 ? 1 : 0))
+        case NHC.P_CROSSBOW:
+        if ((((cptr.ld1so(obj, 49) == NHC.WEAPON_CLASS || cptr.ld1so(obj, 49) == NHC.GEM_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) >= -22 ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) <= -20 ? 1 : 0))
             descr = __sl26;
         break;
-        case 13:
-        if (cptr.ldI16(cptr.add(obj, 32)) == 260)
+        case NHC.P_FLAIL:
+        if (cptr.ldI16o(obj, 32) == NHC.GRAPPLING_HOOK)
             descr = __sl27;
         break;
-        case 4:
-        if (cptr.ldI16(cptr.add(obj, 32)) == 71)
+        case NHC.P_PICK_AXE:
+        if (cptr.ldI16o(obj, 32) == NHC.DWARVISH_MATTOCK)
             descr = __sl28;
         break;
         default:
@@ -258,24 +260,24 @@ export function weapon_descr(obj) {
 /** C ref: weapon.c:149 — @param {CPtr} otmp @param {CPtr} mon @returns {CInt} */
 export function hitval(otmp, mon) {
     let tmp = 0;
-    let ptr = cptr.ldPtr(cptr.add(mon, 8));
-    let Is_weapon = schar((cptr.ld1s(cptr.add(otmp, 49)) == 2 || (cptr.ld1s(cptr.add((otmp), 49)) == 6 && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add((otmp), 32)), 120), 68)) != 0 ? 1 : 0) ? 1 : 0));
+    let ptr = cptr.ldPtro(mon, 8);
+    let Is_weapon = schar((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS || (cptr.ld1so((otmp), 49) == NHC.TOOL_CLASS && cptr.ld1so2(objects, cptr.ldI16o((otmp), 32), 120, 68) != NHC.P_NONE ? 1 : 0) ? 1 : 0));
     if (Is_weapon)
-        tmp = (tmp + cptr.ld1s(cptr.add(otmp, 48))) | 0;
-    tmp = (tmp + cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(otmp, 32)), 120), 84))) | 0;
-    if ((Is_weapon && (cptr.ldI32(cptr.add(otmp, 60)) & 1) | 0 ? 1 : 0) && mon_hates_blessings(mon) ? 1 : 0)
+        tmp = (tmp + cptr.ld1so(otmp, 48)) | 0;
+    tmp = (tmp + cptr.ld1so2(objects, cptr.ldI16o(otmp, 32), 120, 84)) | 0;
+    if ((Is_weapon && (cptr.ldI32o(otmp, 60) & 1) | 0 ? 1 : 0) && mon_hates_blessings(mon) ? 1 : 0)
         tmp = (tmp + 2) | 0;
-    if ((cptr.ld1s(cptr.add(otmp, 49)) == 2 && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(otmp, 32)), 120), 68)) == 17 ? 1 : 0) && cptr.strchr(cptr.decay(kebabable), cptr.ld1s(cptr.add(ptr, 28))) ? 1 : 0)
+    if ((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS && cptr.ld1so2(objects, cptr.ldI16o(otmp, 32), 120, 68) == NHC.P_SPEAR ? 1 : 0) && cptr.strchr(cptr.decay(kebabable), cptr.ld1so(ptr, 28)) ? 1 : 0)
         tmp = (tmp + 2) | 0;
-    if (cptr.ldI16(cptr.add(otmp, 32)) == 33 && ((cptr.ldU64(cptr.add((ptr), 72)) & 2n) != 0n) ? 1 : 0) {
-        if (is_pool(cptr.ldI16(cptr.add(mon, 28)), cptr.ldI16(cptr.add(mon, 30))))
+    if (cptr.ldI16o(otmp, 32) == NHC.TRIDENT && ((cptr.ldU64o((ptr), 72) & 2n) != 0n) ? 1 : 0) {
+        if (is_pool(cptr.ldI16o(mon, 28), cptr.ldI16o(mon, 30)))
             tmp = (tmp + 4) | 0;
-        else if (cptr.ld1s(cptr.add(ptr, 28)) == 57 || cptr.ld1s(cptr.add(ptr, 28)) == 45 ? 1 : 0)
+        else if (cptr.ld1so(ptr, 28) == NHC.S_EEL || cptr.ld1so(ptr, 28) == NHC.S_SNAKE ? 1 : 0)
             tmp = (tmp + 2) | 0;
     }
-    if (((cptr.ld1s(cptr.add(otmp, 49)) == 2 || cptr.ld1s(cptr.add(otmp, 49)) == 6 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(otmp, 32)), 120), 68)) == 4 ? 1 : 0) && (((cptr.ldU64(cptr.add((ptr), 72)) & 8n) != 0n) && ((cptr.ldU64(cptr.add((ptr), 72)) & 2097152n) != 0n) ? 1 : 0) ? 1 : 0)
+    if (((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS || cptr.ld1so(otmp, 49) == NHC.TOOL_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(otmp, 32), 120, 68) == NHC.P_PICK_AXE ? 1 : 0) && (((cptr.ldU64o((ptr), 72) & 8n) != 0n) && ((cptr.ldU64o((ptr), 72) & 2097152n) != 0n) ? 1 : 0) ? 1 : 0)
         tmp = (tmp + 2) | 0;
-    if (cptr.ld1s(cptr.add(otmp, 51)))
+    if (cptr.ld1so(otmp, 51))
         tmp = (tmp + spec_abon(otmp, mon)) | 0;
     return tmp;
 }
@@ -283,111 +285,111 @@ export function hitval(otmp, mon) {
 /** C ref: weapon.c:216 — @param {CPtr} otmp @param {CPtr} mon @returns {CInt} */
 export function dmgval(otmp, mon) {
     let tmp = 0;
-    let otyp = cptr.ldI16(cptr.add(otmp, 32));
-    let ptr = cptr.ldPtr(cptr.add(mon, 8));
-    let Is_weapon = schar((cptr.ld1s(cptr.add(otmp, 49)) == 2 || (cptr.ld1s(cptr.add((otmp), 49)) == 6 && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add((otmp), 32)), 120), 68)) != 0 ? 1 : 0) ? 1 : 0));
-    if (otyp == 287)
+    let otyp = cptr.ldI16o(otmp, 32);
+    let ptr = cptr.ldPtro(mon, 8);
+    let Is_weapon = schar((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS || (cptr.ld1so((otmp), 49) == NHC.TOOL_CLASS && cptr.ld1so2(objects, cptr.ldI16o((otmp), 32), 120, 68) != NHC.P_NONE ? 1 : 0) ? 1 : 0));
+    if (otyp == NHC.CREAM_PIE)
         return 0;
-    if ((cptr.ld1u(cptr.add((ptr), 67)) >= 3)) {
-        if (cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 83)))
-            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 227, __sl30), rnd(cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 83)))) : rnd(cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 83))));
+    if ((cptr.ld1uo((ptr), 67) >= NHM.MZ_LARGE)) {
+        if (cptr.ld1so2(objects, otyp, 120, 83))
+            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 227, __sl30), rnd(cptr.ld1so2(objects, otyp, 120, 83))) : rnd(cptr.ld1so2(objects, otyp, 120, 83)));
         switch (otyp) {
-            case 478:
-            case 23:
-            case 75:
-            case 59:
-            case 58:
-            case 53:
-            case 52:
+            case NHC.IRON_CHAIN:
+            case NHC.CROSSBOW_BOLT:
+            case NHC.MORNING_STAR:
+            case NHC.PARTISAN:
+            case NHC.RUNESWORD:
+            case NHC.ELVEN_BROADSWORD:
+            case NHC.BROADSWORD:
             tmp++;
             break;
-            case 81:
-            case 60:
-            case 65:
+            case NHC.FLAIL:
+            case NHC.RANSEUR:
+            case NHC.VOULGE:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 242, __sl30), rnd(4)) : rnd(4))) | 0;
             break;
-            case 480:
-            case 63:
-            case 61:
+            case NHC.ACID_VENOM:
+            case NHC.HALBERD:
+            case NHC.SPETUM:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 248, __sl30), rnd(6)) : rnd(6))) | 0;
             break;
-            case 45:
-            case 64:
-            case 33:
+            case NHC.BATTLE_AXE:
+            case NHC.BARDICHE:
+            case NHC.TRIDENT:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 254, __sl30), d(2, 4)) : d(2, 4))) | 0;
             break;
-            case 57:
-            case 71:
-            case 55:
+            case NHC.TSURUGI:
+            case NHC.DWARVISH_MATTOCK:
+            case NHC.TWO_HANDED_SWORD:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 260, __sl30), d(2, 6)) : d(2, 6))) | 0;
             break;
         }
     } else {
-        if (cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 82)))
-            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 265, __sl30), rnd(cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 82)))) : rnd(cptr.ld1s(cptr.add(cptr.add(objects, otyp, 120), 82))));
+        if (cptr.ld1so2(objects, otyp, 120, 82))
+            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 265, __sl30), rnd(cptr.ld1so2(objects, otyp, 120, 82))) : rnd(cptr.ld1so2(objects, otyp, 120, 82)));
         switch (otyp) {
-            case 478:
-            case 23:
-            case 73:
-            case 74:
-            case 76:
-            case 81:
-            case 61:
-            case 33:
+            case NHC.IRON_CHAIN:
+            case NHC.CROSSBOW_BOLT:
+            case NHC.MACE:
+            case NHC.SILVER_MACE:
+            case NHC.WAR_HAMMER:
+            case NHC.FLAIL:
+            case NHC.SPETUM:
+            case NHC.TRIDENT:
             tmp++;
             break;
-            case 45:
-            case 64:
-            case 68:
-            case 67:
-            case 69:
-            case 75:
-            case 60:
-            case 52:
-            case 53:
-            case 58:
-            case 65:
+            case NHC.BATTLE_AXE:
+            case NHC.BARDICHE:
+            case NHC.BILL_GUISARME:
+            case NHC.GUISARME:
+            case NHC.LUCERN_HAMMER:
+            case NHC.MORNING_STAR:
+            case NHC.RANSEUR:
+            case NHC.BROADSWORD:
+            case NHC.ELVEN_BROADSWORD:
+            case NHC.RUNESWORD:
+            case NHC.VOULGE:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 289, __sl30), rnd(4)) : rnd(4))) | 0;
             break;
-            case 480:
+            case NHC.ACID_VENOM:
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 293, __sl30), rnd(6)) : rnd(6))) | 0;
             break;
         }
     }
     if (Is_weapon) {
-        tmp = (tmp + cptr.ld1s(cptr.add(otmp, 48))) | 0;
+        tmp = (tmp + cptr.ld1so(otmp, 48)) | 0;
         if (tmp < 0)
             tmp = 0;
     }
-    if (((cptr.ldI32(cptr.add(cptr.add(objects, otyp, 120), 64)) & 31) | 0) <= 7 && ((cptr.ldU64(cptr.add((ptr), 72)) & 2097152n) != 0n) ? 1 : 0)
+    if (((cptr.ldI32o2(objects, otyp, 120, 64) & 31) | 0) <= NHC.LEATHER && ((cptr.ldU64o((ptr), 72) & 2097152n) != 0n) ? 1 : 0)
         tmp = 0;
-    if (cptr.eq(ptr, cptr.add(mons, 288, 96)) && !shade_glare(otmp) ? 1 : 0)
+    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_SHADE, 96)) && !shade_glare(otmp) ? 1 : 0)
         tmp = 0;
-    if (otyp == 477 && tmp > 0 ? 1 : 0) {
-        let wt = cptr.ldI32(cptr.add(cptr.add(objects, 477, 120), 76)) | 0;
-        if ((cptr.ldI32(cptr.add(otmp, 36)) | 0) > wt) {
-            wt = ((((cptr.ldI32(cptr.add(otmp, 36)) | 0) - wt) | 0) / 160) | 0;
+    if (otyp == NHC.HEAVY_IRON_BALL && tmp > 0 ? 1 : 0) {
+        let wt = cptr.ldI32o2(objects, NHC.HEAVY_IRON_BALL, 120, 76) | 0;
+        if ((cptr.ldI32o(otmp, 36) | 0) > wt) {
+            wt = ((((cptr.ldI32o(otmp, 36) | 0) - wt) | 0) / NHC.WT_IRON_BALL_INCR) | 0;
             tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 316, __sl30), rnd(Math.imul(4, wt))) : rnd(Math.imul(4, wt)))) | 0;
             if (tmp > 25)
                 tmp = 25;
         }
     }
-    if (((Is_weapon || cptr.ld1s(cptr.add(otmp, 49)) == 13 ? 1 : 0) || cptr.ld1s(cptr.add(otmp, 49)) == 15 ? 1 : 0) || cptr.ld1s(cptr.add(otmp, 49)) == 16 ? 1 : 0) {
+    if (((Is_weapon || cptr.ld1so(otmp, 49) == NHC.GEM_CLASS ? 1 : 0) || cptr.ld1so(otmp, 49) == NHC.BALL_CLASS ? 1 : 0) || cptr.ld1so(otmp, 49) == NHC.CHAIN_CLASS ? 1 : 0) {
         let bonus = 0;
-        if ((cptr.ldI32(cptr.add(otmp, 60)) & 1) | 0 && mon_hates_blessings(mon) ? 1 : 0)
+        if ((cptr.ldI32o(otmp, 60) & 1) | 0 && mon_hates_blessings(mon) ? 1 : 0)
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 328, __sl30), rnd(4)) : rnd(4))) | 0;
-        if (((cptr.ld1s(cptr.add(otmp, 49)) == 2 || cptr.ld1s(cptr.add(otmp, 49)) == 6 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(otmp, 32)), 120), 68)) == 3 ? 1 : 0) && (cptr.eq((ptr), cptr.add(mons, 254, 96))) ? 1 : 0)
+        if (((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS || cptr.ld1so(otmp, 49) == NHC.TOOL_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(otmp, 32), 120, 68) == NHC.P_AXE ? 1 : 0) && (cptr.eq((ptr), cptr.add(mons, NHC.PM_WOOD_GOLEM, 96))) ? 1 : 0)
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 330, __sl30), rnd(4)) : rnd(4))) | 0;
-        if (((cptr.ldI32(cptr.add(cptr.add(objects, otyp, 120), 64)) & 31) | 0) == 14 && mon_hates_silver(mon) ? 1 : 0)
+        if (((cptr.ldI32o2(objects, otyp, 120, 64) & 31) | 0) == NHC.SILVER && mon_hates_silver(mon) ? 1 : 0)
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 332, __sl30), rnd(20)) : rnd(20))) | 0;
-        if ((artifact_light(otmp) && (cptr.ldI32(cptr.add(otmp, 76)) & 1) | 0 ? 1 : 0) && (cptr.eq((ptr), cptr.add(mons, 40, 96))) ? 1 : 0)
+        if ((artifact_light(otmp) && (cptr.ldI32o(otmp, 76) & 1) | 0 ? 1 : 0) && (cptr.eq((ptr), cptr.add(mons, NHC.PM_GREMLIN, 96))) ? 1 : 0)
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 334, __sl30), rnd(8)) : rnd(8))) | 0;
-        if ((bonus > 1 && cptr.ld1s(cptr.add(otmp, 51)) ? 1 : 0) && spec_dbon(otmp, mon, 25) >= 25 ? 1 : 0)
+        if ((bonus > 1 && cptr.ld1so(otmp, 51) ? 1 : 0) && spec_dbon(otmp, mon, 25) >= 25 ? 1 : 0)
             bonus = (((bonus + 1) | 0) / 2) | 0;
         tmp = (tmp + bonus) | 0;
     }
     if (tmp > 0) {
-        tmp = (tmp - (((cptr.ldI32(cptr.add((otmp), 112)) & 3) | 0) > ((cptr.ldI32(cptr.add((otmp), 116)) & 3) | 0) ? (cptr.ldI32(cptr.add((otmp), 112)) & 3) | 0 : (cptr.ldI32(cptr.add((otmp), 116)) & 3) | 0)) | 0;
+        tmp = (tmp - (((cptr.ldI32o((otmp), 112) & 3) | 0) > ((cptr.ldI32o((otmp), 116) & 3) | 0) ? (cptr.ldI32o((otmp), 112) & 3) | 0 : (cptr.ldI32o((otmp), 116) & 3) | 0)) | 0;
         if (tmp < 1)
             tmp = 1;
     }
@@ -417,21 +419,21 @@ export function special_dmgval(magr, mdef, armask, silverhit_p) {
         obj = which_armor(magr, armask);
     }
     if (obj) {
-        if ((cptr.ldI32(cptr.add(obj, 60)) & 1) | 0 && mon_hates_blessings(mdef) ? 1 : 0)
+        if ((cptr.ldI32o(obj, 60) & 1) | 0 && mon_hates_blessings(mdef) ? 1 : 0)
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 396, __sl31), rnd(4)) : rnd(4))) | 0;
-        if (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 64)) & 31) | 0) == 14 && mon_hates_silver(mdef) ? 1 : 0) {
+        if (((cptr.ldI32o2(objects, cptr.ldI16o(obj, 32), 120, 64) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef) ? 1 : 0) {
             bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 403, __sl31), rnd(20)) : rnd(20))) | 0;
             silverhit |= armask;
         }
     } else if ((left_ring || right_ring ? 1 : 0) && cptr.eq(magr, cptr.add(gy, 8)) ? 1 : 0) {
         if (left_ring && uleft.v ? 1 : 0) {
-            if (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(uleft.v, 32)), 120), 64)) & 31) | 0) == 14 && mon_hates_silver(mdef) ? 1 : 0) {
+            if (((cptr.ldI32o2(objects, cptr.ldI16o(uleft.v, 32), 120, 64) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef) ? 1 : 0) {
                 bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 412, __sl31), rnd(20)) : rnd(20))) | 0;
                 silverhit |= 131072n;
             }
         }
         if (right_ring && uright.v ? 1 : 0) {
-            if (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(uright.v, 32)), 120), 64)) & 31) | 0) == 14 && mon_hates_silver(mdef) ? 1 : 0) {
+            if (((cptr.ldI32o2(objects, cptr.ldI16o(uright.v, 32), 120, 64) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef) ? 1 : 0) {
                 if (!(silverhit & 131072n))
                     bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 422, __sl31), rnd(20)) : rnd(20))) | 0;
                 silverhit |= 262144n;
@@ -446,13 +448,13 @@ export function special_dmgval(magr, mdef, armask, silverhit_p) {
 /** C ref: weapon.c:436 — @param {CPtr} magr @param {CPtr} mdef @param {CLongLong} silverhit */
 export function silver_sears(magr, mdef, silverhit) {
     let rings = new Uint8Array(20);
-    let ltyp = ((uleft.v && (silverhit & 131072n) != 0n ? 1 : 0) ? cptr.ldI16(cptr.add(uleft.v, 32)) : 0);
-    let rtyp = ((uright.v && (silverhit & 262144n) != 0n ? 1 : 0) ? cptr.ldI16(cptr.add(uright.v, 32)) : 0);
+    let ltyp = ((uleft.v && (silverhit & 131072n) != 0n ? 1 : 0) ? cptr.ldI16o(uleft.v, 32) : NHC.STRANGE_OBJECT);
+    let rtyp = ((uright.v && (silverhit & 262144n) != 0n ? 1 : 0) ? cptr.ldI16o(uright.v, 32) : NHC.STRANGE_OBJECT);
     let both;
-    let l_dknown = schar((uleft.v && (cptr.ldI32(cptr.add(uleft.v, 84)) & 1) | 0 ? 1 : 0));
-    let r_dknown = schar((uright.v && (cptr.ldI32(cptr.add(uright.v, 84)) & 1) | 0 ? 1 : 0));
-    let l_ag = schar((((cptr.ldI32(cptr.add(cptr.add(objects, ltyp, 120), 64)) & 31) | 0) == 14 && l_dknown ? 1 : 0));
-    let r_ag = schar((((cptr.ldI32(cptr.add(cptr.add(objects, rtyp, 120), 64)) & 31) | 0) == 14 && r_dknown ? 1 : 0));
+    let l_dknown = schar((uleft.v && (cptr.ldI32o(uleft.v, 84) & 1) | 0 ? 1 : 0));
+    let r_dknown = schar((uright.v && (cptr.ldI32o(uright.v, 84) & 1) | 0 ? 1 : 0));
+    let l_ag = schar((((cptr.ldI32o2(objects, ltyp, 120, 64) & 31) | 0) == NHC.SILVER && l_dknown ? 1 : 0));
+    let r_ag = schar((((cptr.ldI32o2(objects, rtyp, 120, 64) & 31) | 0) == NHC.SILVER && r_dknown ? 1 : 0));
     if ((silverhit & 393216n) != 0n) {
         both = schar(((ltyp == rtyp && l_dknown == r_dknown ? 1 : 0) || (l_ag && r_ag ? 1 : 0) ? 1 : 0));
         void cptr.sprintf(cptr.decay(rings), __sl32, both ? __sl33 : __sl18);
@@ -463,10 +465,10 @@ export function silver_sears(magr, mdef, silverhit) {
 /** C ref: weapon.c:476 — @param {CPtr} mtmp @param {CInt} type @returns {CPtr} */
 function oselect(mtmp, type) {
     let otmp;
-    for (otmp = cptr.ldPtr(cptr.add(mtmp, 280)); otmp; otmp = cptr.ldPtr(otmp)) {
-        if (cptr.ldI16(cptr.add(otmp, 32)) != type)
+    for (otmp = cptr.ldPtro(mtmp, 280); otmp; otmp = cptr.ldPtr(otmp)) {
+        if (cptr.ldI16o(otmp, 32) != type)
             continue;
-        if ((type == 265 || type == 266 ? 1 : 0) && (cptr.ldI32(cptr.add(otmp, 168)) == -1 || !(cptr.eq((cptr.add(mons, cptr.ldI32(cptr.add(otmp, 168)), 96)), cptr.add(mons, 10, 96)) || cptr.eq((cptr.add(mons, cptr.ldI32(cptr.add(otmp, 168)), 96)), cptr.add(mons, 9, 96)) ? 1 : 0) ? 1 : 0) ? 1 : 0)
+        if ((type == NHC.CORPSE || type == NHC.EGG ? 1 : 0) && (cptr.ldI32o(otmp, 168) == NHC.NON_PM || !(cptr.eq((cptr.add(mons, cptr.ldI32o(otmp, 168), 96)), cptr.add(mons, NHC.PM_COCKATRICE, 96)) || cptr.eq((cptr.add(mons, cptr.ldI32o(otmp, 168), 96)), cptr.add(mons, NHC.PM_CHICKATRICE, 96)) ? 1 : 0) ? 1 : 0) ? 1 : 0)
             continue;
         if (!can_touch_safely(mtmp, otmp))
             continue;
@@ -477,58 +479,58 @@ function oselect(mtmp, type) {
 
 /** C ref: weapon.c:498 — int[24] */
 const rwep = cptr.alloc(24 * 4);
-cptr.stI32(cptr.add(rwep, 0), 30);
-cptr.stI32(cptr.add(rwep, 4), 31);
-cptr.stI32(cptr.add(rwep, 8), 28);
-cptr.stI32(cptr.add(rwep, 12), 27);
-cptr.stI32(cptr.add(rwep, 16), 29);
-cptr.stI32(cptr.add(rwep, 20), 32);
-cptr.stI32(cptr.add(rwep, 24), 25);
-cptr.stI32(cptr.add(rwep, 28), 22);
-cptr.stI32(cptr.add(rwep, 32), 21);
-cptr.stI32(cptr.add(rwep, 36), 19);
-cptr.stI32(cptr.add(rwep, 40), 18);
-cptr.stI32(cptr.add(rwep, 44), 20);
-cptr.stI32(cptr.add(rwep, 48), 23);
-cptr.stI32(cptr.add(rwep, 52), 37);
-cptr.stI32(cptr.add(rwep, 56), 35);
-cptr.stI32(cptr.add(rwep, 60), 34);
-cptr.stI32(cptr.add(rwep, 64), 36);
-cptr.stI32(cptr.add(rwep, 68), 40);
-cptr.stI32(cptr.add(rwep, 72), 473);
-cptr.stI32(cptr.add(rwep, 76), 474);
-cptr.stI32(cptr.add(rwep, 80), 471);
-cptr.stI32(cptr.add(rwep, 84), 470);
-cptr.stI32(cptr.add(rwep, 88), 24);
-cptr.stI32(cptr.add(rwep, 92), 287);
+cptr.stI32o(rwep, 0, NHC.DWARVISH_SPEAR);
+cptr.stI32o(rwep, 4, NHC.SILVER_SPEAR);
+cptr.stI32o(rwep, 8, NHC.ELVEN_SPEAR);
+cptr.stI32o(rwep, 12, NHC.SPEAR);
+cptr.stI32o(rwep, 16, NHC.ORCISH_SPEAR);
+cptr.stI32o(rwep, 20, NHC.JAVELIN);
+cptr.stI32o(rwep, 24, NHC.SHURIKEN);
+cptr.stI32o(rwep, 28, NHC.YA);
+cptr.stI32o(rwep, 32, NHC.SILVER_ARROW);
+cptr.stI32o(rwep, 36, NHC.ELVEN_ARROW);
+cptr.stI32o(rwep, 40, NHC.ARROW);
+cptr.stI32o(rwep, 44, NHC.ORCISH_ARROW);
+cptr.stI32o(rwep, 48, NHC.CROSSBOW_BOLT);
+cptr.stI32o(rwep, 52, NHC.SILVER_DAGGER);
+cptr.stI32o(rwep, 56, NHC.ELVEN_DAGGER);
+cptr.stI32o(rwep, 60, NHC.DAGGER);
+cptr.stI32o(rwep, 64, NHC.ORCISH_DAGGER);
+cptr.stI32o(rwep, 68, NHC.KNIFE);
+cptr.stI32o(rwep, 72, NHC.FLINT);
+cptr.stI32o(rwep, 76, NHC.ROCK);
+cptr.stI32o(rwep, 80, NHC.LOADSTONE);
+cptr.stI32o(rwep, 84, NHC.LUCKSTONE);
+cptr.stI32o(rwep, 88, NHC.DART);
+cptr.stI32o(rwep, 92, NHC.CREAM_PIE);
 
 /** C ref: weapon.c:506 — int[13] */
 const pwep = cptr.alloc(13 * 4);
-cptr.stI32(cptr.add(pwep, 0), 63);
-cptr.stI32(cptr.add(pwep, 4), 64);
-cptr.stI32(cptr.add(pwep, 8), 61);
-cptr.stI32(cptr.add(pwep, 12), 68);
-cptr.stI32(cptr.add(pwep, 16), 65);
-cptr.stI32(cptr.add(pwep, 20), 60);
-cptr.stI32(cptr.add(pwep, 24), 67);
-cptr.stI32(cptr.add(pwep, 28), 62);
-cptr.stI32(cptr.add(pwep, 32), 69);
-cptr.stI32(cptr.add(pwep, 36), 70);
-cptr.stI32(cptr.add(pwep, 40), 66);
-cptr.stI32(cptr.add(pwep, 44), 59);
-cptr.stI32(cptr.add(pwep, 48), 72);
+cptr.stI32o(pwep, 0, NHC.HALBERD);
+cptr.stI32o(pwep, 4, NHC.BARDICHE);
+cptr.stI32o(pwep, 8, NHC.SPETUM);
+cptr.stI32o(pwep, 12, NHC.BILL_GUISARME);
+cptr.stI32o(pwep, 16, NHC.VOULGE);
+cptr.stI32o(pwep, 20, NHC.RANSEUR);
+cptr.stI32o(pwep, 24, NHC.GUISARME);
+cptr.stI32o(pwep, 28, NHC.GLAIVE);
+cptr.stI32o(pwep, 32, NHC.LUCERN_HAMMER);
+cptr.stI32o(pwep, 36, NHC.BEC_DE_CORBIN);
+cptr.stI32o(pwep, 40, NHC.FAUCHARD);
+cptr.stI32o(pwep, 44, NHC.PARTISAN);
+cptr.stI32o(pwep, 48, NHC.LANCE);
 
 /** C ref: weapon.c:514 — struct throw_and_return_weapon[1] */
 const arwep = cptr.alloc(1 * 12);
-cptr.stI16(cptr.add(arwep, 0), 80);
-cptr.stI32(cptr.add(arwep, 4), 16);
-cptr.stI32(cptr.add(arwep, 8), 1);
+cptr.stI16o(arwep, 0, NHC.AKLYS);
+cptr.stI32o(arwep, 4, 16);
+cptr.stI32o(arwep, 8, 1);
 
 /** C ref: weapon.c:520 — @param {CPtr} otmp @returns {CPtr} */
 export function autoreturn_weapon(otmp) {
     let i;
     for (i = 0; i < 1; i++) {
-        if (cptr.ldI16(cptr.add(otmp, 32)) == cptr.ldI16(cptr.add(arwep, i, 12)))
+        if (cptr.ldI16o(otmp, 32) == cptr.ldI16o(arwep, i, 12))
             return cptr.add(arwep, i, 12);
     }
     return null;
@@ -540,33 +542,33 @@ export function select_rwep(mtmp) {
     let mwep;
     let mweponly;
     let i;
-    let mlet = cptr.ld1s(cptr.add(cptr.ldPtr(cptr.add(mtmp, 8)), 28));
-    cptr.stPtr(cptr.add(gp, 520), hands_obj);
+    let mlet = cptr.ld1so(cptr.ldPtro(mtmp, 8), 28);
+    cptr.stPtro(gp, 520, hands_obj);
     do {
-        if ((otmp = oselect(mtmp, 266)) !== null)
+        if ((otmp = oselect(mtmp, NHC.EGG)) !== null)
             return otmp;
     } while (0);
-    if (mlet == 37)
+    if (mlet == NHC.S_KOP)
         do {
-            if ((otmp = oselect(mtmp, 287)) !== null)
+            if ((otmp = oselect(mtmp, NHC.CREAM_PIE)) !== null)
                 return otmp;
         } while (0);
-    if (((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 80)) & 134217728n) != 0n))
+    if (((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 80) & 134217728n) != 0n))
         do {
-            if ((otmp = oselect(mtmp, 475)) !== null)
+            if ((otmp = oselect(mtmp, NHC.BOULDER)) !== null)
                 return otmp;
         } while (0);
-    mwep = (cptr.ldPtr(cptr.add((mtmp), 288)));
-    mweponly = schar((mwelded(mwep) && cptr.ldI16(cptr.add(mtmp, 304)) == 0 ? 1 : 0));
-    if (dist2(cptr.ldI16(cptr.add(mtmp, 28)), cptr.ldI16(cptr.add(mtmp, 30)), cptr.ldI16(cptr.add(mtmp, 32)), cptr.ldI16(cptr.add(mtmp, 34))) <= 13 && ((cptr.ld1u(cptr.add(cptr.ldPtr(cptr.add(cptr.ldPtr(cptr.add(gv, 120)), cptr.ldI16(cptr.add(mtmp, 30)), 8)), cptr.ldI16(cptr.add(mtmp, 28)))) & 1) != 0) ? 1 : 0) {
-        if (is_art(mwep, 19)) {
-            cptr.stPtr(cptr.add(gp, 520), mwep);
+    mwep = (cptr.ldPtro((mtmp), 288));
+    mweponly = schar((mwelded(mwep) && cptr.ldI16o(mtmp, 304) == NHC.NO_WEAPON_WANTED ? 1 : 0));
+    if (dist2(cptr.ldI16o(mtmp, 28), cptr.ldI16o(mtmp, 30), cptr.ldI16o(mtmp, 32), cptr.ldI16o(mtmp, 34)) <= 13 && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, 120), cptr.ldI16o(mtmp, 30), 8), cptr.ldI16o(mtmp, 28)) & NHM.COULD_SEE) != 0) ? 1 : 0) {
+        if (is_art(mwep, NHC.ART_SNICKERSNEE)) {
+            cptr.stPtro(gp, 520, mwep);
             return mwep;
         }
         for (i = 0; i < 13; i++) {
-            if (((((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 80)) & 67108864n) != 0n) && (cptr.ldI64(cptr.add(mtmp, 296)) & 8n) == 0n ? 1 : 0) || !(cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI32(cptr.add(pwep, i, 4)), 120), 48)) & 1) ? 1 : 0) && (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI32(cptr.add(pwep, i, 4)), 120), 64)) & 31) | 0) != 14 || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0) {
-                if ((otmp = oselect(mtmp, cptr.ldI32(cptr.add(pwep, i, 4)))) !== null && (cptr.eq(otmp, mwep) || !mweponly ? 1 : 0) ? 1 : 0) {
-                    cptr.stPtr(cptr.add(gp, 520), otmp);
+            if (((((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 80) & 67108864n) != 0n) && (cptr.ldI64o(mtmp, 296) & 8n) == 0n ? 1 : 0) || !(cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), 120, 48) & 1) ? 1 : 0) && (((cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), 120, 64) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0) {
+                if ((otmp = oselect(mtmp, cptr.ldI32o(pwep, i, 4))) !== null && (cptr.eq(otmp, mwep) || !mweponly ? 1 : 0) ? 1 : 0) {
+                    cptr.stPtro(gp, 520, otmp);
                     return otmp;
                 }
             }
@@ -574,10 +576,10 @@ export function select_rwep(mtmp) {
     }
     for (i = 0; i < 1; i++) {
         let arw = cptr.add(arwep, i, 12);
-        if ((((!((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 72)) & 65536n) != 0n) && !((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 72)) & 262144n) != 0n) ? 1 : 0) && !mweponly ? 1 : 0) && dist2(cptr.ldI16(cptr.add(mtmp, 28)), cptr.ldI16(cptr.add(mtmp, 30)), cptr.ldI16(cptr.add(mtmp, 32)), cptr.ldI16(cptr.add(mtmp, 34))) <= cptr.ldI32(cptr.add(arw, 4)) ? 1 : 0) && ((cptr.ld1u(cptr.add(cptr.ldPtr(cptr.add(cptr.ldPtr(cptr.add(gv, 120)), cptr.ldI16(cptr.add(mtmp, 30)), 8)), cptr.ldI16(cptr.add(mtmp, 28)))) & 1) != 0) ? 1 : 0) {
-            if ((((cptr.ldI64(cptr.add(mtmp, 296)) & 8n) == 0n) || !(cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(arw), 120), 48)) & 1) ? 1 : 0) && (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(arw), 120), 64)) & 31) | 0) != 14 || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0) {
+        if ((((!((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 72) & 65536n) != 0n) && !((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 72) & 262144n) != 0n) ? 1 : 0) && !mweponly ? 1 : 0) && dist2(cptr.ldI16o(mtmp, 28), cptr.ldI16o(mtmp, 30), cptr.ldI16o(mtmp, 32), cptr.ldI16o(mtmp, 34)) <= cptr.ldI32o(arw, 4) ? 1 : 0) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, 120), cptr.ldI16o(mtmp, 30), 8), cptr.ldI16o(mtmp, 28)) & NHM.COULD_SEE) != 0) ? 1 : 0) {
+            if ((((cptr.ldI64o(mtmp, 296) & 8n) == 0n) || !(cptr.ldI32o2(objects, cptr.ldI16(arw), 120, 48) & 1) ? 1 : 0) && (((cptr.ldI32o2(objects, cptr.ldI16(arw), 120, 64) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0) {
                 if ((otmp = oselect(mtmp, cptr.ldI16(arw))) !== null && (cptr.eq(otmp, mwep) || !mweponly ? 1 : 0) ? 1 : 0) {
-                    cptr.stPtr(cptr.add(gp, 520), otmp);
+                    cptr.stPtro(gp, 520, otmp);
                     return otmp;
                 }
             }
@@ -585,42 +587,42 @@ export function select_rwep(mtmp) {
     }
     for (i = 0; i < 24; i++) {
         let prop;
-        if ((cptr.ldI32(cptr.add(rwep, i, 4)) == 24 && !((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 80)) & 536870912n) != 0n) ? 1 : 0) && m_carrying(mtmp, 87) ? 1 : 0) {
-            for (otmp = cptr.ldPtr(cptr.add(mtmp, 280)); otmp; otmp = cptr.ldPtr(otmp))
-                if (cptr.ld1s(cptr.add(otmp, 49)) == 13 && (cptr.ldI16(cptr.add(otmp, 32)) != 471 || !(cptr.ldI32(cptr.add(otmp, 56)) & 1) ? 1 : 0) ? 1 : 0) {
-                    cptr.stPtr(cptr.add(gp, 520), m_carrying(mtmp, 87));
+        if ((cptr.ldI32o(rwep, i, 4) == NHC.DART && !((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 80) & 536870912n) != 0n) ? 1 : 0) && m_carrying(mtmp, NHC.SLING) ? 1 : 0) {
+            for (otmp = cptr.ldPtro(mtmp, 280); otmp; otmp = cptr.ldPtr(otmp))
+                if (cptr.ld1so(otmp, 49) == NHC.GEM_CLASS && (cptr.ldI16o(otmp, 32) != NHC.LOADSTONE || !(cptr.ldI32o(otmp, 56) & 1) ? 1 : 0) ? 1 : 0) {
+                    cptr.stPtro(gp, 520, m_carrying(mtmp, NHC.SLING));
                     return otmp;
                 }
         }
-        cptr.stPtr(cptr.add(gp, 520), hands_obj);
-        prop = cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI32(cptr.add(rwep, i, 4)), 120), 68));
+        cptr.stPtro(gp, 520, hands_obj);
+        prop = cptr.ld1so2(objects, cptr.ldI32o(rwep, i, 4), 120, 68);
         if (prop < 0) {
             switch (-prop) {
-                case 20:
-                cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 86));
-                if (!cptr.ldPtr(cptr.add(gp, 520)))
-                    cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 84));
-                if (!cptr.ldPtr(cptr.add(gp, 520)))
-                    cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 83));
-                if (!cptr.ldPtr(cptr.add(gp, 520)))
-                    cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 85));
+                case NHC.P_BOW:
+                cptr.stPtro(gp, 520, oselect(mtmp, NHC.YUMI));
+                if (!cptr.ldPtro(gp, 520))
+                    cptr.stPtro(gp, 520, oselect(mtmp, NHC.ELVEN_BOW));
+                if (!cptr.ldPtro(gp, 520))
+                    cptr.stPtro(gp, 520, oselect(mtmp, NHC.BOW));
+                if (!cptr.ldPtro(gp, 520))
+                    cptr.stPtro(gp, 520, oselect(mtmp, NHC.ORCISH_BOW));
                 break;
-                case 21:
-                cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 87));
+                case NHC.P_SLING:
+                cptr.stPtro(gp, 520, oselect(mtmp, NHC.SLING));
                 break;
-                case 22:
-                cptr.stPtr(cptr.add(gp, 520), oselect(mtmp, 88));
+                case NHC.P_CROSSBOW:
+                cptr.stPtro(gp, 520, oselect(mtmp, NHC.CROSSBOW));
             }
-            if ((((otmp = (cptr.ldPtr(cptr.add((mtmp), 288)))) && mwelded(otmp) ? 1 : 0) && !cptr.eq(otmp, cptr.ldPtr(cptr.add(gp, 520))) ? 1 : 0) && cptr.ldI16(cptr.add(mtmp, 304)) == 0 ? 1 : 0)
-                cptr.stPtr(cptr.add(gp, 520), null);
+            if ((((otmp = (cptr.ldPtro((mtmp), 288))) && mwelded(otmp) ? 1 : 0) && !cptr.eq(otmp, cptr.ldPtro(gp, 520)) ? 1 : 0) && cptr.ldI16o(mtmp, 304) == NHC.NO_WEAPON_WANTED ? 1 : 0)
+                cptr.stPtro(gp, 520, null);
         }
-        if (cptr.ldPtr(cptr.add(gp, 520)) !== null) {
-            if (cptr.ldI32(cptr.add(rwep, i, 4)) != 471) {
-                if (((otmp = oselect(mtmp, cptr.ldI32(cptr.add(rwep, i, 4)))) && !cptr.ld1s(cptr.add(otmp, 51)) ? 1 : 0) && !(cptr.eq(otmp, (cptr.ldPtr(cptr.add((mtmp), 288)))) && mwelded(otmp) ? 1 : 0) ? 1 : 0)
+        if (cptr.ldPtro(gp, 520) !== null) {
+            if (cptr.ldI32o(rwep, i, 4) != NHC.LOADSTONE) {
+                if (((otmp = oselect(mtmp, cptr.ldI32o(rwep, i, 4))) && !cptr.ld1so(otmp, 51) ? 1 : 0) && !(cptr.eq(otmp, (cptr.ldPtro((mtmp), 288))) && mwelded(otmp) ? 1 : 0) ? 1 : 0)
                     return otmp;
             } else
-                for (otmp = cptr.ldPtr(cptr.add(mtmp, 280)); otmp; otmp = cptr.ldPtr(otmp)) {
-                    if (cptr.ldI16(cptr.add(otmp, 32)) == 471 && !(cptr.ldI32(cptr.add(otmp, 56)) & 1) ? 1 : 0)
+                for (otmp = cptr.ldPtro(mtmp, 280); otmp; otmp = cptr.ldPtr(otmp)) {
+                    if (cptr.ldI16o(otmp, 32) == NHC.LOADSTONE && !(cptr.ldI32o(otmp, 56) & 1) ? 1 : 0)
                         return otmp;
                 }
         }
@@ -632,85 +634,85 @@ export function select_rwep(mtmp) {
 export function monmightthrowwep(obj) {
     let idx;
     for (idx = 0; idx < 24; ++idx)
-        if (cptr.ldI16(cptr.add(obj, 32)) == cptr.ldI32(cptr.add(rwep, idx, 4)))
+        if (cptr.ldI16o(obj, 32) == cptr.ldI32o(rwep, idx, 4))
             return 1;
     return 0;
 }
 
 /** C ref: weapon.c:691 — short[45] */
 const hwep = cptr.alloc(45 * 2);
-cptr.stI16(cptr.add(hwep, 0), 265);
-cptr.stI16(cptr.add(hwep, 2), 57);
-cptr.stI16(cptr.add(hwep, 4), 58);
-cptr.stI16(cptr.add(hwep, 6), 71);
-cptr.stI16(cptr.add(hwep, 8), 55);
-cptr.stI16(cptr.add(hwep, 10), 45);
-cptr.stI16(cptr.add(hwep, 12), 56);
-cptr.stI16(cptr.add(hwep, 14), 261);
-cptr.stI16(cptr.add(hwep, 16), 43);
-cptr.stI16(cptr.add(hwep, 18), 33);
-cptr.stI16(cptr.add(hwep, 20), 54);
-cptr.stI16(cptr.add(hwep, 22), 53);
-cptr.stI16(cptr.add(hwep, 24), 52);
-cptr.stI16(cptr.add(hwep, 26), 50);
-cptr.stI16(cptr.add(hwep, 28), 51);
-cptr.stI16(cptr.add(hwep, 30), 75);
-cptr.stI16(cptr.add(hwep, 32), 47);
-cptr.stI16(cptr.add(hwep, 34), 49);
-cptr.stI16(cptr.add(hwep, 36), 46);
-cptr.stI16(cptr.add(hwep, 38), 48);
-cptr.stI16(cptr.add(hwep, 40), 74);
-cptr.stI16(cptr.add(hwep, 42), 73);
-cptr.stI16(cptr.add(hwep, 44), 44);
-cptr.stI16(cptr.add(hwep, 46), 30);
-cptr.stI16(cptr.add(hwep, 48), 31);
-cptr.stI16(cptr.add(hwep, 50), 28);
-cptr.stI16(cptr.add(hwep, 52), 27);
-cptr.stI16(cptr.add(hwep, 54), 29);
-cptr.stI16(cptr.add(hwep, 56), 81);
-cptr.stI16(cptr.add(hwep, 58), 82);
-cptr.stI16(cptr.add(hwep, 60), 79);
-cptr.stI16(cptr.add(hwep, 62), 32);
-cptr.stI16(cptr.add(hwep, 64), 80);
-cptr.stI16(cptr.add(hwep, 66), 77);
-cptr.stI16(cptr.add(hwep, 68), 259);
-cptr.stI16(cptr.add(hwep, 70), 78);
-cptr.stI16(cptr.add(hwep, 72), 76);
-cptr.stI16(cptr.add(hwep, 74), 37);
-cptr.stI16(cptr.add(hwep, 76), 35);
-cptr.stI16(cptr.add(hwep, 78), 34);
-cptr.stI16(cptr.add(hwep, 80), 36);
-cptr.stI16(cptr.add(hwep, 82), 38);
-cptr.stI16(cptr.add(hwep, 84), 39);
-cptr.stI16(cptr.add(hwep, 86), 40);
-cptr.stI16(cptr.add(hwep, 88), 42);
+cptr.stI16o(hwep, 0, NHC.CORPSE);
+cptr.stI16o(hwep, 2, NHC.TSURUGI);
+cptr.stI16o(hwep, 4, NHC.RUNESWORD);
+cptr.stI16o(hwep, 6, NHC.DWARVISH_MATTOCK);
+cptr.stI16o(hwep, 8, NHC.TWO_HANDED_SWORD);
+cptr.stI16o(hwep, 10, NHC.BATTLE_AXE);
+cptr.stI16o(hwep, 12, NHC.KATANA);
+cptr.stI16o(hwep, 14, NHC.UNICORN_HORN);
+cptr.stI16o(hwep, 16, NHC.CRYSKNIFE);
+cptr.stI16o(hwep, 18, NHC.TRIDENT);
+cptr.stI16o(hwep, 20, NHC.LONG_SWORD);
+cptr.stI16o(hwep, 22, NHC.ELVEN_BROADSWORD);
+cptr.stI16o(hwep, 24, NHC.BROADSWORD);
+cptr.stI16o(hwep, 26, NHC.SCIMITAR);
+cptr.stI16o(hwep, 28, NHC.SILVER_SABER);
+cptr.stI16o(hwep, 30, NHC.MORNING_STAR);
+cptr.stI16o(hwep, 32, NHC.ELVEN_SHORT_SWORD);
+cptr.stI16o(hwep, 34, NHC.DWARVISH_SHORT_SWORD);
+cptr.stI16o(hwep, 36, NHC.SHORT_SWORD);
+cptr.stI16o(hwep, 38, NHC.ORCISH_SHORT_SWORD);
+cptr.stI16o(hwep, 40, NHC.SILVER_MACE);
+cptr.stI16o(hwep, 42, NHC.MACE);
+cptr.stI16o(hwep, 44, NHC.AXE);
+cptr.stI16o(hwep, 46, NHC.DWARVISH_SPEAR);
+cptr.stI16o(hwep, 48, NHC.SILVER_SPEAR);
+cptr.stI16o(hwep, 50, NHC.ELVEN_SPEAR);
+cptr.stI16o(hwep, 52, NHC.SPEAR);
+cptr.stI16o(hwep, 54, NHC.ORCISH_SPEAR);
+cptr.stI16o(hwep, 56, NHC.FLAIL);
+cptr.stI16o(hwep, 58, NHC.BULLWHIP);
+cptr.stI16o(hwep, 60, NHC.QUARTERSTAFF);
+cptr.stI16o(hwep, 62, NHC.JAVELIN);
+cptr.stI16o(hwep, 64, NHC.AKLYS);
+cptr.stI16o(hwep, 66, NHC.CLUB);
+cptr.stI16o(hwep, 68, NHC.PICK_AXE);
+cptr.stI16o(hwep, 70, NHC.RUBBER_HOSE);
+cptr.stI16o(hwep, 72, NHC.WAR_HAMMER);
+cptr.stI16o(hwep, 74, NHC.SILVER_DAGGER);
+cptr.stI16o(hwep, 76, NHC.ELVEN_DAGGER);
+cptr.stI16o(hwep, 78, NHC.DAGGER);
+cptr.stI16o(hwep, 80, NHC.ORCISH_DAGGER);
+cptr.stI16o(hwep, 82, NHC.ATHAME);
+cptr.stI16o(hwep, 84, NHC.SCALPEL);
+cptr.stI16o(hwep, 86, NHC.KNIFE);
+cptr.stI16o(hwep, 88, NHC.WORM_TOOTH);
 
 /** C ref: weapon.c:705 — @param {CPtr} mtmp @returns {CPtr} */
 export function select_hwep(mtmp) {
     let otmp;
     let i;
-    let strong = schar(((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 80)) & 67108864n) != 0n));
-    let wearing_shield = schar(((cptr.ldI64(cptr.add(mtmp, 296)) & 8n) != 0n));
-    for (otmp = cptr.ldPtr(cptr.add(mtmp, 280)); otmp; otmp = cptr.ldPtr(otmp)) {
-        if (((cptr.ld1s(cptr.add(otmp, 49)) == 2 && cptr.ld1s(cptr.add(otmp, 51)) ? 1 : 0) && touch_artifact(otmp, mtmp) ? 1 : 0) && ((strong && !wearing_shield ? 1 : 0) || !(cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(otmp, 32)), 120), 48)) & 1) ? 1 : 0) ? 1 : 0)
+    let strong = schar(((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 80) & 67108864n) != 0n));
+    let wearing_shield = schar(((cptr.ldI64o(mtmp, 296) & 8n) != 0n));
+    for (otmp = cptr.ldPtro(mtmp, 280); otmp; otmp = cptr.ldPtr(otmp)) {
+        if (((cptr.ld1so(otmp, 49) == NHC.WEAPON_CLASS && cptr.ld1so(otmp, 51) ? 1 : 0) && touch_artifact(otmp, mtmp) ? 1 : 0) && ((strong && !wearing_shield ? 1 : 0) || !(cptr.ldI32o2(objects, cptr.ldI16o(otmp, 32), 120, 48) & 1) ? 1 : 0) ? 1 : 0)
             return otmp;
     }
-    if (((cptr.ldU64(cptr.add((cptr.ldPtr(cptr.add(mtmp, 8))), 80)) & 8192n) != 0n))
+    if (((cptr.ldU64o((cptr.ldPtro(mtmp, 8)), 80) & 8192n) != 0n))
         do {
-            if ((otmp = oselect(mtmp, 77)) !== null)
+            if ((otmp = oselect(mtmp, NHC.CLUB)) !== null)
                 return otmp;
         } while (0);
-    else if (cptr.eq(cptr.ldPtr(cptr.add(mtmp, 8)), cptr.add(mons, 302, 96)) && uwep.v ? 1 : 0)
+    else if (cptr.eq(cptr.ldPtro(mtmp, 8), cptr.add(mons, NHC.PM_BALROG, 96)) && uwep.v ? 1 : 0)
         do {
-            if ((otmp = oselect(mtmp, 82)) !== null)
+            if ((otmp = oselect(mtmp, NHC.BULLWHIP)) !== null)
                 return otmp;
         } while (0);
     for (i = 0; i < 45; i++) {
-        if ((cptr.ldI16(cptr.add(hwep, i, 2)) == 265 && !(cptr.ldI64(cptr.add(mtmp, 296)) & 16n) ? 1 : 0) && !Resists_Elem(mtmp, 8) ? 1 : 0)
+        if ((cptr.ldI16o(hwep, i, 2) == NHC.CORPSE && !(cptr.ldI64o(mtmp, 296) & 16n) ? 1 : 0) && !Resists_Elem(mtmp, NHC.STONE_RES) ? 1 : 0)
             continue;
-        if (((strong && !wearing_shield ? 1 : 0) || !(cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(hwep, i, 2)), 120), 48)) & 1) ? 1 : 0) && (((cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(hwep, i, 2)), 120), 64)) & 31) | 0) != 14 || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0)
+        if (((strong && !wearing_shield ? 1 : 0) || !(cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), 120, 48) & 1) ? 1 : 0) && (((cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), 120, 64) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp) ? 1 : 0) ? 1 : 0)
             do {
-                if ((otmp = oselect(mtmp, cptr.ldI16(cptr.add(hwep, i, 2)))) !== null)
+                if ((otmp = oselect(mtmp, cptr.ldI16o(hwep, i, 2))) !== null)
                     return otmp;
             } while (0);
     }
@@ -721,34 +723,34 @@ export function select_hwep(mtmp) {
 export function possibly_unwield(mon, polyspot) {
     let obj;
     let mw_tmp;
-    if (!(mw_tmp = (cptr.ldPtr(cptr.add((mon), 288)))))
+    if (!(mw_tmp = (cptr.ldPtro((mon), 288))))
         return;
-    for (obj = cptr.ldPtr(cptr.add(mon, 280)); obj; obj = cptr.ldPtr(obj))
+    for (obj = cptr.ldPtro(mon, 280); obj; obj = cptr.ldPtr(obj))
         if (cptr.eq(obj, mw_tmp))
             break;
     if (!obj) {
-        (cptr.stPtr(cptr.add((mon), 288), null));
-        cptr.stI16(cptr.add(mon, 304), 1);
+        (cptr.stPtro((mon), 288, null));
+        cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
         return;
     }
-    if (!attacktype(cptr.ldPtr(cptr.add(mon, 8)), 254)) {
+    if (!attacktype(cptr.ldPtro(mon, 8), NHM.AT_WEAP)) {
         setmnotwielded(mon, mw_tmp);
-        cptr.stI16(cptr.add(mon, 304), 0);
-        if (((cptr.ld1u(cptr.add(cptr.ldPtr(cptr.add(cptr.ldPtr(cptr.add(gv, 120)), cptr.ldI16(cptr.add(mon, 30)), 8)), cptr.ldI16(cptr.add(mon, 28)))) & 2) != 0)) {
+        cptr.stI16o(mon, 304, NHC.NO_WEAPON_WANTED);
+        if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, 120), cptr.ldI16o(mon, 30), 8), cptr.ldI16o(mon, 28)) & NHM.IN_SIGHT) != 0)) {
             pline_mon(mon, __sl39, Monnam(mon), distant_name(obj, doname));
-            newsym(cptr.ldI16(cptr.add(mon, 28)), cptr.ldI16(cptr.add(mon, 30)));
+            newsym(cptr.ldI16o(mon, 28), cptr.ldI16o(mon, 30));
         }
         obj_extract_self(obj);
-        if (!flooreffects(obj, cptr.ldI16(cptr.add(mon, 28)), cptr.ldI16(cptr.add(mon, 30)), __sl40)) {
+        if (!flooreffects(obj, cptr.ldI16o(mon, 28), cptr.ldI16o(mon, 30), __sl40)) {
             if (polyspot)
                 bypass_obj(obj);
-            place_object(obj, cptr.ldI16(cptr.add(mon, 28)), cptr.ldI16(cptr.add(mon, 30)));
+            place_object(obj, cptr.ldI16o(mon, 28), cptr.ldI16o(mon, 30));
             stackobj(obj);
         }
         return;
     }
-    if (!(mwelded(mw_tmp) && cptr.ldI16(cptr.add(mon, 304)) == 0 ? 1 : 0))
-        cptr.stI16(cptr.add(mon, 304), 1);
+    if (!(mwelded(mw_tmp) && cptr.ldI16o(mon, 304) == NHC.NO_WEAPON_WANTED ? 1 : 0))
+        cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
     return;
 }
 
@@ -756,118 +758,118 @@ export function possibly_unwield(mon, polyspot) {
 export function mon_wield_item(mon) {
     let obj;
     let exclaim = 1;
-    if (cptr.ldI16(cptr.add(mon, 304)) == 0)
+    if (cptr.ldI16o(mon, 304) == NHC.NO_WEAPON_WANTED)
         return 0;
-    switch (cptr.ldI16(cptr.add(mon, 304))) {
-        case 3:
+    switch (cptr.ldI16o(mon, 304)) {
+        case NHC.NEED_HTH_WEAPON:
         obj = select_hwep(mon);
         break;
-        case 2:
+        case NHC.NEED_RANGED_WEAPON:
         void select_rwep(mon);
-        obj = cptr.ldPtr(cptr.add(gp, 520));
+        obj = cptr.ldPtro(gp, 520);
         break;
-        case 4:
-        obj = m_carrying(mon, 259);
+        case NHC.NEED_PICK_AXE:
+        obj = m_carrying(mon, NHC.PICK_AXE);
         if (!obj && !which_armor(mon, 8n) ? 1 : 0)
-            obj = m_carrying(mon, 71);
+            obj = m_carrying(mon, NHC.DWARVISH_MATTOCK);
         exclaim = 0;
         break;
-        case 5:
-        obj = m_carrying(mon, 45);
+        case NHC.NEED_AXE:
+        obj = m_carrying(mon, NHC.BATTLE_AXE);
         if (!obj || which_armor(mon, 8n) ? 1 : 0)
-            obj = m_carrying(mon, 44);
+            obj = m_carrying(mon, NHC.AXE);
         exclaim = 0;
         break;
-        case 6:
-        obj = m_carrying(mon, 71);
+        case NHC.NEED_PICK_OR_AXE:
+        obj = m_carrying(mon, NHC.DWARVISH_MATTOCK);
         if (!obj)
-            obj = m_carrying(mon, 45);
+            obj = m_carrying(mon, NHC.BATTLE_AXE);
         if (!obj || which_armor(mon, 8n) ? 1 : 0) {
-            obj = m_carrying(mon, 259);
+            obj = m_carrying(mon, NHC.PICK_AXE);
             if (!obj)
-                obj = m_carrying(mon, 44);
+                obj = m_carrying(mon, NHC.AXE);
         }
         exclaim = 0;
         break;
         default:
-        impossible(__sl41, cptr.ldI16(cptr.add(mon, 304)), mon_nam(mon));
+        impossible(__sl41, cptr.ldI16o(mon, 304), mon_nam(mon));
         return 0;
     }
     if (obj && !cptr.eq(obj, hands_obj) ? 1 : 0) {
-        let mw_tmp = (cptr.ldPtr(cptr.add((mon), 288)));
-        if (mw_tmp && cptr.ldI16(cptr.add(mw_tmp, 32)) == cptr.ldI16(cptr.add(obj, 32)) ? 1 : 0) {
-            cptr.stI16(cptr.add(mon, 304), 1);
+        let mw_tmp = (cptr.ldPtro((mon), 288));
+        if (mw_tmp && cptr.ldI16o(mw_tmp, 32) == cptr.ldI16o(obj, 32) ? 1 : 0) {
+            cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
             return 0;
         }
         if (mw_tmp && mwelded(mw_tmp) ? 1 : 0) {
             if (canseemon(mon)) {
                 let welded_buf = new Uint8Array(256);
-                let mon_hand = mbodypart(mon, 6);
-                if (((cptr.ld1s(cptr.add(mw_tmp, 49)) == 2 || cptr.ld1s(cptr.add(mw_tmp, 49)) == 6 ? 1 : 0) && (cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(mw_tmp, 32)), 120), 48)) & 1) | 0 ? 1 : 0))
+                let mon_hand = mbodypart(mon, NHC.HAND);
+                if (((cptr.ld1so(mw_tmp, 49) == NHC.WEAPON_CLASS || cptr.ld1so(mw_tmp, 49) == NHC.TOOL_CLASS ? 1 : 0) && (cptr.ldI32o2(objects, cptr.ldI16o(mw_tmp, 32), 120, 48) & 1) | 0 ? 1 : 0))
                     mon_hand = makeplural(mon_hand);
-                void cptr.sprintf(cptr.decay(welded_buf), __sl42, otense(mw_tmp, __sl43), (cptr.ldPtr(cptr.add(cptr.add(genders, pronoun_gender(mon, 2), 48), 24))), mon_hand);
-                if (cptr.ldI16(cptr.add(obj, 32)) == 259) {
-                    pline(__sl44, s_suffix(mon_nam(mon)), (((cptr.ldI64(cptr.add(mw_tmp, 40))) == 1n) ? __sl18 : __sl33), cptr.decay(welded_buf));
+                void cptr.sprintf(cptr.decay(welded_buf), __sl42, otense(mw_tmp, __sl43), (cptr.ldPtro2(genders, pronoun_gender(mon, NHM.PRONOUN_HALLU), 48, 24)), mon_hand);
+                if (cptr.ldI16o(obj, 32) == NHC.PICK_AXE) {
+                    pline(__sl44, s_suffix(mon_nam(mon)), (((cptr.ldI64o(mw_tmp, 40)) == 1n) ? __sl18 : __sl33), cptr.decay(welded_buf));
                     pline(__sl45, mon_nam(mon), xname(obj));
                 } else {
                     pline_mon(mon, __sl46, Monnam(mon), doname(obj));
                     pline(__sl47, Yname2(mw_tmp), cptr.decay(welded_buf));
                 }
-                cptr.stI32(cptr.add(mw_tmp, 88), 1);
+                cptr.stI32o(mw_tmp, 88, 1);
             }
-            cptr.stI16(cptr.add(mon, 304), 0);
+            cptr.stI16o(mon, 304, NHC.NO_WEAPON_WANTED);
             return 1;
         }
-        cptr.stPtr(cptr.add(mon, 288), obj);
+        cptr.stPtro(mon, 288, obj);
         setmnotwielded(mon, mw_tmp);
-        cptr.stI16(cptr.add(mon, 304), 1);
+        cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
         if (canseemon(mon)) {
             let newly_welded;
             let arw;
             pline_mon(mon, __sl48, Monnam(mon), doname(obj), exclaim ? 33 : 46);
-            if ((arw = autoreturn_weapon(obj)) !== null && ((cptr.ldI32(cptr.add(arw, 8)) & 1) | 0) != 0 ? 1 : 0)
+            if ((arw = autoreturn_weapon(obj)) !== null && ((cptr.ldI32o(arw, 8) & 1) | 0) != 0 ? 1 : 0)
                 pline_mon(mon, __sl49, Monnam(mon), the(xname(obj)));
-            cptr.stI64(cptr.add(obj, 192), cptr.ldI64(cptr.add(obj, 192)) | 256n);
+            cptr.stI64o(obj, 192, cptr.ldI64o(obj, 192) | 256n);
             newly_welded = mwelded(obj);
-            cptr.stI64(cptr.add(obj, 192), cptr.ldI64(cptr.add(obj, 192)) & (-257n));
+            cptr.stI64o(obj, 192, cptr.ldI64o(obj, 192) & (-257n));
             if (newly_welded) {
-                let mon_hand = mbodypart(mon, 6);
-                if (((cptr.ld1s(cptr.add(obj, 49)) == 2 || cptr.ld1s(cptr.add(obj, 49)) == 6 ? 1 : 0) && (cptr.ldI32(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 48)) & 1) | 0 ? 1 : 0))
+                let mon_hand = mbodypart(mon, NHC.HAND);
+                if (((cptr.ld1so(obj, 49) == NHC.WEAPON_CLASS || cptr.ld1so(obj, 49) == NHC.TOOL_CLASS ? 1 : 0) && (cptr.ldI32o2(objects, cptr.ldI16o(obj, 32), 120, 48) & 1) | 0 ? 1 : 0))
                     mon_hand = makeplural(mon_hand);
-                pline(__sl50, Tobjnam(obj, __sl51), (cptr.ldI64(cptr.add((obj), 40)) != 1n || (cptr.ld1s(cptr.add((obj), 51)) == 26 && !undiscovered_artifact(26) ? 1 : 0) ? 1 : 0) ? __sl52 : __sl53, s_suffix(mon_nam(mon)), mon_hand);
-                cptr.stI32(cptr.add(obj, 88), 1);
+                pline(__sl50, Tobjnam(obj, __sl51), (cptr.ldI64o((obj), 40) != 1n || (cptr.ld1so((obj), 51) == NHC.ART_EYES_OF_THE_OVERWORLD && !undiscovered_artifact(NHC.ART_EYES_OF_THE_OVERWORLD) ? 1 : 0) ? 1 : 0) ? __sl52 : __sl53, s_suffix(mon_nam(mon)), mon_hand);
+                cptr.stI32o(obj, 88, 1);
             }
         }
-        if (artifact_light(obj) && !(cptr.ldI32(cptr.add(obj, 76)) & 1) ? 1 : 0) {
+        if (artifact_light(obj) && !(cptr.ldI32o(obj, 76) & 1) ? 1 : 0) {
             begin_burn(obj, 0);
             if (canseemon(mon))
-                pline(__sl54, Tobjnam(obj, __sl55), arti_light_description(obj), s_suffix(mon_nam(mon)), mbodypart(mon, 6));
-            else if (((cptr.ld1u(cptr.add(cptr.ldPtr(cptr.add(cptr.ldPtr(cptr.add(gv, 120)), cptr.ldI16(cptr.add(mon, 30)), 8)), cptr.ldI16(cptr.add(mon, 28)))) & 2) != 0))
-                pline(__sl56, (dist2((cptr.ldI16(cptr.add((mon), 28))), (cptr.ldI16(cptr.add((mon), 30))), cptr.ldI16(u), cptr.ldI16(cptr.add(u, 2))) <= 25) ? __sl57 : __sl58);
+                pline(__sl54, Tobjnam(obj, __sl55), arti_light_description(obj), s_suffix(mon_nam(mon)), mbodypart(mon, NHC.HAND));
+            else if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, 120), cptr.ldI16o(mon, 30), 8), cptr.ldI16o(mon, 28)) & NHM.IN_SIGHT) != 0))
+                pline(__sl56, (dist2((cptr.ldI16o((mon), 28)), (cptr.ldI16o((mon), 30)), cptr.ldI16(u), cptr.ldI16o(u, 2)) <= 25) ? __sl57 : __sl58);
         }
-        cptr.stI64(cptr.add(obj, 192), 256n);
+        cptr.stI64o(obj, 192, 256n);
         return 1;
     }
-    cptr.stI16(cptr.add(mon, 304), 1);
+    cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
     return 0;
 }
 
 /** C ref: weapon.c:938 — @param {CPtr} mon */
 export function mwepgone(mon) {
-    let mwep = (cptr.ldPtr(cptr.add((mon), 288)));
+    let mwep = (cptr.ldPtro((mon), 288));
     if (mwep) {
         setmnotwielded(mon, mwep);
-        cptr.stI16(cptr.add(mon, 304), 1);
+        cptr.stI16o(mon, 304, NHC.NEED_WEAPON);
     }
 }
 
 /** C ref: weapon.c:950 @returns {CInt} */
 export function abon() {
     let sbon;
-    let str = (acurr(0));
-    let dex = (acurr(3));
-    if ((cptr.ldI32(cptr.add(u, 1808)) != cptr.ldI32(cptr.add(u, 1804))))
-        return ((adj_lev(cptr.add(mons, cptr.ldI32(cptr.add(u, 1808)), 96)) - 3) | 0);
+    let str = (acurr(NHC.A_STR));
+    let dex = (acurr(NHC.A_DEX));
+    if ((cptr.ldI32o(u, 1808) != cptr.ldI32o(u, 1804)))
+        return ((adj_lev(cptr.add(mons, cptr.ldI32o(u, 1808), 96)) - 3) | 0);
     if (str < 6)
         sbon = -2;
     else if (str < 8)
@@ -880,7 +882,7 @@ export function abon() {
         sbon = 2;
     else
         sbon = 3;
-    sbon = (sbon + ((cptr.ldI32(cptr.add(u, 48)) < 3) ? 1 : 0)) | 0;
+    sbon = (sbon + ((cptr.ldI32o(u, 48) < 3) ? 1 : 0)) | 0;
     if (dex < 4)
         return ((sbon - 3) | 0);
     else if (dex < 6)
@@ -895,8 +897,8 @@ export function abon() {
 
 /** C ref: weapon.c:993 @returns {CInt} */
 export function dbon() {
-    let str = (acurr(0));
-    if ((cptr.ldI32(cptr.add(u, 1808)) != cptr.ldI32(cptr.add(u, 1804))))
+    let str = (acurr(NHC.A_STR));
+    if ((cptr.ldI32o(u, 1808) != cptr.ldI32o(u, 1804)))
         return 0;
     if (str < 6)
         return -1;
@@ -919,64 +921,64 @@ export function dbon() {
 /** C ref: weapon.c:1020 — @param {CPtr} obj @param {CInt} newspe */
 function finish_towel_change(obj, newspe) {
     newspe = ((newspe) < 7 ? (newspe) : 7);
-    cptr.st1(cptr.add(obj, 48), schar(((newspe) > 0 ? (newspe) : 0)));
+    cptr.st1o(obj, 48, schar(((newspe) > 0 ? (newspe) : 0)));
     if (cptr.eq(obj, uwep.v))
-        cptr.st1(cptr.add(gu, 1), schar((!(cptr.ldI16(cptr.add((obj), 32)) == 234 && cptr.ld1s(cptr.add((obj), 48)) > 0 ? 1 : 0))));
-    if ((cptr.ld1s(cptr.add((obj), 52)) == 3))
+        cptr.st1o(gu, 1, schar((!(cptr.ldI16o((obj), 32) == NHC.TOWEL && cptr.ld1so((obj), 48) > 0 ? 1 : 0))));
+    if ((cptr.ld1so((obj), 52) == NHM.OBJ_INVENT))
         update_inventory();
 }
 
 /** C ref: weapon.c:1038 — @param {CPtr} obj @param {CInt} amt @param {CInt} verbose */
 export function wet_a_towel(obj, amt, verbose) {
-    let newspe = (amt <= 0) ? (cptr.ld1s(cptr.add(obj, 48)) - amt) | 0 : amt;
-    if (newspe > cptr.ld1s(cptr.add(obj, 48))) {
+    let newspe = (amt <= 0) ? (cptr.ld1so(obj, 48) - amt) | 0 : amt;
+    if (newspe > cptr.ld1so(obj, 48)) {
         if (verbose) {
-            let wetness = (newspe < 3) ? (!cptr.ld1s(cptr.add(obj, 48)) ? __sl59 : __sl60) : (!cptr.ld1s(cptr.add(obj, 48)) ? __sl61 : __sl62);
-            if ((cptr.ld1s(cptr.add((obj), 52)) == 3))
+            let wetness = (newspe < 3) ? (!cptr.ld1so(obj, 48) ? __sl59 : __sl60) : (!cptr.ld1so(obj, 48) ? __sl61 : __sl62);
+            if ((cptr.ld1so((obj), 52) == NHM.OBJ_INVENT))
                 pline(__sl63, Yobjnam2(obj, null), wetness);
-            else if ((cptr.ld1s(cptr.add((obj), 52)) == 4) && canseemon(cptr.ldPtr(cptr.add(obj, 8))) ? 1 : 0)
-                pline(__sl64, s_suffix(Monnam(cptr.ldPtr(cptr.add(obj, 8)))), xname(obj), wetness);
+            else if ((cptr.ld1so((obj), 52) == NHM.OBJ_MINVENT) && canseemon(cptr.ldPtro(obj, 8)) ? 1 : 0)
+                pline(__sl64, s_suffix(Monnam(cptr.ldPtro(obj, 8))), xname(obj), wetness);
         }
     }
-    if (newspe != cptr.ld1s(cptr.add(obj, 48)))
+    if (newspe != cptr.ld1so(obj, 48))
         finish_towel_change(obj, newspe);
 }
 
 /** C ref: weapon.c:1067 — @param {CPtr} obj @param {CInt} amt @param {CInt} verbose */
 export function dry_a_towel(obj, amt, verbose) {
-    let newspe = (amt < 0) ? (cptr.ld1s(cptr.add(obj, 48)) + amt) | 0 : amt;
-    if (newspe < cptr.ld1s(cptr.add(obj, 48))) {
+    let newspe = (amt < 0) ? (cptr.ld1so(obj, 48) + amt) | 0 : amt;
+    if (newspe < cptr.ld1so(obj, 48)) {
         if (verbose) {
-            if ((cptr.ld1s(cptr.add((obj), 52)) == 3))
+            if ((cptr.ld1so((obj), 52) == NHM.OBJ_INVENT))
                 pline(__sl65, Yobjnam2(obj, null), !newspe ? __sl66 : __sl18);
-            else if ((cptr.ld1s(cptr.add((obj), 52)) == 4) && canseemon(cptr.ldPtr(cptr.add(obj, 8))) ? 1 : 0)
-                pline(__sl67, s_suffix(Monnam(cptr.ldPtr(cptr.add(obj, 8)))), xname(obj), !newspe ? __sl66 : __sl18);
+            else if ((cptr.ld1so((obj), 52) == NHM.OBJ_MINVENT) && canseemon(cptr.ldPtro(obj, 8)) ? 1 : 0)
+                pline(__sl67, s_suffix(Monnam(cptr.ldPtro(obj, 8))), xname(obj), !newspe ? __sl66 : __sl18);
         }
     }
-    if (newspe != cptr.ld1s(cptr.add(obj, 48)))
+    if (newspe != cptr.ld1so(obj, 48))
         finish_towel_change(obj, newspe);
 }
 
 /** C ref: weapon.c:1092 — @param {CInt} skill @param {CPtr} buf @returns {CPtr} */
 export function skill_level_name(skill, buf) {
     let ptr;
-    switch ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))) {
-        case 1:
+    switch ((cptr.ldI16o2(u, skill, 6, 2588))) {
+        case NHC.P_UNSKILLED:
         ptr = __sl68;
         break;
-        case 2:
+        case NHC.P_BASIC:
         ptr = __sl69;
         break;
-        case 3:
+        case NHC.P_SKILLED:
         ptr = __sl70;
         break;
-        case 4:
+        case NHC.P_EXPERT:
         ptr = __sl71;
         break;
-        case 5:
+        case NHC.P_MASTER:
         ptr = __sl72;
         break;
-        case 6:
+        case NHC.P_GRAND_MASTER:
         ptr = __sl73;
         break;
         default:
@@ -989,47 +991,47 @@ export function skill_level_name(skill, buf) {
 
 /** C ref: weapon.c:1125 — @param {CInt} skill @returns {CPtr} */
 export function skill_name(skill) {
-    return ((cptr.ldI16(cptr.add(skill_names_indices, skill, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 120))), 16))) : ((skill == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 8))));
+    return ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
 }
 
 /** C ref: weapon.c:1132 — @param {CInt} skill @returns {CInt} */
 function slots_required(skill) {
-    let tmp = (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)));
-    if (skill <= 27 || skill == 36 ? 1 : 0)
+    let tmp = (cptr.ldI16o2(u, skill, 6, 2588));
+    if (skill <= NHC.P_UNICORN_HORN || skill == NHC.P_TWO_WEAPON_COMBAT ? 1 : 0)
         return tmp;
     return (((tmp + 1) | 0) / 2) | 0;
 }
 
 /** C ref: weapon.c:1156 — @param {CInt} skill @param {CInt} speedy @returns {CInt} */
 export function can_advance(skill, speedy) {
-    if (((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0) || (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) >= (cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2))) ? 1 : 0) || cptr.ldI32(cptr.add(u, 2464)) >= 60 ? 1 : 0)
+    if (((cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, 6, 2588)) >= (cptr.ldI16o2(u, skill, 6, 2590)) ? 1 : 0) || cptr.ldI32o(u, 2464) >= NHM.P_SKILL_LIMIT ? 1 : 0)
         return 0;
-    if (cptr.ld1s(cptr.add(flags, 10)) && speedy ? 1 : 0)
+    if (cptr.ld1so(flags, 10) && speedy ? 1 : 0)
         return 1;
-    return schar(((cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4))) >= (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))))), 20)) && cptr.ldI32(cptr.add(u, 2460)) >= slots_required(skill) ? 1 : 0));
+    return schar(((cptr.ldU16o2(u, skill, 6, 2592)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, 2588))), ((cptr.ldI16o2(u, skill, 6, 2588)))), 20)) && cptr.ldI32o(u, 2460) >= slots_required(skill) ? 1 : 0));
 }
 
 /** C ref: weapon.c:1173 — @param {CInt} skill @returns {CInt} */
 function could_advance(skill) {
-    if (((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0) || (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) >= (cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2))) ? 1 : 0) || cptr.ldI32(cptr.add(u, 2464)) >= 60 ? 1 : 0)
+    if (((cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, 6, 2588)) >= (cptr.ldI16o2(u, skill, 6, 2590)) ? 1 : 0) || cptr.ldI32o(u, 2464) >= NHM.P_SKILL_LIMIT ? 1 : 0)
         return 0;
-    return schar(((cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4))) >= (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))))), 20))));
+    return schar(((cptr.ldU16o2(u, skill, 6, 2592)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, 2588))), ((cptr.ldI16o2(u, skill, 6, 2588)))), 20))));
 }
 
 /** C ref: weapon.c:1187 — @param {CInt} skill @returns {CInt} */
 function peaked_skill(skill) {
-    if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0))
+    if ((cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED))
         return 0;
-    return schar(((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) >= (cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2))) && ((cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4))) >= (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))))), 20))) ? 1 : 0));
+    return schar(((cptr.ldI16o2(u, skill, 6, 2588)) >= (cptr.ldI16o2(u, skill, 6, 2590)) && ((cptr.ldU16o2(u, skill, 6, 2592)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, 2588))), ((cptr.ldI16o2(u, skill, 6, 2588)))), 20))) ? 1 : 0));
 }
 
 /** C ref: weapon.c:1198 — @param {CInt} skill */
 function skill_advance(skill) {
-    cptr.stI32(cptr.add(u, 2460), (cptr.ldI32(cptr.add(u, 2460)) - slots_required(skill)) | 0);
-    (cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) + 1)) - (1);
-    cptr.stI16(cptr.add(cptr.add(u, 2468), (cptr.stI32(cptr.add(u, 2464), cptr.ldI32(cptr.add(u, 2464)) + 1)) - (1), 2), i16(skill));
-    You(__sl75, (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) >= (cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2))) ? __sl76 : __sl77, ((cptr.ldI16(cptr.add(skill_names_indices, skill, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 120))), 16))) : ((skill == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 8)))));
-    if (skill >= 28 && skill <= 34 ? 1 : 0)
+    cptr.stI32o(u, 2460, (cptr.ldI32o(u, 2460) - slots_required(skill)) | 0);
+    (cptr.stI16o2(u, skill, 6, 2588, cptr.ldI16o2(u, skill, 6, 2588) + 1)) - (1);
+    cptr.stI16o2(u, (cptr.stI32o(u, 2464, cptr.ldI32o(u, 2464) + 1)) - (1), 2, 2468, i16(skill));
+    You(__sl75, (cptr.ldI16o2(u, skill, 6, 2588)) >= (cptr.ldI16o2(u, skill, 6, 2590)) ? __sl76 : __sl77, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8))));
+    if (skill >= NHC.P_ATTACK_SPELL && skill <= NHC.P_MATTER_SPELL ? 1 : 0)
         skill_based_spellbook_id();
 }
 
@@ -1037,15 +1039,15 @@ function skill_advance(skill) {
 
 /** C ref: weapon.c:1218 — struct skill_range[3] */
 const skill_ranges = cptr.alloc(3 * 16);
-cptr.stI16(cptr.add(skill_ranges, 0), 35);
-cptr.stI16(cptr.add(skill_ranges, 2), 37);
-cptr.stPtr(cptr.add(skill_ranges, 8), __sl78);
-cptr.stI16(cptr.add(skill_ranges, 16), 1);
-cptr.stI16(cptr.add(skill_ranges, 18), 27);
-cptr.stPtr(cptr.add(skill_ranges, 24), __sl79);
-cptr.stI16(cptr.add(skill_ranges, 32), 28);
-cptr.stI16(cptr.add(skill_ranges, 34), 34);
-cptr.stPtr(cptr.add(skill_ranges, 40), __sl80);
+cptr.stI16o(skill_ranges, 0, NHC.P_BARE_HANDED_COMBAT);
+cptr.stI16o(skill_ranges, 2, NHC.P_RIDING);
+cptr.stPtro(skill_ranges, 8, __sl78);
+cptr.stI16o(skill_ranges, 16, NHC.P_DAGGER);
+cptr.stI16o(skill_ranges, 18, NHC.P_UNICORN_HORN);
+cptr.stPtro(skill_ranges, 24, __sl79);
+cptr.stI16o(skill_ranges, 32, NHC.P_ATTACK_SPELL);
+cptr.stI16o(skill_ranges, 34, NHC.P_MATTER_SPELL);
+cptr.stPtro(skill_ranges, 40, __sl80);
 
 /** C ref: weapon.c:1229 — @param {CInt} win @param {CInt} selectable @param {CInt} speedy */
 export function add_skills_to_menu(win, selectable, speedy) {
@@ -1057,19 +1059,19 @@ export function add_skills_to_menu(win, selectable, speedy) {
     let buf = new Uint8Array(256);
     let sklnambuf = new Uint8Array(256);
     let prefix;
-    let clr = 8;
-    for (longest = 0, i = 0; i < 38; i++) {
-        if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6)) == 0))
+    let clr = NHM.NO_COLOR;
+    for (longest = 0, i = 0; i < NHC.P_NUM_SKILLS; i++) {
+        if ((cptr.ldI16o2(u, i, 6, 2588) == NHC.P_ISRESTRICTED))
             continue;
-        if ((len = Strlen_(((cptr.ldI16(cptr.add(skill_names_indices, i, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 120))), 16))) : ((i == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 8)))), __sl81, 1241) | 0) > longest)
+        if ((len = Strlen_(((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), __sl81, 1241) | 0) > longest)
             longest = len;
     }
     for (pass = 0; pass < 3; pass++)
-        for (i = cptr.ldI16(cptr.add(skill_ranges, pass, 16)); i <= cptr.ldI16(cptr.add(cptr.add(skill_ranges, pass, 16), 2)); i++) {
+        for (i = cptr.ldI16o(skill_ranges, pass, 16); i <= cptr.ldI16o2(skill_ranges, pass, 16, 2); i++) {
             cptr.memcpy(any, cptr.add(cg, 536), 8);
-            if (i == cptr.ldI16(cptr.add(skill_ranges, pass, 16)))
-                add_menu_heading(win, cptr.ldPtr(cptr.add(cptr.add(skill_ranges, pass, 16), 8)));
-            if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6)) == 0))
+            if (i == cptr.ldI16o(skill_ranges, pass, 16))
+                add_menu_heading(win, cptr.ldPtro2(skill_ranges, pass, 16, 8));
+            if ((cptr.ldI16o2(u, i, 6, 2588) == NHC.P_ISRESTRICTED))
                 continue;
             if (!selectable)
                 prefix = __sl18;
@@ -1082,19 +1084,19 @@ export function add_skills_to_menu(win, selectable, speedy) {
             else
                 prefix = __sl84;
             void skill_level_name(i, cptr.decay(sklnambuf));
-            if (cptr.ld1s(cptr.add(flags, 10))) {
-                if (!cptr.ld1s(cptr.add(iflags, 136)))
-                    nh_snprintf(__sl81, 1282, cptr.decay(buf), 256n, __sl85, prefix, longest, ((cptr.ldI16(cptr.add(skill_names_indices, i, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 120))), 16))) : ((i == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 8)))), cptr.decay(sklnambuf), (cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), i, 6), 4))), (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6))))), 20)));
+            if (cptr.ld1so(flags, 10)) {
+                if (!cptr.ld1so(iflags, 136))
+                    nh_snprintf(__sl81, 1282, cptr.decay(buf), 256n, __sl85, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, 6, 2592)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, 6, 2588))), ((cptr.ldI16o2(u, i, 6, 2588)))), 20)));
                 else
-                    nh_snprintf(__sl81, 1287, cptr.decay(buf), 256n, __sl86, prefix, ((cptr.ldI16(cptr.add(skill_names_indices, i, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 120))), 16))) : ((i == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 8)))), cptr.decay(sklnambuf), (cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), i, 6), 4))), (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6))))), 20)));
+                    nh_snprintf(__sl81, 1287, cptr.decay(buf), 256n, __sl86, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, 6, 2592)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, 6, 2588))), ((cptr.ldI16o2(u, i, 6, 2588)))), 20)));
             } else {
-                if (!cptr.ld1s(cptr.add(iflags, 136)))
-                    nh_snprintf(__sl81, 1292, cptr.decay(buf), 256n, __sl87, prefix, longest, ((cptr.ldI16(cptr.add(skill_names_indices, i, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 120))), 16))) : ((i == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 8)))), cptr.decay(sklnambuf));
+                if (!cptr.ld1so(iflags, 136))
+                    nh_snprintf(__sl81, 1292, cptr.decay(buf), 256n, __sl87, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
                 else
-                    nh_snprintf(__sl81, 1296, cptr.decay(buf), 256n, __sl88, prefix, ((cptr.ldI16(cptr.add(skill_names_indices, i, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 120))), 16))) : ((i == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, i, 2)), 8)))), cptr.decay(sklnambuf));
+                    nh_snprintf(__sl81, 1296, cptr.decay(buf), 256n, __sl88, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
             }
             cptr.stI32(any, (selectable && can_advance(i, speedy) ? 1 : 0) ? (i + 1) | 0 : 0);
-            add_menu(win, nul_glyphinfo.v, any, 0, 0, 0, clr, cptr.decay(buf), 0);
+            add_menu(win, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, cptr.decay(buf), NHM.MENU_ITEMFLAGS_NONE);
         }
 }
 
@@ -1103,12 +1105,12 @@ export function show_skills() {
     let win;
     let selected = cptr.box(0);
     pline(__sl89);
-    win = (cptr.ldPtr(cptr.add(windowprocs, 104)))(4);
-    (cptr.ldPtr(cptr.add(windowprocs, 168)))(win, 0n);
+    win = (cptr.ldPtro(windowprocs, 104))(NHM.NHW_MENU);
+    (cptr.ldPtro(windowprocs, 168))(win, 0n);
     add_skills_to_menu(win, 0, 0);
-    (cptr.ldPtr(cptr.add(windowprocs, 184)))(win, __sl18);
-    (void (select_menu(win, 0, selected)));
-    (cptr.ldPtr(cptr.add(windowprocs, 128)))(win);
+    (cptr.ldPtro(windowprocs, 184))(win, __sl18);
+    (void (select_menu(win, NHM.PICK_NONE, selected)));
+    (cptr.ldPtro(windowprocs, 128))(win);
 }
 
 /** C ref: weapon.c:1329 @returns {CInt} */
@@ -1122,13 +1124,13 @@ export function enhance_weapon_skill() {
     let selected = cptr.box(0);
     let win;
     let speedy = 0;
-    cptr.stU64(cptr.add(svc, 88), cptr.ldU64(cptr.add(svc, 88)) | 1n);
-    if (cptr.ld1s(cptr.add(flags, 10)) && yn_function(__sl90, cptr.decay(ynchars), 110, 1) == 121 ? 1 : 0)
+    cptr.stU64o(svc, 88, cptr.ldU64o(svc, 88) | 1n);
+    if (cptr.ld1so(flags, 10) && yn_function(__sl90, cptr.decay(ynchars), 110, 1) == 121 ? 1 : 0)
         speedy = 1;
     do {
         to_advance = (eventually_advance = (maxxed_cnt = 0));
-        for (i = 0; i < 38; i++) {
-            if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), i, 6)) == 0))
+        for (i = 0; i < NHC.P_NUM_SKILLS; i++) {
+            if ((cptr.ldI16o2(u, i, 6, 2588) == NHC.P_ISRESTRICTED))
                 continue;
             if (can_advance(i, speedy))
                 to_advance++;
@@ -1137,11 +1139,11 @@ export function enhance_weapon_skill() {
             else if (peaked_skill(i))
                 maxxed_cnt++;
         }
-        win = (cptr.ldPtr(cptr.add(windowprocs, 104)))(4);
-        (cptr.ldPtr(cptr.add(windowprocs, 168)))(win, 0n);
+        win = (cptr.ldPtro(windowprocs, 104))(NHM.NHW_MENU);
+        (cptr.ldPtro(windowprocs, 168))(win, 0n);
         if (eventually_advance > 0 || maxxed_cnt > 0 ? 1 : 0) {
             if (eventually_advance > 0) {
-                void cptr.sprintf(cptr.decay(buf), __sl91, (((eventually_advance) == 1) ? __sl18 : __sl33), (cptr.ldI32(cptr.add(u, 48)) < 30) ? __sl92 : __sl93);
+                void cptr.sprintf(cptr.decay(buf), __sl91, (((eventually_advance) == 1) ? __sl18 : __sl33), (cptr.ldI32o(u, 48) < NHM.MAXULEV) ? __sl92 : __sl93);
                 add_menu_str(win, cptr.decay(buf));
             }
             if (maxxed_cnt > 0) {
@@ -1152,16 +1154,16 @@ export function enhance_weapon_skill() {
         }
         add_skills_to_menu(win, schar((((((to_advance + eventually_advance) | 0) + maxxed_cnt) | 0) > 0)), speedy);
         void cptr.strcpy(cptr.decay(buf), (to_advance > 0) ? __sl95 : __sl96);
-        if (cptr.ld1s(cptr.add(flags, 10)) && !speedy ? 1 : 0)
-            void cptr.sprintf(eos(cptr.decay(buf)), __sl97, cptr.ldI32(cptr.add(u, 2460)), (((cptr.ldI32(cptr.add(u, 2460))) == 1) ? __sl18 : __sl33));
-        (cptr.ldPtr(cptr.add(windowprocs, 184)))(win, cptr.decay(buf));
-        n = select_menu(win, to_advance ? 1 : 0, selected);
-        (cptr.ldPtr(cptr.add(windowprocs, 128)))(win);
+        if (cptr.ld1so(flags, 10) && !speedy ? 1 : 0)
+            void cptr.sprintf(eos(cptr.decay(buf)), __sl97, cptr.ldI32o(u, 2460), (((cptr.ldI32o(u, 2460)) == 1) ? __sl18 : __sl33));
+        (cptr.ldPtro(windowprocs, 184))(win, cptr.decay(buf));
+        n = select_menu(win, to_advance ? NHM.PICK_ONE : NHM.PICK_NONE, selected);
+        (cptr.ldPtro(windowprocs, 128))(win);
         if (n > 0) {
-            n = (cptr.ldI32(cptr.add(selected.v, 0, 24)) - 1) | 0;
+            n = (cptr.ldI32o(selected.v, 0, 24) - 1) | 0;
             cptr.free(selected.v);
             skill_advance(n);
-            for (n = (i = 0); i < 38; i++) {
+            for (n = (i = 0); i < NHC.P_NUM_SKILLS; i++) {
                 if (can_advance(i, speedy)) {
                     if (!speedy)
                         You_feel(__sl98);
@@ -1171,24 +1173,24 @@ export function enhance_weapon_skill() {
             }
         }
     } while (speedy && n > 0 ? 1 : 0);
-    return 0;
+    return NHM.ECMD_OK;
 }
 
 /** C ref: weapon.c:1414 — @param {CInt} skill */
 export function unrestrict_weapon_skill(skill) {
-    if (skill < 38 && (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0) ? 1 : 0) {
-        cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), 1);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2), 2);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4), 0);
+    if (skill < NHC.P_NUM_SKILLS && (cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED) ? 1 : 0) {
+        cptr.stI16o2(u, skill, 6, 2588, NHC.P_UNSKILLED);
+        cptr.stI16o2(u, skill, 6, 2590, NHC.P_BASIC);
+        cptr.stI16o2(u, skill, 6, 2592, 0);
     }
 }
 
 /** C ref: weapon.c:1424 — @param {CInt} skill @param {CInt} degree */
 export function use_skill(skill, degree) {
     let advance_before;
-    if (skill != 0 && !(cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0) ? 1 : 0) {
+    if (skill != NHC.P_NONE && !(cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED) ? 1 : 0) {
         advance_before = can_advance(skill, 0);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4), cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4)) + degree);
+        cptr.stI16o2(u, skill, 6, 2592, cptr.ldU16o2(u, skill, 6, 2592) + degree);
         if (!advance_before && can_advance(skill, 0) ? 1 : 0)
             give_may_advance_msg(skill);
     }
@@ -1199,29 +1201,29 @@ export function add_weapon_skill(n) {
     let i;
     let before;
     let after;
-    for (i = 0, before = 0; i < 38; i++)
+    for (i = 0, before = 0; i < NHC.P_NUM_SKILLS; i++)
         if (can_advance(i, 0))
             before++;
-    cptr.stI32(cptr.add(u, 2460), (cptr.ldI32(cptr.add(u, 2460)) + n) | 0);
-    for (i = 0, after = 0; i < 38; i++)
+    cptr.stI32o(u, 2460, (cptr.ldI32o(u, 2460) + n) | 0);
+    for (i = 0, after = 0; i < NHC.P_NUM_SKILLS; i++)
         if (can_advance(i, 0))
             after++;
     if (before < after)
-        give_may_advance_msg(0);
+        give_may_advance_msg(NHC.P_NONE);
 }
 
 /** C ref: weapon.c:1453 — @param {CInt} n */
 export function lose_weapon_skill(n) {
     let skill;
     while (--n >= 0) {
-        if (cptr.ldI32(cptr.add(u, 2460))) {
-            (cptr.stI32(cptr.add(u, 2460), cptr.ldI32(cptr.add(u, 2460)) + -1)) - (-1);
-        } else if (cptr.ldI32(cptr.add(u, 2464))) {
-            skill = cptr.ldI16(cptr.add(cptr.add(u, 2468), cptr.stI32(cptr.add(u, 2464), cptr.ldI32(cptr.add(u, 2464)) + -1), 2));
-            if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) <= 1)
+        if (cptr.ldI32o(u, 2460)) {
+            (cptr.stI32o(u, 2460, cptr.ldI32o(u, 2460) + -1)) - (-1);
+        } else if (cptr.ldI32o(u, 2464)) {
+            skill = cptr.ldI16o2(u, cptr.stI32o(u, 2464, cptr.ldI32o(u, 2464) + -1), 2, 2468);
+            if ((cptr.ldI16o2(u, skill, 6, 2588)) <= NHC.P_UNSKILLED)
                 panic(__sl99, skill);
-            (cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) + -1)) - (-1);
-            cptr.stI32(cptr.add(u, 2460), (slots_required(skill) - 1) | 0);
+            (cptr.stI16o2(u, skill, 6, 2588, cptr.ldI16o2(u, skill, 6, 2588) + -1)) - (-1);
+            cptr.stI32o(u, 2460, (slots_required(skill) - 1) | 0);
         }
     }
 }
@@ -1235,27 +1237,27 @@ export function drain_weapon_skill(n) {
     let tmpskills = cptr.alloc(38 * 4);
     void __builtin___memset_chk(tmpskills, 0, 152n, __builtin_object_size(tmpskills, 0));
     while (--n >= 0) {
-        if (cptr.ldI32(cptr.add(u, 2464))) {
-            i = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1489, __sl100), rn2(cptr.ldI32(cptr.add(u, 2464)))) : rn2(cptr.ldI32(cptr.add(u, 2464))));
-            skill = cptr.ldI16(cptr.add(cptr.add(u, 2468), i, 2));
-            cptr.stI32(cptr.add(tmpskills, skill, 4), 1);
-            for (; i < ((cptr.ldI32(cptr.add(u, 2464)) - 1) | 0); i++) {
-                cptr.stI16(cptr.add(cptr.add(u, 2468), i, 2), cptr.ldI16(cptr.add(cptr.add(u, 2468), (i + 1) | 0, 2)));
+        if (cptr.ldI32o(u, 2464)) {
+            i = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1489, __sl100), rn2(cptr.ldI32o(u, 2464))) : rn2(cptr.ldI32o(u, 2464)));
+            skill = cptr.ldI16o2(u, i, 2, 2468);
+            cptr.stI32o(tmpskills, skill, 1, 4);
+            for (; i < ((cptr.ldI32o(u, 2464) - 1) | 0); i++) {
+                cptr.stI16o2(u, i, 2, 2468, cptr.ldI16o2(u, (i + 1) | 0, 2, 2468));
             }
-            (cptr.stI32(cptr.add(u, 2464), cptr.ldI32(cptr.add(u, 2464)) + -1)) - (-1);
-            if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) <= 1)
+            (cptr.stI32o(u, 2464, cptr.ldI32o(u, 2464) + -1)) - (-1);
+            if ((cptr.ldI16o2(u, skill, 6, 2588)) <= NHC.P_UNSKILLED)
                 panic(__sl101, skill);
-            (cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) + -1)) - (-1);
-            cptr.stI32(cptr.add(u, 2460), (cptr.ldI32(cptr.add(u, 2460)) + slots_required(skill)) | 0);
-            curradv = (Math.imul(Math.imul(((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))), ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))))), 20));
-            prevadv = (Math.imul(Math.imul((((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) - 1) | 0), (((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) - 1) | 0)), 20));
-            if ((cptr.ldU16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4))) >= curradv)
-                cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4), u16(((prevadv + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1505, __sl100), rn2((curradv - prevadv) | 0)) : rn2((curradv - prevadv) | 0))) | 0)));
+            (cptr.stI16o2(u, skill, 6, 2588, cptr.ldI16o2(u, skill, 6, 2588) + -1)) - (-1);
+            cptr.stI32o(u, 2460, (cptr.ldI32o(u, 2460) + slots_required(skill)) | 0);
+            curradv = (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, 2588))), ((cptr.ldI16o2(u, skill, 6, 2588)))), 20));
+            prevadv = (Math.imul(Math.imul((((cptr.ldI16o2(u, skill, 6, 2588)) - 1) | 0), (((cptr.ldI16o2(u, skill, 6, 2588)) - 1) | 0)), 20));
+            if ((cptr.ldU16o2(u, skill, 6, 2592)) >= curradv)
+                cptr.stI16o2(u, skill, 6, 2592, u16(((prevadv + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1505, __sl100), rn2((curradv - prevadv) | 0)) : rn2((curradv - prevadv) | 0))) | 0)));
         }
     }
-    for (skill = 0; skill < 38; skill++)
-        if (cptr.ldI32(cptr.add(tmpskills, skill, 4))) {
-            You(__sl102, (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) >= 2 ? __sl103 : __sl18, ((cptr.ldI16(cptr.add(skill_names_indices, skill, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 120))), 16))) : ((skill == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 8)))));
+    for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++)
+        if (cptr.ldI32o(tmpskills, skill, 4)) {
+            You(__sl102, (cptr.ldI16o2(u, skill, 6, 2588)) >= NHC.P_BASIC ? __sl103 : __sl18, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8))));
         }
 }
 
@@ -1263,17 +1265,17 @@ export function drain_weapon_skill(n) {
 export function weapon_type(obj) {
     let type;
     if (!obj)
-        return 35;
-    if ((cptr.ld1s(cptr.add(obj, 49)) != 2 && cptr.ld1s(cptr.add(obj, 49)) != 6 ? 1 : 0) && cptr.ld1s(cptr.add(obj, 49)) != 13 ? 1 : 0)
-        return 0;
-    type = cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68));
+        return NHC.P_BARE_HANDED_COMBAT;
+    if ((cptr.ld1so(obj, 49) != NHC.WEAPON_CLASS && cptr.ld1so(obj, 49) != NHC.TOOL_CLASS ? 1 : 0) && cptr.ld1so(obj, 49) != NHC.GEM_CLASS ? 1 : 0)
+        return NHC.P_NONE;
+    type = cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68);
     return (type < 0) ? -type : type;
 }
 
 /** C ref: weapon.c:1532 @returns {CInt} */
 export function uwep_skill_type() {
-    if (cptr.ld1s(cptr.add(u, 2816)))
-        return 36;
+    if (cptr.ld1so(u, 2816))
+        return NHC.P_TWO_WEAPON_COMBAT;
     return weapon_type(uwep.v);
 }
 
@@ -1286,72 +1288,72 @@ export function weapon_hit_bonus(weapon) {
     let skill;
     let bonus = 0;
     wep_type = weapon_type(weapon);
-    type = (cptr.ld1s(cptr.add(u, 2816)) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v) ? 1 : 0) ? 1 : 0) ? 36 : wep_type;
-    if (type == 0) {
+    type = (cptr.ld1so(u, 2816) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v) ? 1 : 0) ? 1 : 0) ? NHC.P_TWO_WEAPON_COMBAT : wep_type;
+    if (type == NHC.P_NONE) {
         bonus = 0;
-    } else if (type <= 27) {
-        switch ((cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6)))) {
+    } else if (type <= NHC.P_UNICORN_HORN) {
+        switch ((cptr.ldI16o2(u, type, 6, 2588))) {
             default:
-            impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), (cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6))));
+            impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), (cptr.ldI16o2(u, type, 6, 2588)));
             // @FallThrough
             ;
-            case 0:
-            case 1:
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             bonus = -4;
             break;
-            case 2:
+            case NHC.P_BASIC:
             bonus = 0;
             break;
-            case 3:
+            case NHC.P_SKILLED:
             bonus = 2;
             break;
-            case 4:
+            case NHC.P_EXPERT:
             bonus = 3;
             break;
         }
-    } else if (type == 36) {
-        skill = (cptr.ldI16(cptr.add(cptr.add(u, 2588), 36, 6)));
-        if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), wep_type, 6))) < skill)
-            skill = (cptr.ldI16(cptr.add(cptr.add(u, 2588), wep_type, 6)));
+    } else if (type == NHC.P_TWO_WEAPON_COMBAT) {
+        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, 6, 2588));
+        if ((cptr.ldI16o2(u, wep_type, 6, 2588)) < skill)
+            skill = (cptr.ldI16o2(u, wep_type, 6, 2588));
         switch (skill) {
             default:
             impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), skill);
             // @FallThrough
             ;
-            case 0:
-            case 1:
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             bonus = -9;
             break;
-            case 2:
+            case NHC.P_BASIC:
             bonus = -7;
             break;
-            case 3:
+            case NHC.P_SKILLED:
             bonus = -5;
             break;
-            case 4:
+            case NHC.P_EXPERT:
             bonus = -3;
             break;
         }
-    } else if (type == 35) {
-        bonus = (cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6)));
-        bonus = (((bonus) > 1 ? (bonus) : 1) - 1) | 0;
-        bonus = ((Math.imul(((bonus + 2) | 0), (((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0) ? 2 : 1))) / 2) | 0;
+    } else if (type == NHC.P_BARE_HANDED_COMBAT) {
+        bonus = (cptr.ldI16o2(u, type, 6, 2588));
+        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;
+        bonus = ((Math.imul(((bonus + 2) | 0), (((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0) ? 2 : 1))) / 2) | 0;
     }
-    if (cptr.ldPtr(cptr.add(u, 2424))) {
-        switch ((cptr.ldI16(cptr.add(cptr.add(u, 2588), 37, 6)))) {
-            case 0:
-            case 1:
+    if (cptr.ldPtro(u, 2424)) {
+        switch ((cptr.ldI16o2(u, NHC.P_RIDING, 6, 2588))) {
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             bonus = (bonus - 2) | 0;
             break;
-            case 2:
+            case NHC.P_BASIC:
             bonus = (bonus - 1) | 0;
             break;
-            case 3:
+            case NHC.P_SKILLED:
             break;
-            case 4:
+            case NHC.P_EXPERT:
             break;
         }
-        if (cptr.ld1s(cptr.add(u, 2816)))
+        if (cptr.ld1so(u, 2816))
             bonus = (bonus - 2) | 0;
     }
     return bonus;
@@ -1364,65 +1366,65 @@ export function weapon_dam_bonus(weapon) {
     let skill;
     let bonus = 0;
     wep_type = weapon_type(weapon);
-    type = (cptr.ld1s(cptr.add(u, 2816)) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v) ? 1 : 0) ? 1 : 0) ? 36 : wep_type;
-    if (type == 0) {
+    type = (cptr.ld1so(u, 2816) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v) ? 1 : 0) ? 1 : 0) ? NHC.P_TWO_WEAPON_COMBAT : wep_type;
+    if (type == NHC.P_NONE) {
         bonus = 0;
-    } else if (type <= 27) {
-        switch ((cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6)))) {
+    } else if (type <= NHC.P_UNICORN_HORN) {
+        switch ((cptr.ldI16o2(u, type, 6, 2588))) {
             default:
-            impossible(__sl104, (cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6))));
+            impossible(__sl104, (cptr.ldI16o2(u, type, 6, 2588)));
             // @FallThrough
             ;
-            case 0:
-            case 1:
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             bonus = -2;
             break;
-            case 2:
+            case NHC.P_BASIC:
             bonus = 0;
             break;
-            case 3:
+            case NHC.P_SKILLED:
             bonus = 1;
             break;
-            case 4:
+            case NHC.P_EXPERT:
             bonus = 2;
             break;
         }
-    } else if (type == 36) {
-        skill = (cptr.ldI16(cptr.add(cptr.add(u, 2588), 36, 6)));
-        if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), wep_type, 6))) < skill)
-            skill = (cptr.ldI16(cptr.add(cptr.add(u, 2588), wep_type, 6)));
+    } else if (type == NHC.P_TWO_WEAPON_COMBAT) {
+        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, 6, 2588));
+        if ((cptr.ldI16o2(u, wep_type, 6, 2588)) < skill)
+            skill = (cptr.ldI16o2(u, wep_type, 6, 2588));
         switch (skill) {
             default:
-            case 0:
-            case 1:
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             bonus = -3;
             break;
-            case 2:
+            case NHC.P_BASIC:
             bonus = -1;
             break;
-            case 3:
+            case NHC.P_SKILLED:
             bonus = 0;
             break;
-            case 4:
+            case NHC.P_EXPERT:
             bonus = 1;
             break;
         }
-    } else if (type == 35) {
-        bonus = (cptr.ldI16(cptr.add(cptr.add(u, 2588), type, 6)));
-        bonus = (((bonus) > 1 ? (bonus) : 1) - 1) | 0;
-        bonus = ((Math.imul(((bonus + 1) | 0), (((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0) ? 3 : 1))) / 2) | 0;
+    } else if (type == NHC.P_BARE_HANDED_COMBAT) {
+        bonus = (cptr.ldI16o2(u, type, 6, 2588));
+        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;
+        bonus = ((Math.imul(((bonus + 1) | 0), (((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0) ? 3 : 1))) / 2) | 0;
     }
-    if (cptr.ldPtr(cptr.add(u, 2424)) && type != 36 ? 1 : 0) {
-        switch ((cptr.ldI16(cptr.add(cptr.add(u, 2588), 37, 6)))) {
-            case 0:
-            case 1:
+    if (cptr.ldPtro(u, 2424) && type != NHC.P_TWO_WEAPON_COMBAT ? 1 : 0) {
+        switch ((cptr.ldI16o2(u, NHC.P_RIDING, 6, 2588))) {
+            case NHC.P_ISRESTRICTED:
+            case NHC.P_UNSKILLED:
             break;
-            case 2:
+            case NHC.P_BASIC:
             break;
-            case 3:
+            case NHC.P_SKILLED:
             bonus = (bonus + 1) | 0;
             break;
-            case 4:
+            case NHC.P_EXPERT:
             bonus = (bonus + 2) | 0;
             break;
         }
@@ -1435,48 +1437,48 @@ export function skill_init(class_skill) {
     let obj;
     let skmax;
     let skill;
-    for (skill = 0; skill < 38; skill++) {
-        cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), 0);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2), 0);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4), 0);
+    for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++) {
+        cptr.stI16o2(u, skill, 6, 2588, NHC.P_ISRESTRICTED);
+        cptr.stI16o2(u, skill, 6, 2590, NHC.P_ISRESTRICTED);
+        cptr.stI16o2(u, skill, 6, 2592, 0);
     }
-    for (obj = cptr.ldPtr(cptr.add(gi, 8)); obj; obj = cptr.ldPtr(obj)) {
-        if ((((cptr.ld1s(cptr.add(obj, 49)) == 2 || cptr.ld1s(cptr.add(obj, 49)) == 13 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) >= -22 ? 1 : 0) && cptr.ld1s(cptr.add(cptr.add(objects, cptr.ldI16(cptr.add(obj, 32)), 120), 68)) <= -20 ? 1 : 0))
+    for (obj = cptr.ldPtro(gi, 8); obj; obj = cptr.ldPtr(obj)) {
+        if ((((cptr.ld1so(obj, 49) == NHC.WEAPON_CLASS || cptr.ld1so(obj, 49) == NHC.GEM_CLASS ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) >= -22 ? 1 : 0) && cptr.ld1so2(objects, cptr.ldI16o(obj, 32), 120, 68) <= -20 ? 1 : 0))
             continue;
         skill = weapon_type(obj);
-        if (skill != 0)
-            cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), 2);
+        if (skill != NHC.P_NONE)
+            cptr.stI16o2(u, skill, 6, 2588, NHC.P_BASIC);
     }
-    if ((cptr.ldI16(cptr.add(gu, 216)) == 334) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0) {
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 29, 6), 2);
-    } else if ((cptr.ldI16(cptr.add(gu, 216)) == 337)) {
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 32, 6), 2);
-    } else if ((cptr.ldI16(cptr.add(gu, 216)) == 343)) {
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 28, 6), 2);
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 31, 6), 2);
+    if ((cptr.ldI16o(gu, 216) == NHC.PM_HEALER) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0) {
+        cptr.stI16o2(u, NHC.P_HEALING_SPELL, 6, 2588, NHC.P_BASIC);
+    } else if ((cptr.ldI16o(gu, 216) == NHC.PM_CLERIC)) {
+        cptr.stI16o2(u, NHC.P_CLERIC_SPELL, 6, 2588, NHC.P_BASIC);
+    } else if ((cptr.ldI16o(gu, 216) == NHC.PM_WIZARD)) {
+        cptr.stI16o2(u, NHC.P_ATTACK_SPELL, 6, 2588, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_ENCHANTMENT_SPELL, 6, 2588, NHC.P_BASIC);
     }
-    for (; cptr.ldI16(class_skill) != 0; class_skill = cptr.add(class_skill, 1, 4)) {
-        skmax = cptr.ldI16(cptr.add(class_skill, 2));
+    for (; cptr.ldI16(class_skill) != NHC.P_NONE; class_skill = cptr.add(class_skill, 1, 4)) {
+        skmax = cptr.ldI16o(class_skill, 2);
         skill = cptr.ldI16(class_skill);
-        cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2), i16(skmax));
-        if ((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) == 0)
-            cptr.stI16(cptr.add(cptr.add(u, 2588), skill, 6), 1);
+        cptr.stI16o2(u, skill, 6, 2590, i16(skmax));
+        if ((cptr.ldI16o2(u, skill, 6, 2588)) == NHC.P_ISRESTRICTED)
+            cptr.stI16o2(u, skill, 6, 2588, NHC.P_UNSKILLED);
     }
-    if ((cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), 35, 6), 2))) > 4)
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 35, 6), 2);
-    if (cptr.ldI16(cptr.add(gu, 218)) == 100)
-        cptr.stI16(cptr.add(cptr.add(u, 2588), 37, 6), 2);
-    for (skill = 0; skill < 38; skill++) {
-        if (!(cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)) == 0)) {
-            if ((cptr.ldI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2))) < (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6)))) {
-                impossible(__sl105, ((cptr.ldI16(cptr.add(skill_names_indices, skill, 2)) > 0) ? (cptr.ldPtr(cptr.add(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 120))), 16))) : ((skill == 35) ? cptr.ldPtr(cptr.add(barehands_or_martial, ((cptr.ldI16(cptr.add(gu, 216)) == 340) || (cptr.ldI16(cptr.add(gu, 216)) == 336) ? 1 : 0), 8)) : cptr.ldPtr(cptr.add(odd_skill_names, -cptr.ldI16(cptr.add(skill_names_indices, skill, 2)), 8)))));
-                cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 2), (cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))));
+    if ((cptr.ldI16o2(u, NHC.P_BARE_HANDED_COMBAT, 6, 2590)) > NHC.P_EXPERT)
+        cptr.stI16o2(u, NHC.P_BARE_HANDED_COMBAT, 6, 2588, NHC.P_BASIC);
+    if (cptr.ldI16o(gu, 218) == NHC.PM_PONY)
+        cptr.stI16o2(u, NHC.P_RIDING, 6, 2588, NHC.P_BASIC);
+    for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++) {
+        if (!(cptr.ldI16o2(u, skill, 6, 2588) == NHC.P_ISRESTRICTED)) {
+            if ((cptr.ldI16o2(u, skill, 6, 2590)) < (cptr.ldI16o2(u, skill, 6, 2588))) {
+                impossible(__sl105, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, 216) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, 216) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8))));
+                cptr.stI16o2(u, skill, 6, 2590, (cptr.ldI16o2(u, skill, 6, 2588)));
             }
-            cptr.stI16(cptr.add(cptr.add(cptr.add(u, 2588), skill, 6), 4), u16((Math.imul(Math.imul((((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) - 1) | 0), (((cptr.ldI16(cptr.add(cptr.add(u, 2588), skill, 6))) - 1) | 0)), 20))));
+            cptr.stI16o2(u, skill, 6, 2592, u16((Math.imul(Math.imul((((cptr.ldI16o2(u, skill, 6, 2588)) - 1) | 0), (((cptr.ldI16o2(u, skill, 6, 2588)) - 1) | 0)), 20))));
         }
     }
-    unrestrict_weapon_skill(spell_skilltype(cptr.ldI32(cptr.add(gu, 308))));
-    if (!cptr.ld1s(cptr.add(u, 2115)))
+    unrestrict_weapon_skill(spell_skilltype(cptr.ldI32o(gu, 308)));
+    if (!cptr.ld1so(u, 2115))
         skill_based_spellbook_id();
 }
 
@@ -1484,12 +1486,12 @@ export function skill_init(class_skill) {
 export function setmnotwielded(mon, obj) {
     if (!obj)
         return;
-    if (artifact_light(obj) && (cptr.ldI32(cptr.add(obj, 76)) & 1) | 0 ? 1 : 0) {
+    if (artifact_light(obj) && (cptr.ldI32o(obj, 76) & 1) | 0 ? 1 : 0) {
         end_burn(obj, 0);
         if (canseemon(mon))
-            pline(__sl106, The(xname(obj)), s_suffix(mon_nam(mon)), mbodypart(mon, 6), otense(obj, __sl107));
+            pline(__sl106, The(xname(obj)), s_suffix(mon_nam(mon)), mbodypart(mon, NHC.HAND), otense(obj, __sl107));
     }
-    if (cptr.eq((cptr.ldPtr(cptr.add((mon), 288))), obj))
-        (cptr.stPtr(cptr.add((mon), 288), null));
-    cptr.stI64(cptr.add(obj, 192), cptr.ldI64(cptr.add(obj, 192)) & (-257n));
+    if (cptr.eq((cptr.ldPtro((mon), 288)), obj))
+        (cptr.stPtro((mon), 288, null));
+    cptr.stI64o(obj, 192, cptr.ldI64o(obj, 192) & (-257n));
 }

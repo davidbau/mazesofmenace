@@ -18,6 +18,7 @@ import {
     D_CLOSED,
     HEADSTONE,
     INVIS,
+    IS_FOUNTAIN,
     IS_FURNITURE,
     MMOVE_NOTHING,
     MON_FLOOR,
@@ -48,6 +49,7 @@ import {
     can_teleport,
     is_covetous,
     is_hider,
+    monsndx,
     nohands,
     passes_walls,
     perceives,
@@ -62,6 +64,7 @@ import {
     AT_WEAP,
     PM_ERINYS,
     PM_GELATINOUS_CUBE,
+    PM_GREMLIN,
     PM_KILLER_BEE,
     PM_KITTEN,
     PM_LITTLE_DOG,
@@ -82,7 +85,6 @@ import {
 } from './monmove.js';
 import { select_fresh_monster_item_action } from './muse.js';
 import { newObject } from './obj.js';
-import { copyObjclassEntry } from './objects.js';
 import {
     inside_region,
     mon_in_region,
@@ -170,6 +172,42 @@ function assertSimpleScanState(monster, state) {
     if (activeProperty(state, CONFLICT, false))
         unsupported('conflict combat');
     return true;
+}
+
+// C ref: mon.c minliquid_core() (961-1122). Nothing in this port runs that
+// function's body, so both of its `minLiquid` owners -- elapsedTurnMinLiquid()
+// in js/allmain.js for the live turn, and planSimpleMonsterScan()'s operation
+// below for the cloned scan -- answer "C leaves this monster alone" and refuse
+// otherwise. This names which refusal a monster's square and species earn, so
+// the two owners cannot drift apart; each throws its own error type.
+//
+// The square decides for every species but one. C derives `inpool` at :967 and
+// `inlava` at :971 to guard the drown and burn effects at :1068 and :1010,
+// neither ported. The first arm below is deliberately broader than those two
+// terms, which exempt a flyer or a floater: it refuses water and lava for every
+// species. Over-refusing costs the rest of a replay but cannot diverge, and
+// narrowing it would mean porting the arms it stands in for.
+//
+// The gremlin is the exception, and it is why a fountain appears here. C
+// derives `infountain` at :973 from IS_FOUNTAIN(levl[mx][my].typ) and reads it
+// in exactly one place, the split at :987, which fires for `mons[PM_GREMLIN]`
+// alone: that gremlin draws rn2(3) and on a nonzero roll calls split_mon() and
+// dryup(). Answering false for a fountain would skip that draw silently, so a
+// gremlin standing on one is refused instead. A fountain is ordinary terrain
+// for every other species, which reads the square through `inpool` and `inlava`
+// alone.
+//
+// C tests the gremlin at :987 before either liquid arm, and these two are in
+// the other order. That is only a labelling difference: a gremlin in water
+// matches both, and whichever arm claims it, the caller refuses.
+export function unportedMinliquidReason(monster, state) {
+    if (is_pool(monster.mx, monster.my, state)
+        || is_lava(monster.mx, monster.my, state))
+        return 'an immobile monster in liquid';
+    if (monsndx(monster.data) === PM_GREMLIN
+        && IS_FOUNTAIN(state.level?.at?.(monster.mx, monster.my)?.typ))
+        return 'a gremlin splitting in a fountain';
+    return null;
 }
 
 function assertSimpleActionState(monster, state) {
@@ -590,10 +628,9 @@ function assertSimpleDestination(monster, x, y, env) {
     // js/monmove.js; monmove.c:1233 holds_up_web() is reached only from
     // maybe_spin_web(), which js/monmove.js refuses for every webmaker; and
     // mon.c:973 minliquid_core()'s `infountain` feeds the gremlin split at
-    // :987, whose rn2(3) neither minLiquid owner draws. That last one is a
-    // standing gap rather than a new one -- makemon() can place a monster on
-    // a fountain without any move at all -- and it is tracked as the
-    // gremlin-in-a-fountain deferral.
+    // :987, which unportedMinliquidReason() refuses on the square the monster
+    // ends up standing on rather than here, because C decides it there and
+    // makemon() can put a gremlin on a fountain with no move at all.
     //
     // No ordinary movement path changes a monster's level; every
     // migrate_to_level() caller is item use (muse.c), digging (dig.c),
@@ -668,6 +705,17 @@ async function moveSimpleOrdinary(monster, env) {
         mayCrossRegion: assertSimpleDestination,
         resolveTrappedMonster: () => false,
         resistsTrapEffect,
+        // mon.c can_touch_safely() asks artifact.c touch_artifact() about
+        // every item a monster considers, and that function can blast the
+        // toucher for d(4,10) and print. Three consumers read this one
+        // injection: m_search_items()'s can_carry() and can_touch_safely()
+        // below, dog_invent()'s and dog_goal()'s can_carry() through
+        // movePet(), which m_move() hands its own env, and postmov(), which
+        // replaces it with a narrower reason of its own. Without it the first
+        // two raised a bare TypeError for the missing operation, which
+        // escapes runSegment() and discards the segment's matching prefix
+        // rather than ending the segment on it.
+        touchArtifact: () => unsupported('monster artifact item selection'),
         unsupported,
     });
 }
@@ -706,6 +754,17 @@ async function moveSimplePet(monster, after, env) {
         // drop arm as ported functions with unported branches, so they refuse
         // through the caller's boundary class the way m_move() does.
         unsupported,
+        // No arm of the running game reaches this one, and it stays anyway.
+        // dog_invent() calls it only for a pet with AT_WEAP, and
+        // assertSimpleActionState() above refuses any tame monster outside
+        // STARTING_PETS, whose three species carry AT_BITE and AT_KICK alone
+        // (monsters.h:228-234, :381-388, :1002-1009). Without the injection
+        // inventoryOperation() would throw a bare TypeError the moment that
+        // boundary widens, which costs a session its whole matching prefix
+        // rather than ending the segment; keeping it makes that first
+        // widening a named refusal. scripts/unported-monster-actions.test.mjs
+        // fabricates an AT_WEAP pony to pin it, so the pair reads as dead
+        // code plus scaffolding and is neither.
         wieldPickedItem: () => unsupported('pet weapon selection'),
     });
 }
@@ -850,14 +909,14 @@ async function planSimpleMonsterScan(monster, env) {
             'monster light-source vision recalculation',
         ),
         clearBypasses: () => unsupported('monster bypass cleanup'),
-        // The live owner refuses a monster standing in water or lava and
-        // returns false otherwise. Mirror that instead of passing a permissive
-        // stub, so both tables refuse the same branch even if
-        // assertSimpleScanState()'s earlier liquid guard is narrowed.
+        // unportedMinliquidReason() is the live owner's predicate too, so both
+        // tables refuse the same squares. Its water and lava arm duplicates
+        // assertSimpleScanState()'s earlier liquid guard, which reaches this
+        // monster first; its gremlin arm does not, and is the one that fires
+        // here.
         minLiquid: async (subject, subjectEnv) => {
-            if (is_pool(subject.mx, subject.my, subjectEnv.state)
-                || is_lava(subject.mx, subject.my, subjectEnv.state))
-                unsupported('an immobile monster in liquid');
+            const reason = unportedMinliquidReason(subject, subjectEnv.state);
+            if (reason) unsupported(reason);
             return false;
         },
         // C ref: mon.c movemon_singlemon():1268-1281. m_dowear() reassesses

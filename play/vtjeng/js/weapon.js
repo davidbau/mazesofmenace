@@ -2,7 +2,11 @@
 // C refs: weapon.c oselect(), select_rwep(), select_hwep(), mon_wield_item(),
 // setmnotwielded(); wield.c mwelded().
 
-import { ART_SNICKERSNEE, ART_SUNSWORD } from './artifacts.js';
+import {
+    ART_SNICKERSNEE,
+    ART_SUNSWORD,
+    artifactTouchable,
+} from './artifacts.js';
 import {
     AKLYS_LIM,
     NEED_AXE,
@@ -57,7 +61,7 @@ import {
     PM_SAMURAI,
     S_KOP,
 } from './monsters.js';
-import { is_ammo, is_graystone, isWeptool, objectType } from './obj.js';
+import { is_ammo, is_graystone, objectType } from './obj.js';
 import {
     AKLYS,
     ARROW,
@@ -101,8 +105,6 @@ import {
     GRAPPLING_HOOK,
     GUISARME,
     HALBERD,
-    HEAVY_IRON_BALL,
-    IRON_CHAIN,
     JAVELIN,
     KATANA,
     KNIFE,
@@ -163,6 +165,7 @@ import {
     weapon_type,
 } from './startup_skills.js';
 import { couldsee } from './vision.js';
+import { will_weld } from './wield.js';
 
 const MR_STONE = 0x80;
 
@@ -285,16 +288,6 @@ function resistsStoning(monster) {
         | (monster.mextrinsics ?? 0)
         | (monster.mintrinsics ?? 0);
     return Boolean(resistanceBits & MR_STONE);
-}
-
-function artifactTouchable(obj, monster, env) {
-    if (!obj.oartifact) return true;
-    const touchArtifact = requiredOperation(
-        env,
-        'touchArtifact',
-        'artifact weapon selection',
-    );
-    return Boolean(touchArtifact(obj, monster, env));
 }
 
 // C ref: worn.c which_armor().
@@ -517,18 +510,9 @@ function artifactLight(obj) {
         || obj?.oartifact === ART_SUNSWORD;
 }
 
-function willWeld(obj, state) {
-    const erodeableWeapon = obj.oclass === WEAPON_CLASS
-        || isWeptool(obj, state)
-        || obj.otyp === HEAVY_IRON_BALL
-        || obj.otyp === IRON_CHAIN;
-    return Boolean(obj.cursed
-        && (erodeableWeapon || obj.otyp === TIN_OPENER));
-}
-
 // C ref: wield.c mwelded().
 export function mwelded(obj, state = game) {
-    return Boolean(obj && (obj.owornmask & W_WEP) && willWeld(obj, state));
+    return Boolean(obj && (obj.owornmask & W_WEP) && will_weld(obj, state));
 }
 
 async function clearMonsterWeapon(
@@ -687,7 +671,7 @@ export async function mon_wield_item(monster, env = {}) {
                 'wieldMessage',
                 'mon_wield_item',
             );
-            const newlyWelded = willWeld(obj, state);
+            const newlyWelded = will_weld(obj, state);
             await wieldMessage(
                 monster,
                 obj,
@@ -898,5 +882,4 @@ export const _weaponInternals = Object.freeze({
     RANGED_WEAPONS,
     artifactLight,
     resistsStoning,
-    willWeld,
 });
