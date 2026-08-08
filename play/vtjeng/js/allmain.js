@@ -74,6 +74,7 @@ import {
     monsterNearby,
     near_capacity,
     nomul,
+    overexert_hp,
     projected_capacity,
     runmode_delay_output,
 } from './hack.js';
@@ -96,7 +97,7 @@ import {
     emitGlyphUpdateNotices,
     emitStartupA11yNotices,
 } from './startup_a11y.js';
-import { can_reach_floor, wipe_engr_at } from './engrave.js';
+import { u_wipe_engr } from './engrave.js';
 import { check_special_room } from './rooms.js';
 import { mnexto } from './teleport.js';
 import {
@@ -360,8 +361,11 @@ export async function maybe_generate_rnd_mon(state = game, env = {}) {
     });
 }
 
-// C ref: allmain.c moveloop_core() lines 360-361 and engrave.c
-// u_wipe_engr(). rnd(3) is evaluated before can_reach_floor(TRUE).
+// C ref: allmain.c moveloop_core() lines 360-361. The gate is C's, and so is
+// the argument: rnd(3) is evaluated before u_wipe_engr() runs, and everything
+// past that call -- the floor-reachability test and the wipe itself -- belongs
+// to engrave.c and lives in js/engrave.js. Answers whether the rare wear
+// branch fired, which is the only thing this gate decides.
 export function maybeWipeHeroEngraving(
     state = game,
     random = { rn2, rnd },
@@ -370,9 +374,7 @@ export function maybeWipeHeroEngraving(
     if (random.rn2(40 + dexterity * 3) !== 0) return false;
 
     const count = random.rnd(3);
-    const hero = state.u;
-    if (!can_reach_floor(true, state)) return false;
-    wipe_engr_at(hero.ux, hero.uy, count, false, { state, random });
+    u_wipe_engr(count, { state, random });
     return true;
 }
 
@@ -648,17 +650,20 @@ async function finishElapsedTurn(
     if (state.u.uinvulnerable) wtcap = UNENCUMBERED;
     else regen_hp(wtcap, state, { random, interruptMulti: interrupt_multi });
     // C ref: allmain.c's "moving around while encumbered is hard work" block,
-    // between regen_hp() and regen_pw(). overexert_hp() costs a hit point and
-    // refreshes the status line, and at uhp <= 1 it also prints a message,
-    // draws rn2 through exercise(A_CON, FALSE), and calls fall_asleep(). None
-    // of that is ported, so the branch stops instead. Only a burdened hero can
-    // reach wtcap > MOD_ENCUMBER, and a burdened turn is planned on the clone
-    // first, so the live pass stops before spending anything on this turn.
+    // between regen_hp() and regen_pw(). The gate is allmain.c's; what it
+    // guards is hack.c overexert_hp(), whose port lives in js/hack.js and
+    // stops only for the arm that prints, exercises Constitution and faints.
+    // Only a burdened hero can reach wtcap > MOD_ENCUMBER, and a burdened turn
+    // is planned on the clone first, so the live pass stops before spending
+    // anything on this turn.
     if (wtcap > MOD_ENCUMBER && state.u.umoved
         && !(wtcap < EXT_ENCUMBER
             ? state.moves % 30
             : state.moves % 10)) {
-        elapsedTurnBoundary('overexertion hit point loss');
+        overexert_hp(
+            state,
+            () => elapsedTurnBoundary('overexertion hit point loss'),
+        );
     }
     regen_pw(wtcap, state, { random, interruptMulti: interrupt_multi });
 
