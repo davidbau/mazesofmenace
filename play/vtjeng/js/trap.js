@@ -527,14 +527,17 @@ export function maketrap(x, y, typ, rawEnv = {}) {
 
 // youprop.h:242 Levitation and :253 Flying, spelled out here for the same
 // reason every other file in this port spells them out: the macros read three
-// fields of one property and Flying adds a steed term.
-function Levitation(state) {
+// fields of one property and Flying adds a steed term. They are exported for
+// js/trap_effects.js alone, which holds the rest of trap.c's port and needs
+// the same two macros in dotrap() and trapeffect_bear_trap(); a second copy
+// there would be a second copy inside one C file.
+export function Levitation(state) {
     const levitation = state.u.uprops[LEVITATION];
     return Boolean((levitation.intrinsic || levitation.extrinsic)
                    && !levitation.blocked);
 }
 
-function Flying(state) {
+export function Flying(state) {
     const flying = state.u.uprops[FLYING];
     return Boolean((flying.intrinsic || flying.extrinsic
                     || (state.u.usteed && is_flyer(state.u.usteed.data)))
@@ -555,9 +558,12 @@ export function set_utrap(tim, typ, state = game) {
     float_vs_flight(state);
 }
 
-// C ref: trap.c reset_utrap() (1045-1057). `msg` is FALSE at the one ported
-// call site, teleds(), so float_up() and the "You can fly." line below it are
-// unreachable; both are refused rather than silently dropped.
+// C ref: trap.c reset_utrap() (1045-1057). Two call sites are ported and they
+// disagree about `msg`: teleport.c teleds() passes FALSE, and hack.c
+// domove_core():2835 passes TRUE for the hero who has just worked free of a
+// bear trap. So float_up() and the "You can fly." line below it are live
+// refusals rather than unreachable ones -- scripts/hero-bear-trap.test.mjs
+// reaches the first of them -- and both stop rather than being dropped.
 export function reset_utrap(msg, state = game) {
     const was_Lev = Levitation(state);
     const was_Fly = Flying(state);

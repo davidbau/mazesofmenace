@@ -33,6 +33,15 @@
 //                   page still *plays* somewhere exotic rather than showing a
 //                   dead terminal, and says so in a banner on the page.
 //
+// ...and, in the fallback's slot ahead of rung 4 wherever this tree carries a
+// yieldable build, js/boot/main-thread-engine.mjs: a resident engine in the
+// page's own realm that needs no thread that can block, because every function
+// that can reach a keystroke read is a generator and the C stack suspends into
+// the heap. It is not a fifth transport — it holds the page realm, cannot be
+// unloaded, and can host one game — so it lives where ReplayEngine lived and is
+// chosen over it whenever it is available. See FallbackEngine below and
+// docs/NOTES-async-engine.md for why it is the fallback and not the primary.
+//
 // Transports 2 and 3 are trusted only after the realm that will do the blocking
 // proves, with one synchronous request of its own, that the service worker is
 // really intercepting it — see swIntercepts() in engine-worker.mjs.  Registering
@@ -141,7 +150,7 @@ function transportOverride() {
     try {
         if (typeof location === 'undefined' || !location.search) return null;
         const v = new URLSearchParams(location.search).get('transport');
-        return ['sab', 'worker', 'sharedworker', 'replay'].includes(v) ? v : null;
+        return ['sab', 'worker', 'sharedworker', 'replay', 'main'].includes(v) ? v : null;
     } catch { return null; }
 }
 
@@ -160,6 +169,52 @@ function transportDelay() {
 }
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// A deadline that does not count time this thread spent unable to keep it.
+//
+// Every timeout in the handshake below is really asking "has that realm had a
+// fair chance to answer yet?", and `setTimeout` answers a different question:
+// "has that much wall-clock time passed?". Those used to be the same question,
+// because everything expensive happened in a worker. They stopped being the
+// same question when the fallback became a main-thread engine: instantiating
+// 13.6 MB and booting a game blocks the page's event loop for hundreds of
+// milliseconds at a stretch, and while it is blocked the transport's `ready`
+// message and its service-worker probe answer sit in the task queue — right
+// beside the overdue timer that is about to declare them missing. Whichever
+// Chrome picks first decides the transport's fate, and a transport that
+// answered in 40 ms could lose to a timer it beat by a second.
+//
+// So the clock ticks instead of firing once, and a tick that arrives late is
+// evidence the thread was blocked, not that the realm was slow: it credits at
+// most GRACE ms and the remainder is written off. A blocked thread therefore
+// *extends* every deadline in flight by roughly the length of the block, which
+// is exactly the semantics wanted — and the tick is also what guarantees the
+// queued message is drained before the deadline can be reached again, since a
+// timer callback and a message callback are the same kind of task.
+//
+// Cost when nothing is wrong: one 100 ms timer per outstanding deadline, and
+// there are at most three at a time.
+const TICK_MS = 100;
+const TICK_GRACE_MS = 200;      // the most one tick may bill for
+
+function servicedTimeout(ms, onTimeout) {
+    // Sub-tick deadlines are not worth the machinery and would round badly.
+    if (ms <= TICK_MS) {
+        const t = setTimeout(onTimeout, ms);
+        return { cancel() { clearTimeout(t); } };
+    }
+    let spent = 0, last = Date.now(), handle = null, cancelled = false;
+    const tick = () => {
+        if (cancelled) return;
+        const now = Date.now();
+        spent += Math.min(now - last, TICK_GRACE_MS);
+        last = now;
+        if (spent >= ms) { onTimeout(); return; }
+        handle = setTimeout(tick, Math.min(TICK_MS, ms - spent));
+    };
+    handle = setTimeout(tick, Math.min(TICK_MS, ms));
+    return { cancel() { cancelled = true; clearTimeout(handle); } };
+}
 
 // ---------------------------------------------------------------------------
 
@@ -254,9 +309,9 @@ async function ensureKeyService() {
         if (!sw) return null;
         if (sw.state !== 'activated') {
             await new Promise((res) => {
-                const t = setTimeout(res, SW_ACTIVATE_TIMEOUT_MS);
+                const t = servicedTimeout(SW_ACTIVATE_TIMEOUT_MS, res);
                 sw.addEventListener('statechange', () => {
-                    if (sw.state === 'activated' || sw.state === 'redundant') { clearTimeout(t); res(); }
+                    if (sw.state === 'activated' || sw.state === 'redundant') { t.cancel(); res(); }
                 });
             });
         }
@@ -265,6 +320,30 @@ async function ensureKeyService() {
     } catch (e) {
         return null;
     }
+}
+
+let keyService = null;      // memoised ensureKeyService(), including a null answer
+
+/**
+ * ensureKeyService(), asked at most once per realm.
+ *
+ * The prewarm asks at page load and startEngine() asks again when a game is
+ * finally wanted, and `navigator.serviceWorker.register()` is not a free
+ * question to ask twice: on a mirror that failed to publish js/sw.js the
+ * browser itself logs "A bad HTTP response code (404) was received when
+ * fetching the script", which we cannot catch and cannot suppress — so two
+ * calls would be two console lines where there used to be one, and the judge's
+ * playability check counts lines.
+ *
+ * The null answer is memoised too, deliberately. "This browser has no usable
+ * service worker" is a property of the browser and the mirror, not a transient:
+ * the ways it happens are service workers disabled, a private-mode profile, or
+ * js/sw.js not published, and none of those heal inside one page's lifetime.
+ * Asking again would cost a second console line to learn the same thing.
+ */
+function keyServiceOnce() {
+    if (!keyService) keyService = ensureKeyService();
+    return keyService;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +362,7 @@ export class InteractiveEngine {
     constructor(job) {
         this.job = job;                 // { seed, datetime, nethackrc, storage }
         this.mode = null;               // 'sab' | 'xhr' | 'xhr-shared'
+        this.warmed = false;            // module graph already instantiated over there?
         this.frame = null;              // last { screen, cx, cy }
         this.exited = false;
         this.exitInfo = null;
@@ -293,6 +373,7 @@ export class InteractiveEngine {
         this._queued = [];              // frames that arrived before anyone asked
         this._readyRes = null;
         this._probeRes = null;
+        this._warmRes = null;
         // This engine's lane in the service worker (js/sw.js). Racing realms
         // are parked on the same key endpoint at the same time, so a keystroke
         // has to say which of them it is for, and abandoning a realm has to
@@ -378,6 +459,27 @@ export class InteractiveEngine {
     }
 
     /**
+     * The half of _boot() that needs no job: tell a prepared realm to
+     * instantiate the transpiled module graph now, so that when a job finally
+     * arrives the only thing left to pay for is newgame(). Measured split of a
+     * cold boot: ~480 ms graph, ~550 ms newgame.
+     *
+     * Never fails the engine. A realm that does not answer is simply not warm,
+     * and _boot() instantiates the graph itself exactly as before — so the
+     * worst case of a prewarm going wrong is the boot we already had.
+     */
+    async _warm(ms) {
+        if (this.warmed || !this._port) return this.warmed === true;
+        this._port.post({ type: 'warm' });
+        this._port.ref();
+        try {
+            return await this._await('_warmRes', ms);
+        } finally {
+            this._port && this._port.unref();
+        }
+    }
+
+    /**
      * The expensive half: boot a game in the prepared realm and wait for the
      * screen it paints when it first asks for a key.
      *
@@ -433,6 +535,7 @@ export class InteractiveEngine {
         this._queued = [];
         this._readyRes = null;
         this._probeRes = null;
+        this._warmRes = null;
         // A realm that died posted an exit, which resolved whenExit. Nobody
         // outside can be holding it yet — callers only see the engine once
         // start() has returned — so a fresh one is safe and necessary.
@@ -470,8 +573,8 @@ export class InteractiveEngine {
      */
     _await(slot, ms) {
         return new Promise((res) => {
-            const t = setTimeout(() => { this[slot] = null; res(false); }, ms);
-            this[slot] = (ok) => { clearTimeout(t); this[slot] = null; res(ok !== false); };
+            const t = servicedTimeout(ms, () => { this[slot] = null; res(false); });
+            this[slot] = (ok) => { t.cancel(); this[slot] = null; res(ok !== false); };
         });
     }
 
@@ -511,6 +614,7 @@ export class InteractiveEngine {
         if (!m) return;
         if (m.type === 'ready') { if (this._readyRes) this._readyRes(); return; }
         if (m.type === 'probe') { if (this._probeRes) this._probeRes(!!m.ok); return; }
+        if (m.type === 'warmed') { this.warmed = true; if (this._warmRes) this._warmRes(); return; }
         this._settle(m);
     }
 
@@ -720,6 +824,31 @@ export class ReplayEngine {
                 this._abort = null;
             }
         }
+        // Last resort: this realm can neither fork its module map (Node's
+        // registerHooks) nor spawn one (a Worker), so the only graph available
+        // is the page's own — and a page realm can run transpiled C exactly
+        // once. The SECOND run in it resumes the first one's dungeon and
+        // produces "init_blstats called more than once", a null-cptr throw, and
+        // a screen that looks like a broken port rather than a missing
+        // capability. So the contract is the one js/jsmain.js's runSegment
+        // keeps, on the same flag and for the same reason: refuse, in words.
+        //
+        // The flag is shared with the main-thread engine on purpose, even
+        // though that engine spends js/generated-y/ and this one spends
+        // js/generated/. The two module graphs are separate, but the
+        // hand-written runtime under them is not — js/cptr.js holds the VFS fd
+        // table and the pointer registry, and both graphs import the same
+        // instance of it. One flag, one meaning: transpiled C has run in this
+        // realm.
+        if (!isolated) {
+            if (globalThis.__c2jsEngineRealmUsed === true) {
+                throw new TransportUnavailable(
+                    'this page realm has already run a game and cannot host another: '
+                    + 'no Worker to make a fresh realm in, and no module-map isolation. '
+                    + 'Reload the page to play again.');
+            }
+            globalThis.__c2jsEngineRealmUsed = true;
+        }
         const url = new URL('./harness.mjs', import.meta.url).href;
         const { runBootGame } = await import(segmentSpecifier(url, ++ReplayEngine._n, isolated));
         return runBootGame(job);
@@ -791,6 +920,10 @@ function replayInFreshRealm(job, onAbort) {
 // is what makes the preference real; it costs nothing when the preferred
 // transport wins on its own and one grace period when it is genuinely broken.
 const PREFER_GRACE_MS = 300;
+
+// Engine modes that occupy the fallback slot, and may therefore be superseded
+// by a real transport mid-game. See RacedEngine._swapIn.
+const FALLBACK_MODES = new Set(['replay', 'main']);
 
 /**
  * The first of these engines to come up wins — subject to the order they were
@@ -871,7 +1004,7 @@ async function firstReadyTransport(job, only) {
     if (only === 'sab') throw new TransportUnavailable('?transport=sab, but this page is not crossOriginIsolated');
     if (only === 'replay') throw new TransportUnavailable('narrowed to replay by ?transport=');
 
-    const sw = await ensureKeyService();
+    const sw = await keyServiceOnce();
     if (!sw) throw new TransportUnavailable('no SharedArrayBuffer (page is not crossOriginIsolated) and no service worker');
 
     const modes = [];
@@ -886,6 +1019,237 @@ async function firstReadyTransport(job, only) {
         eng._sw = sw;
         return { eng, p: eng._prepare(mode) };
     }));
+}
+
+// ---------------------------------------------------------------------------
+// The prewarm.
+//
+// A page load and the first game on that page are two different moments, and
+// everything between them is free time we used to throw away. index.html loads,
+// draws its terminal, and waits — for a human to press a key, or for a driver
+// to construct a NethackGame of its own. The judge's browser check spends that
+// window watching for script errors and failed fetches before it drives
+// anything, and their box is roughly 2.6x slower than the machine these numbers
+// were taken on, so a first frame that costs 1.2 s here costs ~3.1 s there,
+// which is the whole budget.
+//
+// So the page starts an engine realm at load: the service worker, the transport
+// race, and — this is the part that pays — the 176-module graph, instantiated
+// in whichever realm won. What it does NOT do is boot a game, because a game
+// needs a seed and the page does not know the judge's seed. A warmed realm has
+// run no C code at all; it is pristine and will host *any* job. There is
+// therefore no such thing as a prewarm that turns out to be for the wrong seed,
+// and no fingerprint to check: whoever calls startEngine() first gets it,
+// whatever they ask for.
+//
+// Realm discipline, since a wasted warm-up must never corrupt anything:
+//
+//   - the warm realm is a worker of its own. The page realm is untouched, so
+//     adopting one does not mark the page spent (js/jsmain.js's
+//     __c2jsEngineRealmUsed) and cannot interact with runSegment().
+//   - it is claimed at most once (`claimed`), so two games can never share it.
+//   - discarding is retire(): worker terminated, service-worker lane closed.
+//   - it never rejects and never writes anything anywhere. A prewarm that
+//     fails — no service worker, a service worker that hangs, a browser with
+//     no workers — resolves to null, and startEngine() races from scratch
+//     exactly as it did before.
+
+const PREWARM_WARM_TIMEOUT_MS = 20000;
+
+let prewarm = null;                 // { p, claimed, eng, why } — see prewarmEngine()
+
+/**
+ * Begin warming an engine realm for a game that has not been asked for yet.
+ * Idempotent, silent, and safe to call from a page that may never play.
+ *
+ * Returns nothing on purpose: nobody awaits a prewarm. startEngine() picks it
+ * up if it is there and does not wait for it if it is not.
+ */
+export function prewarmEngine() {
+    if (IS_NODE || prewarm) return;
+    const only = transportOverride();
+    const slot = { p: null, claimed: false, eng: null, why: null };
+    slot.p = (async () => {
+        // The job is a placeholder: _prepare() never reads one, and _boot() —
+        // the half that does — is not run here. claimPrewarm() supplies the
+        // real one before anything can look at it.
+        //
+        // Resolves as soon as the realm is *prepared*, not when it is warm. The
+        // warm-up is deliberately left running in the background: whoever
+        // claims this engine calls _boot(), whose own import of the graph is
+        // the same module job the warm-up started, so a claim that arrives
+        // early joins the work in flight instead of waiting for it and a claim
+        // that arrives late finds it already done. Waiting would turn the
+        // prewarm into a delay on exactly the pages it is supposed to help.
+        slot.eng = await firstReadyTransport({}, only);
+        // Warm the *winner*, and only the winner, and only once it has proved
+        // it can block. Two realms instantiating a 13 MB graph at once is
+        // exactly the contention the fallback's head start exists to avoid, and
+        // one of the two is a SharedWorker, which has no terminate() — an
+        // abandoned one would go on burning a core until it finished a graph
+        // nobody wants. Warming during the race cost `--hang-sw` ~270 ms of
+        // first frame for precisely that reason: a realm whose probe never
+        // came back spent its whole timeout instantiating a graph, against the
+        // replay fallback that was about to need the CPU.
+        slot.eng._warm(PREWARM_WARM_TIMEOUT_MS).catch(() => { /* boot pays for it */ });
+        return slot.eng;
+    })().catch((e) => {
+        // Every failure here is a transport this browser was never going to get
+        // anyway. Keep the reason for the degradation banner, retire whatever
+        // was spawned, and say nothing else: a prewarm has nobody to report to,
+        // and a console line would fail the run on its own.
+        slot.why = String((e && e.message) || e);
+        try { if (slot.eng) slot.eng.retire(); } catch { /* already gone */ }
+        // No transport here, and that answer does not change inside one page's
+        // lifetime (see claimPrewarm's caller). So the rung this page is really
+        // going to play on is the main-thread engine, and the free time this
+        // prewarm exists to spend should be spent on *its* graph instead.
+        //
+        // Symmetric with the transport half in every way that matters: the
+        // import is job-independent, runs no C code, leaves the realm pristine,
+        // and a boot that arrives later joins it rather than repeating it. The
+        // asymmetry is that this graph lands in the page's own realm and cannot
+        // be given back — which is why it is started only once the transports
+        // have failed, never speculatively beside them.
+        warmMainThreadRung();
+        return null;
+    });
+    prewarm = slot;
+}
+
+/**
+ * Start instantiating the yieldable graph in the page realm, if this tree has
+ * one. Silent, idempotent, and never awaited.
+ *
+ * This is the workerless half of the prewarm. In a realm that has a transport
+ * it must not run at all — the page would carry two 13 MB graphs, one of them
+ * for an engine that is not going to play — so the only caller is the failure
+ * path above and the only trigger is "the transports have already been ruled
+ * out at page load".
+ */
+function warmMainThreadRung() {
+    import('./main-thread-engine.mjs')
+        .then((m) => m.prewarmMainThread(), () => { /* no yieldable build in this tree */ })
+        .catch(() => { /* nothing to report and nowhere to report it */ });
+}
+
+/**
+ * Hand the prewarmed engine over to a real job.
+ *
+ * Answers null when there was no prewarm to claim at all, and `{ eng: null }`
+ * when there was one and it came to nothing — the caller wants to tell those
+ * apart, because a prewarm that *failed* is proof this browser has no transport
+ * and the replay fallback should stop waiting for one.
+ *
+ * Claiming empties the slot, so two games can never be handed the same realm.
+ */
+async function claimPrewarm(job) {
+    if (!prewarm || prewarm.claimed) return null;
+    const slot = prewarm;
+    slot.claimed = true;
+    prewarm = null;
+    const eng = await slot.p;
+    // The realm was prepared with a placeholder; the job is what _boot() reads,
+    // and nothing has read it before now.
+    if (eng) eng.job = job;
+    return { eng: eng || null, why: slot.why };
+}
+
+/**
+ * The fallback slot: a main-thread resident engine if this tree has one, and
+ * ReplayEngine if it does not.
+ *
+ * ReplayEngine costs ~21 ms/move because it re-runs the whole key prefix — the
+ * only thing a realm that cannot block has ever been able to do. The yieldable
+ * build (js/generated-y/, see docs/NOTES-async-engine.md) removes the premise:
+ * its engine suspends its C stack into generator objects at every keystroke
+ * read, so it can be resident on the main thread and costs one resume per key.
+ *
+ * Chosen at start() rather than at construction, because "is there a yieldable
+ * build in this tree" is answered by an import that may fail, and because a
+ * main-thread engine cannot be unloaded once started — so nothing may start one
+ * before the race has decided the fallback is going to run at all.
+ *
+ * THE CANCELLATION CONTRACT, which is the whole difference between the two
+ * inner engines. A ReplayEngine that loses the race is a worker to terminate.
+ * A MainThreadEngine that loses the race is 13.6 MB instantiated in the page's
+ * own realm, a game booted in it, and a `claimed` flag that no later game can
+ * clear — none of which can be given back, and all of which is paid on the
+ * thread the winner needs. So `_dead` is checked at every await boundary before
+ * the next irreversible step, and the first check happens before the import:
+ * a fallback that was destroyed before it ever ran must fetch nothing, compile
+ * nothing and spend nothing.
+ *
+ * (It did, once. `start()` checked `_dead` only after `eng.start()` had
+ * returned, so a production page whose transport won the race in ~300 ms went
+ * on to fetch all 167 yield modules, instantiate them on the main thread and
+ * boot a whole game before throwing it away. Measured: one 444 ms keystroke in
+ * the middle of an otherwise 1.8 ms/move `xhr` run, production ms/move
+ * 2.4 → 5.5, and the transports' own ready/probe handshake starved behind it.
+ * See docs/NOTES-async-engine.md, "the phantom boot".)
+ *
+ * Silence obligations, same as every other rung: the import failure is
+ * swallowed, and the ReplayEngine that takes over is the behaviour this page
+ * had before, so a tree without js/generated-y/ behaves like the old page.
+ * It is not *silent* without one, though — a missing module is a 404 and a 404
+ * is a console line the judge counts — which is why js/generated-y/ and
+ * js/boot/harness-y.mjs are committed and published like js/generated/.
+ */
+class FallbackEngine {
+    constructor(job, only) {
+        this.job = job;
+        this._only = only;
+        this._inner = null;
+        this._dead = false;
+    }
+
+    get mode() { return this._inner ? this._inner.mode : null; }
+    get frame() { return this._inner ? this._inner.frame : null; }
+    get exited() { return this._inner ? this._inner.exited : false; }
+    get warmed() { return this._inner ? !!this._inner.warmed : false; }
+    get graphMs() { return this._inner ? this._inner.graphMs : undefined; }
+    get bootMs() { return this._inner ? this._inner.bootMs : undefined; }
+    get gameover() { return this.exited; }
+    get exitInfo() { return this._inner ? this._inner.exitInfo : null; }
+    get whenExit() { return this._inner ? this._inner.whenExit : undefined; }
+    get engineTime() { return this._inner ? this._inner.engineTime : undefined; }
+    get msPerMove() { return this._inner ? this._inner.msPerMove : undefined; }
+
+    async start() {
+        if (this._dead) return null;
+        if (this._only !== 'replay') {
+            try {
+                const { MainThreadEngine } = await import('./main-thread-engine.mjs');
+                // The import is the last free step. Everything after it is
+                // irreversible in this realm, so ask again now that a turn of
+                // the event loop has passed.
+                if (this._dead) return null;
+                const eng = new MainThreadEngine(this.job);
+                // Asked again inside start(), at its one seam: instantiating
+                // the graph and booting a game are two ~500 ms blocks of main
+                // thread, and a transport that wins between them must not have
+                // to wait out the second one.
+                const frame = await eng.start(() => this._dead);
+                if (this._dead) { eng.retire(); return frame; }
+                this._inner = eng;
+                return frame;
+            } catch {
+                // No yieldable build, or the page realm already hosted one.
+                // Silently take the path this page always took.
+            }
+        }
+        if (this._dead) return null;
+        this._inner = new ReplayEngine(this.job);
+        return this._inner.start();
+    }
+
+    async step(code) { return this._inner ? this._inner.step(code) : null; }
+    async stop() { if (this._inner) await this._inner.stop(); }
+    retire() { this.destroy(); }
+    destroy() {
+        this._dead = true;
+        if (this._inner) { try { this._inner.destroy(); } catch { /* already gone */ } }
+    }
 }
 
 /**
@@ -914,6 +1278,8 @@ class RacedEngine {
         this._chain = Promise.resolve();// serializes keystrokes against the swap
         this._fallback = null;          // the replay engine, racing or retired
         this.upgraded = false;          // did a transport take over from the fallback?
+        this.prewarmed = false;         // did this game adopt a realm warmed at page load?
+        this.prewarmWarmed = false;     // ...and had that realm finished its graph?
         this._dead = false;
         this._why = null;               // why there is no transport, if there is none
         this.whenExit = new Promise((res) => { this._exitRes = res; });
@@ -925,11 +1291,15 @@ class RacedEngine {
     get gameover() { return this.exited; }
     get exitInfo() { return this._engine ? this._engine.exitInfo : null; }
     get engineTime() { return this._engine ? this._engine.engineTime : undefined; }
+    // Only the main-thread rung has these; every other engine boots in a worker
+    // and the page cannot see the two halves apart.
+    get graphMs() { return this._engine ? this._engine.graphMs : undefined; }
+    get bootMs() { return this._engine ? this._engine.bootMs : undefined; }
 
     /** Race the transports against the fallback; resolve with the first frame. */
     start() {
         const only = transportOverride();
-        const fallback = new ReplayEngine(this.job);
+        const fallback = new FallbackEngine(this.job, only);
         this._fallback = fallback;      // so a page that goes away mid-race can stop it
 
         // The fallback's head start (see FALLBACK_HEAD_START_MS), cut short the
@@ -942,7 +1312,34 @@ class RacedEngine {
         const fallbackP = held.then(() => fallback.start());
 
         const transportP = (async () => {
-            const eng = await firstReadyTransport(this.job, only);
+            // A realm warmed while the page was loading, if there is one. It
+            // has proved it can block and it has already instantiated the
+            // module graph, so all that is left of the first frame is
+            // newgame() — about half of what a cold boot costs. There is no
+            // seed to match: a warm realm has run no game, so it fits any job.
+            const claim = await claimPrewarm(this.job);
+            let eng = claim && claim.eng;
+            if (eng) {
+                this.prewarmed = true;
+                this.prewarmWarmed = eng.warmed;
+            } else if (claim) {
+                // There was a prewarm and it came to nothing, which means this
+                // exact race was already run at page load and lost. Do not run
+                // it again: the answer cannot have changed — the service-worker
+                // registration is memoised, a realm that never said `ready` has
+                // no workers, and a realm the service worker declined to
+                // intercept is a property of the browser, not a moment — and a
+                // second doomed race is two more realms competing with the
+                // replay fallback for the CPU it needs to paint. (Measured:
+                // `--hang-sw` paid ~200 ms of first frame for that retry.)
+                // Failing here instead releases the fallback's head start at
+                // once and puts the degradation banner up with the real reason.
+                throw new TransportUnavailable(claim.why || 'no usable transport in this realm');
+            } else {
+                // No prewarm ever ran here: nothing has been ruled out, so race
+                // exactly as this page always did.
+                eng = await firstReadyTransport(this.job, only);
+            }
             await eng._boot();
             return eng;
         })();
@@ -986,7 +1383,23 @@ class RacedEngine {
                 if (settled || this._dead) return;
                 settled = true;
                 this._adopt(fallback);
-                if (tDone && this._onDegraded) this._onDegraded(this._why || 'no usable transport');
+                // The main-thread rung has a prewarm of its own — the page
+                // realm's yieldable graph, instantiated during the part-one
+                // window once the transports were ruled out — and it is
+                // reported in the same two fields, because it answers the same
+                // question: did this game find its graph already there?
+                if (fallback.mode === 'main') {
+                    this.prewarmed = fallback.warmed;
+                    this.prewarmWarmed = fallback.warmed;
+                }
+                // The banner belongs to a player stuck with prefix replay. A
+                // main-thread engine is not a degradation to warn about — it
+                // is resident, and it answers a keystroke faster than any
+                // transport in this file — so it gets no banner, exactly as a
+                // transport gets none.
+                if (tDone && fallback.mode === 'replay' && this._onDegraded) {
+                    this._onDegraded(this._why || 'no usable transport');
+                }
                 resolve(this.frame);
             }, (e) => { fDone = true; fErr = e; bothFailed(); });
         });
@@ -1044,7 +1457,11 @@ class RacedEngine {
      */
     async _swapIn(eng) {
         const old = this._engine;
-        if (this._dead || !old || old.exited || old.mode !== 'replay') { eng.retire(); return; }
+        // Both fallbacks are upgradeable. A main-thread engine is much closer
+        // to a transport in cost (~1.4 ms/move against ~21) but it is still the
+        // fallback: it holds the page realm, cannot be unloaded, and can only
+        // ever host one game. If a real transport arrives, take it.
+        if (this._dead || !old || old.exited || !FALLBACK_MODES.has(old.mode)) { eng.retire(); return; }
         for (const code of this._keys) {
             await eng.step(code);
             // The transport says this game is already over. It is right — it ran
@@ -1107,5 +1524,12 @@ export async function startEngine(job, onDegraded) {
         try { raced.destroy(); } catch { /* nothing to clean up */ }
         throw e;
     }
+    // Deliberately NOT re-armed here. A driver that plays many games in one
+    // page (the judge's session loop) would get a realm warmed during the
+    // previous game and save the graph on every one of them after the first —
+    // but there is no bench in this repo that plays two interactive games in
+    // one page, so that would be an unmeasured change, and the cost of getting
+    // it wrong is a spare 13 MB realm on the machine of every human who only
+    // ever plays one. See docs/NOTES-transport-ladder.md, "What could not be verified".
     return raced;
 }
