@@ -44,11 +44,7 @@ import {
     IS_THRONE,
     ROOM,
     TREE,
-    P_BOOMERANG,
-    P_BOW,
-    P_CROSSBOW,
     P_DAGGER,
-    P_DART,
     is_pit,
     Is_airlevel,
     Is_waterlevel,
@@ -70,7 +66,6 @@ import {
     PLNMSG_ONE_ITEM_HERE,
     P_SABER,
     P_SHORT_SWORD,
-    P_SPEAR,
     W_QUIVER,
 } from './const.js';
 import { ART_MJOLLNIR } from './artifacts.js';
@@ -128,7 +123,6 @@ import {
     SPE_BOOK_OF_THE_DEAD,
     SPBOOK_CLASS,
     TIN,
-    TOOL_CLASS,
     WAR_HAMMER,
     WEAPON_CLASS,
     PIERCE,
@@ -141,6 +135,9 @@ import {
     isCandle,
     isContainer,
     isPudding,
+    is_ammo,
+    is_missile,
+    is_spear,
     objectType,
     preflightWeight,
     weight,
@@ -356,17 +353,34 @@ function compactify(buf) {
     buf.length = buf.indexOf('\0') + 1;
 }
 
+// C ref: invent.c any_obj_ok() (1709-1715), the getobj() callback for the `d`
+// command: every carried object is a likely candidate, and the hands/self
+// choice is not one.
+export function any_obj_ok(obj) {
+    if (obj)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
 // C ref: invent.c getobj() (1751-2088). Answers the object the player chose,
 // null where C returns 0, and never &hands_obj: the one arm that produces it
 // needs allownone, which only a GETOBJ_SUGGEST answer for the hands/self
-// choice sets, and eat_ok() -- the only callback ported -- never gives one.
+// choice sets, and no ported callback gives one -- any_obj_ok() above,
+// apply_ok(), eat_ok() and takeoff_ok() all answer an exclusion for null.
 //
-// Six of C's inputs cannot arrive. cmdq_pop() answers NULL and cmdq_add_key()
+// Five of C's inputs cannot arrive. cmdq_pop() answers NULL and cmdq_add_key()
 // has nothing to add to while no command queue is ported; gi.in_doagain is
 // always false for the same reason; flags.invlet_constant is checked below
-// because reassign() is unported; and GETOBJ_ALLOWCNT, GETOBJ_PROMPT and
-// iflags.force_invmenu each stop rather than take an untested arm. The '?' and
-// '*' menu and the '-' hands answer stop too, each naming what it would need.
+// because reassign() is unported; and iflags.force_invmenu stops rather than
+// take an untested arm. The '?' and '*' menu and the '-' hands answer stop
+// too, each naming what it would need.
+//
+// GETOBJ_PROMPT does not stop: its only effect is the `forceprompt` term that
+// steers the "You don't have anything to <foo>." return below. GETOBJ_ALLOWCNT
+// does not stop on arrival either. C reads it at four points -- invent.c:1807
+// for a queued count, :1940 for a typed digit, :1981 and :1996 for a menu
+// selection's count -- and the first, third and fourth sit behind arms that
+// already stop, so the digit at :1940 is where this port's refusal sits.
 export async function getobj(word, obj_ok, ctrlflags, state = game) {
     let otmp = null;
     let ilet = '';
@@ -383,9 +397,6 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
      * anything to <foo>" versus "you don't have anything _else_ to <foo>"
      * (also used for GETOBJ_EXCLUDE_NONINVENT) */
     let inaccess = 0;
-
-    if (allowcnt)
-        throw new UnsupportedObjectPromptError('get_count() and splitobj()');
 
     /* is "hands"/"self" a valid thing to do this action on? */
     switch (obj_ok(null, state)) {
@@ -486,7 +497,13 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
                 await ttyPline('No count allowed with this command.', state);
                 continue;
             }
-            /* get_count() is unreachable: GETOBJ_ALLOWCNT stops above. */
+            // invent.c:1944 answers a digit with get_count(), which reads the
+            // rest of the number off the terminal and echoes it, and whose
+            // count then reaches splitobj() at :2082. Neither is ported, so a
+            // digit typed at a prompt that allows a count stops here -- after
+            // the prompt has drawn and the digit has been read, which is where
+            // C first consults `allowcnt` too.
+            throw new UnsupportedObjectPromptError('get_count() and splitobj()');
         }
         if (quitchars.includes(ilet)) {
             if (state.flags.verbose) await ttyPline(Never_mind, state);
@@ -523,8 +540,10 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
                 await ttyPline(`You cannot ${word} gold.`, state);
                 return null;
             }
-            /* the LRS arm below reads cntgiven, which GETOBJ_ALLOWCNT sets
-               and this caller cannot request. */
+            /* the LRS arm below reads cntgiven, which stays FALSE: C's three
+               writers of it are the queued count at :1809, get_count() at
+               :1947 and the menu count at :1998, and all three sit behind an
+               arm that stops. */
         }
         /* the "can only throw one at a time" arm reads cntgiven too. */
         state.disp.botl = true; /* May have changed the amount of money */
@@ -539,12 +558,14 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
     }
     if (obj_ok(otmp, state) === GETOBJ_EXCLUDE) {
         // C answers silly_thing(word, otmp), which for every word but "call"
-        // prints silly_thing_to. eat_ok() answers GETOBJ_EXCLUDE only for
-        // COIN_CLASS, and the gold arm above returns before reaching here, so
-        // no ported caller can arrive.
+        // prints silly_thing_to. Only a letter the prompt did not suggest
+        // arrives here, because the suggested set holds no excluded object:
+        // eat_ok() excludes only COIN_CLASS and the gold arm above returns
+        // first, any_obj_ok() excludes nothing that is carried, and apply_ok()
+        // and takeoff_ok() exclude what the player can still type by hand.
         throw new UnsupportedObjectPromptError('silly_thing()');
     }
-    /* split_otmp: cntgiven is never set while GETOBJ_ALLOWCNT stops above. */
+    /* split_otmp: cntgiven is never set, for the reason the LRS arm gives. */
     return otmp;
 }
 
@@ -2066,20 +2087,14 @@ export function carry_obj_effects(obj, env = {}, prepared = null) {
     return obj;
 }
 
-function isAmmo(obj, state) {
-    const skill = objectType(obj, state).oc_subtyp;
-    return (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS)
-        && skill >= -P_CROSSBOW
-        && skill <= -P_BOW;
-}
-
+// C ref: dothrow.c throwing_weapon().  obj.h is_blade() and is_sword() are
+// not ported, so their two terms stay inlined here; is_missile() and
+// is_spear() come from js/obj.js, which owns obj.h.
 function isThrowingWeapon(obj, state) {
     const type = objectType(obj, state);
     const skill = type.oc_subtyp;
-    const missile = (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
-        && skill >= -P_BOOMERANG
-        && skill <= -P_DART;
-    const spear = obj.oclass === WEAPON_CLASS && skill === P_SPEAR;
+    const missile = is_missile(obj, state);
+    const spear = is_spear(obj, state);
     const blade = obj.oclass === WEAPON_CLASS
         && skill >= P_DAGGER
         && skill <= P_SABER;
@@ -2096,7 +2111,7 @@ function isThrowingWeapon(obj, state) {
 function shouldAutoquiver(obj, state) {
     return obj.oartifact !== ART_MJOLLNIR
         && obj.otyp !== AKLYS
-        && (isThrowingWeapon(obj, state) || isAmmo(obj, state));
+        && (isThrowingWeapon(obj, state) || is_ammo(obj, state));
 }
 
 function setQuiver(obj, env) {

@@ -52,6 +52,10 @@ import { ALCHEMY_SMOCK } from './objects.js';
 import { rn2, rnd } from './rng.js';
 import { roles } from './roles.js';
 import { is_fshk } from './shk.js';
+// monstunseesu() below reads m_canseeu(), which reads perceives() from this
+// file; the two modules reach each other the way this file and js/dungeon.js
+// already do, and neither side uses the other's exports at module scope.
+import { m_canseeu } from './vision.js';
 import { mon_has_amulet } from './wizard.js';
 
 function hasAttackType(species, attackType) {
@@ -129,10 +133,11 @@ export function is_floater(species) {
 export function is_clinger(species) { return flag1(species, M.M1_CLING); }
 // C ref: mondata.h:23-24 grounded(). The macro reads the global u.uz, which
 // this port takes from the caller's state so that the planning clone answers
-// for its own hero.
+// for its own hero; has_ceiling() takes the same state, so the endgame
+// topology it compares against is the caller's too.
 export function grounded(species, state = game) {
     return !is_flyer(species) && !is_floater(species)
-        && (!is_clinger(species) || !has_ceiling(state.u.uz));
+        && (!is_clinger(species) || !has_ceiling(state.u?.uz, state));
 }
 export function is_swimmer(species) { return flag1(species, M.M1_SWIM); }
 export function breathless(species) { return flag1(species, M.M1_BREATHLESS); }
@@ -1141,8 +1146,9 @@ export function dead_species(m_idx, egg = false, env = {}) {
 //   get_atkdam_type         ROLL_FROM() is a random-number call
 //   pronoun_gender          calls rn2()
 //   set_mon_data, give_u_to_m_resistances, mon_learns_traps, mons_see_trap,
-//   monstseesu, monstunseesu
-//                           change monster or hero state
+//   monstseesu             change monster or hero state.  monstunseesu() is
+//                           ported below rather than here, because it does
+//                           change monster state; setworn() calls it.
 //   can_blow, can_chant, can_be_strangled
 //                           their hero branches read Strangled and Breathless,
 //                           which the port does not model yet
@@ -1547,6 +1553,20 @@ export function cvt_prop_to_mseenres(prop) {
     case ACID_RES: return M_SEEN_ACID;
     case REFLECTING: return M_SEEN_REFL;
     default: return M_SEEN_NOTHING;
+    }
+}
+
+// C ref: mondata.c monstunseesu() (1571-1582). Every monster that can see the
+// hero forgets having watched her resist one effect. worn.c setworn() and
+// setnotworn() call it through the monstunseesu_prop() macro at monst.h:94
+// whenever a worn item stops granting its extrinsic.
+export function monstunseesu(seenres, state = game) {
+    if (seenres === M_SEEN_NOTHING || state.u?.uswallow) return;
+
+    for (let mtmp = state.level?.monlist; mtmp; mtmp = mtmp.nmon) {
+        if (mtmp.mhp < 1) continue; /* DEADMONSTER() */
+        if (m_canseeu(mtmp, state))
+            mtmp.seen_resistance &= ~seenres; /* m_clearseenres() */
     }
 }
 

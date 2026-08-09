@@ -27,8 +27,10 @@ import {
     OBJ_LUAFREE,
     OBJ_MINVENT,
     P_AXE,
+    P_BOOMERANG,
     P_BOW,
     P_CROSSBOW,
+    P_DART,
     P_NONE,
     P_PICK_AXE,
     P_SHURIKEN,
@@ -55,6 +57,11 @@ import {
     is_neuter,
     undead_to_corpse,
 } from './mondata.js';
+// copy_oextra() below reads copy_mextra(), as mkobj.c:438 does. js/mon.js
+// already imports this file, and both sides use the other's exports only
+// inside function bodies, so this direct edge resolves the same way the
+// js/mondata.js edge onto js/dungeon.js does.
+import { copy_mextra } from './mon.js';
 import {
     pushRngLogEntry,
     rn1 as coreRn1,
@@ -482,8 +489,9 @@ function nextSplitOid(source, child, normalized) {
     return oid;
 }
 
-// C ref: mkobj.c copy_oextra(). C copies the inline monster structure while
-// retaining its pointer fields, then separately copies mextra and clears nmon.
+// C ref: mkobj.c copy_oextra() (417-448). C copies the inline monster
+// structure while retaining its pointer fields, then separately copies mextra
+// and clears nmon.
 export function copy_oextra(target, source) {
     if (!target || !source || !source.oextra) return target;
 
@@ -493,16 +501,26 @@ export function copy_oextra(target, source) {
         target.oextra.oname = String(sourceExtra.oname);
     if (sourceExtra.omonst) {
         const sourceMonster = sourceExtra.omonst;
-        target.oextra.omonst = {
+        // mkobj.c:430-431 copies struct monst by value, so its two
+        // struct-valued members -- `coord mtrack[MTSZ]` (monst.h:143) and
+        // `coord mgoal` (monst.h:189) -- are copied too, which a JavaScript
+        // spread would instead alias. js/corpstat.js save_mtraits() rebuilds
+        // the same two for the same reason.
+        const targetMonster = {
             ...sourceMonster,
             nmon: null,
             mtrack: Array.isArray(sourceMonster.mtrack)
                 ? sourceMonster.mtrack.map((point) => ({ ...point }))
                 : sourceMonster.mtrack,
-            mextra: sourceMonster.mextra
-                ? structuredClone(sourceMonster.mextra)
-                : null,
+            mgoal: sourceMonster.mgoal
+                ? { ...sourceMonster.mgoal }
+                : sourceMonster.mgoal,
+            mextra: null,
         };
+        target.oextra.omonst = targetMonster;
+        // mkobj.c:437-438 guards this call on the source's mextra;
+        // copy_mextra() makes the same test first, so the guard is left to it.
+        copy_mextra(targetMonster, sourceMonster);
     }
     if (sourceExtra.omailcmd)
         target.oextra.omailcmd = String(sourceExtra.omailcmd);
@@ -679,8 +697,17 @@ export function carried(obj) {
     return obj.where === OBJ_INVENT;
 }
 
-export function isWeptool(obj, state = game) {
+// C ref: obj.h is_weptool() (249-250).
+export function is_weptool(obj, state = game) {
     return obj.oclass === TOOL_CLASS && objectType(obj, state).oc_subtyp !== P_NONE;
+}
+
+// C ref: obj.h is_launcher() (235-237). The closed skill window P_BOW through
+// P_CROSSBOW; is_ammo() below is its negated mirror.
+export function is_launcher(obj, state = game) {
+    const skill = objectType(obj, state).oc_subtyp;
+    return obj.oclass === WEAPON_CLASS
+        && skill >= P_BOW && skill <= P_CROSSBOW;
 }
 
 // C ref: obj.h is_ammo().
@@ -704,6 +731,14 @@ export function matching_launcher(ammo, launcher, state = game) {
 // C ref: obj.h ammo_and_launcher() (244).
 export function ammo_and_launcher(ammo, launcher, state = game) {
     return is_ammo(ammo, state) && matching_launcher(ammo, launcher, state);
+}
+
+// C ref: obj.h is_missile() (245-248). A tool qualifies here where is_launcher()
+// and is_ammo() admit only weapons, because a boomerang is a TOOL_CLASS object.
+export function is_missile(obj, state = game) {
+    const skill = objectType(obj, state).oc_subtyp;
+    return (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
+        && skill >= -P_BOOMERANG && skill <= -P_DART;
 }
 
 // C ref: obj.h is_wet_towel() (256). `spe` counts a towel's remaining wetness
@@ -773,7 +808,7 @@ export function erosionMatters(obj, state = game) {
         || obj.oclass === ARMOR_CLASS
         || obj.oclass === BALL_CLASS
         || obj.oclass === CHAIN_CLASS
-        || (obj.oclass === TOOL_CLASS && isWeptool(obj, state));
+        || (obj.oclass === TOOL_CLASS && is_weptool(obj, state));
 }
 
 export function isFlammable(obj, state = game) {
