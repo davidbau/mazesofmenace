@@ -20,6 +20,7 @@ import {
     D_LOCKED,
     D_NODOOR,
     D_TRAPPED,
+    DIGTYP_UNDIGGABLE,
     ECMD_OK,
     ECMD_TIME,
     EXT_ENCUMBER,
@@ -94,6 +95,7 @@ import {
     ZOMBIFY_MON,
     OVERLOADED,
     PROT_FROM_SHAPE_CHANGERS,
+    helpless,
     is_pit,
     isok,
 } from './const.js';
@@ -109,6 +111,7 @@ import {
     unmap_object,
     wall_angle,
 } from './display.js';
+import { dig_typ } from './dig.js';
 import { alwaysVisibleMonsterName, hliquid } from './do_name.js';
 import { u_on_newpos } from './dungeon.js';
 import { gethungry } from './eat.js';
@@ -139,7 +142,7 @@ import {
     tunnels,
     verysmall,
 } from './mondata.js';
-import { is_axe, is_pick, objectType, sobj_at } from './obj.js';
+import { is_pick, objectType, sobj_at } from './obj.js';
 import {
     assertObjectNameable,
     assertPricedObjectNameable,
@@ -470,7 +473,7 @@ export function monsterNearby(state = game) {
                 continue;
             }
             if (is_hider(monster.data) && monster.mundetected) continue;
-            if (monster.msleeping || !monster.mcanmove) continue;
+            if (helpless(monster)) continue;
             if (onscary(ux, uy, monster, state)) continue;
             if (canSpotMonster(monster, state)) return true;
         }
@@ -1194,8 +1197,14 @@ function requireOrdinaryHostileMelee(monster) {
 // The destination-monster seam. C splits by `is_safemon(mtmp) &&
 // !svc.context.forcefight` inside do_attack() (uhitm.c:462); this splits the
 // same way, because the two arms have nothing in common below that test. The
-// forcefight conjunct is what sends `F` at a pet down the attack arm, where
-// attack_checks() stops it, instead of down the displacement arm.
+// forcefight conjunct is what sends `F` at a pet down the attack arm instead
+// of down the displacement arm, so the prefix swings at the pet rather than
+// swapping places with it. That path is bounded rather than complete: a miss
+// runs the whole swing, including wakeup(), whose setmangry() returns early on
+// mtame so the pet is not angered, while a landed blow stops at js/uhitm.js
+// hmon_hitmon_pet()'s refusal -- which sits above abuse_dog() and its
+// monflee() rnd(), but below the point where the pet's hit points have already
+// gone negative. Neither outcome is tested end to end.
 function requireSupportedDestinationMonster(monster, x, y, state) {
     requireNoMonsterBump(monster, state);
     if (!is_safemon(monster, state) || state.context?.forcefight) {
@@ -1715,16 +1724,24 @@ export async function test_move(
     return true;
 }
 
-// C ref: hack.c move_out_of_bounds(). domove_core() calls this ahead of every
-// terrain branch, so a step off the edge of the map ends the run and spends no
-// time before test_move() runs. Its forcefight arm needs domove_fight_empty()
-// and its flags.mention_walls line needs directionname(xytodir()); neither is
-// ported, so both refuse. Until this was ported the refusal happened by
-// accident, through an admission seam that answered "blocked" for a square
-// outside the map.
-function move_out_of_bounds(x, y, state) {
+// C ref: hack.c move_out_of_bounds() (2584-2612). domove_core() calls this
+// ahead of every terrain branch, so a step off the edge of the map ends the run
+// and spends no time before test_move() runs. Until this was ported the refusal
+// happened by accident, through an admission seam that answered "blocked" for a
+// square outside the map.
+//
+// The force-fight arm at 2589-2590 returns before the flags.mention_walls block
+// at 2592-2606, so a force-fight off the edge never reaches that line whatever
+// the option is set to, and needs nothing from it. It also returns above
+// nomul(0) and `context.move = 0`, so the turn-cost claim above is about the
+// ordinary arm alone: a force-fight off the edge spends the turn, which is
+// what C's own comment calls "specifying 'F' with no monster wastes a turn". That line needs cmd.c
+// directionname() (4312-4323), which has no port, so an ordinary step off the
+// edge refuses while mention_walls is on.
+async function move_out_of_bounds(x, y, state) {
     if (isok(x, y)) return false;
-    if (state.context.forcefight || state.flags?.mention_walls) {
+    if (state.context.forcefight) return domove_fight_empty(x, y, state);
+    if (state.flags?.mention_walls) {
         throw new UnsupportedHeroMoveBoundaryError('move out of bounds');
     }
     nomul(0, state);
@@ -1875,25 +1892,39 @@ function domove_fight_web(x, y, state) {
 // could come to carry one. Spelling it out would add three terms no test can
 // decide, so this note owns it instead.
 //
-// Two message arms are live: the solid arm at 2300-2312, where the terrain has
-// a remembered appearance, and the thin-air arm at 2318-2319. Every other arm
-// stops, each named below. The off-edge arm at 2249-2252 is not among them:
-// move_out_of_bounds() answers a force-fight off the map before domove_core()
-// reaches this function, so `off_edge` is constantly false at the one ported
-// call site and the variable is absent.
+// Three message arms are live. The off-edge arm at 2252-2256 answers the one
+// caller that is not domove_core(): move_out_of_bounds() hands a force-fight
+// aimed off the map straight here. The solid arm at 2298-2313 names terrain
+// with a remembered appearance, and the thin-air arm at 2314-2316 names
+// nothing. Every other arm stops, each named below.
 async function domove_fight_empty(x, y, state) {
     if (!state.context.forcefight) return false;
 
-    const location = state.level.at(x, y);
-
-    // 2245-2246 explo, whose consequences are the tail at 2323-2333:
-    // wake_nearto(), explum(), u.mh = -1 and rehumanize(). Nothing in this
-    // port polymorphs the hero, and none of those four is ported.
+    // 2247 explo, whose consequences are the tail at 2324-2334: wake_nearto(),
+    // explum(), u.mh = -1 and rehumanize(). Nothing in this port polymorphs the
+    // hero, and none of those four is ported. C reads it above the off-edge arm
+    // below and spends it at 2319-2321, so a swing off the edge in an exploding
+    // form stops here rather than printing.
     if (Upolyd(state.u) && attacktype(state.youmonst?.data, AT_EXPL)) {
         throw new UnsupportedHeroMoveBoundaryError(
             'force-fight while polymorphed into an exploding form',
         );
     }
+    // 2252-2256. `solid` at 2248 is true from `off_edge` alone and `boulder` is
+    // still the 0 it was given at 2246, so the adverb at 2320 is "harmlessly ";
+    // `explo`, its third input, is refused above. The jump to `futile` skips
+    // every test below along with unmap_object() and newsym(), so this arm
+    // reads no square at all -- which is why C's pinning of x,y to <0,1> at
+    // 2235-2239, there to keep the reads it skips inside the array, has no
+    // counterpart here.
+    if (!isok(x, y)) {
+        /* treat as if solid rock, even on planes' levels */
+        await ttyPline('You harmlessly attack an unknown obstacle.', state);
+        nomul(0, state);
+        return true;
+    }
+
+    const location = state.level.at(x, y);
     // 2253 and 2306-2312. Underwater skips the boulder and digging tests and
     // then takes a message arm of its own, which names an air bubble or
     // nothing at all rather than the terrain.
@@ -1914,27 +1945,24 @@ async function domove_fight_empty(x, y, state) {
             'force-fight against a boulder or statue',
         );
     }
-    // 2264-2273. A hero who force-fights while wielding a digging tool starts
+    // 2267-2276. A hero who force-fights while wielding a digging tool starts
     // digging instead, through dig.c use_pick_axe2(), but only when dig_typ()
-    // answers something other than DIGTYP_UNDIGGABLE. Neither function is
-    // ported -- js/const.js:1867 carries the DIGTYP_* constants and nothing
-    // else -- so the tool stops the command.
+    // answers something other than DIGTYP_UNDIGGABLE. use_pick_axe2() is not
+    // ported, so a digging answer stops the command; an undiggable one falls
+    // through to the message arms below, where C swings and spends the turn.
+    // An axe reaches that fall-through at every wall, rock, pool and furniture
+    // square, and a pick at ROOM, CORR and a tree.
     //
-    // This is dig_typ()'s own first test (dig.c:173) and no more, so it is
-    // wider than the arm it stands for, and wider than the comment here once
-    // claimed. dig.c:176-179 gives an axe DIGTYP_DOOR for a closed door and
-    // DIGTYP_TREE for a tree, and DIGTYP_UNDIGGABLE for everything else --
-    // every wall, rock, pool and furniture square included, where C swings and
-    // spends the turn. dig.c:181-191 gives a pick DIGTYP_UNDIGGABLE on ROOM,
-    // CORR and a tree. The statue and boulder arms at 181-184 are already dead
-    // here, because the arm above refuses both before this line. Narrowing the
-    // guard to dig_typ()'s answer would make an axe-wielding hero's swing at a
-    // wall live, which is new behavior needing its own recorded case; it is
-    // deferred as dig-tool-guard-refuses-where-dig_typ-answers-undiggable.
+    // C's two remaining conjuncts, !glyph_is_invisible(glyph) and
+    // !glyph_is_monster(glyph), are the "should we dig?" half and both make C
+    // swing rather than dig. Neither is ported, so this refusal is wider than
+    // C on a square whose map memory holds an unseen-monster marker or a
+    // monster that has since left it -- fail-closed, and the marker has no
+    // writer at all, as the header note above says.
     if (state.uwep
-        && (is_pick(state.uwep, state) || is_axe(state.uwep, state))) {
+        && dig_typ(state.uwep, x, y, state) !== DIGTYP_UNDIGGABLE) {
         throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight while wielding a digging tool',
+            'force-fight that digs instead of swinging',
         );
     }
 
@@ -1971,13 +1999,14 @@ async function domove_fight_empty(x, y, state) {
             glyph_to_cmap(terrain_glyph(location, x, y, state))
         ]);
     } else {
-        // 2318-2319. Everything accessible that is not furniture is thin air,
+        // 2314-2316. Everything accessible that is not furniture is thin air,
         // which is ordinary floor, a corridor, ice, and a doorway with no
         // closed door in it.
         buf = 'thin air';
     }
 
-    // 2321-2324. C's adverb is
+    // 2318-2321, C's `futile` label, which the off-edge arm above jumps to and
+    // this arm falls into. C's adverb is
     //     !(boulder || solid) ? "" : !explo ? "harmlessly " : "futilely "
     // `boulder` and `explo` are refused above, so `solid` alone chooses
     // between the first two and no case can reach "futilely ".
@@ -2052,7 +2081,7 @@ export async function domove(state = game) {
         throw new UnsupportedHeroMoveBoundaryError('movement while riding');
     }
 
-    if (move_out_of_bounds(newx, newy, state)) {
+    if (await move_out_of_bounds(newx, newy, state)) {
         state.domoveAttempting = 0;
         return;
     }

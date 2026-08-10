@@ -774,6 +774,14 @@ function recalc_wt(env) {
     piece.owt = weight(piece, env);
 }
 
+// C ref: eat.c reset_eat() (308-319). Called when an event interrupts a meal.
+// C only raises a flag here; the reset itself waits for bite(), which is why
+// interrupting a meal on the turn it ends leaves nothing to reset.
+export function reset_eat(state = game) {
+    const meal = victual(state);
+    if (meal.eating && !meal.doreset) meal.doreset = 1;
+}
+
 // C ref: eat.c consume_oeaten() (3806-3872). Lowers how much of the food is
 // left, and never all the way to zero: an oeaten of 0 would restore the object
 // to untouched, so the last bite leaves 1 and shortens the meal instead.
@@ -801,6 +809,26 @@ export function consume_oeaten(obj, amt, state = game) {
             meal.reqtime = meal.usedtime;
         obj.oeaten = 1; /* smallest possible positive value */
     }
+}
+
+// C ref: eat.c maybe_finished_meal() (3876-3889). allmain.c stop_occupation()
+// asks this before it prints, so a meal interrupted on the turn its last bite
+// was taken ends with "You finish eating ..." rather than "You stop eating ...".
+// consume_oeaten() above is the other producer of that state: it shortens
+// reqtime to usedtime once the food runs out.
+//
+// C clears go.occupation before calling eatfood() so that done_eating() can
+// take do_reset_eat()'s place, and eatfood() uses up victual.piece from there.
+export async function maybe_finished_meal(stopping, state = game, env = {}) {
+    /* in case consume_oeaten() has decided that the food is all gone */
+    const meal = state.go?.occupation === eatfood ? victual(state) : null;
+    if (meal && meal.usedtime >= meal.reqtime) {
+        if (stopping) state.go.occupation = null; /* for do_reset_eat */
+        /* eatfood() calls done_eating() to use up svc.context.victual.piece */
+        await eatfood(state, env);
+        return true;
+    }
+    return false;
 }
 
 // C ref: eat.c newuhs() (3361-3510). Recomputes the hunger status from the
@@ -977,8 +1005,9 @@ async function bite(state, env) {
         throw new UnsupportedEatError('choke()');
     }
     if (meal.doreset) {
-        // Only reset_eat() sets doreset, and nothing ported calls it; it is
-        // the multi-turn interruption slice 3 owns.
+        // reset_eat() raises this when moveloop_core() interrupts a meal, so
+        // reaching it needs doeat()'s already-partly-eaten arm to resume that
+        // meal, which stops before it gets here.
         throw new UnsupportedEatError('do_reset_eat()');
     }
     state.force_save_hs = true;
@@ -1279,16 +1308,20 @@ async function start_eating(otmp, already_partly_eaten, state, env) {
     // creation now reaches that owner through makemon()->dochugw(FALSE).
     //
     // Three other paths can reach allmain.c stop_occupation() while the meal
-    // runs, and each remains refused before printing:
+    // runs. Two are now ported and print; the third still refuses:
     //   - allmain.c moveloop_core():505-508, monster_nearby() after a bite,
-    //     which js/allmain.js stops with "interrupted by a nearby monster";
+    //     which prints "You stop eating ..." and then runs reset_eat(). This
+    //     is the common one: over 1500 seeds typing `ed`, it fired 303 times
+    //     against dochugw()'s 10, because dochugw() needs the monster to be
+    //     newly in range and one already visible nearby skips it;
     //   - monmove.c dochugw():223-235, a hostile spottable monster newly
-    //     inside (BOLT_LIM + 1) * (BOLT_LIM + 1), which js/monmove.js reaches
-    //     through the injected stopOccupation operation. This one fires
-    //     several turns earlier than the first, because its radius is nine and
-    //     hack.c monster_nearby() scans the eight adjacent squares alone;
+    //     inside (BOLT_LIM + 1) * (BOLT_LIM + 1), reached both from
+    //     makemon()'s runtime tail and from the live and planning monster
+    //     scans. It prints the same line and runs no reset_eat(). Its radius
+    //     is nine where hack.c monster_nearby() scans the eight adjacent
+    //     squares alone, so when it does fire it fires earlier;
     //   - teleport.c rloc_to_core():1761-1762, whose whole tail js/teleport.js
-    //     refuses.
+    //     still refuses.
     // makemon.c:1503 is the supported fourth call. js/allmain.js owns its exact
     // complete-meal versus "You stop eating ..." behavior.
     set_occupation(

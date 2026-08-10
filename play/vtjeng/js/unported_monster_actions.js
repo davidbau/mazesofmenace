@@ -29,7 +29,12 @@ import {
     ROOM,
     STRAT_CLOSE,
 } from './const.js';
-import { newsym } from './display.js';
+// js/allmain.js imports this file's action runners, so this edge closes an
+// import cycle. `stop_occupation` is a hoisted function declaration, which an
+// ES module cycle initializes before either module body runs; nothing here
+// reads it at module scope.
+import { stop_occupation } from './allmain.js';
+import { bot, newsym } from './display.js';
 import {
     best_target,
     dog_move,
@@ -748,8 +753,22 @@ async function moveSimplePet(monster, after, env) {
         petRangedAttack: pet_ranged_attk,
         redraw: env.planning ? () => {} : newsym,
         reportCursedStep: () => unsupported('pet cursed-object feedback'),
+        // C ref: dogmove.c dog_hunger() (362-392). Its middle arm confuses a
+        // pet that has gone DOG_WEAK turns past hungrytime, then announces the
+        // confusion through one of pline_mon(), beg() and You_feel() and calls
+        // stop_occupation(). Only the last of the four is ported, and it runs
+        // after the announcement, so the arm refuses at the announcement and
+        // this pair carries one refusal between them.
+        reportWeakPet: () => unsupported('pet hunger confusion'),
         resistsStone: () => unsupported('pet combat evaluation'),
         resistsTrapEffect,
+        // dogmove.c dog_starve() (340-358), which both of dog_hunger()'s
+        // starving arms call: the middle arm when the third of mhpmax it
+        // leaves the pet is below one hit point, and the last arm once the pet
+        // is DOG_STARVE turns past hungrytime. It prints through You_feel()
+        // and removes the pet with mondied(); neither is ported.
+        starvePet: () => unsupported('pet starvation'),
+        stopOccupation: () => unsupported('pet hunger interruption'),
         // steal.c relobj() and mdrop_obj() and do.c flooreffects() reach the
         // drop arm as ported functions with unported branches, so they refuse
         // through the caller's boundary class the way m_move() does.
@@ -861,7 +880,17 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 movePet: moveSimplePet,
                 preflight: assertSimpleActionState,
             }),
-        stopOccupation: () => unsupported('occupation interruption'),
+        // C ref: monmove.c dochugw():223-235. Its radius is nine squares, so
+        // this fires several turns before moveloop_core()'s own
+        // monster_nearby() test, which scans the eight adjacent squares alone.
+        // The planning pass runs the interruption against the clone -- a meal
+        // whose last bite is already taken finishes there too, which is why
+        // planningState() copies the hero's pack -- and both display operations
+        // fall silent so only the live pass writes to the terminal.
+        stopOccupation: (occupationEnv) => stop_occupation(occupationEnv.state, {
+            message: env.planning ? async () => {} : ttyPline,
+            statusRefresh: env.planning ? () => {} : () => bot(),
+        }),
     });
 }
 
