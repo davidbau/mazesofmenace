@@ -44,6 +44,7 @@ import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { any_light_source } from './light.js';
 import { m_dowear } from './makemon_create.js';
+import { mattacku } from './mhitu.js';
 import {
     adaptMonsterActionToDochugwSignature,
     movemon_singlemon,
@@ -753,7 +754,7 @@ async function moveSimplePet(monster, after, env) {
         petRangedAttack: pet_ranged_attk,
         redraw: env.planning ? () => {} : newsym,
         reportCursedStep: () => unsupported('pet cursed-object feedback'),
-        // C ref: dogmove.c dog_hunger() (362-392). Its middle arm confuses a
+        // C ref: dogmove.c dog_hunger() (360-394). Its middle arm confuses a
         // pet that has gone DOG_WEAK turns past hungrytime, then announces the
         // confusion through one of pline_mon(), beg() and You_feel() and calls
         // stop_occupation(). Only the last of the four is ported, and it runs
@@ -762,12 +763,18 @@ async function moveSimplePet(monster, after, env) {
         reportWeakPet: () => unsupported('pet hunger confusion'),
         resistsStone: () => unsupported('pet combat evaluation'),
         resistsTrapEffect,
-        // dogmove.c dog_starve() (340-358), which both of dog_hunger()'s
+        // dogmove.c dog_starve() (347-358), which both of dog_hunger()'s
         // starving arms call: the middle arm when the third of mhpmax it
         // leaves the pet is below one hit point, and the last arm once the pet
         // is DOG_STARVE turns past hungrytime. It prints through You_feel()
         // and removes the pet with mondied(); neither is ported.
         starvePet: () => unsupported('pet starvation'),
+        // allmain.c stop_occupation() is ported and sits in the env chain
+        // already, so this key shadows it deliberately rather than standing in
+        // for something missing. C reaches it at dogmove.c:377, after the
+        // You_feel() line the confusion arm prints, and that line has no
+        // owner; letting the real function through would run the interruption
+        // without the announcement that precedes it.
         stopOccupation: () => unsupported('pet hunger interruption'),
         // steal.c relobj() and mdrop_obj() and do.c flooreffects() reach the
         // drop arm as ported functions with unported branches, so they refuse
@@ -795,10 +802,11 @@ async function moveSimplePet(monster, after, env) {
 // range2 arms alone: AT_MAGC's castmu(), refused by assertSimpleActionState()
 // before the scan; AT_BREA, AT_SPIT and AT_GAZE, refused here; and AT_WEAP's
 // thrwmu(), which does nothing at all unless select_rwep() finds a missile.
-// mattacku()'s preamble writes nothing and draws nothing on this path: its
-// nomul(0) is behind !ranged, and the steed, swallow and underwater arms need
-// hero states this boundary already excludes.
+//
+// js/mhitu.js mattacku() carries the preamble and the steed arm, which run
+// above all of that and, for a mounted hero, spend a draw on every call.
 function refuseHeroAttack(monster, env) {
+    if (mattacku(monster, { ...env, unsupported })) return;
     if (monnear(monster, monster.mux, monster.muy))
         unsupported('monster attack on the hero');
     const species = monster.data;
@@ -834,7 +842,15 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 monFlee: () => unsupported('monster flight'),
                 monsterCanSeeHero: ordinaryMonsterCanSeeHero,
                 moveMonster: moveSimpleOrdinary,
+                // The second of this file's two mattacku() stand-ins: C
+                // reaches mattacku() from dochug()'s standard-attack gate
+                // whether or not the monster moved first, and js/monmove.js
+                // folds the moved-then-attack path into this operation.
                 postMoveRangedAttack: (weaponUser, weaponEnv) => {
+                    if (mattacku(weaponUser, {
+                        ...weaponEnv,
+                        unsupported,
+                    })) return;
                     const selected = select_rwep(weaponUser, {
                         ...weaponEnv,
                         touchArtifact: () => unsupported(
