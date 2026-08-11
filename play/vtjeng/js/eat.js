@@ -130,7 +130,7 @@ import {
 } from './objects.js';
 import { body_part } from './polyself.js';
 import { rn2 } from './rng.js';
-import { is_pool_or_lava } from './trap.js';
+import { is_pool_or_lava, unconscious } from './trap.js';
 import { ttyPline } from './tty_message.js';
 
 // C ref: eat.c hu_stat[], indexed by u.uhs and shared with botl.c and
@@ -189,6 +189,13 @@ function hungerProperty(state, index) {
 function propertyActive(state, index) {
     const property = hungerProperty(state, index);
     return Boolean(property.intrinsic || property.extrinsic);
+}
+
+// C ref: youprop.h:399 Unaware. js/trap.js unconscious() carries the pending-
+// message half; eat.c is_fainted() (3346-3350) is the `u.uhs == FAINTED` half.
+function Unaware(state) {
+    return Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || state.u?.uhs === FAINTED);
 }
 
 function hungerStatus(nutrition) {
@@ -308,9 +315,16 @@ export function preflightGetHungry(state = game, env = {}) {
     }
     if (u.uinvulnerable || state.iflags?.debug_hunger)
         return { skipped: true };
-    if (Math.trunc(state.multi ?? 0) < 0) {
+    // C ref: eat.c gethungry():3174 `(!Unaware || !rn2(10))`. `ordinaryLoss`
+    // below is the first disjunct's answer; an Unaware hero draws rn2(10)
+    // instead and burns nutrition only one turn in ten, and no ported path
+    // produces one. A hero immobilized with a message waiting -- pray.c
+    // dopray() is the one that does -- is not Unaware and takes the ordinary
+    // cost with no draw, which is why this refuses on Unaware and not on a
+    // negative gm.multi.
+    if (Unaware(state)) {
         throw new UnsupportedHungerTransitionError(
-            'unported unconscious or immobile state',
+            'unported unconscious or fainted metabolic rate',
         );
     }
 
@@ -1249,7 +1263,7 @@ async function done_eating(message, state, env) {
     if (state.nomovemsg) {
         if (message) await plineMessage(state.nomovemsg, state);
         // C's `gn.nomovemsg = 0` assigns NULL to a `const char *`. The number
-        // 0 is not that: js/monmove.js heroUnaware() resolves this field with
+        // 0 is not that: js/trap.js unconscious() resolves this field with
         // `??`, which passes 0 through to String.prototype.startsWith.
         state.nomovemsg = null;
     } else if (message) {
