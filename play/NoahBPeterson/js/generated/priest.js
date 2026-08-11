@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { canspotmon, has_emin, helpless, is_rider, m_next2u } from './nhmacrofn.js';
 import { Conflict, Deaf, Displaced, HProtection, Hallucination, Invis, Underwater } from './nhprop.js';
 import { makemon, mongets, newmextra, set_malign } from './makemon.js';
 import { alloc } from './alloc.js';
@@ -87,7 +88,7 @@ const $Gender_his = FLD.Gender_his, $align_record = FLD.align_record, $d_level_d
     $you_urooms0 = FLD.you_urooms0, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/priest.c");
+const __sl0 = cptr.lit("priest.c");
 const __sl1 = cptr.lit("move_special");
 const __sl2 = cptr.lit("pri_move");
 const __sl3 = cptr.lit("displaced image doesn't fool %s!");
@@ -161,8 +162,7 @@ const __sl70 = cptr.lit("%s roars in anger:  \"Thou shalt suffer!\"");
 const __sl71 = cptr.lit("%s voice booms:  \"How darest thou harm my servant!\"");
 const __sl72 = cptr.lit("%s roars:  \"Thou dost profane my shrine!\"");
 const __sl73 = cptr.lit("angry_priest");
-const __sl74 = cptr.lit("priest.c");
-const __sl75 = cptr.lit("has_emin(priest)");
+const __sl74 = cptr.lit("has_emin(priest)");
 
 /** C ref: priest.c:16 — @param {CPtr} mtmp */
 export function newepri(mtmp) {
@@ -413,7 +413,7 @@ export function priestname(mon, article, reveal_high_priest, pname) {
             void cptr.strcat(pname, __sl16);
     }
     void cptr.strcat(pname, what);
-    if (do_hallu || !high_priest || reveal_high_priest || !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || (dist2((cptr.ldI16o((mon), $monst_mx)), (cptr.ldI16o((mon), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= 2) || cptr.ldI32(program_state)) {
+    if (do_hallu || !high_priest || reveal_high_priest || !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || m_next2u(mon) || cptr.ldI32(program_state)) {
         void cptr.strcat(pname, __sl17);
         void cptr.strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
@@ -470,7 +470,7 @@ export function intemple(roomno) {
         epri_p = (cptr.ldPtro(cptr.ldPtro((priest), $monst_mextra), $mextra_epri));
         shrined = has_shrine(priest);
         sanctum = schar((cptr.eq(cptr.ldPtro(priest, $monst_data), cptr.add(mons, NHC.PM_HIGH_CLERIC, 96)) && ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)))) || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level))))) ? 1 : 0));
-        can_speak = schar((!((cptr.ldI32o((priest), $monst_msleeping) & 1) | 0 || !(cptr.ldI32o((priest), $monst_mcanmove) & 1))));
+        can_speak = schar((!helpless(priest)));
         if (can_speak && !Deaf() && cptr.ldI64o(svm, $instance_globals_saved_m_moves) >= cptr.ldI64o(epri_p, $epri_intone_time)) {
             let save_priest = (cptr.ldI32o(priest, $monst_ispriest) & 1);
             if (sanctum && !Hallucination())
@@ -537,7 +537,7 @@ export function intemple(roomno) {
         }
         if (!(rng_log_enabled() ? (rng_log_set_caller(__sl0, 519, __sl20), rn2(5)) : rn2(5)) && (mtmp = makemon(cptr.add(mons, NHC.PM_GHOST, 96), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHM.MM_NOMSG)) !== null) {
             let ngen = cptr.ld1uo2(svm, NHC.PM_GHOST, 12, $instance_globals_saved_m_mvitals);
-            if ((canseemon(mtmp) || sensemon(mtmp)))
+            if (canspotmon(mtmp))
                 pline(__sl37, ngen < 5 ? __sl38 : __sl29, ngen < 10 ? 33 : 46);
             else
                 You(__sl39);
@@ -581,8 +581,8 @@ export function priest_talk(priest) {
         cptr.stI32o(priest, $monst_mpeaceful, 0);
         return;
     }
-    if (!inhistemple(priest) || !(cptr.ldI32o(priest, $monst_mpeaceful) & 1) || ((cptr.ldI32o((priest), $monst_msleeping) & 1) | 0 || !(cptr.ldI32o((priest), $monst_mcanmove) & 1))) {
-        if (((cptr.ldI32o((priest), $monst_msleeping) & 1) | 0 || !(cptr.ldI32o((priest), $monst_mcanmove) & 1))) {
+    if (!inhistemple(priest) || !(cptr.ldI32o(priest, $monst_mpeaceful) & 1) || helpless(priest)) {
+        if (helpless(priest)) {
             pline(__sl46, Monnam(priest), (cptr.ldPtro2(genders, pronoun_gender(priest, NHM.PRONOUN_HALLU), 48, $Gender_his)));
             cptr.stI32o(priest, $monst_mfrozen, cptr.stI32o(priest, $monst_msleeping, 0));
             cptr.stI32o(priest, $monst_mcanmove, 1);
@@ -721,7 +721,7 @@ export function in_your_sanctuary(mon, x, y) {
     let roomno;
     let priest;
     if (mon) {
-        if (((cptr.ldU64o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags2) & 4096n) != 0n) || (cptr.eq((cptr.ldPtro(mon, $monst_data)), cptr.add(mons, NHC.PM_DEATH, 96)) || cptr.eq((cptr.ldPtro(mon, $monst_data)), cptr.add(mons, NHC.PM_FAMINE, 96)) || cptr.eq((cptr.ldPtro(mon, $monst_data)), cptr.add(mons, NHC.PM_PESTILENCE, 96))))
+        if (((cptr.ldU64o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags2) & 4096n) != 0n) || is_rider(cptr.ldPtro(mon, $monst_data)))
             return 0;
         x = cptr.ldI16o(mon, $monst_mx), y = cptr.ldI16o(mon, $monst_my);
     }
@@ -822,7 +822,7 @@ export function angry_priest() {
                 newemin(priest);
             cptr.stI32o(priest, $monst_ispriest, 0);
             cptr.stI32o(priest, $monst_isminion, 1);
-            (__builtin_expect(BigInt((!((cptr.ldPtro((priest), $monst_mextra) && (cptr.ldPtro(cptr.ldPtro((priest), $monst_mextra), $mextra_emin)))))), 0n) ? __assert_rtn(__sl73, __sl74, 902, __sl75) : void 0);
+            (__builtin_expect(BigInt((!(has_emin(priest)))), 0n) ? __assert_rtn(__sl73, __sl0, 902, __sl74) : void 0);
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((priest), $monst_mextra), $mextra_emin)), $emin_min_align, cptr.ld1so(eprip, $epri_shralign));
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((priest), $monst_mextra), $mextra_emin)), $emin_renegade, 0);
             free_epri(priest);

@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { Is_container, bimanual, is_ammo, is_boots, is_cloak, is_gloves, is_graystone, is_helmet, is_launcher, is_missile, is_pole, is_shield, is_shirt, is_spear, is_suit, is_weptool } from './nhmacrofn.js';
 import { Race_switch, Role_switch, discover } from './nhprop.js';
 import { cg, flags, gi, gl, gn, gu, iflags, svb, svm, svs, u, uarm, uarmc, uarmf, uarmg, uarmh, uarms, uarmu, ubirthday, uquiver, urealtime, uswapwep, uwep } from './decl.js';
 import { discover_object } from './o_init.js';
@@ -80,7 +81,7 @@ const $Align_value = FLD.Align_value, $Race_mnum = FLD.Race_mnum, $Role_mnum = F
     $you_xray_range = FLD.you_xray_range;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/u_init.c");
+const __sl0 = cptr.lit("u_init.c");
 const __sl1 = cptr.lit("u_init_role");
 const __sl2 = cptr.lit("u_init_race");
 const __sl3 = cptr.lit("u_init_misc");
@@ -1669,9 +1670,9 @@ function knows_class(sym) {
             continue;
         if (sym == NHC.WEAPON_CLASS) {
             cptr.stI16o(odummy, $obj_otyp, i16(ct));
-            if ((!(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_KNIGHT) && !(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI)) && ((cptr.ld1so(o, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(o, $obj_oclass) == NHC.TOOL_CLASS) && (cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.P_POLEARMS || cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.P_LANCE || is_art(o, NHC.ART_SNICKERSNEE))))
+            if ((!(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_KNIGHT) && !(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI)) && is_pole(o))
                 continue;
-            if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_RANGER) && (!(cptr.ld1so(o, $obj_oclass) == NHC.WEAPON_CLASS && cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) >= NHC.P_BOW && cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) <= NHC.P_CROSSBOW) && !((cptr.ld1so(o, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(o, $obj_oclass) == NHC.GEM_CLASS) && cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) >= -22 && cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) <= -20) && !(cptr.ld1so(o, $obj_oclass) == NHC.WEAPON_CLASS && cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.P_SPEAR)))
+            if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_RANGER) && (!is_launcher(o) && !is_ammo(o) && !is_spear(o)))
                 continue;
             if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ROGUE) && (cptr.ld1so2(objects, cptr.ldI16o(o, $obj_otyp), 120, $objclass_oc_subtyp) != NHC.P_DAGGER))
                 continue;
@@ -2062,13 +2063,13 @@ function ini_inv_obj_substitution(trop, obj) {
         let i;
         for (i = 0; cptr.ldI16o(inv_subs, i, 6) != NHC.NON_PM; ++i)
             if (cptr.ldI16o(inv_subs, i, 6) == cptr.ldI16o(gu, $instance_globals_u_urace + $Race_mnum) && cptr.ldI16o(obj, $obj_otyp) == cptr.ldI16o2(inv_subs, i, 6, $inv_sub_item_otyp)) {
-                do {
+                {
                     if (debugcore(__sl0, 1)) {
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                         pline(__sl6, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o2(inv_subs, i, 6, $inv_sub_subs_otyp), 120))), 16)), (cptr.ldI16(trop) == 0) ? __sl7 : __sl8, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(obj, $obj_otyp), 120))), 16)));
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
-                } while (0);
+                }
                 cptr.stI16o(obj, $obj_otyp, cptr.ldI16o2(inv_subs, i, 6, $inv_sub_subs_otyp));
                 break;
             }
@@ -2085,7 +2086,7 @@ function ini_inv_adjust_obj(trop, obj) {
         if ((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uses_known) & 1))
             cptr.stI32o(obj, $obj_known, 1);
         cptr.stI32o(obj, $obj_dknown, cptr.stI32o(obj, $obj_bknown, cptr.stI32o(obj, $obj_rknown, 1)));
-        if ((cptr.ldI16o((obj), $obj_otyp) >= NHC.LARGE_BOX && cptr.ldI16o((obj), $obj_otyp) <= NHC.BAG_OF_TRICKS) || cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE) {
+        if (Is_container(obj) || cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE) {
             cptr.stI32o(obj, $obj_cknown, cptr.stI32o(obj, $obj_lknown, 1));
             cptr.stI32o(obj, $obj_otrapped, 0);
         }
@@ -2095,7 +2096,7 @@ function ini_inv_adjust_obj(trop, obj) {
         if (cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.TOOL_CLASS) {
             cptr.stI64o(obj, $obj_quan, trquan(trop));
             stop = 1;
-        } else if (cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS && (cptr.ldI16o((obj), $obj_otyp) == NHC.LUCKSTONE || cptr.ldI16o((obj), $obj_otyp) == NHC.LOADSTONE || cptr.ldI16o((obj), $obj_otyp) == NHC.FLINT || cptr.ldI16o((obj), $obj_otyp) == NHC.TOUCHSTONE) && cptr.ldI16o(obj, $obj_otyp) != NHC.FLINT) {
+        } else if (cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS && is_graystone(obj) && cptr.ldI16o(obj, $obj_otyp) != NHC.FLINT) {
             cptr.stI64o(obj, $obj_quan, 1n);
         }
         if (cptr.ld1so(trop, $trobj_trspe) != 127) {
@@ -2120,27 +2121,27 @@ function ini_inv_use_obj(obj) {
     if (cptr.ldI16o(obj, $obj_otyp) == NHC.OIL_LAMP)
         discover_object(NHC.POT_OIL, 1, 1, 0);
     if (cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS) {
-        if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_SHIELD) && !uarms.v && !(uwep.v && ((cptr.ld1so(uwep.v, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(uwep.v, $obj_oclass) == NHC.TOOL_CLASS) && (cptr.ldI32o2(objects, cptr.ldI16o(uwep.v, $obj_otyp), 120, $objclass_oc_big) & 1) | 0))) {
+        if (is_shield(obj) && !uarms.v && !(uwep.v && bimanual(uwep.v))) {
             set_twoweap(0);
             setworn(obj, 8n);
-        } else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_HELM) && !uarmh.v)
+        } else if (is_helmet(obj) && !uarmh.v)
             setworn(obj, 4n);
-        else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_GLOVES) && !uarmg.v)
+        else if (is_gloves(obj) && !uarmg.v)
             setworn(obj, 16n);
-        else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_SHIRT) && !uarmu.v)
+        else if (is_shirt(obj) && !uarmu.v)
             setworn(obj, 64n);
-        else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_CLOAK) && !uarmc.v)
+        else if (is_cloak(obj) && !uarmc.v)
             setworn(obj, 2n);
-        else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_BOOTS) && !uarmf.v)
+        else if (is_boots(obj) && !uarmf.v)
             setworn(obj, 32n);
-        else if ((cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) == NHC.ARM_SUIT) && !uarm.v)
+        else if (is_suit(obj) && !uarm.v)
             setworn(obj, 1n);
     }
-    if (cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || (cptr.ld1so((obj), $obj_oclass) == NHC.TOOL_CLASS && cptr.ld1so2(objects, cptr.ldI16o((obj), $obj_otyp), 120, $objclass_oc_subtyp) != NHC.P_NONE) || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN_OPENER || cptr.ldI16o(obj, $obj_otyp) == NHC.FLINT || cptr.ldI16o(obj, $obj_otyp) == NHC.ROCK) {
-        if (((cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS) && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) >= -22 && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) <= -20) || ((cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.TOOL_CLASS) && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) >= -25 && cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) <= -23)) {
+    if (cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || is_weptool(obj) || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN_OPENER || cptr.ldI16o(obj, $obj_otyp) == NHC.FLINT || cptr.ldI16o(obj, $obj_otyp) == NHC.ROCK) {
+        if (is_ammo(obj) || is_missile(obj)) {
             if (!uquiver.v)
                 setuqwep(obj);
-        } else if (!uwep.v && (!uarms.v || !((cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.TOOL_CLASS) && (cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_big) & 1) | 0))) {
+        } else if (!uwep.v && (!uarms.v || !bimanual(obj))) {
             setuwep(obj);
         } else if (!uswapwep.v) {
             setuswapwep(obj);

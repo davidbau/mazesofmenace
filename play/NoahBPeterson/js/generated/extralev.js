@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { max, min } from './nhmacrofn.js';
 import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { gr, gs, svl, svn, svr } from './decl.js';
 import { impossible } from './pline.js';
@@ -32,7 +33,7 @@ const $instance_globals_r_r = FLD.instance_globals_r_r,
     $rogueroom_real = FLD.rogueroom_real, $rogueroom_rly = FLD.rogueroom_rly;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/extralev.c");
+const __sl0 = cptr.lit("extralev.c");
 const __sl1 = cptr.lit("roguejoin");
 const __sl2 = cptr.lit("roguecorr");
 const __sl3 = cptr.lit("down: no wall at %d,%d?");
@@ -55,19 +56,19 @@ function roguejoin(x1, y1, x2, y2, horiz) {
     let middle;
     if (horiz) {
         middle = i16(((x1 + (rng_log_enabled() ? (rng_log_set_caller(__sl0, 26, __sl1), rn2((((x2 - x1) | 0) + 1) | 0)) : rn2((((x2 - x1) | 0) + 1) | 0))) | 0));
-        for (x = i16(((x1) < (middle) ? (x1) : (middle))); x <= ((x1) > (middle) ? (x1) : (middle)); x++)
+        for (x = i16(min(x1, middle)); x <= max(x1, middle); x++)
             corr(x, y1);
-        for (y = i16(((y1) < (y2) ? (y1) : (y2))); y <= ((y1) > (y2) ? (y1) : (y2)); y++)
+        for (y = i16(min(y1, y2)); y <= max(y1, y2); y++)
             corr(middle, y);
-        for (x = i16(((middle) < (x2) ? (middle) : (x2))); x <= ((middle) > (x2) ? (middle) : (x2)); x++)
+        for (x = i16(min(middle, x2)); x <= max(middle, x2); x++)
             corr(x, y2);
     } else {
         middle = i16(((y1 + (rng_log_enabled() ? (rng_log_set_caller(__sl0, 34, __sl1), rn2((((y2 - y1) | 0) + 1) | 0)) : rn2((((y2 - y1) | 0) + 1) | 0))) | 0));
-        for (y = i16(((y1) < (middle) ? (y1) : (middle))); y <= ((y1) > (middle) ? (y1) : (middle)); y++)
+        for (y = i16(min(y1, middle)); y <= max(y1, middle); y++)
             corr(x1, y);
-        for (x = i16(((x1) < (x2) ? (x1) : (x2))); x <= ((x1) > (x2) ? (x1) : (x2)); x++)
+        for (x = i16(min(x1, x2)); x <= max(x1, x2); x++)
             corr(x, middle);
-        for (y = i16(((middle) < (y2) ? (middle) : (y2))); y <= ((middle) > (y2) ? (middle) : (y2)); y++)
+        for (y = i16(min(middle, y2)); y <= max(middle, y2); y++)
             corr(x2, y);
     }
 }

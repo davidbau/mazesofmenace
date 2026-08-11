@@ -13,6 +13,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { ismnum } from './nhmacrofn.js';
 import { BClairvoyant, Blind, Breathless, Clairvoyant, EMagical_breathing, Energy_regeneration, Fast, Glib, Half_physical_damage, Hallucination, Luck, Polymorph, Regeneration, Searching, Sleepy, Teleportation, Unblind_telepat, Unchanging, Underwater, Upolyd, Very_fast, Warn_of_mon, Warning, cliparound, create_nhwindow, display_file, display_nhwindow, end_menu, get_nh_event, start_menu, wizard } from './nhprop.js';
 import { WIN_INVEN, WIN_MAP, WIN_MESSAGE, WIN_STATUS, a11y, decl_globals_init, disp, flags, gc, gd, gh, gi, gl, gm, go, gu, gv, gw, gy, iflags, nhcb_counts, nhcb_name, program_state, program_state_init, svc, svd, svl, svm, svp, u, urealtime } from './decl.js';
 import { crashreport_init } from './report.js';
@@ -180,7 +181,7 @@ const $Race_adj = FLD.Race_adj, $RoleName_f = FLD.RoleName_f, $Role_allow = FLD.
 const __sl0 = cptr.lit("are lucky!  Full moon tonight.");
 const __sl1 = cptr.lit("Be careful!  New moon tonight.");
 const __sl2 = cptr.lit("Watch out!  Bad things can happen on Friday the 13th.");
-const __sl3 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/allmain.c");
+const __sl3 = cptr.lit("allmain.c");
 const __sl4 = cptr.lit("moveloop_preamble");
 const __sl5 = cptr.lit("u_calc_moveamt");
 const __sl6 = cptr.lit("maybe_generate_rnd_mon");
@@ -423,7 +424,7 @@ export function* moveloop_core() {
                         mvl_change = 0;
                     if (Polymorph() && !(rng_log_enabled() ? (rng_log_set_caller(__sl3, 325, __sl8), rn2(100)) : rn2(100)))
                         mvl_change = 1;
-                    else if (((cptr.ldI32o(u, $you_ulycn)) >= NHC.LOW_PM && (cptr.ldI32o(u, $you_ulycn)) < NHC.NUMMONS) && !Upolyd() && !(rng_log_enabled() ? (rng_log_set_caller(__sl3, 328, __sl8), rn2((80 - (Math.imul(20, (yield* night())))) | 0)) : rn2((80 - (Math.imul(20, (yield* night())))) | 0)))
+                    else if (ismnum(cptr.ldI32o(u, $you_ulycn)) && !Upolyd() && !(rng_log_enabled() ? (rng_log_set_caller(__sl3, 328, __sl8), rn2((80 - (Math.imul(20, (yield* night())))) | 0)) : rn2((80 - (Math.imul(20, (yield* night())))) | 0)))
                         mvl_change = 2;
                     if (mvl_change && !Unchanging()) {
                         if (cptr.ldI64o(gm, $instance_globals_m_multi) >= 0n) {
@@ -697,9 +698,9 @@ export function* init_sound_disp_gamewindows() {
 /** C ref: allmain.c:766 */
 export function* newgame() {
     let i;
-    do {
+    {
         (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + 1)) - (1);
-    } while (0);
+    }
     cptr.st1o(disp, $display_hints_botlx, 1);
     cptr.stI32(svc, 2);
     cptr.stI32o(svc, $context_info_warnlevel, 1);
@@ -748,12 +749,12 @@ export function* newgame() {
     (yield* save_currentstate());
     (cptr.stI32o(program_state, $sinfo_something_worth_saving, cptr.ldI32o(program_state, $sinfo_something_worth_saving) + 1)) - (1);
     (yield* welcome(1));
-    do {
+    {
         if (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + -1) < 0) {
             (yield* impossible(__sl22));
             cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, 0);
         }
-    } while (0);
+    }
     if (cptr.ld1so(a11y, $accessibility_data_glyph_updates))
         void (yield* dolookaround());
     else

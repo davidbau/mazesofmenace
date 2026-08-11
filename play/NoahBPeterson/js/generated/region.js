@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { nonliving } from './nhmacrofn.js';
 import { Blind, BlindedTimeout, Breathless, Half_gas_damage, Half_physical_damage, Poison_resistance, putstr, sokoban_dnum } from './nhprop.js';
 import { alloc } from './alloc.js';
 import { c_common_strings, cg, gg, gi, gm, gr, gv, gy, iflags, svc, svd, svl, svm, svn, u, ublindf } from './decl.js';
@@ -123,7 +124,7 @@ const __sl40 = cptr.lit("region-bounding box");
 const __sl41 = cptr.lit("%s sting.");
 const __sl42 = cptr.lit("%s is burning your %s!");
 const __sl43 = cptr.lit("cough and spit blood!");
-const __sl44 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/region.c");
+const __sl44 = cptr.lit("region.c");
 const __sl45 = cptr.lit("inside_gas_cloud");
 const __sl46 = cptr.lit("gas cloud");
 const __sl47 = cptr.lit("cough!");
@@ -983,7 +984,7 @@ export function region_danger() {
             continue;
         f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_inside_f);
         if (f_indx == 0) {
-            if ((((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags2) & 2n) != 0n) || cptr.eq((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), cptr.add(mons, NHC.PM_MANES, 96)) || ((cptr.ld1so((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mlet) == NHC.S_GOLEM) || cptr.ld1so((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mlet) == NHC.S_VORTEX)) || Breathless())
+            if (nonliving(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)) || Breathless())
                 continue;
             if (Poison_resistance())
                 continue;

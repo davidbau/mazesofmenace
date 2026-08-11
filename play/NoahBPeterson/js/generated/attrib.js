@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { ismnum, max } from './nhmacrofn.js';
 import { BBlinded, BClairvoyant, BlindedTimeout, Blindfolded_only, EBlinded, EFast, Fixed_abil, Fumbling, HBlinded, HBlnd_resist, HClairvoyant, HConfusion, HFast, HRegeneration, HStun, Half_gas_damage, Hallucination, Poison_resistance, Race_switch, Role_switch, Sick, Upolyd, Very_fast, Vomiting, Wounded_legs, wizard } from './nhprop.js';
 import { c_common_strings, disp, flags, gi, gm, gu, gy, iflags, program_state, svc, svd, svk, svm, u, uarmc, uarmf, uarmg, uarmh, ublindf, uwep } from './decl.js';
 import { You, You_feel, Your, impossible, livelog_printf, pline, pline_The } from './pline.js';
@@ -112,7 +113,7 @@ const __sl34 = cptr.lit("hardy");
 const __sl35 = cptr.lit("awake");
 const __sl36 = cptr.lit("tired");
 const __sl37 = cptr.lit("cap constricts briefly, then relaxes again.");
-const __sl38 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/attrib.c");
+const __sl38 = cptr.lit("attrib.c");
 const __sl39 = cptr.lit("adjattrib");
 const __sl40 = cptr.lit("You're %s as %s as you can get.");
 const __sl41 = cptr.lit("currently");
@@ -199,19 +200,18 @@ const __sl121 = cptr.lit("%s!");
 const __sl122 = cptr.lit("less %s!");
 const __sl123 = cptr.lit("newhp");
 const __sl124 = cptr.lit("acurr");
-const __sl125 = cptr.lit("attrib.c");
-const __sl126 = cptr.lit("chridx >= 0 && chridx < A_MAX");
-const __sl127 = cptr.lit("permanently converted to %s");
-const __sl128 = cptr.lit("have a %ssense of a new direction.");
-const __sl129 = cptr.lit("sudden ");
-const __sl130 = cptr.lit("mind oscillates %s.");
-const __sl131 = cptr.lit("wildly");
-const __sl132 = cptr.lit("briefly");
-const __sl133 = cptr.lit("uchangealign");
-const __sl134 = cptr.lit("used a helm to turn %s");
-const __sl135 = cptr.lit("mind is %s.");
-const __sl136 = cptr.lit("much of a muchness");
-const __sl137 = cptr.lit("back in sync with your body");
+const __sl125 = cptr.lit("chridx >= 0 && chridx < A_MAX");
+const __sl126 = cptr.lit("permanently converted to %s");
+const __sl127 = cptr.lit("have a %ssense of a new direction.");
+const __sl128 = cptr.lit("sudden ");
+const __sl129 = cptr.lit("mind oscillates %s.");
+const __sl130 = cptr.lit("wildly");
+const __sl131 = cptr.lit("briefly");
+const __sl132 = cptr.lit("uchangealign");
+const __sl133 = cptr.lit("used a helm to turn %s");
+const __sl134 = cptr.lit("mind is %s.");
+const __sl135 = cptr.lit("much of a muchness");
+const __sl136 = cptr.lit("back in sync with your body");
 
 /** C ref: attrib.c:11 — char *[6] */
 const plusattr = cptr.alloc(6 * 8);
@@ -644,7 +644,7 @@ export function losestr(num, knam, k_format) {
             setuhpmax((((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) > 1 ? ((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) : 1), 0);
         } else if (!waspolyd) {
             if (cptr.ldI32o(u, $you_uhpmax) > uhpmin)
-                setuhpmax((((cptr.ldI32o(u, $you_uhpmax) - dmg) | 0) > (uhpmin) ? ((cptr.ldI32o(u, $you_uhpmax) - dmg) | 0) : (uhpmin)), 0);
+                setuhpmax(max((cptr.ldI32o(u, $you_uhpmax) - dmg) | 0, uhpmin), 0);
         }
         cptr.st1(disp, 1);
     }
@@ -704,7 +704,7 @@ export function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         return;
     }
     i = name_to_mon(pkiller, null);
-    if (((i) >= NHC.LOW_PM && (i) < NHC.NUMMONS) && (cptr.ldU16o2(mons, i, 96, $permonst_geno) & NHM.G_UNIQ)) {
+    if (ismnum(i) && (cptr.ldU16o2(mons, i, 96, $permonst_geno) & NHM.G_UNIQ)) {
         kprefix = NHM.KILLED_BY;
         if (!((cptr.ldU64o((cptr.add(mons, i, 96)), $permonst_mflags2) & 524288n) != 0n))
             pkiller = the(pkiller);
@@ -721,7 +721,7 @@ export function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         } else {
             let olduhp = cptr.ldI32o(u, $you_uhp);
             let newuhpmax = (cptr.ldI32o(u, $you_uhpmax) - ((loss / 2) | 0)) | 0;
-            setuhpmax(((newuhpmax) > (minuhpmax(3)) ? (newuhpmax) : (minuhpmax(3))), 1);
+            setuhpmax(max(newuhpmax, minuhpmax(3)), 1);
             loss = adjuhploss(loss, olduhp);
             losehp(loss, pkiller, schar(kprefix));
             if (adjattrib(NHC.A_CON, (typ != NHC.A_CON) ? -1 : -3, 1))
@@ -804,26 +804,26 @@ export function restore_attrib() {
 
 /** C ref: attrib.c:489 — @param {CInt} i @param {CInt} inc_or_dec */
 export function exercise(i, inc_or_dec) {
-    do {
+    {
         if (debugcore(__sl38, 1)) {
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
             pline(__sl74);
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
-    } while (0);
+    }
     if (i == NHC.A_INT || i == NHC.A_CHA)
         return;
     if (Upolyd() && i != NHC.A_WIS)
         return;
     if (Math.abs((cptr.ld1so2(u, i, 1, $you_aexe))) < 50) {
         cptr.st1o2(u, i, 1, $you_aexe, cptr.ld1so2(u, i, 1, $you_aexe) + ((inc_or_dec) ? ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 509, __sl75), rn2(19)) : rn2(19)) > (acurr(i))) : -(rng_log_enabled() ? (rng_log_set_caller(__sl38, 509, __sl75), rn2(2)) : rn2(2))));
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl76, (i == NHC.A_STR) ? __sl77 : ((i == NHC.A_WIS) ? __sl78 : ((i == NHC.A_DEX) ? __sl79 : __sl80)), (inc_or_dec) ? __sl81 : __sl82, (cptr.ld1so2(u, i, 1, $you_aexe)));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
     }
     if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) > 0n && (i == NHC.A_STR || i == NHC.A_CON))
         encumber_msg();
@@ -833,13 +833,13 @@ export function exercise(i, inc_or_dec) {
 function exerper() {
     if (!(cptr.ldI64o(svm, $instance_globals_saved_m_moves) % 10n)) {
         let hs = (cptr.ldI32o(u, $you_uhunger) > 1000) ? NHC.SATIATED : ((cptr.ldI32o(u, $you_uhunger) > 150) ? NHC.NOT_HUNGRY : ((cptr.ldI32o(u, $you_uhunger) > 50) ? NHC.HUNGRY : ((cptr.ldI32o(u, $you_uhunger) > 0) ? NHC.WEAK : NHC.FAINTING)));
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl83);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
         switch (hs) {
             case NHC.SATIATED:
             exercise(NHC.A_DEX, 0);
@@ -859,13 +859,13 @@ function exerper() {
             exercise(NHC.A_CON, 0);
             break;
         }
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl84);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
         switch (near_capacity()) {
             case NHC.MOD_ENCUMBER:
             exercise(NHC.A_STR, 1);
@@ -881,13 +881,13 @@ function exerper() {
         }
     }
     if (!(cptr.ldI64o(svm, $instance_globals_saved_m_moves) % 5n)) {
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl85);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
         if ((HClairvoyant() & 134217727n) && !BClairvoyant())
             exercise(NHC.A_WIS, 1);
         if (HRegeneration())
@@ -925,22 +925,22 @@ export function exerchk() {
     let hilim;
     exerper();
     if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) >= cptr.ldI64o(svc, $context_info_next_attrib_check)) {
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl94, cptr.ldI64o(gm, $instance_globals_m_multi));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
     }
     if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) >= cptr.ldI64o(svc, $context_info_next_attrib_check) && !cptr.ldI64o(gm, $instance_globals_m_multi)) {
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl95);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
         for (i = 0; i < NHC.A_MAX; ++i) {
             __lbl_nextattrib: {
                 ax = (cptr.ld1so2(u, i, 1, $you_aexe));
@@ -955,30 +955,30 @@ export function exerchk() {
                     break __lbl_nextattrib;
                 if (Upolyd() && i != NHC.A_WIS)
                     break __lbl_nextattrib;
-                do {
+                {
                     if (debugcore(__sl38, 1)) {
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                         pline(__sl96, (i == NHC.A_STR) ? __sl77 : ((i == NHC.A_INT) ? __sl97 : ((i == NHC.A_WIS) ? __sl78 : ((i == NHC.A_DEX) ? __sl79 : ((i == NHC.A_CON) ? __sl80 : ((i == NHC.A_CHA) ? __sl98 : __sl99))))), ax);
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
-                } while (0);
+                }
                 if ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 655, __sl100), rn2(50)) : rn2(50)) > ((i != NHC.A_WIS) ? ((Math.imul(Math.abs(ax), 2) / 3) | 0) : Math.abs(ax)))
                     break __lbl_nextattrib;
-                do {
+                {
                     if (debugcore(__sl38, 1)) {
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                         pline(__sl101, i);
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
-                } while (0);
+                }
                 if (adjattrib(i, mod_val, -1)) {
-                    do {
+                    {
                         if (debugcore(__sl38, 1)) {
                             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                             pline(__sl102, i);
                             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                         }
-                    } while (0);
+                    }
                     cptr.st1o2(u, i, 1, $you_aexe, schar((ax = 0)));
                     You(__sl103, (mod_val > 0) ? __sl104 : __sl105, cptr.ldPtro(cptr.decay(exertext[i]), (mod_val > 0) ? 0 : 1, 8));
                 }
@@ -986,13 +986,13 @@ export function exerchk() {
             cptr.st1o2(u, i, 1, $you_aexe, schar(Math.imul(((Math.abs(ax) / 2) | 0), mod_val)));
         }
         cptr.stI64o(svc, $context_info_next_attrib_check, cptr.ldI64o(svc, $context_info_next_attrib_check) + BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 673, __sl100), rn2(200)) : rn2(200)) + 800) | 0)));
-        do {
+        {
             if (debugcore(__sl38, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 pline(__sl106, cptr.ldI64o(svc, $context_info_next_attrib_check));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
     }
 }
 
@@ -1134,7 +1134,7 @@ function innately(ability) {
 /** C ref: attrib.c:880 — @param {CInt} propidx @returns {CInt} */
 export function is_innate(propidx) {
     let innateness;
-    if (propidx == NHC.DRAIN_RES && ((cptr.ldI32o(u, $you_ulycn)) >= NHC.LOW_PM && (cptr.ldI32o(u, $you_ulycn)) < NHC.NUMMONS))
+    if (propidx == NHC.DRAIN_RES && ismnum(cptr.ldI32o(u, $you_ulycn)))
         return 6;
     if (propidx == NHC.FAST && Very_fast())
         return 0;
@@ -1323,7 +1323,7 @@ export function newhp() {
 export function minuhpmax(altmin) {
     if (altmin < 1)
         altmin = 1;
-    return ((cptr.ldI32o(u, $you_ulevel)) > (altmin) ? (cptr.ldI32o(u, $you_ulevel)) : (altmin));
+    return max(cptr.ldI32o(u, $you_ulevel), altmin);
 }
 
 /** C ref: attrib.c:1157 — @param {CInt} newmax @param {CInt} even_when_polyd */
@@ -1363,7 +1363,7 @@ export function adjuhploss(loss, olduhp) {
 export function acurr(chridx) {
     let tmp;
     let result = 0;
-    (__builtin_expect(BigInt((!(chridx >= 0 && chridx < NHC.A_MAX))), 0n) ? __assert_rtn(__sl124, __sl125, 1204, __sl126) : void 0);
+    (__builtin_expect(BigInt((!(chridx >= 0 && chridx < NHC.A_MAX))), 0n) ? __assert_rtn(__sl124, __sl38, 1204, __sl125) : void 0);
     tmp = (((cptr.ld1so2(u, chridx, 1, $you_abon) + cptr.ld1so2(u, chridx, 1, $you_atemp)) | 0) + cptr.ld1so2(u, chridx, 1, $you_acurr)) | 0;
     if (chridx == NHC.A_STR) {
         if (tmp >= 125 || (uarmg.v && cptr.ldI16o(uarmg.v, $obj_otyp) == NHC.GAUNTLETS_OF_POWER))
@@ -1444,22 +1444,22 @@ export function uchangealign(newalign, reason) {
     cptr.stI32o(u, $you_ublessed, 0);
     cptr.st1(disp, 1);
     if (reason == NHC.A_CG_CONVERT) {
-        livelog_printf(512n, __sl127, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
+        livelog_printf(512n, __sl126, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
         cptr.st1o2(u, NHM.A_CURRENT, 1, $you_ualignbase, schar(newalign));
         if (!uarmh.v || cptr.ldI16o(uarmh.v, $obj_otyp) != NHC.HELM_OF_OPPOSITE_ALIGNMENT)
             cptr.st1o(u, $you_ualign, cptr.ld1so2(u, NHM.A_CURRENT, 1, $you_ualignbase));
-        You(__sl128, (cptr.ld1so(u, $you_ualign) != oldalign) ? __sl129 : __sl18);
+        You(__sl127, (cptr.ld1so(u, $you_ualign) != oldalign) ? __sl128 : __sl18);
     } else {
         cptr.st1o(u, $you_ualign, schar(newalign));
         if (reason == NHC.A_CG_HELM_ON) {
             adjalign(-7);
-            Your(__sl130, Hallucination() ? __sl131 : __sl132);
-            make_confused(BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1346, __sl133), rn2(2)) : rn2(2)) + 3) | 0)), 0);
-            if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1347, __sl133), rn2(50)) : rn2(50)) >>> 0 < cptr.ldI32o(u, $you_ualign + $align_abuse)))
+            Your(__sl129, Hallucination() ? __sl130 : __sl131);
+            make_confused(BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1346, __sl132), rn2(2)) : rn2(2)) + 3) | 0)), 0);
+            if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1347, __sl132), rn2(50)) : rn2(50)) >>> 0 < cptr.ldI32o(u, $you_ualign + $align_abuse)))
                 summon_furies((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) ? 0 : 1);
-            livelog_printf(512n, __sl134, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
+            livelog_printf(512n, __sl133, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
         } else if (reason == NHC.A_CG_HELM_OFF) {
-            Your(__sl135, Hallucination() ? __sl136 : __sl137);
+            Your(__sl134, Hallucination() ? __sl135 : __sl136);
         }
     }
     if (cptr.ld1so(u, $you_ualign) != oldalign) {

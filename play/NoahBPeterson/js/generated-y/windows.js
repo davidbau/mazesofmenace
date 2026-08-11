@@ -150,7 +150,7 @@ const __sl37 = cptr.lit("Autopickup what?");
 const __sl38 = cptr.lit("Note: when no choices are selected, \"all\" is implied.");
 const __sl39 = cptr.lit("Toggle off 'autopickup' to not pick up anything.");
 const __sl40 = cptr.lit("Toggle on 'autopickup' to automatically pick these things up.");
-const __sl41 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/windows.c");
+const __sl41 = cptr.lit("windows.c");
 const __sl42 = cptr.lit("add_menu(Null)");
 const __sl43 = cptr.lit("%s %s");
 
@@ -1115,13 +1115,13 @@ export function* add_menu(window, glyphinfo, identifier, ch, gch, attr, color, s
     attr = cptr.box(attr);
     color = cptr.box(color);
     if (!str) {
-        do {
+        {
             if ((yield* debugcore(__sl41, 1))) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
                 (yield* pline(__sl42));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
-        } while (0);
+        }
         return;
     }
     if (cptr.ld1so(iflags, $instance_flags_use_menu_color)) {

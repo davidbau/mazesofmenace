@@ -13,6 +13,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { m_next2u } from './nhmacrofn.js';
 import { Blind, Blind_telepat, Deaf, display_nhwindow, nh_delay_output } from './nhprop.js';
 import { nh_getenv } from './options.js';
 import { alloc, dupstr } from './alloc.js';
@@ -63,7 +64,7 @@ const $c_common_strings_c_Never_mind = FLD.c_common_strings_c_Never_mind, $coord
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __sl0 = cptr.lit("MAIL");
 const __sl1 = cptr.lit("/usr/mail/");
-const __sl2 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/mail.c");
+const __sl2 = cptr.lit("mail.c");
 const __sl3 = cptr.lit("mailbox=%c%s%c");
 const __sl4 = cptr.lit("null");
 const __sl5 = cptr.lit("md_stop");
@@ -114,13 +115,13 @@ export function* getmailstatus() {
         void cptr.strcpy(mailbox, __sl1);
         void cptr.strcat(mailbox, pw_name);
     }
-    do {
+    {
         if ((yield* debugcore(__sl2, 1))) {
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
             (yield* pline(__sl3, mailbox ? 34 : 60, mailbox ? mailbox : __sl4, mailbox ? 34 : 62));
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
-    } while (0);
+    }
     if (mailbox && stat(mailbox, omstat)) {
         cptr.stI64o(omstat, $stat_st_mtimespec, 0n);
     }
@@ -325,7 +326,7 @@ function* newmail(info) {
                 obj = (yield* oname(obj, cptr.ldPtro(info, $mail_info_object_nam), NHM.ONAME_NO_FLAGS));
             if (cptr.ldPtro(info, $mail_info_response_cmd))
                 (yield* new_omailcmd(obj, cptr.ldPtro(info, $mail_info_response_cmd)));
-            if (!(dist2((cptr.ldI16o((md), $monst_mx)), (cptr.ldI16o((md), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= 2)) {
+            if (!m_next2u(md)) {
                 if (!Deaf()) {
                     ;
                     (yield* verbalize(__sl16));

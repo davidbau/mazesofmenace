@@ -8,6 +8,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { helpless } from './nhmacrofn.js';
 import { Deaf, quest_dnum, wizard } from './nhprop.js';
 import { flags, gf, gi, svc, svd, svq, u } from './decl.js';
 import { com_pager, find_quest_artifact, is_quest_artifact, qt_pager } from './questpgr.js';
@@ -95,7 +96,7 @@ const __sl34 = cptr.lit("nemesis_wantsit");
 const __sl35 = cptr.lit("nemesis_first");
 const __sl36 = cptr.lit("nemesis_next");
 const __sl37 = cptr.lit("nemesis_other");
-const __sl38 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/quest.c");
+const __sl38 = cptr.lit("quest.c");
 const __sl39 = cptr.lit("nemesis_speaks");
 const __sl40 = cptr.lit("guardtalk_after");
 const __sl41 = cptr.lit("guardtalk_before");
@@ -445,5 +446,5 @@ export function quest_talk(mtmp) {
 /** C ref: quest.c:514 — @param {CPtr} mtmp */
 export function quest_stat_check(mtmp) {
     if (cptr.ld1uo(cptr.ldPtro(mtmp, $monst_data), $permonst_msound) == NHC.MS_NEMESIS)
-        cptr.stI32o(svq, $q_score_in_battle, (!((cptr.ldI32o((mtmp), $monst_msleeping) & 1) | 0 || !(cptr.ldI32o((mtmp), $monst_mcanmove) & 1)) && monnear(mtmp, cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? 1 : 0) >>> 0);
+        cptr.stI32o(svq, $q_score_in_battle, (!helpless(mtmp) && monnear(mtmp, cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? 1 : 0) >>> 0);
 }

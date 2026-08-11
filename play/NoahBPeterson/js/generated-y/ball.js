@@ -12,6 +12,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { is_hole, is_pit } from './nhmacrofn.js';
 import { Blind, Half_physical_damage, Levitation, Luck, Punished } from './nhprop.js';
 import { flags, gi, gv, svd, svl, u, uarmh, uball, uchain, uquiver, uswapwep, uwep } from './decl.js';
 import { setuqwep, setuswapwep, setuwep, welded } from './wield.js';
@@ -59,7 +60,7 @@ const $d_level_dlevel = FLD.d_level_dlevel, $dgn_topology_d_water_level = FLD.dg
 
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __sl0 = cptr.lit("Startled, you drop the iron ball.");
-const __sl1 = cptr.lit("/Users/noahpeterson/Documents/Projects/teleport-contest-research/original-contest-to-fork/nethack-c/recorder/src/ball.c");
+const __sl1 = cptr.lit("ball.c");
 const __sl2 = cptr.lit("ballfall");
 const __sl3 = cptr.lit("iron ball falls on your %s.");
 const __sl4 = cptr.lit("Fortunately, you are wearing a hard helmet.");
@@ -415,12 +416,12 @@ export function* drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause
                 cptr.stI16(chainx, i16(((((cptr.ldI16o(uball.v, $obj_ox) + x) | 0) / 2) | 0)));
                 cptr.stI16(chainy, i16(((((cptr.ldI16o(uball.v, $obj_oy) + y) | 0) / 2) | 0)));
                 if ((((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock)
-                    do {
+                    {
                         cptr.stI16(chainx, oldchainx);
                         cptr.stI16(chainy, oldchainy);
                         (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                         break __lbl_drag;
-                    } while (0);
+                    }
                 break;
                 case 5:
                 {
@@ -440,48 +441,48 @@ export function* drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause
                     if ((((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !(((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock) {
                         if (allow_drag) {
                             if (dist2(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) == 5 && dist2(x, y, tempx, tempy) == 1)
-                                do {
+                                {
                                     cptr.stI16(chainx, oldchainx);
                                     cptr.stI16(chainy, oldchainy);
                                     (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                                     break __lbl_drag;
-                                } while (0);
+                                }
                             if (dist2(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) == 4 && dist2(x, y, tempx, tempy) == 2)
-                                do {
+                                {
                                     cptr.stI16(chainx, oldchainx);
                                     cptr.stI16(chainy, oldchainy);
                                     (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                                     break __lbl_drag;
-                                } while (0);
+                                }
                         }
                         cptr.stI16(chainx, tempx2);
                         cptr.stI16(chainy, tempy2);
                     } else if (!(((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && (((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock) {
                         if (allow_drag) {
                             if (dist2(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) == 5 && dist2(x, y, tempx2, tempy2) == 1)
-                                do {
+                                {
                                     cptr.stI16(chainx, oldchainx);
                                     cptr.stI16(chainy, oldchainy);
                                     (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                                     break __lbl_drag;
-                                } while (0);
+                                }
                             if (dist2(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) == 4 && dist2(x, y, tempx2, tempy2) == 2)
-                                do {
+                                {
                                     cptr.stI16(chainx, oldchainx);
                                     cptr.stI16(chainy, oldchainy);
                                     (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                                     break __lbl_drag;
-                                } while (0);
+                                }
                         }
                         cptr.stI16(chainx, tempx);
                         cptr.stI16(chainy, tempy);
                     } else if ((((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx, 756, tempy, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && (((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, tempx2, 756, tempy2, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock) {
-                        do {
+                        {
                             cptr.stI16(chainx, oldchainx);
                             cptr.stI16(chainy, oldchainy);
                             (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                             break __lbl_drag;
-                        } while (0);
+                        }
                     } else if (dist2(tempx, tempy, cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) < dist2(tempx2, tempy2, cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) || ((dist2(tempx, tempy, cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) == dist2(tempx2, tempy2, cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy))) && (rng_log_enabled() ? (rng_log_set_caller(__sl1, 706, __sl14), rn2(2)) : rn2(2)))) {
                         cptr.stI16(chainx, tempx);
                         cptr.stI16(chainy, tempy);
@@ -497,12 +498,12 @@ export function* drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause
                 cptr.stI16(chainx, i16(((((x + cptr.ldI16o(uball.v, $obj_ox)) | 0) / 2) | 0)));
                 cptr.stI16(chainy, i16(((((y + cptr.ldI16o(uball.v, $obj_oy)) | 0) / 2) | 0)));
                 if ((((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock)
-                    do {
+                    {
                         cptr.stI16(chainx, oldchainx);
                         cptr.stI16(chainy, oldchainy);
                         (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                         break __lbl_drag;
-                    } while (0);
+                    }
                 break;
                 case 2:
                 if (dist2(x, y, cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) == 2 && dist2(x, y, cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) == 4) {
@@ -511,12 +512,12 @@ export function* drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause
                     else
                         cptr.stI16(chainy, cptr.ldI16o(uball.v, $obj_oy));
                     if ((((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) < NHC.POOL) || (((cptr.ld1so3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR) && (((cptr.ldI32o3(svl, cptr.ldI16(chainx), 756, cptr.ldI16(chainy), 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & 12))) && !already_in_rock)
-                        do {
+                        {
                             cptr.stI16(chainx, oldchainx);
                             cptr.stI16(chainy, oldchainy);
                             (yield* move_bc(0, cptr.ldI32(bc_control), cptr.ldI16(ballx), cptr.ldI16(bally), cptr.ldI16(chainx), cptr.ldI16(chainy)));
                             break __lbl_drag;
-                        } while (0);
+                        }
                     break;
                 }
                 // @FallThrough
@@ -545,7 +546,7 @@ export function* drag_ball(x, y, bc_control, ballx, bally, chainx, chainy, cause
         nomul(0);
         return 0;
     }
-    if ((is_pool(cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) && (cptr.ld1so3(svl, cptr.ldI16o(uchain.v, $obj_ox), 756, cptr.ldI16o(uchain.v, $obj_oy), 36, $instance_globals_saved_l_level + $rm_typ) == NHC.POOL || !is_pool(cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) || cptr.ld1so3(svl, cptr.ldI16o(uball.v, $obj_ox), 756, cptr.ldI16o(uball.v, $obj_oy), 36, $instance_globals_saved_l_level + $rm_typ) == NHC.POOL)) || ((t = t_at(cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy))) && (((((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.PIT || (((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.SPIKED_PIT) || ((((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.HOLE || (((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.TRAPDOOR)))) {
+    if ((is_pool(cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy)) && (cptr.ld1so3(svl, cptr.ldI16o(uchain.v, $obj_ox), 756, cptr.ldI16o(uchain.v, $obj_oy), 36, $instance_globals_saved_l_level + $rm_typ) == NHC.POOL || !is_pool(cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) || cptr.ld1so3(svl, cptr.ldI16o(uball.v, $obj_ox), 756, cptr.ldI16o(uball.v, $obj_oy), 36, $instance_globals_saved_l_level + $rm_typ) == NHC.POOL)) || ((t = t_at(cptr.ldI16o(uchain.v, $obj_ox), cptr.ldI16o(uchain.v, $obj_oy))) && (is_pit((cptr.ldI32o(t, $trap_ttyp) & 31)) || is_hole((cptr.ldI32o(t, $trap_ttyp) & 31))))) {
         if (Levitation()) {
             (yield* You_feel(__sl18));
             if (t)
@@ -643,7 +644,7 @@ export function* drop_ball(x, y) {
         }
         cptr.stI16o(u, $you_ux0, cptr.ldI16(u));
         cptr.stI16o(u, $you_uy0, cptr.ldI16o(u, $you_uy));
-        if (!Levitation() && !(cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters) !== null) && !cptr.ldI32o(u, $you_utrap) && (is_pool(x, y) || ((t = t_at(x, y)) && (((((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.PIT || (((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.SPIKED_PIT) || ((((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.HOLE || (((cptr.ldI32o(t, $trap_ttyp) & 31)) | 0) == NHC.TRAPDOOR))))) {
+        if (!Levitation() && !(cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters) !== null) && !cptr.ldI32o(u, $you_utrap) && (is_pool(x, y) || ((t = t_at(x, y)) && (is_pit((cptr.ldI32o(t, $trap_ttyp) & 31)) || is_hole((cptr.ldI32o(t, $trap_ttyp) & 31)))))) {
             cptr.stI16(u, x);
             cptr.stI16o(u, $you_uy, y);
         } else {
