@@ -7,6 +7,8 @@ import {
     LOST_NONE,
     LOST_STOLEN,
     LOST_THROWN,
+    SHOPBASE,
+    W_SADDLE,
 } from './const.js';
 import { newsym } from './display.js';
 import { flooreffects } from './do.js';
@@ -26,6 +28,8 @@ import { AT_ENGL } from './monsters.js';
 import { place_object, unknow_object } from './obj.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { distant_name, donameFresh } from './objnam.js';
+import { in_rooms } from './rooms.js';
+import { costly_spot } from './shk.js';
 import {
     canSeeMonster as canSeeMonsterOnMap,
     messageAt,
@@ -214,23 +218,52 @@ function dropEnv(rawEnv = {}) {
     return { ...rawEnv, state };
 }
 
+// Passing do_extrinsics false leaves two WornEnv hooks extract_from_minvent()
+// can ask mdrop_obj() for. Neither has a port, and each would throw worn.js's
+// bare "worn requires ..." Error, which js/jsmain.js does not recognize as a
+// boundary, so a segment would be discarded rather than ended.
+//
+// endArtifactLight, at worn.c 1399-1400, wants a lamplit W_ARM object that
+// artifact_light() recognizes, and gets no key because mdrop_obj() stops one
+// call earlier: js/objnam.js refuses 'lit worn-object suffix' for any lamplit
+// worn object, a wider condition than that arm's, when distant_name() names the
+// object below. Further out, js/makemon_create.js m_dowear_type() omits
+// worn.c 973-975's begin_burn(), so nothing a monster wears is lamplit to begin
+// with. scripts/steal.test.mjs pins the near gate, which is the one that holds.
+//
+// mwepgone, at worn.c 1414-1415, wants a W_WEP object, and nothing refuses a
+// wielded weapon's name, so that arm needs the key below. In the port only
+// js/weapon.js mon_wield_item() puts W_WEP on a monster's object, and its one
+// call site in js/unported_monster_actions.js refuses at 'monster wield action'
+// for every selection that would reach the assignment. C is wider on both
+// counts: mon_wield_item() has ten callers, and mthrowu.c:894 sets W_WEP on a
+// tethered weapon returning to its thrower without calling it at all. The key
+// is what makes the first widening of either route end a segment.
+//
+// Composed at the call site rather than in dropEnv(), as the stackobj()
+// comment below does, so every other call in this function keeps running on
+// the caller's own environment.
+function extractionEnv(env) {
+    return {
+        ...env,
+        hooks: {
+            mwepgone: () => env.unsupported(
+                'a monster dropping the weapon it wields',
+            ),
+            ...(env.hooks ?? {}),
+        },
+    };
+}
+
 // C ref: steal.c mdrop_obj() (812-846). Drop one object taken from a
 // (possibly dead) monster's inventory onto the square the monster stands on.
-//
-// Two arms need an object the monster still has equipped: the saddle's
-// `no_charge` exemption, and the trailing update_mon_extrinsics(), which C
-// defers until after the drop precisely because removing a steed's saddle can
-// kill its rider. Neither is ported, so an equipped object stops up front and
-// both arms are unreachable below.
 export async function mdrop_obj(mon, obj, verbosely, rawEnv = {}) {
     const env = dropEnv(rawEnv);
     const { state, unsupported } = env;
     const message = env.message ?? ttyPline;
     const omx = mon.mx;
     const omy = mon.my;
-
-    if (obj.owornmask)
-        unsupported('a monster dropping an object it has equipped');
+    const unwornmask = obj.owornmask;
 
     // call distant_name() for its possible side-effects even if the result
     // might not be printed, and do it before extracting obj from minvent
@@ -239,11 +272,34 @@ export async function mdrop_obj(mon, obj, verbosely, rawEnv = {}) {
     // C's own arguments: do_extrinsics FALSE so that removing a steed's saddle
     // cannot throw its rider before the object reaches the floor, and silently
     // TRUE for the update_mon_extrinsics() call that FALSE just suppressed.
-    // Both are read only inside extract_from_minvent()'s `if (unwornmask)`
-    // block, which the equipped-object refusal above puts out of reach, so no
-    // test through this function can tell either literal from its opposite.
+    // Passing FALSE is what defers the extrinsics to this function's own tail,
+    // so no drop can reach extract_from_minvent()'s copy of that call and no
+    // test through here can tell `silently` from its opposite.
     // scripts/worn.test.mjs drives both directly instead.
-    extract_from_minvent(mon, obj, false, true, env);
+    extract_from_minvent(mon, obj, false, true, extractionEnv(env));
+    /* don't charge for an owned saddle on dead steed (provided
+        that the hero is within the same shop at the time) */
+    // Untested: reaching it needs a tame steed wearing a saddle to die inside
+    // a shop the hero is standing in too, which no recorded session and no
+    // cheap fresh case produces. It is straight-line body of the function
+    // rather than a helper, so it is ported with the rest.
+    //
+    // Seam: C's last conjunct is strchr() over the room-number C string
+    // in_rooms() returns. The port's in_rooms() returns those numbers as an
+    // array, so the membership test is .includes(). The two forms disagree at
+    // one input. strchr(s, '\0') finds the terminator and returns a non-null
+    // pointer, so C is true for roomno 0 whatever the string holds, while
+    // .includes(0) on an array without 0 is false. costly_spot() is what rules
+    // that input out, as C's own comment below says: it returns false unless
+    // shk.c inside_shop() answers with a room number, and inside_shop() answers
+    // NO_ROOM for every roomno under ROOMOFFSET.
+    if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
+        && !obj.unpaid && costly_spot(omx, omy, state)
+        /* being at costly_spot guarantees lev->roomno is not 0 */
+        && in_rooms(state.u.ux, state.u.uy, SHOPBASE, state)
+            .includes(state.level.at(omx, omy).roomno)) {
+        obj.no_charge = true;
+    }
     // obj_no_longer_held(obj); -- done by place_object
     if (verbosely && cansee(omx, omy, state)) {
         await message(
@@ -266,6 +322,21 @@ export async function mdrop_obj(mon, obj, verbosely, rawEnv = {}) {
         // every other call in this function on the caller's own environment.
         stackobj(obj, objectGenerationEnv(env));
     }
+    /* do this last, after placing obj on floor; removing steed's saddle
+       throws rider, possibly inflicting fatal damage and producing bones; this
+       is why we had to call extract_from_minvent() with do_intrinsics=FALSE */
+    // worn.c update_mon_extrinsics() (579-712) has only a partial port:
+    // js/makemon_create.js updateMonsterArmorEffects() covers the INVIS arm for
+    // a mummy wrapping and the FAST arm for speed boots, which is what
+    // creation-time gear carries, and discard_minvent() calls it on the same
+    // !DEADMONSTER() arm this refusal stands on. Equipment outside that set
+    // reaches neither arm, so a monster that survives losing it stops here.
+    // Whoever ports the rest owns both copies: move them into js/worn.js under
+    // the C name rather than adding a third. A dead monster does not stop:
+    // DEADMONSTER() is exactly what keeps the common case -- the hero's kill
+    // emptying a corpse's pack through mon.c m_detach() -- clear of that call.
+    if (!(mon.mhp < 1) /* !DEADMONSTER() */ && unwornmask)
+        unsupported('a surviving monster losing gear it had equipped');
 }
 
 // C ref: steal.c relobj() (873-899). Release the objects a creature carries.
