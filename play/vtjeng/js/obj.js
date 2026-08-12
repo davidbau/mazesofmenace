@@ -131,6 +131,7 @@ import {
     KELP_FROND,
     LARGE_BOX,
     LEASH,
+    LEATHER,
     LEVITATION_BOOTS,
     LIQUID,
     LOADSTONE,
@@ -157,6 +158,7 @@ import {
     RIN_TELEPORTATION,
     ROCK,
     ROCK_CLASS,
+    RUBBER_HOSE,
     SACK,
     SCROLL_CLASS,
     SCR_MAIL,
@@ -733,6 +735,15 @@ export function matching_launcher(ammo, launcher, state = game) {
 // C ref: obj.h ammo_and_launcher() (244).
 export function ammo_and_launcher(ammo, launcher, state = game) {
     return is_ammo(ammo, state) && matching_launcher(ammo, launcher, state);
+}
+
+// C ref: obj.h is_flimsy() (418-420). Whether an object is too soft to make a
+// noticeable impact when it lands; hack.c impact_disturbs_zombies() is the
+// caller. LEATHER is the material enum's dividing line: everything at or below
+// it is liquid, wax, vegetable, flesh, paper, cloth or leather.
+export function is_flimsy(obj, state = game) {
+    return objectType(obj, state).oc_material <= LEATHER
+        || obj.otyp === RUBBER_HOSE;
 }
 
 // C ref: obj.h is_missile() (245-248). A tool qualifies here where is_launcher()
@@ -1806,6 +1817,26 @@ function objectLocationIsIce(x, y, state) {
     return location?.typ === ICE
         || (location?.typ === DRAWBRIDGE_UP
             && ((location.flags ?? 0) & DB_UNDER) === DB_ICE);
+}
+
+// C ref: mkobj.c ROT_ICE_ADJUSTMENT (2391), "rotting on ice takes 2 times as
+// long". obj_timer_checks() below multiplies a pending timeout by it.
+const ROT_ICE_ADJUSTMENT = 2;
+
+// C ref: mkobj.c peek_at_iced_corpse_age() (2422-2438). The age a rot
+// calculation should use: a corpse resting on ice has aged at half speed, so
+// the stored age is moved forward by the half of the elapsed time that did not
+// count. "must be same as obj_timer_checks() for off ice".
+export function peek_at_iced_corpse_age(otmp, state = game) {
+    let retval = Math.trunc(otmp.age ?? 0);
+
+    if (otmp.otyp === CORPSE && otmp.on_ice) {
+        /* Adjust the age; must be same as obj_timer_checks() for off ice */
+        const age = Math.trunc(state.moves ?? 0) - Math.trunc(otmp.age ?? 0);
+        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1)
+            / ROT_ICE_ADJUSTMENT);
+    }
+    return retval;
 }
 
 // C ref: mkobj.c obj_timer_checks(). Corpse rot and revival timers run at

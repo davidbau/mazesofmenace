@@ -13,8 +13,9 @@ import {
     ART_EYES_OF_THE_OVERWORLD, find_artifact, permapoisoned,
 } from './artifacts.js';
 import {
-    BLINDED, CORPSTAT_HISTORIC, HALLUC, HALLUC_RES, HAND, NON_PM, P_BOW,
-    W_AMUL, W_ARMOR, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE,
+    BLINDED, CORPSTAT_HISTORIC, CXN_ARTICLE, CXN_NOCORPSE, CXN_NORMAL,
+    CXN_NO_PFX, CXN_PFX_THE, CXN_SINGULAR, HALLUC, HALLUC_RES, HAND, NON_PM,
+    P_BOW, W_AMUL, W_ARMOR, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE,
     W_SWAPWEP, W_TOOL, W_WEP,
 } from './const.js';
 import {
@@ -22,13 +23,19 @@ import {
 } from './fruit.js';
 import { tin_details } from './eat.js';
 import { game } from './gstate.js';
-import { dist2, highc, lowc, strcasecpy } from './hacklib.js';
+import {
+    digit, dist2, highc, lowc, mungspaces, s_suffix, strcasecpy,
+} from './hacklib.js';
 import { get_obj_location } from './light.js';
 import { cansee } from './vision.js';
 import { body_part } from './polyself.js';
 import { RIGHT_HANDED } from './u_init.js';
 import { bimanual } from './worn.js';
-import { PM_CLERIC, PM_SAMURAI } from './monsters.js';
+import {
+    G_UNIQ, PM_CLERIC, PM_HIGH_CLERIC, PM_LONG_WORM_TAIL, PM_SAMURAI,
+    PM_WIZARD_OF_YENDOR,
+} from './monsters.js';
+import { type_is_pname } from './mondata.js';
 import { observe_object } from './o_init.js';
 import {
     erosionMatters, hasContents, isBox, isCandle, isContainer,
@@ -268,15 +275,9 @@ function preflightDoname(obj, type, state, allowLiveShopPrice) {
         unsupported('price quote suffix', obj);
     if (obj.owornmask & (W_RING | W_RINGL | W_RINGR))
         unsupported('worn-ring suffix', obj);
-    // doname_base() reads u.twoweap in exactly two places, both inside a
-    // wielded-slot arm: objnam.c:1562 derives twoweap_primary for W_WEP, which
-    // :1575 and :1593 consume, and :1614 chooses the W_SWAPWEP phrasing.
-    // wornSuffix() below omits both, so those two slots must still refuse. No
-    // other worn mask carries a u.twoweap term -- armor, rings, the amulet and
-    // the quiver are phrased the same either way -- so refusing them was wider
-    // than C.
-    if ((obj.owornmask & (W_WEP | W_SWAPWEP)) && state.u?.twoweap)
-        unsupported('two-weapon suffix', obj);
+    // objnam.c:1563 and :1592. wornSuffix() below ports the "wielded in" and
+    // "weapon in" arms of that word choice; "tethered to" would also have to
+    // follow the aklys back to the hand it is attached to, so it still stops.
     if ((obj.owornmask & W_WEP) && obj.otyp === AKLYS)
         unsupported('tethered weapon suffix', obj);
     // objnam.c:1391 names uskin " (embedded in your skin)" instead of
@@ -751,13 +752,22 @@ function wornSuffix(obj, type, state) {
         if (obj === state.uarmg && Glib(state))
             suffix = `${suffix.slice(0, -1)}; slippery)`;
     }
+    // objnam.c:1561 also requires !gm.mrg_to_wielded, which pickup.c:1881-1882
+    // raises only while pickup_prinv() names a stack that just merged into the
+    // wielded weapon. Nothing here owns that flag: js/pickup.js:461 refuses
+    // that merge outright, so the guard is always true at this point.
     if (mask & W_WEP) {
+        // objnam.c:1562. The primary of a dual-wield keeps the hand phrasing
+        // even when the alternate test below would otherwise take it, and
+        // reads "wielded in" rather than "weapon in".
+        const twoweapPrimary = obj === state.uwep && Boolean(state.u.twoweap);
         // C uses the alternate phrasing for stacks, for wielded ammo and
         // missiles, and for non-weapons that are not weapon-tools.
-        const alternate = obj.quan !== 1
+        const alternate = (obj.quan !== 1
             || (obj.oclass === WEAPON_CLASS
                 ? (is_ammo(obj, state) || is_missile(obj, state))
-                : !is_weptool(obj, state));
+                : !is_weptool(obj, state)))
+            && !twoweapPrimary;
         if (alternate) {
             suffix += ' (wielded)';
         } else {
@@ -766,11 +776,25 @@ function wornSuffix(obj, type, state) {
                 ? makeplural(hand)
                 : `${state.u.uhandedness === RIGHT_HANDED ? 'right' : 'left'
                 } ${hand}`;
-            suffix += ` (weapon in ${hands})`;
+            // objnam.c:1591-1595. The "tethered to" arm of the same choice is
+            // an AKLYS, which preflightDoname() refuses above.
+            suffix += ` (${twoweapPrimary ? 'wielded in' : 'weapon in'
+            } ${hands})`;
         }
     }
-    if (mask & W_SWAPWEP)
-        suffix += ` (alternate weapon${obj.quan === 1 ? '' : 's'}; not wielded)`;
+    if (mask & W_SWAPWEP) {
+        // objnam.c:1613-1621. The secondary names the other hand from the
+        // primary, so URIGHTY picks "left" here where :1586 picked "right".
+        if (state.u.twoweap) {
+            const side = state.u.uhandedness === RIGHT_HANDED
+                ? 'left' : 'right';
+            const hand = body_part(HAND, state.youmonst);
+            suffix += ` (wielded in ${side} ${hand})`;
+        } else {
+            suffix += ` (alternate weapon${obj.quan === 1 ? '' : 's'
+            }; not wielded)`;
+        }
+    }
     if (mask & W_QUIVER) {
         // C's Qtyp: 1 is bow ammo, 2 is anything small enough for the pouch,
         // and 3 is everything else.
@@ -790,28 +814,133 @@ function wornSuffix(obj, type, state) {
     return suffix;
 }
 
+// C ref: objnam.c the_unique_pm() (1801-1821). "Unique" for naming: a species
+// whose one member deserves "the", which excludes the personally named ones
+// because they deserve their bare name instead.
+export function the_unique_pm(species) {
+    /* even though monsters with personal names are unique, we want to
+       describe them as "Name" rather than "the Name" */
+    if (type_is_pname(species)) return false;
+
+    let uniq = Boolean(species.geno & G_UNIQ);
+    /* high priest is unique if it includes "of <deity>", otherwise not
+       (caller needs to handle the 1st possibility; we assume the 2nd);
+       worm tail should be irrelevant but is included for completeness */
+    if (species.pmidx === PM_HIGH_CLERIC
+        || species.pmidx === PM_LONG_WORM_TAIL)
+        uniq = false;
+    /* Wizard no longer needs this; he's flagged as unique these days */
+    if (species.pmidx === PM_WIZARD_OF_YENDOR)
+        uniq = true;
+    return uniq;
+}
+
+// C ref: objnam.c corpse_xname() (1823-1919), "<mnam> corpse" with the article
+// and the adjective placed to suit the monster's name. C builds the answer in
+// the obuf[] that xname() would have used, so aobjnam() can still write into
+// the prefix area; this port returns the string and has no such buffer.
+//
+// The glob arm stops. Its input is a globby object that is not a CORPSE, which
+// only shrink_glob() and eat.c's glob meal produce, and neither is ported.
+export function corpse_xname(otmp, adjective, cxn_flags, state = game) {
+    const omndx = otmp.corpsenm;
+    /* override quantity if greater than 1 */
+    const ignore_quan = (cxn_flags & CXN_SINGULAR) !== 0;
+    /* suppress "the" from "the unique monster corpse" */
+    let no_prefix = (cxn_flags & CXN_NO_PFX) !== 0;
+    /* include "the" for "the woodchuck corpse" */
+    let the_prefix = (cxn_flags & CXN_PFX_THE) !== 0;
+    /* include "an" for "an ogre corpse" */
+    let any_prefix = (cxn_flags & CXN_ARTICLE) !== 0;
+    /* leave off suffix (do_name() appends "corpse" itself) */
+    const omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0;
+    let possessive = false;
+    const glob = otmp.otyp !== CORPSE && otmp.globby;
+    let mnam;
+
+    if (glob) {
+        unsupported('corpse_xname() for a glob', otmp);
+    } else if (omndx === NON_PM) { /* paranoia */
+        mnam = 'thing';
+    } else {
+        // C's obj_pmname(); monsterObjectName() above is this port's reading of
+        // it, and covers do_name.c:1355's NEUTRAL arm alone.
+        mnam = monsterObjectName(otmp, state);
+        const species = state.mons[omndx];
+        if (the_unique_pm(species) || type_is_pname(species)) {
+            mnam = s_suffix(mnam);
+            possessive = true;
+            /* don't precede personal name like "Medusa" with an article */
+            if (type_is_pname(species))
+                no_prefix = true;
+            /* always precede non-personal unique monster name like
+               "Oracle" with "the" unless explicitly overridden */
+            else if (the_unique_pm(species) && !no_prefix)
+                the_prefix = true;
+        }
+    }
+    if (no_prefix)
+        the_prefix = any_prefix = false;
+    else if (the_prefix)
+        any_prefix = false; /* mutually exclusive */
+
+    let nambuf = '';
+    /* can't use the() the way we use an() below because any capitalized
+       Name causes it to assume a personal name and return Name as-is */
+    if (the_prefix)
+        nambuf += 'the ';
+
+    if (!adjective) {
+        /* normal case:  newt corpse */
+        nambuf += mnam;
+    } else {
+        /* adjective positioning depends upon format of monster name */
+        nambuf += possessive
+            ? `${mnam} ${adjective}` /* Medusa's cursed partly eaten corpse */
+            : `${adjective} ${mnam}`; /* cursed partly eaten troll corpse */
+        /* in case adjective has a trailing space, squeeze it out */
+        nambuf = mungspaces(nambuf);
+        /* doname() might include a count in the adjective argument;
+           if so, don't prepend an article */
+        if (digit(adjective[0]))
+            any_prefix = false;
+    }
+
+    if (!omit_corpse) {
+        nambuf += ' corpse';
+        /* makeplural(nambuf) => append "s" to "corpse" */
+        if (otmp.quan > 1 && !ignore_quan) {
+            nambuf += 's';
+            any_prefix = false; /* avoid "a newt corpses" */
+        }
+    }
+
+    if (any_prefix)
+        nambuf = an(nambuf);
+    return nambuf;
+}
+
 // C ref: objnam.c cxname() (1922-1930). xname() drops a corpse's monster
-// type, so a corpse goes to corpse_xname() instead; that helper is unported
-// and no wish this port grants makes a corpse.
+// type, so a corpse goes to corpse_xname() instead.
 export function cxname(obj, state = game) {
     if (obj.otyp === CORPSE)
-        unsupported('corpse_xname() for cxname()', obj);
+        return corpse_xname(obj, null, CXN_NORMAL, state);
     return xnameFresh(obj, state);
 }
 
 // C ref: objnam.c singular() (2087-2105). Names one item of a stack by
 // running the caller's namer with quan temporarily set to 1. C swaps xname()
 // for cxname() on a corpse, because xname() would drop the monster type.
-// cxname() is ported above, but it refuses a corpse itself, needing
-// corpse_xname(), which is not. So the swap stops here rather than routing a
-// corpse into a helper that would throw one frame later.
 export function singular(otmp, func, state) {
-    if (otmp.otyp === CORPSE && func === xnameFresh)
-        throw new UnsupportedObjectNameError('cxname() for singular()', otmp);
+    /* using xname for corpses does not give the monster type */
+    let namer = func;
+    if (otmp.otyp === CORPSE && namer === xnameFresh)
+        namer = cxname;
+
     const savequan = otmp.quan;
     otmp.quan = 1;
     try {
-        return func(otmp, state);
+        return namer(otmp, state);
     } finally {
         otmp.quan = savequan;
     }
