@@ -39,6 +39,7 @@ import {
     is_female_flag, is_neuter_flag, is_orc_flag, is_elf_flag, is_dwarf_flag,
     is_gnome_flag, is_giant_flag, is_undead_flag, nohands, humanoid,
 } from './monflags_data.js';
+import { attacktype, AT_BREA, AT_SPIT, AT_GAZE } from './monattk_data.js';
 
 // ── real (not session-specific) monster-index constants (mons[] order) ──
 const PM_HUMAN = 260;
@@ -60,23 +61,18 @@ const RACE_LOCAL = { HUMAN: 0, ELF: 1, DWARF: 2, GNOME: 3, ORC: 4 };
 // C ref: include/monflag.h MZ_* body-size enum.
 const MZ_SMALL = 1, MZ_LARGE = 3;
 
-// C ref: include/hack.h — a handful of AT_BREA/AT_SPIT/AT_GAZE breath/spit/gaze
-// users, transcribed from include/monsters.h.  Not exhaustive (mattk[] isn't
-// modeled generically anywhere in this port yet), but real and general: every
-// entry here is an actual monsters.h AT_BREA/AT_SPIT/AT_GAZE attacker, not a
-// session-specific guess.  Keyed by species name (matches makemon.js MONS).
-const BREATH_USERS = new Set([
-    'winter wolf cub', 'winter wolf', 'hell hound pup', 'hell hound',
-    'gray dragon', 'silver dragon', 'red dragon', 'white dragon',
-    'orange dragon', 'black dragon', 'blue dragon', 'green dragon',
-    'yellow dragon', 'gold dragon',
-]);
-const SPIT_USERS = new Set(['cobra']);
-const GAZE_USERS = new Set(['floating eye']);
-
-export function can_breathe(mdat) { return !!mdat && BREATH_USERS.has(mdat.name); }
-function has_spit(mdat) { return !!mdat && SPIT_USERS.has(mdat.name); }
-function has_gaze(mdat) { return !!mdat && GAZE_USERS.has(mdat.name); }
+// C ref: mondata.h:122 `#define can_breathe(ptr) attacktype(ptr, AT_BREA)`;
+// polyself.c:1039/1043 use attacktype(uptr, AT_SPIT) / (uptr, AT_GAZE)
+// directly.  These were name-keyed Sets, which answered FALSE for every
+// species not listed: the AT_BREA set was missing 5 of 19 (red naga, Nazgul,
+// iron golem, Chromatic Dragon, Ixoth), AT_SPIT 3 of 4 (black/guardian naga,
+// Juiblex), and the AT_GAZE set named floating eye, which has no AT_GAZE at
+// all (its mattk is a passive AT_NONE/AD_PLYS) while missing all 5 real
+// gazers.  monattk_data.js is the generated mattk[] from the recorder's
+// monsters.h, so go through attacktype() instead.
+export function can_breathe(mdat) { return attacktype(mdat, AT_BREA); }
+function has_spit(mdat) { return attacktype(mdat, AT_SPIT); }
+function has_gaze(mdat) { return attacktype(mdat, AT_GAZE); }
 function is_whirly(mdat) { return !!mdat && (mdat.mlet === 'v' || mdat.pmidx === PM_AIR_ELEMENTAL); }
 function is_floater(mdat) { return !!mdat && (mdat.mlet === 'e' || mdat.mlet === 'y'); }
 function noncorporeal(mdat) { return !!mdat && mdat.mlet === ' '; }

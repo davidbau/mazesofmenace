@@ -4,9 +4,9 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnz, rne } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up } from './dungeon.js';
+import { builds_up, In_hell } from './dungeon.js';
 import {
-    Is_rogue_level, GEHENNOM,
+    Is_rogue_level,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
     CORPSTAT_INIT, CORPSTAT_SPE_VAL,
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
@@ -805,7 +805,7 @@ const boxiprobs = [
 // The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
 // order at init_dungeons() time — so the flag has to be read off the dungeon.
 function Inhell() {
-    return !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
+    return In_hell(game.u?.uz);
 }
 
 // C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating

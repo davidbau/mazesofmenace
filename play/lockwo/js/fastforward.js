@@ -14,7 +14,7 @@ import { ROLE_PRIEST, randrole, roles } from "./role.js";
 import { fill_ordinary_room, mineralize } from "./mklev.js";
 import { fill_special_room, run_themeroom_postprocess } from "./sp_lev.js";
 import { OROOM, THEMEROOM, FILL_NORMAL } from "./const.js";
-import { moveloop_preamble_startup, u_init_inventory_attrs, newhp, newpw } from "./u_init.js";
+import { u_init_inventory_attrs, newhp, newpw } from "./u_init.js";
 
 function initrole_name() {
     if (Number.isInteger(game.initrole) && game.initrole >= 0)
@@ -161,7 +161,11 @@ export function fastforward_post_mklev() {
         || role === 'knight') {
         u_init_inventory_attrs();
         fastforward_legacy_role_intro();
-        moveloop_preamble_startup();
+        // C ref: allmain.c moveloop_preamble() — the rndencode/seer_turn roll
+        // is part of moveloop(), called separately AFTER newgame() returns (and
+        // after the moon-phase/Friday-13th messages), not here mid-newgame().
+        // Moved to allmain.js newgame_real(), right after
+        // moveloop_preamble_messages(), to match the C call order.
         return;
     }
 

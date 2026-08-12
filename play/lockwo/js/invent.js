@@ -735,8 +735,11 @@ function weight_cap() {
     }
     // Levitation / air level / strong steed -> MAX_CARR_CAP (never set here).
     if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
-    // !Flying: each wounded leg side reduces capacity (the hero never Flies).
-    const ewl = u?.EWounded_legs || 0;
+    // C ref: hack.c:4331 `if (!Flying)` — wounded legs only interfere with
+    // proper WALKING.  A polymorphed flyer sets u.uprops.Flying in set_uasmon(),
+    // and Flying is unset for every non-poly hero, so this is inert until a
+    // poly'd flyer with a bear-trap leg wound reaches weight_cap().
+    const ewl = (!u?.uprops?.Flying) ? (u?.EWounded_legs || 0) : 0;
     if (ewl & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
     if (ewl & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
     return Math.max(carrcap, 1);
@@ -2869,6 +2872,16 @@ function worn_slot_get(mask) {
 }
 
 function worn_slot_clear(mask) {
+    // C ref: do_wear.c Boots_off() case FUMBLE_BOOTS —
+    //   if (!oldprop && !(HFumbling & ~TIMEOUT)) HFumbling = EFumbling = 0;
+    // Removing the boots cancels the pending fumble timer outright, so the
+    // per-turn slip/trip stops on the same turn.
+    if ((mask & WA_ARMF) && game.uarmf?.otyp === FUMBLE_BOOTS && game.u) {
+        if (!(game.u.HFumblingOutside || 0)) {
+            game.u.HFumbling = 0;
+            game.u.EFumbling = 0;
+        }
+    }
     switch (mask) {
     case WA_ARM:  game.uarm = null; break;
     case WA_ARMC: game.uarmc = null; break;
@@ -2969,6 +2982,18 @@ async function Amulet_on(_obj) { /* extrinsic via owornmask */ }
 async function Boots_on() {
     const otmp = game.uarmf;
     if (!otmp) return;
+    if (otmp.otyp === FUMBLE_BOOTS) {
+        // C ref: do_wear.c:231-234 —
+        //   if (!oldprop && !(HFumbling & ~TIMEOUT))
+        //       incr_itimeout(&HFumbling, rnd(20));
+        // oldprop is the property's extrinsic from OTHER slots (none here) and
+        // HFumbling has no non-timeout bits, so the rnd(20) always fires.  The
+        // extrinsic itself comes from setworn() (worn.c), i.e. the worn mask.
+        const u = game.u;
+        u.EFumbling = WA_ARMF;
+        if (!(u.HFumblingOutside || 0))
+            u.HFumbling = (u.HFumbling || 0) + rnd(20);
+    }
     if (otmp.otyp === SPEED_BOOTS) {
         // C ref: do_wear.c Boots_on() — makeknown(uarmf->otyp) BEFORE You_feel,
         // so the discover_object Wisdom exercise (rn2(19)) fires first, then the

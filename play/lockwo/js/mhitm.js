@@ -25,14 +25,15 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    M_ATTK_AGR_DONE, W_SADDLE,
+    M_ATTK_AGR_DONE, W_SADDLE, STRAT_WAITMASK,
 } from './const.js';
 import { DEADMONSTER, mvitals_died } from './mon.js';
-import { newsym, map_invisible, unmap_object } from './display.js';
+import { newsym, map_invisible, unmap_object, m_at, canseemon_shared } from './display.js';
 import { cansee } from './vision.js';
 import { update_topl } from './display.js';
 import { make_corpse } from './uhitm.js';
-import { DOOR, POOL, DRAWBRIDGE_UP } from './const.js';
+import { DOOR, POOL, DRAWBRIDGE_UP, STRAT_WAITFORU } from './const.js';
+import { is_animal, is_neuter_flag, perceives_flag } from './monflags_data.js';
 
 // ── monster-combat message rendering ─────────────────────────────────────────
 // C ref: mhitm.c hitmm()/missmm() + mon.c monkilled().  These emit the "The X
@@ -87,11 +88,13 @@ function Monnam_mm(mtmp) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// C ref: mhitm.c gv.vis — the attack is visible when either combatant is both
-// in line of sight (cansee) and spottable.  The contest pets/hostiles are
-// ordinary visible animals, so canspotmon reduces to cansee here.
+// C ref: mhitm.c:358 gv.vis — `(cansee(magr) && canspotmon(magr)) ||
+// (cansee(mdef) && canspotmon(mdef))`.  The cansee() conjunct matters once the
+// hero has infravision: a warm monster on an unlit square is canspotmon but
+// NOT cansee, and its fight is silent.
 function mm_visible(magr, mdef) {
-    return (cansee(magr.mx, magr.my) || cansee(mdef.mx, mdef.my));
+    return (cansee(magr.mx, magr.my) && mm_can_see_mon(magr))
+        || (cansee(mdef.mx, mdef.my) && mm_can_see_mon(mdef));
 }
 
 // C ref: mhitm.c pre_mm_attack() — called at the top of hitmm()/missmm(), just
@@ -150,7 +153,43 @@ function hit_verb(aatyp) {
 // ── attack-type / damage-type enums (include/monattk.h) ──────────────────────
 const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
       AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_EXPL = 13, AT_WEAP = 254; // monattk.h (AT_EXPL was 11, which is AT_ENGL)
-const AD_PHYS = 0;
+const AD_PHYS = 0, AD_SITM = 21, AD_SEDU = 22, AD_SSEX = 35;
+
+// C ref: include/monsym.h S_NYMPH — could_seduce()'s "same gender still works"
+// exception and mhitm_ad_sedu()'s post-theft rloc() both key off this mlet.
+const S_NYMPH_MCLS = 14;
+
+// C ref: mondata.c gender(mtmp) — 2 for neuters, else mtmp->female.
+function gender_mm(mtmp) {
+    return is_neuter_flag(mtmp?.data) ? 2 : (mtmp?.female ? 1 : 0);
+}
+
+// C ref: mhitu.c could_seduce(magr, mdef, mattk) — the monster-vs-monster arm
+// (neither side is the hero).  1 = opposite gender ("seductively"), 2 = a nymph
+// whose gender matches ("engagingly"), 0 = not a seduction-capable attack.
+// SYSOPT_SEDUCE is on in this build (sys.c:100), so AD_SSEX is not downgraded.
+function could_seduce(magr, mdef, mattk) {
+    const pagr = magr?.data;
+    if (is_animal(pagr)) return 0;
+    const genagr = gender_mm(magr);
+    const gendef = gender_mm(mdef);
+    const adtyp = mattk ? mattk.adtyp
+        : (pagr && attacktype_ad(pagr, AD_SSEX)) ? AD_SSEX
+            : (pagr && attacktype_ad(pagr, AD_SEDU)) ? AD_SEDU : AD_PHYS;
+    if (magr.minvis && !perceives_flag(mdef?.data) && adtyp === AD_SEDU) return 0;
+    // C: `pagr->mlet != S_NYMPH && pagr != &mons[PM_AMOROUS_DEMON]` — the
+    // amorous demon's name is unique in monsters.h so the name compare is exact.
+    if ((pagr?.mcls !== S_NYMPH_MCLS && pagr?.name !== 'amorous demon')
+        || (adtyp !== AD_SEDU && adtyp !== AD_SSEX && adtyp !== AD_SITM))
+        return 0;
+    return (genagr === 1 - gendef) ? 1 : (pagr?.mcls === S_NYMPH_MCLS) ? 2 : 0;
+}
+
+// C ref: mondata.h dmgtype(ptr, dtyp) — any attack slot with that damage type.
+function attacktype_ad(ptr, adtyp) {
+    const cd = ptr?.name ? MON_COMBAT[ptr.name] : null;
+    return !!cd && cd.attacks.some((a) => a.adtyp === adtyp);
+}
 
 // weapon_check states (C ref: monst.h wpn_chk_flags).
 const NO_WEAPON_WANTED = 0, NEED_WEAPON = 1, NEED_HTH_WEAPON = 3;
@@ -195,12 +234,8 @@ async function mon_wield_item_mm(mon) {
     return 0;
 }
 
-// C ref: canseemon(mon) — visible (on a lit/in-sight square, not invisible).
-function mm_can_see_mon(mon) {
-    if (!mon) return false;
-    if (mon.minvis && !game.u?.see_invis) return false;
-    return !!cansee(mon.mx, mon.my);
-}
+// C ref: canseemon(mon) — (cansee || see_with_infrared) && mon_visible.
+const mm_can_see_mon = canseemon_shared;
 
 // ── combat data for the monsters the contest sessions put into mon-vs-mon
 // melee, ported from include/monsters.h.  Keyed by the monster's display name
@@ -277,6 +312,14 @@ const MON_COMBAT = {
     // as AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS);
     // the grid bug is G_NOCORPSE, so make_corpse() leaves no cadaver.
     'grid bug':   { ac: 9, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 3, attacks: [ATK(AT_BITE, AD_PHYS, 1, 1)] },
+    // C ref: monsters.h S_NYMPH — LVL(3,12,9,20,0), geno (G_GENO|2) so
+    // G_FREQ==2; MZ_HUMAN; TWO attacks, AT_CLAW/AD_SITM 0d0 then
+    // AT_CLAW/AD_SEDU 0d0.  Both slots roll their own rnd(20+i) to-hit and a
+    // d(0,0) in mdamagem, so the nymph must be present as an AGGRESSOR or those
+    // draws go missing (seed0014 step 456: rnd(20) then rnd(21)).
+    'wood nymph':     { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
+    'water nymph':    { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
+    'mountain nymph': { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
 };
 
 // Resolve the combat record for a monster instance.  Prefers data.name; the
@@ -340,10 +383,47 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
     let damage = d(mattk.damn | 0, mattk.damd | 0);   // mhitm.c:1025
     let hitflags = M_ATTK_MISS;
 
-    // mhitm_adtyping(): only AD_PHYS is modeled.  For a mon-vs-mon AD_PHYS hit
-    // with no weapon (mwep == 0), mhitm_ad_phys() consumes no RNG and leaves the
-    // base damage unchanged.  (Weapon / thick-skin / shade branches don't apply
-    // to the bite/claw/kick attackers in these sessions.)
+    // mhitm_adtyping(): AD_PHYS plus the nymph's theft pair.  For a mon-vs-mon
+    // AD_PHYS hit with no weapon (mwep == 0), mhitm_ad_phys() consumes no RNG
+    // and leaves the base damage unchanged.  (Weapon / thick-skin / shade
+    // branches don't apply to the bite/claw/kick attackers in these sessions.)
+    if (mattk.adtyp === AD_SITM || mattk.adtyp === AD_SEDU
+        || mattk.adtyp === AD_SSEX) {
+        // C ref: uhitm.c mhitm_ad_sedu() mhitm arm — steal the first minvent
+        // item (non-cursed if the thief is tame), then a nymph teleports away.
+        // Consumes no RNG itself; rloc() draws its own destination pairs.
+        // SCOPE: possibly_unwield()/mselftouch()/grow_up() after the theft are
+        // not replicated (no covered defender wields or is harmed by its own
+        // stolen gear).
+        if (!magr.mcan) {
+            const obj = (mdef.minvent || []).find(
+                (o) => !magr.mtame || !o.cursed);
+            if (obj) {
+                const { doname_invent } = await import('./invent.js');
+                // C's gv.vis is latched once in mattackm (mhitm.c:358) and is
+                // NOT recomputed after the nymph's rloc() — reading it live
+                // would test the post-teleport position.
+                const vis = mm_visible(magr, mdef);
+                const couldspot = mm_can_see_mon(magr);
+                const buf = Monnam(magr);
+                const mdefnam = the_monnam(mdef); /* x_monnam(ARTICLE_THE) */
+                const onam = doname_invent(obj);
+                mdef.minvent.splice(mdef.minvent.indexOf(obj), 1);
+                (magr.minvent = magr.minvent || []).push(obj);
+                if (vis && mm_can_see_mon(mdef))
+                    await emitMMmsg(`${buf} steals ${onam} from ${mdefnam}!`);
+                mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+                if (magr.data?.mcls === S_NYMPH_MCLS) {
+                    const { rloc, RLOC_NOMSG } = await import('./teleport.js');
+                    await rloc(magr, RLOC_NOMSG);
+                    if (vis && couldspot && !mm_can_see_mon(magr))
+                        await emitMMmsg(`${buf} suddenly disappears!`);
+                    hitflags = M_ATTK_AGR_DONE;
+                }
+            }
+        }
+        damage = 0;
+    }
 
     // mhitm_knockback() — rolls rn2(3) then rn2(6); returns false for these
     // mons (so it never mutates hitflags / short-circuits mdamagem here).
@@ -486,6 +566,52 @@ function passivemm(magr, mdef, mhitb, mdead, mwep, defCd) {
     return (mdead | mhit);
 }
 
+// ── mhitm.c mdisplacem ───────────────────────────────────────────────────────
+// C ref: mhitm.c mdisplacem(magr, mdef, quietly) — the aggressor (a displacer
+// beast, or a Rider) barges through the defender's square, swapping places
+// with it instead of attacking.  Returns the same M_ATTK_* codes as
+// mattackm(): a successful swap is M_ATTK_HIT, a failed one M_ATTK_MISS (the
+// square is NOT entered on a miss — the caller must not move the aggressor).
+export async function mdisplacem(magr, mdef, quietly) {
+    if (!magr || !mdef || magr === mdef) return M_ATTK_MISS;
+    const tx = mdef.mx, ty = mdef.my;
+    const fx = magr.mx, fy = magr.my;
+    if (m_at(fx, fy) !== magr || m_at(tx, ty) !== mdef) return M_ATTK_MISS;
+
+    // 1-in-7 failure chance (matches the pet-displacement chance in do_attack()).
+    if (!rn2(7)) return M_ATTK_MISS;
+
+    // Grid bugs cannot displace at an angle.
+    const PM_GRID_BUG_MM = 116; // makemon MONS-table index (matches mfndpos nodiag)
+    if (magr.data?.pmidx === PM_GRID_BUG_MM
+        && magr.mx !== mdef.mx && magr.my !== mdef.my)
+        return M_ATTK_MISS;
+
+    // touch_petrifies(pd)/poly_when_stoned(pa) are always FALSE in this port
+    // (invent.js stubs both — no cockatrice-touch modeled anywhere else
+    // either), so C's stoning-during-displacement branch never fires here.
+
+    // C: mhitm.c:212-215 — wake the displaced defender and drop its wait
+    // strategy; finish_meating() clears meating.
+    if (mdef.mundetected) mdef.mundetected = 0;
+    mdef.msleeping = 0;
+    mdef.mstrategy = (mdef.mstrategy || 0) & ~STRAT_WAITMASK;
+    if (mdef.meating) mdef.meating = 0;
+
+    const vis = mm_can_see_mon(magr) && mm_can_see_mon(mdef);
+
+    magr.mx = tx; magr.my = ty;
+    mdef.mx = fx; mdef.my = fy;
+
+    if (vis && !quietly) {
+        const hisher = magr.female ? 'her' : 'his';
+        await emitMMmsg(`${Monnam_mm(magr)} moves ${mon_nam_mm(mdef)} out of ${hisher} way!`);
+    }
+    newsym(fx, fy);
+    newsym(tx, ty);
+    return M_ATTK_HIT;
+}
+
 // ── mhitm.c mattackm ─────────────────────────────────────────────────────────
 // C ref: mhitm.c:292.  A monster attacks another monster.  Returns M_ATTK_*.
 export async function mattackm(magr, mdef) {
@@ -541,21 +667,35 @@ export async function mattackm(magr, mdef) {
                 // "X <verb> Y." (when visible), THEN calls mdamagem() — so the
                 // hit message precedes any death message.  Neither consumes
                 // RNG.  When not visible the hero may instead hear the scuffle
-                // (noises()).
+                // (noises()).  A seduction-capable attacker (nymph / amorous
+                // demon) gets the compat message instead of the hit verb.
                 pre_mm_attack(magr, mdef);
-                if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
-                else
+                const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
+                if (mm_visible(magr, mdef)) {
+                    if (compat)
+                        await emitMMmsg(`${Monnam_mm(magr)}`
+                            + ` ${mdef.mcansee ? 'smiles at' : 'talks to'}`
+                            + ` ${mon_nam_mm(mdef)}`
+                            + ` ${compat === 2 ? 'engagingly' : 'seductively'}.`);
+                    else
+                        await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
+                } else {
                     await noises(magr, mattk);
+                }
                 res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
             } else {
                 // C ref: mhitm.c missmm() -> pre_mm_attack() first, then
-                // "X misses Y." (when visible), else noises().  No RNG.
+                // "X misses Y." (when visible), else noises().  No RNG.  A
+                // seduction attack "pretends to be friendly to" instead.
                 pre_mm_attack(magr, mdef);
-                if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
-                else
+                if (mm_visible(magr, mdef)) {
+                    const seduces = !magr.mcan && could_seduce(magr, mdef, mattk);
+                    await emitMMmsg(`${Monnam_mm(magr)}`
+                        + ` ${seduces ? 'pretends to be friendly to' : 'misses'}`
+                        + ` ${mon_nam_mm(mdef)}.`);
+                } else {
                     await noises(magr, mattk);
+                }
             }
             break;
 

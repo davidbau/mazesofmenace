@@ -17,7 +17,7 @@ import {
     SDOOR, isok,
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
     IS_THRONE, IS_SINK, TREE, COLNO, ROWNO,
-    Is_waterlevel, Is_earthlevel,
+    Is_waterlevel, Is_earthlevel, Is_knox_level,
 } from './const.js';
 
 const X_START = 'x-strt';
@@ -214,6 +214,26 @@ export function In_hell(lev) {
 export function Is_valley(lev) {
     const vl = game.valley_level;
     return !!vl && !!lev && lev.dnum === vl.dnum && lev.dlevel === vl.dlevel;
+}
+
+// C ref: dungeon.c find_hell(lev) — the entrance to Gehennom, i.e. the first
+// level of the Valley's dungeon.  Returns a fresh d_level rather than filling
+// one in place (the C signature's only purpose).
+export function find_hell() {
+    const vl = game.valley_level;
+    return { dnum: vl?.dnum ?? 0, dlevel: 1 };
+}
+
+// C ref: dungeon.c dunlevs_in_dungeon(lev) — how many levels lev's dungeon has.
+export function dunlevs_in_dungeon(lev) {
+    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 0;
+}
+
+// C ref: dungeon.c single_level_branch(lev) — "this should be generalized
+// instead of assuming that Fort Ludios is the only single level branch"; the C
+// body is literally `return Is_knox(lev)`.
+export function single_level_branch(lev) {
+    return Is_knox_level(lev);
 }
 
 // C ref: dungeon.c Is_special(lev) — return the s_level for this position if it

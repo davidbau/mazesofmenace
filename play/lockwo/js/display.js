@@ -300,9 +300,23 @@ function monster_glyph(mon) {
 // infravisible(mon->data) && couldsee(mon->mx, mon->my)).  TRUE when a
 // warm-blooded monster sits in the hero's line of sight but on a square too
 // dark to physically see; the hero's infravision reveals it.
-function see_with_infrared(mon) {
+export function see_with_infrared(mon) {
     return !!mon && !Blind() && Infravision()
         && infravisible(mon.data) && couldsee(mon.mx, mon.my);
+}
+
+// C ref: display.h canseemon(mon) — (cansee(mx,my) || see_with_infrared(mon))
+// && mon_visible(mon).  The infravision arm is NOT optional: an infravision
+// race (dwarf/elf/gnome/orc) spots a warm monster on an unlit square in line of
+// sight, which is exactly where a dark-corridor arrival/attack message comes
+// from.  mon_visible: (!minvis || See_invisible) && !mundetected.
+export function canseemon_shared(mtmp) {
+    if (!mtmp) return false;
+    // No long worms in the covered sessions, so canseemon's worm_known() arm
+    // never applies.
+    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
+    if (mtmp.minvis && !game.u?.see_invis) return false;
+    return !mtmp.mundetected;
 }
 
 // ── ANSI color codes ──

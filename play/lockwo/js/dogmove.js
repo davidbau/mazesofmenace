@@ -15,11 +15,11 @@ import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
 import { obj_resists } from './zap.js';
-import { newsym, vobj_at, object_glyph } from './display.js';
+import { newsym, vobj_at, object_glyph, see_with_infrared } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam } from './uhitm.js';
 import { floor_object_name, doname_invent, sobj_at } from './invent.js';
-import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc } from './monmove.js';
+import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc, mon_allowflags } from './monmove.js';
 import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
 import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
@@ -960,12 +960,15 @@ export async function dog_move(mtmp, after) {
     const appr = dog_goal(mtmp, edog, after, udist, whappr, g);
     if (appr === -2) return MMOVE_NOTHING;
 
-    // mfndpos with pet allowflags.  ALLOW_M keeps monster-occupied adjacent
-    // squares in the candidate list so the pet can melee a hostile monster;
-    // ALLOW_TRAPS keeps harmful-trap squares (flagged in poss[i].info) so the pet
-    // can roll the "step onto it anyway" chance below (dogmove.c mon_allowflags()).
-    const ALLOW_M = 0x00080000;
-    const poss = mfndpos(mtmp, ALLOW_M | ALLOW_TRAPS_F);
+    // C ref: dogmove.c:1062-1063 — `allowflags = mon_allowflags(mtmp); cnt =
+    // mfndpos(mtmp, &mfp, allowflags);`.  A tame monster's bitmask (monmove.js
+    // mon_allowflags()) is ALLOW_M|ALLOW_TRAPS|ALLOW_SANCT|ALLOW_SSM plus any
+    // species-specific bits (wall-walk/dig/unicorn/undead/...) — ALLOW_M keeps
+    // monster-occupied adjacent squares in the candidate list so the pet can
+    // melee a hostile monster, and ALLOW_TRAPS keeps harmful-trap squares
+    // (flagged in poss[i].info) so the pet can roll the "step onto it anyway"
+    // chance below.
+    const poss = mfndpos(mtmp, mon_allowflags(mtmp));
     const cnt = poss.length;
 
     // Count uncursed-item squares (for the cursed-item avoidance roll).  C ref
@@ -1264,7 +1267,11 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
-    return !!cansee(mtmp.mx, mtmp.my);
+    // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
+    // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
+    // see a warm-blooded monster on an unlit square that is still in line of
+    // sight; omitting it silently suppressed those monsters' messages.
+    return !!cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp);
 }
 
 // C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY).  makemon carries no

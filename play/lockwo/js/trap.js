@@ -7,11 +7,13 @@ import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
 import { newsym, pline, m_at, update_topl } from './display.js';
 import { body_part, near_capacity, update_inventory, delobj, xname } from './invent.js';
+import { observe_object } from './o_init.js';
+import { find_ac } from './u_init.js';
 import { exercise } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
     RUST_TRAP, BEAR_TRAP, DART_TRAP, MAGIC_TRAP, PIT, SPIKED_PIT,
-    TT_BEARTRAP, A_DEX, A_MAX, FOOT, LEG, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
+    TT_BEARTRAP, A_DEX, A_STR, A_MAX, FOOT, LEG, HEAD, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
     EF_PAY, EF_DESTROY, EF_NONE,
@@ -24,7 +26,7 @@ import {
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
-    mkcorpstat,
+    mkcorpstat, ROCK,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
     POT_WATER,
 } from './mkobj.js';
@@ -35,6 +37,9 @@ import { In_hell as dungeon_In_hell } from './dungeon.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
 const DART = 24;
+
+// C ref: hacklib.c an(str).
+function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 
 // ── trap query / display helpers ─────────────────────────────────────────
 // C ref: trap.c t_at — is there a trap at <x,y>?
@@ -749,6 +754,11 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
         if (ef_flags & EF_PAY) costly_alteration(otmp, type);
         if (is_primary) otmp.oeroded = erosion + 1; else otmp.oeroded2 = erosion + 1;
         update_inventory();
+        // C ref: allmain.c moveloop_core() — find_ac() runs once per player
+        // input, not from erode_obj itself (see read.js destroy_arm()), so an
+        // eroded piece's AC penalty shows up starting with the NEXT screen;
+        // callers that don't already have their own find_ac() call (like
+        // destroy_arm's) are responsible for adding one after this returns.
         return ER_DAMAGED;
     } else if (ef_flags & EF_DESTROY) {
         otmp.in_use = 1;
@@ -813,6 +823,11 @@ async function trapeffect_rust_trap(trap, _trflags) {
             await water_damage(game.uarmu, 'shirt', true);
         break;
     }
+    // C ref: allmain.c moveloop_core() — find_ac() runs once per player input
+    // (see read.js destroy_arm()'s matching comment), so a rusted/corroded
+    // piece's AC penalty shows up starting with the NEXT screen, not eagerly
+    // from inside water_damage/erode_obj.
+    find_ac();
 }
 
 // C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the
@@ -1090,12 +1105,54 @@ async function trapeffect_magic_trap(trap, _trflags) {
     // steedintrap(trap, NULL): no steed -> Trap_Effect_Finished, no RNG.
 }
 
+// C ref: dungeon.c ceiling(x,y).  The vault/temple/shop variants need
+// in_rooms(), which is stubbed empty across this port (see mklev.js:254), and
+// the water/air/fire planes are unreachable — so every reachable call returns
+// the plain "ceiling" (same stub as muse.js:2239).  Message text only, no RNG.
+function ceiling(_x, _y) { return 'ceiling'; }
+
+// C ref: trap.c trapeffect_rocktrap(&youmonst, trap, trflags) — the hero
+// variant.  On a first trigger trap->once is 0, so the "nothing falls out"
+// escape short-circuits BEFORE its rn2(15) (C's && stops at trap->once).
+// RNG order: d(2,6) damage FIRST, then t_missile's mksobj (next_ident rnd(2)
+// + mksobj_init's GEM_CLASS rn1(6,6) quantity, which t_missile then overwrites
+// with 1), then exercise(A_STR, FALSE)'s rn2(2).  losehp() draws nothing.
+async function trapeffect_rocktrap(trap, _trflags) {
+    const u = game.u;
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline(`A trap door in the ${ceiling(u.ux, u.uy)} opens, but nothing falls out!`);
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    const dmg = d(2, 6);
+    trap.once = 1;
+    seetrap(trap); // C feeltrap(trap) == seetrap() for a sighted hero
+    const otmp = t_missile(ROCK, trap);
+    place_object(otmp, u.ux, u.uy);
+    otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+    await pline(`A trap door in the ${ceiling(u.ux, u.uy)} opens and ${an(xname(otmp))} falls on your ${body_part(HEAD)}!`);
+    // uarmh is null and passes_rocks(youmonst.data) is false for every role
+    // monster (all MZ_HUMAN, no M1_PASSES_WALLS), so C's helmet / "passes
+    // harmlessly through you" branches are unreachable and harmless stays FALSE.
+    if (!game.Blind) observe_object(otmp);
+    const { stackobj } = await import('./invent.js');
+    stackobj(otmp);
+    newsym(u.ux, u.uy);
+    // Maybe_Half_Phys is the identity for a hero without HALF_PHDAM.
+    losehp(dmg);
+    exercise(A_STR, false);
+}
+
 // C ref: trap.c trapeffect_selector() — dispatch on trap type.  Only the
 // effects exercised by the owned sessions are implemented; everything else is
 // a no-op stub (seetrap only) so we never crash and the trap is at least
 // revealed.  Add new trap effects here as sessions exercise them.
 async function trapeffect_selector(trap, trflags) {
     switch (trap.ttyp) {
+    case ROCKTRAP:
+        await trapeffect_rocktrap(trap, trflags);
+        break;
     case RUST_TRAP:
         await trapeffect_rust_trap(trap, trflags);
         break;

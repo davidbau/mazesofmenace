@@ -13,6 +13,7 @@ import { game } from './gstate.js';
 import { rn1, rnd } from './rng.js';
 import { A_WIS, A_CON } from './const.js';
 import { MAXULEV } from './const.js';
+import { races } from './roles.js';
 
 // ── role / race advancement data (C: role.c roles[]/races[]) ──
 // RoleAdvance = {infix, inrnd, lofix, lornd, hifix, hirnd}; xlev is the
@@ -68,11 +69,26 @@ const ROLE_ADVANCE = new Map([
                   enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 3 }, xlev: 12 }],
 ]);
 
-// Human race advance (C: role.c races[human]).  hp {2,0,0,2,1,0} en {1,0,2,0,2,0}.
-const RACE_ADVANCE_HUMAN = {
-    hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
-    enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 },
-};
+// C ref: role.c races[].hpadv / .enadv — the full {infix,inrnd,lofix,lornd,
+// hifix,hirnd} advance struct for all five player races.  newhp()/newpw() draw
+// rnd(lornd) on every level-up, so a race whose lornd differs from human's
+// (dwarf 3 vs 2 for HP, elf 1, gnome 1, orc 1) shifts the RNG stream — this
+// table used to be human-only with every other race silently answering "human".
+// Race keys are races[].mnum (0..4), a DIFFERENT numbering from the role PM_
+// constants above — hence the separate RC_ names.
+const RC_HUMAN = 0, RC_ELF = 1, RC_DWARF = 2, RC_GNOME = 3, RC_ORC = 4;
+const RACE_ADVANCE = new Map([
+    [RC_HUMAN, { hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
+                 enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } }],
+    [RC_ELF, { hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 1, hirnd: 0 },
+               enadv: { infix: 2, inrnd: 0, lofix: 3, lornd: 0, hifix: 3, hirnd: 0 } }],
+    [RC_DWARF, { hpadv: { infix: 4, inrnd: 0, lofix: 0, lornd: 3, hifix: 2, hirnd: 0 },
+                 enadv: { infix: 0, inrnd: 0, lofix: 0, lornd: 0, hifix: 0, hirnd: 0 } }],
+    [RC_GNOME, { hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+                 enadv: { infix: 2, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } }],
+    [RC_ORC, { hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+               enadv: { infix: 1, inrnd: 0, lofix: 1, lornd: 0, hifix: 1, hirnd: 0 } }],
+]);
 
 // Current role's advance data, keyed off the player-monster number wired into
 // game.urole.mnum at game start (allmain.js newgame_real / gameRoleMnum).
@@ -80,9 +96,17 @@ function urole_adv() {
     const mnum = game.urole?.mnum;
     return ROLE_ADVANCE.get(mnum) || ROLE_ADVANCE.get(PM_WIZARD);
 }
-// Only human is exercised by the recorded sessions.
+// C ref: gu.urace — the selected race's role.c entry.  game.initrace is the
+// races[] index (or its name); races[].mnum is the PM_HUMAN..PM_ORC key.
 function urace_adv() {
-    return RACE_ADVANCE_HUMAN;
+    let mnum;
+    if (Number.isInteger(game.initrace))
+        mnum = races[game.initrace]?.mnum ?? game.initrace;
+    else {
+        const nm = String(game.initrace || '').toLowerCase();
+        mnum = races.find((r) => r.name?.toLowerCase() === nm)?.mnum ?? RC_HUMAN;
+    }
+    return RACE_ADVANCE.get(mnum) || RACE_ADVANCE.get(RC_HUMAN);
 }
 
 function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
@@ -211,10 +235,15 @@ export function more_experienced(exper, rexp) {
 }
 
 // C ref: exper.c newexplevel(void) — gain a level when XP crosses threshold.
-export function newexplevel() {
+// C ref: exper.c pluslvl() emits its "Welcome ... to experience level N." with a
+// plain pline(), so the sink is NOT optional — leaving it off dropped the whole
+// message on every kill-driven level gain (and the --More-- boundary with it).
+export async function newexplevel() {
     const u = game.u;
-    if ((u.ulevel || 0) < MAXULEV && (u.uexp || 0) >= newuexp(u.ulevel || 0))
-        pluslvl(true);
+    if ((u.ulevel || 0) < MAXULEV && (u.uexp || 0) >= newuexp(u.ulevel || 0)) {
+        const { update_topl } = await import('./display.js');
+        await pluslvl(true, update_topl);
+    }
 }
 
 // ── rank tracking (C: botl.c xlev_to_rank / rank_of) ──

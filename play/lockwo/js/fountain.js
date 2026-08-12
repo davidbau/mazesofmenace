@@ -609,7 +609,7 @@ export async function drinksink() {
     case 8:
         await update_topl(`Yuk, this ${water} tastes awful.`);
         more_experienced(1, 0);
-        newexplevel();
+        await newexplevel();
         break;
     case 9:
         await update_topl('Gaggg... this tastes like sewage!  You vomit.');

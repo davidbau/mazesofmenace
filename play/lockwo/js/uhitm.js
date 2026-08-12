@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import { WEP_SDAM, WEP_LDAM } from './weapondmg_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee } from './vision.js';
-import { m_at, newsym, map_invisible } from './display.js';
+import { m_at, newsym, map_invisible, canseemon_shared } from './display.js';
 import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
          CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
          engulfing_u } from './const.js';
@@ -61,7 +61,7 @@ export function canspotmon(mtmp) {
     // Blind/telepathy not modelled in the starter state; a lit-room adjacent
     // pet is simply seen when its square is in view.
     if (game.u?.uswallow) return true;
-    return cansee(mtmp.mx, mtmp.my);
+    return canseemon_shared(mtmp);
 }
 
 export function is_safemon(mtmp) {
@@ -75,14 +75,35 @@ export function is_safemon(mtmp) {
               && !Confusion && !Hallucination && !Stunned);
 }
 
-// C ref: mon.c monflee() — make a monster flee.  For the swap-place path we
-// only need the bookkeeping side effects on the (tame) monster; no RNG here.
-export function monflee(mtmp, fleetime, _first, _fleemsg) {
-    if (!mtmp.mflee) {
-        if (fleetime && !mtmp.mfleetim)
-            mtmp.mfleetim = Math.min(127, fleetime);
+// C ref: monmove.c:461 monflee(mtmp, fleetime, first, fleemsg) — the
+// bookkeeping half.  Both callers of this copy (do_attack's pet-in-the-way
+// scare and muse.c's use_scare_monster) pass fleemsg == FALSE, so the message
+// ladder and the vrock gas cloud (which monmove.js's copy has) are not needed;
+// everything else must match, in particular:
+//   - first == FALSE means the body runs even when the monster is ALREADY
+//     fleeing, accumulating onto the existing mfleetim;
+//   - a resulting fleetime of exactly 1 is bumped to 2;
+//   - mon_track_clear() runs UNCONDITIONALLY at the end.
+// The last one is RNG-visible: the breadcrumb ring gates m_move's
+// `rn2(4 * (cnt - j))` and dog_move's `rn2(MTSZ * (k - j))` backtrack rolls, so
+// failing to clear it sends the fleeing pet to a different square (seed0014's
+// dog ended 3 squares from the hero instead of adjacent, which flipped
+// dog_goal's appr from 0 to 1 and skipped its whole inventory obj_resists scan).
+export function monflee(mtmp, fleetime, first, _fleemsg) {
+    if (DEADMONSTER(mtmp)) return;
+    // (mtmp == u.ustuck -> release_hero(): neither caller can be the engulfer.)
+    if (!first || !mtmp.mflee) {
+        if (!fleetime) {
+            mtmp.mfleetim = 0;          /* don't lose an untimed scare */
+        } else if (!mtmp.mflee || mtmp.mfleetim) {
+            fleetime += (mtmp.mfleetim || 0);
+            if (fleetime === 1) fleetime++;
+            mtmp.mfleetim = Math.min(fleetime, 127);
+        }
         mtmp.mflee = 1;
     }
+    /* ignore recently-stepped spaces when made to flee */
+    mtmp.mtrack = [];
 }
 
 // ── do_attack ──
@@ -305,7 +326,9 @@ async function wakeupAttack(mtmp, viaAttack) {
     const wasSleeping = !!mtmp.msleeping;
     if (wasSleeping && canseemon(mtmp)) {
         const { pline } = await import('./display.js');
-        await pline(`${Monnam(mtmp)} wakes up${viaAttack ? '!' : '.'}`);
+        // mon.c:4325-4328 wake_msg() — flesh golem alone gets " It's alive!".
+        const alive = mtmp.data?.name === 'flesh golem' ? " It's alive!" : '';
+        await pline(`${Monnam(mtmp)} wakes up${viaAttack ? '!' : '.'}${alive}`);
     }
     mtmp.msleeping = 0;
     if (mtmp.m_ap_type) seemimicLocal(mtmp);
@@ -320,8 +343,12 @@ async function wakeupAttack(mtmp, viaAttack) {
 async function stumble_onto_mimic(mtmp) {
     const { pline } = await import('./display.js');
     const msg = that_is_a_mimic_message(mtmp);
-    seemimicLocal(mtmp);
+    // uhitm.c:6269-6275 — pline() FIRST, `if (reveal_it) seemimic(mtmp)` after.
+    // seemimic -> newsym repaints the cell immediately here, so revealing
+    // before the message shows the true glyph on any --More-- the message
+    // raises, where C still shows the disguise.
     await pline(msg);
+    seemimicLocal(mtmp);
     // dmgtype(AD_STCK) + set_ustuck (a large/giant mimic "grabs" the hero on
     // reveal): not modeled — no large/giant mimic reaches this path in the
     // covered corpus (their AD_STCK claw attack is otherwise ported in
@@ -610,12 +637,20 @@ function weapon_hit_bonus(weapon) {
     return bonus;
 }
 
-// C ref: weapon.c hitval(otmp, mon) — weapon-specific to-hit (spe + oc_hitbon;
-// the vs-monster bonuses don't apply to the starter weapon/victim matchups).
+// C ref: weapon.c:149 hitval(otmp, mon) — `if (Is_weapon) tmp += otmp->spe;`
+// then the unconditional `tmp += objects[otyp].oc_hitbon`.  The vs-species
+// bonuses (blessed-vs-undead, spear/kebabable, trident-vs-swimmer,
+// pick-vs-xorn, artifact spec_abon) don't apply to the starter matchups.
 function hitval(weapon, mtmp) {
     if (!weapon) return 0;
     const w = WEAP[weapon.otyp];
-    return (weapon.spe || 0) + (w ? w.hb : 0);
+    // C: Is_weapon = (oclass == WEAPON_CLASS || is_weptool(otmp)) — the
+    // enchantment only counts for a weapon/weptool (a wielded pick-axe is a
+    // weptool, so its spe DOES count), not e.g. a wielded corpse.  Objects
+    // built without an oclass field are treated as weapons, as before.
+    const isWeapon = weapon.oclass === undefined
+        || weapon.oclass === WEAPON_CLASS || is_weptool(weapon);
+    return (isWeapon ? (weapon.spe || 0) : 0) + (w ? w.hb : 0);
 }
 
 // C ref: worn.c find_mac(mtmp) — base AC (no worn armour on these monsters).
@@ -965,7 +1000,7 @@ export async function killed(mon, opts) {
     // Without this the status line's Xp:lvl/exp field stayed at the pre-kill
     // value, so every post-kill screen mismatched on that one stat cell.
     more_experienced(experience(mon), 0);
-    newexplevel();
+    await newexplevel();
 
     // C ref: mon.c xkilled() "adjust alignment points" — runs right after the
     // experience award, consumes no RNG.  The quest-leader / MS_NEMESIS /

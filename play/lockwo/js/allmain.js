@@ -15,13 +15,13 @@ import { docrt, cls, bot, flush_screen, pline, topl_more, update_topl } from './
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { phase_of_the_moon, friday_13th, NEW_MOON, FULL_MOON } from './calendar.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_step_count, fastforward_fill_mineralize } from './fastforward.js';
-import { movemon, mcalcdistress, mcalcmove } from './mon.js';
+import { movemon, mcalcdistress, mcalcmove, base_mmove } from './mon.js';
 import { run_regions } from './region.js';
 import { makemon_rnd_spawn } from './makemon.js';
 import { SPEED_BOOTS } from './mkobj.js';
 import { dosounds } from './sounds.js';
 import { age_spells } from './spell.js';
-import { find_ac, u_init_skills_discoveries } from './u_init.js';
+import { find_ac, u_init_skills_discoveries, moveloop_preamble_startup } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { Unaware,
@@ -321,6 +321,12 @@ async function newgame_real() {
     // after welcome(); because the welcome line is still on the top line,
     // printing it forces a "--More--" on the welcome message first.
     const preambleShownMore = await moveloop_preamble_messages();
+
+    // C ref: allmain.c moveloop_preamble() — the new-game-only rndencode/
+    // seer_turn rolls fire right after the moon-phase/Friday-13th messages
+    // (still inside moveloop_preamble(), before maybe_do_tutorial()/
+    // moveloop_core()'s first real command read).
+    moveloop_preamble_startup();
 
     // C ref: allmain.c moveloop() -> maybe_do_tutorial().  When the tutorial
     // wasn't disabled in the rc, a menu asking "Do you want a tutorial?" is
@@ -712,7 +718,11 @@ function u_calc_moveamt(wtcap) {
         // reallocation-loop roll (C ref allmain.c:121 mcalcmove(u.usteed,TRUE)).
         moveamt = mcalcmove(u.usteed, true, true); // rn2(NORMAL_SPEED) rounding roll
     } else {
-        moveamt = NORMAL_SPEED; // youmonst.data->mmove for a human hero
+        // C ref: allmain.c:123 — moveamt = gy.youmonst.data->mmove.  Every
+        // playable role's mons[] entry has mmove == NORMAL_SPEED, so this is
+        // only observable while polymorphed (red dragon 9, gnome 6): a slower
+        // form yields extra monster rounds per hero action.
+        moveamt = u.Upolyd ? base_mmove({ data: u.data }) : NORMAL_SPEED;
         if (youHaveVeryFast()) {
             if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
         } else if (youHaveFast()) {
@@ -1014,6 +1024,20 @@ export function gethungry() {
 function regen_hp() {
     const u = game.u;
     if (!u) return;
+    // C ref: allmain.c:631 — the Upolyd half heals u.mh and NEVER rolls
+    // rn2(100); only the !Upolyd else-branch does.  Without this split a
+    // polymorphed hero (whose u.uhp is still the pre-poly injured value)
+    // keeps drawing the human rn2(100) every turn, desyncing the stream.
+    if (u.Upolyd) {
+        // S_EEL-out-of-water damage (rn2(u.mh) > rn2(8)) needs a poly into an
+        // eel, which no covered session reaches; u.mh < 1 -> rehumanize() is
+        // handled at the damage site.  Both are RNG-inert here.
+        if (u.mh < u.mhmax) {
+            // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED.
+            if (u_can_regen() || !((game.moves || 0) % 20)) u.mh += 1;
+        }
+        return;
+    }
     if (!(u.uhp < u.uhpmax)) return;            // C: guarded call (allmain.c:290)
     // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED here.
     const con = u.acurr?.a?.[A_CON] ?? 12;

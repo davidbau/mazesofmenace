@@ -23,17 +23,19 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, rnl } from './rng.js';
-import { print_dungeon, builds_up, In_hell, Is_valley } from './dungeon.js';
+import { print_dungeon, builds_up, In_hell, Is_valley,
+         find_hell, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
-         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_endgame,
-         MAGIC_PORTAL } from './const.js';
+         ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_mines, In_endgame,
+         MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap } from './trap.js';
-import { near_capacity } from './invent.js';
+import { near_capacity, sobj_at } from './invent.js';
+import { BOULDER } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -209,7 +211,24 @@ function goodpos_mon(x, y) {
     // lived here: the threshold was `typ >= 13` with a comment claiming 13 was
     // DOOR (it is TREE; DOOR is 23), and the closed-door rejection was missing
     // entirely.  A pet arriving on a new level was landing in a closed doorway.
-    return accessible_mon(x, y);
+    //
+    // The three tests below sit AHEAD of accessible() in C, and their order is
+    // observable through enexto(): each one C applies and we don't lets a pet
+    // take an earlier ring square than C does, forking placement while the RNG
+    // stream stays identical.
+    // C ref: dbridge.c is_pool() — POOL/MOAT/WATER (is_moat()'s drawbridge
+    // indirection is unmodelled).  C returns is_swimmer(mdat) || m_in_air(mtmp)
+    // here rather than falling through; every pet a contest hero can bring
+    // (little dog, kitten, pony) is neither, so this is a flat rejection.
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ === POOL || typ === MOAT || typ === WATER) return false;
+    // C ref: dbridge.c is_lava() — LAVAPOOL/LAVAWALL.  Same shape: C returns
+    // m_in_air(mtmp) || likes_lava(mdat), both false for those pets.
+    if (typ === LAVAPOOL || typ === LAVAWALL) return false;
+    if (!accessible_mon(x, y)) return false;
+    // C ref: teleport.c goodpos() — `sobj_at(BOULDER, x, y) && !throws_rocks`.
+    if (sobj_at(BOULDER, x, y)) return false;
+    return true;
 }
 
 // C ref: teleport.c collect_coords — candidate spots in expanding rings,
@@ -449,8 +468,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: do.c:1780 — an over-loaded (near_capacity() > UNENCUMBERED),
     // Punished or Fumbling hero FALLS down instead of descending: the message is
     // printed unconditionally (unlike the flags.verbose-gated ordinary one) and
-    // costs rnd(3) hp.  Only the message can be hoisted to this old-level frame;
-    // the losehp roll stays at C's position, in the at_stairs arrival arm below.
+    // costs rnd(3) hp.  do.c:1777 takes the Flying arm FIRST, so a flying hero
+    // never falls.  Only the message can be hoisted to this old-level frame; the
+    // losehp roll stays at C's position, in the at_stairs arrival arm below.
     const fell_downstairs = at_stairs && !up
         && !Flying_do() && (near_capacity() > 0 /*UNENCUMBERED*/ || Fumbling_do());
     if (at_stairs && (fell_downstairs || game.flags?.verbose !== false)) {
@@ -513,6 +533,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
+
+    // C ref: do.c goto_level() — `(void) memset(&svu.updest, 0, ...)` and the
+    // same for svd.dndest: the arrival regions belong to the level being left,
+    // so they are cleared before the destination is built (a special level's
+    // des.teleport_region() refills them from fixup_special).
+    g.updest = null;
+    g.dndest = null;
 
     // C ref: do.c goto_level() — track the deepest (or, in a builds-up branch,
     // shallowest) dlevel reached in this dungeon so far.  dng_bottom() (trap.c,
@@ -705,7 +732,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // feeds u.urexp for the end-of-game score (rip.c / end.c).
     if (firstVisit && game.urole?.mnum === PM_TOURIST) {
         more_experienced(level_difficulty(), 0);
-        newexplevel();
+        await newexplevel();
     }
 
     const annotation = game._level_annotations?.[ledger];
@@ -941,6 +968,13 @@ export async function wiz_level_tele(readLevel) {
     let newlev = parseInt(m[1], 10);
     if (newlev === 0) return 0; // "Go to Nowhere" path not modelled
 
+    // C ref: teleport.c level_tele() — "if in Knox and the requested level > 0,
+    // stay put".  force_dest is only set by the wizard "?" menu, handled above.
+    if (single_level_branch(u.uz) && newlev > 0) {
+        await pline('You shudder for a moment.');
+        return 0;
+    }
+
     // Negative levels (heaven/clouds) are not modelled.
     if (newlev < 0) return 0;
 
@@ -955,9 +989,13 @@ export async function wiz_level_tele(readLevel) {
     if (In_quest(u.uz) && newlev > 0)
         newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
 
-    newlevel = level_tele_destination(newlev);
+    newlevel = await level_tele_destination(newlev);
+    if (!newlevel) return 0; // C returned after "You can't get there from ...".
+    // C ref: do.c deferred_goto() — `if (!on_level(&u.uz, &gu.utolev))`.  Asking
+    // for the level the hero is already on is a complete no-op: goto_level() is
+    // never entered, so its deferred arrival message is never delivered either.
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
-        return 0; // can't get there from here
+        return 0;
 
     await goto_level(newlevel, false, false, false);
 
@@ -1061,12 +1099,21 @@ export async function level_tele(readLevel) {
                 break;
         }
         if (cancelled) return;
-        // C ref: teleport.c level_tele() — the same "Home N" -> logical-depth
-        // conversion as wiz_level_tele() (see get_level() below), applied only
-        // to a genuine typed destination (not the '*'/confused-mispronounce
-        // random paths, which C reaches via a goto that skips this).
-        if (!gotoRandom && newlev > 0 && In_quest(u.uz))
-            newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
+        // C ref: teleport.c level_tele() — these two adjustments sit at the end
+        // of the controlled branch, so the "*"/confused `goto random_levtport`
+        // (which jumps into the involuntary branch) skips them.
+        if (!gotoRandom) {
+            // "if in Knox and the requested level > 0, stay put."
+            if (single_level_branch(u.uz) && newlev > 0) {
+                await pline('You shudder for a moment.');
+                return;
+            }
+            // The same "Home N" -> logical-depth conversion as wiz_level_tele():
+            // the Quest status line shows "Home N" rather than the logical
+            // depth, so a typed destination is relative to that.
+            if (In_quest(u.uz) && newlev > 0)
+                newlev = newlev + (game.dungeons?.[u.uz.dnum]?.depth_start ?? 1) - 1;
+        }
     } else {
         // Involuntary level teleport (no control): straight to a random level.
         gotoRandom = true;
@@ -1086,12 +1133,8 @@ export async function level_tele(readLevel) {
     // modelled; the covered scroll teleport always yields an in-dungeon level.
     if (newlev <= 0) return; // faithful no-op guard (unmodelled destinations)
 
-    const newlevel = level_tele_destination(newlev);
-    if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel
-        && newlev !== cur_depth) {
-        await pline("You can't get there from here.");
-        return;
-    }
+    const newlevel = await level_tele_destination(newlev);
+    if (!newlevel) return; // C returned after "You can't get there from ...".
 
     // C ref: read.c seffect_teleportation — a completed level teleport marks the
     // scroll type known (gk.known); doread() then discovers it via makeknown().
@@ -1182,27 +1225,60 @@ function get_level(levnum) {
     return { dnum: dgn, dlevel: levnum };
 }
 
-// C ref: dungeon.c find_hell(lev) — Gehennom's entrance, i.e. the Valley of
-// the Dead.  No RNG.
-function find_hell() {
-    const vl = game.valley_level;
-    return { dnum: vl?.dnum ?? 0, dlevel: 1 };
-}
-
-// C ref: teleport.c level_tele()'s destination chain — the `else if
-// (u.uz.dnum == medusa_level.dnum && newlev >= depth_start + dunlevs_in_dungeon)
-// find_hell()` arm, then the generic get_level() translation.  Asking for a
-// level at or past the bottom of the Dungeons of Doom drops the hero into the
-// Valley of the Dead rather than clamping to the Castle: you cannot skip the
-// Valley on the way into Gehennom.  No RNG.
-function level_tele_destination(newlev) {
+// C ref: teleport.c level_tele()'s destination chain — the find_hell() arm and
+// the generic `else` arm (Gehennom pre-invocation clamp, quest clamp,
+// get_level(), refusal), shared by the ^V wizard command and the scroll path.
+// Returns null where C returns without scheduling a goto.  No RNG.
+//
+// The `escape_by_flying` (negative depth) and `force_dest` (wizard "?" menu)
+// arms of C's if-chain are handled by the callers; this is the pair of arms a
+// plain positive depth reaches.
+async function level_tele_destination(newlev) {
     const u = game.u;
     const dng = game.dungeons?.[u.uz.dnum];
     const medusa_dnum = game.medusa_level?.dnum;
+    // C: `u.uz.dnum == medusa_level.dnum && newlev >= depth_start
+    //     + dunlevs_in_dungeon(&u.uz)` -> find_hell().  Asking, from the
+    // Dungeons of Doom, for a level at or past the bottom (the Castle) drops the
+    // hero into the Valley of the Dead rather than clamping: you cannot skip the
+    // Valley on the way into Gehennom.
     if (medusa_dnum != null && u.uz.dnum === medusa_dnum && dng
         && newlev >= (dng.depth_start ?? 1) + (dng.num_dunlevs ?? 0))
         return find_hell();
-    return get_level(newlev);
+
+    // C: the deepest reachable level of the branch the hero is currently in —
+    // used both for the pre-invocation Gehennom clamp and to choose between
+    // "from here" and "from anywhere" in the refusal message.
+    const qbranch = In_quest(u.uz) ? game.qstart_level
+                  : In_mines(u.uz) ? game.mineend_level
+                                   : game.sanctum_level;
+    // Infinity when that branch's dungeon isn't in the ledger yet: both uses
+    // then fall through to the same answer C gives with a fully-built dungeon.
+    const deepest = (qbranch && game.dungeons?.[qbranch.dnum])
+        ? game.dungeons[qbranch.dnum].depth_start
+          + dunlevs_in_dungeon(qbranch) - 1
+        : Infinity;
+
+    // C: `if (!wizard && Inhell && !u.uevent.invoked && newlev >= deepest)` —
+    // before the invocation, teleporting into the last level of Gehennom is
+    // forbidden; wizard mode is exempt.
+    if (!game.flags?.debug && In_hell(u.uz) && !u.uevent?.invoked
+        && newlev >= deepest) {
+        newlev = deepest - 1;
+        await pline('Sorry...');
+    }
+    // C: no teleporting out of the quest dungeon.
+    if (In_quest(u.uz) && game.qstart_level
+        && newlev < depth_of_level(game.qstart_level))
+        newlev = depth_of_level(game.qstart_level);
+
+    const newlevel = get_level(newlev);
+    if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel
+        && newlev !== depth_of_level(u.uz)) {
+        await pline(`You can't get there from ${newlev > deepest ? 'anywhere' : 'here'}.`);
+        return null;
+    }
+    return newlevel;
 }
 
 // C ref: dungeon.c lev_by_name — resolve a level *name* ("mines end", branch

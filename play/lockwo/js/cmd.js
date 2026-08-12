@@ -16,7 +16,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
          renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
-import { WEAPON_CLASS, objects as OBJECTS } from './mkobj.js';
+import { WEAPON_CLASS, objects as OBJECTS, KICKING_BOOTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
 import { dodrink } from './potion.js';
@@ -991,13 +991,30 @@ async function dosearch() {
     return true;
 }
 
+// C ref: dokick.c martial() == (martial_bonus() || is_bigfoot(youmonst)
+//   || (uarmf && uarmf->otyp == KICKING_BOOTS)), where
+//   martial_bonus() == (Role_if(PM_SAMURAI) || Role_if(PM_MONK)).
+// A martial hero kicks "expertly" — the kick_dumb / kick_door martial checks
+// short-circuit before rolling, so the RNG stream must reflect this for the
+// monk and samurai sessions (the seed0200-monk step-27 divergence: kick_dumb's
+// rn2(3) fired in JS but C skipped it via martial()).  We never poly into a
+// sasquatch, so is_bigfoot() stays false (no RNG either way).
+// mnum is roles[].mnum, the PM_ number Role_if() compares against (role.js).
+const PM_MONK_CMD = 5, PM_SAMURAI_CMD = 9;
+function martial() {
+    const mnum = game.urole?.mnum;
+    if (mnum === PM_MONK_CMD || mnum === PM_SAMURAI_CMD) return true;
+    const uarmf = game.uarmf;
+    if (uarmf && uarmf.otyp === KICKING_BOOTS) return true;
+    return false;
+}
+
 // C ref: dokick.c kick_dumb(x,y) — kicking empty space (or an indestructible
 // feature).  exercise(A_DEX, FALSE) always fires (rn2(2) inside exercise); the
-// "strain a muscle" branch needs ACURR(A_DEX) < 16 and not martial and rn2(3)==0.
+// "strain a muscle" branch needs not martial, ACURR(A_DEX) < 16, and rn2(3)==0.
 async function kick_dumb(_x, _y) {
     exercise(A_DEX, false);
-    // martial() is false for the starter roles exercised here.
-    if (ACURR(A_DEX) >= 16 || rn2(3)) {
+    if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) {
         await pline('You kick at empty space.');
     } else {
         await pline('Dumb move!  You strain a muscle.');
@@ -1039,8 +1056,10 @@ async function kick_door(loc, x, y, avrg_attrib) {
     }
     // (Levitation kick_ouch branch not reachable for the starter hero.)
     exercise(A_DEX, true); // -> rn2(19)
-    // doorbuster (Upolyd giant) is false; martial() false for these roles.
-    if (rnl(35) < avrg_attrib) {
+    // C ref: dokick.c — `rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))`.
+    // doorbuster (Upolyd giant) is false; a martial hero (monk/samurai) gets a
+    // +ACURR(A_DEX) bonus to the break threshold, so include it faithfully.
+    if (rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))) {
         // break the door (not in a shop; no D_TRAPPED on this door).
         if (dm & D_TRAPPED) {
             await pline('You kick the door.');

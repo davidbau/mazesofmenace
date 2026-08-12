@@ -74,6 +74,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     A_LAWFUL, Align2amask,
     LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_UPSTAIR, LR_DOWNSTAIR,
+    LR_PORTAL, LR_BRANCH, LA_UP, LA_DOWN,
     In_endgame, BURN,
     DUST, MARK, HEADSTONE,
     TAINT_AGE,
@@ -621,7 +622,7 @@ async function makelevel() {
     // Place dungeon branch
     if (branchp) {
         const prevstairs = g.stairs; /* test for place_branch() success */
-        await place_branch(branchp);
+        await place_branch(branchp, 0, 0);
         // C ref: mklev.c:1382-1387 — for main dungeon level 1, the up stairs
         // where the hero starts are branch stairs; treat them as if the hero
         // had just come down them by marking them traversed.  This makes
@@ -1715,7 +1716,16 @@ async function mkswamp() {
                     if (!eelct || !rn2(4)) {
                         const pm = rn2(5) ? PM_GIANT_EEL
                             : rn2(2) ? PM_PIRANHA : PM_ELECTRIC_EEL;
-                        await makemon(monster_by_pmidx(pm), sx, sy, 0);
+                        const mtmp = await makemon(monster_by_pmidx(pm), sx, sy, 0);
+                        // C ref: makemon.c:1322 `case S_EEL: if (gi.in_mklev)
+                        // hideunder(mtmp);` -> mon.c hideunder() S_EEL arm:
+                        // undetected = is_pool(x,y) && !Is_waterlevel && (!Underwater
+                        // || !couldsee).  All three hold here (the cell was set POOL
+                        // one line up, mklev is never the water level, and the hero
+                        // isn't underwater during generation), so the eel always
+                        // hides.  No RNG.  makemon.js has no S_EEL arm; doing it
+                        // here keeps every other in_mklev eel path untouched.
+                        if (mtmp) mtmp.mundetected = 1;
                         eelct++;
                     }
                 } else if (!rn2(4)) {
@@ -2754,10 +2764,10 @@ function mk_object(oclass, specificId) {
 // is female) supplies the gender directly; a base/neutral name yields 'neutral'.
 const MK_MALE_NAMES = new Set([
     'gnome lord', 'gnome leader', 'gnome king', 'gnome ruler',
-    'dwarf lord', 'dwarf leader', 'dwarf king', 'dwarf ruler',
+    'dwarf lord', 'dwarf leader', 'dwarf king', 'dwarf ruler', 'caveman',
 ]);
 const MK_FEMALE_NAMES = new Set([
-    'gnome lady', 'gnome queen', 'dwarf lady', 'dwarf queen',
+    'gnome lady', 'gnome queen', 'dwarf lady', 'dwarf queen', 'cavewoman',
 ]);
 function mk_name_gender(name) {
     if (MK_MALE_NAMES.has(name)) return 'male';
@@ -2769,6 +2779,10 @@ function mk_name_gender(name) {
 // "gnome ruler"); the lua uses gendered aliases ("gnome lord", "gnome king").
 // Resolve a gendered name to the canonical species name for lookup.
 const MK_NAME_ALIAS = {
+    // C ref: mons[].pmnames[] — 'caveman'/'cavewoman' are the male/female
+    // display names of the species whose neutral name is 'cave dweller', and
+    // name_to_mon() matches any of the three.
+    caveman: 'cave dweller', cavewoman: 'cave dweller',
     'gnome lord': 'gnome leader', 'gnome lady': 'gnome leader',
     'gnome king': 'gnome ruler', 'gnome queen': 'gnome ruler',
     'dwarf lord': 'dwarf leader', 'dwarf lady': 'dwarf leader',
@@ -4136,7 +4150,7 @@ async function makemaz_castle() {
     // fixup_special(): walk the registered lregions, then (no LR_BRANCH among
     // them) place the dungeon branch.
     castle_place_lregions();
-    castle_place_branch();
+    await castle_place_branch();
     // Is_stronghold -> level.flags.graveyard = 1.  No RNG.
     if (g.level?.flags) g.level.flags.graveyard = true;
 }
@@ -4333,14 +4347,14 @@ function castle_bad_location(x, y, nlx, nly, nhx, nhy) {
 // C ref: mkmaze.c fixup_special() tail — no LR_BRANCH lregion was registered,
 // so place_lregion(0,...,LR_BRANCH) runs, and because nroom > 0 it delegates
 // straight to place_branch() -> find_branch_room().
-function castle_place_branch() {
+async function castle_place_branch() {
     const branchp = is_branchlev();
     if (!branchp) return;
     const croom = castle_find_branch_room();
     if (!croom) return;
     const m = { x: 0, y: 0 };
     if (!somexyspace(croom, m)) return;
-    mk_place_branch_at(branchp, m.x, m.y);
+    await place_branch(branchp, m.x, m.y);
 }
 
 // C ref: mklev.c generate_stairs_find_room() — three relaxation phases over the
@@ -4529,68 +4543,58 @@ function mk_bad_branch_location(x, y) {
     return !((loc.typ === CORR && is_maze) || loc.typ === ROOM || loc.typ === AIR);
 }
 
-// C ref: mkmaze.c place_lregions() — place the registered "branch" levregion
-// on a quest home level.  game._quest_branch holds the (already flipped) 1-cell
-// region; place_lregion's probabilistic loop therefore draws rn1(1,x)=rn2(1)+x
-// and rn1(1,y)=rn2(1)+y, then put_lregion_here(LR_BRANCH) -> place_branch.
+// C ref: mkmaze.c place_lregions() — place the levregion a special level
+// registered with des.levregion({region=..., type=...}).  game._quest_lregion
+// holds the (already flipped) region and its LR_* rtype; place_lregion's
+// probabilistic loop draws rn1((hx-lx)+1,lx) for x and rn1((hy-ly)+1,ly) for y
+// (so exactly rn2(1)+x / rn2(1)+y for the 1-cell regions the quest home levels
+// use), then hands the accepted spot to put_lregion_here().
 async function quest_place_branch() {
-    const br = game._quest_branch;
-    if (!br) return;
-    const branchp = is_branchlev();
-    if (!branchp) return;
-    const lx = br.x1, ly = br.y1, hx = br.x2, hy = br.y2;
+    const reg = game._quest_lregion;
+    if (!reg) return;
+    const lx = reg.x1, ly = reg.y1, hx = reg.x2, hy = reg.y2;
+    const rtype = reg.rtype ?? LR_BRANCH;
+    const oneshot = (lx === hx && ly === hy);
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        // put_lregion_here(LR_BRANCH): on a maze level bad_location accepts
-        // ROOM (and CORR); the branch cell (the cleared portal spot) is ROOM.
-        const loc = game.level?.at(x, y);
-        if (loc && !occupied(x, y)
-            && (loc.typ === ROOM || (loc.typ === CORR && game.level?.flags?.is_maze_lev))) {
-            await mk_place_branch_at(branchp, x, y);
-            return;
-        }
+        if (await quest_put_lregion_here(x, y, rtype, oneshot)) return;
     }
     for (let x = lx; x <= hx; x++)
-        for (let y = ly; y <= hy; y++) {
-            const loc = game.level?.at(x, y);
-            if (loc && !occupied(x, y) && loc.typ === ROOM) {
-                await mk_place_branch_at(branchp, x, y);
-                return;
-            }
-        }
+        for (let y = ly; y <= hy; y++)
+            if (await quest_put_lregion_here(x, y, rtype, true)) return;
+}
+
+// C ref: mkmaze.c put_lregion_here() — the two rtypes a des.levregion{} on a
+// quest home level can carry.  LR_*TELE goes through place_lregion() above and
+// LR_*STAIR through castle_place_stair_lregion(), so neither reaches here; C's
+// `oneshot` deltrap() retry has no registered region small enough to need it.
+async function quest_put_lregion_here(x, y, rtype, _oneshot) {
+    // C ref: bad_location() — occupied() plus the ROOM/(CORR on a maze)/AIR
+    // terrain test.  On the quest home levels the registered cell is ROOM.
+    if (mk_bad_branch_location(x, y)) return false;
+    switch (rtype) {
+    case LR_PORTAL: {
+        // C: mkportal(x, y, lev->dnum, lev->dlevel) — the destination comes
+        // from the levregion's own d_level (des.levregion{ dungeon=..., ...}),
+        // which sp_lev stores alongside the region.
+        const lev = game._quest_lregion?.lev;
+        await mkportal(x, y, lev?.dnum ?? 0, lev?.dlevel ?? 0);
+        break;
+    }
+    case LR_BRANCH:
+        await place_branch(is_branchlev(), x, y);
+        break;
+    default:
+        return false;
+    }
+    return true;
 }
 
 async function mk_put_branch_here(x, y, branchp) {
     if (mk_bad_branch_location(x, y)) return false;
-    await mk_place_branch_at(branchp, x, y);
+    await place_branch(branchp, x, y);
     return true;
-}
-
-// C ref: mklev.c place_branch(br, x, y) with explicit coords.
-async function mk_place_branch_at(branchp, x, y) {
-    const g = game;
-    if (!branchp || g.made_branch) return;
-    const onEnd1 = (branchp.end1?.dnum === g.u?.uz?.dnum
-                    && branchp.end1?.dlevel === g.u?.uz?.dlevel);
-    const dest = onEnd1 ? branchp.end2 : branchp.end1;
-    const makeStairs = onEnd1 ? (branchp.type !== BR_NO_END1)
-                              : (branchp.type !== BR_NO_END2);
-    if (branchp.type === BR_PORTAL) {
-        // C ref: mklev.c place_branch()'s BR_PORTAL arm.  The debug_fuzzer
-        // u.ucamefrom variant is dead here (the fuzzer is never enabled), so
-        // the portal always leads to the other end of the branch.  No terrain
-        // change and no stairway record: the way through is the trap itself.
-        await mkportal(x, y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
-    } else if (makeStairs) {
-        const goes_up = onEnd1 ? !!branchp.end1_up : !branchp.end1_up;
-        stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-        const loc = g.level.at(x, y);
-        if (loc) { loc.typ = STAIRS; loc.ladder = goes_up ? 1 : 2; }
-        if (goes_up) g.level.upstair = { x, y };
-        else g.level.dnstair = { x, y };
-    }
-    g.made_branch = true;
 }
 
 // C ref: oracle.lua — the full des.* program.
@@ -4913,6 +4917,13 @@ function is_branchlev() {
     return null;
 }
 
+// C ref: mklev.c find_branch_room().  With rooms, the branch goes in a room
+// picked by generate_stairs_find_room() at a somexyspace() spot inside it; with
+// no rooms at all C falls back to mazexy().  Levels that reach branch placement
+// with svn.nroom == 0 never call this in our port: place_lregion() (mkmaze.c)
+// short-circuits to place_branch() only when nroom is non-zero, and otherwise
+// runs its own whole-level rn1 loop and passes explicit coordinates
+// (mk_fixup_branch below), so the mazexy() arm is unreachable here.
 function find_branch_room(mp) {
     const croom = generate_stairs_find_room();
     if (croom) somexyspace(croom, mp);
@@ -4933,37 +4944,53 @@ function mktrap_random_kind() {
     return kind;
 }
 
-// C ref: mklev.c place_branch(br, 0, 0) — the makelevel() call, which picks
-// random coordinates via find_branch_room() instead of being handed a spot.
-// The `br->type` dispatch below is the same one mk_place_branch_at() runs for
-// the explicit-coordinate callers: a BR_PORTAL branch (the Quest) puts a
-// MAGIC_PORTAL trap on the square and leaves the terrain alone, everything
-// else gets a staircase — and a BR_NO_END1/BR_NO_END2 branch gets neither on
-// the end that was declared stairless.
-async function place_branch(branchp) {
+// C ref: mklev.c place_branch(br, x, y) — "If given a branch, randomly place a
+// special stair or portal."  x == 0 means "find random coordinates" (the
+// makelevel() call); every other caller — put_lregion_here(LR_BRANCH), the
+// castle/mines fixup_special loops — hands it an explicit spot.
+// A BR_PORTAL branch (the Quest) puts a MAGIC_PORTAL trap on the square and
+// leaves the terrain alone, everything else gets a staircase — and a
+// BR_NO_END1/BR_NO_END2 branch gets neither on the end declared stairless.
+async function place_branch(br, x, y) {
     const g = game;
-    const mp = { x: 0, y: 0 };
-    const croom = find_branch_room(mp);
-    if (croom && mp.x > 0) {
-        const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
-            && branchp.end1?.dlevel === g.u?.uz?.dlevel);
-        const dest = on_end1 ? branchp.end2 : branchp.end1;
-        const make_stairs = on_end1 ? (branchp.type !== BR_NO_END1)
-                                    : (branchp.type !== BR_NO_END2);
-        if (branchp.type === BR_PORTAL) {
-            await mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
-        } else if (make_stairs) {
-            const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-            const loc = g.level?.at(mp.x, mp.y);
-            if (loc) {
-                loc.typ = STAIRS;
-                loc.ladder = goes_up ? 1 : 2;
-            }
-            stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-            if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
-            else g.level.dnstair = { x: mp.x, y: mp.y };
-        }
+    // C ref: mklev.c:1230 — "Return immediately if there is no branch to make
+    // or we have already made one."  A special level that names an SSTAIR spot
+    // gets here twice.
+    if (!br || g.made_branch) return;
+
+    if (!x) { // find random coordinates for branch
+        const m = { x: 0, y: 0 };
+        const croom = find_branch_room(m);
+        x = m.x; y = m.y;
+        // C asserts croom != NULL and impossible()s when somexyspace() fails;
+        // bail out rather than write the branch to an off-map cell, but still
+        // set made_branch as C does below.
+        if (!croom || !x) { g.made_branch = true; return; }
     }
+    // C's `else (void) pos_to_room(x, y);` only caches gl.lastseentyp; no RNG.
+
+    const on_end1 = (br.end1?.dnum === g.u?.uz?.dnum
+                     && br.end1?.dlevel === g.u?.uz?.dlevel);
+    const dest = on_end1 ? br.end2 : br.end1;
+    const make_stairs = on_end1 ? (br.type !== BR_NO_END1)
+                                : (br.type !== BR_NO_END2);
+
+    if (br.type === BR_PORTAL) {
+        // C's other arm needs iflags.debug_fuzzer, never set in a recording.
+        await mkportal(x, y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
+    } else if (make_stairs) {
+        const goes_up = on_end1 ? !!br.end1_up : !br.end1_up;
+        stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
+        const loc = g.level?.at(x, y);
+        if (loc) {
+            loc.typ = STAIRS;
+            loc.ladder = goes_up ? LA_UP : LA_DOWN;
+        }
+        if (goes_up) g.level.upstair = { x, y };
+        else g.level.dnstair = { x, y };
+    }
+    // C: set made_branch even when no stairwell was made (make_stairs false) —
+    // there is only one branch per level, so a retry would fail the same way.
     g.made_branch = true;
 }
 
@@ -5184,14 +5211,33 @@ function mktrap_victim(trap) {
     if (otmp) otmp.age = (otmp.age || 0) - (TAINT_AGE + 1);
 }
 
+// C ref: invent.c sobj_at(BOULDER, x, y) — mktrap()'s pit/hole placement test.
+function mk_sobj_at_boulder(x, y) {
+    for (const o of game.level?.objects ?? [])
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === BOULDER)
+            return true;
+    return false;
+}
+
 async function mktrap_room(croom) {
     let kind;
     kind = mktrap_random_kind();
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    // C ref: mklev.c mktrap() — retry the spot until it is neither occupied()
+    // nor (for a pit/hole) on top of a boulder.  somexyspace() already rejects
+    // occupied squares, so in practice only the boulder test re-rolls.
     const pos = { x: 0, y: 0 };
-    if (!somexyspace(croom, pos)) return;
+    {
+        const avoid_boulder = (is_pit(kind) || is_hole(kind));
+        let tryct = 0;
+        do {
+            if (++tryct > 200) return;
+            if (!somexyspace(croom, pos)) return;
+        } while (occupied(pos.x, pos.y)
+                 || (avoid_boulder && mk_sobj_at_boulder(pos.x, pos.y)));
+    }
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
     // C ref: mklev.c mktrap() — `if (kind == WEB && !(mktrapflags &

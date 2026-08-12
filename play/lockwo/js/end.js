@@ -654,9 +654,19 @@ async function real_death_epilogue(how) {
 
     game.program_state = game.program_state || {};
     game.program_state.gameover = true;
-    // Final read: consumes the last recorded key (or exhausts the queue,
-    // which ends the segment exactly as the moveloop's own command read
-    // would).
+    // C nh_terminate()s here, so a real session simply stops consuming keys.
+    // A replayed one must not: this port's post-death UI is shorter than C's
+    // (the disclosure prompts are unported), so a hero who dies EARLIER than
+    // the recorded one leaves keys queued.  Segments of one session share a
+    // single flattened screen index, so those unread keys shift every later
+    // segment out of alignment.  Draining them holds the alignment; the
+    // trailing frames themselves can't match content until the missing
+    // prompts are ported.  Bounded by the replay queue rather than by
+    // nhgetch()'s end-of-input throw, so an interactive session (queue empty,
+    // refilled only by a real keypress) still stops at the single read here
+    // instead of swallowing every key the player presses afterwards.
+    const replayq = game?.nhDisplay;
+    while ((replayq?.inputQueueLength ?? 0) > 0) await nhgetch();
     await nhgetch();
 }
 

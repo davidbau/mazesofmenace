@@ -22,7 +22,7 @@ import { attacktype, AT_ENGL } from './monattk_data.js';
 import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './mkobj.js';
 import { monster_by_pmidx } from './makemon.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, see_with_infrared } from './display.js';
 import { Monnam } from './uhitm.js';
 
 // Speed-modifier flags (permonst.mspeed); C ref: monst.h.
@@ -338,7 +338,11 @@ function canseemon_mon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
-    return !!cansee(mtmp.mx, mtmp.my);
+    // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
+    // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
+    // see a warm-blooded monster on an unlit square that is still in line of
+    // sight; omitting it silently suppressed those monsters' messages.
+    return !!cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp);
 }
 
 // C ref: mon.c:4596 healmon(mtmp, amt, overheal) — give a monster hit points,
@@ -703,8 +707,10 @@ export function can_carry(mtmp, otmp) {
             return 1;
     }
 
-    // C ref: steeds don't pick things up.  u.usteed is not tracked as a monster
-    // pointer here; a ridden pony is mtame and never reaches m_move's scan.
+    // C ref: mon.c:2038 — steeds don't pick up stuff (to avoid shop abuse).
+    // u.usteed IS a live monster pointer here (dogmove.js:553 compares it), so
+    // the test is real rather than the no-op the old comment assumed.
+    if (mtmp === game.u?.usteed) return 0;
     if (mtmp.isshk) return iquan; /* no limit */
     if (mtmp.mpeaceful && !mtmp.mtame) return 0;
 

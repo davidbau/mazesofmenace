@@ -10,7 +10,7 @@ import { game } from './gstate.js';
 import { known_branch_stairs, stairway_at } from './stairs.js';
 import { effective_attribute } from './attrib.js';
 import { near_capacity } from './hack.js';
-import { update_lastseentyp } from './dungeon.js';
+import { depth, on_level, update_lastseentyp } from './dungeon.js';
 import { money_cnt } from './invent.js';
 import { cansee, seenv_matrix, vision_recalc } from './vision.js';
 // js/tty_message.js imports flush_screen() from this file; both sides use the
@@ -24,6 +24,7 @@ import {
     A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS,
     AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_SANCTUM,
     ACCESSIBLE, BLINDED, CONFUSION, DEAF, FLYING, HALLUC, HALLUC_RES,
+    CORPSTAT_FEMALE, CORPSTAT_GENDER,
     LEVITATION, NOT_HUNGRY, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE,
     SLIMED, STONED, STR18, STRANGLED, STUNNED, OBJ_FLOOR,
     P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_SABER,
@@ -39,7 +40,7 @@ import {
     DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER,
     D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, LA_DOWN,
-    IS_STWALL, isok,
+    IS_STWALL, isok, u_at,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
@@ -47,7 +48,8 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     HI_DOMESTIC, HI_METAL, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
     M_AP_TYPMASK, MON_STILL_ARRIVING, WARN_OF_MON,
-    SYM_BOULDER, SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNING, WARNCOUNT,
+    SYM_BOULDER, SYM_NOTHING, SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE,
+    WARNING, WARNCOUNT,
     PROT_FROM_SHAPE_CHANGERS,
     def_warnsyms,
 } from './const.js';
@@ -75,14 +77,13 @@ import { rankOf } from './roles.js';
 import { is_flyer } from './mondata.js';
 import { m_at } from './monst.js';
 import {
-    depth as dungeonDepth,
     dist2,
     encodeUtf8ByteString,
     mungspaces,
 } from './hacklib.js';
 import { hu_stat } from './eat.js';
 import { observe_object } from './o_init.js';
-import { engr_at } from './engrave.js';
+import { can_reach_floor, engr_at, engr_can_be_felt } from './engrave.js';
 import { status_version } from './version.js';
 import { is_weptool } from './obj.js';
 import { newuexp, UnsupportedExperienceChangeError } from './exper.js';
@@ -178,6 +179,7 @@ import {
     S_air,
     S_cloud,
     S_water,
+    SYM_OFF_X,
     trap_to_defsym,
 } from './symbols.js';
 import { t_at } from './trap.js';
@@ -194,6 +196,7 @@ import {
 } from './monsters.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
+    canSeeMonster,
     monsterVisible,
     noteGlyphBufferMutation,
     queueGlyphUpdateNotice,
@@ -1128,6 +1131,14 @@ export function object_glyph_info(obj, state = game) {
             color = state.mons[obj.corpsenm].mcolor;
     }
     const glyph = glyphPresentation(symbol, color, state);
+    // display.h obj_to_glyph() lands in one of the four glyph ranges
+    // glyph_is_object() unions at display.h:877-879: ordinary object, generic
+    // object, statue, and body. Every branch above produces one of those four,
+    // so every presentation this function returns answers that macro TRUE.
+    // This port stores presentations rather than glyph numbers, so it carries
+    // the fact as a mark, which remembered_glyph_from_presentation() copies
+    // into map memory for glyph_is_object() to read back.
+    glyph.objectGlyph = true;
     // display.h obj_to_glyph() numbers a generic object into the leading
     // FIRST_OBJECT-1 slots of the object glyph ranges, which is the whole of
     // what glyph_is_generic_object() recognizes. This port stores
@@ -1138,6 +1149,30 @@ export function object_glyph_info(obj, state = game) {
     // C ref: win/tty/wintty.c tty_print_glyph(). Pile highlighting is a tty
     // presentation attribute and is suppressed together with inverse video.
     const piletop = object_is_piletop(obj, state);
+    // C ref: display.h obj_to_glyph() (963-968) with Hallucination false;
+    // mappedObjectGlyphInfo() routes the hallucinating cases elsewhere. Its
+    // four macros number a statue by corpsenm and gender (950-961), a corpse
+    // by corpsenm (937-939), a generic object by oclass (940-942), and every
+    // other object by otyp (943-945), each in its own range or its pile-top
+    // range. Two objects share a glyph number only when all of that agrees.
+    // This port stores a presentation rather than that number, so it carries
+    // the number's content as a mark, which
+    // remembered_glyph_from_presentation() copies into map memory for
+    // same_remembered_glyph() to read back where lock.c:584 compares two
+    // glyph numbers.
+    const glyphIdentity = obj.otyp === STATUE
+        ? `statue:${((obj.spe ?? 0) & CORPSTAT_GENDER) === CORPSTAT_FEMALE
+            ? 'fem' : 'male'}:${obj.corpsenm}`
+        : obj.otyp === CORPSE
+            ? `body:${obj.corpsenm}`
+            : generic
+                ? `generic:${obj.oclass}`
+                : `obj:${obj.otyp}`;
+    // Non-enumerable for terrainCmap()'s reason: every existing copy of a
+    // presentation record keeps the shape it already had.
+    Object.defineProperty(glyph, 'objectGlyphId', {
+        value: piletop ? `${glyphIdentity}:piletop` : glyphIdentity,
+    });
     if (piletop
         && state.iflags?.hilite_pile
         && state.iflags?.wc_inverse !== false) {
@@ -1414,9 +1449,11 @@ export function show_glyph_cell(x, y, glyph) {
  * fields (`dec`, optional browser/RGB metadata); the result uses the
  * persistent `decgfx` field. Pass `trap` only when the remembered layer itself
  * represents that trap; hidden traps beneath another remembered layer must not
- * contribute their logical identity. Accessibility identity and subject are
- * canonical remembered-glyph state used to describe hero-memory mimics and
- * hiders, so this boundary copies those sidecars explicitly.
+ * contribute their logical identity. The cmap index, the accessibility
+ * identity and the accessibility subject are canonical remembered-glyph state
+ * -- the first is what C's glyph number carries for a piece of terrain, the
+ * other two describe hero-memory mimics and hiders -- so this boundary copies
+ * all three sidecars explicitly.
  */
 export function remembered_glyph_from_presentation(glyph, trap = null) {
     if (!glyph || typeof glyph !== 'object'
@@ -1435,11 +1472,27 @@ export function remembered_glyph_from_presentation(glyph, trap = null) {
     // collide after symbol customization, so retain the trap identity needed
     // by detect.c:find_trap() in the same canonical memory record.
     if (trap) remembered.trapType = trap.ttyp;
+    // The two object marks are equally canonical and equally uncopyable from
+    // presentation: `ch` and `color` cannot say "an object is remembered
+    // here" once symbol customization lets an object and a piece of terrain
+    // draw the same cell.
+    if (glyph.objectGlyph) remembered.objectGlyph = true;
     if (glyph.genericObject) remembered.genericObject = true;
     if (glyph.attr) remembered.attr = glyph.attr;
     if (glyph.displayColor) remembered.displayColor = glyph.displayColor;
     if (glyph.rgb) remembered.rgb = [...glyph.rgb];
-    for (const field of ['a11yIdentity', 'a11ySubject']) {
+    // `cmap` is the index terrainCmap() drew from, which is exactly what
+    // cmap_to_glyph() encodes in levl[x][y].glyph. display.c feel_location()
+    // (893-897) and reglyph_darkroom() (1826-1848) both ask map memory which
+    // cmap it holds, and presentation cannot answer once reglyph_darkroom()
+    // has made S_room and S_darkroom draw the same byte in the same colour.
+    // `objectGlyphId` is the same thing one layer up: what obj_to_glyph()
+    // encodes for an object, which two objects of one class and colour do not
+    // share. All four stay non-enumerable for terrainCmap()'s reason: every
+    // existing copy of a remembered record keeps the shape it already had.
+    for (const field of [
+        'cmap', 'objectGlyphId', 'a11yIdentity', 'a11ySubject',
+    ]) {
         if (glyph[field] !== undefined) {
             Object.defineProperty(remembered, field, {
                 configurable: true,
@@ -1450,10 +1503,69 @@ export function remembered_glyph_from_presentation(glyph, trap = null) {
     return remembered;
 }
 
-// C ref: display.c feel_location(), adjacent obstructed-location branch used
-// by hack.c:test_move(). Other tactile layers remain with their live owners.
-// The caller has already established blindness and an ordinary wall or stone
-// destination, so this subset owns the source seenv, memory, and display write.
+// Every field of a remembered record that carries part of the glyph number C
+// would have stored. `rgb` is an array and is compared separately below.
+const REMEMBERED_GLYPH_IDENTITY_FIELDS = Object.freeze([
+    'cmap', 'objectGlyphId', 'ch', 'color', 'decgfx', 'displayCh',
+    'displayColor', 'attr', 'trapType', 'objectGlyph', 'genericObject',
+    'invisible_monster',
+]);
+
+/**
+ * C ref: lock.c pick_lock() (579, 584), which holds `int oldglyph =
+ * door->glyph` across a feel_location() call and asks whether it changed. C
+ * compares two glyph numbers with `!=`; this port stores a presentation record
+ * that every map-memory write replaces with a fresh object, so `!==` would
+ * answer "changed" for a square feel_location() left exactly as it found it.
+ *
+ * Compare the canonical identity instead. `cmap` separates two pieces of
+ * terrain that draw the same byte and `objectGlyphId` separates two objects
+ * that do; between them they cover every presentation this port writes into
+ * map memory, because terrainCmap() stamps the first, object_glyph_info()
+ * stamps the second, and monster_glyph_info()'s two disguises that reach
+ * memory route through one or the other. The remaining fields separate the
+ * layers and catch a customized symbol set that has made two of them draw
+ * alike.
+ */
+export function same_remembered_glyph(before, after) {
+    if (before === after) return true;
+    if (!before || !after) return false;
+    for (const field of REMEMBERED_GLYPH_IDENTITY_FIELDS) {
+        if ((before[field] ?? null) !== (after[field] ?? null)) return false;
+    }
+    const beforeRgb = before.rgb ?? null;
+    const afterRgb = after.rgb ?? null;
+    if (!beforeRgb || !afterRgb) return beforeRgb === afterRgb;
+    return beforeRgb.length === afterRgb.length
+        && beforeRgb.every((component, i) => component === afterRgb[i]);
+}
+
+// C ref: display.c feel_location() (736-905), the branch taken by a hero who
+// can reach the floor. Two ported callers reach it, and one of them twice:
+//
+//   hack.c test_move() calls it from its obstructed arm (js/hack.js, the
+//     IS_OBSTRUCTED branch), where the square is stone or a wall, and again
+//     from its testdiag arm (js/hack.js, the blocksDiagonalDoorwayEntry()
+//     branch), where the square is a DOOR that closed_door() has already
+//     rejected and doorless_door() answers FALSE for -- an open doorway,
+//     which can hold a floor object, and whose background arm draws the door
+//     rather than wall or stone. Both calls need a blind hero in DO_MOVE mode.
+//   lock.c pick_lock():583 calls it for any hero who has named an adjacent
+//     square holding no door, who may be sighted and may be pointing at room
+//     floor, an object, a seen trap or a felt engraving.
+//
+// So every layer _map_location() dispatches on is live here; the terrain arm
+// is not the only one a walking hero can reach.
+//
+// Three blocks stop rather than run, and no running game can reach any of
+// them: the Underwater return (769-771), the Levitation Rules (776-858) and
+// the Punished bc_felt work (865-891). js/detect.js:255-283 enumerates the
+// single writer of each of the four states behind them, and the guard below
+// pins all four terms. They stay bare Errors for the reason recorded there.
+//
+// C's comment says the square is the hero's own or one of the eight adjacent
+// to it. This asserts that instead of assuming it, because the hero's own
+// square would additionally need display_self() and neither caller passes it.
 export function feel_location(x, y, state = game) {
     if (state !== game) {
         throw new Error(
@@ -1463,23 +1575,143 @@ export function feel_location(x, y, state = game) {
     if (!isok(x, y)) return;
     const location = state.level?.at(x, y);
     if (!location) return;
+    // display.c:763-767. An accurate memory of an invisible monster is left
+    // alone so that searching does not rediscover it every turn.
+    // glyph_is_invisible() reads a marker only map_invisible() writes, and
+    // map_invisible() is unported, so this never returns yet.
+    if (glyph_is_invisible(location) && m_at(x, y, state)) return;
+    // display.c:902-905 finishes by drawing a monster the hero senses on top
+    // of everything else, through display_monster(), which this port has only
+    // as newsym()'s inlined arms. sensemon() needs telepathy, monster
+    // detection or a warning match. js/lock.js pick_lock() cannot supply one,
+    // because its m_at() refusal stops for any monster at all; test_move() can
+    // in principle, since hack.c domove_core() falls through to it with a pet
+    // it neither attacked nor displaced still standing on the square. The test
+    // is hoisted above every write below so that the stop leaves the map
+    // exactly as it found it; C runs it last, after the writes.
+    const monster = u_at(x, y, state) ? null : m_at(x, y, state);
+    if (monster && sensesMonster(monster, state)) {
+        throw new UnsupportedMapMemoryError(
+            'feeling a square that holds a sensed monster',
+        );
+    }
     const dx = x - state.u.ux;
     const dy = y - state.u.uy;
     if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) {
         throw new Error(
-            'feel_location obstacle subset requires an adjacent square',
+            'feel_location subset requires an adjacent square',
         );
     }
+    if (!can_reach_floor(false, state)
+        || state.u.uinwater || state.uball || state.uchain) {
+        throw new Error(
+            'feel_location reached an unsupported tactile floor state',
+        );
+    }
+    // display.c:774, set_seenv(), which indexes hero.y - target.y rather than
+    // this function's target-relative dy.
     location.seenv = (location.seenv ?? 0)
         | seenv_matrix[1 - dy][dx + 1];
-    const glyph = terrain_glyph(location, x, y, state);
-    if (state.level?.flags?.hero_memory) {
-        location.remembered_glyph =
-            remembered_glyph_from_presentation(glyph);
+
+    // display.c:859-860.
+    const engraving = engr_at(x, y, state);
+    if (engraving && engr_can_be_felt(engraving)) engraving.erevealed = 1;
+
+    _map_location(x, y, 1, state);
+
+    // display.c:893-900. Floor spaces are dark if unlit, corridors are dark if
+    // unlit. C assigns levl[x][y].glyph directly here rather than through
+    // map_background(), so this write ignores hero_memory exactly as C does.
+    //
+    // The first arm is what lock.c:584 observes: with 'dark_room' and colour
+    // both on, a lit room square the hero already remembers moves from S_room
+    // to S_darkroom, and only the cmap index says so, because
+    // reglyph_darkroom() has made the two draw the same byte.
+    const darkroom = Boolean(state.flags?.dark_room);
+    const cmap = location.remembered_glyph?.cmap;
+    if (location.typ === ROOM && cmap === S_room
+        && (!location.waslit || (darkroom && state.iflags?.wc_color))) {
+        const glyph = darkroom
+            // defsym.h:113 gives S_darkroom the colour CLR_BLACK, which
+            // recorderMapColor() folds onto the terminal default.
+            ? terrainCmap(S_darkroom, CLR_BLACK, state)
+            : terrainCmap(S_stone, NO_COLOR, state);
+        location.remembered_glyph = remembered_glyph_from_presentation(glyph);
+        show_glyph_cell(x, y, glyph);
+    } else if (location.typ === CORR && cmap === S_litcorr
+               && !location.waslit) {
+        const glyph = terrainCmap(S_corr, NO_COLOR, state);
+        location.remembered_glyph = remembered_glyph_from_presentation(glyph);
+        show_glyph_cell(x, y, glyph);
     }
-    show_glyph_cell(x, y, glyph);
-    if (state.level.lastseentyp?.[x])
-        state.level.lastseentyp[x][y] = location.typ;
+}
+
+// C ref: display.c _map_location() (448-472), the macro map_location() wraps.
+// Puts whatever is not alive at <x,y> into map memory, and onto the screen
+// when `show` is set.
+//
+// The engraving arm is engravingGlyph(), which already folds in
+// spot_shows_engravings() and the erevealed test, so it answers non-null
+// exactly where C's third condition holds; the memory and screen writes below
+// it are map_engraving()'s two statements.
+function _map_location(x, y, show, state) {
+    const location = state.level?.at(x, y);
+    if (!location) return;
+    const covered = floorLayersCovered(location, state);
+    const object = covered ? null : vobj_at(x, y, state);
+    const trap = covered ? null : t_at(x, y, state);
+    const engraving = covered
+        ? null : engravingGlyph(engr_at(x, y, state), location, state);
+    if (object) {
+        map_object(object, show, state);
+    } else if (trap?.tseen) {
+        map_trap(trap, show, state);
+    } else if (engraving) {
+        if (state.level?.flags?.hero_memory) {
+            location.remembered_glyph
+                = remembered_glyph_from_presentation(engraving);
+        }
+        if (show) show_glyph_cell(x, y, engraving);
+    } else {
+        map_background(x, y, show, state);
+    }
+    update_lastseentyp(x, y, state, {
+        canSeeMonster: (subject) => canSeeMonster(subject, state),
+    });
+    if (show && !_propertyActiveUnblocked(state.u, BLINDED)) {
+        const region = visible_region_at(x, y, state);
+        if (region) show_region(region, x, y, state);
+    }
+}
+
+// C ref: region.c show_region() (731-735). C stores a finished glyph number on
+// the region; this port stores the cmap index and the argument that picks its
+// colour, so the presentation is built here.
+function show_region(region, x, y, state) {
+    show_glyph_cell(x, y, terrainCmap(
+        region.glyph,
+        region.arg ? CLR_BRIGHT_GREEN : CLR_GRAY,
+        state,
+    ));
+}
+
+// C ref: display.c map_object() (325-366). C calls obj_to_glyph() once, then
+// again after observe_object() has possibly made a generic object specific.
+// The first of those two calls draws from the display RNG only while
+// hallucinating, and the branch between them requires !Hallucination, so
+// observing first and drawing once is the same sequence.
+function map_object(obj, show, state = game) {
+    const { ox: x, oy: y } = obj;
+    observeNearbyObject(obj, x, y, state);
+    const mapped = mappedObjectGlyphInfo(obj, state);
+    if (state.level?.flags?.hero_memory) {
+        const location = state.level.at(x, y);
+        if (location) {
+            location.remembered_glyph
+                = remembered_glyph_from_presentation(mapped.remembered);
+        }
+    }
+    if (show) show_glyph_cell(x, y, mapped.shown);
 }
 
 // C ref: display.c feel_newsym(). Used where the hero knows what happened to a
@@ -1698,6 +1930,27 @@ export function glyph_is_generic_object(location) {
 }
 
 /**
+ * C ref: display.h glyph_is_object() (877-879), the union of
+ * glyph_is_normal_object(), glyph_is_generic_object(), glyph_is_statue() and
+ * glyph_is_body(). C asks it of the glyph number in levl[x][y].glyph; the port
+ * asks it of the mark object_glyph_info() puts on every object presentation
+ * and remembered_glyph_from_presentation() carries into map memory.
+ *
+ * The mark answers for the whole union rather than one of its four terms
+ * because object_glyph_info() is the single producer of every object
+ * presentation this port stores, statues and corpses included, and map memory
+ * is written only by handing one of its results to
+ * remembered_glyph_from_presentation().
+ *
+ * dogmove.c dog_move() is the caller: it asks whether the hero remembers an
+ * object where a pet has just stepped, which is exactly the question glyph_at()
+ * could not answer there because the pet is already on the square.
+ */
+export function glyph_is_object(location) {
+    return Boolean(location?.remembered_glyph?.objectGlyph);
+}
+
+/**
  * C ref: display.c see_nearby_objects() (1574-1604). Mark the top object of
  * each nearby pile as seen up close, and redraw the ones the map still
  * remembers in their generic form. dungeon.c u_on_newpos() calls this on
@@ -1813,12 +2066,7 @@ export function newsym(x, y) {
             && dist2(x, y, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2;
         if (!monsterSensed && !monsterWarning
             && !adjacentVisibleMonster) {
-            const cloud = terrainCmap(
-                region.glyph,
-                region.arg ? CLR_BRIGHT_GREEN : CLR_GRAY,
-                game,
-            );
-            show_glyph_cell(x, y, cloud);
+            show_region(region, x, y, game);
             return;
         }
     }
@@ -2063,19 +2311,34 @@ export async function docrt() {
 // (7347), from reset_needed_visuals() (8999) and from goto_level() (do.c:1715);
 // js/do.js:910-916 records why the goto_level() call has nothing to repair.
 //
-// This port keeps no remembered glyph number to rewrite: loc.remembered_glyph
-// holds a finished {ch, color} presentation record and newsym() replays it, so
-// there is no glyph identity for the loop to match on. Rather than write a
-// loop that cannot fire, this refuses the two option values that would give it
-// work, which is also what optfn_boolean() refuses at its 'dark_room' and
-// 'color' arms.
+// Two of those arms need only the cmap index the remembered record carries,
+// and this port runs them: 1831-1833 and 1842-1844, the two the else branches
+// reach with 'dark_room' and colour both on. The other two need GLYPH_NOTHING,
+// which nothing in this port writes -- 1838-1840 writes it and 1845-1847 reads
+// it back -- so the configurations that reach either one are refused instead,
+// which is also what optfn_boolean() refuses at its 'dark_room' and 'color'
+// arms. That leaves 1845-1847 unported inside a configuration this port does
+// admit; it is a no-op here, because only 1838-1840 and magic_map_background()
+// (display.c:247) write GLYPH_NOTHING in C and neither is ported. The open
+// ledger entry remembered-glyph-caches-a-resolved-presentation tracks the
+// wider gap.
 //
-// The trailing assignment is what remains, and it is the reason this exists as
-// a function: a SYMBOLS=S_room override moves S_darkroom with it.
+// Is_rogue_level() joins the refusal because it is the third term of C's
+// second gate (1836-1837): on the rogue level C takes the GLYPH_NOTHING arm
+// however the two options stand.
 //
-// The refusal is its own class because every caller reaches it from inside a
-// command: js/cmd.js failClosedCommandRefusals() lists it, so an options menu
-// that toggles 'hilite_pet', 'hitpointbar' or 'lit_corridor' under
+// The refusal asks first whether a map exists to repair. initoptions_finish()
+// runs before mklev() has built one, so every arm of the loop would compare
+// against a square carrying no remembered glyph at all and find no work; that
+// call must reach the tail below under either option value.
+//
+// The tail is the rest, and it is the reason this exists as a function: a
+// SYMBOLS=S_room override moves S_darkroom with it, and the initoptions_finish()
+// call is what first collapses the two onto one byte.
+//
+// The refusal is its own class because every other caller reaches it from
+// inside a command: js/cmd.js failClosedCommandRefusals() lists it, so an
+// options menu that toggles 'hilite_pet', 'hitpointbar' or 'lit_corridor' under
 // 'OPTIONS=!color' ends the segment on its last matching screen instead of
 // discarding every screen the segment had already matched.
 export class UnsupportedGlyphRepairError extends Error {
@@ -2086,14 +2349,55 @@ export class UnsupportedGlyphRepairError extends Error {
 }
 
 export function reglyph_darkroom(state = game) {
-    if (!state.flags?.dark_room || !state.iflags?.wc_color) {
+    const darkroomInColor = Boolean(
+        state.flags?.dark_room && state.iflags?.wc_color,
+    );
+    const repairable = darkroomInColor
+        && !on_level(state.u?.uz, state.rogue_level);
+    if (state.level && !repairable) {
         throw new UnsupportedGlyphRepairError(
             'reglyph_darkroom() over a map remembered under different '
             + "'dark_room' or 'color' settings",
         );
     }
+    if (state.level) {
+        // display.c:1822-1823. The bounds are C's own, and every square
+        // inside them exists: js/game.js GameMap allocates the whole
+        // COLNO x ROWNO grid, so at() answers null only outside them.
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const location = state.level.at(x, y);
+                // display.c:1831-1833, the else arm of the first pair. A
+                // corridor remembered lit that the hero cannot see now goes
+                // back to the dark corridor symbol.
+                if (location.remembered_glyph?.cmap === S_litcorr
+                    && !cansee(x, y, state)) {
+                    location.remembered_glyph
+                        = remembered_glyph_from_presentation(
+                            terrainCmap(S_corr, NO_COLOR, state),
+                        );
+                }
+                // display.c:1842-1844, the first half of the second pair's
+                // else arm. defsym.h:113 gives S_darkroom the colour
+                // CLR_BLACK, which recorderMapColor() folds onto the terminal
+                // default, exactly as feel_location()'s tail does.
+                if (location.remembered_glyph?.cmap === S_room
+                    && location.seenv && location.waslit
+                    && !cansee(x, y, state)) {
+                    location.remembered_glyph
+                        = remembered_glyph_from_presentation(
+                            terrainCmap(S_darkroom, CLR_BLACK, state),
+                        );
+                }
+            }
+        }
+    }
+    // display.c:1850-1853.
     const showsyms = state.gs?.showsyms;
-    if (showsyms) showsyms[S_darkroom] = showsyms[S_room];
+    if (!showsyms) return;
+    showsyms[S_darkroom] = darkroomInColor
+        ? showsyms[S_room]
+        : showsyms[SYM_OFF_X + SYM_NOTHING];
 }
 
 // ── Status lines ──
@@ -2520,7 +2824,7 @@ function _statusLevelDescription(u, short = false) {
     // wintty.c shrink_dlvl() replaces everything before the colon, including
     // special-level descriptions such as "Tutorial", with the short label.
     const label = short ? 'Dl' : tutorial ? 'Tutorial' : 'Dlvl';
-    return `${label}:${dungeonDepth(u.uz)}`;
+    return `${label}:${depth(u.uz)}`;
 }
 
 function _statusVitals(u) {

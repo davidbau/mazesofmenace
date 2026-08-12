@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up } from './dungeon.js';
+import { builds_up, In_hell } from './dungeon.js';
 import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
          rnd_class,
@@ -32,16 +32,15 @@ import {
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL,
     AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL,
     DUNGEON_ALIGN_BY_DNUM,
-    GEHENNOM,
     In_endgame, Is_astralevel, Is_rogue_level, MM_NONAME,
     Is_airlevel, Is_firelevel, Is_earthlevel, Is_waterlevel,
-    In_mines, In_sokoban, Align2amask,
+    In_mines, In_sokoban, Is_stronghold, Align2amask,
+    PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
     HWALL, TLCORNER, BLCORNER, CROSSWALL, TUWALL, TDWALL, TRWALL, DBWALL,
     SDOOR, SCORR,
-    STRAT_CLOSE, STRAT_WAITFORU,
+    STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG,
 } from './const.js';
-import { In_hell } from './dungeon.js';
 // set_mimic_sym() needs the room/trap/vision helpers.  These modules sit below
 // makemon.js in the import graph except vision.js, which imports two function
 // declarations from here — a cycle that resolves cleanly because both sides are
@@ -52,9 +51,9 @@ import {
     mflags2_of, mflags3_of, msound_of,
     M2_LORD, M2_PRINCE, M2_NASTY, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
     M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN,
-    M3_CLOSE, M3_WAITFORU,
+    M3_CLOSE, M3_WAITFORU, M3_WAITMASK,
     MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
-    is_undead_flag, is_giant_flag,
+    is_undead_flag, is_giant_flag, mindless,
     // set_mimic_sym()/newcham() predicates, read from the real mflags tables
     // rather than species-name sets (see LESSONS: the name-regex bug class).
     is_shapeshifter_flag, humanoid as humanoid_flag, polyok_flag, is_animal,
@@ -712,6 +711,28 @@ export function name_to_pmidx(name) {
     return v == null ? -1 : v;
 }
 
+// C ref: include/monflag.h enum mgender { MALE, FEMALE, NEUTRAL }.
+export const MGEND_MALE = 0, MGEND_FEMALE = 1, MGEND_NEUTRAL = 2;
+
+// C ref: mondata.c name_to_monplus()'s `matchgend` — which pmnames[] SLOT the
+// name matched.  monst.c NAM(name) fills only pmnames[NEUTRAL], so a plain
+// species name answers NEUTRAL; a NAMS(m,f,n) monster addressed by its male or
+// female form answers that gender.  sp_lev.c find_montype() then SKIPS its
+// rn2(2) gender roll for a gendered name — so `des.monster("vampire lord",...)`
+// draws one fewer random number than `des.monster("giant zombie",...)`.
+const _NAME_GENDER = (() => {
+    const m = new Map();
+    for (const [, male, female] of MONS_GENDERED_NAMES) {
+        if (male && !m.has(male)) m.set(male, MGEND_MALE);
+        if (female && !m.has(female)) m.set(female, MGEND_FEMALE);
+    }
+    return m;
+})();
+export function name_gender_hint(name) {
+    const v = _NAME_GENDER.get(name);
+    return v == null ? MGEND_NEUTRAL : v;
+}
+
 // C ref: dungeon.c level_difficulty() — exported for themed-room fills that
 // branch on difficulty (themerms.lua nh.level_difficulty()).
 export function level_difficulty_ext() {
@@ -881,7 +902,7 @@ function montoostrong(mndx, lev) {
 // The dungeon NUMBER is not a fixed constant — it comes out of dungeon.lua's
 // order at init_dungeons() time — so the flag has to be read off the dungeon.
 function Inhell() {
-    return !!game.dungeons?.[game.u?.uz?.dnum ?? 0]?.flags?.hellish;
+    return In_hell(game.u?.uz);
 }
 
 function mvflags(mndx) {
@@ -2643,6 +2664,15 @@ function worm_goodpos(x, y, worm) {
     return true;
 }
 
+// C ref: mondata.c:1629 mon_learns_traps().  Duplicated rather than imported
+// from monmove.js: monmove.js already imports from here, and makemon.js sits
+// below it in the graph — importing back would close the cycle at module-init
+// time, not just at call time.
+function mon_learns_traps_local(mtmp, ttyp) {
+    if (ttyp === ALL_TRAPS) { mtmp.mtrapseen = ~0; return; }
+    mtmp.mtrapseen = (mtmp.mtrapseen || 0) | (1 << (ttyp - 1));
+}
+
 export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     let ptr = mdat;
     let allow_minvent = true;
@@ -2722,6 +2752,26 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     else
         mtmp.female = (ptr.gcode === 2) ? 1 : 0;
 
+    // C ref: makemon.c:1281-1289 — trap knowledge is granted at CREATION; no
+    // RNG here, but mtrapseen was written nowhere on this path (only
+    // priest.js:92), so mon_knows_traps() answered FALSE for every generated
+    // monster.  mfndpos (mon.c:2365) then kept trapped squares C drops from the
+    // candidate list, and cnt is the rn2(4*(cnt-j)) modulus in m_move.
+    // mondata.c:1629 mon_learns_traps: bit (ttyp-1), ALL_TRAPS -> ~0.
+    // sokoban_dnum guard: In_sokoban() compares dnum to an undefined
+    // game.sokoban_dnum, so both-undefined reads as TRUE before the branch exists.
+    if (game.sokoban_dnum != null && In_sokoban(game.u?.uz) && !mindless(ptr)) {
+        mon_learns_traps_local(mtmp, PIT);
+        mon_learns_traps_local(mtmp, HOLE);
+    }
+    if (Is_stronghold(game.u?.uz) && !mindless(ptr))
+        mon_learns_traps_local(mtmp, TRAPDOOR);
+    // Leader/nemesis know every trap type — unconditional in C, not gated on
+    // mindless.  MSOUND's MS_LEADER/MS_NEMESIS membership re-audited BY NAME
+    // against monsters.h (13 leaders / 12 nemeses, exact) after 9321d2b.
+    if (msound_of(ptr) === MS_LEADER || msound_of(ptr) === MS_NEMESIS)
+        mon_learns_traps_local(mtmp, ALL_TRAPS);
+
     // C ref: makemon.c:1299 — `mtmp->mpeaceful = (mmflags & MM_ANGRY) ? FALSE
     // : peace_minded(ptr);`, straight-line code with no enclosing guard.  This
     // was gated on `(game._bigrm_gen || game._full_mon_gen)` with a comment
@@ -2741,6 +2791,11 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // its rn2 MODULUS off mcanmove (8 for a helpless holder, 40 otherwise).
     mtmp.mcansee = 1;
     mtmp.mcanmove = 1;
+    // C ref: makemon.c:1297 — `mtmp->mgenmklev = gi.in_mklev;`.  Read by
+    // mon.c mm_2way_aggression() (js/monmove.js) to suppress the zombie-maker
+    // attack-on-sight bonus between two monsters both stocked at level
+    // creation; that guard was dead until this field was written.
+    mtmp.mgenmklev = !!game.in_mklev;
     mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : !!peace_minded_bigrm(ptr);
 
     // C ref: makemon.c:1307-1312 — the per-mlet switch.  S_SPIDER and S_SNAKE
@@ -2943,13 +2998,17 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         m_initinv_full(mtmp);
         rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     }
-    // C ref: makemon.c:1460-1466 — mflags3 STRAT_WAITFORU/STRAT_CLOSE (no RNG).
-    // STRAT_APPEARMSG is not modeled: no covered session reaches a "materializes
-    // in a cloud of smoke" first-appearance message for one of these monsters.
+    // C ref: makemon.c:1460-1467 — mflags3 STRAT_WAITFORU/STRAT_CLOSE/
+    // STRAT_APPEARMSG (no RNG).
     if (!(mmflags & MM_NOWAIT)) {
         const f3 = mflags3_of(ptr);
         if (f3 & M3_WAITFORU) mtmp.mstrategy = (mtmp.mstrategy | STRAT_WAITFORU) >>> 0;
         if (f3 & M3_CLOSE) mtmp.mstrategy = (mtmp.mstrategy | STRAT_CLOSE) >>> 0;
+        // Without this, teleport.js rloc_to_core()'s `appearmsg` was dead-false
+        // for every covetous/waiting monster, so a rloc'd demon lord or quest
+        // nemesis silently skipped its first-appearance message.
+        if (f3 & (M3_WAITMASK | M3_COVETOUS))
+            mtmp.mstrategy = (mtmp.mstrategy | STRAT_APPEARMSG) >>> 0;
     }
     // C ref: makemon.c:1248 `mtmp->nmon = fmon; fmon = mtmp;` and :1295
     // `place_monster(mtmp, x, y);` — BOTH unconditional, and the link happens even

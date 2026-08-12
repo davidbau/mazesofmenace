@@ -403,6 +403,14 @@ export function l_selection_fillrect(sel, x1, y1, x2, y2) {
     return out;
 }
 
+// C ref: nhlsel.c l_selection_line() / selection.line() — a single Bresenham
+// line added to (a clone of) `sel`.  No RNG.
+export function l_selection_line(sel, x1, y1, x2, y2) {
+    const out = sel ? selection_clone(sel) : selection_new();
+    selection_do_line(x1, y1, x2, y2, out);
+    return out;
+}
+
 // C ref: nhlsel.c l_selection_rect() — the four edges only, not a filled area.
 export function l_selection_rect(sel, x1, y1, x2, y2) {
     const out = sel ? selection_clone(sel) : selection_new();

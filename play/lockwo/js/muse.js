@@ -55,7 +55,7 @@ import { base_mmove, healmon, DEADMONSTER, monsterList } from './mon.js';
 // --More-- for the UNACKNOWLEDGED previous one first (or appends to it when both
 // fit).  js/display.js pline() only overwrites the pending text, so monster
 // messages that land mid-turn must go through update_topl() to get C's boundary.
-import { update_topl, newsym, map_invisible } from './display.js';
+import { update_topl, newsym, map_invisible, see_with_infrared } from './display.js';
 import { Monnam, mon_nam, monflee } from './uhitm.js';
 import { cansee, couldsee } from './vision.js';
 import { obj_doname, xname, makeknown, trycall, sobj_at, hands_obj }
@@ -224,7 +224,11 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
-    return !!cansee(mtmp.mx, mtmp.my);
+    // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
+    // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
+    // see a warm-blooded monster on an unlit square that is still in line of
+    // sight; omitting it silently suppressed those monsters' messages.
+    return !!cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp);
 }
 // C ref: display.c canspotmon(mon) == canseemon(mon) || sensemon(mon).
 // sensemon() needs telepathy / warning / extended monster detection, none of

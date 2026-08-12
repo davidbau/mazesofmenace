@@ -12,7 +12,7 @@ import {
     ALTAR, ICE, MAX_TYPE, INVALID_TYPE, NO_ROOM, SHARED,
     OROOM, THEMEROOM, ZOO, ROOMOFFSET, isok, IS_DOOR,
     VAULT, SHOPBASE, BEEHIVE, FILL_NONE, FILL_NORMAL,
-    COURT, SWAMP, MORGUE, BARRACKS, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL,
+    COURT, SWAMP, MORGUE, BARRACKS, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, DELPHI,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
@@ -22,7 +22,7 @@ import {
     IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, SLP_GAS_TRAP, ANTI_MAGIC,
-    PIT, NO_TRAP, is_pit, BURN,
+    PIT, NO_TRAP, is_pit, BURN, LR_BRANCH,
 } from './const.js';
 // readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
 // rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
@@ -39,7 +39,7 @@ import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          uncurse, curse } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, newmonhp,
-         newcham_vamp, mongets_pub,
+         newcham_vamp, mongets_pub, name_gender_hint, MGEND_NEUTRAL,
          MM_ASLEEP, MM_NOGRP } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
@@ -100,6 +100,11 @@ function splev_chr2typ(ch) {
     case 'I': return ICE;
     case '"': return IRONBARS;
     case 'F': return IRONBARS;   // C ref: nhlua.c char2typ — 'F' (Fe=iron) -> IRONBARS
+    // C ref: nhlua.c char2typ — 'B' is the "hack: boundary location" symbol: a
+    // CROSSWALL that remove_boundary_syms() turns back into ROOM once the
+    // regions have been laid out (it exists so region flood-fills stop there
+    // without a visible door).
+    case 'B': return CROSSWALL;
     case 'C': return CLOUD;
     case 'A': return AIR;
     case 'H': return SCORR;
@@ -1249,7 +1254,7 @@ export function fill_special_room(croom) {
 const ROOM_TYPE_BY_NAME = {
     ordinary: OROOM, themed: THEMEROOM, throne: COURT, swamp: SWAMP,
     vault: VAULT, beehive: BEEHIVE, morgue: MORGUE, barracks: BARRACKS,
-    zoo: ZOO, temple: TEMPLE, anthole: ANTHOLE, cocknest: COCKNEST,
+    zoo: ZOO, delphi: DELPHI, temple: TEMPLE, anthole: ANTHOLE, cocknest: COCKNEST,
     leprehall: LEPREHALL, shop: SHOPBASE,
 };
 
@@ -1420,6 +1425,26 @@ const VALIGN2I = { top: SPLEV_TOP, center: SPLEV_CENTER,
 // Where the last des.map() landed — map-relative coords inside a contents()
 // callback are resolved against this (C ref: sp_lev.c get_location(), which
 // adds gx.xstart/gy.ystart when there is no enclosing room).
+// C ref: sp_lev.c remove_boundary_syms() — the 'B' map symbol stamps a
+// CROSSWALL purely so region flood-fills stop at it; once the regions are laid
+// out every such cell that came from the level's own map becomes ROOM again.
+// Called from lspo_finalize_level(), so only special levels see it.  No RNG.
+export function remove_boundary_syms() {
+    let has_bounds = false;
+    for (let x = 0; x < COLNO - 1 && !has_bounds; x++)
+        for (let y = 0; y < ROWNO - 1; y++)
+            if (game.level?.at(x, y)?.typ === CROSSWALL) { has_bounds = true; break; }
+    if (!has_bounds) return;
+    // C guards on SpLev_Map[x][y] (the cells this level's des.map() stamped);
+    // every CROSSWALL on such a level came from that map, so the guard is
+    // implied here.
+    for (let x = 0; x < gx.x_maze_max; x++)
+        for (let y = 0; y < gy.y_maze_max; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && loc.typ === CROSSWALL) loc.typ = ROOM;
+        }
+}
+
 export function splev_map_origin() {
     return { xstart: gx.xstart, ystart: gy.ystart,
              xsize: gx.xsize, ysize: gy.ysize };
@@ -1726,9 +1751,18 @@ function quest_create_monster(name, mx, my, peacefulOverride) {
     const pmidx = name_to_pmidx(name);
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return null;
-    // find_montype: fixed-gender species (gcode male=1 / female=2) draw no RNG;
-    // otherwise a random gender is rolled during Lua parsing.
-    if (ptr.gcode !== 1 && ptr.gcode !== 2) rn2(2);   // sp_lev.c:3156
+    // C ref: sp_lev.c:3156 find_montype() —
+    //   mgend = name_to_monplus(s, 0, &mgend);      /* the matched name's slot */
+    //   if (is_male || is_female)  mgend = fixed;
+    //   else mgend = (mgend == FEMALE) ? FEMALE : (mgend == MALE) ? MALE : rn2(2);
+    // so the rn2(2) is skipped BOTH for a fixed-gender species (gcode 1/2) AND
+    // when the NAME itself is a NAMS() male/female form ("vampire lord" vs the
+    // neutral "vampire leader").  lspo_monster's own
+    // `tmpmons.female = ... : rn2(2)` never rolls either, because find_montype
+    // has already reduced mgend to MALE or FEMALE.
+    if (ptr.gcode !== 1 && ptr.gcode !== 2
+        && name_gender_hint(name) === MGEND_NEUTRAL)
+        rn2(2);
     rn2(3);                                            // induced_align (dungeon.c:2012)
     let x = q_absx(mx), y = q_absy(my);
     if (mm_mon_at(x, y)) {
@@ -1940,10 +1974,20 @@ function quest_place_stair(mx, my, up) {
     else { game.dnstair = { x, y }; if (game.level) game.level.dnstair = { x, y }; }
 }
 
-// des.levregion({region={mx,my,mx,my}, type="branch"}) — store a 1-cell branch
-// arrival region (absolute coords) for placement at level finalize.  No RNG.
+// des.levregion({region={mx,my,mx,my}, type=...}) — store a 1-cell levregion
+// (absolute coords) plus its LR_* rtype for placement at level finalize
+// (mkmaze.c place_lregions()).  No RNG.  `lev` is the levregion's destination
+// d_level, which only the LR_PORTAL rtype reads.
+function quest_register_lregion(mx, my, rtype, lev) {
+    game._quest_lregion = {
+        x1: q_absx(mx), y1: q_absy(my), x2: q_absx(mx), y2: q_absy(my),
+        rtype, lev: lev || null,
+    };
+}
+
+// des.levregion({region={mx,my,mx,my}, type="branch"})
 function quest_register_branch(mx, my) {
-    game._quest_branch = { x1: q_absx(mx), y1: q_absy(my), x2: q_absx(mx), y2: q_absy(my) };
+    quest_register_lregion(mx, my, LR_BRANCH, null);
 }
 
 // des.door(state, mx, my) — set the door mask on an existing DOOR/SDOOR cell.
@@ -1995,10 +2039,10 @@ function quest_set_door(mx, my, state) {
     loc.doormask = typ;
 }
 
-// flip the stored branch region alongside the map (flip_level flips lregions in
+// flip the stored levregion alongside the map (flip_level flips lregions in
 // C).  Mirrors flip_level's FlipX/FlipY within the level extents.
 function quest_flip_branch(flp) {
-    const br = game._quest_branch;
+    const br = game._quest_lregion;
     if (!br) return;
     const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
     const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
@@ -4524,7 +4568,10 @@ const VALLEY_LOOT_TAIL = [
     SPBOOK_CLASS, SPBOOK_CLASS,
     TOOL_CLASS, TOOL_CLASS, TOOL_CLASS,
 ];
-const RUBY_OTYP = 440;
+// C ref: objects.c GEM order — DILITHIUM_CRYSTAL 439, DIAMOND 440, RUBY 441.
+// Was 440 (=DIAMOND): a stale value from the pre-mail-daemon numbering where
+// DILITHIUM_CRYSTAL was 438.  valley.lua:117 des.object("ruby").
+const RUBY_OTYP = 441;
 
 // Entry point.  C ref: makemaz("valley") -> load_special("valley.lua").
 export async function makemaz_valley() {
@@ -4548,18 +4595,21 @@ export async function makemaz_valley() {
 
     // "Make the path somewhat unpredictable" — three independent percent(50)
     // blocks, each one rn2(100).  The terrain edits themselves draw nothing.
+    // valley.lua's 'B' is nhlua.c char2typ's "hack: boundary location" =
+    // CROSSWALL, not iron bars; remove_boundary_syms() at finalize turns every
+    // one of them back into ROOM.
     if (percent(50)) {
         vly_terrain_line(50, 8, 53, 8, HWALL);
-        vly_terrain_line(40, 8, 43, 8, IRONBARS);
+        vly_terrain_line(40, 8, 43, 8, CROSSWALL);
     }
     if (percent(50)) {
         vly_terrain_at(27, 12, VWALL);
-        vly_terrain_line(27, 3, 29, 3, IRONBARS);
+        vly_terrain_line(27, 3, 29, 3, CROSSWALL);
         vly_terrain_at(28, 2, HWALL);
     }
     if (percent(50)) {
         vly_terrain_line(16, 10, 16, 11, VWALL);
-        vly_terrain_line(9, 13, 14, 13, IRONBARS);
+        vly_terrain_line(9, 13, 14, 13, CROSSWALL);
     }
 
     // The shrine to Moloch: filled=2 is FILL_LVLFLAGS_ONLY, so the temple gets
@@ -4625,7 +4675,10 @@ export async function makemaz_valley() {
 
     // C ref: lspo_finalize_level() — link_doors_rooms/remove_boundary_syms/
     // map_cleanup (no RNG), wallification (no RNG), then
-    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
+    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.  remove_boundary_syms
+    // runs BEFORE wallification, so the 'B' cells are already ROOM by the time
+    // the wall modes are computed.
+    remove_boundary_syms();
     bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
     let flp = 0;
     if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975

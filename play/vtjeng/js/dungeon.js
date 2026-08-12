@@ -521,6 +521,10 @@ function add_level(newLevel, state) {
     state.sp_levchn = state.specialLevels[0] ?? null;
 }
 
+// C ref: dungeon.c depth(). The absolute depth of a level, counting from the
+// start of the branch it belongs to. C reads svd.dungeons[] unguarded, so a
+// caller reaching here before init_dungeons() has filled that array is a bug
+// in the caller, and this throws rather than inventing a depth for it.
 export function depth(level, state = game) {
     return state.dungeons[level.dnum].depth_start + level.dlevel - 1;
 }
@@ -1343,6 +1347,41 @@ export function update_lastseentyp(
     );
     state.level.lastseentyp[x][y] = typ;
     return typ;
+}
+
+// C ref: dungeon.c update_mapseen_for() (2942-2947), which recalculates the
+// whole level's #overview data and hands back svl.lastseentyp at one square.
+// lock.c pick_lock():580 is the caller, and it wants only the return value.
+//
+// recalc_mapseen() runs from 3075 to its closing brace at 3261, and over that
+// whole body it writes svl.lastseentyp in exactly one place:
+// update_lastseentyp(u.ux, u.uy) at 3192, behind !Levitation and applied to
+// the hero's own square. Everything else it writes is mptr->feat.* and
+// mptr->flags, read only by the #overview annotation this port does not have.
+// Two parts of the body read svl.lastseentyp without writing it: the
+// per-square loop's count_feat_lastseentyp() at 3196, and the bones loop at
+// 3256-3260, which sets bp->bonesknown and mptr->flags.knownbones. So the
+// chain cannot change the value this function returns for any square except
+// the hero's own, and pick_lock() never asks about that one -- lock.c:429
+// sends cc == u.ux,u.uy down the container branch, which js/lock.js pick_lock()
+// refuses at its u_at() test.
+//
+// `sed -n '3075,3261p' nethack-c/upstream/src/dungeon.c` prints that body, and
+// `grep -n 'lastseentyp' nethack-c/upstream/src/dungeon.c` prints the three
+// lines above, which is how the claim is checked without reading all 187.
+//
+// One statement of C's is not reproduced: the early
+// `if (!(mptr = find_mapseen(&u.uz))) return;` at 3092-3093, which would skip
+// the update_lastseentyp() call. C's own comment at 3086-3091 records that a
+// null return "should now be impossible", so the port calls unconditionally.
+export function update_mapseen_for(x, y, state = game) {
+    // The default canseemon() is left in place: update_lastseentyp()'s monster
+    // arm needs a furniture mimic standing on the hero's own square, and the
+    // only monster that can share it is an engulfer, which is displaying its
+    // own insides rather than a piece of furniture.
+    if (!heroLevitating(state))
+        update_lastseentyp(state.u.ux, state.u.uy, state);
+    return state.level?.lastseentyp?.[x]?.[y] ?? STONE;
 }
 
 // C ref: dungeon.c induced_align(). Special-level and dungeon alignment masks

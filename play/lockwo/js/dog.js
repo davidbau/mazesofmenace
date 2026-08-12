@@ -257,7 +257,12 @@ function makedog_mon(pettype, x, y) {
     };
     mtmp.m_id = rnd(2);
     newmonhp_for_pet(pettype, mtmp);
-    rn2(2); // random gender
+    // C ref: makemon.c:1279 `mtmp->female = femaleok ? rn2(2) : 0;` — the draw
+    // was already emitted here but its RESULT was dropped, leaving every pet
+    // male.  could_seduce() (mhitm.js) keys off the defender's gender, so a
+    // nymph attacking a female pet says "smiles at ... engagingly" (compat 2)
+    // rather than "seductively" (compat 1).
+    mtmp.female = rn2(2);
     peace_minded_pet();
     return mtmp;
 }

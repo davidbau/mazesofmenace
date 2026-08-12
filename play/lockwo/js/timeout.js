@@ -21,6 +21,7 @@
 // they are deliberately absent rather than guessed at.
 
 import { game } from './gstate.js';
+import { rn2, rnd } from './rng.js';
 import { heal_legs } from './trap.js';
 import { run_object_timers } from './mkobj.js';
 import { update_topl } from './display.js';
@@ -70,8 +71,70 @@ function expire_hallucination() {
     game.u.uprops.Hallucination = 0;
 }
 
+// C ref: timeout.c:1222 slip_or_trip() — the fumble feedback.  Only the on-foot,
+// non-ice arms are reachable for the covered heroes (no steed, no ice level, no
+// FROMOUTSIDE fumbling source).
+//
+// SCOPE: the object-on-my-square arm ("You trip over <obj>.") needs
+// iflags.last_msg == PLNMSG_ONE_ITEM_HERE to choose between the pronoun and the
+// full doname(); we use doname() unconditionally, and skip the corpse
+// petrification check (no covered hero walks barefoot over a cockatrice).
+async function slip_or_trip() {
+    const u = game.u;
+    const { vobj_at } = await import('./display.js');
+    const otmp = vobj_at(u.ux, u.uy);
+    if (otmp) {
+        const { doname_invent } = await import('./invent.js');
+        await update_topl(`You trip over ${doname_invent(otmp)}.`);
+        return;
+    }
+    switch (rn2(4)) {
+    case 1:
+        await update_topl(`You trip over your own ${Hallucination() ? 'elbow' : 'feet'}.`);
+        break;
+    case 2:
+        await update_topl(`You slip ${Hallucination() ? 'on a banana peel' : 'and nearly fall'}.`);
+        break;
+    case 3:
+        await update_topl('You flounder.');
+        break;
+    default:
+        await update_topl('You stumble.');
+        break;
+    }
+}
+
+// C ref: timeout.c:902 case FUMBLING — fires slip_or_trip() when the countdown
+// reaches 0 and then RE-ARMS with another rnd(20) for as long as the hero is
+// still Fumbling (worn fumble boots / gauntlets).  Unlike every other timer here
+// it is a repeating one, so the rnd(20) has to be re-drawn every cycle.
+async function expire_fumbling() {
+    const u = game.u;
+    // C: `if (u.umoved && !(Levitation || Flying))` — an airborne hero skips
+    // slip_or_trip() and so skips its rn2(4).
+    if (u.umoved && !(u.uprops?.Levitation || u.uprops?.Flying)) {
+        await slip_or_trip();
+        // C: nomul(-2); gm.multi_reason = "fumbling"; gn.nomovemsg = "";
+        game.multi = -2;
+        game.multi_reason = 'fumbling';
+        game.nomovemsg = '';
+        // SCOPE: the inv_weight() > -WT_NOISY_INV "You make a lot of noise!" +
+        // wake_nearby() branch needs the noisy-inventory threshold; the covered
+        // hero's pack stays well under it.
+    }
+    // HFumbling &= ~FROMOUTSIDE (ice); then re-arm while still Fumbling.
+    u.HFumblingOutside = 0;
+    if (u.HFumbling || u.EFumbling) u.HFumbling = (u.HFumbling || 0) + rnd(20);
+}
+
 // The u.uprops[] timers this port materialises.  `get`/`set` read and write
 // whichever field the rest of the port already uses for that property.
+// NOTE: this list is NOT in prop.h numeric order (CONFUSION 14 before STUNNED
+// 13, WOUNDED_LEGS 26 before HALLUC 23 / DEAF 16) — the order is only
+// observable when two timers expire on the same turn and both print, so the
+// pre-existing entries are left where they are.  FUMBLING (prop.h 25) is placed
+// after DEAF and before FAST (64), which is the position with the fewest
+// remaining inversions.
 const TIMED_PROPS = [
     // prop.h INVULNERABLE = 11, ahead of every other entry here.  Only
     // #wizintrinsic gives it a timeout, and timeout.c has no case for it, so it
@@ -118,6 +181,12 @@ const TIMED_PROPS = [
           if (u?.uprops) u.uprops.HDeaf = 0;
           if (!Unaware() && old) await update_topl('You can hear again.');
       } },
+    // prop.h FUMBLING = 25.  The only expiry case here that draws RNG (rn2(4)
+    // in slip_or_trip, then the rnd(20) re-arm).
+    { name: 'FUMBLING',
+      get: (u) => u.HFumbling || 0,
+      set: (u, v) => { u.HFumbling = v; },
+      expire: expire_fumbling },
     // prop.h FAST = 64, after every other entry here.  A timed HFast is what
     // makes Very_fast true (hack.h Very_fast == ((HFast & ~INTRINSIC) || EFast)),
     // so this countdown is load-bearing: u_calc_moveamt draws a different roll
