@@ -25,32 +25,33 @@ const $d_level_dlevel = FLD.d_level_dlevel, $dgn_topology_d_air_level = FLD.dgn_
     $dgn_topology_d_water_level = FLD.dgn_topology_d_water_level,
     $instance_globals_s_stairs = FLD.instance_globals_s_stairs,
     $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
-    $stairway_isladder = FLD.stairway_isladder, $stairway_next = FLD.stairway_next,
-    $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev,
+    $sizeof_dungeon = FLD.sizeof_dungeon, $stairway_isladder = FLD.stairway_isladder,
+    $stairway_next = FLD.stairway_next, $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev,
     $stairway_u_traversed = FLD.stairway_u_traversed, $stairway_up = FLD.stairway_up,
     $you_uhave = FLD.you_uhave, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("ladder");
-const __sl1 = cptr.lit("staircase");
-const __sl2 = cptr.lit("stairs");
-const __sl3 = cptr.lit("up");
-const __sl4 = cptr.lit("down");
-const __sl5 = cptr.lit("%s %s");
-const __sl6 = cptr.lit(" to level %d");
-const __sl7 = cptr.lit("%s%s %s %s");
-const __sl8 = cptr.lit("");
-const __sl9 = cptr.lit("branch ");
-const __sl10 = cptr.lit("out of the dungeon");
-const __sl11 = cptr.lit("to the Elemental Planes");
-const __sl12 = cptr.lit("to the end game");
-const __sl13 = cptr.lit("branch %s %s to %s");
-const __sl14 = cptr.lit("The ");
-const __sl15 = cptr.lit("the ");
+const __s_ladder = cptr.lit("ladder");
+const __s_staircase = cptr.lit("staircase");
+const __s_stairs = cptr.lit("stairs");
+const __s_up = cptr.lit("up");
+const __s_down = cptr.lit("down");
+const __s_s_s = cptr.lit("%s %s");
+const __s_to_level_d = cptr.lit(" to level %d");
+const __s_s_s_s_s = cptr.lit("%s%s %s %s");
+const __s_empty = cptr.lit("");
+const __s_branch = cptr.lit("branch ");
+const __s_out_of_the_dungeon = cptr.lit("out of the dungeon");
+const __s_to_the_elemental_planes = cptr.lit("to the Elemental Planes");
+const __s_to_the_end_game = cptr.lit("to the end game");
+const __s_branch_s_s_to_s = cptr.lit("branch %s %s to %s");
+const __s_the = cptr.lit("The ");
+const __s_the__2 = cptr.lit("the ");
 
-/** C ref: stairs.c:8 — @param {CInt} x @param {CInt} y @param {CInt} up @param {CInt} isladder @param {CPtr} dest */
+/** C ref: stairs.c:8 — @param {CInt} x @param {CInt} y @param {CInt} up @param {CInt} isladder @param {CPtr<d_level>} dest */
 export function* stairway_add(x, y, up, isladder, dest) {
     let tmp = (yield* alloc(24));
+
     void __builtin___memset_chk(tmp, 0, 24n, __builtin_object_size(tmp, 0));
     cptr.stI16(tmp, x);
     cptr.stI16o(tmp, $stairway_sy, y);
@@ -65,6 +66,7 @@ export function* stairway_add(x, y, up, isladder, dest) {
 /** C ref: stairs.c:27 */
 export function stairway_free_all() {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp) {
         let tmp2 = cptr.ldPtro(tmp, $stairway_next);
         cptr.free(tmp);
@@ -73,55 +75,61 @@ export function stairway_free_all() {
     cptr.stPtro(gs, $instance_globals_s_stairs, null);
 }
 
-/** C ref: stairs.c:40 — @param {CInt} x @param {CInt} y @returns {CPtr} */
+/** C ref: stairs.c:40 — @param {CInt} x @param {CInt} y @returns {CPtr<stairway>} */
 export function stairway_at(x, y) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp && !(cptr.ldI16(tmp) == x && cptr.ldI16o(tmp, $stairway_sy) == y))
         tmp = cptr.ldPtro(tmp, $stairway_next);
     return tmp;
 }
 
-/** C ref: stairs.c:50 — @param {CPtr} fromdlev @returns {CPtr} */
+/** C ref: stairs.c:50 — @param {CPtr<d_level>} fromdlev @returns {CPtr<stairway>} */
 export function stairway_find(fromdlev) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp) {
         if (cptr.ldI16o(tmp, $stairway_tolev) == cptr.ldI16(fromdlev) && cptr.ldI16o(tmp, $stairway_tolev + $d_level_dlevel) == cptr.ldI16o(fromdlev, $d_level_dlevel))
-            break;
+            break;  /* return */
         tmp = cptr.ldPtro(tmp, $stairway_next);
     }
     return tmp;
 }
 
-/** C ref: stairs.c:64 — @param {CPtr} fromdlev @param {CInt} isladder @returns {CPtr} */
+/** C ref: stairs.c:64 — @param {CPtr<d_level>} fromdlev @param {CInt} isladder @returns {CPtr<stairway>} */
 export function stairway_find_from(fromdlev, isladder) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp) {
         if (cptr.ldI16o(tmp, $stairway_tolev) == cptr.ldI16(fromdlev) && cptr.ldI16o(tmp, $stairway_tolev + $d_level_dlevel) == cptr.ldI16o(fromdlev, $d_level_dlevel) && cptr.ld1so(tmp, $stairway_isladder) == isladder)
-            break;
+            break;  /* return */
         tmp = cptr.ldPtro(tmp, $stairway_next);
     }
     return tmp;
 }
 
-/** C ref: stairs.c:79 — @param {CInt} up @returns {CPtr} */
+/** C ref: stairs.c:79 — @param {CInt} up @returns {CPtr<stairway>} */
 export function stairway_find_dir(up) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp && !(cptr.ld1so(tmp, $stairway_up) == up))
         tmp = cptr.ldPtro(tmp, $stairway_next);
     return tmp;
 }
 
-/** C ref: stairs.c:89 — @param {CInt} isladder @param {CInt} up @returns {CPtr} */
+/** C ref: stairs.c:89 — @param {CInt} isladder @param {CInt} up @returns {CPtr<stairway>} */
 export function stairway_find_type_dir(isladder, up) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp && !(cptr.ld1so(tmp, $stairway_isladder) == isladder && cptr.ld1so(tmp, $stairway_up) == up))
         tmp = cptr.ldPtro(tmp, $stairway_next);
     return tmp;
 }
 
-/** C ref: stairs.c:99 — @param {CInt} up @returns {CPtr} */
+/** C ref: stairs.c:99 — @param {CInt} up @returns {CPtr<stairway>} */
 export function stairway_find_special_dir(up) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
     while (tmp) {
         if (cptr.ldI16o(tmp, $stairway_tolev) != cptr.ldI16o(u, $you_uz) && cptr.ld1so(tmp, $stairway_up) != up)
             return tmp;
@@ -130,31 +138,37 @@ export function stairway_find_special_dir(up) {
     return tmp;
 }
 
+/* place you on the special staircase */
 /** C ref: stairs.c:113 — @param {CInt} upflag */
 export function* u_on_sstairs(upflag) {
     let stway = stairway_find_special_dir(schar(upflag));
+
     if (stway)
         (yield* u_on_newpos(cptr.ldI16(stway), cptr.ldI16o(stway, $stairway_sy)));
     else
         (yield* u_on_rndspot(upflag));
 }
 
+/* place you on upstairs (or special equivalent) */
 /** C ref: stairs.c:125 */
 export function* u_on_upstairs() {
     let stway = stairway_find_dir(1);
+
     if (stway)
         (yield* u_on_newpos(cptr.ldI16(stway), cptr.ldI16o(stway, $stairway_sy)));
     else
-        (yield* u_on_sstairs(0));
+        (yield* u_on_sstairs(0));  /* destination upstairs implies moving down */
 }
 
+/* place you on dnstairs (or special equivalent) */
 /** C ref: stairs.c:137 */
 export function* u_on_dnstairs() {
     let stway = stairway_find_dir(0);
+
     if (stway)
         (yield* u_on_newpos(cptr.ldI16(stway), cptr.ldI16o(stway, $stairway_sy)));
     else
-        (yield* u_on_sstairs(1));
+        (yield* u_on_sstairs(1));  /* destination dnstairs implies moving up */
 }
 
 /** C ref: stairs.c:148 — @param {CInt} x @param {CInt} y @returns {CInt} */
@@ -165,46 +179,62 @@ export function On_stairs(x, y) {
 /** C ref: stairs.c:154 — @param {CInt} x @param {CInt} y @returns {CInt} */
 export function On_ladder(x, y) {
     let stway = stairway_at(x, y);
+
     return schar((stway && cptr.ld1so(stway, $stairway_isladder) ? 1 : 0));
 }
 
 /** C ref: stairs.c:162 — @param {CInt} x @param {CInt} y @returns {CInt} */
 export function On_stairs_up(x, y) {
     let stway = stairway_at(x, y);
+
     return schar((stway && cptr.ld1so(stway, $stairway_up) ? 1 : 0));
 }
 
 /** C ref: stairs.c:170 — @param {CInt} x @param {CInt} y @returns {CInt} */
 export function On_stairs_dn(x, y) {
     let stway = stairway_at(x, y);
+
     return schar((stway && !cptr.ld1so(stway, $stairway_up) ? 1 : 0));
 }
 
-/** C ref: stairs.c:180 — @param {CPtr} sway @returns {CInt} */
+/* return True if 'sway' is a branch staircase and hero has used these stairs
+   to visit the branch */
+/** C ref: stairs.c:180 — @param {CPtr<stairway>} sway @returns {CInt} */
 export function known_branch_stairs(sway) {
     return schar((sway && cptr.ldI16o(sway, $stairway_tolev) != cptr.ldI16o(u, $you_uz) && cptr.ld1so(sway, $stairway_u_traversed) ? 1 : 0));
 }
 
-/** C ref: stairs.c:187 — @param {CPtr} sway @param {CPtr} outbuf @param {CInt} stcase @returns {CPtr} */
+/* describe staircase 'sway' based on whether hero knows the destination */
+/** C ref: stairs.c:187 — @param {CPtr<stairway>} sway @param {CPtr<char>} outbuf @param {CInt} stcase @returns {CPtr<char>} */
 export function stairs_description(sway, outbuf, stcase) {
     let tolev = cptr.alloc(4);
     let stairs;
     let updown;
+
     cptr.memcpy(tolev, cptr.add(sway, $stairway_tolev), 4);
-    stairs = cptr.ld1so(sway, $stairway_isladder) ? __sl0 : (stcase ? __sl1 : __sl2);
-    updown = cptr.ld1so(sway, $stairway_up) ? __sl3 : __sl4;
+    stairs = cptr.ld1so(sway, $stairway_isladder) ? __s_ladder : (stcase ? __s_staircase : __s_stairs);
+    updown = cptr.ld1so(sway, $stairway_up) ? __s_up : __s_down;
+
     if (!known_branch_stairs(sway)) {
-        void cptr.sprintf(outbuf, __sl5, stairs, updown);
+        /* ordinary stairs or branch stairs to not-yet-visited branch */
+        void cptr.sprintf(outbuf, __s_s_s, stairs, updown);
         if (cptr.ld1so(sway, $stairway_u_traversed)) {
-            let specialdepth = schar((cptr.ldI16(tolev) == quest_dnum() || single_level_branch(tolev) ? 1 : 0));
+            let specialdepth = schar((cptr.ldI16(tolev) == quest_dnum() || single_level_branch(tolev) ? 1 : 0));  /* knox */
             let to_dlev = specialdepth ? dunlev(tolev) : depth(tolev);
-            void cptr.sprintf(eos(outbuf), __sl6, to_dlev);
+
+            void cptr.sprintf(eos(outbuf), __s_to_level_d, to_dlev);
         }
     } else if (cptr.ldI16o(u, $you_uz) == 0 && cptr.ldI16o(u, $you_uz + $d_level_dlevel) == 1 && cptr.ld1so(sway, $stairway_up)) {
-        void cptr.sprintf(outbuf, __sl7, !(cptr.ldI32o(u, $you_uhave) & 1) ? __sl8 : __sl9, stairs, updown, !(cptr.ldI32o(u, $you_uhave) & 1) ? __sl10 : ((on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_earth_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_fire_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level))) ? __sl11 : __sl12));
+        /* stairs up from level one are a special case; they are marked
+           as having been traversed because the hero obviously started
+           the game by coming down them, but the remote side varies
+           depending on whether the Amulet is being carried */
+        void cptr.sprintf(outbuf, __s_s_s_s_s, !(cptr.ldI32o(u, $you_uhave) & 1) ? __s_empty : __s_branch, stairs, updown, !(cptr.ldI32o(u, $you_uhave) & 1) ? __s_out_of_the_dungeon : ((on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_earth_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_fire_level)) || on_level(tolev, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level))) ? __s_to_the_elemental_planes : __s_to_the_end_game));
     } else {
-        void cptr.sprintf(outbuf, __sl13, stairs, updown, cptr.add(svd, cptr.ldI16(tolev), 112));
-        void strsubst(outbuf, __sl14, __sl15);
+        /* known branch stairs; tacking on destination level is too verbose */
+        void cptr.sprintf(outbuf, __s_branch_s_s_to_s, stairs, updown, cptr.add(svd, cptr.ldI16(tolev), $sizeof_dungeon));
+        /* dungeons[].dname is capitalized; undo that for "The <Branch>" */
+        void strsubst(outbuf, __s_the, __s_the__2);
     }
     return outbuf;
 }

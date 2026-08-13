@@ -14,6 +14,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { nonliving } from './nhmacrofn.js';
+import { d_at, rn2_at, rnd_at } from './nhrng.js';
 import { Blind, BlindedTimeout, Breathless, Half_gas_damage, Half_physical_damage, Poison_resistance, putstr, sokoban_dnum } from './nhprop.js';
 import { alloc } from './alloc.js';
 import { c_common_strings, cg, gg, gi, gm, gr, gv, gy, iflags, svc, svd, svl, svm, svn, u, ublindf } from './decl.js';
@@ -32,7 +33,6 @@ import { killed, m_poisongas_ok, monkilled, setmangry, wake_nearto } from './mon
 import { makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
 import { make_blinded, set_itimeout } from './potion.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { losehp } from './hack.js';
 import { Resists_Elem, monstseesu, monstunseesu } from './mondata.js';
 import { In_hell, In_mines, on_level } from './dungeon.js';
@@ -80,119 +80,133 @@ const $NHFILE_ftype = FLD.NHFILE_ftype, $NHFILE_mode = FLD.NHFILE_mode, $NhRect_
     $permonst_mflags1 = FLD.permonst_mflags1, $permonst_mflags2 = FLD.permonst_mflags2,
     $permonst_mlet = FLD.permonst_mlet, $permonst_msound = FLD.permonst_msound,
     $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
-    $window_procs_win_putstr = FLD.window_procs_win_putstr, $you_uinwater = FLD.you_uinwater,
-    $you_uprops = FLD.you_uprops, $you_uswallow = FLD.you_uswallow, $you_uy = FLD.you_uy,
-    $you_uz = FLD.you_uz, $you_xray_range = FLD.you_xray_range;
+    $sizeof_NhRect = FLD.sizeof_NhRect, $sizeof_coord = FLD.sizeof_coord,
+    $sizeof_nhcoord = FLD.sizeof_nhcoord, $sizeof_nhrect = FLD.sizeof_nhrect,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm,
+    $sizeof_rm_x21 = FLD.sizeof_rm_x21, $window_procs_win_putstr = FLD.window_procs_win_putstr,
+    $you_uinwater = FLD.you_uinwater, $you_uprops = FLD.you_uprops, $you_uswallow = FLD.you_uswallow,
+    $you_uy = FLD.you_uy, $you_uz = FLD.you_uz, $you_xray_range = FLD.you_xray_range;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("add_mon_to_reg: %s [#%u] already in region.");
-const __sl1 = cptr.lit("gas cloud around you dissipates.");
-const __sl2 = cptr.lit("%s gas cloud%s dissipate.");
-const __sl3 = cptr.lit("a");
-const __sl4 = cptr.lit("some");
-const __sl5 = cptr.lit("");
-const __sl6 = cptr.lit("s");
-const __sl7 = cptr.lit("%s");
-const __sl8 = cptr.lit("\t");
-const __sl9 = cptr.lit("  ");
-const __sl10 = cptr.lit("Visible regions");
-const __sl11 = cptr.lit("%5ld");
-const __sl12 = cptr.lit("poison gas (%d)");
-const __sl13 = cptr.lit("vapor");
-const __sl14 = cptr.lit("%s%-16s");
-const __sl15 = cptr.lit("%s@[%d,%d..%d,%d]");
-const __sl16 = cptr.lit("region-tmstamp");
-const __sl17 = cptr.lit("region-region_count");
-const __sl18 = cptr.lit("region-bounding_box");
-const __sl19 = cptr.lit("region-nrects");
-const __sl20 = cptr.lit("region-rect");
-const __sl21 = cptr.lit("region-attach_2_u");
-const __sl22 = cptr.lit("region-attach_2_m");
-const __sl23 = cptr.lit("region-enter_msg_length");
-const __sl24 = cptr.lit("region-enter_msg");
-const __sl25 = cptr.lit("region-leave_msg_length");
-const __sl26 = cptr.lit("region-leave_msg");
-const __sl27 = cptr.lit("region-ttl");
-const __sl28 = cptr.lit("region-expire_f");
-const __sl29 = cptr.lit("region-can_enter_f");
-const __sl30 = cptr.lit("region-enter_f");
-const __sl31 = cptr.lit("region-can_leave_f");
-const __sl32 = cptr.lit("region-leave_f");
-const __sl33 = cptr.lit("region-inside_f");
-const __sl34 = cptr.lit("region-player_flags");
-const __sl35 = cptr.lit("region-monster_count");
-const __sl36 = cptr.lit("region-monster");
-const __sl37 = cptr.lit("region-visible");
-const __sl38 = cptr.lit("region-glyph");
-const __sl39 = cptr.lit("region-arg");
-const __sl40 = cptr.lit("region-bounding box");
-const __sl41 = cptr.lit("%s sting.");
-const __sl42 = cptr.lit("%s is burning your %s!");
-const __sl43 = cptr.lit("cough and spit blood!");
-const __sl44 = cptr.lit("region.c");
-const __sl45 = cptr.lit("inside_gas_cloud");
-const __sl46 = cptr.lit("gas cloud");
-const __sl47 = cptr.lit("cough!");
-const __sl48 = cptr.lit("%s coughs!");
-const __sl49 = cptr.lit("are enveloped in a cloud of %s!");
-const __sl50 = cptr.lit("noxious gas");
-const __sl51 = cptr.lit("steam");
-const __sl52 = cptr.lit("create_gas_cloud: cloud too large (%d)!");
-const __sl53 = cptr.lit("create_gas_cloud");
-const __sl54 = cptr.lit("region_safety");
-const __sl55 = cptr.lit("able to breathe.");
-const __sl56 = cptr.lit("gas cloud enveloping you dissipates.");
-const __sl57 = cptr.lit("gas cloud has dissipated.");
+const __s_add_mon_to_reg_s_u_already_in_region = cptr.lit("add_mon_to_reg: %s [#%u] already in region.");
+const __s_gas_cloud_around_you_dissipates = cptr.lit("gas cloud around you dissipates.");
+const __s_s_gas_cloud_s_dissipate = cptr.lit("%s gas cloud%s dissipate.");
+const __s_a = cptr.lit("a");
+const __s_some = cptr.lit("some");
+const __s_empty = cptr.lit("");
+const __s_s = cptr.lit("s");
+const __s_pct_s = cptr.lit("%s");
+const __s_tab = cptr.lit("\t");
+const __s_sp2 = cptr.lit("  ");
+const __s_visible_regions = cptr.lit("Visible regions");
+const __s_5ld = cptr.lit("%5ld");
+const __s_poison_gas_d = cptr.lit("poison gas (%d)");
+const __s_vapor = cptr.lit("vapor");
+const __s_s_16s = cptr.lit("%s%-16s");
+const __s_s_d_d_d_d = cptr.lit("%s@[%d,%d..%d,%d]");
+const __s_region_tmstamp = cptr.lit("region-tmstamp");
+const __s_region_region_count = cptr.lit("region-region_count");
+const __s_region_bounding_box = cptr.lit("region-bounding_box");
+const __s_region_nrects = cptr.lit("region-nrects");
+const __s_region_rect = cptr.lit("region-rect");
+const __s_region_attach_2_u = cptr.lit("region-attach_2_u");
+const __s_region_attach_2_m = cptr.lit("region-attach_2_m");
+const __s_region_enter_msg_length = cptr.lit("region-enter_msg_length");
+const __s_region_enter_msg = cptr.lit("region-enter_msg");
+const __s_region_leave_msg_length = cptr.lit("region-leave_msg_length");
+const __s_region_leave_msg = cptr.lit("region-leave_msg");
+const __s_region_ttl = cptr.lit("region-ttl");
+const __s_region_expire_f = cptr.lit("region-expire_f");
+const __s_region_can_enter_f = cptr.lit("region-can_enter_f");
+const __s_region_enter_f = cptr.lit("region-enter_f");
+const __s_region_can_leave_f = cptr.lit("region-can_leave_f");
+const __s_region_leave_f = cptr.lit("region-leave_f");
+const __s_region_inside_f = cptr.lit("region-inside_f");
+const __s_region_player_flags = cptr.lit("region-player_flags");
+const __s_region_monster_count = cptr.lit("region-monster_count");
+const __s_region_monster = cptr.lit("region-monster");
+const __s_region_visible = cptr.lit("region-visible");
+const __s_region_glyph = cptr.lit("region-glyph");
+const __s_region_arg = cptr.lit("region-arg");
+const __s_region_bounding_box__2 = cptr.lit("region-bounding box");
+const __s_s_sting = cptr.lit("%s sting.");
+const __s_s_is_burning_your_s = cptr.lit("%s is burning your %s!");
+const __s_cough_and_spit_blood = cptr.lit("cough and spit blood!");
+const __s_region_c = cptr.lit("region.c");
+const __s_inside_gas_cloud = cptr.lit("inside_gas_cloud");
+const __s_gas_cloud = cptr.lit("gas cloud");
+const __s_cough = cptr.lit("cough!");
+const __s_s_coughs = cptr.lit("%s coughs!");
+const __s_are_enveloped_in_a_cloud_of_s = cptr.lit("are enveloped in a cloud of %s!");
+const __s_noxious_gas = cptr.lit("noxious gas");
+const __s_steam = cptr.lit("steam");
+const __s_create_gas_cloud_cloud_too_large_d = cptr.lit("create_gas_cloud: cloud too large (%d)!");
+const __s_create_gas_cloud = cptr.lit("create_gas_cloud");
+const __s_region_safety = cptr.lit("region_safety");
+const __s_able_to_breathe = cptr.lit("able to breathe.");
+const __s_gas_cloud_enveloping_you_dissipates = cptr.lit("gas cloud enveloping you dissipates.");
+const __s_gas_cloud_has_dissipated = cptr.lit("gas cloud has dissipated.");
 
 /** C ref: region.c:45 — callback_proc[2] */
 const callbacks = [inside_gas_cloud, expire_gas_cloud];
 
-/** C ref: region.c:54 — @param {CPtr} r @param {CInt} x @param {CInt} y @returns {CInt} */
+/* Should be inlined. */
+/** C ref: region.c:54 — @param {CPtr<NhRect>} r @param {CInt} x @param {CInt} y @returns {CInt} */
 export function inside_rect(r, x, y) {
     return schar((x >= cptr.ldI16(r) && x <= cptr.ldI16o(r, $NhRect_hx) && y >= cptr.ldI16o(r, $NhRect_ly) && y <= cptr.ldI16o(r, $NhRect_hy) ? 1 : 0));
 }
 
-/** C ref: region.c:63 — @param {CPtr} reg @param {CInt} x @param {CInt} y @returns {CInt} */
+/*
+ * Check if a point is inside a region.
+ */
+/** C ref: region.c:63 — @param {CPtr<NhRegion>} reg @param {CInt} x @param {CInt} y @returns {CInt} */
 export function inside_region(reg, x, y) {
     let i;
+
     if (reg === null || !inside_rect(reg, x, y))
         return 0;
     for (i = 0; i < cptr.ldI16o(reg, $NhRegion_nrects); i++)
-        if (inside_rect(cptr.add(cptr.ldPtro(reg, $NhRegion_rects), i, 8), x, y))
+        if (inside_rect(cptr.add(cptr.ldPtro(reg, $NhRegion_rects), i, $sizeof_NhRect), x, y))
             return 1;
     return 0;
 }
 
-/** C ref: region.c:79 — @param {CPtr} rects @param {CInt} nrect @returns {CPtr} */
+/*
+ * Create a region. It does not activate it.
+ */
+/** C ref: region.c:79 — @param {CPtr<NhRect>} rects @param {CInt} nrect @returns {CPtr<NhRegion>} */
 export function* create_region(rects, nrect) {
     let i;
     let reg;
+
     reg = (yield* alloc(96));
     void __builtin___memset_chk(reg, 0, 96n, __builtin_object_size(reg, 0));
+    /* Determines bounding box */
     if (nrect > 0) {
-        cptr.memcpy(reg, cptr.add(rects, 0, 8), 8);
+        cptr.memcpy(reg, cptr.add(rects, 0, $sizeof_NhRect), 8);
     } else {
         cptr.stI16(reg, NHM.COLNO);
         cptr.stI16o(reg, $nhrect_ly, NHM.ROWNO);
-        cptr.stI16o(reg, $nhrect_hx, 0);
+        cptr.stI16o(reg, $nhrect_hx, 0);  /* 1 */
         cptr.stI16o(reg, $nhrect_hy, 0);
     }
     cptr.stI16o(reg, $NhRegion_nrects, i16(nrect));
     cptr.stPtro(reg, $NhRegion_rects, (nrect > 0) ? (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(nrect)) * 8n))))) : null);
     for (i = 0; i < nrect; i++) {
-        if (cptr.ldI16o(rects, i, 8) < cptr.ldI16(reg))
-            cptr.stI16(reg, cptr.ldI16o(rects, i, 8));
-        if (cptr.ldI16o2(rects, i, 8, $nhrect_ly) < cptr.ldI16o(reg, $nhrect_ly))
-            cptr.stI16o(reg, $nhrect_ly, cptr.ldI16o2(rects, i, 8, $nhrect_ly));
-        if (cptr.ldI16o2(rects, i, 8, $nhrect_hx) > cptr.ldI16o(reg, $nhrect_hx))
-            cptr.stI16o(reg, $nhrect_hx, cptr.ldI16o2(rects, i, 8, $nhrect_hx));
-        if (cptr.ldI16o2(rects, i, 8, $nhrect_hy) > cptr.ldI16o(reg, $nhrect_hy))
-            cptr.stI16o(reg, $nhrect_hy, cptr.ldI16o2(rects, i, 8, $nhrect_hy));
-        cptr.memcpy(cptr.add(cptr.ldPtro(reg, $NhRegion_rects), i, 8), cptr.add(rects, i, 8), 8);
+        if (cptr.ldI16o(rects, i, $sizeof_NhRect) < cptr.ldI16(reg))
+            cptr.stI16(reg, cptr.ldI16o(rects, i, $sizeof_NhRect));
+        if (cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_ly) < cptr.ldI16o(reg, $nhrect_ly))
+            cptr.stI16o(reg, $nhrect_ly, cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_ly));
+        if (cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_hx) > cptr.ldI16o(reg, $nhrect_hx))
+            cptr.stI16o(reg, $nhrect_hx, cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_hx));
+        if (cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_hy) > cptr.ldI16o(reg, $nhrect_hy))
+            cptr.stI16o(reg, $nhrect_hy, cptr.ldI16o2(rects, i, $sizeof_NhRect, $nhrect_hy));
+        cptr.memcpy(cptr.add(cptr.ldPtro(reg, $NhRegion_rects), i, $sizeof_NhRect), cptr.add(rects, i, $sizeof_NhRect), 8);
     }
-    cptr.stI64o(reg, $NhRegion_ttl, -1n);
+    cptr.stI64o(reg, $NhRegion_ttl, -1n);  /* Defaults */
     cptr.st1o(reg, $NhRegion_attach_2_u, 0);
     cptr.stI32o(reg, $NhRegion_attach_2_m, 0);
+    /* reg->attach_2_o = NULL; */
     cptr.stPtro(reg, $NhRegion_enter_msg, null);
     cptr.stPtro(reg, $NhRegion_leave_msg, null);
     cptr.stI16o(reg, $NhRegion_expire_f, -1);
@@ -210,17 +224,22 @@ export function* create_region(rects, nrect) {
     return reg;
 }
 
-/** C ref: region.c:133 — @param {CPtr} reg @param {CPtr} rect */
+/*
+ * Add rectangle to region.
+ */
+/** C ref: region.c:133 — @param {CPtr<NhRegion>} reg @param {CPtr<NhRect>} rect */
 export function* add_rect_to_reg(reg, rect) {
     let tmp_rect;
+
     tmp_rect = (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(((cptr.ldI16o(reg, $NhRegion_nrects) + 1) | 0))) * 8n)))));
     if (cptr.ldI16o(reg, $NhRegion_nrects) > 0) {
         void cptr.memcpy(tmp_rect, cptr.ldPtro(reg, $NhRegion_rects), BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cptr.ldI16o(reg, $NhRegion_nrects))) * 8n));
         cptr.free(cptr.ldPtro(reg, $NhRegion_rects));
     }
-    cptr.memcpy(cptr.add(tmp_rect, cptr.ldI16o(reg, $NhRegion_nrects), 8), rect, 8);
+    cptr.memcpy(cptr.add(tmp_rect, cptr.ldI16o(reg, $NhRegion_nrects), $sizeof_NhRect), rect, 8);
     (cptr.stI16o(reg, $NhRegion_nrects, cptr.ldI16o(reg, $NhRegion_nrects) + 1)) - (1);
     cptr.stPtro(reg, $NhRegion_rects, tmp_rect);
+    /* Update bounding box if needed */
     if (cptr.ldI16(reg) > cptr.ldI16(rect))
         cptr.stI16(reg, cptr.ldI16(rect));
     if (cptr.ldI16o(reg, $nhrect_ly) > cptr.ldI16o(rect, $NhRect_ly))
@@ -231,13 +250,19 @@ export function* add_rect_to_reg(reg, rect) {
         cptr.stI16o(reg, $nhrect_hy, cptr.ldI16o(rect, $NhRect_hy));
 }
 
-/** C ref: region.c:161 — @param {CPtr} reg @param {CPtr} mon */
+/*
+ * Add a monster to the region
+ */
+/** C ref: region.c:161 — @param {CPtr<NhRegion>} reg @param {CPtr<struct monst>} mon */
 export function* add_mon_to_reg(reg, mon) {
     let i;
     let tmp_m;
+
+    /* if this is a long worm, it might already be present in the region;
+       only include it once no matter how segments the region contains */
     if (mon_in_region(reg, mon)) {
-        if (!cptr.eq(cptr.ldPtro(mon, $monst_data), cptr.add(mons, NHC.PM_LONG_WORM, 96)))
-            (yield* impossible(__sl0, (yield* m_monnam(mon)), cptr.ldI32o(mon, $monst_m_id)));
+        if (!cptr.eq(cptr.ldPtro(mon, $monst_data), cptr.add(mons, NHC.PM_LONG_WORM, $sizeof_permonst)))
+            (yield* impossible(__s_add_mon_to_reg_s_u_already_in_region, (yield* m_monnam(mon)), cptr.ldI32o(mon, $monst_m_id)));
         return;
     }
     if (cptr.ldI16o(reg, $NhRegion_max_monst) <= cptr.ldI16o(reg, $NhRegion_n_monst)) {
@@ -253,9 +278,13 @@ export function* add_mon_to_reg(reg, mon) {
     cptr.stI32o(cptr.ldPtro(reg, $NhRegion_monsters), (cptr.stI16o(reg, $NhRegion_n_monst, cptr.ldI16o(reg, $NhRegion_n_monst) + 1)) - (1), cptr.ldI32o(mon, $monst_m_id), 4);
 }
 
-/** C ref: region.c:192 — @param {CPtr} reg @param {CPtr} mon */
+/*
+ * Remove a monster from the region list (it left or died...)
+ */
+/** C ref: region.c:192 — @param {CPtr<NhRegion>} reg @param {CPtr<struct monst>} mon */
 export function remove_mon_from_reg(reg, mon) {
     let i;
+
     for (i = 0; i < cptr.ldI16o(reg, $NhRegion_n_monst); i++)
         if (cptr.ldI32o(cptr.ldPtro(reg, $NhRegion_monsters), i, 4) == cptr.ldI32o(mon, $monst_m_id)) {
             (cptr.stI16o(reg, $NhRegion_n_monst, cptr.ldI16o(reg, $NhRegion_n_monst) + -1)) - (-1);
@@ -264,16 +293,25 @@ export function remove_mon_from_reg(reg, mon) {
         }
 }
 
-/** C ref: region.c:210 — @param {CPtr} reg @param {CPtr} mon @returns {CInt} */
+/*
+ * Check if a monster is inside the region.
+ * It's probably quicker to check with the region internal list
+ * than to check for coordinates.
+ */
+/** C ref: region.c:210 — @param {CPtr<NhRegion>} reg @param {CPtr<struct monst>} mon @returns {CInt} */
 export function mon_in_region(reg, mon) {
     let i;
+
     for (i = 0; i < cptr.ldI16o(reg, $NhRegion_n_monst); i++)
         if (cptr.ldI32o(cptr.ldPtro(reg, $NhRegion_monsters), i, 4) == cptr.ldI32o(mon, $monst_m_id))
             return 1;
     return 0;
 }
 
-/** C ref: region.c:263 — @param {CPtr} reg */
+/*
+ * Free mem from region.
+ */
+/** C ref: region.c:263 — @param {CPtr<NhRegion>} reg */
 export function free_region(reg) {
     if (reg) {
         if (cptr.ldPtro(reg, $NhRegion_rects))
@@ -288,11 +326,16 @@ export function free_region(reg) {
     }
 }
 
-/** C ref: region.c:284 — @param {CPtr} reg */
+/*
+ * Add a region to the list.
+ * This actually activates the region.
+ */
+/** C ref: region.c:284 — @param {CPtr<NhRegion>} reg */
 export function* add_region(reg) {
     let tmp_reg;
     let i;
     let j;
+
     if (cptr.ldI32o(gm, $instance_globals_m_max_regions) <= cptr.ldI32o(svn, $instance_globals_saved_n_n_regions)) {
         tmp_reg = cptr.ldPtro(gr, $instance_globals_r_regions);
         cptr.stPtro(gr, $instance_globals_r_regions, (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(((cptr.ldI32o(gm, $instance_globals_m_max_regions) + 10) | 0))) * 8n))))));
@@ -304,14 +347,18 @@ export function* add_region(reg) {
     }
     cptr.stPtro(cptr.ldPtro(gr, $instance_globals_r_regions), cptr.ldI32o(svn, $instance_globals_saved_n_n_regions), reg, 8);
     (cptr.stI32o(svn, $instance_globals_saved_n_n_regions, cptr.ldI32o(svn, $instance_globals_saved_n_n_regions) + 1)) - (1);
+    /* Check for monsters inside the region */
     for (i = cptr.ldI16(reg); i <= cptr.ldI16o(reg, $nhrect_hx); i++)
         for (j = cptr.ldI16o(reg, $nhrect_ly); j <= cptr.ldI16o(reg, $nhrect_hy); j++) {
             let mtmp;
             let is_inside = 0;
+
+            /* Some regions can cross the level boundaries */
             if (!isok(i16(i), i16(j)))
                 continue;
             if (inside_region(reg, i, j)) {
                 is_inside = 1;
+                /* if there's a monster here, add it to the region */
                 if ((mtmp = (cptr.ldPtro3(svl, i, 168, j, 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) !== null) {
                     (yield* add_mon_to_reg(reg, mtmp));
                 }
@@ -323,36 +370,50 @@ export function* add_region(reg) {
                     (yield* newsym(i16(i), i16(j)));
             }
         }
+    /* Check for player now... */
     if (inside_region(reg, cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
         (cptr.stI32o((reg), $NhRegion_player_flags, cptr.ldI32o((reg), $NhRegion_player_flags) | NHM.REG_HERO_INSIDE));
     else
         (cptr.stI32o((reg), $NhRegion_player_flags, cptr.ldI32o((reg), $NhRegion_player_flags) & 4294967294));
 }
 
-/** C ref: region.c:344 — @param {CPtr} reg */
+/*
+ * Remove a region from the list & free it.
+ */
+/** C ref: region.c:344 — @param {CPtr<NhRegion>} reg */
 export function* remove_region(reg) {
     let i;
     let x;
     let y;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++)
         if (cptr.eq(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), reg))
             break;
     if (i == cptr.ldI32o(svn, $instance_globals_saved_n_n_regions))
         return;
+
+    /* remove region before potential newsym() calls, but don't free it yet */
     if (cptr.stI32o(svn, $instance_globals_saved_n_n_regions, cptr.ldI32o(svn, $instance_globals_saved_n_n_regions) + -1) != i)
         cptr.stPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), cptr.ldI32o(svn, $instance_globals_saved_n_n_regions), 8), 8);
     cptr.stPtro(cptr.ldPtro(gr, $instance_globals_r_regions), cptr.ldI32o(svn, $instance_globals_saved_n_n_regions), null, 8);
-    cptr.stI64o(reg, $NhRegion_ttl, -2n);
+
+    /* Update screen if necessary */
+    cptr.stI64o(reg, $NhRegion_ttl, -2n);  /* for visible_region_at */
     if (cptr.ld1so(reg, $NhRegion_visible)) {
         let pass;
         let tmp_uinwater = schar((cptr.ldI32o(u, $you_uinwater) & 1));
+
+        /* need to process the region's spots twice, first unblocking all
+           locations which no longer block line-of-sight, then redrawing
+           spots within revised line-of-sight; skip second pass if blind */
         for (pass = 1; pass <= (Blind() ? 1 : 2); ++pass) {
             cptr.stI32o(u, $you_uinwater, ((pass == 1) ? 0 : tmp_uinwater) >>> 0);
+
             for (x = cptr.ldI16(reg); x <= cptr.ldI16o(reg, $nhrect_hx); x++)
                 for (y = cptr.ldI16o(reg, $nhrect_ly); y <= cptr.ldI16o(reg, $nhrect_hy); y++)
                     if (isok(i16(x), i16(y)) && inside_region(reg, x, y)) {
                         if (pass == 1) {
-                            if (!(yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36))))
+                            if (!(yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm))))
                                 unblock_point(x, y);
                         } else {
                             if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
@@ -365,9 +426,14 @@ export function* remove_region(reg) {
     free_region(reg);
 }
 
+/*
+ * Remove all regions and clear all related data.  This must be done
+ * when changing level, for instance.
+ */
 /** C ref: region.c:394 */
 export function clear_regions() {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++)
         free_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8));
     cptr.stI32o(svn, $instance_globals_saved_n_n_regions, 0);
@@ -377,54 +443,79 @@ export function clear_regions() {
     cptr.stPtro(gr, $instance_globals_r_regions, null);
 }
 
+/*
+ * This function is called every turn.
+ * It makes the regions age, if necessary and calls the appropriate
+ * callbacks when needed.
+ */
 /** C ref: region.c:414 */
 export function* run_regions() {
     let i;
     let j;
     let k;
     let f_indx;
+
+    /* reset some messaging variables */
     cptr.st1o(gg, $instance_globals_g_gas_cloud_diss_within, 0);
     cptr.stI32o(gg, $instance_globals_g_gas_cloud_diss_seen, 0);
+
+    /* End of life ? */
+    /* Do it backward because the array will be modified */
     for (i = (cptr.ldI32o(svn, $instance_globals_saved_n_n_regions) - 1) | 0; i >= 0; i--) {
         if (cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) == 0n) {
             if ((f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_expire_f)) == -1 || (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), null))))
                 (yield* remove_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)));
         }
     }
+
+    /* Process remaining regions */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
+        /* Make the region age */
         if (cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) > 0n)
             (cptr.stI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl, cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) + -1n)) - (-1n);
+        /* Check if player is inside region */
         f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_inside_f);
         if (f_indx != -1 && ((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0))
             void (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), null)));
+        /* Check if any monster is inside region */
         if (f_indx != -1) {
             for (j = 0; j < cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_n_monst); j++) {
                 let mtmp = find_mid(cptr.ldI32o(cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_monsters), j, 4), NHM.FM_FMON);
+
                 if (!mtmp || (cptr.ldI32o((mtmp), $monst_mhp) < 1) || (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), mtmp)))) {
+                    /* The monster died, remove it from list */
                     k = (cptr.stI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_n_monst, cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_n_monst) - 1));
                     cptr.stI32o(cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_monsters), j, cptr.ldI32o(cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_monsters), k, 4), 4);
                     cptr.stI32o(cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_monsters), k, 0, 4);
-                    --j;
+                    --j;  /* current slot has been reused; recheck it next */
                 }
             }
         }
     }
+
     if (cptr.ld1so(gg, $instance_globals_g_gas_cloud_diss_within)) {
-        (yield* pline_The(__sl1));
+        (yield* pline_The(__s_gas_cloud_around_you_dissipates));
+        /* normally won't see additional dissipation when within */
+        /* FIXME? this assumes that additional dissipation is close by */
         if (cptr.ldI32o(u, $you_xray_range) <= 1)
             cptr.stI32o(gg, $instance_globals_g_gas_cloud_diss_seen, 0);
         cptr.st1o(gg, $instance_globals_g_gas_cloud_diss_within, 0);
     }
     if (cptr.ldI32o(gg, $instance_globals_g_gas_cloud_diss_seen)) {
-        (yield* You_see(__sl2, (cptr.ldI32o(gg, $instance_globals_g_gas_cloud_diss_seen) == 1) ? __sl3 : __sl4, (((cptr.ldI32o(gg, $instance_globals_g_gas_cloud_diss_seen)) == 1) ? __sl5 : __sl6)));
+        (yield* You_see(__s_s_gas_cloud_s_dissipate, (cptr.ldI32o(gg, $instance_globals_g_gas_cloud_diss_seen) == 1) ? __s_a : __s_some, (((cptr.ldI32o(gg, $instance_globals_g_gas_cloud_diss_seen)) == 1) ? __s_empty : __s_s)));
         cptr.stI32o(gg, $instance_globals_g_gas_cloud_diss_seen, 0);
     }
 }
 
+/*
+ * check whether player enters/leaves one or more regions.
+ */
 /** C ref: region.c:480 — @param {CInt} x @param {CInt} y @returns {CInt} */
 export function* in_out_region(x, y) {
     let i;
     let f_indx = 0;
+
+    /* First check if hero can do the move */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_u))
             continue;
@@ -433,35 +524,45 @@ export function* in_out_region(x, y) {
                 return 0;
         }
     }
+
+    /* Callbacks for the regions hero does leave */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_u))
             continue;
         if (((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0) && !inside_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), x, y)) {
             (cptr.stI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags, cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & 4294967294));
             if (cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_leave_msg) !== null)
-                (yield* pline(__sl7, cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_leave_msg)));
+                (yield* pline(__s_pct_s, cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_leave_msg)));
             if ((f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_leave_f)) != -1)
                 void (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), null)));
         }
     }
+
+    /* Callbacks for the regions hero does enter */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_u))
             continue;
         if (!((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0) && inside_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), x, y)) {
             (cptr.stI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags, cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) | NHM.REG_HERO_INSIDE));
             if (cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_enter_msg) !== null)
-                (yield* pline(__sl7, cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_enter_msg)));
+                (yield* pline(__s_pct_s, cptr.ldPtro(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_enter_msg)));
             if ((f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_enter_f)) != -1)
                 void (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), null)));
         }
     }
+
     return 1;
 }
 
-/** C ref: region.c:533 — @param {CPtr} mon @param {CInt} x @param {CInt} y @returns {CInt} */
+/*
+ * check whether a monster enters/leaves one or more regions.
+ */
+/** C ref: region.c:533 — @param {CPtr<struct monst>} mon @param {CInt} x @param {CInt} y @returns {CInt} */
 export function* m_in_out_region(mon, x, y) {
     let i;
     let f_indx = 0;
+
+    /* First check if mon can do the move */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ldI32o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_m) == cptr.ldI32o(mon, $monst_m_id))
             continue;
@@ -470,6 +571,8 @@ export function* m_in_out_region(mon, x, y) {
                 return 0;
         }
     }
+
+    /* Callbacks for the regions mon does leave */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ldI32o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_m) == cptr.ldI32o(mon, $monst_m_id))
             continue;
@@ -479,6 +582,8 @@ export function* m_in_out_region(mon, x, y) {
                 void (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), mon)));
         }
     }
+
+    /* Callbacks for the regions mon does enter */
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (cptr.ldI32o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_m) == cptr.ldI32o(mon, $monst_m_id))
             continue;
@@ -488,12 +593,17 @@ export function* m_in_out_region(mon, x, y) {
                 void (yield* Y.icall((callbacks[f_indx])(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), mon)));
         }
     }
+
     return 1;
 }
 
+/*
+ * Checks player's regions after a teleport for instance.
+ */
 /** C ref: region.c:582 */
 export function update_player_regions() {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++)
         if (!cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_attach_2_u) && inside_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
             (cptr.stI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags, cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) | NHM.REG_HERO_INSIDE));
@@ -501,9 +611,13 @@ export function update_player_regions() {
             (cptr.stI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags, cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & 4294967294));
 }
 
-/** C ref: region.c:598 — @param {CPtr} mon */
+/*
+ * Ditto for a specified monster.
+ */
+/** C ref: region.c:598 — @param {CPtr<struct monst>} mon */
 export function* update_monster_region(mon) {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (inside_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my))) {
             if (!mon_in_region(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), mon))
@@ -515,15 +629,19 @@ export function* update_monster_region(mon) {
     }
 }
 
-/** C ref: region.c:651 — @param {CPtr} reg @returns {CInt} */
+/* per-turn damage inflicted by visible region; hides details from caller */
+/** C ref: region.c:651 — @param {CPtr<NhRegion>} reg @returns {CInt} */
 export function reg_damg(reg) {
     let damg = (!cptr.ld1so(reg, $NhRegion_visible) || cptr.ldI64o(reg, $NhRegion_ttl) == -2n) ? 0 : cptr.ldI32o(reg, $NhRegion_arg);
+
     return damg;
 }
 
+/* check whether current level has any visible regions */
 /** C ref: region.c:660 @returns {CInt} */
 export function any_visible_region() {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (!cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_visible) || cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) == -2n)
             continue;
@@ -532,6 +650,7 @@ export function any_visible_region() {
     return 0;
 }
 
+/* for the wizard mode #timeout command */
 /** C ref: region.c:674 — @param {CInt} win */
 export function* visible_region_summary(win) {
     let reg;
@@ -540,30 +659,46 @@ export function* visible_region_summary(win) {
     let i;
     let damg;
     let hdr_done = 0;
-    let fldsep = cptr.ld1so(iflags, $instance_flags_menu_tab_sep) ? __sl8 : __sl9;
+    let fldsep = cptr.ld1so(iflags, $instance_flags_menu_tab_sep) ? __s_tab : __s_sp2;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         reg = cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8);
         if (!cptr.ld1so(reg, $NhRegion_visible) || cptr.ldI64o(reg, $NhRegion_ttl) == -2n)
             continue;
+
         if (!hdr_done++) {
-            (yield* Y.icall(putstr()(win, 0, __sl5)));
-            (yield* Y.icall(putstr()(win, 0, __sl10)));
+            (yield* Y.icall(putstr()(win, 0, __s_empty)));
+            (yield* Y.icall(putstr()(win, 0, __s_visible_regions)));
         }
-        void cptr.sprintf(cptr.decay(buf), __sl11, BigInt.asIntN(64, cptr.ldI64o(reg, $NhRegion_ttl) + 1n));
+        /*
+         * TODO? sort the regions by time-to-live or by bounding box.
+         */
+
+        /* we display relative time (turns left) rather than absolute
+           (the turn when region will go away);
+           since time-to-live has already been decremented, regions
+           which are due to timeout on the next turn have ttl==0;
+           adding 1 is intended to make the display be less confusing */
+        void cptr.sprintf(cptr.decay(buf), __s_5ld, BigInt.asIntN(64, cptr.ldI64o(reg, $NhRegion_ttl) + 1n));
         damg = cptr.ldI32o(reg, $NhRegion_arg);
         if (damg)
-            void cptr.sprintf(cptr.decay(typbuf), __sl12, damg);
+            void cptr.sprintf(cptr.decay(typbuf), __s_poison_gas_d, damg);
         else
-            void cptr.strcpy(cptr.decay(typbuf), __sl13);
-        void cptr.sprintf(eos(cptr.decay(buf)), __sl14, fldsep, cptr.decay(typbuf));
-        void cptr.sprintf(eos(cptr.decay(buf)), __sl15, fldsep, cptr.ldI16(reg), cptr.ldI16o(reg, $nhrect_ly), cptr.ldI16o(reg, $nhrect_hx), cptr.ldI16o(reg, $nhrect_hy));
+            void cptr.strcpy(cptr.decay(typbuf), __s_vapor);
+        void cptr.sprintf(eos(cptr.decay(buf)), __s_s_16s, fldsep, cptr.decay(typbuf));
+        void cptr.sprintf(eos(cptr.decay(buf)), __s_s_d_d_d_d, fldsep, cptr.ldI16(reg), cptr.ldI16o(reg, $nhrect_ly), cptr.ldI16o(reg, $nhrect_hx), cptr.ldI16o(reg, $nhrect_hy));
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
 }
 
-/** C ref: region.c:718 — @param {CInt} x @param {CInt} y @returns {CPtr} */
+/*
+ * Check if a spot is under a visible region (eg: gas cloud).
+ * Returns NULL if not, otherwise returns region.
+ */
+/** C ref: region.c:718 — @param {CInt} x @param {CInt} y @returns {CPtr<NhRegion>} */
 export function visible_region_at(x, y) {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         if (!cptr.ld1so(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_visible) || cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) == -2n)
             continue;
@@ -573,66 +708,73 @@ export function visible_region_at(x, y) {
     return null;
 }
 
-/** C ref: region.c:732 — @param {CPtr} reg @param {CInt} x @param {CInt} y */
+/** C ref: region.c:732 — @param {CPtr<NhRegion>} reg @param {CInt} x @param {CInt} y */
 export function* show_region(reg, x, y) {
     (yield* show_glyph(x, y, cptr.ldI32o(reg, $NhRegion_glyph)));
 }
 
-/** C ref: region.c:741 — @param {CPtr} nhfp */
+/**
+ * save_regions :
+ */
+/** C ref: region.c:741 — @param {CPtr<NHFILE>} nhfp */
 export function* save_regions(nhfp) {
     let r;
     let i;
     let j;
     let n = cptr.box(0);
     __lbl_skip_lots: {
+
         if (!(cptr.ldI32o((nhfp), $NHFILE_mode) & 3))
             break __lbl_skip_lots;
-        (yield* sfo_long(nhfp, cptr.add(svm, $instance_globals_saved_m_moves), __sl16));
+        /* timestamp */
+        (yield* sfo_long(nhfp, cptr.add(svm, $instance_globals_saved_m_moves), __s_region_tmstamp));
         ;
-        (yield* sfo_int(nhfp, cptr.add(svn, $instance_globals_saved_n_n_regions), __sl17));
+        (yield* sfo_int(nhfp, cptr.add(svn, $instance_globals_saved_n_n_regions), __s_region_region_count));
+
         for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
             r = cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8);
-            (yield* sfo_nhrect(nhfp, r, __sl18));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_nrects), __sl19));
+            (yield* sfo_nhrect(nhfp, r, __s_region_bounding_box));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_nrects), __s_region_nrects));
             for (j = 0; j < cptr.ldI16o(r, $NhRegion_nrects); j++) {
-                (yield* sfo_nhrect(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_rects), j, 8), __sl20));
+                (yield* sfo_nhrect(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_rects), j, $sizeof_NhRect), __s_region_rect));
             }
-            (yield* sfo_boolean(nhfp, cptr.add(r, $NhRegion_attach_2_u), __sl21));
-            (yield* sfo_unsigned(nhfp, cptr.add(r, $NhRegion_attach_2_m), __sl22));
+            (yield* sfo_boolean(nhfp, cptr.add(r, $NhRegion_attach_2_u), __s_region_attach_2_u));
+            (yield* sfo_unsigned(nhfp, cptr.add(r, $NhRegion_attach_2_m), __s_region_attach_2_m));
             n.v = 0;
             n.v = !cptr.ldPtro(r, $NhRegion_enter_msg) ? 0 : Number(BigInt.asUintN(32, cptr.strlen(cptr.ldPtro(r, $NhRegion_enter_msg))));
-            (yield* sfo_unsigned(nhfp, n, __sl23));
+            (yield* sfo_unsigned(nhfp, n, __s_region_enter_msg_length));
             if (n.v > 0) {
-                (yield* sfo_char(nhfp, cptr.ldPtro(r, $NhRegion_enter_msg), __sl24, n.v | 0));
+                (yield* sfo_char(nhfp, cptr.ldPtro(r, $NhRegion_enter_msg), __s_region_enter_msg, n.v | 0));
             }
             n.v = !cptr.ldPtro(r, $NhRegion_leave_msg) ? 0 : Number(BigInt.asUintN(32, cptr.strlen(cptr.ldPtro(r, $NhRegion_leave_msg))));
-            (yield* sfo_unsigned(nhfp, n, __sl25));
+            (yield* sfo_unsigned(nhfp, n, __s_region_leave_msg_length));
             if (n.v > 0) {
-                (yield* sfo_char(nhfp, cptr.ldPtro(r, $NhRegion_leave_msg), __sl26, n.v | 0));
+                (yield* sfo_char(nhfp, cptr.ldPtro(r, $NhRegion_leave_msg), __s_region_leave_msg, n.v | 0));
             }
-            (yield* sfo_long(nhfp, cptr.add(r, $NhRegion_ttl), __sl27));
+            (yield* sfo_long(nhfp, cptr.add(r, $NhRegion_ttl), __s_region_ttl));
             ;
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_expire_f), __sl28));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_can_enter_f), __sl29));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_enter_f), __sl30));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_can_leave_f), __sl31));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_leave_f), __sl32));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_inside_f), __sl33));
-            (yield* sfo_unsigned(nhfp, cptr.add(r, $NhRegion_player_flags), __sl34));
-            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_n_monst), __sl35));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_expire_f), __s_region_expire_f));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_can_enter_f), __s_region_can_enter_f));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_enter_f), __s_region_enter_f));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_can_leave_f), __s_region_can_leave_f));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_leave_f), __s_region_leave_f));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_inside_f), __s_region_inside_f));
+            (yield* sfo_unsigned(nhfp, cptr.add(r, $NhRegion_player_flags), __s_region_player_flags));
+            (yield* sfo_short(nhfp, cptr.add(r, $NhRegion_n_monst), __s_region_monster_count));
+
             for (j = 0; j < cptr.ldI16o(r, $NhRegion_n_monst); j++) {
-                (yield* sfo_unsigned(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_monsters), j, 4), __sl36));
+                (yield* sfo_unsigned(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_monsters), j, 4), __s_region_monster));
             }
-            (yield* sfo_boolean(nhfp, cptr.add(r, $NhRegion_visible), __sl37));
-            (yield* sfo_int(nhfp, cptr.add(r, $NhRegion_glyph), __sl38));
-            (yield* sfo_any(nhfp, cptr.add(r, $NhRegion_arg), __sl39));
+            (yield* sfo_boolean(nhfp, cptr.add(r, $NhRegion_visible), __s_region_visible));
+            (yield* sfo_int(nhfp, cptr.add(r, $NhRegion_glyph), __s_region_glyph));
+            (yield* sfo_any(nhfp, cptr.add(r, $NhRegion_arg), __s_region_arg));
         }
     }
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & NHM.FREEING))
         clear_regions();
 }
 
-/** C ref: region.c:799 — @param {CPtr} nhfp */
+/** C ref: region.c:799 — @param {CPtr<NHFILE>} nhfp */
 export function* rest_regions(nhfp) {
     let r;
     let i;
@@ -641,84 +783,91 @@ export function* rest_regions(nhfp) {
     let tmstamp = cptr.box(0n);
     let msg_buf;
     let ghostly = schar((cptr.ldI32o(nhfp, $NHFILE_ftype) == NHM.NHF_BONESFILE));
-    clear_regions();
-    (yield* sfi_long(nhfp, tmstamp, __sl16));
+
+    clear_regions();  /* Just for security */
+    (yield* sfi_long(nhfp, tmstamp, __s_region_tmstamp));
     ;
     if (ghostly)
         tmstamp.v = 0n;
     else
         tmstamp.v = (BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - tmstamp.v));
-    (yield* sfi_int(nhfp, cptr.add(svn, $instance_globals_saved_n_n_regions), __sl17));
+    (yield* sfi_int(nhfp, cptr.add(svn, $instance_globals_saved_n_n_regions), __s_region_region_count));
     ;
     cptr.stI32o(gm, $instance_globals_m_max_regions, cptr.ldI32o(svn, $instance_globals_saved_n_n_regions));
     if (cptr.ldI32o(svn, $instance_globals_saved_n_n_regions) > 0)
         cptr.stPtro(gr, $instance_globals_r_regions, (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cptr.ldI32o(svn, $instance_globals_saved_n_n_regions))) * 8n))))));
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
         r = cptr.stPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, (yield* alloc(96)), 8);
-        (yield* sfi_nhrect(nhfp, r, __sl40));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_nrects), __sl19));
+        (yield* sfi_nhrect(nhfp, r, __s_region_bounding_box__2));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_nrects), __s_region_nrects));
         if (cptr.ldI16o(r, $NhRegion_nrects) > 0)
             cptr.stPtro(r, $NhRegion_rects, (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cptr.ldI16o(r, $NhRegion_nrects))) * 8n))))));
         else
             cptr.stPtro(r, $NhRegion_rects, null);
         for (j = 0; j < cptr.ldI16o(r, $NhRegion_nrects); j++) {
-            (yield* sfi_nhrect(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_rects), j, 8), __sl20));
+            (yield* sfi_nhrect(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_rects), j, $sizeof_NhRect), __s_region_rect));
         }
-        (yield* sfi_boolean(nhfp, cptr.add(r, $NhRegion_attach_2_u), __sl21));
-        (yield* sfi_unsigned(nhfp, cptr.add(r, $NhRegion_attach_2_m), __sl22));
+
+        (yield* sfi_boolean(nhfp, cptr.add(r, $NhRegion_attach_2_u), __s_region_attach_2_u));
+        (yield* sfi_unsigned(nhfp, cptr.add(r, $NhRegion_attach_2_m), __s_region_attach_2_m));
         ;
-        (yield* sfi_unsigned(nhfp, n, __sl23));
+        (yield* sfi_unsigned(nhfp, n, __s_region_enter_msg_length));
         ;
         if (n.v > 0) {
             msg_buf = (yield* alloc((n.v + 1) >>> 0));
-            (yield* sfi_char(nhfp, msg_buf, __sl24, n.v | 0));
+            (yield* sfi_char(nhfp, msg_buf, __s_region_enter_msg, n.v | 0));
             cptr.st1o(msg_buf, n.v, 0);
         } else {
             msg_buf = null;
         }
         cptr.stPtro(r, $NhRegion_enter_msg, msg_buf);
-        (yield* sfi_unsigned(nhfp, n, __sl25));
+
+        (yield* sfi_unsigned(nhfp, n, __s_region_leave_msg_length));
         ;
         if (n.v > 0) {
             msg_buf = (yield* alloc((n.v + 1) >>> 0));
-            (yield* sfi_char(nhfp, msg_buf, __sl26, n.v | 0));
+            (yield* sfi_char(nhfp, msg_buf, __s_region_leave_msg, n.v | 0));
             cptr.st1o(msg_buf, n.v, 0);
             cptr.stPtro(r, $NhRegion_leave_msg, msg_buf);
         } else {
             msg_buf = null;
         }
         cptr.stPtro(r, $NhRegion_leave_msg, msg_buf);
-        (yield* sfi_long(nhfp, cptr.add(r, $NhRegion_ttl), __sl27));
+
+        (yield* sfi_long(nhfp, cptr.add(r, $NhRegion_ttl), __s_region_ttl));
         ;
+        /* check for expired region */
         if (cptr.ldI64o(r, $NhRegion_ttl) >= 0n)
             cptr.stI64o(r, $NhRegion_ttl, (cptr.ldI64o(r, $NhRegion_ttl) > tmstamp.v) ? BigInt.asIntN(64, cptr.ldI64o(r, $NhRegion_ttl) - tmstamp.v) : 0n);
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_expire_f), __sl28));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_can_enter_f), __sl29));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_enter_f), __sl30));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_can_leave_f), __sl31));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_leave_f), __sl32));
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_inside_f), __sl33));
-        (yield* sfi_unsigned(nhfp, cptr.add(r, $NhRegion_player_flags), __sl34));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_expire_f), __s_region_expire_f));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_can_enter_f), __s_region_can_enter_f));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_enter_f), __s_region_enter_f));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_can_leave_f), __s_region_can_leave_f));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_leave_f), __s_region_leave_f));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_inside_f), __s_region_inside_f));
+        (yield* sfi_unsigned(nhfp, cptr.add(r, $NhRegion_player_flags), __s_region_player_flags));
         ;
         if (ghostly) {
             (cptr.stI32o((r), $NhRegion_player_flags, cptr.ldI32o((r), $NhRegion_player_flags) & 4294967294));
             (cptr.stI32o((r), $NhRegion_player_flags, cptr.ldI32o((r), $NhRegion_player_flags) | NHM.REG_NOT_HEROS));
         }
-        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_n_monst), __sl35));
+        (yield* sfi_short(nhfp, cptr.add(r, $NhRegion_n_monst), __s_region_monster_count));
         if (cptr.ldI16o(r, $NhRegion_n_monst) > 0)
             cptr.stPtro(r, $NhRegion_monsters, (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cptr.ldI16o(r, $NhRegion_n_monst))) * 4n))))));
         else
             cptr.stPtro(r, $NhRegion_monsters, null);
         cptr.stI16o(r, $NhRegion_max_monst, cptr.ldI16o(r, $NhRegion_n_monst));
         for (j = 0; j < cptr.ldI16o(r, $NhRegion_n_monst); j++) {
-            (yield* sfi_unsigned(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_monsters), j, 4), __sl36));
+            (yield* sfi_unsigned(nhfp, cptr.add(cptr.ldPtro(r, $NhRegion_monsters), j, 4), __s_region_monster));
             ;
         }
-        (yield* sfi_boolean(nhfp, cptr.add(r, $NhRegion_visible), __sl37));
-        (yield* sfi_int(nhfp, cptr.add(r, $NhRegion_glyph), __sl38));
+        (yield* sfi_boolean(nhfp, cptr.add(r, $NhRegion_visible), __s_region_visible));
+        (yield* sfi_int(nhfp, cptr.add(r, $NhRegion_glyph), __s_region_glyph));
         ;
-        (yield* sfi_any(nhfp, cptr.add(r, $NhRegion_arg), __sl39));
+        (yield* sfi_any(nhfp, cptr.add(r, $NhRegion_arg), __s_region_arg));
     }
+    /* remove expired regions, do not trigger the expire_f callback (yet!);
+       also update monster lists if this data is coming from a bones file */
     for (i = (cptr.ldI32o(svn, $instance_globals_saved_n_n_regions) - 1) | 0; i >= 0; i--) {
         r = cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8);
         if (cptr.ldI64o(r, $NhRegion_ttl) == 0n)
@@ -728,12 +877,15 @@ export function* rest_regions(nhfp) {
     }
 }
 
-/** C ref: region.c:899 — @param {CPtr} hdrfmt @param {CPtr} hdrbuf @param {CPtr} count @param {CPtr} size */
+/* to support '#stats' wizard-mode command */
+/** C ref: region.c:899 — @param {CPtr<char>} hdrfmt @param {CPtr<char>} hdrbuf @param {CPtr<long>} count @param {CPtr<long>} size */
 export function region_stats(hdrfmt, hdrbuf, count, size) {
     let rg;
     let i;
+
+    /* other stats formats take one parameter; this takes two */
     void cptr.sprintf(hdrbuf, hdrfmt, 96n, 8n);
-    cptr.stI64(count, BigInt(cptr.ldI32o(svn, $instance_globals_saved_n_n_regions)));
+    cptr.stI64(count, BigInt(cptr.ldI32o(svn, $instance_globals_saved_n_n_regions)));  /* might be 0 even tho max_regions isn't */
     cptr.stI64(size, BigInt.asIntN(64, BigInt(cptr.ldI32o(gm, $instance_globals_m_max_regions)) * 96n));
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); ++i) {
         rg = cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8);
@@ -744,23 +896,39 @@ export function region_stats(hdrfmt, hdrbuf, count, size) {
             cptr.stI64(size, cptr.ldI64(size) + BigInt.asIntN(64, (BigInt.asUintN(64, cptr.strlen(cptr.ldPtro(rg, $NhRegion_leave_msg)) + 1n))));
         cptr.stI64(size, cptr.ldI64(size) + BigInt.asIntN(64, BigInt(cptr.ldI16o(rg, $NhRegion_max_monst)) * 4n));
     }
+    /* ? */
 }
 
-/** C ref: region.c:928 — @param {CPtr} reg */
+/* update monster IDs for region being loaded from bones; `ghostly' implied */
+/** C ref: region.c:928 — @param {CPtr<NhRegion>} reg */
 function reset_region_mids(reg) {
     let i = 0;
     let n = cptr.ldI16o(reg, $NhRegion_n_monst);
     let mid_list = cptr.ldPtro(reg, $NhRegion_monsters);
+
     while (i < n)
         if (!lookup_id_mapping(cptr.ldI32o(mid_list, i, 4), cptr.add(mid_list, i, 4))) {
+            /* shrink list to remove missing monster; order doesn't matter */
             cptr.stI32o(mid_list, i, cptr.ldI32o(mid_list, --n, 4), 4);
         } else {
+            /* move on to next monster */
             ++i;
         }
     cptr.stI16o(reg, $NhRegion_n_monst, i16(n));
     return;
 }
 
+/*--------------------------------------------------------------*
+ *                                                              *
+ *                      Gas cloud related code                  *
+ *                                                              *
+ *--------------------------------------------------------------*/
+
+/*
+ * Here is an example of an expire function that may prolong
+ * region life after some mods...
+ */
+/*ARGSUSED*/
 /** C ref: region.c:1046 — @param {CPtr} p1 @param {CPtr} p2 @returns {CInt} */
 export function* expire_gas_cloud(p1, p2) {
     let reg;
@@ -768,21 +936,27 @@ export function* expire_gas_cloud(p1, p2) {
     let pass;
     let x;
     let y;
+
     reg = p1;
     damage = cptr.ldI32o(reg, $NhRegion_arg);
+
+    /* If it was a thick cloud, it dissipates a little first */
     if (damage >= 5) {
-        damage = (damage / 2) | 0;
+        damage = (damage / 2) | 0;  /* It dissipates, let's do less damage */
         cptr.memcpy(cptr.add(reg, $NhRegion_arg), cptr.add(cg, $const_globals_zeroany), 8);
         cptr.stI32o(reg, $NhRegion_arg, damage);
-        cptr.stI64o(reg, $NhRegion_ttl, 2n);
-        return 0;
+        cptr.stI64o(reg, $NhRegion_ttl, 2n);  /* Here's the trick : reset ttl */
+        return 0;  /* THEN return FALSE, means "still there" */
     }
+
+    /* The cloud no longer blocks vision.  cansee() checks shouldn't be made
+       until all blocked spots have been unblocked, so we need two passes */
     for (pass = 1; pass <= (Blind() ? 1 : 2); ++pass) {
         for (x = cptr.ldI16(reg); x <= cptr.ldI16o(reg, $nhrect_hx); x++) {
             for (y = cptr.ldI16o(reg, $nhrect_ly); y <= cptr.ldI16o(reg, $nhrect_hy); y++) {
                 if (inside_region(reg, x, y)) {
                     if (pass == 1) {
-                        if (!(yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36))))
+                        if (!(yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm))))
                             unblock_point(x, y);
                     } else {
                         if (!(cptr.ldI32o(u, $you_uswallow) & 1)) {
@@ -796,48 +970,60 @@ export function* expire_gas_cloud(p1, p2) {
             }
         }
     }
-    return 1;
+
+    return 1;  /* OK, it's gone, you can free it! */
 }
 
+/* returns True if p2 is killed by region p1, False otherwise */
 /** C ref: region.c:1091 — @param {CPtr} p1 @param {CPtr} p2 @returns {CInt} */
 export function* inside_gas_cloud(p1, p2) {
     let reg = p1;
     let mtmp = p2;
     let umon = mtmp ? mtmp : cptr.add(gy, $instance_globals_y_youmonst);
     let dam = cptr.ldI32o(reg, $NhRegion_arg);
-    if (cptr.ldI64o(reg, $NhRegion_ttl) < 20n && umon && cptr.eq(cptr.ldPtro(umon, $monst_data), cptr.add(mons, NHC.PM_FOG_CLOUD, 96)))
+
+    /*
+     * Gas clouds can't be targeted at water locations, but they can
+     * start next to water and spread over it.
+     */
+
+    /* fog clouds maintain gas clouds, even poisonous ones */
+    if (cptr.ldI64o(reg, $NhRegion_ttl) < 20n && umon && cptr.eq(cptr.ldPtro(umon, $monst_data), cptr.add(mons, NHC.PM_FOG_CLOUD, $sizeof_permonst)))
         cptr.stI64o(reg, $NhRegion_ttl, cptr.ldI64o(reg, $NhRegion_ttl) + 5n);
+
     if (dam < 1)
-        return 0;
+        return 0;  /* if no damage then there's nothing to do here... */
+
     if (!mtmp) {
         if ((yield* m_poisongas_ok(cptr.add(gy, $instance_globals_y_youmonst))) == NHM.M_POISONGAS_OK)
             return 0;
         if (!Blind()) {
-            (yield* Your(__sl41, (yield* makeplural((yield* body_part(NHC.EYE))))));
+            (yield* Your(__s_s_sting, (yield* makeplural((yield* body_part(NHC.EYE))))));
             (yield* make_blinded(1n, 0));
         }
         if (!Poison_resistance()) {
-            (yield* pline(__sl42, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), (yield* makeplural((yield* body_part(NHC.LUNG))))));
-            (yield* You(__sl43));
+            (yield* pline(__s_s_is_burning_your_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), (yield* makeplural((yield* body_part(NHC.LUNG))))));
+            (yield* You(__s_cough_and_spit_blood));
             (yield* wake_nearto(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 2));
-            dam = ((Half_physical_damage()) ? (((((((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1122, __sl45), rnd(dam)) : rnd(dam)) + 5) | 0) + 1) | 0) / 2) | 0) : (((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1122, __sl45), rnd(dam)) : rnd(dam)) + 5) | 0));
+            dam = ((Half_physical_damage()) ? ((((((rnd_at(__s_region_c, 1122, __s_inside_gas_cloud, dam) + 5) | 0) + 1) | 0) / 2) | 0) : ((rnd_at(__s_region_c, 1122, __s_inside_gas_cloud, dam) + 5) | 0));
             if (Half_gas_damage())
                 dam = (((dam + 1) | 0) / 2) | 0;
-            (yield* losehp(dam, __sl46, NHM.KILLED_BY_AN));
+            (yield* losehp(dam, __s_gas_cloud, NHM.KILLED_BY_AN));
             monstunseesu(64n);
             return 0;
         } else {
-            (yield* You(__sl47));
+            (yield* You(__s_cough));
             (yield* wake_nearto(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 2));
             monstseesu(64n);
             return 0;
         }
     } else {
         mtmp = p2;
+
         if ((yield* m_poisongas_ok(mtmp)) != NHM.M_POISONGAS_OK) {
             if (!(cptr.ld1uo((cptr.ldPtro(mtmp, $monst_data)), $permonst_msound) == NHC.MS_SILENT)) {
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mtmp, $monst_my), 8), cptr.ldI16o(mtmp, $monst_mx)) & NHM.IN_SIGHT) != 0) || (dist2((cptr.ldI16o(mtmp, $monst_mx)), (cptr.ldI16o(mtmp, $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) < 8))
-                    (yield* pline(__sl48, (yield* Monnam(mtmp))));
+                    (yield* pline(__s_s_coughs, (yield* Monnam(mtmp))));
                 (yield* wake_nearto(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my), 2));
             }
             if ((!((cptr.ldI32o((reg), $NhRegion_player_flags) & NHM.REG_NOT_HEROS) >>> 0)))
@@ -848,34 +1034,37 @@ export function* inside_gas_cloud(p1, p2) {
             }
             if ((yield* Resists_Elem(mtmp, NHC.POISON_RES)))
                 return 0;
-            cptr.stI32o(mtmp, $monst_mhp, (cptr.ldI32o(mtmp, $monst_mhp) - (((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1152, __sl45), rnd(dam)) : rnd(dam)) + 5) | 0)) | 0);
+            cptr.stI32o(mtmp, $monst_mhp, (cptr.ldI32o(mtmp, $monst_mhp) - ((rnd_at(__s_region_c, 1152, __s_inside_gas_cloud, dam) + 5) | 0)) | 0);
             if ((cptr.ldI32o((mtmp), $monst_mhp) < 1)) {
                 if ((!((cptr.ldI32o((reg), $NhRegion_player_flags) & NHM.REG_NOT_HEROS) >>> 0)))
                     (yield* killed(mtmp));
                 else
-                    (yield* monkilled(mtmp, __sl46, NHM.AD_DRST));
+                    (yield* monkilled(mtmp, __s_gas_cloud, NHM.AD_DRST));
                 if ((cptr.ldI32o((mtmp), $monst_mhp) < 1)) {
                     return 1;
                 }
             }
         }
     }
-    return 0;
+    return 0;  /* Monster is still alive */
 }
 
 /** C ref: region.c:1168 @returns {CInt} */
 function is_hero_inside_gas_cloud() {
     let i;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++)
         if (((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0) && cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_inside_f) == 0)
             return 1;
     return 0;
 }
 
-/** C ref: region.c:1182 — @param {CPtr} cloud @param {CInt} damage @param {CInt} inside_cloud */
+/* details of gas cloud creation which are common to create_gas_cloud()
+   and create_gas_cloud_selection() */
+/** C ref: region.c:1182 — @param {CPtr<NhRegion>} cloud @param {CInt} damage @param {CInt} inside_cloud */
 function* make_gas_cloud(cloud, damage, inside_cloud) {
     if (!cptr.ld1so(gi, $instance_globals_i_in_mklev) && !cptr.ld1so(svc, $context_info_mon_moving))
-        (cptr.stI32o((cloud), $NhRegion_player_flags, cptr.ldI32o((cloud), $NhRegion_player_flags) & 4294967293));
+        (cptr.stI32o((cloud), $NhRegion_player_flags, cptr.ldI32o((cloud), $NhRegion_player_flags) & 4294967293));  /* assume player has created it */
     cptr.stI16o(cloud, $NhRegion_inside_f, 0);
     cptr.stI16o(cloud, $NhRegion_expire_f, 1);
     cptr.memcpy(cptr.add(cloud, $NhRegion_arg), cptr.add(cg, $const_globals_zeroany), 8);
@@ -883,58 +1072,79 @@ function* make_gas_cloud(cloud, damage, inside_cloud) {
     cptr.st1o(cloud, $NhRegion_visible, 1);
     cptr.stI32o(cloud, $NhRegion_glyph, (((damage ? NHC.S_poisoncloud : NHC.S_cloud) == NHC.S_stone) ? NHC.GLYPH_CMAP_STONE_OFF : (((damage ? NHC.S_poisoncloud : NHC.S_cloud) <= NHC.S_trwall) ? (((((damage ? NHC.S_poisoncloud : NHC.S_cloud) - NHC.S_vwall) | 0) + (In_mines(cptr.add(u, $you_uz)) ? NHC.GLYPH_CMAP_MINES_OFF : (In_hell(cptr.add(u, $you_uz)) ? NHC.GLYPH_CMAP_GEH_OFF : ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)))) ? NHC.GLYPH_CMAP_KNOX_OFF : ((cptr.ldI16((cptr.add(u, $you_uz))) == sokoban_dnum()) ? NHC.GLYPH_CMAP_SOKO_OFF : NHC.GLYPH_CMAP_MAIN_OFF))))) | 0) : (((damage ? NHC.S_poisoncloud : NHC.S_cloud) < NHC.S_altar) ? (((((damage ? NHC.S_poisoncloud : NHC.S_cloud) - NHC.S_ndoor) | 0) + NHC.GLYPH_CMAP_A_OFF) | 0) : (((damage ? NHC.S_poisoncloud : NHC.S_cloud) == NHC.S_altar) ? ((NHC.GLYPH_ALTAR_OFF + NHC.altar_neutral) | 0) : (((damage ? NHC.S_poisoncloud : NHC.S_cloud) < ((NHC.S_arrow_trap + ((NHC.TRAPNUM - 1) | 0)) | 0)) ? (((((damage ? NHC.S_poisoncloud : NHC.S_cloud) - NHC.S_grave) | 0) + NHC.GLYPH_CMAP_B_OFF) | 0) : (((damage ? NHC.S_poisoncloud : NHC.S_cloud) <= NHC.S_goodpos) ? (((((damage ? NHC.S_poisoncloud : NHC.S_cloud) - NHC.S_digbeam) | 0) + NHC.GLYPH_CMAP_C_OFF) | 0) : NHC.MAX_GLYPH)))))));
     (yield* add_region(cloud));
+
     if (!cptr.ld1so(gi, $instance_globals_i_in_mklev) && !inside_cloud && is_hero_inside_gas_cloud()) {
-        (yield* You(__sl49, damage ? __sl50 : __sl51));
+        (yield* You(__s_are_enveloped_in_a_cloud_of_s, damage ? __s_noxious_gas : __s_steam));
         cptr.stI32o(iflags, $instance_flags_last_msg, NHC.PLNMSG_ENVELOPED_IN_GAS);
     }
 }
 
-/** C ref: region.c:1213 — @param {CInt} x @param {CInt} y @param {CInt} cloudsize @param {CInt} damage @returns {CPtr} */
+/** C ref: region.c:1213 — @param {CInt} x @param {CInt} y @param {CInt} cloudsize @param {CInt} damage @returns {CPtr<NhRegion>} */
 export function* create_gas_cloud(x, y, cloudsize, damage) {
     let cloud;
     let i;
     let j;
     let tmprect = cptr.alloc(8);
+
+    /* store visited coords */
     let xcoords = cptr.alloc(150 * 2);
     let ycoords = cptr.alloc(150 * 2);
     cptr.stI16o(xcoords, 0, x, 2);
     cptr.stI16o(ycoords, 0, y, 2);
     let curridx;
-    let newidx = 1;
+    let newidx = 1;  /* initial spot is already taken */
     let inside_cloud = is_hero_inside_gas_cloud();
+
+    /* a single-point cloud on hero and it deals no damage.
+       probably a natural cause of being polyed. don't message about it */
     if (!cptr.ld1so(svc, $context_info_mon_moving) && ((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)) && cloudsize == 1 && (!damage || (damage && (yield* m_poisongas_ok(cptr.add(gy, $instance_globals_y_youmonst))) == NHM.M_POISONGAS_OK)))
         inside_cloud = 1;
+
     if (cloudsize > 150) {
-        (yield* impossible(__sl52, cloudsize));
+        (yield* impossible(__s_create_gas_cloud_cloud_too_large_d, cloudsize));
         cloudsize = 150;
     }
+
     for (curridx = 0; curridx < newidx; curridx++) {
         if (newidx >= cloudsize)
             break;
         let xx = cptr.ldI16o(xcoords, curridx, 2);
         let yy = cptr.ldI16o(ycoords, curridx, 2);
-        let dirs = cptr.alloc(4 * 4); cptr.stI16o(dirs, 0, 0); cptr.stI16o(dirs, 0 + $coord_y, -1); cptr.stI16o(dirs, 4, 0); cptr.stI16o(dirs, 4 + $coord_y, 1); cptr.stI16o(dirs, 8, -1); cptr.stI16o(dirs, 8 + $coord_y, 0); cptr.stI16o(dirs, 12, 1); cptr.stI16o(dirs, 12 + $coord_y, 0);
+        /* Do NOT check for if there is already a gas cloud created at some
+         * other time at this position. They can overlap. */
+
+        /* Primitive Fisher-Yates-Knuth shuffle to randomize the order of
+         * directions chosen. */
+        let dirs = cptr.alloc(4 * $sizeof_coord); cptr.stI16o(dirs, 0, 0); cptr.stI16o(dirs, 0 + $coord_y, -1); cptr.stI16o(dirs, 4, 0); cptr.stI16o(dirs, 4 + $coord_y, 1); cptr.stI16o(dirs, 8, -1); cptr.stI16o(dirs, 8 + $coord_y, 0); cptr.stI16o(dirs, 12, 1); cptr.stI16o(dirs, 12 + $coord_y, 0);
         for (i = 4; i > 0; --i) {
-            let swapidx = i16((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1255, __sl53), rn2(i)) : rn2(i)));
-            let tmp = cptr.alloc(4); cptr.memcpy(tmp, cptr.add(dirs, swapidx, 4), 4);
-            cptr.memcpy(cptr.add(dirs, swapidx, 4), cptr.add(dirs, (i - 1) | 0, 4), 4);
-            cptr.memcpy(cptr.add(dirs, (i - 1) | 0, 4), tmp, 4);
+            let swapidx = i16(rn2_at(__s_region_c, 1255, __s_create_gas_cloud, i));
+            let tmp = cptr.alloc(4); cptr.memcpy(tmp, cptr.add(dirs, swapidx, $sizeof_coord), $sizeof_nhcoord);
+
+            cptr.memcpy(cptr.add(dirs, swapidx, $sizeof_coord), cptr.add(dirs, (i - 1) | 0, $sizeof_coord), 4);
+            cptr.memcpy(cptr.add(dirs, (i - 1) | 0, $sizeof_coord), tmp, 4);
         }
-        let nvalid = 0;
+        let nvalid = 0;  /* # of valid adjacent spots */
         for (i = 0; i < 4; ++i) {
-            let dx = cptr.ldI16o(dirs, i, 4);
-            let dy = cptr.ldI16o2(dirs, i, 4, $nhcoord_y);
+            /* try all 4 cardinal directions */
+            let dx = cptr.ldI16o(dirs, i, $sizeof_coord);
+            let dy = cptr.ldI16o2(dirs, i, $sizeof_coord, $nhcoord_y);
             let isunpicked = 1;
+
             if (valid_cloud_pos(i16(((xx + dx) | 0)), i16(((yy + dy) | 0)))) {
                 nvalid++;
+                /* don't pick a location we've already picked */
                 for (j = 0; j < newidx; ++j) {
                     if (cptr.ldI16o(xcoords, j, 2) == ((xx + dx) | 0) && cptr.ldI16o(ycoords, j, 2) == ((yy + dy) | 0)) {
                         isunpicked = 0;
                         break;
                     }
                 }
-                if (nvalid == 4 && !(rng_log_enabled() ? (rng_log_set_caller(__sl44, 1279, __sl53), rn2(2)) : rn2(2)))
+                /* randomly disrupt the natural breadth-first search, so that
+                 * clouds released in open spaces don't always tend towards a
+                 * rhombus shape */
+                if (nvalid == 4 && !rn2_at(__s_region_c, 1279, __s_create_gas_cloud, 2))
                     continue;
+
                 if (isunpicked) {
                     cptr.stI16o(xcoords, newidx, i16(((xx + dx) | 0)), 2);
                     cptr.stI16o(ycoords, newidx, i16(((yy + dy) | 0)), 2);
@@ -942,31 +1152,40 @@ export function* create_gas_cloud(x, y, cloudsize, damage) {
                 }
             }
             if (newidx >= cloudsize) {
+                /* don't try further directions */
                 break;
             }
         }
     }
+    /* We have now either filled up xcoord and ycoord entirely or run out
+       of space.  In either case, newidx is the correct total number of
+       coordinates inserted. */
     cloud = (yield* create_region(null, 0));
     for (i = 0; i < newidx; ++i) {
         cptr.stI16(tmprect, cptr.stI16o(tmprect, $nhrect_hx, cptr.ldI16o(xcoords, i, 2)));
         cptr.stI16o(tmprect, $nhrect_ly, cptr.stI16o(tmprect, $nhrect_hy, cptr.ldI16o(ycoords, i, 2)));
         (yield* add_rect_to_reg(cloud, tmprect));
     }
-    cptr.stI64o(cloud, $NhRegion_ttl, BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1303, __sl53), rn2(3)) : rn2(3)) + 4) | 0)));
+    cptr.stI64o(cloud, $NhRegion_ttl, BigInt(((rn2_at(__s_region_c, 1303, __s_create_gas_cloud, 3) + 4) | 0)));
+    /* If cloud was constrained in small space, give it more time to live. */
     cptr.stI64o(cloud, $NhRegion_ttl, (BigInt.asIntN(64, cptr.ldI64o(cloud, $NhRegion_ttl) * BigInt(cloudsize))) / BigInt(newidx));
+
     (yield* make_gas_cloud(cloud, damage, inside_cloud));
     return cloud;
 }
 
-/** C ref: region.c:1313 — @param {CPtr} sel @param {CInt} damage @returns {CPtr} */
+/* create a single gas cloud from selection */
+/** C ref: region.c:1313 — @param {CPtr<struct selectionvar>} sel @param {CInt} damage @returns {CPtr<NhRegion>} */
 export function* create_gas_cloud_selection(sel, damage) {
     let cloud;
     let tmprect = cptr.alloc(8);
     let x;
     let y;
-    let r = cptr.alloc(8); cptr.memcpy(r, cptr.add(cg, $const_globals_zeroNhRect), 8);
+    let r = cptr.alloc(8); cptr.memcpy(r, cptr.add(cg, $const_globals_zeroNhRect), $sizeof_nhrect);
     let inside_cloud = is_hero_inside_gas_cloud();
+
     selection_getbounds(sel, r);
+
     cloud = (yield* create_region(null, 0));
     for (x = cptr.ldI16(r); x <= cptr.ldI16o(r, $nhrect_hx); x++)
         for (y = cptr.ldI16o(r, $nhrect_ly); y <= cptr.ldI16o(r, $nhrect_hy); y++)
@@ -975,22 +1194,30 @@ export function* create_gas_cloud_selection(sel, damage) {
                 cptr.stI16o(tmprect, $nhrect_ly, cptr.stI16o(tmprect, $nhrect_hy, y));
                 (yield* add_rect_to_reg(cloud, tmprect));
             }
+
     (yield* make_gas_cloud(cloud, damage, inside_cloud));
     return cloud;
 }
 
+/* for checking troubles during prayer; is hero at risk? */
 /** C ref: region.c:1341 @returns {CInt} */
 export function region_danger() {
     let i;
     let f_indx;
     let n = 0;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
+        /* only care about regions that hero is in */
         if (!((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0))
             continue;
         f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_inside_f);
+        /* the only type of region we understand is gas_cloud */
         if (f_indx == 0) {
+            /* completely harmless if you don't need to breathe */
             if (nonliving(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)) || Breathless())
                 continue;
+            /* minor inconvenience if you're poison resistant;
+               not harmful enough to be a prayer-level trouble */
             if (Poison_resistance())
                 continue;
             ++n;
@@ -999,33 +1226,45 @@ export function region_danger() {
     return schar((n ? 1 : 0));
 }
 
+/* for fixing trouble at end of prayer;
+   danger detected at start of prayer might have expired by now */
 /** C ref: region.c:1368 */
 export function* region_safety() {
     let r = null;
     let i;
     let f_indx;
     let n = 0;
+
     for (i = 0; i < cptr.ldI32o(svn, $instance_globals_saved_n_n_regions); i++) {
+        /* only care about regions that hero is in */
         if (!((cptr.ldI32o((cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8)), $NhRegion_player_flags) & NHM.REG_HERO_INSIDE) >>> 0))
             continue;
         f_indx = cptr.ldI16o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_inside_f);
+        /* the only type of region we understand is gas_cloud */
         if (f_indx == 0) {
             if (!n++ && cptr.ldI64o(cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8), $NhRegion_ttl) >= 0n)
                 r = cptr.ldPtro(cptr.ldPtro(gr, $instance_globals_r_regions), i, 8);
         }
     }
+
     if (n > 1 || (n == 1 && !r)) {
+        /* multiple overlapping cloud regions or non-expiring one */
         void (yield* safe_teleds(NHM.TELEDS_NO_FLAGS));
+        /* maybe there's no safe place available; must get hero out of danger
+           or prayer's "fix all troubles" result will get stuck in a loop */
         if (region_danger()) {
-            set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.MAGICAL_BREATHING, 24), $prop_intrinsic), BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl44, 1391, __sl54), d(4, 4)) : d(4, 4)) + 4) | 0)));
-            (yield* You_feel(__sl55));
+            set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.MAGICAL_BREATHING, $sizeof_prop), $prop_intrinsic), BigInt(((d_at(__s_region_c, 1391, __s_region_safety, 4, 4) + 4) | 0)));
+            /* not already Breathless or wouldn't be in region danger */
+            (yield* You_feel(__s_able_to_breathe));
         }
     } else if (r) {
         (yield* remove_region(r));
-        (yield* pline_The(__sl56));
+        (yield* pline_The(__s_gas_cloud_enveloping_you_dissipates));
     } else {
-        (yield* pline_The(__sl57));
+        /* cloud dissipated on its own, so nothing needs to be done */
+        (yield* pline_The(__s_gas_cloud_has_dissipated));
     }
+    /* maybe cure blindness too */
     if (BlindedTimeout() == 1n)
         (yield* make_blinded(0n, 1));
 }

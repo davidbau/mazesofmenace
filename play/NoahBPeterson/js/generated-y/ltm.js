@@ -30,111 +30,115 @@ const $CallInfo_callstatus = FLD.CallInfo_callstatus, $CallInfo_top = FLD.CallIn
     $lua_State_top = FLD.lua_State_top;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("no value");
-const __sl1 = cptr.lit("nil");
-const __sl2 = cptr.lit("boolean");
-const __sl3 = cptr.lit("number");
-const __sl4 = cptr.lit("string");
-const __sl5 = cptr.lit("table");
-const __sl6 = cptr.lit("function");
-const __sl7 = cptr.lit("thread");
-const __sl8 = cptr.lit("upvalue");
-const __sl9 = cptr.lit("proto");
-const __sl10 = cptr.lit("__index");
-const __sl11 = cptr.lit("__newindex");
-const __sl12 = cptr.lit("__gc");
-const __sl13 = cptr.lit("__mode");
-const __sl14 = cptr.lit("__len");
-const __sl15 = cptr.lit("__eq");
-const __sl16 = cptr.lit("__add");
-const __sl17 = cptr.lit("__sub");
-const __sl18 = cptr.lit("__mul");
-const __sl19 = cptr.lit("__mod");
-const __sl20 = cptr.lit("__pow");
-const __sl21 = cptr.lit("__div");
-const __sl22 = cptr.lit("__idiv");
-const __sl23 = cptr.lit("__band");
-const __sl24 = cptr.lit("__bor");
-const __sl25 = cptr.lit("__bxor");
-const __sl26 = cptr.lit("__shl");
-const __sl27 = cptr.lit("__shr");
-const __sl28 = cptr.lit("__unm");
-const __sl29 = cptr.lit("__bnot");
-const __sl30 = cptr.lit("__lt");
-const __sl31 = cptr.lit("__le");
-const __sl32 = cptr.lit("__concat");
-const __sl33 = cptr.lit("__call");
-const __sl34 = cptr.lit("__close");
-const __sl35 = cptr.lit("__name");
-const __sl36 = cptr.lit("perform bitwise operation on");
-const __sl37 = cptr.lit("perform arithmetic on");
+const __s_no_value = cptr.lit("no value");
+const __s_nil = cptr.lit("nil");
+const __s_boolean = cptr.lit("boolean");
+const __s_number = cptr.lit("number");
+const __s_string = cptr.lit("string");
+const __s_table = cptr.lit("table");
+const __s_function = cptr.lit("function");
+const __s_thread = cptr.lit("thread");
+const __s_upvalue = cptr.lit("upvalue");
+const __s_proto = cptr.lit("proto");
+const __s_index = cptr.lit("__index");
+const __s_newindex = cptr.lit("__newindex");
+const __s_gc = cptr.lit("__gc");
+const __s_mode = cptr.lit("__mode");
+const __s_len = cptr.lit("__len");
+const __s_eq = cptr.lit("__eq");
+const __s_add = cptr.lit("__add");
+const __s_sub = cptr.lit("__sub");
+const __s_mul = cptr.lit("__mul");
+const __s_mod = cptr.lit("__mod");
+const __s_pow = cptr.lit("__pow");
+const __s_div = cptr.lit("__div");
+const __s_idiv = cptr.lit("__idiv");
+const __s_band = cptr.lit("__band");
+const __s_bor = cptr.lit("__bor");
+const __s_bxor = cptr.lit("__bxor");
+const __s_shl = cptr.lit("__shl");
+const __s_shr = cptr.lit("__shr");
+const __s_unm = cptr.lit("__unm");
+const __s_bnot = cptr.lit("__bnot");
+const __s_lt = cptr.lit("__lt");
+const __s_le = cptr.lit("__le");
+const __s_concat = cptr.lit("__concat");
+const __s_call = cptr.lit("__call");
+const __s_close = cptr.lit("__close");
+const __s_name = cptr.lit("__name");
+const __s_perform_bitwise_operation_on = cptr.lit("perform bitwise operation on");
+const __s_perform_arithmetic_on = cptr.lit("perform arithmetic on");
 
 /** C ref: ltm.c:28 — char[9] */
 const udatatypename = cptr.bytes("userdata");
 
 /** C ref: ltm.c:30 — char *[12] */
 export const luaT_typenames_ = cptr.alloc(12 * 8);
-cptr.stPtro(luaT_typenames_, 0, __sl0);
-cptr.stPtro(luaT_typenames_, 8, __sl1);
-cptr.stPtro(luaT_typenames_, 16, __sl2);
+cptr.stPtro(luaT_typenames_, 0, __s_no_value);
+cptr.stPtro(luaT_typenames_, 8, __s_nil);
+cptr.stPtro(luaT_typenames_, 16, __s_boolean);
 cptr.stPtro(luaT_typenames_, 24, cptr.decay(udatatypename));
-cptr.stPtro(luaT_typenames_, 32, __sl3);
-cptr.stPtro(luaT_typenames_, 40, __sl4);
-cptr.stPtro(luaT_typenames_, 48, __sl5);
-cptr.stPtro(luaT_typenames_, 56, __sl6);
+cptr.stPtro(luaT_typenames_, 32, __s_number);
+cptr.stPtro(luaT_typenames_, 40, __s_string);
+cptr.stPtro(luaT_typenames_, 48, __s_table);
+cptr.stPtro(luaT_typenames_, 56, __s_function);
 cptr.stPtro(luaT_typenames_, 64, cptr.decay(udatatypename));
-cptr.stPtro(luaT_typenames_, 72, __sl7);
-cptr.stPtro(luaT_typenames_, 80, __sl8);
-cptr.stPtro(luaT_typenames_, 88, __sl9);
+cptr.stPtro(luaT_typenames_, 72, __s_thread);
+cptr.stPtro(luaT_typenames_, 80, __s_upvalue);
+cptr.stPtro(luaT_typenames_, 88, __s_proto);
 
 const __static_luaT_init_luaT_eventname = cptr.alloc(25 * 8);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 0, __sl10);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 8, __sl11);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 16, __sl12);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 24, __sl13);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 32, __sl14);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 40, __sl15);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 48, __sl16);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 56, __sl17);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 64, __sl18);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 72, __sl19);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 80, __sl20);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 88, __sl21);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 96, __sl22);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 104, __sl23);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 112, __sl24);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 120, __sl25);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 128, __sl26);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 136, __sl27);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 144, __sl28);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 152, __sl29);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 160, __sl30);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 168, __sl31);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 176, __sl32);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 184, __sl33);
-cptr.stPtro(__static_luaT_init_luaT_eventname, 192, __sl34); /** C ref: ltm.c:39 — char *[25] (function-static) */
+cptr.stPtro(__static_luaT_init_luaT_eventname, 0, __s_index);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 8, __s_newindex);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 16, __s_gc);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 24, __s_mode);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 32, __s_len);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 40, __s_eq);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 48, __s_add);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 56, __s_sub);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 64, __s_mul);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 72, __s_mod);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 80, __s_pow);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 88, __s_div);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 96, __s_idiv);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 104, __s_band);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 112, __s_bor);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 120, __s_bxor);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 128, __s_shl);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 136, __s_shr);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 144, __s_unm);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 152, __s_bnot);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 160, __s_lt);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 168, __s_le);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 176, __s_concat);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 184, __s_call);
+cptr.stPtro(__static_luaT_init_luaT_eventname, 192, __s_close); /** C ref: ltm.c:39 — char *[25] (function-static) */
 
-/** C ref: ltm.c:38 — @param {CPtr} L */
+/** C ref: ltm.c:38 — @param {CPtr<lua_State>} L */
 export function* luaT_init(L) {
     let i;
     for (i = 0; i < NHC.TM_N; i++) {
         cptr.stPtro2((cptr.ldPtro(L, $lua_State_l_G)), i, 8, $global_State_tmname, (yield* luaS_new(L, cptr.ldPtro(__static_luaT_init_luaT_eventname, i, 8))));
-        luaC_fix(L, ((((cptr.ldPtro2((cptr.ldPtro(L, $lua_State_l_G)), i, 8, $global_State_tmname))))));
+        luaC_fix(L, ((((cptr.ldPtro2((cptr.ldPtro(L, $lua_State_l_G)), i, 8, $global_State_tmname))))));  /* never collect these names */
     }
 }
 
-/** C ref: ltm.c:60 — @param {CPtr} events @param {*} event @param {CPtr} ename @returns {CPtr} */
+/*
+** function to be used with macro "fasttm": optimized for absence of
+** tag methods
+*/
+/** C ref: ltm.c:60 — @param {CPtr<Table>} events @param {*} event @param {CPtr<TString>} ename @returns {CPtr<TValue>} */
 export function luaT_gettm(events, event, ename) {
     let tm = luaH_getshortstr(events, ename);
     (void 0);
     if ((((((cptr.ld1uo(((tm)), $TValue_tt_))) & 15)) == 0)) {
-        cptr.st1o(events, $Table_flags, cptr.ld1uo(events, $Table_flags) | (uchar((((1 << event) >>> 0)))));
+        cptr.st1o(events, $Table_flags, cptr.ld1uo(events, $Table_flags) | (uchar((((1 << event) >>> 0)))));  /* cache this fact */
         return null;
     } else
         return tm;
 }
 
-/** C ref: ltm.c:71 — @param {CPtr} L @param {CPtr} o @param {*} event @returns {CPtr} */
+/** C ref: ltm.c:71 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} o @param {*} event @returns {CPtr<TValue>} */
 export function luaT_gettmbyobj(L, o, event) {
     let mt;
     switch (((((cptr.ld1uo((o), $TValue_tt_))) & 15))) {
@@ -150,22 +154,26 @@ export function luaT_gettmbyobj(L, o, event) {
     return (mt ? luaH_getshortstr(mt, cptr.ldPtro2((cptr.ldPtro(L, $lua_State_l_G)), event, 8, $global_State_tmname)) : cptr.add((cptr.ldPtro(L, $lua_State_l_G)), $global_State_nilvalue));
 }
 
-/** C ref: ltm.c:91 — @param {CPtr} L @param {CPtr} o @returns {CPtr} */
+/*
+** Return the name of the type of an object. For tables and userdata
+** with metatable, use their '__name' metafield, if present.
+*/
+/** C ref: ltm.c:91 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} o @returns {CPtr<char>} */
 export function* luaT_objtypename(L, o) {
     let mt;
     if ((((cptr.ld1uo(((o)), $TValue_tt_)) == 69) && !cptr.eq((mt = cptr.ldPtro(((((((cptr.ldPtr(((o))))))))), $Table_metatable)), (null))) || (((cptr.ld1uo(((o)), $TValue_tt_)) == 71) && !cptr.eq((mt = cptr.ldPtro(((((((cptr.ldPtr(((o))))))))), $Udata_metatable)), (null)))) {
-        let name = luaH_getshortstr(mt, (yield* luaS_new(L, __sl35)));
+        let name = luaH_getshortstr(mt, (yield* luaS_new(L, __s_name)));
         if ((((((cptr.ld1uo(((name)), $TValue_tt_))) & 15)) == 4))
-            return (cptr.add((((((((cptr.ldPtr(((name)))))))))), $TString_contents));
+            return (cptr.add((((((((cptr.ldPtr(((name)))))))))), $TString_contents));  /* use it as type name */
     }
-    return cptr.ldPtro(luaT_typenames_, ((((((cptr.ld1uo((o), $TValue_tt_))) & 15))) + 1) | 0, 8);
+    return cptr.ldPtro(luaT_typenames_, ((((((cptr.ld1uo((o), $TValue_tt_))) & 15))) + 1) | 0, 8);  /* else use standard type name */
 }
 
-/** C ref: ltm.c:103 — @param {CPtr} L @param {CPtr} f @param {CPtr} p1 @param {CPtr} p2 @param {CPtr} p3 */
+/** C ref: ltm.c:103 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} f @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {CPtr<TValue>} p3 */
 export function* luaT_callTM(L, f, p1, p2, p3) {
     let func = cptr.ldPtro(L, $lua_State_top);
     {
-        let io1 = (((func)));
+        let io1 = (((func)));  /* push function (assume EXTRA_STACK) */
         let io2 = (f);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -174,7 +182,7 @@ export function* luaT_callTM(L, f, p1, p2, p3) {
     }
     ;
     {
-        let io1 = (((cptr.add(func, 1, 16))));
+        let io1 = (((cptr.add(func, 1, 16))));  /* 1st argument */
         let io2 = (p1);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -183,7 +191,7 @@ export function* luaT_callTM(L, f, p1, p2, p3) {
     }
     ;
     {
-        let io1 = (((cptr.add(func, 2, 16))));
+        let io1 = (((cptr.add(func, 2, 16))));  /* 2nd argument */
         let io2 = (p2);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -192,7 +200,7 @@ export function* luaT_callTM(L, f, p1, p2, p3) {
     }
     ;
     {
-        let io1 = (((cptr.add(func, 3, 16))));
+        let io1 = (((cptr.add(func, 3, 16))));  /* 3rd argument */
         let io2 = (p3);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -201,18 +209,19 @@ export function* luaT_callTM(L, f, p1, p2, p3) {
     }
     ;
     cptr.stPtro(L, $lua_State_top, cptr.add(func, 4, 16));
+    /* metamethod may yield only when called from Lua code */
     if ((!(cptr.ldU16o((cptr.ldPtro(L, $lua_State_ci)), $CallInfo_callstatus) & 10)))
         (yield* luaD_call(L, func, 0));
     else
         (yield* luaD_callnoyield(L, func, 0));
 }
 
-/** C ref: ltm.c:119 — @param {CPtr} L @param {CPtr} f @param {CPtr} p1 @param {CPtr} p2 @param {CPtr} res */
+/** C ref: ltm.c:119 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} f @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {CPtr} res */
 export function* luaT_callTMres(L, f, p1, p2, res) {
     let result = (cptr.diff((((res))), (((cptr.ldPtro(L, $lua_State_stack))))));
     let func = cptr.ldPtro(L, $lua_State_top);
     {
-        let io1 = (((func)));
+        let io1 = (((func)));  /* push function (assume EXTRA_STACK) */
         let io2 = (f);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -221,7 +230,7 @@ export function* luaT_callTMres(L, f, p1, p2, res) {
     }
     ;
     {
-        let io1 = (((cptr.add(func, 1, 16))));
+        let io1 = (((cptr.add(func, 1, 16))));  /* 1st argument */
         let io2 = (p1);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -230,7 +239,7 @@ export function* luaT_callTMres(L, f, p1, p2, res) {
     }
     ;
     {
-        let io1 = (((cptr.add(func, 2, 16))));
+        let io1 = (((cptr.add(func, 2, 16))));  /* 2nd argument */
         let io2 = (p2);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -239,13 +248,14 @@ export function* luaT_callTMres(L, f, p1, p2, res) {
     }
     ;
     cptr.stPtro(L, $lua_State_top, cptr.add(cptr.ldPtro(L, $lua_State_top), 3, 16));
+    /* metamethod may yield only when called from Lua code */
     if ((!(cptr.ldU16o((cptr.ldPtro(L, $lua_State_ci)), $CallInfo_callstatus) & 10)))
         (yield* luaD_call(L, func, 1));
     else
         (yield* luaD_callnoyield(L, func, 1));
     res = ((cptr.add((((cptr.ldPtro(L, $lua_State_stack)))), (result))));
     {
-        let io1 = (((res)));
+        let io1 = (((res)));  /* move result to its place */
         let io2 = (((cptr.predec(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16))));
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -255,18 +265,18 @@ export function* luaT_callTMres(L, f, p1, p2, res) {
     ;
 }
 
-/** C ref: ltm.c:137 — @param {CPtr} L @param {CPtr} p1 @param {CPtr} p2 @param {CPtr} res @param {*} event @returns {CInt} */
+/** C ref: ltm.c:137 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {CPtr} res @param {*} event @returns {CInt} */
 function* callbinTM(L, p1, p2, res, event) {
-    let tm = luaT_gettmbyobj(L, p1, event);
+    let tm = luaT_gettmbyobj(L, p1, event);  /* try first operand */
     if ((((((cptr.ld1uo(((tm)), $TValue_tt_))) & 15)) == 0))
-        tm = luaT_gettmbyobj(L, p2, event);
+        tm = luaT_gettmbyobj(L, p2, event);  /* try second operand */
     if ((((((cptr.ld1uo(((tm)), $TValue_tt_))) & 15)) == 0))
         return 0;
     (yield* luaT_callTMres(L, tm, p1, p2, res));
     return 1;
 }
 
-/** C ref: ltm.c:148 — @param {CPtr} L @param {CPtr} p1 @param {CPtr} p2 @param {CPtr} res @param {*} event */
+/** C ref: ltm.c:148 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {CPtr} res @param {*} event */
 export function* luaT_trybinTM(L, p1, p2, res, event) {
     if ((__builtin_expect(BigInt(((!(yield* callbinTM(L, p1, p2, res, event))) != 0)), 0n))) {
         switch (event) {
@@ -280,22 +290,22 @@ export function* luaT_trybinTM(L, p1, p2, res, event) {
                 if ((((((cptr.ld1uo(((p1)), $TValue_tt_))) & 15)) == 3) && (((((cptr.ld1uo(((p2)), $TValue_tt_))) & 15)) == 3))
                     (yield* luaG_tointerror(L, p1, p2));
                 else
-                    (yield* luaG_opinterror(L, p1, p2, __sl36));
+                    (yield* luaG_opinterror(L, p1, p2, __s_perform_bitwise_operation_on));
             }
             default:
-            (yield* luaG_opinterror(L, p1, p2, __sl37));
+            (yield* luaG_opinterror(L, p1, p2, __s_perform_arithmetic_on));
         }
     }
 }
 
-/** C ref: ltm.c:167 — @param {CPtr} L */
+/** C ref: ltm.c:167 — @param {CPtr<lua_State>} L */
 export function* luaT_tryconcatTM(L) {
     let top = cptr.ldPtro(L, $lua_State_top);
     if ((__builtin_expect(BigInt(((!(yield* callbinTM(L, ((cptr.add(top, -(2), 16))), ((cptr.add(top, -(1), 16))), cptr.add(top, -(2), 16), NHC.TM_CONCAT))) != 0)), 0n)))
         (yield* luaG_concaterror(L, ((cptr.add(top, -(2), 16))), ((cptr.add(top, -(1), 16)))));
 }
 
-/** C ref: ltm.c:175 — @param {CPtr} L @param {CPtr} p1 @param {CPtr} p2 @param {CInt} flip @param {CPtr} res @param {*} event */
+/** C ref: ltm.c:175 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {CInt} flip @param {CPtr} res @param {*} event */
 export function* luaT_trybinassocTM(L, p1, p2, flip, res, event) {
     if (flip)
         (yield* luaT_trybinTM(L, p2, p1, res, event));
@@ -303,7 +313,7 @@ export function* luaT_trybinassocTM(L, p1, p2, flip, res, event) {
         (yield* luaT_trybinTM(L, p1, p2, res, event));
 }
 
-/** C ref: ltm.c:184 — @param {CPtr} L @param {CPtr} p1 @param {CLongLong} i2 @param {CInt} flip @param {CPtr} res @param {*} event */
+/** C ref: ltm.c:184 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CLongLong} i2 @param {CInt} flip @param {CPtr} res @param {*} event */
 export function* luaT_trybiniTM(L, p1, i2, flip, res, event) {
     let aux = cptr.alloc(16);
     {
@@ -315,15 +325,24 @@ export function* luaT_trybiniTM(L, p1, i2, flip, res, event) {
     (yield* luaT_trybinassocTM(L, p1, aux, flip, res, event));
 }
 
-/** C ref: ltm.c:201 — @param {CPtr} L @param {CPtr} p1 @param {CPtr} p2 @param {*} event @returns {CInt} */
+/*
+** Calls an order tag method.
+** For lessequal, LUA_COMPAT_LT_LE keeps compatibility with old
+** behavior: if there is no '__le', try '__lt', based on l <= r iff
+** !(r < l) (assuming a total order). If the metamethod yields during
+** this substitution, the continuation has to know about it (to negate
+** the result of r<l); bit CIST_LEQ in the call status keeps that
+** information.
+*/
+/** C ref: ltm.c:201 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CPtr<TValue>} p2 @param {*} event @returns {CInt} */
 export function* luaT_callorderTM(L, p1, p2, event) {
     if ((yield* callbinTM(L, p1, p2, cptr.ldPtro(L, $lua_State_top), event)))
         return !(((cptr.ld1uo(((((cptr.ldPtro(L, $lua_State_top))))), $TValue_tt_)) == 1) || (((((cptr.ld1uo(((((cptr.ldPtro(L, $lua_State_top))))), $TValue_tt_))) & 15)) == 0));
-    (yield* luaG_ordererror(L, p1, p2));
-    return 0;
+    (yield* luaG_ordererror(L, p1, p2));  /* no metamethod found */
+    return 0;  /* to avoid warnings */
 }
 
-/** C ref: ltm.c:221 — @param {CPtr} L @param {CPtr} p1 @param {CInt} v2 @param {CInt} flip @param {CInt} isfloat @param {*} event @returns {CInt} */
+/** C ref: ltm.c:221 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} p1 @param {CInt} v2 @param {CInt} flip @param {CInt} isfloat @param {*} event @returns {CInt} */
 export function* luaT_callorderiTM(L, p1, v2, flip, isfloat, event) {
     let aux = cptr.alloc(16);
     let p2;
@@ -341,18 +360,18 @@ export function* luaT_callorderiTM(L, p1, v2, flip, isfloat, event) {
     }
     ;
     if (flip) {
-        p2 = p1;
+        p2 = p1;  /* correct them */
         p1 = aux;
     } else
         p2 = aux;
     return (yield* luaT_callorderTM(L, p1, p2, event));
 }
 
-/** C ref: ltm.c:238 — @param {CPtr} L @param {CInt} nfixparams @param {CPtr} ci @param {CPtr} p */
+/** C ref: ltm.c:238 — @param {CPtr<lua_State>} L @param {CInt} nfixparams @param {CPtr<CallInfo>} ci @param {CPtr<Proto>} p */
 export function* luaT_adjustvarargs(L, nfixparams, ci, p) {
     let i;
-    let actual = ((Number(BigInt.asIntN(32, ((cptr.diff(cptr.ldPtro(L, $lua_State_top), cptr.ldPtr(ci)) / 16n))))) - 1) | 0;
-    let nextra = (actual - nfixparams) | 0;
+    let actual = ((Number(BigInt.asIntN(32, ((cptr.diff(cptr.ldPtro(L, $lua_State_top), cptr.ldPtr(ci)) / 16n))))) - 1) | 0;  /* number of arguments */
+    let nextra = (actual - nfixparams) | 0;  /* number of extra arguments */
     cptr.stI32o(ci, $CallInfo_u + 12, nextra);
     if ((__builtin_expect(BigInt(((cptr.diff(cptr.ldPtro(L, $lua_State_stack_last), cptr.ldPtro(L, $lua_State_top)) / 16n <= BigInt(((cptr.ld1uo(p, $Proto_maxstacksize) + 1) | 0))) != 0)), 0n))) {
         void 0;
@@ -363,6 +382,7 @@ export function* luaT_adjustvarargs(L, nfixparams, ci, p) {
     }
     ;
     {
+        /* copy function to the top of the stack */
         let io1 = (((cptr.postinc(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16))));
         let io2 = (((cptr.ldPtr(ci))));
         cptr.memcpy(io1, io2, 8);
@@ -371,6 +391,7 @@ export function* luaT_adjustvarargs(L, nfixparams, ci, p) {
         (void 0);
     }
     ;
+    /* move fixed parameters to the top of the stack */
     for (i = 1; i <= nfixparams; i++) {
         {
             let io1 = (((cptr.postinc(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16))));
@@ -381,21 +402,21 @@ export function* luaT_adjustvarargs(L, nfixparams, ci, p) {
             (void 0);
         }
         ;
-        (cptr.st1o((((cptr.add(cptr.ldPtr(ci), i, 16)))), $TValue_tt_, 0));
+        (cptr.st1o((((cptr.add(cptr.ldPtr(ci), i, 16)))), $TValue_tt_, 0));  /* erase original parameter (for GC) */
     }
     cptr.stPtr(ci, cptr.add(cptr.ldPtr(ci), (actual + 1) | 0, 16));
     cptr.stPtro(ci, $CallInfo_top, cptr.add(cptr.ldPtro(ci, $CallInfo_top), (actual + 1) | 0, 16));
     (void 0);
 }
 
-/** C ref: ltm.c:258 — @param {CPtr} L @param {CPtr} ci @param {CPtr} where @param {CInt} wanted */
+/** C ref: ltm.c:258 — @param {CPtr<lua_State>} L @param {CPtr<CallInfo>} ci @param {CPtr} where @param {CInt} wanted */
 export function* luaT_getvarargs(L, ci, where, wanted) {
     let i;
     let nextra = cptr.ldI32o(ci, $CallInfo_u + 12);
     if (wanted < 0) {
-        wanted = nextra;
+        wanted = nextra;  /* get all extra arguments available */
         if ((__builtin_expect(BigInt(((cptr.diff(cptr.ldPtro(L, $lua_State_stack_last), cptr.ldPtro(L, $lua_State_top)) / 16n <= BigInt((nextra))) != 0)), 0n))) {
-            let t__ = (cptr.diff((((where))), (((cptr.ldPtro(L, $lua_State_stack))))));
+            let t__ = (cptr.diff((((where))), (((cptr.ldPtro(L, $lua_State_stack))))));  /* ensure stack space */
             {
                 if (cptr.ldI64o((cptr.ldPtro(L, $lua_State_l_G)), $global_State_GCdebt) > 0n) {
                     void 0;
@@ -412,7 +433,7 @@ export function* luaT_getvarargs(L, ci, where, wanted) {
             (void 0);
         }
         ;
-        cptr.stPtro(L, $lua_State_top, cptr.add(where, nextra, 16));
+        cptr.stPtro(L, $lua_State_top, cptr.add(where, nextra, 16));  /* next instruction will need top */
     }
     for (i = 0; i < wanted && i < nextra; i++) {
         let io1 = (((cptr.add(where, i, 16))));

@@ -56,29 +56,33 @@ const $NHFILE_eof = FLD.NHFILE_eof, $restore_info_mread_flags = FLD.restore_info
     $sf_procs_sf_xint16 = FLD.sf_procs_sf_xint16, $sf_procs_sf_xint8 = FLD.sf_procs_sf_xint8,
     $sf_procs_sf_you = FLD.sf_procs_sf_you, $sf_structlevel_procs_fn = FLD.sf_structlevel_procs_fn,
     $sinfo_done_hup = FLD.sinfo_done_hup, $sinfo_reading_bonesfile = FLD.sinfo_reading_bonesfile,
-    $sinfo_restoring = FLD.sinfo_restoring,
+    $sinfo_restoring = FLD.sinfo_restoring, $sizeof_restore_info = FLD.sizeof_restore_info,
+    $sizeof_sf_structlevel_procs = FLD.sizeof_sf_structlevel_procs,
     $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("");
-const __sl1 = cptr.lit("externalcomp");
-const __sl2 = cptr.lit("buffering already enabled");
-const __sl3 = cptr.lit("w");
-const __sl4 = cptr.lit("buffering of file %d failed");
-const __sl5 = cptr.lit("flush of savefile failed!");
-const __sl6 = cptr.lit("cannot write %u bytes to file #%d");
-const __sl7 = cptr.lit("fd not in list (%d)?");
-const __sl8 = cptr.lit("Read %d instead of %u bytes.");
-const __sl9 = cptr.lit("Error restoring old game.");
-const __sl10 = cptr.lit("Error reading level file.");
+const __s_empty = cptr.lit("");
+const __s_externalcomp = cptr.lit("externalcomp");
+const __s_buffering_already_enabled = cptr.lit("buffering already enabled");
+const __s_w = cptr.lit("w");
+const __s_buffering_of_file_d_failed = cptr.lit("buffering of file %d failed");
+const __s_flush_of_savefile_failed = cptr.lit("flush of savefile failed!");
+const __s_cannot_write_u_bytes_to_file_d = cptr.lit("cannot write %u bytes to file #%d");
+const __s_fd_not_in_list_d = cptr.lit("fd not in list (%d)?");
+const __s_read_d_instead_of_u_bytes = cptr.lit("Read %d instead of %u bytes.");
+const __s_error_restoring_old_game = cptr.lit("Error restoring old game.");
+const __s_error_reading_level_file = cptr.lit("Error reading level file.");
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_arti_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct arti_info>} d_arti_info @param {CPtr<char>} myname */
 export function historical_sfo_arti_info(nhfp, d_arti_info, myname) {
     norm_ptrs_arti_info(d_arti_info);
     bwrite(cptr.ldI32(nhfp), d_arti_info, 36);
+    /* NetHack 5.0	sfstruct.c	$NHDT-Date: 1606765215 2020/11/30 19:40:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $ */
+    /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
+    /*-Copyright (c) Michael Allison, 2025. */
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_arti_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct arti_info>} d_arti_info @param {CPtr<char>} myname */
 export function historical_sfi_arti_info(nhfp, d_arti_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -89,13 +93,13 @@ export function historical_sfi_arti_info(nhfp, d_arti_info, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_nhrect @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhrect>} d_nhrect @param {CPtr<char>} myname */
 export function historical_sfo_nhrect(nhfp, d_nhrect, myname) {
     norm_ptrs_nhrect(d_nhrect);
     bwrite(cptr.ldI32(nhfp), d_nhrect, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_nhrect @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhrect>} d_nhrect @param {CPtr<char>} myname */
 export function historical_sfi_nhrect(nhfp, d_nhrect, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -106,13 +110,15 @@ export function historical_sfi_nhrect(nhfp, d_nhrect, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_branch @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct branch>} d_branch @param {CPtr<char>} myname */
 export function historical_sfo_branch(nhfp, d_branch, myname) {
+    /* NetHack may be freely redistributed.  See license for details. */
+
     norm_ptrs_branch(d_branch);
     bwrite(cptr.ldI32(nhfp), d_branch, 32);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_branch @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct branch>} d_branch @param {CPtr<char>} myname */
 export function historical_sfi_branch(nhfp, d_branch, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -123,13 +129,13 @@ export function historical_sfi_branch(nhfp, d_branch, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_bubble @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct bubble>} d_bubble @param {CPtr<char>} myname */
 export function historical_sfo_bubble(nhfp, d_bubble, myname) {
     norm_ptrs_bubble(d_bubble);
     bwrite(cptr.ldI32(nhfp), d_bubble, 40);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_bubble @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct bubble>} d_bubble @param {CPtr<char>} myname */
 export function historical_sfi_bubble(nhfp, d_bubble, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -140,13 +146,14 @@ export function historical_sfi_bubble(nhfp, d_bubble, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_cemetery @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct cemetery>} d_cemetery @param {CPtr<char>} myname */
 export function historical_sfo_cemetery(nhfp, d_cemetery, myname) {
-    norm_ptrs_cemetery(d_cemetery);
+
+    norm_ptrs_cemetery(d_cemetery);  /* debugging */
     bwrite(cptr.ldI32(nhfp), d_cemetery, 184);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_cemetery @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct cemetery>} d_cemetery @param {CPtr<char>} myname */
 export function historical_sfi_cemetery(nhfp, d_cemetery, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -157,13 +164,13 @@ export function historical_sfi_cemetery(nhfp, d_cemetery, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_context_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct context_info>} d_context_info @param {CPtr<char>} myname */
 export function historical_sfo_context_info(nhfp, d_context_info, myname) {
     norm_ptrs_context_info(d_context_info);
     bwrite(cptr.ldI32(nhfp), d_context_info, 720);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_context_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct context_info>} d_context_info @param {CPtr<char>} myname */
 export function historical_sfi_context_info(nhfp, d_context_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -174,13 +181,14 @@ export function historical_sfi_context_info(nhfp, d_context_info, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_nhcoord @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhcoord>} d_nhcoord @param {CPtr<char>} myname */
 export function historical_sfo_nhcoord(nhfp, d_nhcoord, myname) {
+
     norm_ptrs_nhcoord(d_nhcoord);
     bwrite(cptr.ldI32(nhfp), d_nhcoord, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_nhcoord @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhcoord>} d_nhcoord @param {CPtr<char>} myname */
 export function historical_sfi_nhcoord(nhfp, d_nhcoord, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -191,13 +199,13 @@ export function historical_sfi_nhcoord(nhfp, d_nhcoord, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_damage @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct damage>} d_damage @param {CPtr<char>} myname */
 export function historical_sfo_damage(nhfp, d_damage, myname) {
     norm_ptrs_damage(d_damage);
     bwrite(cptr.ldI32(nhfp), d_damage, 32);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_damage @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct damage>} d_damage @param {CPtr<char>} myname */
 export function historical_sfi_damage(nhfp, d_damage, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -208,13 +216,14 @@ export function historical_sfi_damage(nhfp, d_damage, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dest_area @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dest_area>} d_dest_area @param {CPtr<char>} myname */
 export function historical_sfo_dest_area(nhfp, d_dest_area, myname) {
     norm_ptrs_dest_area(d_dest_area);
     bwrite(cptr.ldI32(nhfp), d_dest_area, 16);
+
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dest_area @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dest_area>} d_dest_area @param {CPtr<char>} myname */
 export function historical_sfi_dest_area(nhfp, d_dest_area, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -225,13 +234,15 @@ export function historical_sfi_dest_area(nhfp, d_dest_area, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dgn_topology @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dgn_topology>} d_dgn_topology @param {CPtr<char>} myname */
 export function historical_sfo_dgn_topology(nhfp, d_dgn_topology, myname) {
+    /* historical full struct savings */
+
     norm_ptrs_dgn_topology(d_dgn_topology);
     bwrite(cptr.ldI32(nhfp), d_dgn_topology, 114);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dgn_topology @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dgn_topology>} d_dgn_topology @param {CPtr<char>} myname */
 export function historical_sfi_dgn_topology(nhfp, d_dgn_topology, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -242,13 +253,13 @@ export function historical_sfi_dgn_topology(nhfp, d_dgn_topology, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dungeon @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dungeon>} d_dungeon @param {CPtr<char>} myname */
 export function historical_sfo_dungeon(nhfp, d_dungeon, myname) {
     norm_ptrs_dungeon(d_dungeon);
     bwrite(cptr.ldI32(nhfp), d_dungeon, 112);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_dungeon @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dungeon>} d_dungeon @param {CPtr<char>} myname */
 export function historical_sfi_dungeon(nhfp, d_dungeon, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -259,13 +270,13 @@ export function historical_sfi_dungeon(nhfp, d_dungeon, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_d_level @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct d_level>} d_d_level @param {CPtr<char>} myname */
 export function historical_sfo_d_level(nhfp, d_d_level, myname) {
     norm_ptrs_d_level(d_d_level);
     bwrite(cptr.ldI32(nhfp), d_d_level, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_d_level @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct d_level>} d_d_level @param {CPtr<char>} myname */
 export function historical_sfi_d_level(nhfp, d_d_level, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -276,13 +287,13 @@ export function historical_sfi_d_level(nhfp, d_d_level, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ebones @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ebones>} d_ebones @param {CPtr<char>} myname */
 export function historical_sfo_ebones(nhfp, d_ebones, myname) {
     norm_ptrs_ebones(d_ebones);
     bwrite(cptr.ldI32(nhfp), d_ebones, 36);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ebones @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ebones>} d_ebones @param {CPtr<char>} myname */
 export function historical_sfi_ebones(nhfp, d_ebones, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -293,13 +304,13 @@ export function historical_sfi_ebones(nhfp, d_ebones, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_edog @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct edog>} d_edog @param {CPtr<char>} myname */
 export function historical_sfo_edog(nhfp, d_edog, myname) {
     norm_ptrs_edog(d_edog);
     bwrite(cptr.ldI32(nhfp), d_edog, 64);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_edog @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct edog>} d_edog @param {CPtr<char>} myname */
 export function historical_sfi_edog(nhfp, d_edog, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -310,13 +321,13 @@ export function historical_sfi_edog(nhfp, d_edog, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_egd @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct egd>} d_egd @param {CPtr<char>} myname */
 export function historical_sfo_egd(nhfp, d_egd, myname) {
     norm_ptrs_egd(d_egd);
     bwrite(cptr.ldI32(nhfp), d_egd, 652);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_egd @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct egd>} d_egd @param {CPtr<char>} myname */
 export function historical_sfi_egd(nhfp, d_egd, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -327,13 +338,13 @@ export function historical_sfi_egd(nhfp, d_egd, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_emin @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct emin>} d_emin @param {CPtr<char>} myname */
 export function historical_sfo_emin(nhfp, d_emin, myname) {
     norm_ptrs_emin(d_emin);
     bwrite(cptr.ldI32(nhfp), d_emin, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_emin @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct emin>} d_emin @param {CPtr<char>} myname */
 export function historical_sfi_emin(nhfp, d_emin, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -344,13 +355,13 @@ export function historical_sfi_emin(nhfp, d_emin, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_engr @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct engr>} d_engr @param {CPtr<char>} myname */
 export function historical_sfo_engr(nhfp, d_engr, myname) {
     norm_ptrs_engr(d_engr);
     bwrite(cptr.ldI32(nhfp), d_engr, 80);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_engr @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct engr>} d_engr @param {CPtr<char>} myname */
 export function historical_sfi_engr(nhfp, d_engr, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -361,13 +372,13 @@ export function historical_sfi_engr(nhfp, d_engr, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_epri @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct epri>} d_epri @param {CPtr<char>} myname */
 export function historical_sfo_epri(nhfp, d_epri, myname) {
     norm_ptrs_epri(d_epri);
     bwrite(cptr.ldI32(nhfp), d_epri, 56);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_epri @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct epri>} d_epri @param {CPtr<char>} myname */
 export function historical_sfi_epri(nhfp, d_epri, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -378,13 +389,14 @@ export function historical_sfi_epri(nhfp, d_epri, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_eshk @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct eshk>} d_eshk @param {CPtr<char>} myname */
 export function historical_sfo_eshk(nhfp, d_eshk, myname) {
+
     norm_ptrs_eshk(d_eshk);
     bwrite(cptr.ldI32(nhfp), d_eshk, 4960);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_eshk @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct eshk>} d_eshk @param {CPtr<char>} myname */
 export function historical_sfi_eshk(nhfp, d_eshk, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -395,13 +407,13 @@ export function historical_sfi_eshk(nhfp, d_eshk, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_fe @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fe>} d_fe @param {CPtr<char>} myname */
 export function historical_sfo_fe(nhfp, d_fe, myname) {
     norm_ptrs_fe(d_fe);
     bwrite(cptr.ldI32(nhfp), d_fe, 48);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_fe @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fe>} d_fe @param {CPtr<char>} myname */
 export function historical_sfi_fe(nhfp, d_fe, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -412,13 +424,13 @@ export function historical_sfi_fe(nhfp, d_fe, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_flag @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct flag>} d_flag @param {CPtr<char>} myname */
 export function historical_sfo_flag(nhfp, d_flag, myname) {
     norm_ptrs_flag(d_flag);
     bwrite(cptr.ldI32(nhfp), d_flag, 208);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_flag @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct flag>} d_flag @param {CPtr<char>} myname */
 export function historical_sfi_flag(nhfp, d_flag, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -429,13 +441,14 @@ export function historical_sfi_flag(nhfp, d_flag, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_fruit @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fruit>} d_fruit @param {CPtr<char>} myname */
 export function historical_sfo_fruit(nhfp, d_fruit, myname) {
+
     norm_ptrs_fruit(d_fruit);
     bwrite(cptr.ldI32(nhfp), d_fruit, 48);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_fruit @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fruit>} d_fruit @param {CPtr<char>} myname */
 export function historical_sfi_fruit(nhfp, d_fruit, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -446,13 +459,13 @@ export function historical_sfi_fruit(nhfp, d_fruit, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_gamelog_line @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct gamelog_line>} d_gamelog_line @param {CPtr<char>} myname */
 export function historical_sfo_gamelog_line(nhfp, d_gamelog_line, myname) {
     norm_ptrs_gamelog_line(d_gamelog_line);
     bwrite(cptr.ldI32(nhfp), d_gamelog_line, 32);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_gamelog_line @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct gamelog_line>} d_gamelog_line @param {CPtr<char>} myname */
 export function historical_sfi_gamelog_line(nhfp, d_gamelog_line, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -463,13 +476,13 @@ export function historical_sfi_gamelog_line(nhfp, d_gamelog_line, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_kinfo @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct kinfo>} d_kinfo @param {CPtr<char>} myname */
 export function historical_sfo_kinfo(nhfp, d_kinfo, myname) {
     norm_ptrs_kinfo(d_kinfo);
     bwrite(cptr.ldI32(nhfp), d_kinfo, 272);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_kinfo @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct kinfo>} d_kinfo @param {CPtr<char>} myname */
 export function historical_sfi_kinfo(nhfp, d_kinfo, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -480,13 +493,13 @@ export function historical_sfi_kinfo(nhfp, d_kinfo, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_levelflags @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct levelflags>} d_levelflags @param {CPtr<char>} myname */
 export function historical_sfo_levelflags(nhfp, d_levelflags, myname) {
     norm_ptrs_levelflags(d_levelflags);
     bwrite(cptr.ldI32(nhfp), d_levelflags, 128);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_levelflags @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct levelflags>} d_levelflags @param {CPtr<char>} myname */
 export function historical_sfi_levelflags(nhfp, d_levelflags, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -497,13 +510,13 @@ export function historical_sfi_levelflags(nhfp, d_levelflags, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ls_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ls_t>} d_ls_t @param {CPtr<char>} myname */
 export function historical_sfo_ls_t(nhfp, d_ls_t, myname) {
     norm_ptrs_ls_t(d_ls_t);
     bwrite(cptr.ldI32(nhfp), d_ls_t, 32);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ls_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ls_t>} d_ls_t @param {CPtr<char>} myname */
 export function historical_sfi_ls_t(nhfp, d_ls_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -514,13 +527,13 @@ export function historical_sfi_ls_t(nhfp, d_ls_t, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_linfo @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct linfo>} d_linfo @param {CPtr<char>} myname */
 export function historical_sfo_linfo(nhfp, d_linfo, myname) {
     norm_ptrs_linfo(d_linfo);
     bwrite(cptr.ldI32(nhfp), d_linfo, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_linfo @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct linfo>} d_linfo @param {CPtr<char>} myname */
 export function historical_sfi_linfo(nhfp, d_linfo, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -531,13 +544,13 @@ export function historical_sfi_linfo(nhfp, d_linfo, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_feat @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_feat>} d_mapseen_feat @param {CPtr<char>} myname */
 export function historical_sfo_mapseen_feat(nhfp, d_mapseen_feat, myname) {
     norm_ptrs_mapseen_feat(d_mapseen_feat);
     bwrite(cptr.ldI32(nhfp), d_mapseen_feat, 52);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_feat @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_feat>} d_mapseen_feat @param {CPtr<char>} myname */
 export function historical_sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -548,13 +561,13 @@ export function historical_sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_flags @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_flags>} d_mapseen_flags @param {CPtr<char>} myname */
 export function historical_sfo_mapseen_flags(nhfp, d_mapseen_flags, myname) {
     norm_ptrs_mapseen_flags(d_mapseen_flags);
     bwrite(cptr.ldI32(nhfp), d_mapseen_flags, 64);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_flags @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_flags>} d_mapseen_flags @param {CPtr<char>} myname */
 export function historical_sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -565,13 +578,13 @@ export function historical_sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_rooms @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_rooms>} d_mapseen_rooms @param {CPtr<char>} myname */
 export function historical_sfo_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
     norm_ptrs_mapseen_rooms(d_mapseen_rooms);
     bwrite(cptr.ldI32(nhfp), d_mapseen_rooms, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_rooms @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_rooms>} d_mapseen_rooms @param {CPtr<char>} myname */
 export function historical_sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -582,13 +595,14 @@ export function historical_sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mkroom @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mkroom>} d_mkroom @param {CPtr<char>} myname */
 export function historical_sfo_mkroom(nhfp, d_mkroom, myname) {
+
     norm_ptrs_mkroom(d_mkroom);
     bwrite(cptr.ldI32(nhfp), d_mkroom, 224);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mkroom @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mkroom>} d_mkroom @param {CPtr<char>} myname */
 export function historical_sfi_mkroom(nhfp, d_mkroom, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -599,13 +613,13 @@ export function historical_sfi_mkroom(nhfp, d_mkroom, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_monst @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct monst>} d_monst @param {CPtr<char>} myname */
 export function historical_sfo_monst(nhfp, d_monst, myname) {
     norm_ptrs_monst(d_monst);
     bwrite(cptr.ldI32(nhfp), d_monst, 320);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_monst @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct monst>} d_monst @param {CPtr<char>} myname */
 export function historical_sfi_monst(nhfp, d_monst, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -616,13 +630,13 @@ export function historical_sfi_monst(nhfp, d_monst, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mvitals @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mvitals>} d_mvitals @param {CPtr<char>} myname */
 export function historical_sfo_mvitals(nhfp, d_mvitals, myname) {
     norm_ptrs_mvitals(d_mvitals);
     bwrite(cptr.ldI32(nhfp), d_mvitals, 12);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_mvitals @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mvitals>} d_mvitals @param {CPtr<char>} myname */
 export function historical_sfi_mvitals(nhfp, d_mvitals, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -633,13 +647,13 @@ export function historical_sfi_mvitals(nhfp, d_mvitals, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_obj @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct obj>} d_obj @param {CPtr<char>} myname */
 export function historical_sfo_obj(nhfp, d_obj, myname) {
     norm_ptrs_obj(d_obj);
     bwrite(cptr.ldI32(nhfp), d_obj, 216);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_obj @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct obj>} d_obj @param {CPtr<char>} myname */
 export function historical_sfi_obj(nhfp, d_obj, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -650,13 +664,13 @@ export function historical_sfi_obj(nhfp, d_obj, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_objclass @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct objclass>} d_objclass @param {CPtr<char>} myname */
 export function historical_sfo_objclass(nhfp, d_objclass, myname) {
     norm_ptrs_objclass(d_objclass);
     bwrite(cptr.ldI32(nhfp), d_objclass, 120);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_objclass @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct objclass>} d_objclass @param {CPtr<char>} myname */
 export function historical_sfi_objclass(nhfp, d_objclass, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -667,13 +681,13 @@ export function historical_sfi_objclass(nhfp, d_objclass, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_q_score @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct q_score>} d_q_score @param {CPtr<char>} myname */
 export function historical_sfo_q_score(nhfp, d_q_score, myname) {
     norm_ptrs_q_score(d_q_score);
     bwrite(cptr.ldI32(nhfp), d_q_score, 88);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_q_score @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct q_score>} d_q_score @param {CPtr<char>} myname */
 export function historical_sfi_q_score(nhfp, d_q_score, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -684,13 +698,13 @@ export function historical_sfi_q_score(nhfp, d_q_score, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_rm @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct rm>} d_rm @param {CPtr<char>} myname */
 export function historical_sfo_rm(nhfp, d_rm, myname) {
     norm_ptrs_rm(d_rm);
     bwrite(cptr.ldI32(nhfp), d_rm, 36);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_rm @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct rm>} d_rm @param {CPtr<char>} myname */
 export function historical_sfi_rm(nhfp, d_rm, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -701,13 +715,13 @@ export function historical_sfi_rm(nhfp, d_rm, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_spell @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct spell>} d_spell @param {CPtr<char>} myname */
 export function historical_sfo_spell(nhfp, d_spell, myname) {
     norm_ptrs_spell(d_spell);
     bwrite(cptr.ldI32(nhfp), d_spell, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_spell @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct spell>} d_spell @param {CPtr<char>} myname */
 export function historical_sfi_spell(nhfp, d_spell, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -718,13 +732,13 @@ export function historical_sfi_spell(nhfp, d_spell, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_stairway @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct stairway>} d_stairway @param {CPtr<char>} myname */
 export function historical_sfo_stairway(nhfp, d_stairway, myname) {
     norm_ptrs_stairway(d_stairway);
     bwrite(cptr.ldI32(nhfp), d_stairway, 24);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_stairway @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct stairway>} d_stairway @param {CPtr<char>} myname */
 export function historical_sfi_stairway(nhfp, d_stairway, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -735,13 +749,13 @@ export function historical_sfi_stairway(nhfp, d_stairway, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_s_level @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct s_level>} d_s_level @param {CPtr<char>} myname */
 export function historical_sfo_s_level(nhfp, d_s_level, myname) {
     norm_ptrs_s_level(d_s_level);
     bwrite(cptr.ldI32(nhfp), d_s_level, 56);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_s_level @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct s_level>} d_s_level @param {CPtr<char>} myname */
 export function historical_sfi_s_level(nhfp, d_s_level, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -752,13 +766,13 @@ export function historical_sfi_s_level(nhfp, d_s_level, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_trap @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct trap>} d_trap @param {CPtr<char>} myname */
 export function historical_sfo_trap(nhfp, d_trap, myname) {
     norm_ptrs_trap(d_trap);
     bwrite(cptr.ldI32(nhfp), d_trap, 40);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_trap @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct trap>} d_trap @param {CPtr<char>} myname */
 export function historical_sfi_trap(nhfp, d_trap, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -769,13 +783,13 @@ export function historical_sfi_trap(nhfp, d_trap, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_you @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct you>} d_you @param {CPtr<char>} myname */
 export function historical_sfo_you(nhfp, d_you, myname) {
     norm_ptrs_you(d_you);
     bwrite(cptr.ldI32(nhfp), d_you, 2864);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_you @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct you>} d_you @param {CPtr<char>} myname */
 export function historical_sfi_you(nhfp, d_you, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -786,13 +800,13 @@ export function historical_sfi_you(nhfp, d_you, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_any @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<union any>} d_any @param {CPtr<char>} myname */
 export function historical_sfo_any(nhfp, d_any, myname) {
     norm_ptrs_any(d_any);
     bwrite(cptr.ldI32(nhfp), d_any, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_any @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<union any>} d_any @param {CPtr<char>} myname */
 export function historical_sfi_any(nhfp, d_any, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -803,12 +817,12 @@ export function historical_sfi_any(nhfp, d_any, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_aligntyp @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<aligntyp>} d_aligntyp @param {CPtr<char>} myname */
 export function historical_sfo_aligntyp(nhfp, d_aligntyp, myname) {
     bwrite(cptr.ldI32(nhfp), d_aligntyp, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_aligntyp @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<aligntyp>} d_aligntyp @param {CPtr<char>} myname */
 export function historical_sfi_aligntyp(nhfp, d_aligntyp, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -818,12 +832,12 @@ export function historical_sfi_aligntyp(nhfp, d_aligntyp, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_boolean @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<boolean>} d_boolean @param {CPtr<char>} myname */
 export function historical_sfo_boolean(nhfp, d_boolean, myname) {
     bwrite(cptr.ldI32(nhfp), d_boolean, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_boolean @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<boolean>} d_boolean @param {CPtr<char>} myname */
 export function historical_sfi_boolean(nhfp, d_boolean, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -833,12 +847,12 @@ export function historical_sfi_boolean(nhfp, d_boolean, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_coordxy @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<coordxy>} d_coordxy @param {CPtr<char>} myname */
 export function historical_sfo_coordxy(nhfp, d_coordxy, myname) {
     bwrite(cptr.ldI32(nhfp), d_coordxy, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_coordxy @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<coordxy>} d_coordxy @param {CPtr<char>} myname */
 export function historical_sfi_coordxy(nhfp, d_coordxy, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -848,12 +862,12 @@ export function historical_sfi_coordxy(nhfp, d_coordxy, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int>} d_int @param {CPtr<char>} myname */
 export function historical_sfo_int(nhfp, d_int, myname) {
     bwrite(cptr.ldI32(nhfp), d_int, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int>} d_int @param {CPtr<char>} myname */
 export function historical_sfi_int(nhfp, d_int, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -863,12 +877,12 @@ export function historical_sfi_int(nhfp, d_int, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int16>} d_int16 @param {CPtr<char>} myname */
 export function historical_sfo_int16(nhfp, d_int16, myname) {
     bwrite(cptr.ldI32(nhfp), d_int16, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int16>} d_int16 @param {CPtr<char>} myname */
 export function historical_sfi_int16(nhfp, d_int16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -878,12 +892,12 @@ export function historical_sfi_int16(nhfp, d_int16, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int32 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int32>} d_int32 @param {CPtr<char>} myname */
 export function historical_sfo_int32(nhfp, d_int32, myname) {
     bwrite(cptr.ldI32(nhfp), d_int32, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int32 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int32>} d_int32 @param {CPtr<char>} myname */
 export function historical_sfi_int32(nhfp, d_int32, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -893,12 +907,12 @@ export function historical_sfi_int32(nhfp, d_int32, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int64 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int64>} d_int64 @param {CPtr<char>} myname */
 export function historical_sfo_int64(nhfp, d_int64, myname) {
     bwrite(cptr.ldI32(nhfp), d_int64, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_int64 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int64>} d_int64 @param {CPtr<char>} myname */
 export function historical_sfi_int64(nhfp, d_int64, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -908,12 +922,12 @@ export function historical_sfi_int64(nhfp, d_int64, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_long @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<long>} d_long @param {CPtr<char>} myname */
 export function historical_sfo_long(nhfp, d_long, myname) {
     bwrite(cptr.ldI32(nhfp), d_long, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_long @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<long>} d_long @param {CPtr<char>} myname */
 export function historical_sfi_long(nhfp, d_long, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -923,12 +937,12 @@ export function historical_sfi_long(nhfp, d_long, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_schar @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<schar>} d_schar @param {CPtr<char>} myname */
 export function historical_sfo_schar(nhfp, d_schar, myname) {
     bwrite(cptr.ldI32(nhfp), d_schar, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_schar @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<schar>} d_schar @param {CPtr<char>} myname */
 export function historical_sfi_schar(nhfp, d_schar, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -938,12 +952,12 @@ export function historical_sfi_schar(nhfp, d_schar, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_short @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<short>} d_short @param {CPtr<char>} myname */
 export function historical_sfo_short(nhfp, d_short, myname) {
     bwrite(cptr.ldI32(nhfp), d_short, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_short @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<short>} d_short @param {CPtr<char>} myname */
 export function historical_sfi_short(nhfp, d_short, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -953,12 +967,12 @@ export function historical_sfi_short(nhfp, d_short, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_size_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<size_t>} d_size_t @param {CPtr<char>} myname */
 export function historical_sfo_size_t(nhfp, d_size_t, myname) {
     bwrite(cptr.ldI32(nhfp), d_size_t, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_size_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<size_t>} d_size_t @param {CPtr<char>} myname */
 export function historical_sfi_size_t(nhfp, d_size_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -968,12 +982,12 @@ export function historical_sfi_size_t(nhfp, d_size_t, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_time_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<time_t>} d_time_t @param {CPtr<char>} myname */
 export function historical_sfo_time_t(nhfp, d_time_t, myname) {
     bwrite(cptr.ldI32(nhfp), d_time_t, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_time_t @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<time_t>} d_time_t @param {CPtr<char>} myname */
 export function historical_sfi_time_t(nhfp, d_time_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -983,12 +997,12 @@ export function historical_sfi_time_t(nhfp, d_time_t, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uchar @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uchar>} d_uchar @param {CPtr<char>} myname */
 export function historical_sfo_uchar(nhfp, d_uchar, myname) {
     bwrite(cptr.ldI32(nhfp), d_uchar, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uchar @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uchar>} d_uchar @param {CPtr<char>} myname */
 export function historical_sfi_uchar(nhfp, d_uchar, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -998,12 +1012,12 @@ export function historical_sfi_uchar(nhfp, d_uchar, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint16>} d_uint16 @param {CPtr<char>} myname */
 export function historical_sfo_uint16(nhfp, d_uint16, myname) {
     bwrite(cptr.ldI32(nhfp), d_uint16, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint16>} d_uint16 @param {CPtr<char>} myname */
 export function historical_sfi_uint16(nhfp, d_uint16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1013,12 +1027,12 @@ export function historical_sfi_uint16(nhfp, d_uint16, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint32 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint32>} d_uint32 @param {CPtr<char>} myname */
 export function historical_sfo_uint32(nhfp, d_uint32, myname) {
     bwrite(cptr.ldI32(nhfp), d_uint32, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint32 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint32>} d_uint32 @param {CPtr<char>} myname */
 export function historical_sfi_uint32(nhfp, d_uint32, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1028,12 +1042,12 @@ export function historical_sfi_uint32(nhfp, d_uint32, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint64 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint64>} d_uint64 @param {CPtr<char>} myname */
 export function historical_sfo_uint64(nhfp, d_uint64, myname) {
     bwrite(cptr.ldI32(nhfp), d_uint64, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_uint64 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint64>} d_uint64 @param {CPtr<char>} myname */
 export function historical_sfi_uint64(nhfp, d_uint64, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1043,12 +1057,12 @@ export function historical_sfi_uint64(nhfp, d_uint64, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ulong @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ulong>} d_ulong @param {CPtr<char>} myname */
 export function historical_sfo_ulong(nhfp, d_ulong, myname) {
     bwrite(cptr.ldI32(nhfp), d_ulong, 8);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ulong @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ulong>} d_ulong @param {CPtr<char>} myname */
 export function historical_sfi_ulong(nhfp, d_ulong, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1058,12 +1072,12 @@ export function historical_sfi_ulong(nhfp, d_ulong, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_unsigned @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<unsigned int>} d_unsigned @param {CPtr<char>} myname */
 export function historical_sfo_unsigned(nhfp, d_unsigned, myname) {
     bwrite(cptr.ldI32(nhfp), d_unsigned, 4);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_unsigned @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<unsigned int>} d_unsigned @param {CPtr<char>} myname */
 export function historical_sfi_unsigned(nhfp, d_unsigned, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1073,12 +1087,12 @@ export function historical_sfi_unsigned(nhfp, d_unsigned, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ushort @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ushort>} d_ushort @param {CPtr<char>} myname */
 export function historical_sfo_ushort(nhfp, d_ushort, myname) {
     bwrite(cptr.ldI32(nhfp), d_ushort, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_ushort @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ushort>} d_ushort @param {CPtr<char>} myname */
 export function historical_sfi_ushort(nhfp, d_ushort, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1088,12 +1102,12 @@ export function historical_sfi_ushort(nhfp, d_ushort, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_xint16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint16>} d_xint16 @param {CPtr<char>} myname */
 export function historical_sfo_xint16(nhfp, d_xint16, myname) {
     bwrite(cptr.ldI32(nhfp), d_xint16, 2);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_xint16 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint16>} d_xint16 @param {CPtr<char>} myname */
 export function historical_sfi_xint16(nhfp, d_xint16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1103,12 +1117,12 @@ export function historical_sfi_xint16(nhfp, d_xint16, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_xint8 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint8>} d_xint8 @param {CPtr<char>} myname */
 export function historical_sfo_xint8(nhfp, d_xint8, myname) {
     bwrite(cptr.ldI32(nhfp), d_xint8, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_xint8 @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint8>} d_xint8 @param {CPtr<char>} myname */
 export function historical_sfi_xint8(nhfp, d_xint8, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1118,13 +1132,13 @@ export function historical_sfi_xint8(nhfp, d_xint8, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_version_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct version_info>} d_version_info @param {CPtr<char>} myname */
 export function historical_sfo_version_info(nhfp, d_version_info, myname) {
     norm_ptrs_version_info(d_version_info);
     bwrite(cptr.ldI32(nhfp), d_version_info, 24);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_version_info @param {CPtr} myname */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct version_info>} d_version_info @param {CPtr<char>} myname */
 export function historical_sfi_version_info(nhfp, d_version_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1135,24 +1149,24 @@ export function historical_sfi_version_info(nhfp, d_version_info, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c:106 — @param {CPtr} nhfp @param {CPtr} d_char @param {CPtr} myname @param {CInt} cnt */
+/** C ref: sfstruct.c:106 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} d_char @param {CPtr<char>} myname @param {CInt} cnt */
 export function historical_sfo_char(nhfp, d_char, myname, cnt) {
     bwrite(cptr.ldI32(nhfp), d_char, Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cnt)) * 1n))));
 }
 
-/** C ref: sfstruct.c:113 — @param {CPtr} nhfp @param {CPtr} d_char @param {CPtr} myname @param {CInt} cnt */
+/** C ref: sfstruct.c:113 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} d_char @param {CPtr<char>} myname @param {CInt} cnt */
 export function historical_sfi_char(nhfp, d_char, myname, cnt) {
     mread(cptr.ldI32(nhfp), d_char, Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cnt)) * 1n))));
     if (cptr.ldI32o(restoreinfo, $restore_info_mread_flags) == -1)
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c:130 — @param {CPtr} nhfp @param {CPtr} d_genericptr_t @param {CPtr} myname */
+/** C ref: sfstruct.c:130 — @param {CPtr<NHFILE>} nhfp @param {CPtr<genericptr_t>} d_genericptr_t @param {CPtr<char>} myname */
 export function historical_sfo_genericptr_t(nhfp, d_genericptr_t, myname) {
     bwrite(cptr.ldI32(nhfp), d_genericptr_t, 8);
 }
 
-/** C ref: sfstruct.c:136 — @param {CPtr} nhfp @param {CPtr} d_genericptr_t @param {CPtr} myname */
+/** C ref: sfstruct.c:136 — @param {CPtr<NHFILE>} nhfp @param {CPtr<genericptr_t>} d_genericptr_t @param {CPtr<char>} myname */
 export function historical_sfi_genericptr_t(nhfp, d_genericptr_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1162,12 +1176,13 @@ export function historical_sfi_genericptr_t(nhfp, d_genericptr_t, myname) {
         cptr.st1o(nhfp, $NHFILE_eof, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_bitfield @param {CPtr} myname @param {CInt} bflen */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint8_t>} d_bitfield @param {CPtr<char>} myname @param {CInt} bflen */
 export function historical_sfo_bitfield(nhfp, d_bitfield, myname, bflen) {
+
     bwrite(cptr.ldI32(nhfp), d_bitfield, 1);
 }
 
-/** C ref: sfstruct.c — @param {CPtr} nhfp @param {CPtr} d_bitfield @param {CPtr} myname @param {CInt} bflen */
+/** C ref: sfstruct.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint8_t>} d_bitfield @param {CPtr<char>} myname @param {CInt} bflen */
 export function historical_sfi_bitfield(nhfp, d_bitfield, myname, bflen) {
     if (cptr.ld1so(nhfp, $NHFILE_eof)) {
         sfstruct_read_error();
@@ -1178,8 +1193,8 @@ export function historical_sfi_bitfield(nhfp, d_bitfield, myname, bflen) {
 }
 
 /** C ref: sfstruct.c:149 — struct sf_structlevel_procs */
-export let historical_sfo_procs = cptr.alloc(552);
-cptr.stPtr(historical_sfo_procs, __sl0);
+export let historical_sfo_procs = cptr.alloc($sizeof_sf_structlevel_procs);
+cptr.stPtr(historical_sfo_procs, __s_empty);
 cptr.stPtro(historical_sfo_procs, $sf_structlevel_procs_fn, historical_sfo_arti_info);
 cptr.stPtro(historical_sfo_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect, historical_sfo_nhrect);
 cptr.stPtro(historical_sfo_procs, $sf_structlevel_procs_fn + $sf_procs_sf_branch, historical_sfo_branch);
@@ -1250,8 +1265,8 @@ cptr.stPtro(historical_sfo_procs, $sf_structlevel_procs_fn + $sf_procs_sf_char, 
 cptr.stPtro(historical_sfo_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield, historical_sfo_bitfield);
 
 /** C ref: sfstruct.c:225 — struct sf_structlevel_procs */
-export let historical_sfi_procs = cptr.alloc(552);
-cptr.stPtr(historical_sfi_procs, __sl0);
+export let historical_sfi_procs = cptr.alloc($sizeof_sf_structlevel_procs);
+cptr.stPtr(historical_sfi_procs, __s_empty);
 cptr.stPtro(historical_sfi_procs, $sf_structlevel_procs_fn, historical_sfi_arti_info);
 cptr.stPtro(historical_sfi_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect, historical_sfi_nhrect);
 cptr.stPtro(historical_sfi_procs, $sf_structlevel_procs_fn + $sf_procs_sf_branch, historical_sfi_branch);
@@ -1322,8 +1337,8 @@ cptr.stPtro(historical_sfi_procs, $sf_structlevel_procs_fn + $sf_procs_sf_char, 
 cptr.stPtro(historical_sfi_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield, historical_sfi_bitfield);
 
 /** C ref: sfstruct.c:320 — struct restore_info */
-export let restoreinfo = cptr.alloc(16);
-cptr.stPtr(restoreinfo, __sl1);
+export let restoreinfo = cptr.alloc($sizeof_restore_info);
+cptr.stPtr(restoreinfo, __s_externalcomp);
 cptr.stI32o(restoreinfo, $restore_info_mread_flags, 0);
 
 /** C ref: sfstruct.c:325 — enum */
@@ -1354,10 +1369,49 @@ cptr.stPtro(bw_FILE, 16, null);
 cptr.stPtro(bw_FILE, 24, null);
 cptr.stPtro(bw_FILE, 32, null);
 
+/*
+ * Presumably, the fdopen() to allow use of stdio fwrite()
+ * over write() was done for performance or functionality
+ * reasons to help some particular platform long ago.
+ *
+ * There have been some issues being encountered with the
+ * implementation due to having an individual set of
+ * tracking variables, even though there were nested
+ * sets of open fd (like INSURANCE).
+ *
+ * This uses an individual tracking entry for each fd
+ * being used.
+ *
+ * Some notes:
+ *
+ * Once buffered IO (stdio) has been enabled on the file
+ * associated with a descriptor via fdopen():
+ *
+ *    1. If you use bufoff and bufon to try to toggle the
+ *       use of write vs fwrite; the code just tracks which
+ *       routine is to be called through the tracking
+ *       variables and acts accordingly.
+ *             bw_sticky[]    -  used to find the index number for
+ *                               the fd that is stored in it, or -1
+ *                               if it is a free slot.
+ *             bw_buffered[]  -  indicator that buffered IO routines
+ *                               are available for use.
+ *             bw_FILE[]      -  the non-zero FILE * for use in calling
+ *                               fwrite() when bw_buffered[] is also
+ *                               non-zero.
+ *
+ *    2. It is illegal to call close(fd) after fdopen(), you
+ *       must always use fclose() on the FILE * from
+ *       that point on, so care must be taken to never call
+ *       close(fd) on the underlying fd or bad things will
+ *       happen.
+ */
+
 /** C ref: sfstruct.c:384 — @param {CInt} fd @param {CInt} flg @returns {CInt} */
 function getidx(fd, flg) {
     let i;
     let retval = -1;
+
     for (i = 0; i < 5; ++i)
         if (cptr.ldI32o(bw_sticky, i, 4) == fd)
             return i;
@@ -1372,10 +1426,12 @@ function getidx(fd, flg) {
     return retval;
 }
 
+/* Let caller know that bclose() should handle it (TRUE) */
 /** C ref: sfstruct.c:404 — @param {CInt} fd @returns {CInt} */
 export function close_check(fd) {
     let idx = getidx(fd, NHC.NOSLOT);
     let retval = 0;
+
     if (idx >= 0)
         retval = 1;
     return retval;
@@ -1384,13 +1440,14 @@ export function close_check(fd) {
 /** C ref: sfstruct.c:415 — @param {CInt} fd */
 export function bufon(fd) {
     let idx = getidx(fd, NHC.NOFLG);
+
     if (idx >= 0) {
         cptr.stI32o(bw_sticky, idx, fd, 4);
         if (cptr.ldI32o(bw_buffered, idx, 4))
-            panic(__sl2);
+            panic(__s_buffering_already_enabled);
         if (!cptr.ldPtro(bw_FILE, idx, 8)) {
-            if ((cptr.stPtro(bw_FILE, idx, fdopen(fd, __sl3), 8)) === null)
-                panic(__sl4, fd);
+            if ((cptr.stPtro(bw_FILE, idx, fdopen(fd, __s_w), 8)) === null)
+                panic(__s_buffering_of_file_d_failed, fd);
         }
         cptr.stI32o(bw_buffered, idx, (cptr.ldPtro(bw_FILE, idx, 8) !== null), 4);
     }
@@ -1399,22 +1456,25 @@ export function bufon(fd) {
 /** C ref: sfstruct.c:436 — @param {CInt} fd */
 export function bufoff(fd) {
     let idx = getidx(fd, NHC.NOFLG);
+
     if (idx >= 0) {
         bflush(fd);
-        cptr.stI32o(bw_buffered, idx, 0, 4);
+        cptr.stI32o(bw_buffered, idx, 0, 4);  /* just a flag that says "use write(fd)" */
     }
 }
 
 /** C ref: sfstruct.c:447 — @param {CInt} fd */
 export function bclose(fd) {
     let idx = getidx(fd, NHC.NOSLOT);
-    bufoff(fd);
+
+    bufoff(fd);  /* sets bw_buffered[idx] = 0 */
     if (idx >= 0) {
         if (cptr.ldPtro(bw_FILE, idx, 8)) {
             void fclose(cptr.ldPtro(bw_FILE, idx, 8));
             cptr.stPtro(bw_FILE, idx, null, 8);
         } else
             close(fd);
+        /* return the idx to the pool */
         cptr.stI32o(bw_sticky, idx, -1, 4);
     }
     return;
@@ -1423,10 +1483,11 @@ export function bclose(fd) {
 /** C ref: sfstruct.c:478 — @param {CInt} fd */
 export function bflush(fd) {
     let idx = getidx(fd, NHC.NOFLG);
+
     if (idx >= 0) {
         if (cptr.ldPtro(bw_FILE, idx, 8)) {
             if (fflush(cptr.ldPtro(bw_FILE, idx, 8)) == -1)
-                panic(__sl5);
+                panic(__s_flush_of_savefile_failed);
         }
     }
     return;
@@ -1436,8 +1497,12 @@ export function bflush(fd) {
 export function bwrite(fd, loc, num) {
     let failed;
     let idx = getidx(fd, NHC.NOFLG);
+
     if (idx >= 0) {
         if (num == 0) {
+            /* nothing to do; we need a special case to exit early
+               because glibc fwrite doesn't give reliable
+               success/failure indication when writing 0 bytes */
             return;
         }
         if (cptr.ldI32o(bw_buffered, idx, 4) && cptr.ldPtro(bw_FILE, idx, 8)) {
@@ -1449,29 +1514,32 @@ export function bwrite(fd, loc, num) {
             if (cptr.ldI32o(program_state, $sinfo_done_hup))
                 nh_terminate(1);
             else
-                panic(__sl6, num, fd);
+                panic(__s_cannot_write_u_bytes_to_file_d, num, fd);
         }
     } else
-        impossible(__sl7, fd);
+        impossible(__s_fd_not_in_list_d, fd);
 }
+
+/*  ===================================================== */
 
 /** C ref: sfstruct.c:549 — @param {CInt} fd @param {CPtr} buf @param {CUInt} len */
 export function mread(fd, buf, len) {
     let rlen;
+    /* Not perfect, but we don't have ssize_t available. */
     rlen = Number(BigInt.asUintN(32, cptr.read(fd, buf, BigInt(len >>> 0))));
     if (rlen != len) {
         if ((cptr.ldI32o(restoreinfo, $restore_info_mread_flags) == 1) || (cptr.ldI32o(program_state, $sinfo_reading_bonesfile) == 1)) {
             cptr.stI32o(restoreinfo, $restore_info_mread_flags, -1);
             return;
         } else {
-            pline(__sl8, rlen | 0, len);
-            display_nhwindow()(WIN_MESSAGE.v, 1);
+            pline(__s_read_d_instead_of_u_bytes, rlen | 0, len);
+            display_nhwindow()(WIN_MESSAGE.v, 1);  /* flush before error() */
             if (cptr.ldI32o(program_state, $sinfo_restoring)) {
                 void nhclose(fd);
                 void delete_savefile();
-                error(__sl9);
+                error(__s_error_restoring_old_game);
             }
-            panic(__sl10);
+            panic(__s_error_reading_level_file);
         }
     }
 }

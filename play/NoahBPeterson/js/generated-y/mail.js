@@ -14,6 +14,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { m_next2u } from './nhmacrofn.js';
+import { rn2_at } from './nhrng.js';
 import { Blind, Blind_telepat, Deaf, display_nhwindow, nh_delay_output } from './nhprop.js';
 import { nh_getenv } from './options.js';
 import { alloc, dupstr } from './alloc.js';
@@ -24,7 +25,6 @@ import { enexto } from './teleport.js';
 import { dist2 } from './hacklib.js';
 import { isok } from './cmd.js';
 import { accessible } from './monmove.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { mons } from './monst.js';
 import { flush_screen, newsym } from './display.js';
 import { place_monster } from './steed.js';
@@ -53,7 +53,9 @@ const $c_common_strings_c_Never_mind = FLD.c_common_strings_c_Never_mind, $coord
     $mail_info_display_txt = FLD.mail_info_display_txt, $mail_info_object_nam = FLD.mail_info_object_nam,
     $mail_info_response_cmd = FLD.mail_info_response_cmd, $monst_mx = FLD.monst_mx, $monst_my = FLD.monst_my,
     $nhcoord_y = FLD.nhcoord_y, $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
-    $rm_typ = FLD.rm_typ, $stairway_next = FLD.stairway_next, $stairway_sy = FLD.stairway_sy,
+    $rm_typ = FLD.rm_typ, $sizeof_mail_info = FLD.sizeof_mail_info, $sizeof_permonst = FLD.sizeof_permonst,
+    $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
+    $sizeof_stat = FLD.sizeof_stat, $stairway_next = FLD.stairway_next, $stairway_sy = FLD.stairway_sy,
     $stairway_tolev = FLD.stairway_tolev, $stat_st_mtimespec = FLD.stat_st_mtimespec,
     $stat_st_size = FLD.stat_st_size, $u_roleplay_deaf = FLD.u_roleplay_deaf,
     $window_procs_win_delay_output = FLD.window_procs_win_delay_output,
@@ -62,34 +64,34 @@ const $c_common_strings_c_Never_mind = FLD.c_common_strings_c_Never_mind, $coord
     $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("MAIL");
-const __sl1 = cptr.lit("/usr/mail/");
-const __sl2 = cptr.lit("mail.c");
-const __sl3 = cptr.lit("mailbox=%c%s%c");
-const __sl4 = cptr.lit("null");
-const __sl5 = cptr.lit("md_stop");
-const __sl6 = cptr.lit("Gangway!");
-const __sl7 = cptr.lit("Look out!");
-const __sl8 = cptr.lit("Pardon me!");
-const __sl9 = cptr.lit("%s");
-const __sl10 = cptr.lit("md_rush");
-const __sl11 = cptr.lit("Excuse me.");
-const __sl12 = cptr.lit("This place's too crowded.  I'm outta here.");
-const __sl13 = cptr.lit("%s.");
-const __sl14 = cptr.lit("%s, %s!  %s.");
-const __sl15 = cptr.lit("Message:  %s.");
-const __sl16 = cptr.lit("Catch!");
-const __sl17 = cptr.lit("Oops!");
-const __sl18 = cptr.lit("Hark!  \"%s.\"");
-const __sl19 = cptr.lit("I have some mail for you");
-const __sl20 = cptr.lit("MAILREADER");
-const __sl21 = cptr.lit("/usr/bin/mailx");
+const __s_mail = cptr.lit("MAIL");
+const __s_usr_mail = cptr.lit("/usr/mail/");
+const __s_mail_c = cptr.lit("mail.c");
+const __s_mailbox_c_s_c = cptr.lit("mailbox=%c%s%c");
+const __s_null = cptr.lit("null");
+const __s_md_stop = cptr.lit("md_stop");
+const __s_gangway = cptr.lit("Gangway!");
+const __s_look_out = cptr.lit("Look out!");
+const __s_pardon_me = cptr.lit("Pardon me!");
+const __s_pct_s = cptr.lit("%s");
+const __s_md_rush = cptr.lit("md_rush");
+const __s_excuse_me = cptr.lit("Excuse me.");
+const __s_this_place_s_too_crowded_i_m_outta_here = cptr.lit("This place's too crowded.  I'm outta here.");
+const __s_pct_s_dot = cptr.lit("%s.");
+const __s_s_s_s = cptr.lit("%s, %s!  %s.");
+const __s_message_s = cptr.lit("Message:  %s.");
+const __s_catch = cptr.lit("Catch!");
+const __s_oops = cptr.lit("Oops!");
+const __s_hark_s = cptr.lit("Hark!  \"%s.\"");
+const __s_i_have_some_mail_for_you = cptr.lit("I have some mail for you");
+const __s_mailreader = cptr.lit("MAILREADER");
+const __s_usr_bin_mailx = cptr.lit("/usr/bin/mailx");
 
 /** C ref: mail.c:69 — struct stat */
-let omstat = cptr.alloc(144);
+let omstat = cptr.alloc($sizeof_stat);
 
 /** C ref: mail.c:69 — struct stat */
-let nmstat = cptr.alloc(144);
+let nmstat = cptr.alloc($sizeof_stat);
 
 /** C ref: mail.c:70 — char * */
 let mailbox = null;
@@ -106,40 +108,58 @@ export function free_maildata() {
 /** C ref: mail.c:97 */
 export function* getmailstatus() {
     if (mailbox) {
-        ;
-    } else if ((mailbox = nh_getenv(__sl0)) !== null) {
+        ;  /* no need to repeat the setup */
+    } else if ((mailbox = nh_getenv(__s_mail)) !== null) {
         mailbox = (yield* dupstr(mailbox));
     } else {
         let pw_name = cptr.ldPtr(getpwuid(getuid()));
+
+        /* note: 'sizeof "LITERAL"' includes +1 for terminating '\0' */
         mailbox = (yield* alloc(Number(BigInt.asUintN(32, (BigInt.asUintN(64, cptr.strlen(pw_name) + 11n))))));
-        void cptr.strcpy(mailbox, __sl1);
+        void cptr.strcpy(mailbox, __s_usr_mail);
         void cptr.strcat(mailbox, pw_name);
     }
     {
-        if ((yield* debugcore(__sl2, 1))) {
+        if ((yield* debugcore(__s_mail_c, 1))) {
+
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-            (yield* pline(__sl3, mailbox ? 34 : 60, mailbox ? mailbox : __sl4, mailbox ? 34 : 62));
+            (yield* pline(__s_mailbox_c_s_c, mailbox ? 34 : 60, mailbox ? mailbox : __s_null, mailbox ? 34 : 62));
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
     }
+
     if (mailbox && stat(mailbox, omstat)) {
         cptr.stI64o(omstat, $stat_st_mtimespec, 0n);
     }
 }
 
-/** C ref: mail.c:149 — @param {CPtr} startp @returns {CInt} */
+/*
+ * Pick coordinates for a starting position for the mail daemon.  Called
+ * from newmail() and newphone().
+ */
+/** C ref: mail.c:149 — @param {CPtr<coord>} startp @returns {CInt} */
 function* md_start(startp) {
-    let testcc = cptr.alloc(4);
-    let row;
-    let lax;
-    let dd;
-    let max_distance;
+    let testcc = cptr.alloc(4);  /* scratch coordinates */
+    let row;  /* current row we are checking */
+    let lax;  /* if TRUE, pick a position in sight. */
+    let dd;  /* distance to current point */
+    let max_distance;  /* max distance found so far */
     let stway = cptr.ldPtro(gs, $instance_globals_s_stairs);
+
+    /*
+     * If blind and not telepathic, then it doesn't matter what we pick ---
+     * the hero is not going to see it anyway.  So pick a nearby position.
+     */
     if (Blind() && !Blind_telepat()) {
         if (!(yield* enexto(startp, cptr.ldI16(u), cptr.ldI16o(u, $you_uy), null)))
-            return 0;
+            return 0;  /* no good positions */
         return 1;
     }
+
+    /*
+     * Arrive at an up or down stairwell if it is in line of sight from the
+     * hero.
+     */
     while (stway) {
         if (cptr.ldI16o(stway, $stairway_tolev) == cptr.ldI16o(u, $you_uz) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(stway, $stairway_sy), 8), cptr.ldI16(stway)) & NHM.COULD_SEE) != 0)) {
             cptr.stI16(startp, cptr.ldI16(stway));
@@ -148,17 +168,29 @@ function* md_start(startp) {
         }
         stway = cptr.ldPtro(stway, $stairway_next);
     }
-    lax = 0;
+
+    /*
+     * Try to pick a location out of sight next to the farthest position away
+     * from the hero.  If this fails, try again, just picking the farthest
+     * position that could be seen.  What we really ought to be doing is
+     * finding a path from a stairwell...
+     *
+     * The arrays gv.viz_rmin[] and gv.viz_rmax[] are set even when blind.
+     * These are the LOS limits for each row.
+     */
+    lax = 0;  /* be picky */
     max_distance = -1;
     __lbl_retry: while (true) {
         for (row = 0; row < NHM.ROWNO; row++) {
             if (cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmin), row, 2) < cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmax), row, 2)) {
+                /* There are valid positions on this row. */
                 dd = dist2((cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmin), row, 2)), i16((row)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
                 if (dd > max_distance) {
                     if (lax) {
                         max_distance = dd;
                         cptr.stI16o(startp, $coord_y, i16(row));
                         cptr.stI16(startp, cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmin), row, 2));
+
                     } else if ((yield* enexto(testcc, cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmin), row, 2), i16(row), null)) && !((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(testcc, $nhcoord_y), 8), cptr.ldI16(testcc)) & NHM.IN_SIGHT) != 0) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(testcc, $nhcoord_y), 8), cptr.ldI16(testcc)) & NHM.COULD_SEE) != 0)) {
                         max_distance = dd;
                         cptr.memcpy(startp, testcc, 4);
@@ -170,6 +202,7 @@ function* md_start(startp) {
                         max_distance = dd;
                         cptr.stI16o(startp, $coord_y, i16(row));
                         cptr.stI16(startp, cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmax), row, 2));
+
                     } else if ((yield* enexto(testcc, cptr.ldI16o(cptr.ldPtro(gv, $instance_globals_v_viz_rmax), row, 2), i16(row), null)) && !((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(testcc, $nhcoord_y), 8), cptr.ldI16(testcc)) & NHM.IN_SIGHT) != 0) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(testcc, $nhcoord_y), 8), cptr.ldI16(testcc)) & NHM.COULD_SEE) != 0)) {
                         max_distance = dd;
                         cptr.memcpy(startp, testcc, 4);
@@ -177,67 +210,98 @@ function* md_start(startp) {
                 }
             }
         }
+
         if (max_distance < 0) {
             if (!lax) {
-                lax = 1;
+                lax = 1;  /* just find a position */
                 continue __lbl_retry;
             }
             return 0;
         }
+
         return 1;
     }
 }
 
-/** C ref: mail.c:248 — @param {CPtr} stopp @param {CPtr} startp @returns {CInt} */
+/*
+ * Try to choose a stopping point as near as possible to the starting
+ * position while still adjacent to the hero.  If all else fails, try
+ * enexto().  Use enexto() as a last resort because enexto() chooses
+ * its point randomly, which is not what we want.
+ */
+/** C ref: mail.c:248 — @param {CPtr<coord>} stopp @param {CPtr<coord>} startp @returns {CInt} */
 function* md_stop(stopp, startp) {
     let x;
     let y;
     let distance;
     let min_distance = -1;
+
     for (x = i16(((cptr.ldI16(u) - 1) | 0)); x <= ((cptr.ldI16(u) + 1) | 0); x++)
         for (y = i16(((cptr.ldI16o(u, $you_uy) - 1) | 0)); y <= ((cptr.ldI16o(u, $you_uy) + 1) | 0); y++) {
             if (!isok(x, y) || ((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)))
                 continue;
+
             if (accessible(x, y) && !(cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters) !== null)) {
                 distance = i16(dist2(x, y, cptr.ldI16(startp), cptr.ldI16o(startp, $coord_y)));
-                if (min_distance < 0 || distance < min_distance || (distance == min_distance && (rng_log_enabled() ? (rng_log_set_caller(__sl2, 261, __sl5), rn2(2)) : rn2(2)))) {
+                if (min_distance < 0 || distance < min_distance || (distance == min_distance && rn2_at(__s_mail_c, 261, __s_md_stop, 2))) {
                     cptr.stI16(stopp, x);
                     cptr.stI16o(stopp, $coord_y, y);
                     min_distance = distance;
                 }
             }
         }
-    if (min_distance < 0 && !(yield* enexto(stopp, cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.add(mons, NHC.PM_MAIL_DAEMON, 96))))
+
+    /* If we didn't find a good spot, try enexto(). */
+    if (min_distance < 0 && !(yield* enexto(stopp, cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.add(mons, NHC.PM_MAIL_DAEMON, $sizeof_permonst))))
         return 0;
+
     return 1;
 }
 
+/* Let the mail daemon have a larger vocabulary. */
 /** C ref: mail.c:277 — char *[3] */
 const mail_text = cptr.alloc(3 * 8);
-cptr.stPtro(mail_text, 0, __sl6);
-cptr.stPtro(mail_text, 8, __sl7);
-cptr.stPtro(mail_text, 16, __sl8);
+cptr.stPtro(mail_text, 0, __s_gangway);
+cptr.stPtro(mail_text, 8, __s_look_out);
+cptr.stPtro(mail_text, 16, __s_pardon_me);
 
-/** C ref: mail.c:288 — @param {CPtr} md @param {CInt} tx @param {CInt} ty @returns {CInt} */
+/*
+ * Make the mail daemon run through the dungeon.  The daemon will run over
+ * any monsters that are in its path, but will replace them later.  Return
+ * FALSE if the md gets stuck in a position where there is a monster.  Return
+ * TRUE otherwise.
+ */
+/** C ref: mail.c:288 — @param {CPtr<struct monst>} md @param {CInt} tx @param {CInt} ty @returns {CInt} */
 function* md_rush(md, tx, ty) {
-    let mon;
+    let mon;  /* displaced monster */
     let dx;
-    let dy;
+    let dy;  /* direction counters */
     let fx = cptr.ldI16o(md, $monst_mx);
-    let fy = cptr.ldI16o(md, $monst_my);
+    let fy = cptr.ldI16o(md, $monst_my);  /* current location */
     let nfx = fx;
     let nfy = fy;
     let d1;
-    let d2;
+    let d2;  /* shortest distances */
+
+    /*
+     * It is possible that the monster at (fx,fy) is not the md when:
+     * the md rushed the hero and failed, and is now starting back.
+     */
     if (cptr.eq((cptr.ldPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters)), md)) {
-        cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
+        cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);  /* pick up from orig position */
         (yield* newsym(i16(fx), i16(fy)));
     }
+
+    /*
+     * At the beginning and exit of this loop, md is not placed in the
+     * dungeon.
+     */
     while (1) {
+        /* Find a good location next to (fx,fy) closest to (tx,ty). */
         d1 = dist2(i16(fx), i16(fy), i16(tx), i16(ty));
         for (dx = -1; dx <= 1; dx++)
             for (dy = -1; dy <= 1; dy++)
-                if ((dx || dy) && isok(i16(((fx + dx) | 0)), i16(((fy + dy) | 0))) && !((cptr.ld1so3(svl, (fx + dx) | 0, 756, (fy + dy) | 0, 36, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)) {
+                if ((dx || dy) && isok(i16(((fx + dx) | 0)), i16(((fy + dy) | 0))) && !((cptr.ld1so3(svl, (fx + dx) | 0, $sizeof_rm_x21, (fy + dy) | 0, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)) {
                     d2 = dist2(i16(((fx + dx) | 0)), i16(((fy + dy) | 0)), i16(tx), i16(ty));
                     if (d2 < d1) {
                         d1 = d2;
@@ -245,26 +309,35 @@ function* md_rush(md, tx, ty) {
                         nfy = (fy + dy) | 0;
                     }
                 }
+
+        /* Break if the md couldn't find a new position. */
         if (nfx == fx && nfy == fy)
             break;
-        fx = nfx;
+
+        fx = nfx;  /* this is our new position */
         fy = nfy;
+
+        /* Break if the md reaches its destination. */
         if (fx == tx && fy == ty)
             break;
-        mon = (cptr.ldPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
+
+        mon = (cptr.ldPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters));  /* save monster at this position */
         if (!Deaf()) {
             ;
             if (mon)
-                (yield* verbalize(__sl9, (cptr.ldPtro(mail_text, (rng_log_enabled() ? (rng_log_set_caller(__sl2, 340, __sl10), rn2(3)) : rn2(3)), 8))));
+                (yield* verbalize(__s_pct_s, (cptr.ldPtro(mail_text, rn2_at(__s_mail_c, 340, __s_md_rush, 3), 8))));
             else if (((fx) == cptr.ldI16(u) && (fy) == cptr.ldI16o(u, $you_uy)))
-                (yield* verbalize(__sl11));
+                (yield* verbalize(__s_excuse_me));
         }
+
         if (mon)
             cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
-        (yield* place_monster(md, i16(fx), i16(fy)));
-        (yield* newsym(i16(fx), i16(fy)));
-        (yield* flush_screen(0));
-        (yield* Y.icall(nh_delay_output()()));
+        (yield* place_monster(md, i16(fx), i16(fy)));  /* put md down */
+        (yield* newsym(i16(fx), i16(fy)));  /* see it */
+        (yield* flush_screen(0));  /* make sure md shows up */
+        (yield* Y.icall(nh_delay_output()()));  /* wait a little bit */
+
+        /* Remove md from the dungeon.  Restore original mon, if necessary. */
         cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
         if (mon) {
             if ((cptr.ldI16o(mon, $monst_mx) != fx) || (cptr.ldI16o(mon, $monst_my) != fy))
@@ -274,32 +347,43 @@ function* md_rush(md, tx, ty) {
         }
         (yield* newsym(i16(fx), i16(fy)));
     }
+
+    /*
+     * Check for a monster at our stopping position (this is possible, but
+     * very unlikely).  If one exists, then have the md leave in disgust.
+     */
     if ((mon = (cptr.ldPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) !== null) {
         cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
-        (yield* place_monster(md, i16(fx), i16(fy)));
+        (yield* place_monster(md, i16(fx), i16(fy)));  /* display md with text below */
         (yield* newsym(i16(fx), i16(fy)));
         if (!Deaf()) {
             ;
-            (yield* verbalize(__sl12));
+            (yield* verbalize(__s_this_place_s_too_crowded_i_m_outta_here));
         } else {
-            (yield* pline(__sl13, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
+            (yield* pline(__s_pct_s_dot, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
         }
         cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
+
         if ((cptr.ldI16o(mon, $monst_mx) != fx) || (cptr.ldI16o(mon, $monst_my) != fy))
             cptr.stPtro3(svl, fx, 168, fy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, mon);
         else
             (yield* place_monster(mon, i16(fx), i16(fy)));
+
         (yield* newsym(i16(fx), i16(fy)));
         return 0;
     }
-    (yield* place_monster(md, i16(fx), i16(fy)));
+
+    (yield* place_monster(md, i16(fx), i16(fy)));  /* place at final spot */
     (yield* newsym(i16(fx), i16(fy)));
     (yield* flush_screen(0));
-    (yield* Y.icall(nh_delay_output()()));
+    (yield* Y.icall(nh_delay_output()()));  /* wait a little bit */
+
     return 1;
 }
 
-/** C ref: mail.c:399 — @param {CPtr} info */
+/* Deliver a scroll of mail. */
+/*ARGSUSED*/
+/** C ref: mail.c:399 — @param {CPtr<struct mail_info>} info */
 function* newmail(info) {
     let md;
     let start = cptr.alloc(4);
@@ -307,57 +391,70 @@ function* newmail(info) {
     let message_seen = 0;
     __lbl_give_up: {
     __lbl_go_back: {
+
+        /* Try to find good starting and stopping places. */
         if (!(yield* md_start(start)) || !(yield* md_stop(stop, start)))
             break __lbl_give_up;
-        if (!(md = (yield* makemon(cptr.add(mons, NHC.PM_MAIL_DAEMON, 96), cptr.ldI16(start), cptr.ldI16o(start, $nhcoord_y), NHM.NO_MM_FLAGS))))
+
+        /* Make the daemon.  Have it rush towards the hero. */
+        if (!(md = (yield* makemon(cptr.add(mons, NHC.PM_MAIL_DAEMON, $sizeof_permonst), cptr.ldI16(start), cptr.ldI16o(start, $nhcoord_y), NHM.NO_MM_FLAGS))))
             break __lbl_give_up;
         if (!(yield* md_rush(md, cptr.ldI16(stop), cptr.ldI16o(stop, $nhcoord_y))))
             break __lbl_go_back;
+
         message_seen = 1;
         if (!Deaf()) {
             ;
-            (yield* verbalize(__sl14, Hello(md), svp, cptr.ldPtro(info, $mail_info_display_txt)));
+            (yield* verbalize(__s_s_s_s, Hello(md), svp, cptr.ldPtro(info, $mail_info_display_txt)));
         } else {
-            (yield* pline(__sl15, cptr.ldPtro(info, $mail_info_display_txt)));
+            (yield* pline(__s_message_s, cptr.ldPtro(info, $mail_info_display_txt)));
         }
+
         if (cptr.ldI32(info)) {
             let obj = (yield* mksobj(NHC.SCR_MAIL, 0, 0));
+
             if (cptr.ldPtro(info, $mail_info_object_nam))
                 obj = (yield* oname(obj, cptr.ldPtro(info, $mail_info_object_nam), NHM.ONAME_NO_FLAGS));
             if (cptr.ldPtro(info, $mail_info_response_cmd))
                 (yield* new_omailcmd(obj, cptr.ldPtro(info, $mail_info_response_cmd)));
+
             if (!m_next2u(md)) {
                 if (!Deaf()) {
                     ;
-                    (yield* verbalize(__sl16));
+                    (yield* verbalize(__s_catch));
                 } else {
+                    /* don't bother with nonverbal alternative ... */
                     ;
                 }
             }
             (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 0)));
-            obj = (yield* hold_another_object(obj, __sl17, null, null));
+            obj = (yield* hold_another_object(obj, __s_oops, null, null));
             (void (obj));
         }
     }
+        /* zip back to starting location */
         if (!(yield* md_rush(md, cptr.ldI16(start), cptr.ldI16o(start, $nhcoord_y))))
-            cptr.stI16o(md, $monst_mx, cptr.stI16o(md, $monst_my, 0));
+            cptr.stI16o(md, $monst_mx, cptr.stI16o(md, $monst_my, 0));  /* for mongone, md is not on map */
         (yield* mongone(md));
     }
+    /* deliver some classes of messages even if no daemon ever shows up */
     if (!message_seen && cptr.ldI32(info) == NHM.MSG_OTHER)
-        (yield* pline(__sl18, cptr.ldPtro(info, $mail_info_display_txt)));
+        (yield* pline(__s_hark_s, cptr.ldPtro(info, $mail_info_display_txt)));
 }
 
-let __static_ckmailstatus_deliver = cptr.alloc(32); /** C ref: mail.c:571 — struct mail_info (function-static) */
+let __static_ckmailstatus_deliver = cptr.alloc($sizeof_mail_info); /** C ref: mail.c:571 — struct mail_info (function-static) */
 cptr.stI32(__static_ckmailstatus_deliver, NHM.MSG_MAIL);
-cptr.stPtro(__static_ckmailstatus_deliver, $mail_info_display_txt, __sl19);
+cptr.stPtro(__static_ckmailstatus_deliver, $mail_info_display_txt, __s_i_have_some_mail_for_you);
 cptr.stPtro(__static_ckmailstatus_deliver, $mail_info_object_nam, null);
 cptr.stPtro(__static_ckmailstatus_deliver, $mail_info_response_cmd, null);
 
 /** C ref: mail.c:550 */
 export function* ckmailstatus() {
     ck_server_admin_msg();
+
     if (!mailbox || (cptr.ldI32o(u, $you_uswallow) & 1) | 0 || !cptr.ld1so(flags, $flag_biff) || cptr.ldI64o(svm, $instance_globals_saved_m_moves) < BigInt.asIntN(64, laststattime + 50n))
         return;
+
     laststattime = cptr.ldI64o(svm, $instance_globals_saved_m_moves);
     if (stat(mailbox, nmstat)) {
         cptr.stI64o(nmstat, $stat_st_mtimespec, 0n);
@@ -365,7 +462,7 @@ export function* ckmailstatus() {
         if (cptr.ldI64o(nmstat, $stat_st_size)) {
             (yield* newmail(__static_ckmailstatus_deliver));
         }
-        (yield* getmailstatus());
+        (yield* getmailstatus());  /* might be too late ... */
     }
 }
 
@@ -373,18 +470,23 @@ export function* ckmailstatus() {
 export function ck_server_admin_msg() {
 }
 
-/** C ref: mail.c:704 — @param {CPtr} otmp */
+/*ARGSUSED*/
+/** C ref: mail.c:704 — @param {CPtr<struct obj>} otmp */
 export function* readmail(otmp) {
     let mr = null;
     if (cptr.ld1so(iflags, $instance_flags_debug_fuzzer))
         return;
     (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 0)));
-    if (!(mr = nh_getenv(__sl20)))
-        mr = __sl21;
+    if (!(mr = nh_getenv(__s_mailreader)))
+        mr = __s_usr_bin_mailx;
+
     if ((yield* child(1))) {
         void execl(mr, mr, null);
         (yield* nh_terminate(1));
     }
+
+    /* get new stat; not entirely correct: there is a small time
+       window where we do not see new mail */
     (yield* getmailstatus());
 }
 

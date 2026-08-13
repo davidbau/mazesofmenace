@@ -20,23 +20,32 @@ import { windowprocs } from './windows.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $instance_globals_t_tc_gbl_data = FLD.instance_globals_t_tc_gbl_data,
-    $sysopt_s_shellers = FLD.sysopt_s_shellers, $tc_gbl_data_tc_CO = FLD.tc_gbl_data_tc_CO,
-    $tc_gbl_data_tc_LI = FLD.tc_gbl_data_tc_LI,
+    $sizeof_termios = FLD.sizeof_termios, $sysopt_s_shellers = FLD.sysopt_s_shellers,
+    $tc_gbl_data_tc_CO = FLD.tc_gbl_data_tc_CO, $tc_gbl_data_tc_LI = FLD.tc_gbl_data_tc_LI,
     $window_procs_win_resume_nhwindows = FLD.window_procs_win_resume_nhwindows,
     $window_procs_win_suspend_nhwindows = FLD.window_procs_win_suspend_nhwindows,
     $winsize_ws_col = FLD.winsize_ws_col;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("Suspend command not available.");
-const __sl1 = cptr.lit("I don't think your shell has job control.");
+const __s_suspend_command_not_available = cptr.lit("Suspend command not available.");
+const __s_i_don_t_think_your_shell_has_job_control = cptr.lit("I don't think your shell has job control.");
 
 /** C ref: ioctl.c:43 — struct termios */
-export let termio = cptr.alloc(72);
+export let termio = cptr.alloc($sizeof_termios);
 
 /** C ref: ioctl.c:96 */
 export function getwindowsz() {
+    /*
+     * ttysize is found on Suns and BSD
+     * winsize is found on Suns, BSD, and Ultrix
+     */
     let ttsz = cptr.alloc(8);
+
     if (ioctl(fileno(__stdinp), 1074295912n, ttsz) != -1) {
+        /*
+         * Use the kernel's values for lines and columns if it has
+         * any idea.
+         */
         if (cptr.ldU16(ttsz))
             cptr.stI32o(gt, $instance_globals_t_tc_gbl_data + $tc_gbl_data_tc_LI, cptr.ldU16(ttsz));
         if (cptr.ldU16o(ttsz, $winsize_ws_col))
@@ -57,8 +66,9 @@ export function setioctls() {
 
 /** C ref: ioctl.c:161 @returns {CInt} */
 export function* dosuspend() {
+    /* NB: check_user_string() is port-specific. */
     if (!cptr.ldPtro(sysopt, $sysopt_s_shellers) || !cptr.ld1so(cptr.ldPtro(sysopt, $sysopt_s_shellers), 0) || !check_user_string(cptr.ldPtro(sysopt, $sysopt_s_shellers))) {
-        (yield* Norep(__sl0));
+        (yield* Norep(__s_suspend_command_not_available));
         return 0;
     }
     if (signal(18, 1) === null) {
@@ -67,7 +77,7 @@ export function* dosuspend() {
         void kill(0, 18);
         (yield* Y.icall(resume_nhwindows()()));
     } else {
-        (yield* pline(__sl1));
+        (yield* pline(__s_i_don_t_think_your_shell_has_job_control));
     }
     return 0;
 }

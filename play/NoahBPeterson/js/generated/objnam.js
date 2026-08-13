@@ -9,6 +9,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { Align2amask, CAN_OVERWRITE_TERRAIN, IS_FURNITURE, IS_WALL, Is_box, Is_candle, Is_container, Is_dragon_mail, Is_dragon_scales, bimanual, has_oname, is_ammo, is_boots, is_corrodeable, is_crackable, is_damageable, is_gloves, is_missile, is_plural, is_poisonable, is_shield, is_weptool, is_wet_towel, ismnum } from './nhmacrofn.js';
+import { rn2_at, rnd_at } from './nhrng.js';
 import { Blind, EHalluc_resistance, EWarn_of_mon, Flying, Glib, Levitation, Luck, URIGHTY, wizard } from './nhprop.js';
 import { impossible, pline } from './pline.js';
 import { copynchars, digit, dist2, eos, fuzzymatch, highc, letter, lowc, mungspaces, nh_snprintf, ordin, s_suffix, str_start_is, strcasecpy, strncmpi, strstri, strsubst, upstart } from './hacklib.js';
@@ -33,7 +34,6 @@ import { body_part } from './polyself.js';
 import { genders } from './role.js';
 import { append_price_quote, delete_contents, get_cost_of_shop_item, is_unpaid, obfree, record_price_quote, shk_your, unpaid_cost } from './shk.js';
 import { CapitalMon } from './rumors.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { deltrap, fire_damage_chain, maketrap, reset_utrap, t_at, trapname, water_damage_chain } from './trap.js';
 import { Can_fall_thru, on_level } from './dungeon.js';
 import { del_engr_at, make_grave } from './engrave.js';
@@ -48,6 +48,7 @@ import { docrt, feel_newsym } from './display.js';
 import { recalc_block_point } from './vision.js';
 import { name_to_mon, name_to_monplus } from './mondata.js';
 import { def_char_to_objclass } from './drawing.js';
+import { d } from './rnd.js';
 import { counter_were } from './were.js';
 import { can_be_hatched, dead_species, genus, zombie_form } from './mon.js';
 import { is_quest_artifact } from './questpgr.js';
@@ -155,794 +156,800 @@ const $Gender_he = FLD.Gender_he, $Gender_him = FLD.Gender_him, $Gender_his = FL
     $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic, $rm_flags = FLD.rm_flags,
     $rm_horizontal = FLD.rm_horizontal, $rm_typ = FLD.rm_typ, $sinfo_restoring = FLD.sinfo_restoring,
     $sinfo_wizkit_wishing = FLD.sinfo_wizkit_wishing, $sing_plur_plur = FLD.sing_plur_plur,
-    $trap_ttyp = FLD.trap_ttyp, $u_conduct_wisharti = FLD.u_conduct_wisharti,
-    $you_moreluck = FLD.you_moreluck, $you_twoweap = FLD.you_twoweap, $you_uconduct = FLD.you_uconduct,
-    $you_uhandedness = FLD.you_uhandedness, $you_uinwater = FLD.you_uinwater, $you_uluck = FLD.you_uluck,
-    $you_uprops = FLD.you_uprops, $you_usteed = FLD.you_usteed, $you_utrap = FLD.you_utrap,
-    $you_utraptype = FLD.you_utraptype, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz,
-    $you_xray_range = FLD.you_xray_range;
+    $sizeof_Gender = FLD.sizeof_Gender, $sizeof_Jitem = FLD.sizeof_Jitem,
+    $sizeof_alt_spellings = FLD.sizeof_alt_spellings, $sizeof_mvitals = FLD.sizeof_mvitals,
+    $sizeof_o_range = FLD.sizeof_o_range, $sizeof_objclass = FLD.sizeof_objclass,
+    $sizeof_objdescr = FLD.sizeof_objdescr, $sizeof_permonst = FLD.sizeof_permonst,
+    $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
+    $sizeof_sing_plur = FLD.sizeof_sing_plur, $trap_ttyp = FLD.trap_ttyp,
+    $u_conduct_wisharti = FLD.u_conduct_wisharti, $you_moreluck = FLD.you_moreluck,
+    $you_twoweap = FLD.you_twoweap, $you_uconduct = FLD.you_uconduct, $you_uhandedness = FLD.you_uhandedness,
+    $you_uinwater = FLD.you_uinwater, $you_uluck = FLD.you_uluck, $you_uprops = FLD.you_uprops,
+    $you_usteed = FLD.you_usteed, $you_utrap = FLD.you_utrap, $you_utraptype = FLD.you_utraptype,
+    $you_uy = FLD.you_uy, $you_uz = FLD.you_uz, $you_xray_range = FLD.you_xray_range;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("wakizashi");
-const __sl1 = cptr.lit("ninja-to");
-const __sl2 = cptr.lit("nunchaku");
-const __sl3 = cptr.lit("naginata");
-const __sl4 = cptr.lit("osaku");
-const __sl5 = cptr.lit("koto");
-const __sl6 = cptr.lit("magic koto");
-const __sl7 = cptr.lit("shito");
-const __sl8 = cptr.lit("tanko");
-const __sl9 = cptr.lit("kabuto");
-const __sl10 = cptr.lit("yugake");
-const __sl11 = cptr.lit("gunyoki");
-const __sl12 = cptr.lit("sake");
-const __sl13 = cptr.lit("");
-const __sl14 = cptr.lit("PREFIX too short (for %d).");
-const __sl15 = cptr.lit("generic");
-const __sl16 = cptr.lit("object?");
-const __sl17 = cptr.lit("potion");
-const __sl18 = cptr.lit("scroll");
-const __sl19 = cptr.lit("wand");
-const __sl20 = cptr.lit("spellbook");
-const __sl21 = cptr.lit("book");
-const __sl22 = cptr.lit("novel");
-const __sl23 = cptr.lit("ring");
-const __sl24 = cptr.lit("amulet");
-const __sl25 = cptr.lit(" (%s)");
-const __sl26 = cptr.lit("pair of ");
-const __sl27 = cptr.lit("set of ");
-const __sl28 = cptr.lit(" stone");
-const __sl29 = cptr.lit(" gem");
-const __sl30 = cptr.lit(" of %s");
-const __sl31 = cptr.lit(" (");
-const __sl32 = cptr.lit("glorkum[%d]");
-const __sl33 = cptr.lit("safe_typename: %s");
-const __sl34 = cptr.lit(" of ");
-const __sl35 = cptr.lit("%s%s");
-const __sl36 = cptr.lit(" juice");
-const __sl37 = cptr.lit("fruit_from_name");
-const __sl38 = cptr.lit("reorder_fruit: fruit index (%d) out of range");
-const __sl39 = cptr.lit("reorder_fruit: duplicate fruit index (%d)");
-const __sl40 = cptr.lit("xcalled: not enough room for prefix (%d > %d)");
-const __sl41 = cptr.lit("%s called %.*s");
-const __sl42 = cptr.lit("%s amulet");
-const __sl43 = cptr.lit("poisoned ");
-const __sl44 = cptr.lit("moist ");
-const __sl45 = cptr.lit("wet ");
-const __sl46 = cptr.lit("xname_flags");
-const __sl47 = cptr.lit(" of %s%s");
-const __sl48 = cptr.lit(" (%d)");
-const __sl49 = cptr.lit("set of %s");
-const __sl50 = cptr.lit("shield");
-const __sl51 = cptr.lit("smooth shield");
-const __sl52 = cptr.lit("Bad fruit #%d?");
-const __sl53 = cptr.lit("fruit");
-const __sl54 = cptr.lit("partly eaten ");
-const __sl55 = cptr.lit("%s %s");
-const __sl56 = cptr.lit("small");
-const __sl57 = cptr.lit("medium");
-const __sl58 = cptr.lit("large");
-const __sl59 = cptr.lit("very large");
-const __sl60 = cptr.lit("%s%s of %s%s");
-const __sl61 = cptr.lit("historic ");
-const __sl62 = cptr.lit("the ");
-const __sl63 = cptr.lit("next ");
-const __sl64 = cptr.lit("%sheavy iron ball");
-const __sl65 = cptr.lit("very ");
-const __sl66 = cptr.lit("diluted ");
-const __sl67 = cptr.lit("holy ");
-const __sl68 = cptr.lit("unholy ");
-const __sl69 = cptr.lit(" potion");
-const __sl70 = cptr.lit(" labeled ");
-const __sl71 = cptr.lit(" scroll");
-const __sl72 = cptr.lit("wand of %s");
-const __sl73 = cptr.lit("%s wand");
-const __sl74 = cptr.lit("%s book");
-const __sl75 = cptr.lit("spellbook of ");
-const __sl76 = cptr.lit("%s spellbook");
-const __sl77 = cptr.lit("ring of %s");
-const __sl78 = cptr.lit("%s ring");
-const __sl79 = cptr.lit("stone");
-const __sl80 = cptr.lit("gem");
-const __sl81 = cptr.lit("glorkum %d %d %d");
-const __sl82 = cptr.lit("xname_flags: %s");
-const __sl83 = cptr.lit("xname");
-const __sl84 = cptr.lit("buf[]=");
-const __sl85 = cptr.lit("xname: buffer overflow before appending name.");
-const __sl86 = cptr.lit(" with text \"%s\"");
-const __sl87 = cptr.lit(" labeled \"%s\"");
-const __sl88 = cptr.lit(" with %s motif");
-const __sl89 = cptr.lit(" named ");
-const __sl90 = cptr.lit("The ");
-const __sl91 = cptr.lit("used up entire obuf[PREFIX..BUFSX-1]");
-const __sl92 = cptr.lit("uncursed ");
-const __sl93 = cptr.lit("the %d%s ");
-const __sl94 = cptr.lit("thoroughly ");
-const __sl95 = cptr.lit("rusty ");
-const __sl96 = cptr.lit("cracked ");
-const __sl97 = cptr.lit("burnt ");
-const __sl98 = cptr.lit("corroded ");
-const __sl99 = cptr.lit("rotted ");
-const __sl100 = cptr.lit("fixed ");
-const __sl101 = cptr.lit("rustproof ");
-const __sl102 = cptr.lit("corrodeproof ");
-const __sl103 = cptr.lit("fireproof ");
-const __sl104 = cptr.lit("tempered ");
-const __sl105 = cptr.lit("rotproof ");
-const __sl106 = cptr.lit("doname_base");
-const __sl107 = cptr.lit("objnam.c");
-const __sl108 = cptr.lit("bp_end >= bp_eos");
-const __sl109 = cptr.lit("%ld ");
-const __sl110 = cptr.lit("some ");
-const __sl111 = cptr.lit("a ");
-const __sl112 = cptr.lit("empty ");
-const __sl113 = cptr.lit("cursed ");
-const __sl114 = cptr.lit("blessed ");
-const __sl115 = cptr.lit("trapped ");
-const __sl116 = cptr.lit("broken ");
-const __sl117 = cptr.lit("locked ");
-const __sl118 = cptr.lit("unlocked ");
-const __sl119 = cptr.lit("greased ");
-const __sl120 = cptr.lit(" containing %ld item%s");
-const __sl121 = cptr.lit("s");
-const __sl122 = cptr.lit(" (being worn)");
-const __sl123 = cptr.lit(" (embedded in your skin)");
-const __sl124 = cptr.lit(" (being doffed)");
-const __sl125 = cptr.lit(" (being donned)");
-const __sl126 = cptr.lit("; slippery)");
-const __sl127 = cptr.lit(", %s lit)");
-const __sl128 = cptr.lit("%+d ");
-const __sl129 = cptr.lit(" (attached to %s)");
-const __sl130 = cptr.lit("leashed %s #%u is dead");
-const __sl131 = cptr.lit("leashed monster #%u not found");
-const __sl132 = cptr.lit(" attached");
-const __sl133 = cptr.lit(", lit");
-const __sl134 = cptr.lit(" (%d of 7 candle%s)");
-const __sl135 = cptr.lit("partly used ");
-const __sl136 = cptr.lit(" (lit)");
-const __sl137 = cptr.lit(" (%d:%d)");
-const __sl138 = cptr.lit(" (on right ");
-const __sl139 = cptr.lit(" (on left ");
-const __sl140 = cptr.lit("%s)");
-const __sl141 = cptr.lit("%s ");
-const __sl142 = cptr.lit(" ");
-const __sl143 = cptr.lit(" (laid by you)");
-const __sl144 = cptr.lit(" (%s to you)");
-const __sl145 = cptr.lit("chained");
-const __sl146 = cptr.lit("attached");
-const __sl147 = cptr.lit("unspecified gender");
-const __sl148 = cptr.lit(" (wielded)");
-const __sl149 = cptr.lit("right");
-const __sl150 = cptr.lit("left");
-const __sl151 = cptr.lit(" (%s %s)");
-const __sl152 = cptr.lit("tethered to");
-const __sl153 = cptr.lit("wielded in");
-const __sl154 = cptr.lit("weapon in");
-const __sl155 = cptr.lit(", %s %s)");
-const __sl156 = cptr.lit(" (wielded in %s %s)");
-const __sl157 = cptr.lit(" (alternate weapon%s; not wielded)");
-const __sl158 = cptr.lit("in quiver");
-const __sl159 = cptr.lit("in quiver pouch");
-const __sl160 = cptr.lit("at the ready");
-const __sl161 = cptr.lit("%ld %s");
-const __sl162 = cptr.lit(" (%s, %s)");
-const __sl163 = cptr.lit("unpaid");
-const __sl164 = cptr.lit("contents");
-const __sl165 = cptr.lit("for sale");
-const __sl166 = cptr.lit(" (no charge)");
-const __sl167 = cptr.lit(", %u aum)");
-const __sl168 = cptr.lit(" (%u aum)");
-const __sl169 = cptr.lit("doname");
-const __sl170 = cptr.lit("doname: long object description overflow.");
-const __sl171 = cptr.lit("long object description%s.");
-const __sl172 = cptr.lit(" truncated for menu use");
-const __sl173 = cptr.lit("thing");
-const __sl174 = cptr.lit(" corpse");
-const __sl175 = cptr.lit("deadly slime mold%s");
-const __sl176 = cptr.lit("'s ");
-const __sl177 = cptr.lit("s' ");
-const __sl178 = cptr.lit("...");
-const __sl179 = cptr.lit("aefhilmnosx");
-const __sl180 = cptr.lit("an ");
-const __sl181 = cptr.lit("molten lava");
-const __sl182 = cptr.lit("iron bars");
-const __sl183 = cptr.lit("ice");
-const __sl184 = cptr.lit("one");
-const __sl185 = cptr.lit("-_ ");
-const __sl186 = cptr.lit("eu");
-const __sl187 = cptr.lit("uke");
-const __sl188 = cptr.lit("ukulele");
-const __sl189 = cptr.lit("unicorn");
-const __sl190 = cptr.lit("uranium");
-const __sl191 = cptr.lit("useful");
-const __sl192 = cptr.lit("Alphabet soup: 'an(%s)'.");
-const __sl193 = cptr.lit("\"\"");
-const __sl194 = cptr.lit("<null>");
-const __sl195 = cptr.lit("an []");
-const __sl196 = cptr.lit("an");
-const __sl197 = cptr.lit("Alphabet soup: 'the(%s)'.");
-const __sl198 = cptr.lit("the []");
-const __sl199 = cptr.lit(" called ");
-const __sl200 = cptr.lit("the");
-const __sl201 = cptr.lit("Platinum Yendorian Express Card");
-const __sl202 = cptr.lit("yobjnam");
-const __sl203 = cptr.lit("an unpaid ");
-const __sl204 = cptr.lit("your ");
-const __sl205 = cptr.lit("the contents of ");
-const __sl206 = cptr.lit("yname");
-const __sl207 = cptr.lit("ysimple_name");
-const __sl208 = cptr.lit("spell book");
-const __sl209 = cptr.lit("weapon");
-const __sl210 = cptr.lit("armor");
-const __sl211 = cptr.lit("tool");
-const __sl212 = cptr.lit("food");
-const __sl213 = cptr.lit("comestible");
-const __sl214 = cptr.lit("erinys");
-const __sl215 = cptr.lit("manes");
-const __sl216 = cptr.lit("Cyclops");
-const __sl217 = cptr.lit("Hippocrates");
-const __sl218 = cptr.lit("Pelias");
-const __sl219 = cptr.lit("aklys");
-const __sl220 = cptr.lit("amnesia");
-const __sl221 = cptr.lit("detect monsters");
-const __sl222 = cptr.lit("paralysis");
-const __sl223 = cptr.lit("shape changers");
-const __sl224 = cptr.lit("nemesis");
-const __sl225 = cptr.lit(" from ");
-const __sl226 = cptr.lit("us");
-const __sl227 = cptr.lit("eeth");
-const __sl228 = cptr.lit("feet");
-const __sl229 = cptr.lit("ia");
-const __sl230 = cptr.lit("ae");
-const __sl231 = cptr.lit("vtense");
-const __sl232 = cptr.lit("they");
-const __sl233 = cptr.lit("you");
-const __sl234 = cptr.lit("are");
-const __sl235 = cptr.lit("is");
-const __sl236 = cptr.lit("have");
-const __sl237 = cptr.lit("zxs");
-const __sl238 = cptr.lit("cs");
-const __sl239 = cptr.lit("es");
-const __sl240 = cptr.lit("ies");
-const __sl241 = cptr.lit("child");
-const __sl242 = cptr.lit("children");
-const __sl243 = cptr.lit("cubus");
-const __sl244 = cptr.lit("cubi");
-const __sl245 = cptr.lit("culus");
-const __sl246 = cptr.lit("culi");
-const __sl247 = cptr.lit("Cyclopes");
-const __sl248 = cptr.lit("djinni");
-const __sl249 = cptr.lit("djinn");
-const __sl250 = cptr.lit("erinyes");
-const __sl251 = cptr.lit("foot");
-const __sl252 = cptr.lit("fungus");
-const __sl253 = cptr.lit("fungi");
-const __sl254 = cptr.lit("goose");
-const __sl255 = cptr.lit("geese");
-const __sl256 = cptr.lit("knife");
-const __sl257 = cptr.lit("knives");
-const __sl258 = cptr.lit("labrum");
-const __sl259 = cptr.lit("labra");
-const __sl260 = cptr.lit("louse");
-const __sl261 = cptr.lit("lice");
-const __sl262 = cptr.lit("mouse");
-const __sl263 = cptr.lit("mice");
-const __sl264 = cptr.lit("mumak");
-const __sl265 = cptr.lit("mumakil");
-const __sl266 = cptr.lit("nemeses");
-const __sl267 = cptr.lit("ovum");
-const __sl268 = cptr.lit("ova");
-const __sl269 = cptr.lit("ox");
-const __sl270 = cptr.lit("oxen");
-const __sl271 = cptr.lit("passerby");
-const __sl272 = cptr.lit("passersby");
-const __sl273 = cptr.lit("rtex");
-const __sl274 = cptr.lit("rtices");
-const __sl275 = cptr.lit("serum");
-const __sl276 = cptr.lit("sera");
-const __sl277 = cptr.lit("staff");
-const __sl278 = cptr.lit("staves");
-const __sl279 = cptr.lit("tooth");
-const __sl280 = cptr.lit("teeth");
-const __sl281 = cptr.lit("boots");
-const __sl282 = cptr.lit("shoes");
-const __sl283 = cptr.lit("gloves");
-const __sl284 = cptr.lit("lenses");
-const __sl285 = cptr.lit("scales");
-const __sl286 = cptr.lit("eyes");
-const __sl287 = cptr.lit("gauntlets");
-const __sl288 = cptr.lit("bison");
-const __sl289 = cptr.lit("deer");
-const __sl290 = cptr.lit("elk");
-const __sl291 = cptr.lit("fish");
-const __sl292 = cptr.lit("fowl");
-const __sl293 = cptr.lit("tuna");
-const __sl294 = cptr.lit("yaki");
-const __sl295 = cptr.lit("-hai");
-const __sl296 = cptr.lit("krill");
-const __sl297 = cptr.lit("moose");
-const __sl298 = cptr.lit("ninja");
-const __sl299 = cptr.lit("sheep");
-const __sl300 = cptr.lit("ronin");
-const __sl301 = cptr.lit("roshi");
-const __sl302 = cptr.lit("tengu");
-const __sl303 = cptr.lit("ki-rin");
-const __sl304 = cptr.lit("Nazgul");
-const __sl305 = cptr.lit("piranha");
-const __sl306 = cptr.lit("samurai");
-const __sl307 = cptr.lit("shuriken");
-const __sl308 = cptr.lit("haggis");
-const __sl309 = cptr.lit("Bordeaux");
-const __sl310 = cptr.lit("singplur_lookup");
-const __sl311 = cptr.lit("craft");
-const __sl312 = cptr.lit("slice");
-const __sl313 = cptr.lit("mongoose");
-const __sl314 = cptr.lit("muskox");
-const __sl315 = cptr.lit("man");
-const __sl316 = cptr.lit("men");
-const __sl317 = cptr.lit(" above");
-const __sl318 = cptr.lit(" versus ");
-const __sl319 = cptr.lit(" in ");
-const __sl320 = cptr.lit(" on ");
-const __sl321 = cptr.lit(" a la ");
-const __sl322 = cptr.lit(" with");
-const __sl323 = cptr.lit(" de ");
-const __sl324 = cptr.lit(" d'");
-const __sl325 = cptr.lit(" du ");
-const __sl326 = cptr.lit(" au ");
-const __sl327 = cptr.lit("-in-");
-const __sl328 = cptr.lit("-at-");
-const __sl329 = cptr.lit("plural of null?");
-const __sl330 = cptr.lit("makeplural");
-const __sl331 = cptr.lit("'s");
-const __sl332 = cptr.lit("ya");
-const __sl333 = cptr.lit(" ya");
-const __sl334 = cptr.lit("en");
-const __sl335 = cptr.lit("erf");
-const __sl336 = cptr.lit("lr");
-const __sl337 = cptr.lit("ves");
-const __sl338 = cptr.lit("ium");
-const __sl339 = cptr.lit("alga");
-const __sl340 = cptr.lit("hypha");
-const __sl341 = cptr.lit("larva");
-const __sl342 = cptr.lit("amoeba");
-const __sl343 = cptr.lit("vertebra");
-const __sl344 = cptr.lit("e");
-const __sl345 = cptr.lit("lotus");
-const __sl346 = cptr.lit("wumpus");
-const __sl347 = cptr.lit("i");
-const __sl348 = cptr.lit("sis");
-const __sl349 = cptr.lit("eau");
-const __sl350 = cptr.lit("bureau");
-const __sl351 = cptr.lit("x");
-const __sl352 = cptr.lit("matzoh");
-const __sl353 = cptr.lit("matzah");
-const __sl354 = cptr.lit("ot");
-const __sl355 = cptr.lit("matzo");
-const __sl356 = cptr.lit("matza");
-const __sl357 = cptr.lit("dex");
-const __sl358 = cptr.lit("dix");
-const __sl359 = cptr.lit("tex");
-const __sl360 = cptr.lit("index");
-const __sl361 = cptr.lit("ices");
-const __sl362 = cptr.lit("ato");
-const __sl363 = cptr.lit("dingo");
-const __sl364 = cptr.lit("eaux");
-const __sl365 = cptr.lit("matzot");
-const __sl366 = cptr.lit("singular of null?");
-const __sl367 = cptr.lit("cookies");
-const __sl368 = cptr.lit("pies");
-const __sl369 = cptr.lit("genies");
-const __sl370 = cptr.lit("mbies");
-const __sl371 = cptr.lit("yries");
-const __sl372 = cptr.lit("y");
-const __sl373 = cptr.lit("cloves");
-const __sl374 = cptr.lit("nerves");
-const __sl375 = cptr.lit("f");
-const __sl376 = cptr.lit("eses");
-const __sl377 = cptr.lit("oxes");
-const __sl378 = cptr.lit("nxes");
-const __sl379 = cptr.lit("ches");
-const __sl380 = cptr.lit("uses");
-const __sl381 = cptr.lit("shes");
-const __sl382 = cptr.lit("sses");
-const __sl383 = cptr.lit("atoes");
-const __sl384 = cptr.lit("dingoes");
-const __sl385 = cptr.lit("Aleaxes");
-const __sl386 = cptr.lit("tengus");
-const __sl387 = cptr.lit("hezrous");
-const __sl388 = cptr.lit("ss");
-const __sl389 = cptr.lit(" lens");
-const __sl390 = cptr.lit("lens");
-const __sl391 = cptr.lit("um");
-const __sl392 = cptr.lit("monarch");
-const __sl393 = cptr.lit("poch");
-const __sl394 = cptr.lit("tech");
-const __sl395 = cptr.lit("mech");
-const __sl396 = cptr.lit("stomach");
-const __sl397 = cptr.lit("psych");
-const __sl398 = cptr.lit("amphibrach");
-const __sl399 = cptr.lit("anarch");
-const __sl400 = cptr.lit("atriarch");
-const __sl401 = cptr.lit("azedarach");
-const __sl402 = cptr.lit("broch");
-const __sl403 = cptr.lit("gastrotrich");
-const __sl404 = cptr.lit("isopach");
-const __sl405 = cptr.lit("loch");
-const __sl406 = cptr.lit("oligarch");
-const __sl407 = cptr.lit("peritrich");
-const __sl408 = cptr.lit("sandarach");
-const __sl409 = cptr.lit("sumach");
-const __sl410 = cptr.lit("symposiarch");
-const __sl411 = cptr.lit("albu");
-const __sl412 = cptr.lit("antihu");
-const __sl413 = cptr.lit("anti");
-const __sl414 = cptr.lit("ata");
-const __sl415 = cptr.lit("auto");
-const __sl416 = cptr.lit("bildungsro");
-const __sl417 = cptr.lit("cai");
-const __sl418 = cptr.lit("cay");
-const __sl419 = cptr.lit("ceru");
-const __sl420 = cptr.lit("corner");
-const __sl421 = cptr.lit("decu");
-const __sl422 = cptr.lit("des");
-const __sl423 = cptr.lit("dura");
-const __sl424 = cptr.lit("fir");
-const __sl425 = cptr.lit("hanu");
-const __sl426 = cptr.lit("het");
-const __sl427 = cptr.lit("infrahu");
-const __sl428 = cptr.lit("inhu");
-const __sl429 = cptr.lit("nonhu");
-const __sl430 = cptr.lit("otto");
-const __sl431 = cptr.lit("out");
-const __sl432 = cptr.lit("prehu");
-const __sl433 = cptr.lit("protohu");
-const __sl434 = cptr.lit("subhu");
-const __sl435 = cptr.lit("superhu");
-const __sl436 = cptr.lit("talis");
-const __sl437 = cptr.lit("unhu");
-const __sl438 = cptr.lit("sha");
-const __sl439 = cptr.lit("hu");
-const __sl440 = cptr.lit("un");
-const __sl441 = cptr.lit("le");
-const __sl442 = cptr.lit("re");
-const __sl443 = cptr.lit("so");
-const __sl444 = cptr.lit("to");
-const __sl445 = cptr.lit("at");
-const __sl446 = cptr.lit("a");
-const __sl447 = cptr.lit("abdo");
-const __sl448 = cptr.lit("acu");
-const __sl449 = cptr.lit("agno");
-const __sl450 = cptr.lit("cogno");
-const __sl451 = cptr.lit("cycla");
-const __sl452 = cptr.lit("fleh");
-const __sl453 = cptr.lit("grava");
-const __sl454 = cptr.lit("hegu");
-const __sl455 = cptr.lit("preno");
-const __sl456 = cptr.lit("sonar");
-const __sl457 = cptr.lit("speci");
-const __sl458 = cptr.lit("dai");
-const __sl459 = cptr.lit("exa");
-const __sl460 = cptr.lit("fla");
-const __sl461 = cptr.lit("sta");
-const __sl462 = cptr.lit("teg");
-const __sl463 = cptr.lit("tegu");
-const __sl464 = cptr.lit("vela");
-const __sl465 = cptr.lit("da");
-const __sl466 = cptr.lit("hy");
-const __sl467 = cptr.lit("lu");
-const __sl468 = cptr.lit("no");
-const __sl469 = cptr.lit("nu");
-const __sl470 = cptr.lit("ra");
-const __sl471 = cptr.lit("ru");
-const __sl472 = cptr.lit("se");
-const __sl473 = cptr.lit("vi");
-const __sl474 = cptr.lit("o");
-const __sl475 = cptr.lit(" -");
-const __sl476 = cptr.lit("dwarvish ");
-const __sl477 = cptr.lit("dwarven ");
-const __sl478 = cptr.lit("elven ");
-const __sl479 = cptr.lit("elvish ");
-const __sl480 = cptr.lit("elfin ");
-const __sl481 = cptr.lit("helm");
-const __sl482 = cptr.lit("helmet");
-const __sl483 = cptr.lit("monster");
-const __sl484 = cptr.lit("ability");
-const __sl485 = cptr.lit("abilities");
-const __sl486 = cptr.lit("aluminum");
-const __sl487 = cptr.lit("aluminium");
-const __sl488 = cptr.lit("bag");
-const __sl489 = cptr.lit("lamp");
-const __sl490 = cptr.lit("candle");
-const __sl491 = cptr.lit("horn");
-const __sl492 = cptr.lit("hat");
-const __sl493 = cptr.lit("cloak");
-const __sl494 = cptr.lit("shirt");
-const __sl495 = cptr.lit("dragon scales");
-const __sl496 = cptr.lit("dragon scale mail");
-const __sl497 = cptr.lit("sword");
-const __sl498 = cptr.lit("venom");
-const __sl499 = cptr.lit("gray stone");
-const __sl500 = cptr.lit("grey stone");
-const __sl501 = cptr.lit("pickax");
-const __sl502 = cptr.lit("whip");
-const __sl503 = cptr.lit("saber");
-const __sl504 = cptr.lit("silver sabre");
-const __sl505 = cptr.lit("grey dragon scale mail");
-const __sl506 = cptr.lit("grey dragon scales");
-const __sl507 = cptr.lit("iron ball");
-const __sl508 = cptr.lit("lantern");
-const __sl509 = cptr.lit("mattock");
-const __sl510 = cptr.lit("amulet of poison resistance");
-const __sl511 = cptr.lit("amulet of protection");
-const __sl512 = cptr.lit("amulet of telepathy");
-const __sl513 = cptr.lit("helm of esp");
-const __sl514 = cptr.lit("gauntlets of ogre power");
-const __sl515 = cptr.lit("gauntlets of giant strength");
-const __sl516 = cptr.lit("elven chain mail");
-const __sl517 = cptr.lit("silver shield");
-const __sl518 = cptr.lit("potion of sleep");
-const __sl519 = cptr.lit("scroll of recharging");
-const __sl520 = cptr.lit("recharging");
-const __sl521 = cptr.lit("camera");
-const __sl522 = cptr.lit("tee shirt");
-const __sl523 = cptr.lit("can");
-const __sl524 = cptr.lit("can opener");
-const __sl525 = cptr.lit("kelp");
-const __sl526 = cptr.lit("eucalyptus");
-const __sl527 = cptr.lit("lembas");
-const __sl528 = cptr.lit("tripe");
-const __sl529 = cptr.lit("cookie");
-const __sl530 = cptr.lit("pie");
-const __sl531 = cptr.lit("huge meatball");
-const __sl532 = cptr.lit("huge chunk of meat");
-const __sl533 = cptr.lit("marker");
-const __sl534 = cptr.lit("hook");
-const __sl535 = cptr.lit("grappling iron");
-const __sl536 = cptr.lit("grapnel");
-const __sl537 = cptr.lit("grapple");
-const __sl538 = cptr.lit("protection from shape shifters");
-const __sl539 = cptr.lit("accuracy");
-const __sl540 = cptr.lit("box");
-const __sl541 = cptr.lit("luck stone");
-const __sl542 = cptr.lit("load stone");
-const __sl543 = cptr.lit("touch stone");
-const __sl544 = cptr.lit("flintstone");
-const __sl545 = cptr.lit("rnd_otyp_by_wpnskill");
-const __sl546 = cptr.lit("rnd_otyp_by_namedesc");
-const __sl547 = cptr.lit("shiny");
-const __sl548 = cptr.lit("undiggable ");
-const __sl549 = cptr.lit("nondiggable ");
-const __sl550 = cptr.lit("unphaseable ");
-const __sl551 = cptr.lit("nonpasswall ");
-const __sl552 = cptr.lit("%s%s.");
-const __sl553 = cptr.lit(" to nowhere");
-const __sl554 = cptr.lit("Creation of %s failed.");
-const __sl555 = cptr.lit("fountain");
-const __sl556 = cptr.lit("magic ");
-const __sl557 = cptr.lit("A %sfountain.");
-const __sl558 = cptr.lit("throne");
-const __sl559 = cptr.lit("A throne.");
-const __sl560 = cptr.lit("sink");
-const __sl561 = cptr.lit("A sink.");
-const __sl562 = cptr.lit("pool");
-const __sl563 = cptr.lit("moat");
-const __sl564 = cptr.lit("wall of water");
-const __sl565 = cptr.lit("%s.");
-const __sl566 = cptr.lit("Moat");
-const __sl567 = cptr.lit("lava");
-const __sl568 = cptr.lit("wall of lava");
-const __sl569 = cptr.lit("A %s of molten lava.");
-const __sl570 = cptr.lit("wall");
-const __sl571 = cptr.lit("Lava");
-const __sl572 = cptr.lit("melting ");
-const __sl573 = cptr.lit("Ice");
-const __sl574 = cptr.lit("altar");
-const __sl575 = cptr.lit("chaotic ");
-const __sl576 = cptr.lit("neutral ");
-const __sl577 = cptr.lit("lawful ");
-const __sl578 = cptr.lit("unaligned ");
-const __sl579 = cptr.lit("wizterrainwish");
-const __sl580 = cptr.lit("%s altar.");
-const __sl581 = cptr.lit("grave");
-const __sl582 = cptr.lit("headstone");
-const __sl583 = cptr.lit("A %sgrave.");
-const __sl584 = cptr.lit("disturbed ");
-const __sl585 = cptr.lit("Can't place a grave here.");
-const __sl586 = cptr.lit("tree");
-const __sl587 = cptr.lit("A tree.");
-const __sl588 = cptr.lit("bars");
-const __sl589 = cptr.lit("Iron bars.");
-const __sl590 = cptr.lit("cloud");
-const __sl591 = cptr.lit("A cloud.");
-const __sl592 = cptr.lit("door");
-const __sl593 = cptr.lit("doorway");
-const __sl594 = cptr.lit("secret door");
-const __sl595 = cptr.lit("closed ");
-const __sl596 = cptr.lit("open ");
-const __sl597 = cptr.lit("doorless doorway");
-const __sl598 = cptr.lit("%s requires door or wall location.");
-const __sl599 = cptr.lit("A wall.");
-const __sl600 = cptr.lit("secret corridor");
-const __sl601 = cptr.lit("Secret corridor.");
-const __sl602 = cptr.lit("Secret corridor requires corridor location.");
-const __sl603 = cptr.lit("room");
-const __sl604 = cptr.lit("floor");
-const __sl605 = cptr.lit("ground");
-const __sl606 = cptr.lit("Room floor.");
-const __sl607 = cptr.lit("Floor");
-const __sl608 = cptr.lit("Room|floor|ground not allowed here.");
-const __sl609 = cptr.lit("%s %s the drawbridge.");
-const __sl610 = cptr.lit("in front of");
-const __sl611 = cptr.lit("under");
-const __sl612 = cptr.lit("0");
-const __sl613 = cptr.lit("erodeproof ");
-const __sl614 = cptr.lit("crackproof ");
-const __sl615 = cptr.lit("lit ");
-const __sl616 = cptr.lit("burning ");
-const __sl617 = cptr.lit("unlit ");
-const __sl618 = cptr.lit("extinguished ");
-const __sl619 = cptr.lit("readobjnam_preparse");
-const __sl620 = cptr.lit("unlabeled ");
-const __sl621 = cptr.lit("unlabelled ");
-const __sl622 = cptr.lit("blank ");
-const __sl623 = cptr.lit("untrapped ");
-const __sl624 = cptr.lit("doorless ");
-const __sl625 = cptr.lit("looted ");
-const __sl626 = cptr.lit("zombifying ");
-const __sl627 = cptr.lit("rusted ");
-const __sl628 = cptr.lit("burned ");
-const __sl629 = cptr.lit("partially eaten ");
-const __sl630 = cptr.lit("small ");
-const __sl631 = cptr.lit("glob");
-const __sl632 = cptr.lit(" glob");
-const __sl633 = cptr.lit("medium ");
-const __sl634 = cptr.lit("large ");
-const __sl635 = cptr.lit("real ");
-const __sl636 = cptr.lit("fake ");
-const __sl637 = cptr.lit("female ");
-const __sl638 = cptr.lit("male ");
-const __sl639 = cptr.lit("neuter ");
-const __sl640 = cptr.lit("corpse ");
-const __sl641 = cptr.lit("statue ");
-const __sl642 = cptr.lit("figurine ");
-const __sl643 = cptr.lit("of ");
-const __sl644 = cptr.lit("lit)");
-const __sl645 = cptr.lit(" labelled ");
-const __sl646 = cptr.lit(" of spinach");
-const __sl647 = cptr.lit("cheap ");
-const __sl648 = cptr.lit("plastic ");
-const __sl649 = cptr.lit("imitation ");
-const __sl650 = cptr.lit("pairs of ");
-const __sl651 = cptr.lit("sets of ");
-const __sl652 = cptr.lit("globs");
-const __sl653 = cptr.lit(" globs");
-const __sl654 = cptr.lit("glob of ");
-const __sl655 = cptr.lit("globs of ");
-const __sl656 = cptr.lit("readobjnam_postparse1");
-const __sl657 = cptr.lit("glob of %s");
-const __sl658 = cptr.lit("wand ");
-const __sl659 = cptr.lit("spellbook ");
-const __sl660 = cptr.lit("gauntlets ");
-const __sl661 = cptr.lit("gloves ");
-const __sl662 = cptr.lit("finger ");
-const __sl663 = cptr.lit("tin of ");
-const __sl664 = cptr.lit("spinach");
-const __sl665 = cptr.lit("samurai sword");
-const __sl666 = cptr.lit("wizard lock");
-const __sl667 = cptr.lit("death wand");
-const __sl668 = cptr.lit("master key");
-const __sl669 = cptr.lit("magenta");
-const __sl670 = cptr.lit("s ");
-const __sl671 = cptr.lit("es ");
-const __sl672 = cptr.lit("tricks");
-const __sl673 = cptr.lit("clothes");
-const __sl674 = cptr.lit("grey spell");
-const __sl675 = cptr.lit("armour");
-const __sl676 = cptr.lit("holy water");
-const __sl677 = cptr.lit("paperback");
-const __sl678 = cptr.lit(" book");
-const __sl679 = cptr.lit("orange");
-const __sl680 = cptr.lit("gold piece");
-const __sl681 = cptr.lit("zorkmid");
-const __sl682 = cptr.lit("gold");
-const __sl683 = cptr.lit("money");
-const __sl684 = cptr.lit("coin");
-const __sl685 = cptr.lit("enchant ");
-const __sl686 = cptr.lit("destroy ");
-const __sl687 = cptr.lit("detect food");
-const __sl688 = cptr.lit("food detection");
-const __sl689 = cptr.lit("ring mail");
-const __sl690 = cptr.lit("studded leather armor");
-const __sl691 = cptr.lit("leather armor");
-const __sl692 = cptr.lit("tooled horn");
-const __sl693 = cptr.lit("food ration");
-const __sl694 = cptr.lit("meat ring");
-const __sl695 = cptr.lit("versus poison ");
-const __sl696 = cptr.lit("bear");
-const __sl697 = cptr.lit("land");
-const __sl698 = cptr.lit("trap");
-const __sl699 = cptr.lit("mine");
-const __sl700 = cptr.lit(" object");
-const __sl701 = cptr.lit("looking glass");
-const __sl702 = cptr.lit(" glass");
-const __sl703 = cptr.lit("glass");
-const __sl704 = cptr.lit("broken");
-const __sl705 = cptr.lit("worthless ");
-const __sl706 = cptr.lit("piece of ");
-const __sl707 = cptr.lit("colored ");
-const __sl708 = cptr.lit("coloured ");
-const __sl709 = cptr.lit("readobjnam_postparse2");
-const __sl710 = cptr.lit("worthless piece of ");
-const __sl711 = cptr.lit("tin");
-const __sl712 = cptr.lit("mail");
-const __sl713 = cptr.lit(" mail");
-const __sl714 = cptr.lit("nothing");
-const __sl715 = cptr.lit("nil");
-const __sl716 = cptr.lit("none");
-const __sl717 = cptr.lit("polearm");
-const __sl718 = cptr.lit("hammer");
-const __sl719 = cptr.lit("readobjnam");
-const __sl720 = cptr.lit("Override glob weight limit?");
-const __sl721 = cptr.lit("For a moment, you feel %s in your %s, but it disappears!");
-const __sl722 = cptr.lit("rnd_class");
-const __sl723 = cptr.lit("unknown armor category (%s => %u)");
-const __sl724 = cptr.lit("dragon mail");
-const __sl725 = cptr.lit(" jacket");
-const __sl726 = cptr.lit("jacket");
-const __sl727 = cptr.lit("suit");
-const __sl728 = cptr.lit("robe");
-const __sl729 = cptr.lit("wrapping");
-const __sl730 = cptr.lit("smock");
-const __sl731 = cptr.lit("apron");
-const __sl732 = cptr.lit("whatcha-may-callit");
-const __sl733 = cptr.lit("safe_qbuf");
-const __sl734 = cptr.lit("endp != NULL");
-const __sl735 = cptr.lit("safe_qbuf: prefix too long (%u characters).");
-const __sl736 = cptr.lit("safe_qbuf: suffix too long (%u + %u characters).");
-const __sl737 = cptr.lit("safe_qbuf: filler too long (%u + %u + %u characters).");
+const __s_wakizashi = cptr.lit("wakizashi");
+const __s_ninja_to = cptr.lit("ninja-to");
+const __s_nunchaku = cptr.lit("nunchaku");
+const __s_naginata = cptr.lit("naginata");
+const __s_osaku = cptr.lit("osaku");
+const __s_koto = cptr.lit("koto");
+const __s_magic_koto = cptr.lit("magic koto");
+const __s_shito = cptr.lit("shito");
+const __s_tanko = cptr.lit("tanko");
+const __s_kabuto = cptr.lit("kabuto");
+const __s_yugake = cptr.lit("yugake");
+const __s_gunyoki = cptr.lit("gunyoki");
+const __s_sake = cptr.lit("sake");
+const __s_empty = cptr.lit("");
+const __s_prefix_too_short_for_d = cptr.lit("PREFIX too short (for %d).");
+const __s_generic = cptr.lit("generic");
+const __s_object = cptr.lit("object?");
+const __s_potion = cptr.lit("potion");
+const __s_scroll = cptr.lit("scroll");
+const __s_wand = cptr.lit("wand");
+const __s_spellbook = cptr.lit("spellbook");
+const __s_book = cptr.lit("book");
+const __s_novel = cptr.lit("novel");
+const __s_ring = cptr.lit("ring");
+const __s_amulet = cptr.lit("amulet");
+const __s_sp_lparen_pct_s_rparen = cptr.lit(" (%s)");
+const __s_pair_of = cptr.lit("pair of ");
+const __s_set_of = cptr.lit("set of ");
+const __s_stone = cptr.lit(" stone");
+const __s_gem = cptr.lit(" gem");
+const __s_of_s = cptr.lit(" of %s");
+const __s_sp_lparen = cptr.lit(" (");
+const __s_glorkum_d = cptr.lit("glorkum[%d]");
+const __s_safe_typename_s = cptr.lit("safe_typename: %s");
+const __s_of = cptr.lit(" of ");
+const __s_s_s = cptr.lit("%s%s");
+const __s_juice = cptr.lit(" juice");
+const __s_fruit_from_name = cptr.lit("fruit_from_name");
+const __s_reorder_fruit_fruit_index_d_out_of_range = cptr.lit("reorder_fruit: fruit index (%d) out of range");
+const __s_reorder_fruit_duplicate_fruit_index_d = cptr.lit("reorder_fruit: duplicate fruit index (%d)");
+const __s_xcalled_not_enough_room_for_prefix_d_d = cptr.lit("xcalled: not enough room for prefix (%d > %d)");
+const __s_s_called_s = cptr.lit("%s called %.*s");
+const __s_s_amulet = cptr.lit("%s amulet");
+const __s_poisoned = cptr.lit("poisoned ");
+const __s_moist = cptr.lit("moist ");
+const __s_wet = cptr.lit("wet ");
+const __s_xname_flags = cptr.lit("xname_flags");
+const __s_of_s_s = cptr.lit(" of %s%s");
+const __s_sp_lparen_pct_d_rparen = cptr.lit(" (%d)");
+const __s_set_of_s = cptr.lit("set of %s");
+const __s_shield = cptr.lit("shield");
+const __s_smooth_shield = cptr.lit("smooth shield");
+const __s_bad_fruit_d = cptr.lit("Bad fruit #%d?");
+const __s_fruit = cptr.lit("fruit");
+const __s_partly_eaten = cptr.lit("partly eaten ");
+const __s_s_s__2 = cptr.lit("%s %s");
+const __s_small = cptr.lit("small");
+const __s_medium = cptr.lit("medium");
+const __s_large = cptr.lit("large");
+const __s_very_large = cptr.lit("very large");
+const __s_s_s_of_s_s = cptr.lit("%s%s of %s%s");
+const __s_historic = cptr.lit("historic ");
+const __s_the = cptr.lit("the ");
+const __s_next = cptr.lit("next ");
+const __s_sheavy_iron_ball = cptr.lit("%sheavy iron ball");
+const __s_very = cptr.lit("very ");
+const __s_diluted = cptr.lit("diluted ");
+const __s_holy = cptr.lit("holy ");
+const __s_unholy = cptr.lit("unholy ");
+const __s_potion__2 = cptr.lit(" potion");
+const __s_labeled = cptr.lit(" labeled ");
+const __s_scroll__2 = cptr.lit(" scroll");
+const __s_wand_of_s = cptr.lit("wand of %s");
+const __s_s_wand = cptr.lit("%s wand");
+const __s_s_book = cptr.lit("%s book");
+const __s_spellbook_of = cptr.lit("spellbook of ");
+const __s_s_spellbook = cptr.lit("%s spellbook");
+const __s_ring_of_s = cptr.lit("ring of %s");
+const __s_s_ring = cptr.lit("%s ring");
+const __s_stone__2 = cptr.lit("stone");
+const __s_gem__2 = cptr.lit("gem");
+const __s_glorkum_d_d_d = cptr.lit("glorkum %d %d %d");
+const __s_xname_flags_s = cptr.lit("xname_flags: %s");
+const __s_xname = cptr.lit("xname");
+const __s_buf = cptr.lit("buf[]=");
+const __s_xname_buffer_overflow_before_appending = cptr.lit("xname: buffer overflow before appending name.");
+const __s_with_text_s = cptr.lit(" with text \"%s\"");
+const __s_labeled_s = cptr.lit(" labeled \"%s\"");
+const __s_with_s_motif = cptr.lit(" with %s motif");
+const __s_named = cptr.lit(" named ");
+const __s_the__2 = cptr.lit("The ");
+const __s_used_up_entire_obuf_prefix_bufsx_1 = cptr.lit("used up entire obuf[PREFIX..BUFSX-1]");
+const __s_uncursed = cptr.lit("uncursed ");
+const __s_the_d_s = cptr.lit("the %d%s ");
+const __s_thoroughly = cptr.lit("thoroughly ");
+const __s_rusty = cptr.lit("rusty ");
+const __s_cracked = cptr.lit("cracked ");
+const __s_burnt = cptr.lit("burnt ");
+const __s_corroded = cptr.lit("corroded ");
+const __s_rotted = cptr.lit("rotted ");
+const __s_fixed = cptr.lit("fixed ");
+const __s_rustproof = cptr.lit("rustproof ");
+const __s_corrodeproof = cptr.lit("corrodeproof ");
+const __s_fireproof = cptr.lit("fireproof ");
+const __s_tempered = cptr.lit("tempered ");
+const __s_rotproof = cptr.lit("rotproof ");
+const __s_doname_base = cptr.lit("doname_base");
+const __s_objnam_c = cptr.lit("objnam.c");
+const __s_bp_end_bp_eos = cptr.lit("bp_end >= bp_eos");
+const __s_ld = cptr.lit("%ld ");
+const __s_some = cptr.lit("some ");
+const __s_a_sp = cptr.lit("a ");
+const __s_empty__2 = cptr.lit("empty ");
+const __s_cursed = cptr.lit("cursed ");
+const __s_blessed = cptr.lit("blessed ");
+const __s_trapped = cptr.lit("trapped ");
+const __s_broken = cptr.lit("broken ");
+const __s_locked = cptr.lit("locked ");
+const __s_unlocked = cptr.lit("unlocked ");
+const __s_greased = cptr.lit("greased ");
+const __s_containing_ld_item_s = cptr.lit(" containing %ld item%s");
+const __s_s = cptr.lit("s");
+const __s_being_worn = cptr.lit(" (being worn)");
+const __s_embedded_in_your_skin = cptr.lit(" (embedded in your skin)");
+const __s_being_doffed = cptr.lit(" (being doffed)");
+const __s_being_donned = cptr.lit(" (being donned)");
+const __s_slippery = cptr.lit("; slippery)");
+const __s_s_lit = cptr.lit(", %s lit)");
+const __s_pct_plus_d_sp = cptr.lit("%+d ");
+const __s_attached_to_s = cptr.lit(" (attached to %s)");
+const __s_leashed_s_u_is_dead = cptr.lit("leashed %s #%u is dead");
+const __s_leashed_monster_u_not_found = cptr.lit("leashed monster #%u not found");
+const __s_attached = cptr.lit(" attached");
+const __s_lit = cptr.lit(", lit");
+const __s_d_of_7_candle_s = cptr.lit(" (%d of 7 candle%s)");
+const __s_partly_used = cptr.lit("partly used ");
+const __s_lit__2 = cptr.lit(" (lit)");
+const __s_d_d = cptr.lit(" (%d:%d)");
+const __s_on_right = cptr.lit(" (on right ");
+const __s_on_left = cptr.lit(" (on left ");
+const __s_pct_s_rparen = cptr.lit("%s)");
+const __s_pct_s_sp = cptr.lit("%s ");
+const __s_sp = cptr.lit(" ");
+const __s_laid_by_you = cptr.lit(" (laid by you)");
+const __s_s_to_you = cptr.lit(" (%s to you)");
+const __s_chained = cptr.lit("chained");
+const __s_attached__2 = cptr.lit("attached");
+const __s_unspecified_gender = cptr.lit("unspecified gender");
+const __s_wielded = cptr.lit(" (wielded)");
+const __s_right = cptr.lit("right");
+const __s_left = cptr.lit("left");
+const __s_s_s__3 = cptr.lit(" (%s %s)");
+const __s_tethered_to = cptr.lit("tethered to");
+const __s_wielded_in = cptr.lit("wielded in");
+const __s_weapon_in = cptr.lit("weapon in");
+const __s_s_s__4 = cptr.lit(", %s %s)");
+const __s_wielded_in_s_s = cptr.lit(" (wielded in %s %s)");
+const __s_alternate_weapon_s_not_wielded = cptr.lit(" (alternate weapon%s; not wielded)");
+const __s_in_quiver = cptr.lit("in quiver");
+const __s_in_quiver_pouch = cptr.lit("in quiver pouch");
+const __s_at_the_ready = cptr.lit("at the ready");
+const __s_ld_s = cptr.lit("%ld %s");
+const __s_s_s__5 = cptr.lit(" (%s, %s)");
+const __s_unpaid = cptr.lit("unpaid");
+const __s_contents = cptr.lit("contents");
+const __s_for_sale = cptr.lit("for sale");
+const __s_no_charge = cptr.lit(" (no charge)");
+const __s_u_aum = cptr.lit(", %u aum)");
+const __s_u_aum__2 = cptr.lit(" (%u aum)");
+const __s_doname = cptr.lit("doname");
+const __s_doname_long_object_description_overflow = cptr.lit("doname: long object description overflow.");
+const __s_long_object_description_s = cptr.lit("long object description%s.");
+const __s_truncated_for_menu_use = cptr.lit(" truncated for menu use");
+const __s_thing = cptr.lit("thing");
+const __s_corpse = cptr.lit(" corpse");
+const __s_deadly_slime_mold_s = cptr.lit("deadly slime mold%s");
+const __s_apos_s_sp = cptr.lit("'s ");
+const __s_s_apos_sp = cptr.lit("s' ");
+const __s_dot3 = cptr.lit("...");
+const __s_aefhilmnosx = cptr.lit("aefhilmnosx");
+const __s_an = cptr.lit("an ");
+const __s_molten_lava = cptr.lit("molten lava");
+const __s_iron_bars = cptr.lit("iron bars");
+const __s_ice = cptr.lit("ice");
+const __s_one = cptr.lit("one");
+const __s_dash_us_sp = cptr.lit("-_ ");
+const __s_eu = cptr.lit("eu");
+const __s_uke = cptr.lit("uke");
+const __s_ukulele = cptr.lit("ukulele");
+const __s_unicorn = cptr.lit("unicorn");
+const __s_uranium = cptr.lit("uranium");
+const __s_useful = cptr.lit("useful");
+const __s_alphabet_soup_an_s = cptr.lit("Alphabet soup: 'an(%s)'.");
+const __s_quot2 = cptr.lit("\"\"");
+const __s_null = cptr.lit("<null>");
+const __s_an__2 = cptr.lit("an []");
+const __s_an__3 = cptr.lit("an");
+const __s_alphabet_soup_the_s = cptr.lit("Alphabet soup: 'the(%s)'.");
+const __s_the__3 = cptr.lit("the []");
+const __s_called = cptr.lit(" called ");
+const __s_the__4 = cptr.lit("the");
+const __s_platinum_yendorian_express_card = cptr.lit("Platinum Yendorian Express Card");
+const __s_yobjnam = cptr.lit("yobjnam");
+const __s_an_unpaid = cptr.lit("an unpaid ");
+const __s_your = cptr.lit("your ");
+const __s_the_contents_of = cptr.lit("the contents of ");
+const __s_yname = cptr.lit("yname");
+const __s_ysimple_name = cptr.lit("ysimple_name");
+const __s_spell_book = cptr.lit("spell book");
+const __s_weapon = cptr.lit("weapon");
+const __s_armor = cptr.lit("armor");
+const __s_tool = cptr.lit("tool");
+const __s_food = cptr.lit("food");
+const __s_comestible = cptr.lit("comestible");
+const __s_erinys = cptr.lit("erinys");
+const __s_manes = cptr.lit("manes");
+const __s_cyclops = cptr.lit("Cyclops");
+const __s_hippocrates = cptr.lit("Hippocrates");
+const __s_pelias = cptr.lit("Pelias");
+const __s_aklys = cptr.lit("aklys");
+const __s_amnesia = cptr.lit("amnesia");
+const __s_detect_monsters = cptr.lit("detect monsters");
+const __s_paralysis = cptr.lit("paralysis");
+const __s_shape_changers = cptr.lit("shape changers");
+const __s_nemesis = cptr.lit("nemesis");
+const __s_from = cptr.lit(" from ");
+const __s_us = cptr.lit("us");
+const __s_eeth = cptr.lit("eeth");
+const __s_feet = cptr.lit("feet");
+const __s_ia = cptr.lit("ia");
+const __s_ae = cptr.lit("ae");
+const __s_vtense = cptr.lit("vtense");
+const __s_they = cptr.lit("they");
+const __s_you = cptr.lit("you");
+const __s_are = cptr.lit("are");
+const __s_is = cptr.lit("is");
+const __s_have = cptr.lit("have");
+const __s_zxs = cptr.lit("zxs");
+const __s_cs = cptr.lit("cs");
+const __s_es = cptr.lit("es");
+const __s_ies = cptr.lit("ies");
+const __s_child = cptr.lit("child");
+const __s_children = cptr.lit("children");
+const __s_cubus = cptr.lit("cubus");
+const __s_cubi = cptr.lit("cubi");
+const __s_culus = cptr.lit("culus");
+const __s_culi = cptr.lit("culi");
+const __s_cyclopes = cptr.lit("Cyclopes");
+const __s_djinni = cptr.lit("djinni");
+const __s_djinn = cptr.lit("djinn");
+const __s_erinyes = cptr.lit("erinyes");
+const __s_foot = cptr.lit("foot");
+const __s_fungus = cptr.lit("fungus");
+const __s_fungi = cptr.lit("fungi");
+const __s_goose = cptr.lit("goose");
+const __s_geese = cptr.lit("geese");
+const __s_knife = cptr.lit("knife");
+const __s_knives = cptr.lit("knives");
+const __s_labrum = cptr.lit("labrum");
+const __s_labra = cptr.lit("labra");
+const __s_louse = cptr.lit("louse");
+const __s_lice = cptr.lit("lice");
+const __s_mouse = cptr.lit("mouse");
+const __s_mice = cptr.lit("mice");
+const __s_mumak = cptr.lit("mumak");
+const __s_mumakil = cptr.lit("mumakil");
+const __s_nemeses = cptr.lit("nemeses");
+const __s_ovum = cptr.lit("ovum");
+const __s_ova = cptr.lit("ova");
+const __s_ox = cptr.lit("ox");
+const __s_oxen = cptr.lit("oxen");
+const __s_passerby = cptr.lit("passerby");
+const __s_passersby = cptr.lit("passersby");
+const __s_rtex = cptr.lit("rtex");
+const __s_rtices = cptr.lit("rtices");
+const __s_serum = cptr.lit("serum");
+const __s_sera = cptr.lit("sera");
+const __s_staff = cptr.lit("staff");
+const __s_staves = cptr.lit("staves");
+const __s_tooth = cptr.lit("tooth");
+const __s_teeth = cptr.lit("teeth");
+const __s_boots = cptr.lit("boots");
+const __s_shoes = cptr.lit("shoes");
+const __s_gloves = cptr.lit("gloves");
+const __s_lenses = cptr.lit("lenses");
+const __s_scales = cptr.lit("scales");
+const __s_eyes = cptr.lit("eyes");
+const __s_gauntlets = cptr.lit("gauntlets");
+const __s_bison = cptr.lit("bison");
+const __s_deer = cptr.lit("deer");
+const __s_elk = cptr.lit("elk");
+const __s_fish = cptr.lit("fish");
+const __s_fowl = cptr.lit("fowl");
+const __s_tuna = cptr.lit("tuna");
+const __s_yaki = cptr.lit("yaki");
+const __s_hai = cptr.lit("-hai");
+const __s_krill = cptr.lit("krill");
+const __s_moose = cptr.lit("moose");
+const __s_ninja = cptr.lit("ninja");
+const __s_sheep = cptr.lit("sheep");
+const __s_ronin = cptr.lit("ronin");
+const __s_roshi = cptr.lit("roshi");
+const __s_tengu = cptr.lit("tengu");
+const __s_ki_rin = cptr.lit("ki-rin");
+const __s_nazgul = cptr.lit("Nazgul");
+const __s_piranha = cptr.lit("piranha");
+const __s_samurai = cptr.lit("samurai");
+const __s_shuriken = cptr.lit("shuriken");
+const __s_haggis = cptr.lit("haggis");
+const __s_bordeaux = cptr.lit("Bordeaux");
+const __s_singplur_lookup = cptr.lit("singplur_lookup");
+const __s_craft = cptr.lit("craft");
+const __s_slice = cptr.lit("slice");
+const __s_mongoose = cptr.lit("mongoose");
+const __s_muskox = cptr.lit("muskox");
+const __s_man = cptr.lit("man");
+const __s_men = cptr.lit("men");
+const __s_above = cptr.lit(" above");
+const __s_versus = cptr.lit(" versus ");
+const __s_in = cptr.lit(" in ");
+const __s_on = cptr.lit(" on ");
+const __s_a_la = cptr.lit(" a la ");
+const __s_with = cptr.lit(" with");
+const __s_de = cptr.lit(" de ");
+const __s_sp_d_apos = cptr.lit(" d'");
+const __s_du = cptr.lit(" du ");
+const __s_au = cptr.lit(" au ");
+const __s_in__2 = cptr.lit("-in-");
+const __s_at = cptr.lit("-at-");
+const __s_plural_of_null = cptr.lit("plural of null?");
+const __s_makeplural = cptr.lit("makeplural");
+const __s_apos_s = cptr.lit("'s");
+const __s_ya = cptr.lit("ya");
+const __s_ya__2 = cptr.lit(" ya");
+const __s_en = cptr.lit("en");
+const __s_erf = cptr.lit("erf");
+const __s_lr = cptr.lit("lr");
+const __s_ves = cptr.lit("ves");
+const __s_ium = cptr.lit("ium");
+const __s_alga = cptr.lit("alga");
+const __s_hypha = cptr.lit("hypha");
+const __s_larva = cptr.lit("larva");
+const __s_amoeba = cptr.lit("amoeba");
+const __s_vertebra = cptr.lit("vertebra");
+const __s_e = cptr.lit("e");
+const __s_lotus = cptr.lit("lotus");
+const __s_wumpus = cptr.lit("wumpus");
+const __s_i = cptr.lit("i");
+const __s_sis = cptr.lit("sis");
+const __s_eau = cptr.lit("eau");
+const __s_bureau = cptr.lit("bureau");
+const __s_x = cptr.lit("x");
+const __s_matzoh = cptr.lit("matzoh");
+const __s_matzah = cptr.lit("matzah");
+const __s_ot = cptr.lit("ot");
+const __s_matzo = cptr.lit("matzo");
+const __s_matza = cptr.lit("matza");
+const __s_dex = cptr.lit("dex");
+const __s_dix = cptr.lit("dix");
+const __s_tex = cptr.lit("tex");
+const __s_index = cptr.lit("index");
+const __s_ices = cptr.lit("ices");
+const __s_ato = cptr.lit("ato");
+const __s_dingo = cptr.lit("dingo");
+const __s_eaux = cptr.lit("eaux");
+const __s_matzot = cptr.lit("matzot");
+const __s_singular_of_null = cptr.lit("singular of null?");
+const __s_cookies = cptr.lit("cookies");
+const __s_pies = cptr.lit("pies");
+const __s_genies = cptr.lit("genies");
+const __s_mbies = cptr.lit("mbies");
+const __s_yries = cptr.lit("yries");
+const __s_y = cptr.lit("y");
+const __s_cloves = cptr.lit("cloves");
+const __s_nerves = cptr.lit("nerves");
+const __s_f = cptr.lit("f");
+const __s_eses = cptr.lit("eses");
+const __s_oxes = cptr.lit("oxes");
+const __s_nxes = cptr.lit("nxes");
+const __s_ches = cptr.lit("ches");
+const __s_uses = cptr.lit("uses");
+const __s_shes = cptr.lit("shes");
+const __s_sses = cptr.lit("sses");
+const __s_atoes = cptr.lit("atoes");
+const __s_dingoes = cptr.lit("dingoes");
+const __s_aleaxes = cptr.lit("Aleaxes");
+const __s_tengus = cptr.lit("tengus");
+const __s_hezrous = cptr.lit("hezrous");
+const __s_ss = cptr.lit("ss");
+const __s_lens = cptr.lit(" lens");
+const __s_lens__2 = cptr.lit("lens");
+const __s_um = cptr.lit("um");
+const __s_monarch = cptr.lit("monarch");
+const __s_poch = cptr.lit("poch");
+const __s_tech = cptr.lit("tech");
+const __s_mech = cptr.lit("mech");
+const __s_stomach = cptr.lit("stomach");
+const __s_psych = cptr.lit("psych");
+const __s_amphibrach = cptr.lit("amphibrach");
+const __s_anarch = cptr.lit("anarch");
+const __s_atriarch = cptr.lit("atriarch");
+const __s_azedarach = cptr.lit("azedarach");
+const __s_broch = cptr.lit("broch");
+const __s_gastrotrich = cptr.lit("gastrotrich");
+const __s_isopach = cptr.lit("isopach");
+const __s_loch = cptr.lit("loch");
+const __s_oligarch = cptr.lit("oligarch");
+const __s_peritrich = cptr.lit("peritrich");
+const __s_sandarach = cptr.lit("sandarach");
+const __s_sumach = cptr.lit("sumach");
+const __s_symposiarch = cptr.lit("symposiarch");
+const __s_albu = cptr.lit("albu");
+const __s_antihu = cptr.lit("antihu");
+const __s_anti = cptr.lit("anti");
+const __s_ata = cptr.lit("ata");
+const __s_auto = cptr.lit("auto");
+const __s_bildungsro = cptr.lit("bildungsro");
+const __s_cai = cptr.lit("cai");
+const __s_cay = cptr.lit("cay");
+const __s_ceru = cptr.lit("ceru");
+const __s_corner = cptr.lit("corner");
+const __s_decu = cptr.lit("decu");
+const __s_des = cptr.lit("des");
+const __s_dura = cptr.lit("dura");
+const __s_fir = cptr.lit("fir");
+const __s_hanu = cptr.lit("hanu");
+const __s_het = cptr.lit("het");
+const __s_infrahu = cptr.lit("infrahu");
+const __s_inhu = cptr.lit("inhu");
+const __s_nonhu = cptr.lit("nonhu");
+const __s_otto = cptr.lit("otto");
+const __s_out = cptr.lit("out");
+const __s_prehu = cptr.lit("prehu");
+const __s_protohu = cptr.lit("protohu");
+const __s_subhu = cptr.lit("subhu");
+const __s_superhu = cptr.lit("superhu");
+const __s_talis = cptr.lit("talis");
+const __s_unhu = cptr.lit("unhu");
+const __s_sha = cptr.lit("sha");
+const __s_hu = cptr.lit("hu");
+const __s_un = cptr.lit("un");
+const __s_le = cptr.lit("le");
+const __s_re = cptr.lit("re");
+const __s_so = cptr.lit("so");
+const __s_to = cptr.lit("to");
+const __s_at__2 = cptr.lit("at");
+const __s_a = cptr.lit("a");
+const __s_abdo = cptr.lit("abdo");
+const __s_acu = cptr.lit("acu");
+const __s_agno = cptr.lit("agno");
+const __s_cogno = cptr.lit("cogno");
+const __s_cycla = cptr.lit("cycla");
+const __s_fleh = cptr.lit("fleh");
+const __s_grava = cptr.lit("grava");
+const __s_hegu = cptr.lit("hegu");
+const __s_preno = cptr.lit("preno");
+const __s_sonar = cptr.lit("sonar");
+const __s_speci = cptr.lit("speci");
+const __s_dai = cptr.lit("dai");
+const __s_exa = cptr.lit("exa");
+const __s_fla = cptr.lit("fla");
+const __s_sta = cptr.lit("sta");
+const __s_teg = cptr.lit("teg");
+const __s_tegu = cptr.lit("tegu");
+const __s_vela = cptr.lit("vela");
+const __s_da = cptr.lit("da");
+const __s_hy = cptr.lit("hy");
+const __s_lu = cptr.lit("lu");
+const __s_no = cptr.lit("no");
+const __s_nu = cptr.lit("nu");
+const __s_ra = cptr.lit("ra");
+const __s_ru = cptr.lit("ru");
+const __s_se = cptr.lit("se");
+const __s_vi = cptr.lit("vi");
+const __s_o = cptr.lit("o");
+const __s_sp_dash = cptr.lit(" -");
+const __s_dwarvish = cptr.lit("dwarvish ");
+const __s_dwarven = cptr.lit("dwarven ");
+const __s_elven = cptr.lit("elven ");
+const __s_elvish = cptr.lit("elvish ");
+const __s_elfin = cptr.lit("elfin ");
+const __s_helm = cptr.lit("helm");
+const __s_helmet = cptr.lit("helmet");
+const __s_monster = cptr.lit("monster");
+const __s_ability = cptr.lit("ability");
+const __s_abilities = cptr.lit("abilities");
+const __s_aluminum = cptr.lit("aluminum");
+const __s_aluminium = cptr.lit("aluminium");
+const __s_bag = cptr.lit("bag");
+const __s_lamp = cptr.lit("lamp");
+const __s_candle = cptr.lit("candle");
+const __s_horn = cptr.lit("horn");
+const __s_hat = cptr.lit("hat");
+const __s_cloak = cptr.lit("cloak");
+const __s_shirt = cptr.lit("shirt");
+const __s_dragon_scales = cptr.lit("dragon scales");
+const __s_dragon_scale_mail = cptr.lit("dragon scale mail");
+const __s_sword = cptr.lit("sword");
+const __s_venom = cptr.lit("venom");
+const __s_gray_stone = cptr.lit("gray stone");
+const __s_grey_stone = cptr.lit("grey stone");
+const __s_pickax = cptr.lit("pickax");
+const __s_whip = cptr.lit("whip");
+const __s_saber = cptr.lit("saber");
+const __s_silver_sabre = cptr.lit("silver sabre");
+const __s_grey_dragon_scale_mail = cptr.lit("grey dragon scale mail");
+const __s_grey_dragon_scales = cptr.lit("grey dragon scales");
+const __s_iron_ball = cptr.lit("iron ball");
+const __s_lantern = cptr.lit("lantern");
+const __s_mattock = cptr.lit("mattock");
+const __s_amulet_of_poison_resistance = cptr.lit("amulet of poison resistance");
+const __s_amulet_of_protection = cptr.lit("amulet of protection");
+const __s_amulet_of_telepathy = cptr.lit("amulet of telepathy");
+const __s_helm_of_esp = cptr.lit("helm of esp");
+const __s_gauntlets_of_ogre_power = cptr.lit("gauntlets of ogre power");
+const __s_gauntlets_of_giant_strength = cptr.lit("gauntlets of giant strength");
+const __s_elven_chain_mail = cptr.lit("elven chain mail");
+const __s_silver_shield = cptr.lit("silver shield");
+const __s_potion_of_sleep = cptr.lit("potion of sleep");
+const __s_scroll_of_recharging = cptr.lit("scroll of recharging");
+const __s_recharging = cptr.lit("recharging");
+const __s_camera = cptr.lit("camera");
+const __s_tee_shirt = cptr.lit("tee shirt");
+const __s_can = cptr.lit("can");
+const __s_can_opener = cptr.lit("can opener");
+const __s_kelp = cptr.lit("kelp");
+const __s_eucalyptus = cptr.lit("eucalyptus");
+const __s_lembas = cptr.lit("lembas");
+const __s_tripe = cptr.lit("tripe");
+const __s_cookie = cptr.lit("cookie");
+const __s_pie = cptr.lit("pie");
+const __s_huge_meatball = cptr.lit("huge meatball");
+const __s_huge_chunk_of_meat = cptr.lit("huge chunk of meat");
+const __s_marker = cptr.lit("marker");
+const __s_hook = cptr.lit("hook");
+const __s_grappling_iron = cptr.lit("grappling iron");
+const __s_grapnel = cptr.lit("grapnel");
+const __s_grapple = cptr.lit("grapple");
+const __s_protection_from_shape_shifters = cptr.lit("protection from shape shifters");
+const __s_accuracy = cptr.lit("accuracy");
+const __s_box = cptr.lit("box");
+const __s_luck_stone = cptr.lit("luck stone");
+const __s_load_stone = cptr.lit("load stone");
+const __s_touch_stone = cptr.lit("touch stone");
+const __s_flintstone = cptr.lit("flintstone");
+const __s_rnd_otyp_by_wpnskill = cptr.lit("rnd_otyp_by_wpnskill");
+const __s_rnd_otyp_by_namedesc = cptr.lit("rnd_otyp_by_namedesc");
+const __s_shiny = cptr.lit("shiny");
+const __s_undiggable = cptr.lit("undiggable ");
+const __s_nondiggable = cptr.lit("nondiggable ");
+const __s_unphaseable = cptr.lit("unphaseable ");
+const __s_nonpasswall = cptr.lit("nonpasswall ");
+const __s_s_s__6 = cptr.lit("%s%s.");
+const __s_to_nowhere = cptr.lit(" to nowhere");
+const __s_creation_of_s_failed = cptr.lit("Creation of %s failed.");
+const __s_fountain = cptr.lit("fountain");
+const __s_magic = cptr.lit("magic ");
+const __s_a_sfountain = cptr.lit("A %sfountain.");
+const __s_throne = cptr.lit("throne");
+const __s_a_throne = cptr.lit("A throne.");
+const __s_sink = cptr.lit("sink");
+const __s_a_sink = cptr.lit("A sink.");
+const __s_pool = cptr.lit("pool");
+const __s_moat = cptr.lit("moat");
+const __s_wall_of_water = cptr.lit("wall of water");
+const __s_pct_s_dot = cptr.lit("%s.");
+const __s_moat__2 = cptr.lit("Moat");
+const __s_lava = cptr.lit("lava");
+const __s_wall_of_lava = cptr.lit("wall of lava");
+const __s_a_s_of_molten_lava = cptr.lit("A %s of molten lava.");
+const __s_wall = cptr.lit("wall");
+const __s_lava__2 = cptr.lit("Lava");
+const __s_melting = cptr.lit("melting ");
+const __s_ice__2 = cptr.lit("Ice");
+const __s_altar = cptr.lit("altar");
+const __s_chaotic = cptr.lit("chaotic ");
+const __s_neutral = cptr.lit("neutral ");
+const __s_lawful = cptr.lit("lawful ");
+const __s_unaligned = cptr.lit("unaligned ");
+const __s_wizterrainwish = cptr.lit("wizterrainwish");
+const __s_s_altar = cptr.lit("%s altar.");
+const __s_grave = cptr.lit("grave");
+const __s_headstone = cptr.lit("headstone");
+const __s_a_sgrave = cptr.lit("A %sgrave.");
+const __s_disturbed = cptr.lit("disturbed ");
+const __s_can_t_place_a_grave_here = cptr.lit("Can't place a grave here.");
+const __s_tree = cptr.lit("tree");
+const __s_a_tree = cptr.lit("A tree.");
+const __s_bars = cptr.lit("bars");
+const __s_iron_bars__2 = cptr.lit("Iron bars.");
+const __s_cloud = cptr.lit("cloud");
+const __s_a_cloud = cptr.lit("A cloud.");
+const __s_door = cptr.lit("door");
+const __s_doorway = cptr.lit("doorway");
+const __s_secret_door = cptr.lit("secret door");
+const __s_closed = cptr.lit("closed ");
+const __s_open = cptr.lit("open ");
+const __s_doorless_doorway = cptr.lit("doorless doorway");
+const __s_s_requires_door_or_wall_location = cptr.lit("%s requires door or wall location.");
+const __s_a_wall = cptr.lit("A wall.");
+const __s_secret_corridor = cptr.lit("secret corridor");
+const __s_secret_corridor__2 = cptr.lit("Secret corridor.");
+const __s_secret_corridor_requires_corridor = cptr.lit("Secret corridor requires corridor location.");
+const __s_room = cptr.lit("room");
+const __s_floor = cptr.lit("floor");
+const __s_ground = cptr.lit("ground");
+const __s_room_floor = cptr.lit("Room floor.");
+const __s_floor__2 = cptr.lit("Floor");
+const __s_room_floor_ground_not_allowed_here = cptr.lit("Room|floor|ground not allowed here.");
+const __s_s_s_the_drawbridge = cptr.lit("%s %s the drawbridge.");
+const __s_in_front_of = cptr.lit("in front of");
+const __s_under = cptr.lit("under");
+const __s_0 = cptr.lit("0");
+const __s_erodeproof = cptr.lit("erodeproof ");
+const __s_crackproof = cptr.lit("crackproof ");
+const __s_lit__3 = cptr.lit("lit ");
+const __s_burning = cptr.lit("burning ");
+const __s_unlit = cptr.lit("unlit ");
+const __s_extinguished = cptr.lit("extinguished ");
+const __s_readobjnam_preparse = cptr.lit("readobjnam_preparse");
+const __s_unlabeled = cptr.lit("unlabeled ");
+const __s_unlabelled = cptr.lit("unlabelled ");
+const __s_blank = cptr.lit("blank ");
+const __s_untrapped = cptr.lit("untrapped ");
+const __s_doorless = cptr.lit("doorless ");
+const __s_looted = cptr.lit("looted ");
+const __s_zombifying = cptr.lit("zombifying ");
+const __s_rusted = cptr.lit("rusted ");
+const __s_burned = cptr.lit("burned ");
+const __s_partially_eaten = cptr.lit("partially eaten ");
+const __s_small__2 = cptr.lit("small ");
+const __s_glob = cptr.lit("glob");
+const __s_glob__2 = cptr.lit(" glob");
+const __s_medium__2 = cptr.lit("medium ");
+const __s_large__2 = cptr.lit("large ");
+const __s_real = cptr.lit("real ");
+const __s_fake = cptr.lit("fake ");
+const __s_female = cptr.lit("female ");
+const __s_male = cptr.lit("male ");
+const __s_neuter = cptr.lit("neuter ");
+const __s_corpse__2 = cptr.lit("corpse ");
+const __s_statue = cptr.lit("statue ");
+const __s_figurine = cptr.lit("figurine ");
+const __s_of__2 = cptr.lit("of ");
+const __s_lit__4 = cptr.lit("lit)");
+const __s_labelled = cptr.lit(" labelled ");
+const __s_of_spinach = cptr.lit(" of spinach");
+const __s_cheap = cptr.lit("cheap ");
+const __s_plastic = cptr.lit("plastic ");
+const __s_imitation = cptr.lit("imitation ");
+const __s_pairs_of = cptr.lit("pairs of ");
+const __s_sets_of = cptr.lit("sets of ");
+const __s_globs = cptr.lit("globs");
+const __s_globs__2 = cptr.lit(" globs");
+const __s_glob_of = cptr.lit("glob of ");
+const __s_globs_of = cptr.lit("globs of ");
+const __s_readobjnam_postparse1 = cptr.lit("readobjnam_postparse1");
+const __s_glob_of_s = cptr.lit("glob of %s");
+const __s_wand__2 = cptr.lit("wand ");
+const __s_spellbook__2 = cptr.lit("spellbook ");
+const __s_gauntlets__2 = cptr.lit("gauntlets ");
+const __s_gloves__2 = cptr.lit("gloves ");
+const __s_finger = cptr.lit("finger ");
+const __s_tin_of = cptr.lit("tin of ");
+const __s_spinach = cptr.lit("spinach");
+const __s_samurai_sword = cptr.lit("samurai sword");
+const __s_wizard_lock = cptr.lit("wizard lock");
+const __s_death_wand = cptr.lit("death wand");
+const __s_master_key = cptr.lit("master key");
+const __s_magenta = cptr.lit("magenta");
+const __s_s_sp = cptr.lit("s ");
+const __s_es__2 = cptr.lit("es ");
+const __s_tricks = cptr.lit("tricks");
+const __s_clothes = cptr.lit("clothes");
+const __s_grey_spell = cptr.lit("grey spell");
+const __s_armour = cptr.lit("armour");
+const __s_holy_water = cptr.lit("holy water");
+const __s_paperback = cptr.lit("paperback");
+const __s_book__2 = cptr.lit(" book");
+const __s_orange = cptr.lit("orange");
+const __s_gold_piece = cptr.lit("gold piece");
+const __s_zorkmid = cptr.lit("zorkmid");
+const __s_gold = cptr.lit("gold");
+const __s_money = cptr.lit("money");
+const __s_coin = cptr.lit("coin");
+const __s_enchant = cptr.lit("enchant ");
+const __s_destroy = cptr.lit("destroy ");
+const __s_detect_food = cptr.lit("detect food");
+const __s_food_detection = cptr.lit("food detection");
+const __s_ring_mail = cptr.lit("ring mail");
+const __s_studded_leather_armor = cptr.lit("studded leather armor");
+const __s_leather_armor = cptr.lit("leather armor");
+const __s_tooled_horn = cptr.lit("tooled horn");
+const __s_food_ration = cptr.lit("food ration");
+const __s_meat_ring = cptr.lit("meat ring");
+const __s_versus_poison = cptr.lit("versus poison ");
+const __s_bear = cptr.lit("bear");
+const __s_land = cptr.lit("land");
+const __s_trap = cptr.lit("trap");
+const __s_mine = cptr.lit("mine");
+const __s_object__2 = cptr.lit(" object");
+const __s_looking_glass = cptr.lit("looking glass");
+const __s_glass = cptr.lit(" glass");
+const __s_glass__2 = cptr.lit("glass");
+const __s_broken__2 = cptr.lit("broken");
+const __s_worthless = cptr.lit("worthless ");
+const __s_piece_of = cptr.lit("piece of ");
+const __s_colored = cptr.lit("colored ");
+const __s_coloured = cptr.lit("coloured ");
+const __s_readobjnam_postparse2 = cptr.lit("readobjnam_postparse2");
+const __s_worthless_piece_of = cptr.lit("worthless piece of ");
+const __s_tin = cptr.lit("tin");
+const __s_mail = cptr.lit("mail");
+const __s_mail__2 = cptr.lit(" mail");
+const __s_nothing = cptr.lit("nothing");
+const __s_nil = cptr.lit("nil");
+const __s_none = cptr.lit("none");
+const __s_polearm = cptr.lit("polearm");
+const __s_hammer = cptr.lit("hammer");
+const __s_readobjnam = cptr.lit("readobjnam");
+const __s_override_glob_weight_limit = cptr.lit("Override glob weight limit?");
+const __s_for_a_moment_you_feel_s_in_your_s_but = cptr.lit("For a moment, you feel %s in your %s, but it disappears!");
+const __s_rnd_class = cptr.lit("rnd_class");
+const __s_unknown_armor_category_s_u = cptr.lit("unknown armor category (%s => %u)");
+const __s_dragon_mail = cptr.lit("dragon mail");
+const __s_jacket = cptr.lit(" jacket");
+const __s_jacket__2 = cptr.lit("jacket");
+const __s_suit = cptr.lit("suit");
+const __s_robe = cptr.lit("robe");
+const __s_wrapping = cptr.lit("wrapping");
+const __s_smock = cptr.lit("smock");
+const __s_apron = cptr.lit("apron");
+const __s_whatcha_may_callit = cptr.lit("whatcha-may-callit");
+const __s_safe_qbuf = cptr.lit("safe_qbuf");
+const __s_endp_null = cptr.lit("endp != NULL");
+const __s_safe_qbuf_prefix_too_long_u_characters = cptr.lit("safe_qbuf: prefix too long (%u characters).");
+const __s_safe_qbuf_suffix_too_long_u_u_characters = cptr.lit("safe_qbuf: suffix too long (%u + %u characters).");
+const __s_safe_qbuf_filler_too_long_u_u_u = cptr.lit("safe_qbuf: filler too long (%u + %u + %u characters).");
 
 /** C ref: objnam.c:13 — struct _readobjnam_data { otmp, bp, origbp, oclass, un, dn, actualn, name, p, cnt, spe, spesgn, typ, very, rechrg, blessed, uncursed, iscursed, ispoisoned, isgreased, eroded, eroded2, erodeproof, locked, unlocked, broken, real, fake, halfeaten, mntmp, contents, islit, unlabeled, ishistoric, isdiluted, trapped, doorless, open, closed, flags, tmp, tinv, tvariety, mgend, wetness, gsize, ftype, zombify, globbuf, fruitbuf } (memory model v0.5) */
 
 /** C ref: objnam.c:61 — struct Jitem { item, name } (memory model v0.5) */
 
 /** C ref: objnam.c:105 — struct Jitem[14] */
-const Japanese_items = cptr.alloc(14 * 16);
+const Japanese_items = cptr.alloc(14 * $sizeof_Jitem);
 cptr.stI32o(Japanese_items, 0, NHC.SHORT_SWORD);
-cptr.stPtro(Japanese_items, 0 + $Jitem_name, __sl0);
+cptr.stPtro(Japanese_items, 0 + $Jitem_name, __s_wakizashi);
 cptr.stI32o(Japanese_items, 16, NHC.BROADSWORD);
-cptr.stPtro(Japanese_items, 16 + $Jitem_name, __sl1);
+cptr.stPtro(Japanese_items, 16 + $Jitem_name, __s_ninja_to);
 cptr.stI32o(Japanese_items, 32, NHC.FLAIL);
-cptr.stPtro(Japanese_items, 32 + $Jitem_name, __sl2);
+cptr.stPtro(Japanese_items, 32 + $Jitem_name, __s_nunchaku);
 cptr.stI32o(Japanese_items, 48, NHC.GLAIVE);
-cptr.stPtro(Japanese_items, 48 + $Jitem_name, __sl3);
+cptr.stPtro(Japanese_items, 48 + $Jitem_name, __s_naginata);
 cptr.stI32o(Japanese_items, 64, NHC.LOCK_PICK);
-cptr.stPtro(Japanese_items, 64 + $Jitem_name, __sl4);
+cptr.stPtro(Japanese_items, 64 + $Jitem_name, __s_osaku);
 cptr.stI32o(Japanese_items, 80, NHC.WOODEN_HARP);
-cptr.stPtro(Japanese_items, 80 + $Jitem_name, __sl5);
+cptr.stPtro(Japanese_items, 80 + $Jitem_name, __s_koto);
 cptr.stI32o(Japanese_items, 96, NHC.MAGIC_HARP);
-cptr.stPtro(Japanese_items, 96 + $Jitem_name, __sl6);
+cptr.stPtro(Japanese_items, 96 + $Jitem_name, __s_magic_koto);
 cptr.stI32o(Japanese_items, 112, NHC.KNIFE);
-cptr.stPtro(Japanese_items, 112 + $Jitem_name, __sl7);
+cptr.stPtro(Japanese_items, 112 + $Jitem_name, __s_shito);
 cptr.stI32o(Japanese_items, 128, NHC.PLATE_MAIL);
-cptr.stPtro(Japanese_items, 128 + $Jitem_name, __sl8);
+cptr.stPtro(Japanese_items, 128 + $Jitem_name, __s_tanko);
 cptr.stI32o(Japanese_items, 144, NHC.HELMET);
-cptr.stPtro(Japanese_items, 144 + $Jitem_name, __sl9);
+cptr.stPtro(Japanese_items, 144 + $Jitem_name, __s_kabuto);
 cptr.stI32o(Japanese_items, 160, NHC.LEATHER_GLOVES);
-cptr.stPtro(Japanese_items, 160 + $Jitem_name, __sl10);
+cptr.stPtro(Japanese_items, 160 + $Jitem_name, __s_yugake);
 cptr.stI32o(Japanese_items, 176, NHC.FOOD_RATION);
-cptr.stPtro(Japanese_items, 176 + $Jitem_name, __sl11);
+cptr.stPtro(Japanese_items, 176 + $Jitem_name, __s_gunyoki);
 cptr.stI32o(Japanese_items, 192, NHC.POT_BOOZE);
-cptr.stPtro(Japanese_items, 192 + $Jitem_name, __sl12);
+cptr.stPtro(Japanese_items, 192 + $Jitem_name, __s_sake);
 cptr.stI32o(Japanese_items, 208, 0);
-cptr.stPtro(Japanese_items, 208 + $Jitem_name, __sl13);
+cptr.stPtro(Japanese_items, 208 + $Jitem_name, __s_empty);
 
-/** C ref: objnam.c:123 — @param {CPtr} s @param {CPtr} pref @returns {CPtr} */
+/** C ref: objnam.c:123 — @param {CPtr<char>} s @param {CPtr<char>} pref @returns {CPtr<char>} */
 function strprepend(s, pref) {
     let star_s = cptr.ld1s(s);
     let i = Number(BigInt.asIntN(32, cptr.strlen(pref)));
+
     if (i > 80) {
-        impossible(__sl14, i);
+        impossible(__s_prefix_too_short_for_d, i);
         return s;
     }
     copynchars(cptr.add(s, -(i)), pref, (i + 1) | 0);
@@ -950,147 +957,197 @@ function strprepend(s, pref) {
     return cptr.add(s, -(i));
 }
 
+/* manage a pool of BUFSZ buffers, so callers don't have to */
 /** C ref: objnam.c:138 — char[12][256] */
 const obufs = (function () { const flat = new Uint8Array(12 * (256 * 1)); const a = []; for (let r = 0; r < 12; r++) a.push(flat.subarray(r * (256 * 1), (r + 1) * (256 * 1))); a.buf = flat; return a; })();
 
 /** C ref: objnam.c:139 — int */
 let obufidx = 0;
 
-/** C ref: objnam.c:142 @returns {CPtr} */
+/** C ref: objnam.c:142 @returns {CPtr<char>} */
 function nextobuf() {
     obufidx = ((obufidx + 1) | 0) % 12;
     return cptr.decay(obufs[obufidx]);
 }
 
-/** C ref: objnam.c:150 — @param {CPtr} bufp */
+/* put the most recently allocated buffer back if possible */
+/** C ref: objnam.c:150 — @param {CPtr<char>} bufp */
 function releaseobuf(bufp) {
+    /* caller may not know whether bufp is the most recently allocated
+       buffer; if it isn't, do nothing; note that because of the somewhat
+       obscure PREFIX handling for object name formatting by xname(),
+       the pointer our caller has and is passing to us might be into the
+       middle of an obuf rather than the address returned by nextobuf() */
     if (cptr.cmp(bufp, cptr.decay(obufs[obufidx])) >= 0 && cptr.cmp(bufp, cptr.add(cptr.decay(obufs[obufidx]), 256n)) < 0)
         obufidx = ((((obufidx - 1) | 0) + 12) | 0) % 12;
 }
 
-/** C ref: objnam.c:167 — @param {CPtr} obuffer */
+/* used by display_pickinv (invent.c, main whole-inventory routine) to
+   release each successive doname() result in order to try to avoid
+   clobbering all the obufs when 'perm_invent' is enabled and updated
+   while one or more obufs have been allocated but not released yet */
+/** C ref: objnam.c:167 — @param {CPtr<char>} obuffer */
 export function maybereleaseobuf(obuffer) {
     releaseobuf(obuffer);
+
+    /*
+     * An example from 3.6.x where all obufs got clobbered was when a
+     * monster used a bullwhip to disarm the hero of a two-handed weapon:
+     * "The ogre lord yanks Cleaver from your corpses!"
+     |
+     | hand = body_part(HAND);
+     | if (use_plural)      // switches 'hand' from static buffer to an obuf
+     |   hand = makeplural(hand);
+      ...
+     | release_worn_item(); // triggers full inventory update for perm_invent
+      ...
+     | pline(..., hand);    // the obuf[] for "hands" was clobbered with the
+     |                      //+ partial formatting of an item from invent
+     *
+     * Another example was from writing a scroll without room in invent to
+     * hold it after being split from a stack of blank scrolls:
+     * "Oops!  food rations out of your grasp!"
+     * hold_another_object() was passed 'the(aobjnam(newscroll, "slip"))'
+     * as an argument and that should have yielded
+     * "Oops!  The scroll of <foo> slips out of your grasp!"
+     * but attempting to add the item to inventory triggered update for
+     * perm_invent and the result from 'the(...)' was clobbered by partial
+     * formatting of some inventory item.  [It happened in a shop and the
+     * shk claimed ownership of the new scroll, but that wasn't relevant.]
+     * That got fixed earlier, by delaying update_inventory() during
+     * hold_another_object() rather than by avoiding using all the obufs.
+     */
 }
 
-/** C ref: objnam.c:201 — @param {CInt} otyp @returns {CPtr} */
+/** C ref: objnam.c:201 — @param {CInt} otyp @returns {CPtr<char>} */
 export function obj_typename(otyp) {
     let buf = nextobuf();
-    let ocl = cptr.add(objects, otyp, 120);
-    let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), 16));
-    let dn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), 16, $objdescr_oc_descr));
+    let ocl = cptr.add(objects, otyp, $sizeof_objclass);
+    let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), $sizeof_objdescr));
+    let dn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr));
     let un = cptr.ldPtro(ocl, $objclass_oc_uname);
     let nn = (cptr.ldI32o(ocl, $objclass_oc_name_known) & 1) | 0;
+
     if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI)) {
         actualn = Japanese_item_name(otyp, actualn);
         if (otyp == NHC.WOODEN_HARP || otyp == NHC.MAGIC_HARP)
-            dn = __sl5;
+            dn = __s_koto;
     }
+    /* generic items don't have an actual-name; we shouldn't ever be called
+       for those; pacify static analyzer without resorting to impossible() */
     if (!actualn)
-        actualn = (otyp > 0 && otyp < NHC.MAXOCLASSES) ? __sl15 : __sl16;
-    cptr.st1o(buf, 0, 0);
+        actualn = (otyp > 0 && otyp < NHC.MAXOCLASSES) ? __s_generic : __s_object;
+
+    cptr.st1o(buf, 0, 0);  /* redundant */
     switch (cptr.ld1so(ocl, $objclass_oc_class)) {
         case NHC.COIN_CLASS:
-        return cptr.strcpy(buf, actualn);
+        return cptr.strcpy(buf, actualn);  /* "gold piece" */
         case NHC.POTION_CLASS:
-        void cptr.strcpy(buf, __sl17);
+        void cptr.strcpy(buf, __s_potion);
         break;
         case NHC.SCROLL_CLASS:
-        void cptr.strcpy(buf, __sl18);
+        void cptr.strcpy(buf, __s_scroll);
         break;
         case NHC.WAND_CLASS:
-        void cptr.strcpy(buf, __sl19);
+        void cptr.strcpy(buf, __s_wand);
         break;
         case NHC.SPBOOK_CLASS:
         if (otyp != NHC.SPE_NOVEL) {
-            void cptr.strcpy(buf, __sl20);
+            void cptr.strcpy(buf, __s_spellbook);
         } else {
-            void cptr.strcpy(buf, !nn ? __sl21 : __sl22);
+            void cptr.strcpy(buf, !nn ? __s_book : __s_novel);
             nn = 0;
         }
         break;
         case NHC.RING_CLASS:
-        void cptr.strcpy(buf, __sl23);
+        void cptr.strcpy(buf, __s_ring);
         break;
         case NHC.AMULET_CLASS:
         if (nn)
             void cptr.strcpy(buf, actualn);
         else
-            void cptr.strcpy(buf, __sl24);
+            void cptr.strcpy(buf, __s_amulet);
         if (un)
-            xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __sl13, un);
+            xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __s_empty, un);
         if (dn)
-            void cptr.sprintf(eos(buf), __sl25, dn);
+            void cptr.sprintf(eos(buf), __s_sp_lparen_pct_s_rparen, dn);
         return buf;
         case NHC.ARMOR_CLASS:
-        if (cptr.ld1so2(objects, otyp, 120, $objclass_oc_subtyp) == NHC.ARM_GLOVES || cptr.ld1so2(objects, otyp, 120, $objclass_oc_subtyp) == NHC.ARM_BOOTS)
-            void cptr.strcpy(buf, __sl26);
+        if (cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_subtyp) == NHC.ARM_GLOVES || cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_subtyp) == NHC.ARM_BOOTS)
+            void cptr.strcpy(buf, __s_pair_of);
         else if (otyp >= NHC.GRAY_DRAGON_SCALES && otyp <= NHC.YELLOW_DRAGON_SCALES)
-            void cptr.strcpy(buf, __sl27);
+            void cptr.strcpy(buf, __s_set_of);
         // @FallThrough
         ;
         default:
         if (nn) {
             void cptr.strcat(buf, actualn);
-            if ((otyp == NHC.FLINT || (((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_material) & 31) | 0) == NHC.GEMSTONE && (otyp != NHC.DILITHIUM_CRYSTAL && otyp != NHC.RUBY && otyp != NHC.DIAMOND && otyp != NHC.SAPPHIRE && otyp != NHC.BLACK_OPAL && otyp != NHC.EMERALD && otyp != NHC.OPAL))))
-                void cptr.strcat(buf, __sl28);
+            if ((otyp == NHC.FLINT || (((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.GEMSTONE && (otyp != NHC.DILITHIUM_CRYSTAL && otyp != NHC.RUBY && otyp != NHC.DIAMOND && otyp != NHC.SAPPHIRE && otyp != NHC.BLACK_OPAL && otyp != NHC.EMERALD && otyp != NHC.OPAL))))
+                void cptr.strcat(buf, __s_stone);
             if (un)
-                xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __sl13, un);
+                xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __s_empty, un);
             if (dn)
-                void cptr.sprintf(eos(buf), __sl25, dn);
+                void cptr.sprintf(eos(buf), __s_sp_lparen_pct_s_rparen, dn);
         } else {
             void cptr.strcat(buf, dn ? dn : actualn);
             if (cptr.ld1so(ocl, $objclass_oc_class) == NHC.GEM_CLASS)
-                void cptr.strcat(buf, (((cptr.ldI32o(ocl, $objclass_oc_material) & 31) | 0) == NHC.MINERAL) ? __sl28 : __sl29);
+                void cptr.strcat(buf, (((cptr.ldI32o(ocl, $objclass_oc_material) & 31) | 0) == NHC.MINERAL) ? __s_stone : __s_gem);
             if (un)
-                xcalled(buf, NHM.BUFSZ, __sl13, un);
+                xcalled(buf, NHM.BUFSZ, __s_empty, un);
         }
         return buf;
     }
+    /* here for ring/scroll/potion/wand */
     if (nn) {
         if ((cptr.ldI32o(ocl, $objclass_oc_unique) & 1))
-            void cptr.strcpy(buf, actualn);
+            void cptr.strcpy(buf, actualn);  /* avoid spellbook of Book of the Dead */
         else
-            void cptr.sprintf(eos(buf), __sl30, actualn);
+            void cptr.sprintf(eos(buf), __s_of_s, actualn);
     }
     if (un)
-        xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __sl13, un);
+        xcalled(buf, (NHM.BUFSZ - (dn ? (Number(BigInt.asIntN(32, cptr.strlen(dn))) + 3) | 0 : 0)) | 0, __s_empty, un);
     if (dn)
-        void cptr.sprintf(eos(buf), __sl25, dn);
+        void cptr.sprintf(eos(buf), __s_sp_lparen_pct_s_rparen, dn);
     return buf;
 }
 
-/** C ref: objnam.c:298 — @param {CInt} otyp @returns {CPtr} */
+/* less verbose result than obj_typename(); either the actual name
+   or the description (but not both); user-assigned name is ignored */
+/** C ref: objnam.c:298 — @param {CInt} otyp @returns {CPtr<char>} */
 export function simple_typename(otyp) {
     let bufp;
     let pp;
-    let save_uname = cptr.ldPtro2(objects, otyp, 120, $objclass_oc_uname);
-    cptr.stPtro2(objects, otyp, 120, $objclass_oc_uname, null);
+    let save_uname = cptr.ldPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname);
+
+    cptr.stPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname, null);  /* suppress any name given by user */
     bufp = obj_typename(otyp);
-    cptr.stPtro2(objects, otyp, 120, $objclass_oc_uname, save_uname);
-    if ((pp = strstri(bufp, __sl31)) !== null)
-        cptr.st1(pp, 0);
+    cptr.stPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname, save_uname);
+    if ((pp = strstri(bufp, __s_sp_lparen)) !== null)
+        cptr.st1(pp, 0);  /* strip the appended description */
     return bufp;
 }
 
-/** C ref: objnam.c:312 — @param {CInt} otyp @returns {CPtr} */
+/* typename for debugging feedback where data involved might be suspect */
+/** C ref: objnam.c:312 — @param {CInt} otyp @returns {CPtr<char>} */
 export function safe_typename(otyp) {
     let save_nameknown;
     let res = null;
-    if (otyp < NHC.STRANGE_OBJECT || otyp >= NHC.NUM_OBJECTS || !(cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, 120))), 16))) {
+
+    if (otyp < NHC.STRANGE_OBJECT || otyp >= NHC.NUM_OBJECTS || !(cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, $sizeof_objclass))), $sizeof_objdescr))) {
         res = nextobuf();
-        void cptr.sprintf(res, __sl32, otyp);
-        impossible(__sl33, res);
+        void cptr.sprintf(res, __s_glorkum_d, otyp);
+        impossible(__s_safe_typename_s, res);
     } else {
-        save_nameknown = (cptr.ldI32o2(objects, otyp, 120, $objclass_oc_name_known) & 1);
-        cptr.stI32o2(objects, otyp, 120, $objclass_oc_name_known, 1);
+        /* force it to be treated as fully discovered */
+        save_nameknown = (cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known) & 1);
+        cptr.stI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known, 1);
         res = simple_typename(otyp);
-        cptr.stI32o2(objects, otyp, 120, $objclass_oc_name_known, save_nameknown);
+        cptr.stI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known, save_nameknown);
     }
     return res;
 }
 
-/** C ref: objnam.c:333 — @param {CPtr} obj @returns {CInt} */
+/** C ref: objnam.c:333 — @param {CPtr<struct obj>} obj @returns {CInt} */
 export function obj_is_pname(obj) {
     if (!cptr.ld1so(obj, $obj_oartifact) || !has_oname(obj))
         return 0;
@@ -1101,71 +1158,131 @@ export function obj_is_pname(obj) {
     return 1;
 }
 
-/** C ref: objnam.c:347 — @param {CPtr} obj @param {CPtr} func @returns {CPtr} */
+/* Give the name of an object seen at a distance.  Unlike xname/doname,
+   we usually don't want to set dknown if it's not set already. */
+/** C ref: objnam.c:347 — @param {CPtr<struct obj>} obj @param {CPtr} func @returns {CPtr<char>} */
 export function distant_name(obj, func) {
     let str;
     let save_oid;
     let ox = cptr.box(0);
     let oy = cptr.box(0);
+    /*
+     * (r * r): square of the x or y distance;
+     * (r * r) * 2: sum of squares of both x and y distances
+     * (r * r) * 2 - r: instead of a square extending from the hero,
+     * round the corners (so shorter distance imposed for diagonal).
+     *
+     * distu() matrix covering a range of 3+ for one quadrant:
+     *  16 17  -  -  -
+     *   9 10 13 18  -
+     *   4  5  8 13  -
+     *   1  2  5 10 17
+     *   @  1  4  9 16
+     * Theoretical r==1 would yield 1.
+     * r==2 yields 6, functionally equivalent to 5, a knight's jump,
+     * r==3, the xray range of the Eyes of the Overworld, yields 15.
+     */
     let r = (cptr.ldI32o(u, $you_xray_range) > 2) ? cptr.ldI32o(u, $you_xray_range) : 2;
-    let neardist = (Math.imul((Math.imul(r, r)), 2) - r) | 0;
+    let neardist = (Math.imul((Math.imul(r, r)), 2) - r) | 0;  /* same as r*r + r*(r-1) */
+
+    /* setting o_id to 0 prevents xname() from adding T-shirt or apron
+       slogan, Hawaiian shirt motif, or candy wrapper label when called
+       with 'program_state.gameover' set; we want this suppression for
+       html-dump (not implemented in nethack) to prevent object-on-map
+       tooltips from including that extra text; also guards against a
+       potential change to minimal_xname() [indirectly used by attribute
+       disclosure] that propagates o_id rather than leave it 0, and
+       against a potential extra chance to browse the map with getpos()
+       during final disclosure (not currently implemented, nor planned) */
     save_oid = cptr.ldI32o(obj, $obj_o_id);
     if (cptr.ldI32(program_state))
         cptr.stI32o(obj, $obj_o_id, 0);
+
+    /* this maybe-nearby part used to be replicated in multiple callers */
     if (get_obj_location(obj, ox, oy, 0) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), oy.v, 8), ox.v) & NHM.IN_SIGHT) != 0) && (cptr.ld1so(obj, $obj_oartifact) || dist2((ox.v), (oy.v), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= neardist)) {
+        /* side-effects:  treat as having been seen up close;
+           cansee() is True hence hero isn't Blind so if 'func' is
+           the usual doname or xname, obj->dknown will become set
+           and then for an artifact, find_artifact() will be called */
         str = (func)(obj);
     } else {
+        /* prior to 3.6.1, this used to save current blindness state,
+           explicitly set state to hero-is-blind, make the call (which
+           won't set obj->dknown when blind), then restore the saved
+           value; but the Eyes of the Overworld override blindness and
+           would let characters wearing them get obj->dknown set for
+           distant items, so the external flag was added */
         cptr.stI32o(gd, $instance_globals_d_distantname, cptr.ldI32o(gd, $instance_globals_d_distantname) + 1);
         str = (func)(obj);
         cptr.stI32o(gd, $instance_globals_d_distantname, cptr.ldI32o(gd, $instance_globals_d_distantname) + -1);
     }
-    cptr.stI32o(obj, $obj_o_id, save_oid);
+
+    cptr.stI32o(obj, $obj_o_id, save_oid);  /* reset to normal */
+
     return str;
 }
 
-/** C ref: objnam.c:414 — @param {CInt} juice @returns {CPtr} */
+/* convert player specified fruit name into corresponding fruit juice name
+   ("slice of pizza" -> "pizza juice" rather than "slice of pizza juice") */
+/** C ref: objnam.c:414 — @param {CInt} juice @returns {CPtr<char>} */
 export function fruitname(juice) {
     let buf = nextobuf();
-    let fruit_nam = strstri(cptr.add(svp, $instance_globals_saved_p_pl_fruit), __sl34);
+    let fruit_nam = strstri(cptr.add(svp, $instance_globals_saved_p_pl_fruit), __s_of);
+
     if (fruit_nam)
-        fruit_nam = cptr.add(fruit_nam, 4);
+        fruit_nam = cptr.add(fruit_nam, 4);  /* skip past " of " */
     else
-        fruit_nam = cptr.add(svp, $instance_globals_saved_p_pl_fruit);
-    void cptr.sprintf(buf, __sl35, makesingular(fruit_nam), juice ? __sl36 : __sl13);
+        fruit_nam = cptr.add(svp, $instance_globals_saved_p_pl_fruit);  /* use it as is */
+
+    void cptr.sprintf(buf, __s_s_s, makesingular(fruit_nam), juice ? __s_juice : __s_empty);
     return buf;
 }
 
-/** C ref: objnam.c:431 — @param {CInt} indx @returns {CPtr} */
+/* look up a named fruit by index (1..127) */
+/** C ref: objnam.c:431 — @param {CInt} indx @returns {CPtr<struct fruit>} */
 export function fruit_from_indx(indx) {
     let f;
+
     for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf))
         if (cptr.ldI32o(f, $fruit_fid) == indx)
             break;
     return f;
 }
 
-/** C ref: objnam.c:443 — @param {CPtr} fname @param {CInt} exact @param {CPtr} highest_fid @returns {CPtr} */
+/* look up a named fruit by name */
+/** C ref: objnam.c:443 — @param {CPtr<char>} fname @param {CInt} exact @param {CPtr<int>} highest_fid @returns {CPtr<struct fruit>} */
 export function fruit_from_name(fname, exact, highest_fid) {
     let f;
     let tentativef;
     let altfname;
     let k;
+    /*
+     * note: named fruits are case-sensitive...
+     */
+
     if (highest_fid)
         cptr.stI32(highest_fid, 0);
+    /* first try for an exact match */
     for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf))
         if (!strcmp(f, fname))
             return f;
         else if (highest_fid && cptr.ldI32o(f, $fruit_fid) > cptr.ldI32(highest_fid))
             cptr.stI32(highest_fid, cptr.ldI32o(f, $fruit_fid));
+
+    /* didn't match as-is; if caller is willing to accept a prefix
+       match, try to find one; we want to find the longest prefix that
+       matches, not the first */
     if (!exact) {
         tentativef = null;
         for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf)) {
-            k = Strlen_(f, __sl37, 470);
+            k = Strlen_(f, __s_fruit_from_name, 470);
             if (!cptr.strncmp(f, fname, BigInt(k >>> 0)) && (!cptr.ld1so(fname, k) || cptr.ld1so(fname, k) == 32) && (!tentativef || BigInt(k >>> 0) > cptr.strlen(tentativef)))
                 tentativef = f;
         }
         f = tentativef;
     }
+    /* if we still don't have a match, try singularizing the target;
+       for exact match, that's trivial, but for prefix, it's hard */
     if (!f) {
         altfname = makesingular(fname);
         for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf)) {
@@ -1177,18 +1294,29 @@ export function fruit_from_name(fname, exact, highest_fid) {
     if (!f && !exact) {
         let fnamebuf = new Uint8Array(256);
         let p;
-        let fname_k = Strlen_(fname, __sl37, 490);
+        let fname_k = Strlen_(fname, __s_fruit_from_name, 490);  /* length of assumed plural fname */
+
         tentativef = null;
         for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf)) {
-            k = Strlen_(f, __sl37, 494);
+            k = Strlen_(f, __s_fruit_from_name, 494);
+            /* reload fnamebuf[] each iteration in case it gets modified;
+               there's no need to recalculate fname_k */
             void cptr.strcpy(cptr.decay(fnamebuf), fname);
+            /* bug? if singular of fname is longer than plural,
+               failing the 'fname_k > k' test could skip a viable
+               candidate; unfortunately, we can't singularize until
+               after stripping off trailing stuff and we can't get
+               accurate fname_k until fname has been singularized;
+               compromise and use 'fname_k >= k' instead of '>',
+               accepting 1 char length discrepancy without risking
+               false match (I hope...) */
             if (fname_k >= k && (p = cptr.strchr(cptr.add(cptr.decay(fnamebuf), k, 1), 32)) !== null) {
-                cptr.st1(p, 0);
+                cptr.st1(p, 0);  /* truncate at 1st space past length of f->fname */
                 altfname = makesingular(cptr.decay(fnamebuf));
-                k = Strlen_(altfname, __sl37, 509);
+                k = Strlen_(altfname, __s_fruit_from_name, 509);  /* actually revised 'fname_k' */
                 if (!strcmp(f, altfname) && (!tentativef || BigInt(k >>> 0) > cptr.strlen(tentativef)))
                     tentativef = f;
-                releaseobuf(altfname);
+                releaseobuf(altfname);  /* avoid churning through all obufs */
             }
         }
         f = tentativef;
@@ -1196,6 +1324,7 @@ export function fruit_from_name(fname, exact, highest_fid) {
     return f;
 }
 
+/* sort the named-fruit linked list by fruit index number */
 /** C ref: objnam.c:523 — @param {CInt} forward */
 export function reorder_fruit(forward) {
     let f;
@@ -1203,21 +1332,27 @@ export function reorder_fruit(forward) {
     let i;
     let j;
     let k = 128;
+
     for (i = 0; i < k; ++i)
         cptr.stPtro(allfr, i, null, 8);
     for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf)) {
+        /* without sanity checking, this would reduce to 'allfr[f->fid]=f' */
         j = cptr.ldI32o(f, $fruit_fid);
         if (j < 1 || j >= k) {
-            impossible(__sl38, j);
-            return;
+            impossible(__s_reorder_fruit_fruit_index_d_out_of_range, j);
+            return;  /* don't sort after all; should never happen... */
         } else if (cptr.ldPtro(allfr, j, 8)) {
-            impossible(__sl39, j);
+            impossible(__s_reorder_fruit_duplicate_fruit_index_d, j);
             return;
         }
         cptr.stPtro(allfr, j, f, 8);
     }
-    cptr.stPtro(gf, $instance_globals_f_ffruit, null);
+    cptr.stPtro(gf, $instance_globals_f_ffruit, null);  /* reset linked list; we're rebuilding it from scratch */
+    /* slot [0] will always be empty; must start 'i' at 1 to avoid
+       [k - i] being out of bounds during first iteration */
     for (i = 1; i < k; ++i) {
+        /* for forward ordering, go through indices from high to low;
+           for backward ordering, go from low to high */
         j = forward ? ((k - i) | 0) : i;
         if (cptr.ldPtro(allfr, j, 8)) {
             cptr.stPtro(cptr.ldPtro(allfr, j, 8), $fruit_nextf, cptr.ldPtro(gf, $instance_globals_f_ffruit));
@@ -1226,58 +1361,77 @@ export function reorder_fruit(forward) {
     }
 }
 
-/** C ref: objnam.c:558 — @param {CPtr} buf @param {CInt} siz @param {CPtr} pfx @param {CPtr} sfx */
+/* add "<pfx> called <sfx>" to end of buf, truncating if necessary */
+/** C ref: objnam.c:558 — @param {CPtr<char>} buf @param {CInt} siz @param {CPtr<char>} pfx @param {CPtr<char>} sfx */
 function xcalled(buf, siz, pfx, sfx) {
     let bufsiz = (((siz - 1) | 0) - Number(BigInt.asIntN(32, cptr.strlen(buf)))) | 0;
     let pfxlen = Number(BigInt.asIntN(32, (BigInt.asUintN(64, BigInt.asUintN(64, cptr.strlen(pfx) + 9n) - 1n))));
+
     if (pfxlen > bufsiz)
-        panic(__sl40, pfxlen, bufsiz);
-    void cptr.sprintf(eos(buf), __sl41, pfx, (bufsiz - pfxlen) | 0, sfx);
+        panic(__s_xcalled_not_enough_room_for_prefix_d_d, pfxlen, bufsiz);
+
+    void cptr.sprintf(eos(buf), __s_s_called_s, pfx, (bufsiz - pfxlen) | 0, sfx);
 }
 
-/** C ref: objnam.c:575 — @param {CPtr} obj @returns {CPtr} */
+/** C ref: objnam.c:575 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function xname(obj) {
     return xname_flags(obj, NHM.CXN_NORMAL);
 }
 
 let __static_xname_flags_xname_full = 0; /** C ref: objnam.c:1016 — int (function-static) */
 
-/** C ref: objnam.c:581 — @param {CPtr} obj @param {CUInt} cxn_flags @returns {CPtr} */
+/** C ref: objnam.c:581 — @param {CPtr<struct obj>} obj @param {CUInt} cxn_flags @returns {CPtr<char>} */
 function xname_flags(obj, cxn_flags) {
     let buf, obufp, buf_end, buf_eos, bufspaceleft;
     let __go_nameit = false;
     __skip_nameit: {
         let typ = cptr.ldI16o(obj, $obj_otyp);
-        let ocl = cptr.add(objects, typ, 120);
+        let ocl = cptr.add(objects, typ, $sizeof_objclass);
         let nn = (cptr.ldI32o(ocl, $objclass_oc_name_known) & 1) | 0;
         let omndx = cptr.ldI32o(obj, $obj_corpsenm);
-        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), 16));
-        let dn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), 16, $objdescr_oc_descr));
+        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), $sizeof_objdescr));
+        let dn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr));
         let un = cptr.ldPtro(ocl, $objclass_oc_uname);
         let pluralize = schar(((cptr.ldI64o(obj, $obj_quan) != 1n) && !((cxn_flags & NHM.CXN_SINGULAR) >>> 0) ? 1 : 0));
         let known;
         let dknown;
         let bknown;
+
         cptr.stPtro(gx, $instance_globals_x_xnamep, nextobuf());
-        buf = cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), 80);
-        buf_end = cptr.add(cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), NHM.BUFSZ), -(1));
+        /* set up primary work buffer; the first 'PREFIX' bytes are set
+           aside for use by doname() */
+        buf = cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), 80);  /* leave room for "17 -3 " */
+        buf_end = cptr.add(cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), NHM.BUFSZ), -(1));  /* last byte within the obuf[] */
         cptr.st1o(buf, 0, 0);
-        buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
+        buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));  /* set buf_eos and bufspaceleft */
+
         if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI)) {
             actualn = Japanese_item_name(typ, actualn);
             if (typ == NHC.WOODEN_HARP || typ == NHC.MAGIC_HARP)
-                dn = __sl5;
+                dn = __s_koto;
         }
+        /* generic items don't have an actual-name; we shouldn't ever be called
+           for those; pacify static analyzer without resorting to impossible() */
         if (!actualn)
-            actualn = (typ > 0 && typ < NHC.MAXOCLASSES) ? __sl15 : __sl16;
+            actualn = (typ > 0 && typ < NHC.MAXOCLASSES) ? __s_generic : __s_object;
+        /* 3.6.2: this used to be part of 'dn's initialization, but it
+           needs to come after possibly overriding 'actualn' */
         if (!dn)
             dn = actualn;
+
+        /*
+         * clean up known when it's tied to oc_name_known, eg after AD_DRIN
+         * This is only required for unique objects since the article
+         * printed for the object is tied to the combination of the two
+         * and printing the wrong article gives away information.
+         */
         if (!nn && (cptr.ldI32o(ocl, $objclass_oc_uses_known) & 1) | 0 && (cptr.ldI32o(ocl, $objclass_oc_unique) & 1) | 0)
             cptr.stI32o(obj, $obj_known, 0);
         if (!Blind() && !cptr.ldI32o(gd, $instance_globals_d_distantname))
             observe_object(obj);
         if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_CLERIC))
-            cptr.stI32o(obj, $obj_bknown, 1);
+            cptr.stI32o(obj, $obj_bknown, 1);  /* avoid set_bknown() to bypass update_inventory() */
+
         if (cptr.ldI32o(iflags, $instance_flags_override_ID)) {
             known = (dknown = (bknown = 1));
             nn = 1;
@@ -1286,34 +1440,65 @@ function xname_flags(obj, cxn_flags) {
             dknown = schar((cptr.ldI32o(obj, $obj_dknown) & 1));
             bknown = schar((cptr.ldI32o(obj, $obj_bknown) & 1));
         }
+
+        /*
+         * Maybe find a previously unseen artifact.
+         *
+         * Assumption 1: if an artifact object is being formatted, it is
+         *  being shown to the hero (on floor, or looking into container,
+         *  or probing a monster, or seeing a monster wield it).
+         * Assumption 2: if in a pile that has been stepped on, the
+         *  artifact won't be noticed for cases where the pile to too deep
+         *  to be auto-shown, unless the player explicitly looks at that
+         *  spot (via ':').  Might need to make an exception somehow (at
+         *  the point where the decision whether to auto-show gets made?)
+         *  when an artifact is on the top of the pile.
+         * Assumption 3: since this is used for livelog events, not being
+         *  100% correct won't negatively affect the player's current game.
+         *
+         * We use the real obj->dknown rather than the override_ID variant
+         * so that wizard-mode ^I doesn't cause a not-yet-seen artifact in
+         * inventory (picked up while blind, still blind) to become found.
+         */
         if (cptr.ld1so(obj, $obj_oartifact) && (cptr.ldI32o(obj, $obj_dknown) & 1) | 0)
             find_artifact(obj);
+
         if (obj_is_pname(obj))
             { __go_nameit = true; break __skip_nameit; }
+
+        /* Some classes use strcpy(buf, something)+strcat(buf, otherthing).
+           In those cases, ConcUpdate() is needed in between if Concat()
+           will be used for the strcat() part.  Other classes just use
+           strcpy(buf, something) and the ConcUpdate() can be deferred
+           until after the switch. */
         switch (cptr.ld1so(obj, $obj_oclass)) {
             case NHC.AMULET_CLASS:
             if (!dknown)
-                void cptr.strcpy(buf, __sl24);
+                void cptr.strcpy(buf, __s_amulet);
             else if (typ == NHC.AMULET_OF_YENDOR || typ == NHC.FAKE_AMULET_OF_YENDOR)
+                /* each must be identified individually */
                 void cptr.strcpy(buf, known ? actualn : dn);
             else if (nn)
                 void cptr.strcpy(buf, actualn);
             else if (un)
-                xcalled(buf, 176, __sl24, un);
+                xcalled(buf, 176, __s_amulet, un);
             else
-                void cptr.sprintf(buf, __sl42, dn);
+                void cptr.sprintf(buf, __s_s_amulet, dn);
             break;
             case NHC.WEAPON_CLASS:
             if (is_poisonable(obj) && (cptr.ldI32o(obj, $obj_otrapped) & 1) | 0)
-                void cptr.strcpy(buf, __sl43);
+                void cptr.strcpy(buf, __s_poisoned);
             // @FallThrough
             ;
             case NHC.VENOM_CLASS:
             case NHC.TOOL_CLASS:
+            /* note: lenses or towel prefix would overwrite poisoned weapon
+               prefix if both were simultaneously possible, but they aren't */
             if (typ == NHC.LENSES)
-                void cptr.strcpy(buf, __sl26);
+                void cptr.strcpy(buf, __s_pair_of);
             else if (is_wet_towel(obj))
-                void cptr.strcpy(buf, (cptr.ld1so(obj, $obj_spe) < 3) ? __sl44 : __sl45);
+                void cptr.strcpy(buf, (cptr.ld1so(obj, $obj_spe) < 3) ? __s_moist : __s_wet);
+
             if (!dknown)
                 void cptr.strcat(buf, dn);
             else if (nn)
@@ -1323,37 +1508,42 @@ function xname_flags(obj, cxn_flags) {
             else
                 void cptr.strcat(buf, dn);
             buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
+
             if (typ == NHC.FIGURINE && omndx != NHC.NON_PM) {
-                let anbuf = new Uint8Array(10);
+                let anbuf = new Uint8Array(10);  /* [4] would be enough: 'a','n',' ','\0' */
                 let pm_name = obj_pmname(obj);
                 {
-                    nh_snprintf(__sl46, 713, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl47, just_an(cptr.decay(anbuf), pm_name), pm_name);
+
+                    nh_snprintf(__s_xname_flags, 713, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_of_s_s, just_an(cptr.decay(anbuf), pm_name), pm_name);
                     buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                 }
             } else if (is_wet_towel(obj)) {
                 if (wizard())
                     {
-                        nh_snprintf(__sl46, 716, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl48, cptr.ld1so(obj, $obj_spe));
+                        nh_snprintf(__s_xname_flags, 716, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_sp_lparen_pct_d_rparen, cptr.ld1so(obj, $obj_spe));
                         buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                     }
             }
             break;
             case NHC.ARMOR_CLASS:
+            /* depends on order of the dragon scales objects */
             if (typ >= NHC.GRAY_DRAGON_SCALES && typ <= NHC.YELLOW_DRAGON_SCALES) {
-                void cptr.sprintf(buf, __sl49, actualn);
+                void cptr.sprintf(buf, __s_set_of_s, actualn);
                 break;
             } else if (is_boots(obj) || is_gloves(obj)) {
-                void cptr.strcpy(buf, __sl26);
+                void cptr.strcpy(buf, __s_pair_of);
+                /*FALLTHRU*/
             } else if (is_shield(obj) && !dknown) {
                 if (cptr.ldI16o(obj, $obj_otyp) >= NHC.ELVEN_SHIELD && cptr.ldI16o(obj, $obj_otyp) <= NHC.ORCISH_SHIELD) {
-                    void cptr.strcpy(buf, __sl50);
+                    void cptr.strcpy(buf, __s_shield);
                     break;
                 } else if (cptr.ldI16o(obj, $obj_otyp) == NHC.SHIELD_OF_REFLECTION) {
-                    void cptr.strcpy(buf, __sl51);
+                    void cptr.strcpy(buf, __s_smooth_shield);
                     break;
                 }
             }
             buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
+
             if (nn)
                 {
                     void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), actualn, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
@@ -1368,18 +1558,31 @@ function xname_flags(obj, cxn_flags) {
                 }
             break;
             case NHC.FOOD_CLASS:
+            /* we could include partly-eaten-hack on fruit but don't need to */
             if (typ == NHC.SLIME_MOLD) {
                 let f = fruit_from_indx(cptr.ld1so(obj, $obj_spe));
+
                 if (!f) {
-                    impossible(__sl52, cptr.ld1so(obj, $obj_spe));
-                    void cptr.strcpy(buf, __sl53);
+                    impossible(__s_bad_fruit_d, cptr.ld1so(obj, $obj_spe));
+                    void cptr.strcpy(buf, __s_fruit);
                 } else {
+                    /* fruit name is limited in length to PL_FSIZ; converting
+                       to/from singular/plural might increase the length a
+                       little but not enough to pose a risk of overflowing buf */
                     void cptr.strcpy(buf, f);
                     if (pluralize) {
+                        /* ick: already pluralized fruit names are allowed--we
+                           want to try to avoid adding a redundant plural suffix;
+                           double ick: makesingular() and makeplural() each use
+                           and return an obuf but we don't want any particular
+                           xname() call to consume more than one of those
+                           [note: makeXXX() will be fully evaluated and done with
+                           'buf' before strcpy() touches its output buffer] */
                         void cptr.strcpy(buf, obufp = makesingular(buf));
                         releaseobuf(obufp);
                         void cptr.strcpy(buf, obufp = makeplural(buf));
                         releaseobuf(obufp);
+
                         pluralize = 0;
                     }
                 }
@@ -1387,18 +1590,23 @@ function xname_flags(obj, cxn_flags) {
             }
             if (cptr.ld1so(iflags, $instance_flags_partly_eaten_hack) && cptr.ldI32o(obj, $obj_oeaten)) {
                 {
-                    void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), __sl54, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
+                    /* normally "partly eaten" is supplied by doname() when
+                       appropriate and omitted by xname(); shrink_glob() wants
+                       it but uses Yname2() -> yname() -> xname() rather than
+                       doname() so we've added an external flag to request it */
+                    void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), __s_partly_eaten, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
                     buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                 }
             }
             if ((cptr.ldI32o(obj, $obj_globby) & 1)) {
                 {
-                    nh_snprintf(__sl46, 788, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl55, (cptr.ldI32o(obj, $obj_owt) <= 100) ? __sl56 : ((cptr.ldI32o(obj, $obj_owt) <= 300) ? __sl57 : ((cptr.ldI32o(obj, $obj_owt) <= 500) ? __sl58 : __sl59)), actualn);
+                    nh_snprintf(__s_xname_flags, 788, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_s_s__2, (cptr.ldI32o(obj, $obj_owt) <= 100) ? __s_small : ((cptr.ldI32o(obj, $obj_owt) <= 300) ? __s_medium : ((cptr.ldI32o(obj, $obj_owt) <= 500) ? __s_large : __s_very_large)), actualn);
                     buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                 }
                 break;
             }
             {
+
                 void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), actualn, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
                 buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
             }
@@ -1413,143 +1621,178 @@ function xname_flags(obj, cxn_flags) {
             if (typ == NHC.STATUE && omndx != NHC.NON_PM) {
                 let anbuf = new Uint8Array(10);
                 let statue_pmname = obj_pmname(obj);
-                nh_snprintf(__sl46, 813, buf, bufspaceleft, __sl60, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) && (cptr.ld1so(obj, $obj_spe) & NHM.CORPSTAT_HISTORIC) != 0) ? __sl61 : __sl13, actualn, ((cptr.ldU64o((cptr.add(mons, omndx, 96)), $permonst_mflags2) & 524288n) != 0n) ? __sl13 : (the_unique_pm(cptr.add(mons, omndx, 96)) ? __sl62 : just_an(cptr.decay(anbuf), statue_pmname)), statue_pmname);
+
+                nh_snprintf(__s_xname_flags, 813, buf, bufspaceleft, __s_s_s_of_s_s, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) && (cptr.ld1so(obj, $obj_spe) & NHM.CORPSTAT_HISTORIC) != 0) ? __s_historic : __s_empty, actualn, ((cptr.ldU64o((cptr.add(mons, omndx, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n) ? __s_empty : (the_unique_pm(cptr.add(mons, omndx, $sizeof_permonst)) ? __s_the : just_an(cptr.decay(anbuf), statue_pmname)), statue_pmname);
             } else if (typ == NHC.BOULDER && cptr.ldI32o(obj, $obj_corpsenm) == 1) {
-                void cptr.strcat(cptr.strcpy(buf, __sl63), actualn);
+                /* sometimes caller wants "next boulder" rather than just
+                   "boulder" (when pushing against a pile of more than one);
+                   originally we just tested for non-0 but checking for 1 is
+                   more robust because the default value for that overloaded
+                   field (obj->corpsenm) is NON_PM (-1) rather than 0 */
+                void cptr.strcat(cptr.strcpy(buf, __s_next), actualn);  /* "next boulder" */
+                /* once "next boulder" occurs, subsequent messages should just
+                   use ordinary "boulder" */
                 cptr.stI32o(obj, $obj_corpsenm, 0);
             } else {
-                void cptr.strcpy(buf, actualn);
+                void cptr.strcpy(buf, actualn);  /* "boulder" or "statue" */
             }
             break;
             case NHC.BALL_CLASS:
-            void cptr.sprintf(buf, __sl64, (cptr.ldI32o(obj, $obj_owt) > cptr.ldI32o(ocl, $objclass_oc_weight)) ? __sl65 : __sl13);
+            void cptr.sprintf(buf, __s_sheavy_iron_ball, (cptr.ldI32o(obj, $obj_owt) > cptr.ldI32o(ocl, $objclass_oc_weight)) ? __s_very : __s_empty);
             break;
             case NHC.POTION_CLASS:
             if (dknown && (cptr.ldI32o(obj, $obj_oeroded) & 3) | 0)
-                void cptr.strcpy(buf, __sl66);
+                void cptr.strcpy(buf, __s_diluted);
             if (nn || un || !dknown) {
-                void cptr.strcat(buf, __sl17);
+                void cptr.strcat(buf, __s_potion);
                 if (!dknown)
                     break;
                 if (nn) {
-                    void cptr.strcat(buf, __sl34);
+                    void cptr.strcat(buf, __s_of);
                     if (typ == NHC.POT_WATER && bknown && ((cptr.ldI32o(obj, $obj_blessed) & 1) | 0 || (cptr.ldI32o(obj, $obj_cursed) & 1) | 0)) {
-                        void cptr.strcat(buf, (cptr.ldI32o(obj, $obj_blessed) & 1) | 0 ? __sl67 : __sl68);
+                        void cptr.strcat(buf, (cptr.ldI32o(obj, $obj_blessed) & 1) | 0 ? __s_holy : __s_unholy);
                     }
                     void cptr.strcat(buf, actualn);
                 } else {
-                    xcalled(buf, 176, __sl13, un);
+                    xcalled(buf, 176, __s_empty, un);
                 }
             } else {
                 void cptr.strcat(buf, dn);
-                void cptr.strcat(buf, __sl69);
+                void cptr.strcat(buf, __s_potion__2);
             }
             break;
             case NHC.SCROLL_CLASS:
-            void cptr.strcpy(buf, __sl18);
+            void cptr.strcpy(buf, __s_scroll);
             if (!dknown)
                 break;
             if (nn) {
-                void cptr.strcat(buf, __sl34);
+                void cptr.strcat(buf, __s_of);
                 void cptr.strcat(buf, actualn);
             } else if (un) {
-                xcalled(buf, 176, __sl13, un);
+                xcalled(buf, 176, __s_empty, un);
             } else if ((cptr.ldI32o(ocl, $objclass_oc_magic) & 1)) {
-                void cptr.strcat(buf, __sl70);
+                void cptr.strcat(buf, __s_labeled);
                 void cptr.strcat(buf, dn);
             } else {
                 void cptr.strcpy(buf, dn);
-                void cptr.strcat(buf, __sl71);
+                void cptr.strcat(buf, __s_scroll__2);
             }
             break;
             case NHC.WAND_CLASS:
             if (!dknown)
-                void cptr.strcpy(buf, __sl19);
+                void cptr.strcpy(buf, __s_wand);
             else if (nn)
-                void cptr.sprintf(buf, __sl72, actualn);
+                void cptr.sprintf(buf, __s_wand_of_s, actualn);
             else if (un)
-                xcalled(buf, 176, __sl19, un);
+                xcalled(buf, 176, __s_wand, un);
             else
-                void cptr.sprintf(buf, __sl73, dn);
+                void cptr.sprintf(buf, __s_s_wand, dn);
             break;
             case NHC.SPBOOK_CLASS:
             if (typ == NHC.SPE_NOVEL) {
                 if (!dknown)
-                    void cptr.strcpy(buf, __sl21);
+                    void cptr.strcpy(buf, __s_book);
                 else if (nn)
                     void cptr.strcpy(buf, actualn);
                 else if (un)
-                    xcalled(buf, 176, __sl22, un);
+                    xcalled(buf, 176, __s_novel, un);
                 else
-                    void cptr.sprintf(buf, __sl74, dn);
+                    void cptr.sprintf(buf, __s_s_book, dn);
                 break;
+                /* end of tribute */
             } else if (!dknown) {
-                void cptr.strcpy(buf, __sl20);
+                void cptr.strcpy(buf, __s_spellbook);
             } else if (nn) {
                 if (typ != NHC.SPE_BOOK_OF_THE_DEAD)
-                    void cptr.strcpy(buf, __sl75);
+                    void cptr.strcpy(buf, __s_spellbook_of);
                 void cptr.strcat(buf, actualn);
             } else if (un) {
-                xcalled(buf, 176, __sl20, un);
+                xcalled(buf, 176, __s_spellbook, un);
             } else
-                void cptr.sprintf(buf, __sl76, dn);
+                void cptr.sprintf(buf, __s_s_spellbook, dn);
             break;
             case NHC.RING_CLASS:
             if (!dknown)
-                void cptr.strcpy(buf, __sl23);
+                void cptr.strcpy(buf, __s_ring);
             else if (nn)
-                void cptr.sprintf(buf, __sl77, actualn);
+                void cptr.sprintf(buf, __s_ring_of_s, actualn);
             else if (un)
-                xcalled(buf, 176, __sl23, un);
+                xcalled(buf, 176, __s_ring, un);
             else
-                void cptr.sprintf(buf, __sl78, dn);
+                void cptr.sprintf(buf, __s_s_ring, dn);
             break;
             case NHC.GEM_CLASS:
             {
-                let rock = (((cptr.ldI32o(ocl, $objclass_oc_material) & 31) | 0) == NHC.MINERAL) ? __sl79 : __sl80;
+                let rock = (((cptr.ldI32o(ocl, $objclass_oc_material) & 31) | 0) == NHC.MINERAL) ? __s_stone__2 : __s_gem__2;
+
                 if (!dknown) {
                     void cptr.strcpy(buf, rock);
                 } else if (!nn) {
                     if (un)
                         xcalled(buf, 176, rock, un);
                     else
-                        void cptr.sprintf(buf, __sl55, dn, rock);
+                        void cptr.sprintf(buf, __s_s_s__2, dn, rock);
                 } else {
                     void cptr.strcpy(buf, actualn);
-                    if ((typ == NHC.FLINT || (((cptr.ldI32o2(objects, typ, 120, $objclass_oc_material) & 31) | 0) == NHC.GEMSTONE && (typ != NHC.DILITHIUM_CRYSTAL && typ != NHC.RUBY && typ != NHC.DIAMOND && typ != NHC.SAPPHIRE && typ != NHC.BLACK_OPAL && typ != NHC.EMERALD && typ != NHC.OPAL))))
-                        void cptr.strcat(buf, __sl28);
+                    if ((typ == NHC.FLINT || (((cptr.ldI32o2(objects, typ, $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.GEMSTONE && (typ != NHC.DILITHIUM_CRYSTAL && typ != NHC.RUBY && typ != NHC.DIAMOND && typ != NHC.SAPPHIRE && typ != NHC.BLACK_OPAL && typ != NHC.EMERALD && typ != NHC.OPAL))))
+                        void cptr.strcat(buf, __s_stone);
                 }
                 break;
-            }
+            }  /* gem */
             default:
-            void cptr.sprintf(buf, __sl81, cptr.ld1so(obj, $obj_oclass), typ, cptr.ld1so(obj, $obj_spe));
-            impossible(__sl82, buf);
+            void cptr.sprintf(buf, __s_glorkum_d_d_d, cptr.ld1so(obj, $obj_oclass), typ, cptr.ld1so(obj, $obj_spe));
+            impossible(__s_xname_flags_s, buf);
             break;
-        }
+        }  /* switch */
+
+        /* check whether we've already gone out of bounds of the obuf[], prior
+           to pluralization and end-of-game shirt and apron text */
         buf_eos = eos(buf);
         if (cptr.cmp(buf_eos, buf_end) > 0) {
-            paniclog(__sl83, cptr.memcpy(cptr.add(buf, -(6)), __sl84, 6n));
-            panic(__sl85);
+            /* PREFIX is bigger than 6 so there will always be room within the
+               obuf[] in front of buf to insert "buf[]="; strncpy(,,N) doesn't
+               add '\0' terminator unless fewer than N chars are copied, which
+               is what we want, but gcc complains about that so use memcpy() */
+            paniclog(__s_xname, cptr.memcpy(cptr.add(buf, -(6)), __s_buf, 6n));
+            panic(__s_xname_buffer_overflow_before_appending);
+            /*NOTREACHED*/
         }
         bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
+
+        /* if the name should be plural, do that now, after overflow check;
+           it could make buf[] become shorter */
         if (pluralize) {
             obufp = makeplural(buf);
-            cptr.st1o(buf, 0, 0);
-            buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
+            cptr.st1o(buf, 0, 0);  /* replace the whole string */
+            buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));  /* reset buf_eos and bufspaceleft */
             {
                 void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), obufp, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
                 buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
             }
             releaseobuf(obufp);
         }
+
+        /* give some extra information when game is over; for end-of-game
+           attribute disclosure in wizard mode, ysimple_name() calls
+           minimal_xname() which passes us a dummy object with o_id==0;
+           tshirt_text(), apron_text(), and so forth base their result on
+           o_id and would give inconsistent information compared to what
+           just got shown for inventory disclosure; fortunately, we want to
+           avoid the 'with text' part of
+               "You were acid resistant because of your alchemy smock \
+               with text \"Kiss the cook\"."
+           when disclosing attributes anyway */
         if (cptr.ldI32(program_state) && cptr.ldI32o(obj, $obj_o_id) && bufspaceleft > 0n) {
             let lbl;
             let tmpbuf = new Uint8Array(256);
+
+            /* disclose without breaking illiterate conduct, but mainly tip off
+               players who aren't aware that something readable is present */
             switch (cptr.ldI16o(obj, $obj_otyp)) {
                 case NHC.T_SHIRT:
                 case NHC.ALCHEMY_SMOCK:
                 {
-                    nh_snprintf(__sl46, 982, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl86, (cptr.ldI16o(obj, $obj_otyp) == NHC.T_SHIRT) ? tshirt_text(obj, cptr.decay(tmpbuf)) : apron_text(obj, cptr.decay(tmpbuf)));
+                    nh_snprintf(__s_xname_flags, 982, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_with_text_s, (cptr.ldI16o(obj, $obj_otyp) == NHC.T_SHIRT) ? tshirt_text(obj, cptr.decay(tmpbuf)) : apron_text(obj, cptr.decay(tmpbuf)));
                     buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                 }
                 break;
@@ -1557,13 +1800,13 @@ function xname_flags(obj, cxn_flags) {
                 lbl = candy_wrapper_text(obj);
                 if (cptr.ld1s(lbl))
                     {
-                        nh_snprintf(__sl46, 987, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl87, lbl);
+                        nh_snprintf(__s_xname_flags, 987, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_labeled_s, lbl);
                         buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                     }
                 break;
                 case NHC.HAWAIIAN_SHIRT:
                 {
-                    nh_snprintf(__sl46, 991, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __sl88, an(hawaiian_motif(obj, cptr.decay(tmpbuf))));
+                    nh_snprintf(__s_xname_flags, 991, cptr.add(buf_eos, -(0)), BigInt.asUintN(64, bufspaceleft + 0n), __s_with_s_motif, an(hawaiian_motif(obj, cptr.decay(tmpbuf))));
                     buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
                 }
                 break;
@@ -1571,138 +1814,202 @@ function xname_flags(obj, cxn_flags) {
                 break;
             }
         }
+
         if (has_oname(obj) && dknown) {
             {
-                void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), __sl89, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), __s_named, BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
                 buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
             }
             __go_nameit = true; break __skip_nameit;
         }
     }
     if (__go_nameit) {
-        obufp = eos(buf);
+        /*assert(has_oname(obj));*/
+        obufp = eos(buf);  /* remember where the name will start */
         {
             void __builtin___strncat_chk(cptr.add(buf_eos, -(0)), (cptr.ldPtr(cptr.ldPtro((obj), $obj_oextra))), BigInt.asUintN(64, bufspaceleft + 0n), __builtin_object_size(cptr.add(buf_eos, -(0)), 1));
             buf_eos = eos(buf), bufspaceleft = BigInt.asUintN(64, (cptr.diff(buf_end, buf_eos)));
         }
-        if (cptr.ld1so(obj, $obj_oartifact) && !cptr.strncmp(obufp, __sl90, 4n))
-            cptr.st1(obufp, lowc(cptr.ld1s(obufp)));
+        /* downcase "The" in "<quest-artifact-item> named The ..." */
+        if (cptr.ld1so(obj, $obj_oartifact) && !cptr.strncmp(obufp, __s_the__2, 4n))
+            cptr.st1(obufp, lowc(cptr.ld1s(obufp)));  /* change 'T' in "The " to 't' */
     }
-    if (!strncmpi(buf, __sl62, 4))
+
+    if (!strncmpi(buf, __s_the, 4))
         buf = cptr.add(buf, 4);
-    buf_eos = eos(buf);
+
+    buf_eos = eos(buf);  /* pointer to '\0' terminator somewhere in obuf[] */
     if (cptr.cmp(buf_eos, buf_end) >= 0) {
+
+        /* we want a record of something needing more buffer space than
+           anticipated; since we aren't panicking here, this could happen
+           repeatedly and we don't want to spam the paniclog file */
         if (!__static_xname_flags_xname_full++) {
-            paniclog(__sl83, cptr.memcpy(cptr.add(buf, -(6)), __sl84, 6n));
-            paniclog(__sl83, __sl91);
+            paniclog(__s_xname, cptr.memcpy(cptr.add(buf, -(6)), __s_buf, 6n));
+            /* 'PREFIX' ought to be 'PREFIX+4' if we stripped leading "the" */
+            paniclog(__s_xname, __s_used_up_entire_obuf_prefix_bufsx_1);
         }
     }
+
     return buf;
 }
 
-/** C ref: objnam.c:1038 — @param {CPtr} obj @returns {CPtr} */
+/* similar to simple_typename but minimal_xname operates on a particular
+   object rather than its general type; it formats the most basic info:
+     potion                     -- if description not known
+     brown potion               -- if oc_name_known not set
+     potion of object detection -- if discovered
+ */
+/** C ref: objnam.c:1038 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 function minimal_xname(obj) {
     let bufp;
     let bareobj = cptr.alloc(216);
     let saveobcls = cptr.alloc(120);
     let otyp = cptr.ldI16o(obj, $obj_otyp);
-    cptr.stPtro(saveobcls, $objclass_oc_uname, cptr.ldPtro2(objects, otyp, 120, $objclass_oc_uname));
-    cptr.stPtro2(objects, otyp, 120, $objclass_oc_uname, null);
-    cptr.stI32o(saveobcls, $objclass_oc_name_known, (cptr.ldI32o2(objects, otyp, 120, $objclass_oc_name_known) & 1));
+
+    /* suppress user-supplied name */
+    cptr.stPtro(saveobcls, $objclass_oc_uname, cptr.ldPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname));
+    cptr.stPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname, null);
+    /* suppress actual name if object's description is unknown */
+    cptr.stI32o(saveobcls, $objclass_oc_name_known, (cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known) & 1));
     if (cptr.ldI32o(iflags, $instance_flags_override_ID))
-        cptr.stI32o2(objects, otyp, 120, $objclass_oc_name_known, 1);
+        cptr.stI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known, 1);
     else if (!(cptr.ldI32o(obj, $obj_dknown) & 1))
-        cptr.stI32o2(objects, otyp, 120, $objclass_oc_name_known, 0);
+        cptr.stI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known, 0);
+
+    /* caveat: this makes a lot of assumptions about which fields
+       are required in order for xname() to yield a sensible result */
     cptr.memcpy(bareobj, cg, 216);
     cptr.stI16o(bareobj, $obj_otyp, i16(otyp));
     cptr.st1o(bareobj, $obj_oclass, cptr.ld1so(obj, $obj_oclass));
+    /* not observe_object, either the hero observed the object already or this
+       is overriding ID and shouldn't discover the object */
     cptr.stI32o(bareobj, $obj_dknown, (((cptr.ldI32o(obj, $obj_dknown) & 1) | 0 || cptr.ldI32o(iflags, $instance_flags_override_ID)) ? 1 : 0) >>> 0);
-    cptr.stI32o(bareobj, $obj_known, ((cptr.ld1so(obj, $obj_oclass) == NHC.AMULET_CLASS) ? (cptr.ldI32o(obj, $obj_known) & 1) | 0 : !(cptr.ldI32o2(objects, otyp, 120, $objclass_oc_uses_known) & 1)) >>> 0);
-    cptr.stI64o(bareobj, $obj_quan, 1n);
+    /* suppress known except for amulets (needed for fakes and real A-of-Y) */
+    cptr.stI32o(bareobj, $obj_known, ((cptr.ld1so(obj, $obj_oclass) == NHC.AMULET_CLASS) ? (cptr.ldI32o(obj, $obj_known) & 1) | 0 : !(cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_uses_known) & 1)) >>> 0);
+    cptr.stI64o(bareobj, $obj_quan, 1n);  /* don't want plural */
+    /* for a boulder, leave corpsenm as 0; non-zero produces "next boulder" */
     if (otyp != NHC.BOULDER)
-        cptr.stI32o(bareobj, $obj_corpsenm, NHC.NON_PM);
+        cptr.stI32o(bareobj, $obj_corpsenm, NHC.NON_PM);  /* suppress statue and figurine details */
+    /* but suppressing fruit details leads to "bad fruit #0"
+       [perhaps we should force "slime mold" rather than use xname?] */
     if (cptr.ldI16o(obj, $obj_otyp) == NHC.SLIME_MOLD)
         cptr.st1o(bareobj, $obj_spe, cptr.ld1so(obj, $obj_spe));
+
     bufp = distant_name(bareobj, xname);
-    if (!cptr.strncmp(bufp, __sl92, 9n))
+    /* undo forced setting of bareobj.blessed for cleric (priest[ess]);
+       bufp is an obuf[] so a pointer into the middle of that is viable */
+    if (!cptr.strncmp(bufp, __s_uncursed, 9n))
         bufp = cptr.add(bufp, 9);
-    cptr.stPtro2(objects, otyp, 120, $objclass_oc_uname, cptr.ldPtro(saveobcls, $objclass_oc_uname));
-    cptr.stI32o2(objects, otyp, 120, $objclass_oc_name_known, (cptr.ldI32o(saveobcls, $objclass_oc_name_known) & 1));
+
+    cptr.stPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname, cptr.ldPtro(saveobcls, $objclass_oc_uname));
+    cptr.stI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known, (cptr.ldI32o(saveobcls, $objclass_oc_name_known) & 1));
     return bufp;
 }
 
-/** C ref: objnam.c:1090 — @param {CPtr} obj @returns {CPtr} */
+/* xname() output augmented for multishot missile feedback */
+/** C ref: objnam.c:1090 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function mshot_xname(obj) {
     let tmpbuf = new Uint8Array(256);
     let onm = xname(obj);
+
     if (cptr.ldI32o(gm, $instance_globals_m_m_shot) > 1 && cptr.ldI16o(gm, $instance_globals_m_m_shot + $multishot_o) == cptr.ldI16o(obj, $obj_otyp)) {
-        void cptr.sprintf(cptr.decay(tmpbuf), __sl93, cptr.ldI32o(gm, $instance_globals_m_m_shot + $multishot_i), ordin(cptr.ldI32o(gm, $instance_globals_m_m_shot + $multishot_i)));
+        /* "the Nth arrow"; value will eventually be passed to an() or
+           The(), both of which correctly handle this "the " prefix */
+        void cptr.sprintf(cptr.decay(tmpbuf), __s_the_d_s, cptr.ldI32o(gm, $instance_globals_m_m_shot + $multishot_i), ordin(cptr.ldI32o(gm, $instance_globals_m_m_shot + $multishot_i)));
         onm = strprepend(onm, cptr.decay(tmpbuf));
     }
     return onm;
 }
 
-/** C ref: objnam.c:1106 — @param {CPtr} obj @returns {CInt} */
+/* used for naming "the unique_item" instead of "a unique_item" */
+/** C ref: objnam.c:1106 — @param {CPtr<struct obj>} obj @returns {CInt} */
 export function the_unique_obj(obj) {
     let known = schar(((cptr.ldI32o(obj, $obj_known) & 1) | 0 || cptr.ldI32o(iflags, $instance_flags_override_ID) ? 1 : 0));
+
     if (!(cptr.ldI32o(obj, $obj_dknown) & 1) && !cptr.ldI32o(iflags, $instance_flags_override_ID))
         return 0;
     else if (cptr.ldI16o(obj, $obj_otyp) == NHC.FAKE_AMULET_OF_YENDOR && !known)
-        return 1;
+        return 1;  /* lie */
     else
-        return schar(((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_unique) & 1) | 0 && (known || cptr.ldI16o(obj, $obj_otyp) == NHC.AMULET_OF_YENDOR) ? 1 : 0));
+        return schar(((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_unique) & 1) | 0 && (known || cptr.ldI16o(obj, $obj_otyp) == NHC.AMULET_OF_YENDOR) ? 1 : 0));
 }
 
-/** C ref: objnam.c:1121 — @param {CPtr} ptr @returns {CInt} */
+/* should monster type be prefixed with "the"? (mostly used for corpses) */
+/** C ref: objnam.c:1121 — @param {CPtr<struct permonst>} ptr @returns {CInt} */
 export function the_unique_pm(ptr) {
     let uniq;
+
+    /* even though monsters with personal names are unique, we want to
+       describe them as "Name" rather than "the Name" */
     if (((cptr.ldU64o((ptr), $permonst_mflags2) & 524288n) != 0n))
         return 0;
+
     uniq = schar(((cptr.ldU16o(ptr, $permonst_geno) & NHM.G_UNIQ) ? 1 : 0));
-    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_HIGH_CLERIC, 96)) || cptr.eq(ptr, cptr.add(mons, NHC.PM_LONG_WORM_TAIL, 96)))
+    /* high priest is unique if it includes "of <deity>", otherwise not
+       (caller needs to handle the 1st possibility; we assume the 2nd);
+       worm tail should be irrelevant but is included for completeness */
+    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_HIGH_CLERIC, $sizeof_permonst)) || cptr.eq(ptr, cptr.add(mons, NHC.PM_LONG_WORM_TAIL, $sizeof_permonst)))
         uniq = 0;
-    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, 96)))
+    /* Wizard no longer needs this; he's flagged as unique these days */
+    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, $sizeof_permonst)))
         uniq = 1;
     return uniq;
 }
 
-/** C ref: objnam.c:1143 — @param {CPtr} obj @param {CPtr} prefix */
+/** C ref: objnam.c:1143 — @param {CPtr<struct obj>} obj @param {CPtr<char>} prefix */
 function add_erosion_words(obj, prefix) {
     let iscrys = schar((cptr.ldI16o(obj, $obj_otyp) == NHC.CRYSKNIFE));
     let rknown;
+
     rknown = schar(((cptr.ldI32o(iflags, $instance_flags_override_ID) == 0) ? (cptr.ldI32o(obj, $obj_rknown) & 1) | 0 : 1));
+
     if (!is_damageable(obj) && !iscrys)
         return;
+
+    /* The only cases where any of these bits do double duty are for
+     * rotted food and diluted potions, which are all not is_damageable().
+     */
     if ((cptr.ldI32o(obj, $obj_oeroded) & 3) | 0 && !iscrys) {
         switch ((cptr.ldI32o(obj, $obj_oeroded) & 3) | 0) {
             case 2:
-            void cptr.strcat(prefix, __sl65);
+            void cptr.strcat(prefix, __s_very);
             break;
             case 3:
-            void cptr.strcat(prefix, __sl94);
+            void cptr.strcat(prefix, __s_thoroughly);
             break;
         }
-        void cptr.strcat(prefix, (((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.IRON) ? __sl95 : (is_crackable(obj) ? __sl96 : __sl97));
+        void cptr.strcat(prefix, (((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.IRON) ? __s_rusty : (is_crackable(obj) ? __s_cracked : __s_burnt));
     }
     if ((cptr.ldI32o(obj, $obj_oeroded2) & 3) | 0 && !iscrys) {
         switch ((cptr.ldI32o(obj, $obj_oeroded2) & 3) | 0) {
             case 2:
-            void cptr.strcat(prefix, __sl65);
+            void cptr.strcat(prefix, __s_very);
             break;
             case 3:
-            void cptr.strcat(prefix, __sl94);
+            void cptr.strcat(prefix, __s_thoroughly);
             break;
         }
-        void cptr.strcat(prefix, is_corrodeable(obj) ? __sl98 : __sl99);
+        void cptr.strcat(prefix, is_corrodeable(obj) ? __s_corroded : __s_rotted);
     }
+    /* note: it is possible for an item to be both eroded and erodeproof
+       (cursed scroll of destroy armor read while confused erodeproofs an
+       item of armor without repairing existing erosion) */
     if (rknown && (cptr.ldI32o(obj, $obj_oerodeproof) & 1) | 0)
-        void cptr.strcat(prefix, iscrys ? __sl100 : ((((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.IRON) ? __sl101 : (is_corrodeable(obj) ? __sl102 : (is_flammable(obj) ? __sl103 : (is_crackable(obj) ? __sl104 : (is_rottable(obj) ? __sl105 : __sl13))))));
+        void cptr.strcat(prefix, iscrys ? __s_fixed : ((((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.IRON) ? __s_rustproof : (is_corrodeable(obj) ? __s_corrodeproof : (is_flammable(obj) ? __s_fireproof : (is_crackable(obj) ? __s_tempered : (is_rottable(obj) ? __s_rotproof : __s_empty))))));
 }
 
-/** C ref: objnam.c:1195 — @param {CPtr} obj @returns {CInt} */
+/* used to prevent rust on items where rust makes no difference */
+/** C ref: objnam.c:1195 — @param {CPtr<struct obj>} obj @returns {CInt} */
 export function erosion_matters(obj) {
     switch (cptr.ld1so(obj, $obj_oclass)) {
         case NHC.TOOL_CLASS:
+        /* it's possible for a rusty weptool to be polymorphed into some
+           non-weptool iron tool, in which case the rust implicitly goes
+           away, but it's also possible for it to be polymorphed into a
+           non-iron tool, in which case rust also implicitly goes away,
+           so there's no particular reason to try to handle the first
+           instance differently [this comment belongs in poly_obj()...] */
         return schar((is_weptool(obj) ? 1 : 0));
         case NHC.WEAPON_CLASS:
         case NHC.ARMOR_CLASS:
@@ -1715,9 +2022,10 @@ export function erosion_matters(obj) {
     return 0;
 }
 
+/* core of doname() */
 let __static_doname_base_doname_full = 0; /** C ref: objnam.c:1735 — int (function-static) */
 
-/** C ref: objnam.c:1223 — @param {CPtr} obj @param {CUInt} doname_flags @returns {CPtr} */
+/** C ref: objnam.c:1223 — @param {CPtr<struct obj>} obj @param {CUInt} doname_flags @returns {CPtr<char>} */
 function doname_base(obj, doname_flags) {
     let ispoisoned, with_price, vague_quan, for_menu, known, dknown, cknown, bknown, lknown, fake_arti, force_the, prefix, tmpbuf, aname, omndx, bp, bp_eos = cptr.box(0), bp_end, bpspaceleft, itemcount, mlsh, suffix, timer, full_burn_time, turns_left, cxarg, cxstr, save_xnamep, cgend, mgend, twoweap_primary, tethered, hand_s, obufp, handsbuf, Qtyp, pricebuf, quotedprice, nochrg = cptr.box(0), price, offsetbp;
     let __pc = 0;
@@ -1732,11 +2040,18 @@ function doname_base(obj, doname_flags) {
         tmpbuf = new Uint8Array(81);
         aname = null;
         omndx = cptr.ldI32o(obj, $obj_corpsenm);
+
+        /* 'bp' will be within an obuf[] rather than at the start of one,
+           usually (but not always) pointing at &obuf[PREFIX];
+           gx.xnamep always points to the start of that buffer;
+           'bp_eos' and 'bpspaceleft' are used and updated by Concat*() macros */
         bp = xname(obj);
         bp_end = cptr.add(cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), NHM.BUFSZ), -(1));
         bp_eos.v = eos(bp);
-        (__builtin_expect(BigInt((!(cptr.cmp(bp_end, bp_eos.v) >= 0))), 0n) ? __assert_rtn(__sl106, __sl107, 1250, __sl108) : void 0);
+        (__builtin_expect(BigInt((!(cptr.cmp(bp_end, bp_eos.v) >= 0))), 0n) ? __assert_rtn(__s_doname_base, __s_objnam_c, 1250, __s_bp_end_bp_eos) : void 0);  /* ok provided xname() bounds checking works */
+        /* size_t cast: convert signed ptrdiff_t to unsigned size_t */
         bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
+
         if (cptr.ldI32o(iflags, $instance_flags_override_ID)) {
             known = (dknown = (cknown = (bknown = (lknown = 1))));
         } else {
@@ -1746,53 +2061,89 @@ function doname_base(obj, doname_flags) {
             bknown = schar((cptr.ldI32o(obj, $obj_bknown) & 1));
             lknown = schar((cptr.ldI32o(obj, $obj_lknown) & 1));
         }
-        if (!cptr.strncmp(bp, __sl43, 9n) && (cptr.ldI32o(obj, $obj_otrapped) & 1) | 0) {
-            bp = cptr.add(bp, 9);
+
+        /* When using xname, we want "poisoned arrow", and when using
+         * doname, we want "poisoned +0 arrow".  This kludge is about the only
+         * way to do it, at least until someone overhauls xname() and doname(),
+         * combining both into one function taking a parameter.
+         */
+        /* must check opoisoned--someone can have a weirdly-named fruit */
+        if (!cptr.strncmp(bp, __s_poisoned, 9n) && (cptr.ldI32o(obj, $obj_otrapped) & 1) | 0) {
+            bp = cptr.add(bp, 9);  /* doesn't affect bp_eos or bpspaceleft */
             ispoisoned = 1;
         }
+
+        /* fruits are allowed to be given artifact names; when that happens,
+           format the name like the corresponding artifact, which may or may not
+           want "the" prefix and when it doesn't, avoid "a"/"an" prefix too */
         fake_arti = schar((cptr.ldI16o(obj, $obj_otyp) == NHC.SLIME_MOLD && (aname = artifact_name(bp, null, 0)) !== null ? 1 : 0));
-        force_the = schar((fake_arti && !strncmpi(aname, __sl62, 4) ? 1 : 0));
+        force_the = schar((fake_arti && !strncmpi(aname, __s_the, 4) ? 1 : 0));
+
         cptr.st1o(cptr.decay(prefix), 0, 0, 1);
         if (cptr.ldI64o(obj, $obj_quan) != 1n) {
             if (dknown || !vague_quan)
-                void cptr.sprintf(cptr.decay(prefix), __sl109, cptr.ldI64o(obj, $obj_quan));
+                void cptr.sprintf(cptr.decay(prefix), __s_ld, cptr.ldI64o(obj, $obj_quan));
             else
-                void cptr.strcpy(cptr.decay(prefix), __sl110);
+                void cptr.strcpy(cptr.decay(prefix), __s_some);
         } else if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE) {
+            /* skip article prefix for corpses [else corpse_xname()
+               would have to be taught how to strip it off again] */
             ;
         } else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
-            if (!strncmpi(bp, __sl62, 4))
-                bp = cptr.add(bp, 4);
-            void cptr.strcpy(cptr.decay(prefix), __sl62);
+            if (!strncmpi(bp, __s_the, 4))
+                bp = cptr.add(bp, 4);  /* doesn't affect bp_eos or bpspaceleft */
+            void cptr.strcpy(cptr.decay(prefix), __s_the);
         } else if (!fake_arti) {
-            void cptr.strcpy(cptr.decay(prefix), __sl111);
+            /* default prefix */
+            void cptr.strcpy(cptr.decay(prefix), __s_a_sp);
         }
+
+        /* "empty" goes at the beginning, but item count goes at the end */
         if (cknown && ((cptr.ldI16o(obj, $obj_otyp) == NHC.BAG_OF_TRICKS || cptr.ldI16o(obj, $obj_otyp) == NHC.HORN_OF_PLENTY) ? (cptr.ld1so(obj, $obj_spe) == 0 && !known ? 1 : 0) : ((Is_container(obj) || cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE) && !(cptr.ldPtro((obj), $obj_cobj) !== null) ? 1 : 0)))
-            void cptr.strcat(cptr.decay(prefix), __sl112);
-        if (bknown && cptr.ld1so(obj, $obj_oclass) != NHC.COIN_CLASS && (cptr.ldI16o(obj, $obj_otyp) != NHC.POT_WATER || !(cptr.ldI32o2(objects, NHC.POT_WATER, 120, $objclass_oc_name_known) & 1) || (!(cptr.ldI32o(obj, $obj_cursed) & 1) && !(cptr.ldI32o(obj, $obj_blessed) & 1)))) {
+            void cptr.strcat(cptr.decay(prefix), __s_empty__2);
+
+        if (bknown && cptr.ld1so(obj, $obj_oclass) != NHC.COIN_CLASS && (cptr.ldI16o(obj, $obj_otyp) != NHC.POT_WATER || !(cptr.ldI32o2(objects, NHC.POT_WATER, $sizeof_objclass, $objclass_oc_name_known) & 1) || (!(cptr.ldI32o(obj, $obj_cursed) & 1) && !(cptr.ldI32o(obj, $obj_blessed) & 1)))) {
+            /* allow 'blessed clear potion' if we don't know it's holy water;
+             * always allow "uncursed potion of water"
+             */
             if ((cptr.ldI32o(obj, $obj_cursed) & 1))
-                void cptr.strcat(cptr.decay(prefix), __sl113);
+                void cptr.strcat(cptr.decay(prefix), __s_cursed);
             else if ((cptr.ldI32o(obj, $obj_blessed) & 1))
-                void cptr.strcat(cptr.decay(prefix), __sl114);
-            else if (!cptr.ld1so(flags, $flag_implicit_uncursed) || ((!known || !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_charged) & 1) || cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.RING_CLASS) && cptr.ldI16o(obj, $obj_otyp) != NHC.SCR_MAIL && cptr.ldI16o(obj, $obj_otyp) != NHC.FAKE_AMULET_OF_YENDOR && cptr.ldI16o(obj, $obj_otyp) != NHC.AMULET_OF_YENDOR && !(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_CLERIC)))
-                void cptr.strcat(cptr.decay(prefix), __sl92);
+                void cptr.strcat(cptr.decay(prefix), __s_blessed);
+            else if (!cptr.ld1so(flags, $flag_implicit_uncursed) || ((!known || !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_charged) & 1) || cptr.ld1so(obj, $obj_oclass) == NHC.ARMOR_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.RING_CLASS) && cptr.ldI16o(obj, $obj_otyp) != NHC.SCR_MAIL && cptr.ldI16o(obj, $obj_otyp) != NHC.FAKE_AMULET_OF_YENDOR && cptr.ldI16o(obj, $obj_otyp) != NHC.AMULET_OF_YENDOR && !(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_CLERIC)))
+                void cptr.strcat(cptr.decay(prefix), __s_uncursed);
         }
+
+        /* "a large trapped box" would perhaps be more correct; [no!]
+           what about ``(obj->tknown && !obj->otrapped)''? shouldn't that
+           yield "a non-trapped large box"? (not "an untrapped large box");
+           TODO: this should be ``(Is_box(obj) || obj->otyp == TIN) && ...''
+           but at present there's no way to set obj->tknown for tins */
         if (Is_box(obj) && (cptr.ldI32o(obj, $obj_otrapped) & 1) | 0 && (cptr.ldI32o(obj, $obj_tknown) & 1) | 0 && (cptr.ldI32o(obj, $obj_dknown) & 1) | 0)
-            void cptr.strcat(cptr.decay(prefix), __sl115);
+            void cptr.strcat(cptr.decay(prefix), __s_trapped);
         if (lknown && Is_box(obj)) {
             if ((cptr.ldI32o(obj, $obj_obroken) & 1))
-                void cptr.strcat(cptr.decay(prefix), __sl116);
+                /* 3.6.0 used "unlockable" here but that could be misunderstood
+                   to mean "capable of being unlocked" rather than the intended
+                   "not capable of being locked" */
+                void cptr.strcat(cptr.decay(prefix), __s_broken);
             else if ((cptr.ldI32o(obj, $obj_olocked) & 1))
-                void cptr.strcat(cptr.decay(prefix), __sl117);
+                void cptr.strcat(cptr.decay(prefix), __s_locked);
             else
-                void cptr.strcat(cptr.decay(prefix), __sl118);
+                void cptr.strcat(cptr.decay(prefix), __s_unlocked);
         }
+
         if ((cptr.ldI32o(obj, $obj_greased) & 1))
-            void cptr.strcat(cptr.decay(prefix), __sl119);
+            void cptr.strcat(cptr.decay(prefix), __s_greased);
+
         if (cknown && (cptr.ldPtro((obj), $obj_cobj) !== null) && bpspaceleft > 0n) {
+            /* we count the number of separate stacks, which corresponds
+               to the number of inventory slots needed to be able to take
+               everything out if no merges occur */
             itemcount = count_contents(obj, 0, 0, 1, 0);
             {
-                nh_snprintf(__sl106, 1379, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl120, itemcount, (((itemcount) == 1n) ? __sl13 : __sl121));
+
+                nh_snprintf(__s_doname_base, 1379, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_containing_ld_item_s, itemcount, (((itemcount) == 1n) ? __s_empty : __s_s));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         }
@@ -1812,7 +2163,7 @@ function doname_base(obj, doname_flags) {
         case 5: {
         if (cptr.ldI64o(obj, $obj_owornmask) & 65536n)
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl122, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_being_worn, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         { __pc = 3; continue; }
@@ -1820,20 +2171,28 @@ function doname_base(obj, doname_flags) {
         case 6: {
         if (cptr.ldI64o(obj, $obj_owornmask) & 127n) {
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), (cptr.eq(obj, uskin.v)) ? __sl123 : (doffing(obj) ? __sl124 : (donning(obj) ? __sl125 : __sl122)), BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), (cptr.eq(obj, uskin.v)) ? __s_embedded_in_your_skin : (doffing(obj) ? __s_being_doffed : (donning(obj) ? __s_being_donned : __s_being_worn)), BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
+            /* we just added a parenthesized phrase, but the right paren
+               might be absent if the appended string got truncated */
             if (cptr.ld1so(bp_eos.v, -1) == 41) {
+                /* slippery fingers is an intrinsic condition of the hero
+                   rather than extrinsic condition of objects, but gloves
+                   are described as slippery when hero has slippery fingers */
                 if (cptr.eq(obj, uarmg.v) && Glib())
                     {
-                        void __builtin___strncat_chk(cptr.add(bp_eos.v, -(1)), __sl126, BigInt.asUintN(64, bpspaceleft + 1n), __builtin_object_size(cptr.add(bp_eos.v, -(1)), 1));
+                        void __builtin___strncat_chk(cptr.add(bp_eos.v, -(1)), __s_slippery, BigInt.asUintN(64, bpspaceleft + 1n), __builtin_object_size(cptr.add(bp_eos.v, -(1)), 1));
                         bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                     }
             }
             if (cptr.ld1so(bp_eos.v, -1) == 41) {
+                /* there could be light-emitting artifact gloves someday,
+                   so add 'lit' separately from 'slippery' rather than via
+                   'else if' after uarmg+Glib */
                 if (!Blind() && (cptr.ldI32o(obj, $obj_lamplit) & 1) | 0 && artifact_light(obj))
                     {
-                        nh_snprintf(__sl106, 1413, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __sl127, arti_light_description(obj));
+                        nh_snprintf(__s_doname_base, 1413, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __s_s_lit, arti_light_description(obj));
                         bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                     }
             }
@@ -1845,10 +2204,10 @@ function doname_base(obj, doname_flags) {
         }
         case 7: {
         if (ispoisoned)
-            void cptr.strcat(cptr.decay(prefix), __sl43);
+            void cptr.strcat(cptr.decay(prefix), __s_poisoned);
         add_erosion_words(obj, cptr.decay(prefix));
         if (known) {
-            void cptr.sprintf(eos(cptr.decay(prefix)), __sl128, cptr.ld1so(obj, $obj_spe));
+            void cptr.sprintf(eos(cptr.decay(prefix)), __s_pct_plus_d_sp, cptr.ld1so(obj, $obj_spe));  /* sitoa(obj->spe)+" " */
         }
         { __pc = 3; continue; }
         }
@@ -1858,7 +2217,7 @@ function doname_base(obj, doname_flags) {
         }
         case 16: {
         {
-            void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl122, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+            void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_being_worn, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
             bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
         }
         { __pc = 3; continue; }
@@ -1869,16 +2228,17 @@ function doname_base(obj, doname_flags) {
         }
         case 18: {
         mlsh = find_mid(cptr.ldI32o(obj, $obj_corpsenm) >>> 0, NHM.FM_FMON);
+
         if (mlsh && !(cptr.ldI32o((mlsh), $monst_mhp) < 1)) {
             {
-                nh_snprintf(__sl106, 1435, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl129, noit_mon_nam(mlsh));
+                nh_snprintf(__s_doname_base, 1435, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_attached_to_s, noit_mon_nam(mlsh));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         } else {
             if (mlsh)
-                impossible(__sl130, mon_pmname(mlsh), cptr.ldI32o(obj, $obj_corpsenm) >>> 0);
+                impossible(__s_leashed_s_u_is_dead, mon_pmname(mlsh), cptr.ldI32o(obj, $obj_corpsenm) >>> 0);
             else
-                impossible(__sl131, cptr.ldI32o(obj, $obj_corpsenm) >>> 0);
+                impossible(__s_leashed_monster_u_not_found, cptr.ldI32o(obj, $obj_corpsenm) >>> 0);
             cptr.stI32o(obj, $obj_corpsenm, 0);
         }
         { __pc = 3; continue; }
@@ -1888,10 +2248,12 @@ function doname_base(obj, doname_flags) {
         __pc = 21; continue;
         }
         case 20: {
-        suffix = new Uint8Array(20);
-        void cptr.sprintf(cptr.decay(suffix), __sl35, (((cptr.ld1so(obj, $obj_spe)) == 1) ? __sl13 : __sl121), !(cptr.ldI32o(obj, $obj_lamplit) & 1) ? __sl132 : __sl133);
+        suffix = new Uint8Array(20);  /* longest value is "s attached" */
+
+        /* separately formatted suffix avoids need for ConcatF3() */
+        void cptr.sprintf(cptr.decay(suffix), __s_s_s, (((cptr.ld1so(obj, $obj_spe)) == 1) ? __s_empty : __s_s), !(cptr.ldI32o(obj, $obj_lamplit) & 1) ? __s_attached : __s_lit);
         {
-            nh_snprintf(__sl106, 1453, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl134, cptr.ld1so(obj, $obj_spe), cptr.decay(suffix));
+            nh_snprintf(__s_doname_base, 1453, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_d_of_7_candle_s, cptr.ld1so(obj, $obj_spe), cptr.decay(suffix));
             bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
         }
         { __pc = 3; continue; }
@@ -1903,19 +2265,26 @@ function doname_base(obj, doname_flags) {
         case 23: {
         if (Is_candle(obj)) {
             timer = cptr.alloc(8);
-            full_burn_time = BigInt.asIntN(64, 20n * BigInt(cptr.ldI16o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_cost)));
+            full_burn_time = BigInt.asIntN(64, 20n * BigInt(cptr.ldI16o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_cost)));
             turns_left = cptr.ldI64o(obj, $obj_age);
+
             if ((cptr.ldI32o(obj, $obj_lamplit) & 1)) {
                 cptr.memcpy(timer, cptr.add(cg, $const_globals_zeroany), 8);
                 cptr.stPtr(timer, obj);
+                /* without this, wishing for "lit candle" yields
+                   "partly used candle (lit)" because the time it can
+                   burn gets adjusted when it becomes lit; matters for
+                   the message as it gets added to invent and also if it
+                   gets snuffed out immediately (where it will end up as
+                   not partly used after all) */
                 turns_left += BigInt.asIntN(64, peek_timer(NHC.BURN_OBJECT, timer) - cptr.ldI64o(svm, $instance_globals_saved_m_moves));
             }
             if (turns_left < full_burn_time)
-                void cptr.strcat(cptr.decay(prefix), __sl135);
+                void cptr.strcat(cptr.decay(prefix), __s_partly_used);
         }
         if ((cptr.ldI32o(obj, $obj_lamplit) & 1))
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl136, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_lit__2, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         { __pc = 3; continue; }
@@ -1925,7 +2294,7 @@ function doname_base(obj, doname_flags) {
         continue;
         }
         case 19: {
-        if ((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_charged) & 1)) { __pc = 25; continue; }
+        if ((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_charged) & 1)) { __pc = 25; continue; }
         __pc = 24; continue;
         }
         case 25: {
@@ -1941,7 +2310,7 @@ function doname_base(obj, doname_flags) {
         case 1 /* charges: */: {
         if (known)
             {
-                nh_snprintf(__sl106, 1486, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl137, (cptr.ldI32o(obj, $obj_recharged) & 7) | 0, cptr.ld1so(obj, $obj_spe));
+                nh_snprintf(__s_doname_base, 1486, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_d_d, (cptr.ldI32o(obj, $obj_recharged) & 7) | 0, cptr.ld1so(obj, $obj_spe));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         { __pc = 3; continue; }
@@ -1949,7 +2318,7 @@ function doname_base(obj, doname_flags) {
         case 10: {
         if (cptr.ldI16o(obj, $obj_otyp) == NHC.POT_OIL && (cptr.ldI32o(obj, $obj_lamplit) & 1) | 0)
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl136, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_lit__2, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         { __pc = 3; continue; }
@@ -1961,35 +2330,43 @@ function doname_base(obj, doname_flags) {
         case 2 /* ring: */: {
         if (cptr.ldI64o(obj, $obj_owornmask) & 262144n)
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl138, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_on_right, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         if (cptr.ldI64o(obj, $obj_owornmask) & 131072n)
             {
-                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl139, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_on_left, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         if (cptr.ldI64o(obj, $obj_owornmask) & 393216n)
             {
-                nh_snprintf(__sl106, 1499, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl140, body_part(NHC.HAND));
+                nh_snprintf(__s_doname_base, 1499, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_pct_s_rparen, body_part(NHC.HAND));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
-        if (known && (cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_charged) & 1) | 0) {
-            void cptr.sprintf(eos(cptr.decay(prefix)), __sl128, cptr.ld1so(obj, $obj_spe));
+        if (known && (cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_charged) & 1) | 0) {
+            void cptr.sprintf(eos(cptr.decay(prefix)), __s_pct_plus_d_sp, cptr.ld1so(obj, $obj_spe));  /* sitoa(obj->spe)+" " */
         }
         { __pc = 3; continue; }
         }
         case 12: {
         if (cptr.ldI32o(obj, $obj_oeaten))
-            void cptr.strcat(cptr.decay(prefix), __sl54);
+            void cptr.strcat(cptr.decay(prefix), __s_partly_eaten);
         if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE) { __pc = 27; continue; }
         __pc = 28; continue;
         }
         case 27: {
+        /* (quan == 1) => want corpse_xname() to supply article,
+           (quan != 1) => already have count or "some" as prefix;
+           "corpse" is already in the buffer returned by xname() */
         cxarg = (((cptr.ldI64o(obj, $obj_quan) != 1n) ? 0 : NHM.CXN_ARTICLE) | NHM.CXN_NOCORPSE) >>> 0;
+
+        /* corpse_xname() sets xnamep; callers other than doname_base()
+           itself shouldn't care about xnamep (pointer to start of
+           current obuf[]) but keep it accurate anyway */
         save_xnamep = cptr.ldPtro(gx, $instance_globals_x_xnamep);
         cxstr = corpse_xname(obj, cptr.decay(prefix), cxarg);
-        void cptr.sprintf(cptr.decay(prefix), __sl141, cxstr);
+        void cptr.sprintf(cptr.decay(prefix), __s_pct_s_sp, cxstr);
+        /* avoid having doname(corpse) consume an extra obuf */
         releaseobuf(cxstr);
         cptr.stPtro(gx, $instance_globals_x_xnamep, save_xnamep);
         __pc = 26;
@@ -2000,12 +2377,12 @@ function doname_base(obj, doname_flags) {
         __pc = 31; continue;
         }
         case 30: {
-        if (ismnum(omndx) && (known || (cptr.ld1uo2(svm, omndx, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.MV_KNOWS_EGG))) {
-            void cptr.strcat(cptr.decay(prefix), cptr.ldPtro3(mons, omndx, 96, NHC.NEUTRAL, 8, 0));
-            void cptr.strcat(cptr.decay(prefix), __sl142);
+        if (ismnum(omndx) && (known || (cptr.ld1uo2(svm, omndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.MV_KNOWS_EGG))) {
+            void cptr.strcat(cptr.decay(prefix), cptr.ldPtro3(mons, omndx, $sizeof_permonst, NHC.NEUTRAL, 8, 0));
+            void cptr.strcat(cptr.decay(prefix), __s_sp);
             if (cptr.ld1so(obj, $obj_spe) == 1)
                 {
-                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl143, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_laid_by_you, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
         }
@@ -2038,51 +2415,68 @@ function doname_base(obj, doname_flags) {
         add_erosion_words(obj, cptr.decay(prefix));
         if (cptr.ldI64o(obj, $obj_owornmask) & 6291456n)
             {
-                nh_snprintf(__sl106, 1545, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl144, (cptr.ldI64o(obj, $obj_owornmask) & 2097152n) ? __sl145 : __sl146);
+                nh_snprintf(__s_doname_base, 1545, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_s_to_you, (cptr.ldI64o(obj, $obj_owornmask) & 2097152n) ? __s_chained : __s_attached__2);
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         { __pc = 3; continue; }
         }
         case 3: {
+
         if ((cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE || cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE || cptr.ldI16o(obj, $obj_otyp) == NHC.FIGURINE) && wizard() && cptr.ld1so(iflags, $instance_flags_wizmgender)) {
             cgend = (cptr.ld1so(obj, $obj_spe) & NHM.CORPSTAT_GENDER);
             mgend = ((cgend == NHM.CORPSTAT_MALE) ? NHC.MALE : ((cgend == NHM.CORPSTAT_FEMALE) ? NHC.FEMALE : NHC.NEUTRAL));
             {
-                nh_snprintf(__sl106, 1558, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl25, (cgend != NHM.CORPSTAT_RANDOM) ? cptr.ldPtro(genders, mgend, 48) : __sl147);
+
+                nh_snprintf(__s_doname_base, 1558, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_sp_lparen_pct_s_rparen, (cgend != NHM.CORPSTAT_RANDOM) ? cptr.ldPtro(genders, mgend, $sizeof_Gender) : __s_unspecified_gender);
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         }
+
         if ((cptr.ldI64o(obj, $obj_owornmask) & 256n) && !cptr.ld1so(gm, $instance_globals_m_mrg_to_wielded)) {
             twoweap_primary = schar((cptr.eq(obj, uwep.v) && cptr.ld1so(u, $you_twoweap) ? 1 : 0));
             tethered = schar((cptr.ldI16o(obj, $obj_otyp) == NHC.AKLYS));
+
+            /* use alternate phrasing for non-weapons and for wielded ammo
+               (arrows, bolts), or missiles (darts, shuriken, boomerangs)
+               except when those are being actively dual-wielded where the
+               regular phrasing will list them as "in right hand" to
+               contrast with secondary weapon's "in left hand" */
             if ((cptr.ldI64o(obj, $obj_quan) != 1n || ((cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS) ? (is_ammo(obj) || is_missile(obj) ? 1 : 0) : !is_weptool(obj))) && !twoweap_primary) {
                 {
-                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl148, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_wielded, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
             } else {
                 hand_s = body_part(NHC.HAND);
                 handsbuf = new Uint8Array(40);
+
                 if (bimanual(obj)) {
                     hand_s = cptr.strcpy(cptr.decay(handsbuf), obufp = makeplural(hand_s));
                     releaseobuf(obufp);
                 } else {
-                    void cptr.sprintf(cptr.decay(handsbuf), __sl55, URIGHTY() ? __sl149 : __sl150, hand_s);
+                    void cptr.sprintf(cptr.decay(handsbuf), __s_s_s__2, URIGHTY() ? __s_right : __s_left, hand_s);
                     hand_s = cptr.decay(handsbuf);
                 }
                 {
-                    nh_snprintf(__sl106, 1595, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl151, tethered ? __sl152 : (twoweap_primary ? __sl153 : __sl154), hand_s);
+                    /* note: Sting's glow message, if added, will insert text
+                       in front of "(weapon in hand)"'s closing paren */
+                    nh_snprintf(__s_doname_base, 1595, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_s_s__3, tethered ? __s_tethered_to : (twoweap_primary ? __s_wielded_in : __s_weapon_in), hand_s);
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
+
+                /* we just added a parenthesized phrase, but the right paren
+                   might be absent if the appended string got truncated */
                 if (!Blind() && bpspaceleft && cptr.ld1so(bp_eos.v, -1) == 41) {
                     if (cptr.ldI32(gw) && cptr.eq(obj, uwep.v) && (EWarn_of_mon() & 256n) != 0n)
                         {
-                            nh_snprintf(__sl106, 1605, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __sl155, glow_verb(cptr.ldI32(gw), 1), glow_color(cptr.ld1so(obj, $obj_oartifact)));
+                            /* we know bp[] ends with ')'; overwrite that */
+                            nh_snprintf(__s_doname_base, 1605, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __s_s_s__4, glow_verb(cptr.ldI32(gw), 1), glow_color(cptr.ld1so(obj, $obj_oartifact)));
                             bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                         }
                     else if ((cptr.ldI32o(obj, $obj_lamplit) & 1) | 0 && artifact_light(obj))
                         {
-                            nh_snprintf(__sl106, 1609, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __sl127, arti_light_description(obj));
+                            /* as above, overwrite known closing paren */
+                            nh_snprintf(__s_doname_base, 1609, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __s_s_lit, arti_light_description(obj));
                             bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                         }
                 }
@@ -2091,104 +2485,152 @@ function doname_base(obj, doname_flags) {
         if (cptr.ldI64o(obj, $obj_owornmask) & 1024n) {
             if (cptr.ld1so(u, $you_twoweap))
                 {
-                    nh_snprintf(__sl106, 1616, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl156, URIGHTY() ? __sl150 : __sl149, body_part(NHC.HAND));
+                    nh_snprintf(__s_doname_base, 1616, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_wielded_in_s_s, URIGHTY() ? __s_left : __s_right, body_part(NHC.HAND));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
             else
                 {
-                    nh_snprintf(__sl106, 1620, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl157, (((cptr.ldI64o(obj, $obj_quan)) == 1n) ? __sl13 : __sl121));
+                    /* TODO: rephrase this when obj isn't a weapon or weptool */
+                    nh_snprintf(__s_doname_base, 1620, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_alternate_weapon_s_not_wielded, (((cptr.ldI64o(obj, $obj_quan)) == 1n) ? __s_empty : __s_s));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
         }
         if (cptr.ldI64o(obj, $obj_owornmask) & 512n) {
+
             switch (cptr.ld1so(obj, $obj_oclass)) {
                 case NHC.WEAPON_CLASS:
-                Qtyp = !is_ammo(obj) ? 3 : ((cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp) != -20) ? 2 : 1);
+                Qtyp = !is_ammo(obj) ? 3 : ((cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_subtyp) != -20) ? 2 : 1);  /* ammo for a bow: "in quiver" */
                 break;
                 case NHC.RING_CLASS:
                 case NHC.AMULET_CLASS:
                 case NHC.WAND_CLASS:
                 case NHC.COIN_CLASS:
                 case NHC.GEM_CLASS:
-                Qtyp = 2;
+                Qtyp = 2;  /* small, non-bow: "in quiver pouch" */
                 break;
                 default:
-                Qtyp = 3;
+                Qtyp = 3;  /* "at the ready" */
                 break;
             }
             {
-                nh_snprintf(__sl106, 1645, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl25, (Qtyp == 1) ? __sl158 : ((Qtyp == 2) ? __sl159 : __sl160));
+                nh_snprintf(__s_doname_base, 1645, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_sp_lparen_pct_s_rparen, (Qtyp == 1) ? __s_in_quiver : ((Qtyp == 2) ? __s_in_quiver_pouch : __s_at_the_ready));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
         }
+
+        /* treat 'restoring' like suppress_price because shopkeeper and
+           bill might not be available yet while restore is in progress
+           (objects won't normally be formatted during that time, but if
+           'perm_invent' is enabled then they might be [not any more...]) */
         if (cptr.ldI32o(iflags, $instance_flags_suppress_price) || cptr.ldI32o(program_state, $sinfo_restoring)) {
-            ;
+            ;  /* don't attempt to obtain any shop pricing, even if 'with_price' */
         } else if (is_unpaid(obj)) {
             pricebuf = new Uint8Array(40);
             quotedprice = unpaid_cost(obj, NHC.COST_CONTENTS);
-            void cptr.sprintf(cptr.decay(pricebuf), __sl161, quotedprice, currency(quotedprice));
+
+            /* separately formatted suffix avoids need for ConcatF3() */
+            void cptr.sprintf(cptr.decay(pricebuf), __s_ld_s, quotedprice, currency(quotedprice));
             {
-                nh_snprintf(__sl106, 1661, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl162, (cptr.ldI32o(obj, $obj_unpaid) & 1) | 0 ? __sl163 : __sl164, cptr.decay(pricebuf));
+                nh_snprintf(__s_doname_base, 1661, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_s_s__5, (cptr.ldI32o(obj, $obj_unpaid) & 1) | 0 ? __s_unpaid : __s_contents, cptr.decay(pricebuf));
                 bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
             }
+
             record_price_quote(cptr.ldI16o(obj, $obj_otyp), BigInt.asUintN(64, (quotedprice / cptr.ldI64o(obj, $obj_quan))), 1);
         } else if (with_price) {
             nochrg.v = 0;
             price = get_cost_of_shop_item(obj, nochrg);
+
             if (price > 0n) {
                 pricebuf = new Uint8Array(40);
-                void cptr.sprintf(cptr.decay(pricebuf), __sl161, price, currency(price));
+
+                void cptr.sprintf(cptr.decay(pricebuf), __s_ld_s, price, currency(price));
                 {
-                    nh_snprintf(__sl106, 1673, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl162, nochrg.v ? __sl164 : __sl165, cptr.decay(pricebuf));
+                    nh_snprintf(__s_doname_base, 1673, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_s_s__5, nochrg.v ? __s_contents : __s_for_sale, cptr.decay(pricebuf));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
             } else if (nochrg.v > 0) {
                 {
-                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __sl166, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
+                    void __builtin___strncat_chk(cptr.add(bp_eos.v, -(0)), __s_no_charge, BigInt.asUintN(64, bpspaceleft + 0n), __builtin_object_size(cptr.add(bp_eos.v, -(0)), 1));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
-            } else if (cptr.ld1so(iflags, $instance_flags_pricequotes) && !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_name_known) & 1)) {
+            } else if (cptr.ld1so(iflags, $instance_flags_pricequotes) && !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1)) {
                 append_price_quote(bp, bp_eos, cptr.ldI16o(obj, $obj_otyp));
             }
+
             if (price > 0n)
                 record_price_quote(cptr.ldI16o(obj, $obj_otyp), BigInt.asUintN(64, (price / cptr.ldI64o(obj, $obj_quan))), 1);
-        } else if (cptr.ld1so(iflags, $instance_flags_pricequotes) && !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_name_known) & 1)) {
+        } else if (cptr.ld1so(iflags, $instance_flags_pricequotes) && !(cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1)) {
             append_price_quote(bp, bp_eos, cptr.ldI16o(obj, $obj_otyp));
         }
-        if (!cptr.strncmp(cptr.decay(prefix), __sl111, 2n)) {
+
+        if (!cptr.strncmp(cptr.decay(prefix), __s_a_sp, 2n)) {
+            /* save current prefix, without "a "; might be empty */
             void cptr.strcpy(cptr.decay(tmpbuf), cptr.add(cptr.decay(prefix), 2));
+            /* set prefix[] to "", "a ", or "an " */
             void just_an(cptr.decay(prefix), cptr.ld1s(cptr.decay(tmpbuf)) ? cptr.decay(tmpbuf) : bp);
+            /* append remainder of original prefix */
             void cptr.strcat(cptr.decay(prefix), cptr.decay(tmpbuf));
         }
+
+        /* show weight for items (debug tourist info);
+           "aum" is stolen from Crawl's "Arbitrary Unit of Measure" */
         if (wizard() && cptr.ld1so(iflags, $instance_flags_wizweight)) {
+            /* wizard mode user has asked to see object weights */
             if (with_price && cptr.ld1so(bp_eos.v, -1) == 41)
                 {
-                    nh_snprintf(__sl106, 1700, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __sl167, cptr.ldI32o(obj, $obj_owt));
+                    nh_snprintf(__s_doname_base, 1700, cptr.add(bp_eos.v, -(1)), BigInt.asUintN(64, bpspaceleft + 1n), __s_u_aum, cptr.ldI32o(obj, $obj_owt));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
             else
                 {
-                    nh_snprintf(__sl106, 1702, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __sl168, cptr.ldI32o(obj, $obj_owt));
+                    nh_snprintf(__s_doname_base, 1702, cptr.add(bp_eos.v, -(0)), BigInt.asUintN(64, bpspaceleft + 0n), __s_u_aum__2, cptr.ldI32o(obj, $obj_owt));
                     bp_eos.v = eos(bp), bpspaceleft = BigInt.asUintN(64, (cptr.diff(bp_end, bp_eos.v)));
                 }
+
+            /* ConcatF1(bp) updates bp_eos and bpspaceleft but we're done
+               with them now; add a fake use so compiler won't complain
+               about a variable assignment that won't be subsequently used */
             (void (bp_eos.v));
             (void (bpspaceleft));
         }
+
         bp = strprepend(bp, cptr.decay(prefix));
+
+        /*
+         * Last gasp bounds check.
+         *
+         * If caller intends this to be for a menu entry, make sure that
+         * there is some room to combine with menu selector prefix without
+         * exceeding BUFSZ-1.
+         *
+         * offsetbp=4: width of menu entry selector text: "c - " for tty.
+         * For curses, that wastes a char since it only needs 3: "c) ".
+         *
+         * Reaching full BUFSZ-1 length can't happen unless both doname
+         * (BUFSZ-PREFIX) and strprepend (PREFIX) use up all available
+         * space or one of them overflows without being detected.
+         */
         if (cptr.strlen(bp) > 255n) {
-            paniclog(__sl169, bp);
-            panic(__sl170);
+            paniclog(__s_doname, bp);
+            /* ideally this will never happen; if xnamep is any obuf[]
+               other than the last, overflow here would be relatively
+               benign and we could probably keep going */
+            panic(__s_doname_long_object_description_overflow);
+            /*NOTREACHED*/
         } else {
             offsetbp = for_menu ? 4 : 0;
+
             if (BigInt.asUintN(64, cptr.strlen(bp) + BigInt.asUintN(64, BigInt(offsetbp))) >= 255n) {
+                /* for !offsetbp, we'll only get here if strlen(bp)==BUFSZ-1 */
                 if (!__static_doname_base_doname_full++) {
-                    paniclog(__sl169, bp);
-                    void cptr.sprintf(cptr.decay(tmpbuf), __sl171, offsetbp ? __sl172 : __sl13);
-                    paniclog(__sl169, cptr.decay(tmpbuf));
+                    paniclog(__s_doname, bp);
+                    void cptr.sprintf(cptr.decay(tmpbuf), __s_long_object_description_s, offsetbp ? __s_truncated_for_menu_use : __s_empty);
+                    paniclog(__s_doname, cptr.decay(tmpbuf));
                 }
                 cptr.st1o(bp, (255 - offsetbp) | 0, 0);
             }
         }
+
         return bp;
         }
         }
@@ -2196,38 +2638,63 @@ function doname_base(obj, doname_flags) {
     }
 }
 
-/** C ref: objnam.c:1754 — @param {CPtr} obj @returns {CPtr} */
+/** C ref: objnam.c:1754 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function doname(obj) {
     return doname_base(obj, 0);
 }
 
-/** C ref: objnam.c:1761 — @param {CPtr} obj @returns {CPtr} */
+/* Name of object including price. */
+/** C ref: objnam.c:1761 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function doname_with_price(obj) {
     return doname_base(obj, 1);
 }
 
-/** C ref: objnam.c:1768 — @param {CPtr} obj @returns {CPtr} */
+/* "some" instead of precise quantity if obj->dknown not set */
+/** C ref: objnam.c:1768 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function doname_vague_quan(obj) {
+    /* Used by farlook.
+     * If it hasn't been seen up close and quantity is more than one,
+     * use "some" instead of the quantity: "some gold pieces" rather
+     * than "25 gold pieces".  This is suboptimal, to put it mildly,
+     * because lookhere and pickup report the precise amount.
+     * Picking the item up while blind also shows the precise amount
+     * for inventory display, then dropping it while still blind leaves
+     * obj->dknown unset so the count reverts to "some" for farlook.
+     *
+     * TODO: add obj->qknown flag for 'quantity known' on stackable
+     * items; it could overlay obj->cknown since no containers stack.
+     */
     return doname_base(obj, 2);
 }
 
-/** C ref: objnam.c:1787 — @param {CPtr} otmp @returns {CInt} */
+/* used from invent.c */
+/** C ref: objnam.c:1787 — @param {CPtr<struct obj>} otmp @returns {CInt} */
 export function not_fully_identified(otmp) {
+    /* gold doesn't have any interesting attributes [yet?] */
     if (cptr.ld1so(otmp, $obj_oclass) == NHC.COIN_CLASS)
-        return 0;
-    if (!(cptr.ldI32o(otmp, $obj_known) & 1) || !(cptr.ldI32o(otmp, $obj_dknown) & 1) || (!(cptr.ldI32o(otmp, $obj_bknown) & 1) && cptr.ldI16o(otmp, $obj_otyp) != NHC.SCR_MAIL) || !(cptr.ldI32o2(objects, cptr.ldI16o(otmp, $obj_otyp), 120, $objclass_oc_name_known) & 1))
+        return 0;  /* always fully ID'd */
+    /* check fundamental ID hallmarks first */
+    if (!(cptr.ldI32o(otmp, $obj_known) & 1) || !(cptr.ldI32o(otmp, $obj_dknown) & 1) || (!(cptr.ldI32o(otmp, $obj_bknown) & 1) && cptr.ldI16o(otmp, $obj_otyp) != NHC.SCR_MAIL) || !(cptr.ldI32o2(objects, cptr.ldI16o(otmp, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1))
         return 1;
     if ((!(cptr.ldI32o(otmp, $obj_cknown) & 1) && (Is_container(otmp) || cptr.ldI16o(otmp, $obj_otyp) == NHC.STATUE)) || (!(cptr.ldI32o(otmp, $obj_lknown) & 1) && Is_box(otmp)))
         return 1;
     if (cptr.ld1so(otmp, $obj_oartifact) && undiscovered_artifact(i16(cptr.ld1so(otmp, $obj_oartifact))))
         return 1;
+    /* otmp->rknown is the only item of interest if we reach here */
+    /*
+     *  Note:  if a revision ever allows scrolls to become fireproof or
+     *  rings to become shockproof, this checking will need to be revised.
+     *  `rknown' ID only matters if xname() will provide the info about it.
+     */
     if ((cptr.ldI32o(otmp, $obj_rknown) & 1) | 0 || (cptr.ld1so(otmp, $obj_oclass) != NHC.ARMOR_CLASS && cptr.ld1so(otmp, $obj_oclass) != NHC.WEAPON_CLASS && !is_weptool(otmp) && cptr.ld1so(otmp, $obj_oclass) != NHC.BALL_CLASS))
         return 0;
     else
         return schar(is_damageable(otmp));
 }
 
-/** C ref: objnam.c:1824 — @param {CPtr} otmp @param {CPtr} adjective @param {CUInt} cxn_flags @returns {CPtr} */
+/* format a corpse name (xname() omits monster type; doname() calls us);
+   eatcorpse() also uses us for death reason when eating tainted glob */
+/** C ref: objnam.c:1824 — @param {CPtr<struct obj>} otmp @param {CPtr<char>} adjective @param {CUInt} cxn_flags @returns {CPtr<char>} */
 export function corpse_xname(otmp, adjective, cxn_flags) {
     let nambuf;
     let omndx = cptr.ldI32o(otmp, $obj_corpsenm);
@@ -2239,116 +2706,169 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     let possessive = 0;
     let glob = schar((cptr.ldI16o(otmp, $obj_otyp) != NHC.CORPSE && (cptr.ldI32o(otmp, $obj_globby) & 1) | 0 ? 1 : 0));
     let mnam;
+
+    /* some callers [aobjnam()] rely on prefix area that xname() sets aside */
     cptr.stPtro(gx, $instance_globals_x_xnamep, nextobuf());
     nambuf = cptr.add(cptr.ldPtro(gx, $instance_globals_x_xnamep), 80);
+
     if (glob) {
-        mnam = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(otmp, $obj_otyp), 120))), 16));
+        mnam = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(otmp, $obj_otyp), $sizeof_objclass))), $sizeof_objdescr));  /* "glob of <monster>" */
     } else if (omndx == NHC.NON_PM) {
-        mnam = __sl173;
+        mnam = __s_thing;
     } else {
         mnam = obj_pmname(otmp);
-        if (the_unique_pm(cptr.add(mons, omndx, 96)) || ((cptr.ldU64o((cptr.add(mons, omndx, 96)), $permonst_mflags2) & 524288n) != 0n)) {
+        if (the_unique_pm(cptr.add(mons, omndx, $sizeof_permonst)) || ((cptr.ldU64o((cptr.add(mons, omndx, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n)) {
             mnam = s_suffix(mnam);
             possessive = 1;
-            if (((cptr.ldU64o((cptr.add(mons, omndx, 96)), $permonst_mflags2) & 524288n) != 0n))
+            /* don't precede personal name like "Medusa" with an article */
+            if (((cptr.ldU64o((cptr.add(mons, omndx, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n))
                 no_prefix = 1;
-            else if (the_unique_pm(cptr.add(mons, omndx, 96)) && !no_prefix)
+            else if (the_unique_pm(cptr.add(mons, omndx, $sizeof_permonst)) && !no_prefix)
                 the_prefix = 1;
         }
     }
     if (no_prefix)
         the_prefix = (any_prefix = 0);
     else if (the_prefix)
-        any_prefix = 0;
+        any_prefix = 0;  /* mutually exclusive */
+
     cptr.st1(nambuf, 0);
+    /* can't use the() the way we use an() below because any capitalized
+       Name causes it to assume a personal name and return Name as-is;
+       that's usually the behavior wanted, but here we need to force "the"
+       to precede capitalized unique monsters (pnames are handled above) */
     if (the_prefix)
-        void cptr.strcat(nambuf, __sl62);
+        void cptr.strcat(nambuf, __s_the);
+    /* note: over time, various instances of the(mon_name()) have crept
+       into the code, so the() has been modified to deal with capitalized
+       monster names; we could switch to using it below like an() */
+
     if (!adjective || !cptr.ld1s(adjective)) {
+        /* normal case:  newt corpse */
         void cptr.strcat(nambuf, mnam);
     } else {
+        /* adjective positioning depends upon format of monster name */
         if (possessive)
-            void cptr.sprintf(eos(nambuf), __sl55, mnam, adjective);
+            void cptr.sprintf(eos(nambuf), __s_s_s__2, mnam, adjective);
         else
-            void cptr.sprintf(eos(nambuf), __sl55, adjective, mnam);
+            void cptr.sprintf(eos(nambuf), __s_s_s__2, adjective, mnam);
+        /* in case adjective has a trailing space, squeeze it out */
         mungspaces(nambuf);
+        /* doname() might include a count in the adjective argument;
+           if so, don't prepend an article */
         if (digit(cptr.ld1s(adjective)))
             any_prefix = 0;
     }
+
     if (glob) {
-        ;
+        ;  /* omit_corpse doesn't apply; quantity is always 1 */
     } else if (!omit_corpse) {
-        void cptr.strcat(nambuf, __sl174);
+        void cptr.strcat(nambuf, __s_corpse);
+        /* makeplural(nambuf) => append "s" to "corpse" */
         if (cptr.ldI64o(otmp, $obj_quan) > 1n && !ignore_quan) {
-            void cptr.strcat(nambuf, __sl121);
-            any_prefix = 0;
+            void cptr.strcat(nambuf, __s_s);
+            any_prefix = 0;  /* avoid "a newt corpses" */
         }
     }
+
+    /* it's safe to overwrite our nambuf[] after an() has copied its
+       old value into another buffer; and once _that_ has been copied,
+       the obuf[] returned by an() can be made available for re-use */
     if (any_prefix) {
         let obufp;
+
         void cptr.strcpy(nambuf, obufp = an(nambuf));
         releaseobuf(obufp);
     }
     return nambuf;
 }
 
-/** C ref: objnam.c:1924 — @param {CPtr} obj @returns {CPtr} */
+/* xname doesn't include monster type for "corpse"; cxname does */
+/** C ref: objnam.c:1924 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function cxname(obj) {
     if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE)
         return corpse_xname(obj, null, NHM.CXN_NORMAL);
     return xname(obj);
 }
 
-/** C ref: objnam.c:1933 — @param {CPtr} obj @returns {CPtr} */
+/* like cxname, but ignores quantity */
+/** C ref: objnam.c:1933 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function cxname_singular(obj) {
     if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE)
         return corpse_xname(obj, null, NHM.CXN_SINGULAR);
     return xname_flags(obj, NHM.CXN_SINGULAR);
 }
 
-/** C ref: objnam.c:1942 — @param {CPtr} obj @returns {CPtr} */
+/* treat an object as fully ID'd when it might be used as reason for death */
+/** C ref: objnam.c:1942 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function killer_xname(obj) {
     let save_obj = cptr.alloc(216);
     let save_ocknown;
     let buf;
     let save_ocuname;
     let save_oname = null;
+
+    /* bypass object twiddling for artifacts */
     if (cptr.ld1so(obj, $obj_oartifact))
         return bare_artifactname(obj);
+
+    /* remember original settings for core of the object;
+       oextra structs other than oname don't matter here--since they
+       aren't modified they don't need to be saved and restored */
     cptr.memcpy(save_obj, obj, 216);
     if (has_oname(obj))
         save_oname = (cptr.ldPtr(cptr.ldPtro((obj), $obj_oextra)));
+
+    /* killer name should be more specific than general xname; however, exact
+       info like blessed/cursed and rustproof makes things be too verbose; set
+       dknown (not observe_object) because dead characters don't observe */
     cptr.stI32o(obj, $obj_known, cptr.stI32o(obj, $obj_dknown, 1));
     cptr.stI32o(obj, $obj_bknown, cptr.stI32o(obj, $obj_rknown, cptr.stI32o(obj, $obj_greased, 0)));
+    /* if character is a priest[ess], bknown will get toggled back on */
     if (cptr.ldI16o(obj, $obj_otyp) != NHC.POT_WATER)
         cptr.stI32o(obj, $obj_blessed, cptr.stI32o(obj, $obj_cursed, 0));
     else
-        cptr.stI32o(obj, $obj_bknown, 1);
+        cptr.stI32o(obj, $obj_bknown, 1);  /* describe holy/unholy water as such */
+    /* "killed by poisoned <obj>" would be misleading when poison is
+       not the cause of death and "poisoned by poisoned <obj>" would
+       be redundant when it is, so suppress "poisoned" prefix */
     cptr.stI32o(obj, $obj_otrapped, 0);
+    /* strip user-supplied name; artifacts keep theirs */
     if (!cptr.ld1so(obj, $obj_oartifact) && save_oname)
         cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), null);
-    save_ocknown = (cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_name_known) & 1);
-    cptr.stI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_name_known, 1);
-    save_ocuname = cptr.ldPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname);
-    cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, null);
+    /* temporarily identify the type of object */
+    save_ocknown = (cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1);
+    cptr.stI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known, 1);
+    save_ocuname = cptr.ldPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname);
+    cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, null);  /* avoid "foo called bar" */
+
+    /* format the object */
     if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE) {
         buf = corpse_xname(obj, null, NHM.CXN_NORMAL);
     } else if (cptr.ldI16o(obj, $obj_otyp) == NHC.SLIME_MOLD) {
+        /* concession to "most unique deaths competition" in the annual
+           devnull tournament, suppress player supplied fruit names because
+           those can be used to fake other objects and dungeon features */
         buf = nextobuf();
-        void cptr.sprintf(buf, __sl175, (((cptr.ldI64o(obj, $obj_quan)) == 1n) ? __sl13 : __sl121));
+        void cptr.sprintf(buf, __s_deadly_slime_mold_s, (((cptr.ldI64o(obj, $obj_quan)) == 1n) ? __s_empty : __s_s));
     } else {
         buf = xname(obj);
     }
-    if (cptr.ldI64o(obj, $obj_quan) == 1n && !strstri(buf, __sl176) && !strstri(buf, __sl177))
+    /* apply an article if appropriate; caller should always use KILLED_BY */
+    if (cptr.ldI64o(obj, $obj_quan) == 1n && !strstri(buf, __s_apos_s_sp) && !strstri(buf, __s_s_apos_sp))
         buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
-    cptr.stI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_name_known, save_ocknown);
-    cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, save_ocuname);
-    cptr.memcpy(obj, save_obj, 216);
+
+    cptr.stI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known, save_ocknown);
+    cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, save_ocuname);
+    cptr.memcpy(obj, save_obj, 216);  /* restore object's core settings */
     if (!cptr.ld1so(obj, $obj_oartifact) && save_oname)
         cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), save_oname);
+
     return buf;
 }
 
-/** C ref: objnam.c:2009 — @param {CPtr} obj @param {CPtr} func @param {CPtr} altfunc @param {CUInt} lenlimit @returns {CPtr} */
+/* xname,doname,&c with long results reformatted to omit some stuff */
+/** C ref: objnam.c:2009 — @param {CPtr<struct obj>} obj @param {CPtr} func @param {CPtr} altfunc @param {CUInt} lenlimit @returns {CPtr<char>} */
 export function short_oname(obj, func, altfunc, lenlimit) {
     let save_obj = cptr.alloc(216);
     let unamebuf = new Uint8Array(12);
@@ -2356,65 +2876,87 @@ export function short_oname(obj, func, altfunc, lenlimit) {
     let save_oname;
     let save_uname;
     let outbuf;
+
     outbuf = (func)(obj);
     if (Number(BigInt.asUintN(32, cptr.strlen(outbuf))) <= lenlimit)
         return outbuf;
-    save_uname = cptr.ldPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname);
+
+    /* shorten called string to fairly small amount */
+    save_uname = cptr.ldPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname);
     if (save_uname && cptr.strlen(save_uname) >= 12n) {
         void __builtin___strncpy_chk(cptr.decay(unamebuf), save_uname, 8n, __builtin_object_size(cptr.decay(unamebuf), 1));
-        void cptr.strcpy(cptr.add(cptr.add(cptr.decay(unamebuf), 12n), -(4)), __sl178);
-        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, cptr.decay(unamebuf));
+        void cptr.strcpy(cptr.add(cptr.add(cptr.decay(unamebuf), 12n), -(4)), __s_dot3);
+        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, cptr.decay(unamebuf));
         releaseobuf(outbuf);
         outbuf = (func)(obj);
-        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, save_uname);
+        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, save_uname);  /* restore called string */
         if (Number(BigInt.asUintN(32, cptr.strlen(outbuf))) <= lenlimit)
             return outbuf;
     }
+
+    /* shorten named string to fairly small amount */
     save_oname = has_oname(obj) ? (cptr.ldPtr(cptr.ldPtro((obj), $obj_oextra))) : null;
     if (save_oname && cptr.strlen(save_oname) >= 12n) {
         void __builtin___strncpy_chk(cptr.decay(onamebuf), save_oname, 8n, __builtin_object_size(cptr.decay(onamebuf), 1));
-        void cptr.strcpy(cptr.add(cptr.add(cptr.decay(onamebuf), 12n), -(4)), __sl178);
+        void cptr.strcpy(cptr.add(cptr.add(cptr.decay(onamebuf), 12n), -(4)), __s_dot3);
         cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), cptr.decay(onamebuf));
         releaseobuf(outbuf);
         outbuf = (func)(obj);
-        cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), save_oname);
+        cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), save_oname);  /* restore named string */
         if (Number(BigInt.asUintN(32, cptr.strlen(outbuf))) <= lenlimit)
             return outbuf;
     }
+
+    /* shorten both called and named strings;
+       unamebuf and onamebuf have both already been populated */
     if (save_uname && cptr.strlen(save_uname) >= 12n && save_oname && cptr.strlen(save_oname) >= 12n) {
-        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, cptr.decay(unamebuf));
+        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, cptr.decay(unamebuf));
         cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), cptr.decay(onamebuf));
         releaseobuf(outbuf);
         outbuf = (func)(obj);
         if (Number(BigInt.asUintN(32, cptr.strlen(outbuf))) <= lenlimit) {
-            cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, save_uname);
+            cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, save_uname);
             cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), save_oname);
             return outbuf;
         }
     }
+
+    /* still long; strip several name-lengthening attributes;
+       called and named strings are still in truncated form */
     cptr.memcpy(save_obj, obj, 216);
     cptr.stI32o(obj, $obj_bknown, cptr.stI32o(obj, $obj_rknown, cptr.stI32o(obj, $obj_greased, 0)));
     cptr.stI32o(obj, $obj_oeroded, cptr.stI32o(obj, $obj_oeroded2, 0));
     releaseobuf(outbuf);
     outbuf = (func)(obj);
     if (altfunc && Number(BigInt.asUintN(32, cptr.strlen(outbuf))) > lenlimit) {
+        /* still long; use the alternate function (usually one of
+           the jackets around minimal_xname()) */
         releaseobuf(outbuf);
         outbuf = (altfunc)(obj);
     }
+    /* restore the object */
     cptr.memcpy(obj, save_obj, 216);
     if (save_oname)
         cptr.stPtr(cptr.ldPtro((obj), $obj_oextra), save_oname);
     if (save_uname)
-        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_uname, save_uname);
+        cptr.stPtro2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_uname, save_uname);
+
+    /* use whatever we've got, whether it's too long or not */
     return outbuf;
 }
 
-/** C ref: objnam.c:2091 — @param {CPtr} otmp @param {CPtr} func @returns {CPtr} */
+/*
+ * Used if only one of a collection of objects is named (e.g. in eat.c).
+ */
+/** C ref: objnam.c:2091 — @param {CPtr<struct obj>} otmp @param {CPtr} func @returns {CPtr<char>} */
 export function singular(otmp, func) {
     let savequan;
     let nam;
+
+    /* using xname for corpses does not give the monster type */
     if (cptr.ldI16o(otmp, $obj_otyp) == NHC.CORPSE && func === xname)
         func = cxname;
+
     savequan = cptr.ldI64o(otmp, $obj_quan);
     cptr.stI64o(otmp, $obj_quan, 1n);
     nam = (func)(otmp);
@@ -2422,168 +2964,212 @@ export function singular(otmp, func) {
     return nam;
 }
 
-/** C ref: objnam.c:2109 — @param {CPtr} outbuf @param {CPtr} str @returns {CPtr} */
+/* pick "", "a ", or "an " as article for 'str'; used by an() and doname() */
+/** C ref: objnam.c:2109 — @param {CPtr<char>} outbuf @param {CPtr<char>} str @returns {CPtr<char>} */
 export function just_an(outbuf, str) {
     let c0;
+
     cptr.st1(outbuf, 0);
     c0 = lowc(cptr.ld1s(str));
     if (!cptr.ld1so(str, 1) || cptr.ld1so(str, 1) == 32) {
-        void cptr.strcpy(outbuf, cptr.strchr(__sl179, c0) ? __sl180 : __sl111);
-    } else if (!strncmpi(str, __sl62, 4) || !strncmpi((str), (__sl181), -1) || !strncmpi((str), (__sl182), -1) || !strncmpi((str), (__sl183), -1)) {
-        ;
+        /* single letter; might be used for named fruit or a musical note */
+        void cptr.strcpy(outbuf, cptr.strchr(__s_aefhilmnosx, c0) ? __s_an : __s_a_sp);
+    } else if (!strncmpi(str, __s_the, 4) || !strncmpi((str), (__s_molten_lava), -1) || !strncmpi((str), (__s_iron_bars), -1) || !strncmpi((str), (__s_ice), -1)) {
+        ;  /* no article */
     } else {
-        if ((cptr.strchr(cptr.decay(vowels), c0) && (strncmpi(str, __sl184, 3) || (cptr.ld1so(str, 3) && !cptr.strchr(__sl185, cptr.ld1so(str, 3)))) && strncmpi(str, __sl186, 2) && strncmpi(str, __sl187, 3) && strncmpi(str, __sl188, 7) && strncmpi(str, __sl189, 7) && strncmpi(str, __sl190, 7) && strncmpi(str, __sl191, 6)) || (c0 == 120 && !cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1so(str, 1)))))
-            void cptr.strcpy(outbuf, __sl180);
+        /* normal case is "an <vowel>" or "a <consonant>" */
+        if ((cptr.strchr(cptr.decay(vowels), c0) && (strncmpi(str, __s_one, 3) || (cptr.ld1so(str, 3) && !cptr.strchr(__s_dash_us_sp, cptr.ld1so(str, 3)))) && strncmpi(str, __s_eu, 2) && strncmpi(str, __s_uke, 3) && strncmpi(str, __s_ukulele, 7) && strncmpi(str, __s_unicorn, 7) && strncmpi(str, __s_uranium, 7) && strncmpi(str, __s_useful, 6)) || (c0 == 120 && !cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1so(str, 1)))))
+            void cptr.strcpy(outbuf, __s_an);
         else
-            void cptr.strcpy(outbuf, __sl111);
+            void cptr.strcpy(outbuf, __s_a_sp);
     }
     return outbuf;
 }
 
-/** C ref: objnam.c:2145 — @param {CPtr} str @returns {CPtr} */
+/** C ref: objnam.c:2145 — @param {CPtr<char>} str @returns {CPtr<char>} */
 export function an(str) {
     let buf = nextobuf();
+
     if (!str || !cptr.ld1s(str)) {
-        impossible(__sl192, str ? __sl193 : __sl194);
-        return cptr.strcpy(buf, __sl195);
+        impossible(__s_alphabet_soup_an_s, str ? __s_quot2 : __s_null);
+        return cptr.strcpy(buf, __s_an__2);
     }
     void just_an(buf, str);
-    return __builtin___strncat_chk(buf, str, BigInt(((255 - Strlen_(buf, __sl196, 2154)) >>> 0) >>> 0), __builtin_object_size(buf, 1));
+    return __builtin___strncat_chk(buf, str, BigInt(((255 - Strlen_(buf, __s_an__3, 2154)) >>> 0) >>> 0), __builtin_object_size(buf, 1));
 }
 
-/** C ref: objnam.c:2158 — @param {CPtr} str @returns {CPtr} */
+/** C ref: objnam.c:2158 — @param {CPtr<char>} str @returns {CPtr<char>} */
 export function An(str) {
     let tmp = an(str);
+
     cptr.st1(tmp, highc(cptr.ld1s(tmp)));
     return tmp;
 }
 
-/** C ref: objnam.c:2171 — @param {CPtr} str @returns {CPtr} */
+/*
+ * Prepend "the" if necessary; assumes str is a subject derived from xname.
+ * Use type_is_pname() for monster names, not the().  the() is idempotent.
+ */
+/** C ref: objnam.c:2171 — @param {CPtr<char>} str @returns {CPtr<char>} */
 export function the(str) {
     let aname;
     let buf = nextobuf();
     let insert_the = 0;
+
     if (!str || !cptr.ld1s(str)) {
-        impossible(__sl197, str ? __sl193 : __sl194);
-        return cptr.strcpy(buf, __sl198);
+        impossible(__s_alphabet_soup_the_s, str ? __s_quot2 : __s_null);
+        return cptr.strcpy(buf, __s_the__3);
     }
-    if (!strncmpi(str, __sl62, 4)) {
+    if (!strncmpi(str, __s_the, 4)) {
         cptr.st1o(buf, 0, lowc(cptr.ld1s(str)));
         void cptr.strcpy(cptr.add(buf, 1), cptr.add(str, 1));
         return buf;
-    } else if (cptr.ld1s(str) < 65 || cptr.ld1s(str) > 90 || CapitalMon(str) || (fruit_from_name(str, 1, null) && ((aname = artifact_name(str, null, 0)) === null || strncmpi(aname, __sl62, 4) == 0))) {
+    } else if (cptr.ld1s(str) < 65 || cptr.ld1s(str) > 90 || CapitalMon(str) || (fruit_from_name(str, 1, null) && ((aname = artifact_name(str, null, 0)) === null || strncmpi(aname, __s_the, 4) == 0))) {
+        /* not a proper name, needs an article */
         insert_the = 1;
     } else {
+        /* Probably a proper name, might not need an article */
         let named;
         let called;
         let tmp;
         let l;
+
+        /* some objects have capitalized adjectives in their names */
         if (((tmp = cptr.strrchr(str, 32)) !== null || (tmp = cptr.strrchr(str, 45)) !== null) && (cptr.ld1so(tmp, 1) < 65 || cptr.ld1so(tmp, 1) > 90)) {
+            /* insert "the" unless we have an apostrophe (where we assume
+               we're dealing with "Unique's corpse" when "Unique" wasn't
+               caught by CapitalMon() above) */
             insert_the = schar((!cptr.strchr(str, 39)));
         } else if (tmp && cptr.cmp(cptr.strchr(str, 32), tmp) < 0) {
-            tmp = strstri(str, __sl34);
-            named = strstri(str, __sl89);
-            called = strstri(str, __sl199);
+            /* it needs an article if the name contains "of" */
+            tmp = strstri(str, __s_of);
+            named = strstri(str, __s_named);
+            called = strstri(str, __s_called);
             if (called && (!named || cptr.cmp(called, named) < 0))
                 named = called;
+
             if (tmp && (!named || cptr.cmp(tmp, named) < 0))
                 insert_the = 1;
-            else if (!named && (l = Strlen_(str, __sl200, 2220) | 0) >= 31 && !strcmp(cptr.add(str, (l - 31) | 0), __sl201))
+            else if (!named && (l = Strlen_(str, __s_the__4, 2220) | 0) >= 31 && !strcmp(cptr.add(str, (l - 31) | 0), __s_platinum_yendorian_express_card))
                 insert_the = 1;
         }
     }
     if (insert_the)
-        void cptr.strcpy(buf, __sl62);
+        void cptr.strcpy(buf, __s_the);
     else
         cptr.st1o(buf, 0, 0);
-    return __builtin___strncat_chk(buf, str, BigInt(((255 - Strlen_(buf, __sl200, 2230)) >>> 0) >>> 0), __builtin_object_size(buf, 1));
+    return __builtin___strncat_chk(buf, str, BigInt(((255 - Strlen_(buf, __s_the__4, 2230)) >>> 0) >>> 0), __builtin_object_size(buf, 1));
 }
 
-/** C ref: objnam.c:2234 — @param {CPtr} str @returns {CPtr} */
+/** C ref: objnam.c:2234 — @param {CPtr<char>} str @returns {CPtr<char>} */
 export function The(str) {
     let tmp = the(str);
+
     cptr.st1(tmp, highc(cptr.ld1s(tmp)));
     return tmp;
 }
 
-/** C ref: objnam.c:2244 — @param {CPtr} otmp @param {CPtr} verb @returns {CPtr} */
+/* returns "count cxname(otmp)" or just cxname(otmp) if count == 1 */
+/** C ref: objnam.c:2244 — @param {CPtr<struct obj>} otmp @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function aobjnam(otmp, verb) {
     let prefix = new Uint8Array(80);
     let bp = cxname(otmp);
+
     if (cptr.ldI64o(otmp, $obj_quan) != 1n) {
-        void cptr.sprintf(cptr.decay(prefix), __sl109, cptr.ldI64o(otmp, $obj_quan));
+        void cptr.sprintf(cptr.decay(prefix), __s_ld, cptr.ldI64o(otmp, $obj_quan));
         bp = strprepend(bp, cptr.decay(prefix));
     }
     if (verb) {
-        void cptr.strcat(bp, __sl142);
+        void cptr.strcat(bp, __s_sp);
         void cptr.strcat(bp, otense(otmp, verb));
     }
     return bp;
 }
 
-/** C ref: objnam.c:2262 — @param {CPtr} obj @param {CPtr} verb @returns {CPtr} */
+/* combine yname and aobjnam eg "your count cxname(otmp)" */
+/** C ref: objnam.c:2262 — @param {CPtr<struct obj>} obj @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function yobjnam(obj, verb) {
     let s = aobjnam(obj, verb);
+
+    /* leave off "your" for most of your artifacts, but prepend
+     * "your" for unique objects and "foo of bar" quest artifacts */
     if (!(cptr.ld1so((obj), $obj_where) == NHM.OBJ_INVENT) || !obj_is_pname(obj) || cptr.ld1so(obj, $obj_oartifact) >= NHC.ART_ORB_OF_DETECTION) {
         let outbuf = shk_your(nextobuf(), obj);
-        let space_left = ((255 - Strlen_(outbuf, __sl202, 2271)) >>> 0) | 0;
+        let space_left = ((255 - Strlen_(outbuf, __s_yobjnam, 2271)) >>> 0) | 0;
+
         s = __builtin___strncat_chk(outbuf, s, BigInt.asUintN(64, BigInt(space_left)), __builtin_object_size(outbuf, 1));
     }
     return s;
 }
 
-/** C ref: objnam.c:2280 — @param {CPtr} obj @param {CPtr} verb @returns {CPtr} */
+/* combine Yname2 and aobjnam eg "Your count cxname(otmp)" */
+/** C ref: objnam.c:2280 — @param {CPtr<struct obj>} obj @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function Yobjnam2(obj, verb) {
     let s = yobjnam(obj, verb);
+
     cptr.st1(s, highc(cptr.ld1s(s)));
     return s;
 }
 
-/** C ref: objnam.c:2290 — @param {CPtr} otmp @param {CPtr} verb @returns {CPtr} */
+/* like aobjnam, but prepend "The", not count, and use xname */
+/** C ref: objnam.c:2290 — @param {CPtr<struct obj>} otmp @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function Tobjnam(otmp, verb) {
     let bp = The(xname(otmp));
+
     if (verb) {
-        void cptr.strcat(bp, __sl142);
+        void cptr.strcat(bp, __s_sp);
         void cptr.strcat(bp, otense(otmp, verb));
     }
     return bp;
 }
 
-/** C ref: objnam.c:2303 — @param {CPtr} obj @returns {CPtr} */
+/* capitalized variant of doname() */
+/** C ref: objnam.c:2303 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function Doname2(obj) {
     let s = doname(obj);
+
     cptr.st1(s, highc(cptr.ld1s(s)));
     return s;
 }
 
+/* doname() for itemized buying of 'obj' from a shop */
 const __static_paydoname_and_contents = cptr.bytes(" and its contents"); /** C ref: objnam.c:2315 — char[18] (function-static) */
 
-/** C ref: objnam.c:2313 — @param {CPtr} obj @returns {CPtr} */
+/** C ref: objnam.c:2313 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function paydoname(obj) {
     let p;
     let save_cknown = (cptr.ldI32o(obj, $obj_cknown) & 1);
     let save_wizweight = cptr.ld1so(iflags, $instance_flags_wizweight);
+
     if ((cptr.ldPtro((obj), $obj_cobj) !== null))
         cptr.stI32o(obj, $obj_cknown, 0);
+    /* avoid showing item weights to unclutter billing's pay-menu a bit */
     cptr.st1o(iflags, $instance_flags_wizweight, 0);
+    /* suppress invent-style price; caller will add billing-style price */
     (cptr.stI32o(iflags, $instance_flags_suppress_price, cptr.ldI32o(iflags, $instance_flags_suppress_price) + 1)) - (1);
     p = doname_base(obj, 0);
     (cptr.stI32o(iflags, $instance_flags_suppress_price, cptr.ldI32o(iflags, $instance_flags_suppress_price) + -1)) - (-1);
     cptr.st1o(iflags, $instance_flags_wizweight, save_wizweight);
+
     if ((cptr.ldPtro((obj), $obj_cobj) !== null)) {
+        /* buy_container() sets no_charge for a container that has just
+           been purchased so that when paydoname() is called by
+           shk_names_obj(), we'll provide "a/an <container>" instead of
+           "your <container>" */
         if (!(cptr.ldI32o(obj, $obj_no_charge) & 1)) {
-            if (!cptr.strncmp(p, __sl111, 2n))
+            if (!cptr.strncmp(p, __s_a_sp, 2n))
                 p = cptr.add(p, 2);
-            else if (!cptr.strncmp(p, __sl180, 3n))
+            else if (!cptr.strncmp(p, __s_an, 3n))
                 p = cptr.add(p, 3);
-            p = strprepend(p, (cptr.ldI32o(obj, $obj_unpaid) & 1) | 0 ? __sl203 : __sl204);
+            p = strprepend(p, (cptr.ldI32o(obj, $obj_unpaid) & 1) | 0 ? __s_an_unpaid : __s_your);
         }
+
         if (!(cptr.ldI32o(obj, $obj_cknown) & 1)) {
             if ((cptr.ldI32o(obj, $obj_unpaid) & 1)) {
                 if (BigInt.asUintN(64, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(Number(BigInt.asIntN(32, cptr.strlen(p))))) + 18n) - 1n) < 176n)
                     void cptr.strcat(p, cptr.decay(__static_paydoname_and_contents));
             } else {
-                p = strprepend(p, __sl205);
+                p = strprepend(p, __s_the_contents_of);
             }
         }
     }
@@ -2591,62 +3177,108 @@ export function paydoname(obj) {
     return p;
 }
 
-/** C ref: objnam.c:2359 — @param {CPtr} obj @returns {CPtr} */
+/* returns "[your ]xname(obj)" or "Foobar's xname(obj)" or "the xname(obj)" */
+/** C ref: objnam.c:2359 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function yname(obj) {
     let s = cxname(obj);
+
+    /* leave off "your" for most of your artifacts, but prepend
+     * "your" for unique objects and "foo of bar" quest artifacts */
     if (!(cptr.ld1so((obj), $obj_where) == NHM.OBJ_INVENT) || !obj_is_pname(obj) || cptr.ld1so(obj, $obj_oartifact) >= NHC.ART_ORB_OF_DETECTION) {
         let outbuf = shk_your(nextobuf(), obj);
-        let space_left = ((255 - Strlen_(outbuf, __sl206, 2368)) >>> 0) | 0;
+        let space_left = ((255 - Strlen_(outbuf, __s_yname, 2368)) >>> 0) | 0;
+
         s = __builtin___strncat_chk(outbuf, s, BigInt.asUintN(64, BigInt(space_left)), __builtin_object_size(outbuf, 1));
     }
+
     return s;
 }
 
-/** C ref: objnam.c:2378 — @param {CPtr} obj @returns {CPtr} */
+/* capitalized variant of yname() */
+/** C ref: objnam.c:2378 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function Yname2(obj) {
     let s = yname(obj);
+
     cptr.st1(s, highc(cptr.ld1s(s)));
     return s;
 }
 
-/** C ref: objnam.c:2391 — @param {CPtr} obj @returns {CPtr} */
+/* returns "your minimal_xname(obj)"
+ * or "Foobar's minimal_xname(obj)"
+ * or "the minimal_xname(obj)"
+ */
+/** C ref: objnam.c:2391 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function ysimple_name(obj) {
     let outbuf = nextobuf();
-    let s = shk_your(outbuf, obj);
-    let space_left = ((255 - Strlen_(s, __sl207, 2395)) >>> 0) | 0;
+    let s = shk_your(outbuf, obj);  /* assert( s == outbuf ); */
+    let space_left = ((255 - Strlen_(s, __s_ysimple_name, 2395)) >>> 0) | 0;
+
     return __builtin___strncat_chk(s, minimal_xname(obj), BigInt.asUintN(64, BigInt(space_left)), __builtin_object_size(s, 1));
 }
 
-/** C ref: objnam.c:2402 — @param {CPtr} obj @returns {CPtr} */
+/* capitalized variant of ysimple_name() */
+/** C ref: objnam.c:2402 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function Ysimple_name2(obj) {
     let s = ysimple_name(obj);
+
     cptr.st1(s, highc(cptr.ld1s(s)));
     return s;
 }
 
-/** C ref: objnam.c:2428 — @param {CPtr} obj @returns {CPtr} */
+/*
+ * FIXME:
+ *  simpleonames(), ansimpleoname(), and thesimpleoname() need to
+ *  know the beginning of the obuf[] they use so that they can
+ *  guard against buffer overflow when pluralizing (is that an
+ *  actual word?) or inserting "an" or "the".
+ *
+ *  minimal_xname() returns a call to xname() which writes into
+ *  the middle of its obuf[] then backs up to accomodate a prefix,
+ *  so BUFSZ is not a reliable limit for the length of the result.
+ *
+ *  [Overflow likely moot.  Since the formatted object name has
+ *  user-supplied name suppressed, the length is sure to be short
+ *  enough to added plural suffix or "an" or "the" prefix.]
+ */
+
+/* "scroll" or "scrolls" */
+/** C ref: objnam.c:2428 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function simpleonames(obj) {
     let obufp;
     let simpleoname = minimal_xname(obj);
+
     if (cptr.ldI64o(obj, $obj_quan) != 1n) {
+        /* 'simpleoname' points to an obuf; makeplural() will allocate
+           another one and only that one can be explicitly released for
+           re-use, so this is slightly convoluted to cope with that;
+           makeplural() will be fully evaluated and done with its input
+           argument before strcpy() touches its output argument */
         void cptr.strcpy(simpleoname, obufp = makeplural(simpleoname));
         releaseobuf(obufp);
     }
     return simpleoname;
 }
 
-/** C ref: objnam.c:2446 — @param {CPtr} obj @returns {CPtr} */
+/* "a scroll" or "scrolls"; "a silver bell" or "the Bell of Opening" */
+/** C ref: objnam.c:2446 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function ansimpleoname(obj) {
     let obufp;
     let simpleoname = simpleonames(obj);
     let otyp = cptr.ldI16o(obj, $obj_otyp);
+
+    /* prefix with "the" if a unique item, or a fake one imitating same,
+       has been formatted with its actual name (we let minimal_xname() handle
+       any `known' and `dknown' checking necessary) */
     if (otyp == NHC.FAKE_AMULET_OF_YENDOR)
         otyp = NHC.AMULET_OF_YENDOR;
-    if ((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_unique) & 1) | 0 && (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, 120))), 16)) && !strcmp(simpleoname, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, 120))), 16)))) {
+    if ((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_unique) & 1) | 0 && (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, $sizeof_objclass))), $sizeof_objdescr)) && !strcmp(simpleoname, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, $sizeof_objclass))), $sizeof_objdescr)))) {
+        /* the() will allocate another obuf[]; we want to avoid using two */
         obufp = the(simpleoname);
         void cptr.strcpy(simpleoname, obufp);
         releaseobuf(obufp);
     } else if (cptr.ldI64o(obj, $obj_quan) == 1n) {
+        /* simpleoname[] is singular if quan==1, plural otherwise;
+           an() will allocate another obuf[]; we want to avoid using two */
         obufp = an(simpleoname);
         void cptr.strcpy(simpleoname, obufp);
         releaseobuf(obufp);
@@ -2654,32 +3286,42 @@ export function ansimpleoname(obj) {
     return simpleoname;
 }
 
-/** C ref: objnam.c:2474 — @param {CPtr} obj @returns {CPtr} */
+/* "the scroll" or "the scrolls" */
+/** C ref: objnam.c:2474 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function thesimpleoname(obj) {
     let obufp;
     let simpleoname = simpleonames(obj);
+
+    /* the() will allocate another obuf[]; we want to avoid using two */
     obufp = the(simpleoname);
     void cptr.strcpy(simpleoname, obufp);
     releaseobuf(obufp);
     return simpleoname;
 }
 
-/** C ref: objnam.c:2490 — @param {CPtr} obj @returns {CPtr} */
+/* basic name of obj, as if it has been discovered; for some types of
+   items, we can't just use OBJ_NAME() because it doesn't always include
+   the class (for instance "light" when we want "spellbook of light");
+   minimal_xname() uses xname() to get that */
+/** C ref: objnam.c:2490 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function actualoname(obj) {
     let res;
+
     cptr.stI32o(iflags, $instance_flags_override_ID, 1);
     res = minimal_xname(obj);
     cptr.stI32o(iflags, $instance_flags_override_ID, 0);
     return res;
 }
 
-/** C ref: objnam.c:2502 — @param {CPtr} obj @returns {CPtr} */
+/* artifact's name without any object type or known/dknown/&c feedback */
+/** C ref: objnam.c:2502 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function bare_artifactname(obj) {
     let outbuf;
+
     if (cptr.ld1so(obj, $obj_oartifact)) {
         outbuf = nextobuf();
         void cptr.strcpy(outbuf, artiname(cptr.ld1so(obj, $obj_oartifact)));
-        if (!cptr.strncmp(outbuf, __sl90, 4n))
+        if (!cptr.strncmp(outbuf, __s_the__2, 4n))
             cptr.st1o(outbuf, 0, lowc(cptr.ld1so(outbuf, 0)));
     } else {
         outbuf = xname(obj);
@@ -2689,49 +3331,60 @@ export function bare_artifactname(obj) {
 
 /** C ref: objnam.c:2517 — char *[13] */
 const wrp = cptr.alloc(13 * 8);
-cptr.stPtro(wrp, 0, __sl19);
-cptr.stPtro(wrp, 8, __sl23);
-cptr.stPtro(wrp, 16, __sl17);
-cptr.stPtro(wrp, 24, __sl18);
-cptr.stPtro(wrp, 32, __sl80);
-cptr.stPtro(wrp, 40, __sl24);
-cptr.stPtro(wrp, 48, __sl20);
-cptr.stPtro(wrp, 56, __sl208);
-cptr.stPtro(wrp, 64, __sl209);
-cptr.stPtro(wrp, 72, __sl210);
-cptr.stPtro(wrp, 80, __sl211);
-cptr.stPtro(wrp, 88, __sl212);
-cptr.stPtro(wrp, 96, __sl213);
+cptr.stPtro(wrp, 0, __s_wand);
+cptr.stPtro(wrp, 8, __s_ring);
+cptr.stPtro(wrp, 16, __s_potion);
+cptr.stPtro(wrp, 24, __s_scroll);
+cptr.stPtro(wrp, 32, __s_gem__2);
+cptr.stPtro(wrp, 40, __s_amulet);
+cptr.stPtro(wrp, 48, __s_spellbook);
+cptr.stPtro(wrp, 56, __s_spell_book);
+cptr.stPtro(wrp, 64, __s_weapon);
+cptr.stPtro(wrp, 72, __s_armor);
+cptr.stPtro(wrp, 80, __s_tool);
+cptr.stPtro(wrp, 88, __s_food);
+cptr.stPtro(wrp, 96, __s_comestible);
 
 /** C ref: objnam.c:2523 — char[13] */
 const wrpsym = [NHC.WAND_CLASS, NHC.RING_CLASS, NHC.POTION_CLASS, NHC.SCROLL_CLASS, NHC.GEM_CLASS, NHC.AMULET_CLASS, NHC.SPBOOK_CLASS, NHC.SPBOOK_CLASS, NHC.WEAPON_CLASS, NHC.ARMOR_CLASS, NHC.TOOL_CLASS, NHC.FOOD_CLASS, NHC.FOOD_CLASS];
 
-/** C ref: objnam.c:2531 — @param {CPtr} otmp @param {CPtr} verb @returns {CPtr} */
+/* return form of the verb (input plural) if xname(otmp) were the subject */
+/** C ref: objnam.c:2531 — @param {CPtr<struct obj>} otmp @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function otense(otmp, verb) {
     let buf;
+
+    /*
+     * verb is given in plural (without trailing s).  Return as input
+     * if the result of xname(otmp) would be plural.  Don't bother
+     * recomputing xname(otmp) at this time.
+     */
     if (!is_plural(otmp))
         return vtense(null, verb);
+
     buf = nextobuf();
     void cptr.strcpy(buf, verb);
     return buf;
 }
 
+/* various singular words that vtense would otherwise categorize as plural;
+   also used by makesingular() to catch some special cases */
 /** C ref: objnam.c:2550 — char *[12] */
 const special_subjs = cptr.alloc(12 * 8);
-cptr.stPtro(special_subjs, 0, __sl214);
-cptr.stPtro(special_subjs, 8, __sl215);
-cptr.stPtro(special_subjs, 16, __sl216);
-cptr.stPtro(special_subjs, 24, __sl217);
-cptr.stPtro(special_subjs, 32, __sl218);
-cptr.stPtro(special_subjs, 40, __sl219);
-cptr.stPtro(special_subjs, 48, __sl220);
-cptr.stPtro(special_subjs, 56, __sl221);
-cptr.stPtro(special_subjs, 64, __sl222);
-cptr.stPtro(special_subjs, 72, __sl223);
-cptr.stPtro(special_subjs, 80, __sl224);
+cptr.stPtro(special_subjs, 0, __s_erinys);
+cptr.stPtro(special_subjs, 8, __s_manes);
+cptr.stPtro(special_subjs, 16, __s_cyclops);
+cptr.stPtro(special_subjs, 24, __s_hippocrates);
+cptr.stPtro(special_subjs, 32, __s_pelias);
+cptr.stPtro(special_subjs, 40, __s_aklys);
+cptr.stPtro(special_subjs, 48, __s_amnesia);
+cptr.stPtro(special_subjs, 56, __s_detect_monsters);
+cptr.stPtro(special_subjs, 64, __s_paralysis);
+cptr.stPtro(special_subjs, 72, __s_shape_changers);
+cptr.stPtro(special_subjs, 80, __s_nemesis);
 cptr.stPtro(special_subjs, 88, null);
 
-/** C ref: objnam.c:2563 — @param {CPtr} subj @param {CPtr} verb @returns {CPtr} */
+/* return form of the verb (input plural) for present tense 3rd person subj */
+/** C ref: objnam.c:2563 — @param {CPtr<char>} subj @param {CPtr<char>} verb @returns {CPtr<char>} */
 export function vtense(subj, verb) {
     let buf = nextobuf();
     let bspot;
@@ -2741,12 +3394,23 @@ export function vtense(subj, verb) {
     let spot;
     let spec;
     __lbl_sing: {
+
+        /*
+         * verb is given in plural (without trailing s).  Return as input
+         * if subj appears to be plural.  Add special cases as necessary.
+         * Many hard cases can already be handled by using otense() instead.
+         * If this gets much bigger, consider decomposing makeplural.
+         * Note: monster names are not expected here (except before corpse).
+         *
+         * Special case: allow null sobj to get the singular 3rd person
+         * present tense form so we don't duplicate this code elsewhere.
+         */
         if (subj) {
-            if (!strncmpi(subj, __sl111, 2) || !strncmpi(subj, __sl180, 3))
+            if (!strncmpi(subj, __s_a_sp, 2) || !strncmpi(subj, __s_an, 3))
                 break __lbl_sing;
             spot = null;
             for (sp = subj; (sp = cptr.strchr(sp, 32)) !== null; sp = cptr.add(sp, 1)) {
-                if (!strncmpi(sp, __sl34, 4) || !strncmpi(sp, __sl225, 6) || !strncmpi(sp, __sl199, 8) || !strncmpi(sp, __sl89, 7) || !strncmpi(sp, __sl70, 9)) {
+                if (!strncmpi(sp, __s_of, 4) || !strncmpi(sp, __s_from, 6) || !strncmpi(sp, __s_called, 8) || !strncmpi(sp, __s_named, 7) || !strncmpi(sp, __s_labeled, 9)) {
                     if (!cptr.eq(sp, subj))
                         spot = cptr.add(sp, -(1));
                     break;
@@ -2755,134 +3419,156 @@ export function vtense(subj, verb) {
             len = Number(BigInt.asIntN(32, cptr.strlen(subj)));
             if (!spot)
                 spot = cptr.add(cptr.add(subj, len), -(1));
-            if ((lowc(cptr.ld1s(spot)) == 115 && !cptr.eq(spot, subj) && !cptr.strchr(__sl226, lowc(cptr.ld1s((cptr.add(spot, -(1))))))) || !(cptr.cmp((cptr.add(spot, -(3))), subj) < 0 || strncmpi((cptr.add(spot, -(3))), __sl227, 4)) || !(cptr.cmp((cptr.add(spot, -(3))), subj) < 0 || strncmpi((cptr.add(spot, -(3))), __sl228, 4)) || !(cptr.cmp((cptr.add(spot, -(1))), subj) < 0 || strncmpi((cptr.add(spot, -(1))), __sl229, 2)) || !(cptr.cmp((cptr.add(spot, -(1))), subj) < 0 || strncmpi((cptr.add(spot, -(1))), __sl230, 2))) {
+
+            /*
+             * plural: anything that ends in 's', but not '*us' or '*ss'.
+             * Guess at a few other special cases that makeplural creates.
+             */
+            if ((lowc(cptr.ld1s(spot)) == 115 && !cptr.eq(spot, subj) && !cptr.strchr(__s_us, lowc(cptr.ld1s((cptr.add(spot, -(1))))))) || !(cptr.cmp((cptr.add(spot, -(3))), subj) < 0 || strncmpi((cptr.add(spot, -(3))), __s_eeth, 4)) || !(cptr.cmp((cptr.add(spot, -(3))), subj) < 0 || strncmpi((cptr.add(spot, -(3))), __s_feet, 4)) || !(cptr.cmp((cptr.add(spot, -(1))), subj) < 0 || strncmpi((cptr.add(spot, -(1))), __s_ia, 2)) || !(cptr.cmp((cptr.add(spot, -(1))), subj) < 0 || strncmpi((cptr.add(spot, -(1))), __s_ae, 2))) {
+                /* check for special cases to avoid false matches */
                 len = (Number(BigInt.asIntN(32, (cptr.diff(spot, subj)))) + 1) | 0;
                 for (spec = special_subjs; cptr.ldPtr(spec); spec = cptr.add(spec, 1, 8)) {
-                    ltmp = Strlen_(cptr.ldPtr(spec), __sl231, 2610) | 0;
+                    ltmp = Strlen_(cptr.ldPtr(spec), __s_vtense, 2610) | 0;
                     if (len == ltmp && !strncmpi(cptr.ldPtr(spec), subj, len))
                         break __lbl_sing;
+                    /* also check for <prefix><space><special_subj>
+                       to catch things like "the invisible erinys" */
                     if (len > ltmp && cptr.ld1s((cptr.add(spot, -(ltmp)))) == 32 && !strncmpi(cptr.ldPtr(spec), cptr.add(cptr.add(spot, -(ltmp)), 1), ltmp))
                         break __lbl_sing;
                 }
+
                 return cptr.strcpy(buf, verb);
             }
-            if (!strncmpi((subj), (__sl232), -1) || !strncmpi((subj), (__sl233), -1))
+            /*
+             * 3rd person plural doesn't end in telltale 's';
+             * 2nd person singular behaves as if plural.
+             */
+            if (!strncmpi((subj), (__s_they), -1) || !strncmpi((subj), (__s_you), -1))
                 return cptr.strcpy(buf, verb);
         }
     }
     void cptr.strcpy(buf, verb);
     len = Number(BigInt.asIntN(32, cptr.strlen(buf)));
     bspot = cptr.add(cptr.add(buf, len), -(1));
-    if (!strncmpi((buf), (__sl234), -1)) {
-        void strcasecpy(buf, __sl235);
-    } else if (!strncmpi((buf), (__sl236), -1)) {
-        void strcasecpy(cptr.add(bspot, -(1)), __sl121);
-    } else if (cptr.strchr(__sl237, lowc(cptr.ld1s(bspot))) || (len >= 2 && lowc(cptr.ld1s(bspot)) == 104 && cptr.strchr(__sl238, lowc(cptr.ld1s((cptr.add(bspot, -(1))))))) || (len == 2 && lowc(cptr.ld1s(bspot)) == 111)) {
-        void strcasecpy(cptr.add(bspot, 1), __sl239);
+
+    if (!strncmpi((buf), (__s_are), -1)) {
+        void strcasecpy(buf, __s_is);
+    } else if (!strncmpi((buf), (__s_have), -1)) {
+        void strcasecpy(cptr.add(bspot, -(1)), __s_s);
+    } else if (cptr.strchr(__s_zxs, lowc(cptr.ld1s(bspot))) || (len >= 2 && lowc(cptr.ld1s(bspot)) == 104 && cptr.strchr(__s_cs, lowc(cptr.ld1s((cptr.add(bspot, -(1))))))) || (len == 2 && lowc(cptr.ld1s(bspot)) == 111)) {
+        /* Ends in z, x, s, ch, sh; add an "es" */
+        void strcasecpy(cptr.add(bspot, 1), __s_es);
     } else if (lowc(cptr.ld1s(bspot)) == 121 && !cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1s((cptr.add(bspot, -(1))))))) {
-        void strcasecpy(bspot, __sl240);
+        /* like "y" case in makeplural */
+        void strcasecpy(bspot, __s_ies);
     } else {
-        void strcasecpy(cptr.add(bspot, 1), __sl121);
+        void strcasecpy(cptr.add(bspot, 1), __s_s);
     }
+
     return buf;
 }
 
 /** C ref: objnam.c:2655 — struct sing_plur { sing, plur } (memory model v0.5) */
 
+/* word pairs that don't fit into formula-based transformations;
+   also some suffices which have very few--often one--matches or
+   which aren't systematically reversible (knives, staves) */
 /** C ref: objnam.c:2662 — struct sing_plur[23] */
-const one_off = cptr.alloc(23 * 16);
-cptr.stPtro(one_off, 0, __sl241);
-cptr.stPtro(one_off, 0 + $sing_plur_plur, __sl242);
-cptr.stPtro(one_off, 16, __sl243);
-cptr.stPtro(one_off, 16 + $sing_plur_plur, __sl244);
-cptr.stPtro(one_off, 32, __sl245);
-cptr.stPtro(one_off, 32 + $sing_plur_plur, __sl246);
-cptr.stPtro(one_off, 48, __sl216);
-cptr.stPtro(one_off, 48 + $sing_plur_plur, __sl247);
-cptr.stPtro(one_off, 64, __sl248);
-cptr.stPtro(one_off, 64 + $sing_plur_plur, __sl249);
-cptr.stPtro(one_off, 80, __sl214);
-cptr.stPtro(one_off, 80 + $sing_plur_plur, __sl250);
-cptr.stPtro(one_off, 96, __sl251);
-cptr.stPtro(one_off, 96 + $sing_plur_plur, __sl228);
-cptr.stPtro(one_off, 112, __sl252);
-cptr.stPtro(one_off, 112 + $sing_plur_plur, __sl253);
-cptr.stPtro(one_off, 128, __sl254);
-cptr.stPtro(one_off, 128 + $sing_plur_plur, __sl255);
-cptr.stPtro(one_off, 144, __sl256);
-cptr.stPtro(one_off, 144 + $sing_plur_plur, __sl257);
-cptr.stPtro(one_off, 160, __sl258);
-cptr.stPtro(one_off, 160 + $sing_plur_plur, __sl259);
-cptr.stPtro(one_off, 176, __sl260);
-cptr.stPtro(one_off, 176 + $sing_plur_plur, __sl261);
-cptr.stPtro(one_off, 192, __sl262);
-cptr.stPtro(one_off, 192 + $sing_plur_plur, __sl263);
-cptr.stPtro(one_off, 208, __sl264);
-cptr.stPtro(one_off, 208 + $sing_plur_plur, __sl265);
-cptr.stPtro(one_off, 224, __sl224);
-cptr.stPtro(one_off, 224 + $sing_plur_plur, __sl266);
-cptr.stPtro(one_off, 240, __sl267);
-cptr.stPtro(one_off, 240 + $sing_plur_plur, __sl268);
-cptr.stPtro(one_off, 256, __sl269);
-cptr.stPtro(one_off, 256 + $sing_plur_plur, __sl270);
-cptr.stPtro(one_off, 272, __sl271);
-cptr.stPtro(one_off, 272 + $sing_plur_plur, __sl272);
-cptr.stPtro(one_off, 288, __sl273);
-cptr.stPtro(one_off, 288 + $sing_plur_plur, __sl274);
-cptr.stPtro(one_off, 304, __sl275);
-cptr.stPtro(one_off, 304 + $sing_plur_plur, __sl276);
-cptr.stPtro(one_off, 320, __sl277);
-cptr.stPtro(one_off, 320 + $sing_plur_plur, __sl278);
-cptr.stPtro(one_off, 336, __sl279);
-cptr.stPtro(one_off, 336 + $sing_plur_plur, __sl280);
+const one_off = cptr.alloc(23 * $sizeof_sing_plur);
+cptr.stPtro(one_off, 0, __s_child);
+cptr.stPtro(one_off, 0 + $sing_plur_plur, __s_children);
+cptr.stPtro(one_off, 16, __s_cubus);
+cptr.stPtro(one_off, 16 + $sing_plur_plur, __s_cubi);
+cptr.stPtro(one_off, 32, __s_culus);
+cptr.stPtro(one_off, 32 + $sing_plur_plur, __s_culi);
+cptr.stPtro(one_off, 48, __s_cyclops);
+cptr.stPtro(one_off, 48 + $sing_plur_plur, __s_cyclopes);
+cptr.stPtro(one_off, 64, __s_djinni);
+cptr.stPtro(one_off, 64 + $sing_plur_plur, __s_djinn);
+cptr.stPtro(one_off, 80, __s_erinys);
+cptr.stPtro(one_off, 80 + $sing_plur_plur, __s_erinyes);
+cptr.stPtro(one_off, 96, __s_foot);
+cptr.stPtro(one_off, 96 + $sing_plur_plur, __s_feet);
+cptr.stPtro(one_off, 112, __s_fungus);
+cptr.stPtro(one_off, 112 + $sing_plur_plur, __s_fungi);
+cptr.stPtro(one_off, 128, __s_goose);
+cptr.stPtro(one_off, 128 + $sing_plur_plur, __s_geese);
+cptr.stPtro(one_off, 144, __s_knife);
+cptr.stPtro(one_off, 144 + $sing_plur_plur, __s_knives);
+cptr.stPtro(one_off, 160, __s_labrum);
+cptr.stPtro(one_off, 160 + $sing_plur_plur, __s_labra);
+cptr.stPtro(one_off, 176, __s_louse);
+cptr.stPtro(one_off, 176 + $sing_plur_plur, __s_lice);
+cptr.stPtro(one_off, 192, __s_mouse);
+cptr.stPtro(one_off, 192 + $sing_plur_plur, __s_mice);
+cptr.stPtro(one_off, 208, __s_mumak);
+cptr.stPtro(one_off, 208 + $sing_plur_plur, __s_mumakil);
+cptr.stPtro(one_off, 224, __s_nemesis);
+cptr.stPtro(one_off, 224 + $sing_plur_plur, __s_nemeses);
+cptr.stPtro(one_off, 240, __s_ovum);
+cptr.stPtro(one_off, 240 + $sing_plur_plur, __s_ova);
+cptr.stPtro(one_off, 256, __s_ox);
+cptr.stPtro(one_off, 256 + $sing_plur_plur, __s_oxen);
+cptr.stPtro(one_off, 272, __s_passerby);
+cptr.stPtro(one_off, 272 + $sing_plur_plur, __s_passersby);
+cptr.stPtro(one_off, 288, __s_rtex);
+cptr.stPtro(one_off, 288 + $sing_plur_plur, __s_rtices);
+cptr.stPtro(one_off, 304, __s_serum);
+cptr.stPtro(one_off, 304 + $sing_plur_plur, __s_sera);
+cptr.stPtro(one_off, 320, __s_staff);
+cptr.stPtro(one_off, 320 + $sing_plur_plur, __s_staves);
+cptr.stPtro(one_off, 336, __s_tooth);
+cptr.stPtro(one_off, 336 + $sing_plur_plur, __s_teeth);
 cptr.stPtro(one_off, 352, null);
 cptr.stPtro(one_off, 352 + $sing_plur_plur, null);
 
 /** C ref: objnam.c:2689 — char *[34] */
 const as_is = cptr.alloc(34 * 8);
-cptr.stPtro(as_is, 0, __sl281);
-cptr.stPtro(as_is, 8, __sl282);
-cptr.stPtro(as_is, 16, __sl283);
-cptr.stPtro(as_is, 24, __sl284);
-cptr.stPtro(as_is, 32, __sl285);
-cptr.stPtro(as_is, 40, __sl286);
-cptr.stPtro(as_is, 48, __sl287);
-cptr.stPtro(as_is, 56, __sl182);
-cptr.stPtro(as_is, 64, __sl288);
-cptr.stPtro(as_is, 72, __sl289);
-cptr.stPtro(as_is, 80, __sl290);
-cptr.stPtro(as_is, 88, __sl291);
-cptr.stPtro(as_is, 96, __sl292);
-cptr.stPtro(as_is, 104, __sl293);
-cptr.stPtro(as_is, 112, __sl294);
-cptr.stPtro(as_is, 120, __sl295);
-cptr.stPtro(as_is, 128, __sl296);
-cptr.stPtro(as_is, 136, __sl215);
-cptr.stPtro(as_is, 144, __sl297);
-cptr.stPtro(as_is, 152, __sl298);
-cptr.stPtro(as_is, 160, __sl299);
-cptr.stPtro(as_is, 168, __sl300);
-cptr.stPtro(as_is, 176, __sl301);
-cptr.stPtro(as_is, 184, __sl7);
-cptr.stPtro(as_is, 192, __sl302);
-cptr.stPtro(as_is, 200, __sl303);
-cptr.stPtro(as_is, 208, __sl304);
-cptr.stPtro(as_is, 216, __sl11);
-cptr.stPtro(as_is, 224, __sl305);
-cptr.stPtro(as_is, 232, __sl306);
-cptr.stPtro(as_is, 240, __sl307);
-cptr.stPtro(as_is, 248, __sl308);
-cptr.stPtro(as_is, 256, __sl309);
+cptr.stPtro(as_is, 0, __s_boots);
+cptr.stPtro(as_is, 8, __s_shoes);
+cptr.stPtro(as_is, 16, __s_gloves);
+cptr.stPtro(as_is, 24, __s_lenses);
+cptr.stPtro(as_is, 32, __s_scales);
+cptr.stPtro(as_is, 40, __s_eyes);
+cptr.stPtro(as_is, 48, __s_gauntlets);
+cptr.stPtro(as_is, 56, __s_iron_bars);
+cptr.stPtro(as_is, 64, __s_bison);
+cptr.stPtro(as_is, 72, __s_deer);
+cptr.stPtro(as_is, 80, __s_elk);
+cptr.stPtro(as_is, 88, __s_fish);
+cptr.stPtro(as_is, 96, __s_fowl);
+cptr.stPtro(as_is, 104, __s_tuna);
+cptr.stPtro(as_is, 112, __s_yaki);
+cptr.stPtro(as_is, 120, __s_hai);
+cptr.stPtro(as_is, 128, __s_krill);
+cptr.stPtro(as_is, 136, __s_manes);
+cptr.stPtro(as_is, 144, __s_moose);
+cptr.stPtro(as_is, 152, __s_ninja);
+cptr.stPtro(as_is, 160, __s_sheep);
+cptr.stPtro(as_is, 168, __s_ronin);
+cptr.stPtro(as_is, 176, __s_roshi);
+cptr.stPtro(as_is, 184, __s_shito);
+cptr.stPtro(as_is, 192, __s_tengu);
+cptr.stPtro(as_is, 200, __s_ki_rin);
+cptr.stPtro(as_is, 208, __s_nazgul);
+cptr.stPtro(as_is, 216, __s_gunyoki);
+cptr.stPtro(as_is, 224, __s_piranha);
+cptr.stPtro(as_is, 232, __s_samurai);
+cptr.stPtro(as_is, 240, __s_shuriken);
+cptr.stPtro(as_is, 248, __s_haggis);
+cptr.stPtro(as_is, 256, __s_bordeaux);
 cptr.stPtro(as_is, 264, null);
 
-/** C ref: objnam.c:2708 — @param {CPtr} basestr @param {CPtr} endstring @param {CInt} to_plural @param {CPtr} alt_as_is @returns {CInt} */
+/* singularize/pluralize decisions common to both makesingular & makeplural */
+/** C ref: objnam.c:2708 — @param {CPtr<char>} basestr @param {CPtr<char>} endstring @param {CInt} to_plural @param {CPtr<char *>} alt_as_is @returns {CInt} */
 function singplur_lookup(basestr, endstring, to_plural, alt_as_is) {
     let sp;
     let same;
     let other;
     let as;
     let al;
-    let baselen = Strlen_(basestr, __sl310, 2716) | 0;
+    let baselen = Strlen_(basestr, __s_singplur_lookup, 2716) | 0;
+
     for (as = as_is; cptr.ldPtr(as); as = cptr.add(as, 1, 8)) {
         al = Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtr(as))));
         if (!(cptr.cmp((cptr.add(endstring, -(al))), basestr) < 0 || strncmpi(((cptr.add(endstring, -(al)))), (cptr.ldPtr(as)), -1)))
@@ -2895,83 +3581,122 @@ function singplur_lookup(basestr, endstring, to_plural, alt_as_is) {
                 return 1;
         }
     }
-    if ((baselen > 5) && (!(cptr.cmp((cptr.add(endstring, -(5))), basestr) < 0 || strncmpi(((cptr.add(endstring, -(5)))), (__sl311), -1))))
+
+    /* Leave "craft" as a suffix as-is (aircraft, hovercraft);
+       "craft" itself is (arguably) not included in our likely context */
+    if ((baselen > 5) && (!(cptr.cmp((cptr.add(endstring, -(5))), basestr) < 0 || strncmpi(((cptr.add(endstring, -(5)))), (__s_craft), -1))))
         return 1;
-    if (!strncmpi((basestr), (__sl312), -1) || !strncmpi((basestr), (__sl313), -1)) {
+    /* avoid false hit on one_off[].plur == "lice" or .sing == "goose";
+        if more of these turn up, one_off[] entries will need to flagged
+        as to which are whole words and which are matchable as suffices
+        then matching in the loop below will end up becoming more complex */
+    if (!strncmpi((basestr), (__s_slice), -1) || !strncmpi((basestr), (__s_mongoose), -1)) {
         if (to_plural)
-            void strcasecpy(endstring, __sl121);
+            void strcasecpy(endstring, __s_s);
         return 1;
     }
-    if (to_plural && baselen > 2 && !strncmpi((cptr.add(endstring, -(2))), (__sl269), -1) && !(baselen > 5 && !strncmpi((cptr.add(endstring, -(6))), (__sl314), -1))) {
-        void strcasecpy(endstring, __sl239);
+    /* skip "ox" -> "oxen" entry when pluralizing "<something>ox"
+       unless it is muskox */
+    if (to_plural && baselen > 2 && !strncmpi((cptr.add(endstring, -(2))), (__s_ox), -1) && !(baselen > 5 && !strncmpi((cptr.add(endstring, -(6))), (__s_muskox), -1))) {
+        /* "fox" -> "foxes" */
+        void strcasecpy(endstring, __s_es);
         return 1;
     }
     if (to_plural) {
-        if (baselen > 2 && !strncmpi((cptr.add(endstring, -(3))), (__sl315), -1) && badman(basestr, to_plural)) {
-            void strcasecpy(endstring, __sl121);
+        if (baselen > 2 && !strncmpi((cptr.add(endstring, -(3))), (__s_man), -1) && badman(basestr, to_plural)) {
+            void strcasecpy(endstring, __s_s);
             return 1;
         }
     } else {
-        if (baselen > 2 && !strncmpi((cptr.add(endstring, -(3))), (__sl316), -1) && badman(basestr, to_plural))
+        if (baselen > 2 && !strncmpi((cptr.add(endstring, -(3))), (__s_men), -1) && badman(basestr, to_plural))
             return 1;
     }
     for (sp = one_off; cptr.ldPtr(sp); sp = cptr.add(sp, 1, 16)) {
+        /* check whether endstring already matches */
         same = to_plural ? cptr.ldPtro(sp, $sing_plur_plur) : cptr.ldPtr(sp);
         al = Number(BigInt.asIntN(32, cptr.strlen(same)));
         if (!(cptr.cmp((cptr.add(endstring, -(al))), basestr) < 0 || strncmpi(((cptr.add(endstring, -(al)))), (same), -1)))
-            return 1;
+            return 1;  /* use as-is */
+        /* check whether it matches the inverse; if so, transform it */
         other = to_plural ? cptr.ldPtr(sp) : cptr.ldPtro(sp, $sing_plur_plur);
         al = Number(BigInt.asIntN(32, cptr.strlen(other)));
         if (!(cptr.cmp((cptr.add(endstring, -(al))), basestr) < 0 || strncmpi(((cptr.add(endstring, -(al)))), (other), -1))) {
             void strcasecpy(cptr.add(endstring, -(al)), same);
-            return 1;
+            return 1;  /* one_off[] transformation */
         }
     }
     return 0;
 }
 
+/* searches for common compounds, ex. lump of royal jelly */
 const __static_singplur_compound_compounds = cptr.alloc(18 * 8);
-cptr.stPtro(__static_singplur_compound_compounds, 0, __sl34);
-cptr.stPtro(__static_singplur_compound_compounds, 8, __sl70);
-cptr.stPtro(__static_singplur_compound_compounds, 16, __sl199);
-cptr.stPtro(__static_singplur_compound_compounds, 24, __sl89);
-cptr.stPtro(__static_singplur_compound_compounds, 32, __sl317);
-cptr.stPtro(__static_singplur_compound_compounds, 40, __sl318);
-cptr.stPtro(__static_singplur_compound_compounds, 48, __sl225);
-cptr.stPtro(__static_singplur_compound_compounds, 56, __sl319);
-cptr.stPtro(__static_singplur_compound_compounds, 64, __sl320);
-cptr.stPtro(__static_singplur_compound_compounds, 72, __sl321);
-cptr.stPtro(__static_singplur_compound_compounds, 80, __sl322);
-cptr.stPtro(__static_singplur_compound_compounds, 88, __sl323);
-cptr.stPtro(__static_singplur_compound_compounds, 96, __sl324);
-cptr.stPtro(__static_singplur_compound_compounds, 104, __sl325);
-cptr.stPtro(__static_singplur_compound_compounds, 112, __sl326);
-cptr.stPtro(__static_singplur_compound_compounds, 120, __sl327);
-cptr.stPtro(__static_singplur_compound_compounds, 128, __sl328);
+cptr.stPtro(__static_singplur_compound_compounds, 0, __s_of);
+cptr.stPtro(__static_singplur_compound_compounds, 8, __s_labeled);
+cptr.stPtro(__static_singplur_compound_compounds, 16, __s_called);
+cptr.stPtro(__static_singplur_compound_compounds, 24, __s_named);
+cptr.stPtro(__static_singplur_compound_compounds, 32, __s_above);
+cptr.stPtro(__static_singplur_compound_compounds, 40, __s_versus);
+cptr.stPtro(__static_singplur_compound_compounds, 48, __s_from);
+cptr.stPtro(__static_singplur_compound_compounds, 56, __s_in);
+cptr.stPtro(__static_singplur_compound_compounds, 64, __s_on);
+cptr.stPtro(__static_singplur_compound_compounds, 72, __s_a_la);
+cptr.stPtro(__static_singplur_compound_compounds, 80, __s_with);
+cptr.stPtro(__static_singplur_compound_compounds, 88, __s_de);
+cptr.stPtro(__static_singplur_compound_compounds, 96, __s_sp_d_apos);
+cptr.stPtro(__static_singplur_compound_compounds, 104, __s_du);
+cptr.stPtro(__static_singplur_compound_compounds, 112, __s_au);
+cptr.stPtro(__static_singplur_compound_compounds, 120, __s_in__2);
+cptr.stPtro(__static_singplur_compound_compounds, 128, __s_at);
 cptr.stPtro(__static_singplur_compound_compounds, 136, null); /** C ref: objnam.c:2786 — char *[18] (function-static) */
 const __static_singplur_compound_compound_start = cptr.bytes(" -"); /** C ref: objnam.c:2796 — char[3] (function-static) */
 
-/** C ref: objnam.c:2783 — @param {CPtr} str @returns {CPtr} */
+/** C ref: objnam.c:2783 — @param {CPtr<char>} str @returns {CPtr<char>} */
 function singplur_compound(str) {
+
     let cmpd;
     let p;
+
     for (p = str; cptr.ld1s(p); p = cptr.add(p, 1)) {
+        /* substring starting at p can only match if *p is found
+           within compound_start[] */
         if (!cptr.strchr(cptr.decay(__static_singplur_compound_compound_start), cptr.ld1s(p)))
             continue;
+
+        /* check current substring against all words in the compound[] list */
         for (cmpd = __static_singplur_compound_compounds; cptr.ldPtr(cmpd); cmpd = cptr.add(cmpd, 1, 8))
             if (!strncmpi(p, cptr.ldPtr(cmpd), Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtr(cmpd))))))
                 return p;
     }
+    /* wasn't recognized as a compound phrase */
     return null;
 }
 
+/* Plural routine; once upon a time it may have been chiefly used for
+ * user-defined fruits, but it is now used extensively throughout the
+ * program.
+ *
+ * For fruit, we have to try to account for everything reasonable the
+ * player has; something unreasonable can still break the code.
+ * However, it's still a lot more accurate than "just add an 's' at the
+ * end", which Rogue uses...
+ *
+ * Also used for plural monster names ("Wiped out all homunculi." or the
+ * vanquished monsters list) and body parts.  A lot of unique monsters have
+ * names which get mangled by makeplural and/or makesingular.  They're not
+ * genocidable, and vanquished-mon handling does its own special casing
+ * (for uniques who've been revived and re-killed), so we don't bother
+ * trying to get those right here.
+ *
+ * Also misused by muse.c to convert 1st person present verbs to 2nd person.
+ * 3.6.0: made case-insensitive.
+ */
 const __static_makeplural_already_plural = cptr.alloc(4 * 8);
-cptr.stPtro(__static_makeplural_already_plural, 0, __sl230);
-cptr.stPtro(__static_makeplural_already_plural, 8, __sl364);
-cptr.stPtro(__static_makeplural_already_plural, 16, __sl365);
+cptr.stPtro(__static_makeplural_already_plural, 0, __s_ae);
+cptr.stPtro(__static_makeplural_already_plural, 8, __s_eaux);
+cptr.stPtro(__static_makeplural_already_plural, 16, __s_matzot);
 cptr.stPtro(__static_makeplural_already_plural, 24, null); /** C ref: objnam.c:2905 — char *[4] (function-static) */
 
-/** C ref: objnam.c:2836 — @param {CPtr} oldstr @returns {CPtr} */
+/** C ref: objnam.c:2836 — @param {CPtr<char>} oldstr @returns {CPtr<char>} */
 export function makeplural(oldstr) {
     let spot;
     let lo_c;
@@ -2980,221 +3705,304 @@ export function makeplural(oldstr) {
     let len;
     let i;
     __lbl_bottom: {
+
         if (oldstr)
             while (cptr.ld1s(oldstr) == 32)
                 oldstr = cptr.add(oldstr, 1);
         if (!oldstr || !cptr.ld1s(oldstr)) {
-            impossible(__sl329);
-            void cptr.strcpy(str, __sl121);
+            impossible(__s_plural_of_null);
+            void cptr.strcpy(str, __s_s);
             return str;
         }
+        /* makeplural() is sometimes used on monsters rather than objects
+           and sometimes pronouns are used for monsters, so check those;
+           unfortunately, "her" (which matches genders[1].him and [1].his)
+           and "it" (which matches genders[2].he and [2].him) are ambiguous;
+           we'll live with that; caller can fix things up if necessary */
         cptr.st1(str, 0);
         for (i = 0; i <= 2; ++i) {
-            if (!strncmpi((cptr.ldPtro2(genders, i, 48, $Gender_he)), (oldstr), -1))
-                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, 48, $Gender_he));
-            else if (!strncmpi((cptr.ldPtro2(genders, i, 48, $Gender_him)), (oldstr), -1))
-                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, 48, $Gender_him));
-            else if (!strncmpi((cptr.ldPtro2(genders, i, 48, $Gender_his)), (oldstr), -1))
-                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, 48, $Gender_his));
+            if (!strncmpi((cptr.ldPtro2(genders, i, $sizeof_Gender, $Gender_he)), (oldstr), -1))
+                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_he));  /* "they" */
+            else if (!strncmpi((cptr.ldPtro2(genders, i, $sizeof_Gender, $Gender_him)), (oldstr), -1))
+                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_him));  /* "them" */
+            else if (!strncmpi((cptr.ldPtro2(genders, i, $sizeof_Gender, $Gender_his)), (oldstr), -1))
+                void cptr.strcpy(str, cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_his));  /* "their" */
             if (cptr.ld1s(str)) {
                 if (cptr.ld1so(oldstr, 0) == highc(cptr.ld1so(oldstr, 0)))
                     cptr.st1o(str, 0, highc(cptr.ld1so(str, 0)));
                 return str;
             }
         }
+
         void cptr.strcpy(str, oldstr);
-        if (!strncmpi(str, __sl26, 8))
+
+        /*
+         * Skip changing "pair of" to "pairs of".  According to Webster, usual
+         * English usage is use pairs for humans, e.g. 3 pairs of dancers,
+         * and pair for objects and non-humans, e.g. 3 pair of boots.  We don't
+         * refer to pairs of humans in this game so just skip to the bottom.
+         */
+        if (!strncmpi(str, __s_pair_of, 8))
             break __lbl_bottom;
+
+        /* look for "foo of bar" so that we can focus on "foo" */
         if ((spot = singplur_compound(str)) !== null) {
             excess = cptr.add(oldstr, Number(BigInt.asIntN(32, (cptr.diff(spot, str)))));
             cptr.st1(spot, 0);
         } else
             spot = eos(str);
+
         spot = cptr.add(spot, -1);
         while (cptr.cmp(spot, str) > 0 && cptr.ld1s(spot) == 32)
-            spot = cptr.add(spot, -1);
+            spot = cptr.add(spot, -1);  /* Strip blanks from end */
         cptr.st1((cptr.add(spot, 1)), 0);
-        len = Strlen_(str, __sl330, 2895) | 0;
+        /* Now spot is the last character of the string */
+
+        len = Strlen_(str, __s_makeplural, 2895) | 0;
+
+        /* Single letters */
         if (len == 1 || !letter(cptr.ld1s(spot))) {
-            void cptr.strcpy(cptr.add(spot, 1), __sl331);
+            void cptr.strcpy(cptr.add(spot, 1), __s_apos_s);
             break __lbl_bottom;
         }
+
+        /* dispense with some words which don't need pluralization */
         {
+
+            /* spot+1: synch up with makesingular's usage */
             if (singplur_lookup(str, cptr.add(spot, 1), 1, __static_makeplural_already_plural))
                 break __lbl_bottom;
-            if ((len == 2 && !strncmpi((str), (__sl332), -1)) || (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl333), -1)))
+
+            /* more of same, but not suitable for blanket loop checking */
+            if ((len == 2 && !strncmpi((str), (__s_ya), -1)) || (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_ya__2), -1)))
                 break __lbl_bottom;
         }
-        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl315), -1) && !badman(str, 1)) {
-            void strcasecpy(cptr.add(spot, -(1)), __sl334);
+
+        /* man/men ("Wiped out all cavemen.") */
+        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_man), -1) && !badman(str, 1)) {
+            void strcasecpy(cptr.add(spot, -(1)), __s_en);
             break __lbl_bottom;
         }
         if (lowc(cptr.ld1s(spot)) == 102) {
             lo_c = lowc(cptr.ld1s((cptr.add(spot, -(1)))));
-            if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl335), -1)) {
-                ;
-            } else if (cptr.strchr(__sl336, lo_c) || cptr.strchr(cptr.decay(vowels), lo_c)) {
-                void strcasecpy(spot, __sl337);
+            if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_erf), -1)) {
+                /* avoid "nerf" -> "nerves", "serf" -> "serves" */
+                ;  /* fall through to default (append 's') */
+            } else if (cptr.strchr(__s_lr, lo_c) || cptr.strchr(cptr.decay(vowels), lo_c)) {
+                /* [aeioulr]f to [aeioulr]ves */
+                void strcasecpy(spot, __s_ves);
                 break __lbl_bottom;
             }
         }
-        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl338), -1)) {
-            void strcasecpy(cptr.add(spot, -(2)), __sl229);
+        /* ium/ia (mycelia, baluchitheria) */
+        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_ium), -1)) {
+            void strcasecpy(cptr.add(spot, -(2)), __s_ia);
             break __lbl_bottom;
         }
-        if ((len >= 4 && !strncmpi((cptr.add(spot, -(3))), (__sl339), -1)) || (len >= 5 && (!strncmpi((cptr.add(spot, -(4))), (__sl340), -1) || !strncmpi((cptr.add(spot, -(4))), (__sl341), -1))) || (len >= 6 && !strncmpi((cptr.add(spot, -(5))), (__sl342), -1)) || (len >= 8 && (!strncmpi((cptr.add(spot, -(7))), (__sl343), -1)))) {
-            void strcasecpy(cptr.add(spot, 1), __sl344);
+        /* algae, larvae, hyphae (another fungus part) */
+        if ((len >= 4 && !strncmpi((cptr.add(spot, -(3))), (__s_alga), -1)) || (len >= 5 && (!strncmpi((cptr.add(spot, -(4))), (__s_hypha), -1) || !strncmpi((cptr.add(spot, -(4))), (__s_larva), -1))) || (len >= 6 && !strncmpi((cptr.add(spot, -(5))), (__s_amoeba), -1)) || (len >= 8 && (!strncmpi((cptr.add(spot, -(7))), (__s_vertebra), -1)))) {
+            /* a to ae */
+            void strcasecpy(cptr.add(spot, 1), __s_e);
             break __lbl_bottom;
         }
-        if (len > 3 && !strncmpi((cptr.add(spot, -(1))), (__sl226), -1) && !((len >= 5 && !strncmpi((cptr.add(spot, -(4))), (__sl345), -1)) || (len >= 6 && !strncmpi((cptr.add(spot, -(5))), (__sl346), -1)))) {
-            void strcasecpy(cptr.add(spot, -(1)), __sl347);
+        /* fungus/fungi, homunculus/homunculi, but buses, lotuses, wumpuses */
+        if (len > 3 && !strncmpi((cptr.add(spot, -(1))), (__s_us), -1) && !((len >= 5 && !strncmpi((cptr.add(spot, -(4))), (__s_lotus), -1)) || (len >= 6 && !strncmpi((cptr.add(spot, -(5))), (__s_wumpus), -1)))) {
+            void strcasecpy(cptr.add(spot, -(1)), __s_i);
             break __lbl_bottom;
         }
-        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl348), -1)) {
-            void strcasecpy(cptr.add(spot, -(1)), __sl239);
+        /* sis/ses (nemesis) */
+        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_sis), -1)) {
+            void strcasecpy(cptr.add(spot, -(1)), __s_es);
             break __lbl_bottom;
         }
-        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__sl349), -1) && (cptr.cmp((cptr.add(spot, -(5))), str) < 0 || strncmpi(((cptr.add(spot, -(5)))), (__sl350), -1))) {
-            void strcasecpy(cptr.add(spot, 1), __sl351);
+        /* -eau/-eaux (gateau, chapeau...) */
+        if (len >= 3 && !strncmpi((cptr.add(spot, -(2))), (__s_eau), -1) && (cptr.cmp((cptr.add(spot, -(5))), str) < 0 || strncmpi(((cptr.add(spot, -(5)))), (__s_bureau), -1))) {
+            void strcasecpy(cptr.add(spot, 1), __s_x);
             break __lbl_bottom;
         }
-        if (len >= 6 && (!strncmpi((cptr.add(spot, -(5))), (__sl352), -1) || !strncmpi((cptr.add(spot, -(5))), (__sl353), -1))) {
-            void strcasecpy(cptr.add(spot, -(1)), __sl354);
+        /* matzoh/matzot, possible food name */
+        if (len >= 6 && (!strncmpi((cptr.add(spot, -(5))), (__s_matzoh), -1) || !strncmpi((cptr.add(spot, -(5))), (__s_matzah), -1))) {
+            void strcasecpy(cptr.add(spot, -(1)), __s_ot);  /* oh/ah -> ot */
             break __lbl_bottom;
         }
-        if (len >= 5 && (!strncmpi((cptr.add(spot, -(4))), (__sl355), -1) || !strncmpi((cptr.add(spot, -(4))), (__sl356), -1))) {
-            void strcasecpy(spot, __sl354);
+        if (len >= 5 && (!strncmpi((cptr.add(spot, -(4))), (__s_matzo), -1) || !strncmpi((cptr.add(spot, -(4))), (__s_matza), -1))) {
+            void strcasecpy(spot, __s_ot);  /* o/a -> ot */
             break __lbl_bottom;
         }
+
+        /* note: ox/oxen, VAX/VAXen, goose/geese */
+
         lo_c = lowc(cptr.ld1s(spot));
-        if (len >= 5 && (!strncmpi((cptr.add(spot, -(2))), (__sl357), -1) || !strncmpi((cptr.add(spot, -(2))), (__sl358), -1) || !strncmpi((cptr.add(spot, -(2))), (__sl359), -1)) && (strncmpi((cptr.add(spot, -(4))), (__sl360), -1) != 0)) {
-            void strcasecpy(cptr.add(spot, -(1)), __sl361);
+
+        /* codex/spadix/neocortex and the like */
+        if (len >= 5 && (!strncmpi((cptr.add(spot, -(2))), (__s_dex), -1) || !strncmpi((cptr.add(spot, -(2))), (__s_dix), -1) || !strncmpi((cptr.add(spot, -(2))), (__s_tex), -1)) && (strncmpi((cptr.add(spot, -(4))), (__s_index), -1) != 0)) {
+            void strcasecpy(cptr.add(spot, -(1)), __s_ices);  /* ex|ix -> ices */
             break __lbl_bottom;
         }
-        if (cptr.strchr(__sl237, lo_c) || (len >= 2 && lo_c == 104 && cptr.strchr(__sl238, lowc(cptr.ld1s((cptr.add(spot, -(1)))))) && !(len >= 4 && lowc(cptr.ld1s((cptr.add(spot, -(1))))) == 99 && ch_ksound(str))) || (len >= 4 && !strncmpi((cptr.add(spot, -(2))), (__sl362), -1)) || (len >= 5 && !strncmpi((cptr.add(spot, -(4))), (__sl363), -1))) {
-            void strcasecpy(cptr.add(spot, 1), __sl239);
+        /* Ends in z, x, s, ch, sh; add an "es" */
+        if (cptr.strchr(__s_zxs, lo_c) || (len >= 2 && lo_c == 104 && cptr.strchr(__s_cs, lowc(cptr.ld1s((cptr.add(spot, -(1)))))) && !(len >= 4 && lowc(cptr.ld1s((cptr.add(spot, -(1))))) == 99 && ch_ksound(str))) || (len >= 4 && !strncmpi((cptr.add(spot, -(2))), (__s_ato), -1)) || (len >= 5 && !strncmpi((cptr.add(spot, -(4))), (__s_dingo), -1))) {
+            void strcasecpy(cptr.add(spot, 1), __s_es);  /* append es */
             break __lbl_bottom;
         }
+        /* Ends in y preceded by consonant (note: also "qu") change to "ies" */
         if (lo_c == 121 && !cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1s((cptr.add(spot, -(1))))))) {
-            void strcasecpy(spot, __sl240);
+            void strcasecpy(spot, __s_ies);  /* y -> ies */
             break __lbl_bottom;
         }
-        void strcasecpy(cptr.add(spot, 1), __sl121);
+        /* Default: append an 's' */
+        void strcasecpy(cptr.add(spot, 1), __s_s);
     }
     if (excess)
         void cptr.strcat(str, excess);
     return str;
 }
 
-/** C ref: objnam.c:3037 — @param {CPtr} oldstr @returns {CPtr} */
+/*
+ * Singularize a string the user typed in; this helps reduce the complexity
+ * of readobjnam, and is also used in pager.c to singularize the string
+ * for which help is sought.
+ *
+ * "Manes" is ambiguous: monster type (keep s), or horse body part (drop s)?
+ * Its inclusion in as_is[]/special_subj[] makes it get treated as the former.
+ *
+ * A lot of unique monsters have names ending in s; plural, or singular
+ * from plural, doesn't make much sense for them so we don't bother trying.
+ * 3.6.0: made case-insensitive.
+ */
+/** C ref: objnam.c:3037 — @param {CPtr<char>} oldstr @returns {CPtr<char>} */
 export function makesingular(oldstr) {
     let p;
     let bp;
     let excess = null;
     let str = nextobuf();
     __lbl_bottom: {
+
         if (oldstr)
             while (cptr.ld1s(oldstr) == 32)
                 oldstr = cptr.add(oldstr, 1);
         if (!oldstr || !cptr.ld1s(oldstr)) {
-            impossible(__sl366);
+            impossible(__s_singular_of_null);
             cptr.st1o(str, 0, 0);
             return str;
         }
+        /* makeplural() of pronouns isn't reversible but at least we can
+           force a singular value */
         cptr.st1(str, 0);
-        if (!strncmpi((cptr.ldPtro2(genders, 3, 48, $Gender_he)), (oldstr), -1))
-            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, 48, $Gender_he));
-        else if (!strncmpi((cptr.ldPtro2(genders, 3, 48, $Gender_him)), (oldstr), -1))
-            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, 48, $Gender_him));
-        else if (!strncmpi((cptr.ldPtro2(genders, 3, 48, $Gender_his)), (oldstr), -1))
-            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, 48, $Gender_his));
+        if (!strncmpi((cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_he)), (oldstr), -1))
+            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, $sizeof_Gender, $Gender_he));  /* "it" */
+        else if (!strncmpi((cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_him)), (oldstr), -1))
+            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, $sizeof_Gender, $Gender_him));  /* also "it" */
+        else if (!strncmpi((cptr.ldPtro2(genders, 3, $sizeof_Gender, $Gender_his)), (oldstr), -1))
+            void cptr.strcpy(str, cptr.ldPtro2(genders, 2, $sizeof_Gender, $Gender_his));  /* "its" */
         if (cptr.ld1s(str)) {
             if (cptr.ld1so(oldstr, 0) == highc(cptr.ld1so(oldstr, 0)))
                 cptr.st1o(str, 0, highc(cptr.ld1so(str, 0)));
             return str;
         }
+
         bp = cptr.strcpy(str, oldstr);
+
+        /* check for "foo of bar" so that we can focus on "foo" */
         if ((p = singplur_compound(bp)) !== null) {
             excess = cptr.add(oldstr, Number(BigInt.asIntN(32, (cptr.diff(p, bp)))));
             cptr.st1(p, 0);
         } else
             p = eos(bp);
+
+        /* dispense with some words which don't need singularization */
         if (singplur_lookup(bp, p, 0, special_subjs))
             break __lbl_bottom;
+
+        /* remove -s or -es (boxes) or -ies (rubies) */
         if (cptr.cmp(p, cptr.add(bp, 1)) >= 0 && lowc(cptr.ld1so(p, -1)) == 115) {
             __lbl_mins: {
                 if (cptr.cmp(p, cptr.add(bp, 2)) >= 0 && lowc(cptr.ld1so(p, -2)) == 101) {
                     if (cptr.cmp(p, cptr.add(bp, 3)) >= 0 && lowc(cptr.ld1so(p, -3)) == 105) {
-                        if (!(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__sl367), -1)) || (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl368), -1)) && (cptr.eq(cptr.add(p, -(4)), bp) || cptr.ld1so(p, -5) == 32)) || (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl369), -1)) && (cptr.eq(cptr.add(p, -(6)), bp) || cptr.ld1so(p, -7) == 32)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl370), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl371), -1)))
+                        if (!(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__s_cookies), -1)) || (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_pies), -1)) && (cptr.eq(cptr.add(p, -(4)), bp) || cptr.ld1so(p, -5) == 32)) || (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_genies), -1)) && (cptr.eq(cptr.add(p, -(6)), bp) || cptr.ld1so(p, -7) == 32)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_mbies), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_yries), -1)))
                             break __lbl_mins;
-                        void strcasecpy(cptr.add(p, -(3)), __sl372);
+                        void strcasecpy(cptr.add(p, -(3)), __s_y);  /* ies -> y */
                         break __lbl_bottom;
                     }
-                    if (cptr.cmp(cptr.add(p, -(4)), bp) >= 0 && (cptr.strchr(__sl336, lowc(cptr.ld1s((cptr.add(p, -(4)))))) || cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1s((cptr.add(p, -(4))))))) && !(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__sl337), -1))) {
-                        if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl373), -1)) || !(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl374), -1)))
+                    /* wolves, but f to ves isn't fully reversible */
+                    if (cptr.cmp(cptr.add(p, -(4)), bp) >= 0 && (cptr.strchr(__s_lr, lowc(cptr.ld1s((cptr.add(p, -(4)))))) || cptr.strchr(cptr.decay(vowels), lowc(cptr.ld1s((cptr.add(p, -(4))))))) && !(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__s_ves), -1))) {
+                        if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_cloves), -1)) || !(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_nerves), -1)))
                             break __lbl_mins;
-                        void strcasecpy(cptr.add(p, -(3)), __sl375);
+                        void strcasecpy(cptr.add(p, -(3)), __s_f);  /* ves -> f */
                         break __lbl_bottom;
                     }
-                    if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl376), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl377), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl378), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl379), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl380), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl381), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl382), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl383), -1)) || !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__sl384), -1)) || !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__sl385), -1))) {
-                        cptr.st1((cptr.add(p, -(2))), 0);
+                    /* note: nurses, axes but boxes, wumpuses */
+                    if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_eses), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_oxes), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_nxes), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_ches), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_uses), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_shes), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_sses), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_atoes), -1)) || !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__s_dingoes), -1)) || !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__s_aleaxes), -1))) {
+                        cptr.st1((cptr.add(p, -(2))), 0);  /* drop es */
                         break __lbl_bottom;
-                    }
-                } else if (!(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__sl226), -1))) {
-                    if ((cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl386), -1)) && (cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__sl387), -1)))
+                    }  /* else fall through to mins */
+
+                    /* ends in 's' but not 'es' */
+                } else if (!(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__s_us), -1))) {
+                    if ((cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_tengus), -1)) && (cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__s_hezrous), -1)))
                         break __lbl_bottom;
-                } else if (!(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__sl388), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl389), -1)) || (cptr.eq(cptr.add(p, -(4)), bp) && !strncmpi((cptr.add(p, -(4))), (__sl390), -1))) {
+                } else if (!(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__s_ss), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_lens), -1)) || (cptr.eq(cptr.add(p, -(4)), bp) && !strncmpi((cptr.add(p, -(4))), (__s_lens__2), -1))) {
                     break __lbl_bottom;
                 }
             }
-            cptr.st1((cptr.add(p, -(1))), 0);
+            cptr.st1((cptr.add(p, -(1))), 0);  /* drop s */
+
         } else {
-            if (!(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__sl316), -1)) && !badman(bp, 0)) {
-                void strcasecpy(cptr.add(p, -(2)), __sl196);
+
+            if (!(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__s_men), -1)) && !badman(bp, 0)) {
+                void strcasecpy(cptr.add(p, -(2)), __s_an__3);
                 break __lbl_bottom;
             }
-            if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl365), -1)) || !(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__sl230), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl364), -1))) {
-                cptr.st1((cptr.add(p, -(1))), 0);
+            /* matzot -> matzo, algae -> alga */
+            if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_matzot), -1)) || !(cptr.cmp((cptr.add(p, -(2))), bp) < 0 || strncmpi(((cptr.add(p, -(2)))), (__s_ae), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_eaux), -1))) {
+                cptr.st1((cptr.add(p, -(1))), 0);  /* drop t/e/x */
                 break __lbl_bottom;
             }
-            if (cptr.cmp(cptr.add(p, -(4)), bp) >= 0 && !strncmpi((cptr.add(p, -(2))), (__sl229), -1) && cptr.strchr(__sl336, lowc(cptr.ld1s((cptr.add(p, -(3)))))) && lowc(cptr.ld1s((cptr.add(p, -(4))))) == 101) {
-                void strcasecpy(cptr.add(p, -(1)), __sl391);
+            /* balactheria -> balactherium */
+            if (cptr.cmp(cptr.add(p, -(4)), bp) >= 0 && !strncmpi((cptr.add(p, -(2))), (__s_ia), -1) && cptr.strchr(__s_lr, lowc(cptr.ld1s((cptr.add(p, -(3)))))) && lowc(cptr.ld1s((cptr.add(p, -(4))))) == 101) {
+                void strcasecpy(cptr.add(p, -(1)), __s_um);  /* a -> um */
             }
+
+            /* here we cannot find the plural suffix */
         }
     }
+    /* if we stripped off a suffix (" of bar" from "foo of bar"),
+       put it back now [strcat() isn't actually 100% safe here...] */
     if (excess)
         void cptr.strcat(bp, excess);
+
     return bp;
 }
 
 const __static_ch_ksound_ch_k = cptr.alloc(19 * 8);
-cptr.stPtro(__static_ch_ksound_ch_k, 0, __sl392);
-cptr.stPtro(__static_ch_ksound_ch_k, 8, __sl393);
-cptr.stPtro(__static_ch_ksound_ch_k, 16, __sl394);
-cptr.stPtro(__static_ch_ksound_ch_k, 24, __sl395);
-cptr.stPtro(__static_ch_ksound_ch_k, 32, __sl396);
-cptr.stPtro(__static_ch_ksound_ch_k, 40, __sl397);
-cptr.stPtro(__static_ch_ksound_ch_k, 48, __sl398);
-cptr.stPtro(__static_ch_ksound_ch_k, 56, __sl399);
-cptr.stPtro(__static_ch_ksound_ch_k, 64, __sl400);
-cptr.stPtro(__static_ch_ksound_ch_k, 72, __sl401);
-cptr.stPtro(__static_ch_ksound_ch_k, 80, __sl402);
-cptr.stPtro(__static_ch_ksound_ch_k, 88, __sl403);
-cptr.stPtro(__static_ch_ksound_ch_k, 96, __sl404);
-cptr.stPtro(__static_ch_ksound_ch_k, 104, __sl405);
-cptr.stPtro(__static_ch_ksound_ch_k, 112, __sl406);
-cptr.stPtro(__static_ch_ksound_ch_k, 120, __sl407);
-cptr.stPtro(__static_ch_ksound_ch_k, 128, __sl408);
-cptr.stPtro(__static_ch_ksound_ch_k, 136, __sl409);
-cptr.stPtro(__static_ch_ksound_ch_k, 144, __sl410); /** C ref: objnam.c:3172 — char *[19] (function-static) */
+cptr.stPtro(__static_ch_ksound_ch_k, 0, __s_monarch);
+cptr.stPtro(__static_ch_ksound_ch_k, 8, __s_poch);
+cptr.stPtro(__static_ch_ksound_ch_k, 16, __s_tech);
+cptr.stPtro(__static_ch_ksound_ch_k, 24, __s_mech);
+cptr.stPtro(__static_ch_ksound_ch_k, 32, __s_stomach);
+cptr.stPtro(__static_ch_ksound_ch_k, 40, __s_psych);
+cptr.stPtro(__static_ch_ksound_ch_k, 48, __s_amphibrach);
+cptr.stPtro(__static_ch_ksound_ch_k, 56, __s_anarch);
+cptr.stPtro(__static_ch_ksound_ch_k, 64, __s_atriarch);
+cptr.stPtro(__static_ch_ksound_ch_k, 72, __s_azedarach);
+cptr.stPtro(__static_ch_ksound_ch_k, 80, __s_broch);
+cptr.stPtro(__static_ch_ksound_ch_k, 88, __s_gastrotrich);
+cptr.stPtro(__static_ch_ksound_ch_k, 96, __s_isopach);
+cptr.stPtro(__static_ch_ksound_ch_k, 104, __s_loch);
+cptr.stPtro(__static_ch_ksound_ch_k, 112, __s_oligarch);
+cptr.stPtro(__static_ch_ksound_ch_k, 120, __s_peritrich);
+cptr.stPtro(__static_ch_ksound_ch_k, 128, __s_sandarach);
+cptr.stPtro(__static_ch_ksound_ch_k, 136, __s_sumach);
+cptr.stPtro(__static_ch_ksound_ch_k, 144, __s_symposiarch); /** C ref: objnam.c:3172 — char *[19] (function-static) */
 
-/** C ref: objnam.c:3168 — @param {CPtr} basestr @returns {CInt} */
+/** C ref: objnam.c:3168 — @param {CPtr<char>} basestr @returns {CInt} */
 function ch_ksound(basestr) {
     let i;
     let al;
     let endstr;
+
     if (!basestr || cptr.strlen(basestr) < 4n)
         return 0;
+
     endstr = eos(basestr);
     for (i = 0; i < 19; i++) {
         al = Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(__static_ch_ksound_ch_k, i, 8))));
@@ -3205,84 +4013,87 @@ function ch_ksound(basestr) {
 }
 
 const __static_badman_no_men = cptr.alloc(36 * 8);
-cptr.stPtro(__static_badman_no_men, 0, __sl411);
-cptr.stPtro(__static_badman_no_men, 8, __sl412);
-cptr.stPtro(__static_badman_no_men, 16, __sl413);
-cptr.stPtro(__static_badman_no_men, 24, __sl414);
-cptr.stPtro(__static_badman_no_men, 32, __sl415);
-cptr.stPtro(__static_badman_no_men, 40, __sl416);
-cptr.stPtro(__static_badman_no_men, 48, __sl417);
-cptr.stPtro(__static_badman_no_men, 56, __sl418);
-cptr.stPtro(__static_badman_no_men, 64, __sl419);
-cptr.stPtro(__static_badman_no_men, 72, __sl420);
-cptr.stPtro(__static_badman_no_men, 80, __sl421);
-cptr.stPtro(__static_badman_no_men, 88, __sl422);
-cptr.stPtro(__static_badman_no_men, 96, __sl423);
-cptr.stPtro(__static_badman_no_men, 104, __sl424);
-cptr.stPtro(__static_badman_no_men, 112, __sl425);
-cptr.stPtro(__static_badman_no_men, 120, __sl426);
-cptr.stPtro(__static_badman_no_men, 128, __sl427);
-cptr.stPtro(__static_badman_no_men, 136, __sl428);
-cptr.stPtro(__static_badman_no_men, 144, __sl429);
-cptr.stPtro(__static_badman_no_men, 152, __sl430);
-cptr.stPtro(__static_badman_no_men, 160, __sl431);
-cptr.stPtro(__static_badman_no_men, 168, __sl432);
-cptr.stPtro(__static_badman_no_men, 176, __sl433);
-cptr.stPtro(__static_badman_no_men, 184, __sl434);
-cptr.stPtro(__static_badman_no_men, 192, __sl435);
-cptr.stPtro(__static_badman_no_men, 200, __sl436);
-cptr.stPtro(__static_badman_no_men, 208, __sl437);
-cptr.stPtro(__static_badman_no_men, 216, __sl438);
-cptr.stPtro(__static_badman_no_men, 224, __sl439);
-cptr.stPtro(__static_badman_no_men, 232, __sl440);
-cptr.stPtro(__static_badman_no_men, 240, __sl441);
-cptr.stPtro(__static_badman_no_men, 248, __sl442);
-cptr.stPtro(__static_badman_no_men, 256, __sl443);
-cptr.stPtro(__static_badman_no_men, 264, __sl444);
-cptr.stPtro(__static_badman_no_men, 272, __sl445);
-cptr.stPtro(__static_badman_no_men, 280, __sl446); /** C ref: objnam.c:3199 — char *[36] (function-static) */
+cptr.stPtro(__static_badman_no_men, 0, __s_albu);
+cptr.stPtro(__static_badman_no_men, 8, __s_antihu);
+cptr.stPtro(__static_badman_no_men, 16, __s_anti);
+cptr.stPtro(__static_badman_no_men, 24, __s_ata);
+cptr.stPtro(__static_badman_no_men, 32, __s_auto);
+cptr.stPtro(__static_badman_no_men, 40, __s_bildungsro);
+cptr.stPtro(__static_badman_no_men, 48, __s_cai);
+cptr.stPtro(__static_badman_no_men, 56, __s_cay);
+cptr.stPtro(__static_badman_no_men, 64, __s_ceru);
+cptr.stPtro(__static_badman_no_men, 72, __s_corner);
+cptr.stPtro(__static_badman_no_men, 80, __s_decu);
+cptr.stPtro(__static_badman_no_men, 88, __s_des);
+cptr.stPtro(__static_badman_no_men, 96, __s_dura);
+cptr.stPtro(__static_badman_no_men, 104, __s_fir);
+cptr.stPtro(__static_badman_no_men, 112, __s_hanu);
+cptr.stPtro(__static_badman_no_men, 120, __s_het);
+cptr.stPtro(__static_badman_no_men, 128, __s_infrahu);
+cptr.stPtro(__static_badman_no_men, 136, __s_inhu);
+cptr.stPtro(__static_badman_no_men, 144, __s_nonhu);
+cptr.stPtro(__static_badman_no_men, 152, __s_otto);
+cptr.stPtro(__static_badman_no_men, 160, __s_out);
+cptr.stPtro(__static_badman_no_men, 168, __s_prehu);
+cptr.stPtro(__static_badman_no_men, 176, __s_protohu);
+cptr.stPtro(__static_badman_no_men, 184, __s_subhu);
+cptr.stPtro(__static_badman_no_men, 192, __s_superhu);
+cptr.stPtro(__static_badman_no_men, 200, __s_talis);
+cptr.stPtro(__static_badman_no_men, 208, __s_unhu);
+cptr.stPtro(__static_badman_no_men, 216, __s_sha);
+cptr.stPtro(__static_badman_no_men, 224, __s_hu);
+cptr.stPtro(__static_badman_no_men, 232, __s_un);
+cptr.stPtro(__static_badman_no_men, 240, __s_le);
+cptr.stPtro(__static_badman_no_men, 248, __s_re);
+cptr.stPtro(__static_badman_no_men, 256, __s_so);
+cptr.stPtro(__static_badman_no_men, 264, __s_to);
+cptr.stPtro(__static_badman_no_men, 272, __s_at__2);
+cptr.stPtro(__static_badman_no_men, 280, __s_a); /** C ref: objnam.c:3199 — char *[36] (function-static) */
 const __static_badman_no_man = cptr.alloc(31 * 8);
-cptr.stPtro(__static_badman_no_man, 0, __sl447);
-cptr.stPtro(__static_badman_no_man, 8, __sl448);
-cptr.stPtro(__static_badman_no_man, 16, __sl449);
-cptr.stPtro(__static_badman_no_man, 24, __sl419);
-cptr.stPtro(__static_badman_no_man, 32, __sl450);
-cptr.stPtro(__static_badman_no_man, 40, __sl451);
-cptr.stPtro(__static_badman_no_man, 48, __sl452);
-cptr.stPtro(__static_badman_no_man, 56, __sl453);
-cptr.stPtro(__static_badman_no_man, 64, __sl454);
-cptr.stPtro(__static_badman_no_man, 72, __sl455);
-cptr.stPtro(__static_badman_no_man, 80, __sl456);
-cptr.stPtro(__static_badman_no_man, 88, __sl457);
-cptr.stPtro(__static_badman_no_man, 96, __sl458);
-cptr.stPtro(__static_badman_no_man, 104, __sl459);
-cptr.stPtro(__static_badman_no_man, 112, __sl460);
-cptr.stPtro(__static_badman_no_man, 120, __sl461);
-cptr.stPtro(__static_badman_no_man, 128, __sl462);
-cptr.stPtro(__static_badman_no_man, 136, __sl463);
-cptr.stPtro(__static_badman_no_man, 144, __sl464);
-cptr.stPtro(__static_badman_no_man, 152, __sl465);
-cptr.stPtro(__static_badman_no_man, 160, __sl466);
-cptr.stPtro(__static_badman_no_man, 168, __sl467);
-cptr.stPtro(__static_badman_no_man, 176, __sl468);
-cptr.stPtro(__static_badman_no_man, 184, __sl469);
-cptr.stPtro(__static_badman_no_man, 192, __sl470);
-cptr.stPtro(__static_badman_no_man, 200, __sl471);
-cptr.stPtro(__static_badman_no_man, 208, __sl472);
-cptr.stPtro(__static_badman_no_man, 216, __sl473);
-cptr.stPtro(__static_badman_no_man, 224, __sl332);
-cptr.stPtro(__static_badman_no_man, 232, __sl474);
-cptr.stPtro(__static_badman_no_man, 240, __sl446); /** C ref: objnam.c:3207 — char *[31] (function-static) */
+cptr.stPtro(__static_badman_no_man, 0, __s_abdo);
+cptr.stPtro(__static_badman_no_man, 8, __s_acu);
+cptr.stPtro(__static_badman_no_man, 16, __s_agno);
+cptr.stPtro(__static_badman_no_man, 24, __s_ceru);
+cptr.stPtro(__static_badman_no_man, 32, __s_cogno);
+cptr.stPtro(__static_badman_no_man, 40, __s_cycla);
+cptr.stPtro(__static_badman_no_man, 48, __s_fleh);
+cptr.stPtro(__static_badman_no_man, 56, __s_grava);
+cptr.stPtro(__static_badman_no_man, 64, __s_hegu);
+cptr.stPtro(__static_badman_no_man, 72, __s_preno);
+cptr.stPtro(__static_badman_no_man, 80, __s_sonar);
+cptr.stPtro(__static_badman_no_man, 88, __s_speci);
+cptr.stPtro(__static_badman_no_man, 96, __s_dai);
+cptr.stPtro(__static_badman_no_man, 104, __s_exa);
+cptr.stPtro(__static_badman_no_man, 112, __s_fla);
+cptr.stPtro(__static_badman_no_man, 120, __s_sta);
+cptr.stPtro(__static_badman_no_man, 128, __s_teg);
+cptr.stPtro(__static_badman_no_man, 136, __s_tegu);
+cptr.stPtro(__static_badman_no_man, 144, __s_vela);
+cptr.stPtro(__static_badman_no_man, 152, __s_da);
+cptr.stPtro(__static_badman_no_man, 160, __s_hy);
+cptr.stPtro(__static_badman_no_man, 168, __s_lu);
+cptr.stPtro(__static_badman_no_man, 176, __s_no);
+cptr.stPtro(__static_badman_no_man, 184, __s_nu);
+cptr.stPtro(__static_badman_no_man, 192, __s_ra);
+cptr.stPtro(__static_badman_no_man, 200, __s_ru);
+cptr.stPtro(__static_badman_no_man, 208, __s_se);
+cptr.stPtro(__static_badman_no_man, 216, __s_vi);
+cptr.stPtro(__static_badman_no_man, 224, __s_ya);
+cptr.stPtro(__static_badman_no_man, 232, __s_o);
+cptr.stPtro(__static_badman_no_man, 240, __s_a); /** C ref: objnam.c:3207 — char *[31] (function-static) */
 
-/** C ref: objnam.c:3194 — @param {CPtr} basestr @param {CInt} to_plural @returns {CInt} */
+/** C ref: objnam.c:3194 — @param {CPtr<char>} basestr @param {CInt} to_plural @returns {CInt} */
 function badman(basestr, to_plural) {
     let i;
     let al;
     let endstr;
     let spot;
+
     if (!basestr || cptr.strlen(basestr) < 4n)
         return 0;
+
     endstr = eos(basestr);
+
     if (to_plural) {
         for (i = 0; i < 36; i++) {
             al = Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(__static_badman_no_men, i, 8))));
@@ -3301,253 +4112,283 @@ function badman(basestr, to_plural) {
     return 0;
 }
 
+/* compare user string against object name string using fuzzy matching */
 const __static_wishymatch_detect_SP = cptr.bytes("detect "); /** C ref: objnam.c:3248 — char[8] (function-static) */
 const __static_wishymatch_SP_detection = cptr.bytes(" detection"); /** C ref: objnam.c:3249 — char[11] (function-static) */
 
-/** C ref: objnam.c:3243 — @param {CPtr} u_str @param {CPtr} o_str @param {CInt} retry_inverted @returns {CInt} */
+/** C ref: objnam.c:3243 — @param {CPtr<char>} u_str @param {CPtr<char>} o_str @param {CInt} retry_inverted @returns {CInt} */
 function wishymatch(u_str, o_str, retry_inverted) {
     let p;
     let buf = new Uint8Array(256);
-    if (fuzzymatch(u_str, o_str, __sl475, 1))
+
+    /* ignore spaces & hyphens and upper/lower case when comparing */
+    if (fuzzymatch(u_str, o_str, __s_sp_dash, 1))
         return 1;
+
     if (retry_inverted) {
         let u_of;
         let o_of;
-        u_of = strstri(u_str, __sl34);
-        o_of = strstri(o_str, __sl34);
+
+        /* when just one of the strings is in the form "foo of bar",
+           convert it into "bar foo" and perform another comparison */
+        u_of = strstri(u_str, __s_of);
+        o_of = strstri(o_str, __s_of);
         if (u_of && !o_of) {
             void cptr.strcpy(cptr.decay(buf), cptr.add(u_of, 4));
-            copynchars(eos(cptr.strcat(cptr.decay(buf), __sl142)), u_str, Number(BigInt.asIntN(32, (cptr.diff(u_of, u_str)))));
-            if (fuzzymatch(cptr.decay(buf), o_str, __sl475, 1))
+            copynchars(eos(cptr.strcat(cptr.decay(buf), __s_sp)), u_str, Number(BigInt.asIntN(32, (cptr.diff(u_of, u_str)))));
+            if (fuzzymatch(cptr.decay(buf), o_str, __s_sp_dash, 1))
                 return 1;
         } else if (o_of && !u_of) {
             void cptr.strcpy(cptr.decay(buf), cptr.add(o_of, 4));
-            copynchars(eos(cptr.strcat(cptr.decay(buf), __sl142)), o_str, Number(BigInt.asIntN(32, (cptr.diff(o_of, o_str)))));
-            if (fuzzymatch(u_str, cptr.decay(buf), __sl475, 1))
+            copynchars(eos(cptr.strcat(cptr.decay(buf), __s_sp)), o_str, Number(BigInt.asIntN(32, (cptr.diff(o_of, o_str)))));
+            if (fuzzymatch(u_str, cptr.decay(buf), __s_sp_dash, 1))
                 return 1;
         }
     }
-    if (!cptr.strncmp(o_str, __sl476, 9n)) {
-        if (!strncmpi(u_str, __sl477, 8))
-            return fuzzymatch(cptr.add(u_str, 8), cptr.add(o_str, 9), __sl475, 1);
-    } else if (!cptr.strncmp(o_str, __sl478, 6n)) {
-        if (!strncmpi(u_str, __sl479, 7))
-            return fuzzymatch(cptr.add(u_str, 7), cptr.add(o_str, 6), __sl475, 1);
-        else if (!strncmpi(u_str, __sl480, 6))
-            return fuzzymatch(cptr.add(u_str, 6), cptr.add(o_str, 6), __sl475, 1);
-    } else if (strstri(o_str, __sl481) && strstri(u_str, __sl482)) {
+
+    /* [note: if something like "elven speed boots" ever gets added, these
+       special cases should be changed to call wishymatch() recursively in
+       order to get the "of" inversion handling] */
+    if (!cptr.strncmp(o_str, __s_dwarvish, 9n)) {
+        if (!strncmpi(u_str, __s_dwarven, 8))
+            return fuzzymatch(cptr.add(u_str, 8), cptr.add(o_str, 9), __s_sp_dash, 1);
+    } else if (!cptr.strncmp(o_str, __s_elven, 6n)) {
+        if (!strncmpi(u_str, __s_elvish, 7))
+            return fuzzymatch(cptr.add(u_str, 7), cptr.add(o_str, 6), __s_sp_dash, 1);
+        else if (!strncmpi(u_str, __s_elfin, 6))
+            return fuzzymatch(cptr.add(u_str, 6), cptr.add(o_str, 6), __s_sp_dash, 1);
+    } else if (strstri(o_str, __s_helm) && strstri(u_str, __s_helmet)) {
         copynchars(cptr.decay(buf), u_str, 255);
-        void strsubst(cptr.decay(buf), __sl482, __sl481);
+        void strsubst(cptr.decay(buf), __s_helmet, __s_helm);
         return wishymatch(cptr.decay(buf), o_str, 1);
-    } else if (strstri(o_str, __sl287) && strstri(u_str, __sl283)) {
+    } else if (strstri(o_str, __s_gauntlets) && strstri(u_str, __s_gloves)) {
+        /* -3: room to replace shorter "gloves" with longer "gauntlets" */
         copynchars(cptr.decay(buf), u_str, 252);
-        void strsubst(cptr.decay(buf), __sl283, __sl287);
+        void strsubst(cptr.decay(buf), __s_gloves, __s_gauntlets);
         return wishymatch(cptr.decay(buf), o_str, 1);
     } else if (!cptr.strncmp(o_str, cptr.decay(__static_wishymatch_detect_SP), 7n)) {
+        /* check for "detect <foo>" vs "<foo> detection" */
         if ((p = strstri(u_str, cptr.decay(__static_wishymatch_SP_detection))) !== null && !cptr.ld1s((cptr.add(cptr.add(p, 11n), -(1))))) {
+            /* convert "<foo> detection" into "detect <foo>" */
             cptr.st1(p, 0);
             void cptr.strcat(cptr.strcpy(cptr.decay(buf), cptr.decay(__static_wishymatch_detect_SP)), u_str);
-            if (!strncmpi((u_str), (__sl483), -1))
-                void cptr.strcat(cptr.decay(buf), __sl121);
+            /* "detect monster" -> "detect monsters" */
+            if (!strncmpi((u_str), (__s_monster), -1))
+                void cptr.strcat(cptr.decay(buf), __s_s);
             cptr.st1(p, 32);
-            return fuzzymatch(cptr.decay(buf), o_str, __sl475, 1);
+            return fuzzymatch(cptr.decay(buf), o_str, __s_sp_dash, 1);
         }
     } else if (strstri(o_str, cptr.decay(__static_wishymatch_SP_detection))) {
+        /* and the inverse, "<foo> detection" vs "detect <foo>" */
         if (!strncmpi(u_str, cptr.decay(__static_wishymatch_detect_SP), 7)) {
+            /* convert "detect <foo>s" into "<foo> detection" */
             p = makesingular(cptr.add(cptr.add(u_str, 8n), -(1)));
             void cptr.strcat(cptr.strcpy(cptr.decay(buf), p), cptr.decay(__static_wishymatch_SP_detection));
+            /* caller may be looping through objects[], so avoid
+               churning through all the obufs */
             releaseobuf(p);
-            return fuzzymatch(cptr.decay(buf), o_str, __sl475, 1);
+            return fuzzymatch(cptr.decay(buf), o_str, __s_sp_dash, 1);
         }
-    } else if (strstri(o_str, __sl484)) {
-        if ((p = strstri(u_str, __sl485)) !== null && !cptr.ld1s((cptr.add(cptr.add(p, 10n), -(1))))) {
+    } else if (strstri(o_str, __s_ability)) {
+        /* when presented with "foo of bar", makesingular() used to
+           singularize both foo & bar, but now only does so for foo */
+        /* catch "{potion(s),ring} of {gain,restore,sustain} abilities" */
+        if ((p = strstri(u_str, __s_abilities)) !== null && !cptr.ld1s((cptr.add(cptr.add(p, 10n), -(1))))) {
             void __builtin___strncpy_chk(cptr.decay(buf), u_str, BigInt(Number(BigInt.asUintN(32, (cptr.diff(p, u_str)))) >>> 0), __builtin_object_size(cptr.decay(buf), 1));
-            void cptr.strcpy(cptr.add(cptr.decay(buf), (cptr.diff(p, u_str))), __sl484);
-            return fuzzymatch(cptr.decay(buf), o_str, __sl475, 1);
+            void cptr.strcpy(cptr.add(cptr.decay(buf), (cptr.diff(p, u_str))), __s_ability);
+            return fuzzymatch(cptr.decay(buf), o_str, __s_sp_dash, 1);
         }
-    } else if (!strcmp(o_str, __sl486)) {
-        if (!strncmpi((u_str), (__sl487), -1))
-            return fuzzymatch(cptr.add(u_str, 9), cptr.add(o_str, 8), __sl475, 1);
+    } else if (!strcmp(o_str, __s_aluminum)) {
+        /* this special case doesn't really fit anywhere else... */
+        /* (note that " wand" will have been stripped off by now) */
+        if (!strncmpi((u_str), (__s_aluminium), -1))
+            return fuzzymatch(cptr.add(u_str, 9), cptr.add(o_str, 8), __s_sp_dash, 1);
     }
+
     return 0;
 }
 
 /** C ref: objnam.c:3340 — struct o_range { name, oclass, f_o_range, l_o_range } (memory model v0.5) */
 
+/* wishable subranges of objects */
 /** C ref: objnam.c:3346 — struct o_range[19] */
-const o_ranges = cptr.alloc(19 * 24);
-cptr.stPtro(o_ranges, 0, __sl488);
+const o_ranges = cptr.alloc(19 * $sizeof_o_range);
+cptr.stPtro(o_ranges, 0, __s_bag);
 cptr.st1o(o_ranges, 0 + $o_range_oclass, NHC.TOOL_CLASS);
 cptr.stI32o(o_ranges, 0 + $o_range_f_o_range, NHC.SACK);
 cptr.stI32o(o_ranges, 0 + $o_range_l_o_range, NHC.BAG_OF_TRICKS);
-cptr.stPtro(o_ranges, 24, __sl489);
+cptr.stPtro(o_ranges, 24, __s_lamp);
 cptr.st1o(o_ranges, 24 + $o_range_oclass, NHC.TOOL_CLASS);
 cptr.stI32o(o_ranges, 24 + $o_range_f_o_range, NHC.OIL_LAMP);
 cptr.stI32o(o_ranges, 24 + $o_range_l_o_range, NHC.MAGIC_LAMP);
-cptr.stPtro(o_ranges, 48, __sl490);
+cptr.stPtro(o_ranges, 48, __s_candle);
 cptr.st1o(o_ranges, 48 + $o_range_oclass, NHC.TOOL_CLASS);
 cptr.stI32o(o_ranges, 48 + $o_range_f_o_range, NHC.TALLOW_CANDLE);
 cptr.stI32o(o_ranges, 48 + $o_range_l_o_range, NHC.WAX_CANDLE);
-cptr.stPtro(o_ranges, 72, __sl491);
+cptr.stPtro(o_ranges, 72, __s_horn);
 cptr.st1o(o_ranges, 72 + $o_range_oclass, NHC.TOOL_CLASS);
 cptr.stI32o(o_ranges, 72 + $o_range_f_o_range, NHC.TOOLED_HORN);
 cptr.stI32o(o_ranges, 72 + $o_range_l_o_range, NHC.HORN_OF_PLENTY);
-cptr.stPtro(o_ranges, 96, __sl50);
+cptr.stPtro(o_ranges, 96, __s_shield);
 cptr.st1o(o_ranges, 96 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 96 + $o_range_f_o_range, NHC.SMALL_SHIELD);
 cptr.stI32o(o_ranges, 96 + $o_range_l_o_range, NHC.SHIELD_OF_REFLECTION);
-cptr.stPtro(o_ranges, 120, __sl492);
+cptr.stPtro(o_ranges, 120, __s_hat);
 cptr.st1o(o_ranges, 120 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 120 + $o_range_f_o_range, NHC.FEDORA);
 cptr.stI32o(o_ranges, 120 + $o_range_l_o_range, NHC.DUNCE_CAP);
-cptr.stPtro(o_ranges, 144, __sl481);
+cptr.stPtro(o_ranges, 144, __s_helm);
 cptr.st1o(o_ranges, 144 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 144 + $o_range_f_o_range, NHC.ELVEN_LEATHER_HELM);
 cptr.stI32o(o_ranges, 144 + $o_range_l_o_range, NHC.HELM_OF_TELEPATHY);
-cptr.stPtro(o_ranges, 168, __sl283);
+cptr.stPtro(o_ranges, 168, __s_gloves);
 cptr.st1o(o_ranges, 168 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 168 + $o_range_f_o_range, NHC.LEATHER_GLOVES);
 cptr.stI32o(o_ranges, 168 + $o_range_l_o_range, NHC.GAUNTLETS_OF_DEXTERITY);
-cptr.stPtro(o_ranges, 192, __sl287);
+cptr.stPtro(o_ranges, 192, __s_gauntlets);
 cptr.st1o(o_ranges, 192 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 192 + $o_range_f_o_range, NHC.LEATHER_GLOVES);
 cptr.stI32o(o_ranges, 192 + $o_range_l_o_range, NHC.GAUNTLETS_OF_DEXTERITY);
-cptr.stPtro(o_ranges, 216, __sl281);
+cptr.stPtro(o_ranges, 216, __s_boots);
 cptr.st1o(o_ranges, 216 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 216 + $o_range_f_o_range, NHC.LOW_BOOTS);
 cptr.stI32o(o_ranges, 216 + $o_range_l_o_range, NHC.LEVITATION_BOOTS);
-cptr.stPtro(o_ranges, 240, __sl282);
+cptr.stPtro(o_ranges, 240, __s_shoes);
 cptr.st1o(o_ranges, 240 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 240 + $o_range_f_o_range, NHC.LOW_BOOTS);
 cptr.stI32o(o_ranges, 240 + $o_range_l_o_range, NHC.IRON_SHOES);
-cptr.stPtro(o_ranges, 264, __sl493);
+cptr.stPtro(o_ranges, 264, __s_cloak);
 cptr.st1o(o_ranges, 264 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 264 + $o_range_f_o_range, NHC.MUMMY_WRAPPING);
 cptr.stI32o(o_ranges, 264 + $o_range_l_o_range, NHC.CLOAK_OF_DISPLACEMENT);
-cptr.stPtro(o_ranges, 288, __sl494);
+cptr.stPtro(o_ranges, 288, __s_shirt);
 cptr.st1o(o_ranges, 288 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 288 + $o_range_f_o_range, NHC.HAWAIIAN_SHIRT);
 cptr.stI32o(o_ranges, 288 + $o_range_l_o_range, NHC.T_SHIRT);
-cptr.stPtro(o_ranges, 312, __sl495);
+cptr.stPtro(o_ranges, 312, __s_dragon_scales);
 cptr.st1o(o_ranges, 312 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 312 + $o_range_f_o_range, NHC.GRAY_DRAGON_SCALES);
 cptr.stI32o(o_ranges, 312 + $o_range_l_o_range, NHC.YELLOW_DRAGON_SCALES);
-cptr.stPtro(o_ranges, 336, __sl496);
+cptr.stPtro(o_ranges, 336, __s_dragon_scale_mail);
 cptr.st1o(o_ranges, 336 + $o_range_oclass, NHC.ARMOR_CLASS);
 cptr.stI32o(o_ranges, 336 + $o_range_f_o_range, NHC.GRAY_DRAGON_SCALE_MAIL);
 cptr.stI32o(o_ranges, 336 + $o_range_l_o_range, NHC.YELLOW_DRAGON_SCALE_MAIL);
-cptr.stPtro(o_ranges, 360, __sl497);
+cptr.stPtro(o_ranges, 360, __s_sword);
 cptr.st1o(o_ranges, 360 + $o_range_oclass, NHC.WEAPON_CLASS);
 cptr.stI32o(o_ranges, 360 + $o_range_f_o_range, NHC.SHORT_SWORD);
 cptr.stI32o(o_ranges, 360 + $o_range_l_o_range, NHC.KATANA);
-cptr.stPtro(o_ranges, 384, __sl498);
+cptr.stPtro(o_ranges, 384, __s_venom);
 cptr.st1o(o_ranges, 384 + $o_range_oclass, NHC.VENOM_CLASS);
 cptr.stI32o(o_ranges, 384 + $o_range_f_o_range, NHC.BLINDING_VENOM);
 cptr.stI32o(o_ranges, 384 + $o_range_l_o_range, NHC.ACID_VENOM);
-cptr.stPtro(o_ranges, 408, __sl499);
+cptr.stPtro(o_ranges, 408, __s_gray_stone);
 cptr.st1o(o_ranges, 408 + $o_range_oclass, NHC.GEM_CLASS);
 cptr.stI32o(o_ranges, 408 + $o_range_f_o_range, NHC.LUCKSTONE);
 cptr.stI32o(o_ranges, 408 + $o_range_l_o_range, NHC.FLINT);
-cptr.stPtro(o_ranges, 432, __sl500);
+cptr.stPtro(o_ranges, 432, __s_grey_stone);
 cptr.st1o(o_ranges, 432 + $o_range_oclass, NHC.GEM_CLASS);
 cptr.stI32o(o_ranges, 432 + $o_range_f_o_range, NHC.LUCKSTONE);
 cptr.stI32o(o_ranges, 432 + $o_range_l_o_range, NHC.FLINT);
 
+/* alternate spellings; if the difference is only the presence or
+   absence of spaces and/or hyphens (such as "pickaxe" vs "pick axe"
+   vs "pick-axe") then there is no need for inclusion in this list;
+   likewise for ``"of" inversions'' ("boots of speed" vs "speed boots") */
 /** C ref: objnam.c:3374 — struct alt_spellings { sp, ob } (memory model v0.5) */
 
 /** C ref: objnam.c:3377 — struct alt_spellings[47] */
-const spellings = cptr.alloc(47 * 16);
-cptr.stPtro(spellings, 0, __sl501);
+const spellings = cptr.alloc(47 * $sizeof_alt_spellings);
+cptr.stPtro(spellings, 0, __s_pickax);
 cptr.stI32o(spellings, 0 + $alt_spellings_ob, NHC.PICK_AXE);
-cptr.stPtro(spellings, 16, __sl502);
+cptr.stPtro(spellings, 16, __s_whip);
 cptr.stI32o(spellings, 16 + $alt_spellings_ob, NHC.BULLWHIP);
-cptr.stPtro(spellings, 32, __sl503);
+cptr.stPtro(spellings, 32, __s_saber);
 cptr.stI32o(spellings, 32 + $alt_spellings_ob, NHC.SILVER_SABER);
-cptr.stPtro(spellings, 48, __sl504);
+cptr.stPtro(spellings, 48, __s_silver_sabre);
 cptr.stI32o(spellings, 48 + $alt_spellings_ob, NHC.SILVER_SABER);
-cptr.stPtro(spellings, 64, __sl51);
+cptr.stPtro(spellings, 64, __s_smooth_shield);
 cptr.stI32o(spellings, 64 + $alt_spellings_ob, NHC.SHIELD_OF_REFLECTION);
-cptr.stPtro(spellings, 80, __sl505);
+cptr.stPtro(spellings, 80, __s_grey_dragon_scale_mail);
 cptr.stI32o(spellings, 80 + $alt_spellings_ob, NHC.GRAY_DRAGON_SCALE_MAIL);
-cptr.stPtro(spellings, 96, __sl506);
+cptr.stPtro(spellings, 96, __s_grey_dragon_scales);
 cptr.stI32o(spellings, 96 + $alt_spellings_ob, NHC.GRAY_DRAGON_SCALES);
-cptr.stPtro(spellings, 112, __sl507);
+cptr.stPtro(spellings, 112, __s_iron_ball);
 cptr.stI32o(spellings, 112 + $alt_spellings_ob, NHC.HEAVY_IRON_BALL);
-cptr.stPtro(spellings, 128, __sl508);
+cptr.stPtro(spellings, 128, __s_lantern);
 cptr.stI32o(spellings, 128 + $alt_spellings_ob, NHC.BRASS_LANTERN);
-cptr.stPtro(spellings, 144, __sl509);
+cptr.stPtro(spellings, 144, __s_mattock);
 cptr.stI32o(spellings, 144 + $alt_spellings_ob, NHC.DWARVISH_MATTOCK);
-cptr.stPtro(spellings, 160, __sl510);
+cptr.stPtro(spellings, 160, __s_amulet_of_poison_resistance);
 cptr.stI32o(spellings, 160 + $alt_spellings_ob, NHC.AMULET_VERSUS_POISON);
-cptr.stPtro(spellings, 176, __sl511);
+cptr.stPtro(spellings, 176, __s_amulet_of_protection);
 cptr.stI32o(spellings, 176 + $alt_spellings_ob, NHC.AMULET_OF_GUARDING);
-cptr.stPtro(spellings, 192, __sl512);
+cptr.stPtro(spellings, 192, __s_amulet_of_telepathy);
 cptr.stI32o(spellings, 192 + $alt_spellings_ob, NHC.AMULET_OF_ESP);
-cptr.stPtro(spellings, 208, __sl513);
+cptr.stPtro(spellings, 208, __s_helm_of_esp);
 cptr.stI32o(spellings, 208 + $alt_spellings_ob, NHC.HELM_OF_TELEPATHY);
-cptr.stPtro(spellings, 224, __sl514);
+cptr.stPtro(spellings, 224, __s_gauntlets_of_ogre_power);
 cptr.stI32o(spellings, 224 + $alt_spellings_ob, NHC.GAUNTLETS_OF_POWER);
-cptr.stPtro(spellings, 240, __sl515);
+cptr.stPtro(spellings, 240, __s_gauntlets_of_giant_strength);
 cptr.stI32o(spellings, 240 + $alt_spellings_ob, NHC.GAUNTLETS_OF_POWER);
-cptr.stPtro(spellings, 256, __sl516);
+cptr.stPtro(spellings, 256, __s_elven_chain_mail);
 cptr.stI32o(spellings, 256 + $alt_spellings_ob, NHC.ELVEN_MITHRIL_COAT);
-cptr.stPtro(spellings, 272, __sl517);
+cptr.stPtro(spellings, 272, __s_silver_shield);
 cptr.stI32o(spellings, 272 + $alt_spellings_ob, NHC.SHIELD_OF_REFLECTION);
-cptr.stPtro(spellings, 288, __sl518);
+cptr.stPtro(spellings, 288, __s_potion_of_sleep);
 cptr.stI32o(spellings, 288 + $alt_spellings_ob, NHC.POT_SLEEPING);
-cptr.stPtro(spellings, 304, __sl519);
+cptr.stPtro(spellings, 304, __s_scroll_of_recharging);
 cptr.stI32o(spellings, 304 + $alt_spellings_ob, NHC.SCR_CHARGING);
-cptr.stPtro(spellings, 320, __sl520);
+cptr.stPtro(spellings, 320, __s_recharging);
 cptr.stI32o(spellings, 320 + $alt_spellings_ob, NHC.SCR_CHARGING);
-cptr.stPtro(spellings, 336, __sl79);
+cptr.stPtro(spellings, 336, __s_stone__2);
 cptr.stI32o(spellings, 336 + $alt_spellings_ob, NHC.ROCK);
-cptr.stPtro(spellings, 352, __sl521);
+cptr.stPtro(spellings, 352, __s_camera);
 cptr.stI32o(spellings, 352 + $alt_spellings_ob, NHC.EXPENSIVE_CAMERA);
-cptr.stPtro(spellings, 368, __sl522);
+cptr.stPtro(spellings, 368, __s_tee_shirt);
 cptr.stI32o(spellings, 368 + $alt_spellings_ob, NHC.T_SHIRT);
-cptr.stPtro(spellings, 384, __sl523);
+cptr.stPtro(spellings, 384, __s_can);
 cptr.stI32o(spellings, 384 + $alt_spellings_ob, NHC.TIN);
-cptr.stPtro(spellings, 400, __sl524);
+cptr.stPtro(spellings, 400, __s_can_opener);
 cptr.stI32o(spellings, 400 + $alt_spellings_ob, NHC.TIN_OPENER);
-cptr.stPtro(spellings, 416, __sl525);
+cptr.stPtro(spellings, 416, __s_kelp);
 cptr.stI32o(spellings, 416 + $alt_spellings_ob, NHC.KELP_FROND);
-cptr.stPtro(spellings, 432, __sl526);
+cptr.stPtro(spellings, 432, __s_eucalyptus);
 cptr.stI32o(spellings, 432 + $alt_spellings_ob, NHC.EUCALYPTUS_LEAF);
-cptr.stPtro(spellings, 448, __sl527);
+cptr.stPtro(spellings, 448, __s_lembas);
 cptr.stI32o(spellings, 448 + $alt_spellings_ob, NHC.LEMBAS_WAFER);
-cptr.stPtro(spellings, 464, __sl528);
+cptr.stPtro(spellings, 464, __s_tripe);
 cptr.stI32o(spellings, 464 + $alt_spellings_ob, NHC.TRIPE_RATION);
-cptr.stPtro(spellings, 480, __sl529);
+cptr.stPtro(spellings, 480, __s_cookie);
 cptr.stI32o(spellings, 480 + $alt_spellings_ob, NHC.FORTUNE_COOKIE);
-cptr.stPtro(spellings, 496, __sl530);
+cptr.stPtro(spellings, 496, __s_pie);
 cptr.stI32o(spellings, 496 + $alt_spellings_ob, NHC.CREAM_PIE);
-cptr.stPtro(spellings, 512, __sl531);
+cptr.stPtro(spellings, 512, __s_huge_meatball);
 cptr.stI32o(spellings, 512 + $alt_spellings_ob, NHC.ENORMOUS_MEATBALL);
-cptr.stPtro(spellings, 528, __sl532);
+cptr.stPtro(spellings, 528, __s_huge_chunk_of_meat);
 cptr.stI32o(spellings, 528 + $alt_spellings_ob, NHC.ENORMOUS_MEATBALL);
-cptr.stPtro(spellings, 544, __sl533);
+cptr.stPtro(spellings, 544, __s_marker);
 cptr.stI32o(spellings, 544 + $alt_spellings_ob, NHC.MAGIC_MARKER);
-cptr.stPtro(spellings, 560, __sl534);
+cptr.stPtro(spellings, 560, __s_hook);
 cptr.stI32o(spellings, 560 + $alt_spellings_ob, NHC.GRAPPLING_HOOK);
-cptr.stPtro(spellings, 576, __sl535);
+cptr.stPtro(spellings, 576, __s_grappling_iron);
 cptr.stI32o(spellings, 576 + $alt_spellings_ob, NHC.GRAPPLING_HOOK);
-cptr.stPtro(spellings, 592, __sl536);
+cptr.stPtro(spellings, 592, __s_grapnel);
 cptr.stI32o(spellings, 592 + $alt_spellings_ob, NHC.GRAPPLING_HOOK);
-cptr.stPtro(spellings, 608, __sl537);
+cptr.stPtro(spellings, 608, __s_grapple);
 cptr.stI32o(spellings, 608 + $alt_spellings_ob, NHC.GRAPPLING_HOOK);
-cptr.stPtro(spellings, 624, __sl538);
+cptr.stPtro(spellings, 624, __s_protection_from_shape_shifters);
 cptr.stI32o(spellings, 624 + $alt_spellings_ob, NHC.RIN_PROTECTION_FROM_SHAPE_CHAN);
-cptr.stPtro(spellings, 640, __sl539);
+cptr.stPtro(spellings, 640, __s_accuracy);
 cptr.stI32o(spellings, 640 + $alt_spellings_ob, NHC.RIN_INCREASE_ACCURACY);
-cptr.stPtro(spellings, 656, __sl540);
+cptr.stPtro(spellings, 656, __s_box);
 cptr.stI32o(spellings, 656 + $alt_spellings_ob, NHC.LARGE_BOX);
-cptr.stPtro(spellings, 672, __sl541);
+cptr.stPtro(spellings, 672, __s_luck_stone);
 cptr.stI32o(spellings, 672 + $alt_spellings_ob, NHC.LUCKSTONE);
-cptr.stPtro(spellings, 688, __sl542);
+cptr.stPtro(spellings, 688, __s_load_stone);
 cptr.stI32o(spellings, 688 + $alt_spellings_ob, NHC.LOADSTONE);
-cptr.stPtro(spellings, 704, __sl543);
+cptr.stPtro(spellings, 704, __s_touch_stone);
 cptr.stI32o(spellings, 704 + $alt_spellings_ob, NHC.TOUCHSTONE);
-cptr.stPtro(spellings, 720, __sl544);
+cptr.stPtro(spellings, 720, __s_flintstone);
 cptr.stI32o(spellings, 720 + $alt_spellings_ob, NHC.FLINT);
 cptr.stPtro(spellings, 736, null);
 cptr.stI32o(spellings, 736 + $alt_spellings_ob, 0);
@@ -3557,22 +4398,23 @@ function rnd_otyp_by_wpnskill(skill) {
     let i;
     let n = 0;
     let otyp = NHC.STRANGE_OBJECT;
-    for (i = cptr.ldI32o2(svb, NHC.WEAPON_CLASS, 4, $instance_globals_saved_b_bases); i < NHC.NUM_OBJECTS && cptr.ld1so2(objects, i, 120, $objclass_oc_class) == NHC.WEAPON_CLASS; i++)
-        if (cptr.ld1so2(objects, i, 120, $objclass_oc_subtyp) == skill) {
+
+    for (i = cptr.ldI32o2(svb, NHC.WEAPON_CLASS, 4, $instance_globals_saved_b_bases); i < NHC.NUM_OBJECTS && cptr.ld1so2(objects, i, $sizeof_objclass, $objclass_oc_class) == NHC.WEAPON_CLASS; i++)
+        if (cptr.ld1so2(objects, i, $sizeof_objclass, $objclass_oc_subtyp) == skill) {
             n++;
             otyp = i16(i);
         }
     if (n > 0) {
-        n = (rng_log_enabled() ? (rng_log_set_caller(__sl107, 3444, __sl545), rn2(n)) : rn2(n));
-        for (i = cptr.ldI32o2(svb, NHC.WEAPON_CLASS, 4, $instance_globals_saved_b_bases); i < NHC.NUM_OBJECTS && cptr.ld1so2(objects, i, 120, $objclass_oc_class) == NHC.WEAPON_CLASS; i++)
-            if (cptr.ld1so2(objects, i, 120, $objclass_oc_subtyp) == skill)
+        n = rn2_at(__s_objnam_c, 3444, __s_rnd_otyp_by_wpnskill, n);
+        for (i = cptr.ldI32o2(svb, NHC.WEAPON_CLASS, 4, $instance_globals_saved_b_bases); i < NHC.NUM_OBJECTS && cptr.ld1so2(objects, i, $sizeof_objclass, $objclass_oc_class) == NHC.WEAPON_CLASS; i++)
+            if (cptr.ld1so2(objects, i, $sizeof_objclass, $objclass_oc_subtyp) == skill)
                 if (--n < 0)
                     return i16(i);
     }
     return otyp;
 }
 
-/** C ref: objnam.c:3455 — @param {CPtr} name @param {CInt} oclass @param {CInt} xtra_prob @returns {CInt} */
+/** C ref: objnam.c:3455 — @param {CPtr<char>} name @param {CInt} oclass @param {CInt} xtra_prob @returns {CInt} */
 function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
     let i;
     let n = 0;
@@ -3586,31 +4428,45 @@ function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
     let maxglob;
     let prob;
     let maxprob = 0;
+
     if (!name || !cptr.ld1s(name))
         return NHC.STRANGE_OBJECT;
-    check_of = schar((strstri(name, __sl34) === null));
+
+    /* only skip "foo of" for "foo of bar" if target doesn't contain " of " */
+    check_of = schar((strstri(name, __s_of) === null));
     minglob = NHC.GLOB_OF_GRAY_OOZE;
     maxglob = NHC.GLOB_OF_BLACK_PUDDING;
+
     void __builtin___memset_chk(validobjs, 0, 962n, __builtin_object_size(validobjs, 0));
     if (oclass) {
         lo = cptr.ldI32o2(svb, uchar(oclass), 4, $instance_globals_saved_b_bases);
         hi = (cptr.ldI32o2(svb, (uchar(oclass) + 1) | 0, 4, $instance_globals_saved_b_bases) - 1) | 0;
     } else {
-        lo = NHC.MAXOCLASSES;
+        lo = NHC.MAXOCLASSES;  /* STRANGE_OBJECT + 1; */
         hi = ((NHC.NUM_OBJECTS - 1) | 0);
     }
+    /* FIXME:
+     * When this spans classes (the !oclass case), the item
+     * probabilities are not very useful because they don't take
+     * the class generation probability into account.  [If 10%
+     * of spellbooks were blank and 1% of scrolls were blank,
+     * "blank" would have 10/11 chance to yield a book even though
+     * scrolls are supposed to be much more common than books.]
+     */
     for (i = lo; i <= hi; ++i) {
-        if ((zn = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, 120))), 16))) === null)
+        /* don't match extra descriptions (w/o real name) */
+        if ((zn = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, $sizeof_objclass))), $sizeof_objdescr))) === null)
             continue;
-        if (wishymatch(name, zn, 1) || (check_of && i != NHC.BELL_OF_OPENING && (i < minglob || i > maxglob) && (of = strstri(zn, __sl34)) !== null && wishymatch(name, cptr.add(of, 4), 0)) || ((zn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((cptr.add(objects, i, 120)), $objclass_oc_descr_idx), 16, $objdescr_oc_descr))) !== null && wishymatch(name, zn, 0)) || (zn && check_of && (of = strstri(zn, __sl34)) !== null && wishymatch(name, cptr.add(of, 4), 0)) || ((zn = cptr.ldPtro2(objects, i, 120, $objclass_oc_uname)) !== null && wishymatch(name, zn, 0))) {
+        if (wishymatch(name, zn, 1) || (check_of && i != NHC.BELL_OF_OPENING && (i < minglob || i > maxglob) && (of = strstri(zn, __s_of)) !== null && wishymatch(name, cptr.add(of, 4), 0)) || ((zn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((cptr.add(objects, i, $sizeof_objclass)), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr))) !== null && wishymatch(name, zn, 0)) || (zn && check_of && (of = strstri(zn, __s_of)) !== null && wishymatch(name, cptr.add(of, 4), 0)) || ((zn = cptr.ldPtro2(objects, i, $sizeof_objclass, $objclass_oc_uname)) !== null && wishymatch(name, zn, 0))) {
             cptr.stI16o(validobjs, n++, i16(i), 2);
-            maxprob = (maxprob + ((cptr.ldI16o2(objects, i, 120, $objclass_oc_prob) + xtra_prob) | 0)) | 0;
+            maxprob = (maxprob + ((cptr.ldI16o2(objects, i, $sizeof_objclass, $objclass_oc_prob) + xtra_prob) | 0)) | 0;
         }
     }
+
     if (n > 0 && maxprob) {
-        prob = (rng_log_enabled() ? (rng_log_set_caller(__sl107, 3522, __sl546), rn2(maxprob)) : rn2(maxprob));
+        prob = rn2_at(__s_objnam_c, 3522, __s_rnd_otyp_by_namedesc, maxprob);
         for (i = 0; i < ((n - 1) | 0); i++)
-            if ((prob = (prob - ((cptr.ldI16o2(objects, cptr.ldI16o(validobjs, i, 2), 120, $objclass_oc_prob) + xtra_prob) | 0)) | 0) < 0)
+            if ((prob = (prob - ((cptr.ldI16o2(objects, cptr.ldI16o(validobjs, i, 2), $sizeof_objclass, $objclass_oc_prob) + xtra_prob) | 0)) | 0) < 0)
                 break;
         return cptr.ldI16o(validobjs, i, 2);
     }
@@ -3619,21 +4475,25 @@ function rnd_otyp_by_namedesc(name, oclass, xtra_prob) {
 
 /** C ref: objnam.c:3532 — @param {CInt} oclass @returns {CInt} */
 export function shiny_obj(oclass) {
-    return rnd_otyp_by_namedesc(__sl547, oclass, 0);
+    return rnd_otyp_by_namedesc(__s_shiny, oclass, 0);
 }
 
-/** C ref: objnam.c:3539 — @param {CPtr} bp */
+/* set wall under hero undiggable/unphaseable from string */
+/** C ref: objnam.c:3539 — @param {CPtr<char>} bp */
 function set_wallprop_from_str(bp) {
     let wall_prop = 0;
-    if (cptr.strstr(bp, __sl548) || cptr.strstr(bp, __sl549))
+
+    if (cptr.strstr(bp, __s_undiggable) || cptr.strstr(bp, __s_nondiggable))
         wall_prop |= NHM.W_NONDIGGABLE;
-    if (cptr.strstr(bp, __sl550) || cptr.strstr(bp, __sl551))
+    if (cptr.strstr(bp, __s_unphaseable) || cptr.strstr(bp, __s_nonpasswall))
         wall_prop |= NHM.W_NONPASSWALL;
+    /* |= because wall_info (aka flags) is overloaded with other stuff */
     if (wall_prop)
-        cptr.stI32o3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_flags, cptr.ldI32o3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_flags) | wall_prop);
+        cptr.stI32o3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_flags, cptr.ldI32o3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) | wall_prop);
 }
 
-/** C ref: objnam.c:3554 — @param {CPtr} d @returns {CPtr} */
+/* in wizard mode, readobjnam() can accept wishes for traps and terrain */
+/** C ref: objnam.c:3554 — @param {CPtr<struct _readobjnam_data>} d @returns {CPtr<struct obj>} */
 function wizterrainwish(d) {
     let lev;
     let madeterrain = 0;
@@ -3646,221 +4506,275 @@ function wizterrainwish(d) {
     let y = cptr.ldI16o(u, $you_uy);
     let bp = cptr.ldPtro(d, $_readobjnam_data_bp);
     let p;
+
     for (trap = ((NHC.NO_TRAP + 1) | 0); trap < NHC.TRAPNUM; trap++) {
         let t;
         let tname;
+
         tname = trapname(trap, 1);
         if (!str_start_is(bp, tname, 1))
             continue;
+        /* found it; avoid stupid mistakes */
         if (((trap) == NHC.HOLE || (trap) == NHC.TRAPDOOR) && !Can_fall_thru(cptr.add(u, $you_uz)))
             trap = NHC.ROCKTRAP;
         if ((t = maketrap(x, y, trap)) !== null) {
             trap = (cptr.ldI32o(t, $trap_ttyp) & 31) | 0;
             tname = trapname(trap, 1);
-            pline(__sl552, An(tname), (trap != NHC.MAGIC_PORTAL) ? __sl13 : __sl553);
+            pline(__s_s_s__6, An(tname), (trap != NHC.MAGIC_PORTAL) ? __s_empty : __s_to_nowhere);
         } else {
-            pline(__sl554, an(tname));
+            pline(__s_creation_of_s_failed, an(tname));
         }
         return hands_obj;
     }
-    lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36);
+
+    /* furniture and terrain (use at your own risk; can clobber stairs
+       or place furniture on existing traps which shouldn't be allowed) */
+    lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm);
     oldtyp = cptr.ld1so(lev, $rm_typ);
     is_dbridge = schar((oldtyp == NHC.DRAWBRIDGE_DOWN || oldtyp == NHC.DRAWBRIDGE_UP ? 1 : 0));
     p = eos(bp);
-    if (!(cptr.cmp((cptr.add(p, -(8))), bp) < 0 || strncmpi(((cptr.add(p, -(8)))), (__sl555), -1))) {
+    if (!(cptr.cmp((cptr.add(p, -(8))), bp) < 0 || strncmpi(((cptr.add(p, -(8)))), (__s_fountain), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.FOUNTAIN);
         if (oldtyp != NHC.FOUNTAIN)
             cptr.postinc1(cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_flags));
-        cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? NHM.F_LOOTED : 0) >>> 0);
-        cptr.stI32o(lev, $rm_horizontal, (cptr.ldI32o(d, $_readobjnam_data_blessed) || !strncmpi(bp, __sl556, 6) ? 1 : 0) >>> 0);
-        pline(__sl557, (cptr.ldI32o(lev, $rm_horizontal) & 1) | 0 ? __sl556 : __sl13);
+        cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? NHM.F_LOOTED : 0) >>> 0);  /* overlays 'flags' */
+        cptr.stI32o(lev, $rm_horizontal, (cptr.ldI32o(d, $_readobjnam_data_blessed) || !strncmpi(bp, __s_magic, 6) ? 1 : 0) >>> 0);
+        pline(__s_a_sfountain, (cptr.ldI32o(lev, $rm_horizontal) & 1) | 0 ? __s_magic : __s_empty);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl558), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_throne), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.THRONE);
-        cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? NHM.T_LOOTED : 0) >>> 0);
-        pline(__sl559);
+        cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? NHM.T_LOOTED : 0) >>> 0);  /* overlays 'flags' */
+        pline(__s_a_throne);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl560), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_sink), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.SINK);
         if (oldtyp != NHC.SINK)
             cptr.postinc1(cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_nsinks));
         cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? 7 : 0) >>> 0);
-        pline(__sl561);
+        pline(__s_a_sink);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl562), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl563), -1)) || !(cptr.cmp((cptr.add(p, -(13))), bp) < 0 || strncmpi(((cptr.add(p, -(13)))), (__sl564), -1))) {
+
+        /* ("water" matches "potion of water" rather than terrain) */
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_pool), -1)) || !(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_moat), -1)) || !(cptr.cmp((cptr.add(p, -(13))), bp) < 0 || strncmpi(((cptr.add(p, -(13)))), (__s_wall_of_water), -1))) {
         let save_prop;
         let new_water;
-        ltyp = (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl562), -1)) ? NHC.POOL : (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl563), -1)) ? NHC.MOAT : NHC.WATER)) >>> 0;
+
+        ltyp = (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_pool), -1)) ? NHC.POOL : (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_moat), -1)) ? NHC.MOAT : NHC.WATER)) >>> 0;
         if (!is_dbridge) {
             cptr.st1o(lev, $rm_typ, schar(ltyp));
             cptr.stI32o(lev, $rm_flags, 0);
         } else {
+            /* drawbridgemask overloads flags */
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) & -29);
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | NHM.DB_MOAT);
         }
         del_engr_at(x, y);
         if (!is_dbridge) {
             save_prop = EHalluc_resistance();
-            cptr.stI64o2(u, NHC.HALLUC_RES, 24, $you_uprops, 1n);
+            cptr.stI64o2(u, NHC.HALLUC_RES, $sizeof_prop, $you_uprops, 1n);
             new_water = waterbody_name(x, y);
-            cptr.stI64o2(u, NHC.HALLUC_RES, 24, $you_uprops, save_prop);
-            pline(__sl565, An(new_water));
+            cptr.stI64o2(u, NHC.HALLUC_RES, $sizeof_prop, $you_uprops, save_prop);
+            pline(__s_pct_s_dot, An(new_water));
+            /* Must manually make kelp! */
         } else {
-            dbterrainmesg(__sl566, x, y);
+            dbterrainmesg(__s_moat__2, x, y);
         }
         water_damage_chain(cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_objects), 1);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl567), -1)) || !(cptr.cmp((cptr.add(p, -(12))), bp) < 0 || strncmpi(((cptr.add(p, -(12)))), (__sl568), -1))) {
-        ltyp = (!(cptr.cmp((cptr.add(p, -(12))), bp) < 0 || strncmpi(((cptr.add(p, -(12)))), (__sl568), -1)) ? NHC.LAVAWALL : NHC.LAVAPOOL) >>> 0;
+
+        /* also matches "molten lava" */
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_lava), -1)) || !(cptr.cmp((cptr.add(p, -(12))), bp) < 0 || strncmpi(((cptr.add(p, -(12)))), (__s_wall_of_lava), -1))) {
+        ltyp = (!(cptr.cmp((cptr.add(p, -(12))), bp) < 0 || strncmpi(((cptr.add(p, -(12)))), (__s_wall_of_lava), -1)) ? NHC.LAVAWALL : NHC.LAVAPOOL) >>> 0;
         if (!is_dbridge) {
             cptr.st1o(lev, $rm_typ, schar(ltyp));
             cptr.stI32o(lev, $rm_flags, 0);
         } else {
+            /* drawbridgemask overloads flags */
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) & -29);
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | NHM.DB_LAVA);
         }
         del_engr_at(x, y);
         if (!is_dbridge) {
-            pline(__sl569, (cptr.ld1so(lev, $rm_typ) == NHC.LAVAPOOL) ? __sl562 : __sl570);
+            pline(__s_a_s_of_molten_lava, (cptr.ld1so(lev, $rm_typ) == NHC.LAVAPOOL) ? __s_pool : __s_wall);
             if (!(Levitation() || Flying()) || cptr.ld1so(lev, $rm_typ) == NHC.LAVAWALL)
                 pooleffects(0);
         } else {
-            dbterrainmesg(__sl571, x, y);
+            dbterrainmesg(__s_lava__2, x, y);
         }
         fire_damage_chain(cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_objects), 1, 1, x, y);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__sl183), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(3))), bp) < 0 || strncmpi(((cptr.add(p, -(3)))), (__s_ice), -1))) {
         if (!is_dbridge) {
             cptr.st1o(lev, $rm_typ, NHC.ICE);
+            /* icedpool overloads flags; specifies what ice will melt into */
             cptr.stI32o(lev, $rm_flags, ((oldtyp == NHC.ROOM) ? NHM.ICED_POOL : NHM.ICED_MOAT) >>> 0);
         } else {
+            /* drawbridgemask overloads flags */
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) & -29);
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | NHM.DB_ICE);
         }
         del_engr_at(x, y);
-        if (!strncmpi(bp, __sl572, 8))
+
+        if (!strncmpi(bp, __s_melting, 8))
             start_melt_ice_timeout(x, y, 0n);
+
         if (!is_dbridge) {
             let icebuf = new Uint8Array(40);
-            pline(__sl565, upstart(ice_descr(x, y, cptr.decay(icebuf))));
+
+            pline(__s_pct_s_dot, upstart(ice_descr(x, y, cptr.decay(icebuf))));
         } else {
-            dbterrainmesg(__sl573, x, y);
+            dbterrainmesg(__s_ice__2, x, y);
         }
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl574), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_altar), -1))) {
         let al;
+
         cptr.st1o(lev, $rm_typ, NHC.ALTAR);
-        if (!strncmpi(bp, __sl575, 8))
+        if (!strncmpi(bp, __s_chaotic, 8))
             al = -1;
-        else if (!strncmpi(bp, __sl576, 8))
+        else if (!strncmpi(bp, __s_neutral, 8))
             al = NHM.A_NEUTRAL;
-        else if (!strncmpi(bp, __sl577, 7))
+        else if (!strncmpi(bp, __s_lawful, 7))
             al = NHM.A_LAWFUL;
-        else if (!strncmpi(bp, __sl578, 10))
+        else if (!strncmpi(bp, __s_unaligned, 10))
             al = -128;
         else
-            al = schar((!(rng_log_enabled() ? (rng_log_set_caller(__sl107, 3702, __sl579), rn2(6)) : rn2(6)) ? -128 : (((rng_log_enabled() ? (rng_log_set_caller(__sl107, 3702, __sl579), rn2(3)) : rn2(3)) - 1) | 0)));
-        cptr.stI32o(lev, $rm_flags, Align2amask(al));
-        pline(__sl580, An(align_str(al)));
+            al = schar((!rn2_at(__s_objnam_c, 3702, __s_wizterrainwish, 6) ? -128 : ((rn2_at(__s_objnam_c, 3702, __s_wizterrainwish, 3) - 1) | 0)));
+        cptr.stI32o(lev, $rm_flags, Align2amask(al));  /* overlays 'flags' */
+        pline(__s_s_altar, An(align_str(al)));
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl581), -1)) || !(cptr.cmp((cptr.add(p, -(9))), bp) < 0 || strncmpi(((cptr.add(p, -(9)))), (__sl582), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_grave), -1)) || !(cptr.cmp((cptr.add(p, -(9))), bp) < 0 || strncmpi(((cptr.add(p, -(9)))), (__s_headstone), -1))) {
         make_grave(x, y, null);
         if (((cptr.ld1so(lev, $rm_typ)) == NHC.GRAVE)) {
-            cptr.stI32o(lev, $rm_flags, 0);
+            cptr.stI32o(lev, $rm_flags, 0);  /* overlays 'flags' */
             cptr.stI32o(lev, $rm_horizontal, (cptr.ldI32o(d, $_readobjnam_data_flags) ? 1 : 0) >>> 0);
-            pline(__sl583, (cptr.ldI32o(lev, $rm_horizontal) & 1) | 0 ? __sl584 : __sl13);
+            pline(__s_a_sgrave, (cptr.ldI32o(lev, $rm_horizontal) & 1) | 0 ? __s_disturbed : __s_empty);
             madeterrain = 1;
         } else {
-            pline(__sl585);
+            pline(__s_can_t_place_a_grave_here);
             badterrain = 1;
         }
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl586), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_tree), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.TREE);
         cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_flags) ? 3 : 0) >>> 0);
         set_wallprop_from_str(bp);
-        pline(__sl587);
+        pline(__s_a_tree);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl588), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_bars), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.IRONBARS);
         cptr.stI32o(lev, $rm_flags, 0);
         set_wallprop_from_str(bp);
-        pline(__sl589);
+        /* [FIXME: if this isn't a wall or door location where 'horizontal'
+            is already set up, that should be calculated for this spot.
+            Unfortunately, it can be tricky; placing one in open space
+            and then another adjacent might need to recalculate first one.] */
+        pline(__s_iron_bars__2);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl590), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_cloud), -1))) {
         cptr.st1o(lev, $rm_typ, NHC.CLOUD);
         cptr.stI32o(lev, $rm_flags, 0);
-        pline(__sl591);
+        pline(__s_a_cloud);
         del_engr_at(x, y);
         madeterrain = 1;
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl592), -1)) || (cptr.ldI32o(d, $_readobjnam_data_doorless) && !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__sl593), -1)))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_door), -1)) || (cptr.ldI32o(d, $_readobjnam_data_doorless) && !(cptr.cmp((cptr.add(p, -(7))), bp) < 0 || strncmpi(((cptr.add(p, -(7)))), (__s_doorway), -1)))) {
         let dbuf = new Uint8Array(40);
         let old_wall_info;
-        let secret = schar((!(cptr.cmp((cptr.add(p, -(11))), bp) < 0 || strncmpi(((cptr.add(p, -(11)))), (__sl594), -1))));
+        let secret = schar((!(cptr.cmp((cptr.add(p, -(11))), bp) < 0 || strncmpi(((cptr.add(p, -(11)))), (__s_secret_door), -1))));
+
+        /* require door or wall so that the 'horizontal' flag will
+           already have the correct value; player might choose to put
+           DOOR on top of existing DOOR or SDOOR on top of existing SDOOR
+           to control its trapped state; iron bars are surrogate walls;
+           a previously dug wall looks like corridor but is actually a
+           doorless doorway so will be acceptable here */
         if (cptr.ld1so(lev, $rm_typ) == NHC.DOOR || cptr.ld1so(lev, $rm_typ) == NHC.SDOOR || (IS_WALL(cptr.ld1so(lev, $rm_typ)) && cptr.ld1so(lev, $rm_typ) != NHC.DBWALL) || cptr.ld1so(lev, $rm_typ) == NHC.IRONBARS) {
+            /* remember previous wall info [is this right for iron bars?] */
             old_wall_info = ((cptr.ld1so(lev, $rm_typ) != NHC.DOOR) ? (cptr.ldI32o(lev, $rm_flags) & 31) | 0 : 0) >>> 0;
+            /* set the new terrain type */
             cptr.st1o(lev, $rm_typ, schar((secret ? NHC.SDOOR : NHC.DOOR)));
-            cptr.stI32o(lev, $rm_flags, 0);
+            cptr.stI32o(lev, $rm_flags, 0);  /* overlays 'flags' */
+            /* lev->horizontal stays as-is */
             if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level))))) {
+                /* all doors on the rogue level are doorless; locking magic
+                   there converts them into walls rather than closed doors */
                 cptr.stI32o(d, $_readobjnam_data_doorless, 1);
                 cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_broken, 0))));
             }
+            /* if not locked, secret doors are implicitly closed but
+               mustn't be set that way explicitly because they use both
+               doormask and wall_info which both overload rm[x][y].flags
+               (CLOSED overlaps wall_info bits, LOCKED and TRAPPED don't);
+               conversion from SDOOR to DOOR changes NODOOR to CLOSED */
             cptr.stI32o(lev, $rm_flags, (cptr.ldI32o(d, $_readobjnam_data_locked) ? NHM.D_LOCKED : ((cptr.ldI32o(d, $_readobjnam_data_doorless) || secret) ? NHM.D_NODOOR : (cptr.ldI32o(d, $_readobjnam_data_open) ? NHM.D_ISOPEN : (cptr.ldI32o(d, $_readobjnam_data_broken) ? NHM.D_BROKEN : NHM.D_CLOSED)))) >>> 0);
+            /* SDOOR uses wall_info, restore relevant bits.
+             * FIXME? if we're changing a regular door into a secret door,
+             * old_wall_info bits will be 0 instead of being set properly.
+             * Probably only matters if player uses Passes_walls and a wish
+             * to turn a T- or cross-wall into a door, losing wall info,
+             * and then another wish to turn that door into a secret door. */
             if (secret)
                 cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | ((old_wall_info & NHM.WM_MASK) >>> 0));
+            /* set up trapped flag; open door states aren't eligible */
             if (cptr.ldI32o(d, $_readobjnam_data_trapped) == 2 || ((((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & 12) == 0 && !secret))
                 cptr.stI32o(d, $_readobjnam_data_trapped, 0);
             if (cptr.ldI32o(d, $_readobjnam_data_trapped))
                 cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | NHM.D_TRAPPED);
+            /* feedback */
             cptr.st1o(cptr.decay(dbuf), 0, 0, 1);
             if (((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & NHM.D_TRAPPED)
-                void cptr.strcat(cptr.decay(dbuf), __sl115);
+                void cptr.strcat(cptr.decay(dbuf), __s_trapped);
             if (((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & NHM.D_LOCKED)
-                void cptr.strcat(cptr.decay(dbuf), __sl117);
+                void cptr.strcat(cptr.decay(dbuf), __s_locked);
             if (cptr.ld1so(lev, $rm_typ) == NHC.SDOOR) {
-                void cptr.strcat(cptr.decay(dbuf), __sl594);
+                void cptr.strcat(cptr.decay(dbuf), __s_secret_door);
             } else {
+                /* these should be mutually exclusive but we describe them
+                   as if they're independent to maybe catch future bugs... */
                 if (((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & NHM.D_CLOSED)
-                    void cptr.strcat(cptr.decay(dbuf), __sl595);
+                    void cptr.strcat(cptr.decay(dbuf), __s_closed);
                 if (((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & NHM.D_ISOPEN)
-                    void cptr.strcat(cptr.decay(dbuf), __sl596);
+                    void cptr.strcat(cptr.decay(dbuf), __s_open);
                 if (((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & NHM.D_BROKEN)
-                    void cptr.strcat(cptr.decay(dbuf), __sl116);
+                    void cptr.strcat(cptr.decay(dbuf), __s_broken);
                 if ((((cptr.ldI32o(lev, $rm_flags) & 31) | 0) & -17) == NHM.D_NODOOR)
-                    void cptr.strcat(cptr.decay(dbuf), __sl597);
+                    void cptr.strcat(cptr.decay(dbuf), __s_doorless_doorway);
                 else
-                    void cptr.strcat(cptr.decay(dbuf), __sl592);
+                    void cptr.strcat(cptr.decay(dbuf), __s_door);
             }
-            pline(__sl565, upstart(an(cptr.decay(dbuf))));
+            pline(__s_pct_s_dot, upstart(an(cptr.decay(dbuf))));
             madeterrain = 1;
         } else {
-            void cptr.strcpy(cptr.decay(dbuf), secret ? __sl594 : __sl592);
-            pline(__sl598, upstart(cptr.decay(dbuf)));
+            void cptr.strcpy(cptr.decay(dbuf), secret ? __s_secret_door : __s_door);
+            pline(__s_s_requires_door_or_wall_location, upstart(cptr.decay(dbuf)));
             badterrain = 1;
         }
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl570), -1)) && (cptr.eq(bp, cptr.add(p, -(4))) || cptr.ld1so(p, -5) == 32)) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_wall), -1)) && (cptr.eq(bp, cptr.add(p, -(4))) || cptr.ld1so(p, -5) == 32)) {
         let wall = NHC.HWALL;
-        if ((isok(cptr.ldI16(u), i16(((cptr.ldI16o(u, $you_uy) - 1) | 0))) && ((cptr.ld1so3(svl, cptr.ldI16(u), 756, (cptr.ldI16o(u, $you_uy) - 1) | 0, 36, $instance_globals_saved_l_level + $rm_typ)) && (cptr.ld1so3(svl, cptr.ldI16(u), 756, (cptr.ldI16o(u, $you_uy) - 1) | 0, 36, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)) || (isok(cptr.ldI16(u), i16(((cptr.ldI16o(u, $you_uy) + 1) | 0))) && ((cptr.ld1so3(svl, cptr.ldI16(u), 756, (cptr.ldI16o(u, $you_uy) + 1) | 0, 36, $instance_globals_saved_l_level + $rm_typ)) && (cptr.ld1so3(svl, cptr.ldI16(u), 756, (cptr.ldI16o(u, $you_uy) + 1) | 0, 36, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)))
+
+        if ((isok(cptr.ldI16(u), i16(((cptr.ldI16o(u, $you_uy) - 1) | 0))) && ((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, (cptr.ldI16o(u, $you_uy) - 1) | 0, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) && (cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, (cptr.ldI16o(u, $you_uy) - 1) | 0, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)) || (isok(cptr.ldI16(u), i16(((cptr.ldI16o(u, $you_uy) + 1) | 0))) && ((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, (cptr.ldI16o(u, $you_uy) + 1) | 0, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) && (cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, (cptr.ldI16o(u, $you_uy) + 1) | 0, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) <= NHC.DBWALL)))
             wall = NHC.VWALL;
         madeterrain = 1;
         cptr.st1o(lev, $rm_typ, wall);
         cptr.stI32o(lev, $rm_flags, 0);
         set_wallprop_from_str(bp);
         fix_wall_spines(i16((0 > ((cptr.ldI16(u) - 1) | 0) ? 0 : ((cptr.ldI16(u) - 1) | 0))), i16((0 > ((cptr.ldI16o(u, $you_uy) - 1) | 0) ? 0 : ((cptr.ldI16o(u, $you_uy) - 1) | 0))), i16((NHM.COLNO < ((cptr.ldI16(u) + 1) | 0) ? NHM.COLNO : ((cptr.ldI16(u) + 1) | 0))), i16((NHM.ROWNO < ((cptr.ldI16o(u, $you_uy) + 1) | 0) ? NHM.ROWNO : ((cptr.ldI16o(u, $you_uy) + 1) | 0))));
-        pline(__sl599);
-    } else if (!(cptr.cmp((cptr.add(p, -(15))), bp) < 0 || strncmpi(((cptr.add(p, -(15)))), (__sl600), -1))) {
+        pline(__s_a_wall);
+    } else if (!(cptr.cmp((cptr.add(p, -(15))), bp) < 0 || strncmpi(((cptr.add(p, -(15)))), (__s_secret_corridor), -1))) {
         if (cptr.ld1so(lev, $rm_typ) == NHC.CORR) {
             cptr.st1o(lev, $rm_typ, NHC.SCORR);
-            pline(__sl601);
+            /* neither CORR nor SCORR uses 'flags' or 'horizontal' */
+            pline(__s_secret_corridor__2);
             madeterrain = 1;
         } else {
-            pline(__sl602);
+            pline(__s_secret_corridor_requires_corridor);
             badterrain = 1;
         }
-    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__sl603), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__sl604), -1)) || !(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__sl605), -1))) {
+    } else if (!(cptr.cmp((cptr.add(p, -(4))), bp) < 0 || strncmpi(((cptr.add(p, -(4)))), (__s_room), -1)) || !(cptr.cmp((cptr.add(p, -(5))), bp) < 0 || strncmpi(((cptr.add(p, -(5)))), (__s_floor), -1)) || !(cptr.cmp((cptr.add(p, -(6))), bp) < 0 || strncmpi(((cptr.add(p, -(6)))), (__s_ground), -1))) {
         if (oldtyp == NHC.ROOM || (IS_FURNITURE(oldtyp) && CAN_OVERWRITE_TERRAIN(oldtyp)) || oldtyp == NHC.ICE || is_pool_or_lava(x, y)) {
             let t;
+
             cptr.st1o(lev, $rm_typ, NHC.ROOM);
-            pline(__sl606);
+            pline(__s_room_floor);
             if (IS_FURNITURE(oldtyp))
                 count_level_features();
             if ((t = t_at(x, y)) !== null && ((cptr.ldI32o(t, $trap_ttyp) & 31) | 0) != NHC.MAGIC_PORTAL)
@@ -3869,50 +4783,70 @@ function wizterrainwish(d) {
         } else if (is_dbridge) {
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) & -29);
             cptr.stI32o(lev, $rm_flags, cptr.ldI32o(lev, $rm_flags) | NHM.DB_FLOOR);
-            dbterrainmesg(__sl607, x, y);
+            dbterrainmesg(__s_floor__2, x, y);
             madeterrain = 1;
         } else {
-            pline(__sl608);
+            pline(__s_room_floor_ground_not_allowed_here);
             badterrain = 1;
         }
     }
+
     if (madeterrain) {
-        feel_newsym(x, y);
+        feel_newsym(x, y);  /* map the spot where the wish occurred */
+
+        /* hero started at <x,y> but might not be there anymore (create
+           lava, decline to die, and get teleported away to safety) */
         if ((cptr.ldI32o(u, $you_uinwater) & 1) | 0 && !is_pool(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) {
-            set_uinwater(0);
+            set_uinwater(0);  /* u.uinwater = 0; leave the water */
             docrt();
+            /* [block/unblock_point handled by docrt -> vision_recalc] */
         } else {
             if (cptr.ldI32o(u, $you_utrap) && cptr.ldI32o(u, $you_utraptype) == NHC.TT_LAVA && !is_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
                 reset_utrap(0);
             recalc_block_point(x, y);
         }
+
+        /* fixups for replaced terrain that aren't handled above */
         if (((oldtyp) == NHC.FOUNTAIN) || ((oldtyp) == NHC.SINK))
-            count_level_features();
+            count_level_features();  /* update level.flags.nfountains,nsinks */
         if (!is_ice(x, y))
             spot_stop_timers(x, y, NHC.MELT_ICE_AWAY);
+        /* horizontal is overlaid by fountain->blessedftn, grave->disturbed */
         if (((oldtyp) == NHC.FOUNTAIN) || ((oldtyp) == NHC.GRAVE) || IS_WALL(oldtyp) || oldtyp == NHC.IRONBARS || ((oldtyp) == NHC.DOOR) || oldtyp == NHC.SDOOR) {
+            /* when new terrain is a fountain, 'blessedftn' was explicitly
+               set above; likewise for grave and 'disturbed'; when it's a
+               door, the old type was a wall or a door and we retain the
+               'horizontal' value from those */
             if (!((cptr.ld1so(lev, $rm_typ)) == NHC.FOUNTAIN) && !((cptr.ld1so(lev, $rm_typ)) == NHC.GRAVE) && !((cptr.ld1so(lev, $rm_typ)) == NHC.DOOR) && cptr.ld1so(lev, $rm_typ) != NHC.SDOOR)
-                cptr.stI32o(lev, $rm_horizontal, 0);
+                cptr.stI32o(lev, $rm_horizontal, 0);  /* also clears blessedftn, disturbed */
         }
+        /* note: lev->lit and lev->nondiggable retain their values even
+           though those might not make sense with the new terrain */
+
+        /* might have changed terrain from something that blocked
+           levitation and flying to something that doesn't (levitating
+           while in xorn form and replacing solid stone with furniture) */
         switch_terrain();
     }
     if (madeterrain || badterrain)
         return hands_obj;
+
     return null;
 }
 
-/** C ref: objnam.c:3920 — @param {CPtr} newtype @param {CInt} x @param {CInt} y */
+/* message common to several wizterrainwish() results */
+/** C ref: objnam.c:3920 — @param {CPtr<char>} newtype @param {CInt} x @param {CInt} y */
 function dbterrainmesg(newtype, x, y) {
-    pline(__sl609, newtype, (cptr.ld1so3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_UP) ? __sl610 : __sl611);
+    pline(__s_s_s_the_drawbridge, newtype, (cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_UP) ? __s_in_front_of : __s_under);
 }
 
-/** C ref: objnam.c:3933 — @param {CPtr} bp @param {CPtr} d */
+/** C ref: objnam.c:3933 — @param {CPtr<char>} bp @param {CPtr<struct _readobjnam_data>} d */
 function readobjnam_init(bp, d) {
     cptr.stPtr(d, null);
     cptr.stI32o(d, $_readobjnam_data_cnt, cptr.stI32o(d, $_readobjnam_data_spe, cptr.stI32o(d, $_readobjnam_data_spesgn, cptr.stI32o(d, $_readobjnam_data_typ, 0))));
-    cptr.stI32o(d, $_readobjnam_data_very, cptr.stI32o(d, $_readobjnam_data_rechrg, cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_uncursed, cptr.stI32o(d, $_readobjnam_data_iscursed, cptr.stI32o(d, $_readobjnam_data_ispoisoned, cptr.stI32o(d, $_readobjnam_data_isgreased, cptr.stI32o(d, $_readobjnam_data_eroded, cptr.stI32o(d, $_readobjnam_data_eroded2, cptr.stI32o(d, $_readobjnam_data_erodeproof, cptr.stI32o(d, $_readobjnam_data_halfeaten, cptr.stI32o(d, $_readobjnam_data_islit, cptr.stI32o(d, $_readobjnam_data_unlabeled, cptr.stI32o(d, $_readobjnam_data_ishistoric, cptr.stI32o(d, $_readobjnam_data_isdiluted, cptr.stI32o(d, $_readobjnam_data_trapped, cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_doorless, cptr.stI32o(d, $_readobjnam_data_flags, cptr.stI32o(d, $_readobjnam_data_real, cptr.stI32o(d, $_readobjnam_data_fake, 0)))))))))))))))))))))))));
+    cptr.stI32o(d, $_readobjnam_data_very, cptr.stI32o(d, $_readobjnam_data_rechrg, cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_uncursed, cptr.stI32o(d, $_readobjnam_data_iscursed, cptr.stI32o(d, $_readobjnam_data_ispoisoned, cptr.stI32o(d, $_readobjnam_data_isgreased, cptr.stI32o(d, $_readobjnam_data_eroded, cptr.stI32o(d, $_readobjnam_data_eroded2, cptr.stI32o(d, $_readobjnam_data_erodeproof, cptr.stI32o(d, $_readobjnam_data_halfeaten, cptr.stI32o(d, $_readobjnam_data_islit, cptr.stI32o(d, $_readobjnam_data_unlabeled, cptr.stI32o(d, $_readobjnam_data_ishistoric, cptr.stI32o(d, $_readobjnam_data_isdiluted, cptr.stI32o(d, $_readobjnam_data_trapped, cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_doorless, cptr.stI32o(d, $_readobjnam_data_flags, cptr.stI32o(d, $_readobjnam_data_real, cptr.stI32o(d, $_readobjnam_data_fake, 0)))))))))))))))))))))))));  /* Amulet */
     cptr.stI32o(d, $_readobjnam_data_tvariety, -2);
-    cptr.stI32o(d, $_readobjnam_data_mgend, -1);
+    cptr.stI32o(d, $_readobjnam_data_mgend, -1);  /* not specified, aka random */
     cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
     cptr.stI32o(d, $_readobjnam_data_contents, 0);
     cptr.st1o(d, $_readobjnam_data_oclass, 0);
@@ -3928,21 +4862,26 @@ function readobjnam_init(bp, d) {
     void __builtin___memset_chk(cptr.add(d, $_readobjnam_data_fruitbuf), 0, 256n, __builtin_object_size(cptr.add(d, $_readobjnam_data_fruitbuf), 0));
 }
 
-/** C ref: objnam.c:3966 — @param {CPtr} d @returns {CInt} */
+/* return 1 if d->bp is empty or contains only various qualifiers like
+   "blessed", "rustproof", and so on, or 0 if anything else is present */
+/** C ref: objnam.c:3966 — @param {CPtr<struct _readobjnam_data>} d @returns {CInt} */
 function readobjnam_preparse(d) {
     let save_bp = null;
     let more_l = 0;
     let res = 1;
+
     for (; ; ) {
         let l;
+
         if (!cptr.ldPtro(d, $_readobjnam_data_bp) || !cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)))
             break;
         res = 0;
-        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl180, l = 3) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl111, l = 2)) {
+
+        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_an, l = 3) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_a_sp, l = 2)) {
             cptr.stI32o(d, $_readobjnam_data_cnt, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl62, l = 4)) {
-            ;
-        } else if (!cptr.ldI32o(d, $_readobjnam_data_cnt) && digit(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp))) && strcmp(cptr.ldPtro(d, $_readobjnam_data_bp), __sl612)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_the, l = 4)) {
+            ;  /* just increment `bp' by `l' below */
+        } else if (!cptr.ldI32o(d, $_readobjnam_data_cnt) && digit(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp))) && strcmp(cptr.ldPtro(d, $_readobjnam_data_bp), __s_0)) {
             cptr.stI32o(d, $_readobjnam_data_cnt, atoi(cptr.ldPtro(d, $_readobjnam_data_bp)));
             while (digit(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp))))
                 cptr.postinc(() => cptr.ldPtro(d, $_readobjnam_data_bp), (v) => { cptr.stPtro(d, $_readobjnam_data_bp, v); });
@@ -3957,99 +4896,138 @@ function readobjnam_preparse(d) {
             while (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) == 32)
                 cptr.postinc(() => cptr.ldPtro(d, $_readobjnam_data_bp), (v) => { cptr.stPtro(d, $_readobjnam_data_bp, v); });
             l = 0;
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl114, l = 8) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl67, l = 5)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_blessed, l = 8) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_holy, l = 5)) {
             cptr.stI32o(d, $_readobjnam_data_blessed, 1), cptr.stI32o(d, $_readobjnam_data_uncursed, cptr.stI32o(d, $_readobjnam_data_iscursed, 0));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl113, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl68, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_cursed, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_unholy, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_iscursed, 1), cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_uncursed, 0));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl92, l = 9)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_uncursed, l = 9)) {
             cptr.stI32o(d, $_readobjnam_data_uncursed, 1), cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_iscursed, 0));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl101, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl613, l = 11) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl102, l = 13) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl100, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl103, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl105, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl104, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl614, l = 11)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_rustproof, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_erodeproof, l = 11) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_corrodeproof, l = 13) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_fixed, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_fireproof, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_rotproof, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_tempered, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_crackproof, l = 11)) {
             cptr.stI32o(d, $_readobjnam_data_erodeproof, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl615, l = 4) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl616, l = 8)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_lit__3, l = 4) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_burning, l = 8)) {
             cptr.stI32o(d, $_readobjnam_data_islit, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl617, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl618, l = 13)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_unlit, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_extinguished, l = 13)) {
             cptr.stI32o(d, $_readobjnam_data_islit, 0);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl44, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl45, l = 4)) {
-            if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl45, 4))
-                cptr.stI32o(d, $_readobjnam_data_wetness, (3 + (rng_log_enabled() ? (rng_log_set_caller(__sl107, 4025, __sl619), rn2(3)) : rn2(3))) | 0);
+
+            /* "wet" and "moist" are only applicable for towels */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_moist, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_wet, l = 4)) {
+            if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_wet, 4))
+                cptr.stI32o(d, $_readobjnam_data_wetness, (3 + rn2_at(__s_objnam_c, 4025, __s_readobjnam_preparse, 3)) | 0);  /* 3..5 */
             else
-                cptr.stI32o(d, $_readobjnam_data_wetness, (rng_log_enabled() ? (rng_log_set_caller(__sl107, 4027, __sl619), rnd(2)) : rnd(2)));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl620, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl621, l = 11) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl622, l = 6)) {
+                cptr.stI32o(d, $_readobjnam_data_wetness, rnd_at(__s_objnam_c, 4027, __s_readobjnam_preparse, 2));  /* 1..2 */
+
+            /* "unlabeled" and "blank" are synonymous */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_unlabeled, l = 10) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_unlabelled, l = 11) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_blank, l = 6)) {
             cptr.stI32o(d, $_readobjnam_data_unlabeled, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl43, l = 9)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_poisoned, l = 9)) {
             cptr.stI32o(d, $_readobjnam_data_ispoisoned, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl115, l = 8)) {
-            cptr.stI32o(d, $_readobjnam_data_trapped, 0);
+
+            /* "trapped" recognized but not honored outside wizard mode */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_trapped, l = 8)) {
+            cptr.stI32o(d, $_readobjnam_data_trapped, 0);  /* undo any previous "untrapped" */
             if (wizard())
                 cptr.stI32o(d, $_readobjnam_data_trapped, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl623, l = 10)) {
-            cptr.stI32o(d, $_readobjnam_data_trapped, 2);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl117, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_untrapped, l = 10)) {
+            cptr.stI32o(d, $_readobjnam_data_trapped, 2);  /* not trapped */
+
+            /* locked, unlocked, broken: box/chest lock states, also door states;
+               open, closed, doorless: additional door states */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_locked, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_closed, 1)), cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_doorless, 0))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl118, l = 9)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_unlocked, l = 9)) {
             cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_closed, 1)), cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_doorless, 0))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl116, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_broken, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_broken, 1), cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_doorless, 0)))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl596, l = 5)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_open, l = 5)) {
             cptr.stI32o(d, $_readobjnam_data_open, 1), cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_doorless, 0))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl595, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_closed, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_closed, 1), cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_broken, cptr.stI32o(d, $_readobjnam_data_doorless, 0))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl624, l = 9)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_doorless, l = 9)) {
             cptr.stI32o(d, $_readobjnam_data_doorless, 1), cptr.stI32o(d, $_readobjnam_data_open, cptr.stI32o(d, $_readobjnam_data_closed, cptr.stI32o(d, $_readobjnam_data_locked, cptr.stI32o(d, $_readobjnam_data_unlocked, cptr.stI32o(d, $_readobjnam_data_broken, 0)))));
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl625, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl584, l = 10)) {
+            /* looted: fountain/sink/throne/tree; disturbed: grave */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_looted, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_disturbed, l = 10)) {
             cptr.stI32o(d, $_readobjnam_data_flags, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl119, l = 8)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_greased, l = 8)) {
             cptr.stI32o(d, $_readobjnam_data_isgreased, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl626, l = 11)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_zombifying, l = 11)) {
             cptr.st1o(d, $_readobjnam_data_zombify, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl65, l = 5)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_very, l = 5)) {
+            /* very rusted very heavy iron ball */
             cptr.stI32o(d, $_readobjnam_data_very, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl94, l = 11)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_thoroughly, l = 11)) {
             cptr.stI32o(d, $_readobjnam_data_very, 2);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl95, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl627, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl97, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl628, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl96, l = 8)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_rusty, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_rusted, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_burnt, l = 6) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_burned, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_cracked, l = 8)) {
             cptr.stI32o(d, $_readobjnam_data_eroded, (1 + cptr.ldI32o(d, $_readobjnam_data_very)) | 0);
             cptr.stI32o(d, $_readobjnam_data_very, 0);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl98, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl99, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_corroded, l = 9) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_rotted, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_eroded2, (1 + cptr.ldI32o(d, $_readobjnam_data_very)) | 0);
             cptr.stI32o(d, $_readobjnam_data_very, 0);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl54, l = 13) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl629, l = 16)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_partly_eaten, l = 13) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_partially_eaten, l = 16)) {
             cptr.stI32o(d, $_readobjnam_data_halfeaten, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl61, l = 9)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_historic, l = 9)) {
             cptr.stI32o(d, $_readobjnam_data_ishistoric, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl66, l = 8)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_diluted, l = 8)) {
             cptr.stI32o(d, $_readobjnam_data_isdiluted, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl112, l = 6)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_empty__2, l = 6)) {
             cptr.stI32o(d, $_readobjnam_data_contents, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl630, l = 6)) {
-            if (strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl631, 4) && !strstri(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl632))
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_small__2, l = 6)) {
+            /* "small" might be part of monster name (mimic, if wishing
+               for its corpse) rather than prefix for glob size; when
+               used for globs, it might be either "small glob of <foo>" or
+               "small <foo> glob" and user might add 's' even though plural
+               doesn't accomplish anything because globs don't stack */
+            if (strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_glob, 4) && !strstri(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_glob__2))
                 break;
             cptr.stI32o(d, $_readobjnam_data_gsize, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl633, l = 7)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_medium__2, l = 7)) {
+            /* 5.0: in 3.6, "medium" was only used during wishing and the
+               mid-size glob had no adjective when formatted, but as of
+               5.0, "medium" has become an explicit part of the name for
+               combined globs of at least 5 individual ones (owt >= 100)
+               and less than 15 (owt < 300) */
             cptr.stI32o(d, $_readobjnam_data_gsize, 2);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl634, l = 6)) {
-            if (strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl631, 4) && !strstri(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl632))
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_large__2, l = 6)) {
+            /* "large" might be part of monster name (dog, cat, kobold,
+               mimic) or object name (box, round shield) rather than
+               prefix for glob size */
+            if (strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_glob, 4) && !strstri(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_glob__2))
                 break;
+            /* "very large " had "very " peeled off on previous iteration */
             cptr.stI32o(d, $_readobjnam_data_gsize, (cptr.ldI32o(d, $_readobjnam_data_very) != 1) ? 3 : 4);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl635, l = 5)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_real, l = 5)) {
+            /* accept "real Amulet of Yendor" with "blessed" or "cursed"
+               or useless "erodeproof" before or after "real" ... */
             cptr.stI32o(d, $_readobjnam_data_real, 1);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl636, l = 5)) {
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_fake, l = 5)) {
+            /* ... and "fake Amulet of Yendor" likewise */
             cptr.stI32o(d, $_readobjnam_data_fake, 1), cptr.stI32o(d, $_readobjnam_data_real, 0);
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl637, l = 7)) {
+            /* ['real' isn't actually needed (unless we someday add
+               "real gem" for random non-glass, non-stone)] */
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_female, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_mgend, NHC.FEMALE);
+            /* if after "corpse/statue/figurine of", remove from string */
             if (save_bp)
-                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __sl637, __sl13), l = 0;
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl638, l = 5)) {
+                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __s_female, __s_empty), l = 0;
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_male, l = 5)) {
             cptr.stI32o(d, $_readobjnam_data_mgend, NHC.MALE);
             if (save_bp)
-                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __sl638, __sl13), l = 0;
-        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl639, l = 7)) {
+                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __s_male, __s_empty), l = 0;
+        } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_neuter, l = 7)) {
             cptr.stI32o(d, $_readobjnam_data_mgend, NHC.NEUTRAL);
             if (save_bp)
-                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __sl639, __sl13), l = 0;
-        } else if ((!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl640, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl641, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl642, l = 9)) && !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl643, more_l = 3)) {
-            save_bp = cptr.ldPtro(d, $_readobjnam_data_bp);
+                strsubst(cptr.ldPtro(d, $_readobjnam_data_bp), __s_neuter, __s_empty), l = 0;
+
+            /*
+             * Corpse/statue/figurine gender hack:  in order to accept
+             * "statue of a female gnome ruler" for gnome queen we need
+             * to recognize and skip over "statue of [a ]".  Otherwise
+             * we would only accept "female gnome ruler statue" and the
+             * viable but silly "female statue of a gnome ruler".
+             */
+        } else if ((!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_corpse__2, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_statue, l = 7) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_figurine, l = 9)) && !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_of__2, more_l = 3)) {
+            save_bp = cptr.ldPtro(d, $_readobjnam_data_bp);  /* we'll backtrack to here later */
             l = (l + more_l) | 0, more_l = 0;
-            if (!strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl111, more_l = 2) || !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl180, more_l = 3) || !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __sl62, more_l = 4))
+            if (!strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_a_sp, more_l = 2) || !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_an, more_l = 3) || !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), l), __s_the, more_l = 4))
                 l = (l + more_l) | 0;
         } else {
             break;
@@ -4061,18 +5039,19 @@ function readobjnam_preparse(d) {
     return res;
 }
 
-/** C ref: objnam.c:4178 — @param {CPtr} d */
+/** C ref: objnam.c:4178 — @param {CPtr<struct _readobjnam_data>} d */
 function readobjnam_parse_charges(d) {
     if (cptr.strlen(cptr.ldPtro(d, $_readobjnam_data_bp)) > 1n && (cptr.stPtro(d, $_readobjnam_data_p, cptr.strrchr(cptr.ldPtro(d, $_readobjnam_data_bp), 40))) !== null) {
         let keeptrailingchars = 1;
         let idx = 0;
+
         if (cptr.cmp(cptr.ldPtro(d, $_readobjnam_data_p), cptr.ldPtro(d, $_readobjnam_data_bp)) > 0 && cptr.ld1so(cptr.ldPtro(d, $_readobjnam_data_p), -1) == 32)
             idx = -1;
-        cptr.st1o(cptr.ldPtro(d, $_readobjnam_data_p), idx, 0);
-        cptr.preinc(() => cptr.ldPtro(d, $_readobjnam_data_p), (v) => { cptr.stPtro(d, $_readobjnam_data_p, v); });
-        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_p), __sl644, 4)) {
+        cptr.st1o(cptr.ldPtro(d, $_readobjnam_data_p), idx, 0);  /* terminate bp */
+        cptr.preinc(() => cptr.ldPtro(d, $_readobjnam_data_p), (v) => { cptr.stPtro(d, $_readobjnam_data_p, v); });  /* advance past '(' */
+        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_p), __s_lit__4, 4)) {
             cptr.stI32o(d, $_readobjnam_data_islit, 1);
-            cptr.stPtro(d, $_readobjnam_data_p, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 3));
+            cptr.stPtro(d, $_readobjnam_data_p, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 3));  /* point at ')' */
         } else {
             cptr.stI32o(d, $_readobjnam_data_spe, atoi(cptr.ldPtro(d, $_readobjnam_data_p)));
             while (digit(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_p))))
@@ -4086,6 +5065,10 @@ function readobjnam_parse_charges(d) {
             }
             if (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_p)) != 41) {
                 cptr.stI32o(d, $_readobjnam_data_spe, cptr.stI32o(d, $_readobjnam_data_rechrg, 0));
+                /* mis-matched parentheses; rest of string will be ignored
+                 * [probably we should restore everything back to '('
+                 * instead since it might be part of "named ..."]
+                 */
                 keeptrailingchars = 0;
             } else {
                 cptr.stI32o(d, $_readobjnam_data_spesgn, 1);
@@ -4093,91 +5076,165 @@ function readobjnam_parse_charges(d) {
         }
         if (keeptrailingchars) {
             let pp = eos(cptr.ldPtro(d, $_readobjnam_data_bp));
+
+            /* 'pp' points at 'pb's terminating '\0',
+               'p' points at ')' and will be incremented past it */
             do {
                 cptr.st1(cptr.postinc(() => pp, (v) => { pp = v; }), cptr.ld1s(cptr.preinc(() => cptr.ldPtro(d, $_readobjnam_data_p), (v) => { cptr.stPtro(d, $_readobjnam_data_p, v); })));
             } while (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_p)));
         }
     }
+    /*
+     * otmp->spe is type schar, so we don't want spe to be any bigger or
+     * smaller.  Also, spe should always be positive --some cheaters may
+     * try to confuse atoi().
+     */
     if (cptr.ldI32o(d, $_readobjnam_data_spe) < 0) {
-        cptr.stI32o(d, $_readobjnam_data_spesgn, -1);
+        cptr.stI32o(d, $_readobjnam_data_spesgn, -1);  /* cheaters get what they deserve */
         cptr.stI32o(d, $_readobjnam_data_spe, Math.abs(cptr.ldI32o(d, $_readobjnam_data_spe)));
     }
+    /* cap on obj->spe is independent of (and less than) SCHAR_LIM */
     if (cptr.ldI32o(d, $_readobjnam_data_spe) > NHM.SPE_LIM)
-        cptr.stI32o(d, $_readobjnam_data_spe, NHM.SPE_LIM);
+        cptr.stI32o(d, $_readobjnam_data_spe, NHM.SPE_LIM);  /* slime mold uses d.ftype, so not affected */
     if (cptr.ldI32o(d, $_readobjnam_data_rechrg) < 0 || cptr.ldI32o(d, $_readobjnam_data_rechrg) > 7)
-        cptr.stI32o(d, $_readobjnam_data_rechrg, 7);
+        cptr.stI32o(d, $_readobjnam_data_rechrg, 7);  /* recharge_limit */
 }
 
-/** C ref: objnam.c:4240 — @param {CPtr} d @returns {CInt} */
+/** C ref: objnam.c:4240 — @param {CPtr<struct _readobjnam_data>} d @returns {CInt} */
 function readobjnam_postparse1(d) {
     let i;
-    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl89))) !== null) {
+
+    /* now we have the actual name, as delivered by xname, say
+     *  green potions called whisky
+     *  scrolls labeled "QWERTY"
+     *  egg
+     *  fortune cookies
+     *  very heavy iron ball named hoei
+     *  wand of wishing
+     *  elven cloak
+     */
+    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_named))) !== null) {
         cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
+        /* note: if 'name' is too long, oname() will truncate it */
         cptr.stPtro(d, $_readobjnam_data_name, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 7));
     }
-    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl199))) !== null) {
+    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_called))) !== null) {
         cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
+        /* note: if 'un' is too long, obj lookup just won't match anything */
         cptr.stPtro(d, $_readobjnam_data_un, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 8));
+        /* "helmet called telepathy" is not "helmet" (a specific type)
+         * "shield called reflection" is not "shield" (a general type)
+         */
         for (i = 0; i < 19; i++)
-            if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (cptr.ldPtro(o_ranges, i, 24)), -1)) {
-                cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so2(o_ranges, i, 24, $o_range_oclass));
-                return 1;
+            if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (cptr.ldPtro(o_ranges, i, $sizeof_o_range)), -1)) {
+                cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so2(o_ranges, i, $sizeof_o_range, $o_range_oclass));
+                return 1;  /*goto srch;*/
             }
     }
-    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl70))) !== null) {
+    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_labeled))) !== null) {
         cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
         cptr.stPtro(d, $_readobjnam_data_dn, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 9));
-    } else if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl645))) !== null) {
+    } else if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_labelled))) !== null) {
         cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
         cptr.stPtro(d, $_readobjnam_data_dn, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 10));
     }
-    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl646))) !== null) {
+    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_of_spinach))) !== null) {
         cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
         cptr.stI32o(d, $_readobjnam_data_contents, 2);
     }
-    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), (cptr.ldPtro2(obj_descr, cptr.ldI16o((cptr.add(objects, NHC.AMULET_OF_YENDOR, 120)), $objclass_oc_descr_idx), 16, $objdescr_oc_descr))))) !== null && (cptr.eq(cptr.ldPtro(d, $_readobjnam_data_p), cptr.ldPtro(d, $_readobjnam_data_bp)) || cptr.ld1so(cptr.ldPtro(d, $_readobjnam_data_p), -1) == 32)) {
+    /* real vs fake is only useful for wizard mode but we'll accept its
+       parsing in normal play (result is never real Amulet for that case) */
+    if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), (cptr.ldPtro2(obj_descr, cptr.ldI16o((cptr.add(objects, NHC.AMULET_OF_YENDOR, $sizeof_objclass)), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr))))) !== null && (cptr.eq(cptr.ldPtro(d, $_readobjnam_data_p), cptr.ldPtro(d, $_readobjnam_data_bp)) || cptr.ld1so(cptr.ldPtro(d, $_readobjnam_data_p), -1) == 32)) {
         let s = cptr.ldPtro(d, $_readobjnam_data_bp);
-        if (!strncmpi(s, __sl647, 6))
+
+        /* "Amulet of Yendor" matches two items, name of real Amulet
+           and description of fake one; player can explicitly specify
+           "real" to disambiguate, but not specifying "fake" achieves
+           the same thing; "real" and "fake" are parsed above with other
+           prefixes so that combinations like "blessed real" and "real
+           blessed" work as expected; also accept partial specification
+           of the full name of the fake; unlike the prefix recognition
+           loop above, these have to be in the right order when more
+           than one is present (similar to worthless glass gems below) */
+        if (!strncmpi(s, __s_cheap, 6))
             cptr.stI32o(d, $_readobjnam_data_fake, 1), s = cptr.add(s, 6);
-        if (!strncmpi(s, __sl648, 8))
+        if (!strncmpi(s, __s_plastic, 8))
             cptr.stI32o(d, $_readobjnam_data_fake, 1), s = cptr.add(s, 8);
-        if (!strncmpi(s, __sl649, 10))
+        if (!strncmpi(s, __s_imitation, 10))
             cptr.stI32o(d, $_readobjnam_data_fake, 1), s = cptr.add(s, 10);
-        (void (s));
+        (void (s));  /* suppress potential assigned-but-not-used complaint */
+        /* when 'fake' is True, it overrides 'real' if both were given;
+           when it is False, force 'real' whether that was specified or not */
         cptr.stI32o(d, $_readobjnam_data_real, !cptr.ldI32o(d, $_readobjnam_data_fake));
         cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI32o(d, $_readobjnam_data_real) ? NHC.AMULET_OF_YENDOR : NHC.FAKE_AMULET_OF_YENDOR);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
-    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl26, 8)) {
+
+    /*
+     * Skip over "pair of ", "pairs of", "set of" and "sets of".
+     *
+     * Accept "3 pair of boots" as well as "3 pairs of boots".  It is
+     * valid English either way.  See makeplural() for more on pair/pairs.
+     *
+     * We should only double count if the object in question is not
+     * referred to as a "pair of".  E.g. We should double if the player
+     * types "pair of spears", but not if the player types "pair of
+     * lenses".  Luckily (?) all objects that are referred to as pairs
+     * -- boots, gloves, and lenses -- are also not mergeable, so cnt is
+     * ignored anyway.
+     */
+    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_pair_of, 8)) {
         cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 8));
         cptr.stI32o(d, $_readobjnam_data_cnt, Math.imul(cptr.ldI32o(d, $_readobjnam_data_cnt), 2));
-    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl650, 9)) {
+    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_pairs_of, 9)) {
         cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 9));
         if (cptr.ldI32o(d, $_readobjnam_data_cnt) > 1)
             cptr.stI32o(d, $_readobjnam_data_cnt, Math.imul(cptr.ldI32o(d, $_readobjnam_data_cnt), 2));
-    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl27, 7)) {
+    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_set_of, 7)) {
         cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 7));
-    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl651, 8)) {
+    } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_sets_of, 8)) {
         cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 8));
     }
+
+    /* Intercept pudding globs here; they're a valid wish target,
+     * but we need them to not get treated like a corpse.
+     * If a count is specified, it will be used to magnify weight
+     * rather than to specify quantity (which is always 1 for globs).
+     */
     i = Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(d, $_readobjnam_data_bp))));
     cptr.stPtro(d, $_readobjnam_data_p, null);
-    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl631), -1) || !(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(5))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(5)))), (__sl632), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl652), -1) || !(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(6)))), (__sl653), -1)) || (cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl654))) !== null || (cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl655))) !== null) {
-        cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_mon(!cptr.ldPtro(d, $_readobjnam_data_p) ? cptr.ldPtro(d, $_readobjnam_data_bp) : (cptr.add(strstri(cptr.ldPtro(d, $_readobjnam_data_p), __sl34), 4)), null));
+    /* check for "glob", "<foo> glob", and "glob of <foo>" */
+    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_glob), -1) || !(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(5))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(5)))), (__s_glob__2), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_globs), -1) || !(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), i), -(6)))), (__s_globs__2), -1)) || (cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_glob_of))) !== null || (cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_globs_of))) !== null) {
+        cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_mon(!cptr.ldPtro(d, $_readobjnam_data_p) ? cptr.ldPtro(d, $_readobjnam_data_bp) : (cptr.add(strstri(cptr.ldPtro(d, $_readobjnam_data_p), __s_of), 4)), null));
+        /* if we didn't recognize monster type, pick a valid one at random */
         if (cptr.ldI32o(d, $_readobjnam_data_mntmp) == NHC.NON_PM)
-            cptr.stI32o(d, $_readobjnam_data_mntmp, (((rng_log_enabled() ? (rng_log_set_caller(__sl107, 4354, __sl656), rn2(((NHC.PM_BLACK_PUDDING - NHC.PM_GRAY_OOZE) | 0))) : rn2(((NHC.PM_BLACK_PUDDING - NHC.PM_GRAY_OOZE) | 0))) + NHC.PM_GRAY_OOZE) | 0));
-        if (cptr.ldI32o(d, $_readobjnam_data_cnt) < 2 && strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl652))
-            cptr.stI32o(d, $_readobjnam_data_cnt, 2);
-        void cptr.sprintf(cptr.add(d, $_readobjnam_data_globbuf), __sl657, cptr.ldPtro3(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, NHC.NEUTRAL, 8, 0));
+            cptr.stI32o(d, $_readobjnam_data_mntmp, ((rn2_at(__s_objnam_c, 4354, __s_readobjnam_postparse1, ((NHC.PM_BLACK_PUDDING - NHC.PM_GRAY_OOZE) | 0)) + NHC.PM_GRAY_OOZE) | 0));
+        /* normally this would be done when makesingular() changes the value
+           but canonical form here is already singular so that won't happen */
+        if (cptr.ldI32o(d, $_readobjnam_data_cnt) < 2 && strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_globs))
+            cptr.stI32o(d, $_readobjnam_data_cnt, 2);  /* affects otmp->owt but not otmp->quan for globs */
+        /* construct canonical spelling in case name_to_mon() recognized a
+           variant (grey ooze) or player used inverted syntax (<foo> glob);
+           if player has given a valid monster type but not valid glob type,
+           object name lookup won't find it and wish attempt will fail */
+        void cptr.sprintf(cptr.add(d, $_readobjnam_data_globbuf), __s_glob_of_s, cptr.ldPtro3(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, NHC.NEUTRAL, 8, 0));
         cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(d, $_readobjnam_data_globbuf));
-        cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
+        cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);  /* not useful for "glob of <foo>" object lookup */
         cptr.st1o(d, $_readobjnam_data_oclass, NHC.FOOD_CLASS);
         cptr.stPtro(d, $_readobjnam_data_actualn, cptr.ldPtro(d, $_readobjnam_data_bp)), cptr.stPtro(d, $_readobjnam_data_dn, null);
-        return 1;
+        return 1;  /*goto srch;*/
     } else {
-        if (!strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl658) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl659) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl660) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl661) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl662)) {
-            if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl663))) !== null) {
-                if (!strncmpi((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 7)), (__sl664), -1)) {
+        /*
+         * Find corpse type using "of" (figurine of an orc, tin of orc meat)
+         * Don't check if it's a wand or spellbook.
+         * (avoid "wand/finger of death" confusion).
+         * Don't match "ogre" or "giant" monster name inside alternate item
+         * names "gauntlets of ogre power" and "gauntlets of giant strength"
+         * (or the alternate spelling of those, "gloves of ...").
+         */
+        if (!strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_wand__2) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_spellbook__2) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_gauntlets__2) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_gloves__2) && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_finger)) {
+            if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_tin_of))) !== null) {
+                if (!strncmpi((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 7)), (__s_spinach), -1)) {
                     cptr.stI32o(d, $_readobjnam_data_contents, 2);
                     cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
                 } else {
@@ -4186,90 +5243,124 @@ function readobjnam_postparse1(d) {
                     cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_mon(cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 7), cptr.ldI32o(d, $_readobjnam_data_tmp)), cptr.add(d, $_readobjnam_data_mgend)));
                 }
                 cptr.stI32o(d, $_readobjnam_data_typ, NHC.TIN);
-                return 2;
-            } else if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl34))) !== null && ((cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_mon(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 4), cptr.add(d, $_readobjnam_data_mgend)))) >= NHC.LOW_PM))
+                return 2;  /*goto typfnd;*/
+            } else if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_of))) !== null && ((cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_mon(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 4), cptr.add(d, $_readobjnam_data_mgend)))) >= NHC.LOW_PM))
                 cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
         }
     }
-    if (strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl665, 13) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl666, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl667, 10) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl668, 10) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl1, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl669, 7)) {
+    /* Find corpse type w/o "of" (red dragon scale mail, yeti corpse) */
+    if (strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_samurai_sword, 13) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_wizard_lock, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_death_wand, 10) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_master_key, 10) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_ninja_to, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_magenta, 7)) {
         let rest = cptr.box(null);
+
         if (cptr.ldI32o(d, $_readobjnam_data_mntmp) < NHC.LOW_PM && cptr.strlen(cptr.ldPtro(d, $_readobjnam_data_bp)) > 2n && ((cptr.stI32o(d, $_readobjnam_data_mntmp, name_to_monplus(cptr.ldPtro(d, $_readobjnam_data_bp), rest, cptr.add(d, $_readobjnam_data_mgend)))) >= NHC.LOW_PM)) {
             let obp = cptr.ldPtro(d, $_readobjnam_data_bp);
-            cptr.stPtro(d, $_readobjnam_data_bp, rest.v);
+
+            /* 'rest' is a pointer past the matching portion; if that was
+               an alternate name or a rank title rather than the canonical
+               monster name we wouldn't otherwise know how much to skip */
+            cptr.stPtro(d, $_readobjnam_data_bp, rest.v);  /* cast away const */
+
             if (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) == 32) {
                 cptr.postinc(() => cptr.ldPtro(d, $_readobjnam_data_bp), (v) => { cptr.stPtro(d, $_readobjnam_data_bp, v); });
-            } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl670, 2) || (cptr.cmp(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtro(d, $_readobjnam_data_origbp)) > 0 && !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), -(1)), __sl177, 3))) {
+            } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_s_sp, 2) || (cptr.cmp(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtro(d, $_readobjnam_data_origbp)) > 0 && !strncmpi(cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), -(1)), __s_s_apos_sp, 3))) {
                 cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 2));
-            } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl671, 3) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl176, 3)) {
+            } else if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_es__2, 3) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_apos_s_sp, 3)) {
                 cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 3));
             } else if (!cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) && !cptr.ldPtro(d, $_readobjnam_data_actualn) && !cptr.ldPtro(d, $_readobjnam_data_dn) && !cptr.ldPtro(d, $_readobjnam_data_un) && !cptr.ld1so(d, $_readobjnam_data_oclass)) {
+                /* no referent; they don't really mean a monster type */
                 cptr.stPtro(d, $_readobjnam_data_bp, obp);
                 cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
             }
         }
     }
-    if (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) && strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl672), -1) && strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl673), -1)) {
+
+    /* first change to singular if necessary */
+    if (cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) && strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_tricks), -1) && strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_clothes), -1)) {
         let sng = makesingular(cptr.ldPtro(d, $_readobjnam_data_bp));
+
         if (strcmp(cptr.ldPtro(d, $_readobjnam_data_bp), sng)) {
             if (cptr.ldI32o(d, $_readobjnam_data_cnt) == 1)
                 cptr.stI32o(d, $_readobjnam_data_cnt, 2);
             void cptr.strcpy(cptr.ldPtro(d, $_readobjnam_data_bp), sng);
         }
     }
+
+    /* Alternate spellings (pick-ax, silver sabre, &c) */
     {
         let as = spellings;
+
         while (cptr.ldPtr(as)) {
             if (wishymatch(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtr(as), 1)) {
                 cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI32o(as, $alt_spellings_ob));
-                return 2;
+                return 2;  /*goto typfnd;*/
             }
             as = cptr.add(as, 1, 16);
         }
-        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl674, 10))
+        /* can't use spellings list for this one due to shuffling */
+        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_grey_spell, 10))
             cptr.st1((cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 2)), 97);
-        if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl675))) !== null) {
+
+        if ((cptr.stPtro(d, $_readobjnam_data_p, strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_armour))) !== null) {
+            /* skip past "armo", then copy remainder beyond "u" */
             cptr.stPtro(d, $_readobjnam_data_p, cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 4));
             while ((cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), cptr.ld1s((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), 1))))) != 0)
-                cptr.preinc(() => cptr.ldPtro(d, $_readobjnam_data_p), (v) => { cptr.stPtro(d, $_readobjnam_data_p, v); });
+                cptr.preinc(() => cptr.ldPtro(d, $_readobjnam_data_p), (v) => { cptr.stPtro(d, $_readobjnam_data_p, v); });  /* self terminating */
         }
     }
-    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl285), -1) && cptr.ldI32o(d, $_readobjnam_data_mntmp) >= NHC.PM_GRAY_DRAGON && cptr.ldI32o(d, $_readobjnam_data_mntmp) <= NHC.PM_YELLOW_DRAGON) {
+
+    /* dragon scales - assumes order of dragons */
+    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_scales), -1) && cptr.ldI32o(d, $_readobjnam_data_mntmp) >= NHC.PM_GRAY_DRAGON && cptr.ldI32o(d, $_readobjnam_data_mntmp) <= NHC.PM_YELLOW_DRAGON) {
         cptr.stI32o(d, $_readobjnam_data_typ, (((NHC.GRAY_DRAGON_SCALES + cptr.ldI32o(d, $_readobjnam_data_mntmp)) | 0) - NHC.PM_GRAY_DRAGON) | 0);
-        cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
-        return 2;
+        cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);  /* no monster */
+        return 2;  /*goto typfnd;*/
     }
+
     cptr.stPtro(d, $_readobjnam_data_p, eos(cptr.ldPtro(d, $_readobjnam_data_bp)));
-    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)))), (__sl676), -1))) {
-        if (!(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)), -(2))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)), -(2))), __sl440, 2)))
-            cptr.stI32o(d, $_readobjnam_data_iscursed, 1), cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_uncursed, 0));
+    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)))), (__s_holy_water), -1))) {
+        /* this isn't needed for "[un]holy water" because adjective parsing
+           handles holy==blessed and unholy==cursed and leaves "water" for
+           the object type, but it is needed for "potion of [un]holy water"
+           since that parsing stops when it reaches "potion"; also, neither
+           "holy water" nor "unholy water" is an actual type of potion */
+        if (!(cptr.cmp((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)), -(2))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi((cptr.add(cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)), -(2))), __s_un, 2)))
+            cptr.stI32o(d, $_readobjnam_data_iscursed, 1), cptr.stI32o(d, $_readobjnam_data_blessed, cptr.stI32o(d, $_readobjnam_data_uncursed, 0));  /* unholy water */
         else
-            cptr.stI32o(d, $_readobjnam_data_blessed, 1), cptr.stI32o(d, $_readobjnam_data_iscursed, cptr.stI32o(d, $_readobjnam_data_uncursed, 0));
+            cptr.stI32o(d, $_readobjnam_data_blessed, 1), cptr.stI32o(d, $_readobjnam_data_iscursed, cptr.stI32o(d, $_readobjnam_data_uncursed, 0));  /* holy water */
         cptr.stI32o(d, $_readobjnam_data_typ, NHC.POT_WATER);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
-    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl677, 9)) {
-        let dbp = cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 9);
-        if (!cptr.ld1s(dbp) || !strncmpi(dbp, __sl678, 5)) {
+    /* accept "paperback" or "paperback book", reject "paperback spellbook" */
+    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_paperback, 9)) {
+        let dbp = cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 9);  /* just past "paperback" */
+
+        if (!cptr.ld1s(dbp) || !strncmpi(dbp, __s_book__2, 5)) {
             cptr.stI32o(d, $_readobjnam_data_typ, NHC.SPE_NOVEL);
-            return 2;
+            return 2;  /*goto typfnd;*/
         } else {
             cptr.stPtr(d, null);
             return 3;
         }
     }
-    if (cptr.ldI32o(d, $_readobjnam_data_unlabeled) && !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__sl18), -1))) {
+    if (cptr.ldI32o(d, $_readobjnam_data_unlabeled) && !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__s_scroll), -1))) {
         cptr.stI32o(d, $_readobjnam_data_typ, NHC.SCR_BLANK_PAPER);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
-    if (cptr.ldI32o(d, $_readobjnam_data_unlabeled) && !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(9))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(9)))), (__sl20), -1))) {
+    if (cptr.ldI32o(d, $_readobjnam_data_unlabeled) && !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(9))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(9)))), (__s_spellbook), -1))) {
         cptr.stI32o(d, $_readobjnam_data_typ, NHC.SPE_BLANK_PAPER);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
-    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__sl679), -1)) && cptr.ldI32o(d, $_readobjnam_data_mntmp) == NHC.NON_PM) {
+    /* specific food rather than color of gem/potion/spellbook[/scales] */
+    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__s_orange), -1)) && cptr.ldI32o(d, $_readobjnam_data_mntmp) == NHC.NON_PM) {
         cptr.stI32o(d, $_readobjnam_data_typ, NHC.ORANGE);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
-    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)))), (__sl680), -1)) || !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(7))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(7)))), (__sl681), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl682), -1) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl683), -1) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl684), -1) || cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) == NHC.GOLD_SYM) {
+    /*
+     * NOTE: Gold pieces are handled as objects nowadays, and therefore
+     * this section should probably be reconsidered as well as the entire
+     * gold/money concept.  Maybe we want to add other monetary units as
+     * well in the future. (TH)
+     */
+    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(10)))), (__s_gold_piece), -1)) || !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(7))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(7)))), (__s_zorkmid), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_gold), -1) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_money), -1) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_coin), -1) || cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)) == NHC.GOLD_SYM) {
         if (cptr.ldI32o(d, $_readobjnam_data_cnt) > 5000 && !wizard())
             cptr.stI32o(d, $_readobjnam_data_cnt, 5000);
         else if (cptr.ldI32o(d, $_readobjnam_data_cnt) < 1)
@@ -4278,27 +5369,41 @@ function readobjnam_postparse1(d) {
         cptr.stI64o(cptr.ldPtr(d), $obj_quan, BigInt(cptr.ldI32o(d, $_readobjnam_data_cnt)));
         cptr.stI32o(cptr.ldPtr(d), $obj_owt, weight(cptr.ldPtr(d)) >>> 0);
         cptr.st1(disp, 1);
-        return 3;
+        return 3;  /*return otmp;*/
     }
+
+    /* check for single character object class code ("/" for wand, &c) */
     if (cptr.strlen(cptr.ldPtro(d, $_readobjnam_data_bp)) == 1n && (i = def_char_to_objclass(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp)))) < NHC.MAXOCLASSES && i > NHC.ILLOBJ_CLASS && (i != NHC.VENOM_CLASS || wizard())) {
         cptr.st1o(d, $_readobjnam_data_oclass, schar(i));
-        return 4;
+        return 4;  /*goto any;*/
     }
-    if (strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl685, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl686, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl687, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl688, 14) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl689, 9) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl690, 21) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl691, 13) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl692, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl693, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl694, 9))
+
+    /* Search for class names: XXXXX potion, scroll of XXXXX.
+       Avoid false hits on, e.g., rings for "ring mail". */
+    if (strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_enchant, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_destroy, 8) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_detect_food, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_food_detection, 14) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_ring_mail, 9) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_studded_leather_armor, 21) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_leather_armor, 13) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_tooled_horn, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_food_ration, 11) && strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_meat_ring, 9))
         for (i = 0; i < 13; i++) {
-            let j = Strlen_(cptr.ldPtro(wrp, i, 8), __sl656, 4568) | 0;
+            let j = Strlen_(cptr.ldPtro(wrp, i, 8), __s_readobjnam_postparse1, 4568) | 0;
+
+            /* check for "<class> [ of ] something" */
             if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtro(wrp, i, 8), j)) {
                 cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.decay(wrpsym), i, 1));
                 if (cptr.ld1so(d, $_readobjnam_data_oclass) != NHC.AMULET_CLASS) {
                     cptr.stPtro(d, $_readobjnam_data_bp, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), j));
-                    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl34, 4))
+                    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_of, 4))
                         cptr.stPtro(d, $_readobjnam_data_actualn, cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 4));
+                    /* else if(*bp) ?? */
                 } else
                     cptr.stPtro(d, $_readobjnam_data_actualn, cptr.ldPtro(d, $_readobjnam_data_bp));
-                return 1;
+                return 1;  /*goto srch;*/
             }
+            /* check for "something <class>" */
             if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(j))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(j)))), (cptr.ldPtro(wrp, i, 8)), -1))) {
                 cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.decay(wrpsym), i, 1));
+                /* for "foo amulet", leave the class name so that
+                   wishymatch() can do "of inversion" to try matching
+                   "amulet of foo"; other classes don't include their
+                   class name in their full object names (where
+                   "potion of healing" is just "healing", for instance) */
                 if (cptr.ld1so(d, $_readobjnam_data_oclass) != NHC.AMULET_CLASS) {
                     cptr.stPtro(d, $_readobjnam_data_p, cptr.sub(cptr.ldPtro(d, $_readobjnam_data_p), j));
                     cptr.st1(cptr.ldPtro(d, $_readobjnam_data_p), 0);
@@ -4308,10 +5413,15 @@ function readobjnam_postparse1(d) {
                     let k;
                     let l;
                     let amubuf = new Uint8Array(256);
-                    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl695, 14)) {
+
+                    /* amulet without "of"; convoluted wording but better a
+                       special case that's handled than one that's missing */
+                    if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_versus_poison, 14)) {
                         cptr.stI32o(d, $_readobjnam_data_typ, NHC.AMULET_VERSUS_POISON);
-                        return 2;
+                        return 2;  /*goto typfnd;*/
                     }
+                    /* check for "<shape> amulet"; strip off trailing
+                       " amulet" for that w/o changing contents of d->bp */
                     l = (Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(d, $_readobjnam_data_bp)))) - j) | 0;
                     if (l > 0 && cptr.ld1so(cptr.ldPtro(d, $_readobjnam_data_bp), (l - 1) | 0) == 32)
                         l = (l - 1) | 0;
@@ -4319,118 +5429,183 @@ function readobjnam_postparse1(d) {
                     k = rnd_otyp_by_namedesc(cptr.decay(amubuf), NHC.AMULET_CLASS, 0);
                     if (k != NHC.STRANGE_OBJECT) {
                         cptr.stI32o(d, $_readobjnam_data_typ, k);
-                        return 2;
+                        return 2;  /*goto typfnd;*/
                     }
                 }
                 cptr.stPtro(d, $_readobjnam_data_actualn, cptr.stPtro(d, $_readobjnam_data_dn, cptr.ldPtro(d, $_readobjnam_data_bp)));
-                return 1;
+                return 1;  /*goto srch;*/
             }
         }
-    if (wizard() && (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl696, 4) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl697, 4))) {
+
+    /* Wishing in wizard mode can create traps and furniture.
+     * Part I:  distinguish between trap and object for the two
+     * types of traps which have corresponding objects:  bear trap
+     * and land mine.  "beartrap" (object) and "bear trap" (trap)
+     * have a difference in spelling which we used to exploit by
+     * adding a special case in wishymatch(), but "land mine" is
+     * spelled the same either way so needs different handing.
+     * Since we need something else for land mine, we've dropped
+     * the bear trap hack so that both are handled exactly the
+     * same.  To get an armed trap instead of a disarmed object,
+     * the player can prefix either the object name or the trap
+     * name with "trapped " (which ordinarily applies to chests
+     * and tins), or append something--anything at all except for
+     * " object", but " trap" is suggested--to either the trap
+     * name or the object name.
+     */
+    if (wizard() && (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_bear, 4) || !strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_land, 4))) {
         let beartrap = schar((lowc(cptr.ld1s(cptr.ldPtro(d, $_readobjnam_data_bp))) == 98));
-        let zp = cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 4);
+        let zp = cptr.add(cptr.ldPtro(d, $_readobjnam_data_bp), 4);  /* skip "bear"/"land" */
+
         if (cptr.ld1s(zp) == 32)
-            zp = cptr.add(zp, 1);
-        if (!strncmpi(zp, beartrap ? __sl698 : __sl699, 4)) {
+            zp = cptr.add(zp, 1);  /* embedded space is optional */
+        if (!strncmpi(zp, beartrap ? __s_trap : __s_mine, 4)) {
             zp = cptr.add(zp, 4);
-            if (cptr.ldI32o(d, $_readobjnam_data_trapped) == 2 || !strncmpi((zp), (__sl700), -1)) {
+            if (cptr.ldI32o(d, $_readobjnam_data_trapped) == 2 || !strncmpi((zp), (__s_object__2), -1)) {
+                /* "untrapped <foo>" or "<foo> object" */
                 cptr.stI32o(d, $_readobjnam_data_typ, beartrap ? NHC.BEARTRAP : NHC.LAND_MINE);
-                return 2;
+                return 2;  /*goto typfnd;*/
             } else if (cptr.ldI32o(d, $_readobjnam_data_trapped) == 1 || cptr.ld1s(zp) != 0) {
+                /* "trapped <foo>" or "<foo> trap" (actually "<foo>*") */
+                /* use canonical trap spelling, skip object matching */
                 void cptr.strcpy(cptr.ldPtro(d, $_readobjnam_data_bp), trapname(beartrap ? NHC.BEAR_TRAP : NHC.LANDMINE, 1));
-                return 5;
+                return 5;  /*goto wiztrap;*/
             }
+            /* [no prefix or suffix; we're going to end up matching
+               the object name and getting a disarmed trap object] */
         }
     }
+
     return 0;
 }
 
-/** C ref: objnam.c:4666 — @param {CPtr} d @returns {CInt} */
+/** C ref: objnam.c:4666 — @param {CPtr<struct _readobjnam_data>} d @returns {CInt} */
 function readobjnam_postparse2(d) {
     let i;
+
+    /* "grey stone" check must be before general "stone" */
     for (i = 0; i < 19; i++)
-        if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (cptr.ldPtro(o_ranges, i, 24)), -1)) {
-            cptr.stI32o(d, $_readobjnam_data_typ, rnd_class(cptr.ldI32o2(o_ranges, i, 24, $o_range_f_o_range), cptr.ldI32o2(o_ranges, i, 24, $o_range_l_o_range)));
-            return 2;
+        if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (cptr.ldPtro(o_ranges, i, $sizeof_o_range)), -1)) {
+            cptr.stI32o(d, $_readobjnam_data_typ, rnd_class(cptr.ldI32o2(o_ranges, i, $sizeof_o_range, $o_range_f_o_range), cptr.ldI32o2(o_ranges, i, $sizeof_o_range, $o_range_l_o_range)));
+            return 2;  /*goto typfnd;*/
         }
-    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__sl28), -1)) || !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4)))), (__sl29), -1))) {
-        cptr.st1o(cptr.ldPtro(d, $_readobjnam_data_p), !strncmpi((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4))), (__sl29), -1) ? -4 : -6, 0);
+
+    if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__s_stone), -1)) || !(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4)))), (__s_gem), -1))) {
+        cptr.st1o(cptr.ldPtro(d, $_readobjnam_data_p), !strncmpi((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(4))), (__s_gem), -1) ? -4 : -6, 0);
         cptr.st1o(d, $_readobjnam_data_oclass, NHC.GEM_CLASS);
         cptr.stPtro(d, $_readobjnam_data_dn, cptr.stPtro(d, $_readobjnam_data_actualn, cptr.ldPtro(d, $_readobjnam_data_bp)));
-        return 1;
-    } else if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl701), -1)) {
-        ;
-    } else if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__sl702), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl703), -1)) {
+        return 1;  /*goto srch;*/
+    } else if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_looking_glass), -1)) {
+        ;  /* avoid false hit on "* glass" */
+    } else if (!(cptr.cmp((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6))), cptr.ldPtro(d, $_readobjnam_data_bp)) < 0 || strncmpi(((cptr.add(cptr.ldPtro(d, $_readobjnam_data_p), -(6)))), (__s_glass), -1)) || !strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_glass__2), -1)) {
         let s = cptr.ldPtro(d, $_readobjnam_data_bp);
-        if (cptr.ldI32o(d, $_readobjnam_data_broken) || strstri(s, __sl704)) {
+
+        /* treat "broken glass" as a non-existent item; since "broken" is
+           also a chest/box prefix it might have been stripped off above */
+        if (cptr.ldI32o(d, $_readobjnam_data_broken) || strstri(s, __s_broken__2)) {
             cptr.stPtr(d, null);
-            return 3;
+            return 3;  /* return otmp */
         }
-        if (!strncmpi(s, __sl705, 10))
+        if (!strncmpi(s, __s_worthless, 10))
             s = cptr.add(s, 10);
-        if (!strncmpi(s, __sl706, 9))
+        if (!strncmpi(s, __s_piece_of, 9))
             s = cptr.add(s, 9);
-        if (!strncmpi(s, __sl707, 8))
+        if (!strncmpi(s, __s_colored, 8))
             s = cptr.add(s, 8);
-        else if (!strncmpi(s, __sl708, 9))
+        else if (!strncmpi(s, __s_coloured, 9))
             s = cptr.add(s, 9);
-        if (!strncmpi((s), (__sl703), -1)) {
-            cptr.stI32o(d, $_readobjnam_data_typ, (NHC.FIRST_GLASS_GEM + (rng_log_enabled() ? (rng_log_set_caller(__sl107, 4705, __sl709), rn2(NHC.NUM_GLASS_GEMS)) : rn2(NHC.NUM_GLASS_GEMS))) | 0);
-            if (cptr.ld1so2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), 120, $objclass_oc_class) == NHC.GEM_CLASS)
-                return 2;
+        if (!strncmpi((s), (__s_glass__2), -1)) {
+            /* 9 different kinds */
+            cptr.stI32o(d, $_readobjnam_data_typ, (NHC.FIRST_GLASS_GEM + rn2_at(__s_objnam_c, 4705, __s_readobjnam_postparse2, NHC.NUM_GLASS_GEMS)) | 0);
+            if (cptr.ld1so2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), $sizeof_objclass, $objclass_oc_class) == NHC.GEM_CLASS)
+                return 2;  /*goto typfnd;*/
             else
-                cptr.stI32o(d, $_readobjnam_data_typ, 0);
+                cptr.stI32o(d, $_readobjnam_data_typ, 0);  /* somebody changed objects[]? punt */
         } else {
             let tbuf = new Uint8Array(256);
-            void cptr.strcpy(cptr.decay(tbuf), __sl710);
-            void cptr.strcat(cptr.decay(tbuf), s);
+
+            void cptr.strcpy(cptr.decay(tbuf), __s_worthless_piece_of);
+            void cptr.strcat(cptr.decay(tbuf), s);  /* assume it starts with the color */
             void cptr.strcpy(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.decay(tbuf));
         }
     }
+
     cptr.stPtro(d, $_readobjnam_data_actualn, cptr.ldPtro(d, $_readobjnam_data_bp));
     if (!cptr.ldPtro(d, $_readobjnam_data_dn))
-        cptr.stPtro(d, $_readobjnam_data_dn, cptr.ldPtro(d, $_readobjnam_data_actualn));
+        cptr.stPtro(d, $_readobjnam_data_dn, cptr.ldPtro(d, $_readobjnam_data_actualn));  /* ex. "skull cap" */
+
     return 0;
 }
 
-/** C ref: objnam.c:4727 — @param {CPtr} d @returns {CInt} */
+/** C ref: objnam.c:4727 — @param {CPtr<struct _readobjnam_data>} d @returns {CInt} */
 function readobjnam_postparse3(d) {
     let i;
+
+    /* check real names of gems first */
     if (!cptr.ld1so(d, $_readobjnam_data_oclass) && cptr.ldPtro(d, $_readobjnam_data_actualn)) {
         for (i = cptr.ldI32o2(svb, NHC.GEM_CLASS, 4, $instance_globals_saved_b_bases); i <= NHC.LAST_REAL_GEM; i++) {
             let zn;
-            if ((zn = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, 120))), 16))) !== null && !strncmpi((cptr.ldPtro(d, $_readobjnam_data_actualn)), (zn), -1)) {
+
+            if ((zn = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, $sizeof_objclass))), $sizeof_objdescr))) !== null && !strncmpi((cptr.ldPtro(d, $_readobjnam_data_actualn)), (zn), -1)) {
                 cptr.stI32o(d, $_readobjnam_data_typ, i);
-                return 2;
+                return 2;  /*goto typfnd;*/
             }
         }
-        if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_actualn)), (__sl711), -1)) {
+        /* "tin of foo" would be caught above, but plain "tin" has
+           a random chance of yielding "tin wand" unless we do this */
+        if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_actualn)), (__s_tin), -1)) {
             cptr.stI32o(d, $_readobjnam_data_typ, NHC.TIN);
-            return 2;
+            return 2;  /*goto typfnd;*/
         }
     }
+
     if (((cptr.stI32o(d, $_readobjnam_data_typ, rnd_otyp_by_namedesc(cptr.ldPtro(d, $_readobjnam_data_actualn), cptr.ld1so(d, $_readobjnam_data_oclass), 1))) != NHC.STRANGE_OBJECT) || (!cptr.eq(cptr.ldPtro(d, $_readobjnam_data_dn), cptr.ldPtro(d, $_readobjnam_data_actualn)) && ((cptr.stI32o(d, $_readobjnam_data_typ, rnd_otyp_by_namedesc(cptr.ldPtro(d, $_readobjnam_data_dn), cptr.ld1so(d, $_readobjnam_data_oclass), 1))) != NHC.STRANGE_OBJECT)) || ((cptr.stI32o(d, $_readobjnam_data_typ, rnd_otyp_by_namedesc(cptr.ldPtro(d, $_readobjnam_data_un), cptr.ld1so(d, $_readobjnam_data_oclass), 1))) != NHC.STRANGE_OBJECT) || (!cptr.eq(cptr.ldPtro(d, $_readobjnam_data_origbp), cptr.ldPtro(d, $_readobjnam_data_actualn)) && ((cptr.stI32o(d, $_readobjnam_data_typ, rnd_otyp_by_namedesc(cptr.ldPtro(d, $_readobjnam_data_origbp), cptr.ld1so(d, $_readobjnam_data_oclass), 1))) != NHC.STRANGE_OBJECT)))
-        return 2;
+        return 2;  /*goto typfnd;*/
     cptr.stI32o(d, $_readobjnam_data_typ, 0);
+
     if (cptr.ldPtro(d, $_readobjnam_data_actualn)) {
         let j = Japanese_items;
+
         while (cptr.ldI32(j)) {
             if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_actualn)), (cptr.ldPtro(j, $Jitem_name)), -1)) {
                 cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI32(j));
-                return 2;
+                return 2;  /*goto typfnd;*/
             }
             j = cptr.add(j, 1, 16);
         }
     }
-    if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.ARMOR_CLASS && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __sl712)) {
-        void cptr.strcat(cptr.ldPtro(d, $_readobjnam_data_bp), __sl713);
-        return 6;
+    /* if we've stripped off "armor" and failed to match anything
+       in objects[], append "mail" and try again to catch misnamed
+       requests like "plate armor" and "yellow dragon scale armor" */
+    if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.ARMOR_CLASS && !strstri(cptr.ldPtro(d, $_readobjnam_data_bp), __s_mail)) {
+        /* modifying bp's string is ok; we're about to resort
+           to random armor if this also fails to match anything */
+        void cptr.strcat(cptr.ldPtro(d, $_readobjnam_data_bp), __s_mail__2);
+        return 6;  /*goto retry;*/
     }
-    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__sl664), -1)) {
+    if (!strncmpi((cptr.ldPtro(d, $_readobjnam_data_bp)), (__s_spinach), -1)) {
         cptr.stI32o(d, $_readobjnam_data_contents, 2);
         cptr.stI32o(d, $_readobjnam_data_typ, NHC.TIN);
-        return 2;
+        return 2;  /*goto typfnd;*/
     }
+    /* Fruits must not mess up the ability to wish for real objects (since
+     * you can leave a fruit in a bones file and it will be added to
+     * another person's game), so they must be checked for last, after
+     * stripping all the possible prefixes and seeing if there's a real
+     * name in there.  So we have to save the full original name.  However,
+     * it's still possible to do things like "uncursed burnt Alaska",
+     * or worse yet, "2 burned 5 course meals", so we need to loop to
+     * strip off the prefixes again, this time stripping only the ones
+     * possible on food.
+     * We could get even more detailed so as to allow food names with
+     * prefixes that _are_ possible on food, so you could wish for
+     * "2 3 alarm chilis".  Currently this isn't allowed; options.c
+     * automatically sticks 'candied' in front of such names.
+     */
+    /* Note: not strcmpi.  2 fruits, one capital, one not, are possible.
+       Also not strncmp.  We used to ignore trailing text with it, but
+       that resulted in "grapefruit" matching "grape" if the latter came
+       earlier than the former in the fruit list. */
     {
         let fp;
         let l;
@@ -4440,13 +5615,15 @@ function readobjnam_postparse3(d) {
         let uncursedf;
         let halfeatenf;
         let f;
+
         blessedf = (iscursedf = (uncursedf = (halfeatenf = 0)));
         cntf = 0;
+
         fp = cptr.add(d, $_readobjnam_data_fruitbuf);
         for (; ; ) {
             if (!fp || !cptr.ld1s(fp))
                 break;
-            if (!strncmpi(fp, __sl180, l = 3) || !strncmpi(fp, __sl111, l = 2)) {
+            if (!strncmpi(fp, __s_an, l = 3) || !strncmpi(fp, __s_a_sp, l = 2)) {
                 cntf = 1;
             } else if (!cntf && digit(cptr.ld1s(fp))) {
                 cntf = atoi(fp);
@@ -4455,20 +5632,23 @@ function readobjnam_postparse3(d) {
                 while (cptr.ld1s(fp) == 32)
                     fp = cptr.add(fp, 1);
                 l = 0;
-            } else if (!strncmpi(fp, __sl114, l = 8)) {
+            } else if (!strncmpi(fp, __s_blessed, l = 8)) {
                 blessedf = 1;
-            } else if (!strncmpi(fp, __sl113, l = 7)) {
+            } else if (!strncmpi(fp, __s_cursed, l = 7)) {
                 iscursedf = 1;
-            } else if (!strncmpi(fp, __sl92, l = 9)) {
+            } else if (!strncmpi(fp, __s_uncursed, l = 9)) {
                 uncursedf = 1;
-            } else if (!strncmpi(fp, __sl54, l = 13) || !strncmpi(fp, __sl629, l = 16)) {
+            } else if (!strncmpi(fp, __s_partly_eaten, l = 13) || !strncmpi(fp, __s_partially_eaten, l = 16)) {
                 halfeatenf = 1;
             } else
                 break;
             fp = cptr.add(fp, l);
         }
+
         for (f = cptr.ldPtro(gf, $instance_globals_f_ffruit); f; f = cptr.ldPtro(f, $fruit_nextf)) {
+            /* match type: 0=none, 1=exact, 2=singular, 3=plural */
             let ftyp = 0;
+
             if (!strcmp(fp, f))
                 ftyp = 1;
             else if (!strcmp(fp, makesingular(f)))
@@ -4481,38 +5661,57 @@ function readobjnam_postparse3(d) {
                 cptr.stI32o(d, $_readobjnam_data_iscursed, iscursedf);
                 cptr.stI32o(d, $_readobjnam_data_uncursed, uncursedf);
                 cptr.stI32o(d, $_readobjnam_data_halfeaten, halfeatenf);
+                /* adjust count if user explicitly asked for
+                   singular amount (can't happen unless fruit
+                   has been given an already pluralized name)
+                   or for plural amount */
                 if (ftyp == 2 && !cntf)
                     cntf = 1;
                 else if (ftyp == 3 && !cntf)
                     cntf = 2;
                 cptr.stI32o(d, $_readobjnam_data_cnt, cntf);
                 cptr.stI32o(d, $_readobjnam_data_ftype, cptr.ldI32o(f, $fruit_fid));
-                return 2;
+                return 2;  /*goto typfnd;*/
             }
         }
     }
+
     if (!cptr.ld1so(d, $_readobjnam_data_oclass) && cptr.ldPtro(d, $_readobjnam_data_actualn)) {
         let objtyp = cptr.box(0);
+
+        /* Perhaps it's an artifact specified by name, not type */
         cptr.stPtro(d, $_readobjnam_data_name, artifact_name(cptr.ldPtro(d, $_readobjnam_data_actualn), objtyp, 1));
         if (cptr.ldPtro(d, $_readobjnam_data_name)) {
             cptr.stI32o(d, $_readobjnam_data_typ, objtyp.v);
-            return 2;
+            return 2;  /*goto typfnd;*/
         }
     }
+
+    /* got a class, but not specific type;
+       check alternate spellings of items with matching classes */
     if (cptr.ld1so(d, $_readobjnam_data_oclass) && !cptr.ldI32o(d, $_readobjnam_data_typ)) {
         let as = spellings;
+
         while (cptr.ldPtr(as)) {
-            if (cptr.ld1so2(objects, cptr.ldI32o(as, $alt_spellings_ob), 120, $objclass_oc_class) == cptr.ld1so(d, $_readobjnam_data_oclass) && wishymatch(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtr(as), 1)) {
+            if (cptr.ld1so2(objects, cptr.ldI32o(as, $alt_spellings_ob), $sizeof_objclass, $objclass_oc_class) == cptr.ld1so(d, $_readobjnam_data_oclass) && wishymatch(cptr.ldPtro(d, $_readobjnam_data_bp), cptr.ldPtr(as), 1)) {
                 cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI32o(as, $alt_spellings_ob));
-                return 2;
+                return 2;  /*goto typfnd;*/
             }
             as = cptr.add(as, 1, 16);
         }
     }
+
     return 0;
 }
 
-/** C ref: objnam.c:4910 — @param {CPtr} bp @param {CPtr} no_wish @returns {CPtr} */
+/*
+ * Return something wished for.  Specifying a null pointer for
+ * the user request string results in a random object.  Otherwise,
+ * if asking explicitly for "nothing" (or "nil") return no_wish;
+ * if not an object return &hands_obj; if an error (no matching object),
+ * return null.
+ */
+/** C ref: objnam.c:4910 — @param {CPtr<char>} bp @param {CPtr<struct obj>} no_wish @returns {CPtr<struct obj>} */
 export function readobjnam(bp, no_wish) {
     let d, rn1cnt, P, humanwere, aname, novelname, objtyp = cptr.box(0), nut;
     let __pc = 0;
@@ -4520,6 +5719,7 @@ export function readobjnam(bp, no_wish) {
         switch (__pc) {
         case 0: {
         d = cptr.alloc(744);
+
         readobjnam_init(bp, d);
         if (!bp) { __pc = 7; continue; }
         __pc = 6; continue;
@@ -4528,9 +5728,14 @@ export function readobjnam(bp, no_wish) {
         { __pc = 4; continue; }
         }
         case 6: {
+
+        /* first, remove extra whitespace they may have typed */
         void mungspaces(bp);
-        if (!strncmpi((bp), (__sl714), -1) || !strncmpi((bp), (__sl715), -1) || !strncmpi((bp), (__sl716), -1))
+        /* allow wishing for "nothing" to preserve wishless conduct...
+           [now requires "wand of nothing" if that's what was really wanted] */
+        if (!strncmpi((bp), (__s_nothing), -1) || !strncmpi((bp), (__s_nil), -1) || !strncmpi((bp), (__s_none), -1))
             return no_wish;
+        /* save the [nearly] unmodified choice string */
         void cptr.strcpy(cptr.add(d, $_readobjnam_data_fruitbuf), bp);
         if (readobjnam_preparse(d)) { __pc = 9; continue; }
         __pc = 8; continue;
@@ -4539,8 +5744,10 @@ export function readobjnam(bp, no_wish) {
         { __pc = 4; continue; }
         }
         case 8: {
+
         if (!cptr.ldI32o(d, $_readobjnam_data_cnt))
-            cptr.stI32o(d, $_readobjnam_data_cnt, 1);
+            cptr.stI32o(d, $_readobjnam_data_cnt, 1);  /* will be changed to 2 if makesingular() changes string */
+
         readobjnam_parse_charges(d);
         let __sw11 = readobjnam_postparse1(d);
         if (__sw11 === (0)) { __pc = 13; continue; }
@@ -4655,6 +5862,7 @@ export function readobjnam(bp, no_wish) {
         }
         case 3 /* wiztrap: */: {
         if (wizard() && !cptr.ldI32o(program_state, $sinfo_wizkit_wishing) && !cptr.ld1so(d, $_readobjnam_data_oclass)) {
+            /* [inline code moved to separate routine to unclutter readobjnam] */
             if ((cptr.stPtr(d, wizterrainwish(d))) !== null)
                 return cptr.ldPtr(d);
         }
@@ -4662,7 +5870,7 @@ export function readobjnam(bp, no_wish) {
         __pc = 38; continue;
         }
         case 39: {
-        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl717, 7)) { __pc = 41; continue; }
+        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_polearm, 7)) { __pc = 41; continue; }
         __pc = 42; continue;
         }
         case 41: {
@@ -4670,7 +5878,7 @@ export function readobjnam(bp, no_wish) {
         { __pc = 5; continue; }
         }
         case 42: {
-        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __sl718, 6)) { __pc = 44; continue; }
+        if (!strncmpi(cptr.ldPtro(d, $_readobjnam_data_bp), __s_hammer, 6)) { __pc = 44; continue; }
         __pc = 43; continue;
         }
         case 44: {
@@ -4686,6 +5894,7 @@ export function readobjnam(bp, no_wish) {
         continue;
         }
         case 38: {
+
         if (!cptr.ld1so(d, $_readobjnam_data_oclass))
             return (null);
         __pc = 4;
@@ -4693,13 +5902,15 @@ export function readobjnam(bp, no_wish) {
         }
         case 4 /* any: */: {
         if (!cptr.ld1so(d, $_readobjnam_data_oclass))
-            cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.decay(wrpsym), (rng_log_enabled() ? (rng_log_set_caller(__sl107, 4996, __sl719), rn2(13)) : rn2(13)), 1));
+            cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.decay(wrpsym), rn2_at(__s_objnam_c, 4996, __s_readobjnam, 13), 1));
         __pc = 5;
         continue;
         }
         case 5 /* typfnd: */: {
         if (cptr.ldI32o(d, $_readobjnam_data_typ))
-            cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), 120, $objclass_oc_class));
+            cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), $sizeof_objclass, $objclass_oc_class));
+
+        /* handle some objects that are only allowed in wizard mode */
         if (cptr.ldI32o(d, $_readobjnam_data_typ) && !wizard()) {
             switch (cptr.ldI32o(d, $_readobjnam_data_typ)) {
                 case NHC.AMULET_OF_YENDOR:
@@ -4718,50 +5929,76 @@ export function readobjnam(bp, no_wish) {
                 cptr.stI32o(d, $_readobjnam_data_typ, NHC.OIL_LAMP);
                 break;
                 default:
-                if ((cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), 120, $objclass_oc_nowish) & 1))
+                /* catch any other non-wishable objects (venom) */
+                if ((cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), $sizeof_objclass, $objclass_oc_nowish) & 1))
                     return null;
                 break;
             }
         }
-        if (cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.CORPSE && cptr.ldI32o(d, $_readobjnam_data_mntmp) >= NHC.LOW_PM && cptr.ld1so2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_mlet) == NHC.S_PUDDING) {
+
+        /* if asking for corpse of a monster which leaves behind a glob, give
+           glob instead of rejecting the monster type to create random corpse */
+        if (cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.CORPSE && cptr.ldI32o(d, $_readobjnam_data_mntmp) >= NHC.LOW_PM && cptr.ld1so2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_mlet) == NHC.S_PUDDING) {
             cptr.stI32o(d, $_readobjnam_data_typ, (NHC.GLOB_OF_GRAY_OOZE + ((cptr.ldI32o(d, $_readobjnam_data_mntmp) - NHC.PM_GRAY_OOZE) | 0)) | 0);
-            cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);
+            cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.NON_PM);  /* not used for globs */
         }
+        /*
+         * Create the object, then fine-tune it.
+         */
         cptr.stPtr(d, cptr.ldI32o(d, $_readobjnam_data_typ) ? mksobj(cptr.ldI32o(d, $_readobjnam_data_typ), 1, 0) : mkobj(cptr.ld1so(d, $_readobjnam_data_oclass), 0));
-        cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI16o(cptr.ldPtr(d), $obj_otyp)), cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.ldPtr(d), $obj_oclass));
+        cptr.stI32o(d, $_readobjnam_data_typ, cptr.ldI16o(cptr.ldPtr(d), $obj_otyp)), cptr.st1o(d, $_readobjnam_data_oclass, cptr.ld1so(cptr.ldPtr(d), $obj_oclass));  /* what we actually got */
+
+        /* if player specified a reasonable count, maybe honor it;
+           quantity for gold is handled elsewhere and d.cnt is 0 for it here */
         if ((cptr.ldI32o(cptr.ldPtr(d), $obj_globby) & 1)) {
-            cptr.stI64o(cptr.ldPtr(d), $obj_quan, 1n);
+            /* for globs, calculate weight based on gsize, then multiply by cnt;
+               asking for 2 globs or for 2 small globs produces 1 small glob
+               weighing 40au instead of normal 20au; asking for 5 medium globs
+               might produce 1 very large glob weighing 600au */
+            cptr.stI64o(cptr.ldPtr(d), $obj_quan, 1n);  /* always 1 for globs */
             cptr.stI32o(cptr.ldPtr(d), $obj_owt, weight(cptr.ldPtr(d)) >>> 0);
+            /* gsize 0: unspecified => small;
+               1: small (1..5) => keep default owt for 1, yielding 20;
+               2: medium (6..15) => use weight for 6, yielding 120;
+               3: large (16..25) => 320; 4: very large (26+) => 520 */
             if (cptr.ldI32o(d, $_readobjnam_data_gsize) > 1)
-                cptr.stI32o(cptr.ldPtr(d), $obj_owt, (cptr.ldI32o(cptr.ldPtr(d), $obj_owt) + (Math.imul(((5 + Math.imul(((cptr.ldI32o(d, $_readobjnam_data_gsize) - 2) | 0), 10)) | 0) >>> 0, cptr.ldI32o(cptr.ldPtr(d), $obj_owt)) >>> 0)) | 0);
+                cptr.stI32o(cptr.ldPtr(d), $obj_owt, (cptr.ldI32o(cptr.ldPtr(d), $obj_owt) + (Math.imul(((5 + Math.imul(((cptr.ldI32o(d, $_readobjnam_data_gsize) - 2) | 0), 10)) | 0) >>> 0, cptr.ldI32o(cptr.ldPtr(d), $obj_owt)) >>> 0)) | 0);  /* 20 + {5|15|25} times 20 */
+            /* limit overall weight which limits shrink-away time which in turn
+               affects how long some of it will remain available to be eaten */
             if (cptr.ldI32o(d, $_readobjnam_data_cnt) > 1) {
-                rn1cnt = (((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5059, __sl719), rn2(5)) : rn2(5)) + 2) | 0);
+                rn1cnt = ((rn2_at(__s_objnam_c, 5059, __s_readobjnam, 5) + 2) | 0);  /* 2..6 */
+
                 if (rn1cnt > ((6 - cptr.ldI32o(d, $_readobjnam_data_gsize)) | 0))
                     rn1cnt = (6 - cptr.ldI32o(d, $_readobjnam_data_gsize)) | 0;
-                if (cptr.ldI32o(d, $_readobjnam_data_cnt) > rn1cnt && (!wizard() || cptr.ldI32o(program_state, $sinfo_wizkit_wishing) || yn_function(__sl720, cptr.decay(ynchars), 110, 1) != 121))
+                if (cptr.ldI32o(d, $_readobjnam_data_cnt) > rn1cnt && (!wizard() || cptr.ldI32o(program_state, $sinfo_wizkit_wishing) || yn_function(__s_override_glob_weight_limit, cptr.decay(ynchars), 110, 1) != 121))
                     cptr.stI32o(d, $_readobjnam_data_cnt, rn1cnt);
                 cptr.stI32o(cptr.ldPtr(d), $obj_owt, Math.imul(cptr.ldI32o(cptr.ldPtr(d), $obj_owt), cptr.ldI32o(d, $_readobjnam_data_cnt) >>> 0));
             }
+            /* note: the owt assignment below will not change glob's weight */
             cptr.stI32o(d, $_readobjnam_data_cnt, 0);
         } else if (cptr.ldI32o(d, $_readobjnam_data_cnt) > 0) {
-            if ((cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), 120, $objclass_oc_merge) & 1) | 0 && (wizard() || cptr.ldI32o(d, $_readobjnam_data_cnt) < (rng_log_enabled() ? (rng_log_set_caller(__sl107, 5077, __sl719), rnd(6)) : rnd(6)) || (cptr.ldI32o(d, $_readobjnam_data_cnt) <= 7 && Is_candle(cptr.ldPtr(d))) || (cptr.ldI32o(d, $_readobjnam_data_cnt) <= 20 && (cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.ROCK || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.FLINT || is_missile(cptr.ldPtr(d)) || (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WEAPON_CLASS && is_ammo(cptr.ldPtr(d)))))))
+            if ((cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), $sizeof_objclass, $objclass_oc_merge) & 1) | 0 && (wizard() || cptr.ldI32o(d, $_readobjnam_data_cnt) < rnd_at(__s_objnam_c, 5077, __s_readobjnam, 6) || (cptr.ldI32o(d, $_readobjnam_data_cnt) <= 7 && Is_candle(cptr.ldPtr(d))) || (cptr.ldI32o(d, $_readobjnam_data_cnt) <= 20 && (cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.ROCK || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.FLINT || is_missile(cptr.ldPtr(d)) || (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WEAPON_CLASS && is_ammo(cptr.ldPtr(d)))))))
                 cptr.stI64o(cptr.ldPtr(d), $obj_quan, BigInt(cptr.ldI32o(d, $_readobjnam_data_cnt)));
         }
+
         if (cptr.ldI32o(d, $_readobjnam_data_islit) && (cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.OIL_LAMP || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.MAGIC_LAMP || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.BRASS_LANTERN || Is_candle(cptr.ldPtr(d)) || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.POT_OIL)) {
-            place_object(cptr.ldPtr(d), cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
+            place_object(cptr.ldPtr(d), cptr.ldI16(u), cptr.ldI16o(u, $you_uy));  /* make it viable light source */
             begin_burn(cptr.ldPtr(d), 0);
-            obj_extract_self(cptr.ldPtr(d));
+            obj_extract_self(cptr.ldPtr(d));  /* now release it for caller's use */
         }
+
         if (cptr.ldI32o(d, $_readobjnam_data_spesgn) == 0) {
+            /* spe not specified; retain the randomly assigned value */
             cptr.stI32o(d, $_readobjnam_data_spe, cptr.ld1so(cptr.ldPtr(d), $obj_spe));
         } else if (wizard()) {
-            ;
-        } else if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.ARMOR_CLASS || cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WEAPON_CLASS || is_weptool(cptr.ldPtr(d)) || (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.RING_CLASS && (cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), 120, $objclass_oc_charged) & 1) | 0)) {
-            if (cptr.ldI32o(d, $_readobjnam_data_spe) > (rng_log_enabled() ? (rng_log_set_caller(__sl107, 5102, __sl719), rnd(5)) : rnd(5)) && cptr.ldI32o(d, $_readobjnam_data_spe) > cptr.ld1so(cptr.ldPtr(d), $obj_spe))
+            ;  /* no restrictions except SPE_LIM */
+        } else if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.ARMOR_CLASS || cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WEAPON_CLASS || is_weptool(cptr.ldPtr(d)) || (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.RING_CLASS && (cptr.ldI32o2(objects, cptr.ldI32o(d, $_readobjnam_data_typ), $sizeof_objclass, $objclass_oc_charged) & 1) | 0)) {
+            if (cptr.ldI32o(d, $_readobjnam_data_spe) > rnd_at(__s_objnam_c, 5102, __s_readobjnam, 5) && cptr.ldI32o(d, $_readobjnam_data_spe) > cptr.ld1so(cptr.ldPtr(d), $obj_spe))
                 cptr.stI32o(d, $_readobjnam_data_spe, 0);
             if (cptr.ldI32o(d, $_readobjnam_data_spe) > 2 && Luck() < 0)
                 cptr.stI32o(d, $_readobjnam_data_spesgn, -1);
         } else {
+            /* crystal ball cancels like a wand, to (n:-1) */
             if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WAND_CLASS || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.CRYSTAL_BALL) {
                 if (cptr.ldI32o(d, $_readobjnam_data_spe) > 1 && cptr.ldI32o(d, $_readobjnam_data_spesgn) == -1)
                     cptr.stI32o(d, $_readobjnam_data_spe, 1);
@@ -4772,16 +6009,19 @@ export function readobjnam(bp, no_wish) {
             if (cptr.ldI32o(d, $_readobjnam_data_spe) > cptr.ld1so(cptr.ldPtr(d), $obj_spe))
                 cptr.stI32o(d, $_readobjnam_data_spe, cptr.ld1so(cptr.ldPtr(d), $obj_spe));
         }
+
         if (cptr.ldI32o(d, $_readobjnam_data_spesgn) == -1)
             cptr.stI32o(d, $_readobjnam_data_spe, -cptr.ldI32o(d, $_readobjnam_data_spe));
+
+        /* set otmp->spe.  This may, or may not, use d.spe... */
         switch (cptr.ldI32o(d, $_readobjnam_data_typ)) {
             case NHC.TIN:
-            cptr.st1o(cptr.ldPtr(d), $obj_spe, 0);
+            cptr.st1o(cptr.ldPtr(d), $obj_spe, 0);  /* default: not spinach */
             if (cptr.ldI32o(d, $_readobjnam_data_contents) == 1) {
                 cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, NHC.NON_PM);
             } else if (cptr.ldI32o(d, $_readobjnam_data_contents) == 2) {
                 cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, NHC.NON_PM);
-                cptr.st1o(cptr.ldPtr(d), $obj_spe, 1);
+                cptr.st1o(cptr.ldPtr(d), $obj_spe, 1);  /* spinach after all */
             }
             break;
             case NHC.TOWEL:
@@ -4802,10 +6042,11 @@ export function readobjnam(bp, no_wish) {
             case NHC.FIGURINE:
             case NHC.CORPSE:
             {
-                P = (ismnum(cptr.ldI32o(d, $_readobjnam_data_mntmp))) ? cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96) : null;
+                P = (ismnum(cptr.ldI32o(d, $_readobjnam_data_mntmp))) ? cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst) : null;
+
                 cptr.st1o(cptr.ldPtr(d), $obj_spe, schar((!P ? NHM.CORPSTAT_RANDOM : (((cptr.ldU64o((P), $permonst_mflags2) & 262144n) != 0n) ? NHM.CORPSTAT_NEUTER : ((cptr.ldI32o(d, $_readobjnam_data_mgend) == NHC.FEMALE && !((cptr.ldU64o((P), $permonst_mflags2) & 65536n) != 0n)) ? NHM.CORPSTAT_FEMALE : ((cptr.ldI32o(d, $_readobjnam_data_mgend) == NHC.MALE && !((cptr.ldU64o((P), $permonst_mflags2) & 131072n) != 0n)) ? NHM.CORPSTAT_MALE : NHM.CORPSTAT_RANDOM))))));
                 if (P && cptr.ld1so(cptr.ldPtr(d), $obj_spe) == NHM.CORPSTAT_RANDOM)
-                    cptr.st1o(cptr.ldPtr(d), $obj_spe, schar((((cptr.ldU64o((P), $permonst_mflags2) & 65536n) != 0n) ? NHM.CORPSTAT_MALE : (((cptr.ldU64o((P), $permonst_mflags2) & 131072n) != 0n) ? NHM.CORPSTAT_FEMALE : ((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5163, __sl719), rn2(2)) : rn2(2)) ? NHM.CORPSTAT_MALE : NHM.CORPSTAT_FEMALE)))));
+                    cptr.st1o(cptr.ldPtr(d), $obj_spe, schar((((cptr.ldU64o((P), $permonst_mflags2) & 65536n) != 0n) ? NHM.CORPSTAT_MALE : (((cptr.ldU64o((P), $permonst_mflags2) & 131072n) != 0n) ? NHM.CORPSTAT_FEMALE : (rn2_at(__s_objnam_c, 5163, __s_readobjnam, 2) ? NHM.CORPSTAT_MALE : NHM.CORPSTAT_FEMALE)))));
                 if (cptr.ldI32o(d, $_readobjnam_data_ishistoric) && cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.STATUE)
                     cptr.st1o(cptr.ldPtr(d), $obj_spe, cptr.ld1so(cptr.ldPtr(d), $obj_spe) | NHM.CORPSTAT_HISTORIC);
                 break;
@@ -4819,7 +6060,7 @@ export function readobjnam(bp, no_wish) {
             break;
             case NHC.WAN_WISHING:
             if (!wizard()) {
-                cptr.st1o(cptr.ldPtr(d), $obj_spe, schar(((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5182, __sl719), rn2(10)) : rn2(10)) ? -1 : 0)));
+                cptr.st1o(cptr.ldPtr(d), $obj_spe, schar((rn2_at(__s_objnam_c, 5182, __s_readobjnam, 10) ? -1 : 0)));
                 break;
             }
             // @FallThrough
@@ -4827,48 +6068,61 @@ export function readobjnam(bp, no_wish) {
             default:
             cptr.st1o(cptr.ldPtr(d), $obj_spe, schar(cptr.ldI32o(d, $_readobjnam_data_spe)));
         }
+
+        /* set otmp->corpsenm or dragon scale [mail] */
         if (ismnum(cptr.ldI32o(d, $_readobjnam_data_mntmp))) {
+
             if (cptr.ldI32o(d, $_readobjnam_data_mntmp) == NHC.PM_LONG_WORM_TAIL)
                 cptr.stI32o(d, $_readobjnam_data_mntmp, NHC.PM_LONG_WORM);
-            if (cptr.ldI32o(d, $_readobjnam_data_typ) != NHC.FIGURINE && ((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96)), $permonst_mflags2) & 4n) != 0n) && (cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE) != 0 && (humanwere = counter_were(cptr.ldI32o(d, $_readobjnam_data_mntmp))) != NHC.NON_PM)
+            /* werecreatures in beast form are all flagged no-corpse so for
+               corpses and tins, switch to their corresponding human form;
+               for figurines, override the can't-be-human restriction instead */
+            if (cptr.ldI32o(d, $_readobjnam_data_typ) != NHC.FIGURINE && ((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst)), $permonst_mflags2) & 4n) != 0n) && (cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE) != 0 && (humanwere = counter_were(cptr.ldI32o(d, $_readobjnam_data_mntmp))) != NHC.NON_PM)
                 cptr.stI32o(d, $_readobjnam_data_mntmp, humanwere);
+
             switch (cptr.ldI32o(d, $_readobjnam_data_typ)) {
                 case NHC.TIN:
                 if (dead_species(cptr.ldI32o(d, $_readobjnam_data_mntmp), 0)) {
-                    cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, NHC.NON_PM);
-                } else if ((!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_geno) & NHM.G_UNIQ) || wizard()) && !(cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE) && cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_cnutrit) != 0) {
+                    cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, NHC.NON_PM);  /* it's empty */
+                } else if ((!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) || wizard()) && !(cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE) && cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_cnutrit) != 0) {
                     cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, cptr.ldI32o(d, $_readobjnam_data_mntmp));
                 }
                 break;
                 case NHC.CORPSE:
-                if ((!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_geno) & NHM.G_UNIQ) || wizard()) && !(cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE)) {
-                    if (cptr.ld1uo2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_msound) == NHC.MS_GUARDIAN)
+                if ((!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) || wizard()) && !(cptr.ld1uo2(svm, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_NOCORPSE)) {
+                    if (cptr.ld1uo2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_msound) == NHC.MS_GUARDIAN)
                         cptr.stI32o(d, $_readobjnam_data_mntmp, genus(cptr.ldI32o(d, $_readobjnam_data_mntmp), 1));
                     set_corpsenm(cptr.ldPtr(d), cptr.ldI32o(d, $_readobjnam_data_mntmp));
                 }
-                if (cptr.ld1so(d, $_readobjnam_data_zombify) && zombie_form(cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96))) {
-                    void start_timer(BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5223, __sl719), rn2(5)) : rn2(5)) + 10) | 0)), NHC.TIMER_OBJECT, NHC.ZOMBIFY_MON, obj_to_any(cptr.ldPtr(d)));
+                if (cptr.ld1so(d, $_readobjnam_data_zombify) && zombie_form(cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst))) {
+                    void start_timer(BigInt(((rn2_at(__s_objnam_c, 5223, __s_readobjnam, 5) + 10) | 0)), NHC.TIMER_OBJECT, NHC.ZOMBIFY_MON, obj_to_any(cptr.ldPtr(d)));
                 }
                 break;
                 case NHC.EGG:
                 cptr.stI32o(d, $_readobjnam_data_mntmp, can_be_hatched(cptr.ldI32o(d, $_readobjnam_data_mntmp)));
+                /* this also sets hatch timer if appropriate */
                 set_corpsenm(cptr.ldPtr(d), cptr.ldI32o(d, $_readobjnam_data_mntmp));
                 break;
                 case NHC.FIGURINE:
-                if (!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96, $permonst_geno) & NHM.G_UNIQ) && (!((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96)), $permonst_mflags2) & 8n) != 0n) || ((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96)), $permonst_mflags2) & 4n) != 0n)) && cptr.ldI32o(d, $_readobjnam_data_mntmp) != NHC.PM_MAIL_DAEMON)
+                if (!(cptr.ldU16o2(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) && (!((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst)), $permonst_mflags2) & 8n) != 0n) || ((cptr.ldU64o((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst)), $permonst_mflags2) & 4n) != 0n)) && cptr.ldI32o(d, $_readobjnam_data_mntmp) != NHC.PM_MAIL_DAEMON)
                     cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, cptr.ldI32o(d, $_readobjnam_data_mntmp));
                 break;
                 case NHC.STATUE:
                 cptr.stI32o(cptr.ldPtr(d), $obj_corpsenm, cptr.ldI32o(d, $_readobjnam_data_mntmp));
-                if ((cptr.ldPtro((cptr.ldPtr(d)), $obj_cobj) !== null) && (cptr.ld1uo((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), 96)), $permonst_msize) < NHM.MZ_SMALL))
-                    delete_contents(cptr.ldPtr(d));
+                if ((cptr.ldPtro((cptr.ldPtr(d)), $obj_cobj) !== null) && (cptr.ld1uo((cptr.add(mons, cptr.ldI32o(d, $_readobjnam_data_mntmp), $sizeof_permonst)), $permonst_msize) < NHM.MZ_SMALL))
+                    delete_contents(cptr.ldPtr(d));  /* no spellbook */
                 break;
                 case NHC.SCALE_MAIL:
+                /* Dragon mail - depends on the order of objects & dragons. */
                 if (cptr.ldI32o(d, $_readobjnam_data_mntmp) >= NHC.PM_GRAY_DRAGON && cptr.ldI32o(d, $_readobjnam_data_mntmp) <= NHC.PM_YELLOW_DRAGON)
                     cptr.stI16o(cptr.ldPtr(d), $obj_otyp, i16(((((NHC.GRAY_DRAGON_SCALE_MAIL + cptr.ldI32o(d, $_readobjnam_data_mntmp)) | 0) - NHC.PM_GRAY_DRAGON) | 0)));
                 break;
             }
         }
+
+        /* set blessed/cursed -- setting the fields directly is safe
+         * since weight() is called below and addinv() will take care
+         * of luck */
         if (cptr.ldI32o(d, $_readobjnam_data_iscursed)) {
             curse(cptr.ldPtr(d));
         } else if (cptr.ldI32o(d, $_readobjnam_data_uncursed)) {
@@ -4880,39 +6134,59 @@ export function readobjnam(bp, no_wish) {
         } else if (cptr.ldI32o(d, $_readobjnam_data_spesgn) < 0) {
             curse(cptr.ldPtr(d));
         }
+
+        /* set eroded and erodeproof */
         if (erosion_matters(cptr.ldPtr(d))) {
+            /* wished-for item shouldn't be eroded unless specified */
             cptr.stI32o(cptr.ldPtr(d), $obj_oeroded, cptr.stI32o(cptr.ldPtr(d), $obj_oeroded2, 0));
-            if (cptr.ldI32o(d, $_readobjnam_data_eroded) && (is_flammable(cptr.ldPtr(d)) || (((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtr(d), $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.IRON) || is_crackable(cptr.ldPtr(d))))
+            if (cptr.ldI32o(d, $_readobjnam_data_eroded) && (is_flammable(cptr.ldPtr(d)) || (((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtr(d), $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.IRON) || is_crackable(cptr.ldPtr(d))))
                 cptr.stI32o(cptr.ldPtr(d), $obj_oeroded, cptr.ldI32o(d, $_readobjnam_data_eroded) >>> 0);
             if (cptr.ldI32o(d, $_readobjnam_data_eroded2) && (is_corrodeable(cptr.ldPtr(d)) || is_rottable(cptr.ldPtr(d))))
                 cptr.stI32o(cptr.ldPtr(d), $obj_oeroded2, cptr.ldI32o(d, $_readobjnam_data_eroded2) >>> 0);
+            /*
+             * 3.6.1: earlier versions included `&& !eroded && !eroded2' here,
+             * but damageproof combined with damaged is feasible (eroded
+             * armor modified by confused reading of cursed destroy armor)
+             * so don't prevent player from wishing for such a combination.
+             */
             if (cptr.ldI32o(d, $_readobjnam_data_erodeproof) && (is_damageable(cptr.ldPtr(d)) || cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.CRYSKNIFE))
                 cptr.stI32o(cptr.ldPtr(d), $obj_oerodeproof, (Luck() >= 0 || wizard() ? 1 : 0) >>> 0);
         }
+
+        /* set otmp->recharged */
         if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.WAND_CLASS) {
+            /* prevent wishing abuse */
             if (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.WAN_WISHING && !wizard())
                 cptr.stI32o(d, $_readobjnam_data_rechrg, 1);
             cptr.stI32o(cptr.ldPtr(d), $obj_recharged, cptr.ldI32o(d, $_readobjnam_data_rechrg) >>> 0);
         }
+
+        /* set poisoned */
         if (cptr.ldI32o(d, $_readobjnam_data_ispoisoned)) {
             if (is_poisonable(cptr.ldPtr(d)))
                 cptr.stI32o(cptr.ldPtr(d), $obj_otrapped, (Luck() >= 0) >>> 0);
             else if (cptr.ld1so(d, $_readobjnam_data_oclass) == NHC.FOOD_CLASS)
+                /* try to taint by making it as old as possible */
                 cptr.stI64o(cptr.ldPtr(d), $obj_age, 1n);
         }
+        /* and [un]trapped */
         if (cptr.ldI32o(d, $_readobjnam_data_trapped)) {
             if (Is_box(cptr.ldPtr(d)) || cptr.ldI32o(d, $_readobjnam_data_typ) == NHC.TIN)
                 cptr.stI32o(cptr.ldPtr(d), $obj_otrapped, (cptr.ldI32o(d, $_readobjnam_data_trapped) == 1) >>> 0);
         }
+        /* empty for containers rather than for tins */
         if (cptr.ldI32o(d, $_readobjnam_data_contents) == 1) {
             if (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.BAG_OF_TRICKS || cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.HORN_OF_PLENTY) {
                 if (cptr.ld1so(cptr.ldPtr(d), $obj_spe) > 0)
                     cptr.st1o(cptr.ldPtr(d), $obj_spe, 0);
             } else if ((cptr.ldPtro((cptr.ldPtr(d)), $obj_cobj) !== null)) {
+                /* this assumes that artifacts can't be randomly generated
+                   inside containers */
                 delete_contents(cptr.ldPtr(d));
                 cptr.stI32o(cptr.ldPtr(d), $obj_owt, weight(cptr.ldPtr(d)) >>> 0);
             }
         }
+        /* set locked/unlocked/broken */
         if (Is_box(cptr.ldPtr(d))) {
             if (cptr.ldI32o(d, $_readobjnam_data_locked)) {
                 cptr.stI32o(cptr.ldPtr(d), $obj_olocked, 1), cptr.stI32o(cptr.ldPtr(d), $obj_obroken, 0);
@@ -4924,35 +6198,56 @@ export function readobjnam(bp, no_wish) {
             if ((cptr.ldI32o(cptr.ldPtr(d), $obj_obroken) & 1))
                 cptr.stI32o(cptr.ldPtr(d), $obj_otrapped, 0);
         }
+
         if (cptr.ldI32o(d, $_readobjnam_data_isgreased))
             cptr.stI32o(cptr.ldPtr(d), $obj_greased, 1);
+
         if (cptr.ldI32o(d, $_readobjnam_data_isdiluted) && cptr.ld1so(cptr.ldPtr(d), $obj_oclass) == NHC.POTION_CLASS)
             cptr.stI32o(cptr.ldPtr(d), $obj_oeroded, (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) != NHC.POT_WATER) >>> 0);
-        if (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.TIN && cptr.ldI32o(d, $_readobjnam_data_tvariety) >= 0 && ((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5343, __sl719), rn2(4)) : rn2(4)) || wizard()))
+
+        /* set tin variety */
+        if (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.TIN && cptr.ldI32o(d, $_readobjnam_data_tvariety) >= 0 && (rn2_at(__s_objnam_c, 5343, __s_readobjnam, 4) || wizard()))
             set_tin_variety(cptr.ldPtr(d), cptr.ldI32o(d, $_readobjnam_data_tvariety));
+
         if (cptr.ldPtro(d, $_readobjnam_data_name)) {
+
+            /* an artifact name might need capitalization fixing */
             aname = artifact_name(cptr.ldPtro(d, $_readobjnam_data_name), objtyp, 1);
             if (aname && objtyp.v == cptr.ldI16o(cptr.ldPtr(d), $obj_otyp))
                 cptr.stPtro(d, $_readobjnam_data_name, aname);
+
+            /* 3.6 tribute - fix up novel */
             if (cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.SPE_NOVEL && (novelname = lookup_novel(cptr.ldPtro(d, $_readobjnam_data_name), cptr.add(cptr.ldPtr(d), $obj_corpsenm))) !== null)
                 cptr.stPtro(d, $_readobjnam_data_name, novelname);
+
             cptr.stPtr(d, oname(cptr.ldPtr(d), cptr.ldPtro(d, $_readobjnam_data_name), NHM.ONAME_WISH));
+            /* name==aname => wished for artifact (otmp->oartifact => got it) */
             if (cptr.ld1so(cptr.ldPtr(d), $obj_oartifact) || cptr.eq(cptr.ldPtro(d, $_readobjnam_data_name), aname)) {
                 cptr.stI64o(cptr.ldPtr(d), $obj_quan, 1n);
-                (cptr.stI64o(u, $you_uconduct + $u_conduct_wisharti, cptr.ldI64o(u, $you_uconduct + $u_conduct_wisharti) + 1n)) - (1n);
+                (cptr.stI64o(u, $you_uconduct + $u_conduct_wisharti, cptr.ldI64o(u, $you_uconduct + $u_conduct_wisharti) + 1n)) - (1n);  /* KMH, conduct */
             }
         }
+
         if (permapoisoned(cptr.ldPtr(d)))
             cptr.stI32o(cptr.ldPtr(d), $obj_otrapped, 1);
-        if ((is_quest_artifact(cptr.ldPtr(d)) || (cptr.ld1so(cptr.ldPtr(d), $obj_oartifact) && (rng_log_enabled() ? (rng_log_set_caller(__sl107, 5374, __sl719), rn2(nartifact_exist())) : rn2(nartifact_exist())) > 1)) && !wizard()) {
+
+        /* more wishing abuse: don't allow wishing for certain artifacts */
+        /* and make them pay; charge them for the wish anyway! */
+        if ((is_quest_artifact(cptr.ldPtr(d)) || (cptr.ld1so(cptr.ldPtr(d), $obj_oartifact) && rn2_at(__s_objnam_c, 5374, __s_readobjnam, nartifact_exist()) > 1)) && !wizard()) {
             artifact_exists(cptr.ldPtr(d), safe_oname(cptr.ldPtr(d)), 0, NHM.ONAME_NO_FLAGS);
             obfree(cptr.ldPtr(d), null);
             cptr.stPtr(d, hands_obj);
-            pline(__sl721, cptr.ldPtro(c_common_strings, $c_common_strings_c_something), makeplural(body_part(NHC.HAND)));
+            pline(__s_for_a_moment_you_feel_s_in_your_s_but, cptr.ldPtro(c_common_strings, $c_common_strings_c_something), makeplural(body_part(NHC.HAND)));
             return cptr.ldPtr(d);
         }
+
         if (cptr.ldI32o(d, $_readobjnam_data_halfeaten) && cptr.ld1so(cptr.ldPtr(d), $obj_oclass) == NHC.FOOD_CLASS) {
             nut = obj_nutrition(cptr.ldPtr(d));
+
+            /* do this adjustment before setting up object's weight; skip
+               "partly eaten" for food with 0 nutrition (wraith corpse) or for
+               anything that couldn't take more than one bite (1 nutrition;
+               ought to check for one-bite instead but that's complicated) */
             if (nut > 1) {
                 cptr.stI32o(cptr.ldPtr(d), $obj_oeaten, nut);
                 consume_oeaten(cptr.ldPtr(d), 1);
@@ -4961,6 +6256,7 @@ export function readobjnam(bp, no_wish) {
         cptr.stI32o(cptr.ldPtr(d), $obj_owt, weight(cptr.ldPtr(d)) >>> 0);
         if (cptr.ldI32o(d, $_readobjnam_data_very) && cptr.ldI16o(cptr.ldPtr(d), $obj_otyp) == NHC.HEAVY_IRON_BALL)
             cptr.stI32o(cptr.ldPtr(d), $obj_owt, (cptr.ldI32o(cptr.ldPtr(d), $obj_owt) + NHC.WT_IRON_BALL_INCR) | 0);
+
         return cptr.ldPtr(d);
         }
         }
@@ -4973,22 +6269,25 @@ export function rnd_class(first, last) {
     let i;
     let x;
     let sum = 0;
+
     if (last > first) {
         for (i = first; i <= last; i++)
-            sum = (sum + cptr.ldI16o2(objects, i, 120, $objclass_oc_prob)) | 0;
+            sum = (sum + cptr.ldI16o2(objects, i, $sizeof_objclass, $objclass_oc_prob)) | 0;
         if (!sum)
-            return (((rng_log_enabled() ? (rng_log_set_caller(__sl107, 5411, __sl722), rn2((((last - first) | 0) + 1) | 0)) : rn2((((last - first) | 0) + 1) | 0)) + (first)) | 0);
-        x = (rng_log_enabled() ? (rng_log_set_caller(__sl107, 5413, __sl722), rnd(sum)) : rnd(sum));
+            return ((rn2_at(__s_objnam_c, 5411, __s_rnd_class, (((last - first) | 0) + 1) | 0) + (first)) | 0);
+
+        x = rnd_at(__s_objnam_c, 5413, __s_rnd_class, sum);
         for (i = first; i <= last; i++)
-            if ((x = (x - cptr.ldI16o2(objects, i, 120, $objclass_oc_prob)) | 0) <= 0)
+            if ((x = (x - cptr.ldI16o2(objects, i, $sizeof_objclass, $objclass_oc_prob)) | 0) <= 0)
                 return i;
     }
     return (first == last) ? first : NHC.STRANGE_OBJECT;
 }
 
-/** C ref: objnam.c:5422 — @param {CInt} i @param {CPtr} ordinaryname @returns {CPtr} */
+/** C ref: objnam.c:5422 — @param {CInt} i @param {CPtr<char>} ordinaryname @returns {CPtr<char>} */
 export function Japanese_item_name(i, ordinaryname) {
     let j = Japanese_items;
+
     while (cptr.ldI32(j)) {
         if (i == cptr.ldI32(j))
             return cptr.ldPtro(j, $Jitem_name);
@@ -4997,10 +6296,11 @@ export function Japanese_item_name(i, ordinaryname) {
     return ordinaryname;
 }
 
-/** C ref: objnam.c:5435 — @param {CPtr} armor @returns {CPtr} */
+/** C ref: objnam.c:5435 — @param {CPtr<struct obj>} armor @returns {CPtr<char>} */
 export function armor_simple_name(armor) {
     let result = null;
-    let armcat = cptr.ld1so2(objects, cptr.ldI16o(armor, $obj_otyp), 120, $objclass_oc_subtyp);
+    let armcat = cptr.ld1so2(objects, cptr.ldI16o(armor, $obj_otyp), $sizeof_objclass, $objclass_oc_subtyp);
+
     switch (armcat) {
         case NHC.ARM_SUIT:
         result = suit_simple_name(armor);
@@ -5025,136 +6325,179 @@ export function armor_simple_name(armor) {
         break;
         default:
         result = simpleonames(armor);
-        impossible(__sl723, result, armcat);
+        impossible(__s_unknown_armor_category_s_u, result, armcat);
         break;
     }
     return result;
 }
 
-/** C ref: objnam.c:5471 — @param {CPtr} suit @returns {CPtr} */
+/** C ref: objnam.c:5471 — @param {CPtr<struct obj>} suit @returns {CPtr<char>} */
 export function suit_simple_name(suit) {
     let suitnm;
     let esuitp;
+
     if (suit) {
         if (Is_dragon_mail(suit))
-            return __sl724;
+            return __s_dragon_mail;  /* <color> dragon scale mail */
         else if (Is_dragon_scales(suit))
-            return __sl495;
-        suitnm = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(suit, $obj_otyp), 120))), 16));
+            return __s_dragon_scales;
+        suitnm = (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(suit, $obj_otyp), $sizeof_objclass))), $sizeof_objdescr));
         esuitp = eos(suitnm);
-        if (cptr.strlen(suitnm) > 5n && !strcmp(cptr.add(esuitp, -(5)), __sl713))
-            return __sl712;
-        else if (cptr.strlen(suitnm) > 7n && !strcmp(cptr.add(esuitp, -(7)), __sl725))
-            return __sl726;
+        if (cptr.strlen(suitnm) > 5n && !strcmp(cptr.add(esuitp, -(5)), __s_mail__2))
+            return __s_mail;  /* most suits fall into this category */
+        else if (cptr.strlen(suitnm) > 7n && !strcmp(cptr.add(esuitp, -(7)), __s_jacket))
+            return __s_jacket__2;  /* leather jacket */
     }
-    return __sl727;
+    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
+    return __s_suit;
 }
 
-/** C ref: objnam.c:5492 — @param {CPtr} cloak @returns {CPtr} */
+/** C ref: objnam.c:5492 — @param {CPtr<struct obj>} cloak @returns {CPtr<char>} */
 export function cloak_simple_name(cloak) {
     if (cloak) {
         switch (cptr.ldI16o(cloak, $obj_otyp)) {
             case NHC.ROBE:
-            return __sl728;
+            return __s_robe;
             case NHC.MUMMY_WRAPPING:
-            return __sl729;
+            return __s_wrapping;
             case NHC.ALCHEMY_SMOCK:
-            return ((cptr.ldI32o2(objects, cptr.ldI16o(cloak, $obj_otyp), 120, $objclass_oc_name_known) & 1) | 0 && (cptr.ldI32o(cloak, $obj_dknown) & 1) | 0) ? __sl730 : __sl731;
+            return ((cptr.ldI32o2(objects, cptr.ldI16o(cloak, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1) | 0 && (cptr.ldI32o(cloak, $obj_dknown) & 1) | 0) ? __s_smock : __s_apron;
             default:
             break;
         }
     }
-    return __sl493;
+    return __s_cloak;
 }
 
-/** C ref: objnam.c:5513 — @param {CPtr} helmet @returns {CPtr} */
+/* helm vs hat for messages */
+/** C ref: objnam.c:5513 — @param {CPtr<struct obj>} helmet @returns {CPtr<char>} */
 export function helm_simple_name(helmet) {
-    return !hard_helmet(helmet) ? __sl492 : __sl481;
+    /*
+     *  There is some wiggle room here; the result has been chosen
+     *  for consistency with the "protected by hard helmet" messages
+     *  given for various bonks on the head:  headgear that provides
+     *  such protection is a "helm", that which doesn't is a "hat".
+     *
+     *      elven leather helm / leather hat    -> hat
+     *      dwarvish iron helm / hard hat       -> helm
+     *  The rest are completely straightforward:
+     *      fedora, cornuthaum, dunce cap       -> hat
+     *      all other types of helmets          -> helm
+     */
+    return !hard_helmet(helmet) ? __s_hat : __s_helm;
 }
 
+/* gloves vs gauntlets; depends upon discovery state */
 const __static_gloves_simple_name_gauntlets = cptr.bytes("gauntlets"); /** C ref: objnam.c:5534 — char[10] (function-static) */
 
-/** C ref: objnam.c:5532 — @param {CPtr} gloves @returns {CPtr} */
+/** C ref: objnam.c:5532 — @param {CPtr<struct obj>} gloves @returns {CPtr<char>} */
 export function gloves_simple_name(gloves) {
+
     if (gloves && (cptr.ldI32o(gloves, $obj_dknown) & 1) | 0) {
         let otyp = cptr.ldI16o(gloves, $obj_otyp);
-        let ocl = cptr.add(objects, otyp, 120);
-        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), 16));
-        let descrpn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), 16, $objdescr_oc_descr));
-        if (strstri((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_name_known) & 1) | 0 ? actualn : descrpn, cptr.decay(__static_gloves_simple_name_gauntlets)))
+        let ocl = cptr.add(objects, otyp, $sizeof_objclass);
+        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), $sizeof_objdescr));
+        let descrpn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr));
+
+        if (strstri((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known) & 1) | 0 ? actualn : descrpn, cptr.decay(__static_gloves_simple_name_gauntlets)))
             return cptr.decay(__static_gloves_simple_name_gauntlets);
     }
-    return __sl283;
+    return __s_gloves;
 }
 
+/* boots vs shoes; depends upon discovery state */
 const __static_boots_simple_name_shoes = cptr.bytes("shoes"); /** C ref: objnam.c:5553 — char[6] (function-static) */
 
-/** C ref: objnam.c:5551 — @param {CPtr} boots @returns {CPtr} */
+/** C ref: objnam.c:5551 — @param {CPtr<struct obj>} boots @returns {CPtr<char>} */
 export function boots_simple_name(boots) {
+
     if (boots && (cptr.ldI32o(boots, $obj_dknown) & 1) | 0) {
         let otyp = cptr.ldI16o(boots, $obj_otyp);
-        let ocl = cptr.add(objects, otyp, 120);
-        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), 16));
-        let descrpn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), 16, $objdescr_oc_descr));
-        if (strstri(descrpn, cptr.decay(__static_boots_simple_name_shoes)) || ((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_name_known) & 1) | 0 && strstri(actualn, cptr.decay(__static_boots_simple_name_shoes))))
+        let ocl = cptr.add(objects, otyp, $sizeof_objclass);
+        let actualn = (cptr.ldPtro(obj_descr, cptr.ldI16((ocl)), $sizeof_objdescr));
+        let descrpn = (cptr.ldPtro2(obj_descr, cptr.ldI16o((ocl), $objclass_oc_descr_idx), $sizeof_objdescr, $objdescr_oc_descr));
+
+        if (strstri(descrpn, cptr.decay(__static_boots_simple_name_shoes)) || ((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_name_known) & 1) | 0 && strstri(actualn, cptr.decay(__static_boots_simple_name_shoes))))
             return cptr.decay(__static_boots_simple_name_shoes);
     }
-    return __sl281;
+    return __s_boots;
 }
 
-/** C ref: objnam.c:5570 — @param {CPtr} shield @returns {CPtr} */
+/* simplified shield for messages */
+/** C ref: objnam.c:5570 — @param {CPtr<struct obj>} shield @returns {CPtr<char>} */
 export function shield_simple_name(shield) {
     if (shield) {
+        /* xname() describes unknown (unseen) reflection as smooth */
         if (cptr.ldI16o(shield, $obj_otyp) == NHC.SHIELD_OF_REFLECTION)
-            return (cptr.ldI32o(shield, $obj_dknown) & 1) | 0 ? __sl517 : __sl51;
+            return (cptr.ldI32o(shield, $obj_dknown) & 1) | 0 ? __s_silver_shield : __s_smooth_shield;
     }
-    return __sl50;
+    return __s_shield;
 }
 
-/** C ref: objnam.c:5600 — @param {CPtr} shirt @returns {CPtr} */
+/* for completeness */
+/** C ref: objnam.c:5600 — @param {CPtr<struct obj>} shirt @returns {CPtr<char>} */
 export function shirt_simple_name(shirt) {
-    return __sl494;
+    return __s_shirt;
 }
 
-/** C ref: objnam.c:5606 — @param {CPtr} mtmp @returns {CPtr} */
+/** C ref: objnam.c:5606 — @param {CPtr<struct monst>} mtmp @returns {CPtr<char>} */
 export function mimic_obj_name(mtmp) {
     if ((cptr.ld1uo((mtmp), $monst_m_ap_type) & NHM.M_AP_TYPMASK) == NHC.M_AP_OBJECT) {
         if (cptr.ldI32o(mtmp, $monst_mappearance) == NHC.GOLD_PIECE)
-            return __sl682;
+            return __s_gold;
         if (cptr.ldI32o(mtmp, $monst_mappearance) != NHC.STRANGE_OBJECT)
             return simple_typename(cptr.ldI32o(mtmp, $monst_mappearance) | 0);
     }
-    return __sl732;
+    return __s_whatcha_may_callit;
 }
 
-/** C ref: objnam.c:5624 — @param {CPtr} qbuf @param {CPtr} qprefix @param {CPtr} qsuffix @param {CPtr} obj @param {CPtr} func @param {CPtr} altfunc @param {CPtr} lastR @returns {CPtr} */
+/*
+ * Construct a query prompt string, based around an object name, which is
+ * guaranteed to fit within [QBUFSZ].  Takes an optional prefix, three
+ * choices for filling in the middle (two object formatting functions and a
+ * last resort literal which should be very short), and an optional suffix.
+ */
+/** C ref: objnam.c:5624 — @param {CPtr<char>} qbuf @param {CPtr<char>} qprefix @param {CPtr<char>} qsuffix @param {CPtr<struct obj>} obj @param {CPtr} func @param {CPtr} altfunc @param {CPtr<char>} lastR @returns {CPtr<char>} */
 export function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) {
     let bufp;
     let endp;
+    /* convert size_t (or int for ancient systems) to ordinary unsigned */
     let len;
     let lenlimit;
     let len_qpfx = Number(BigInt.asUintN(32, (qprefix ? cptr.strlen(qprefix) : 0n)));
     let len_qsfx = Number(BigInt.asUintN(32, (qsuffix ? cptr.strlen(qsuffix) : 0n)));
     let len_lastR = Number(BigInt.asUintN(32, cptr.strlen(lastR)));
+
     lenlimit = 127;
     endp = cptr.add(qbuf, lenlimit);
-    (__builtin_expect(BigInt((!(!cptr.eq(endp, (null))))), 0n) ? __assert_rtn(__sl733, __sl107, 5642, __sl734) : void 0);
+    (__builtin_expect(BigInt((!(!cptr.eq(endp, (null))))), 0n) ? __assert_rtn(__s_safe_qbuf, __s_objnam_c, 5642, __s_endp_null) : void 0);  /* workaround for static analyzer issue */
+    /* sanity check, aimed mainly at paniclog (it's conceivable for
+       the result of short_oname() to be shorter than the length of
+       the last resort string, but we ignore that possibility here) */
     if (len_qpfx > lenlimit)
-        impossible(__sl735, len_qpfx);
+        impossible(__s_safe_qbuf_prefix_too_long_u_characters, len_qpfx);
     else if ((len_qpfx + len_qsfx) >>> 0 > lenlimit)
-        impossible(__sl736, len_qpfx, len_qsfx);
+        impossible(__s_safe_qbuf_suffix_too_long_u_u_characters, len_qpfx, len_qsfx);
     else if ((((len_qpfx + len_lastR) >>> 0) + len_qsfx) >>> 0 > lenlimit)
-        impossible(__sl737, len_qpfx, len_lastR, len_qsfx);
+        impossible(__s_safe_qbuf_filler_too_long_u_u_u, len_qpfx, len_lastR, len_qsfx);
+
+    /* the output buffer might be the same as the prefix if caller
+       has already partially filled it */
     if (cptr.eq(qbuf, qprefix)) {
+        /* prefix is already in the buffer */
         cptr.st1(endp, 0);
     } else if (qprefix) {
+        /* put prefix into the buffer */
         void __builtin___strncpy_chk(qbuf, qprefix, BigInt(lenlimit >>> 0), __builtin_object_size(qbuf, 1));
         cptr.st1(endp, 0);
     } else {
+        /* no prefix; output buffer starts out empty */
         cptr.st1o(qbuf, 0, 0);
     }
     len = Number(BigInt.asUintN(32, cptr.strlen(qbuf)));
+
     if ((((len + len_lastR) >>> 0) + len_qsfx) >>> 0 > lenlimit) {
+        /* too long; skip formatting, last resort output is truncated */
         if (len < lenlimit) {
             void __builtin___strncpy_chk(cptr.add(qbuf, len), lastR, BigInt(((lenlimit - len) >>> 0) >>> 0), __builtin_object_size(cptr.add(qbuf, len), 1));
             cptr.st1(endp, 0);
@@ -5162,19 +6505,24 @@ export function safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) {
             if (qsuffix && len < lenlimit) {
                 void __builtin___strncpy_chk(cptr.add(qbuf, len), qsuffix, BigInt(((lenlimit - len) >>> 0) >>> 0), __builtin_object_size(cptr.add(qbuf, len), 1));
                 cptr.st1(endp, 0);
+                /* len = (unsigned) strlen(qbuf); */
             }
         }
     } else {
-        len = (len + len_qsfx) | 0;
+        /* suffix and last resort are guaranteed to fit */
+        len = (len + len_qsfx) | 0;  /* include the pending suffix */
+        /* format the object */
         bufp = short_oname(obj, func, altfunc, (lenlimit - len) >>> 0);
         if (BigInt.asUintN(64, BigInt(len >>> 0) + cptr.strlen(bufp)) <= BigInt(lenlimit >>> 0))
-            void cptr.strcat(qbuf, bufp);
+            void cptr.strcat(qbuf, bufp);  /* formatted name fits */
         else
-            void cptr.strcat(qbuf, lastR);
+            void cptr.strcat(qbuf, lastR);  /* use last resort */
         releaseobuf(bufp);
+
         if (qsuffix)
             void cptr.strcat(qbuf, qsuffix);
     }
+    /* assert( strlen(qbuf) < QBUFSZ ); */
     return qbuf;
 }
 

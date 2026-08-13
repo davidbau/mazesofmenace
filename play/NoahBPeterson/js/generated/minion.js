@@ -9,6 +9,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { canspotmon, is_dlord, is_dprince, is_lminion, is_ndemon } from './nhmacrofn.js';
+import { d_at, rn2_at, rnd_at } from './nhrng.js';
 import { Blind, Conflict, Deaf } from './nhprop.js';
 import { makemon, mkclass, mkclass_aligned, mongets, newmextra, set_malign } from './makemon.js';
 import { alloc } from './alloc.js';
@@ -19,7 +20,6 @@ import { You, You_feel, impossible, livelog_printf, pline, pline_The, verbalize 
 import { Amonnam, Monnam, mon_nam, x_monnam } from './do_name.js';
 import { s_suffix, sgn } from './hacklib.js';
 import { mons } from './monst.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { mk_roamer, mon_aligntyp } from './priest.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { msummon_environ } from './mondata.js';
@@ -31,6 +31,7 @@ import { enexto, rloc, tele_restrict } from './teleport.js';
 import { In_hell } from './dungeon.js';
 import { mon_has_amulet } from './wizard.js';
 import { currency } from './invent.js';
+import { rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { acurr } from './attrib.js';
 import { mongone } from './mon.js';
 import { getlin } from './windows.js';
@@ -63,60 +64,64 @@ const $align_record = FLD.align_record, $dgn_topology_d_astral_level = FLD.dgn_t
     $permonst_geno = FLD.permonst_geno, $permonst_maligntyp = FLD.permonst_maligntyp,
     $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
     $permonst_pmidx = FLD.permonst_pmidx, $prop_blocked = FLD.prop_blocked,
-    $prop_intrinsic = FLD.prop_intrinsic, $u_conduct_pets = FLD.u_conduct_pets,
-    $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_ualign = FLD.you_ualign, $you_uconduct = FLD.you_uconduct,
-    $you_uprops = FLD.you_uprops, $you_uroleplay = FLD.you_uroleplay, $you_uy = FLD.you_uy,
-    $you_uz = FLD.you_uz;
+    $prop_intrinsic = FLD.prop_intrinsic, $sizeof_mvitals = FLD.sizeof_mvitals,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop,
+    $u_conduct_pets = FLD.u_conduct_pets, $u_roleplay_deaf = FLD.u_roleplay_deaf,
+    $you_ualign = FLD.you_ualign, $you_uconduct = FLD.you_uconduct, $you_uprops = FLD.you_uprops,
+    $you_uroleplay = FLD.you_uroleplay, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("%s looks puzzled for a moment.");
-const __sl1 = cptr.lit("minion.c");
-const __sl2 = cptr.lit("msummon");
-const __sl3 = cptr.lit("%s appears in a %s of %s!");
-const __sl4 = cptr.lit("summon_minion");
-const __sl5 = cptr.lit("unaligned player?");
-const __sl6 = cptr.lit("voice of %s booms:");
-const __sl7 = cptr.lit("%s booming voice:");
-const __sl8 = cptr.lit("Thou shalt pay for thine indiscretion!");
-const __sl9 = cptr.lit("%s appears before you.");
-const __sl10 = cptr.lit("%s looks very angry.");
-const __sl11 = cptr.lit("tension building.");
-const __sl12 = cptr.lit("%s says, \"Good hunting, %s.\"");
-const __sl13 = cptr.lit("Sister");
-const __sl14 = cptr.lit("Brother");
-const __sl15 = cptr.lit("%s says something.");
-const __sl16 = cptr.lit("demon_talk");
-const __sl17 = cptr.lit("%s demands %ld %s for safe passage.");
-const __sl18 = cptr.lit("%s seems to be demanding something.");
-const __sl19 = cptr.lit("How much will you offer?");
-const __sl20 = cptr.lit("%s vanishes, laughing about cowardly mortals.");
-const __sl21 = cptr.lit("%s scowls at you menacingly, then vanishes.");
-const __sl22 = cptr.lit("%s gets angry...");
-const __sl23 = cptr.lit("bribed %s with %ld %s for safe passage");
-const __sl24 = cptr.lit("zorkmid");
-const __sl25 = cptr.lit("zorkmids");
-const __sl26 = cptr.lit("%ld");
-const __sl27 = cptr.lit("try to shortchange %s, but fumble.");
-const __sl28 = cptr.lit("refuse.");
-const __sl29 = cptr.lit("give %s all your gold.");
-const __sl30 = cptr.lit("give %s %ld %s.");
-const __sl31 = cptr.lit("dprince");
-const __sl32 = cptr.lit("dlord");
-const __sl33 = cptr.lit("%s rebukes you, saying:");
-const __sl34 = cptr.lit("Since you desire conflict, have some more!");
-const __sl35 = cptr.lit("%s vanishes!");
-const __sl36 = cptr.lit("lose_guardian_angel");
-const __sl37 = cptr.lit("A voice booms:");
-const __sl38 = cptr.lit("a booming voice:");
-const __sl39 = cptr.lit("Thy desire for conflict shall be fulfilled!");
-const __sl40 = cptr.lit("A voice whispers:");
-const __sl41 = cptr.lit("a soft voice:");
-const __sl42 = cptr.lit("Thou hast been worthy of me!");
-const __sl43 = cptr.lit("An angel appears near you.");
-const __sl44 = cptr.lit("the presence of a friendly angel near you.");
-const __sl45 = cptr.lit("gain_guardian_angel");
-const __sl46 = cptr.lit("merged weapon?");
+const __s_s_looks_puzzled_for_a_moment = cptr.lit("%s looks puzzled for a moment.");
+const __s_minion_c = cptr.lit("minion.c");
+const __s_msummon = cptr.lit("msummon");
+const __s_s_appears_in_a_s_of_s = cptr.lit("%s appears in a %s of %s!");
+const __s_summon_minion = cptr.lit("summon_minion");
+const __s_unaligned_player = cptr.lit("unaligned player?");
+const __s_voice_of_s_booms = cptr.lit("voice of %s booms:");
+const __s_s_booming_voice = cptr.lit("%s booming voice:");
+const __s_thou_shalt_pay_for_thine_indiscretion = cptr.lit("Thou shalt pay for thine indiscretion!");
+const __s_s_appears_before_you = cptr.lit("%s appears before you.");
+const __s_s_looks_very_angry = cptr.lit("%s looks very angry.");
+const __s_tension_building = cptr.lit("tension building.");
+const __s_s_says_good_hunting_s = cptr.lit("%s says, \"Good hunting, %s.\"");
+const __s_sister = cptr.lit("Sister");
+const __s_brother = cptr.lit("Brother");
+const __s_s_says_something = cptr.lit("%s says something.");
+const __s_demon_talk = cptr.lit("demon_talk");
+const __s_s_demands_ld_s_for_safe_passage = cptr.lit("%s demands %ld %s for safe passage.");
+const __s_s_seems_to_be_demanding_something = cptr.lit("%s seems to be demanding something.");
+const __s_how_much_will_you_offer = cptr.lit("How much will you offer?");
+const __s_s_vanishes_laughing_about_cowardly = cptr.lit("%s vanishes, laughing about cowardly mortals.");
+const __s_s_scowls_at_you_menacingly_then_vanishes = cptr.lit("%s scowls at you menacingly, then vanishes.");
+const __s_s_gets_angry = cptr.lit("%s gets angry...");
+const __s_bribed_s_with_ld_s_for_safe_passage = cptr.lit("bribed %s with %ld %s for safe passage");
+const __s_zorkmid = cptr.lit("zorkmid");
+const __s_zorkmids = cptr.lit("zorkmids");
+const __s_ld = cptr.lit("%ld");
+const __s_try_to_shortchange_s_but_fumble = cptr.lit("try to shortchange %s, but fumble.");
+const __s_refuse = cptr.lit("refuse.");
+const __s_give_s_all_your_gold = cptr.lit("give %s all your gold.");
+const __s_give_s_ld_s = cptr.lit("give %s %ld %s.");
+const __s_dprince = cptr.lit("dprince");
+const __s_dlord = cptr.lit("dlord");
+const __s_s_rebukes_you_saying = cptr.lit("%s rebukes you, saying:");
+const __s_since_you_desire_conflict_have_some_more = cptr.lit("Since you desire conflict, have some more!");
+const __s_s_vanishes = cptr.lit("%s vanishes!");
+const __s_lose_guardian_angel = cptr.lit("lose_guardian_angel");
+const __s_a_voice_booms = cptr.lit("A voice booms:");
+const __s_a_booming_voice = cptr.lit("a booming voice:");
+const __s_thy_desire_for_conflict_shall_be = cptr.lit("Thy desire for conflict shall be fulfilled!");
+const __s_a_voice_whispers = cptr.lit("A voice whispers:");
+const __s_a_soft_voice = cptr.lit("a soft voice:");
+const __s_thou_hast_been_worthy_of_me = cptr.lit("Thou hast been worthy of me!");
+const __s_an_angel_appears_near_you = cptr.lit("An angel appears near you.");
+const __s_the_presence_of_a_friendly_angel_near = cptr.lit("the presence of a friendly angel near you.");
+const __s_gain_guardian_angel = cptr.lit("gain_guardian_angel");
+const __s_merged_weapon = cptr.lit("merged weapon?");
 
+/* used to pick among the four basic elementals without worrying whether
+   they've been reordered (difficulty reassessment?) or any new ones have
+   been introduced (hybrid types added to 'E'-class?) */
 /** C ref: minion.c:11 — int[4] */
 const elementals = cptr.alloc(4 * 4);
 cptr.stI32o(elementals, 0, NHC.PM_AIR_ELEMENTAL);
@@ -124,7 +129,7 @@ cptr.stI32o(elementals, 4, NHC.PM_FIRE_ELEMENTAL);
 cptr.stI32o(elementals, 8, NHC.PM_EARTH_ELEMENTAL);
 cptr.stI32o(elementals, 12, NHC.PM_WATER_ELEMENTAL);
 
-/** C ref: minion.c:17 — @param {CPtr} mtmp */
+/** C ref: minion.c:17 — @param {CPtr<struct monst>} mtmp */
 export function newemin(mtmp) {
     if (!cptr.ldPtro(mtmp, $monst_mextra))
         cptr.stPtro(mtmp, $monst_mextra, newmextra());
@@ -135,7 +140,7 @@ export function newemin(mtmp) {
     }
 }
 
-/** C ref: minion.c:29 — @param {CPtr} mtmp */
+/** C ref: minion.c:29 — @param {CPtr<struct monst>} mtmp */
 export function free_emin(mtmp) {
     if (cptr.ldPtro(mtmp, $monst_mextra) && (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin))) {
         cptr.free((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin)));
@@ -144,10 +149,12 @@ export function free_emin(mtmp) {
     cptr.stI32o(mtmp, $monst_isminion, 0);
 }
 
+/* count the number of monsters on the level */
 /** C ref: minion.c:40 — @param {CInt} spotted @returns {CInt} */
 export function monster_census(spotted) {
     let mtmp;
     let count = 0;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
@@ -160,7 +167,8 @@ export function monster_census(spotted) {
     return count;
 }
 
-/** C ref: minion.c:59 — @param {CPtr} mon @returns {CInt} */
+/* mon summons a monster */
+/** C ref: minion.c:59 — @param {CPtr<struct monst>} mon @returns {CInt} */
 export function msummon(mon) {
     let ptr;
     let dtype = NHC.NON_PM;
@@ -170,38 +178,43 @@ export function msummon(mon) {
     let xlight;
     let atyp;
     let mtmp;
+
     if (mon) {
         ptr = cptr.ldPtro(mon, $monst_data);
+
         if (is_art(uwep.v, NHC.ART_DEMONBANE) && ((cptr.ldU64o((ptr), $permonst_mflags2) & 256n) != 0n)) {
             if (canseemon(mon))
-                pline(__sl0, Monnam(mon));
+                pline(__s_s_looks_puzzled_for_a_moment, Monnam(mon));
             return 0;
         }
+
         atyp = schar(((cptr.ldI32o(mon, $monst_ispriest) & 1) | 0 ? cptr.ld1so((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_epri)), $epri_shralign) : ((cptr.ldI32o(mon, $monst_isminion) & 1) | 0 ? cptr.ld1so((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_emin)), $emin_min_align) : ((cptr.ld1so(ptr, $permonst_maligntyp) == -128) ? -128 : sgn(cptr.ld1so(ptr, $permonst_maligntyp))))));
     } else {
-        ptr = cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, 96);
+        ptr = cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, $sizeof_permonst);
         atyp = schar(((cptr.ld1so(ptr, $permonst_maligntyp) == -128) ? -128 : sgn(cptr.ld1so(ptr, $permonst_maligntyp))));
     }
-    if (is_dprince(ptr) || (cptr.eq(ptr, cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, 96)))) {
-        dtype = (!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 86, __sl2), rn2(20)) : rn2(20))) ? dprince(atyp) : ((!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 86, __sl2), rn2(4)) : rn2(4))) ? dlord(atyp) : ndemon(atyp));
-        cnt = ((dtype != NHC.NON_PM) && !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 89, __sl2), rn2(4)) : rn2(4)) && is_ndemon(cptr.add(mons, dtype, 96))) ? 2 : 1;
+
+    if (is_dprince(ptr) || (cptr.eq(ptr, cptr.add(mons, NHC.PM_WIZARD_OF_YENDOR, $sizeof_permonst)))) {
+        dtype = (!rn2_at(__s_minion_c, 86, __s_msummon, 20)) ? dprince(atyp) : ((!rn2_at(__s_minion_c, 86, __s_msummon, 4)) ? dlord(atyp) : ndemon(atyp));
+        cnt = ((dtype != NHC.NON_PM) && !rn2_at(__s_minion_c, 89, __s_msummon, 4) && is_ndemon(cptr.add(mons, dtype, $sizeof_permonst))) ? 2 : 1;
     } else if (is_dlord(ptr)) {
-        dtype = (!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 91, __sl2), rn2(50)) : rn2(50))) ? dprince(atyp) : ((!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 91, __sl2), rn2(20)) : rn2(20))) ? dlord(atyp) : ndemon(atyp));
-        cnt = ((dtype != NHC.NON_PM) && !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 94, __sl2), rn2(4)) : rn2(4)) && is_ndemon(cptr.add(mons, dtype, 96))) ? 2 : 1;
-    } else if (cptr.eq(ptr, cptr.add(mons, NHC.PM_BONE_DEVIL, 96))) {
+        dtype = (!rn2_at(__s_minion_c, 91, __s_msummon, 50)) ? dprince(atyp) : ((!rn2_at(__s_minion_c, 91, __s_msummon, 20)) ? dlord(atyp) : ndemon(atyp));
+        cnt = ((dtype != NHC.NON_PM) && !rn2_at(__s_minion_c, 94, __s_msummon, 4) && is_ndemon(cptr.add(mons, dtype, $sizeof_permonst))) ? 2 : 1;
+    } else if (cptr.eq(ptr, cptr.add(mons, NHC.PM_BONE_DEVIL, $sizeof_permonst))) {
         dtype = NHC.PM_SKELETON;
         cnt = 1;
     } else if (is_ndemon(ptr)) {
-        dtype = (!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 99, __sl2), rn2(20)) : rn2(20))) ? dlord(atyp) : ((!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 99, __sl2), rn2(6)) : rn2(6))) ? ndemon(atyp) : (cptr.ldI32o((ptr), $permonst_pmidx)));
+        dtype = (!rn2_at(__s_minion_c, 99, __s_msummon, 20)) ? dlord(atyp) : ((!rn2_at(__s_minion_c, 99, __s_msummon, 6)) ? ndemon(atyp) : (cptr.ldI32o((ptr), $permonst_pmidx)));
         cnt = 1;
     } else if (is_lminion(mon)) {
-        dtype = (((cptr.ldU64o((ptr), $permonst_mflags2) & 1024n) != 0n) && !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 103, __sl2), rn2(20)) : rn2(20))) ? llord() : ((((cptr.ldU64o((ptr), $permonst_mflags2) & 1024n) != 0n) || !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 105, __sl2), rn2(6)) : rn2(6))) ? lminion() : (cptr.ldI32o((ptr), $permonst_pmidx)));
-        cnt = ((dtype != NHC.NON_PM) && !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 107, __sl2), rn2(4)) : rn2(4)) && !((cptr.ldU64o((cptr.add(mons, dtype, 96)), $permonst_mflags2) & 1024n) != 0n)) ? 2 : 1;
-    } else if (cptr.eq(ptr, cptr.add(mons, NHC.PM_ANGEL, 96))) {
-        if (!(rng_log_enabled() ? (rng_log_set_caller(__sl1, 110, __sl2), rn2(6)) : rn2(6))) {
+        dtype = (((cptr.ldU64o((ptr), $permonst_mflags2) & 1024n) != 0n) && !rn2_at(__s_minion_c, 103, __s_msummon, 20)) ? llord() : ((((cptr.ldU64o((ptr), $permonst_mflags2) & 1024n) != 0n) || !rn2_at(__s_minion_c, 105, __s_msummon, 6)) ? lminion() : (cptr.ldI32o((ptr), $permonst_pmidx)));
+        cnt = ((dtype != NHC.NON_PM) && !rn2_at(__s_minion_c, 107, __s_msummon, 4) && !((cptr.ldU64o((cptr.add(mons, dtype, $sizeof_permonst)), $permonst_mflags2) & 1024n) != 0n)) ? 2 : 1;
+    } else if (cptr.eq(ptr, cptr.add(mons, NHC.PM_ANGEL, $sizeof_permonst))) {
+        /* non-lawful angels can also summon */
+        if (!rn2_at(__s_minion_c, 110, __s_msummon, 6)) {
             switch (atyp) {
                 case NHM.A_NEUTRAL:
-                dtype = cptr.ldI32o(elementals, (rng_log_enabled() ? (rng_log_set_caller(__sl1, 113, __sl2), rn2(4)) : rn2(4)), 4);
+                dtype = cptr.ldI32o(elementals, rn2_at(__s_minion_c, 113, __s_msummon, 4), 4);
                 break;
                 case -1:
                 case -128:
@@ -211,45 +224,74 @@ export function msummon(mon) {
         } else {
             dtype = NHC.PM_ANGEL;
         }
-        cnt = ((dtype != NHC.NON_PM) && !(rng_log_enabled() ? (rng_log_set_caller(__sl1, 124, __sl2), rn2(4)) : rn2(4)) && !((cptr.ldU64o((cptr.add(mons, dtype, 96)), $permonst_mflags2) & 1024n) != 0n)) ? 2 : 1;
+        cnt = ((dtype != NHC.NON_PM) && !rn2_at(__s_minion_c, 124, __s_msummon, 4) && !((cptr.ldU64o((cptr.add(mons, dtype, $sizeof_permonst)), $permonst_mflags2) & 1024n) != 0n)) ? 2 : 1;
     }
+
     if (dtype == NHC.NON_PM)
         return 0;
-    if (cnt > 1 && (cptr.ldU16o2(mons, dtype, 96, $permonst_geno) & NHM.G_UNIQ) != 0)
+
+    /* sanity checks */
+    if (cnt > 1 && (cptr.ldU16o2(mons, dtype, $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) != 0)
         cnt = 1;
-    if ((cptr.ld1uo2(svm, dtype, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) != 0) {
+    /*
+     * If this daemon is unique and being re-summoned (the only way we
+     * could get this far with an extinct dtype), try another.
+     */
+    if ((cptr.ld1uo2(svm, dtype, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) != 0) {
         dtype = ndemon(atyp);
         if (dtype == NHC.NON_PM)
             return 0;
     }
+
+    /* some candidates can generate a group of monsters, so simple
+       count of non-null makemon() result is not sufficient */
     census = monster_census(0);
     xlight = 0;
+
     while (cnt > 0) {
-        mtmp = makemon(cptr.add(mons, dtype, 96), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
+        mtmp = makemon(cptr.add(mons, dtype, $sizeof_permonst), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
         if (mtmp) {
             result++;
+            /* an angel's alignment should match the summoner */
             if (dtype == NHC.PM_ANGEL) {
                 cptr.stI32o(mtmp, $monst_isminion, 1);
                 cptr.st1o((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin)), $emin_min_align, atyp);
+                /* renegade if same alignment but not peaceful
+                   or peaceful but different alignment */
                 cptr.st1o((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin)), $emin_renegade, schar(((atyp != cptr.ld1so(u, $you_ualign)) ^ !(cptr.ldI32o(mtmp, $monst_mpeaceful) & 1))));
             }
+
             if (cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_mlet) == NHC.S_ANGEL && !Blind()) {
+                /* for any 'A', 'cloud of smoke' will be 'flash of light';
+                   if more than one monster is being created, that message
+                   might be skipped for this monster but show 'mtmp' anyway */
                 show_transient_light(null, cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my));
                 xlight = 1;
+                /* we don't do this for 'burst of flame' (fire elemental)
+                   because those monsters become their own light source */
             }
+
             if (cnt == 1 && canseemon(mtmp)) {
                 let cloud = cptr.box(null);
                 let what = msummon_environ(cptr.ldPtro(mtmp, $monst_data), cloud);
-                pline(__sl3, Amonnam(mtmp), cloud.v, what);
+
+                pline(__s_s_appears_in_a_s_of_s, Amonnam(mtmp), cloud.v, what);
             }
         }
         cnt--;
     }
+
     if (xlight) {
+        /* Note: if we forced --More-- here, the 'A's would be visible for
+           long enough to be seen, but like with clairvoyance, some players
+           would be annoyed at the disruption of having to acknowledge it */
         transient_light_cleanup();
     }
+
+    /* how many monsters exist now compared to before? */
     if (result)
         result = (monster_census(0) - census) | 0;
+
     return result;
 }
 
@@ -257,74 +299,81 @@ export function msummon(mon) {
 export function summon_minion(alignment, talk) {
     let mon;
     let mnum;
+
     switch (alignment) {
         case NHM.A_LAWFUL:
         mnum = lminion();
         break;
         case NHM.A_NEUTRAL:
-        mnum = cptr.ldI32o(elementals, (rng_log_enabled() ? (rng_log_set_caller(__sl1, 208, __sl4), rn2(4)) : rn2(4)), 4);
+        mnum = cptr.ldI32o(elementals, rn2_at(__s_minion_c, 208, __s_summon_minion, 4), 4);
         break;
         case -1:
         case -128:
         mnum = ndemon(alignment);
         break;
         default:
-        impossible(__sl5);
+        impossible(__s_unaligned_player);
         mnum = ndemon(-128);
         break;
     }
     if (mnum == NHC.NON_PM) {
         mon = null;
     } else if (mnum == NHC.PM_ANGEL) {
-        mon = makemon(cptr.add(mons, mnum, 96), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
+        mon = makemon(cptr.add(mons, mnum, $sizeof_permonst), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
         if (mon) {
             cptr.stI32o(mon, $monst_isminion, 1);
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_emin)), $emin_min_align, alignment);
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_emin)), $emin_renegade, 0);
         }
     } else if (mnum != NHC.PM_SHOPKEEPER && mnum != NHC.PM_GUARD && mnum != NHC.PM_ALIGNED_CLERIC && mnum != NHC.PM_HIGH_CLERIC) {
-        mon = makemon(cptr.add(mons, mnum, 96), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
+        /* This was mons[mnum].pxlth == 0 but is this restriction
+           appropriate or necessary now that the structures are separate? */
+        mon = makemon(cptr.add(mons, mnum, $sizeof_permonst), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 132096);
         if (mon) {
             cptr.stI32o(mon, $monst_isminion, 1);
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_emin)), $emin_min_align, alignment);
             cptr.st1o((cptr.ldPtro(cptr.ldPtro((mon), $monst_mextra), $mextra_emin)), $emin_renegade, 0);
         }
     } else {
-        mon = makemon(cptr.add(mons, mnum, 96), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHM.MM_NOMSG);
+        mon = makemon(cptr.add(mons, mnum, $sizeof_permonst), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHM.MM_NOMSG);
     }
     if (mon) {
         if (talk) {
             if (!Deaf())
-                pline_The(__sl6, align_gname(alignment));
+                pline_The(__s_voice_of_s_booms, align_gname(alignment));
             else
-                You_feel(__sl7, s_suffix(align_gname(alignment)));
+                You_feel(__s_s_booming_voice, s_suffix(align_gname(alignment)));
             ;
-            verbalize(__sl8);
+            verbalize(__s_thou_shalt_pay_for_thine_indiscretion);
             if (canspotmon(mon))
-                pline(__sl9, Amonnam(mon));
+                pline(__s_s_appears_before_you, Amonnam(mon));
             cptr.stU64o(mon, $monst_mstrategy, cptr.ldU64o(mon, $monst_mstrategy) & 18446744071562067967n);
         }
         cptr.stI32o(mon, $monst_mpeaceful, 0);
+        /* don't call set_malign(); player was naughty */
     }
 }
 
-/** C ref: minion.c:263 — @param {CPtr} mtmp @returns {CInt} */
+/* returns 1 if it won't attack. */
+/** C ref: minion.c:263 — @param {CPtr<struct monst>} mtmp @returns {CInt} */
 export function demon_talk(mtmp) {
     let cash;
     let demand;
     let offer;
+
     if (is_art(uwep.v, NHC.ART_EXCALIBUR) || is_art(uwep.v, NHC.ART_DEMONBANE)) {
         if (canspotmon(mtmp))
-            pline(__sl10, Amonnam(mtmp));
+            pline(__s_s_looks_very_angry, Amonnam(mtmp));
         else
-            You_feel(__sl11);
+            You_feel(__s_tension_building);
         cptr.stI32o(mtmp, $monst_mpeaceful, cptr.st1o(mtmp, $monst_mtame, 0));
         set_malign(mtmp);
         newsym(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my));
         return 0;
     }
+
     if (is_fainted()) {
-        reset_faint();
+        reset_faint();  /* if fainted - wake up */
     } else {
         stop_occupation();
         if (cptr.ldI64o(gm, $instance_globals_m_multi) > 0n) {
@@ -332,73 +381,93 @@ export function demon_talk(mtmp) {
             unmul(null);
         }
     }
+
+    /* Slight advantage given. */
     if (is_dprince(cptr.ldPtro(mtmp, $monst_data)) && (cptr.ldI32o(mtmp, $monst_minvis) & 1) | 0) {
         let wasunseen = schar((!canspotmon(mtmp)));
+
         cptr.stI32o(mtmp, $monst_minvis, cptr.stI32o(mtmp, $monst_perminvis, 0));
         if (wasunseen && canspotmon(mtmp)) {
-            pline(__sl9, Amonnam(mtmp));
+            pline(__s_s_appears_before_you, Amonnam(mtmp));
             cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744071562067967n);
         }
         newsym(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my));
     }
     if (cptr.ld1so(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), $permonst_mlet) == NHC.S_DEMON) {
         if (!Deaf())
-            pline(__sl12, Amonnam(mtmp), cptr.ld1so(flags, $flag_female) ? __sl13 : __sl14);
+            pline(__s_s_says_good_hunting_s, Amonnam(mtmp), cptr.ld1so(flags, $flag_female) ? __s_sister : __s_brother);
         else if (canseemon(mtmp))
-            pline(__sl15, Amonnam(mtmp));
+            pline(__s_s_says_something, Amonnam(mtmp));
         if (!tele_restrict(mtmp))
             void rloc(mtmp, NHM.RLOC_MSG);
         return 1;
     }
     cash = money_cnt(cptr.ldPtro(gi, $instance_globals_i_invent));
-    demand = (BigInt.asIntN(64, cash * BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl1, 310, __sl16), rnd(80)) : rnd(80)) + Math.imul(20, (In_hell(cptr.add(u, $you_uz)) && (cptr.ldI16o(mtmp, $monst_cham) == NHC.NON_PM) ? 1 : 0))) | 0)))) / BigInt((Math.imul(100, ((1 + (sgn(cptr.ld1so(u, $you_ualign)) == sgn(cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_maligntyp)))) | 0))));
+    demand = (BigInt.asIntN(64, cash * BigInt(((rnd_at(__s_minion_c, 310, __s_demon_talk, 80) + Math.imul(20, (In_hell(cptr.add(u, $you_uz)) && (cptr.ldI16o(mtmp, $monst_cham) == NHC.NON_PM) ? 1 : 0))) | 0)))) / BigInt((Math.imul(100, ((1 + (sgn(cptr.ld1so(u, $you_ualign)) == sgn(cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_maligntyp)))) | 0))));
+
     if (!demand || cptr.ldI64o(gm, $instance_globals_m_multi) < 0n) {
         cptr.stI32o(mtmp, $monst_mpeaceful, 0);
         set_malign(mtmp);
         return 0;
     } else {
+        /* make sure that the demand is unmeetable if the monster
+           has the Amulet, preventing monster from being satisfied
+           and removed from the game (along with said Amulet...) */
+        /* [actually the Amulet is safe; it would be dropped when
+           mongone() gets rid of the monster; force combat anyway;
+           also make it unmeetable if the player is Deaf, to simplify
+           handling that case as player-won't-pay] */
         if (mon_has_amulet(mtmp) || Deaf())
-            demand = BigInt.asIntN(64, cash + BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl1, 327, __sl16), rn2(1000)) : rn2(1000)) + 125) | 0)));
+            /* 125: 5*25 in case hero has maximum possible charisma */
+            demand = BigInt.asIntN(64, cash + BigInt(((rn2_at(__s_minion_c, 327, __s_demon_talk, 1000) + 125) | 0)));
+
         if (!Deaf())
-            pline(__sl17, Amonnam(mtmp), demand, currency(demand));
+            pline(__s_s_demands_ld_s_for_safe_passage, Amonnam(mtmp), demand, currency(demand));
         else if (canseemon(mtmp))
-            pline(__sl18, Amonnam(mtmp));
+            pline(__s_s_seems_to_be_demanding_something, Amonnam(mtmp));
         offer = 0n;
-        if (!Deaf() && ((offer = bribe(mtmp, __sl19)) >= demand)) {
-            pline(__sl20, Amonnam(mtmp));
-        } else if (offer > 0n && BigInt((rng_log_enabled() ? (rng_log_set_caller(__sl1, 340, __sl16), rnd(Math.imul(5, (acurr(NHC.A_CHA))))) : rnd(Math.imul(5, (acurr(NHC.A_CHA)))))) > (BigInt.asIntN(64, demand - offer))) {
-            pline(__sl21, Amonnam(mtmp));
+        if (!Deaf() && ((offer = bribe(mtmp, __s_how_much_will_you_offer)) >= demand)) {
+            pline(__s_s_vanishes_laughing_about_cowardly, Amonnam(mtmp));
+        } else if (offer > 0n && BigInt((rng_log_enabled() ? (rng_log_set_caller(__s_minion_c, 340, __s_demon_talk), rnd(Math.imul(5, (acurr(NHC.A_CHA))))) : rnd(Math.imul(5, (acurr(NHC.A_CHA)))))) > (BigInt.asIntN(64, demand - offer))) {
+            pline(__s_s_scowls_at_you_menacingly_then_vanishes, Amonnam(mtmp));
         } else {
-            pline(__sl22, Amonnam(mtmp));
+            pline(__s_s_gets_angry, Amonnam(mtmp));
             cptr.stI32o(mtmp, $monst_mpeaceful, 0);
             set_malign(mtmp);
             return 0;
         }
     }
-    livelog_printf(4n, __sl23, x_monnam(mtmp, NHM.ARTICLE_A, null, NHM.EXACT_NAME, 0), offer, (offer == 1n) ? __sl24 : __sl25);
+    /* if 'mtmp' is unrecognizable due to hero's hallucination,
+       #chronicle will reveal its true identity -- just live with that;
+       also, avoid random hallucinatory currency() units */
+    livelog_printf(4n, __s_bribed_s_with_ld_s_for_safe_passage, x_monnam(mtmp, NHM.ARTICLE_A, null, NHM.EXACT_NAME, 0), offer, (offer == 1n) ? __s_zorkmid : __s_zorkmids);
     mongone(mtmp);
     return 1;
 }
 
-/** C ref: minion.c:361 — @param {CPtr} mtmp @param {CPtr} prompt @returns {CLongLong} */
+/** C ref: minion.c:361 — @param {CPtr<struct monst>} mtmp @param {CPtr<char>} prompt @returns {CLongLong} */
 export function bribe(mtmp, prompt) {
     let buf = [0];
     let offer = cptr.box(0n);
     let umoney = money_cnt(cptr.ldPtro(gi, $instance_globals_i_invent));
+
     getlin(prompt, cptr.decay(buf));
-    if (sscanf(cptr.decay(buf), __sl26, offer) != 1)
+    if (sscanf(cptr.decay(buf), __s_ld, offer) != 1)
         offer.v = 0n;
+
+    /*Michael Paddon -- fix for negative offer to monster*/
+    /*JAR880815 - */
     if (offer.v < 0n) {
-        You(__sl27, mon_nam(mtmp));
+        You(__s_try_to_shortchange_s_but_fumble, mon_nam(mtmp));
         return 0n;
     } else if (offer.v == 0n) {
-        You(__sl28);
+        You(__s_refuse);
         return 0n;
     } else if (offer.v >= umoney) {
-        You(__sl29, mon_nam(mtmp));
+        You(__s_give_s_all_your_gold, mon_nam(mtmp));
         offer.v = umoney;
     } else {
-        You(__sl30, mon_nam(mtmp), offer.v, currency(offer.v));
+        You(__s_give_s_ld_s, mon_nam(mtmp), offer.v, currency(offer.v));
     }
     void money2mon(mtmp, offer.v);
     cptr.st1(disp, 1);
@@ -409,42 +478,48 @@ export function bribe(mtmp, prompt) {
 export function dprince(atyp) {
     let tryct;
     let pm;
+
     for (tryct = !(cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) ? 20 : 0; tryct > 0; --tryct) {
-        pm = (((rng_log_enabled() ? (rng_log_set_caller(__sl1, 396, __sl31), rn2(((((NHC.PM_DEMOGORGON + 1) | 0) - NHC.PM_ORCUS) | 0))) : rn2(((((NHC.PM_DEMOGORGON + 1) | 0) - NHC.PM_ORCUS) | 0))) + NHC.PM_ORCUS) | 0);
-        if (!(cptr.ld1uo2(svm, pm, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) && (atyp == -128 || sgn(cptr.ld1so2(mons, pm, 96, $permonst_maligntyp)) == sgn(atyp)))
+        pm = ((rn2_at(__s_minion_c, 396, __s_dprince, ((((NHC.PM_DEMOGORGON + 1) | 0) - NHC.PM_ORCUS) | 0)) + NHC.PM_ORCUS) | 0);
+        if (!(cptr.ld1uo2(svm, pm, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) && (atyp == -128 || sgn(cptr.ld1so2(mons, pm, $sizeof_permonst, $permonst_maligntyp)) == sgn(atyp)))
             return pm;
     }
-    return dlord(atyp);
+    return dlord(atyp);  /* approximate */
 }
 
 /** C ref: minion.c:405 — @param {CInt} atyp @returns {CInt} */
 export function dlord(atyp) {
     let tryct;
     let pm;
+
     for (tryct = !(cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) ? 20 : 0; tryct > 0; --tryct) {
-        pm = (((rng_log_enabled() ? (rng_log_set_caller(__sl1, 410, __sl32), rn2(((((NHC.PM_YEENOGHU + 1) | 0) - NHC.PM_JUIBLEX) | 0))) : rn2(((((NHC.PM_YEENOGHU + 1) | 0) - NHC.PM_JUIBLEX) | 0))) + NHC.PM_JUIBLEX) | 0);
-        if (!(cptr.ld1uo2(svm, pm, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) && (atyp == -128 || sgn(cptr.ld1so2(mons, pm, 96, $permonst_maligntyp)) == sgn(atyp)))
+        pm = ((rn2_at(__s_minion_c, 410, __s_dlord, ((((NHC.PM_YEENOGHU + 1) | 0) - NHC.PM_JUIBLEX) | 0)) + NHC.PM_JUIBLEX) | 0);
+        if (!(cptr.ld1uo2(svm, pm, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3) && (atyp == -128 || sgn(cptr.ld1so2(mons, pm, $sizeof_permonst, $permonst_maligntyp)) == sgn(atyp)))
             return pm;
     }
-    return ndemon(atyp);
+    return ndemon(atyp);  /* approximate */
 }
 
+/* create lawful (good) lord */
 /** C ref: minion.c:420 @returns {CInt} */
 export function llord() {
-    if (!(cptr.ld1uo2(svm, NHC.PM_ARCHON, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3))
+    if (!(cptr.ld1uo2(svm, NHC.PM_ARCHON, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3))
         return NHC.PM_ARCHON;
-    return lminion();
+
+    return lminion();  /* approximate */
 }
 
 /** C ref: minion.c:429 @returns {CInt} */
 export function lminion() {
     let tryct;
     let ptr;
+
     for (tryct = 0; tryct < 20; tryct++) {
         ptr = mkclass(NHC.S_ANGEL, 0);
         if (ptr && !((cptr.ldU64o((ptr), $permonst_mflags2) & 1024n) != 0n))
             return (cptr.ldI32o((ptr), $permonst_pmidx));
     }
+
     return NHC.NON_PM;
 }
 
@@ -455,74 +530,90 @@ export function ndemon(atyp) {
     return (ptr && is_ndemon(ptr)) ? (cptr.ldI32o((ptr), $permonst_pmidx)) : NHC.NON_PM;
 }
 
-/** C ref: minion.c:468 — @param {CPtr} mon */
+/* guardian angel has been affected by conflict so is abandoning hero */
+/** C ref: minion.c:468 — @param {CPtr<struct monst>} mon */
 export function lose_guardian_angel(mon) {
     let mm = cptr.alloc(4);
     let i;
+
     if (mon) {
         if (canspotmon(mon)) {
             if (!Deaf()) {
-                pline(__sl33, Monnam(mon));
+                pline(__s_s_rebukes_you_saying, Monnam(mon));
                 ;
-                verbalize(__sl34);
+                verbalize(__s_since_you_desire_conflict_have_some_more);
             } else {
-                pline(__sl35, Monnam(mon));
+                pline(__s_s_vanishes, Monnam(mon));
             }
         }
         mongone(mon);
     }
-    for (i = (((rng_log_enabled() ? (rng_log_set_caller(__sl1, 487, __sl36), rn2(3)) : rn2(3)) + 2) | 0); i > 0; --i) {
+    /* create 2 to 4 hostile angels to replace the lost guardian */
+    for (i = ((rn2_at(__s_minion_c, 487, __s_lose_guardian_angel, 3) + 2) | 0); i > 0; --i) {
         cptr.stI16(mm, cptr.ldI16(u));
         cptr.stI16o(mm, $nhcoord_y, cptr.ldI16o(u, $you_uy));
-        if (enexto(mm, cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), cptr.add(mons, NHC.PM_ANGEL, 96)))
-            void mk_roamer(cptr.add(mons, NHC.PM_ANGEL, 96), cptr.ld1so(u, $you_ualign), cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), 0);
+        if (enexto(mm, cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), cptr.add(mons, NHC.PM_ANGEL, $sizeof_permonst)))
+            void mk_roamer(cptr.add(mons, NHC.PM_ANGEL, $sizeof_permonst), cptr.ld1so(u, $you_ualign), cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), 0);
     }
 }
 
+/* just entered the Astral Plane; receive tame guardian angel if worthy */
 /** C ref: minion.c:498 */
 export function gain_guardian_angel() {
     let mtmp;
     let otmp;
     let mm = cptr.alloc(4);
+
     Hear_again();
     if (Conflict()) {
         if (!Deaf())
-            pline(__sl37);
+            pline(__s_a_voice_booms);
         else
-            You_feel(__sl38);
+            You_feel(__s_a_booming_voice);
         ;
-        verbalize(__sl39);
+        verbalize(__s_thy_desire_for_conflict_shall_be);
+        /* send in some hostile angels instead */
         lose_guardian_angel(null);
     } else if (cptr.ldI32o(u, $you_ualign + $align_record) > 8) {
         if (!Deaf())
-            pline(__sl40);
+            pline(__s_a_voice_whispers);
         else
-            You_feel(__sl41);
+            You_feel(__s_a_soft_voice);
         ;
-        verbalize(__sl42);
+        verbalize(__s_thou_hast_been_worthy_of_me);
         cptr.stI16(mm, cptr.ldI16(u));
         cptr.stI16o(mm, $nhcoord_y, cptr.ldI16o(u, $you_uy));
-        if (enexto(mm, cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), cptr.add(mons, NHC.PM_ANGEL, 96)) && (mtmp = mk_roamer(cptr.add(mons, NHC.PM_ANGEL, 96), cptr.ld1so(u, $you_ualign), cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), 1)) !== null) {
+        if (enexto(mm, cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), cptr.add(mons, NHC.PM_ANGEL, $sizeof_permonst)) && (mtmp = mk_roamer(cptr.add(mons, NHC.PM_ANGEL, $sizeof_permonst), cptr.ld1so(u, $you_ualign), cptr.ldI16(mm), cptr.ldI16o(mm, $nhcoord_y), 1)) !== null) {
             cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744071562067967n);
+            /* guardian angel -- the one case mtame doesn't imply an
+             * edog structure, so we don't want to call tamedog().
+             * [Note: this predates mon->mextra which allows a monster
+             * to have both emin and edog at the same time.]
+             */
+            /* Too nasty for the game to unexpectedly break petless conduct on
+             * the final level of the game. The angel will still appear, but
+             * won't be tamed. */
             if (cptr.ldI64o(u, $you_uconduct + $u_conduct_pets)) {
                 cptr.st1o(mtmp, $monst_mtame, 10);
                 (cptr.stI64o(u, $you_uconduct + $u_conduct_pets, cptr.ldI64o(u, $you_uconduct + $u_conduct_pets) + 1n)) - (1n);
             }
+            /* for 'hilite_pet'; after making tame, before next message */
             newsym(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my));
             if (!Blind())
-                pline(__sl43);
+                pline(__s_an_angel_appears_near_you);
             else
-                You_feel(__sl44);
-            cptr.st1o(mtmp, $monst_m_lev, uchar((((rng_log_enabled() ? (rng_log_set_caller(__sl1, 547, __sl45), rn2(8)) : rn2(8)) + 15) | 0)));
-            cptr.stI32o(mtmp, $monst_mhp, cptr.stI32o(mtmp, $monst_mhpmax, ((((rng_log_enabled() ? (rng_log_set_caller(__sl1, 549, __sl45), d((cptr.ld1uo(mtmp, $monst_m_lev)), 10)) : d((cptr.ld1uo(mtmp, $monst_m_lev)), 10)) + 30) | 0) + (rng_log_enabled() ? (rng_log_set_caller(__sl1, 549, __sl45), rnd(30)) : rnd(30))) | 0));
+                You_feel(__s_the_presence_of_a_friendly_angel_near);
+            /* make him strong enough vs. endgame foes */
+            cptr.st1o(mtmp, $monst_m_lev, uchar(((rn2_at(__s_minion_c, 547, __s_gain_guardian_angel, 8) + 15) | 0)));
+            cptr.stI32o(mtmp, $monst_mhp, cptr.stI32o(mtmp, $monst_mhpmax, (((d_at(__s_minion_c, 549, __s_gain_guardian_angel, (cptr.ld1uo(mtmp, $monst_m_lev)), 10) + 30) | 0) + rnd_at(__s_minion_c, 549, __s_gain_guardian_angel, 30)) | 0));
             if ((otmp = select_hwep(mtmp)) === null) {
                 otmp = mksobj(NHC.SILVER_SABER, 0, 0);
                 if (mpickobj(mtmp, otmp))
-                    panic(__sl46);
+                    panic(__s_merged_weapon);
             }
             bless(otmp);
             if (cptr.ld1so(otmp, $obj_spe) < 4)
-                cptr.st1o(otmp, $obj_spe, cptr.ld1so(otmp, $obj_spe) + (rng_log_enabled() ? (rng_log_set_caller(__sl1, 557, __sl45), rnd(4)) : rnd(4)));
+                cptr.st1o(otmp, $obj_spe, cptr.ld1so(otmp, $obj_spe) + rnd_at(__s_minion_c, 557, __s_gain_guardian_angel, 4));
             if ((otmp = which_armor(mtmp, 8n)) === null || cptr.ldI16o(otmp, $obj_otyp) != NHC.SHIELD_OF_REFLECTION) {
                 void mongets(mtmp, NHC.AMULET_OF_REFLECTION);
                 m_dowear(mtmp, 1);

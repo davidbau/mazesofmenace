@@ -58,65 +58,66 @@ const $flag_debug = FLD.flag_debug, $flag_explore = FLD.flag_explore, $flag_init
     $window_procs_win_raw_print = FLD.window_procs_win_raw_print, $you_uhp = FLD.you_uhp;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("/");
-const __sl1 = cptr.lit(".app/Contents/MacOS/");
-const __sl2 = cptr.lit("%s%s%s");
-const __sl3 = cptr.lit("tty");
-const __sl4 = cptr.lit("NETHACKDIR");
-const __sl5 = cptr.lit("HACKDIR");
-const __sl6 = cptr.lit("news");
-const __sl7 = cptr.lit("Restoring save file...");
-const __sl8 = cptr.lit("Do you want to keep the save file?");
-const __sl9 = cptr.lit("command line");
-const __sl10 = cptr.lit("-no-");
-const __sl11 = cptr.lit("-debug");
-const __sl12 = cptr.lit("-DECgraphics");
-const __sl13 = cptr.lit("DECGraphics");
-const __sl14 = cptr.lit("Unknown option: %.60s");
-const __sl15 = cptr.lit("-no-news");
-const __sl16 = cptr.lit("-news");
-const __sl17 = cptr.lit("Character name expected after -u");
-const __sl18 = cptr.lit("-IBMgraphics");
-const __sl19 = cptr.lit("IBMGraphics");
-const __sl20 = cptr.lit("RogueIBM");
-const __sl21 = cptr.lit("-loglua");
-const __sl22 = cptr.lit("MAXPLAYERS are set in sysconf file");
-const __sl23 = cptr.lit("Expected MAXPLAYERS, found \"");
-const __sl24 = cptr.lit("");
-const __sl25 = cptr.lit("\"");
-const __sl26 = cptr.lit("/usr/games/lib/nethackdir");
-const __sl27 = cptr.lit("Cannot chdir to %s.");
-const __sl28 = cptr.lit("USER");
-const __sl29 = cptr.lit("LOGNAME");
-const __sl30 = cptr.lit("Only user%s %s may access debug (wizard) mode.");
-const __sl31 = cptr.lit("s");
-const __sl32 = cptr.lit("cannot access debug (wizard) mode.");
-const __sl33 = cptr.lit("Entering explore/discovery mode instead.");
-const __sl34 = cptr.lit("cannot access explore mode.");
-const __sl35 = cptr.lit("are in non-scoring explore/discovery mode.");
-const __sl36 = cptr.lit("/usr/bin/pbcopy");
-const __sl37 = cptr.lit("w");
-const __sl38 = cptr.lit("Unable to start pbcopy");
-const __sl39 = cptr.lit("Error sending data to pbcopy");
-const __sl40 = cptr.lit("Error finishing pbcopy");
-const __sl41 = cptr.lit("%s: %s (%d)\n");
-const __sl42 = cptr.lit("NETHACK_SEED");
-const __sl43 = cptr.lit("/dev/random");
-const __sl44 = cptr.lit("r");
-const __sl45 = cptr.lit("sys_random_seed");
-const __sl46 = cptr.lit("falling back to weak seed");
+const __s_slash = cptr.lit("/");
+const __s_app_contents_macos = cptr.lit(".app/Contents/MacOS/");
+const __s_s_s_s = cptr.lit("%s%s%s");
+const __s_tty = cptr.lit("tty");
+const __s_nethackdir = cptr.lit("NETHACKDIR");
+const __s_hackdir = cptr.lit("HACKDIR");
+const __s_news = cptr.lit("news");
+const __s_restoring_save_file = cptr.lit("Restoring save file...");
+const __s_do_you_want_to_keep_the_save_file = cptr.lit("Do you want to keep the save file?");
+const __s_command_line = cptr.lit("command line");
+const __s_no = cptr.lit("-no-");
+const __s_debug = cptr.lit("-debug");
+const __s_decgraphics = cptr.lit("-DECgraphics");
+const __s_decgraphics__2 = cptr.lit("DECGraphics");
+const __s_unknown_option_60s = cptr.lit("Unknown option: %.60s");
+const __s_no_news = cptr.lit("-no-news");
+const __s_news__2 = cptr.lit("-news");
+const __s_character_name_expected_after_u = cptr.lit("Character name expected after -u");
+const __s_ibmgraphics = cptr.lit("-IBMgraphics");
+const __s_ibmgraphics__2 = cptr.lit("IBMGraphics");
+const __s_rogueibm = cptr.lit("RogueIBM");
+const __s_loglua = cptr.lit("-loglua");
+const __s_maxplayers_are_set_in_sysconf_file = cptr.lit("MAXPLAYERS are set in sysconf file");
+const __s_expected_maxplayers_found = cptr.lit("Expected MAXPLAYERS, found \"");
+const __s_empty = cptr.lit("");
+const __s_quot = cptr.lit("\"");
+const __s_usr_games_lib_nethackdir = cptr.lit("/usr/games/lib/nethackdir");
+const __s_cannot_chdir_to_s = cptr.lit("Cannot chdir to %s.");
+const __s_user = cptr.lit("USER");
+const __s_logname = cptr.lit("LOGNAME");
+const __s_only_user_s_s_may_access_debug_wizard = cptr.lit("Only user%s %s may access debug (wizard) mode.");
+const __s_s = cptr.lit("s");
+const __s_cannot_access_debug_wizard_mode = cptr.lit("cannot access debug (wizard) mode.");
+const __s_entering_explore_discovery_mode_instead = cptr.lit("Entering explore/discovery mode instead.");
+const __s_cannot_access_explore_mode = cptr.lit("cannot access explore mode.");
+const __s_are_in_non_scoring_explore_discovery = cptr.lit("are in non-scoring explore/discovery mode.");
+const __s_usr_bin_pbcopy = cptr.lit("/usr/bin/pbcopy");
+const __s_w = cptr.lit("w");
+const __s_unable_to_start_pbcopy = cptr.lit("Unable to start pbcopy");
+const __s_error_sending_data_to_pbcopy = cptr.lit("Error sending data to pbcopy");
+const __s_error_finishing_pbcopy = cptr.lit("Error finishing pbcopy");
+const __s_s_s_d = cptr.lit("%s: %s (%d)\n");
+const __s_nethack_seed = cptr.lit("NETHACK_SEED");
+const __s_dev_random = cptr.lit("/dev/random");
+const __s_r = cptr.lit("r");
+const __s_sys_random_seed = cptr.lit("sys_random_seed");
+const __s_falling_back_to_weak_seed = cptr.lit("falling back to weak seed");
 
-/** C ref: unixmain.c:58 — @param {CInt} argc @param {CPtr} argv @returns {CInt} */
+/** C ref: unixmain.c:58 — @param {CInt} argc @param {CPtr<char *>} argv @returns {CInt} */
 export function main(argc, argv) {
     argc = cptr.box(argc);
     argv = cptr.box(argv);
     let dir = cptr.box(null);
     let nhfp;
     let exact_username;
-    let resuming = 0;
+    let resuming = 0;  /* assume new game */
     let plsel_once = 0;
+
     early_init(argc.v, argv.v);
-    rng_log_init();
+    rng_log_init();  /* 004-prng-logging: open log if NETHACK_RNGLOG is set */
     {
         let mac_cwd = new Uint8Array(1024);
         let mac_exe = cptr.ldPtro(argv.v, 0, 8);
@@ -125,15 +126,15 @@ export function main(argc, argv) {
         let mac_tmp_len;
         let mac_lhs_len = 0;
         getcwd(cptr.decay(mac_cwd), 1024n);
-        if (cptr.ld1so(mac_exe, 0) == 47 && !strcmp(cptr.decay(mac_cwd), __sl0)) {
+        if (cptr.ld1so(mac_exe, 0) == 47 && !strcmp(cptr.decay(mac_cwd), __s_slash)) {
             if ((mac_exe = cptr.strrchr(mac_exe, 47)))
                 mac_exe = cptr.add(mac_exe, 1);
             else
                 mac_exe = cptr.ldPtro(argv.v, 0, 8);
-            mac_tmp_len = Number(BigInt.asIntN(32, BigInt.asUintN(64, (BigInt.asUintN(64, cptr.strlen(mac_exe) * 2n)) + cptr.strlen(__sl1))));
+            mac_tmp_len = Number(BigInt.asIntN(32, BigInt.asUintN(64, (BigInt.asUintN(64, cptr.strlen(mac_exe) * 2n)) + cptr.strlen(__s_app_contents_macos))));
             if (mac_tmp_len <= arg0_len) {
                 mac_tmp = cptr.malloc(BigInt.asUintN(64, BigInt(((mac_tmp_len + 1) | 0))));
-                cptr.sprintf(mac_tmp, __sl2, mac_exe, __sl1, mac_exe);
+                cptr.sprintf(mac_tmp, __s_s_s_s, mac_exe, __s_app_contents_macos, mac_exe);
                 if (!strcmp(cptr.add(cptr.ldPtro(argv.v, 0, 8), ((arg0_len - mac_tmp_len) | 0)), mac_tmp)) {
                     mac_lhs_len = Number(BigInt.asIntN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(((arg0_len - mac_tmp_len) | 0))) + cptr.strlen(mac_exe)) + 5n)));
                     if (mac_lhs_len > ((mac_tmp_len - 1) | 0))
@@ -146,65 +147,117 @@ export function main(argc, argv) {
             }
         }
     }
+
     cptr.stPtr(gh, cptr.ldPtro(argv.v, 0, 8));
     cptr.stI32(svh, getpid());
     void umask(79);
-    choose_windows(__sl3);
-    dir.v = nh_getenv(__sl4);
+
+    choose_windows(__s_tty);
+    /*
+     * See if we must change directory to the playground.
+     * (Perhaps hack runs suid and playground is inaccessible
+     *  for the player.)
+     * The environment variable HACKDIR is overridden by a
+     *  -d command line option (must be the first option given).
+     */
+    dir.v = nh_getenv(__s_nethackdir);
     if (!dir.v)
-        dir.v = nh_getenv(__sl5);
+        dir.v = nh_getenv(__s_hackdir);
     cptr.stI32o(program_state, $sinfo_early_options, 1);
+    /* handle -dalthackdir, -s <score stuff>, --version, --showpaths */
     early_options(argc, argv, dir);
     cptr.stI32o(program_state, $sinfo_early_options, 0);
+    /*
+     * Change directories before we initialize the window system so
+     * we can find the tile file.
+     */
     chdirx(dir.v, 1);
+
     initoptions();
-    ARGV0.v = cptr.ldPtr(gh);
+    ARGV0.v = cptr.ldPtr(gh);  /* save for possible stack trace */
     panictrace_setsignals(1);
     exact_username = whoami();
-    cptr.stI32o(u, $you_uhp, 1);
+
+    /*
+     * It seems you really want to play.
+     */
+    cptr.stI32o(u, $you_uhp, 1);  /* prevent RIP on early quits */
     cptr.stI32o(program_state, $sinfo_preserve_locks, 1);
     sethanguphandler(hangup);
-    process_options(argc.v, argv.v);
-    init_nhwindows()(argc, argv.v);
+
+    process_options(argc.v, argv.v);  /* command line options */
+    init_nhwindows()(argc, argv.v);  /* now we can set up window system */
     getmailstatus();
-    set_playmode();
+
+    /* wizard mode access is deferred until here */
+    set_playmode();  /* sets plname to "wizard" for wizard mode */
+    /* hide any hyphens from plnamesuffix() */
     cptr.stI32o(gp, $instance_globals_p_plnamelen, exact_username ? Number(BigInt.asIntN(32, cptr.strlen(svp))) : 0);
+    /* strip role,race,&c suffix; calls askname() if plname[] is empty
+       or holds a generic user name like "player" or "games" */
     plnamesuffix();
+
     if (wizard()) {
+        /* use character name rather than lock letter for file names */
         cptr.stI32o(gl, $instance_globals_l_locknum, 0);
     } else {
+        /* suppress interrupts while processing lock file */
         void signal(3, 1);
         void signal(2, 1);
     }
-    ;
+
+    ;  /* must be before newgame() */
+
+    /*
+     * Initialize the vision system.  This must be before mklev() on a
+     * new game or before a level restore on a saved game.
+     */
     vision_init();
+
     init_sound_disp_gamewindows();
     __lbl_attempt_restore: while (true) {
+
+        /*
+         * getlock() complains and quits if there is already a game
+         * in progress for current character name (when gl.locknum == 0)
+         * or if there are too many active games (when gl.locknum > 0).
+         * When proceeding, it creates an empty <lockname>.0 file to
+         * designate the current game.
+         * getlock() constructs <lockname> based on the character
+         * name (for !gl.locknum) or on first available of alock, block,
+         * clock, &c not currently in use in the playground directory
+         * (for gl.locknum > 0).
+         */
         if (cptr.ld1s(svp)) {
             getlock();
-            cptr.stI32o(program_state, $sinfo_preserve_locks, 0);
+            cptr.stI32o(program_state, $sinfo_preserve_locks, 0);  /* after getlock() */
         }
+
         if (cptr.ld1s(svp) && (nhfp = restore_saved_game()) !== null) {
             let fq_save = fqname(cptr.add(gs, $instance_globals_s_SAVEF), NHM.SAVEPREFIX, 1);
-            void chmod(fq_save, 0);
+
+            void chmod(fq_save, 0);  /* disallow parallel restores */
             void signal(2, done1);
             if (cptr.ld1so(iflags, $instance_flags_news)) {
-                display_file()(__sl6, 0);
-                cptr.st1o(iflags, $instance_flags_news, 0);
+                display_file()(__s_news, 0);
+                cptr.st1o(iflags, $instance_flags_news, 0);  /* in case dorecover() fails */
             }
+            /* if there are early trouble-messages issued, let's
+             * not go overtop of them with a pline just yet */
             if (cptr.ldI32o(ge, $instance_globals_e_early_raw_messages))
-                raw_print()(__sl7);
+                raw_print()(__s_restoring_save_file);
             else
-                pline(__sl7);
-            mark_synch()();
+                pline(__s_restoring_save_file);
+            mark_synch()();  /* flush output */
             if (dorecover(nhfp)) {
-                resuming = 1;
+                resuming = 1;  /* not starting new game */
                 wd_message();
                 if (discover() || wizard()) {
-                    if (yn_function(__sl8, cptr.decay(ynchars), 110, 1) == 110) {
+                    /* this seems like a candidate for paranoid_confirmation... */
+                    if (yn_function(__s_do_you_want_to_keep_the_save_file, cptr.decay(ynchars), 110, 1) == 110) {
                         void delete_savefile();
                     } else {
-                        void chmod(fq_save, NHM.FCMASK);
+                        void chmod(fq_save, NHM.FCMASK);  /* back to readable */
                         nh_compress(fq_save);
                     }
                 }
@@ -213,8 +266,13 @@ export function main(argc, argv) {
                 cptr.stI32o(program_state, $sinfo_in_self_recover, 0);
             }
         }
+
         if (!resuming) {
             let neednewlock = schar((!cptr.ld1s(svp)));
+            /* new game:  start by choosing role, race, etc;
+               player might change the hero's name while doing that,
+               in which case we try to restore under the new name
+               and skip selection this time if that didn't succeed */
             if (!cptr.ld1so(iflags, $instance_flags_renameinprogress) || cptr.ld1s(iflags) || neednewlock) {
                 if (!plsel_once)
                     player_selection()();
@@ -222,62 +280,88 @@ export function main(argc, argv) {
                 if (neednewlock && cptr.ld1s(svp))
                     continue __lbl_attempt_restore;
                 if (cptr.ld1so(iflags, $instance_flags_renameinprogress)) {
+                    /* player has renamed the hero while selecting role;
+                       if locking alphabetically, the existing lock file
+                       can still be used; otherwise, discard current one
+                       and create another for the new character name */
                     if (!cptr.ldI32o(gl, $instance_globals_l_locknum)) {
-                        delete_levelfile(0);
+                        delete_levelfile(0);  /* remove empty lock file */
                         getlock();
                     }
                     continue __lbl_attempt_restore;
                 }
             }
+            /* no save file; check for a panic save; if the check finds one,
+               ask the player whether to proceed with a new game; it will
+               quit instead of returning if the answer isn't yes */
             if (check_panic_save())
                 ask_about_panic_save();
+
+            /* no save file; start a new game */
             newgame();
             wd_message();
         }
+
+        /* moveloop() never returns but isn't flagged NORETURN */
         moveloop(resuming);
+
         exit(0);
+        /*NOTREACHED*/
         return 0;
     }
 }
 
-/** C ref: unixmain.c:330 — @param {CInt} argc @param {CPtr} argv */
+/* caveat: argv elements might be arbitrarily long */
+/** C ref: unixmain.c:330 — @param {CInt} argc @param {CPtr<char *>} argv */
 function process_options(argc, argv) {
     let arg;
     let origarg;
     let i;
     let l;
-    config_error_init(0, __sl9, 0);
+
+    config_error_init(0, __s_command_line, 0);
+    /*
+     * Process options.
+     *
+     *  We don't support "-xyz" as shortcut for "-x -y -z" and we only
+     *  simulate longopts by allowing "--foo" for "-foo" when the user
+     *  specifies at least 2 characters of leading substring for "foo".
+     *  If "foo" takes a value, both "--foo=value" and "--foo value" work.
+     */
     while (argc > 1 && cptr.ld1so(cptr.ldPtro(argv, 1, 8), 0) == 45) {
         argv = cptr.add(argv, 1, 8);
         argc--;
         arg = (origarg = cptr.ldPtro(argv, 0, 8));
+        /* allow second dash if arg is longer than one character */
         if (cptr.ld1so(arg, 0) == 45 && cptr.ld1so(arg, 1) == 45 && cptr.ld1so(arg, 2) != 0 && (cptr.ld1so(arg, 3) != 0 && cptr.ld1so(arg, 3) != 61 && cptr.ld1so(arg, 3) != 58))
             arg = cptr.add(arg, 1);
         l = Number(BigInt.asIntN(32, cptr.strlen(arg)));
-        if (l < 6 && !cptr.strncmp(arg, __sl10, 4n))
+        if (l < 6 && !cptr.strncmp(arg, __s_no, 4n))
             l = 6;
         else if (l < 4)
-            l = 4;
+            l = 4;  /* must supply at least 4 chars to match "-XXXgraphics" */
+
         switch (cptr.ld1so(arg, 1)) {
             case 68:
             case 100:
-            if ((cptr.ld1so(arg, 1) == 68 && !cptr.ld1so(arg, 2)) || !strncmpi((arg), (__sl11), -1)) {
+            if ((cptr.ld1so(arg, 1) == 68 && !cptr.ld1so(arg, 2)) || !strncmpi((arg), (__s_debug), -1)) {
                 cptr.st1o(flags, $flag_debug, 1), cptr.st1o(flags, $flag_explore, 0);
-            } else if (!strncmpi(arg, __sl12, l)) {
-                load_symset(__sl13, NHC.PRIMARYSET);
+            } else if (!strncmpi(arg, __s_decgraphics, l)) {
+                load_symset(__s_decgraphics__2, NHC.PRIMARYSET);
                 switch_symbols(1);
             } else {
-                config_error_add(__sl14, origarg);
+                config_error_add(__s_unknown_option_60s, origarg);
             }
             break;
             case 88:
             cptr.st1o(flags, $flag_explore, 1), cptr.st1o(flags, $flag_debug, 0);
             break;
             case 110:
-            if (!cptr.ld1so(arg, 2) || !strcmp(arg, __sl15)) {
+            if (!cptr.ld1so(arg, 2) || !strcmp(arg, __s_no_news)) {
                 cptr.st1o(iflags, $instance_flags_news, 0);
                 break;
-            } else if (!strcmp(arg, __sl16)) {
+            } else if (!strcmp(arg, __s_news__2)) {
+                /* in case RC has !news, allow 'nethack -news' to override */
                 cptr.st1o(iflags, $instance_flags_news, 1);
                 break;
             }
@@ -285,31 +369,31 @@ function process_options(argc, argv) {
             case 117:
             if (cptr.ld1so(arg, 2)) {
                 void __builtin___strncpy_chk(svp, cptr.add(arg, 2), 31n, __builtin_object_size(svp, 1));
-                cptr.stI32o(gp, $instance_globals_p_plnamelen, 0);
+                cptr.stI32o(gp, $instance_globals_p_plnamelen, 0);  /* plname[] might have -role-race attached */
             } else if (argc > 1) {
                 argc--;
                 argv = cptr.add(argv, 1, 8);
                 void __builtin___strncpy_chk(svp, cptr.ldPtro(argv, 0, 8), 31n, __builtin_object_size(svp, 1));
                 cptr.stI32o(gp, $instance_globals_p_plnamelen, 0);
             } else {
-                config_error_add(__sl17);
+                config_error_add(__s_character_name_expected_after_u);
             }
             break;
             case 73:
             case 105:
-            if (!strncmpi(arg, __sl18, l)) {
-                load_symset(__sl19, NHC.PRIMARYSET);
-                load_symset(__sl20, NHC.ROGUESET);
+            if (!strncmpi(arg, __s_ibmgraphics, l)) {
+                load_symset(__s_ibmgraphics__2, NHC.PRIMARYSET);
+                load_symset(__s_rogueibm, NHC.ROGUESET);
                 switch_symbols(1);
             } else {
-                config_error_add(__sl14, origarg);
+                config_error_add(__s_unknown_option_60s, origarg);
             }
             break;
             case 108:
-            if (!cptr.strncmp(arg, __sl21, 7n)) {
+            if (!cptr.strncmp(arg, __s_loglua, 7n)) {
                 cptr.stI32o(gl, $instance_globals_l_loglua, 1);
             } else
-                config_error_add(__sl14, origarg);
+                config_error_add(__s_unknown_option_60s, origarg);
             break;
             case 112:
             if (cptr.ld1so(arg, 2)) {
@@ -337,52 +421,80 @@ function process_options(argc, argv) {
             cptr.stI32o(flags, $flag_randomall, 1);
             break;
             case 45:
-            config_error_add(__sl14, origarg);
+            /* "--" or "--x" or "--x=y"; need at least 2 chars after the
+               dashes in order to accept "--x" as an alternative to "-x";
+               don't just silently ignore it */
+            config_error_add(__s_unknown_option_60s, origarg);
             break;
             default:
+            /* default for "-x" is to play as the role that starts with "x" */
             if ((i = str2role(cptr.add(cptr.ldPtro(argv, 0, 8), 1))) >= 0) {
                 cptr.stI32o(flags, $flag_initrole, i);
                 break;
             }
         }
     }
+
     if (argc > 1) {
         let mxplyrs = atoi(cptr.ldPtro(argv, 1, 8));
         let mx_ok = schar((mxplyrs > 0));
-        config_error_add(__sl2, mx_ok ? __sl22 : __sl23, mx_ok ? __sl24 : cptr.ldPtro(argv, 1, 8), mx_ok ? __sl24 : __sl25);
+        config_error_add(__s_s_s_s, mx_ok ? __s_maxplayers_are_set_in_sysconf_file : __s_expected_maxplayers_found, mx_ok ? __s_empty : cptr.ldPtro(argv, 1, 8), mx_ok ? __s_empty : __s_quot);
     }
+    /* let syscf override compile-time limit */
     if (!cptr.ldI32o(gl, $instance_globals_l_locknum) || (cptr.ldI32o(sysopt, $sysopt_s_maxplayers) && cptr.ldI32o(gl, $instance_globals_l_locknum) > cptr.ldI32o(sysopt, $sysopt_s_maxplayers)))
         cptr.stI32o(gl, $instance_globals_l_locknum, cptr.ldI32o(sysopt, $sysopt_s_maxplayers));
+    /* empty or "N errors on command line" */
     config_error_done();
     return;
 }
 
-/** C ref: unixmain.c:491 — @param {CPtr} dir @param {CInt} wr */
+/** C ref: unixmain.c:491 — @param {CPtr<char>} dir @param {CInt} wr */
 export function chdirx(dir, wr) {
-    if (dir && strcmp(dir, __sl26)) {
+    if (dir && strcmp(dir, __s_usr_games_lib_nethackdir)) {
     } else {
     }
     if (!dir)
-        dir = __sl26;
+        dir = __s_usr_games_lib_nethackdir;
+
     if (dir && chdir(dir) < 0) {
         perror(dir);
-        error(__sl27, dir);
+        error(__s_cannot_chdir_to_s, dir);
+        /*NOTREACHED*/
     }
+
+    /* warn the player if we can't write the record file
+     * perhaps we should also test whether . is writable
+     * unfortunately the access system-call is worthless.
+     */
     if (wr) {
         check_recordfile(dir);
     }
     return;
 }
 
+/* returns True iff we set plname[] to username which contains a hyphen */
 /** C ref: unixmain.c:558 @returns {CInt} */
 export function whoami() {
+    /*
+     * Who am i? Algorithm: 1. Use name as specified in NETHACKOPTIONS
+     *                      2. Use $USER or $LOGNAME    (if 1. fails)
+     *                      3. Use getlogin()           (if 2. fails)
+     * The resulting name is overridden by command line options.
+     * If everything fails, or if the resulting name is some generic
+     * account like "games", "play", "player", "hack" then eventually
+     * we'll ask him.
+     * Note that we trust the user here; it is possible to play under
+     * somebody else's name.
+     */
     if (!cptr.ld1s(svp)) {
         let s;
-        s = nh_getenv(__sl28);
+
+        s = nh_getenv(__s_user);
         if (!s || !cptr.ld1s(s))
-            s = nh_getenv(__sl29);
+            s = nh_getenv(__s_logname);
         if (!s || !cptr.ld1s(s))
             s = getlogin();
+
         if (s && cptr.ld1s(s)) {
             void __builtin___strncpy_chk(svp, s, 31n, __builtin_object_size(svp, 1));
             if (cptr.strchr(svp, 45))
@@ -394,30 +506,39 @@ export function whoami() {
 
 /** C ref: unixmain.c:590 — @param {CPtr} handler */
 export function sethanguphandler(handler) {
+    /* don't want reads to restart.  If SA_RESTART is defined, we know
+     * sigaction exists and can be used to ensure reads won't restart.
+     * If it's not defined, assume reads do not restart.  If reads restart
+     * and a signal occurs, the game won't do anything until the read
+     * succeeds (or the stream returns EOF, which might not happen if
+     * reading from, say, a window manager). */
     let sact = cptr.alloc(16);
+
     void __builtin___memset_chk(sact, 0, 16n, __builtin_object_size(sact, 0));
     cptr.stPtr(sact, handler);
     void sigaction(1, sact, null);
     void sigaction(24, sact, null);
 }
 
+/* validate wizard mode if player has requested access to it */
 /** C ref: unixmain.c:629 @returns {CInt} */
 export function authorize_wizard_mode() {
     if (cptr.ldPtro(sysopt, $sysopt_s_wizards) && cptr.ld1so(cptr.ldPtro(sysopt, $sysopt_s_wizards), 0)) {
         if (check_user_string(cptr.ldPtro(sysopt, $sysopt_s_wizards)))
             return 1;
     }
-    cptr.st1o(iflags, $instance_flags_wiz_error_flag, 1);
+    cptr.st1o(iflags, $instance_flags_wiz_error_flag, 1);  /* not being allowed into wizard mode */
     return 0;
 }
 
+/* similar to above, validate explore mode access */
 /** C ref: unixmain.c:641 @returns {CInt} */
 export function authorize_explore_mode() {
     if (cptr.ldPtro(sysopt, $sysopt_s_explorers) && cptr.ld1so(cptr.ldPtro(sysopt, $sysopt_s_explorers), 0)) {
         if (check_user_string(cptr.ldPtro(sysopt, $sysopt_s_explorers)))
             return 1;
     }
-    cptr.st1o(iflags, $instance_flags_explore_error_flag, 1);
+    cptr.st1o(iflags, $instance_flags_explore_error_flag, 1);  /* not allowed into explore mode */
     return 0;
 }
 
@@ -426,24 +547,29 @@ function wd_message() {
     if (cptr.ld1so(iflags, $instance_flags_wiz_error_flag)) {
         if (cptr.ldPtro(sysopt, $sysopt_s_wizards) && cptr.ld1so(cptr.ldPtro(sysopt, $sysopt_s_wizards), 0)) {
             let tmp = build_english_list(cptr.ldPtro(sysopt, $sysopt_s_wizards));
-            pline(__sl30, cptr.strchr(cptr.ldPtro(sysopt, $sysopt_s_wizards), 32) ? __sl31 : __sl24, tmp);
+            pline(__s_only_user_s_s_may_access_debug_wizard, cptr.strchr(cptr.ldPtro(sysopt, $sysopt_s_wizards), 32) ? __s_s : __s_empty, tmp);
             cptr.free(tmp);
         } else {
-            You(__sl32);
+            You(__s_cannot_access_debug_wizard_mode);
         }
-        cptr.st1o(flags, $flag_debug, 0);
+        cptr.st1o(flags, $flag_debug, 0);  /* (paranoia) */
         if (!cptr.ld1so(iflags, $instance_flags_explore_error_flag))
-            pline(__sl33);
+            pline(__s_entering_explore_discovery_mode_instead);
     } else if (cptr.ld1so(iflags, $instance_flags_explore_error_flag)) {
-        You(__sl34);
-        cptr.st1o(flags, $flag_explore, cptr.st1o(iflags, $instance_flags_deferred_X, 0));
+        You(__s_cannot_access_explore_mode);  /* same as enter_explore_mode */
+        cptr.st1o(flags, $flag_explore, cptr.st1o(iflags, $instance_flags_deferred_X, 0));  /* (more paranoia) */
     } else if (discover())
-        You(__sl35);
+        You(__s_are_in_non_scoring_explore_discovery);
 }
 
-/** C ref: unixmain.c:682 — @param {CPtr} name */
+/*
+ * Add a slash to any name not ending in /. There must
+ * be room for the /
+ */
+/** C ref: unixmain.c:682 — @param {CPtr<char>} name */
 export function append_slash(name) {
     let ptr;
+
     if (!cptr.ld1s(name))
         return;
     ptr = cptr.add(name, (BigInt.asUintN(64, cptr.strlen(name) - 1n)));
@@ -454,15 +580,16 @@ export function append_slash(name) {
     return;
 }
 
-/** C ref: unixmain.c:697 — @param {CPtr} optstr @returns {CInt} */
+/** C ref: unixmain.c:697 — @param {CPtr<char>} optstr @returns {CInt} */
 export function check_user_string(optstr) {
     let pw;
     let pwlen;
     let eop;
     let w;
     let pwname = null;
+
     if (cptr.ld1so(optstr, 0) == 42)
-        return 1;
+        return 1;  /* allow any user */
     if (cptr.ldI32o(sysopt, $sysopt_s_check_plname))
         pwname = svp;
     else if ((pw = get_unix_pw()) !== null)
@@ -470,7 +597,7 @@ export function check_user_string(optstr) {
     if (!pwname || !cptr.ld1s(pwname))
         return 0;
     pwlen = Number(BigInt.asIntN(32, cptr.strlen(pwname)));
-    eop = eos(optstr);
+    eop = eos(optstr);  /* temporarily cast away 'const' */
     w = optstr;
     while (cptr.cmp(cptr.add(w, pwlen), eop) <= 0) {
         if (!cptr.ld1s(w))
@@ -491,12 +618,14 @@ export function check_user_string(optstr) {
 
 let __static_get_unix_pw_pw = null; /** C ref: unixmain.c:737 — struct passwd * (function-static) */
 
-/** C ref: unixmain.c:733 @returns {CPtr} */
+/** C ref: unixmain.c:733 @returns {CPtr<struct passwd>} */
 function get_unix_pw() {
     let user;
     let uid;
+
     if (__static_get_unix_pw_pw)
-        return __static_get_unix_pw_pw;
+        return __static_get_unix_pw_pw;  /* cache answer */
+
     uid = getuid();
     user = getlogin();
     if (user) {
@@ -505,7 +634,7 @@ function get_unix_pw() {
             __static_get_unix_pw_pw = null;
     }
     if (__static_get_unix_pw_pw === null) {
-        user = nh_getenv(__sl28);
+        user = nh_getenv(__s_user);
         if (user) {
             __static_get_unix_pw_pw = getpwnam(user);
             if (__static_get_unix_pw_pw && (cptr.ldI32o(__static_get_unix_pw_pw, $passwd_pw_uid) != uid))
@@ -520,64 +649,79 @@ function get_unix_pw() {
 
 const __static_get_login_name_buf = new Uint8Array(256); /** C ref: unixmain.c:766 — char[256] (function-static) */
 
-/** C ref: unixmain.c:764 @returns {CPtr} */
+/** C ref: unixmain.c:764 @returns {CPtr<char>} */
 export function get_login_name() {
     let pw = get_unix_pw();
+
     cptr.st1o(cptr.decay(__static_get_login_name_buf), 0, 0, 1);
     if (pw)
         void cptr.strcpy(cptr.decay(__static_get_login_name_buf), cptr.ldPtr(pw));
+
     return cptr.decay(__static_get_login_name_buf);
 }
 
-/** C ref: unixmain.c:780 — @param {CPtr} buf */
+/** C ref: unixmain.c:780 — @param {CPtr<char>} buf */
 export function port_insert_pastebuf(buf) {
+    /* This should be replaced when there is a Cocoa port. */
     let errarg;
     let len;
-    let PB = popen(__sl36, __sl37);
+    let PB = popen(__s_usr_bin_pbcopy, __s_w);
     __lbl_error: {
+
         if (!PB) {
-            errarg = __sl38;
+            errarg = __s_unable_to_start_pbcopy;
             break __lbl_error;
         }
+
         len = cptr.strlen(buf);
+        /* Remove the trailing \n, carefully. */
         if (len > 0n && cptr.ld1so(buf, BigInt.asUintN(64, len - 1n)) == 10)
             len--;
+
+        /* XXX Sorry, I'm too lazy to write a loop for output this short. */
         if (len != fwrite(buf, 1n, len, PB)) {
-            errarg = __sl39;
+            errarg = __s_error_sending_data_to_pbcopy;
             break __lbl_error;
         }
+
         if (pclose(PB) != -1) {
             return;
         }
-        errarg = __sl40;
+        errarg = __s_error_finishing_pbcopy;
     }
-    raw_printf(__sl41, errarg, strerror(errno), errno);
+    raw_printf(__s_s_s_d, errarg, strerror(errno), errno);
 }
 
 /** C ref: unixmain.c:814 @returns {CLongLong} */
 export function sys_random_seed() {
+    /* Harness comparison testing: if NETHACK_SEED is set, use it directly.
+     * Leave has_strong_rngseed false so reseed_random() remains a no-op. */
     {
-        let env_seed = getenv(__sl42);
+        let env_seed = getenv(__s_nethack_seed);
         if (env_seed) {
             let seed = cptr.box(strtoul(env_seed, null, 10));
             return seed.v;
         }
     }
+
     let seed = cptr.box(0n);
     let pid = BigInt.asUintN(64, BigInt(getpid()));
     let no_seed = 1;
     let fptr;
-    fptr = fopen(__sl43, __sl44);
+
+    fptr = fopen(__s_dev_random, __s_r);
     if (fptr) {
         fread(seed, 8n, 1n, fptr);
-        has_strong_rngseed.v = 1;
+        has_strong_rngseed.v = 1;  /* decl.c */
         no_seed = 0;
         void fclose(fptr);
     } else {
-        paniclog(__sl45, __sl46);
+        /* leaves clue, doesn't exit */
+        paniclog(__s_sys_random_seed, __s_falling_back_to_weak_seed);
     }
     if (no_seed) {
-        seed.v = BigInt.asUintN(64, getnow());
+        seed.v = BigInt.asUintN(64, getnow());  /* time((TIME_type) 0) */
+        /* Quick dirty band-aid to prevent PRNG prediction */
         if (pid) {
             if (!(pid & 3n))
                 pid -= 1n;
@@ -594,6 +738,7 @@ export function get_nhuuid() {
 /** C ref: unixmain.c:885 */
 export function free_nhuuid() {
     let i;
+
     for (i = 0; i < Number(BigInt.asIntN(32, (37n / 1n))); i++) {
         cptr.st1o2(svn, i, 1, $instance_globals_saved_n_nhuuid, 0);
     }

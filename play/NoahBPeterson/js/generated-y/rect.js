@@ -11,21 +11,22 @@ import { i16 } from '../cmachine.js';
 import * as cptr from '../cptr.js';
 import * as FLD from './nhfield.js';
 import { max, min } from './nhmacrofn.js';
+import { rn2_at } from './nhrng.js';
 import { alloc } from './alloc.js';
 import { panic } from './end.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { impossible } from './pline.js';
 
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $NhRect_hx = FLD.NhRect_hx, $NhRect_hy = FLD.NhRect_hy, $NhRect_ly = FLD.NhRect_ly,
-    $nhrect_hx = FLD.nhrect_hx, $nhrect_hy = FLD.nhrect_hy, $nhrect_ly = FLD.nhrect_ly;
+    $nhrect_hx = FLD.nhrect_hx, $nhrect_hy = FLD.nhrect_hy, $nhrect_ly = FLD.nhrect_ly,
+    $sizeof_NhRect = FLD.sizeof_NhRect, $sizeof_nhrect = FLD.sizeof_nhrect;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("Could not alloc rect");
-const __sl1 = cptr.lit("rect.c");
-const __sl2 = cptr.lit("rnd_rect");
-const __sl3 = cptr.lit("n_rects may be too small.");
+const __s_could_not_alloc_rect = cptr.lit("Could not alloc rect");
+const __s_rect_c = cptr.lit("rect.c");
+const __s_rnd_rect = cptr.lit("rnd_rect");
+const __s_n_rects_may_be_too_small = cptr.lit("n_rects may be too small.");
 
 /** C ref: rect.c:19 — NhRect * */
 let rect = null;
@@ -36,18 +37,24 @@ let n_rects = 0;
 /** C ref: rect.c:21 — int */
 let rect_cnt = 0;
 
+/*
+ * Initialization of internal structures. Should be called for every
+ * new level to be build...
+ */
+
 /** C ref: rect.c:29 */
 export function* init_rect() {
     if (!rect) {
         n_rects = 56;
         rect = (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, 8n * BigInt.asUintN(64, BigInt(n_rects)))))));
         if (!rect)
-            (yield* panic(__sl0));
+            (yield* panic(__s_could_not_alloc_rect));
     }
+
     rect_cnt = 1;
-    cptr.stI16o(rect, 0, cptr.stI16o2(rect, 0, 8, $nhrect_ly, 0), 8);
-    cptr.stI16o2(rect, 0, 8, $nhrect_hx, 79);
-    cptr.stI16o2(rect, 0, 8, $nhrect_hy, 20);
+    cptr.stI16o(rect, 0, cptr.stI16o2(rect, 0, $sizeof_NhRect, $nhrect_ly, 0), $sizeof_NhRect);
+    cptr.stI16o2(rect, 0, $sizeof_NhRect, $nhrect_hx, 79);
+    cptr.stI16o2(rect, 0, $sizeof_NhRect, $nhrect_hy, 20);
 }
 
 /** C ref: rect.c:45 */
@@ -58,7 +65,12 @@ export function free_rect() {
     n_rects = (rect_cnt = 0);
 }
 
-/** C ref: rect.c:60 — @param {CPtr} r @returns {CInt} */
+/*
+ * Search Index of one precise NhRect.
+ *
+ */
+
+/** C ref: rect.c:60 — @param {CPtr<NhRect>} r @returns {CInt} */
 export function get_rect_ind(r) {
     let rectp;
     let lx;
@@ -66,17 +78,22 @@ export function get_rect_ind(r) {
     let hx;
     let hy;
     let i;
+
     lx = cptr.ldI16(r);
     ly = cptr.ldI16o(r, $NhRect_ly);
     hx = cptr.ldI16o(r, $NhRect_hx);
     hy = cptr.ldI16o(r, $NhRect_hy);
-    for (i = 0, rectp = cptr.add(rect, 0, 8); i < rect_cnt; i++, rectp = cptr.add(rectp, 1, 8))
+    for (i = 0, rectp = cptr.add(rect, 0, $sizeof_NhRect); i < rect_cnt; i++, rectp = cptr.add(rectp, 1, 8))
         if (lx == cptr.ldI16(rectp) && ly == cptr.ldI16o(rectp, $NhRect_ly) && hx == cptr.ldI16o(rectp, $NhRect_hx) && hy == cptr.ldI16o(rectp, $NhRect_hy))
             return i;
     return -1;
 }
 
-/** C ref: rect.c:82 — @param {CPtr} r @returns {CPtr} */
+/*
+ * Search a free rectangle that include the one given in arg
+ */
+
+/** C ref: rect.c:82 — @param {CPtr<NhRect>} r @returns {CPtr<NhRect>} */
 export function get_rect(r) {
     let rectp;
     let lx;
@@ -84,74 +101,109 @@ export function get_rect(r) {
     let hx;
     let hy;
     let i;
+
     lx = cptr.ldI16(r);
     ly = cptr.ldI16o(r, $NhRect_ly);
     hx = cptr.ldI16o(r, $NhRect_hx);
     hy = cptr.ldI16o(r, $NhRect_hy);
-    for (i = 0, rectp = cptr.add(rect, 0, 8); i < rect_cnt; i++, rectp = cptr.add(rectp, 1, 8))
+    for (i = 0, rectp = cptr.add(rect, 0, $sizeof_NhRect); i < rect_cnt; i++, rectp = cptr.add(rectp, 1, 8))
         if (lx >= cptr.ldI16(rectp) && ly >= cptr.ldI16o(rectp, $NhRect_ly) && hx <= cptr.ldI16o(rectp, $NhRect_hx) && hy <= cptr.ldI16o(rectp, $NhRect_hy))
             return rectp;
     return null;
 }
 
-/** C ref: rect.c:104 @returns {CPtr} */
+/*
+ * Get some random NhRect from the list.
+ */
+
+/** C ref: rect.c:104 @returns {CPtr<NhRect>} */
 export function rnd_rect() {
-    return rect_cnt > 0 ? cptr.add(rect, (rng_log_enabled() ? (rng_log_set_caller(__sl1, 106, __sl2), rn2(rect_cnt)) : rn2(rect_cnt)), 8) : null;
+    return rect_cnt > 0 ? cptr.add(rect, rn2_at(__s_rect_c, 106, __s_rnd_rect, rect_cnt), $sizeof_NhRect) : null;
 }
 
-/** C ref: rect.c:116 — @param {CPtr} r1 @param {CPtr} r2 @param {CPtr} r3 @returns {CInt} */
+/*
+ * Search intersection between two rectangles (r1 & r2).
+ * return TRUE if intersection exist and put it in r3.
+ * otherwise returns FALSE
+ */
+
+/** C ref: rect.c:116 — @param {CPtr<NhRect>} r1 @param {CPtr<NhRect>} r2 @param {CPtr<NhRect>} r3 @returns {CInt} */
 function intersect(r1, r2, r3) {
     if (cptr.ldI16(r2) > cptr.ldI16o(r1, $NhRect_hx) || cptr.ldI16o(r2, $NhRect_ly) > cptr.ldI16o(r1, $NhRect_hy) || cptr.ldI16o(r2, $NhRect_hx) < cptr.ldI16(r1) || cptr.ldI16o(r2, $NhRect_hy) < cptr.ldI16o(r1, $NhRect_ly))
         return 0;
+
     cptr.stI16(r3, i16((cptr.ldI16(r2) > cptr.ldI16(r1) ? cptr.ldI16(r2) : cptr.ldI16(r1))));
     cptr.stI16o(r3, $NhRect_ly, i16((cptr.ldI16o(r2, $NhRect_ly) > cptr.ldI16o(r1, $NhRect_ly) ? cptr.ldI16o(r2, $NhRect_ly) : cptr.ldI16o(r1, $NhRect_ly))));
     cptr.stI16o(r3, $NhRect_hx, i16((cptr.ldI16o(r2, $NhRect_hx) > cptr.ldI16o(r1, $NhRect_hx) ? cptr.ldI16o(r1, $NhRect_hx) : cptr.ldI16o(r2, $NhRect_hx))));
     cptr.stI16o(r3, $NhRect_hy, i16((cptr.ldI16o(r2, $NhRect_hy) > cptr.ldI16o(r1, $NhRect_hy) ? cptr.ldI16o(r1, $NhRect_hy) : cptr.ldI16o(r2, $NhRect_hy))));
+
     if (cptr.ldI16(r3) > cptr.ldI16o(r3, $NhRect_hx) || cptr.ldI16o(r3, $NhRect_ly) > cptr.ldI16o(r3, $NhRect_hy))
         return 0;
     return 1;
 }
 
-/** C ref: rect.c:134 — @param {*} r1 @param {*} r2 @param {CPtr} r3 */
+/* Put the rectangle containing both r1 and r2 into r3 */
+/** C ref: rect.c:134 — @param {*} r1 @param {*} r2 @param {CPtr<NhRect>} r3 */
 export function rect_bounds(r1, r2, r3) {
-    r1 = cptr.dup(r1, 8); // by-value struct param
-    r2 = cptr.dup(r2, 8); // by-value struct param
+    r1 = cptr.dup(r1, $sizeof_nhrect); // by-value struct param
+    r2 = cptr.dup(r2, $sizeof_nhrect); // by-value struct param
     cptr.stI16(r3, i16(min(cptr.ldI16(r1), cptr.ldI16(r2))));
     cptr.stI16o(r3, $NhRect_ly, i16(min(cptr.ldI16o(r1, $nhrect_ly), cptr.ldI16o(r2, $nhrect_ly))));
     cptr.stI16o(r3, $NhRect_hx, i16(max(cptr.ldI16o(r1, $nhrect_hx), cptr.ldI16o(r2, $nhrect_hx))));
     cptr.stI16o(r3, $NhRect_hy, i16(max(cptr.ldI16o(r1, $nhrect_hy), cptr.ldI16o(r2, $nhrect_hy))));
 }
 
-/** C ref: rect.c:147 — @param {CPtr} r */
+/*
+ * Remove a rectangle from the list of free NhRect.
+ */
+
+/** C ref: rect.c:147 — @param {CPtr<NhRect>} r */
 export function remove_rect(r) {
     let ind;
+
     ind = get_rect_ind(r);
     if (ind >= 0)
-        cptr.memcpy(cptr.add(rect, ind, 8), cptr.add(rect, --rect_cnt, 8), 8);
+        cptr.memcpy(cptr.add(rect, ind, $sizeof_NhRect), cptr.add(rect, --rect_cnt, $sizeof_NhRect), 8);
 }
 
-/** C ref: rect.c:161 — @param {CPtr} r */
+/*
+ * Add a NhRect to the list.
+ */
+
+/** C ref: rect.c:161 — @param {CPtr<NhRect>} r */
 export function* add_rect(r) {
     if (rect_cnt >= n_rects) {
-        (yield* impossible(__sl3));
+        (yield* impossible(__s_n_rects_may_be_too_small));
         return;
     }
+    /* Check that this NhRect is not included in another one */
     if (get_rect(r))
         return;
-    cptr.memcpy(cptr.add(rect, rect_cnt, 8), r, 8);
+    cptr.memcpy(cptr.add(rect, rect_cnt, $sizeof_NhRect), r, 8);
     rect_cnt++;
 }
 
-/** C ref: rect.c:182 — @param {CPtr} r1 @param {CPtr} r2 */
+/*
+ * Okay, here we have two rectangles (r1 & r2).
+ * r1 was already in the list and r2 is included in r1.
+ * What we want is to allocate r2, that is split r1 into smaller rectangles
+ * then remove it.
+ */
+
+/** C ref: rect.c:182 — @param {CPtr<NhRect>} r1 @param {CPtr<NhRect>} r2 */
 export function* split_rects(r1, r2) {
     let r = cptr.alloc(8);
     let old_r = cptr.alloc(8);
     let i;
+
     cptr.memcpy(old_r, r1, 8);
     remove_rect(r1);
+
+    /* Walk down since rect_cnt & rect[] will change... */
     for (i = (rect_cnt - 1) | 0; i >= 0; i--)
-        if (intersect(cptr.add(rect, i, 8), r2, r))
-            (yield* split_rects(cptr.add(rect, i, 8), r));
+        if (intersect(cptr.add(rect, i, $sizeof_NhRect), r2, r))
+            (yield* split_rects(cptr.add(rect, i, $sizeof_NhRect), r));
+
     if (((((cptr.ldI16o(r2, $NhRect_ly) - cptr.ldI16o(old_r, $nhrect_ly)) | 0) - 1) | 0) > (((cptr.ldI16o(old_r, $nhrect_hy) < 20 ? 6 : 4) + 4) | 0)) {
         cptr.memcpy(r, old_r, 8);
         cptr.stI16o(r, $nhrect_hy, i16(((cptr.ldI16o(r2, $NhRect_ly) - 2) | 0)));

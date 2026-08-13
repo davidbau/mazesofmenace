@@ -17,7 +17,8 @@ import { Luck } from './nhprop.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $rnglist_t_init = FLD.rnglist_t_init, $rnglist_t_rng_state = FLD.rnglist_t_rng_state,
-    $you_moreluck = FLD.you_moreluck, $you_ulevel = FLD.you_ulevel, $you_uluck = FLD.you_uluck;
+    $sizeof_rnglist_t = FLD.sizeof_rnglist_t, $you_moreluck = FLD.you_moreluck, $you_ulevel = FLD.you_ulevel,
+    $you_uluck = FLD.you_uluck;
 
 // ---- hand-written runtime prelude (tools/c2js/runtime/rnd-prelude.js) ----
 // rng-log runtime + minimal libc shims + extern stubs for the parity harness.
@@ -110,25 +111,43 @@ let has_strong_rngseed = 1; /* TRUE in the recorder build */
 // ---- end runtime prelude ----
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("NETHACK_RNGLOG");
-const __sl1 = cptr.lit("NETHACK_RNGLOG_DISP");
-const __sl2 = cptr.lit("w");
-const __sl3 = cptr.lit("%d %s(%s) = %d @ %s(%s:%d)\n");
-const __sl4 = cptr.lit("%d %s(%s) = %d @ %s:%d\n");
-const __sl5 = cptr.lit("%d %s(%s) = %d\n");
-const __sl6 = cptr.lit("Bad rng function passed to init_isaac64().");
-const __sl7 = cptr.lit("%d ~drn2(%d) = %d");
-const __sl8 = cptr.lit(" @ %s(%s:%d)");
-const __sl9 = cptr.lit(" @ %s:%d");
-const __sl10 = cptr.lit("%d");
-const __sl11 = cptr.lit("rn2");
-const __sl12 = cptr.lit("rnl");
-const __sl13 = cptr.lit("rnd");
-const __sl14 = cptr.lit("%d,%d");
-const __sl15 = cptr.lit("d");
-const __sl16 = cptr.lit("rne");
-const __sl17 = cptr.lit("rnz");
+const __s_nethack_rnglog = cptr.lit("NETHACK_RNGLOG");
+const __s_nethack_rnglog_disp = cptr.lit("NETHACK_RNGLOG_DISP");
+const __s_w = cptr.lit("w");
+const __s_d_s_s_d_s_s_d = cptr.lit("%d %s(%s) = %d @ %s(%s:%d)\n");
+const __s_d_s_s_d_s_d = cptr.lit("%d %s(%s) = %d @ %s:%d\n");
+const __s_d_s_s_d = cptr.lit("%d %s(%s) = %d\n");
+const __s_bad_rng_function_passed_to_init_isaac64 = cptr.lit("Bad rng function passed to init_isaac64().");
+const __s_d_drn2_d_d = cptr.lit("%d ~drn2(%d) = %d");
+const __s_s_s_d = cptr.lit(" @ %s(%s:%d)");
+const __s_s_d = cptr.lit(" @ %s:%d");
+const __s_pct_d = cptr.lit("%d");
+const __s_rn2 = cptr.lit("rn2");
+const __s_rnl = cptr.lit("rnl");
+const __s_rnd = cptr.lit("rnd");
+const __s_d_d = cptr.lit("%d,%d");
+const __s_d = cptr.lit("d");
+const __s_rne = cptr.lit("rne");
+const __s_rnz = cptr.lit("rnz");
 
+/*
+ * PRNG call logging infrastructure.
+ * When NETHACK_RNGLOG is set, every rn2/rnd/rnl/d/rne/rnz call is logged
+ * with: call#, function(args) = result @ caller_func(file:line)
+ *
+ * The caller_func, file:line come from rng_log_set_caller(), invoked
+ * by the macros in hack.h before calling the real function.
+ *
+ * Caller context propagation: the context is NOT cleared after logging.
+ * This means internal rn2 calls from wrapper functions (rnz, rne, rnl)
+ * inherit the ORIGINAL caller's file:line annotation.  For example,
+ * if start_corpse_timeout at mkobj.c:1409 calls rnz(25), the internal
+ * rn2(1000), rn2(4), rn2(2) calls all log with "@ mkobj.c:1409".
+ * The wrapper result (rnz, rne, rnl) also logs with the same annotation.
+ *
+ * Context is overwritten by the next macro expansion (each external call
+ * sets fresh context), so there is no stale-context problem.
+ */
 /** C ref: rnd.c:30 — FILE * */
 let rng_logfile = null;
 
@@ -149,12 +168,13 @@ let rng_caller_func = null;
 
 /** C ref: rnd.c:38 */
 export function rng_log_init() {
-    let logpath = getenv(__sl0);
-    let disp = getenv(__sl1);
+    let logpath = getenv(__s_nethack_rnglog);
+    let disp = getenv(__s_nethack_rnglog_disp);
+
     if (logpath && cptr.ld1s(logpath)) {
-        rng_logfile = fopen(logpath, __sl2);
+        rng_logfile = fopen(logpath, __s_w);
         if (rng_logfile)
-            setvbuf(rng_logfile, null, 1, 0n);
+            setvbuf(rng_logfile, null, 1, 0n);  /* line-buffered */
     }
     rng_log_disp = schar(((disp && cptr.ld1s(disp) && cptr.ld1s(disp) != 48) ? 1 : 0));
 }
@@ -164,7 +184,7 @@ export function rng_log_enabled() {
     return schar((rng_logfile ? 1 : 0));
 }
 
-/** C ref: rnd.c:58 — @param {CPtr} file @param {CInt} line @param {CPtr} func */
+/** C ref: rnd.c:58 — @param {CPtr<char>} file @param {CInt} line @param {CPtr<char>} func */
 export function rng_log_set_caller(file, line, func) {
     rng_caller_file = file;
     rng_caller_line = line;
@@ -176,19 +196,21 @@ export function rng_log_get_call_count() {
     return rng_call_count;
 }
 
-/** C ref: rnd.c:72 — @param {CPtr} func @param {CPtr} args @param {CInt} result */
+/** C ref: rnd.c:72 — @param {CPtr<char>} func @param {CPtr<char>} args @param {CInt} result */
 function rng_log_write(func, args, result) {
     if (!rng_logfile)
         return;
     rng_call_count++;
     if (rng_caller_file) {
         if (rng_caller_func) {
-            fprintf(rng_logfile, __sl3, rng_call_count, func, args, result, rng_caller_func, rng_caller_file, rng_caller_line);
+            fprintf(rng_logfile, __s_d_s_s_d_s_s_d, rng_call_count, func, args, result, rng_caller_func, rng_caller_file, rng_caller_line);
         } else {
-            fprintf(rng_logfile, __sl4, rng_call_count, func, args, result, rng_caller_file, rng_caller_line);
+            fprintf(rng_logfile, __s_d_s_s_d_s_d, rng_call_count, func, args, result, rng_caller_file, rng_caller_line);
         }
+        /* Do NOT clear rng_caller_file here -- let internal calls from
+           wrapper functions (rnz, rne, rnl) inherit the same context. */
     } else {
-        fprintf(rng_logfile, __sl5, rng_call_count, func, args, result);
+        fprintf(rng_logfile, __s_d_s_s_d, rng_call_count, func, args, result);
     }
 }
 
@@ -199,7 +221,7 @@ export const CORE = 0;
 export const DISP = 1;
 
 /** C ref: rnd.c:114 — struct rnglist_t[2] */
-const rnglist = cptr.alloc(2 * 4144);
+const rnglist = cptr.alloc(2 * $sizeof_rnglist_t);
 cptr.stPtro(rnglist, 0, rn2);
 cptr.st1o(rnglist, 0 + $rnglist_t_init, 0);
 cptr.stI32o(rnglist, 0 + $rnglist_t_rng_state, 0);
@@ -210,8 +232,9 @@ cptr.stI32o(rnglist, 4144 + $rnglist_t_rng_state, 0);
 /** C ref: rnd.c:120 — @param {CPtr} fn @returns {CInt} */
 function whichrng(fn) {
     let i;
+
     for (i = 0; i < 2; ++i)
-        if (cptr.ldPtro(rnglist, i, 4144) === fn)
+        if (cptr.ldPtro(rnglist, i, $sizeof_rnglist_t) === fn)
             return i;
     return -1;
 }
@@ -221,31 +244,37 @@ export function init_isaac64(seed, fn) {
     let new_rng_state = new Uint8Array(8);
     let i;
     let rngindx = whichrng(fn);
+
     if (rngindx < 0)
-        panic(__sl6);
+        panic(__s_bad_rng_function_passed_to_init_isaac64);
+
     for (i = 0; BigInt(i >>> 0) < 8n; i++) {
         cptr.st1o(cptr.decay(new_rng_state), i, Number(BigInt.asUintN(8, (seed & 255n))), 1);
         seed >>= 8n;
     }
-    cptr.stPtro2(rnglist, rngindx, 4144, $rnglist_t_rng_state, isaac64_init(new_rng_state));
+    cptr.stPtro2(rnglist, rngindx, $sizeof_rnglist_t, $rnglist_t_rng_state, isaac64_init(new_rng_state));
 }
 
 /** C ref: rnd.c:149 — @param {CInt} x @returns {CInt} */
 function RND(x) {
-    return Number(BigInt.asIntN(32, (isaac64_next_uint64(cptr.ldPtro2(rnglist, NHC.CORE, 4144, $rnglist_t_rng_state)) % BigInt.asUintN(64, BigInt(x)))));
+    return Number(BigInt.asIntN(32, (isaac64_next_uint64(cptr.ldPtro2(rnglist, NHC.CORE, $sizeof_rnglist_t, $rnglist_t_rng_state)) % BigInt.asUintN(64, BigInt(x)))));
 }
 
+/* 0 <= rn2(x) < x, but on a different sequence from the "main" rn2;
+   used in cases where the answer doesn't affect gameplay and we don't
+   want to give users easy control over the main RNG sequence. */
 /** C ref: rnd.c:158 — @param {CInt} x @returns {CInt} */
 export function rn2_on_display_rng(x) {
-    let result = Number(BigInt.asIntN(32, (isaac64_next_uint64(cptr.ldPtro2(rnglist, NHC.DISP, 4144, $rnglist_t_rng_state)) % BigInt.asUintN(64, BigInt(x)))));
+    let result = Number(BigInt.asIntN(32, (isaac64_next_uint64(cptr.ldPtro2(rnglist, NHC.DISP, $sizeof_rnglist_t, $rnglist_t_rng_state)) % BigInt.asUintN(64, BigInt(x)))));
+
     if (rng_logfile && rng_log_disp) {
         rng_call_count++;
-        fprintf(rng_logfile, __sl7, rng_call_count, x, result);
+        fprintf(rng_logfile, __s_d_drn2_d_d, rng_call_count, x, result);
         if (rng_caller_file) {
             if (rng_caller_func) {
-                fprintf(rng_logfile, __sl8, rng_caller_func, rng_caller_file, rng_caller_line);
+                fprintf(rng_logfile, __s_s_s_d, rng_caller_func, rng_caller_file, rng_caller_line);
             } else {
-                fprintf(rng_logfile, __sl9, rng_caller_file, rng_caller_line);
+                fprintf(rng_logfile, __s_s_d, rng_caller_file, rng_caller_line);
             }
         }
         fputc(10, rng_logfile);
@@ -253,26 +282,45 @@ export function rn2_on_display_rng(x) {
     return result;
 }
 
+/* 0 <= rn2(x) < x */
 /** C ref: rnd.c:199 — @param {CInt} x @returns {CInt} */
 export function rn2(x) {
     let result;
     result = RND(x);
     if (rng_logfile) {
         let buf = new Uint8Array(32);
-        cptr.snprintf(cptr.decay(buf), 32n, __sl10, x);
-        rng_log_write(__sl11, cptr.decay(buf), result);
+        cptr.snprintf(cptr.decay(buf), 32n, __s_pct_d, x);
+        rng_log_write(__s_rn2, cptr.decay(buf), result);
     }
     return result;
 }
 
+/* 0 <= rnl(x) < x; sometimes subtracting Luck;
+   good luck approaches 0, bad luck approaches (x-1) */
 /** C ref: rnd.c:220 — @param {CInt} x @returns {CInt} */
 export function rnl(x) {
     let i;
     let adjustment;
+
     adjustment = Luck();
     if (x <= 15) {
+        /* for small ranges, use Luck/3 (rounded away from 0);
+           also guard against architecture-specific differences
+           of integer division involving negative values */
         adjustment = Math.imul((((Math.abs(adjustment) + 1) | 0) / 3) | 0, sgn(adjustment));
+        /*
+         *       11..13 ->  4
+         *        8..10 ->  3
+         *        5.. 7 ->  2
+         *        2.. 4 ->  1
+         *       -1,0,1 ->  0 (no adjustment)
+         *       -4..-2 -> -1
+         *       -7..-5 -> -2
+         *      -10..-8 -> -3
+         *      -13..-11-> -4
+         */
     }
+
     i = RND(x);
     if (adjustment && rn2((37 + Math.abs(adjustment)) | 0)) {
         i = (i - adjustment) | 0;
@@ -283,20 +331,21 @@ export function rnl(x) {
     }
     if (rng_logfile) {
         let buf = new Uint8Array(32);
-        cptr.snprintf(cptr.decay(buf), 32n, __sl10, x);
-        rng_log_write(__sl12, cptr.decay(buf), i);
+        cptr.snprintf(cptr.decay(buf), 32n, __s_pct_d, x);
+        rng_log_write(__s_rnl, cptr.decay(buf), i);
     }
     return i;
 }
 
+/* 1 <= rnd(x) <= x */
 /** C ref: rnd.c:270 — @param {CInt} x @returns {CInt} */
 export function rnd(x) {
     let result;
     result = (RND(x) + 1) | 0;
     if (rng_logfile) {
         let buf = new Uint8Array(32);
-        cptr.snprintf(cptr.decay(buf), 32n, __sl10, x);
-        rng_log_write(__sl13, cptr.decay(buf), result);
+        cptr.snprintf(cptr.decay(buf), 32n, __s_pct_d, x);
+        rng_log_write(__s_rnd, cptr.decay(buf), result);
     }
     return result;
 }
@@ -306,6 +355,7 @@ export function rnd_on_display_rng(x) {
     return (rn2_on_display_rng(x) + 1) | 0;
 }
 
+/* d(N,X) == NdX == dX+dX+...+dX N times; n <= d(n,x) <= (n*x) */
 /** C ref: rnd.c:296 — @param {CInt} n @param {CInt} x @returns {CInt} */
 export function d(n, x) {
     let tmp = n;
@@ -314,32 +364,49 @@ export function d(n, x) {
         tmp = (tmp + RND(x)) | 0;
     if (rng_logfile) {
         let buf = new Uint8Array(64);
-        cptr.snprintf(cptr.decay(buf), 64n, __sl14, orig_n, x);
-        rng_log_write(__sl15, cptr.decay(buf), tmp);
+        cptr.snprintf(cptr.decay(buf), 64n, __s_d_d, orig_n, x);
+        rng_log_write(__s_d, cptr.decay(buf), tmp);
     }
-    return tmp;
+    return tmp;  /* Alea iacta est. -- J.C. */
 }
 
+/* 1 <= rne(x) <= max(u.ulevel/3,5) */
 /** C ref: rnd.c:319 — @param {CInt} x @returns {CInt} */
 export function rne(x) {
     let tmp;
     let utmp;
+    /* Internal rn2 calls inherit caller context from the rne macro --
+       no save/clear needed. */
+
     utmp = (cptr.ldI32o(u, $you_ulevel) < 15) ? 5 : (cptr.ldI32o(u, $you_ulevel) / 3) | 0;
     tmp = 1;
     while (tmp < utmp && !rn2(x))
         tmp++;
     if (rng_logfile) {
         let buf = new Uint8Array(32);
-        cptr.snprintf(cptr.decay(buf), 32n, __sl10, x);
-        rng_log_write(__sl16, cptr.decay(buf), tmp);
+        cptr.snprintf(cptr.decay(buf), 32n, __s_pct_d, x);
+        rng_log_write(__s_rne, cptr.decay(buf), tmp);
     }
     return tmp;
+
+    /* was:
+     *  tmp = 1;
+     *  while (!rn2(x))
+     *    tmp++;
+     *  return min(tmp, (u.ulevel < 15) ? 5 : u.ulevel / 3);
+     * which is clearer but less efficient and stands a vanishingly
+     * small chance of overflowing tmp
+     */
 }
 
+/* rnz: everyone's favorite! */
 /** C ref: rnd.c:348 — @param {CInt} i @returns {CInt} */
 export function rnz(i) {
     let x = BigInt(i);
     let tmp = 1000n;
+    /* Internal rn2/rne calls inherit caller context from the rnz macro --
+       no save/clear needed. */
+
     tmp += BigInt(rn2(1000));
     tmp *= BigInt(rne(4));
     if (rn2(2)) {
@@ -351,8 +418,8 @@ export function rnz(i) {
     }
     if (rng_logfile) {
         let buf = new Uint8Array(32);
-        cptr.snprintf(cptr.decay(buf), 32n, __sl10, i);
-        rng_log_write(__sl17, cptr.decay(buf), Number(BigInt.asIntN(32, x)));
+        cptr.snprintf(cptr.decay(buf), 32n, __s_pct_d, i);
+        rng_log_write(__s_rnz, cptr.decay(buf), Number(BigInt.asIntN(32, x)));
     }
     return Number(BigInt.asIntN(32, x));
 }
@@ -362,22 +429,31 @@ function set_random(seed, fn) {
     init_isaac64(seed, fn);
 }
 
+/*
+ * Initializes the random number generator.
+ * Only call once.
+ */
 /** C ref: rnd.c:423 — @param {CPtr} fn */
 export function init_random(fn) {
     set_random(sys_random_seed(), fn);
 }
 
+/* Reshuffles the random number generator. */
 /** C ref: rnd.c:430 — @param {CPtr} fn */
 export function reseed_random(fn) {
+    /* only reseed if we are certain that the seed generation is unguessable
+     * by the players. */
     if (has_strong_rngseed.v)
         init_random(fn);
 }
 
-/** C ref: rnd.c:440 — @param {CPtr} indices @param {CInt} count */
+/* randomize the given list of numbers  0 <= i < count */
+/** C ref: rnd.c:440 — @param {CPtr<int>} indices @param {CInt} count */
 export function shuffle_int_array(indices, count) {
     let i;
     let iswap;
     let temp;
+
     for (i = (count - 1) | 0; i > 0; i--) {
         if ((iswap = rn2((i + 1) | 0)) == i)
             continue;

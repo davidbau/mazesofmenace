@@ -14,6 +14,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { age_is_relative, has_omid, has_omonst, is_unicorn, ismnum } from './nhmacrofn.js';
+import { rnd_at } from './nhrng.js';
 import { Upolyd, clear_nhwindow, cliparound, create_nhwindow, destroy_nhwindow, discover, display_nhwindow, end_menu, putmsghistory, putstr, start_menu, wait_synch, wizard } from './nhprop.js';
 import { WIN_MESSAGE, cg, flags, gb, gc, gd, ge, gf, gh, gi, gm, gn, go, gs, gu, gv, gy, iflags, program_state, svc, svd, svk, svl, svm, svn, svo, svp, svq, svr, svs, svu, svw, u, uball, ubirthday, uchain, urealtime, uwep } from './decl.js';
 import { free_omid, new_omailcmd, newoextra, newomid, newomonst, next_ident, place_object } from './mkobj.js';
@@ -65,7 +66,6 @@ import { place_wsegs, rest_worm } from './worm.js';
 import { rest_engravings } from './engrave.js';
 import { place_monster } from './steed.js';
 import { eos, sgn } from './hacklib.js';
-import { rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { rest_regions } from './region.js';
 import { rest_track } from './track.js';
 import { mazexy, restore_waterlevel } from './mkmaze.js';
@@ -147,7 +147,9 @@ const $NHFILE_eof = FLD.NHFILE_eof, $NHFILE_ftype = FLD.NHFILE_ftype, $NHFILE_mo
     $polearm_info_m_id = FLD.polearm_info_m_id, $restore_info_mread_flags = FLD.restore_info_mread_flags,
     $rm_typ = FLD.rm_typ, $sinfo_beyond_savefile_load = FLD.sinfo_beyond_savefile_load,
     $sinfo_in_getlev = FLD.sinfo_in_getlev, $sinfo_restoring = FLD.sinfo_restoring,
-    $sinfo_something_worth_saving = FLD.sinfo_something_worth_saving,
+    $sinfo_something_worth_saving = FLD.sinfo_something_worth_saving, $sizeof_mkroom = FLD.sizeof_mkroom,
+    $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_permonst = FLD.sizeof_permonst, $sizeof_rm = FLD.sizeof_rm,
+    $sizeof_rm_x21 = FLD.sizeof_rm_x21, $sizeof_spell = FLD.sizeof_spell,
     $stairway_isladder = FLD.stairway_isladder, $stairway_next = FLD.stairway_next,
     $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev,
     $stairway_u_traversed = FLD.stairway_u_traversed, $stairway_up = FLD.stairway_up,
@@ -172,109 +174,111 @@ const $NHFILE_eof = FLD.NHFILE_eof, $NHFILE_ftype = FLD.NHFILE_ftype, $NHFILE_mo
     $you_uy = FLD.you_uy, $you_uz = FLD.you_uz, $you_uz0 = FLD.you_uz0;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("Finishing off %s...");
-const __sl1 = cptr.lit("levchn-lev_count");
-const __sl2 = cptr.lit("levchn-s_level");
-const __sl3 = cptr.lit("damage-damage_count");
-const __sl4 = cptr.lit("damage");
-const __sl5 = cptr.lit("obj");
-const __sl6 = cptr.lit("obj-oname_length");
-const __sl7 = cptr.lit("obj-oname");
-const __sl8 = cptr.lit("obj-omonst_length");
-const __sl9 = cptr.lit("obj-omailcmd_length");
-const __sl10 = cptr.lit("obj-omailcmd");
-const __sl11 = cptr.lit("obj-omid");
-const __sl12 = cptr.lit("obj-obj_length");
-const __sl13 = cptr.lit("restobjchn");
-const __sl14 = cptr.lit("restore.c");
-const __sl15 = cptr.lit("otmp != 0");
-const __sl16 = cptr.lit("Restobjchn: error reading objchn.");
-const __sl17 = cptr.lit("monst");
-const __sl18 = cptr.lit("monst-mgivenname_length");
-const __sl19 = cptr.lit("monst-mgivenname");
-const __sl20 = cptr.lit("monst-egd_length");
-const __sl21 = cptr.lit("monst-egd");
-const __sl22 = cptr.lit("monst-epri_length");
-const __sl23 = cptr.lit("monst-epri");
-const __sl24 = cptr.lit("monst-eshk_length");
-const __sl25 = cptr.lit("monst-eshk");
-const __sl26 = cptr.lit("monst-emin_length");
-const __sl27 = cptr.lit("monst-emin");
-const __sl28 = cptr.lit("monst-edog_length");
-const __sl29 = cptr.lit("monst-edog");
-const __sl30 = cptr.lit("monst-ebones_length");
-const __sl31 = cptr.lit("monst-ebones");
-const __sl32 = cptr.lit("monst-mcorpsenm");
-const __sl33 = cptr.lit("monst-monst_length");
-const __sl34 = cptr.lit("restmonchn");
-const __sl35 = cptr.lit("mtmp != 0");
-const __sl36 = cptr.lit("bad monster weapon restore");
-const __sl37 = cptr.lit("Restmonchn: error reading monchn.");
-const __sl38 = cptr.lit("fruit");
-const __sl39 = cptr.lit("no old fruit?");
-const __sl40 = cptr.lit("gamestate-uid");
-const __sl41 = cptr.lit("nhuuid");
-const __sl42 = cptr.lit("gamestate-moves");
-const __sl43 = cptr.lit("Saved game was not yours.");
-const __sl44 = cptr.lit("gamestate-context");
-const __sl45 = cptr.lit("gamestate-flags");
-const __sl46 = cptr.lit("wreserve");
-const __sl47 = cptr.lit("wtreserved");
-const __sl48 = cptr.lit("gamestate-you");
-const __sl49 = cptr.lit("gamestate-ubirthday");
-const __sl50 = cptr.lit("gamestate-realtime");
-const __sl51 = cptr.lit("gamestate-start_timing");
-const __sl52 = cptr.lit("were not healthy enough to survive restoration.");
-const __sl53 = cptr.lit("gamestate-mvitals");
-const __sl54 = cptr.lit("gamestate-quest_status");
-const __sl55 = cptr.lit("gamestate-spl_book");
-const __sl56 = cptr.lit("gamestate-pl_character");
-const __sl57 = cptr.lit("gamestate-pl_fruit");
-const __sl58 = cptr.lit("restlevelfile: %s");
-const __sl59 = cptr.lit("gamestate-level_number");
-const __sl60 = cptr.lit("restgamestate: lost ball & chain");
-const __sl61 = cptr.lit("stairs-staircount");
-const __sl62 = cptr.lit("stairs-stairway");
-const __sl63 = cptr.lit("cemetery-cemetery_flag");
-const __sl64 = cptr.lit("cemetery-bonesinfo");
-const __sl65 = cptr.lit("location-rm");
-const __sl66 = cptr.lit("Strange, this map is not as I remember it.");
-const __sl67 = cptr.lit("Somebody is trying some trickery here...");
-const __sl68 = cptr.lit("This game is void.");
-const __sl69 = cptr.lit("");
-const __sl70 = cptr.lit("gamestate-hackpid");
-const __sl71 = cptr.lit("gamestate-dlvl");
-const __sl72 = cptr.lit("PID (%d) doesn't match saved PID (%d)!");
-const __sl73 = cptr.lit("This is level %d, not %d!");
-const __sl74 = cptr.lit("%s");
-const __sl75 = cptr.lit("lastseentyp");
-const __sl76 = cptr.lit("lev-timestmp");
-const __sl77 = cptr.lit("lev-updest");
-const __sl78 = cptr.lit("lev-dndest");
-const __sl79 = cptr.lit("lev-level_flags");
-const __sl80 = cptr.lit("lev-doors_alloc");
-const __sl81 = cptr.lit("lev-doors");
-const __sl82 = cptr.lit("trap");
-const __sl83 = cptr.lit("getlev");
-const __sl84 = cptr.lit("getlev: need portal but none found");
-const __sl85 = cptr.lit("plname-size");
-const __sl86 = cptr.lit("plname");
-const __sl87 = cptr.lit("bubbles-bbubbly");
-const __sl88 = cptr.lit("gamelog-length");
-const __sl89 = cptr.lit("restore_gamelog: msg too big (%d)");
-const __sl90 = cptr.lit("gamelog-gamelog_text");
-const __sl91 = cptr.lit("gamelog-gamelog_line");
-const __sl92 = cptr.lit("msghistory-length");
-const __sl93 = cptr.lit("restore_msghistory: msg too big (%d)");
-const __sl94 = cptr.lit("msghistory-msg");
-const __sl95 = cptr.lit("Read %d messages from savefile.");
-const __sl96 = cptr.lit("Select one of your saved games");
-const __sl97 = cptr.lit("%.*s");
-const __sl98 = cptr.lit("%c %.*s");
-const __sl99 = cptr.lit("Start a new character");
-const __sl100 = cptr.lit("Never mind (quit)");
+const __s_finishing_off_s = cptr.lit("Finishing off %s...");
+const __s_levchn_lev_count = cptr.lit("levchn-lev_count");
+const __s_levchn_s_level = cptr.lit("levchn-s_level");
+const __s_damage_damage_count = cptr.lit("damage-damage_count");
+const __s_damage = cptr.lit("damage");
+const __s_obj = cptr.lit("obj");
+const __s_obj_oname_length = cptr.lit("obj-oname_length");
+const __s_obj_oname = cptr.lit("obj-oname");
+const __s_obj_omonst_length = cptr.lit("obj-omonst_length");
+const __s_obj_omailcmd_length = cptr.lit("obj-omailcmd_length");
+const __s_obj_omailcmd = cptr.lit("obj-omailcmd");
+const __s_obj_omid = cptr.lit("obj-omid");
+const __s_obj_obj_length = cptr.lit("obj-obj_length");
+const __s_restobjchn = cptr.lit("restobjchn");
+const __s_restore_c = cptr.lit("restore.c");
+const __s_otmp_0 = cptr.lit("otmp != 0");
+const __s_restobjchn_error_reading_objchn = cptr.lit("Restobjchn: error reading objchn.");
+const __s_monst = cptr.lit("monst");
+const __s_monst_mgivenname_length = cptr.lit("monst-mgivenname_length");
+const __s_monst_mgivenname = cptr.lit("monst-mgivenname");
+const __s_monst_egd_length = cptr.lit("monst-egd_length");
+const __s_monst_egd = cptr.lit("monst-egd");
+const __s_monst_epri_length = cptr.lit("monst-epri_length");
+const __s_monst_epri = cptr.lit("monst-epri");
+const __s_monst_eshk_length = cptr.lit("monst-eshk_length");
+const __s_monst_eshk = cptr.lit("monst-eshk");
+const __s_monst_emin_length = cptr.lit("monst-emin_length");
+const __s_monst_emin = cptr.lit("monst-emin");
+const __s_monst_edog_length = cptr.lit("monst-edog_length");
+const __s_monst_edog = cptr.lit("monst-edog");
+const __s_monst_ebones_length = cptr.lit("monst-ebones_length");
+const __s_monst_ebones = cptr.lit("monst-ebones");
+const __s_monst_mcorpsenm = cptr.lit("monst-mcorpsenm");
+const __s_monst_monst_length = cptr.lit("monst-monst_length");
+const __s_restmonchn = cptr.lit("restmonchn");
+const __s_mtmp_0 = cptr.lit("mtmp != 0");
+const __s_bad_monster_weapon_restore = cptr.lit("bad monster weapon restore");
+const __s_restmonchn_error_reading_monchn = cptr.lit("Restmonchn: error reading monchn.");
+const __s_fruit = cptr.lit("fruit");
+const __s_no_old_fruit = cptr.lit("no old fruit?");
+const __s_gamestate_uid = cptr.lit("gamestate-uid");
+const __s_nhuuid = cptr.lit("nhuuid");
+const __s_gamestate_moves = cptr.lit("gamestate-moves");
+const __s_saved_game_was_not_yours = cptr.lit("Saved game was not yours.");
+const __s_gamestate_context = cptr.lit("gamestate-context");
+const __s_gamestate_flags = cptr.lit("gamestate-flags");
+const __s_wreserve = cptr.lit("wreserve");
+const __s_wtreserved = cptr.lit("wtreserved");
+const __s_gamestate_you = cptr.lit("gamestate-you");
+const __s_gamestate_ubirthday = cptr.lit("gamestate-ubirthday");
+const __s_gamestate_realtime = cptr.lit("gamestate-realtime");
+const __s_gamestate_start_timing = cptr.lit("gamestate-start_timing");
+const __s_were_not_healthy_enough_to_survive = cptr.lit("were not healthy enough to survive restoration.");
+const __s_gamestate_mvitals = cptr.lit("gamestate-mvitals");
+const __s_gamestate_quest_status = cptr.lit("gamestate-quest_status");
+const __s_gamestate_spl_book = cptr.lit("gamestate-spl_book");
+const __s_gamestate_pl_character = cptr.lit("gamestate-pl_character");
+const __s_gamestate_pl_fruit = cptr.lit("gamestate-pl_fruit");
+const __s_restlevelfile_s = cptr.lit("restlevelfile: %s");
+const __s_gamestate_level_number = cptr.lit("gamestate-level_number");
+const __s_restgamestate_lost_ball_chain = cptr.lit("restgamestate: lost ball & chain");
+const __s_stairs_staircount = cptr.lit("stairs-staircount");
+const __s_stairs_stairway = cptr.lit("stairs-stairway");
+const __s_cemetery_cemetery_flag = cptr.lit("cemetery-cemetery_flag");
+const __s_cemetery_bonesinfo = cptr.lit("cemetery-bonesinfo");
+const __s_location_rm = cptr.lit("location-rm");
+const __s_strange_this_map_is_not_as_i_remember_it = cptr.lit("Strange, this map is not as I remember it.");
+const __s_somebody_is_trying_some_trickery_here = cptr.lit("Somebody is trying some trickery here...");
+const __s_this_game_is_void = cptr.lit("This game is void.");
+const __s_empty = cptr.lit("");
+const __s_gamestate_hackpid = cptr.lit("gamestate-hackpid");
+const __s_gamestate_dlvl = cptr.lit("gamestate-dlvl");
+const __s_pid_d_doesn_t_match_saved_pid_d = cptr.lit("PID (%d) doesn't match saved PID (%d)!");
+const __s_this_is_level_d_not_d = cptr.lit("This is level %d, not %d!");
+const __s_pct_s = cptr.lit("%s");
+const __s_lastseentyp = cptr.lit("lastseentyp");
+const __s_lev_timestmp = cptr.lit("lev-timestmp");
+const __s_lev_updest = cptr.lit("lev-updest");
+const __s_lev_dndest = cptr.lit("lev-dndest");
+const __s_lev_level_flags = cptr.lit("lev-level_flags");
+const __s_lev_doors_alloc = cptr.lit("lev-doors_alloc");
+const __s_lev_doors = cptr.lit("lev-doors");
+const __s_trap = cptr.lit("trap");
+const __s_getlev = cptr.lit("getlev");
+const __s_getlev_need_portal_but_none_found = cptr.lit("getlev: need portal but none found");
+const __s_plname_size = cptr.lit("plname-size");
+const __s_plname = cptr.lit("plname");
+const __s_bubbles_bbubbly = cptr.lit("bubbles-bbubbly");
+const __s_gamelog_length = cptr.lit("gamelog-length");
+const __s_restore_gamelog_msg_too_big_d = cptr.lit("restore_gamelog: msg too big (%d)");
+const __s_gamelog_gamelog_text = cptr.lit("gamelog-gamelog_text");
+const __s_gamelog_gamelog_line = cptr.lit("gamelog-gamelog_line");
+const __s_msghistory_length = cptr.lit("msghistory-length");
+const __s_restore_msghistory_msg_too_big_d = cptr.lit("restore_msghistory: msg too big (%d)");
+const __s_msghistory_msg = cptr.lit("msghistory-msg");
+const __s_read_d_messages_from_savefile = cptr.lit("Read %d messages from savefile.");
+const __s_select_one_of_your_saved_games = cptr.lit("Select one of your saved games");
+const __s_pct_dot_star_s = cptr.lit("%.*s");
+const __s_c_s = cptr.lit("%c %.*s");
+const __s_start_a_new_character = cptr.lit("Start a new character");
+const __s_never_mind_quit = cptr.lit("Never mind (quit)");
 
 /** C ref: restore.c:45 — struct bucket { next, map } (memory model v0.5) */
+
+/* Recalculate svl.level.objects[x][y], since this info was not saved. */
 
 /** C ref: restore.c:71 */
 function* find_lev_obj() {
@@ -282,50 +286,70 @@ function* find_lev_obj() {
     let otmp;
     let x;
     let y;
+
     for (x = 0; x < NHM.COLNO; x++)
         for (y = 0; y < NHM.ROWNO; y++)
             cptr.stPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_objects, null);
+
+    /*
+     * Reverse the entire fobj chain, which is necessary so that we can
+     * place the objects in the proper order.  Make all obj in chain
+     * OBJ_FREE so place_object will work correctly.
+     */
     while ((otmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist)) !== null) {
         cptr.stPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist, cptr.ldPtr(otmp));
         cptr.stPtr(otmp, fobjtmp);
         cptr.st1o(otmp, $obj_where, NHM.OBJ_FREE);
         fobjtmp = otmp;
     }
+    /* fobj should now be empty */
+
+    /* Set svl.level.objects (as well as reversing the chain back again) */
     while ((otmp = fobjtmp) !== null) {
         fobjtmp = cptr.ldPtr(otmp);
         (yield* place_object(otmp, cptr.ldI16o(otmp, $obj_ox), cptr.ldI16o(otmp, $obj_oy)));
+
+        /* fixup(s) performed when restoring the level that the hero
+           is on, rather than just an arbitrary one */
         if (cptr.ldI16o(u, $you_uz + $d_level_dlevel)) {
+            /* handle uchain and uball when they're on the floor */
             if (cptr.ldI64o(otmp, $obj_owornmask) & 6291456n)
                 (yield* setworn(otmp, cptr.ldI64o(otmp, $obj_owornmask)));
         }
     }
 }
 
+/* Things that were marked "in_use" when the game was saved (ex. via the
+ * infamous "HUP" cheat) get used up here.
+ */
 /** C ref: restore.c:113 — @param {CInt} quietly */
 export function* inven_inuse(quietly) {
     let otmp;
     let otmp2;
+
     for (otmp = cptr.ldPtro(gi, $instance_globals_i_invent); otmp; otmp = otmp2) {
         otmp2 = cptr.ldPtr(otmp);
         if ((cptr.ldI32o(otmp, $obj_in_use) & 1)) {
             if (!quietly)
-                (yield* pline(__sl0, (yield* xname(otmp))));
+                (yield* pline(__s_finishing_off_s, (yield* xname(otmp))));
             (yield* useup(otmp));
         }
     }
 }
 
-/** C ref: restore.c:130 — @param {CPtr} nhfp */
+/** C ref: restore.c:130 — @param {CPtr<NHFILE>} nhfp */
 function* restlevchn(nhfp) {
     let cnt = cptr.box(0);
     let tmplev;
     let x;
+
     cptr.stPtro(svs, $instance_globals_saved_s_sp_levchn, null);
-    (yield* sfi_int(nhfp, cnt, __sl1));
+    (yield* sfi_int(nhfp, cnt, __s_levchn_lev_count));
     ;
     for (; cnt.v > 0; cnt.v--) {
         tmplev = (yield* alloc(56));
-        (yield* sfi_s_level(nhfp, tmplev, __sl2));
+        (yield* sfi_s_level(nhfp, tmplev, __s_levchn_s_level));
+
         if (!cptr.ldPtro(svs, $instance_globals_saved_s_sp_levchn))
             cptr.stPtro(svs, $instance_globals_saved_s_sp_levchn, tmplev);
         else {
@@ -337,77 +361,99 @@ function* restlevchn(nhfp) {
     }
 }
 
-/** C ref: restore.c:153 — @param {CPtr} nhfp */
+/** C ref: restore.c:153 — @param {CPtr<NHFILE>} nhfp */
 function* restdamage(nhfp) {
     let dmgcount = cptr.box(0);
     let counter;
     let tmp_dam;
     let ghostly = schar((cptr.ldI32o(nhfp, $NHFILE_ftype) == NHM.NHF_BONESFILE));
-    (yield* sfi_unsigned(nhfp, dmgcount, __sl3));
+
+    (yield* sfi_unsigned(nhfp, dmgcount, __s_damage_damage_count));
     ;
     counter = dmgcount.v | 0;
+
     if (!counter)
         return;
     do {
         tmp_dam = (yield* alloc(32));
-        (yield* sfi_damage(nhfp, tmp_dam, __sl4));
+
+        (yield* sfi_damage(nhfp, tmp_dam, __s_damage));
         if (ghostly)
             cptr.stI64o(tmp_dam, $damage_when, cptr.ldI64o(tmp_dam, $damage_when) + (BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - cptr.ldI64o(svo, $instance_globals_saved_o_omoves))));
+
         cptr.stPtr(tmp_dam, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_damagelist));
         cptr.stPtro(svl, $instance_globals_saved_l_level + $dlevel_t_damagelist, tmp_dam);
     } while (--counter > 0);
 }
 
-/** C ref: restore.c:183 — @param {CPtr} nhfp @param {CPtr} otmp */
+/* restore one object */
+/** C ref: restore.c:183 — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct obj>} otmp */
 function* restobj(nhfp, otmp) {
     let buflen = cptr.box(0);
     let omid = cptr.box(0);
-    (yield* sfi_obj(nhfp, otmp, __sl5));
+
+    (yield* sfi_obj(nhfp, otmp, __s_obj));
     cptr.stI32o(otmp, $obj_lua_ref_cnt, 0);
+    /* next object pointers are invalid; otmp->cobj needs to be left
+       as is--being non-null is key to restoring container contents */
     cptr.stPtr(otmp, cptr.stPtro(otmp, $obj_v, null));
+    /* non-null oextra needs to be reconstructed */
     if (cptr.ldPtro(otmp, $obj_oextra)) {
         cptr.stPtro(otmp, $obj_oextra, (yield* newoextra()));
-        (yield* sfi_int(nhfp, buflen, __sl6));
+
+        /* oname - object's name */
+        (yield* sfi_int(nhfp, buflen, __s_obj_oname_length));
         ;
         if (buflen.v > 0) {
             (yield* new_oname(otmp, buflen.v));
-            (yield* sfi_char(nhfp, (cptr.ldPtr(cptr.ldPtro((otmp), $obj_oextra))), __sl7, buflen.v));
+            (yield* sfi_char(nhfp, (cptr.ldPtr(cptr.ldPtro((otmp), $obj_oextra))), __s_obj_oname, buflen.v));
         }
-        (yield* sfi_int(nhfp, buflen, __sl8));
+
+        /* omonst - corpse or statue might retain full monster details */
+        (yield* sfi_int(nhfp, buflen, __s_obj_omonst_length));
         ;
         if (buflen.v > 0) {
             (yield* newomonst(otmp));
+            /* this is actually a monst struct, so we
+               can just defer to restmon() here */
             (yield* restmon(nhfp, (cptr.ldPtro(cptr.ldPtro((otmp), $obj_oextra), $oextra_omonst))));
         }
-        (yield* sfi_int(nhfp, buflen, __sl9));
+
+        /* omailcmd - feedback mechanism for scroll of mail */
+        (yield* sfi_int(nhfp, buflen, __s_obj_omailcmd_length));
         ;
         if (buflen.v > 0) {
             let omailcmd = (yield* alloc(buflen.v >>> 0));
-            (yield* sfi_char(nhfp, omailcmd, __sl10, buflen.v));
+
+            (yield* sfi_char(nhfp, omailcmd, __s_obj_omailcmd, buflen.v));
             (yield* new_omailcmd(otmp, omailcmd));
             cptr.free(omailcmd);
         }
-        (yield* newomid(otmp));
-        (yield* sfi_unsigned(nhfp, omid, __sl11));
+
+        /* omid - monster id number, connecting corpse to ghost */
+        (yield* newomid(otmp));  /* superfluous; we're already allocated otmp->oextra */
+        (yield* sfi_unsigned(nhfp, omid, __s_obj_omid));
         ;
         cptr.stI32o(cptr.ldPtro((otmp), $obj_oextra), $oextra_omid, omid.v);
     }
 }
 
-/** C ref: restore.c:231 — @param {CPtr} nhfp @param {CInt} frozen @returns {CPtr} */
+/** C ref: restore.c:231 — @param {CPtr<NHFILE>} nhfp @param {CInt} frozen @returns {CPtr<struct obj>} */
 function* restobjchn(nhfp, frozen) {
     let otmp;
     let otmp2 = null;
     let first = null;
     let buflen = cptr.box(0);
     let ghostly = schar((cptr.ldI32o(nhfp, $NHFILE_ftype) == NHM.NHF_BONESFILE));
+
     while (1) {
-        (yield* sfi_int(nhfp, buflen, __sl12));
+        (yield* sfi_int(nhfp, buflen, __s_obj_obj_length));
         ;
         if (buflen.v == -1)
             break;
+
         otmp = (yield* alloc(216));
-        (__builtin_expect(BigInt((!(otmp !== null))), 0n) ? __assert_rtn(__sl13, __sl14, 246, __sl15) : void 0);
+        (__builtin_expect(BigInt((!(otmp !== null))), 0n) ? __assert_rtn(__s_restobjchn, __s_restore_c, 246, __s_otmp_0) : void 0);
         (yield* restobj(nhfp, otmp));
         if (!first)
             first = otmp;
@@ -415,22 +461,32 @@ function* restobjchn(nhfp, frozen) {
             cptr.stPtr(otmp2, otmp);
         if (ghostly) {
             let nid = next_ident();
+
             (yield* add_id_mapping(cptr.ldI32o(otmp, $obj_o_id), nid));
             cptr.stI32o(otmp, $obj_o_id, nid);
         }
         if (ghostly && cptr.ldI16o(otmp, $obj_otyp) == NHC.SLIME_MOLD)
             (yield* ghostfruit(otmp));
+        /* Ghost levels get object age shifted from old player's clock
+         * to new player's clock.  Assumption: new player arrived
+         * immediately after old player died.
+         */
         if (ghostly && !frozen && !age_is_relative(otmp))
             cptr.stI64o(otmp, $obj_age, BigInt.asIntN(64, BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - cptr.ldI64o(svo, $instance_globals_saved_o_omoves)) + cptr.ldI64o(otmp, $obj_age)));
+
+        /* get contents of a container or statue */
         if ((cptr.ldPtro((otmp), $obj_cobj) !== null)) {
             let otmp3;
+
             cptr.stPtro(otmp, $obj_cobj, (yield* restobjchn(nhfp, schar((cptr.ldI16o((otmp), $obj_otyp) == NHC.ICE_BOX ? 1 : 0)))));
+            /* restore container back pointers */
             for (otmp3 = cptr.ldPtro(otmp, $obj_cobj); otmp3; otmp3 = cptr.ldPtr(otmp3))
                 cptr.stPtro(otmp3, $obj_v, otmp);
         }
         if ((cptr.ldI32o(otmp, $obj_bypass) & 1))
             cptr.stI32o(otmp, $obj_bypass, 0);
         if (!ghostly) {
+            /* fix the pointers */
             if (cptr.ldI32o(otmp, $obj_o_id) == cptr.ldI32o(svc, $context_info_victual + $victual_info_o_id))
                 cptr.stPtro(svc, $context_info_victual, otmp);
             if (cptr.ldI32o(otmp, $obj_o_id) == cptr.ldI32o(svc, $context_info_tin + $tin_info_o_id))
@@ -441,74 +497,91 @@ function* restobjchn(nhfp, frozen) {
         otmp2 = otmp;
     }
     if (first && cptr.ldPtr(otmp2)) {
-        (yield* impossible(__sl16));
+        (yield* impossible(__s_restobjchn_error_reading_objchn));
         cptr.stPtr(otmp2, null);
     }
     return first;
 }
 
-/** C ref: restore.c:307 — @param {CPtr} nhfp @param {CPtr} mtmp */
+/* restore one monster */
+/** C ref: restore.c:307 — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct monst>} mtmp */
 function* restmon(nhfp, mtmp) {
     let buflen = cptr.box(0);
     let mc = cptr.box(0);
-    (yield* sfi_monst(nhfp, mtmp, __sl17));
+
+    (yield* sfi_monst(nhfp, mtmp, __s_monst));
+
+    /* next monster pointer is invalid */
     cptr.stPtr(mtmp, null);
+    /* non-null mextra needs to be reconstructed */
     if (cptr.ldPtro(mtmp, $monst_mextra)) {
         cptr.stPtro(mtmp, $monst_mextra, (yield* newmextra()));
-        (yield* sfi_int(nhfp, buflen, __sl18));
+
+        /* mgivenname - monster's name */
+        (yield* sfi_int(nhfp, buflen, __s_monst_mgivenname_length));
         ;
         if (buflen.v > 0) {
             (yield* new_mgivenname(mtmp, buflen.v));
-            (yield* sfi_char(nhfp, (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))), __sl19, buflen.v));
+            (yield* sfi_char(nhfp, (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))), __s_monst_mgivenname, buflen.v));
         }
-        (yield* sfi_int(nhfp, buflen, __sl20));
+        /* egd - vault guard */
+        (yield* sfi_int(nhfp, buflen, __s_monst_egd_length));
         ;
         if (buflen.v > 0) {
             (yield* newegd(mtmp));
-            (yield* sfi_egd(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_egd)), __sl21));
+            (yield* sfi_egd(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_egd)), __s_monst_egd));
         }
-        (yield* sfi_int(nhfp, buflen, __sl22));
+        /* epri - temple priest */
+        (yield* sfi_int(nhfp, buflen, __s_monst_epri_length));
         ;
         if (buflen.v > 0) {
             (yield* newepri(mtmp));
-            (yield* sfi_epri(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_epri)), __sl23));
+            (yield* sfi_epri(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_epri)), __s_monst_epri));
         }
-        (yield* sfi_int(nhfp, buflen, __sl24));
+        /* eshk - shopkeeper */
+        (yield* sfi_int(nhfp, buflen, __s_monst_eshk_length));
         ;
         if (buflen.v > 0) {
             (yield* neweshk(mtmp));
-            (yield* sfi_eshk(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)), __sl25));
+            (yield* sfi_eshk(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)), __s_monst_eshk));
         }
-        (yield* sfi_int(nhfp, buflen, __sl26));
+        /* emin - minion */
+        (yield* sfi_int(nhfp, buflen, __s_monst_emin_length));
         ;
         if (buflen.v > 0) {
             (yield* newemin(mtmp));
-            (yield* sfi_emin(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin)), __sl27));
+            (yield* sfi_emin(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_emin)), __s_monst_emin));
         }
-        (yield* sfi_int(nhfp, buflen, __sl28));
+        /* edog - pet */
+        (yield* sfi_int(nhfp, buflen, __s_monst_edog_length));
         ;
         if (buflen.v > 0) {
             (yield* newedog(mtmp));
-            (yield* sfi_edog(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), __sl29));
+            (yield* sfi_edog(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), __s_monst_edog));
+            /* save or bones held a relative time */
             relative_time_to_moves(cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), $edog_droptime));
             relative_time_to_moves(cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), $edog_hungrytime));
+            /* sanity check to prevent rn2(0) */
             if (cptr.ldI32o((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), $edog_apport) <= 0) {
                 cptr.stI32o((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_edog)), $edog_apport, 1);
             }
         }
-        (yield* sfi_int(nhfp, buflen, __sl30));
+        /* ebones */
+        (yield* sfi_int(nhfp, buflen, __s_monst_ebones_length));
         ;
         if (buflen.v > 0) {
             (yield* newebones(mtmp));
-            (yield* sfi_ebones(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_ebones)), __sl31));
+            (yield* sfi_ebones(nhfp, (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_ebones)), __s_monst_ebones));
         }
-        (yield* sfi_int(nhfp, mc, __sl32));
+        /* mcorpsenm - obj->corpsenm for mimic posing as corpse or
+           statue (inline int rather than pointer to something) */
+        (yield* sfi_int(nhfp, mc, __s_monst_mcorpsenm));
         ;
         cptr.stI32o(cptr.ldPtro((mtmp), $monst_mextra), $mextra_mcorpsenm, mc.v);
-    }
+    }  /* mextra */
 }
 
-/** C ref: restore.c:376 — @param {CPtr} nhfp @returns {CPtr} */
+/** C ref: restore.c:376 — @param {CPtr<NHFILE>} nhfp @returns {CPtr<struct monst>} */
 function* restmonchn(nhfp) {
     let mtmp;
     let mtmp2 = null;
@@ -516,13 +589,15 @@ function* restmonchn(nhfp) {
     let buflen = cptr.box(0);
     let offset;
     let ghostly = schar((cptr.ldI32o(nhfp, $NHFILE_ftype) == NHM.NHF_BONESFILE));
+
     while (1) {
-        (yield* sfi_int(nhfp, buflen, __sl33));
+        (yield* sfi_int(nhfp, buflen, __s_monst_monst_length));
         ;
         if (buflen.v == -1)
             break;
+
         mtmp = (yield* alloc(320));
-        (__builtin_expect(BigInt((!(mtmp !== null))), 0n) ? __assert_rtn(__sl34, __sl14, 392, __sl35) : void 0);
+        (__builtin_expect(BigInt((!(mtmp !== null))), 0n) ? __assert_rtn(__s_restmonchn, __s_restore_c, 392, __s_mtmp_0) : void 0);
         (yield* restmon(nhfp, mtmp));
         if (!first)
             first = mtmp;
@@ -530,25 +605,31 @@ function* restmonchn(nhfp) {
             cptr.stPtr(mtmp2, mtmp);
         if (ghostly) {
             let nid = next_ident();
+
             (yield* add_id_mapping(cptr.ldI32o(mtmp, $monst_m_id), nid));
             cptr.stI32o(mtmp, $monst_m_id, nid);
         }
         offset = cptr.ldI16o(mtmp, $monst_mnum);
-        cptr.stPtro(mtmp, $monst_data, cptr.add(mons, offset, 96));
+        cptr.stPtro(mtmp, $monst_data, cptr.add(mons, offset, $sizeof_permonst));
         if (ghostly) {
             let mndx = (cptr.ldI16o(mtmp, $monst_cham) == NHC.NON_PM) ? (cptr.ldI32o((cptr.ldPtro(mtmp, $monst_data)), $permonst_pmidx)) : cptr.ldI16o(mtmp, $monst_cham);
+
             if ((yield* propagate(mndx, 1, ghostly)) == 0) {
+                /* cookie to trigger purge in getbones() */
                 cptr.stI32o(mtmp, $monst_mhpmax, -100);
             }
         }
+
         if (cptr.ldPtro(mtmp, $monst_minvent)) {
             let obj;
             cptr.stPtro(mtmp, $monst_minvent, (yield* restobjchn(nhfp, 0)));
+            /* restore monster back pointer */
             for (obj = cptr.ldPtro(mtmp, $monst_minvent); obj; obj = cptr.ldPtr(obj))
                 cptr.stPtro(obj, $obj_v, mtmp);
         }
         if (cptr.ldPtro(mtmp, $monst_mw)) {
             let obj;
+
             for (obj = cptr.ldPtro(mtmp, $monst_minvent); obj; obj = cptr.ldPtr(obj))
                 if (cptr.ldI64o(obj, $obj_owornmask) & 256n)
                     break;
@@ -556,13 +637,15 @@ function* restmonchn(nhfp) {
                 cptr.stPtro(mtmp, $monst_mw, obj);
             else {
                 (cptr.stPtro((mtmp), $monst_mw, null));
-                (yield* impossible(__sl36));
+                (yield* impossible(__s_bad_monster_weapon_restore));
             }
         }
+
         if ((cptr.ldI32o(mtmp, $monst_isshk) & 1))
             (yield* restshk(mtmp, ghostly));
         if ((cptr.ldI32o(mtmp, $monst_ispriest) & 1))
             restpriest(mtmp, ghostly);
+
         if (!ghostly) {
             if (cptr.ldI32o(mtmp, $monst_m_id) == cptr.ldI32o(svc, $context_info_polearm + $polearm_info_m_id))
                 cptr.stPtro(svc, $context_info_polearm, mtmp);
@@ -570,20 +653,21 @@ function* restmonchn(nhfp) {
         mtmp2 = mtmp;
     }
     if (first && cptr.ldPtr(mtmp2)) {
-        (yield* impossible(__sl37));
+        (yield* impossible(__s_restmonchn_error_reading_monchn));
         cptr.stPtr(mtmp2, null);
     }
     return first;
 }
 
-/** C ref: restore.c:468 — @param {CPtr} nhfp @returns {CPtr} */
+/** C ref: restore.c:468 — @param {CPtr<NHFILE>} nhfp @returns {CPtr<struct fruit>} */
 function* loadfruitchn(nhfp) {
     let flist;
     let fnext;
+
     flist = null;
     for (; ; ) {
         fnext = (yield* alloc(48));
-        (yield* sfi_fruit(nhfp, fnext, __sl38));
+        (yield* sfi_fruit(nhfp, fnext, __s_fruit));
         if (cptr.ldI32o(fnext, $fruit_fid) != 0) {
             cptr.stPtro(fnext, $fruit_nextf, flist);
             flist = fnext;
@@ -594,9 +678,10 @@ function* loadfruitchn(nhfp) {
     return flist;
 }
 
-/** C ref: restore.c:487 — @param {CPtr} flist */
+/** C ref: restore.c:487 — @param {CPtr<struct fruit>} flist */
 function freefruitchn(flist) {
     let fnext;
+
     while (flist) {
         fnext = cptr.ldPtro(flist, $fruit_nextf);
         cptr.free((flist));
@@ -604,37 +689,42 @@ function freefruitchn(flist) {
     }
 }
 
-/** C ref: restore.c:500 — @param {CPtr} otmp */
+/** C ref: restore.c:500 — @param {CPtr<struct obj>} otmp */
 function* ghostfruit(otmp) {
     let oldf;
+
     for (oldf = cptr.ldPtro(go, $instance_globals_o_oldfruit); oldf; oldf = cptr.ldPtro(oldf, $fruit_nextf))
         if (cptr.ldI32o(oldf, $fruit_fid) == cptr.ld1so(otmp, $obj_spe))
             break;
+
     if (!oldf)
-        (yield* impossible(__sl39));
+        (yield* impossible(__s_no_old_fruit));
     else
         cptr.st1o(otmp, $obj_spe, schar((yield* fruitadd(oldf, null))));
 }
 
-/** C ref: restore.c:525 — @param {CPtr} nhfp @returns {CInt} */
+/** C ref: restore.c:525 — @param {CPtr<NHFILE>} nhfp @returns {CInt} */
 function* restgamestate(nhfp) {
     let i;
     let newgameflags = cptr.alloc(208);
-    let newgamecontext = cptr.alloc(720);
+    let newgamecontext = cptr.alloc(720);  /* all 0, but has some pointers */
     let bc_obj;
     let timebuf = new Uint8Array(15);
     let uid = cptr.box(0n);
     let defer_perm_invent;
     let restoring_special;
     let otmp;
-    (yield* sfi_ulong(nhfp, uid, __sl40));
+
+    (yield* sfi_ulong(nhfp, uid, __s_gamestate_uid));
     ;
-    (yield* sfi_char(nhfp, cptr.add(cptr.add(svn, $instance_globals_saved_n_nhuuid), 0, 1), __sl41, 37));
-    (yield* sfi_long(nhfp, cptr.add(svm, $instance_globals_saved_m_moves), __sl42));
+    (yield* sfi_char(nhfp, cptr.add(cptr.add(svn, $instance_globals_saved_n_nhuuid), 0, 1), __s_nhuuid, 37));
+    (yield* sfi_long(nhfp, cptr.add(svm, $instance_globals_saved_m_moves), __s_gamestate_moves));
     ;
     if (cptr.ldI32o(sysopt, $sysopt_s_check_save_uid) && uid.v != BigInt(getuid() >>> 0)) {
         if (!cptr.ld1so(gc, $instance_globals_c_converted_savefile_loaded))
-            (yield* pline(__sl43));
+            /* for wizard mode, issue a reminder; for others, treat it
+             * as an attempt to cheat and refuse to restore this file */
+            (yield* pline(__s_saved_game_was_not_yours));
         if (wizard() || cptr.ld1so(gc, $instance_globals_c_converted_savefile_loaded)) {
             if (cptr.ld1so(gc, $instance_globals_c_converted_savefile_loaded))
                 cptr.st1o(gc, $instance_globals_c_converted_savefile_loaded, 0);
@@ -642,48 +732,79 @@ function* restgamestate(nhfp) {
             return 0;
         }
     }
-    cptr.memcpy(newgamecontext, svc, 720);
-    (yield* sfi_context_info(nhfp, svc, __sl44));
+    cptr.memcpy(newgamecontext, svc, 720);  /* copy statically init'd context */
+    (yield* sfi_context_info(nhfp, svc, __s_gamestate_context));
     relative_time_to_moves(cptr.add(svc, $context_info_seer_turn));
     relative_time_to_moves(cptr.add(svc, $context_info_digging + $dig_info_lastdigtime));
-    cptr.stPtro(svc, $context_info_warntype + $warntype_info_species, (ismnum(cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx))) ? cptr.add(mons, cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx), 96) : null);
+    cptr.stPtro(svc, $context_info_warntype + $warntype_info_species, (ismnum(cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx))) ? cptr.add(mons, cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx), $sizeof_permonst) : null);
+    /* context.victual.piece, .tin.tin, .spellbook.book, and .polearm.hitmon
+       are pointers which get set to Null during save and will be recovered
+       via corresponding o_id or m_id while objs or mons are being restored */
+
+    /* we want to be able to revert to command line/environment/config
+       file option values instead of keeping old save file option values
+       if partial restore fails and we resort to starting a new game */
     cptr.memcpy(newgameflags, flags, 208);
-    (yield* sfi_flag(nhfp, flags, __sl45));
+    (yield* sfi_flag(nhfp, flags, __s_gamestate_flags));
+    /* avoid keeping permanent inventory window up to date during restore
+       (setworn() calls update_inventory); attempting to include the cost
+       of unpaid items before shopkeeper's bill is available is a no-no;
+       named fruit names aren't accessible yet either
+       [3.6.2: moved perm_invent from flags to iflags to keep it out of
+       save files; retaining the override here is simpler than trying
+       to figure out where it really belongs now] */
     defer_perm_invent = cptr.ld1so(iflags, $instance_flags_perm_invent);
     cptr.st1o(iflags, $instance_flags_perm_invent, 0);
+    /* wizard and discover are actually flags.debug and flags.explore;
+       player might be overriding the save file values for them;
+       in the discover case, we don't want to set that for a normal
+       game until after the save file has been removed */
     cptr.st1o(iflags, $instance_flags_deferred_X, schar((cptr.ld1so(newgameflags, $flag_explore) && !discover() ? 1 : 0)));
     restoring_special = schar((wizard() || discover() ? 1 : 0));
     if (cptr.ld1so(newgameflags, $flag_debug)) {
+        /* authorized by startup code; wizard mode exists and is allowed */
         cptr.st1o(flags, $flag_debug, 1), cptr.st1o(flags, $flag_explore, cptr.st1o(iflags, $instance_flags_deferred_X, 0));
     } else if (restoring_special) {
+        /* specified by save file; check authorization now. */
         set_playmode();
     }
-    (yield* role_init());
-    (yield* sfi_long(nhfp, svw, __sl46));
+    (yield* role_init());  /* Reset the initial role, race, gender, and alignment */
+    (yield* sfi_long(nhfp, svw, __s_wreserve));
     ;
-    (yield* sfi_int32(nhfp, cptr.add(svw, $instance_globals_saved_w_wtreserved), __sl47));
-    (yield* sfi_you(nhfp, u, __sl48));
+    (yield* sfi_int32(nhfp, cptr.add(svw, $instance_globals_saved_w_wtreserved), __s_wtreserved));
+    (yield* sfi_you(nhfp, u, __s_gamestate_you));
     cptr.stI16o(gy, $instance_globals_y_youmonst + $monst_cham, cptr.ldI16o(u, $you_mcham));
     if (restoring_special && cptr.ld1so(iflags, $instance_flags_explore_error_flag)) {
+        /* savefile has wizard or explore mode, but player is no longer
+           authorized to access either; can't downgrade mode any further, so
+           fail restoration. */
         cptr.stI32o(u, $you_uhp, 0);
     }
-    (yield* sfi_char(nhfp, cptr.decay(timebuf), __sl49, 14));
+
+    (yield* sfi_char(nhfp, cptr.decay(timebuf), __s_gamestate_ubirthday, 14));
     cptr.st1o(cptr.decay(timebuf), 14, 0, 1);
     ubirthday.v = (yield* time_from_yyyymmddhhmmss(cptr.decay(timebuf)));
-    (yield* sfi_long(nhfp, urealtime, __sl50));
+    (yield* sfi_long(nhfp, urealtime, __s_gamestate_realtime));
     ;
-    (yield* sfi_char(nhfp, cptr.decay(timebuf), __sl51, 14));
+    (yield* sfi_char(nhfp, cptr.decay(timebuf), __s_gamestate_start_timing, 14));
     cptr.st1o(cptr.decay(timebuf), 14, 0, 1);
     cptr.stI64o(urealtime, $u_realtime_start_timing, (yield* time_from_yyyymmddhhmmss(cptr.decay(timebuf))));
+
+    /* current time is the time to use for next urealtime.realtime update */
     cptr.stI64o(urealtime, $u_realtime_start_timing, (yield* getnow()));
+
     (yield* set_uasmon());
     (yield* Y.icall(cliparound()(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
     if (cptr.ldI32o(u, $you_uhp) <= 0 && (!Upolyd() || cptr.ldI32o(u, $you_mh) <= 0)) {
-        cptr.stI16(u, cptr.stI16o(u, $you_uy, 0));
-        (yield* You(__sl52));
+        cptr.stI16(u, cptr.stI16o(u, $you_uy, 0));  /* affects pline() [hence You()] */
+        (yield* You(__s_were_not_healthy_enough_to_survive));
+        /* wiz1_level.dlevel is used by mklev.c to see if lots of stuff is
+         * uninitialized, so we only have to set it and not the other stuff.
+         */
         cptr.stI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_wiz1_level)), $d_level_dlevel, 0);
         cptr.stI16o(u, $you_uz, 0);
         cptr.stI16o(u, $you_uz + $d_level_dlevel, 1);
+        /* revert to pre-restore option settings */
         cptr.st1o(iflags, $instance_flags_deferred_X, 0);
         cptr.st1o(iflags, $instance_flags_perm_invent, defer_perm_invent);
         cptr.memcpy(flags, newgameflags, 208);
@@ -691,14 +812,21 @@ function* restgamestate(nhfp) {
         cptr.memcpy(cptr.add(gy, $instance_globals_y_youmonst), cptr.add(cg, $const_globals_zeromonst), 320);
         return 0;
     }
+    /* in case hangup save occurred in midst of level change */
     assign_level(cptr.add(u, $you_uz0), cptr.add(u, $you_uz));
+
+    /* this stuff comes after potential aborted restore attempts */
     (yield* restore_killers(nhfp));
     (yield* restore_timers(nhfp, NHM.RANGE_GLOBAL, 0n));
     (yield* restore_light_sources(nhfp));
+
     cptr.stPtro(gi, $instance_globals_i_invent, (yield* restobjchn(nhfp, 0)));
+
+    /* restore dangling (not on floor or in inventory) ball and/or chain */
     bc_obj = (yield* restobjchn(nhfp, 0));
     while (bc_obj) {
         let nobj = cptr.ldPtr(bc_obj);
+
         cptr.stPtr(bc_obj, null);
         if (cptr.ldI64o(bc_obj, $obj_owornmask))
             (yield* setworn(bc_obj, cptr.ldI64o(bc_obj, $obj_owornmask)));
@@ -706,55 +834,85 @@ function* restgamestate(nhfp) {
     }
     cptr.stPtro(gm, $instance_globals_m_migrating_objs, (yield* restobjchn(nhfp, 0)));
     cptr.stPtro(gm, $instance_globals_m_migrating_mons, (yield* restmonchn(nhfp)));
+
     for (i = 0; i < NHC.NUMMONS; ++i) {
-        (yield* sfi_mvitals(nhfp, cptr.add(cptr.add(svm, $instance_globals_saved_m_mvitals), i, 12), __sl53));
+        (yield* sfi_mvitals(nhfp, cptr.add(cptr.add(svm, $instance_globals_saved_m_mvitals), i, $sizeof_mvitals), __s_gamestate_mvitals));
     }
+    /*
+     * There are some things after this that can have unintended display
+     * side-effects too early in the game.
+     * Disable see_monsters() here, re-enable it at the top of moveloop()
+     */
     cptr.st1o(gd, $instance_globals_d_defer_see_monsters, 1);
+
+    /* this comes after inventory has been loaded */
     for (otmp = cptr.ldPtro(gi, $instance_globals_i_invent); otmp; otmp = cptr.ldPtr(otmp))
         if (cptr.ldI64o(otmp, $obj_owornmask))
             (yield* setworn(otmp, cptr.ldI64o(otmp, $obj_owornmask)));
-    otmp = uwep.v;
-    uwep.v = null;
-    (yield* setuwep(otmp));
+
+    /* reset weapon so that player will get a reminder about "bashing"
+       during next fight when bare-handed or wielding an unconventional
+       item; for pick-axe, we aren't able to distinguish between having
+       applied or wielded it, so be conservative and assume the former */
+    otmp = uwep.v;  /* `uwep' usually init'd by setworn() in loop above */
+    uwep.v = null;  /* clear it and have setuwep() reinit */
+    (yield* setuwep(otmp));  /* (don't need any null check here) */
     if (!uwep.v || cptr.ldI16o(uwep.v, $obj_otyp) == NHC.PICK_AXE || cptr.ldI16o(uwep.v, $obj_otyp) == NHC.GRAPPLING_HOOK)
         cptr.st1o(gu, $instance_globals_u_unweapon, 1);
+
     (yield* restore_dungeon(nhfp));
     (yield* restlevchn(nhfp));
-    cptr.stI64o(gh, $instance_globals_h_hero_seq, cptr.ldI64o(svm, $instance_globals_saved_m_moves) << 3n);
-    (yield* sfi_q_score(nhfp, svq, __sl54));
+    /* hero_seq isn't saved and restored because it can be recalculated */
+    cptr.stI64o(gh, $instance_globals_h_hero_seq, cptr.ldI64o(svm, $instance_globals_saved_m_moves) << 3n);  /* normally handled in moveloop() */
+    (yield* sfi_q_score(nhfp, svq, __s_gamestate_quest_status));
+
     for (i = 0; i < ((NHC.MAXSPELL + 1) | 0); ++i) {
-        (yield* sfi_spell(nhfp, cptr.add(svs, i, 8), __sl55));
+        (yield* sfi_spell(nhfp, cptr.add(svs, i, $sizeof_spell), __s_gamestate_spl_book));
     }
     (yield* restore_artifacts(nhfp));
     (yield* restore_oracles(nhfp));
-    (yield* sfi_char(nhfp, cptr.add(svp, $instance_globals_saved_p_pl_character), __sl56, 32));
-    (yield* sfi_char(nhfp, cptr.add(svp, $instance_globals_saved_p_pl_fruit), __sl57, 32));
-    freefruitchn(cptr.ldPtro(gf, $instance_globals_f_ffruit));
+    (yield* sfi_char(nhfp, cptr.add(svp, $instance_globals_saved_p_pl_character), __s_gamestate_pl_character, 32));
+    (yield* sfi_char(nhfp, cptr.add(svp, $instance_globals_saved_p_pl_fruit), __s_gamestate_pl_fruit, 32));
+    freefruitchn(cptr.ldPtro(gf, $instance_globals_f_ffruit));  /* clean up fruit(s) made by initoptions() */
     cptr.stPtro(gf, $instance_globals_f_ffruit, (yield* loadfruitchn(nhfp)));
+
     (yield* restnames(nhfp));
     (yield* restore_msghistory(nhfp));
     (yield* restore_gamelog(nhfp));
     (yield* restore_luadata(nhfp));
+    /* must come after all mons & objs are restored */
     (yield* relink_timers(0));
     (yield* relink_light_sources(0));
     adj_erinys(cptr.ldI32o(u, $you_ualign + $align_abuse));
+    /* inventory display is now viable */
     cptr.st1o(iflags, $instance_flags_perm_invent, defer_perm_invent);
     return 1;
 }
 
+/* update game state pointers to those valid for the current level (so we
+   don't dereference a wild u.ustuck when saving game state, for instance) */
 /** C ref: restore.c:742 */
 function restlevelstate() {
+    /*
+     * Note: restoring steed and engulfer/holder/holdee is now handled
+     * in getlev() and there's nothing left for restlevelstate() to do.
+     */
     return;
 }
 
+/* after getlev(), put current level into a level/lock file;
+   essential when splitting a save file into individual level files */
+/*ARGSUSED*/
 /** C ref: restore.c:755 — @param {CInt} ltmp @returns {CInt} */
 function* restlevelfile(ltmp) {
     let whynot = new Uint8Array(256);
     let nhfp = null;
+
     nhfp = (yield* create_levelfile(ltmp, cptr.decay(whynot)));
     if (!nhfp) {
+        /* failed to create a new file; don't attempt to make a panic save */
         cptr.stI32o(program_state, $sinfo_something_worth_saving, 0);
-        (yield* panic(__sl58, cptr.decay(whynot)));
+        (yield* panic(__s_restlevelfile_s, cptr.decay(whynot)));
     }
     (yield* bufon(cptr.ldI32(nhfp)));
     cptr.stI32o(nhfp, $NHFILE_mode, 6);
@@ -763,17 +921,49 @@ function* restlevelfile(ltmp) {
     return 2;
 }
 
-/** C ref: restore.c:789 — @param {CPtr} nhfp @returns {CInt} */
+/*
+ * restore_saved_game() prior to this left us at this position in
+ * the savefile for dorecover():
+ *
+ *     format indicator                (1 byte)
+ *     n = count of critical size list (1 byte)
+ *     n bytes of critical sizes       (n bytes)
+ *     version info
+ * --> plnametmp = player name size (int, 2 bytes)
+ *     player name (PL_NSIZ_PLUS)
+ *     current level (including pets)
+ *     (non-level-based) game state
+ *     other levels
+ */
+
+/** C ref: restore.c:789 — @param {CPtr<NHFILE>} nhfp @returns {CInt} */
 export function* dorecover(nhfp) {
     let ltmp = cptr.box(0);
     let rtmp;
+
+    /* suppress map display if some part of the code tries to update that */
     cptr.stI32o(program_state, $sinfo_restoring, NHC.REST_GSTATE);
+
     (yield* get_plname_from_file(nhfp, svp, 1));
+    /*
+     * The position in the save file is now here:
+     *
+     *     format indicator                (1 byte)
+     *     n = count of critical size list (1 byte)
+     *     n bytes of critical sizes       (n bytes)
+     *     version info
+     *     plnametmp = player name size (int, 2 bytes)
+     *     player name (PL_NSIZ_PLUS)
+     * --> current level (including pets)
+     *     (non-level-based) game state
+     *     other levels
+     */
     (yield* getlev(nhfp, 0, 0));
     if (!(yield* restgamestate(nhfp))) {
         let tnhfp = (yield* get_freeing_nhfile());
+
         (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 1)));
-        (yield* savelev(tnhfp, 0));
+        (yield* savelev(tnhfp, 0));  /* discard current level */
         (yield* close_nhfile(tnhfp));
         (yield* close_nhfile(nhfp));
         void (yield* delete_savefile());
@@ -781,78 +971,114 @@ export function* dorecover(nhfp) {
         cptr.stI32o(program_state, $sinfo_restoring, 0);
         return 0;
     }
-    (yield* init_oclass_probs());
+    /* after restgamestate() -> restnames() so that 'bases[]' is populated */
+    (yield* init_oclass_probs());  /* recompute go.oclass_prob_totals[] */
+
     restlevelstate();
     (yield* savestateinlock());
     rtmp = (yield* restlevelfile(schar(ledger_no(cptr.add(u, $you_uz)))));
     if (rtmp < 2)
-        return rtmp;
+        return rtmp;  /* dorecover called recursively */
+
     cptr.stI32o(program_state, $sinfo_restoring, NHC.REST_LEVELS);
+
+    /* these pointers won't be valid while we're processing the
+     * other levels, but they'll be reset again by restlevelstate()
+     * afterwards, and in the meantime at least u.usteed may mislead
+     * place_monster() on other levels
+     */
     cptr.stPtro(u, $you_ustuck, null);
     cptr.stPtro(u, $you_usteed, null);
-    cptr.stI32o(restoreinfo, $restore_info_mread_flags, 1);
+    cptr.stI32o(restoreinfo, $restore_info_mread_flags, 1);  /* return despite error */
     while (1) {
-        (yield* sfi_xint8(nhfp, ltmp, __sl59));
+        (yield* sfi_xint8(nhfp, ltmp, __s_gamestate_level_number));
         ;
         if (cptr.ld1so(nhfp, $NHFILE_eof))
             break;
         (yield* getlev(nhfp, 0, ltmp.v));
         rtmp = (yield* restlevelfile(ltmp.v));
         if (rtmp < 2)
-            return rtmp;
+            return rtmp;  /* dorecover called recursively */
     }
     cptr.stI32o(restoreinfo, $restore_info_mread_flags, 0);
-    rewind_nhfile(nhfp);
+
+    rewind_nhfile(nhfp);  /* return to beginning of file */
     void (yield* validate(nhfp, null, 0));
     (yield* get_plname_from_file(nhfp, svp, 1));
+
+    /* not 0 nor REST_GSTATE nor REST_LEVELS */
     cptr.stI32o(program_state, $sinfo_restoring, NHC.REST_CURRENT_LEVEL);
+
     (yield* getlev(nhfp, 0, 0));
     (yield* close_nhfile(nhfp));
     restlevelstate();
-    cptr.stI32o(program_state, $sinfo_something_worth_saving, 1);
+    cptr.stI32o(program_state, $sinfo_something_worth_saving, 1);  /* useful data now exists */
+
     if (!wizard() && !discover())
         void (yield* delete_savefile());
     if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_rogue_level)))))
         assign_graphics(NHC.ROGUESET);
     reset_glyphmap(NHC.gm_levelchange);
-    max_rank_sz();
+    max_rank_sz();  /* to recompute gm.mrank_sz (botl.c) */
+
     if ((uball.v && !uchain.v) || (uchain.v && !uball.v)) {
-        (yield* impossible(__sl60));
+        (yield* impossible(__s_restgamestate_lost_ball_chain));
+        /* poor man's unpunish() */
         (yield* setworn(null, 4194304n));
         (yield* setworn(null, 2097152n));
     }
+
+    /* in_use processing must be after:
+     *    + The inventory has been read so that freeinv() works.
+     *    + The current level has been restored so billing information
+     *      is available.
+     */
     (yield* inven_inuse(0));
+
+    /* Set up the vision internals, after levl[] data is loaded
+       but before docrt(). */
     reglyph_darkroom();
     (yield* vision_reset());
-    cptr.st1o(gv, $instance_globals_v_vision_full_recalc, 1);
-    (yield* run_timers());
-    cptr.stI32o(program_state, $sinfo_restoring, 0);
+    cptr.st1o(gv, $instance_globals_v_vision_full_recalc, 1);  /* recompute vision (not saved) */
+
+    (yield* run_timers());  /* expire all timers that have gone off while away */
+    cptr.stI32o(program_state, $sinfo_restoring, 0);  /* affects bot() so clear before docrt() */
+
     if (cptr.ldI32o(ge, $instance_globals_e_early_raw_messages) && !cptr.ldI32o(program_state, $sinfo_beyond_savefile_load)) {
+        /*
+         * We're about to obliterate some potentially important
+         * startup messages, so give the player a chance to see them.
+         */
         cptr.stI32o(ge, $instance_globals_e_early_raw_messages, 0);
         (yield* Y.icall(wait_synch()()));
     }
     cptr.stI32o(u, $you_usteed_mid, cptr.stI32o(u, $you_ustuck_mid, 0));
     cptr.stI32o(program_state, $sinfo_beyond_savefile_load, 1);
+
     (yield* docrt());
     (yield* Y.icall(clear_nhwindow()(WIN_MESSAGE.v)));
+
+    /* Success! */
     (yield* welcome(0));
     (yield* check_special_room(0));
     return 1;
 }
 
-/** C ref: restore.c:955 — @param {CPtr} nhfp */
+/** C ref: restore.c:955 — @param {CPtr<NHFILE>} nhfp */
 function* rest_stairs(nhfp) {
     let buflen = cptr.box(0);
     let stway = cptr.alloc(24); cptr.stI16(stway, 0);
     let newst;
     stairway_free_all();
     while (1) {
-        (yield* sfi_int(nhfp, buflen, __sl61));
+        (yield* sfi_int(nhfp, buflen, __s_stairs_staircount));
         ;
         if (buflen.v == -1)
             break;
-        (yield* sfi_stairway(nhfp, stway, __sl62));
+
+        (yield* sfi_stairway(nhfp, stway, __s_stairs_stairway));
         if (cptr.ldI32o(program_state, $sinfo_restoring) != NHC.REST_GSTATE && cptr.ldI16o(stway, $stairway_tolev) == cptr.ldI16o(u, $you_uz)) {
+            /* stairway dlevel is relative, make it absolute */
             cptr.stI16o(stway, $stairway_tolev + $d_level_dlevel, cptr.ldI16o(stway, $stairway_tolev + $d_level_dlevel) + cptr.ldI16o(u, $you_uz + $d_level_dlevel));
         }
         (yield* stairway_add(cptr.ldI16(stway), cptr.ldI16o(stway, $stairway_sy), cptr.ld1so(stway, $stairway_up), cptr.ld1so(stway, $stairway_isladder), cptr.add(stway, $stairway_tolev)));
@@ -862,18 +1088,19 @@ function* rest_stairs(nhfp) {
     }
 }
 
-/** C ref: restore.c:988 — @param {CPtr} nhfp @param {CPtr} cemeteryaddr */
+/** C ref: restore.c:988 — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct cemetery *>} cemeteryaddr */
 export function* restcemetery(nhfp, cemeteryaddr) {
     let bonesinfo;
     let bonesaddr;
     let cflag = cptr.box(0);
-    (yield* sfi_int(nhfp, cflag, __sl63));
+
+    (yield* sfi_int(nhfp, cflag, __s_cemetery_cemetery_flag));
     ;
     if (cflag.v == 0) {
         bonesaddr = cemeteryaddr;
         do {
             bonesinfo = (yield* alloc(184));
-            (yield* sfi_cemetery(nhfp, bonesinfo, __sl64));
+            (yield* sfi_cemetery(nhfp, bonesinfo, __s_cemetery_bonesinfo));
             cptr.stPtr(bonesaddr, bonesinfo);
             bonesaddr = (cptr.ldPtr(bonesaddr));
         } while (cptr.ldPtr(bonesaddr));
@@ -883,6 +1110,8 @@ export function* restcemetery(nhfp, cemeteryaddr) {
     if (((cptr.ldI32o(nhfp, $NHFILE_mode) & NHM.CONVERTING) != 0) || ((cptr.ldI32o(nhfp, $NHFILE_mode) & NHM.UNCONVERTING) != 0)) {
         let thisbones;
         let nextbones;
+
+        /* free the memory */
         nextbones = cptr.ldPtr(cemeteryaddr);
         while ((thisbones = nextbones) !== null) {
             nextbones = cptr.ldPtr(thisbones);
@@ -892,27 +1121,29 @@ export function* restcemetery(nhfp, cemeteryaddr) {
     }
 }
 
-/** C ref: restore.c:1021 — @param {CPtr} nhfp */
+/*ARGSUSED*/
+/** C ref: restore.c:1021 — @param {CPtr<NHFILE>} nhfp */
 function* rest_levl(nhfp) {
     let c;
     let r;
+
     for (c = 0; c < NHM.COLNO; ++c) {
         for (r = 0; r < NHM.ROWNO; ++r) {
-            (yield* sfi_rm(nhfp, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), c, 756), r, 36), __sl65));
+            (yield* sfi_rm(nhfp, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), c, $sizeof_rm_x21), r, $sizeof_rm), __s_location_rm));
         }
     }
 }
 
-/** C ref: restore.c:1035 — @param {CPtr} reason */
+/** C ref: restore.c:1035 — @param {CPtr<char>} reason */
 export function* trickery(reason) {
-    (yield* pline(__sl66));
-    (yield* pline(__sl67));
-    (yield* pline(__sl68));
-    void cptr.strcpy(cptr.add(svk, $kinfo_name), reason ? reason : __sl69);
+    (yield* pline(__s_strange_this_map_is_not_as_i_remember_it));
+    (yield* pline(__s_somebody_is_trying_some_trickery_here));
+    (yield* pline(__s_this_game_is_void));
+    void cptr.strcpy(cptr.add(svk, $kinfo_name), reason ? reason : __s_empty);
     (yield* done(NHC.TRICKED));
 }
 
-/** C ref: restore.c:1046 — @param {CPtr} nhfp @param {CInt} pid @param {CInt} lev */
+/** C ref: restore.c:1046 — @param {CPtr<NHFILE>} nhfp @param {CInt} pid @param {CInt} lev */
 export function* getlev(nhfp, pid, lev) {
     let trap;
     let mtmp;
@@ -927,70 +1158,86 @@ export function* getlev(nhfp, pid, lev) {
     let r;
     let ghostly = schar((cptr.ldI32o(nhfp, $NHFILE_ftype) == NHM.NHF_BONESFILE));
     let tmpc = null;
+
     cptr.stI32o(program_state, $sinfo_in_getlev, 1);
+
     if (ghostly)
         clear_id_mapping();
+
+    /* Load the old fruit info.  We have to do it first, so the
+     * information is available when restoring the objects.
+     */
     if (ghostly)
         cptr.stPtro(go, $instance_globals_o_oldfruit, (yield* loadfruitchn(nhfp)));
-    (yield* sfi_int(nhfp, hpid, __sl70));
+
+    /* First some sanity checks */
+    (yield* sfi_int(nhfp, hpid, __s_gamestate_hackpid));
     ;
-    (yield* sfi_xint8(nhfp, dlvl, __sl71));
+    /* CHECK:  This may prevent restoration */
+    (yield* sfi_xint8(nhfp, dlvl, __s_gamestate_dlvl));
     ;
     if ((pid && pid != hpid.v) || (lev && dlvl.v != lev)) {
         let trickbuf = new Uint8Array(256);
+
         if (pid && pid != hpid.v)
-            void cptr.sprintf(cptr.decay(trickbuf), __sl72, hpid.v, pid);
+            void cptr.sprintf(cptr.decay(trickbuf), __s_pid_d_doesn_t_match_saved_pid_d, hpid.v, pid);
         else
-            void cptr.sprintf(cptr.decay(trickbuf), __sl73, dlvl.v, lev);
+            void cptr.sprintf(cptr.decay(trickbuf), __s_this_is_level_d_not_d, dlvl.v, lev);
         if (wizard())
-            (yield* pline(__sl74, cptr.decay(trickbuf)));
+            (yield* pline(__s_pct_s, cptr.decay(trickbuf)));
         (yield* trickery(cptr.decay(trickbuf)));
     }
     (yield* restcemetery(nhfp, cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_bonesinfo)));
     (yield* rest_levl(nhfp));
+
     for (c = 0; c < NHM.COLNO; ++c) {
         for (r = 0; r < NHM.ROWNO; ++r) {
-            (yield* sfi_schar(nhfp, cptr.add(cptr.add(svl, c, 21), r, 1), __sl75));
+            (yield* sfi_schar(nhfp, cptr.add(cptr.add(svl, c, 21), r, 1), __s_lastseentyp));
         }
     }
-    (yield* sfi_long(nhfp, cptr.add(svo, $instance_globals_saved_o_omoves), __sl76));
+    (yield* sfi_long(nhfp, cptr.add(svo, $instance_globals_saved_o_omoves), __s_lev_timestmp));
     ;
     elapsed = (BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - cptr.ldI64o(svo, $instance_globals_saved_o_omoves)));
+
     (yield* rest_stairs(nhfp));
-    (yield* sfi_dest_area(nhfp, svu, __sl77));
-    (yield* sfi_dest_area(nhfp, cptr.add(svd, $instance_globals_saved_d_dndest), __sl78));
-    (yield* sfi_levelflags(nhfp, cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_flags), __sl79));
+    (yield* sfi_dest_area(nhfp, svu, __s_lev_updest));
+    (yield* sfi_dest_area(nhfp, cptr.add(svd, $instance_globals_saved_d_dndest), __s_lev_dndest));
+    (yield* sfi_levelflags(nhfp, cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_flags), __s_lev_level_flags));
     rest_adjust_levelflags();
     if (cptr.ldPtro(svd, $instance_globals_saved_d_doors)) {
         cptr.free(cptr.ldPtro(svd, $instance_globals_saved_d_doors));
         cptr.stPtro(svd, $instance_globals_saved_d_doors, null);
     }
-    (yield* sfi_int(nhfp, cptr.add(svd, $instance_globals_saved_d_doors_alloc), __sl80));
+
+    (yield* sfi_int(nhfp, cptr.add(svd, $instance_globals_saved_d_doors_alloc), __s_lev_doors_alloc));
     ;
     if (cptr.ldI32o(svd, $instance_globals_saved_d_doors_alloc)) {
         cptr.stPtro(svd, $instance_globals_saved_d_doors, (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, BigInt(cptr.ldI32o(svd, $instance_globals_saved_d_doors_alloc))) * 4n))))));
         tmpc = cptr.ldPtro(svd, $instance_globals_saved_d_doors);
         for (i = 0; i < cptr.ldI32o(svd, $instance_globals_saved_d_doors_alloc); ++i) {
-            (yield* sfi_nhcoord(nhfp, tmpc, __sl81));
+            (yield* sfi_nhcoord(nhfp, tmpc, __s_lev_doors));
             tmpc = cptr.add(tmpc, 1, 4);
         }
     }
-    (yield* rest_rooms(nhfp));
+    (yield* rest_rooms(nhfp));  /* No joke :-) */
     if (cptr.ldI32o(svn, $instance_globals_saved_n_nroom)) {
-        cptr.stI32(gd, (cptr.ldI32o2(svr, (cptr.ldI32o(svn, $instance_globals_saved_n_nroom) - 1) | 0, 224, $mkroom_fdoor) + cptr.ld1so2(svr, (cptr.ldI32o(svn, $instance_globals_saved_n_nroom) - 1) | 0, 224, $mkroom_doorct)) | 0);
+        cptr.stI32(gd, (cptr.ldI32o2(svr, (cptr.ldI32o(svn, $instance_globals_saved_n_nroom) - 1) | 0, $sizeof_mkroom, $mkroom_fdoor) + cptr.ld1so2(svr, (cptr.ldI32o(svn, $instance_globals_saved_n_nroom) - 1) | 0, $sizeof_mkroom, $mkroom_doorct)) | 0);
     } else {
         cptr.stI32(gd, 0);
     }
+
     (yield* restore_timers(nhfp, NHM.RANGE_LEVEL, elapsed));
     (yield* restore_light_sources(nhfp));
     cptr.stPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist, (yield* restmonchn(nhfp)));
-    (yield* rest_worm(nhfp));
+    (yield* rest_worm(nhfp));  /* restore worm information */
+
     cptr.stPtr(gf, null);
     for (; ; ) {
         trap = (yield* alloc(40));
-        (yield* sfi_trap(nhfp, trap, __sl82));
+        (yield* sfi_trap(nhfp, trap, __s_trap));
         if (cptr.ldI16o(trap, $trap_tx) != 0) {
             if (cptr.ldI32o(program_state, $sinfo_restoring) != NHC.REST_GSTATE && cptr.ldI16o(trap, $trap_dst) == cptr.ldI16o(u, $you_uz)) {
+                /* convert relative destination to absolute */
                 cptr.stI16o(trap, $trap_dst + $d_level_dlevel, cptr.ldI16o(trap, $trap_dst + $d_level_dlevel) + cptr.ldI16o(u, $you_uz + $d_level_dlevel));
             }
             cptr.stPtr(trap, cptr.ldPtr(gf));
@@ -999,11 +1246,15 @@ export function* getlev(nhfp, pid, lev) {
             break;
     }
     cptr.free((trap));
+
     cptr.stPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist, (yield* restobjchn(nhfp, 0)));
     (yield* find_lev_obj());
+    /* restobjchn()'s `frozen' argument probably ought to be a callback
+       routine so that we can check for objects being buried under ice */
     cptr.stPtro(svl, $instance_globals_saved_l_level + $dlevel_t_buriedobjlist, (yield* restobjchn(nhfp, 0)));
     cptr.stPtro(gb, $instance_globals_b_billobjs, (yield* restobjchn(nhfp, 0)));
     (yield* rest_engravings(nhfp));
+    /* reset level.monsters for new level */
     for (x = 0; x < NHM.COLNO; x++)
         for (y = 0; y < NHM.ROWNO; y++)
             cptr.stPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
@@ -1011,6 +1262,7 @@ export function* getlev(nhfp, pid, lev) {
         if ((cptr.ldI32o(mtmp, $monst_isshk) & 1))
             set_residency(mtmp, 0);
         if (cptr.ldI32o(mtmp, $monst_m_id) == cptr.ldI32o(u, $you_usteed_mid)) {
+            /* steed is kept on fmon list but off the map */
             cptr.stPtro(u, $you_usteed, mtmp);
             cptr.stI32o(u, $you_usteed_mid, 0);
         } else {
@@ -1024,22 +1276,30 @@ export function* getlev(nhfp, pid, lev) {
             if (((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 128n) != 0n) && (cptr.ldI32o(mtmp, $monst_mundetected) & 1) | 0)
                 void (yield* hideunder(mtmp));
         }
+
+        /* regenerate monsters while on another level */
         if (!cptr.ldI16o(u, $you_uz + $d_level_dlevel) || cptr.ldI32o(program_state, $sinfo_restoring) == NHC.REST_LEVELS)
             continue;
         if (ghostly) {
+            /* reset peaceful/malign relative to new character;
+               shopkeepers will reset based on name */
             if (!(cptr.ldI32o(mtmp, $monst_isshk) & 1))
                 cptr.stI32o(mtmp, $monst_mpeaceful, ((is_unicorn(cptr.ldPtro(mtmp, $monst_data)) && (sgn(cptr.ld1so(u, $you_ualign)) == sgn(cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_maligntyp)))) ? 1 : peace_minded(cptr.ldPtro(mtmp, $monst_data))) >>> 0);
             set_malign(mtmp);
         } else if (elapsed > 0n) {
             (yield* mon_catchup_elapsed_time(mtmp, elapsed));
         }
+        /* update shape-changers in case protection against
+           them is different now than when the level was saved */
         (yield* restore_cham(mtmp));
-        if (ghostly || (elapsed > 0n && elapsed > BigInt((rng_log_enabled() ? (rng_log_set_caller(__sl14, 1219, __sl83), rnd(10)) : rnd(10)))))
+        /* give hiders a chance to hide before their next move */
+        if (ghostly || (elapsed > 0n && elapsed > BigInt(rnd_at(__s_restore_c, 1219, __s_getlev, 10))))
             (yield* hide_monst(mtmp));
     }
+
     (yield* restdamage(nhfp));
     (yield* rest_regions(nhfp));
-    (yield* rest_bubbles(nhfp));
+    (yield* rest_bubbles(nhfp));  /* for water and air; empty marker on other levels */
     (yield* load_exclusions(nhfp));
     (yield* rest_track(nhfp));
     if (ghostly) {
@@ -1049,23 +1309,31 @@ export function* getlev(nhfp, pid, lev) {
                 break;
             stway = cptr.ldPtro(stway, $stairway_next);
         }
+
+        /* Now get rid of all the temp fruits... */
         freefruitchn(cptr.ldPtro(go, $instance_globals_o_oldfruit)), cptr.stPtro(go, $instance_globals_o_oldfruit, null);
+
         if (lev > ledger_no(cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_medusa_level)) && lev < ledger_no(cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)) && !stway) {
             let cc = cptr.alloc(4);
             let dest = cptr.alloc(4);
+
             cptr.stI16(dest, cptr.ldI16o(u, $you_uz));
             cptr.stI16o(dest, $d_level_dlevel, i16(((cptr.ldI16o(u, $you_uz + $d_level_dlevel) + 1) | 0)));
+
             (yield* mazexy(cc));
             (yield* stairway_add(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y), 0, 0, dest));
-            cptr.st1o3(svl, cptr.ldI16(cc), 756, cptr.ldI16o(cc, $nhcoord_y), 36, $instance_globals_saved_l_level + $rm_typ, NHC.STAIRS);
+            cptr.st1o3(svl, cptr.ldI16(cc), $sizeof_rm_x21, cptr.ldI16o(cc, $nhcoord_y), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ, NHC.STAIRS);
         }
+
         br = Is_branchlev(cptr.add(u, $you_uz));
         if (br && cptr.ldI16o(u, $you_uz + $d_level_dlevel) == 1) {
             let ltmp = cptr.alloc(4);
+
             if (on_level(cptr.add(u, $you_uz), cptr.add(br, $branch_end1)))
                 assign_level(ltmp, cptr.add(br, $branch_end2));
             else
                 assign_level(ltmp, cptr.add(br, $branch_end1));
+
             switch (cptr.ldI32o(br, $branch_type)) {
                 case NHM.BR_STAIR:
                 case NHM.BR_NO_END1:
@@ -1084,12 +1352,14 @@ export function* getlev(nhfp, pid, lev) {
                     if (((cptr.ldI32o(trap, $trap_ttyp) & 31) | 0) == NHC.MAGIC_PORTAL)
                         break;
                 if (!trap)
-                    (yield* panic(__sl84));
+                    (yield* panic(__s_getlev_need_portal_but_none_found));
                 assign_level(cptr.add(trap, $trap_dst), ltmp);
                 break;
             }
         } else if (!br) {
             let ttmp = null;
+
+            /* Remove any dangling portals. */
             for (trap = cptr.ldPtr(gf); trap; trap = ttmp) {
                 ttmp = cptr.ldPtr(trap);
                 if (((cptr.ldI32o(trap, $trap_ttyp) & 31) | 0) == NHC.MAGIC_PORTAL)
@@ -1097,9 +1367,11 @@ export function* getlev(nhfp, pid, lev) {
             }
         }
     }
+    /* must come after all mons & objs are restored */
     (yield* relink_timers(ghostly));
     (yield* relink_light_sources(ghostly));
     reset_oattached_mids(ghostly);
+
     if (ghostly)
         clear_id_mapping();
     cptr.stI32o(program_state, $sinfo_in_getlev, 0);
@@ -1108,77 +1380,98 @@ export function* getlev(nhfp, pid, lev) {
 
 /** C ref: restore.c:1314 */
 export function rest_adjust_levelflags() {
+    /* adjust timestamps */
     relative_time_to_moves(cptr.add(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until));
 }
 
-/** C ref: restore.c:1320 — @param {CPtr} timestamp */
+/** C ref: restore.c:1320 — @param {CPtr<long>} timestamp */
 export function moves_to_relative_time(timestamp) {
     let prevts = cptr.ldI64(timestamp);
+
     cptr.stI64(timestamp, BigInt.asIntN(64, prevts - cptr.ldI64o(svm, $instance_globals_saved_m_moves)));
 }
 
-/** C ref: restore.c:1328 — @param {CPtr} timestamp */
+/** C ref: restore.c:1328 — @param {CPtr<long>} timestamp */
 export function relative_time_to_moves(timestamp) {
     let prevts = cptr.ldI64(timestamp);
+
     cptr.stI64(timestamp, BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) + prevts));
 }
 
-/** C ref: restore.c:1338 — @param {CPtr} nhfp @param {CPtr} outbuf @param {CInt} name_only */
+/* "name-role-race-gend-algn" occurs very early in a save file; sometimes we
+   want the whole thing, other times just "name" (for svp.plname[]) */
+/** C ref: restore.c:1338 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} outbuf @param {CInt} name_only */
 export function* get_plname_from_file(nhfp, outbuf, name_only) {
     let plbuf = new Uint8Array(49);
     let pltmpsiz = cptr.box(0);
+
     cptr.st1o(cptr.decay(plbuf), 0, 0, 1);
-    (yield* sfi_int(nhfp, pltmpsiz, __sl85));
+
+    (yield* sfi_int(nhfp, pltmpsiz, __s_plname_size));
     ;
-    (yield* sfi_char(nhfp, cptr.decay(plbuf), __sl86, pltmpsiz.v));
+    /* pltmpsiz should now be PL_NSIZ_PLUS */
+    (yield* sfi_char(nhfp, cptr.decay(plbuf), __s_plname, pltmpsiz.v));
+    /* plbuf[PL_NSIZ_PLUS-2] should be '\0';
+       plbuf[PL_NSIZ_PLUS-1] should be '-' or 'X' or 'D' */
+    /* "-race-role-gend-algn" is already present except that it has been
+       hidden by replacing the initial dash with NUL; if we want that
+       information, replace the NUL with a dash */
     if (!name_only)
         cptr.st1(eos(cptr.decay(plbuf)), 45);
+    /* not simple strcpy(); playmode is in the last slot and could (probably
+       will) be preceded by NULs */
     void cptr.memcpy(outbuf, cptr.decay(plbuf), 49n);
     return;
 }
 
-/** C ref: restore.c:1369 — @param {CPtr} nhfp */
+/** C ref: restore.c:1369 — @param {CPtr<NHFILE>} nhfp */
 function* rest_bubbles(nhfp) {
     let bbubbly = cptr.box(0);
+
+    /* whether or not the Plane of Water's air bubbles or Plane of Air's
+       clouds are present is recorded during save so that we don't have to
+       know what level is being restored */
     bbubbly.v = 0;
-    (yield* sfi_xint8(nhfp, bbubbly, __sl87));
+    (yield* sfi_xint8(nhfp, bbubbly, __s_bubbles_bbubbly));
     ;
     if (bbubbly.v)
         (yield* restore_waterlevel(nhfp));
 }
 
-/** C ref: restore.c:1390 — @param {CPtr} nhfp */
+/** C ref: restore.c:1390 — @param {CPtr<NHFILE>} nhfp */
 function* restore_gamelog(nhfp) {
     let slen = cptr.box(0);
     let msg = new Uint8Array(512);
     let tmp = cptr.alloc(32); cptr.stI64(tmp, 0n);
+
     while (1) {
-        (yield* sfi_int(nhfp, slen, __sl88));
+        (yield* sfi_int(nhfp, slen, __s_gamelog_length));
         ;
         if (slen.v == -1)
             break;
         if (slen.v > 511)
-            (yield* panic(__sl89, slen.v));
-        (yield* sfi_char(nhfp, cptr.decay(msg), __sl90, slen.v));
+            (yield* panic(__s_restore_gamelog_msg_too_big_d, slen.v));
+        (yield* sfi_char(nhfp, cptr.decay(msg), __s_gamelog_gamelog_text, slen.v));
         cptr.st1o(cptr.decay(msg), slen.v, 0, 1);
-        (yield* sfi_gamelog_line(nhfp, tmp, __sl91));
+        (yield* sfi_gamelog_line(nhfp, tmp, __s_gamelog_gamelog_line));
         (yield* gamelog_add(cptr.ldI64o(tmp, $gamelog_line_flags), cptr.ldI64(tmp), cptr.decay(msg)));
     }
 }
 
-/** C ref: restore.c:1415 — @param {CPtr} nhfp */
+/** C ref: restore.c:1415 — @param {CPtr<NHFILE>} nhfp */
 function* restore_msghistory(nhfp) {
     let msgsize = cptr.box(0);
     let msgcount = 0;
     let msg = new Uint8Array(256);
+
     while (1) {
-        (yield* sfi_int(nhfp, msgsize, __sl92));
+        (yield* sfi_int(nhfp, msgsize, __s_msghistory_length));
         ;
         if (msgsize.v == -1)
             break;
         if (msgsize.v > 255)
-            (yield* panic(__sl93, msgsize.v));
-        (yield* sfi_char(nhfp, cptr.decay(msg), __sl94, msgsize.v));
+            (yield* panic(__s_restore_msghistory_msg_too_big_d, msgsize.v));
+        (yield* sfi_char(nhfp, cptr.decay(msg), __s_msghistory_msg, msgsize.v));
         cptr.st1o(cptr.decay(msg), msgsize.v, 0, 1);
         (yield* Y.icall(putmsghistory()(cptr.decay(msg), 1)));
         ++msgcount;
@@ -1186,17 +1479,19 @@ function* restore_msghistory(nhfp) {
     if (msgcount)
         (yield* Y.icall(putmsghistory()(null, 1)));
     {
-        if ((yield* debugcore(__sl14, 1))) {
+        if ((yield* debugcore(__s_restore_c, 1))) {
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-            (yield* pline(__sl95, msgcount));
+            (yield* pline(__s_read_d_messages_from_savefile, msgcount));
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
     }
 }
 
+/* Clear all structures for object and monster ID mapping. */
 /** C ref: restore.c:1447 */
 function clear_id_mapping() {
     let curr;
+
     while ((curr = cptr.ldPtro(gi, $instance_globals_i_id_map)) !== null) {
         cptr.stPtro(gi, $instance_globals_i_id_map, cptr.ldPtr(curr));
         cptr.free(curr);
@@ -1204,38 +1499,52 @@ function clear_id_mapping() {
     cptr.stI32o(gn, $instance_globals_n_n_ids_mapped, 0);
 }
 
+/* Add a mapping to the ID map. */
 /** C ref: restore.c:1460 — @param {CUInt} gid @param {CUInt} nid */
 function* add_id_mapping(gid, nid) {
     let idx;
+
     idx = cptr.ldI32o(gn, $instance_globals_n_n_ids_mapped) % 64;
+    /* idx is zero on first time through, as well as when a new bucket is */
+    /* needed */
     if (idx == 0) {
         let gnu = (yield* alloc(520));
         cptr.stPtr(gnu, cptr.ldPtro(gi, $instance_globals_i_id_map));
         cptr.stPtro(gi, $instance_globals_i_id_map, gnu);
     }
+
     cptr.stI32o2(cptr.ldPtro(gi, $instance_globals_i_id_map), idx, 8, $bucket_map, gid);
     cptr.stI32o2(cptr.ldPtro(gi, $instance_globals_i_id_map), idx, 8, $bucket_map + 4, nid);
     (cptr.stI32o(gn, $instance_globals_n_n_ids_mapped, cptr.ldI32o(gn, $instance_globals_n_n_ids_mapped) + 1)) - (1);
 }
 
-/** C ref: restore.c:1484 — @param {CUInt} gid @param {CPtr} nidp @returns {CInt} */
+/*
+ * Global routine to look up a mapping.  If found, return TRUE and fill
+ * in the new ID value.  Otherwise, return false and return -1 in the new
+ * ID.
+ */
+/** C ref: restore.c:1484 — @param {CUInt} gid @param {CPtr<unsigned int>} nidp @returns {CInt} */
 export function lookup_id_mapping(gid, nidp) {
     let i;
     let curr;
+
     if (cptr.ldI32o(gn, $instance_globals_n_n_ids_mapped))
         for (curr = cptr.ldPtro(gi, $instance_globals_i_id_map); curr; curr = cptr.ldPtr(curr)) {
+            /* first bucket might not be totally full */
             if (cptr.eq(curr, cptr.ldPtro(gi, $instance_globals_i_id_map))) {
                 i = cptr.ldI32o(gn, $instance_globals_n_n_ids_mapped) % 64;
                 if (i == 0)
                     i = 64;
             } else
                 i = 64;
+
             while (--i >= 0)
                 if (gid == cptr.ldI32o2(curr, i, 8, $bucket_map)) {
                     cptr.stI32(nidp, cptr.ldI32o2(curr, i, 8, $bucket_map + 4));
                     return 1;
                 }
         }
+
     return 0;
 }
 
@@ -1244,11 +1553,13 @@ function reset_oattached_mids(ghostly) {
     let otmp;
     let oldid;
     let nid = cptr.box(0);
+
     for (otmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist); otmp; otmp = cptr.ldPtr(otmp)) {
         if (ghostly && has_omonst(otmp)) {
             let mtmp = (cptr.ldPtro(cptr.ldPtro((otmp), $obj_oextra), $oextra_omonst));
+
             cptr.stI32o(mtmp, $monst_m_id, 0);
-            cptr.stI32o(mtmp, $monst_mpeaceful, cptr.st1o(mtmp, $monst_mtame, 0));
+            cptr.stI32o(mtmp, $monst_mpeaceful, cptr.st1o(mtmp, $monst_mtame, 0));  /* pet's owner died! */
         }
         if (ghostly && has_omid(otmp)) {
             oldid = (cptr.ldI32o(cptr.ldPtro((otmp), $obj_oextra), $oextra_omid));
@@ -1260,6 +1571,8 @@ function reset_oattached_mids(ghostly) {
     }
 }
 
+/* put up a menu listing each character from this player's saved games;
+   returns 1: use svp.plname[], 0: new game, -1: quit */
 /** C ref: restore.c:1536 — @param {CInt} bannerwin @returns {CInt} */
 export function* restore_menu(bannerwin) {
     let tmpwin;
@@ -1272,24 +1585,31 @@ export function* restore_menu(bannerwin) {
     let chosen_game = cptr.box(null);
     let k;
     let clet;
-    let ch = 0;
+    let ch = 0;  /* ch: 0 => new game */
     let clr = NHM.NO_COLOR;
+
     cptr.st1(svp, 0);
-    saved = (yield* get_saved_games());
+    saved = (yield* get_saved_games());  /* array of character names */
     if (saved && cptr.ldPtr(saved)) {
         tmpwin = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
         (yield* Y.icall(start_menu()(tmpwin, 0n)));
-        cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
+        cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);  /* no selection */
         if (bannerwin != -1) {
+            /* for tty; erase copyright notice and redo it in the menu */
             (yield* Y.icall(clear_nhwindow()(bannerwin)));
+            /* COPYRIGHT_BANNER_[ABCD] */
             for (k = 1; k <= 4; ++k)
                 (yield* add_menu_str(tmpwin, copyright_banner_line(k)));
-            (yield* add_menu_str(tmpwin, __sl69));
+            (yield* add_menu_str(tmpwin, __s_empty));
         }
-        (yield* add_menu_str(tmpwin, __sl96));
+        (yield* add_menu_str(tmpwin, __s_select_one_of_your_saved_games));
+        /* if all the save files have a playmode of '-' then we'll just list
+           their character name-role-race-gend-algn values, but if any are
+           'X' or 'D', we'll list playmode along with name-role-&c values
+           for every entry; first, figure out if they're all normal play */
         for (all_normal = 1, k = 0; all_normal && cptr.ldPtro(saved, k, 8); ++k) {
             next = cptr.ldPtro(saved, k, 8);
-            mode = cptr.ld1so(next, 48);
+            mode = cptr.ld1so(next, 48);  /* fixed last char, beyond '\0' */
             if (mode != 45)
                 all_normal = 0;
         }
@@ -1298,31 +1618,35 @@ export function* restore_menu(bannerwin) {
             next = cptr.ldPtro(saved, k, 8);
             mode = cptr.ld1so(next, 48);
             if (all_normal)
-                void cptr.sprintf(cptr.decay(menutext), __sl97, 48, next);
+                void cptr.sprintf(cptr.decay(menutext), __s_pct_dot_star_s, 48, next);
             else
-                void cptr.sprintf(cptr.decay(menutext), __sl98, mode, 48, next);
+                void cptr.sprintf(cptr.decay(menutext), __s_c_s, mode, 48, next);
             (yield* add_menu(tmpwin, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, cptr.decay(menutext), NHM.MENU_ITEMFLAGS_SKIPMENUCOLORS));
         }
         clet = (k <= 13) ? 110 : ((k <= 39) ? 78 : 0);
-        cptr.stI32(any, -1);
-        (yield* add_menu(tmpwin, nul_glyphinfo.v, any, schar(clet), 78, NHM.ATR_NONE, clr, __sl99, NHM.MENU_ITEMFLAGS_NONE));
+        cptr.stI32(any, -1);  /* not >= 0 */
+        (yield* add_menu(tmpwin, nul_glyphinfo.v, any, schar(clet), 78, NHM.ATR_NONE, clr, __s_start_a_new_character, NHM.MENU_ITEMFLAGS_NONE));
         clet = (((k + 1) | 0) <= 16 && clet == 110) ? 113 : ((((k + 1) | 0) <= 42 && clet == 78) ? 81 : 0);
         cptr.stI32(any, -2);
-        (yield* add_menu(tmpwin, nul_glyphinfo.v, any, schar(clet), 81, NHM.ATR_NONE, clr, __sl100, NHM.MENU_ITEMFLAGS_SELECTED));
+        (yield* add_menu(tmpwin, nul_glyphinfo.v, any, schar(clet), 81, NHM.ATR_NONE, clr, __s_never_mind_quit, NHM.MENU_ITEMFLAGS_SELECTED));
+        /* no prompt on end_menu, as we've done our own at the top */
         (yield* Y.icall(end_menu()(tmpwin, null)));
         if ((yield* select_menu(tmpwin, NHM.PICK_ONE, chosen_game)) > 0) {
             ch = cptr.ldI32(chosen_game.v);
             if (ch > 0)
                 void cptr.strcpy(svp, cptr.ldPtro(saved, (ch - 1) | 0, 8));
             else if (ch < 0)
-                ++ch;
+                ++ch;  /* -1 -> 0 (new game), -2 -> -1 (quit) */
             cptr.free(chosen_game.v);
         } else {
-            ch = -1;
+            ch = -1;  /* quit menu without making a selection => quit */
         }
         (yield* Y.icall(destroy_nhwindow()(tmpwin)));
         if (bannerwin != -1) {
+            /* for tty; clear the menu away and put subset of copyright back
+             */
             (yield* Y.icall(clear_nhwindow()(bannerwin)));
+            /* COPYRIGHT_BANNER_A, preceding "Who are you?" prompt */
             if (ch == 0)
                 (yield* Y.icall(putstr()(bannerwin, 0, copyright_banner_line(1))));
         }

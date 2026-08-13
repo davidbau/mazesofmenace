@@ -42,39 +42,40 @@ const $DisplayDesc_curx = FLD.DisplayDesc_curx, $DisplayDesc_cury = FLD.DisplayD
     $window_procs_win_putstr = FLD.window_procs_win_putstr;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("Message History");
-const __sl1 = cptr.lit("");
-const __sl2 = cptr.lit("\x1b ");
-const __sl3 = cptr.lit("You die");
-const __sl4 = cptr.lit("  ");
-const __sl5 = cptr.lit("Putsym window MESSAGE nonexistent");
-const __sl6 = cptr.lit("ttyDisplay->curx > 0");
-const __sl7 = cptr.lit("../win/tty/topl.c");
-const __sl8 = cptr.lit("\b \b");
-const __sl9 = cptr.lit(" [%s]");
-const __sl10 = cptr.lit(" (%c)");
-const __sl11 = cptr.lit(" ");
-const __sl12 = cptr.lit("%s");
-const __sl13 = cptr.lit("%s ");
-const __sl14 = cptr.lit("#");
-const __sl15 = cptr.lit("#%ld");
-const __sl16 = cptr.lit("%s%s");
-const __sl17 = cptr.lit("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE");
+const __s_message_history = cptr.lit("Message History");
+const __s_empty = cptr.lit("");
+const __s_esc_sp = cptr.lit("\x1b ");
+const __s_you_die = cptr.lit("You die");
+const __s_sp2 = cptr.lit("  ");
+const __s_putsym_window_message_nonexistent = cptr.lit("Putsym window MESSAGE nonexistent");
+const __s_ttydisplay_curx_0 = cptr.lit("ttyDisplay->curx > 0");
+const __s_win_tty_topl_c = cptr.lit("../win/tty/topl.c");
+const __s_bs_sp_bs = cptr.lit("\b \b");
+const __s_sp_lbrack_pct_s_rbrack = cptr.lit(" [%s]");
+const __s_sp_lparen_pct_c_rparen = cptr.lit(" (%c)");
+const __s_sp = cptr.lit(" ");
+const __s_pct_s = cptr.lit("%s");
+const __s_pct_s_sp = cptr.lit("%s ");
+const __s_hash = cptr.lit("#");
+const __s_ld = cptr.lit("#%ld");
+const __s_s_s = cptr.lit("%s%s");
+const __s_ttydisplay_null_ttydisplay_toplin = cptr.lit("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE");
 
 /** C ref: topl.c:20 @returns {CInt} */
 export function tty_doprev_message() {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
     let prevmsg_win;
     let i;
+
     if ((cptr.ld1so(iflags, $instance_flags_prevmsg_window) != 115) && !cptr.ldI32o(ttyDisplay, $DisplayDesc_inread)) {
         if (cptr.ld1so(iflags, $instance_flags_prevmsg_window) == 102) {
             prevmsg_win = create_nhwindow()(NHM.NHW_MENU);
-            putstr()(prevmsg_win, 0, __sl0);
-            putstr()(prevmsg_win, 0, __sl1);
+            putstr()(prevmsg_win, 0, __s_message_history);
+            putstr()(prevmsg_win, 0, __s_empty);
             cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
             i = Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_maxcol)));
             do {
-                if (cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8) && strcmp(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8), __sl1))
+                if (cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8) && strcmp(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8), __s_empty))
                     putstr()(prevmsg_win, 0, cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8));
                 i = Number(BigInt.asIntN(32, (BigInt(((i + 1) | 0)) % cptr.ldI64o(cw, $WinDesc_rows))));
             } while (BigInt(i) != cptr.ldI64o(cw, $WinDesc_maxcol));
@@ -85,7 +86,7 @@ export function tty_doprev_message() {
             do {
                 morc.v = 0;
                 if (cptr.ldI64o(cw, $WinDesc_maxcol) == cptr.ldI64o(cw, $WinDesc_maxrow)) {
-                    cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);
+                    cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);  /* ^P ok at --More-- */
                     redotoplin(cptr.add(gt, $instance_globals_t_toplines));
                     (cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxcol) + -1n)) - (-1n);
                     if (cptr.ldI64o(cw, $WinDesc_maxcol) < 0n)
@@ -93,7 +94,7 @@ export function tty_doprev_message() {
                     if (!cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), cptr.ldI64o(cw, $WinDesc_maxcol), 8))
                         cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
                 } else if (cptr.ldI64o(cw, $WinDesc_maxcol) == (BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_maxrow) - 1n))) {
-                    cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);
+                    cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);  /* ^P ok at --More-- */
                     redotoplin(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), cptr.ldI64o(cw, $WinDesc_maxcol), 8));
                     (cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxcol) + -1n)) - (-1n);
                     if (cptr.ldI64o(cw, $WinDesc_maxcol) < 0n)
@@ -102,12 +103,12 @@ export function tty_doprev_message() {
                         cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
                 } else {
                     prevmsg_win = create_nhwindow()(NHM.NHW_MENU);
-                    putstr()(prevmsg_win, 0, __sl0);
-                    putstr()(prevmsg_win, 0, __sl1);
+                    putstr()(prevmsg_win, 0, __s_message_history);
+                    putstr()(prevmsg_win, 0, __s_empty);
                     cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
                     i = Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_maxcol)));
                     do {
-                        if (cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8) && strcmp(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8), __sl1))
+                        if (cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8) && strcmp(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8), __s_empty))
                             putstr()(prevmsg_win, 0, cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), i, 8));
                         i = Number(BigInt.asIntN(32, (BigInt(((i + 1) | 0)) % cptr.ldI64o(cw, $WinDesc_rows))));
                     } while (BigInt(i) != cptr.ldI64o(cw, $WinDesc_maxcol));
@@ -115,13 +116,14 @@ export function tty_doprev_message() {
                     display_nhwindow()(prevmsg_win, 1);
                     destroy_nhwindow()(prevmsg_win);
                 }
+
             } while (morc.v == 16);
             cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 0);
         } else {
             morc.v = 0;
             prevmsg_win = create_nhwindow()(NHM.NHW_MENU);
-            putstr()(prevmsg_win, 0, __sl0);
-            putstr()(prevmsg_win, 0, __sl1);
+            putstr()(prevmsg_win, 0, __s_message_history);
+            putstr()(prevmsg_win, 0, __s_empty);
             putstr()(prevmsg_win, 0, cptr.add(gt, $instance_globals_t_toplines));
             cptr.stI64o(cw, $WinDesc_maxcol, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_maxrow) - 1n));
             if (cptr.ldI64o(cw, $WinDesc_maxcol) < 0n)
@@ -134,13 +136,14 @@ export function tty_doprev_message() {
                 if (!cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), cptr.ldI64o(cw, $WinDesc_maxcol), 8))
                     cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
             } while (cptr.ldI64o(cw, $WinDesc_maxcol) != cptr.ldI64o(cw, $WinDesc_maxrow));
+
             display_nhwindow()(prevmsg_win, 1);
             destroy_nhwindow()(prevmsg_win);
             cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
             cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 0);
         }
     } else if (cptr.ld1so(iflags, $instance_flags_prevmsg_window) == 115) {
-        cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);
+        cptr.st1o(ttyDisplay, $DisplayDesc_dismiss_more, 16);  /* <ctrl/P> allowed at --More-- */
         do {
             morc.v = 0;
             if (cptr.ldI64o(cw, $WinDesc_maxcol) == cptr.ldI64o(cw, $WinDesc_maxrow))
@@ -158,16 +161,19 @@ export function tty_doprev_message() {
     return 0;
 }
 
-/** C ref: topl.c:122 — @param {CPtr} str */
+/** C ref: topl.c:122 — @param {CPtr<char>} str */
 function redotoplin(str) {
     let otoplin = cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin);
+
     home();
     if (!cptr.ldI32o(ttyDisplay, $DisplayDesc_topl_utf8)) {
         if (cptr.ldI32o(ttyDisplay, $DisplayDesc_mixed) && (cptr.ld1s(str) & 128)) {
+            /* kludge for the / command, the only time we ever want a */
+            /* graphics character on the top line */
             g_putch(cptr.ld1s(cptr.postinc(() => str, (v) => { str = v; })));
             (cptr.stI16o(ttyDisplay, $DisplayDesc_curx, cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) + 1)) - (1);
         }
-        end_glyphout();
+        end_glyphout();  /* in case message printed during graphics output */
     }
     putsyms(str);
     cl_end();
@@ -176,33 +182,44 @@ function redotoplin(str) {
         more();
 }
 
-/** C ref: topl.c:145 — @param {CPtr} str */
+/* for use by tty_putstr() */
+/** C ref: topl.c:145 — @param {CPtr<char>} str */
 export function show_topl(str) {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
+
+    /* show if either STOP isn't set or current message specifies NOSTOP */
     if ((cptr.ldI32(cw) & 5) != NHM.WIN_STOP) {
+        /* NOSTOP cancels persistent STOP and is a one-shot operation;
+           force both to be cleared (no-op for either bit that isn't set) */
         cptr.stI32(cw, cptr.ldI32(cw) & -6);
+
         if (cptr.ldI16o(ttyDisplay, $DisplayDesc_cury) && cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NON_EMPTY)
             tty_clear_nhwindow(WIN_MESSAGE.v);
+
         cptr.stI64o(cw, $WinDesc_curx, cptr.stI64o(cw, $WinDesc_cury, 0n));
         home();
         cl_end();
         addtopl(str);
+
         if (cptr.ldI16o(ttyDisplay, $DisplayDesc_cury) && cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) != NHM.TOPLINE_SPECIAL_PROMPT)
             cptr.stI32o(ttyDisplay, $DisplayDesc_toplin, NHM.TOPLINE_NON_EMPTY);
     }
 }
 
+/* used by update_topl(); also by tty_putstr() */
 /** C ref: topl.c:170 */
 export function remember_topl() {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
     let idx = Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_maxrow)));
     let len = Number(BigInt.asUintN(32, BigInt.asUintN(64, cptr.strlen(cptr.add(gt, $instance_globals_t_toplines)) + 1n)));
+
     if ((cptr.ldI32(cw) & NHM.WIN_LOCKHISTORY) || !cptr.ld1so(gt, $instance_globals_t_toplines))
         return;
+
     if (len > cptr.ldI16o(cptr.ldPtro(cw, $WinDesc_datlen), idx, 2)) {
         if (cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), idx, 8))
             cptr.free(cptr.ldPtro(cptr.ldPtro(cw, $WinDesc_data), idx, 8));
-        len = (len + ((8 - ((len & 7) >>> 0)) >>> 0)) | 0;
+        len = (len + ((8 - ((len & 7) >>> 0)) >>> 0)) | 0;  /* pad up to next multiple of 8 */
         cptr.stPtro(cptr.ldPtro(cw, $WinDesc_data), idx, alloc(len), 8);
         cptr.stI16o(cptr.ldPtro(cw, $WinDesc_datlen), idx, i16(len), 2);
     }
@@ -213,9 +230,10 @@ export function remember_topl() {
     }
 }
 
-/** C ref: topl.c:194 — @param {CPtr} s */
+/** C ref: topl.c:194 — @param {CPtr<char>} s */
 export function addtopl(s) {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
+
     tty_curs(BASE_WINDOW, Number(BigInt.asIntN(32, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_curx) + 1n))), Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_cury))));
     putsyms(s);
     cl_end();
@@ -225,26 +243,35 @@ export function addtopl(s) {
 /** C ref: topl.c:205 */
 export function more() {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
+
     if (cptr.ld1so(iflags, $instance_flags_debug_fuzzer))
         return;
+
+    /* avoid recursion -- only happens from interrupts */
     if (cptr.ldI32o(ttyDisplay, $DisplayDesc_inmore))
         return;
+
     (cptr.stI32o(ttyDisplay, $DisplayDesc_inmore, cptr.ldI32o(ttyDisplay, $DisplayDesc_inmore) + 1)) - (1);
+
     if (cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin)) {
         tty_curs(BASE_WINDOW, Number(BigInt.asIntN(32, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_curx) + 1n))), Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_cury))));
         if (cptr.ldI64o(cw, $WinDesc_curx) >= BigInt(((CO() - 8) | 0)))
             topl_putsym(10);
     }
+
     if (cptr.ld1so(flags, $flag_standout))
         standoutbeg();
     putsyms(cptr.decay(defmorestr));
     if (cptr.ld1so(flags, $flag_standout))
         standoutend();
-    xwaitforspace(__sl2);
+
+    xwaitforspace(__s_esc_sp);
+
     if (morc.v == 27) {
         if (!(cptr.ldI32(cw) & NHM.WIN_NOSTOP))
             cptr.stI32(cw, cptr.ldI32(cw) | NHM.WIN_STOP);
     }
+
     if (cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) && cptr.ldI64o(cw, $WinDesc_cury)) {
         docorner(1, Number(BigInt.asIntN(32, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_cury) + 1n))), 0);
         cptr.stI64o(cw, $WinDesc_curx, cptr.stI64o(cw, $WinDesc_cury, 0n));
@@ -258,7 +285,7 @@ export function more() {
     cptr.stI32o(ttyDisplay, $DisplayDesc_inmore, 0);
 }
 
-/** C ref: topl.c:251 — @param {CPtr} bp */
+/** C ref: topl.c:251 — @param {CPtr<char>} bp */
 export function update_topl(bp) {
     let tl;
     let otl;
@@ -266,9 +293,12 @@ export function update_topl(bp) {
     let notdied = 1;
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
     let skip = schar(((cptr.ldI32(cw) & 5) == NHM.WIN_STOP));
+
+    /* If there is room on the line, print message on same line */
+    /* But messages like "You die..." deserve their own line */
     n0 = Number(BigInt.asIntN(32, cptr.strlen(bp)));
-    if ((cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NEED_MORE || skip) && cptr.ldI64o(cw, $WinDesc_cury) == 0n && ((((n0 + Number(BigInt.asIntN(32, cptr.strlen(cptr.add(gt, $instance_globals_t_toplines))))) | 0) + 3) | 0) < ((CO() - 8) | 0) && (notdied = cptr.strncmp(bp, __sl3, 7n)) != 0) {
-        void cptr.strcat(cptr.add(gt, $instance_globals_t_toplines), __sl4);
+    if ((cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NEED_MORE || skip) && cptr.ldI64o(cw, $WinDesc_cury) == 0n && ((((n0 + Number(BigInt.asIntN(32, cptr.strlen(cptr.add(gt, $instance_globals_t_toplines))))) | 0) + 3) | 0) < ((CO() - 8) | 0) && (notdied = cptr.strncmp(bp, __s_you_die, 7n)) != 0) {
+        void cptr.strcat(cptr.add(gt, $instance_globals_t_toplines), __s_sp2);
         void cptr.strcat(cptr.add(gt, $instance_globals_t_toplines), bp);
         cptr.stI64o(cw, $WinDesc_curx, cptr.ldI64o(cw, $WinDesc_curx) + 2n);
         if (!skip)
@@ -278,22 +308,24 @@ export function update_topl(bp) {
         if (cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NEED_MORE) {
             more();
         } else if (cptr.ldI64o(cw, $WinDesc_cury)) {
-            docorner(1, Number(BigInt.asIntN(32, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_cury) + 1n))), 0);
-            cptr.stI64o(cw, $WinDesc_curx, cptr.stI64o(cw, $WinDesc_cury, 0n));
+            docorner(1, Number(BigInt.asIntN(32, BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_cury) + 1n))), 0);  /* reset cury = 0 if redraw screen */
+            cptr.stI64o(cw, $WinDesc_curx, cptr.stI64o(cw, $WinDesc_cury, 0n));  /* from home--cls() & docorner(1,n,0) */
         }
     }
     remember_topl();
     void __builtin___strncpy_chk(cptr.add(gt, $instance_globals_t_toplines), bp, 300n, __builtin_object_size(cptr.add(gt, $instance_globals_t_toplines), 1));
     cptr.st1o2(gt, 299, 1, $instance_globals_t_toplines, 0);
+
     for (tl = cptr.add(gt, $instance_globals_t_toplines); n0 >= CO(); ) {
         otl = tl;
         for (tl = cptr.add(tl, (CO() - 1) | 0); !cptr.eq(tl, otl); tl = cptr.add(tl, -1))
             if (cptr.ld1s(tl) == 32)
                 break;
         if (cptr.eq(tl, otl)) {
+            /* Eek!  A huge token.  Try splitting after it. */
             tl = cptr.strchr(otl, 32);
             if (!tl)
-                break;
+                break;  /* No choice but to spit it out whole. */
         }
         cptr.st1(cptr.postinc(() => tl, (v) => { tl = v; }), 10);
         n0 = Number(BigInt.asIntN(32, cptr.strlen(tl)));
@@ -307,14 +339,16 @@ export function update_topl(bp) {
 /** C ref: topl.c:305 — @param {CInt} c */
 function topl_putsym(c) {
     let cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
+
     if (cw === null)
-        panic(__sl5);
+        panic(__s_putsym_window_message_nonexistent);
+
     switch (c) {
         case 8:
         if (cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) == 0 && cptr.ldI16o(ttyDisplay, $DisplayDesc_cury) > 0)
             tty_curs(BASE_WINDOW, CO(), (cptr.ldI16o(ttyDisplay, $DisplayDesc_cury) - 1) | 0);
         backsp();
-        void ((!!(cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) > 0)) || (nhassert_failed(__sl6, __sl7, 317), 0) ? 1 : 0);
+        void ((!!(cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) > 0)) || (nhassert_failed(__s_ttydisplay_curx_0, __s_win_tty_topl_c, 317), 0) ? 1 : 0);
         (cptr.stI16o(ttyDisplay, $DisplayDesc_curx, cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) + -1)) - (-1);
         cptr.stI64o(cw, $WinDesc_curx, BigInt(cptr.ldI16o(ttyDisplay, $DisplayDesc_curx)));
         return;
@@ -326,7 +360,7 @@ function topl_putsym(c) {
         break;
         default:
         if (cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) == ((CO() - 1) | 0))
-            topl_putsym(10);
+            topl_putsym(10);  /* 1 <= curx < CO; avoid CO */
         (cptr.stI16o(ttyDisplay, $DisplayDesc_curx, cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) + 1)) - (1);
     }
     cptr.stI64o(cw, $WinDesc_curx, BigInt(cptr.ldI16o(ttyDisplay, $DisplayDesc_curx)));
@@ -334,6 +368,11 @@ function topl_putsym(c) {
         cl_end();
     void putchar(c);
     {
+        /* On non-WIN32CON, curx is incremented BEFORE putchar (see line 336
+           above), so curx is one ahead of where the character was actually
+           written.  Temporarily decrement to write to the correct shadow
+           buffer position — same pattern used by process_menu_window,
+           process_text_window, and other NOMUX hooks in wintty.c. */
         let svx = cptr.ldI16o(ttyDisplay, $DisplayDesc_curx);
         (cptr.stI16o(ttyDisplay, $DisplayDesc_curx, cptr.ldI16o(ttyDisplay, $DisplayDesc_curx) + -1)) - (-1);
         nomux_putch(c);
@@ -341,7 +380,7 @@ function topl_putsym(c) {
     }
 }
 
-/** C ref: topl.c:355 — @param {CPtr} str */
+/** C ref: topl.c:355 — @param {CPtr<char>} str */
 export function putsyms(str) {
     while (cptr.ld1s(str))
         topl_putsym(cptr.ld1s(cptr.postinc(() => str, (v) => { str = v; })));
@@ -349,12 +388,26 @@ export function putsyms(str) {
 
 /** C ref: topl.c:362 — @param {CInt} n */
 function removetopl(n) {
+    /* assume addtopl() has been done, so ttyDisplay->toplin is already set */
     while (n-- > 0)
-        putsyms(__sl8);
+        putsyms(__s_bs_sp_bs);
 }
 
-/** C ref: topl.c:373 — @param {CPtr} query @param {CPtr} resp @param {CInt} def @returns {CInt} */
+/* returns a single keystroke; also sets 'yn_number' */
+/** C ref: topl.c:373 — @param {CPtr<char>} query @param {CPtr<char>} resp @param {CInt} def @returns {CInt} */
 export function tty_yn_function(query, resp, def) {
+    /*
+     * Generic yes/no function.  'def' is the default (returned by space
+     * or return; 'esc' returns 'q', or 'n', or the default, depending on
+     * what's in the expected-response string.  The 'query' string is
+     * printed before the user is asked about the string.
+     *
+     * If resp is NULL, any single character is accepted and returned.
+     * If not-NULL, only characters in it are allowed (exceptions:  the
+     * quitchars are always allowed, and if it contains '#' then digits
+     * are allowed).  If it includes an <esc>, anything beyond that won't
+     * be shown in the prompt to the user but will be acceptable as input.
+     */
     let q;
     let rtmp = new Uint8Array(40);
     let digit_ok;
@@ -364,6 +417,7 @@ export function tty_yn_function(query, resp, def) {
     let doprev = 0;
     let prompt = new Uint8Array(256);
     __lbl_clean_up: {
+
         yn_number.v = 0n;
         if (cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NEED_MORE && (cptr.ldI32(cw) & 5) != NHM.WIN_STOP)
             more();
@@ -373,28 +427,38 @@ export function tty_yn_function(query, resp, def) {
         if (resp) {
             let rb;
             let respbuf = new Uint8Array(128);
+
             allow_num = schar((cptr.strchr(resp, 35) !== null));
             void cptr.strcpy(cptr.decay(respbuf), resp);
+            /* normally we force lowercase, but if any uppercase letters
+               are present in the allowed response, preserve case;
+               check this before stripping the hidden choices */
             for (rb = cptr.decay(respbuf); cptr.ld1s(rb); rb = cptr.add(rb, 1))
                 if (65 <= cptr.ld1s(rb) && cptr.ld1s(rb) <= 90) {
                     preserve_case = 1;
                     break;
                 }
+            /* any acceptable responses that follow <esc> aren't displayed */
             if ((rb = cptr.strchr(cptr.decay(respbuf), 27)) !== null)
                 cptr.st1(rb, 0);
             void __builtin___strncpy_chk(cptr.decay(prompt), query, 127n, __builtin_object_size(cptr.decay(prompt), 1));
             cptr.st1o(cptr.decay(prompt), 127, 0, 1);
-            void cptr.sprintf(eos(cptr.decay(prompt)), __sl9, cptr.decay(respbuf));
+            void cptr.sprintf(eos(cptr.decay(prompt)), __s_sp_lbrack_pct_s_rbrack, cptr.decay(respbuf));
             if (def)
-                void cptr.sprintf(eos(cptr.decay(prompt)), __sl10, def);
-            void cptr.strcat(cptr.decay(prompt), __sl11);
-            custompline(6, __sl12, cptr.decay(prompt));
+                void cptr.sprintf(eos(cptr.decay(prompt)), __s_sp_lparen_pct_c_rparen, def);
+            /* not pline("%s ", prompt);
+               trailing space is wanted here in case of reprompt */
+            void cptr.strcat(cptr.decay(prompt), __s_sp);
+            custompline(6, __s_pct_s, cptr.decay(prompt));
         } else {
-            void cptr.sprintf(cptr.decay(prompt), __sl13, query);
-            custompline(6, __sl12, cptr.decay(prompt));
+            /* no restriction on allowed response, so always preserve case */
+            /* preserve_case = TRUE; -- moot since we're jumping to the end */
+            void cptr.sprintf(cptr.decay(prompt), __s_pct_s_sp, query);
+            custompline(6, __s_pct_s, cptr.decay(prompt));
             q = readchar();
             break __lbl_clean_up;
         }
+
         do {
             q = readchar();
             if (!preserve_case)
@@ -410,18 +474,21 @@ export function tty_yn_function(query, resp, def) {
                     addtopl(cptr.decay(prompt));
                 } else {
                     if (!doprev)
-                        void tty_doprev_message();
+                        void tty_doprev_message();  /* need two initially */
                     void tty_doprev_message();
                     doprev = 1;
-                }
+                }  /* force another loop iteration */
                 q = 0;
                 continue;
             } else if (doprev) {
+                /* BUG[?]: this probably ought to check whether the
+                   character which has just been read is an acceptable
+                   response; if so, skip the reprompt and use it. */
                 tty_clear_nhwindow(WIN_MESSAGE.v);
                 cptr.stI64o(cw, $WinDesc_maxcol, cptr.ldI64o(cw, $WinDesc_maxrow));
                 doprev = 0;
                 addtopl(cptr.decay(prompt));
-                q = 0;
+                q = 0;  /* force another loop iteration */
                 continue;
             }
             digit_ok = schar((allow_num && digit(q) ? 1 : 0));
@@ -445,29 +512,32 @@ export function tty_yn_function(query, resp, def) {
                 let digit_string = new Uint8Array(2);
                 let n_len = 0;
                 let value = 0n;
-                addtopl(__sl14), n_len++;
+
+                addtopl(__s_hash), n_len++;
                 cptr.st1o(cptr.decay(digit_string), 1, 0, 1);
                 if (q != 35) {
                     cptr.st1o(cptr.decay(digit_string), 0, q, 1);
                     addtopl(cptr.decay(digit_string)), n_len++;
                     value = BigInt(((q - 48) | 0));
                     q = 35;
-                }
+                }  /* loop until we get a non-digit */
                 do {
                     z = readchar();
                     if (!preserve_case)
                         z = lowc(z);
                     if (digit(z)) {
                         let dgt = BigInt(((z - 48) | 0));
+
+                        /* value = (10 * value) + (z - '0'); */
                         value = (((value) < 922337203685477580n || ((value) == 922337203685477580n && (dgt) <= 7n)) ? BigInt.asIntN(64, BigInt.asIntN(64, (value) * 10n) + (dgt)) : -1n);
                         if (value < 0n)
-                            break;
+                            break;  /* overflow: try again */
                         cptr.st1o(cptr.decay(digit_string), 0, z, 1);
                         addtopl(cptr.decay(digit_string)), n_len++;
                     } else if (z == 121 || cptr.strchr(cptr.decay(quitchars), z)) {
                         if (z == 27)
-                            value = -1n;
-                        z = 10;
+                            value = -1n;  /* abort */
+                        z = 10;  /* break */
                     } else if (z == erase_char || z == 8) {
                         if (n_len <= 1) {
                             value = -1n;
@@ -477,7 +547,7 @@ export function tty_yn_function(query, resp, def) {
                             removetopl(1), n_len--;
                         }
                     } else {
-                        value = -1n;
+                        value = -1n;  /* abort */
                         tty_nhbell();
                         break;
                     }
@@ -485,7 +555,7 @@ export function tty_yn_function(query, resp, def) {
                 if (value > 0n)
                     yn_number.v = value;
                 else if (value == 0n)
-                    q = 110;
+                    q = 110;  /* 0 => "no" */
                 else {
                     removetopl(n_len), n_len = 0;
                     q = 0;
@@ -494,10 +564,11 @@ export function tty_yn_function(query, resp, def) {
         } while (!q);
     }
     if (yn_number.v)
-        void cptr.sprintf(cptr.decay(rtmp), __sl15, yn_number.v);
+        void cptr.sprintf(cptr.decay(rtmp), __s_ld, yn_number.v);
     else
         void key2txt(uchar(q), cptr.decay(rtmp));
-    void cptr.sprintf(cptr.add(gt, $instance_globals_t_toplines), __sl16, cptr.decay(prompt), cptr.decay(rtmp));
+    /* addtopl(rtmp); -- rewrite gt.toplines instead */
+    void cptr.sprintf(cptr.add(gt, $instance_globals_t_toplines), __s_s_s, cptr.decay(prompt), cptr.decay(rtmp));
     dumplogmsg(cptr.add(gt, $instance_globals_t_toplines));
     (cptr.stI32o(ttyDisplay, $DisplayDesc_inread, cptr.ldI32o(ttyDisplay, $DisplayDesc_inread) + -1)) - (-1);
     cptr.stI32o(ttyDisplay, $DisplayDesc_toplin, NHM.TOPLINE_NON_EMPTY);
@@ -505,12 +576,16 @@ export function tty_yn_function(query, resp, def) {
         (cptr.stI32o(ttyDisplay, $DisplayDesc_intr, cptr.ldI32o(ttyDisplay, $DisplayDesc_intr) + -1)) - (-1);
     if (cptr.ldI64o(cptr.ldPtro(wins, WIN_MESSAGE.v, 8), $WinDesc_cury))
         tty_clear_nhwindow(WIN_MESSAGE.v);
+
     return q;
 }
 
+/* shared by tty_getmsghistory() and tty_putmsghistory() */
 /** C ref: topl.c:562 — char ** */
 let snapshot_mesgs = null;
 
+/* collect currently available message history data into a sequential array;
+   optionally, purge that data from the active circular buffer set as we go */
 /** C ref: topl.c:567 — @param {CInt} purge */
 function msghistory_snapshot(purge) {
     let mesg;
@@ -518,12 +593,20 @@ function msghistory_snapshot(purge) {
     let inidx;
     let outidx;
     let cw;
+
+    /* paranoia (too early or too late panic save attempt?) */
     if (WIN_MESSAGE.v == -1 || !cptr.ldPtro(wins, WIN_MESSAGE.v, 8))
         return;
     cw = cptr.ldPtro(wins, WIN_MESSAGE.v, 8);
+
+    /* flush gt.toplines[], moving most recent message to history */
     remember_topl();
+
+    /* for a passive snapshot, we just copy pointers, so can't allow further
+       history updating to take place because that could clobber them */
     if (!purge)
         cptr.stI32(cw, cptr.ldI32(cw) | NHM.WIN_LOCKHISTORY);
+
     snapshot_mesgs = alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt.asUintN(64, (BigInt.asIntN(64, cptr.ldI64o(cw, $WinDesc_rows) + 1n))) * 8n))));
     outidx = 0;
     inidx = Number(BigInt.asIntN(32, cptr.ldI64o(cw, $WinDesc_maxrow)));
@@ -533,41 +616,63 @@ function msghistory_snapshot(purge) {
         if (mesg && cptr.ld1s(mesg)) {
             cptr.stPtro(snapshot_mesgs, outidx++, mesg, 8);
             if (purge) {
+                /* we're taking this pointer away; subsequent history
+                   updates will eventually allocate a new one to replace it */
                 cptr.stPtro(cptr.ldPtro(cw, $WinDesc_data), inidx, null, 8);
                 cptr.stI16o(cptr.ldPtro(cw, $WinDesc_datlen), inidx, 0, 2);
             }
         }
         inidx = Number(BigInt.asIntN(32, (BigInt(((inidx + 1) | 0)) % cptr.ldI64o(cw, $WinDesc_rows))));
-    }
+    }  /* sentinel */
     cptr.stPtro(snapshot_mesgs, cptr.ldI64o(cw, $WinDesc_rows), null, 8);
+
+    /* for a destructive snapshot, history is now completely empty */
     if (purge)
         cptr.stI64o(cw, $WinDesc_maxcol, cptr.stI64o(cw, $WinDesc_maxrow, 0n));
 }
 
+/* release memory allocated to message history snapshot */
 /** C ref: topl.c:613 — @param {CInt} purged */
 function free_msghistory_snapshot(purged) {
     if (snapshot_mesgs) {
+        /* snapshot pointers are no longer in use */
         if (purged) {
             let i;
+
             for (i = 0; cptr.ldPtro(snapshot_mesgs, i, 8); ++i)
                 cptr.free(cptr.ldPtro(snapshot_mesgs, i, 8));
         }
+
         cptr.free(snapshot_mesgs), snapshot_mesgs = null;
+
+        /* history can resume being updated at will now... */
         if (!purged)
             cptr.stI32(cptr.ldPtro(wins, WIN_MESSAGE.v, 8), cptr.ldI32(cptr.ldPtro(wins, WIN_MESSAGE.v, 8)) & -3);
     }
 }
 
+/*
+ * This is called by the core save routines.
+ * Each time we are called, we return one string from the
+ * message history starting with the oldest message first.
+ * When none are left, we return a final null string.
+ *
+ * History is collected at the time of the first call.
+ * Any new messages issued after that point will not be
+ * included among the output of the subsequent calls.
+ */
 let __static_tty_getmsghistory_nxtidx = 0; /** C ref: topl.c:647 — int (function-static) */
 
-/** C ref: topl.c:645 — @param {CInt} init @returns {CPtr} */
+/** C ref: topl.c:645 — @param {CInt} init @returns {CPtr<char>} */
 export function tty_getmsghistory(init) {
     let nextmesg;
     let result = null;
+
     if (init) {
         msghistory_snapshot(0);
         __static_tty_getmsghistory_nxtidx = 0;
     }
+
     if (snapshot_mesgs) {
         nextmesg = cptr.ldPtro(snapshot_mesgs, __static_tty_getmsghistory_nxtidx++, 8);
         if (nextmesg) {
@@ -579,31 +684,65 @@ export function tty_getmsghistory(init) {
     return result;
 }
 
+/*
+ * This is called by the core savefile restore routines.
+ * Each time we are called, we stuff the string into our message
+ * history recall buffer. The core will send the oldest message
+ * first (actually it sends them in the order they exist in the
+ * save file, but that is supposed to be the oldest first).
+ * These messages get pushed behind any which have been issued
+ * since this session with the program has been started, since
+ * they come from a previous session and logically precede
+ * anything (like "Restoring save file...") that's happened now.
+ *
+ * Called with a null pointer to finish up restoration.
+ *
+ * It's also called by the quest pager code when a block message
+ * has a one-line summary specified.  We put that line directly
+ * into message history for ^P recall without having displayed it.
+ */
 let __static_tty_putmsghistory_initd = 0; /** C ref: topl.c:687 — signed char (function-static) */
 
-/** C ref: topl.c:685 — @param {CPtr} msg @param {CInt} restoring_msghist */
+/** C ref: topl.c:685 — @param {CPtr<char>} msg @param {CInt} restoring_msghist */
 export function tty_putmsghistory(msg, restoring_msghist) {
     let idx;
+
     if (restoring_msghist && !__static_tty_putmsghistory_initd) {
+        /* we're restoring history from the previous session, but new
+           messages have already been issued this session ("Restoring...",
+           for instance); collect current history (ie, those new messages),
+           and also clear it out so that nothing will be present when the
+           restored ones are being put into place */
         msghistory_snapshot(1);
         __static_tty_putmsghistory_initd = 1;
+        /* this suffices; there's no need to scrub saved_pline[] pointers */
         cptr.stI32o(gs, $instance_globals_s_saved_pline_index, 0);
     }
+
     if (msg) {
+        /* Caller is asking us to remember a top line that needed more.
+           Should we call more?  This can happen when the player has set
+           iflags.force_invmenu and they attempt to shoot with nothing in
+           the quiver. */
         if (ttyDisplay && cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) == NHM.TOPLINE_NEED_MORE)
             cptr.stI32o(ttyDisplay, $DisplayDesc_toplin, NHM.TOPLINE_NON_EMPTY);
+
+        /* move most recent message to history, make this become most recent */
         remember_topl();
         void cptr.strcpy(cptr.add(gt, $instance_globals_t_toplines), msg);
         dumplogmsg(cptr.add(gt, $instance_globals_t_toplines));
     } else if (snapshot_mesgs) {
-        void ((!!(cptr.eq(ttyDisplay, (null)) || cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) != NHM.TOPLINE_NEED_MORE)) || (nhassert_failed(__sl17, __sl7, 720), 0) ? 1 : 0);
+        void ((!!(cptr.eq(ttyDisplay, (null)) || cptr.ldI32o(ttyDisplay, $DisplayDesc_toplin) != NHM.TOPLINE_NEED_MORE)) || (nhassert_failed(__s_ttydisplay_null_ttydisplay_toplin, __s_win_tty_topl_c, 720), 0) ? 1 : 0);
+
+        /* done putting arbitrary messages in; put the snapshot ones back */
         for (idx = 0; cptr.ldPtro(snapshot_mesgs, idx, 8); ++idx) {
             remember_topl();
             void cptr.strcpy(cptr.add(gt, $instance_globals_t_toplines), cptr.ldPtro(snapshot_mesgs, idx, 8));
             dumplogmsg(cptr.add(gt, $instance_globals_t_toplines));
         }
+        /* now release the snapshot */
         free_msghistory_snapshot(1);
-        __static_tty_putmsghistory_initd = 0;
+        __static_tty_putmsghistory_initd = 0;  /* reset */
     }
 }
 

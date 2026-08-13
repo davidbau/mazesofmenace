@@ -15,64 +15,72 @@ import { luaL_addgsub, luaL_addlstring, luaL_addstring, luaL_addvalue, luaL_buff
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $luaL_Buffer_n = FLD.luaL_Buffer_n, $luaL_Buffer_size = FLD.luaL_Buffer_size,
-    $luaL_Reg_func = FLD.luaL_Reg_func;
+    $luaL_Reg_func = FLD.luaL_Reg_func, $sizeof_luaL_Reg = FLD.sizeof_luaL_Reg;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("_CLIBS");
-const __sl1 = cptr.lit("LUA_NOENV");
-const __sl2 = cptr.lit("%s%s");
-const __sl3 = cptr.lit("_5_4");
-const __sl4 = cptr.lit(";;");
-const __sl5 = cptr.lit(";");
-const __sl6 = cptr.lit("open");
-const __sl7 = cptr.lit("init");
-const __sl8 = cptr.lit("r");
-const __sl9 = cptr.lit("no file '");
-const __sl10 = cptr.lit("'\n\tno file '");
-const __sl11 = cptr.lit("'");
-const __sl12 = cptr.lit("?");
-const __sl13 = cptr.lit(".");
-const __sl14 = cptr.lit("/");
-const __sl15 = cptr.lit("'package.%s' must be a string");
-const __sl16 = cptr.lit("error loading module '%s' from file '%s':\n\t%s");
-const __sl17 = cptr.lit("path");
-const __sl18 = cptr.lit("_");
-const __sl19 = cptr.lit("-");
-const __sl20 = cptr.lit("luaopen_%s");
-const __sl21 = cptr.lit("cpath");
-const __sl22 = cptr.lit("no module '%s' in file '%s'");
-const __sl23 = cptr.lit("_PRELOAD");
-const __sl24 = cptr.lit("no field package.preload['%s']");
-const __sl25 = cptr.lit(":preload:");
-const __sl26 = cptr.lit("searchers");
-const __sl27 = cptr.lit("'package.searchers' must be a table");
-const __sl28 = cptr.lit("\n\t");
-const __sl29 = cptr.lit("module '%s' not found:%s");
-const __sl30 = cptr.lit("_LOADED");
-const __sl31 = cptr.lit("loadlib");
-const __sl32 = cptr.lit("searchpath");
-const __sl33 = cptr.lit("preload");
-const __sl34 = cptr.lit("loaded");
-const __sl35 = cptr.lit("require");
-const __sl36 = cptr.lit("__gc");
-const __sl37 = cptr.lit("LUA_PATH");
-const __sl38 = cptr.lit("/usr/local/share/lua/5.4/?.lua;/usr/local/share/lua/5.4/?/init.lua;/usr/local/lib/lua/5.4/?.lua;/usr/local/lib/lua/5.4/?/init.lua;./?.lua;./?/init.lua");
-const __sl39 = cptr.lit("LUA_CPATH");
-const __sl40 = cptr.lit("/usr/local/lib/lua/5.4/?.so;/usr/local/lib/lua/5.4/loadall.so;./?.so");
-const __sl41 = cptr.lit("/\n;\n?\n!\n-\n");
-const __sl42 = cptr.lit("config");
+const __s_clibs = cptr.lit("_CLIBS");
+const __s_lua_noenv = cptr.lit("LUA_NOENV");
+const __s_s_s = cptr.lit("%s%s");
+const __s_5_4 = cptr.lit("_5_4");
+const __s_semi2 = cptr.lit(";;");
+const __s_semi = cptr.lit(";");
+const __s_open = cptr.lit("open");
+const __s_init = cptr.lit("init");
+const __s_r = cptr.lit("r");
+const __s_no_file = cptr.lit("no file '");
+const __s_no_file__2 = cptr.lit("'\n\tno file '");
+const __s_apos = cptr.lit("'");
+const __s_query = cptr.lit("?");
+const __s_dot = cptr.lit(".");
+const __s_slash = cptr.lit("/");
+const __s_package_s_must_be_a_string = cptr.lit("'package.%s' must be a string");
+const __s_error_loading_module_s_from_file_s_s = cptr.lit("error loading module '%s' from file '%s':\n\t%s");
+const __s_path = cptr.lit("path");
+const __s_us = cptr.lit("_");
+const __s_dash = cptr.lit("-");
+const __s_luaopen_s = cptr.lit("luaopen_%s");
+const __s_cpath = cptr.lit("cpath");
+const __s_no_module_s_in_file_s = cptr.lit("no module '%s' in file '%s'");
+const __s_preload = cptr.lit("_PRELOAD");
+const __s_no_field_package_preload_s = cptr.lit("no field package.preload['%s']");
+const __s_preload__2 = cptr.lit(":preload:");
+const __s_searchers = cptr.lit("searchers");
+const __s_package_searchers_must_be_a_table = cptr.lit("'package.searchers' must be a table");
+const __s_nl_tab = cptr.lit("\n\t");
+const __s_module_s_not_found_s = cptr.lit("module '%s' not found:%s");
+const __s_loaded = cptr.lit("_LOADED");
+const __s_loadlib = cptr.lit("loadlib");
+const __s_searchpath = cptr.lit("searchpath");
+const __s_preload__3 = cptr.lit("preload");
+const __s_loaded__2 = cptr.lit("loaded");
+const __s_require = cptr.lit("require");
+const __s_gc = cptr.lit("__gc");
+const __s_lua_path = cptr.lit("LUA_PATH");
+const __s_usr_local_share_lua_5_4_lua_usr_local = cptr.lit("/usr/local/share/lua/5.4/?.lua;/usr/local/share/lua/5.4/?/init.lua;/usr/local/lib/lua/5.4/?.lua;/usr/local/lib/lua/5.4/?/init.lua;./?.lua;./?/init.lua");
+const __s_lua_cpath = cptr.lit("LUA_CPATH");
+const __s_usr_local_lib_lua_5_4_so_usr_local_lib = cptr.lit("/usr/local/lib/lua/5.4/?.so;/usr/local/lib/lua/5.4/loadall.so;./?.so");
+const __s_slash_nl_semi_nl_query_nl_bang_nl_dash = cptr.lit("/\n;\n?\n!\n-\n");
+const __s_config = cptr.lit("config");
 
+/*
+** key for table in the registry that keeps handles
+** for all loaded C libraries
+*/
 /** C ref: loadlib.c:53 — char * */
-let CLIBS = __sl0;
+let CLIBS = __s_clibs;
 
+/*
+** Special type equivalent to '(void*)' for functions in gcc
+** (to suppress warnings when converting function pointers)
+*/
 /** C ref: loadlib.c:65 — typedef voidf (type alias only, no runtime output) */
 
-/** C ref: loadlib.c:119 — @param {CPtr} lib */
+/** C ref: loadlib.c:119 — @param {CPtr<void>} lib */
 function lsys_unloadlib(lib) {
     dlclose(lib);
 }
 
-/** C ref: loadlib.c:124 — @param {CPtr} L @param {CPtr} path @param {CInt} seeglb @returns {CPtr} */
+/** C ref: loadlib.c:124 — @param {CPtr<lua_State>} L @param {CPtr<char>} path @param {CInt} seeglb @returns {CPtr<void>} */
 function* lsys_load(L, path, seeglb) {
     let lib = dlopen(path, 2 | (seeglb ? 8 : 4));
     if ((__builtin_expect(BigInt(((cptr.eq(lib, (null))) != 0)), 0n)))
@@ -80,7 +88,7 @@ function* lsys_load(L, path, seeglb) {
     return lib;
 }
 
-/** C ref: loadlib.c:132 — @param {CPtr} L @param {CPtr} lib @param {CPtr} sym @returns {*} */
+/** C ref: loadlib.c:132 — @param {CPtr<lua_State>} L @param {CPtr<void>} lib @param {CPtr<char>} sym @returns {*} */
 function* lsys_sym(L, lib, sym) {
     let f = ((dlsym(lib, sym)));
     if ((__builtin_expect(BigInt(((f === (null)) != 0)), 0n)))
@@ -88,356 +96,420 @@ function* lsys_sym(L, lib, sym) {
     return f;
 }
 
-/** C ref: loadlib.c:276 — @param {CPtr} L @returns {CInt} */
+/*
+** return registry.LUA_NOENV as a boolean
+*/
+/** C ref: loadlib.c:276 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* noenv(L) {
     let b;
-    (yield* lua_getfield(L, -1001000, __sl1));
+    (yield* lua_getfield(L, -1001000, __s_lua_noenv));
     b = lua_toboolean(L, -1);
-    (yield* lua_settop(L, -2));
+    (yield* lua_settop(L, -2));  /* remove value */
     return b;
 }
 
-/** C ref: loadlib.c:288 — @param {CPtr} L @param {CPtr} fieldname @param {CPtr} envname @param {CPtr} dft */
+/*
+** Set a path
+*/
+/** C ref: loadlib.c:288 — @param {CPtr<lua_State>} L @param {CPtr<char>} fieldname @param {CPtr<char>} envname @param {CPtr<char>} dft */
 function* setpath(L, fieldname, envname, dft) {
     let dftmark;
-    let nver = (yield* lua_pushfstring(L, __sl2, envname, __sl3));
-    let path = getenv(nver);
+    let nver = (yield* lua_pushfstring(L, __s_s_s, envname, __s_5_4));
+    let path = getenv(nver);  /* try versioned name */
     if (cptr.eq(path, (null)))
-        path = getenv(envname);
+        path = getenv(envname);  /* try unversioned name */
     if (cptr.eq(path, (null)) || (yield* noenv(L)))
-        (yield* lua_pushstring(L, dft));
-    else if (cptr.eq((dftmark = cptr.strstr(path, __sl4)), (null)))
-        (yield* lua_pushstring(L, path));
+        (yield* lua_pushstring(L, dft));  /* use default */
+    else if (cptr.eq((dftmark = cptr.strstr(path, __s_semi2)), (null)))
+        (yield* lua_pushstring(L, path));  /* nothing to change */
     else {
         let len = cptr.strlen(path);
         let b = cptr.alloc(1056);
         (yield* luaL_buffinit(L, b));
         if (cptr.cmp(path, dftmark) < 0) {
-            (yield* luaL_addlstring(b, path, BigInt.asUintN(64, cptr.diff(dftmark, path))));
-            (void (cptr.ldU64o((b), $luaL_Buffer_n) < cptr.ldU64o((b), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((b), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((b)), (cptr.stU64o((b), $luaL_Buffer_n, cptr.ldU64o((b), $luaL_Buffer_n) + 1n)) - (1n), (cptr.ld1s(__sl5)))));
+            (yield* luaL_addlstring(b, path, BigInt.asUintN(64, cptr.diff(dftmark, path))));  /* add it */
+            (void (cptr.ldU64o((b), $luaL_Buffer_n) < cptr.ldU64o((b), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((b), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((b)), (cptr.stU64o((b), $luaL_Buffer_n, cptr.ldU64o((b), $luaL_Buffer_n) + 1n)) - (1n), (cptr.ld1s(__s_semi)))));
         }
-        (yield* luaL_addstring(b, dft));
+        (yield* luaL_addstring(b, dft));  /* add default */
         if (cptr.cmp(dftmark, cptr.add(cptr.add(path, len), -(2))) < 0) {
-            (void (cptr.ldU64o((b), $luaL_Buffer_n) < cptr.ldU64o((b), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((b), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((b)), (cptr.stU64o((b), $luaL_Buffer_n, cptr.ldU64o((b), $luaL_Buffer_n) + 1n)) - (1n), (cptr.ld1s(__sl5)))));
+            (void (cptr.ldU64o((b), $luaL_Buffer_n) < cptr.ldU64o((b), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((b), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((b)), (cptr.stU64o((b), $luaL_Buffer_n, cptr.ldU64o((b), $luaL_Buffer_n) + 1n)) - (1n), (cptr.ld1s(__s_semi)))));
             (yield* luaL_addlstring(b, cptr.add(dftmark, 2), BigInt.asUintN(64, cptr.diff((cptr.add(cptr.add(path, len), -(2))), dftmark))));
         }
         (yield* luaL_pushresult(b));
     }
     (void 0);
-    (yield* lua_setfield(L, -3, fieldname));
-    (yield* lua_settop(L, -2));
+    (yield* lua_setfield(L, -3, fieldname));  /* package[fieldname] = path value */
+    (yield* lua_settop(L, -2));  /* pop versioned variable name ('nver') */
 }
 
-/** C ref: loadlib.c:326 — @param {CPtr} L @param {CPtr} path @returns {CPtr} */
+/* }================================================================== */
+
+/*
+** return registry.CLIBS[path]
+*/
+/** C ref: loadlib.c:326 — @param {CPtr<lua_State>} L @param {CPtr<char>} path @returns {CPtr<void>} */
 function* checkclib(L, path) {
     let plib;
     (yield* lua_getfield(L, -1001000, CLIBS));
     (yield* lua_getfield(L, -1, path));
-    plib = lua_touserdata(L, -1);
-    (yield* lua_settop(L, -3));
+    plib = lua_touserdata(L, -1);  /* plib = CLIBS[path] */
+    (yield* lua_settop(L, -3));  /* pop CLIBS table and 'plib' */
     return plib;
 }
 
-/** C ref: loadlib.c:340 — @param {CPtr} L @param {CPtr} path @param {CPtr} plib */
+/*
+** registry.CLIBS[path] = plib        -- for queries
+** registry.CLIBS[#CLIBS + 1] = plib  -- also keep a list of all libraries
+*/
+/** C ref: loadlib.c:340 — @param {CPtr<lua_State>} L @param {CPtr<char>} path @param {CPtr<void>} plib */
 function* addtoclib(L, path, plib) {
     (yield* lua_getfield(L, -1001000, CLIBS));
     (yield* lua_pushlightuserdata(L, plib));
     (yield* lua_pushvalue(L, -1));
-    (yield* lua_setfield(L, -3, path));
-    (yield* lua_rawseti(L, -2, BigInt.asIntN(64, (yield* luaL_len(L, -2)) + 1n)));
-    (yield* lua_settop(L, -2));
+    (yield* lua_setfield(L, -3, path));  /* CLIBS[path] = plib */
+    (yield* lua_rawseti(L, -2, BigInt.asIntN(64, (yield* luaL_len(L, -2)) + 1n)));  /* CLIBS[#CLIBS + 1] = plib */
+    (yield* lua_settop(L, -2));  /* pop CLIBS table */
 }
 
-/** C ref: loadlib.c:354 — @param {CPtr} L @returns {CInt} */
+/*
+** __gc tag method for CLIBS table: calls 'lsys_unloadlib' for all lib
+** handles in list CLIBS
+*/
+/** C ref: loadlib.c:354 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* gctm(L) {
     let n = (yield* luaL_len(L, 1));
     for (; n >= 1n; n--) {
-        (yield* lua_rawgeti(L, 1, n));
+        (yield* lua_rawgeti(L, 1, n));  /* get handle CLIBS[n] */
         lsys_unloadlib(lua_touserdata(L, -1));
-        (yield* lua_settop(L, -2));
+        (yield* lua_settop(L, -2));  /* pop handle */
     }
     return 0;
 }
 
-/** C ref: loadlib.c:381 — @param {CPtr} L @param {CPtr} path @param {CPtr} sym @returns {CInt} */
+/*
+** Look for a C function named 'sym' in a dynamically loaded library
+** 'path'.
+** First, check whether the library is already loaded; if not, try
+** to load it.
+** Then, if 'sym' is '*', return true (as library has been loaded).
+** Otherwise, look for symbol 'sym' in the library and push a
+** C function with that symbol.
+** Return 0 and 'true' or a function in the stack; in case of
+** errors, return an error code and an error message in the stack.
+*/
+/** C ref: loadlib.c:381 — @param {CPtr<lua_State>} L @param {CPtr<char>} path @param {CPtr<char>} sym @returns {CInt} */
 function* lookforfunc(L, path, sym) {
-    let reg = (yield* checkclib(L, path));
+    let reg = (yield* checkclib(L, path));  /* check loaded C libraries */
     if (cptr.eq(reg, (null))) {
-        reg = (yield* lsys_load(L, path, cptr.ld1s(sym) == 42));
+        reg = (yield* lsys_load(L, path, cptr.ld1s(sym) == 42));  /* global symbols if 'sym'=='*' */
         if (cptr.eq(reg, (null)))
-            return 1;
+            return 1;  /* unable to load library */
         (yield* addtoclib(L, path, reg));
     }
     if (cptr.ld1s(sym) == 42) {
-        (yield* lua_pushboolean(L, 1));
-        return 0;
+        (yield* lua_pushboolean(L, 1));  /* return 'true' */
+        return 0;  /* no errors */
     } else {
         let f = (yield* lsys_sym(L, reg, sym));
         if (f === (null))
-            return 2;
-        (yield* lua_pushcclosure(L, (f), 0));
-        return 0;
+            return 2;  /* unable to find function */
+        (yield* lua_pushcclosure(L, (f), 0));  /* else create new function */
+        return 0;  /* no errors */
     }
 }
 
-/** C ref: loadlib.c:402 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:402 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* ll_loadlib(L) {
     let path = ((yield* luaL_checklstring(L, 1, null)));
     let init = ((yield* luaL_checklstring(L, 2, null)));
     let stat = (yield* lookforfunc(L, path, init));
     if ((__builtin_expect(BigInt(((stat == 0) != 0)), 1n)))
-        return 1;
+        return 1;  /* return the loaded function */
     else {
         (yield* lua_pushnil(L));
         lua_rotate(L, -2, 1);
-        (yield* lua_pushstring(L, (stat == 1) ? __sl6 : __sl7));
-        return 3;
+        (yield* lua_pushstring(L, (stat == 1) ? __s_open : __s_init));
+        return 3;  /* return fail, error message, and where */
     }
 }
 
-/** C ref: loadlib.c:425 — @param {CPtr} filename @returns {CInt} */
+/*
+** {======================================================
+** 'require' function
+** =======================================================
+*/
+
+/** C ref: loadlib.c:425 — @param {CPtr<char>} filename @returns {CInt} */
 function readable(filename) {
-    let f = fopen(filename, __sl8);
+    let f = fopen(filename, __s_r);  /* try to open file */
     if (cptr.eq(f, (null)))
-        return 0;
+        return 0;  /* open failed */
     fclose(f);
     return 1;
 }
 
-/** C ref: loadlib.c:438 — @param {CPtr} path @param {CPtr} end @returns {CPtr} */
+/*
+** Get the next name in '*path' = 'name1;name2;name3;...', changing
+** the ending ';' to '\0' to create a zero-terminated string. Return
+** NULL when list ends.
+*/
+/** C ref: loadlib.c:438 — @param {CPtr<char *>} path @param {CPtr<char>} end @returns {CPtr<char>} */
 function getnextfilename(path, end) {
     let sep;
     let name = cptr.ldPtr(path);
     if (cptr.eq(name, end))
-        return null;
+        return null;  /* no more names */
     else if (cptr.ld1s(name) == 0) {
-        cptr.st1(name, cptr.ld1s(__sl5));
-        name = cptr.add(name, 1);
+        cptr.st1(name, cptr.ld1s(__s_semi));  /* restore separator */
+        name = cptr.add(name, 1);  /* skip it */
     }
-    sep = cptr.strchr(name, cptr.ld1s(__sl5));
+    sep = cptr.strchr(name, cptr.ld1s(__s_semi));  /* find next separator */
     if (cptr.eq(sep, (null)))
-        sep = end;
-    cptr.st1(sep, 0);
-    cptr.stPtr(path, sep);
+        sep = end;  /* name goes until the end */
+    cptr.st1(sep, 0);  /* finish file name */
+    cptr.stPtr(path, sep);  /* will start next search from here */
     return name;
 }
 
-/** C ref: loadlib.c:462 — @param {CPtr} L @param {CPtr} path */
+/*
+** Given a path such as ";blabla.so;blublu.so", pushes the string
+**
+** no file 'blabla.so'
+**	no file 'blublu.so'
+*/
+/** C ref: loadlib.c:462 — @param {CPtr<lua_State>} L @param {CPtr<char>} path */
 function* pusherrornotfound(L, path) {
     let b = cptr.alloc(1056);
     (yield* luaL_buffinit(L, b));
-    (yield* luaL_addstring(b, __sl9));
-    (yield* luaL_addgsub(b, path, __sl5, __sl10));
-    (yield* luaL_addstring(b, __sl11));
+    (yield* luaL_addstring(b, __s_no_file));
+    (yield* luaL_addgsub(b, path, __s_semi, __s_no_file__2));
+    (yield* luaL_addstring(b, __s_apos));
     (yield* luaL_pushresult(b));
 }
 
-/** C ref: loadlib.c:472 — @param {CPtr} L @param {CPtr} name @param {CPtr} path @param {CPtr} sep @param {CPtr} dirsep @returns {CPtr} */
+/** C ref: loadlib.c:472 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CPtr<char>} path @param {CPtr<char>} sep @param {CPtr<char>} dirsep @returns {CPtr<char>} */
 function* searchpath(L, name, path, sep, dirsep) {
     let buff = cptr.alloc(1056);
-    let pathname = cptr.box(0);
-    let endpathname;
+    let pathname = cptr.box(0);  /* path with name inserted */
+    let endpathname;  /* its end */
     let filename;
+    /* separator is non-empty and appears in 'name'? */
     if (cptr.ld1s(sep) != 0 && !cptr.eq(cptr.strchr(name, cptr.ld1s(sep)), (null)))
-        name = (yield* luaL_gsub(L, name, sep, dirsep));
+        name = (yield* luaL_gsub(L, name, sep, dirsep));  /* replace it by 'dirsep' */
     (yield* luaL_buffinit(L, buff));
-    (yield* luaL_addgsub(buff, path, __sl12, name));
+    /* add path to the buffer, replacing marks ('?') with the file name */
+    (yield* luaL_addgsub(buff, path, __s_query, name));
     (void (cptr.ldU64o((buff), $luaL_Buffer_n) < cptr.ldU64o((buff), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((buff), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((buff)), (cptr.stU64o((buff), $luaL_Buffer_n, cptr.ldU64o((buff), $luaL_Buffer_n) + 1n)) - (1n), 0)));
-    pathname.v = (cptr.ldPtr((buff)));
+    pathname.v = (cptr.ldPtr((buff)));  /* writable list of file names */
     endpathname = cptr.add(cptr.add(pathname.v, (cptr.ldU64o((buff), $luaL_Buffer_n))), -(1));
     while (!cptr.eq((filename = getnextfilename(pathname, endpathname)), (null))) {
         if (readable(filename))
-            return (yield* lua_pushstring(L, filename));
+            return (yield* lua_pushstring(L, filename));  /* save and return name */
     }
-    (yield* luaL_pushresult(buff));
-    (yield* pusherrornotfound(L, (yield* lua_tolstring(L, -1, null))));
-    return null;
+    (yield* luaL_pushresult(buff));  /* push path to create error message */
+    (yield* pusherrornotfound(L, (yield* lua_tolstring(L, -1, null))));  /* create error message */
+    return null;  /* not found */
 }
 
-/** C ref: loadlib.c:499 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:499 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* ll_searchpath(L) {
-    let f = (yield* searchpath(L, ((yield* luaL_checklstring(L, 1, null))), ((yield* luaL_checklstring(L, 2, null))), ((yield* luaL_optlstring(L, 3, (__sl13), null))), ((yield* luaL_optlstring(L, 4, (__sl14), null)))));
+    let f = (yield* searchpath(L, ((yield* luaL_checklstring(L, 1, null))), ((yield* luaL_checklstring(L, 2, null))), ((yield* luaL_optlstring(L, 3, (__s_dot), null))), ((yield* luaL_optlstring(L, 4, (__s_slash), null)))));
     if (!cptr.eq(f, (null)))
         return 1;
     else {
         (yield* lua_pushnil(L));
         lua_rotate(L, -2, 1);
-        return 2;
+        return 2;  /* return fail + error message */
     }
 }
 
-/** C ref: loadlib.c:513 — @param {CPtr} L @param {CPtr} name @param {CPtr} pname @param {CPtr} dirsep @returns {CPtr} */
+/** C ref: loadlib.c:513 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CPtr<char>} pname @param {CPtr<char>} dirsep @returns {CPtr<char>} */
 function* findfile(L, name, pname, dirsep) {
     let path;
     (yield* lua_getfield(L, -1001001, pname));
     path = (yield* lua_tolstring(L, -1, null));
     if ((__builtin_expect(BigInt(((cptr.eq(path, (null))) != 0)), 0n)))
-        (yield* luaL_error(L, __sl15, pname));
-    return (yield* searchpath(L, name, path, __sl13, dirsep));
+        (yield* luaL_error(L, __s_package_s_must_be_a_string, pname));
+    return (yield* searchpath(L, name, path, __s_dot, dirsep));
 }
 
-/** C ref: loadlib.c:525 — @param {CPtr} L @param {CInt} stat @param {CPtr} filename @returns {CInt} */
+/** C ref: loadlib.c:525 — @param {CPtr<lua_State>} L @param {CInt} stat @param {CPtr<char>} filename @returns {CInt} */
 function* checkload(L, stat, filename) {
     if ((__builtin_expect(BigInt(((stat) != 0)), 1n))) {
-        (yield* lua_pushstring(L, filename));
-        return 2;
+        (yield* lua_pushstring(L, filename));  /* will be 2nd argument to module */
+        return 2;  /* return open function and file name */
     } else
-        return (yield* luaL_error(L, __sl16, (yield* lua_tolstring(L, 1, null)), filename, (yield* lua_tolstring(L, -1, null))));
+        return (yield* luaL_error(L, __s_error_loading_module_s_from_file_s_s, (yield* lua_tolstring(L, 1, null)), filename, (yield* lua_tolstring(L, -1, null))));
 }
 
-/** C ref: loadlib.c:536 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:536 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* searcher_Lua(L) {
     let filename;
     let name = ((yield* luaL_checklstring(L, 1, null)));
-    filename = (yield* findfile(L, name, __sl17, __sl14));
+    filename = (yield* findfile(L, name, __s_path, __s_slash));
     if (cptr.eq(filename, (null)))
-        return 1;
+        return 1;  /* module not found in this path */
     return (yield* checkload(L, ((yield* luaL_loadfilex(L, filename, null)) == 0), filename));
 }
 
-/** C ref: loadlib.c:553 — @param {CPtr} L @param {CPtr} filename @param {CPtr} modname @returns {CInt} */
+/*
+** Try to find a load function for module 'modname' at file 'filename'.
+** First, change '.' to '_' in 'modname'; then, if 'modname' has
+** the form X-Y (that is, it has an "ignore mark"), build a function
+** name "luaopen_X" and look for it. (For compatibility, if that
+** fails, it also tries "luaopen_Y".) If there is no ignore mark,
+** look for a function named "luaopen_modname".
+*/
+/** C ref: loadlib.c:553 — @param {CPtr<lua_State>} L @param {CPtr<char>} filename @param {CPtr<char>} modname @returns {CInt} */
 function* loadfunc(L, filename, modname) {
     let openfunc;
     let mark;
-    modname = (yield* luaL_gsub(L, modname, __sl13, __sl18));
-    mark = cptr.strchr(modname, cptr.ld1s(__sl19));
+    modname = (yield* luaL_gsub(L, modname, __s_dot, __s_us));
+    mark = cptr.strchr(modname, cptr.ld1s(__s_dash));
     if (mark) {
         let stat;
         openfunc = (yield* lua_pushlstring(L, modname, BigInt.asUintN(64, cptr.diff(mark, modname))));
-        openfunc = (yield* lua_pushfstring(L, __sl20, openfunc));
+        openfunc = (yield* lua_pushfstring(L, __s_luaopen_s, openfunc));
         stat = (yield* lookforfunc(L, filename, openfunc));
         if (stat != 2)
             return stat;
-        modname = cptr.add(mark, 1);
+        modname = cptr.add(mark, 1);  /* else go ahead and try old-style name */
     }
-    openfunc = (yield* lua_pushfstring(L, __sl20, modname));
+    openfunc = (yield* lua_pushfstring(L, __s_luaopen_s, modname));
     return (yield* lookforfunc(L, filename, openfunc));
 }
 
-/** C ref: loadlib.c:571 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:571 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* searcher_C(L) {
     let name = ((yield* luaL_checklstring(L, 1, null)));
-    let filename = (yield* findfile(L, name, __sl21, __sl14));
+    let filename = (yield* findfile(L, name, __s_cpath, __s_slash));
     if (cptr.eq(filename, (null)))
-        return 1;
+        return 1;  /* module not found in this path */
     return (yield* checkload(L, ((yield* loadfunc(L, filename, name)) == 0), filename));
 }
 
-/** C ref: loadlib.c:579 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:579 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* searcher_Croot(L) {
     let filename;
     let name = ((yield* luaL_checklstring(L, 1, null)));
     let p = cptr.strchr(name, 46);
     let stat;
     if (cptr.eq(p, (null)))
-        return 0;
+        return 0;  /* is root */
     (yield* lua_pushlstring(L, name, BigInt.asUintN(64, cptr.diff(p, name))));
-    filename = (yield* findfile(L, (yield* lua_tolstring(L, -1, null)), __sl21, __sl14));
+    filename = (yield* findfile(L, (yield* lua_tolstring(L, -1, null)), __s_cpath, __s_slash));
     if (cptr.eq(filename, (null)))
-        return 1;
+        return 1;  /* root not found */
     if ((stat = (yield* loadfunc(L, filename, name))) != 0) {
         if (stat != 2)
-            return (yield* checkload(L, 0, filename));
+            return (yield* checkload(L, 0, filename));  /* real error */
         else {
-            (yield* lua_pushfstring(L, __sl22, name, filename));
+            (yield* lua_pushfstring(L, __s_no_module_s_in_file_s, name, filename));
             return 1;
         }
     }
-    (yield* lua_pushstring(L, filename));
+    (yield* lua_pushstring(L, filename));  /* will be 2nd argument to module */
     return 2;
 }
 
-/** C ref: loadlib.c:601 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:601 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* searcher_preload(L) {
     let name = ((yield* luaL_checklstring(L, 1, null)));
-    (yield* lua_getfield(L, -1001000, __sl23));
+    (yield* lua_getfield(L, -1001000, __s_preload));
     if ((yield* lua_getfield(L, -1, name)) == 0) {
-        (yield* lua_pushfstring(L, __sl24, name));
+        (yield* lua_pushfstring(L, __s_no_field_package_preload_s, name));
         return 1;
     } else {
-        (yield* lua_pushstring(L, __sl25));
+        (yield* lua_pushstring(L, __s_preload__2));
         return 2;
     }
 }
 
-/** C ref: loadlib.c:615 — @param {CPtr} L @param {CPtr} name */
+/** C ref: loadlib.c:615 — @param {CPtr<lua_State>} L @param {CPtr<char>} name */
 function* findloader(L, name) {
     let i;
-    let msg = cptr.alloc(1056);
-    if ((__builtin_expect(BigInt((((yield* lua_getfield(L, -1001001, __sl26)) != 5) != 0)), 0n)))
-        (yield* luaL_error(L, __sl27));
+    let msg = cptr.alloc(1056);  /* to build error message */
+    /* push 'package.searchers' to index 3 in the stack */
+    if ((__builtin_expect(BigInt((((yield* lua_getfield(L, -1001001, __s_searchers)) != 5) != 0)), 0n)))
+        (yield* luaL_error(L, __s_package_searchers_must_be_a_table));
     (yield* luaL_buffinit(L, msg));
+    /*  iterate over available searchers to find a loader */
     for (i = 1; ; i++) {
-        (yield* luaL_addstring(msg, __sl28));
+        (yield* luaL_addstring(msg, __s_nl_tab));  /* error-message prefix */
         if ((__builtin_expect(BigInt((((yield* lua_rawgeti(L, 3, BigInt(i))) == 0) != 0)), 0n))) {
-            (yield* lua_settop(L, -2));
-            (cptr.stU64o((msg), $luaL_Buffer_n, cptr.ldU64o((msg), $luaL_Buffer_n) - 2n));
-            (yield* luaL_pushresult(msg));
-            (yield* luaL_error(L, __sl29, name, (yield* lua_tolstring(L, -1, null))));
+            (yield* lua_settop(L, -2));  /* remove nil */
+            (cptr.stU64o((msg), $luaL_Buffer_n, cptr.ldU64o((msg), $luaL_Buffer_n) - 2n));  /* remove prefix */
+            (yield* luaL_pushresult(msg));  /* create error message */
+            (yield* luaL_error(L, __s_module_s_not_found_s, name, (yield* lua_tolstring(L, -1, null))));
         }
         (yield* lua_pushstring(L, name));
-        (yield* lua_callk(L, 1, 2, 0n, null));
+        (yield* lua_callk(L, 1, 2, 0n, null));  /* call it */
         if ((lua_type(L, -2) == 6))
-            return;
+            return;  /* module loader found */
         else if (lua_isstring(L, -2)) {
-            (yield* lua_settop(L, -2));
-            (yield* luaL_addvalue(msg));
+            (yield* lua_settop(L, -2));  /* remove extra return */
+            (yield* luaL_addvalue(msg));  /* concatenate error message */
         } else {
-            (yield* lua_settop(L, -3));
-            (cptr.stU64o((msg), $luaL_Buffer_n, cptr.ldU64o((msg), $luaL_Buffer_n) - 2n));
+            (yield* lua_settop(L, -3));  /* remove both returns */
+            (cptr.stU64o((msg), $luaL_Buffer_n, cptr.ldU64o((msg), $luaL_Buffer_n) - 2n));  /* remove prefix */
         }
     }
 }
 
-/** C ref: loadlib.c:648 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:648 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* ll_require(L) {
     let name = ((yield* luaL_checklstring(L, 1, null)));
-    (yield* lua_settop(L, 1));
-    (yield* lua_getfield(L, -1001000, __sl30));
-    (yield* lua_getfield(L, 2, name));
+    (yield* lua_settop(L, 1));  /* LOADED table will be at index 2 */
+    (yield* lua_getfield(L, -1001000, __s_loaded));
+    (yield* lua_getfield(L, 2, name));  /* LOADED[name] */
     if (lua_toboolean(L, -1))
-        return 1;
-    (yield* lua_settop(L, -2));
+        return 1;  /* package is already loaded */
+    /* else must load package */
+    (yield* lua_settop(L, -2));  /* remove 'getfield' result */
     (yield* findloader(L, name));
-    lua_rotate(L, -2, 1);
-    (yield* lua_pushvalue(L, 1));
-    (yield* lua_pushvalue(L, -3));
-    (yield* lua_callk(L, 2, 1, 0n, null));
+    lua_rotate(L, -2, 1);  /* function <-> loader data */
+    (yield* lua_pushvalue(L, 1));  /* name is 1st argument to module loader */
+    (yield* lua_pushvalue(L, -3));  /* loader data is 2nd argument */
+    /* stack: ...; loader data; loader function; mod. name; loader data */
+    (yield* lua_callk(L, 2, 1, 0n, null));  /* run loader to load module */
+    /* stack: ...; loader data; result from loader */
     if (!(lua_type(L, -1) == 0))
-        (yield* lua_setfield(L, 2, name));
+        (yield* lua_setfield(L, 2, name));  /* LOADED[name] = returned value */
     else
-        (yield* lua_settop(L, -2));
+        (yield* lua_settop(L, -2));  /* pop nil */
     if ((yield* lua_getfield(L, 2, name)) == 0) {
-        (yield* lua_pushboolean(L, 1));
-        lua_copy(L, -1, -2);
-        (yield* lua_setfield(L, 2, name));
+        (yield* lua_pushboolean(L, 1));  /* use true as result */
+        lua_copy(L, -1, -2);  /* replace loader result */
+        (yield* lua_setfield(L, 2, name));  /* LOADED[name] = true */
     }
-    lua_rotate(L, -2, 1);
-    return 2;
+    lua_rotate(L, -2, 1);  /* loader data <-> module result  */
+    return 2;  /* return module result and loader data */
 }
 
+/* }====================================================== */
+
 /** C ref: loadlib.c:682 — luaL_Reg[8] */
-const pk_funcs = cptr.alloc(8 * 16);
-cptr.stPtro(pk_funcs, 0, __sl31);
+const pk_funcs = cptr.alloc(8 * $sizeof_luaL_Reg);
+cptr.stPtro(pk_funcs, 0, __s_loadlib);
 cptr.stPtro(pk_funcs, 0 + $luaL_Reg_func, ll_loadlib);
-cptr.stPtro(pk_funcs, 16, __sl32);
+cptr.stPtro(pk_funcs, 16, __s_searchpath);
 cptr.stPtro(pk_funcs, 16 + $luaL_Reg_func, ll_searchpath);
-cptr.stPtro(pk_funcs, 32, __sl33);
+cptr.stPtro(pk_funcs, 32, __s_preload__3);
 cptr.stPtro(pk_funcs, 32 + $luaL_Reg_func, null);
-cptr.stPtro(pk_funcs, 48, __sl21);
+cptr.stPtro(pk_funcs, 48, __s_cpath);
 cptr.stPtro(pk_funcs, 48 + $luaL_Reg_func, null);
-cptr.stPtro(pk_funcs, 64, __sl17);
+cptr.stPtro(pk_funcs, 64, __s_path);
 cptr.stPtro(pk_funcs, 64 + $luaL_Reg_func, null);
-cptr.stPtro(pk_funcs, 80, __sl26);
+cptr.stPtro(pk_funcs, 80, __s_searchers);
 cptr.stPtro(pk_funcs, 80 + $luaL_Reg_func, null);
-cptr.stPtro(pk_funcs, 96, __sl34);
+cptr.stPtro(pk_funcs, 96, __s_loaded__2);
 cptr.stPtro(pk_funcs, 96 + $luaL_Reg_func, null);
 cptr.stPtro(pk_funcs, 112, null);
 cptr.stPtro(pk_funcs, 112 + $luaL_Reg_func, null);
 
 /** C ref: loadlib.c:695 — luaL_Reg[2] */
-const ll_funcs = cptr.alloc(2 * 16);
-cptr.stPtro(ll_funcs, 0, __sl35);
+const ll_funcs = cptr.alloc(2 * $sizeof_luaL_Reg);
+cptr.stPtro(ll_funcs, 0, __s_require);
 cptr.stPtro(ll_funcs, 0 + $luaL_Reg_func, ll_require);
 cptr.stPtro(ll_funcs, 16, null);
 cptr.stPtro(ll_funcs, 16 + $luaL_Reg_func, null);
@@ -449,43 +521,53 @@ cptr.stPtro(__static_createsearcherstable_searchers, 16, searcher_C);
 cptr.stPtro(__static_createsearcherstable_searchers, 24, searcher_Croot);
 cptr.stPtro(__static_createsearcherstable_searchers, 32, null); /** C ref: loadlib.c:702 — void *[5] (function-static) */
 
-/** C ref: loadlib.c:701 — @param {CPtr} L */
+/** C ref: loadlib.c:701 — @param {CPtr<lua_State>} L */
 function* createsearcherstable(L) {
     let i;
+    /* create 'searchers' table */
     (yield* lua_createtable(L, Number(BigInt.asIntN(32, BigInt.asUintN(64, 40n / 8n - 1n))), 0));
+    /* fill it with predefined searchers */
     for (i = 0; cptr.ldPtro(__static_createsearcherstable_searchers, i, 8) !== (null); i++) {
-        (yield* lua_pushvalue(L, -2));
+        (yield* lua_pushvalue(L, -2));  /* set 'package' as upvalue for all searchers */
         (yield* lua_pushcclosure(L, cptr.ldPtro(__static_createsearcherstable_searchers, i, 8), 1));
         (yield* lua_rawseti(L, -2, BigInt(((i + 1) | 0))));
     }
-    (yield* lua_setfield(L, -2, __sl26));
+    (yield* lua_setfield(L, -2, __s_searchers));  /* put it in field 'searchers' */
 }
 
-/** C ref: loadlib.c:726 — @param {CPtr} L */
+/*
+** create table CLIBS to keep track of loaded C libraries,
+** setting a finalizer to close all libraries when closing state.
+*/
+/** C ref: loadlib.c:726 — @param {CPtr<lua_State>} L */
 function* createclibstable(L) {
-    (yield* luaL_getsubtable(L, -1001000, CLIBS));
-    (yield* lua_createtable(L, 0, 1));
+    (yield* luaL_getsubtable(L, -1001000, CLIBS));  /* create CLIBS table */
+    (yield* lua_createtable(L, 0, 1));  /* create metatable for CLIBS */
     (yield* lua_pushcclosure(L, (gctm), 0));
-    (yield* lua_setfield(L, -2, __sl36));
+    (yield* lua_setfield(L, -2, __s_gc));  /* set finalizer for CLIBS table */
     (yield* lua_setmetatable(L, -2));
 }
 
-/** C ref: loadlib.c:735 — @param {CPtr} L @returns {CInt} */
+/** C ref: loadlib.c:735 — @param {CPtr<lua_State>} L @returns {CInt} */
 export function* luaopen_package(L) {
     (yield* createclibstable(L));
-    ((yield* luaL_checkversion_(L, 504, 136n)), (yield* lua_createtable(L, 0, Number(BigInt.asIntN(32, BigInt.asUintN(64, 128n / 16n - 1n))))), (yield* luaL_setfuncs(L, pk_funcs, 0)));
+    ((yield* luaL_checkversion_(L, 504, 136n)), (yield* lua_createtable(L, 0, Number(BigInt.asIntN(32, BigInt.asUintN(64, 128n / 16n - 1n))))), (yield* luaL_setfuncs(L, pk_funcs, 0)));  /* create 'package' table */
     (yield* createsearcherstable(L));
-    (yield* setpath(L, __sl17, __sl37, __sl38));
-    (yield* setpath(L, __sl21, __sl39, __sl40));
-    (yield* lua_pushstring(L, __sl41));
-    (yield* lua_setfield(L, -2, __sl42));
-    (yield* luaL_getsubtable(L, -1001000, __sl30));
-    (yield* lua_setfield(L, -2, __sl34));
-    (yield* luaL_getsubtable(L, -1001000, __sl23));
-    (yield* lua_setfield(L, -2, __sl33));
+    /* set paths */
+    (yield* setpath(L, __s_path, __s_lua_path, __s_usr_local_share_lua_5_4_lua_usr_local));
+    (yield* setpath(L, __s_cpath, __s_lua_cpath, __s_usr_local_lib_lua_5_4_so_usr_local_lib));
+    /* store config information */
+    (yield* lua_pushstring(L, __s_slash_nl_semi_nl_query_nl_bang_nl_dash));
+    (yield* lua_setfield(L, -2, __s_config));
+    /* set field 'loaded' */
+    (yield* luaL_getsubtable(L, -1001000, __s_loaded));
+    (yield* lua_setfield(L, -2, __s_loaded__2));
+    /* set field 'preload' */
+    (yield* luaL_getsubtable(L, -1001000, __s_preload));
+    (yield* lua_setfield(L, -2, __s_preload__3));
     (void (yield* lua_rawgeti(L, -1001000, 2n)));
-    (yield* lua_pushvalue(L, -2));
-    (yield* luaL_setfuncs(L, ll_funcs, 1));
-    (yield* lua_settop(L, -2));
-    return 1;
+    (yield* lua_pushvalue(L, -2));  /* set 'package' as upvalue for next lib */
+    (yield* luaL_setfuncs(L, ll_funcs, 1));  /* open lib into global table */
+    (yield* lua_settop(L, -2));  /* pop global table */
+    return 1;  /* return 'package' table */
 }

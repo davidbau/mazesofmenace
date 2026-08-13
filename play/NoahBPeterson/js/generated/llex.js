@@ -30,149 +30,150 @@ const $LexState_L = FLD.LexState_L, $LexState_buff = FLD.LexState_buff, $LexStat
     $lua_State_top = FLD.lua_State_top;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("and");
-const __sl1 = cptr.lit("break");
-const __sl2 = cptr.lit("do");
-const __sl3 = cptr.lit("else");
-const __sl4 = cptr.lit("elseif");
-const __sl5 = cptr.lit("end");
-const __sl6 = cptr.lit("false");
-const __sl7 = cptr.lit("for");
-const __sl8 = cptr.lit("function");
-const __sl9 = cptr.lit("goto");
-const __sl10 = cptr.lit("if");
-const __sl11 = cptr.lit("in");
-const __sl12 = cptr.lit("local");
-const __sl13 = cptr.lit("nil");
-const __sl14 = cptr.lit("not");
-const __sl15 = cptr.lit("or");
-const __sl16 = cptr.lit("repeat");
-const __sl17 = cptr.lit("return");
-const __sl18 = cptr.lit("then");
-const __sl19 = cptr.lit("true");
-const __sl20 = cptr.lit("until");
-const __sl21 = cptr.lit("while");
-const __sl22 = cptr.lit("//");
-const __sl23 = cptr.lit("..");
-const __sl24 = cptr.lit("...");
-const __sl25 = cptr.lit("==");
-const __sl26 = cptr.lit(">=");
-const __sl27 = cptr.lit("<=");
-const __sl28 = cptr.lit("~=");
-const __sl29 = cptr.lit("<<");
-const __sl30 = cptr.lit(">>");
-const __sl31 = cptr.lit("::");
-const __sl32 = cptr.lit("<eof>");
-const __sl33 = cptr.lit("<number>");
-const __sl34 = cptr.lit("<integer>");
-const __sl35 = cptr.lit("<name>");
-const __sl36 = cptr.lit("<string>");
-const __sl37 = cptr.lit("lexical element too long");
-const __sl38 = cptr.lit("_ENV");
-const __sl39 = cptr.lit("'%c'");
-const __sl40 = cptr.lit("'<\\%d>'");
-const __sl41 = cptr.lit("'%s'");
-const __sl42 = cptr.lit("%s near %s");
-const __sl43 = cptr.lit("chunk has too many lines");
-const __sl44 = cptr.lit("Ee");
-const __sl45 = cptr.lit("xX");
-const __sl46 = cptr.lit("Pp");
-const __sl47 = cptr.lit("-+");
-const __sl48 = cptr.lit("malformed number");
-const __sl49 = cptr.lit("string");
-const __sl50 = cptr.lit("comment");
-const __sl51 = cptr.lit("unfinished long %s (starting at line %d)");
-const __sl52 = cptr.lit("hexadecimal digit expected");
-const __sl53 = cptr.lit("missing '{'");
-const __sl54 = cptr.lit("UTF-8 value too large");
-const __sl55 = cptr.lit("missing '}'");
-const __sl56 = cptr.lit("decimal escape too large");
-const __sl57 = cptr.lit("unfinished string");
-const __sl58 = cptr.lit("invalid escape sequence");
-const __sl59 = cptr.lit("invalid long string delimiter");
+const __s_and = cptr.lit("and");
+const __s_break = cptr.lit("break");
+const __s_do = cptr.lit("do");
+const __s_else = cptr.lit("else");
+const __s_elseif = cptr.lit("elseif");
+const __s_end = cptr.lit("end");
+const __s_false = cptr.lit("false");
+const __s_for = cptr.lit("for");
+const __s_function = cptr.lit("function");
+const __s_goto = cptr.lit("goto");
+const __s_if = cptr.lit("if");
+const __s_in = cptr.lit("in");
+const __s_local = cptr.lit("local");
+const __s_nil = cptr.lit("nil");
+const __s_not = cptr.lit("not");
+const __s_or = cptr.lit("or");
+const __s_repeat = cptr.lit("repeat");
+const __s_return = cptr.lit("return");
+const __s_then = cptr.lit("then");
+const __s_true = cptr.lit("true");
+const __s_until = cptr.lit("until");
+const __s_while = cptr.lit("while");
+const __s_slash2 = cptr.lit("//");
+const __s_dot2 = cptr.lit("..");
+const __s_dot3 = cptr.lit("...");
+const __s_eq2 = cptr.lit("==");
+const __s_gt_eq = cptr.lit(">=");
+const __s_lt_eq = cptr.lit("<=");
+const __s_tilde_eq = cptr.lit("~=");
+const __s_lt2 = cptr.lit("<<");
+const __s_gt2 = cptr.lit(">>");
+const __s_colon2 = cptr.lit("::");
+const __s_eof = cptr.lit("<eof>");
+const __s_number = cptr.lit("<number>");
+const __s_integer = cptr.lit("<integer>");
+const __s_name = cptr.lit("<name>");
+const __s_string = cptr.lit("<string>");
+const __s_lexical_element_too_long = cptr.lit("lexical element too long");
+const __s_env = cptr.lit("_ENV");
+const __s_apos_pct_c_apos = cptr.lit("'%c'");
+const __s_apos_lt_bslash_pct_d_gt_apos = cptr.lit("'<\\%d>'");
+const __s_apos_pct_s_apos = cptr.lit("'%s'");
+const __s_s_near_s = cptr.lit("%s near %s");
+const __s_chunk_has_too_many_lines = cptr.lit("chunk has too many lines");
+const __s_ee = cptr.lit("Ee");
+const __s_xx = cptr.lit("xX");
+const __s_pp = cptr.lit("Pp");
+const __s_dash_plus = cptr.lit("-+");
+const __s_malformed_number = cptr.lit("malformed number");
+const __s_string__2 = cptr.lit("string");
+const __s_comment = cptr.lit("comment");
+const __s_unfinished_long_s_starting_at_line_d = cptr.lit("unfinished long %s (starting at line %d)");
+const __s_hexadecimal_digit_expected = cptr.lit("hexadecimal digit expected");
+const __s_missing = cptr.lit("missing '{'");
+const __s_utf_8_value_too_large = cptr.lit("UTF-8 value too large");
+const __s_missing__2 = cptr.lit("missing '}'");
+const __s_decimal_escape_too_large = cptr.lit("decimal escape too large");
+const __s_unfinished_string = cptr.lit("unfinished string");
+const __s_invalid_escape_sequence = cptr.lit("invalid escape sequence");
+const __s_invalid_long_string_delimiter = cptr.lit("invalid long string delimiter");
 
+/* ORDER RESERVED */
 /** C ref: llex.c:40 — char *[37] */
 const luaX_tokens = cptr.alloc(37 * 8);
-cptr.stPtro(luaX_tokens, 0, __sl0);
-cptr.stPtro(luaX_tokens, 8, __sl1);
-cptr.stPtro(luaX_tokens, 16, __sl2);
-cptr.stPtro(luaX_tokens, 24, __sl3);
-cptr.stPtro(luaX_tokens, 32, __sl4);
-cptr.stPtro(luaX_tokens, 40, __sl5);
-cptr.stPtro(luaX_tokens, 48, __sl6);
-cptr.stPtro(luaX_tokens, 56, __sl7);
-cptr.stPtro(luaX_tokens, 64, __sl8);
-cptr.stPtro(luaX_tokens, 72, __sl9);
-cptr.stPtro(luaX_tokens, 80, __sl10);
-cptr.stPtro(luaX_tokens, 88, __sl11);
-cptr.stPtro(luaX_tokens, 96, __sl12);
-cptr.stPtro(luaX_tokens, 104, __sl13);
-cptr.stPtro(luaX_tokens, 112, __sl14);
-cptr.stPtro(luaX_tokens, 120, __sl15);
-cptr.stPtro(luaX_tokens, 128, __sl16);
-cptr.stPtro(luaX_tokens, 136, __sl17);
-cptr.stPtro(luaX_tokens, 144, __sl18);
-cptr.stPtro(luaX_tokens, 152, __sl19);
-cptr.stPtro(luaX_tokens, 160, __sl20);
-cptr.stPtro(luaX_tokens, 168, __sl21);
-cptr.stPtro(luaX_tokens, 176, __sl22);
-cptr.stPtro(luaX_tokens, 184, __sl23);
-cptr.stPtro(luaX_tokens, 192, __sl24);
-cptr.stPtro(luaX_tokens, 200, __sl25);
-cptr.stPtro(luaX_tokens, 208, __sl26);
-cptr.stPtro(luaX_tokens, 216, __sl27);
-cptr.stPtro(luaX_tokens, 224, __sl28);
-cptr.stPtro(luaX_tokens, 232, __sl29);
-cptr.stPtro(luaX_tokens, 240, __sl30);
-cptr.stPtro(luaX_tokens, 248, __sl31);
-cptr.stPtro(luaX_tokens, 256, __sl32);
-cptr.stPtro(luaX_tokens, 264, __sl33);
-cptr.stPtro(luaX_tokens, 272, __sl34);
-cptr.stPtro(luaX_tokens, 280, __sl35);
-cptr.stPtro(luaX_tokens, 288, __sl36);
+cptr.stPtro(luaX_tokens, 0, __s_and);
+cptr.stPtro(luaX_tokens, 8, __s_break);
+cptr.stPtro(luaX_tokens, 16, __s_do);
+cptr.stPtro(luaX_tokens, 24, __s_else);
+cptr.stPtro(luaX_tokens, 32, __s_elseif);
+cptr.stPtro(luaX_tokens, 40, __s_end);
+cptr.stPtro(luaX_tokens, 48, __s_false);
+cptr.stPtro(luaX_tokens, 56, __s_for);
+cptr.stPtro(luaX_tokens, 64, __s_function);
+cptr.stPtro(luaX_tokens, 72, __s_goto);
+cptr.stPtro(luaX_tokens, 80, __s_if);
+cptr.stPtro(luaX_tokens, 88, __s_in);
+cptr.stPtro(luaX_tokens, 96, __s_local);
+cptr.stPtro(luaX_tokens, 104, __s_nil);
+cptr.stPtro(luaX_tokens, 112, __s_not);
+cptr.stPtro(luaX_tokens, 120, __s_or);
+cptr.stPtro(luaX_tokens, 128, __s_repeat);
+cptr.stPtro(luaX_tokens, 136, __s_return);
+cptr.stPtro(luaX_tokens, 144, __s_then);
+cptr.stPtro(luaX_tokens, 152, __s_true);
+cptr.stPtro(luaX_tokens, 160, __s_until);
+cptr.stPtro(luaX_tokens, 168, __s_while);
+cptr.stPtro(luaX_tokens, 176, __s_slash2);
+cptr.stPtro(luaX_tokens, 184, __s_dot2);
+cptr.stPtro(luaX_tokens, 192, __s_dot3);
+cptr.stPtro(luaX_tokens, 200, __s_eq2);
+cptr.stPtro(luaX_tokens, 208, __s_gt_eq);
+cptr.stPtro(luaX_tokens, 216, __s_lt_eq);
+cptr.stPtro(luaX_tokens, 224, __s_tilde_eq);
+cptr.stPtro(luaX_tokens, 232, __s_lt2);
+cptr.stPtro(luaX_tokens, 240, __s_gt2);
+cptr.stPtro(luaX_tokens, 248, __s_colon2);
+cptr.stPtro(luaX_tokens, 256, __s_eof);
+cptr.stPtro(luaX_tokens, 264, __s_number);
+cptr.stPtro(luaX_tokens, 272, __s_integer);
+cptr.stPtro(luaX_tokens, 280, __s_name);
+cptr.stPtro(luaX_tokens, 288, __s_string);
 
-/** C ref: llex.c:57 — @param {CPtr} ls @param {CInt} c */
+/** C ref: llex.c:57 — @param {CPtr<LexState>} ls @param {CInt} c */
 function save(ls, c) {
     let b = cptr.ldPtro(ls, $LexState_buff);
     if (BigInt.asUintN(64, (cptr.ldU64o((b), $Mbuffer_n)) + 1n) > (cptr.ldU64o((b), $Mbuffer_buffsize))) {
         let newsize;
         if ((cptr.ldU64o((b), $Mbuffer_buffsize)) >= 4611686018427387903n)
-            lexerror(ls, __sl37, 0);
+            lexerror(ls, __s_lexical_element_too_long, 0);
         newsize = BigInt.asUintN(64, (cptr.ldU64o((b), $Mbuffer_buffsize)) * 2n);
         (cptr.stPtr((b), (((luaM_saferealloc_(cptr.ldPtro(ls, $LexState_L), (cptr.ldPtr((b))), BigInt.asUintN(64, (cptr.ldU64o((b), $Mbuffer_buffsize)) * 1n), BigInt.asUintN(64, (newsize) * 1n)))))), cptr.stU64o((b), $Mbuffer_buffsize, newsize));
     }
     cptr.st1o(cptr.ldPtr(b), (cptr.stU64o((b), $Mbuffer_n, cptr.ldU64o((b), $Mbuffer_n) + 1n)) - (1n), (schar(((c)))));
 }
 
-/** C ref: llex.c:70 — @param {CPtr} L */
+/** C ref: llex.c:70 — @param {CPtr<lua_State>} L */
 export function luaX_init(L) {
     let i;
-    let e = (luaS_newlstr(L, __sl38, BigInt.asUintN(64, (5n / 1n) - 1n)));
-    luaC_fix(L, ((((e)))));
+    let e = (luaS_newlstr(L, __s_env, BigInt.asUintN(64, (5n / 1n) - 1n)));  /* create env name */
+    luaC_fix(L, ((((e)))));  /* never collect this name */
     for (i = 0; i < ((((NHC.TK_WHILE - ((((Math.imul(127, 2) + 1) | 0) + 1) | 0)) | 0) + 1) | 0); i++) {
         let ts = luaS_new(L, cptr.ldPtro(luaX_tokens, i, 8));
-        luaC_fix(L, ((((ts)))));
-        cptr.st1o(ts, $TString_extra, (uchar((((i + 1) | 0)))));
+        luaC_fix(L, ((((ts)))));  /* reserved words are never collected */
+        cptr.st1o(ts, $TString_extra, (uchar((((i + 1) | 0)))));  /* reserved word */
     }
 }
 
-/** C ref: llex.c:82 — @param {CPtr} ls @param {CInt} token @returns {CPtr} */
+/** C ref: llex.c:82 — @param {CPtr<LexState>} ls @param {CInt} token @returns {CPtr<char>} */
 export function luaX_token2str(ls, token) {
     if (token < 256) {
         if ((cptr.ld1uo(cptr.decay(luai_ctype_), ((token) + 1) | 0, 1) & 4))
-            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl39, token);
+            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_apos_pct_c_apos, token);
         else
-            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl40, token);
+            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_apos_lt_bslash_pct_d_gt_apos, token);
     } else {
         let s = cptr.ldPtro(luaX_tokens, (token - 256) | 0, 8);
         if (token < NHC.TK_EOS)
-            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl41, s);
+            return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_apos_pct_s_apos, s);
         else
             return s;
     }
 }
 
-/** C ref: llex.c:99 — @param {CPtr} ls @param {CInt} token @returns {CPtr} */
+/** C ref: llex.c:99 — @param {CPtr<LexState>} ls @param {CInt} token @returns {CPtr<char>} */
 function txtToken(ls, token) {
     switch (token) {
         case NHC.TK_NAME:
@@ -180,45 +181,56 @@ function txtToken(ls, token) {
         case NHC.TK_FLT:
         case NHC.TK_INT:
         save(ls, 0);
-        return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl41, (cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))));
+        return luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_apos_pct_s_apos, (cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))));
         default:
         return luaX_token2str(ls, token);
     }
 }
 
-/** C ref: llex.c:111 — @param {CPtr} ls @param {CPtr} msg @param {CInt} token */
+/** C ref: llex.c:111 — @param {CPtr<LexState>} ls @param {CPtr<char>} msg @param {CInt} token */
 function lexerror(ls, msg, token) {
     msg = luaG_addinfo(cptr.ldPtro(ls, $LexState_L), msg, cptr.ldPtro(ls, $LexState_source), cptr.ldI32o(ls, $LexState_linenumber));
     if (token)
-        luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl42, msg, txtToken(ls, token));
+        luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_s_near_s, msg, txtToken(ls, token));
     luaD_throw(cptr.ldPtro(ls, $LexState_L), 3);
 }
 
-/** C ref: llex.c:119 — @param {CPtr} ls @param {CPtr} msg */
+/** C ref: llex.c:119 — @param {CPtr<LexState>} ls @param {CPtr<char>} msg */
 export function luaX_syntaxerror(ls, msg) {
     lexerror(ls, msg, cptr.ldI32o(ls, $LexState_t));
 }
 
-/** C ref: llex.c:134 — @param {CPtr} ls @param {CPtr} str @param {CLongLong} l @returns {CPtr} */
+/*
+** Creates a new string and anchors it in scanner's table so that it
+** will not be collected until the end of the compilation; by that time
+** it should be anchored somewhere. It also internalizes long strings,
+** ensuring there is only one copy of each unique string.  The table
+** here is used as a set: the string enters as the key, while its value
+** is irrelevant. We use the string itself as the value only because it
+** is a TValue readily available. Later, the code generation can change
+** this value.
+*/
+/** C ref: llex.c:134 — @param {CPtr<LexState>} ls @param {CPtr<char>} str @param {CLongLong} l @returns {CPtr<TString>} */
 export function luaX_newstring(ls, str, l) {
     let L = cptr.ldPtro(ls, $LexState_L);
-    let ts = luaS_newlstr(L, str, l);
+    let ts = luaS_newlstr(L, str, l);  /* create new string */
     let o = luaH_getstr(cptr.ldPtro(ls, $LexState_h), ts);
     if (!(((((cptr.ld1uo(((o)), $TValue_tt_))) & 15)) == 0))
-        ts = ((((((cptr.ldPtr((cptr.add(((((o)))), $NodeKey_key_val)))))))));
+        ts = ((((((cptr.ldPtr((cptr.add(((((o)))), $NodeKey_key_val)))))))));  /* get saved copy */
     else {
-        let stv = ((cptr.postinc(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16)));
+        let stv = ((cptr.postinc(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16)));  /* reserve stack space for string */
         {
-            let io = (stv);
+            let io = (stv);  /* temporarily anchor the string */
             let x_ = (ts);
             cptr.stPtr(((io)), ((((x_)))));
             (cptr.st1o((io), $TValue_tt_, uchar((((cptr.ld1uo(x_, $TString_tt)) | 64)))));
             (void L, (void 0));
         }
         ;
-        luaH_finishset(L, cptr.ldPtro(ls, $LexState_h), stv, o, stv);
+        luaH_finishset(L, cptr.ldPtro(ls, $LexState_h), stv, o, stv);  /* t[string] = string */
         {
             if (cptr.ldI64o((cptr.ldPtro(L, $lua_State_l_G)), $global_State_GCdebt) > 0n) {
+                /* table is not a metatable, so it does not need to invalidate cache */
                 void 0;
                 luaC_step(L);
                 void 0;
@@ -227,38 +239,48 @@ export function luaX_newstring(ls, str, l) {
             (void 0);
         }
         ;
-        cptr.postdec(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16);
+        cptr.postdec(() => cptr.ldPtro(L, $lua_State_top), (v) => { cptr.stPtro(L, $lua_State_top, v); }, 16);  /* remove string from stack */
     }
     return ts;
 }
 
-/** C ref: llex.c:156 — @param {CPtr} ls */
+/*
+** increment line number and skips newline sequence (any of
+** \n, \r, \n\r, or \r\n)
+*/
+/** C ref: llex.c:156 — @param {CPtr<LexState>} ls */
 function inclinenumber(ls) {
     let old = cptr.ldI32(ls);
     (void 0);
-    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
+    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));  /* skip '\n' or '\r' */
     if ((cptr.ldI32(ls) == 10 || cptr.ldI32(ls) == 13) && cptr.ldI32(ls) != old)
-        (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
+        (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));  /* skip '\n\r' or '\r\n' */
     if (cptr.stI32o(ls, $LexState_linenumber, cptr.ldI32o(ls, $LexState_linenumber) + 1) >= 2147483647)
-        lexerror(ls, __sl43, 0);
+        lexerror(ls, __s_chunk_has_too_many_lines, 0);
 }
 
-/** C ref: llex.c:167 — @param {CPtr} L @param {CPtr} ls @param {CPtr} z @param {CPtr} source @param {CInt} firstchar */
+/** C ref: llex.c:167 — @param {CPtr<lua_State>} L @param {CPtr<LexState>} ls @param {CPtr<ZIO>} z @param {CPtr<TString>} source @param {CInt} firstchar */
 export function luaX_setinput(L, ls, z, source, firstchar) {
     cptr.stI32o(ls, $LexState_t, 0);
     cptr.stPtro(ls, $LexState_L, L);
     cptr.stI32(ls, firstchar);
-    cptr.stI32o(ls, $LexState_lookahead, NHC.TK_EOS);
+    cptr.stI32o(ls, $LexState_lookahead, NHC.TK_EOS);  /* no look-ahead token */
     cptr.stPtro(ls, $LexState_z, z);
     cptr.stPtro(ls, $LexState_fs, null);
     cptr.stI32o(ls, $LexState_linenumber, 1);
     cptr.stI32o(ls, $LexState_lastline, 1);
     cptr.stPtro(ls, $LexState_source, source);
-    cptr.stPtro(ls, $LexState_envn, (luaS_newlstr(L, __sl38, BigInt.asUintN(64, (5n / 1n) - 1n))));
-    (cptr.stPtr((cptr.ldPtro(ls, $LexState_buff)), (((luaM_saferealloc_(cptr.ldPtro(ls, $LexState_L), (cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))), BigInt.asUintN(64, (cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_buffsize)) * 1n), 32n))))), cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_buffsize, 32n));
+    cptr.stPtro(ls, $LexState_envn, (luaS_newlstr(L, __s_env, BigInt.asUintN(64, (5n / 1n) - 1n))));  /* get env name */
+    (cptr.stPtr((cptr.ldPtro(ls, $LexState_buff)), (((luaM_saferealloc_(cptr.ldPtro(ls, $LexState_L), (cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))), BigInt.asUintN(64, (cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_buffsize)) * 1n), 32n))))), cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_buffsize, 32n));  /* initialize buffer */
 }
 
-/** C ref: llex.c:191 — @param {CPtr} ls @param {CInt} c @returns {CInt} */
+/*
+** =======================================================
+** LEXICAL ANALYZER
+** =======================================================
+*/
+
+/** C ref: llex.c:191 — @param {CPtr<LexState>} ls @param {CInt} c @returns {CInt} */
 function check_next1(ls, c) {
     if (cptr.ldI32(ls) == c) {
         (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
@@ -267,7 +289,11 @@ function check_next1(ls, c) {
         return 0;
 }
 
-/** C ref: llex.c:204 — @param {CPtr} ls @param {CPtr} set @returns {CInt} */
+/*
+** Check whether current char is in set 'set' (with two chars) and
+** saves it
+*/
+/** C ref: llex.c:204 — @param {CPtr<LexState>} ls @param {CPtr<char>} set @returns {CInt} */
 function check_next2(ls, set) {
     (void 0);
     if (cptr.ldI32(ls) == cptr.ld1so(set, 0) || cptr.ldI32(ls) == cptr.ld1so(set, 1)) {
@@ -277,28 +303,41 @@ function check_next2(ls, set) {
         return 0;
 }
 
-/** C ref: llex.c:227 — @param {CPtr} ls @param {CPtr} seminfo @returns {CInt} */
+/* LUA_NUMBER */
+/*
+** This function is quite liberal in what it accepts, as 'luaO_str2num'
+** will reject ill-formed numerals. Roughly, it accepts the following
+** pattern:
+**
+**   %d(%x|%.|([Ee][+-]?))* | 0[Xx](%x|%.|([Pp][+-]?))*
+**
+** The only tricky part is to accept [+-] only after a valid exponent
+** mark, to avoid reading '3-4' or '0xe+1' as a single number.
+**
+** The caller might have already read an initial dot.
+*/
+/** C ref: llex.c:227 — @param {CPtr<LexState>} ls @param {CPtr<SemInfo>} seminfo @returns {CInt} */
 function read_numeral(ls, seminfo) {
     let obj = cptr.alloc(16);
-    let expo = __sl44;
+    let expo = __s_ee;
     let first = cptr.ldI32(ls);
     (void 0);
     (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
-    if (first == 48 && check_next2(ls, __sl45))
-        expo = __sl46;
+    if (first == 48 && check_next2(ls, __s_xx))
+        expo = __s_pp;
     for (; ; ) {
         if (check_next2(ls, expo))
-            check_next2(ls, __sl47);
+            check_next2(ls, __s_dash_plus);  /* optional exponent sign */
         else if ((cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 16) || cptr.ldI32(ls) == 46)
             (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
         else
             break;
     }
     if ((cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 1))
-        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* force an error */
     save(ls, 0);
     if (luaO_str2num((cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))), obj) == 0n)
-        lexerror(ls, __sl48, NHC.TK_FLT);
+        lexerror(ls, __s_malformed_number, NHC.TK_FLT);
     if (((cptr.ld1uo(((obj)), $TValue_tt_)) == 3)) {
         cptr.stI64(seminfo, (cptr.ldI64(((obj)))));
         return NHC.TK_INT;
@@ -309,7 +348,13 @@ function read_numeral(ls, seminfo) {
     }
 }
 
-/** C ref: llex.c:265 — @param {CPtr} ls @returns {*} */
+/*
+** read a sequence '[=*[' or ']=*]', leaving the last bracket. If
+** sequence is well formed, return its number of '='s + 2; otherwise,
+** return 1 if it is a single bracket (no '='s and no 2nd bracket);
+** otherwise (an unfinished '[==...') return 0.
+*/
+/** C ref: llex.c:265 — @param {CPtr<LexState>} ls @returns {*} */
 function skip_sep(ls) {
     let count = 0n;
     let s = cptr.ldI32(ls);
@@ -322,26 +367,26 @@ function skip_sep(ls) {
     return (cptr.ldI32(ls) == s) ? BigInt.asUintN(64, count + 2n) : BigInt.asUintN(64, BigInt(((count == 0n) ? 1 : 0)));
 }
 
-/** C ref: llex.c:280 — @param {CPtr} ls @param {CPtr} seminfo @param {CLongLong} sep */
+/** C ref: llex.c:280 — @param {CPtr<LexState>} ls @param {CPtr<SemInfo>} seminfo @param {CLongLong} sep */
 function read_long_string(ls, seminfo, sep) {
-    let line = cptr.ldI32o(ls, $LexState_linenumber);
+    let line = cptr.ldI32o(ls, $LexState_linenumber);  /* initial line (for error message) */
     __lbl_endloop: {
-        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* skip 2nd '[' */
         if ((cptr.ldI32(ls) == 10 || cptr.ldI32(ls) == 13))
-            inclinenumber(ls);
+            inclinenumber(ls);  /* skip it */
         for (; ; ) {
             switch (cptr.ldI32(ls)) {
                 case -1:
                 {
-                    let what = (seminfo ? __sl49 : __sl50);
-                    let msg = luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __sl51, what, line);
+                    let what = (seminfo ? __s_string__2 : __s_comment);
+                    let msg = luaO_pushfstring(cptr.ldPtro(ls, $LexState_L), __s_unfinished_long_s_starting_at_line_d, what, line);
                     lexerror(ls, msg, NHC.TK_EOS);
-                    break;
+                    break;  /* to avoid warnings */
                 }
                 case 93:
                 {
                     if (skip_sep(ls) == sep) {
-                        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+                        (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* skip 2nd ']' */
                         break __lbl_endloop;
                     }
                     break;
@@ -352,7 +397,7 @@ function read_long_string(ls, seminfo, sep) {
                     save(ls, 10);
                     inclinenumber(ls);
                     if (!seminfo)
-                        (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));
+                        (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));  /* avoid wasting space */
                     break;
                 }
                 default:
@@ -369,49 +414,49 @@ function read_long_string(ls, seminfo, sep) {
         cptr.stPtr(seminfo, luaX_newstring(ls, cptr.add((cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))), sep), BigInt.asUintN(64, (cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n)) - BigInt.asUintN(64, 2n * sep))));
 }
 
-/** C ref: llex.c:319 — @param {CPtr} ls @param {CInt} c @param {CPtr} msg */
+/** C ref: llex.c:319 — @param {CPtr<LexState>} ls @param {CInt} c @param {CPtr<char>} msg */
 function esccheck(ls, c, msg) {
     if (!c) {
         if (cptr.ldI32(ls) != -1)
-            (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+            (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* add current to buffer for error message */
         lexerror(ls, msg, NHC.TK_STRING);
     }
 }
 
-/** C ref: llex.c:328 — @param {CPtr} ls @returns {CInt} */
+/** C ref: llex.c:328 — @param {CPtr<LexState>} ls @returns {CInt} */
 function gethexa(ls) {
     (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
-    esccheck(ls, (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 16), __sl52);
+    esccheck(ls, (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 16), __s_hexadecimal_digit_expected);
     return luaO_hexavalue(cptr.ldI32(ls));
 }
 
-/** C ref: llex.c:335 — @param {CPtr} ls @returns {CInt} */
+/** C ref: llex.c:335 — @param {CPtr<LexState>} ls @returns {CInt} */
 function readhexaesc(ls) {
     let r = gethexa(ls);
     r = ((r << 4) + gethexa(ls)) | 0;
-    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 2n));
+    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 2n));  /* remove saved chars from buffer */
     return r;
 }
 
-/** C ref: llex.c:343 — @param {CPtr} ls @returns {CLongLong} */
+/** C ref: llex.c:343 — @param {CPtr<LexState>} ls @returns {CLongLong} */
 function readutf8esc(ls) {
     let r;
-    let i = 4;
-    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
-    esccheck(ls, cptr.ldI32(ls) == 123, __sl53);
-    r = BigInt.asUintN(64, BigInt(gethexa(ls)));
+    let i = 4;  /* chars to be removed: '\', 'u', '{', and first digit */
+    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* skip 'u' */
+    esccheck(ls, cptr.ldI32(ls) == 123, __s_missing);
+    r = BigInt.asUintN(64, BigInt(gethexa(ls)));  /* must have at least one digit */
     while ((void (((save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))))))), (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 16)) {
         i++;
-        esccheck(ls, r <= 134217727n, __sl54);
+        esccheck(ls, r <= 134217727n, __s_utf_8_value_too_large);
         r = BigInt.asUintN(64, (r << 4n) + BigInt.asUintN(64, BigInt(luaO_hexavalue(cptr.ldI32(ls)))));
     }
-    esccheck(ls, cptr.ldI32(ls) == 125, __sl55);
-    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
-    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - BigInt.asUintN(64, BigInt((i)))));
+    esccheck(ls, cptr.ldI32(ls) == 125, __s_missing__2);
+    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));  /* skip '}' */
+    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - BigInt.asUintN(64, BigInt((i)))));  /* remove saved chars from buffer */
     return r;
 }
 
-/** C ref: llex.c:361 — @param {CPtr} ls */
+/** C ref: llex.c:361 — @param {CPtr<LexState>} ls */
 function utf8esc(ls) {
     let buff = new Uint8Array(8);
     let n = luaO_utf8esc(cptr.decay(buff), readutf8esc(ls));
@@ -419,38 +464,38 @@ function utf8esc(ls) {
         save(ls, cptr.ld1so(cptr.decay(buff), (8 - n) | 0, 1));
 }
 
-/** C ref: llex.c:369 — @param {CPtr} ls @returns {CInt} */
+/** C ref: llex.c:369 — @param {CPtr<LexState>} ls @returns {CInt} */
 function readdecesc(ls) {
     let i;
-    let r = 0;
+    let r = 0;  /* result accumulator */
     for (i = 0; i < 3 && (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 2); i++) {
         r = (((Math.imul(10, r) + cptr.ldI32(ls)) | 0) - 48) | 0;
         (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
     }
-    esccheck(ls, r <= 255, __sl56);
-    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - BigInt.asUintN(64, BigInt((i)))));
+    esccheck(ls, r <= 255, __s_decimal_escape_too_large);
+    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - BigInt.asUintN(64, BigInt((i)))));  /* remove read digits from buffer */
     return r;
 }
 
-/** C ref: llex.c:382 — @param {CPtr} ls @param {CInt} del @param {CPtr} seminfo */
+/** C ref: llex.c:382 — @param {CPtr<LexState>} ls @param {CInt} del @param {CPtr<SemInfo>} seminfo */
 function read_string(ls, del, seminfo) {
-    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* keep delimiter (for error messages) */
     while (cptr.ldI32(ls) != del) {
         switch (cptr.ldI32(ls)) {
             case -1:
-            lexerror(ls, __sl57, NHC.TK_EOS);
-            break;
+            lexerror(ls, __s_unfinished_string, NHC.TK_EOS);
+            break;  /* to avoid warnings */
             case 10:
             case 13:
-            lexerror(ls, __sl57, NHC.TK_STRING);
-            break;
+            lexerror(ls, __s_unfinished_string, NHC.TK_STRING);
+            break;  /* to avoid warnings */
             case 92:
             {
-                let c;
+                let c;  /* final character to be saved */
                 __lbl_no_save: {
                 __lbl_only_save: {
                 __lbl_read_save: {
-                    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+                    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* keep '\\' for error messages */
                     switch (cptr.ldI32(ls)) {
                         case 97:
                         c = 7;
@@ -490,11 +535,11 @@ function read_string(ls, del, seminfo) {
                         c = cptr.ldI32(ls);
                         break __lbl_read_save;
                         case -1:
-                        break __lbl_no_save;
+                        break __lbl_no_save;  /* will raise an error next loop */
                         case 122:
                         {
-                            (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 1n));
-                            (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
+                            (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 1n));  /* remove '\\' */
+                            (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));  /* skip the 'z' */
                             while ((cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 8)) {
                                 if ((cptr.ldI32(ls) == 10 || cptr.ldI32(ls) == 13))
                                     inclinenumber(ls);
@@ -505,28 +550,29 @@ function read_string(ls, del, seminfo) {
                         }
                         default:
                         {
-                            esccheck(ls, (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 2), __sl58);
-                            c = readdecesc(ls);
+                            esccheck(ls, (cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 2), __s_invalid_escape_sequence);
+                            c = readdecesc(ls);  /* digital escape '\ddd' */
                             break __lbl_only_save;
                         }
                     }
                 }
                     (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 }
-                    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 1n));
+                    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n) - 1n));  /* remove '\\' */
                     save(ls, c);
                 }
+                /* go through */
                 break;
             }
             default:
             (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
         }
     }
-    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
+    (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));  /* skip delimiter */
     cptr.stPtr(seminfo, luaX_newstring(ls, cptr.add((cptr.ldPtr((cptr.ldPtro(ls, $LexState_buff)))), 1), BigInt.asUintN(64, (cptr.ldU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n)) - 2n)));
 }
 
-/** C ref: llex.c:445 — @param {CPtr} ls @param {CPtr} seminfo @returns {CInt} */
+/** C ref: llex.c:445 — @param {CPtr<LexState>} ls @param {CPtr<SemInfo>} seminfo @returns {CInt} */
 function llex(ls, seminfo) {
     (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));
     for (; ; ) {
@@ -550,18 +596,20 @@ function llex(ls, seminfo) {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (cptr.ldI32(ls) != 45)
                     return 45;
+                /* else is a comment */
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (cptr.ldI32(ls) == 91) {
                     let sep = skip_sep(ls);
-                    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));
+                    (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));  /* 'skip_sep' may dirty the buffer */
                     if (sep >= 2n) {
-                        read_long_string(ls, null, sep);
-                        (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));
+                        read_long_string(ls, null, sep);  /* skip long comment */
+                        (cptr.stU64o((cptr.ldPtro(ls, $LexState_buff)), $Mbuffer_n, 0n));  /* previous call may dirty the buff. */
                         break;
                     }
                 }
+                /* else short comment */
                 while (!(cptr.ldI32(ls) == 10 || cptr.ldI32(ls) == 13) && cptr.ldI32(ls) != -1)
-                    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
+                    (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));  /* skip until end of line (or end of file) */
                 break;
             }
             case 91:
@@ -571,14 +619,14 @@ function llex(ls, seminfo) {
                     read_long_string(ls, seminfo, sep);
                     return NHC.TK_STRING;
                 } else if (sep == 0n)
-                    lexerror(ls, __sl59, NHC.TK_STRING);
+                    lexerror(ls, __s_invalid_long_string_delimiter, NHC.TK_STRING);
                 return 91;
             }
             case 61:
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 61))
-                    return NHC.TK_EQ;
+                    return NHC.TK_EQ;  /* '==' */
                 else
                     return 61;
             }
@@ -586,9 +634,9 @@ function llex(ls, seminfo) {
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 61))
-                    return NHC.TK_LE;
+                    return NHC.TK_LE;  /* '<=' */
                 else if (check_next1(ls, 60))
-                    return NHC.TK_SHL;
+                    return NHC.TK_SHL;  /* '<<' */
                 else
                     return 60;
             }
@@ -596,9 +644,9 @@ function llex(ls, seminfo) {
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 61))
-                    return NHC.TK_GE;
+                    return NHC.TK_GE;  /* '>=' */
                 else if (check_next1(ls, 62))
-                    return NHC.TK_SHR;
+                    return NHC.TK_SHR;  /* '>>' */
                 else
                     return 62;
             }
@@ -606,7 +654,7 @@ function llex(ls, seminfo) {
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 47))
-                    return NHC.TK_IDIV;
+                    return NHC.TK_IDIV;  /* '//' */
                 else
                     return 47;
             }
@@ -614,7 +662,7 @@ function llex(ls, seminfo) {
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 61))
-                    return NHC.TK_NE;
+                    return NHC.TK_NE;  /* '~=' */
                 else
                     return 126;
             }
@@ -622,7 +670,7 @@ function llex(ls, seminfo) {
             {
                 (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z)))));
                 if (check_next1(ls, 58))
-                    return NHC.TK_DBCOLON;
+                    return NHC.TK_DBCOLON;  /* '::' */
                 else
                     return 58;
             }
@@ -637,9 +685,9 @@ function llex(ls, seminfo) {
                 (save(ls, cptr.ldI32(ls)), (cptr.stI32(ls, (((cptr.stU64((cptr.ldPtro(ls, $LexState_z)), cptr.ldU64((cptr.ldPtro(ls, $LexState_z))) + -1n)) - (-1n)) > 0n ? (uchar(((cptr.ld1s(cptr.postinc(() => cptr.ldPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p), (v) => { cptr.stPtro((cptr.ldPtro(ls, $LexState_z)), $ZIO_p, v); })))))) : luaZ_fill(cptr.ldPtro(ls, $LexState_z))))));
                 if (check_next1(ls, 46)) {
                     if (check_next1(ls, 46))
-                        return NHC.TK_DOTS;
+                        return NHC.TK_DOTS;  /* '...' */
                     else
-                        return NHC.TK_CONCAT;
+                        return NHC.TK_CONCAT;  /* '..' */
                 } else if (!(cptr.ld1uo(cptr.decay(luai_ctype_), ((cptr.ldI32(ls)) + 1) | 0, 1) & 2))
                     return 46;
                 else
@@ -686,17 +734,17 @@ function llex(ls, seminfo) {
     }
 }
 
-/** C ref: llex.c:565 — @param {CPtr} ls */
+/** C ref: llex.c:565 — @param {CPtr<LexState>} ls */
 export function luaX_next(ls) {
     cptr.stI32o(ls, $LexState_lastline, cptr.ldI32o(ls, $LexState_linenumber));
     if (cptr.ldI32o(ls, $LexState_lookahead) != NHC.TK_EOS) {
-        cptr.memcpy(cptr.add(ls, $LexState_t), cptr.add(ls, $LexState_lookahead), 16);
-        cptr.stI32o(ls, $LexState_lookahead, NHC.TK_EOS);
+        cptr.memcpy(cptr.add(ls, $LexState_t), cptr.add(ls, $LexState_lookahead), 16);  /* use this one */
+        cptr.stI32o(ls, $LexState_lookahead, NHC.TK_EOS);  /* and discharge it */
     } else
-        cptr.stI32o(ls, $LexState_t, llex(ls, cptr.add(ls, $LexState_t + $Token_seminfo)));
+        cptr.stI32o(ls, $LexState_t, llex(ls, cptr.add(ls, $LexState_t + $Token_seminfo)));  /* read next token */
 }
 
-/** C ref: llex.c:576 — @param {CPtr} ls @returns {CInt} */
+/** C ref: llex.c:576 — @param {CPtr<LexState>} ls @returns {CInt} */
 export function luaX_lookahead(ls) {
     (void 0);
     cptr.stI32o(ls, $LexState_lookahead, llex(ls, cptr.add(ls, $LexState_lookahead + $Token_seminfo)));

@@ -12,108 +12,120 @@ import { rnd } from './rnd.js';
 
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
-const $luaL_Reg_func = FLD.luaL_Reg_func;
+const $luaL_Reg_func = FLD.luaL_Reg_func, $sizeof_luaL_Reg = FLD.sizeof_luaL_Reg;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("__index");
-const __sl1 = cptr.lit("__newindex");
-const __sl2 = cptr.lit("__len");
-const __sl3 = cptr.lit("position out of bounds");
-const __sl4 = cptr.lit("wrong number of arguments to 'insert'");
-const __sl5 = cptr.lit("too many elements to move");
-const __sl6 = cptr.lit("destination wrap around");
-const __sl7 = cptr.lit("invalid value (%s) at index %I in table for 'concat'");
-const __sl8 = cptr.lit("");
-const __sl9 = cptr.lit("n");
-const __sl10 = cptr.lit("too many results to unpack");
-const __sl11 = cptr.lit("invalid order function for sorting");
-const __sl12 = cptr.lit("array too big");
-const __sl13 = cptr.lit("concat");
-const __sl14 = cptr.lit("insert");
-const __sl15 = cptr.lit("pack");
-const __sl16 = cptr.lit("unpack");
-const __sl17 = cptr.lit("remove");
-const __sl18 = cptr.lit("move");
-const __sl19 = cptr.lit("sort");
+const __s_index = cptr.lit("__index");
+const __s_newindex = cptr.lit("__newindex");
+const __s_len = cptr.lit("__len");
+const __s_position_out_of_bounds = cptr.lit("position out of bounds");
+const __s_wrong_number_of_arguments_to_insert = cptr.lit("wrong number of arguments to 'insert'");
+const __s_too_many_elements_to_move = cptr.lit("too many elements to move");
+const __s_destination_wrap_around = cptr.lit("destination wrap around");
+const __s_invalid_value_s_at_index_i_in_table_for = cptr.lit("invalid value (%s) at index %I in table for 'concat'");
+const __s_empty = cptr.lit("");
+const __s_n = cptr.lit("n");
+const __s_too_many_results_to_unpack = cptr.lit("too many results to unpack");
+const __s_invalid_order_function_for_sorting = cptr.lit("invalid order function for sorting");
+const __s_array_too_big = cptr.lit("array too big");
+const __s_concat = cptr.lit("concat");
+const __s_insert = cptr.lit("insert");
+const __s_pack = cptr.lit("pack");
+const __s_unpack = cptr.lit("unpack");
+const __s_remove = cptr.lit("remove");
+const __s_move = cptr.lit("move");
+const __s_sort = cptr.lit("sort");
 
-/** C ref: ltablib.c:36 — @param {CPtr} L @param {CPtr} key @param {CInt} n @returns {CInt} */
+/** C ref: ltablib.c:36 — @param {CPtr<lua_State>} L @param {CPtr<char>} key @param {CInt} n @returns {CInt} */
 function checkfield(L, key, n) {
     lua_pushstring(L, key);
     return (lua_rawget(L, -n) != 0);
 }
 
-/** C ref: ltablib.c:46 — @param {CPtr} L @param {CInt} arg @param {CInt} what */
+/*
+** Check that 'arg' either is a table or can behave like one (that is,
+** has a metatable with the required metamethods)
+*/
+/** C ref: ltablib.c:46 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CInt} what */
 function checktab(L, arg, what) {
     if (lua_type(L, arg) != 5) {
-        let n = 1;
-        if (lua_getmetatable(L, arg) && (!(what & 1) || checkfield(L, __sl0, ++n)) && (!(what & 2) || checkfield(L, __sl1, ++n)) && (!(what & 4) || checkfield(L, __sl2, ++n))) {
-            lua_settop(L, (-(n) - 1) | 0);
+        let n = 1;  /* number of elements to pop */
+        if (lua_getmetatable(L, arg) && (!(what & 1) || checkfield(L, __s_index, ++n)) && (!(what & 2) || checkfield(L, __s_newindex, ++n)) && (!(what & 4) || checkfield(L, __s_len, ++n))) {
+            lua_settop(L, (-(n) - 1) | 0);  /* pop metatable and tested metamethods */
         } else
-            luaL_checktype(L, arg, 5);
+            luaL_checktype(L, arg, 5);  /* force an error */
     }
 }
 
-/** C ref: ltablib.c:61 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:61 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tinsert(L) {
-    let pos;
+    let pos;  /* where to insert new element */
     let e = (checktab(L, 1, 7), luaL_len(L, 1));
-    e = (BigInt.asIntN(64, (BigInt.asUintN(64, BigInt.asUintN(64, (e)) + 1n))));
+    e = (BigInt.asIntN(64, (BigInt.asUintN(64, BigInt.asUintN(64, (e)) + 1n))));  /* first empty element */
     switch (lua_gettop(L)) {
         case 2:
         {
-            pos = e;
+            pos = e;  /* insert new element at the end */
             break;
         }
         case 3:
         {
             let i;
-            pos = luaL_checkinteger(L, 2);
-            (void ((__builtin_expect(BigInt(((BigInt.asUintN(64, BigInt.asUintN(64, pos) - 1n) < BigInt.asUintN(64, e)) != 0)), 1n)) || luaL_argerror(L, 2, (__sl3)) ? 1 : 0));
+            pos = luaL_checkinteger(L, 2);  /* 2nd argument is the position */
+            /* check whether 'pos' is in [1, e] */
+            (void ((__builtin_expect(BigInt(((BigInt.asUintN(64, BigInt.asUintN(64, pos) - 1n) < BigInt.asUintN(64, e)) != 0)), 1n)) || luaL_argerror(L, 2, (__s_position_out_of_bounds)) ? 1 : 0));
             for (i = e; i > pos; i--) {
                 lua_geti(L, 1, BigInt.asIntN(64, i - 1n));
-                lua_seti(L, 1, i);
+                lua_seti(L, 1, i);  /* t[i] = t[i - 1] */
             }
             break;
         }
         default:
         {
-            return luaL_error(L, __sl4);
+            return luaL_error(L, __s_wrong_number_of_arguments_to_insert);
         }
     }
-    lua_seti(L, 1, pos);
+    lua_seti(L, 1, pos);  /* t[pos] = v */
     return 0;
 }
 
-/** C ref: ltablib.c:91 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:91 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tremove(L) {
     let size = (checktab(L, 1, 7), luaL_len(L, 1));
     let pos = luaL_optinteger(L, 2, size);
     if (pos != size)
-        (void ((__builtin_expect(BigInt(((BigInt.asUintN(64, BigInt.asUintN(64, pos) - 1n) <= BigInt.asUintN(64, size)) != 0)), 1n)) || luaL_argerror(L, 2, (__sl3)) ? 1 : 0));
-    lua_geti(L, 1, pos);
+        /* check whether 'pos' is in [1, size + 1] */
+        (void ((__builtin_expect(BigInt(((BigInt.asUintN(64, BigInt.asUintN(64, pos) - 1n) <= BigInt.asUintN(64, size)) != 0)), 1n)) || luaL_argerror(L, 2, (__s_position_out_of_bounds)) ? 1 : 0));
+    lua_geti(L, 1, pos);  /* result = t[pos] */
     for (; pos < size; pos++) {
         lua_geti(L, 1, BigInt.asIntN(64, pos + 1n));
-        lua_seti(L, 1, pos);
+        lua_seti(L, 1, pos);  /* t[pos] = t[pos + 1] */
     }
     lua_pushnil(L);
-    lua_seti(L, 1, pos);
+    lua_seti(L, 1, pos);  /* remove entry t[pos] */
     return 1;
 }
 
-/** C ref: ltablib.c:115 — @param {CPtr} L @returns {CInt} */
+/*
+** Copy elements (1[f], ..., 1[e]) into (tt[t], tt[t+1], ...). Whenever
+** possible, copy in increasing order, which is better for rehashing.
+** "possible" means destination after original range, or smaller
+** than origin, or copying to another table.
+*/
+/** C ref: ltablib.c:115 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tmove(L) {
     let f = luaL_checkinteger(L, 2);
     let e = luaL_checkinteger(L, 3);
     let t = luaL_checkinteger(L, 4);
-    let tt = !(lua_type(L, 5) <= 0) ? 5 : 1;
+    let tt = !(lua_type(L, 5) <= 0) ? 5 : 1;  /* destination table */
     checktab(L, 1, 1);
     checktab(L, tt, 2);
     if (e >= f) {
         let n;
         let i;
-        (void ((__builtin_expect(BigInt(((f > 0n || e < BigInt.asIntN(64, 9223372036854775807n + f) ? 1 : 0) != 0)), 1n)) || luaL_argerror(L, 3, (__sl5)) ? 1 : 0));
-        n = BigInt.asIntN(64, BigInt.asIntN(64, e - f) + 1n);
-        (void ((__builtin_expect(BigInt(((t <= BigInt.asIntN(64, BigInt.asIntN(64, 9223372036854775807n - n) + 1n)) != 0)), 1n)) || luaL_argerror(L, 4, (__sl6)) ? 1 : 0));
+        (void ((__builtin_expect(BigInt(((f > 0n || e < BigInt.asIntN(64, 9223372036854775807n + f) ? 1 : 0) != 0)), 1n)) || luaL_argerror(L, 3, (__s_too_many_elements_to_move)) ? 1 : 0));
+        n = BigInt.asIntN(64, BigInt.asIntN(64, e - f) + 1n);  /* number of elements to move */
+        (void ((__builtin_expect(BigInt(((t <= BigInt.asIntN(64, BigInt.asIntN(64, 9223372036854775807n - n) + 1n)) != 0)), 1n)) || luaL_argerror(L, 4, (__s_destination_wrap_around)) ? 1 : 0));
         if (t > e || t <= f || (tt != 1 && !lua_compare(L, 1, tt, 0))) {
             for (i = 0n; i < n; i++) {
                 lua_geti(L, 1, BigInt.asIntN(64, f + i));
@@ -126,24 +138,24 @@ function tmove(L) {
             }
         }
     }
-    lua_pushvalue(L, tt);
+    lua_pushvalue(L, tt);  /* return destination table */
     return 1;
 }
 
-/** C ref: ltablib.c:147 — @param {CPtr} L @param {CPtr} b @param {CLongLong} i */
+/** C ref: ltablib.c:147 — @param {CPtr<lua_State>} L @param {CPtr<luaL_Buffer>} b @param {CLongLong} i */
 function addfield(L, b, i) {
     lua_geti(L, 1, i);
     if ((__builtin_expect(BigInt(((!lua_isstring(L, -1)) != 0)), 0n)))
-        luaL_error(L, __sl7, lua_typename(L, lua_type(L, -1)), i);
+        luaL_error(L, __s_invalid_value_s_at_index_i_in_table_for, lua_typename(L, lua_type(L, -1)), i);
     luaL_addvalue(b);
 }
 
-/** C ref: ltablib.c:156 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:156 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tconcat(L) {
     let b = cptr.alloc(1056);
     let last = (checktab(L, 1, 5), luaL_len(L, 1));
     let lsep = cptr.box(0n);
-    let sep = luaL_optlstring(L, 2, __sl8, lsep);
+    let sep = luaL_optlstring(L, 2, __s_empty, lsep);
     let i = luaL_optinteger(L, 3, 1n);
     last = luaL_optinteger(L, 4, last);
     luaL_buffinit(L, b);
@@ -157,38 +169,61 @@ function tconcat(L) {
     return 1;
 }
 
-/** C ref: ltablib.c:181 — @param {CPtr} L @returns {CInt} */
+/*
+** {======================================================
+** Pack/unpack
+** =======================================================
+*/
+
+/** C ref: ltablib.c:181 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tpack(L) {
     let i;
-    let n = lua_gettop(L);
-    lua_createtable(L, n, 1);
-    lua_rotate(L, 1, 1);
+    let n = lua_gettop(L);  /* number of elements to pack */
+    lua_createtable(L, n, 1);  /* create result table */
+    lua_rotate(L, 1, 1);  /* put it at index 1 */
     for (i = n; i >= 1; i--)
         lua_seti(L, 1, BigInt(i));
     lua_pushinteger(L, BigInt(n));
-    lua_setfield(L, 1, __sl9);
-    return 1;
+    lua_setfield(L, 1, __s_n);  /* t.n = number of elements */
+    return 1;  /* return table */
 }
 
-/** C ref: ltablib.c:194 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:194 — @param {CPtr<lua_State>} L @returns {CInt} */
 function tunpack(L) {
     let n;
     let i = luaL_optinteger(L, 2, 1n);
     let e = ((lua_type(L, 3) <= 0) ? (luaL_len(L, 1)) : luaL_checkinteger(L, 3));
     if (i > e)
-        return 0;
-    n = BigInt.asUintN(64, BigInt.asUintN(64, e) - BigInt.asUintN(64, i));
+        return 0;  /* empty range */
+    n = BigInt.asUintN(64, BigInt.asUintN(64, e) - BigInt.asUintN(64, i));  /* number of elements minus 1 (avoid overflows) */
     if ((__builtin_expect(BigInt(((n >= 2147483647n || !lua_checkstack(L, Number(BigInt.asIntN(32, (++n)))) ? 1 : 0) != 0)), 0n)))
-        return luaL_error(L, __sl10);
+        return luaL_error(L, __s_too_many_results_to_unpack);
     for (; i < e; i++) {
         lua_geti(L, 1, i);
     }
-    lua_geti(L, 1, e);
+    lua_geti(L, 1, e);  /* push last element */
     return Number(BigInt.asIntN(32, n));
 }
 
+/* }====================================================== */
+
+/*
+** {======================================================
+** Quicksort
+** (based on 'Algorithms in MODULA-3', Robert Sedgewick;
+**  Addison-Wesley, 1993.)
+** =======================================================
+*/
+
+/* type for array indices */
 /** C ref: ltablib.c:224 — typedef IdxT (type alias only, no runtime output) */
 
+/*
+** Use 'time' and 'clock' as sources of "randomness". Because we don't
+** know the types 'clock_t' and 'time_t', we cannot cast them to
+** anything without risking overflows. A safe way to use their values
+** is to copy them to an array of a known type and use the array values.
+*/
 /** C ref: ltablib.c:246 @returns {CUInt} */
 function l_randomizePivot() {
     let c = cptr.box(clock());
@@ -203,143 +238,173 @@ function l_randomizePivot() {
     return rnd;
 }
 
-/** C ref: ltablib.c:265 — @param {CPtr} L @param {CUInt} i @param {CUInt} j */
+/** C ref: ltablib.c:265 — @param {CPtr<lua_State>} L @param {CUInt} i @param {CUInt} j */
 function set2(L, i, j) {
     lua_seti(L, 1, BigInt(i >>> 0));
     lua_seti(L, 1, BigInt(j >>> 0));
 }
 
-/** C ref: ltablib.c:275 — @param {CPtr} L @param {CInt} a @param {CInt} b @returns {CInt} */
+/*
+** Return true iff value at stack index 'a' is less than the value at
+** index 'b' (according to the order of the sort).
+*/
+/** C ref: ltablib.c:275 — @param {CPtr<lua_State>} L @param {CInt} a @param {CInt} b @returns {CInt} */
 function sort_comp(L, a, b) {
     if ((lua_type(L, 2) == 0))
-        return lua_compare(L, a, b, 1);
+        return lua_compare(L, a, b, 1);  /* a < b */
     else {
         let res;
-        lua_pushvalue(L, 2);
-        lua_pushvalue(L, (a - 1) | 0);
-        lua_pushvalue(L, (b - 2) | 0);
-        lua_callk(L, 2, 1, 0n, null);
-        res = lua_toboolean(L, -1);
-        lua_settop(L, -2);
+        lua_pushvalue(L, 2);  /* push function */
+        lua_pushvalue(L, (a - 1) | 0);  /* -1 to compensate function */
+        lua_pushvalue(L, (b - 2) | 0);  /* -2 to compensate function and 'a' */
+        lua_callk(L, 2, 1, 0n, null);  /* call function */
+        res = lua_toboolean(L, -1);  /* get result */
+        lua_settop(L, -2);  /* pop result */
         return res;
     }
 }
 
-/** C ref: ltablib.c:298 — @param {CPtr} L @param {CUInt} lo @param {CUInt} up @returns {*} */
+/*
+** Does the partition: Pivot P is at the top of the stack.
+** precondition: a[lo] <= P == a[up-1] <= a[up],
+** so it only needs to do the partition from lo + 1 to up - 2.
+** Pos-condition: a[lo .. i - 1] <= a[i] == P <= a[i + 1 .. up]
+** returns 'i'.
+*/
+/** C ref: ltablib.c:298 — @param {CPtr<lua_State>} L @param {CUInt} lo @param {CUInt} up @returns {*} */
 function partition(L, lo, up) {
-    let i = lo;
-    let j = (up - 1) >>> 0;
+    let i = lo;  /* will be incremented before first use */
+    let j = (up - 1) >>> 0;  /* will be decremented before first use */
+    /* loop invariant: a[lo .. i] <= P <= a[j .. up] */
     for (; ; ) {
+        /* next loop: repeat ++i while a[i] < P */
         while (void lua_geti(L, 1, BigInt((++i) >>> 0)), sort_comp(L, -1, -2)) {
             if ((__builtin_expect(BigInt(((i == (up - 1) >>> 0) != 0)), 0n)))
-                luaL_error(L, __sl11);
-            lua_settop(L, -2);
+                luaL_error(L, __s_invalid_order_function_for_sorting);
+            lua_settop(L, -2);  /* remove a[i] */
         }
+        /* after the loop, a[i] >= P and a[lo .. i - 1] < P */
+        /* next loop: repeat --j while P < a[j] */
         while (void lua_geti(L, 1, BigInt((--j) >>> 0)), sort_comp(L, -3, -1)) {
             if ((__builtin_expect(BigInt(((j < i) != 0)), 0n)))
-                luaL_error(L, __sl11);
-            lua_settop(L, -2);
+                luaL_error(L, __s_invalid_order_function_for_sorting);
+            lua_settop(L, -2);  /* remove a[j] */
         }
+        /* after the loop, a[j] <= P and a[j + 1 .. up] >= P */
         if (j < i) {
-            lua_settop(L, -2);
+            /* a[lo .. i - 1] <= P <= a[j + 1 .. i .. up] */
+            lua_settop(L, -2);  /* pop a[j] */
+            /* swap pivot (a[up - 1]) with a[i] to satisfy pos-condition */
             set2(L, (up - 1) >>> 0, i);
             return i;
         }
+        /* otherwise, swap a[i] - a[j] to restore invariant and repeat */
         set2(L, i, j);
     }
 }
 
+/*
+** Choose an element in the middle (2nd-3th quarters) of [lo,up]
+** "randomized" by 'rnd'
+*/
 /** C ref: ltablib.c:334 — @param {CUInt} lo @param {CUInt} up @param {CUInt} rnd @returns {*} */
 function choosePivot(lo, up, rnd) {
-    let r4 = u32div(((up - lo) >>> 0), 4);
+    let r4 = u32div(((up - lo) >>> 0), 4);  /* range/4 */
     let p = (u32mod(rnd, (Math.imul(r4, 2) >>> 0)) + ((lo + r4) >>> 0)) >>> 0;
     (void 0);
     return p;
 }
 
-/** C ref: ltablib.c:345 — @param {CPtr} L @param {CUInt} lo @param {CUInt} up @param {CUInt} rnd */
+/*
+** Quicksort algorithm (recursive function)
+*/
+/** C ref: ltablib.c:345 — @param {CPtr<lua_State>} L @param {CUInt} lo @param {CUInt} up @param {CUInt} rnd */
 function auxsort(L, lo, up, rnd) {
     while (lo < up) {
-        let p;
-        let n;
+        let p;  /* Pivot index */
+        let n;  /* to be used later */
+        /* sort elements 'lo', 'p', and 'up' */
         lua_geti(L, 1, BigInt(lo >>> 0));
         lua_geti(L, 1, BigInt(up >>> 0));
         if (sort_comp(L, -1, -2))
-            set2(L, lo, up);
+            set2(L, lo, up);  /* swap a[lo] - a[up] */
         else
-            lua_settop(L, -3);
+            lua_settop(L, -3);  /* remove both values */
         if ((up - lo) >>> 0 == 1)
-            return;
+            return;  /* already sorted */
         if ((up - lo) >>> 0 < 100 || rnd == 0)
-            p = u32div(((lo + up) >>> 0), 2);
+            p = u32div(((lo + up) >>> 0), 2);  /* middle element is a good pivot */
         else
             p = choosePivot(lo, up, rnd);
         lua_geti(L, 1, BigInt(p >>> 0));
         lua_geti(L, 1, BigInt(lo >>> 0));
         if (sort_comp(L, -2, -1))
-            set2(L, p, lo);
+            set2(L, p, lo);  /* swap a[p] - a[lo] */
         else {
-            lua_settop(L, -2);
+            lua_settop(L, -2);  /* remove a[lo] */
             lua_geti(L, 1, BigInt(up >>> 0));
             if (sort_comp(L, -1, -2))
-                set2(L, p, up);
+                set2(L, p, up);  /* swap a[up] - a[p] */
             else
                 lua_settop(L, -3);
         }
         if ((up - lo) >>> 0 == 2)
-            return;
-        lua_geti(L, 1, BigInt(p >>> 0));
-        lua_pushvalue(L, -1);
-        lua_geti(L, 1, BigInt(((up - 1) >>> 0) >>> 0));
-        set2(L, p, (up - 1) >>> 0);
+            return;  /* already sorted */
+        lua_geti(L, 1, BigInt(p >>> 0));  /* get middle element (Pivot) */
+        lua_pushvalue(L, -1);  /* push Pivot */
+        lua_geti(L, 1, BigInt(((up - 1) >>> 0) >>> 0));  /* push a[up - 1] */
+        set2(L, p, (up - 1) >>> 0);  /* swap Pivot (a[p]) with a[up - 1] */
         p = partition(L, lo, up);
+        /* a[lo .. p - 1] <= a[p] == P <= a[p + 1 .. up] */
         if ((p - lo) >>> 0 < (up - p) >>> 0) {
-            auxsort(L, lo, (p - 1) >>> 0, rnd);
-            n = (p - lo) >>> 0;
-            lo = (p + 1) >>> 0;
+            auxsort(L, lo, (p - 1) >>> 0, rnd);  /* call recursively for lower interval */
+            n = (p - lo) >>> 0;  /* size of smaller interval */
+            lo = (p + 1) >>> 0;  /* tail call for [p + 1 .. up] (upper interval) */
         } else {
-            auxsort(L, (p + 1) >>> 0, up, rnd);
-            n = (up - p) >>> 0;
-            up = (p - 1) >>> 0;
+            auxsort(L, (p + 1) >>> 0, up, rnd);  /* call recursively for upper interval */
+            n = (up - p) >>> 0;  /* size of smaller interval */
+            up = (p - 1) >>> 0;  /* tail call for [lo .. p - 1]  (lower interval) */
         }
         if (u32div(((up - lo) >>> 0), 128) > n)
-            rnd = l_randomizePivot();
-    }
+            rnd = l_randomizePivot();  /* try a new randomization */
+    }  /* tail call auxsort(L, lo, up, rnd) */
 }
 
-/** C ref: ltablib.c:399 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:399 — @param {CPtr<lua_State>} L @returns {CInt} */
 function sort(L) {
     let n = (checktab(L, 1, 7), luaL_len(L, 1));
     if (n > 1n) {
-        (void ((__builtin_expect(BigInt(((n < 2147483647n) != 0)), 1n)) || luaL_argerror(L, 1, (__sl12)) ? 1 : 0));
+        (void ((__builtin_expect(BigInt(((n < 2147483647n) != 0)), 1n)) || luaL_argerror(L, 1, (__s_array_too_big)) ? 1 : 0));
         if (!(lua_type(L, 2) <= 0))
-            luaL_checktype(L, 2, 6);
-        lua_settop(L, 2);
+            luaL_checktype(L, 2, 6);  /* must be a function */
+        lua_settop(L, 2);  /* make sure there are two arguments */
         auxsort(L, 1, Number(BigInt.asUintN(32, n)), 0);
     }
     return 0;
 }
 
+/* }====================================================== */
+
 /** C ref: ltablib.c:414 — luaL_Reg[8] */
-const tab_funcs = cptr.alloc(8 * 16);
-cptr.stPtro(tab_funcs, 0, __sl13);
+const tab_funcs = cptr.alloc(8 * $sizeof_luaL_Reg);
+cptr.stPtro(tab_funcs, 0, __s_concat);
 cptr.stPtro(tab_funcs, 0 + $luaL_Reg_func, tconcat);
-cptr.stPtro(tab_funcs, 16, __sl14);
+cptr.stPtro(tab_funcs, 16, __s_insert);
 cptr.stPtro(tab_funcs, 16 + $luaL_Reg_func, tinsert);
-cptr.stPtro(tab_funcs, 32, __sl15);
+cptr.stPtro(tab_funcs, 32, __s_pack);
 cptr.stPtro(tab_funcs, 32 + $luaL_Reg_func, tpack);
-cptr.stPtro(tab_funcs, 48, __sl16);
+cptr.stPtro(tab_funcs, 48, __s_unpack);
 cptr.stPtro(tab_funcs, 48 + $luaL_Reg_func, tunpack);
-cptr.stPtro(tab_funcs, 64, __sl17);
+cptr.stPtro(tab_funcs, 64, __s_remove);
 cptr.stPtro(tab_funcs, 64 + $luaL_Reg_func, tremove);
-cptr.stPtro(tab_funcs, 80, __sl18);
+cptr.stPtro(tab_funcs, 80, __s_move);
 cptr.stPtro(tab_funcs, 80 + $luaL_Reg_func, tmove);
-cptr.stPtro(tab_funcs, 96, __sl19);
+cptr.stPtro(tab_funcs, 96, __s_sort);
 cptr.stPtro(tab_funcs, 96 + $luaL_Reg_func, sort);
 cptr.stPtro(tab_funcs, 112, null);
 cptr.stPtro(tab_funcs, 112 + $luaL_Reg_func, null);
 
-/** C ref: ltablib.c:426 — @param {CPtr} L @returns {CInt} */
+/** C ref: ltablib.c:426 — @param {CPtr<lua_State>} L @returns {CInt} */
 export function luaopen_table(L) {
     (luaL_checkversion_(L, 504, 136n), lua_createtable(L, 0, Number(BigInt.asIntN(32, BigInt.asUintN(64, 128n / 16n - 1n)))), luaL_setfuncs(L, tab_funcs, 0));
     return 1;

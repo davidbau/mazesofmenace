@@ -14,6 +14,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { IS_WALL, canspotmon, glyph_is_cmap, glyph_is_cmap_zap, glyph_is_monster, glyph_is_object, glyph_to_mon, glyph_to_obj, has_mgivenname, nonliving } from './nhmacrofn.js';
+import { rn2_at } from './nhrng.js';
 import { HConfusion, HHallucination, Slimed, Sokoban, Stoned, Underwater, Upolyd, Vomiting, Warn_of_mon, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, mines_dnum, putstr, quest_dnum, sokoban_dnum, start_menu, tower_dnum, wizard } from './nhprop.js';
 import { WIN_MESSAGE, a11y, c_common_strings, cg, disp, flags, gb, gc, gf, gi, gm, gs, gu, gv, gy, head_engr, iflags, program_state, svc, svd, svk, svl, svm, svn, u, ynchars, ynqchars } from './decl.js';
 import { makewish } from './zap.js';
@@ -47,7 +48,6 @@ import { defsyms } from './drawing.js';
 import { mstrength, olfaction } from './mondata.js';
 import { property_by_index, timer_sanity_check, timer_stats } from './timeout.js';
 import { incr_itimeout, make_blinded, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { rumor_check } from './rumors.js';
 import { size_wseg } from './worm.js';
 import { engr_stats, engraving_sanity_check } from './engrave.js';
@@ -145,7 +145,14 @@ const $Gender_his = FLD.Gender_his, $Role_mnum = FLD.Role_mnum,
     $permonst_mlevel = FLD.permonst_mlevel, $permonst_pmidx = FLD.permonst_pmidx,
     $prop_intrinsic = FLD.prop_intrinsic, $rm_flags = FLD.rm_flags, $rm_seenv = FLD.rm_seenv,
     $rm_typ = FLD.rm_typ, $s_level_flags = FLD.s_level_flags, $s_level_proto = FLD.s_level_proto,
-    $sinfo_in_sanity_check = FLD.sinfo_in_sanity_check, $symsetentry_handling = FLD.symsetentry_handling,
+    $sinfo_in_sanity_check = FLD.sinfo_in_sanity_check, $sizeof_Gender = FLD.sizeof_Gender,
+    $sizeof_coord = FLD.sizeof_coord, $sizeof_d_level = FLD.sizeof_d_level,
+    $sizeof_dungeon = FLD.sizeof_dungeon, $sizeof_glyph_map = FLD.sizeof_glyph_map,
+    $sizeof_menu_item = FLD.sizeof_menu_item, $sizeof_mvitals = FLD.sizeof_mvitals,
+    $sizeof_objclass = FLD.sizeof_objclass, $sizeof_objdescr = FLD.sizeof_objdescr,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm,
+    $sizeof_rm_x21 = FLD.sizeof_rm_x21, $sizeof_symdef = FLD.sizeof_symdef,
+    $sizeof_symsetentry = FLD.sizeof_symsetentry, $symsetentry_handling = FLD.symsetentry_handling,
     $symsetentry_name = FLD.symsetentry_name, $trap_tseen = FLD.trap_tseen,
     $unicode_representation_utf8str = FLD.unicode_representation_utf8str,
     $warntype_info_species = FLD.warntype_info_species,
@@ -165,196 +172,198 @@ const $Gender_his = FLD.Gender_his, $Role_mnum = FLD.Role_mnum,
     $you_utotype = FLD.you_utotype, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("makemap_remove_mons: 'fmon' did not get emptied?");
-const __sl1 = cptr.lit("mon_notices_blocked<0");
-const __sl2 = cptr.lit("Pick first monster to slay");
-const __sl3 = cptr.lit("%s:");
-const __sl4 = cptr.lit("Next monster");
-const __sl5 = cptr.lit("a monster");
-const __sl6 = cptr.lit("Kill %.110s?");
-const __sl7 = cptr.lit("%s?");
-const __sl8 = cptr.lit("Perform seppuku");
-const __sl9 = cptr.lit("Commit suicide");
-const __sl10 = cptr.lit("%s own player");
-const __sl11 = cptr.lit("poor, unseen");
-const __sl12 = cptr.lit("poor");
-const __sl13 = cptr.lit("unseen");
-const __sl14 = cptr.lit("%s %s!");
-const __sl15 = cptr.lit("destroy");
-const __sl16 = cptr.lit("kill");
-const __sl17 = cptr.lit("%s is %s.");
-const __sl18 = cptr.lit("destroyed");
-const __sl19 = cptr.lit("killed");
-const __sl20 = cptr.lit("is no monster there.");
-const __sl21 = cptr.lit("Load which lua file?");
-const __sl22 = cptr.lit(".lua");
-const __sl23 = cptr.lit("Load which des lua file?");
-const __sl24 = cptr.lit("%s");
-const __sl25 = cptr.lit("To what experience level do you want to be set?");
-const __sl26 = cptr.lit("%d%c");
-const __sl27 = cptr.lit("are already that experienced.");
-const __sl28 = cptr.lit("are already as inexperienced as you can get.");
-const __sl29 = cptr.lit("#levelchange");
-const __sl30 = cptr.lit("are already as experienced as you can get.");
-const __sl31 = cptr.lit("Pick a monster to hurtle.");
-const __sl32 = cptr.lit("which direction?");
-const __sl33 = cptr.lit("Do you want to call panic() and end your game?");
-const __sl34 = cptr.lit("Crash test (#panic).");
-const __sl35 = cptr.lit("The fuzz tester will make NetHack execute random keypresses.");
-const __sl36 = cptr.lit("is no conventional way out of this mode.");
-const __sl37 = cptr.lit("Do you want to start fuzz testing?");
-const __sl38 = cptr.lit("Do you want to call panic() after impossible()?");
-const __sl39 = cptr.lit("%02x");
-const __sl40 = cptr.lit("Flags: 0x%x could see, 0x%x in sight, 0x%x temp lit");
-const __sl41 = cptr.lit("");
-const __sl42 = cptr.lit("tty");
-const __sl43 = cptr.lit("D:%d,L:%d");
-const __sl44 = cptr.lit(" \"%s\"");
-const __sl45 = cptr.lit(" mazelike");
-const __sl46 = cptr.lit(" hellish");
-const __sl47 = cptr.lit(" town");
-const __sl48 = cptr.lit(" roguelike");
-const __sl49 = cptr.lit(" %c:%d");
-const __sl50 = cptr.lit(" vault");
-const __sl51 = cptr.lit(" shop");
-const __sl52 = cptr.lit(" temple");
-const __sl53 = cptr.lit(" throne");
-const __sl54 = cptr.lit(" zoo");
-const __sl55 = cptr.lit(" morgue");
-const __sl56 = cptr.lit(" barracks");
-const __sl57 = cptr.lit(" hive");
-const __sl58 = cptr.lit(" swamp");
-const __sl59 = cptr.lit(" noTport");
-const __sl60 = cptr.lit(" noDig");
-const __sl61 = cptr.lit(" noMMap");
-const __sl62 = cptr.lit(" noMem");
-const __sl63 = cptr.lit(" shortsight");
-const __sl64 = cptr.lit(" graveyard");
-const __sl65 = cptr.lit(" maze");
-const __sl66 = cptr.lit(" cave");
-const __sl67 = cptr.lit(" tree");
-const __sl68 = cptr.lit(" sokoban-rules");
-const __sl69 = cptr.lit(" invoke");
-const __sl70 = cptr.lit(" tower");
-const __sl71 = cptr.lit(" dungeon");
-const __sl72 = cptr.lit(" mines");
-const __sl73 = cptr.lit(" sokoban");
-const __sl74 = cptr.lit(" quest");
-const __sl75 = cptr.lit(" ludios");
-const __sl76 = cptr.lit(" gehennom");
-const __sl77 = cptr.lit(" vlad");
-const __sl78 = cptr.lit(" endgame");
-const __sl79 = cptr.lit("unknown");
-const __sl80 = cptr.lit("the ");
-const __sl81 = cptr.lit(" %s");
-const __sl82 = cptr.lit("#terrain encodings:");
-const __sl83 = cptr.lit(" %c - %-28s");
-const __sl84 = cptr.lit("unreachable");
-const __sl85 = cptr.lit("are incapable of detecting odors in your present form.");
-const __sl86 = cptr.lit("can move the cursor to a monster that you want to smell.");
-const __sl87 = cptr.lit("Pick a monster to smell.");
-const __sl88 = cptr.lit("surreptitiously sniff under your %s.");
-const __sl89 = cptr.lit("%s to not give off any smell.");
-const __sl90 = cptr.lit("You seem");
-const __sl91 = cptr.lit("That monster seems");
-const __sl92 = cptr.lit("don't smell any monster there.");
-const __sl93 = cptr.lit("[Precede any selection with a count to increment by other than %d.]");
-const __sl94 = cptr.lit("--");
-const __sl95 = cptr.lit("%-27s [%li]");
-const __sl96 = cptr.lit("Which intrinsics?");
-const __sl97 = cptr.lit("wizcmds.c");
-const __sl98 = cptr.lit("wiz_intrinsic");
-const __sl99 = cptr.lit(" still");
-const __sl100 = cptr.lit("turning into slime");
-const __sl101 = cptr.lit("turning into stone");
-const __sl102 = cptr.lit("vomiting");
-const __sl103 = cptr.lit("Timeout for %s %s %d.");
-const __sl104 = cptr.lit("increased by");
-const __sl105 = cptr.lit("set to");
-const __sl106 = cptr.lit("fmon");
-const __sl107 = cptr.lit("traps, size %ld");
-const __sl108 = cptr.lit("engravings, size %ld+text");
-const __sl109 = cptr.lit("light sources, size %ld");
-const __sl110 = cptr.lit("timers, size %ld");
-const __sl111 = cptr.lit("shop damage, size %ld");
-const __sl112 = cptr.lit("regions, size %ld+%ld*rect+N");
-const __sl113 = cptr.lit("delayed killer%s, size %ld");
-const __sl114 = cptr.lit("s");
-const __sl115 = cptr.lit("bones history, size %ld");
-const __sl116 = cptr.lit("object type names, text");
-const __sl117 = cptr.lit("sanity_check: swallowed by nothing?");
-const __sl118 = cptr.lit("sanity_check: you over monster");
-const __sl119 = cptr.lit("current hero health (%d) better than maximum? (%d)");
-const __sl120 = cptr.lit("current hero health as monster (%d) better than maximum? (%d)");
-const __sl121 = cptr.lit("current hero energy (%d) better than maximum? (%d)");
-const __sl122 = cptr.lit("invent");
-const __sl123 = cptr.lit("levl[%i][%i] vision blocking");
-const __sl124 = cptr.lit("No monsters currently migrating.");
-const __sl125 = cptr.lit("%d mon%s pending for current level, %d for next level, %d for others.");
-const __sl126 = cptr.lit("a q");
-const __sl127 = cptr.lit("%c%s");
-const __sl128 = cptr.lit("List which?");
-const __sl129 = cptr.lit("Monster%s migrating to %s:");
-const __sl130 = cptr.lit("current level");
-const __sl131 = cptr.lit("next level");
-const __sl132 = cptr.lit("'other' levels");
-const __sl133 = cptr.lit("All migrating monsters:");
-const __sl134 = cptr.lit("  %s");
-const __sl135 = cptr.lit(" <0,0>");
-const __sl136 = cptr.lit(" named %s");
-const __sl137 = cptr.lit(" to %d:%d");
-const __sl138 = cptr.lit(" at <%d,%d>");
-const __sl139 = cptr.lit("None.");
-const __sl140 = cptr.lit("Current memory statistics:");
-const __sl141 = cptr.lit("  Objects, base size %ld");
-const __sl142 = cptr.lit("fobj");
-const __sl143 = cptr.lit("buried");
-const __sl144 = cptr.lit("migrating obj");
-const __sl145 = cptr.lit("billobjs");
-const __sl146 = cptr.lit("minvent");
-const __sl147 = cptr.lit("migrating minvent");
-const __sl148 = cptr.lit("contained");
-const __sl149 = cptr.lit("  Obj total");
-const __sl150 = cptr.lit("  Monsters, base size %ld");
-const __sl151 = cptr.lit("migrating");
-const __sl152 = cptr.lit("mydogs");
-const __sl153 = cptr.lit("  Mon total");
-const __sl154 = cptr.lit("  Overview");
-const __sl155 = cptr.lit("  Over total");
-const __sl156 = cptr.lit("  Miscellaneous");
-const __sl157 = cptr.lit("  Misc total");
-const __sl158 = cptr.lit("  Grand total");
-const __sl159 = cptr.lit("glyph_is_cmap() / glyph_to_cmap(glyph=%d) sync failure, returned NO_GLYPH (%d)");
-const __sl160 = cptr.lit("glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d");
-const __sl161 = cptr.lit("glyph_to_cmap(glyph=%d) returns %d exceeds defsyms[%d] bounds (MAX_GLYPH = %d)");
-const __sl162 = cptr.lit("glyph_to_mon(glyph=%d) returns %d exceeds mons[%d] bounds");
-const __sl163 = cptr.lit("glyph_to_obj(glyph=%d) returns %d exceeds objects[%d] bounds");
-const __sl164 = cptr.lit("No display macro issues detected.");
-const __sl165 = cptr.lit("The NHUUID for this game is { %s }.");
-const __sl166 = cptr.lit("wiz_mon_diff");
-const __sl167 = cptr.lit("%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)");
-const __sl168 = cptr.lit("No monster difficulty discrepancies were detected.");
-const __sl169 = cptr.lit("wiz_objprobs");
-const __sl170 = cptr.lit("%4d / %4d (%6.2f%%): %s");
-const __sl171 = cptr.lit("How many random monsters to migrate to next level? [0]");
-const __sl172 = cptr.lit("Can't get there from here.");
-const __sl173 = cptr.lit("    glyph  glyph identifier                             sym   clr customcolor unicode utf8");
-const __sl174 = cptr.lit("%s: colorcount=%ld %s");
-const __sl175 = cptr.lit("default");
-const __sl176 = cptr.lit(", active");
-const __sl177 = cptr.lit(", handler=%s");
-const __sl178 = cptr.lit("[%04d] %-44s");
-const __sl179 = cptr.lit("'\\%03d' %02d");
-const __sl180 = cptr.lit("%011lx");
-const __sl181 = cptr.lit("U+%04lx");
-const __sl182 = cptr.lit(" <%d>");
-const __sl183 = cptr.lit("wizcustom_callback");
-const __sl184 = cptr.lit("%s %s %s %s");
+const __s_makemap_remove_mons_fmon_did_not_get = cptr.lit("makemap_remove_mons: 'fmon' did not get emptied?");
+const __s_mon_notices_blocked_0 = cptr.lit("mon_notices_blocked<0");
+const __s_pick_first_monster_to_slay = cptr.lit("Pick first monster to slay");
+const __s_pct_s_colon = cptr.lit("%s:");
+const __s_next_monster = cptr.lit("Next monster");
+const __s_a_monster = cptr.lit("a monster");
+const __s_kill_110s = cptr.lit("Kill %.110s?");
+const __s_pct_s_query = cptr.lit("%s?");
+const __s_perform_seppuku = cptr.lit("Perform seppuku");
+const __s_commit_suicide = cptr.lit("Commit suicide");
+const __s_s_own_player = cptr.lit("%s own player");
+const __s_poor_unseen = cptr.lit("poor, unseen");
+const __s_poor = cptr.lit("poor");
+const __s_unseen = cptr.lit("unseen");
+const __s_s_s = cptr.lit("%s %s!");
+const __s_destroy = cptr.lit("destroy");
+const __s_kill = cptr.lit("kill");
+const __s_s_is_s = cptr.lit("%s is %s.");
+const __s_destroyed = cptr.lit("destroyed");
+const __s_killed = cptr.lit("killed");
+const __s_is_no_monster_there = cptr.lit("is no monster there.");
+const __s_load_which_lua_file = cptr.lit("Load which lua file?");
+const __s_lua = cptr.lit(".lua");
+const __s_load_which_des_lua_file = cptr.lit("Load which des lua file?");
+const __s_pct_s = cptr.lit("%s");
+const __s_to_what_experience_level_do_you_want_to = cptr.lit("To what experience level do you want to be set?");
+const __s_d_c = cptr.lit("%d%c");
+const __s_are_already_that_experienced = cptr.lit("are already that experienced.");
+const __s_are_already_as_inexperienced_as_you_can = cptr.lit("are already as inexperienced as you can get.");
+const __s_levelchange = cptr.lit("#levelchange");
+const __s_are_already_as_experienced_as_you_can = cptr.lit("are already as experienced as you can get.");
+const __s_pick_a_monster_to_hurtle = cptr.lit("Pick a monster to hurtle.");
+const __s_which_direction = cptr.lit("which direction?");
+const __s_do_you_want_to_call_panic_and_end_your = cptr.lit("Do you want to call panic() and end your game?");
+const __s_crash_test_panic = cptr.lit("Crash test (#panic).");
+const __s_the_fuzz_tester_will_make_nethack = cptr.lit("The fuzz tester will make NetHack execute random keypresses.");
+const __s_is_no_conventional_way_out_of_this_mode = cptr.lit("is no conventional way out of this mode.");
+const __s_do_you_want_to_start_fuzz_testing = cptr.lit("Do you want to start fuzz testing?");
+const __s_do_you_want_to_call_panic_after = cptr.lit("Do you want to call panic() after impossible()?");
+const __s_02x = cptr.lit("%02x");
+const __s_flags_0x_x_could_see_0x_x_in_sight_0x_x = cptr.lit("Flags: 0x%x could see, 0x%x in sight, 0x%x temp lit");
+const __s_empty = cptr.lit("");
+const __s_tty = cptr.lit("tty");
+const __s_d_d_l_d = cptr.lit("D:%d,L:%d");
+const __s_sp_quot_pct_s_quot = cptr.lit(" \"%s\"");
+const __s_mazelike = cptr.lit(" mazelike");
+const __s_hellish = cptr.lit(" hellish");
+const __s_town = cptr.lit(" town");
+const __s_roguelike = cptr.lit(" roguelike");
+const __s_c_d = cptr.lit(" %c:%d");
+const __s_vault = cptr.lit(" vault");
+const __s_shop = cptr.lit(" shop");
+const __s_temple = cptr.lit(" temple");
+const __s_throne = cptr.lit(" throne");
+const __s_zoo = cptr.lit(" zoo");
+const __s_morgue = cptr.lit(" morgue");
+const __s_barracks = cptr.lit(" barracks");
+const __s_hive = cptr.lit(" hive");
+const __s_swamp = cptr.lit(" swamp");
+const __s_notport = cptr.lit(" noTport");
+const __s_nodig = cptr.lit(" noDig");
+const __s_nommap = cptr.lit(" noMMap");
+const __s_nomem = cptr.lit(" noMem");
+const __s_shortsight = cptr.lit(" shortsight");
+const __s_graveyard = cptr.lit(" graveyard");
+const __s_maze = cptr.lit(" maze");
+const __s_cave = cptr.lit(" cave");
+const __s_tree = cptr.lit(" tree");
+const __s_sokoban_rules = cptr.lit(" sokoban-rules");
+const __s_invoke = cptr.lit(" invoke");
+const __s_tower = cptr.lit(" tower");
+const __s_dungeon = cptr.lit(" dungeon");
+const __s_mines = cptr.lit(" mines");
+const __s_sokoban = cptr.lit(" sokoban");
+const __s_quest = cptr.lit(" quest");
+const __s_ludios = cptr.lit(" ludios");
+const __s_gehennom = cptr.lit(" gehennom");
+const __s_vlad = cptr.lit(" vlad");
+const __s_endgame = cptr.lit(" endgame");
+const __s_unknown = cptr.lit("unknown");
+const __s_the = cptr.lit("the ");
+const __s_sp_pct_s = cptr.lit(" %s");
+const __s_terrain_encodings = cptr.lit("#terrain encodings:");
+const __s_c_28s = cptr.lit(" %c - %-28s");
+const __s_unreachable = cptr.lit("unreachable");
+const __s_are_incapable_of_detecting_odors_in = cptr.lit("are incapable of detecting odors in your present form.");
+const __s_can_move_the_cursor_to_a_monster_that = cptr.lit("can move the cursor to a monster that you want to smell.");
+const __s_pick_a_monster_to_smell = cptr.lit("Pick a monster to smell.");
+const __s_surreptitiously_sniff_under_your_s = cptr.lit("surreptitiously sniff under your %s.");
+const __s_s_to_not_give_off_any_smell = cptr.lit("%s to not give off any smell.");
+const __s_you_seem = cptr.lit("You seem");
+const __s_that_monster_seems = cptr.lit("That monster seems");
+const __s_don_t_smell_any_monster_there = cptr.lit("don't smell any monster there.");
+const __s_precede_any_selection_with_a_count_to = cptr.lit("[Precede any selection with a count to increment by other than %d.]");
+const __s_dash2 = cptr.lit("--");
+const __s_27s_li = cptr.lit("%-27s [%li]");
+const __s_which_intrinsics = cptr.lit("Which intrinsics?");
+const __s_wizcmds_c = cptr.lit("wizcmds.c");
+const __s_wiz_intrinsic = cptr.lit("wiz_intrinsic");
+const __s_still = cptr.lit(" still");
+const __s_turning_into_slime = cptr.lit("turning into slime");
+const __s_turning_into_stone = cptr.lit("turning into stone");
+const __s_vomiting = cptr.lit("vomiting");
+const __s_timeout_for_s_s_d = cptr.lit("Timeout for %s %s %d.");
+const __s_increased_by = cptr.lit("increased by");
+const __s_set_to = cptr.lit("set to");
+const __s_fmon = cptr.lit("fmon");
+const __s_traps_size_ld = cptr.lit("traps, size %ld");
+const __s_engravings_size_ld_text = cptr.lit("engravings, size %ld+text");
+const __s_light_sources_size_ld = cptr.lit("light sources, size %ld");
+const __s_timers_size_ld = cptr.lit("timers, size %ld");
+const __s_shop_damage_size_ld = cptr.lit("shop damage, size %ld");
+const __s_regions_size_ld_ld_rect_n = cptr.lit("regions, size %ld+%ld*rect+N");
+const __s_delayed_killer_s_size_ld = cptr.lit("delayed killer%s, size %ld");
+const __s_s = cptr.lit("s");
+const __s_bones_history_size_ld = cptr.lit("bones history, size %ld");
+const __s_object_type_names_text = cptr.lit("object type names, text");
+const __s_sanity_check_swallowed_by_nothing = cptr.lit("sanity_check: swallowed by nothing?");
+const __s_sanity_check_you_over_monster = cptr.lit("sanity_check: you over monster");
+const __s_current_hero_health_d_better_than = cptr.lit("current hero health (%d) better than maximum? (%d)");
+const __s_current_hero_health_as_monster_d_better = cptr.lit("current hero health as monster (%d) better than maximum? (%d)");
+const __s_current_hero_energy_d_better_than = cptr.lit("current hero energy (%d) better than maximum? (%d)");
+const __s_invent = cptr.lit("invent");
+const __s_levl_i_i_vision_blocking = cptr.lit("levl[%i][%i] vision blocking");
+const __s_no_monsters_currently_migrating = cptr.lit("No monsters currently migrating.");
+const __s_d_mon_s_pending_for_current_level_d_for = cptr.lit("%d mon%s pending for current level, %d for next level, %d for others.");
+const __s_a_q = cptr.lit("a q");
+const __s_c_s = cptr.lit("%c%s");
+const __s_list_which = cptr.lit("List which?");
+const __s_monster_s_migrating_to_s = cptr.lit("Monster%s migrating to %s:");
+const __s_current_level = cptr.lit("current level");
+const __s_next_level = cptr.lit("next level");
+const __s_other_levels = cptr.lit("'other' levels");
+const __s_all_migrating_monsters = cptr.lit("All migrating monsters:");
+const __s_sp2_pct_s = cptr.lit("  %s");
+const __s_0_0 = cptr.lit(" <0,0>");
+const __s_named_s = cptr.lit(" named %s");
+const __s_to_d_d = cptr.lit(" to %d:%d");
+const __s_at_d_d = cptr.lit(" at <%d,%d>");
+const __s_none = cptr.lit("None.");
+const __s_current_memory_statistics = cptr.lit("Current memory statistics:");
+const __s_objects_base_size_ld = cptr.lit("  Objects, base size %ld");
+const __s_fobj = cptr.lit("fobj");
+const __s_buried = cptr.lit("buried");
+const __s_migrating_obj = cptr.lit("migrating obj");
+const __s_billobjs = cptr.lit("billobjs");
+const __s_minvent = cptr.lit("minvent");
+const __s_migrating_minvent = cptr.lit("migrating minvent");
+const __s_contained = cptr.lit("contained");
+const __s_obj_total = cptr.lit("  Obj total");
+const __s_monsters_base_size_ld = cptr.lit("  Monsters, base size %ld");
+const __s_migrating = cptr.lit("migrating");
+const __s_mydogs = cptr.lit("mydogs");
+const __s_mon_total = cptr.lit("  Mon total");
+const __s_overview = cptr.lit("  Overview");
+const __s_over_total = cptr.lit("  Over total");
+const __s_miscellaneous = cptr.lit("  Miscellaneous");
+const __s_misc_total = cptr.lit("  Misc total");
+const __s_grand_total = cptr.lit("  Grand total");
+const __s_glyph_is_cmap_glyph_to_cmap_glyph_d = cptr.lit("glyph_is_cmap() / glyph_to_cmap(glyph=%d) sync failure, returned NO_GLYPH (%d)");
+const __s_glyph_is_cmap_zap_glyph_d_returned_non = cptr.lit("glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d");
+const __s_glyph_to_cmap_glyph_d_returns_d_exceeds = cptr.lit("glyph_to_cmap(glyph=%d) returns %d exceeds defsyms[%d] bounds (MAX_GLYPH = %d)");
+const __s_glyph_to_mon_glyph_d_returns_d_exceeds = cptr.lit("glyph_to_mon(glyph=%d) returns %d exceeds mons[%d] bounds");
+const __s_glyph_to_obj_glyph_d_returns_d_exceeds = cptr.lit("glyph_to_obj(glyph=%d) returns %d exceeds objects[%d] bounds");
+const __s_no_display_macro_issues_detected = cptr.lit("No display macro issues detected.");
+const __s_the_nhuuid_for_this_game_is_s = cptr.lit("The NHUUID for this game is { %s }.");
+const __s_wiz_mon_diff = cptr.lit("wiz_mon_diff");
+const __s_18s_3d_2d_calculated_2d_hardcoded_2d_d = cptr.lit("%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)");
+const __s_no_monster_difficulty_discrepancies = cptr.lit("No monster difficulty discrepancies were detected.");
+const __s_wiz_objprobs = cptr.lit("wiz_objprobs");
+const __s_4d_4d_6_2f_s = cptr.lit("%4d / %4d (%6.2f%%): %s");
+const __s_how_many_random_monsters_to_migrate_to = cptr.lit("How many random monsters to migrate to next level? [0]");
+const __s_can_t_get_there_from_here = cptr.lit("Can't get there from here.");
+const __s_glyph_glyph_identifier_sym_clr = cptr.lit("    glyph  glyph identifier                             sym   clr customcolor unicode utf8");
+const __s_s_colorcount_ld_s = cptr.lit("%s: colorcount=%ld %s");
+const __s_default = cptr.lit("default");
+const __s_active = cptr.lit(", active");
+const __s_handler_s = cptr.lit(", handler=%s");
+const __s_04d_44s = cptr.lit("[%04d] %-44s");
+const __s_03d_02d = cptr.lit("'\\%03d' %02d");
+const __s_011lx = cptr.lit("%011lx");
+const __s_u_04lx = cptr.lit("U+%04lx");
+const __s_sp_lt_pct_d_gt = cptr.lit(" <%d>");
+const __s_wizcustom_callback = cptr.lit("wizcustom_callback");
+const __s_s_s_s_s = cptr.lit("%s %s %s %s");
 
+/* #wizwish command - wish for something */
 /** C ref: wizcmds.c:32 @returns {CInt} */
 export function* wiz_wish() {
     if (wizard()) {
         let save_verbose = cptr.ld1so(flags, $flag_verbose);
+
         cptr.st1o(flags, $flag_verbose, 0);
         (yield* makewish());
         cptr.st1o(flags, $flag_verbose, save_verbose);
@@ -364,10 +373,16 @@ export function* wiz_wish() {
     return NHM.ECMD_OK;
 }
 
+/* #wizidentify command - reveal and optionally identify hero's inventory */
 /** C ref: wizcmds.c:50 @returns {CInt} */
 export function* wiz_identify() {
     if (wizard()) {
         cptr.stI32o(iflags, $instance_flags_override_ID, cmd_from_func(wiz_identify));
+        /* command remapping might leave #wizidentify as the only way
+           to invoke us, in which case cmd_from_func() will yield NUL;
+           it won't matter to display_inventory()/display_pickinv()
+           if ^I invokes some other command--what matters is that
+           display_pickinv() and xname() see override_ID as nonzero */
         if (!cptr.ldI32o(iflags, $instance_flags_override_ID))
             cptr.stI32o(iflags, $instance_flags_override_ID, 9);
         void (yield* display_inventory(null, 0));
@@ -377,21 +392,34 @@ export function* wiz_identify() {
     return NHM.ECMD_OK;
 }
 
-/** C ref: wizcmds.c:73 — @param {CPtr} mtmp @param {CInt} migratory */
+/* used when wiz_makemap() gets rid of monsters for the old incarnation of
+   a level before creating a new incarnation of it */
+/** C ref: wizcmds.c:73 — @param {CPtr<struct monst>} mtmp @param {CInt} migratory */
 function* makemap_unmakemon(mtmp, migratory) {
     let ndx = (cptr.ldI32o((cptr.ldPtro(mtmp, $monst_data)), $permonst_pmidx));
+
+    /* uncreate any unique monster so that it is eligible to be remade
+       on the new incarnation of the level; ignores DEADMONSTER() [why?] */
     if (cptr.ldU16o(cptr.ldPtro(mtmp, $monst_data), $permonst_geno) & NHM.G_UNIQ)
-        cptr.st1o2(svm, ndx, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags, cptr.ld1uo2(svm, ndx, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & -2);
-    if (cptr.ld1uo2(svm, ndx, 12, $instance_globals_saved_m_mvitals))
-        (cptr.st1o2(svm, ndx, 12, $instance_globals_saved_m_mvitals, cptr.ld1uo2(svm, ndx, 12, $instance_globals_saved_m_mvitals) + -1)) - (-1);
+        cptr.st1o2(svm, ndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags, cptr.ld1uo2(svm, ndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & -2);
+    if (cptr.ld1uo2(svm, ndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals))
+        (cptr.st1o2(svm, ndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals, cptr.ld1uo2(svm, ndx, $sizeof_mvitals, $instance_globals_saved_m_mvitals) + -1)) - (-1);
+
+    /* vault is going away; get rid of guard who might be in play or
+       be parked at <0,0>; for the latter, might already be flagged as
+       dead but is being kept around because of the 'isgd' flag */
     if ((cptr.ldI32o(mtmp, $monst_isgd) & 1)) {
-        cptr.stI32o(mtmp, $monst_isgd, 0);
+        cptr.stI32o(mtmp, $monst_isgd, 0);  /* after this, fall through to mongone() */
     } else if ((cptr.ldI32o((mtmp), $monst_mhp) < 1)) {
-        return;
+        return;  /* already set to be discarded */
     } else if ((cptr.ldI32o(mtmp, $monst_isshk) & 1) | 0 && on_level(cptr.add(u, $you_uz), cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)), $eshk_shoplevel))) {
         (yield* setpaid(mtmp));
     }
     if (migratory) {
+        /* caller has removed 'mtmp' from migrating_mons; put it onto fmon
+           so that dmonsfree() bookkeeping for number of dead or removed
+           monsters won't get out of sync; it is not on the map but
+           mongone() -> m_detach() -> mon_leaving_level() copes with that */
         cptr.stI64o(mtmp, $monst_mstate, cptr.ldI64o(mtmp, $monst_mstate) | 1n);
         cptr.stI64o(mtmp, $monst_mstate, cptr.ldI64o(mtmp, $monst_mstate) & (-77n));
         cptr.stPtr(mtmp, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist));
@@ -400,16 +428,32 @@ function* makemap_unmakemon(mtmp, migratory) {
     (yield* mongone(mtmp));
 }
 
+/* get rid of the all the monsters on--or intimately involved with--current
+   level; used when #wizmakemap destroys the level before replacing it */
 /** C ref: wizcmds.c:110 */
 export function* makemap_remove_mons() {
     let mtmp;
     let mprev;
-    (yield* keepdogs(1));
+
+    /* keep steed and other adjacent pets after releasing them
+       from traps, stopping eating, &c as if hero were ascending */
+    (yield* keepdogs(1));  /* (pets-only; normally we'd be using 'FALSE') */
+    /* get rid of all the monsters that didn't make it to 'mydogs' */
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
+        /* if already dead, dmonsfree(below) will get rid of it */
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
         (yield* makemap_unmakemon(mtmp, 0));
     }
+    /* some monsters retain details of this level in mon->mextra; that
+       data becomes invalid when the level is replaced by a new one;
+       get rid of them now if migrating or already arrived elsewhere;
+       [when on their 'home' level, the previous loop got rid of them;
+       if they aren't actually migrating but have been placed on some
+       'away' level, such monsters are treated like the Wizard:  kept
+       on migrating monsters list, scheduled to migrate back to their
+       present location instead of being saved with whatever level they
+       happen to be on; see keepdogs() and keep_mon_accessible(dog.c)] */
     for (mprev = cptr.add(gm, $instance_globals_m_migrating_mons); (mtmp = cptr.ldPtr(mprev)) !== null; ) {
         if (cptr.ldPtro(mtmp, $monst_mextra) && (((cptr.ldI32o(mtmp, $monst_isshk) & 1) | 0 && on_level(cptr.add(u, $you_uz), cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)), $eshk_shoplevel))) || ((cptr.ldI32o(mtmp, $monst_ispriest) & 1) | 0 && on_level(cptr.add(u, $you_uz), cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_epri)), $epri_shrlevel))) || ((cptr.ldI32o(mtmp, $monst_isgd) & 1) | 0 && on_level(cptr.add(u, $you_uz), cptr.add((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_egd)), $egd_gdlevel))))) {
             cptr.stPtr(mprev, cptr.ldPtr(mtmp));
@@ -418,18 +462,24 @@ export function* makemap_remove_mons() {
             mprev = mtmp;
         }
     }
+    /* release dead and 'unmade' monsters */
     (yield* dmonsfree());
     if (cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist)) {
-        (yield* impossible(__sl0));
+        (yield* impossible(__s_makemap_remove_mons_fmon_did_not_get));
     }
     return;
 }
 
+/* #wizmakemap - discard current dungeon level and replace with a new one */
 /** C ref: wizcmds.c:156 @returns {CInt} */
 export function* wiz_makemap() {
     if (wizard()) {
         let was_in_W_tower = (yield* In_W_tower(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.add(u, $you_uz)));
+
         (yield* makemap_prepost(1, was_in_W_tower));
+        /* create a new level; various things like bestowing a guardian
+           angel on Astral or setting off alarm on Ft.Ludios are handled
+           by goto_level(do.c) so won't occur for replacement levels */
         (yield* mklev());
         (yield* makemap_prepost(0, was_in_W_tower));
     } else {
@@ -438,6 +488,8 @@ export function* wiz_makemap() {
     return NHM.ECMD_OK;
 }
 
+/* the #wizmap command - reveal the level map
+   and any traps or engravings on it */
 /** C ref: wizcmds.c:176 @returns {CInt} */
 export function* wiz_map() {
     if (wizard()) {
@@ -446,9 +498,10 @@ export function* wiz_map() {
         let save_Hconf = HConfusion();
         let save_Hhallu = HHallucination();
         {
+
             (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + 1)) - (1);
         }
-        cptr.stI64o2(u, NHC.CONFUSION, 24, $you_uprops + $prop_intrinsic, cptr.stI64o2(u, NHC.HALLUC, 24, $you_uprops + $prop_intrinsic, 0n));
+        cptr.stI64o2(u, NHC.CONFUSION, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.stI64o2(u, NHC.HALLUC, $sizeof_prop, $you_uprops + $prop_intrinsic, 0n));
         for (t = cptr.ldPtr(gf); t !== null; t = cptr.ldPtr(t)) {
             cptr.stI32o(t, $trap_tseen, 1);
             (yield* map_trap(t, 1));
@@ -459,21 +512,23 @@ export function* wiz_map() {
         (yield* do_mapping());
         {
             if (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + -1) < 0) {
-                (yield* impossible(__sl1));
+                (yield* impossible(__s_mon_notices_blocked_0));
                 cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, 0);
             }
         }
-        cptr.stI64o2(u, NHC.CONFUSION, 24, $you_uprops + $prop_intrinsic, save_Hconf);
-        cptr.stI64o2(u, NHC.HALLUC, 24, $you_uprops + $prop_intrinsic, save_Hhallu);
+        cptr.stI64o2(u, NHC.CONFUSION, $sizeof_prop, $you_uprops + $prop_intrinsic, save_Hconf);
+        cptr.stI64o2(u, NHC.HALLUC, $sizeof_prop, $you_uprops + $prop_intrinsic, save_Hhallu);
     } else
         (yield* pline(cptr.decay(unavailcmd), ecname_from_fn(wiz_map)));
     return NHM.ECMD_OK;
 }
 
+/* #wizgenesis - generate monster(s); a count prefix will be honored */
 /** C ref: wizcmds.c:203 @returns {CInt} */
 export function* wiz_genesis() {
     if (wizard()) {
         let mongen_saved = cptr.ld1so(iflags, $instance_flags_debug_mongen);
+
         cptr.st1o(iflags, $instance_flags_debug_mongen, 0);
         void (yield* create_particular());
         cptr.st1o(iflags, $instance_flags_debug_mongen, mongen_saved);
@@ -482,6 +537,7 @@ export function* wiz_genesis() {
     return NHM.ECMD_OK;
 }
 
+/* #wizwhere command - display dungeon layout */
 /** C ref: wizcmds.c:218 @returns {CInt} */
 export function* wiz_where() {
     if (wizard())
@@ -491,6 +547,7 @@ export function* wiz_where() {
     return NHM.ECMD_OK;
 }
 
+/* the #wizdetect command - detect secret doors, traps, hidden monsters */
 /** C ref: wizcmds.c:229 @returns {CInt} */
 export function* wiz_detect() {
     if (wizard())
@@ -500,6 +557,8 @@ export function* wiz_detect() {
     return NHM.ECMD_OK;
 }
 
+/* the #wizkill command - pick targets and reduce them to 0HP;
+   by default, the hero is credited/blamed; use 'm' prefix to avoid that */
 /** C ref: wizcmds.c:243 @returns {CInt} */
 export function* wiz_kill() {
     let mtmp;
@@ -507,34 +566,37 @@ export function* wiz_kill() {
     let ans;
     let c;
     let qbuf = new Uint8Array(128);
-    let prompt = __sl2;
+    let prompt = __s_pick_first_monster_to_slay;
     let save_verbose = cptr.ld1so(flags, $flag_verbose);
     let save_autodescribe = cptr.ld1so(iflags, $instance_flags_autodescribe);
-    let uarehere = cptr.alloc(4); cptr.memcpy(uarehere, cptr.add(u, $you_uz), 4);
+    let uarehere = cptr.alloc(4); cptr.memcpy(uarehere, cptr.add(u, $you_uz), $sizeof_d_level);
+
     cptr.stI16(cc, cptr.ldI16(u)), cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(u, $you_uy));
     for (; ; ) {
-        (yield* pline(__sl3, prompt));
-        prompt = __sl4;
+        (yield* pline(__s_pct_s_colon, prompt));
+        prompt = __s_next_monster;
+
         cptr.st1o(flags, $flag_verbose, 0);
         cptr.st1o(iflags, $instance_flags_autodescribe, 1);
-        ans = (yield* getpos(cc, 1, __sl5));
+        ans = (yield* getpos(cc, 1, __s_a_monster));
         cptr.st1o(flags, $flag_verbose, save_verbose);
         cptr.st1o(iflags, $instance_flags_autodescribe, save_autodescribe);
         if (ans < 0 || cptr.ldI16(cc) < 1)
             break;
+
         mtmp = null;
         if (((cptr.ldI16(cc)) == cptr.ldI16(u) && (cptr.ldI16o(cc, $nhcoord_y)) == cptr.ldI16o(u, $you_uy))) {
             if (cptr.ldPtro(u, $you_usteed)) {
-                void cptr.sprintf(cptr.decay(qbuf), __sl6, (yield* mon_nam(cptr.ldPtro(u, $you_usteed))));
+                void cptr.sprintf(cptr.decay(qbuf), __s_kill_110s, (yield* mon_nam(cptr.ldPtro(u, $you_usteed))));
                 if ((c = (yield* yn_function(cptr.decay(qbuf), cptr.decay(ynqchars), 113, 1))) == 113)
                     break;
                 if (c == 121)
                     mtmp = cptr.ldPtro(u, $you_usteed);
             }
             if (!mtmp) {
-                void cptr.sprintf(cptr.decay(qbuf), __sl7, (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) ? __sl8 : __sl9);
+                void cptr.sprintf(cptr.decay(qbuf), __s_pct_s_query, (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) ? __s_perform_seppuku : __s_commit_suicide);
                 if ((yield* paranoid_query(1, cptr.decay(qbuf)))) {
-                    void cptr.sprintf(cptr.add(svk, $kinfo_name), __sl10, (cptr.ldPtro2(genders, cptr.ld1so(flags, $flag_female) ? 1 : 0, 48, $Gender_his)));
+                    void cptr.sprintf(cptr.add(svk, $kinfo_name), __s_s_own_player, (cptr.ldPtro2(genders, cptr.ld1so(flags, $flag_female) ? 1 : 0, $sizeof_Gender, $Gender_his)));
                     cptr.stI32o(svk, $kinfo_format, NHM.KILLED_BY);
                     (yield* done(NHC.DIED));
                 }
@@ -545,69 +607,104 @@ export function* wiz_kill() {
         } else {
             mtmp = (cptr.ldPtro3(svl, cptr.ldI16(cc), 168, cptr.ldI16o(cc, $nhcoord_y), 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
         }
+
+        /* whether there's an unseen monster here or not, player will know
+           that there's no monster here after the kill or failed attempt;
+           let hero know too */
         void (yield* unmap_invisible(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y)));
+
         if (mtmp) {
+            /* we don't require that the monster be seen or sensed so
+               we issue our own message in order to name it in case it
+               isn't; note that if it triggers other kills, those might
+               be referred to as "it" */
             let tame = !!cptr.ld1so(mtmp, $monst_mtame);
             let seen = (canspotmon(mtmp) || ((cptr.ldI32o(u, $you_uswallow) & 1) | 0 && cptr.eq(mtmp, cptr.ldPtro(u, $you_ustuck))) ? 1 : 0);
             let flgs = (5 | ((tame && has_mgivenname(mtmp)) ? NHM.SUPPRESS_SADDLE : 0));
             let articl = tame ? NHM.ARTICLE_YOUR : (seen ? NHM.ARTICLE_THE : NHM.ARTICLE_A);
-            let adjs = tame ? (!seen ? __sl11 : __sl12) : (!seen ? __sl13 : null);
+            let adjs = tame ? (!seen ? __s_poor_unseen : __s_poor) : (!seen ? __s_unseen : null);
             let Mn = (yield* x_monnam(mtmp, articl, adjs, flgs, 0));
+
             if (!cptr.ld1so(iflags, $instance_flags_menu_requested)) {
-                (yield* You(__sl14, nonliving(cptr.ldPtro(mtmp, $monst_data)) ? __sl15 : __sl16, Mn));
+                /* normal case: hero is credited/blamed */
+                (yield* You(__s_s_s, nonliving(cptr.ldPtro(mtmp, $monst_data)) ? __s_destroy : __s_kill, Mn));
                 (yield* xkilled(mtmp, NHM.XKILL_NOMSG));
             } else {
+                /* we know that monsters aren't moving because player has
+                   just issued this #wizkill command, but if 'mtmp' is a
+                   gas spore whose explosion kills any other monsters we
+                   need to have the mon_moving flag be True in order to
+                   avoid blaming or crediting hero for their deaths */
                 cptr.st1o(svc, $context_info_mon_moving, 1);
-                (yield* pline(__sl17, upstart(Mn), nonliving(cptr.ldPtro(mtmp, $monst_data)) ? __sl18 : __sl19));
+                (yield* pline(__s_s_is_s, upstart(Mn), nonliving(cptr.ldPtro(mtmp, $monst_data)) ? __s_destroyed : __s_killed));
+                /* Null second arg suppresses the usual message */
                 (yield* monkilled(mtmp, null, NHM.AD_PHYS));
                 cptr.st1o(svc, $context_info_mon_moving, 0);
             }
+            /* end targetting loop if an engulfer dropped hero onto a level-
+               changing trap */
             if (cptr.ld1uo(u, $you_utotype) || !on_level(cptr.add(u, $you_uz), uarehere))
                 break;
         } else {
-            (yield* There(__sl20));
+            (yield* There(__s_is_no_monster_there));
             break;
         }
     }
+    /* since #wizkill takes no game time, it is possible to kill something
+       in the main dungeon and immediately level teleport into the endgame
+       which will delete the main dungeon's level files; avoid triggering
+       impossible "dmonsfree: 0 removed doesn't match N pending" by forcing
+       dead monster cleanup; we don't track whether anything was actually
+       killed above--if nothing was, this will be benign */
     (yield* dmonsfree());
-    return NHM.ECMD_OK;
+    /* distinction between ECMD_CANCEL and ECMD_OK is unimportant here */
+    return NHM.ECMD_OK;  /* no time elapses */
 }
 
+/* the #wizloadlua command - load an arbitrary lua file */
 /** C ref: wizcmds.c:353 @returns {CInt} */
 export function* wiz_load_lua() {
     if (wizard()) {
         let buf = new Uint8Array(256);
+        /* Large but not unlimited memory and CPU so random bits of
+         * code can be tested by wizards. */
         let sbi = cptr.alloc(16); cptr.stI32(sbi, 2281701376); cptr.stI32o(sbi, $nhl_sandbox_info_memlimit, 16777216); cptr.stI32o(sbi, $nhl_sandbox_info_steps, 0); cptr.stI32o(sbi, $nhl_sandbox_info_perpcall, 16777216);
+
         cptr.st1o(cptr.decay(buf), 0, 0, 1);
-        (yield* getlin(__sl21, cptr.decay(buf)));
+        (yield* getlin(__s_load_which_lua_file, cptr.decay(buf)));
         if (cptr.ld1so(cptr.decay(buf), 0, 1) == 27 || cptr.ld1so(cptr.decay(buf), 0, 1) == 0)
             return NHM.ECMD_CANCEL;
         if (!cptr.strchr(cptr.decay(buf), 46))
-            cptr.strcat(cptr.decay(buf), __sl22);
+            cptr.strcat(cptr.decay(buf), __s_lua);
         void (yield* load_lua(cptr.decay(buf), sbi));
     } else
         (yield* pline(cptr.decay(unavailcmd), ecname_from_fn(wiz_load_lua)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizloaddes command - load a special level lua file */
 /** C ref: wizcmds.c:376 @returns {CInt} */
 export function* wiz_load_splua() {
     if (wizard()) {
         let buf = new Uint8Array(256);
+
         cptr.st1o(cptr.decay(buf), 0, 0, 1);
-        (yield* getlin(__sl23, cptr.decay(buf)));
+        (yield* getlin(__s_load_which_des_lua_file, cptr.decay(buf)));
         if (cptr.ld1so(cptr.decay(buf), 0, 1) == 27 || cptr.ld1so(cptr.decay(buf), 0, 1) == 0)
             return NHM.ECMD_CANCEL;
         if (!cptr.strchr(cptr.decay(buf), 46))
-            cptr.strcat(cptr.decay(buf), __sl22);
+            cptr.strcat(cptr.decay(buf), __s_lua);
+
         (yield* lspo_reset_level(null));
         void (yield* load_special(cptr.decay(buf)));
         (yield* lspo_finalize_level(null));
+
     } else
         (yield* pline(cptr.decay(unavailcmd), ecname_from_fn(wiz_load_splua)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizlevelport command - level teleport */
 /** C ref: wizcmds.c:399 @returns {CInt} */
 export function* wiz_level_tele() {
     if (wizard())
@@ -617,58 +714,74 @@ export function* wiz_level_tele() {
     return NHM.ECMD_OK;
 }
 
+/* #wizfliplevel - transpose the current level */
 const __static_wiz_flip_level_choices = cptr.bytes("0123"); /** C ref: wizcmds.c:414 — char[5] (function-static) */
 const __static_wiz_flip_level_prmpt = cptr.bytes("Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:"); /** C ref: wizcmds.c:415 — char[55] (function-static) */
 
 /** C ref: wizcmds.c:412 @returns {CInt} */
 export function* wiz_flip_level() {
+
+    /*
+     * Does not handle
+     *   levregions,
+     *   monster mtrack,
+     *   migrating monsters aimed at returning to specific coordinates
+     *     on this level
+     * as flipping is normally done only during level creation.
+     */
     if (wizard()) {
         let c = (yield* yn_function(cptr.decay(__static_wiz_flip_level_prmpt), cptr.decay(__static_wiz_flip_level_choices), 0, 1));
+
         if (c && cptr.strchr(cptr.decay(__static_wiz_flip_level_choices), c)) {
             c = schar(c - 48);
+
             if (!c)
                 (yield* flip_level_rnd(3, 1));
             else
                 (yield* flip_level(c, 1));
+
             (yield* docrt());
         } else {
-            (yield* pline(__sl24, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
+            (yield* pline(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
         }
     }
     return NHM.ECMD_OK;
 }
 
+/* #levelchange command - adjust hero's experience level */
 /** C ref: wizcmds.c:446 @returns {CInt} */
 export function* wiz_level_change() {
     let buf = new Uint8Array(256);
     let dummy = cptr.box(0);
     let newlevel = cptr.box(0);
     let ret;
-    cptr.st1o(cptr.decay(buf), 0, 0, 1);
-    (yield* getlin(__sl25, cptr.decay(buf)));
+
+    cptr.st1o(cptr.decay(buf), 0, 0, 1);  /* in case EDIT_GETLIN is enabled */
+    (yield* getlin(__s_to_what_experience_level_do_you_want_to, cptr.decay(buf)));
     void (yield* mungspaces(cptr.decay(buf)));
     if (cptr.ld1so(cptr.decay(buf), 0, 1) == 27 || cptr.ld1so(cptr.decay(buf), 0, 1) == 0)
         ret = 0;
     else
-        ret = sscanf(cptr.decay(buf), __sl26, newlevel, dummy);
+        ret = sscanf(cptr.decay(buf), __s_d_c, newlevel, dummy);
+
     if (ret != 1) {
-        (yield* pline(__sl24, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
+        (yield* pline(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
         return NHM.ECMD_OK;
     }
     if (newlevel.v == cptr.ldI32o(u, $you_ulevel)) {
-        (yield* You(__sl27));
+        (yield* You(__s_are_already_that_experienced));
     } else if (newlevel.v < cptr.ldI32o(u, $you_ulevel)) {
         if (cptr.ldI32o(u, $you_ulevel) == 1) {
-            (yield* You(__sl28));
+            (yield* You(__s_are_already_as_inexperienced_as_you_can));
             return NHM.ECMD_OK;
         }
         if (newlevel.v < 1)
             newlevel.v = 1;
         while (cptr.ldI32o(u, $you_ulevel) > newlevel.v)
-            (yield* losexp(__sl29));
+            (yield* losexp(__s_levelchange));
     } else {
         if (cptr.ldI32o(u, $you_ulevel) >= NHM.MAXULEV) {
-            (yield* You(__sl30));
+            (yield* You(__s_are_already_as_experienced_as_you_can));
             return NHM.ECMD_OK;
         }
         if (newlevel.v > NHM.MAXULEV)
@@ -676,25 +789,31 @@ export function* wiz_level_change() {
         while (cptr.ldI32o(u, $you_ulevel) < newlevel.v)
             (yield* pluslvl(0));
     }
+    /* blessed full healing or restore ability won't fix any lost levels */
     cptr.stI32o(u, $you_ulevelmax, cptr.ldI32o(u, $you_ulevel));
     return NHM.ECMD_OK;
 }
 
+/* #wiztelekinesis */
 /** C ref: wizcmds.c:494 @returns {CInt} */
 export function* wiz_telekinesis() {
     let ans = 0;
     let cc = cptr.alloc(4);
     let mtmp = null;
+
     cptr.stI16(cc, cptr.ldI16(u));
     cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(u, $you_uy));
-    (yield* pline(__sl31));
+
+    (yield* pline(__s_pick_a_monster_to_hurtle));
     do {
-        ans = (yield* getpos(cc, 1, __sl5));
+        ans = (yield* getpos(cc, 1, __s_a_monster));
         if (ans < 0 || cptr.ldI16(cc) < 1)
             return NHM.ECMD_CANCEL;
+
         if ((((mtmp = (cptr.ldPtro3(svl, cptr.ldI16(cc), 168, cptr.ldI16o(cc, $nhcoord_y), 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) !== null) && canspotmon(mtmp)) || ((cptr.ldI16(cc)) == cptr.ldI16(u) && (cptr.ldI16o(cc, $nhcoord_y)) == cptr.ldI16o(u, $you_uy))) {
-            if (!(yield* getdir(__sl32)))
+            if (!(yield* getdir(__s_which_direction)))
                 return NHM.ECMD_CANCEL;
+
             if (mtmp) {
                 (yield* mhurtle(mtmp, cptr.ldI32o(u, $you_dx), cptr.ldI32o(u, $you_dy), 6));
                 if (!(cptr.ldI32o((mtmp), $monst_mhp) < 1) && canspotmon(mtmp)) {
@@ -706,10 +825,12 @@ export function* wiz_telekinesis() {
                 cptr.stI16(cc, cptr.ldI16(u)), cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(u, $you_uy));
             }
         }
+
     } while (cptr.ld1uo(u, $you_utotype) == NHC.UTOTYPE_NONE);
     return NHM.ECMD_OK;
 }
 
+/* #panic command - test program's panic handling */
 /** C ref: wizcmds.c:534 @returns {CInt} */
 export function* wiz_panic() {
     if (cptr.ld1so(iflags, $instance_flags_debug_fuzzer)) {
@@ -717,19 +838,21 @@ export function* wiz_panic() {
         cptr.stI32o(u, $you_uen, cptr.stI32o(u, $you_uenmax, 1000));
         return NHM.ECMD_OK;
     }
-    if ((yield* paranoid_query(1, __sl33)))
-        (yield* panic(__sl34));
+    if ((yield* paranoid_query(1, __s_do_you_want_to_call_panic_and_end_your)))
+        (yield* panic(__s_crash_test_panic));
     return NHM.ECMD_OK;
 }
 
+/* #debugfuzzer command - fuzztest the program */
 /** C ref: wizcmds.c:549 @returns {CInt} */
 export function* wiz_fuzzer() {
     if (cptr.ldU64o(flags, $flag_suppress_alert) < 50790400n) {
-        (yield* pline(__sl35));
-        (yield* There(__sl36));
+        (yield* pline(__s_the_fuzz_tester_will_make_nethack));
+        (yield* There(__s_is_no_conventional_way_out_of_this_mode));
     }
-    if ((yield* paranoid_query(1, __sl37))) {
-        if ((yield* yn_function(__sl38, cptr.decay(ynchars), 110, 1)) == 110) {
+    if ((yield* paranoid_query(1, __s_do_you_want_to_start_fuzz_testing))) {
+        /* Thoth, take the reins */
+        if ((yield* yn_function(__s_do_you_want_to_call_panic_after, cptr.decay(ynchars), 110, 1)) == 110) {
             cptr.st1o(iflags, $instance_flags_debug_fuzzer, NHC.fuzzer_impossible_continue);
         } else {
             cptr.st1o(iflags, $instance_flags_debug_fuzzer, NHC.fuzzer_impossible_panic);
@@ -738,12 +861,14 @@ export function* wiz_fuzzer() {
     return NHM.ECMD_OK;
 }
 
+/* #polyself command - change hero's form */
 /** C ref: wizcmds.c:568 @returns {CInt} */
 export function* wiz_polyself() {
     (yield* polyself(NHC.POLY_CONTROLLED));
     return NHM.ECMD_OK;
 }
 
+/* #seenv command */
 /** C ref: wizcmds.c:576 @returns {CInt} */
 export function* wiz_show_seenv() {
     let win;
@@ -754,27 +879,36 @@ export function* wiz_show_seenv() {
     let curx;
     let v;
     let row = new Uint8Array(81);
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
+    /*
+     * Each seenv description takes up 2 characters, so center
+     * the seenv display around the hero.
+     */
     startx = i16((1 > ((cptr.ldI16(u) - 20) | 0) ? 1 : ((cptr.ldI16(u) - 20) | 0)));
     stopx = i16((((startx + 40) | 0) < NHM.COLNO ? ((startx + 40) | 0) : NHM.COLNO));
+    /* can't have a line exactly 80 chars long */
     if (((stopx - startx) | 0) == 40)
         startx++;
+
     for (y = 0; y < NHM.ROWNO; y++) {
         for (x = startx, curx = 0; x < stopx; x++, curx = i16(curx + 2)) {
             if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy))) {
                 cptr.st1o(cptr.decay(row), curx, cptr.st1o(cptr.decay(row), (curx + 1) | 0, 64, 1), 1);
             } else {
-                v = cptr.ld1uo3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_seenv) & 255;
+                v = cptr.ld1uo3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_seenv) & 255;
                 if (v == 0)
                     cptr.st1o(cptr.decay(row), curx, cptr.st1o(cptr.decay(row), (curx + 1) | 0, 32, 1), 1);
                 else
-                    void cptr.sprintf(cptr.add(cptr.decay(row), curx, 1), __sl39, v);
+                    void cptr.sprintf(cptr.add(cptr.decay(row), curx, 1), __s_02x, v);
             }
         }
+        /* remove trailing spaces */
         for (x = i16(((curx - 1) | 0)); x >= 0; x--)
             if (cptr.ld1so(cptr.decay(row), x, 1) != 32)
                 break;
         cptr.st1o(cptr.decay(row), (x + 1) | 0, 0, 1);
+
         (yield* Y.icall(putstr()(win, 0, cptr.decay(row))));
     }
     (yield* Y.icall(display_nhwindow()(win, 1)));
@@ -782,6 +916,7 @@ export function* wiz_show_seenv() {
     return NHM.ECMD_OK;
 }
 
+/* #vision command */
 /** C ref: wizcmds.c:621 @returns {CInt} */
 export function* wiz_show_vision() {
     let win;
@@ -789,23 +924,26 @@ export function* wiz_show_vision() {
     let y;
     let v;
     let row = new Uint8Array(81);
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
-    void cptr.sprintf(cptr.decay(row), __sl40, NHM.COULD_SEE, NHM.IN_SIGHT, NHM.TEMP_LIT);
+    void cptr.sprintf(cptr.decay(row), __s_flags_0x_x_could_see_0x_x_in_sight_0x_x, NHM.COULD_SEE, NHM.IN_SIGHT, NHM.TEMP_LIT);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(row))));
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
     for (y = 0; y < NHM.ROWNO; y++) {
         for (x = 1; x < NHM.COLNO; x++) {
             if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy))) {
                 cptr.st1o(cptr.decay(row), x, 64, 1);
             } else {
-                v = cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x);
+                v = cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x);  /* data access should be hidden */
                 cptr.st1o(cptr.decay(row), x, schar(((v == 0) ? 32 : ((48 + v) | 0))), 1);
             }
         }
+        /* remove trailing spaces */
         for (x = 79; x >= 1; x--)
             if (cptr.ld1so(cptr.decay(row), x, 1) != 32)
                 break;
         cptr.st1o(cptr.decay(row), (x + 1) | 0, 0, 1);
+
         (yield* Y.icall(putstr()(win, 0, cptr.add(cptr.decay(row), 1, 1))));
     }
     (yield* Y.icall(display_nhwindow()(win, 1)));
@@ -813,6 +951,7 @@ export function* wiz_show_vision() {
     return NHM.ECMD_OK;
 }
 
+/* #wmode command */
 /** C ref: wizcmds.c:657 @returns {CInt} */
 export function* wiz_show_wmodes() {
     let win;
@@ -821,12 +960,13 @@ export function* wiz_show_wmodes() {
     let row = new Uint8Array(81);
     let lev;
     let istty = schar((cptr.ldI32o(windowprocs, $window_procs_wp_id) == NHC.wp_tty));
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
     if (istty)
-        (yield* Y.icall(putstr()(win, 0, __sl41)));
+        (yield* Y.icall(putstr()(win, 0, __s_empty)));  /* tty only: blank top line */
     for (y = 0; y < NHM.ROWNO; y++) {
         for (x = 0; x < NHM.COLNO; x++) {
-            lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36);
+            lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm);
             if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)))
                 cptr.st1o(cptr.decay(row), x, 64, 1);
             else if (IS_WALL(cptr.ld1so(lev, $rm_typ)) || cptr.ld1so(lev, $rm_typ) == NHC.SDOOR)
@@ -839,6 +979,7 @@ export function* wiz_show_wmodes() {
                 cptr.st1o(cptr.decay(row), x, 120, 1);
         }
         cptr.st1o(cptr.decay(row), NHM.COLNO, 0, 1);
+        /* map column 0, levl[0][], is off the left edge of the screen */
         (yield* Y.icall(putstr()(win, 0, cptr.add(cptr.decay(row), 1, 1))));
     }
     (yield* Y.icall(display_nhwindow()(win, 1)));
@@ -846,6 +987,7 @@ export function* wiz_show_wmodes() {
     return NHM.ECMD_OK;
 }
 
+/* wizard mode variant of #terrain; internal levl[][].typ values in base-36 */
 /** C ref: wizcmds.c:693 */
 export function* wiz_map_levltyp() {
     let win;
@@ -853,115 +995,137 @@ export function* wiz_map_levltyp() {
     let y;
     let terrain;
     let row = new Uint8Array(81);
-    let istty = schar((!strcmp(cptr.ldPtr(windowprocs), __sl42)));
+    let istty = schar((!strcmp(cptr.ldPtr(windowprocs), __s_tty)));
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
+    /* map row 0, levl[][0], is drawn on the second line of tty screen */
     if (istty)
-        (yield* Y.icall(putstr()(win, 0, __sl41)));
+        (yield* Y.icall(putstr()(win, 0, __s_empty)));  /* tty only: blank top line */
     for (y = 0; y < NHM.ROWNO; y++) {
+        /* map column 0, levl[0][], is off the left edge of the screen;
+           it should always have terrain type "undiggable stone" */
         for (x = 1; x < NHM.COLNO; x++) {
-            terrain = cptr.ld1so3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ);
+            terrain = cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ);
+            /* assumes there aren't more than 10+26+26 terrain types */
             cptr.st1o(cptr.decay(row), (x - 1) | 0, schar(((terrain == NHC.STONE && !may_dig(x, y)) ? 42 : ((terrain < 10) ? (48 + terrain) | 0 : ((terrain < 36) ? (((97 + terrain) | 0) - 10) | 0 : (((65 + terrain) | 0) - 36) | 0)))), 1);
         }
         x--;
-        if (cptr.ld1so3(svl, 0, 756, y, 36, $instance_globals_saved_l_level + $rm_typ) != NHC.STONE || may_dig(0, y))
+        if (cptr.ld1so3(svl, 0, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) != NHC.STONE || may_dig(0, y))
             cptr.st1o(cptr.decay(row), x++, 33, 1);
         cptr.st1o(cptr.decay(row), x, 0, 1);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(row))));
     }
+
     {
         let dsc = new Uint8Array(256);
         let slev = Is_special(cptr.add(u, $you_uz));
-        void cptr.sprintf(cptr.decay(dsc), __sl43, cptr.ldI16o(u, $you_uz), cptr.ldI16o(u, $you_uz + $d_level_dlevel));
+
+        void cptr.sprintf(cptr.decay(dsc), __s_d_d_l_d, cptr.ldI16o(u, $you_uz), cptr.ldI16o(u, $you_uz + $d_level_dlevel));
+        /* [dungeon branch features currently omitted] */
+        /* special level features */
         if (slev) {
-            void cptr.sprintf(eos(cptr.decay(dsc)), __sl44, cptr.add(slev, $s_level_proto));
+            void cptr.sprintf(eos(cptr.decay(dsc)), __s_sp_quot_pct_s_quot, cptr.add(slev, $s_level_proto));
+            /* special level flags (note: dungeon.def doesn't set `maze'
+               or `hell' for any specific levels so those never show up) */
             if ((cptr.ldI32o(slev, $s_level_flags + $d_flags_maze_like) & 1))
-                void cptr.strcat(cptr.decay(dsc), __sl45);
+                void cptr.strcat(cptr.decay(dsc), __s_mazelike);
             if ((cptr.ldI32o(slev, $s_level_flags + $d_flags_hellish) & 1))
-                void cptr.strcat(cptr.decay(dsc), __sl46);
+                void cptr.strcat(cptr.decay(dsc), __s_hellish);
             if ((cptr.ldI32o(slev, $s_level_flags) & 1))
-                void cptr.strcat(cptr.decay(dsc), __sl47);
+                void cptr.strcat(cptr.decay(dsc), __s_town);
             if ((cptr.ldI32o(slev, $s_level_flags + $d_flags_rogue_like) & 1))
-                void cptr.strcat(cptr.decay(dsc), __sl48);
+                void cptr.strcat(cptr.decay(dsc), __s_roguelike);
+            /* alignment currently omitted to save space */
         }
+        /* level features */
         if (cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags))
-            void cptr.sprintf(eos(cptr.decay(dsc)), __sl49, cptr.ld1uo(defsyms, NHC.S_fountain, 24), cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags));
+            void cptr.sprintf(eos(cptr.decay(dsc)), __s_c_d, cptr.ld1uo(defsyms, NHC.S_fountain, $sizeof_symdef), cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags));
         if (cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_nsinks))
-            void cptr.sprintf(eos(cptr.decay(dsc)), __sl49, cptr.ld1uo(defsyms, NHC.S_sink, 24), cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_nsinks));
+            void cptr.sprintf(eos(cptr.decay(dsc)), __s_c_d, cptr.ld1uo(defsyms, NHC.S_sink, $sizeof_symdef), cptr.ld1uo(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_nsinks));
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_vault) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl50);
+            void cptr.strcat(cptr.decay(dsc), __s_vault);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_shop) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl51);
+            void cptr.strcat(cptr.decay(dsc), __s_shop);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_temple) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl52);
+            void cptr.strcat(cptr.decay(dsc), __s_temple);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_court) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl53);
+            void cptr.strcat(cptr.decay(dsc), __s_throne);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_zoo) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl54);
+            void cptr.strcat(cptr.decay(dsc), __s_zoo);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_morgue) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl55);
+            void cptr.strcat(cptr.decay(dsc), __s_morgue);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_barracks) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl56);
+            void cptr.strcat(cptr.decay(dsc), __s_barracks);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_beehive) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl57);
+            void cptr.strcat(cptr.decay(dsc), __s_hive);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_has_swamp) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl58);
+            void cptr.strcat(cptr.decay(dsc), __s_swamp);
+        /* level flags */
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_noteleport) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl59);
+            void cptr.strcat(cptr.decay(dsc), __s_notport);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_hardfloor) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl60);
+            void cptr.strcat(cptr.decay(dsc), __s_nodig);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_nommap) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl61);
+            void cptr.strcat(cptr.decay(dsc), __s_nommap);
         if (!(cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_hero_memory) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl62);
+            void cptr.strcat(cptr.decay(dsc), __s_nomem);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_shortsighted) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl63);
+            void cptr.strcat(cptr.decay(dsc), __s_shortsight);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_graveyard) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl64);
+            void cptr.strcat(cptr.decay(dsc), __s_graveyard);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_is_maze_lev) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl65);
+            void cptr.strcat(cptr.decay(dsc), __s_maze);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_is_cavernous_lev) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl66);
+            void cptr.strcat(cptr.decay(dsc), __s_cave);
         if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_arboreal) & 1))
-            void cptr.strcat(cptr.decay(dsc), __sl67);
+            void cptr.strcat(cptr.decay(dsc), __s_tree);
         if (Sokoban())
-            void cptr.strcat(cptr.decay(dsc), __sl68);
+            void cptr.strcat(cptr.decay(dsc), __s_sokoban_rules);
+        /* non-flag info; probably should include dungeon branching
+           checks (extra stairs and magic portals) here */
         if (Invocation_lev(cptr.add(u, $you_uz)))
-            void cptr.strcat(cptr.decay(dsc), __sl69);
+            void cptr.strcat(cptr.decay(dsc), __s_invoke);
         if (On_W_tower_level(cptr.add(u, $you_uz)))
-            void cptr.strcat(cptr.decay(dsc), __sl70);
+            void cptr.strcat(cptr.decay(dsc), __s_tower);
+        /* append a branch identifier for completeness' sake */
         if (cptr.ldI16o(u, $you_uz) == 0)
-            void cptr.strcat(cptr.decay(dsc), __sl71);
+            void cptr.strcat(cptr.decay(dsc), __s_dungeon);
         else if (cptr.ldI16o(u, $you_uz) == mines_dnum())
-            void cptr.strcat(cptr.decay(dsc), __sl72);
+            void cptr.strcat(cptr.decay(dsc), __s_mines);
         else if ((cptr.ldI16((cptr.add(u, $you_uz))) == sokoban_dnum()))
-            void cptr.strcat(cptr.decay(dsc), __sl73);
+            void cptr.strcat(cptr.decay(dsc), __s_sokoban);
         else if (cptr.ldI16o(u, $you_uz) == quest_dnum())
-            void cptr.strcat(cptr.decay(dsc), __sl74);
+            void cptr.strcat(cptr.decay(dsc), __s_quest);
         else if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_knox_level)))))
-            void cptr.strcat(cptr.decay(dsc), __sl75);
+            void cptr.strcat(cptr.decay(dsc), __s_ludios);
         else if (cptr.ldI16o(u, $you_uz) == 1)
-            void cptr.strcat(cptr.decay(dsc), __sl76);
+            void cptr.strcat(cptr.decay(dsc), __s_gehennom);
         else if (cptr.ldI16o(u, $you_uz) == tower_dnum())
-            void cptr.strcat(cptr.decay(dsc), __sl77);
+            void cptr.strcat(cptr.decay(dsc), __s_vlad);
         else if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
-            void cptr.strcat(cptr.decay(dsc), __sl78);
+            void cptr.strcat(cptr.decay(dsc), __s_endgame);
         else {
-            let brname = cptr.add(svd, cptr.ldI16o(u, $you_uz), 112);
+            /* somebody's added a dungeon branch we're not expecting */
+            let brname = cptr.add(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon);
+
             if (!brname || !cptr.ld1s(brname))
-                brname = __sl79;
-            if (!(yield* strncmpi(brname, __sl80, 4)))
+                brname = __s_unknown;
+            if (!(yield* strncmpi(brname, __s_the, 4)))
                 brname = cptr.add(brname, 4);
-            void cptr.sprintf(eos(cptr.decay(dsc)), __sl81, brname);
+            void cptr.sprintf(eos(cptr.decay(dsc)), __s_sp_pct_s, brname);
         }
+        /* limit the line length to map width */
         if (cptr.strlen(cptr.decay(dsc)) >= 80n)
-            cptr.st1o(cptr.decay(dsc), 79, 0, 1);
+            cptr.st1o(cptr.decay(dsc), 79, 0, 1);  /* truncate */
         (yield* Y.icall(putstr()(win, 0, cptr.decay(dsc))));
     }
+
     (yield* Y.icall(display_nhwindow()(win, 1)));
     (yield* Y.icall(destroy_nhwindow()(win)));
     return;
 }
 
+/* explanation of base-36 output from wiz_map_levltyp() */
 /** C ref: wizcmds.c:841 */
 export function* wiz_levltyp_legend() {
     let win;
@@ -972,16 +1136,22 @@ export function* wiz_levltyp_legend() {
     let dsc;
     let fmt;
     let buf = new Uint8Array(256);
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
-    (yield* Y.icall(putstr()(win, 0, __sl82)));
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
-    fmt = __sl83;
+    (yield* Y.icall(putstr()(win, 0, __s_terrain_encodings)));
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
+    fmt = __s_c_28s;  /* TODO: include tab-separated variant for win32 */
     cptr.st1(cptr.decay(buf), 0);
+    /* output in pairs, left hand column holds [0],[1],...,[N/2-1]
+       and right hand column holds [N/2],[N/2+1],...,[N-1];
+       N ('last') will always be even, and may or may not include
+       the empty string entry to pad out the final pair, depending
+       upon how many other entries are present in levltyp[] */
     last = 39 & -2;
     for (i = 0; i < ((last / 2) | 0); ++i)
         for (j = i; j < last; j = (j + ((last / 2) | 0)) | 0) {
             dsc = cptr.ldPtro(levltyp, j, 8);
-            c = !cptr.ld1s(dsc) ? 32 : (!cptr.strncmp(dsc, __sl84, 11n) ? 42 : ((j < 10) ? (48 + j) | 0 : ((j < 36) ? (((97 + j) | 0) - 10) | 0 : (((65 + j) | 0) - 36) | 0)));
+            c = !cptr.ld1s(dsc) ? 32 : (!cptr.strncmp(dsc, __s_unreachable, 11n) ? 42 : ((j < 10) ? (48 + j) | 0 : ((j < 36) ? (((97 + j) | 0) - 10) | 0 : (((65 + j) | 0) - 36) | 0)));
             void cptr.sprintf(eos(cptr.decay(buf)), fmt, c, dsc);
             if (j > i) {
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
@@ -993,26 +1163,29 @@ export function* wiz_levltyp_legend() {
     return;
 }
 
+/* #wizsmell command - test usmellmon(). */
 /** C ref: wizcmds.c:885 @returns {CInt} */
 export function* wiz_smell() {
-    let mtmp;
+    let mtmp;  /* monster being smelled */
     let mptr;
     let ans;
     let glyph;
-    let cc = cptr.alloc(4);
+    let cc = cptr.alloc(4);  /* screen pos to sniff */
     let is_you;
+
     cptr.stI16(cc, cptr.ldI16(u));
     cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(u, $you_uy));
     if (!olfaction(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data))) {
-        (yield* You(__sl85));
+        (yield* You(__s_are_incapable_of_detecting_odors_in));
         return NHM.ECMD_OK;
     }
-    (yield* You(__sl86));
+
+    (yield* You(__s_can_move_the_cursor_to_a_monster_that));
     do {
-        (yield* pline(__sl87));
-        ans = (yield* getpos(cc, 1, __sl5));
+        (yield* pline(__s_pick_a_monster_to_smell));
+        ans = (yield* getpos(cc, 1, __s_a_monster));
         if (ans < 0 || cptr.ldI16(cc) < 0) {
-            return NHM.ECMD_CANCEL;
+            return NHM.ECMD_CANCEL;  /* done */
         }
         is_you = 0;
         if (((cptr.ldI16(cc)) == cptr.ldI16(u) && (cptr.ldI16o(cc, $nhcoord_y)) == cptr.ldI16o(u, $you_uy))) {
@@ -1027,16 +1200,19 @@ export function* wiz_smell() {
         } else {
             mptr = null;
         }
+        /* Buglet: mapping or unmapping "remembered, unseen monster" should
+           cause time to elapse; since we're in wizmode, don't bother */
         glyph = glyph_at(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y));
+        /* Is it a monster? */
         if (mptr) {
             if (is_you)
-                (yield* You(__sl88, (yield* body_part(NHC.ARM))));
+                (yield* You(__s_surreptitiously_sniff_under_your_s, (yield* body_part(NHC.ARM))));
             if (!(yield* usmellmon(mptr)))
-                (yield* pline(__sl89, is_you ? __sl90 : __sl91));
+                (yield* pline(__s_s_to_not_give_off_any_smell, is_you ? __s_you_seem : __s_that_monster_seems));
             if (!glyph_is_monster(glyph))
                 (yield* map_invisible(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y)));
         } else {
-            (yield* You(__sl92));
+            (yield* You(__s_don_t_smell_any_monster_there));
             if (((glyph) == NHC.GLYPH_INVIS_OFF))
                 (yield* unmap_invisible(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y)));
         }
@@ -1044,6 +1220,7 @@ export function* wiz_smell() {
     return NHM.ECMD_OK;
 }
 
+/* #wizinstrinsic command to set some intrinsics for testing */
 const __static_wiz_intrinsic_wizintrinsic = cptr.bytes("#wizintrinsic"); /** C ref: wizcmds.c:952 — char[14] (function-static) */
 const __static_wiz_intrinsic_fmt = cptr.bytes("You are%s %s."); /** C ref: wizcmds.c:953 — char[14] (function-static) */
 
@@ -1064,39 +1241,50 @@ export function* wiz_intrinsic() {
         let propname;
         let pick_list = cptr.box(null);
         let clr = NHM.NO_COLOR;
+
         cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
         win = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
         (yield* Y.icall(start_menu()(win, 0n)));
         if (cptr.ld1so(iflags, $instance_flags_cmdassist)) {
-            void cptr.sprintf(cptr.decay(buf), __sl93, 30);
+            /* start menu with a subtitle */
+            void cptr.sprintf(cptr.decay(buf), __s_precede_any_selection_with_a_count_to, 30);
             (yield* add_menu_str(win, cptr.decay(buf)));
         }
         for (i = 0; (propname = property_by_index(i, p)) !== null; ++i) {
             if (p.v == NHC.HALLUC_RES) {
+                /* Grayswandir vs hallucination; ought to be redone to
+                   use u.uprops[HALLUC].blocked instead of being treated
+                   as a separate property; letting in be manually toggled
+                   even only in wizard mode would be asking for trouble... */
                 continue;
             }
             if (p.v == NHC.FIRE_RES) {
-                (yield* add_menu_str(win, __sl94));
+                /* FIRE_RES and properties beyond it (in the propertynames[]
+                   ordering, not their numerical PROP values), can only be
+                   set to timed values here so show a separator */
+                (yield* add_menu_str(win, __s_dash2));
             }
-            cptr.stI32(any, (i + 1) | 0);
-            oldtimeout = cptr.ldI64o2(u, p.v, 24, $you_uprops + $prop_intrinsic) & 16777215n;
+            cptr.stI32(any, (i + 1) | 0);  /* +1: avoid 0 */
+            oldtimeout = cptr.ldI64o2(u, p.v, $sizeof_prop, $you_uprops + $prop_intrinsic) & 16777215n;
             if (oldtimeout)
-                void cptr.sprintf(cptr.decay(buf), __sl95, propname, oldtimeout);
+                void cptr.sprintf(cptr.decay(buf), __s_27s_li, propname, oldtimeout);
             else
-                void cptr.sprintf(cptr.decay(buf), __sl24, propname);
+                void cptr.sprintf(cptr.decay(buf), __s_pct_s, propname);
             (yield* add_menu(win, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, cptr.decay(buf), NHM.MENU_ITEMFLAGS_NONE));
         }
-        (yield* Y.icall(end_menu()(win, __sl96)));
+        (yield* Y.icall(end_menu()(win, __s_which_intrinsics)));
         n = (yield* select_menu(win, NHM.PICK_ANY, pick_list));
         (yield* Y.icall(destroy_nhwindow()(win)));
+
         for (j = 0; j < n; ++j) {
-            i = (cptr.ldI32o(pick_list.v, j, 24) - 1) | 0;
+            i = (cptr.ldI32o(pick_list.v, j, $sizeof_menu_item) - 1) | 0;  /* -1: reverse +1 above */
             propname = property_by_index(i, p);
-            oldtimeout = cptr.ldI64o2(u, p.v, 24, $you_uprops + $prop_intrinsic) & 16777215n;
-            amt = (cptr.ldI64o2(pick_list.v, j, 24, $mi_count) == -1n) ? 30 : Number(BigInt.asIntN(32, cptr.ldI64o2(pick_list.v, j, 24, $mi_count)));
+            oldtimeout = cptr.ldI64o2(u, p.v, $sizeof_prop, $you_uprops + $prop_intrinsic) & 16777215n;
+            amt = (cptr.ldI64o2(pick_list.v, j, $sizeof_menu_item, $mi_count) == -1n) ? 30 : Number(BigInt.asIntN(32, cptr.ldI64o2(pick_list.v, j, $sizeof_menu_item, $mi_count)));
             if (amt <= 0)
                 continue;
             newtimeout = BigInt.asIntN(64, oldtimeout + BigInt(amt));
+
             switch (p.v) {
                 case NHC.SICK:
                 case NHC.SLIMED:
@@ -1105,6 +1293,7 @@ export function* wiz_intrinsic() {
                     newtimeout = oldtimeout;
                 break;
             }
+
             switch (p.v) {
                 case NHC.BLINDED:
                 (yield* make_blinded(newtimeout, 1));
@@ -1116,48 +1305,52 @@ export function* wiz_intrinsic() {
                 (yield* make_hallucinated(newtimeout, 1, 0n));
                 break;
                 case NHC.SICK:
-                typ = !(rng_log_enabled() ? (rng_log_set_caller(__sl97, 1036, __sl98), rn2(2)) : rn2(2)) ? NHM.SICK_VOMITABLE : NHM.SICK_NONVOMITABLE;
+                typ = !rn2_at(__s_wizcmds_c, 1036, __s_wiz_intrinsic, 2) ? NHM.SICK_VOMITABLE : NHM.SICK_NONVOMITABLE;
                 (yield* make_sick(newtimeout, cptr.decay(__static_wiz_intrinsic_wizintrinsic), 1, typ));
                 break;
                 case NHC.SLIMED:
-                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Slimed() ? __sl41 : __sl99, __sl100);
+                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Slimed() ? __s_empty : __s_still, __s_turning_into_slime);
                 (yield* make_slimed(newtimeout, cptr.decay(buf)));
                 break;
                 case NHC.STONED:
-                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Stoned() ? __sl41 : __sl99, __sl101);
+                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Stoned() ? __s_empty : __s_still, __s_turning_into_stone);
                 (yield* make_stoned(newtimeout, cptr.decay(buf), NHM.KILLED_BY, cptr.decay(__static_wiz_intrinsic_wizintrinsic)));
                 break;
                 case NHC.STUNNED:
                 (yield* make_stunned(newtimeout, 1));
                 break;
                 case NHC.VOMITING:
-                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Vomiting() ? __sl41 : __sl99, __sl102);
+                void cptr.sprintf(cptr.decay(buf), cptr.decay(__static_wiz_intrinsic_fmt), !Vomiting() ? __s_empty : __s_still, __s_vomiting);
                 (yield* make_vomiting(newtimeout, 0));
-                (yield* pline(__sl24, cptr.decay(buf)));
+                (yield* pline(__s_pct_s, cptr.decay(buf)));
                 break;
                 case NHC.WARN_OF_MON:
                 if (!Warn_of_mon()) {
                     cptr.stI16o(svc, $context_info_warntype + $warntype_info_speciesidx, NHC.PM_GRID_BUG);
-                    cptr.stPtro(svc, $context_info_warntype + $warntype_info_species, cptr.add(mons, cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx), 96));
+                    cptr.stPtro(svc, $context_info_warntype + $warntype_info_species, cptr.add(mons, cptr.ldI16o(svc, $context_info_warntype + $warntype_info_speciesidx), $sizeof_permonst));
                 }
                 {
                     if (p.v != NHC.GLIB)
-                        incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), p.v, 24), $prop_intrinsic), amt);
-                    cptr.st1(disp, 1);
-                    (yield* pline(__sl103, propname, oldtimeout ? __sl104 : __sl105, amt));
+                        incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), p.v, $sizeof_prop), $prop_intrinsic), amt);
+                    cptr.st1(disp, 1);  /* have pline() do a status update */
+                    (yield* pline(__s_timeout_for_s_s_d, propname, oldtimeout ? __s_increased_by : __s_set_to, amt));
                     break;
                 }
                 case NHC.GLIB:
+                /* slippery fingers might need a persistent inventory update
+                   so needs more than simple incr_itimeout() but we want
+                   the pline() issued with that */
                 (yield* make_glib(Number(BigInt.asIntN(32, newtimeout))));
                 // @FallThrough
                 ;
                 default:
                 if (p.v != NHC.GLIB)
-                    incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), p.v, 24), $prop_intrinsic), amt);
+                    incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), p.v, $sizeof_prop), $prop_intrinsic), amt);
                 cptr.st1(disp, 1);
-                (yield* pline(__sl103, propname, oldtimeout ? __sl104 : __sl105, amt));
+                (yield* pline(__s_timeout_for_s_s_d, propname, oldtimeout ? __s_increased_by : __s_set_to, amt));
                 break;
             }
+            /* this has to be after incr_itimeout() */
             if (p.v == NHC.LEVITATION || p.v == NHC.FLYING)
                 float_vs_flight();
             else if (p.v == NHC.PROT_FROM_SHAPE_CHANGERS)
@@ -1175,11 +1368,16 @@ export function* wiz_intrinsic() {
     return NHM.ECMD_OK;
 }
 
+/* #wizrumorcheck command - verify each rumor access */
 /** C ref: wizcmds.c:1102 @returns {CInt} */
 export function* wiz_rumor_check() {
     (yield* rumor_check());
     return NHM.ECMD_OK;
 }
+
+/*
+ * wizard mode sanity_check code
+ */
 
 /** C ref: wizcmds.c:1112 — char[18] */
 const template = cptr.bytes("%-27s  %4ld  %6ld");
@@ -1190,9 +1388,10 @@ const stats_hdr = cptr.bytes("                             count  bytes");
 /** C ref: wizcmds.c:1114 — char[43] */
 const stats_sep = cptr.bytes("---------------------------  ----- -------");
 
-/** C ref: wizcmds.c:1117 — @param {CPtr} otmp @returns {CInt} */
+/** C ref: wizcmds.c:1117 — @param {CPtr<struct obj>} otmp @returns {CInt} */
 function size_obj(otmp) {
     let sz = 216;
+
     if (cptr.ldPtro(otmp, $obj_oextra)) {
         sz = (sz + 32) | 0;
         if ((cptr.ldPtr(cptr.ldPtro((otmp), $obj_oextra))))
@@ -1201,15 +1400,17 @@ function size_obj(otmp) {
             sz = (sz + size_monst((cptr.ldPtro(cptr.ldPtro((otmp), $obj_oextra), $oextra_omonst)), 0)) | 0;
         if ((cptr.ldPtro(cptr.ldPtro((otmp), $obj_oextra), $oextra_omailcmd)))
             sz = (sz + ((Number(BigInt.asIntN(32, cptr.strlen((cptr.ldPtro(cptr.ldPtro((otmp), $obj_oextra), $oextra_omailcmd))))) + 1) | 0)) | 0;
+        /* sz += (int) sizeof (unsigned); -- now part of oextra itself */
     }
     return sz;
 }
 
-/** C ref: wizcmds.c:1135 — @param {CPtr} chain @param {CPtr} total_count @param {CPtr} total_size @param {CInt} top @param {CInt} recurse */
+/** C ref: wizcmds.c:1135 — @param {CPtr<struct obj>} chain @param {CPtr<long>} total_count @param {CPtr<long>} total_size @param {CInt} top @param {CInt} recurse */
 function count_obj(chain, total_count, total_size, top, recurse) {
     let count;
     let size;
     let obj;
+
     for (count = (size = 0n), obj = chain; obj; obj = cptr.ldPtr(obj)) {
         if (top) {
             count++;
@@ -1222,12 +1423,14 @@ function count_obj(chain, total_count, total_size, top, recurse) {
     cptr.stI64(total_size, cptr.ldI64(total_size) + size);
 }
 
-/** C ref: wizcmds.c:1156 — @param {CInt} win @param {CPtr} src @param {CPtr} chain @param {CInt} force @param {CPtr} total_count @param {CPtr} total_size */
+/** C ref: wizcmds.c:1156 — @param {CInt} win @param {CPtr<char>} src @param {CPtr<struct obj>} chain @param {CInt} force @param {CPtr<long>} total_count @param {CPtr<long>} total_size */
 function* obj_chain(win, src, chain, force, total_count, total_size) {
     let buf = new Uint8Array(256);
     let count = cptr.box(0n);
     let size = cptr.box(0n);
+
     count_obj(chain, count, size, 1, 0);
+
     if (count.v || size.v || force) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
@@ -1236,14 +1439,16 @@ function* obj_chain(win, src, chain, force, total_count, total_size) {
     }
 }
 
-/** C ref: wizcmds.c:1177 — @param {CInt} win @param {CPtr} src @param {CPtr} chain @param {CPtr} total_count @param {CPtr} total_size */
+/** C ref: wizcmds.c:1177 — @param {CInt} win @param {CPtr<char>} src @param {CPtr<struct monst>} chain @param {CPtr<long>} total_count @param {CPtr<long>} total_size */
 function* mon_invent_chain(win, src, chain, total_count, total_size) {
     let buf = new Uint8Array(256);
     let count = cptr.box(0n);
     let size = cptr.box(0n);
     let mon;
+
     for (mon = chain; mon; mon = cptr.ldPtr(mon))
         count_obj(cptr.ldPtro(mon, $monst_minvent), count, size, 1, 0);
+
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
@@ -1252,20 +1457,24 @@ function* mon_invent_chain(win, src, chain, total_count, total_size) {
     }
 }
 
-/** C ref: wizcmds.c:1199 — @param {CInt} win @param {CPtr} src @param {CPtr} total_count @param {CPtr} total_size */
+/** C ref: wizcmds.c:1199 — @param {CInt} win @param {CPtr<char>} src @param {CPtr<long>} total_count @param {CPtr<long>} total_size */
 function* contained_stats(win, src, total_count, total_size) {
     let buf = new Uint8Array(256);
     let count = cptr.box(0n);
     let size = cptr.box(0n);
     let mon;
+
     count_obj(cptr.ldPtro(gi, $instance_globals_i_invent), count, size, 0, 1);
     count_obj(cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist), count, size, 0, 1);
     count_obj(cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_buriedobjlist), count, size, 0, 1);
     count_obj(cptr.ldPtro(gm, $instance_globals_m_migrating_objs), count, size, 0, 1);
+    /* DEADMONSTER check not required in this loop since they have no
+     * inventory */
     for (mon = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mon; mon = cptr.ldPtr(mon))
         count_obj(cptr.ldPtro(mon, $monst_minvent), count, size, 0, 1);
     for (mon = cptr.ldPtro(gm, $instance_globals_m_migrating_mons); mon; mon = cptr.ldPtr(mon))
         count_obj(cptr.ldPtro(mon, $monst_minvent), count, size, 0, 1);
+
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
@@ -1274,11 +1483,13 @@ function* contained_stats(win, src, total_count, total_size) {
     }
 }
 
-/** C ref: wizcmds.c:1228 — @param {CPtr} mtmp @param {CInt} incl_wsegs @returns {CInt} */
+/** C ref: wizcmds.c:1228 — @param {CPtr<struct monst>} mtmp @param {CInt} incl_wsegs @returns {CInt} */
 function size_monst(mtmp, incl_wsegs) {
     let sz = 320;
+
     if ((cptr.ldI32o(mtmp, $monst_wormno) & 31) | 0 && incl_wsegs)
         sz = (sz + size_wseg(mtmp)) | 0;
+
     if (cptr.ldPtro(mtmp, $monst_mextra)) {
         sz = (sz + 64) | 0;
         if ((cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))))
@@ -1295,17 +1506,20 @@ function size_monst(mtmp, incl_wsegs) {
             sz = (sz + 64) | 0;
         if ((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_ebones)))
             sz = (sz + 36) | 0;
+        /* mextra->mcorpsenm doesn't point to more memory */
     }
     return sz;
 }
 
-/** C ref: wizcmds.c:1257 — @param {CInt} win @param {CPtr} src @param {CPtr} chain @param {CInt} force @param {CPtr} total_count @param {CPtr} total_size */
+/** C ref: wizcmds.c:1257 — @param {CInt} win @param {CPtr<char>} src @param {CPtr<struct monst>} chain @param {CInt} force @param {CPtr<long>} total_count @param {CPtr<long>} total_size */
 function* mon_chain(win, src, chain, force, total_count, total_size) {
     let buf = new Uint8Array(256);
     let count;
     let size;
     let mon;
-    let incl_wsegs = schar((!(yield* strncmpi((src), (__sl106), -1))));
+    /* mon->wormno means something different for migrating_mons and mydogs */
+    let incl_wsegs = schar((!(yield* strncmpi((src), (__s_fmon), -1))));
+
     count = (size = 0n);
     for (mon = chain; mon; mon = cptr.ldPtr(mon)) {
         count++;
@@ -1319,7 +1533,7 @@ function* mon_chain(win, src, chain, force, total_count, total_size) {
     }
 }
 
-/** C ref: wizcmds.c:1284 — @param {CInt} win @param {CPtr} total_count @param {CPtr} total_size */
+/** C ref: wizcmds.c:1284 — @param {CInt} win @param {CPtr<long>} total_count @param {CPtr<long>} total_size */
 function* misc_stats(win, total_count, total_size) {
     let buf = new Uint8Array(256);
     let hdrbuf = new Uint8Array(128);
@@ -1327,9 +1541,13 @@ function* misc_stats(win, total_count, total_size) {
     let size = cptr.box(0n);
     let idx;
     let tt;
-    let sd;
-    let k;
-    let bi;
+    let sd;  /* shop damage */
+    let k;  /* delayed killer */
+    let bi;  /* bones info */
+
+    /* traps and engravings are output unconditionally;
+     * others only if nonzero
+     */
     count.v = (size.v = 0n);
     for (tt = cptr.ldPtr(gf); tt; tt = cptr.ldPtr(tt)) {
         ++count.v;
@@ -1337,31 +1555,35 @@ function* misc_stats(win, total_count, total_size) {
     }
     cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
     cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
-    void cptr.sprintf(cptr.decay(hdrbuf), __sl107, 40n);
+    void cptr.sprintf(cptr.decay(hdrbuf), __s_traps_size_ld, 40n);
     void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     count.v = (size.v = 0n);
-    engr_stats(__sl108, cptr.decay(hdrbuf), count, size);
+    engr_stats(__s_engravings_size_ld_text, cptr.decay(hdrbuf), count, size);
     cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
     cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
     void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     count.v = (size.v = 0n);
-    light_stats(__sl109, cptr.decay(hdrbuf), count, size);
+    light_stats(__s_light_sources_size_ld, cptr.decay(hdrbuf), count, size);
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
-    timer_stats(__sl110, cptr.decay(hdrbuf), count, size);
+    timer_stats(__s_timers_size_ld, cptr.decay(hdrbuf), count, size);
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
     for (sd = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_damagelist); sd; sd = cptr.ldPtr(sd)) {
         ++count.v;
@@ -1370,18 +1592,20 @@ function* misc_stats(win, total_count, total_size) {
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
-        void cptr.sprintf(cptr.decay(hdrbuf), __sl111, 32n);
+        void cptr.sprintf(cptr.decay(hdrbuf), __s_shop_damage_size_ld, 32n);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
-    region_stats(__sl112, cptr.decay(hdrbuf), count, size);
+    region_stats(__s_regions_size_ld_ld_rect_n, cptr.decay(hdrbuf), count, size);
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
     for (k = cptr.ldPtr(svk); k; k = cptr.ldPtr(k)) {
         ++count.v;
@@ -1390,10 +1614,11 @@ function* misc_stats(win, total_count, total_size) {
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
-        void cptr.sprintf(cptr.decay(hdrbuf), __sl113, (((count.v) == 1n) ? __sl41 : __sl114), 272n);
+        void cptr.sprintf(cptr.decay(hdrbuf), __s_delayed_killer_s_size_ld, (((count.v) == 1n) ? __s_empty : __s_s), 272n);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
     for (bi = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_bonesinfo); bi; bi = cptr.ldPtr(bi)) {
         ++count.v;
@@ -1402,20 +1627,21 @@ function* misc_stats(win, total_count, total_size) {
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
-        void cptr.sprintf(cptr.decay(hdrbuf), __sl115, 184n);
+        void cptr.sprintf(cptr.decay(hdrbuf), __s_bones_history_size_ld, 184n);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
+
     count.v = (size.v = 0n);
     for (idx = 0; idx < NHC.NUM_OBJECTS; ++idx)
-        if (cptr.ldPtro2(objects, idx, 120, $objclass_oc_uname)) {
+        if (cptr.ldPtro2(objects, idx, $sizeof_objclass, $objclass_oc_uname)) {
             ++count.v;
-            size.v += BigInt.asIntN(64, (BigInt.asUintN(64, cptr.strlen(cptr.ldPtro2(objects, idx, 120, $objclass_oc_uname)) + 1n)));
+            size.v += BigInt.asIntN(64, (BigInt.asUintN(64, cptr.strlen(cptr.ldPtro2(objects, idx, $sizeof_objclass, $objclass_oc_uname)) + 1n)));
         }
     if (count.v || size.v) {
         cptr.stI64(total_count, cptr.ldI64(total_count) + count.v);
         cptr.stI64(total_size, cptr.ldI64(total_size) + size.v);
-        void cptr.strcpy(cptr.decay(hdrbuf), __sl116);
+        void cptr.strcpy(cptr.decay(hdrbuf), __s_object_type_names_text);
         void cptr.sprintf(cptr.decay(buf), cptr.decay(template), cptr.decay(hdrbuf), count.v, size.v);
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
@@ -1424,43 +1650,52 @@ function* misc_stats(win, total_count, total_size) {
 /** C ref: wizcmds.c:1402 */
 function* you_sanity_check() {
     let mtmp;
+
     if ((cptr.ldI32o(u, $you_uswallow) & 1) | 0 && !cptr.ldPtro(u, $you_ustuck)) {
-        (yield* impossible(__sl117));
+        /* this probably ought to be panic() */
+        (yield* impossible(__s_sanity_check_swallowed_by_nothing));
         (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 1)));
+        /* try to recover from whatever the problem is */
         cptr.stI32o(u, $you_uswallow, 0);
         cptr.stI32o(u, $you_uswldtim, 0);
         (yield* docrt());
     }
     if ((mtmp = (cptr.ldPtro3(svl, cptr.ldI16(u), 168, cptr.ldI16o(u, $you_uy), 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) !== null) {
+        /* u.usteed isn't on the map */
         if (!cptr.eq(cptr.ldPtro(u, $you_ustuck), mtmp))
-            (yield* impossible(__sl118));
+            (yield* impossible(__s_sanity_check_you_over_monster));
     }
+    /* [should we also check for (u.uhp < 1), (Upolyd && u.mh < 1),
+       and (u.uen < 0) here?] */
     if (cptr.ldI32o(u, $you_uhp) > cptr.ldI32o(u, $you_uhpmax)) {
-        (yield* impossible(__sl119, cptr.ldI32o(u, $you_uhp), cptr.ldI32o(u, $you_uhpmax)));
+        (yield* impossible(__s_current_hero_health_d_better_than, cptr.ldI32o(u, $you_uhp), cptr.ldI32o(u, $you_uhpmax)));
         cptr.stI32o(u, $you_uhp, cptr.ldI32o(u, $you_uhpmax));
     }
     if (Upolyd() && cptr.ldI32o(u, $you_mh) > cptr.ldI32o(u, $you_mhmax)) {
-        (yield* impossible(__sl120, cptr.ldI32o(u, $you_mh), cptr.ldI32o(u, $you_mhmax)));
+        (yield* impossible(__s_current_hero_health_as_monster_d_better, cptr.ldI32o(u, $you_mh), cptr.ldI32o(u, $you_mhmax)));
         cptr.stI32o(u, $you_mh, cptr.ldI32o(u, $you_mhmax));
     }
     if (cptr.ldI32o(u, $you_uen) > cptr.ldI32o(u, $you_uenmax)) {
-        (yield* impossible(__sl121, cptr.ldI32o(u, $you_uen), cptr.ldI32o(u, $you_uenmax)));
+        (yield* impossible(__s_current_hero_energy_d_better_than, cptr.ldI32o(u, $you_uen), cptr.ldI32o(u, $you_uenmax)));
         cptr.stI32o(u, $you_uen, cptr.ldI32o(u, $you_uenmax));
     }
+
     (yield* check_wornmask_slots());
-    void (yield* check_invent_gold(__sl122));
+    void (yield* check_invent_gold(__s_invent));
 }
 
 /** C ref: wizcmds.c:1444 */
 function* levl_sanity_check() {
     let x;
     let y;
+
     if (Underwater())
-        return;
+        return;  /* Underwater uses different vision */
+
     for (y = 0; y < NHM.ROWNO; y++) {
         for (x = 1; x < NHM.COLNO; x++) {
-            if (((yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36))) ? 1 : 0) != get_viz_clear(x, y))
-                (yield* impossible(__sl123, x, y));
+            if (((yield* does_block(x, y, cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm))) ? 1 : 0) != get_viz_clear(x, y))
+                (yield* impossible(__s_levl_i_i_vision_blocking, x, y));
         }
     }
 }
@@ -1468,6 +1703,10 @@ function* levl_sanity_check() {
 /** C ref: wizcmds.c:1460 */
 export function* sanity_check() {
     if (cptr.ld1so(iflags, $instance_flags_sanity_no_check)) {
+        /* in case a recurring sanity_check warning occurs, we mustn't
+           re-trigger it when ^P is used, otherwise msg_window:Single
+           and msg_window:Combination will always repeat the most recent
+           instance, never able to go back to any earlier messages */
         cptr.st1o(iflags, $instance_flags_sanity_no_check, 0);
         return;
     }
@@ -1484,7 +1723,8 @@ export function* sanity_check() {
     (cptr.stI32o(program_state, $sinfo_in_sanity_check, cptr.ldI32o(program_state, $sinfo_in_sanity_check) + -1)) - (-1);
 }
 
-/** C ref: wizcmds.c:1485 — @param {CPtr} vptr1 @param {CPtr} vptr2 @returns {CInt} */
+/* qsort() comparison routine for use in list_migrating_mons() */
+/** C ref: wizcmds.c:1485 — @param {CPtr<void>} vptr1 @param {CPtr<void>} vptr2 @returns {CInt} */
 function migrsort_cmp(vptr1, vptr2) {
     let m1 = cptr.ldPtr(vptr1);
     let m2 = cptr.ldPtr(vptr2);
@@ -1492,14 +1732,21 @@ function migrsort_cmp(vptr1, vptr2) {
     let l1 = cptr.ldI16o(m1, $monst_muy);
     let d2 = cptr.ldI16o(m2, $monst_mux);
     let l2 = cptr.ldI16o(m2, $monst_muy);
+
+    /* if different branches, sort by dungeon number */
     if (d1 != d2)
         return (d1 - d2) | 0;
+    /* within same branch, sort by level number */
     if (l1 != l2)
         return (l1 - l2) | 0;
+    /* same destination level:  use a tie-breaker to force stable sort;
+       monst->m_id is unsigned so we need more than just simple subtraction */
     return (cptr.ldI32o(m1, $monst_m_id) < cptr.ldI32o(m2, $monst_m_id)) ? -1 : (cptr.ldI32o(m1, $monst_m_id) > cptr.ldI32o(m2, $monst_m_id));
 }
 
-/** C ref: wizcmds.c:1506 — @param {CPtr} nextlevl */
+/* called by #migratemons; displays count of migrating monsters, optionally
+   displays them as well */
+/** C ref: wizcmds.c:1506 — @param {CPtr<d_level>} nextlevl */
 function* list_migrating_mons(nextlevl) {
     let win = -1;
     let showit = 0;
@@ -1516,6 +1763,7 @@ function* list_migrating_mons(nextlevl) {
     let here = 0;
     let nxtlv = 0;
     let other = 0;
+
     for (mtmp = cptr.ldPtro(gm, $instance_globals_m_migrating_mons); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if (cptr.ldI16o(mtmp, $monst_mux) == cptr.ldI16o(u, $you_uz) && cptr.ldI16o(mtmp, $monst_muy) == cptr.ldI16o(u, $you_uz + $d_level_dlevel))
             ++here;
@@ -1525,17 +1773,17 @@ function* list_migrating_mons(nextlevl) {
             ++other;
     }
     if (((((here + nxtlv) | 0) + other) | 0) == 0) {
-        (yield* pline(__sl124));
+        (yield* pline(__s_no_monsters_currently_migrating));
     } else {
-        (yield* pline(__sl125, here, (((here) == 1) ? __sl41 : __sl114), nxtlv, other));
+        (yield* pline(__s_d_mon_s_pending_for_current_level_d_for, here, (((here) == 1) ? __s_empty : __s_s), nxtlv, other));
         cptr.st1o(cptr.decay(prmpt), 0, cptr.st1o(cptr.decay(xtra), 0, 0, 1), 1);
         void (yield* strkitten(here ? cptr.decay(prmpt) : cptr.decay(xtra), 99));
         void (yield* strkitten(nxtlv ? cptr.decay(prmpt) : cptr.decay(xtra), 110));
         void (yield* strkitten(other ? cptr.decay(prmpt) : cptr.decay(xtra), 111));
-        void cptr.strcat(cptr.decay(prmpt), __sl126);
+        void cptr.strcat(cptr.decay(prmpt), __s_a_q);
         if (cptr.ld1s(cptr.decay(xtra)))
-            void cptr.sprintf(eos(cptr.decay(prmpt)), __sl127, 27, cptr.decay(xtra));
-        c = (yield* yn_function(__sl128, cptr.decay(prmpt), 113, 1));
+            void cptr.sprintf(eos(cptr.decay(prmpt)), __s_c_s, 27, cptr.decay(xtra));
+        c = (yield* yn_function(__s_list_which, cptr.decay(prmpt), 113, 1));
         n = ((c == 99) ? here : ((c == 110) ? nxtlv : ((c == 111) ? other : ((c == 97) ? (((here + nxtlv) | 0) + other) | 0 : 0)))) >>> 0;
         if (n > 0) {
             win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
@@ -1543,14 +1791,18 @@ function* list_migrating_mons(nextlevl) {
                 case 99:
                 case 110:
                 case 111:
-                void cptr.sprintf(cptr.decay(buf), __sl129, (((n) == 1) ? __sl41 : __sl114), (c == 99) ? __sl130 : ((c == 110) ? __sl131 : __sl132));
+                void cptr.sprintf(cptr.decay(buf), __s_monster_s_migrating_to_s, (((n) == 1) ? __s_empty : __s_s), (c == 99) ? __s_current_level : ((c == 110) ? __s_next_level : __s_other_levels));
                 break;
                 default:
-                void cptr.strcpy(cptr.decay(buf), __sl133);
+                void cptr.strcpy(cptr.decay(buf), __s_all_migrating_monsters);
                 break;
             }
             (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
-            (yield* Y.icall(putstr()(win, 0, __sl41)));
+            (yield* Y.icall(putstr()(win, 0, __s_empty)));
+            /* collect the migrating monsters into an array; for 'o' and 'a'
+               where multiple destination levels might be present, sort by
+               the destination; 'c' and 'n' don't need to be sorted but we
+               do that anyway to get the same tie-breaker as 'o' and 'a' */
             marray = (yield* alloc(Number(BigInt.asUintN(32, BigInt.asUintN(64, BigInt(((n + 1) >>> 0) >>> 0) * 8n)))));
             n = 0;
             for (mtmp = cptr.ldPtro(gm, $instance_globals_m_migrating_mons); mtmp; mtmp = cptr.ldPtr(mtmp)) {
@@ -1562,24 +1814,26 @@ function* list_migrating_mons(nextlevl) {
                     showit = schar((c == 110));
                 else
                     showit = schar((c == 111));
+
                 if (showit)
                     cptr.stPtro(marray, n++, mtmp, 8);
             }
-            cptr.stPtro(marray, n, null, 8);
+            cptr.stPtro(marray, n, null, 8);  /* mark end for traversal loop */
             if (n > 1)
                 (yield* nh_deterministic_qsort((marray), (BigInt(n >>> 0)), 8n, (migrsort_cmp)));
             for (n = 0; (mtmp = cptr.ldPtro(marray, n, 8)) !== null; ++n) {
-                void cptr.sprintf(cptr.decay(buf), __sl134, minimal_monnam(mtmp, 0));
-                void strsubst(cptr.decay(buf), __sl135, __sl41);
+                void cptr.sprintf(cptr.decay(buf), __s_sp2_pct_s, minimal_monnam(mtmp, 0));
+                /* minimal_monnam() appends map coordinates; strip that */
+                void strsubst(cptr.decay(buf), __s_0_0, __s_empty);
                 if (has_mgivenname(mtmp))
-                    void cptr.sprintf(eos(cptr.decay(buf)), __sl136, (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))));
+                    void cptr.sprintf(eos(cptr.decay(buf)), __s_named_s, (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))));
                 if (c == 111 || c == 97)
-                    void cptr.sprintf(eos(cptr.decay(buf)), __sl137, cptr.ldI16o(mtmp, $monst_mux), cptr.ldI16o(mtmp, $monst_muy));
-                xyloc = cptr.ldI16o2(mtmp, 0, 4, $monst_mtrack);
+                    void cptr.sprintf(eos(cptr.decay(buf)), __s_to_d_d, cptr.ldI16o(mtmp, $monst_mux), cptr.ldI16o(mtmp, $monst_muy));
+                xyloc = cptr.ldI16o2(mtmp, 0, $sizeof_coord, $monst_mtrack);  /* (for legibility) */
                 if (xyloc == NHM.MIGR_EXACT_XY) {
-                    x = cptr.ldI16o2(mtmp, 1, 4, $monst_mtrack);
-                    y = cptr.ldI16o2(mtmp, 1, 4, $monst_mtrack + $nhcoord_y);
-                    void cptr.sprintf(eos(cptr.decay(buf)), __sl138, x, y);
+                    x = cptr.ldI16o2(mtmp, 1, $sizeof_coord, $monst_mtrack);
+                    y = cptr.ldI16o2(mtmp, 1, $sizeof_coord, $monst_mtrack + $nhcoord_y);
+                    void cptr.sprintf(eos(cptr.decay(buf)), __s_at_d_d, x, y);
                 }
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
@@ -1587,11 +1841,15 @@ function* list_migrating_mons(nextlevl) {
             (yield* Y.icall(display_nhwindow()(win, 0)));
             (yield* Y.icall(destroy_nhwindow()(win)));
         } else if (c != 113) {
-            (yield* pline(__sl139));
+            (yield* pline(__s_none));
         }
+
     }
 }
 
+/* the #stats command
+ * Display memory usage of all monsters and objects on the level.
+ */
 /** C ref: wizcmds.c:1616 @returns {CInt} */
 export function* wiz_show_stats() {
     let buf = new Uint8Array(256);
@@ -1604,57 +1862,68 @@ export function* wiz_show_stats() {
     let total_ovr_count = cptr.box(0n);
     let total_misc_size = cptr.box(0n);
     let total_misc_count = cptr.box(0n);
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
-    (yield* Y.icall(putstr()(win, 0, __sl140)));
+    (yield* Y.icall(putstr()(win, 0, __s_current_memory_statistics)));
+
     total_obj_count.v = (total_obj_size.v = 0n);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_hdr))));
-    void cptr.sprintf(cptr.decay(buf), __sl141, 216n);
+    void cptr.sprintf(cptr.decay(buf), __s_objects_base_size_ld, 216n);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
-    (yield* obj_chain(win, __sl122, cptr.ldPtro(gi, $instance_globals_i_invent), 1, total_obj_count, total_obj_size));
-    (yield* obj_chain(win, __sl142, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist), 1, total_obj_count, total_obj_size));
-    (yield* obj_chain(win, __sl143, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_buriedobjlist), 0, total_obj_count, total_obj_size));
-    (yield* obj_chain(win, __sl144, cptr.ldPtro(gm, $instance_globals_m_migrating_objs), 0, total_obj_count, total_obj_size));
-    (yield* obj_chain(win, __sl145, cptr.ldPtro(gb, $instance_globals_b_billobjs), 0, total_obj_count, total_obj_size));
-    (yield* mon_invent_chain(win, __sl146, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist), total_obj_count, total_obj_size));
-    (yield* mon_invent_chain(win, __sl147, cptr.ldPtro(gm, $instance_globals_m_migrating_mons), total_obj_count, total_obj_size));
-    (yield* contained_stats(win, __sl148, total_obj_count, total_obj_size));
+    (yield* obj_chain(win, __s_invent, cptr.ldPtro(gi, $instance_globals_i_invent), 1, total_obj_count, total_obj_size));
+    (yield* obj_chain(win, __s_fobj, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist), 1, total_obj_count, total_obj_size));
+    (yield* obj_chain(win, __s_buried, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_buriedobjlist), 0, total_obj_count, total_obj_size));
+    (yield* obj_chain(win, __s_migrating_obj, cptr.ldPtro(gm, $instance_globals_m_migrating_objs), 0, total_obj_count, total_obj_size));
+    (yield* obj_chain(win, __s_billobjs, cptr.ldPtro(gb, $instance_globals_b_billobjs), 0, total_obj_count, total_obj_size));
+    (yield* mon_invent_chain(win, __s_minvent, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist), total_obj_count, total_obj_size));
+    (yield* mon_invent_chain(win, __s_migrating_minvent, cptr.ldPtro(gm, $instance_globals_m_migrating_mons), total_obj_count, total_obj_size));
+    (yield* contained_stats(win, __s_contained, total_obj_count, total_obj_size));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_sep))));
-    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __sl149, total_obj_count.v, total_obj_size.v);
+    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __s_obj_total, total_obj_count.v, total_obj_size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     total_mon_count.v = (total_mon_size.v = 0n);
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
-    void cptr.sprintf(cptr.decay(buf), __sl150, 320n);
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
+    void cptr.sprintf(cptr.decay(buf), __s_monsters_base_size_ld, 320n);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
-    (yield* mon_chain(win, __sl106, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist), 1, total_mon_count, total_mon_size));
-    (yield* mon_chain(win, __sl151, cptr.ldPtro(gm, $instance_globals_m_migrating_mons), 0, total_mon_count, total_mon_size));
+    (yield* mon_chain(win, __s_fmon, cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist), 1, total_mon_count, total_mon_size));
+    (yield* mon_chain(win, __s_migrating, cptr.ldPtro(gm, $instance_globals_m_migrating_mons), 0, total_mon_count, total_mon_size));
+    /* 'gm.mydogs' is only valid during level change or end of game disclosure,
+       but conceivably we've been called from within debugger at such time */
     if (cptr.ldPtro(gm, $instance_globals_m_mydogs))
-        (yield* mon_chain(win, __sl152, cptr.ldPtro(gm, $instance_globals_m_mydogs), 0, total_mon_count, total_mon_size));
+        (yield* mon_chain(win, __s_mydogs, cptr.ldPtro(gm, $instance_globals_m_mydogs), 0, total_mon_count, total_mon_size));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_sep))));
-    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __sl153, total_mon_count.v, total_mon_size.v);
+    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __s_mon_total, total_mon_count.v, total_mon_size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     total_ovr_count.v = (total_ovr_size.v = 0n);
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
-    (yield* Y.icall(putstr()(win, 0, __sl154)));
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
+    (yield* Y.icall(putstr()(win, 0, __s_overview)));
     (yield* overview_stats(win, cptr.decay(template), total_ovr_count, total_ovr_size));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_sep))));
-    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __sl155, total_ovr_count.v, total_ovr_size.v);
+    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __s_over_total, total_ovr_count.v, total_ovr_size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     total_misc_count.v = (total_misc_size.v = 0n);
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
-    (yield* Y.icall(putstr()(win, 0, __sl156)));
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
+    (yield* Y.icall(putstr()(win, 0, __s_miscellaneous)));
     (yield* misc_stats(win, total_misc_count, total_misc_size));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_sep))));
-    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __sl157, total_misc_count.v, total_misc_size.v);
+    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __s_misc_total, total_misc_count.v, total_misc_size.v);
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
-    (yield* Y.icall(putstr()(win, 0, __sl41)));
+
+    (yield* Y.icall(putstr()(win, 0, __s_empty)));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(stats_sep))));
-    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __sl158, (BigInt.asIntN(64, BigInt.asIntN(64, BigInt.asIntN(64, total_obj_count.v + total_mon_count.v) + total_ovr_count.v) + total_misc_count.v)), (BigInt.asIntN(64, BigInt.asIntN(64, BigInt.asIntN(64, total_obj_size.v + total_mon_size.v) + total_ovr_size.v) + total_misc_size.v)));
+    void cptr.sprintf(cptr.decay(buf), cptr.decay(template), __s_grand_total, (BigInt.asIntN(64, BigInt.asIntN(64, BigInt.asIntN(64, total_obj_count.v + total_mon_count.v) + total_ovr_count.v) + total_misc_count.v)), (BigInt.asIntN(64, BigInt.asIntN(64, BigInt.asIntN(64, total_obj_size.v + total_mon_size.v) + total_ovr_size.v) + total_misc_size.v)));
     (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
+
     (yield* Y.icall(display_nhwindow()(win, 0)));
     (yield* Y.icall(destroy_nhwindow()(win)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizdispmacros command
+ * Verify that some display macros are returning sane values */
 const __static_wiz_display_macros_display_issues = cptr.bytes("Display macro issues:"); /** C ref: wizcmds.c:1707 — char[22] (function-static) */
 
 /** C ref: wizcmds.c:1705 @returns {CInt} */
@@ -1666,61 +1935,72 @@ export function* wiz_display_macros() {
     let trouble = 0;
     let no_glyph = NHC.MAX_GLYPH;
     let max_glyph = NHC.MAX_GLYPH;
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
+
     for (glyph = 0; glyph < NHC.MAX_GLYPH; ++glyph) {
+        /* glyph_is_cmap / glyph_to_cmap() */
         if (glyph_is_cmap(glyph)) {
             test = glyph_to_cmap(glyph);
+            /* check for MAX_GLYPH return */
             if (test == no_glyph) {
                 if (!trouble++)
                     (yield* Y.icall(putstr()(win, 0, cptr.decay(__static_wiz_display_macros_display_issues))));
-                void cptr.sprintf(cptr.decay(buf), __sl159, glyph, test);
+                void cptr.sprintf(cptr.decay(buf), __s_glyph_is_cmap_glyph_to_cmap_glyph_d, glyph, test);
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
             if (glyph_is_cmap_zap(glyph) && !(test >= NHC.S_vbeam && test <= NHC.S_rslant)) {
                 if (!trouble++)
                     (yield* Y.icall(putstr()(win, 0, cptr.decay(__static_wiz_display_macros_display_issues))));
-                void cptr.sprintf(cptr.decay(buf), __sl160, glyph, test);
+                void cptr.sprintf(cptr.decay(buf), __s_glyph_is_cmap_zap_glyph_d_returned_non, glyph, test);
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
+            /* check against defsyms array subscripts */
             if (!((test) >= 0 && (test) < 106)) {
                 if (!trouble++)
                     (yield* Y.icall(putstr()(win, 0, cptr.decay(__static_wiz_display_macros_display_issues))));
-                void cptr.sprintf(cptr.decay(buf), __sl161, glyph, test, 106, max_glyph);
+                void cptr.sprintf(cptr.decay(buf), __s_glyph_to_cmap_glyph_d_returns_d_exceeds, glyph, test, 106, max_glyph);
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
         }
+        /* glyph_is_monster / glyph_to_mon */
         if (glyph_is_monster(glyph)) {
             test = glyph_to_mon(glyph);
+            /* check against mons array subscripts */
             if (test < 0 || test >= NHC.NUMMONS) {
                 if (!trouble++)
                     (yield* Y.icall(putstr()(win, 0, cptr.decay(__static_wiz_display_macros_display_issues))));
-                void cptr.sprintf(cptr.decay(buf), __sl162, glyph, test, NHC.NUMMONS);
+                void cptr.sprintf(cptr.decay(buf), __s_glyph_to_mon_glyph_d_returns_d_exceeds, glyph, test, NHC.NUMMONS);
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
         }
+        /* glyph_is_object / glyph_to_obj */
         if (glyph_is_object(glyph)) {
             test = glyph_to_obj(glyph);
+            /* check against objects array subscripts */
             if (test < 0 || test > NHC.NUM_OBJECTS) {
                 if (!trouble++)
                     (yield* Y.icall(putstr()(win, 0, cptr.decay(__static_wiz_display_macros_display_issues))));
-                void cptr.sprintf(cptr.decay(buf), __sl163, glyph, test, NHC.NUM_OBJECTS);
+                void cptr.sprintf(cptr.decay(buf), __s_glyph_to_obj_glyph_d_returns_d_exceeds, glyph, test, NHC.NUM_OBJECTS);
                 (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
             }
         }
     }
     if (!trouble)
-        (yield* Y.icall(putstr()(win, 0, __sl164)));
+        (yield* Y.icall(putstr()(win, 0, __s_no_display_macro_issues_detected)));
     (yield* Y.icall(display_nhwindow()(win, 0)));
     (yield* Y.icall(destroy_nhwindow()(win)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizshownhuuid command */
 /** C ref: wizcmds.c:1782 @returns {CInt} */
 export function* wiz_show_nhuuid() {
-    (yield* pline(__sl165, cptr.add(svn, $instance_globals_saved_n_nhuuid)));
+    (yield* pline(__s_the_nhuuid_for_this_game_is_s, cptr.add(svn, $instance_globals_saved_n_nhuuid)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizmondiff command */
 const __static_wiz_mon_diff_window_title = cptr.bytes("Review of monster difficulty ratings [index:level]:"); /** C ref: wizcmds.c:1792 — char[52] (function-static) */
 
 /** C ref: wizcmds.c:1790 @returns {CInt} */
@@ -1734,8 +2014,14 @@ export function* wiz_mon_diff() {
     let mdiff = 0;
     let mlev;
     let ptr;
+
+    /*
+     * Possible extension:  choose between showing discrepancies,
+     * showing all monsters, or monsters within a particular class.
+     */
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
-    for (ptr = cptr.add(mons, 0, 96); cptr.ld1so(ptr, $permonst_mlet); ptr = cptr.add(ptr, 1, 96), cnt++) {
+    for (ptr = cptr.add(mons, 0, $sizeof_permonst); cptr.ld1so(ptr, $permonst_mlet); ptr = cptr.add(ptr, 1, 96), cnt++) {
         mcalculated = mstrength(ptr);
         mhardcoded = cptr.ld1uo(ptr, $permonst_difficulty);
         mdiff = (mhardcoded - mcalculated) | 0;
@@ -1745,44 +2031,52 @@ export function* wiz_mon_diff() {
             mlev = cptr.ld1so(ptr, $permonst_mlevel);
             if (mlev > 50)
                 mlev = 50;
-            nh_snprintf(__sl166, 1819, cptr.decay(buf), 256n, __sl167, cptr.ldPtro(ptr, NHC.NEUTRAL, 8), cnt, mlev, mcalculated, mhardcoded, mdiff);
+            nh_snprintf(__s_wiz_mon_diff, 1819, cptr.decay(buf), 256n, __s_18s_3d_2d_calculated_2d_hardcoded_2d_d, cptr.ldPtro(ptr, NHC.NEUTRAL, 8), cnt, mlev, mcalculated, mhardcoded, mdiff);
             (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
         }
     }
     if (!trouble)
-        (yield* Y.icall(putstr()(win, 0, __sl168)));
+        (yield* Y.icall(putstr()(win, 0, __s_no_monster_difficulty_discrepancies)));
     (yield* Y.icall(display_nhwindow()(win, 0)));
     (yield* Y.icall(destroy_nhwindow()(win)));
     return NHM.ECMD_OK;
 }
 
+/* the #wizobjprobs command */
 /** C ref: wizcmds.c:1832 @returns {CInt} */
 export function* wiz_objprobs() {
     let win;
     let buf = new Uint8Array(256);
     let probsum = cptr.alloc(18 * 4);
     let otyp;
-    let oclass = cptr.ld1so2(objects, NHC.FIRST_OBJECT, 120, $objclass_oc_class);
+    let oclass = cptr.ld1so2(objects, NHC.FIRST_OBJECT, $sizeof_objclass, $objclass_oc_class);
     __builtin___memset_chk(probsum, 0, 72n, __builtin_object_size(probsum, 0));
+
     for (otyp = NHC.FIRST_OBJECT; otyp < NHC.NUM_OBJECTS; otyp++) {
-        cptr.stI32o(probsum, cptr.ld1so2(objects, otyp, 120, $objclass_oc_class), (cptr.ldI32o(probsum, cptr.ld1so2(objects, otyp, 120, $objclass_oc_class), 4) + cptr.ldI16o2(objects, otyp, 120, $objclass_oc_prob)) | 0, 4);
+        cptr.stI32o(probsum, cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_class), (cptr.ldI32o(probsum, cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_class), 4) + cptr.ldI16o2(objects, otyp, $sizeof_objclass, $objclass_oc_prob)) | 0, 4);
     }
+
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_TEXT)));
     for (otyp = NHC.FIRST_OBJECT; otyp < NHC.NUM_OBJECTS; otyp++) {
-        if (!(cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, 120))), 16)))
+        /* placeholders for extra descriptions aren't generatable objects */
+        if (!(cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, $sizeof_objclass))), $sizeof_objdescr)))
             continue;
-        if (cptr.ld1so2(objects, otyp, 120, $objclass_oc_class) != oclass) {
-            (yield* Y.icall(putstr()(win, 0, __sl41)));
+
+        if (cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_class) != oclass) {
+            (yield* Y.icall(putstr()(win, 0, __s_empty)));
         }
-        oclass = cptr.ld1so2(objects, otyp, 120, $objclass_oc_class);
-        nh_snprintf(__sl169, 1861, cptr.decay(buf), 256n, __sl170, cptr.ldI16o2(objects, otyp, 120, $objclass_oc_prob), cptr.ldI32o(probsum, oclass, 4), cptr.ldI16o2(objects, otyp, 120, $objclass_oc_prob) * 100 / cptr.ldI32o(probsum, oclass, 4), (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, 120))), 16)));
+        oclass = cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_class);
+
+        nh_snprintf(__s_wiz_objprobs, 1861, cptr.decay(buf), 256n, __s_4d_4d_6_2f_s, cptr.ldI16o2(objects, otyp, $sizeof_objclass, $objclass_oc_prob), cptr.ldI32o(probsum, oclass, 4), cptr.ldI16o2(objects, otyp, $sizeof_objclass, $objclass_oc_prob) * 100 / cptr.ldI32o(probsum, oclass, 4), (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, otyp, $sizeof_objclass))), $sizeof_objdescr)));
         (yield* Y.icall(putstr()(win, 0, cptr.decay(buf))));
     }
     (yield* Y.icall(display_nhwindow()(win, 0)));
     (yield* Y.icall(destroy_nhwindow()(win)));
+
     return NHM.ECMD_OK;
 }
 
+/* #migratemons command */
 /** C ref: wizcmds.c:1873 @returns {CInt} */
 export function* wiz_migrate_mons() {
     let mcount;
@@ -1792,20 +2086,23 @@ export function* wiz_migrate_mons() {
     let use_random_mon = 1;
     let mongen_saved = cptr.ld1so(iflags, $instance_flags_debug_mongen);
     let tolevel = cptr.alloc(4);
+
     if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)))))
         assign_level(tolevel, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_valley_level));
     else if (!Is_botlevel(cptr.add(u, $you_uz)))
         (yield* get_level(tolevel, (depth(cptr.add(u, $you_uz)) + 1) | 0));
     else
         cptr.stI16(tolevel, 0), cptr.stI16o(tolevel, $d_level_dlevel, 0);
+
     (yield* list_migrating_mons(tolevel));
     cptr.st1o(cptr.decay(inbuf), 0, cptr.st1o(cptr.decay(inbuf), 1, 0, 1), 1);
     if (cptr.ldI16(tolevel) || cptr.ldI16o(tolevel, $d_level_dlevel))
-        (yield* getlin(__sl171, cptr.decay(inbuf)));
+        (yield* getlin(__s_how_many_random_monsters_to_migrate_to, cptr.decay(inbuf)));
     else
-        (yield* pline(__sl172));
+        (yield* pline(__s_can_t_get_there_from_here));
     if (cptr.ld1s(cptr.decay(inbuf)) == 27 || cptr.ld1s(cptr.decay(inbuf)) == 0)
         return NHM.ECMD_OK;
+
     mcount = atoi(cptr.decay(inbuf));
     if (mcount < 0) {
         use_random_mon = 0;
@@ -1815,6 +2112,7 @@ export function* wiz_migrate_mons() {
         mcount = 0;
     else if (mcount > 1659)
         mcount = 1659;
+
     cptr.st1o(iflags, $instance_flags_debug_mongen, 0);
     while (mcount > 0) {
         if (use_random_mon) {
@@ -1831,28 +2129,32 @@ export function* wiz_migrate_mons() {
     return NHM.ECMD_OK;
 }
 
+/* #wizcustom command to see glyphmap customizations */
 const __static_wiz_custom_wizcustom = cptr.bytes("#wizcustom"); /** C ref: wizcmds.c:1939 — char[11] (function-static) */
 
 /** C ref: wizcmds.c:1934 @returns {CInt} */
 export function* wiz_custom() {
+
     if (wizard()) {
         let win;
         let buf = new Uint8Array(256);
         let bufa = new Uint8Array(256);
         let n;
         let pick_list = cptr.box(null);
+
         if (!glyphid_cache_status())
             (yield* fill_glyphid_cache());
+
         win = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
         (yield* Y.icall(start_menu()(win, 0n)));
-        (yield* add_menu_heading(win, __sl173));
-        void cptr.sprintf(cptr.decay(bufa), __sl174, cptr.decay(__static_wiz_custom_wizcustom), BigInt(cptr.ldI32o(iflags, $instance_flags_colorcount) >>> 0), cptr.ldPtro2(gs, NHC.PRIMARYSET, 48, $instance_globals_s_symset + $symsetentry_name) ? cptr.ldPtro2(gs, NHC.PRIMARYSET, 48, $instance_globals_s_symset + $symsetentry_name) : __sl175);
-        if (cptr.ldI32o(gc, $instance_globals_c_currentgraphics) == NHC.PRIMARYSET && cptr.ldPtro2(gs, NHC.PRIMARYSET, 48, $instance_globals_s_symset + $symsetentry_name))
-            void cptr.strcat(cptr.decay(bufa), __sl176);
-        if (cptr.ldI32o2(gs, NHC.PRIMARYSET, 48, $instance_globals_s_symset + $symsetentry_handling)) {
-            void cptr.sprintf(eos(cptr.decay(bufa)), __sl177, cptr.ldPtro(known_handling, cptr.ldI32o2(gs, NHC.PRIMARYSET, 48, $instance_globals_s_symset + $symsetentry_handling), 8));
+        (yield* add_menu_heading(win, __s_glyph_glyph_identifier_sym_clr));
+        void cptr.sprintf(cptr.decay(bufa), __s_s_colorcount_ld_s, cptr.decay(__static_wiz_custom_wizcustom), BigInt(cptr.ldI32o(iflags, $instance_flags_colorcount) >>> 0), cptr.ldPtro2(gs, NHC.PRIMARYSET, $sizeof_symsetentry, $instance_globals_s_symset + $symsetentry_name) ? cptr.ldPtro2(gs, NHC.PRIMARYSET, $sizeof_symsetentry, $instance_globals_s_symset + $symsetentry_name) : __s_default);
+        if (cptr.ldI32o(gc, $instance_globals_c_currentgraphics) == NHC.PRIMARYSET && cptr.ldPtro2(gs, NHC.PRIMARYSET, $sizeof_symsetentry, $instance_globals_s_symset + $symsetentry_name))
+            void cptr.strcat(cptr.decay(bufa), __s_active);
+        if (cptr.ldI32o2(gs, NHC.PRIMARYSET, $sizeof_symsetentry, $instance_globals_s_symset + $symsetentry_handling)) {
+            void cptr.sprintf(eos(cptr.decay(bufa)), __s_handler_s, cptr.ldPtro(known_handling, cptr.ldI32o2(gs, NHC.PRIMARYSET, $sizeof_symsetentry, $instance_globals_s_symset + $symsetentry_handling), 8));
         }
-        void cptr.sprintf(cptr.decay(buf), __sl24, cptr.decay(bufa));
+        void cptr.sprintf(cptr.decay(buf), __s_pct_s, cptr.decay(bufa));
         (yield* wizcustom_glyphids(win));
         (yield* Y.icall(end_menu()(win, cptr.decay(bufa))));
         n = (yield* select_menu(win, NHM.PICK_NONE, pick_list));
@@ -1867,7 +2169,7 @@ export function* wiz_custom() {
     return NHM.ECMD_OK;
 }
 
-/** C ref: wizcmds.c:1987 — @param {CInt} win @param {CInt} glyphnum @param {CPtr} id */
+/** C ref: wizcmds.c:1987 — @param {CInt} win @param {CInt} glyphnum @param {CPtr<char>} id */
 export function* wizcustom_callback(win, glyphnum, id) {
     let cgm;
     let clr = NHM.NO_COLOR;
@@ -1879,24 +2181,25 @@ export function* wizcustom_callback(win, glyphnum, id) {
     let bufu = new Uint8Array(256);
     let any = cptr.alloc(8);
     let cp;
+
     if (win && id) {
-        cgm = cptr.add(glyphmap, glyphnum, 32);
+        cgm = cptr.add(glyphmap, glyphnum, $sizeof_glyph_map);
         if (cptr.ldPtro(cgm, $glyph_map_u) || cptr.ldI32o(cgm, $glyph_map_customcolor) != 0) {
-            void cptr.sprintf(cptr.decay(bufa), __sl178, glyphnum, id);
-            void cptr.sprintf(cptr.decay(bufb), __sl179, cptr.ld1uo2(gs, cptr.ldI32o(cgm, $glyph_map_sym + $classic_representation_symidx), 1, $instance_globals_s_showsyms), cptr.ldI32o(cgm, $glyph_map_sym));
-            void cptr.sprintf(cptr.decay(bufc), __sl180, BigInt(cptr.ldI32o(cgm, $glyph_map_customcolor) >>> 0));
+            void cptr.sprintf(cptr.decay(bufa), __s_04d_44s, glyphnum, id);
+            void cptr.sprintf(cptr.decay(bufb), __s_03d_02d, cptr.ld1uo2(gs, cptr.ldI32o(cgm, $glyph_map_sym + $classic_representation_symidx), 1, $instance_globals_s_showsyms), cptr.ldI32o(cgm, $glyph_map_sym));
+            void cptr.sprintf(cptr.decay(bufc), __s_011lx, BigInt(cptr.ldI32o(cgm, $glyph_map_customcolor) >>> 0));
             cptr.st1o(cptr.decay(bufu), 0, 0, 1);
             if (cptr.ldPtro(cgm, $glyph_map_u) && cptr.ldPtro(cptr.ldPtro(cgm, $glyph_map_u), $unicode_representation_utf8str)) {
-                void cptr.sprintf(cptr.decay(bufu), __sl181, BigInt(cptr.ldI32(cptr.ldPtro(cgm, $glyph_map_u)) >>> 0));
+                void cptr.sprintf(cptr.decay(bufu), __s_u_04lx, BigInt(cptr.ldI32(cptr.ldPtro(cgm, $glyph_map_u)) >>> 0));
                 cp = cptr.ldPtro(cptr.ldPtro(cgm, $glyph_map_u), $unicode_representation_utf8str);
                 while (cptr.ld1u(cp)) {
-                    void cptr.sprintf(cptr.decay(bufd), __sl182, cptr.ld1u(cp));
+                    void cptr.sprintf(cptr.decay(bufd), __s_sp_lt_pct_d_gt, cptr.ld1u(cp));
                     void cptr.strcat(cptr.decay(bufu), cptr.decay(bufd));
                     cp = cptr.add(cp, 1);
                 }
             }
-            cptr.stI32(any, (glyphnum + 1) | 0);
-            nh_snprintf(__sl183, 2021, cptr.decay(buf), 256n, __sl184, cptr.decay(bufa), cptr.decay(bufb), cptr.decay(bufc), cptr.decay(bufu));
+            cptr.stI32(any, (glyphnum + 1) | 0);  /* avoid 0 */
+            nh_snprintf(__s_wizcustom_callback, 2021, cptr.decay(buf), 256n, __s_s_s_s_s, cptr.decay(bufa), cptr.decay(bufb), cptr.decay(bufc), cptr.decay(bufu));
             (yield* add_menu(win, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, cptr.decay(buf), NHM.MENU_ITEMFLAGS_NONE));
         }
     }

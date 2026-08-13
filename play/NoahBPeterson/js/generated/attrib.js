@@ -9,11 +9,11 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { ismnum, max } from './nhmacrofn.js';
+import { d_at, rn2_at, rnd_at } from './nhrng.js';
 import { BBlinded, BClairvoyant, BlindedTimeout, Blindfolded_only, EBlinded, EFast, Fixed_abil, Fumbling, HBlinded, HBlnd_resist, HClairvoyant, HConfusion, HFast, HRegeneration, HStun, Half_gas_damage, Hallucination, Poison_resistance, Race_switch, Role_switch, Sick, Upolyd, Very_fast, Vomiting, Wounded_legs, wizard } from './nhprop.js';
 import { c_common_strings, disp, flags, gi, gm, gu, gy, iflags, program_state, svc, svd, svk, svm, u, uarmc, uarmf, uarmg, uarmh, ublindf, uwep } from './decl.js';
 import { You, You_feel, Your, impossible, livelog_printf, pline, pline_The } from './pline.js';
 import { body_part, uasmon_maxStr } from './polyself.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { encumber_msg } from './pickup.js';
 import { losehp, near_capacity } from './hack.js';
 import { copynchars, sgn, strncmpi, strstri } from './hacklib.js';
@@ -63,8 +63,11 @@ const $Align_adj = FLD.Align_adj, $Align_value = FLD.Align_value, $Race_attrmax 
     $permonst_mlet = FLD.permonst_mlet,
     $poison_effect_message_effect_msg = FLD.poison_effect_message_effect_msg,
     $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
-    $sinfo_in_moveloop = FLD.sinfo_in_moveloop, $u_roleplay_deaf = FLD.u_roleplay_deaf,
-    $you_abon = FLD.you_abon, $you_acurr = FLD.you_acurr, $you_aexe = FLD.you_aexe, $you_amax = FLD.you_amax,
+    $sinfo_in_moveloop = FLD.sinfo_in_moveloop, $sizeof_Align = FLD.sizeof_Align,
+    $sizeof_innate = FLD.sizeof_innate, $sizeof_objclass = FLD.sizeof_objclass,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_poison_effect_message = FLD.sizeof_poison_effect_message,
+    $sizeof_prop = FLD.sizeof_prop, $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_abon = FLD.you_abon,
+    $you_acurr = FLD.you_acurr, $you_aexe = FLD.you_aexe, $you_amax = FLD.you_amax,
     $you_atemp = FLD.you_atemp, $you_atime = FLD.you_atime, $you_mh = FLD.you_mh, $you_mhmax = FLD.you_mhmax,
     $you_moreluck = FLD.you_moreluck, $you_ualign = FLD.you_ualign, $you_ualignbase = FLD.you_ualignbase,
     $you_ublessed = FLD.you_ublessed, $you_ucreamed = FLD.you_ucreamed, $you_uhp = FLD.you_uhp,
@@ -75,475 +78,477 @@ const $Align_adj = FLD.Align_adj, $Align_value = FLD.Align_value, $Race_attrmax 
     $you_usteed = FLD.you_usteed, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("strong");
-const __sl1 = cptr.lit("smart");
-const __sl2 = cptr.lit("wise");
-const __sl3 = cptr.lit("agile");
-const __sl4 = cptr.lit("tough");
-const __sl5 = cptr.lit("charismatic");
-const __sl6 = cptr.lit("weak");
-const __sl7 = cptr.lit("stupid");
-const __sl8 = cptr.lit("foolish");
-const __sl9 = cptr.lit("clumsy");
-const __sl10 = cptr.lit("fragile");
-const __sl11 = cptr.lit("repulsive");
-const __sl12 = cptr.lit("strength");
-const __sl13 = cptr.lit("intelligence");
-const __sl14 = cptr.lit("wisdom");
-const __sl15 = cptr.lit("dexterity");
-const __sl16 = cptr.lit("constitution");
-const __sl17 = cptr.lit("charisma");
-const __sl18 = cptr.lit("");
-const __sl19 = cptr.lit("stealthy");
-const __sl20 = cptr.lit("quick");
-const __sl21 = cptr.lit("slow");
-const __sl22 = cptr.lit("sensitive");
-const __sl23 = cptr.lit("healthy");
-const __sl24 = cptr.lit("perceptive");
-const __sl25 = cptr.lit("unaware");
-const __sl26 = cptr.lit("cool");
-const __sl27 = cptr.lit("warmer");
-const __sl28 = cptr.lit("warm");
-const __sl29 = cptr.lit("cooler");
-const __sl30 = cptr.lit("insulated");
-const __sl31 = cptr.lit("conductive");
-const __sl32 = cptr.lit("controlled");
-const __sl33 = cptr.lit("uncontrolled");
-const __sl34 = cptr.lit("hardy");
-const __sl35 = cptr.lit("awake");
-const __sl36 = cptr.lit("tired");
-const __sl37 = cptr.lit("cap constricts briefly, then relaxes again.");
-const __sl38 = cptr.lit("attrib.c");
-const __sl39 = cptr.lit("adjattrib");
-const __sl40 = cptr.lit("You're %s as %s as you can get.");
-const __sl41 = cptr.lit("currently");
-const __sl42 = cptr.lit("already");
-const __sl43 = cptr.lit("innate %s has %s.");
-const __sl44 = cptr.lit("improved");
-const __sl45 = cptr.lit("declined");
-const __sl46 = cptr.lit("%s%s!");
-const __sl47 = cptr.lit("very ");
-const __sl48 = cptr.lit("gainstr");
-const __sl49 = cptr.lit("losestr: %d - %d");
-const __sl50 = cptr.lit("losestr");
-const __sl51 = cptr.lit("terminal frailty");
-const __sl52 = cptr.lit("weaker");
-const __sl53 = cptr.lit("brain is on fire");
-const __sl54 = cptr.lit("judgement is impaired");
-const __sl55 = cptr.lit("muscles won't obey you");
-const __sl56 = cptr.lit("very sick");
-const __sl57 = cptr.lit("break out in hives");
-const __sl58 = cptr.lit("innately weaker");
-const __sl59 = cptr.lit("sick inside");
-const __sl60 = cptr.lit("%s%c");
-const __sl61 = cptr.lit("blast");
-const __sl62 = cptr.lit("poison");
-const __sl63 = cptr.lit("%s%s %s poisoned!");
-const __sl64 = cptr.lit("The ");
-const __sl65 = cptr.lit("were");
-const __sl66 = cptr.lit("was");
-const __sl67 = cptr.lit("poison doesn't seem to affect you.");
-const __sl68 = cptr.lit("the ");
-const __sl69 = cptr.lit("an ");
-const __sl70 = cptr.lit("a ");
-const __sl71 = cptr.lit("poisoned");
-const __sl72 = cptr.lit("poison was deadly...");
-const __sl73 = cptr.lit("gas cloud");
-const __sl74 = cptr.lit("Exercise:");
-const __sl75 = cptr.lit("exercise");
-const __sl76 = cptr.lit("%s, %s AEXE = %d");
-const __sl77 = cptr.lit("Str");
-const __sl78 = cptr.lit("Wis");
-const __sl79 = cptr.lit("Dex");
-const __sl80 = cptr.lit("Con");
-const __sl81 = cptr.lit("inc");
-const __sl82 = cptr.lit("dec");
-const __sl83 = cptr.lit("exerper: Hunger checks");
-const __sl84 = cptr.lit("exerper: Encumber checks");
-const __sl85 = cptr.lit("exerper: Status checks");
-const __sl86 = cptr.lit("exercising diligently");
-const __sl87 = cptr.lit("exercising properly");
-const __sl88 = cptr.lit("very observant");
-const __sl89 = cptr.lit("paying attention");
-const __sl90 = cptr.lit("working on your reflexes");
-const __sl91 = cptr.lit("working on reflexes lately");
-const __sl92 = cptr.lit("leading a healthy life-style");
-const __sl93 = cptr.lit("watching your health");
-const __sl94 = cptr.lit("exerchk: ready to test. multi = %ld.");
-const __sl95 = cptr.lit("exerchk: testing.");
-const __sl96 = cptr.lit("exerchk: testing %s (%d).");
-const __sl97 = cptr.lit("Int?");
-const __sl98 = cptr.lit("Cha?");
-const __sl99 = cptr.lit("???");
-const __sl100 = cptr.lit("exerchk");
-const __sl101 = cptr.lit("exerchk: changing %d.");
-const __sl102 = cptr.lit("exerchk: changed %d.");
-const __sl103 = cptr.lit("%s %s.");
-const __sl104 = cptr.lit("must have been");
-const __sl105 = cptr.lit("haven't been");
-const __sl106 = cptr.lit("exerchk: next check at %ld.");
-const __sl107 = cptr.lit("rnd_attr");
-const __sl108 = cptr.lit("redist_attr");
-const __sl109 = cptr.lit("vary_init_attr");
-const __sl110 = cptr.lit(" from birth");
-const __sl111 = cptr.lit(" innately");
-const __sl112 = cptr.lit(" intrinsically");
-const __sl113 = cptr.lit(" because of your experience");
-const __sl114 = cptr.lit(" due to your lycanthropy");
-const __sl115 = cptr.lit(" from your creature form");
-const __sl116 = cptr.lit("a potion or spell");
-const __sl117 = cptr.lit("worn equipment");
-const __sl118 = cptr.lit("due to goop covering your %s");
-const __sl119 = cptr.lit(" pair of ");
-const __sl120 = cptr.lit(" of strangulation");
-const __sl121 = cptr.lit("%s!");
-const __sl122 = cptr.lit("less %s!");
-const __sl123 = cptr.lit("newhp");
-const __sl124 = cptr.lit("acurr");
-const __sl125 = cptr.lit("chridx >= 0 && chridx < A_MAX");
-const __sl126 = cptr.lit("permanently converted to %s");
-const __sl127 = cptr.lit("have a %ssense of a new direction.");
-const __sl128 = cptr.lit("sudden ");
-const __sl129 = cptr.lit("mind oscillates %s.");
-const __sl130 = cptr.lit("wildly");
-const __sl131 = cptr.lit("briefly");
-const __sl132 = cptr.lit("uchangealign");
-const __sl133 = cptr.lit("used a helm to turn %s");
-const __sl134 = cptr.lit("mind is %s.");
-const __sl135 = cptr.lit("much of a muchness");
-const __sl136 = cptr.lit("back in sync with your body");
+const __s_strong = cptr.lit("strong");
+const __s_smart = cptr.lit("smart");
+const __s_wise = cptr.lit("wise");
+const __s_agile = cptr.lit("agile");
+const __s_tough = cptr.lit("tough");
+const __s_charismatic = cptr.lit("charismatic");
+const __s_weak = cptr.lit("weak");
+const __s_stupid = cptr.lit("stupid");
+const __s_foolish = cptr.lit("foolish");
+const __s_clumsy = cptr.lit("clumsy");
+const __s_fragile = cptr.lit("fragile");
+const __s_repulsive = cptr.lit("repulsive");
+const __s_strength = cptr.lit("strength");
+const __s_intelligence = cptr.lit("intelligence");
+const __s_wisdom = cptr.lit("wisdom");
+const __s_dexterity = cptr.lit("dexterity");
+const __s_constitution = cptr.lit("constitution");
+const __s_charisma = cptr.lit("charisma");
+const __s_empty = cptr.lit("");
+const __s_stealthy = cptr.lit("stealthy");
+const __s_quick = cptr.lit("quick");
+const __s_slow = cptr.lit("slow");
+const __s_sensitive = cptr.lit("sensitive");
+const __s_healthy = cptr.lit("healthy");
+const __s_perceptive = cptr.lit("perceptive");
+const __s_unaware = cptr.lit("unaware");
+const __s_cool = cptr.lit("cool");
+const __s_warmer = cptr.lit("warmer");
+const __s_warm = cptr.lit("warm");
+const __s_cooler = cptr.lit("cooler");
+const __s_insulated = cptr.lit("insulated");
+const __s_conductive = cptr.lit("conductive");
+const __s_controlled = cptr.lit("controlled");
+const __s_uncontrolled = cptr.lit("uncontrolled");
+const __s_hardy = cptr.lit("hardy");
+const __s_awake = cptr.lit("awake");
+const __s_tired = cptr.lit("tired");
+const __s_cap_constricts_briefly_then_relaxes = cptr.lit("cap constricts briefly, then relaxes again.");
+const __s_attrib_c = cptr.lit("attrib.c");
+const __s_adjattrib = cptr.lit("adjattrib");
+const __s_you_re_s_as_s_as_you_can_get = cptr.lit("You're %s as %s as you can get.");
+const __s_currently = cptr.lit("currently");
+const __s_already = cptr.lit("already");
+const __s_innate_s_has_s = cptr.lit("innate %s has %s.");
+const __s_improved = cptr.lit("improved");
+const __s_declined = cptr.lit("declined");
+const __s_s_s = cptr.lit("%s%s!");
+const __s_very = cptr.lit("very ");
+const __s_gainstr = cptr.lit("gainstr");
+const __s_losestr_d_d = cptr.lit("losestr: %d - %d");
+const __s_losestr = cptr.lit("losestr");
+const __s_terminal_frailty = cptr.lit("terminal frailty");
+const __s_weaker = cptr.lit("weaker");
+const __s_brain_is_on_fire = cptr.lit("brain is on fire");
+const __s_judgement_is_impaired = cptr.lit("judgement is impaired");
+const __s_muscles_won_t_obey_you = cptr.lit("muscles won't obey you");
+const __s_very_sick = cptr.lit("very sick");
+const __s_break_out_in_hives = cptr.lit("break out in hives");
+const __s_innately_weaker = cptr.lit("innately weaker");
+const __s_sick_inside = cptr.lit("sick inside");
+const __s_s_c = cptr.lit("%s%c");
+const __s_blast = cptr.lit("blast");
+const __s_poison = cptr.lit("poison");
+const __s_s_s_s_poisoned = cptr.lit("%s%s %s poisoned!");
+const __s_the = cptr.lit("The ");
+const __s_were = cptr.lit("were");
+const __s_was = cptr.lit("was");
+const __s_poison_doesn_t_seem_to_affect_you = cptr.lit("poison doesn't seem to affect you.");
+const __s_the__2 = cptr.lit("the ");
+const __s_an = cptr.lit("an ");
+const __s_a_sp = cptr.lit("a ");
+const __s_poisoned = cptr.lit("poisoned");
+const __s_poison_was_deadly = cptr.lit("poison was deadly...");
+const __s_gas_cloud = cptr.lit("gas cloud");
+const __s_exercise = cptr.lit("Exercise:");
+const __s_exercise__2 = cptr.lit("exercise");
+const __s_s_s_aexe_d = cptr.lit("%s, %s AEXE = %d");
+const __s_str = cptr.lit("Str");
+const __s_wis = cptr.lit("Wis");
+const __s_dex = cptr.lit("Dex");
+const __s_con = cptr.lit("Con");
+const __s_inc = cptr.lit("inc");
+const __s_dec = cptr.lit("dec");
+const __s_exerper_hunger_checks = cptr.lit("exerper: Hunger checks");
+const __s_exerper_encumber_checks = cptr.lit("exerper: Encumber checks");
+const __s_exerper_status_checks = cptr.lit("exerper: Status checks");
+const __s_exercising_diligently = cptr.lit("exercising diligently");
+const __s_exercising_properly = cptr.lit("exercising properly");
+const __s_very_observant = cptr.lit("very observant");
+const __s_paying_attention = cptr.lit("paying attention");
+const __s_working_on_your_reflexes = cptr.lit("working on your reflexes");
+const __s_working_on_reflexes_lately = cptr.lit("working on reflexes lately");
+const __s_leading_a_healthy_life_style = cptr.lit("leading a healthy life-style");
+const __s_watching_your_health = cptr.lit("watching your health");
+const __s_exerchk_ready_to_test_multi_ld = cptr.lit("exerchk: ready to test. multi = %ld.");
+const __s_exerchk_testing = cptr.lit("exerchk: testing.");
+const __s_exerchk_testing_s_d = cptr.lit("exerchk: testing %s (%d).");
+const __s_int = cptr.lit("Int?");
+const __s_cha = cptr.lit("Cha?");
+const __s_query3 = cptr.lit("???");
+const __s_exerchk = cptr.lit("exerchk");
+const __s_exerchk_changing_d = cptr.lit("exerchk: changing %d.");
+const __s_exerchk_changed_d = cptr.lit("exerchk: changed %d.");
+const __s_s_s__2 = cptr.lit("%s %s.");
+const __s_must_have_been = cptr.lit("must have been");
+const __s_haven_t_been = cptr.lit("haven't been");
+const __s_exerchk_next_check_at_ld = cptr.lit("exerchk: next check at %ld.");
+const __s_rnd_attr = cptr.lit("rnd_attr");
+const __s_redist_attr = cptr.lit("redist_attr");
+const __s_vary_init_attr = cptr.lit("vary_init_attr");
+const __s_from_birth = cptr.lit(" from birth");
+const __s_innately = cptr.lit(" innately");
+const __s_intrinsically = cptr.lit(" intrinsically");
+const __s_because_of_your_experience = cptr.lit(" because of your experience");
+const __s_due_to_your_lycanthropy = cptr.lit(" due to your lycanthropy");
+const __s_from_your_creature_form = cptr.lit(" from your creature form");
+const __s_a_potion_or_spell = cptr.lit("a potion or spell");
+const __s_worn_equipment = cptr.lit("worn equipment");
+const __s_due_to_goop_covering_your_s = cptr.lit("due to goop covering your %s");
+const __s_pair_of = cptr.lit(" pair of ");
+const __s_of_strangulation = cptr.lit(" of strangulation");
+const __s_pct_s_bang = cptr.lit("%s!");
+const __s_less_s = cptr.lit("less %s!");
+const __s_newhp = cptr.lit("newhp");
+const __s_acurr = cptr.lit("acurr");
+const __s_chridx_0_chridx_a_max = cptr.lit("chridx >= 0 && chridx < A_MAX");
+const __s_permanently_converted_to_s = cptr.lit("permanently converted to %s");
+const __s_have_a_ssense_of_a_new_direction = cptr.lit("have a %ssense of a new direction.");
+const __s_sudden = cptr.lit("sudden ");
+const __s_mind_oscillates_s = cptr.lit("mind oscillates %s.");
+const __s_wildly = cptr.lit("wildly");
+const __s_briefly = cptr.lit("briefly");
+const __s_uchangealign = cptr.lit("uchangealign");
+const __s_used_a_helm_to_turn_s = cptr.lit("used a helm to turn %s");
+const __s_mind_is_s = cptr.lit("mind is %s.");
+const __s_much_of_a_muchness = cptr.lit("much of a muchness");
+const __s_back_in_sync_with_your_body = cptr.lit("back in sync with your body");
 
+/* part of the output on gain or loss of attribute */
 /** C ref: attrib.c:11 — char *[6] */
 const plusattr = cptr.alloc(6 * 8);
-cptr.stPtro(plusattr, 0, __sl0);
-cptr.stPtro(plusattr, 8, __sl1);
-cptr.stPtro(plusattr, 16, __sl2);
-cptr.stPtro(plusattr, 24, __sl3);
-cptr.stPtro(plusattr, 32, __sl4);
-cptr.stPtro(plusattr, 40, __sl5);
+cptr.stPtro(plusattr, 0, __s_strong);
+cptr.stPtro(plusattr, 8, __s_smart);
+cptr.stPtro(plusattr, 16, __s_wise);
+cptr.stPtro(plusattr, 24, __s_agile);
+cptr.stPtro(plusattr, 32, __s_tough);
+cptr.stPtro(plusattr, 40, __s_charismatic);
 
 /** C ref: attrib.c:13 — char *[6] */
 const minusattr = cptr.alloc(6 * 8);
-cptr.stPtro(minusattr, 0, __sl6);
-cptr.stPtro(minusattr, 8, __sl7);
-cptr.stPtro(minusattr, 16, __sl8);
-cptr.stPtro(minusattr, 24, __sl9);
-cptr.stPtro(minusattr, 32, __sl10);
-cptr.stPtro(minusattr, 40, __sl11);
+cptr.stPtro(minusattr, 0, __s_weak);
+cptr.stPtro(minusattr, 8, __s_stupid);
+cptr.stPtro(minusattr, 16, __s_foolish);
+cptr.stPtro(minusattr, 24, __s_clumsy);
+cptr.stPtro(minusattr, 32, __s_fragile);
+cptr.stPtro(minusattr, 40, __s_repulsive);
 
 /** C ref: attrib.c:20 — char *[6] */
 export const attrname = cptr.alloc(6 * 8);
-cptr.stPtro(attrname, 0, __sl12);
-cptr.stPtro(attrname, 8, __sl13);
-cptr.stPtro(attrname, 16, __sl14);
-cptr.stPtro(attrname, 24, __sl15);
-cptr.stPtro(attrname, 32, __sl16);
-cptr.stPtro(attrname, 40, __sl17);
+cptr.stPtro(attrname, 0, __s_strength);
+cptr.stPtro(attrname, 8, __s_intelligence);
+cptr.stPtro(attrname, 16, __s_wisdom);
+cptr.stPtro(attrname, 24, __s_dexterity);
+cptr.stPtro(attrname, 32, __s_constitution);
+cptr.stPtro(attrname, 40, __s_charisma);
 
 /** C ref: attrib.c:23 — struct innate { ulevel, ability, gainstr, losestr } (memory model v0.5) */
 
 /** C ref: attrib.c:27 — struct innate[4] */
-const arc_abil = cptr.alloc(4 * 32);
+const arc_abil = cptr.alloc(4 * $sizeof_innate);
 cptr.st1o(arc_abil, 0, 1);
-cptr.stPtro(arc_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, 24), $prop_intrinsic));
-cptr.stPtro(arc_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(arc_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(arc_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(arc_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(arc_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(arc_abil, 32, 5);
-cptr.stPtro(arc_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(arc_abil, 32 + $innate_gainstr, __sl19);
-cptr.stPtro(arc_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(arc_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(arc_abil, 32 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(arc_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(arc_abil, 64, 10);
-cptr.stPtro(arc_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(arc_abil, 64 + $innate_gainstr, __sl20);
-cptr.stPtro(arc_abil, 64 + $innate_losestr, __sl21);
+cptr.stPtro(arc_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(arc_abil, 64 + $innate_gainstr, __s_quick);
+cptr.stPtro(arc_abil, 64 + $innate_losestr, __s_slow);
 cptr.st1o(arc_abil, 96, 0);
 cptr.stPtro(arc_abil, 96 + $innate_ability, null);
 cptr.stPtro(arc_abil, 96 + $innate_gainstr, null);
 cptr.stPtro(arc_abil, 96 + $innate_losestr, null);
 
 /** C ref: attrib.c:32 — struct innate[4] */
-const bar_abil = cptr.alloc(4 * 32);
+const bar_abil = cptr.alloc(4 * $sizeof_innate);
 cptr.st1o(bar_abil, 0, 1);
-cptr.stPtro(bar_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, 24), $prop_intrinsic));
-cptr.stPtro(bar_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(bar_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(bar_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(bar_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(bar_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(bar_abil, 32, 7);
-cptr.stPtro(bar_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(bar_abil, 32 + $innate_gainstr, __sl20);
-cptr.stPtro(bar_abil, 32 + $innate_losestr, __sl21);
+cptr.stPtro(bar_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(bar_abil, 32 + $innate_gainstr, __s_quick);
+cptr.stPtro(bar_abil, 32 + $innate_losestr, __s_slow);
 cptr.st1o(bar_abil, 64, 15);
-cptr.stPtro(bar_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(bar_abil, 64 + $innate_gainstr, __sl19);
-cptr.stPtro(bar_abil, 64 + $innate_losestr, __sl18);
+cptr.stPtro(bar_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(bar_abil, 64 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(bar_abil, 64 + $innate_losestr, __s_empty);
 cptr.st1o(bar_abil, 96, 0);
 cptr.stPtro(bar_abil, 96 + $innate_ability, null);
 cptr.stPtro(bar_abil, 96 + $innate_gainstr, null);
 cptr.stPtro(bar_abil, 96 + $innate_losestr, null);
 
 /** C ref: attrib.c:37 — struct innate[3] */
-const cav_abil = cptr.alloc(3 * 32);
+const cav_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(cav_abil, 0, 7);
-cptr.stPtro(cav_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(cav_abil, 0 + $innate_gainstr, __sl20);
-cptr.stPtro(cav_abil, 0 + $innate_losestr, __sl21);
+cptr.stPtro(cav_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(cav_abil, 0 + $innate_gainstr, __s_quick);
+cptr.stPtro(cav_abil, 0 + $innate_losestr, __s_slow);
 cptr.st1o(cav_abil, 32, 15);
-cptr.stPtro(cav_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic));
-cptr.stPtro(cav_abil, 32 + $innate_gainstr, __sl22);
-cptr.stPtro(cav_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(cav_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(cav_abil, 32 + $innate_gainstr, __s_sensitive);
+cptr.stPtro(cav_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(cav_abil, 64, 0);
 cptr.stPtro(cav_abil, 64 + $innate_ability, null);
 cptr.stPtro(cav_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(cav_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:41 — struct innate[3] */
-const hea_abil = cptr.alloc(3 * 32);
+const hea_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(hea_abil, 0, 1);
-cptr.stPtro(hea_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, 24), $prop_intrinsic));
-cptr.stPtro(hea_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(hea_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(hea_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(hea_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(hea_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(hea_abil, 32, 15);
-cptr.stPtro(hea_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic));
-cptr.stPtro(hea_abil, 32 + $innate_gainstr, __sl22);
-cptr.stPtro(hea_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(hea_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(hea_abil, 32 + $innate_gainstr, __s_sensitive);
+cptr.stPtro(hea_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(hea_abil, 64, 0);
 cptr.stPtro(hea_abil, 64 + $innate_ability, null);
 cptr.stPtro(hea_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(hea_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:45 — struct innate[2] */
-const kni_abil = cptr.alloc(2 * 32);
+const kni_abil = cptr.alloc(2 * $sizeof_innate);
 cptr.st1o(kni_abil, 0, 7);
-cptr.stPtro(kni_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(kni_abil, 0 + $innate_gainstr, __sl20);
-cptr.stPtro(kni_abil, 0 + $innate_losestr, __sl21);
+cptr.stPtro(kni_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(kni_abil, 0 + $innate_gainstr, __s_quick);
+cptr.stPtro(kni_abil, 0 + $innate_losestr, __s_slow);
 cptr.st1o(kni_abil, 32, 0);
 cptr.stPtro(kni_abil, 32 + $innate_ability, null);
 cptr.stPtro(kni_abil, 32 + $innate_gainstr, null);
 cptr.stPtro(kni_abil, 32 + $innate_losestr, null);
 
 /** C ref: attrib.c:47 — struct innate[12] */
-const mon_abil = cptr.alloc(12 * 32);
+const mon_abil = cptr.alloc(12 * $sizeof_innate);
 cptr.st1o(mon_abil, 0, 1);
-cptr.stPtro(mon_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(mon_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(mon_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 32, 1);
-cptr.stPtro(mon_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEP_RES, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 32 + $innate_gainstr, __sl18);
-cptr.stPtro(mon_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEP_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 32 + $innate_gainstr, __s_empty);
+cptr.stPtro(mon_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 64, 1);
-cptr.stPtro(mon_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 64 + $innate_gainstr, __sl18);
-cptr.stPtro(mon_abil, 64 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 64 + $innate_gainstr, __s_empty);
+cptr.stPtro(mon_abil, 64 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 96, 3);
-cptr.stPtro(mon_abil, 96 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 96 + $innate_gainstr, __sl23);
-cptr.stPtro(mon_abil, 96 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 96 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 96 + $innate_gainstr, __s_healthy);
+cptr.stPtro(mon_abil, 96 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 128, 5);
-cptr.stPtro(mon_abil, 128 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 128 + $innate_gainstr, __sl19);
-cptr.stPtro(mon_abil, 128 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 128 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 128 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(mon_abil, 128 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 160, 7);
-cptr.stPtro(mon_abil, 160 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 160 + $innate_gainstr, __sl22);
-cptr.stPtro(mon_abil, 160 + $innate_losestr, __sl18);
+cptr.stPtro(mon_abil, 160 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 160 + $innate_gainstr, __s_sensitive);
+cptr.stPtro(mon_abil, 160 + $innate_losestr, __s_empty);
 cptr.st1o(mon_abil, 192, 9);
-cptr.stPtro(mon_abil, 192 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 192 + $innate_gainstr, __sl24);
-cptr.stPtro(mon_abil, 192 + $innate_losestr, __sl25);
+cptr.stPtro(mon_abil, 192 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 192 + $innate_gainstr, __s_perceptive);
+cptr.stPtro(mon_abil, 192 + $innate_losestr, __s_unaware);
 cptr.st1o(mon_abil, 224, 11);
-cptr.stPtro(mon_abil, 224 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FIRE_RES, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 224 + $innate_gainstr, __sl26);
-cptr.stPtro(mon_abil, 224 + $innate_losestr, __sl27);
+cptr.stPtro(mon_abil, 224 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FIRE_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 224 + $innate_gainstr, __s_cool);
+cptr.stPtro(mon_abil, 224 + $innate_losestr, __s_warmer);
 cptr.st1o(mon_abil, 256, 13);
-cptr.stPtro(mon_abil, 256 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.COLD_RES, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 256 + $innate_gainstr, __sl28);
-cptr.stPtro(mon_abil, 256 + $innate_losestr, __sl29);
+cptr.stPtro(mon_abil, 256 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.COLD_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 256 + $innate_gainstr, __s_warm);
+cptr.stPtro(mon_abil, 256 + $innate_losestr, __s_cooler);
 cptr.st1o(mon_abil, 288, 15);
-cptr.stPtro(mon_abil, 288 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SHOCK_RES, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 288 + $innate_gainstr, __sl30);
-cptr.stPtro(mon_abil, 288 + $innate_losestr, __sl31);
+cptr.stPtro(mon_abil, 288 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SHOCK_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 288 + $innate_gainstr, __s_insulated);
+cptr.stPtro(mon_abil, 288 + $innate_losestr, __s_conductive);
 cptr.st1o(mon_abil, 320, 17);
-cptr.stPtro(mon_abil, 320 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.TELEPORT_CONTROL, 24), $prop_intrinsic));
-cptr.stPtro(mon_abil, 320 + $innate_gainstr, __sl32);
-cptr.stPtro(mon_abil, 320 + $innate_losestr, __sl33);
+cptr.stPtro(mon_abil, 320 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.TELEPORT_CONTROL, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(mon_abil, 320 + $innate_gainstr, __s_controlled);
+cptr.stPtro(mon_abil, 320 + $innate_losestr, __s_uncontrolled);
 cptr.st1o(mon_abil, 352, 0);
 cptr.stPtro(mon_abil, 352 + $innate_ability, null);
 cptr.stPtro(mon_abil, 352 + $innate_gainstr, null);
 cptr.stPtro(mon_abil, 352 + $innate_losestr, null);
 
 /** C ref: attrib.c:60 — struct innate[3] */
-const pri_abil = cptr.alloc(3 * 32);
+const pri_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(pri_abil, 0, 15);
-cptr.stPtro(pri_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic));
-cptr.stPtro(pri_abil, 0 + $innate_gainstr, __sl22);
-cptr.stPtro(pri_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(pri_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(pri_abil, 0 + $innate_gainstr, __s_sensitive);
+cptr.stPtro(pri_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(pri_abil, 32, 20);
-cptr.stPtro(pri_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FIRE_RES, 24), $prop_intrinsic));
-cptr.stPtro(pri_abil, 32 + $innate_gainstr, __sl26);
-cptr.stPtro(pri_abil, 32 + $innate_losestr, __sl27);
+cptr.stPtro(pri_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FIRE_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(pri_abil, 32 + $innate_gainstr, __s_cool);
+cptr.stPtro(pri_abil, 32 + $innate_losestr, __s_warmer);
 cptr.st1o(pri_abil, 64, 0);
 cptr.stPtro(pri_abil, 64 + $innate_ability, null);
 cptr.stPtro(pri_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(pri_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:64 — struct innate[4] */
-const ran_abil = cptr.alloc(4 * 32);
+const ran_abil = cptr.alloc(4 * $sizeof_innate);
 cptr.st1o(ran_abil, 0, 1);
-cptr.stPtro(ran_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, 24), $prop_intrinsic));
-cptr.stPtro(ran_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(ran_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(ran_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(ran_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(ran_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(ran_abil, 32, 7);
-cptr.stPtro(ran_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(ran_abil, 32 + $innate_gainstr, __sl19);
-cptr.stPtro(ran_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(ran_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(ran_abil, 32 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(ran_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(ran_abil, 64, 15);
-cptr.stPtro(ran_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, 24), $prop_intrinsic));
-cptr.stPtro(ran_abil, 64 + $innate_gainstr, __sl18);
-cptr.stPtro(ran_abil, 64 + $innate_losestr, __sl18);
+cptr.stPtro(ran_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(ran_abil, 64 + $innate_gainstr, __s_empty);
+cptr.stPtro(ran_abil, 64 + $innate_losestr, __s_empty);
 cptr.st1o(ran_abil, 96, 0);
 cptr.stPtro(ran_abil, 96 + $innate_ability, null);
 cptr.stPtro(ran_abil, 96 + $innate_gainstr, null);
 cptr.stPtro(ran_abil, 96 + $innate_losestr, null);
 
 /** C ref: attrib.c:69 — struct innate[3] */
-const rog_abil = cptr.alloc(3 * 32);
+const rog_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(rog_abil, 0, 1);
-cptr.stPtro(rog_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(rog_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(rog_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(rog_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(rog_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(rog_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(rog_abil, 32, 10);
-cptr.stPtro(rog_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, 24), $prop_intrinsic));
-cptr.stPtro(rog_abil, 32 + $innate_gainstr, __sl24);
-cptr.stPtro(rog_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(rog_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(rog_abil, 32 + $innate_gainstr, __s_perceptive);
+cptr.stPtro(rog_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(rog_abil, 64, 0);
 cptr.stPtro(rog_abil, 64 + $innate_ability, null);
 cptr.stPtro(rog_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(rog_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:73 — struct innate[3] */
-const sam_abil = cptr.alloc(3 * 32);
+const sam_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(sam_abil, 0, 1);
-cptr.stPtro(sam_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(sam_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(sam_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(sam_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(sam_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(sam_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(sam_abil, 32, 15);
-cptr.stPtro(sam_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(sam_abil, 32 + $innate_gainstr, __sl19);
-cptr.stPtro(sam_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(sam_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(sam_abil, 32 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(sam_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(sam_abil, 64, 0);
 cptr.stPtro(sam_abil, 64 + $innate_ability, null);
 cptr.stPtro(sam_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(sam_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:77 — struct innate[3] */
-const tou_abil = cptr.alloc(3 * 32);
+const tou_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(tou_abil, 0, 10);
-cptr.stPtro(tou_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, 24), $prop_intrinsic));
-cptr.stPtro(tou_abil, 0 + $innate_gainstr, __sl24);
-cptr.stPtro(tou_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(tou_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEARCHING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(tou_abil, 0 + $innate_gainstr, __s_perceptive);
+cptr.stPtro(tou_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(tou_abil, 32, 20);
-cptr.stPtro(tou_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, 24), $prop_intrinsic));
-cptr.stPtro(tou_abil, 32 + $innate_gainstr, __sl34);
-cptr.stPtro(tou_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(tou_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(tou_abil, 32 + $innate_gainstr, __s_hardy);
+cptr.stPtro(tou_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(tou_abil, 64, 0);
 cptr.stPtro(tou_abil, 64 + $innate_ability, null);
 cptr.stPtro(tou_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(tou_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:81 — struct innate[4] */
-const val_abil = cptr.alloc(4 * 32);
+const val_abil = cptr.alloc(4 * $sizeof_innate);
 cptr.st1o(val_abil, 0, 1);
-cptr.stPtro(val_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.COLD_RES, 24), $prop_intrinsic));
-cptr.stPtro(val_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(val_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(val_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.COLD_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(val_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(val_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(val_abil, 32, 3);
-cptr.stPtro(val_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, 24), $prop_intrinsic));
-cptr.stPtro(val_abil, 32 + $innate_gainstr, __sl19);
-cptr.stPtro(val_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(val_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STEALTH, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(val_abil, 32 + $innate_gainstr, __s_stealthy);
+cptr.stPtro(val_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(val_abil, 64, 7);
-cptr.stPtro(val_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, 24), $prop_intrinsic));
-cptr.stPtro(val_abil, 64 + $innate_gainstr, __sl20);
-cptr.stPtro(val_abil, 64 + $innate_losestr, __sl21);
+cptr.stPtro(val_abil, 64 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FAST, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(val_abil, 64 + $innate_gainstr, __s_quick);
+cptr.stPtro(val_abil, 64 + $innate_losestr, __s_slow);
 cptr.st1o(val_abil, 96, 0);
 cptr.stPtro(val_abil, 96 + $innate_ability, null);
 cptr.stPtro(val_abil, 96 + $innate_gainstr, null);
 cptr.stPtro(val_abil, 96 + $innate_losestr, null);
 
 /** C ref: attrib.c:86 — struct innate[3] */
-const wiz_abil = cptr.alloc(3 * 32);
+const wiz_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(wiz_abil, 0, 15);
-cptr.stPtro(wiz_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic));
-cptr.stPtro(wiz_abil, 0 + $innate_gainstr, __sl22);
-cptr.stPtro(wiz_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(wiz_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(wiz_abil, 0 + $innate_gainstr, __s_sensitive);
+cptr.stPtro(wiz_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(wiz_abil, 32, 17);
-cptr.stPtro(wiz_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.TELEPORT_CONTROL, 24), $prop_intrinsic));
-cptr.stPtro(wiz_abil, 32 + $innate_gainstr, __sl32);
-cptr.stPtro(wiz_abil, 32 + $innate_losestr, __sl33);
+cptr.stPtro(wiz_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.TELEPORT_CONTROL, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(wiz_abil, 32 + $innate_gainstr, __s_controlled);
+cptr.stPtro(wiz_abil, 32 + $innate_losestr, __s_uncontrolled);
 cptr.st1o(wiz_abil, 64, 0);
 cptr.stPtro(wiz_abil, 64 + $innate_ability, null);
 cptr.stPtro(wiz_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(wiz_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:91 — struct innate[2] */
-const dwa_abil = cptr.alloc(2 * 32);
+const dwa_abil = cptr.alloc(2 * $sizeof_innate);
 cptr.st1o(dwa_abil, 0, 1);
-cptr.stPtro(dwa_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, 24), $prop_intrinsic));
-cptr.stPtro(dwa_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(dwa_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(dwa_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(dwa_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(dwa_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(dwa_abil, 32, 0);
 cptr.stPtro(dwa_abil, 32 + $innate_ability, null);
 cptr.stPtro(dwa_abil, 32 + $innate_gainstr, null);
 cptr.stPtro(dwa_abil, 32 + $innate_losestr, null);
 
 /** C ref: attrib.c:94 — struct innate[3] */
-const elf_abil = cptr.alloc(3 * 32);
+const elf_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(elf_abil, 0, 1);
-cptr.stPtro(elf_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, 24), $prop_intrinsic));
-cptr.stPtro(elf_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(elf_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(elf_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(elf_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(elf_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(elf_abil, 32, 4);
-cptr.stPtro(elf_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEP_RES, 24), $prop_intrinsic));
-cptr.stPtro(elf_abil, 32 + $innate_gainstr, __sl35);
-cptr.stPtro(elf_abil, 32 + $innate_losestr, __sl36);
+cptr.stPtro(elf_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEP_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(elf_abil, 32 + $innate_gainstr, __s_awake);
+cptr.stPtro(elf_abil, 32 + $innate_losestr, __s_tired);
 cptr.st1o(elf_abil, 64, 0);
 cptr.stPtro(elf_abil, 64 + $innate_ability, null);
 cptr.stPtro(elf_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(elf_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:98 — struct innate[2] */
-const gno_abil = cptr.alloc(2 * 32);
+const gno_abil = cptr.alloc(2 * $sizeof_innate);
 cptr.st1o(gno_abil, 0, 1);
-cptr.stPtro(gno_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, 24), $prop_intrinsic));
-cptr.stPtro(gno_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(gno_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(gno_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(gno_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(gno_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(gno_abil, 32, 0);
 cptr.stPtro(gno_abil, 32 + $innate_ability, null);
 cptr.stPtro(gno_abil, 32 + $innate_gainstr, null);
 cptr.stPtro(gno_abil, 32 + $innate_losestr, null);
 
 /** C ref: attrib.c:101 — struct innate[3] */
-const orc_abil = cptr.alloc(3 * 32);
+const orc_abil = cptr.alloc(3 * $sizeof_innate);
 cptr.st1o(orc_abil, 0, 1);
-cptr.stPtro(orc_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, 24), $prop_intrinsic));
-cptr.stPtro(orc_abil, 0 + $innate_gainstr, __sl18);
-cptr.stPtro(orc_abil, 0 + $innate_losestr, __sl18);
+cptr.stPtro(orc_abil, 0 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.INFRAVISION, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(orc_abil, 0 + $innate_gainstr, __s_empty);
+cptr.stPtro(orc_abil, 0 + $innate_losestr, __s_empty);
 cptr.st1o(orc_abil, 32, 1);
-cptr.stPtro(orc_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, 24), $prop_intrinsic));
-cptr.stPtro(orc_abil, 32 + $innate_gainstr, __sl18);
-cptr.stPtro(orc_abil, 32 + $innate_losestr, __sl18);
+cptr.stPtro(orc_abil, 32 + $innate_ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.POISON_RES, $sizeof_prop), $prop_intrinsic));
+cptr.stPtro(orc_abil, 32 + $innate_gainstr, __s_empty);
+cptr.stPtro(orc_abil, 32 + $innate_losestr, __s_empty);
 cptr.st1o(orc_abil, 64, 0);
 cptr.stPtro(orc_abil, 64 + $innate_ability, null);
 cptr.stPtro(orc_abil, 64 + $innate_gainstr, null);
 cptr.stPtro(orc_abil, 64 + $innate_losestr, null);
 
 /** C ref: attrib.c:105 — struct innate[1] */
-const hum_abil = cptr.alloc(1 * 32);
+const hum_abil = cptr.alloc(1 * $sizeof_innate);
 cptr.st1o(hum_abil, 0, 0);
 cptr.stPtro(hum_abil, 0 + $innate_ability, null);
 cptr.stPtro(hum_abil, 0 + $innate_gainstr, null);
 cptr.stPtro(hum_abil, 0 + $innate_losestr, null);
 
+/* adjust an attribute; return TRUE if change is made, FALSE otherwise */
 /** C ref: attrib.c:117 — @param {CInt} ndx @param {CInt} incr @param {CInt} msgflg @returns {CInt} */
 export function adjattrib(ndx, incr, msgflg) {
     let old_acurr;
@@ -552,17 +557,20 @@ export function adjattrib(ndx, incr, msgflg) {
     let decr;
     let abonflg;
     let attrstr;
+
     if (Fixed_abil() || !incr)
         return 0;
+
     if ((ndx == NHC.A_INT || ndx == NHC.A_WIS) && uarmh.v && cptr.ldI16o(uarmh.v, $obj_otyp) == NHC.DUNCE_CAP) {
         if (msgflg == 0)
-            Your(__sl37);
+            Your(__s_cap_constricts_briefly_then_relaxes);
         return 0;
     }
+
     old_acurr = (acurr(ndx));
     old_abase = (cptr.ld1so2(u, ndx, 1, $you_acurr));
     old_amax = (cptr.ld1so2(u, ndx, 1, $you_amax));
-    cptr.st1o2(u, ndx, 1, $you_acurr, cptr.ld1so2(u, ndx, 1, $you_acurr) + incr);
+    cptr.st1o2(u, ndx, 1, $you_acurr, cptr.ld1so2(u, ndx, 1, $you_acurr) + incr);  /* when incr is negative, this reduces ABASE() */
     if (incr > 0) {
         if ((cptr.ld1so2(u, ndx, 1, $you_acurr)) > (cptr.ld1so2(u, ndx, 1, $you_amax))) {
             cptr.st1o2(u, ndx, 1, $you_amax, (cptr.ld1so2(u, ndx, 1, $you_acurr)));
@@ -573,7 +581,24 @@ export function adjattrib(ndx, incr, msgflg) {
         abonflg = schar(((cptr.ld1so2(u, ndx, 1, $you_abon)) < 0));
     } else {
         if ((cptr.ld1so2(u, ndx, 1, $you_acurr)) < (cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin))) {
-            decr = (rng_log_enabled() ? (rng_log_set_caller(__sl38, 166, __sl39), rn2(((((cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin)) - (cptr.ld1so2(u, ndx, 1, $you_acurr))) | 0) + 1) | 0)) : rn2(((((cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin)) - (cptr.ld1so2(u, ndx, 1, $you_acurr))) | 0) + 1) | 0));
+            /*
+             * If base value has dropped so low that it is trying to be
+             * taken below the minimum, reduce max value (peak reached)
+             * instead.  That means that restore ability and repeated
+             * applications of unicorn horn will not be able to recover
+             * all the lost value.  As of 3.6.2, we only take away
+             * some (average half, possibly zero) of the excess from max
+             * instead of all of it, but without intervening recovery, it
+             * can still eventually drop to the minimum allowed.  After
+             * that, it can't be recovered, only improved with new gains.
+             *
+             * This used to assign a new negative value to incr and then
+             * add it, but that could affect messages below, possibly
+             * making a large decrease be described as a small one.
+             *
+             * decr = rn2(-(ABASE - ATTRMIN) + 1);
+             */
+            decr = rn2_at(__s_attrib_c, 166, __s_adjattrib, ((((cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin)) - (cptr.ld1so2(u, ndx, 1, $you_acurr))) | 0) + 1) | 0);
             cptr.st1o2(u, ndx, 1, $you_acurr, schar((cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin))));
             cptr.st1o2(u, ndx, 1, $you_amax, cptr.ld1so2(u, ndx, 1, $you_amax) - decr);
             if ((cptr.ld1so2(u, ndx, 1, $you_amax)) < (cptr.ldI16o2(gu, ndx, 2, $instance_globals_u_urace + $Race_attrmin)))
@@ -585,37 +610,45 @@ export function adjattrib(ndx, incr, msgflg) {
     if ((acurr(ndx)) == old_acurr) {
         if (msgflg == 0 && cptr.ld1so(flags, $flag_verbose)) {
             if ((cptr.ld1so2(u, ndx, 1, $you_acurr)) == old_abase && (cptr.ld1so2(u, ndx, 1, $you_amax)) == old_amax) {
-                pline(__sl40, abonflg ? __sl41 : __sl42, attrstr);
+                pline(__s_you_re_s_as_s_as_you_can_get, abonflg ? __s_currently : __s_already, attrstr);
             } else {
-                Your(__sl43, cptr.ldPtro(attrname, ndx, 8), (incr > 0) ? __sl44 : __sl45);
+                /* current stayed the same but base value changed, or
+                   base is at minimum and reduction caused max to drop */
+                Your(__s_innate_s_has_s, cptr.ldPtro(attrname, ndx, 8), (incr > 0) ? __s_improved : __s_declined);
             }
         }
         return 0;
     }
+
+    /* Any successful change also resets abuse / exercise level */
     cptr.st1o2(u, ndx, 1, $you_aexe, 0);
+
     cptr.st1(disp, 1);
     if (msgflg <= 0)
-        You_feel(__sl46, (incr > 1 || incr < -1) ? __sl47 : __sl18, attrstr);
+        You_feel(__s_s_s, (incr > 1 || incr < -1) ? __s_very : __s_empty, attrstr);
     if (cptr.ldI32o(program_state, $sinfo_in_moveloop) && (ndx == NHC.A_STR || ndx == NHC.A_CON))
         encumber_msg();
     return 1;
 }
 
-/** C ref: attrib.c:203 — @param {CPtr} otmp @param {CInt} incr @param {CInt} givemsg */
+/* strength gain */
+/** C ref: attrib.c:203 — @param {CPtr<struct obj>} otmp @param {CInt} incr @param {CInt} givemsg */
 export function gainstr(otmp, incr, givemsg) {
     let num = incr;
+
     if (!num) {
         if ((cptr.ld1so2(u, NHC.A_STR, 1, $you_acurr)) < 18)
-            num = ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 209, __sl48), rn2(4)) : rn2(4)) ? 1 : (rng_log_enabled() ? (rng_log_set_caller(__sl38, 209, __sl48), rnd(6)) : rnd(6)));
+            num = (rn2_at(__s_attrib_c, 209, __s_gainstr, 4) ? 1 : rnd_at(__s_attrib_c, 209, __s_gainstr, 6));
         else if ((cptr.ld1so2(u, NHC.A_STR, 1, $you_acurr)) < 103)
-            num = (rng_log_enabled() ? (rng_log_set_caller(__sl38, 211, __sl48), rnd(10)) : rnd(10));
+            num = rnd_at(__s_attrib_c, 211, __s_gainstr, 10);
         else
             num = 1;
     }
     void adjattrib(NHC.A_STR, (otmp && (cptr.ldI32o(otmp, $obj_cursed) & 1) | 0) ? -num : num, givemsg ? -1 : 1);
 }
 
-/** C ref: attrib.c:221 — @param {CInt} num @param {CPtr} knam @param {CInt} k_format */
+/* strength loss, may kill you; cause may be poison or monster like 'a' */
+/** C ref: attrib.c:221 — @param {CInt} num @param {CPtr<char>} knam @param {CInt} k_format */
 export function losestr(num, knam, k_format) {
     let uhpmin = minuhpmax(1);
     let olduhpmax = cptr.ldI32o(u, $you_uhpmax);
@@ -623,37 +656,46 @@ export function losestr(num, knam, k_format) {
     let amt;
     let dmg;
     let waspolyd = schar((cptr.ldI32o(u, $you_umonnum) != cptr.ldI32o(u, $you_umonster)));
+
     if (num <= 0 || (cptr.ld1so2(u, NHC.A_STR, 1, $you_acurr)) < (cptr.ldI16o2(gu, NHC.A_STR, 2, $instance_globals_u_urace + $Race_attrmin))) {
-        impossible(__sl49, (cptr.ld1so2(u, NHC.A_STR, 1, $you_acurr)), num);
+        impossible(__s_losestr_d_d, (cptr.ld1so2(u, NHC.A_STR, 1, $you_acurr)), num);
         return;
     }
     dmg = 0;
     while (ustr < (cptr.ldI16o2(gu, NHC.A_STR, 2, $instance_globals_u_urace + $Race_attrmin))) {
         ++ustr;
         --num;
-        amt = (((rng_log_enabled() ? (rng_log_set_caller(__sl38, 235, __sl50), rn2(4)) : rn2(4)) + 3) | 0);
+        amt = ((rn2_at(__s_attrib_c, 235, __s_losestr, 4) + 3) | 0);  /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
         dmg = (dmg + amt) | 0;
     }
     if (dmg) {
+        /* in case damage is fatal and caller didn't supply killer reason */
         if (!knam || !cptr.ld1s(knam)) {
-            knam = __sl51;
+            knam = __s_terminal_frailty;
             k_format = NHM.KILLED_BY;
         }
         losehp(dmg, knam, k_format);
+
         if (Upolyd()) {
-            setuhpmax((((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) > 1 ? ((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) : 1), 0);
+            /* when still poly'd, reduce you-as-monst maxHP; never below 1 */
+            setuhpmax((((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) > 1 ? ((cptr.ldI32o(u, $you_mhmax) - dmg) | 0) : 1), 0);  /* acts as setmhmax() */
         } else if (!waspolyd) {
+            /* not polymorphed now and didn't rehumanize when taking damage;
+               reduce max HP, but not below uhpmin */
             if (cptr.ldI32o(u, $you_uhpmax) > uhpmin)
                 setuhpmax(max((cptr.ldI32o(u, $you_uhpmax) - dmg) | 0, uhpmin), 0);
         }
         cptr.st1(disp, 1);
     }
     (void (olduhpmax));
+    /* 'num' could have been reduced to 0 in the minimum strength loop;
+       '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
     if (num > 0 && (Upolyd() || !waspolyd))
         void adjattrib(NHC.A_STR, -num, 1);
 }
 
-/** C ref: attrib.c:274 — @param {CInt} strloss @param {CInt} dmg @param {CPtr} knam @param {CInt} k_format */
+/* combined strength loss and damage from some poisons */
+/** C ref: attrib.c:274 — @param {CInt} strloss @param {CInt} dmg @param {CPtr<char>} knam @param {CInt} k_format */
 export function poison_strdmg(strloss, dmg, knam, k_format) {
     losestr(strloss, knam, k_format);
     losehp(dmg, knam, k_format);
@@ -662,88 +704,125 @@ export function poison_strdmg(strloss, dmg, knam, k_format) {
 /** C ref: attrib.c:280 — struct poison_effect_message { delivery_func, effect_msg } (memory model v0.5) */
 
 /** C ref: attrib.c:283 — struct poison_effect_message[6] */
-const poiseff = cptr.alloc(6 * 16);
+const poiseff = cptr.alloc(6 * $sizeof_poison_effect_message);
 cptr.stPtro(poiseff, 0, You_feel);
-cptr.stPtro(poiseff, 0 + $poison_effect_message_effect_msg, __sl52);
+cptr.stPtro(poiseff, 0 + $poison_effect_message_effect_msg, __s_weaker);
 cptr.stPtro(poiseff, 16, Your);
-cptr.stPtro(poiseff, 16 + $poison_effect_message_effect_msg, __sl53);
+cptr.stPtro(poiseff, 16 + $poison_effect_message_effect_msg, __s_brain_is_on_fire);
 cptr.stPtro(poiseff, 32, Your);
-cptr.stPtro(poiseff, 32 + $poison_effect_message_effect_msg, __sl54);
+cptr.stPtro(poiseff, 32 + $poison_effect_message_effect_msg, __s_judgement_is_impaired);
 cptr.stPtro(poiseff, 48, Your);
-cptr.stPtro(poiseff, 48 + $poison_effect_message_effect_msg, __sl55);
+cptr.stPtro(poiseff, 48 + $poison_effect_message_effect_msg, __s_muscles_won_t_obey_you);
 cptr.stPtro(poiseff, 64, You_feel);
-cptr.stPtro(poiseff, 64 + $poison_effect_message_effect_msg, __sl56);
+cptr.stPtro(poiseff, 64 + $poison_effect_message_effect_msg, __s_very_sick);
 cptr.stPtro(poiseff, 80, You);
-cptr.stPtro(poiseff, 80 + $poison_effect_message_effect_msg, __sl57);
+cptr.stPtro(poiseff, 80 + $poison_effect_message_effect_msg, __s_break_out_in_hives);
 
+/* feedback for attribute loss due to poisoning */
 /** C ref: attrib.c:294 — @param {CInt} typ @param {CInt} exclaim */
 export function poisontell(typ, exclaim) {
-    let func = cptr.ldPtro(poiseff, typ, 16);
-    let msg_txt = cptr.ldPtro2(poiseff, typ, 16, $poison_effect_message_effect_msg);
+    let func = cptr.ldPtro(poiseff, typ, $sizeof_poison_effect_message);
+    let msg_txt = cptr.ldPtro2(poiseff, typ, $sizeof_poison_effect_message, $poison_effect_message_effect_msg);
+
+    /*
+     * "You feel weaker" or "you feel very sick" aren't appropriate when
+     * wearing or wielding something (gauntlets of power, Ogresmasher)
+     * which forces the attribute to maintain its maximum value.
+     * Phrasing for other attributes which might have fixed values
+     * (dunce cap) is such that we don't need message fixups for them.
+     */
     if (typ == NHC.A_STR && (acurr(NHC.A_STR)) == 125)
-        msg_txt = __sl58;
+        msg_txt = __s_innately_weaker;
     else if (typ == NHC.A_CON && (acurr(NHC.A_CON)) == 25)
-        msg_txt = __sl59;
-    (func)(__sl60, msg_txt, exclaim ? 33 : 46);
+        msg_txt = __s_sick_inside;
+
+    (func)(__s_s_c, msg_txt, exclaim ? 33 : 46);
 }
 
-/** C ref: attrib.c:317 — @param {CPtr} reason @param {CInt} typ @param {CPtr} pkiller @param {CInt} fatal @param {CInt} thrown_weapon */
+/* called when an attack or trap has poisoned hero (used to be in mon.c) */
+/** C ref: attrib.c:317 — @param {CPtr<char>} reason @param {CInt} typ @param {CPtr<char>} pkiller @param {CInt} fatal @param {CInt} thrown_weapon */
 export function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     let i;
     let loss;
     let kprefix = NHM.KILLED_BY_AN;
-    let blast = schar((!strcmp(reason, __sl61)));
-    if (!blast && !strstri(reason, __sl62)) {
+    let blast = schar((!strcmp(reason, __s_blast)));
+
+    /* inform player about being poisoned unless that's already been done;
+       "blast" has given a "blast of poison gas" message; "poison arrow",
+       "poison dart", etc have implicitly given poison messages too... */
+    if (!blast && !strstri(reason, __s_poison)) {
         let plural = schar(((cptr.ld1so(reason, BigInt.asUintN(64, cptr.strlen(reason) - 1n)) == 115) ? 1 : 0));
-        pline(__sl63, cptr.isupper(uchar(cptr.ld1s(reason))) ? __sl18 : __sl64, reason, plural ? __sl65 : __sl66);
+
+        /* avoid "The" Orcus's sting was poisoned... */
+        pline(__s_s_s_s_poisoned, cptr.isupper(uchar(cptr.ld1s(reason))) ? __s_empty : __s_the, reason, plural ? __s_were : __s_was);
     }
     if (Poison_resistance()) {
         if (blast)
             shieldeff(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
-        pline_The(__sl67);
+        pline_The(__s_poison_doesn_t_seem_to_affect_you);
         return;
     }
+
+    /* suppress killer prefix if it already has one */
     i = name_to_mon(pkiller, null);
-    if (ismnum(i) && (cptr.ldU16o2(mons, i, 96, $permonst_geno) & NHM.G_UNIQ)) {
+    if (ismnum(i) && (cptr.ldU16o2(mons, i, $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ)) {
         kprefix = NHM.KILLED_BY;
-        if (!((cptr.ldU64o((cptr.add(mons, i, 96)), $permonst_mflags2) & 524288n) != 0n))
+        if (!((cptr.ldU64o((cptr.add(mons, i, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n))
             pkiller = the(pkiller);
-    } else if (!strncmpi(pkiller, __sl68, 4) || !strncmpi(pkiller, __sl69, 3) || !strncmpi(pkiller, __sl70, 2)) {
+    } else if (!strncmpi(pkiller, __s_the__2, 4) || !strncmpi(pkiller, __s_an, 3) || !strncmpi(pkiller, __s_a_sp, 2)) {
+        /*[ does this need a plural check too? ]*/
         kprefix = NHM.KILLED_BY;
     }
-    i = !fatal ? 1 : (rng_log_enabled() ? (rng_log_set_caller(__sl38, 362, __sl71), rn2((fatal + (thrown_weapon ? 20 : 0)) | 0)) : rn2((fatal + (thrown_weapon ? 20 : 0)) | 0));
+
+    /*
+     * FIXME:
+     *  this operates on u.uhp[max] even when hero is polymorphed....
+     */
+
+    i = !fatal ? 1 : rn2_at(__s_attrib_c, 362, __s_poisoned, (fatal + (thrown_weapon ? 20 : 0)) | 0);
     if (i == 0 && typ != NHC.A_CHA) {
-        loss = (6 + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 365, __sl71), d(4, 6)) : d(4, 6))) | 0;
+        /* sometimes survivable instant kill */
+        loss = (6 + d_at(__s_attrib_c, 365, __s_poisoned, 4, 6)) | 0;  /* 6 + 4d6 => 10..34 */
         if (cptr.ldI32o(u, $you_uhp) <= loss) {
             cptr.stI32o(u, $you_uhp, -1);
             cptr.st1(disp, 1);
-            pline_The(__sl72);
+            pline_The(__s_poison_was_deadly);
         } else {
+            /* survived, but with severe reaction */
             let olduhp = cptr.ldI32o(u, $you_uhp);
             let newuhpmax = (cptr.ldI32o(u, $you_uhpmax) - ((loss / 2) | 0)) | 0;
-            setuhpmax(max(newuhpmax, minuhpmax(3)), 1);
+
+            setuhpmax(max(newuhpmax, minuhpmax(3)), 1);  /*True: see FIXME*/
             loss = adjuhploss(loss, olduhp);
-            losehp(loss, pkiller, schar(kprefix));
+
+            losehp(loss, pkiller, schar(kprefix));  /* poison damage */
             if (adjattrib(NHC.A_CON, (typ != NHC.A_CON) ? -1 : -3, 1))
                 poisontell(NHC.A_CON, 1);
             if (typ != NHC.A_CON && adjattrib(typ, -3, 1))
                 poisontell(typ, 1);
         }
     } else if (i > 5) {
-        let cloud = schar((!strcmp(reason, __sl73)));
-        loss = thrown_weapon ? (rng_log_enabled() ? (rng_log_set_caller(__sl38, 388, __sl71), rnd(6)) : rnd(6)) : (((rng_log_enabled() ? (rng_log_set_caller(__sl38, 388, __sl71), rn2(10)) : rn2(10)) + 6) | 0);
+        let cloud = schar((!strcmp(reason, __s_gas_cloud)));
+
+        /* HP damage; more likely--but less severe--with missiles */
+        loss = thrown_weapon ? rnd_at(__s_attrib_c, 388, __s_poisoned, 6) : ((rn2_at(__s_attrib_c, 388, __s_poisoned, 10) + 6) | 0);
         if ((blast || cloud) && Half_gas_damage())
             loss = (((loss + 1) | 0) / 2) | 0;
-        losehp(loss, pkiller, schar(kprefix));
+        losehp(loss, pkiller, schar(kprefix));  /* poison damage */
     } else {
-        loss = (thrown_weapon || !fatal) ? 1 : (rng_log_enabled() ? (rng_log_set_caller(__sl38, 395, __sl71), d(2, 2)) : d(2, 2));
+        /* attribute loss; if typ is A_STR, reduction in current and
+           maximum HP will occur once strength has dropped down to 3 */
+        loss = (thrown_weapon || !fatal) ? 1 : d_at(__s_attrib_c, 395, __s_poisoned, 2, 2);  /* was rn1(3,3) */
+        /* check that a stat change was made */
         if (adjattrib(typ, -loss, 1))
             poisontell(typ, 1);
     }
+
     if (cptr.ldI32o(u, $you_uhp) < 1) {
         cptr.stI32o(svk, $kinfo_format, kprefix);
         void cptr.strcpy(cptr.add(svk, $kinfo_name), pkiller);
-        done(strstri(pkiller, __sl62) ? NHC.DIED : NHC.POISONING);
+        /* "Poisoned by a poisoned ___" is redundant */
+        done(strstri(pkiller, __s_poison) ? NHC.DIED : NHC.POISONING);
     }
     encumber_msg();
 }
@@ -757,10 +836,13 @@ export function change_luck(n) {
         cptr.st1o(u, $you_uluck, NHM.LUCKMAX);
 }
 
+/* decide whether there are more blessed luckstones (plus luck-conferring
+   artifacts) than cursed ones; optionally combine uncursed with blessed */
 /** C ref: attrib.c:423 — @param {CInt} include_uncursed @returns {CInt} */
 export function stone_luck(include_uncursed) {
     let otmp;
     let bonchance = 0n;
+
     for (otmp = cptr.ldPtro(gi, $instance_globals_i_invent); otmp; otmp = cptr.ldPtr(otmp))
         if (confers_luck(otmp)) {
             if ((cptr.ldI32o(otmp, $obj_cursed) & 1))
@@ -768,12 +850,15 @@ export function stone_luck(include_uncursed) {
             else if ((cptr.ldI32o(otmp, $obj_blessed) & 1) | 0 || include_uncursed)
                 bonchance += cptr.ldI64o(otmp, $obj_quan);
         }
+
     return sgn(Number(BigInt.asIntN(32, bonchance)));
 }
 
+/* there has just been an inventory change affecting a luck-granting item */
 /** C ref: attrib.c:441 */
 export function set_moreluck() {
     let luckbon = stone_luck(1);
+
     if (!luckbon && !carrying(NHC.LUCKSTONE))
         cptr.st1o(u, $you_moreluck, 0);
     else if (luckbon >= 0)
@@ -782,11 +867,24 @@ export function set_moreluck() {
         cptr.st1o(u, $you_moreluck, -3);
 }
 
+/* (not used) */
 /** C ref: attrib.c:455 */
 export function restore_attrib() {
     let i;
     let equilibrium;
     ;
+
+    /*
+     * Note:  this used to get called by moveloop() on every turn but
+     * ATIME() is never set to non-zero anywhere so didn't do anything.
+     * Presumably it once supported something like potion of heroism
+     * which conferred temporary characteristics boost(s).
+     *
+     * ATEMP() is used for strength loss from hunger, which doesn't
+     * time out, and for dexterity loss from wounded legs, which has
+     * its own timeout routine.
+     */
+
     for (i = 0; i < NHC.A_MAX; i++) {
         equilibrium = ((i == NHC.A_STR && cptr.ldI32o(u, $you_uhs) >= NHC.WEAK) || (i == NHC.A_DEX && Wounded_legs())) ? -1 : 0;
         if ((cptr.ld1so2(u, i, 1, $you_atemp)) != equilibrium && (cptr.ld1so2(u, i, 1, $you_atime)) != 0) {
@@ -805,22 +903,34 @@ export function restore_attrib() {
 /** C ref: attrib.c:489 — @param {CInt} i @param {CInt} inc_or_dec */
 export function exercise(i, inc_or_dec) {
     {
-        if (debugcore(__sl38, 1)) {
+        if (debugcore(__s_attrib_c, 1)) {
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-            pline(__sl74);
+            pline(__s_exercise);
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
     }
     if (i == NHC.A_INT || i == NHC.A_CHA)
-        return;
+        return;  /* can't exercise these */
+
+    /* no physical exercise while polymorphed; the body's temporary */
     if (Upolyd() && i != NHC.A_WIS)
         return;
+
     if (Math.abs((cptr.ld1so2(u, i, 1, $you_aexe))) < 50) {
-        cptr.st1o2(u, i, 1, $you_aexe, cptr.ld1so2(u, i, 1, $you_aexe) + ((inc_or_dec) ? ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 509, __sl75), rn2(19)) : rn2(19)) > (acurr(i))) : -(rng_log_enabled() ? (rng_log_set_caller(__sl38, 509, __sl75), rn2(2)) : rn2(2))));
+        /*
+         *      Law of diminishing returns (Part I):
+         *
+         *      Gain is harder at higher attribute values.
+         *      79% at "3" --> 0% at "18"
+         *      Loss is even at all levels (50%).
+         *
+         *      Note: *YES* ACURR is the right one to use.
+         */
+        cptr.st1o2(u, i, 1, $you_aexe, cptr.ld1so2(u, i, 1, $you_aexe) + ((inc_or_dec) ? (rn2_at(__s_attrib_c, 509, __s_exercise__2, 19) > (acurr(i))) : -rn2_at(__s_attrib_c, 509, __s_exercise__2, 2)));
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl76, (i == NHC.A_STR) ? __sl77 : ((i == NHC.A_WIS) ? __sl78 : ((i == NHC.A_DEX) ? __sl79 : __sl80)), (inc_or_dec) ? __sl81 : __sl82, (cptr.ld1so2(u, i, 1, $you_aexe)));
+                pline(__s_s_s_aexe_d, (i == NHC.A_STR) ? __s_str : ((i == NHC.A_WIS) ? __s_wis : ((i == NHC.A_DEX) ? __s_dex : __s_con)), (inc_or_dec) ? __s_inc : __s_dec, (cptr.ld1so2(u, i, 1, $you_aexe)));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
@@ -832,11 +942,13 @@ export function exercise(i, inc_or_dec) {
 /** C ref: attrib.c:521 */
 function exerper() {
     if (!(cptr.ldI64o(svm, $instance_globals_saved_m_moves) % 10n)) {
+        /* Hunger Checks */
         let hs = (cptr.ldI32o(u, $you_uhunger) > 1000) ? NHC.SATIATED : ((cptr.ldI32o(u, $you_uhunger) > 150) ? NHC.NOT_HUNGRY : ((cptr.ldI32o(u, $you_uhunger) > 50) ? NHC.HUNGRY : ((cptr.ldI32o(u, $you_uhunger) > 0) ? NHC.WEAK : NHC.FAINTING)));
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
+
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl83);
+                pline(__s_exerper_hunger_checks);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
@@ -860,9 +972,11 @@ function exerper() {
             break;
         }
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
+
+                /* Encumbrance Checks */
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl84);
+                pline(__s_exerper_encumber_checks);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
@@ -880,11 +994,13 @@ function exerper() {
             break;
         }
     }
+
+    /* status checks */
     if (!(cptr.ldI64o(svm, $instance_globals_saved_m_moves) % 5n)) {
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl85);
+                pline(__s_exerper_status_checks);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
@@ -892,6 +1008,7 @@ function exerper() {
             exercise(NHC.A_WIS, 1);
         if (HRegeneration())
             exercise(NHC.A_STR, 1);
+
         if (Sick() || Vomiting())
             exercise(NHC.A_CON, 0);
         if (HConfusion() || Hallucination())
@@ -901,18 +1018,20 @@ function exerper() {
     }
 }
 
+/* exercise/abuse text (must be in attribute order, not botl order);
+   phrased as "You must have been [][0]." or "You haven't been [][1]." */
 /** C ref: attrib.c:588 — char *[6][2] */
 const exertext = (function () { const flat = new Uint8Array(6 * 2 * 8); const a = []; for (let r = 0; r < 6; r++) a.push(flat.subarray(r * 2 * 8, (r + 1) * 2 * 8)); a.buf = flat; return a; })();
-cptr.stPtro(cptr.decay(exertext[0]), 0, __sl86);
-cptr.stPtro(cptr.decay(exertext[0]), 8, __sl87);
+cptr.stPtro(cptr.decay(exertext[0]), 0, __s_exercising_diligently);
+cptr.stPtro(cptr.decay(exertext[0]), 8, __s_exercising_properly);
 cptr.stPtro(cptr.decay(exertext[1]), 0, null);
 cptr.stPtro(cptr.decay(exertext[1]), 8, null);
-cptr.stPtro(cptr.decay(exertext[2]), 0, __sl88);
-cptr.stPtro(cptr.decay(exertext[2]), 8, __sl89);
-cptr.stPtro(cptr.decay(exertext[3]), 0, __sl90);
-cptr.stPtro(cptr.decay(exertext[3]), 8, __sl91);
-cptr.stPtro(cptr.decay(exertext[4]), 0, __sl92);
-cptr.stPtro(cptr.decay(exertext[4]), 8, __sl93);
+cptr.stPtro(cptr.decay(exertext[2]), 0, __s_very_observant);
+cptr.stPtro(cptr.decay(exertext[2]), 8, __s_paying_attention);
+cptr.stPtro(cptr.decay(exertext[3]), 0, __s_working_on_your_reflexes);
+cptr.stPtro(cptr.decay(exertext[3]), 8, __s_working_on_reflexes_lately);
+cptr.stPtro(cptr.decay(exertext[4]), 0, __s_leading_a_healthy_life_style);
+cptr.stPtro(cptr.decay(exertext[4]), 8, __s_watching_your_health);
 cptr.stPtro(cptr.decay(exertext[5]), 0, null);
 cptr.stPtro(cptr.decay(exertext[5]), 8, null);
 
@@ -923,95 +1042,137 @@ export function exerchk() {
     let mod_val;
     let lolim;
     let hilim;
+
+    /*  Check out the periodic accumulations */
     exerper();
+
     if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) >= cptr.ldI64o(svc, $context_info_next_attrib_check)) {
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl94, cptr.ldI64o(gm, $instance_globals_m_multi));
+                pline(__s_exerchk_ready_to_test_multi_ld, cptr.ldI64o(gm, $instance_globals_m_multi));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
     }
+    /*  Are we ready for a test? */
     if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) >= cptr.ldI64o(svc, $context_info_next_attrib_check) && !cptr.ldI64o(gm, $instance_globals_m_multi)) {
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl95);
+                pline(__s_exerchk_testing);
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
+        /*
+         *      Law of diminishing returns (Part II):
+         *
+         *      The effects of "exercise" and "abuse" wear
+         *      off over time.  Even if you *don't* get an
+         *      increase/decrease, you lose some of the
+         *      accumulated effects.
+         */
         for (i = 0; i < NHC.A_MAX; ++i) {
             __lbl_nextattrib: {
                 ax = (cptr.ld1so2(u, i, 1, $you_aexe));
+                /* nothing to do here if no exercise or abuse has occurred
+                   (Int and Cha always fall into this category) */
                 if (!ax)
-                    continue;
-                mod_val = sgn(ax);
-                lolim = (cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin));
-                hilim = ((i == NHC.A_STR && Upolyd()) ? uasmon_maxStr() : cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmax));
+                    continue;  /* ok to skip nextattrib */
+
+                mod_val = sgn(ax);  /* +1 or -1; used below */
+                /* no further effect for exercise if at max or abuse if at min;
+                   can't exceed 18 via exercise even if actual max is higher */
+                lolim = (cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin));  /* usually 3; might be higher */
+                hilim = ((i == NHC.A_STR && Upolyd()) ? uasmon_maxStr() : cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmax));  /* usually 18; maybe lower or higher */
                 if (hilim > 18)
                     hilim = 18;
                 if ((ax < 0) ? ((cptr.ld1so2(u, i, 1, $you_acurr)) <= lolim) : ((cptr.ld1so2(u, i, 1, $you_acurr)) >= hilim))
                     break __lbl_nextattrib;
+                /* can't exercise non-Wisdom while polymorphed; previous
+                   exercise/abuse gradually wears off without impact then */
                 if (Upolyd() && i != NHC.A_WIS)
                     break __lbl_nextattrib;
                 {
-                    if (debugcore(__sl38, 1)) {
+                    if (debugcore(__s_attrib_c, 1)) {
+
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                        pline(__sl96, (i == NHC.A_STR) ? __sl77 : ((i == NHC.A_INT) ? __sl97 : ((i == NHC.A_WIS) ? __sl78 : ((i == NHC.A_DEX) ? __sl79 : ((i == NHC.A_CON) ? __sl80 : ((i == NHC.A_CHA) ? __sl98 : __sl99))))), ax);
+                        pline(__s_exerchk_testing_s_d, (i == NHC.A_STR) ? __s_str : ((i == NHC.A_INT) ? __s_int : ((i == NHC.A_WIS) ? __s_wis : ((i == NHC.A_DEX) ? __s_dex : ((i == NHC.A_CON) ? __s_con : ((i == NHC.A_CHA) ? __s_cha : __s_query3))))), ax);
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
                 }
-                if ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 655, __sl100), rn2(50)) : rn2(50)) > ((i != NHC.A_WIS) ? ((Math.imul(Math.abs(ax), 2) / 3) | 0) : Math.abs(ax)))
+                /*
+                 *  Law of diminishing returns (Part III):
+                 *
+                 *  You don't *always* gain by exercising.
+                 *  [MRS 92/10/28 - Treat Wisdom specially for balance.]
+                 */
+                if (rn2_at(__s_attrib_c, 655, __s_exerchk, 50) > ((i != NHC.A_WIS) ? ((Math.imul(Math.abs(ax), 2) / 3) | 0) : Math.abs(ax)))
                     break __lbl_nextattrib;
                 {
-                    if (debugcore(__sl38, 1)) {
+                    if (debugcore(__s_attrib_c, 1)) {
+
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                        pline(__sl101, i);
+                        pline(__s_exerchk_changing_d, i);
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
                 }
                 if (adjattrib(i, mod_val, -1)) {
                     {
-                        if (debugcore(__sl38, 1)) {
+                        if (debugcore(__s_attrib_c, 1)) {
                             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                            pline(__sl102, i);
+                            pline(__s_exerchk_changed_d, i);
                             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                         }
                     }
+                    /* if you actually changed an attrib - zero accumulation */
                     cptr.st1o2(u, i, 1, $you_aexe, schar((ax = 0)));
-                    You(__sl103, (mod_val > 0) ? __sl104 : __sl105, cptr.ldPtro(cptr.decay(exertext[i]), (mod_val > 0) ? 0 : 1, 8));
+                    /* then print an explanation */
+                    You(__s_s_s__2, (mod_val > 0) ? __s_must_have_been : __s_haven_t_been, cptr.ldPtro(cptr.decay(exertext[i]), (mod_val > 0) ? 0 : 1, 8));
                 }
             }
+            /* this used to be ``AEXE(i) /= 2'' but that would produce
+               platform-dependent rounding/truncation for negative vals */
             cptr.st1o2(u, i, 1, $you_aexe, schar(Math.imul(((Math.abs(ax) / 2) | 0), mod_val)));
         }
-        cptr.stI64o(svc, $context_info_next_attrib_check, cptr.ldI64o(svc, $context_info_next_attrib_check) + BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 673, __sl100), rn2(200)) : rn2(200)) + 800) | 0)));
+        cptr.stI64o(svc, $context_info_next_attrib_check, cptr.ldI64o(svc, $context_info_next_attrib_check) + BigInt(((rn2_at(__s_attrib_c, 673, __s_exerchk, 200) + 800) | 0)));
         {
-            if (debugcore(__sl38, 1)) {
+            if (debugcore(__s_attrib_c, 1)) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                pline(__sl106, cptr.ldI64o(svc, $context_info_next_attrib_check));
+                pline(__s_exerchk_next_check_at_ld, cptr.ldI64o(svc, $context_info_next_attrib_check));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
     }
 }
 
+/* return random hero attribute (by role's attr distribution).
+   returns A_MAX if failed. */
 /** C ref: attrib.c:682 @returns {CInt} */
 function rnd_attr() {
     let i;
-    let x = (rng_log_enabled() ? (rng_log_set_caller(__sl38, 684, __sl107), rn2(100)) : rn2(100));
+    let x = rn2_at(__s_attrib_c, 684, __s_rnd_attr, 100);
+
+    /* 5.0: the x -= ... calculation used to have an off by 1 error that
+       resulted in the values being biased toward Str and away from Cha */
     for (i = 0; i < NHC.A_MAX; ++i)
         if ((x = (x - cptr.ldI16o2(gu, i, 2, $instance_globals_u_urole + $Role_attrdist)) | 0) < 0)
             break;
     return i;
 }
 
+/* add or subtract np points from random attributes,
+   adjusting the base and maximum values of the attributes.
+   if subtracting, np must be negative.
+   returns the left over points. */
 /** C ref: attrib.c:699 — @param {CInt} np @param {CInt} addition @returns {CInt} */
 function init_attr_role_redist(np, addition) {
     let tryct = 0;
     let adj = addition ? 1 : -1;
+
     while ((addition ? (np > 0) : (np < 0)) && tryct < 100) {
         let i = rnd_attr();
+
         if (i >= NHC.A_MAX || (addition ? ((cptr.ld1so2(u, i, 1, $you_acurr)) >= ((i == NHC.A_STR && Upolyd()) ? uasmon_maxStr() : cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmax))) : ((cptr.ld1so2(u, i, 1, $you_acurr)) <= (cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin))))) {
             tryct++;
             continue;
@@ -1024,15 +1185,20 @@ function init_attr_role_redist(np, addition) {
     return np;
 }
 
+/* allocate hero's initial characteristics */
 /** C ref: attrib.c:723 — @param {CInt} np */
 export function init_attr(np) {
     let i;
+
     for (i = 0; i < NHC.A_MAX; i++) {
         cptr.st1o2(u, i, 1, $you_acurr, cptr.st1o2(u, i, 1, $you_amax, schar(cptr.ldI16o2(gu, i, 2, $instance_globals_u_urole + $Role_attrbase))));
         cptr.st1o2(u, i, 1, $you_atemp, cptr.st1o2(u, i, 1, $you_atime, 0));
         np = (np - cptr.ldI16o2(gu, i, 2, $instance_globals_u_urole + $Role_attrbase)) | 0;
     }
+
+    /* distribute leftover points */
     np = init_attr_role_redist(np, 1);
+    /* if we went over, remove points */
     np = init_attr_role_redist(np, 0);
 }
 
@@ -1040,53 +1206,62 @@ export function init_attr(np) {
 export function redist_attr() {
     let i;
     let tmp;
+
     for (i = 0; i < NHC.A_MAX; i++) {
         if (i == NHC.A_INT || i == NHC.A_WIS)
             continue;
+        /* Polymorphing doesn't change your mind */
         tmp = (cptr.ld1so2(u, i, 1, $you_amax));
-        cptr.st1o2(u, i, 1, $you_amax, cptr.ld1so2(u, i, 1, $you_amax) + (((rng_log_enabled() ? (rng_log_set_caller(__sl38, 749, __sl108), rn2(5)) : rn2(5)) - 2) | 0));
+        cptr.st1o2(u, i, 1, $you_amax, cptr.ld1so2(u, i, 1, $you_amax) + ((rn2_at(__s_attrib_c, 749, __s_redist_attr, 5) - 2) | 0));
         if ((cptr.ld1so2(u, i, 1, $you_amax)) > ((i == NHC.A_STR && Upolyd()) ? uasmon_maxStr() : cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmax)))
             cptr.st1o2(u, i, 1, $you_amax, schar(((i == NHC.A_STR && Upolyd()) ? uasmon_maxStr() : cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmax))));
         if ((cptr.ld1so2(u, i, 1, $you_amax)) < (cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin)))
             cptr.st1o2(u, i, 1, $you_amax, schar((cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin))));
         cptr.st1o2(u, i, 1, $you_acurr, schar(((Math.imul((cptr.ld1so2(u, i, 1, $you_acurr)), (cptr.ld1so2(u, i, 1, $you_amax))) / tmp) | 0)));
+        /* ABASE(i) > ATTRMAX(i) is impossible */
         if ((cptr.ld1so2(u, i, 1, $you_acurr)) < (cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin)))
             cptr.st1o2(u, i, 1, $you_acurr, schar((cptr.ldI16o2(gu, i, 2, $instance_globals_u_urace + $Race_attrmin))));
     }
+    /* encumber_msg(); -- caller needs to do this */
 }
 
+/* apply minor variation to attributes */
 /** C ref: attrib.c:764 */
 export function vary_init_attr() {
     let i;
+
     for (i = 0; i < NHC.A_MAX; i++)
-        if (!(rng_log_enabled() ? (rng_log_set_caller(__sl38, 769, __sl109), rn2(20)) : rn2(20))) {
-            let xd = ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 770, __sl109), rn2(7)) : rn2(7)) - 2) | 0;
+        if (!rn2_at(__s_attrib_c, 769, __s_vary_init_attr, 20)) {
+            let xd = (rn2_at(__s_attrib_c, 770, __s_vary_init_attr, 7) - 2) | 0;  /* biased variation */
+
             void adjattrib(i, xd, 1);
             if ((cptr.ld1so2(u, i, 1, $you_acurr)) < (cptr.ld1so2(u, i, 1, $you_amax)))
                 cptr.st1o2(u, i, 1, $you_amax, (cptr.ld1so2(u, i, 1, $you_acurr)));
         }
 }
 
-/** C ref: attrib.c:780 — @param {CPtr} ability */
+/** C ref: attrib.c:780 — @param {CPtr<long>} ability */
 function postadjabil(ability) {
     if (!cptr.ldI32o(u, $you_ulevel))
         return;
-    if (cptr.eq(ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, 24), $prop_intrinsic)) || cptr.eq(ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, 24), $prop_intrinsic)))
+    if (cptr.eq(ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.WARNING, $sizeof_prop), $prop_intrinsic)) || cptr.eq(ability, cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SEE_INVIS, $sizeof_prop), $prop_intrinsic)))
         see_monsters();
 }
 
-/** C ref: attrib.c:789 — @param {CInt} r @returns {CPtr} */
+/** C ref: attrib.c:789 — @param {CInt} r @returns {CPtr<struct innate>} */
 function role_abil(r) {
     let roleabils = cptr.alloc(14 * 16); cptr.stI16o(roleabils, 0, NHC.PM_ARCHEOLOGIST); cptr.stPtro(roleabils, 8, arc_abil); cptr.stI16o(roleabils, 16, NHC.PM_BARBARIAN); cptr.stPtro(roleabils, 24, bar_abil); cptr.stI16o(roleabils, 32, NHC.PM_CAVE_DWELLER); cptr.stPtro(roleabils, 40, cav_abil); cptr.stI16o(roleabils, 48, NHC.PM_HEALER); cptr.stPtro(roleabils, 56, hea_abil); cptr.stI16o(roleabils, 64, NHC.PM_KNIGHT); cptr.stPtro(roleabils, 72, kni_abil); cptr.stI16o(roleabils, 80, NHC.PM_MONK); cptr.stPtro(roleabils, 88, mon_abil); cptr.stI16o(roleabils, 96, NHC.PM_CLERIC); cptr.stPtro(roleabils, 104, pri_abil); cptr.stI16o(roleabils, 112, NHC.PM_RANGER); cptr.stPtro(roleabils, 120, ran_abil); cptr.stI16o(roleabils, 128, NHC.PM_ROGUE); cptr.stPtro(roleabils, 136, rog_abil); cptr.stI16o(roleabils, 144, NHC.PM_SAMURAI); cptr.stPtro(roleabils, 152, sam_abil); cptr.stI16o(roleabils, 160, NHC.PM_TOURIST); cptr.stPtro(roleabils, 168, tou_abil); cptr.stI16o(roleabils, 176, NHC.PM_VALKYRIE); cptr.stPtro(roleabils, 184, val_abil); cptr.stI16o(roleabils, 192, NHC.PM_WIZARD); cptr.stPtro(roleabils, 200, wiz_abil); cptr.stI16o(roleabils, 208, 0); cptr.stPtro(roleabils, 216, null);
     let i;
+
     for (i = 0; cptr.ldPtro2(roleabils, i, 16, 8) && cptr.ldI16o(roleabils, i, 16) != r; i++)
         continue;
     return cptr.ldPtro2(roleabils, i, 16, 8);
 }
 
-/** C ref: attrib.c:818 — @param {CPtr} ability @param {CLongLong} frommask @returns {CPtr} */
+/** C ref: attrib.c:818 — @param {CPtr<long>} ability @param {CLongLong} frommask @returns {CPtr<struct innate>} */
 function check_innate_abil(ability, frommask) {
     let abil = null;
+
     if (frommask == 16777216n)
         abil = role_abil(Role_switch());
     else if (frommask == 33554432n)
@@ -1109,6 +1284,7 @@ function check_innate_abil(ability, frommask) {
             default:
             break;
         }
+
     while (abil && cptr.ldPtro(abil, $innate_ability)) {
         if ((cptr.eq(cptr.ldPtro(abil, $innate_ability), ability)) && (cptr.ldI32o(u, $you_ulevel) >= cptr.ld1s(abil)))
             return abil;
@@ -1117,9 +1293,11 @@ function check_innate_abil(ability, frommask) {
     return null;
 }
 
-/** C ref: attrib.c:864 — @param {CPtr} ability @returns {CInt} */
+/* check whether particular ability has been obtained via innate attribute */
+/** C ref: attrib.c:864 — @param {CPtr<long>} ability @returns {CInt} */
 function innately(ability) {
     let iptr;
+
     if ((iptr = check_innate_abil(ability, 16777216n)) !== null)
         return (cptr.ld1s(iptr) == 1) ? 1 : 4;
     if ((iptr = check_innate_abil(ability, 33554432n)) !== null)
@@ -1134,13 +1312,15 @@ function innately(ability) {
 /** C ref: attrib.c:880 — @param {CInt} propidx @returns {CInt} */
 export function is_innate(propidx) {
     let innateness;
+
+    /* innately() would report FROM_FORM for this; caller wants specificity */
     if (propidx == NHC.DRAIN_RES && ismnum(cptr.ldI32o(u, $you_ulycn)))
         return 6;
     if (propidx == NHC.FAST && Very_fast())
-        return 0;
-    if ((innateness = innately(cptr.add(cptr.add(cptr.add(u, $you_uprops), propidx, 24), $prop_intrinsic))) != 0)
+        return 0;  /* can't become very fast innately */
+    if ((innateness = innately(cptr.add(cptr.add(cptr.add(u, $you_uprops), propidx, $sizeof_prop), $prop_intrinsic))) != 0)
         return innateness;
-    if (propidx == NHC.JUMPING && (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_KNIGHT) && !cptr.ldI64o2(u, propidx, 24, $you_uprops))
+    if (propidx == NHC.JUMPING && (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_KNIGHT) && !cptr.ldI64o2(u, propidx, $sizeof_prop, $you_uprops))
         return 1;
     if ((propidx == NHC.BLINDED && !((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 4096n) == 0n)) || (propidx == NHC.BLND_RES && (HBlnd_resist() & 268435456n) != 0n))
         return 5;
@@ -1150,55 +1330,82 @@ export function is_innate(propidx) {
 const __static_from_what_buf = new Uint8Array(256); /** C ref: attrib.c:908 — char[256] (function-static) */
 const __static_from_what_because_of = cptr.bytes(" because of %s"); /** C ref: attrib.c:915 — char[15] (function-static) */
 
-/** C ref: attrib.c:905 — @param {CInt} propidx @returns {CPtr} */
+/** C ref: attrib.c:905 — @param {CInt} propidx @returns {CPtr<char>} */
 export function from_what(propidx) {
+
     cptr.st1o(cptr.decay(__static_from_what_buf), 0, 0, 1);
+    /*
+     * Restrict the source of the attributes just to debug mode for now
+     */
     if (wizard()) {
+
         if (propidx >= 0) {
             let p;
             let obj = null;
             let innateness = is_innate(propidx);
+
+            /*
+             * Properties can be obtained from multiple sources and we
+             * try to pick the most significant one.  Classification
+             * priority is not set in stone; current precedence is:
+             * "from the start" (from role or race at level 1),
+             * "from outside" (eating corpse, divine reward, blessed potion),
+             * "from experience" (from role or race at level 2+),
+             * "from current form" (while polymorphed),
+             * "from timed effect" (potion or spell),
+             * "from worn/wielded equipment" (Firebrand, elven boots, &c),
+             * "from carried equipment" (mainly quest artifacts).
+             * There are exceptions.  Versatile jumping from spell or boots
+             * takes priority over knight's innate but limited jumping.
+             */
             if ((propidx == NHC.BLINDED && cptr.ld1so(u, $you_uroleplay)) || (propidx == NHC.DEAF && cptr.ld1so(u, $you_uroleplay + $u_roleplay_deaf)))
-                void cptr.sprintf(cptr.decay(__static_from_what_buf), __sl110);
+                void cptr.sprintf(cptr.decay(__static_from_what_buf), __s_from_birth);
             else if (innateness == 1 || innateness == 2)
-                void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl111);
+                void cptr.strcpy(cptr.decay(__static_from_what_buf), __s_innately);
             else if (innateness == 3)
-                void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl112);
+                void cptr.strcpy(cptr.decay(__static_from_what_buf), __s_intrinsically);
             else if (innateness == 4)
-                void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl113);
+                void cptr.strcpy(cptr.decay(__static_from_what_buf), __s_because_of_your_experience);
             else if (innateness == 6)
-                void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl114);
+                void cptr.strcpy(cptr.decay(__static_from_what_buf), __s_due_to_your_lycanthropy);
             else if (innateness == 5)
-                void cptr.strcpy(cptr.decay(__static_from_what_buf), __sl115);
+                void cptr.strcpy(cptr.decay(__static_from_what_buf), __s_from_your_creature_form);
             else if (propidx == NHC.FAST && Very_fast())
-                void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ((HFast() & 16777215n) != 0n) ? __sl116 : (((EFast() & 32n) != 0n && (cptr.ldI32o(uarmf.v, $obj_dknown) & 1) | 0 && (cptr.ldI32o2(objects, cptr.ldI16o(uarmf.v, $obj_otyp), 120, $objclass_oc_name_known) & 1) | 0) ? ysimple_name(uarmf.v) : (EFast() ? __sl117 : cptr.ldPtro(c_common_strings, $c_common_strings_c_something))));
-            else if (wizard() && (obj = what_gives(cptr.add(cptr.add(u, $you_uprops), propidx, 24))) !== null)
+                void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ((HFast() & 16777215n) != 0n) ? __s_a_potion_or_spell : (((EFast() & 32n) != 0n && (cptr.ldI32o(uarmf.v, $obj_dknown) & 1) | 0 && (cptr.ldI32o2(objects, cptr.ldI16o(uarmf.v, $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1) | 0) ? ysimple_name(uarmf.v) : (EFast() ? __s_worn_equipment : cptr.ldPtro(c_common_strings, $c_common_strings_c_something))));
+            else if (wizard() && (obj = what_gives(cptr.add(cptr.add(u, $you_uprops), propidx, $sizeof_prop))) !== null)
                 void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), cptr.ld1so(obj, $obj_oartifact) ? bare_artifactname(obj) : ysimple_name(obj));
             else if (propidx == NHC.BLINDED && Blindfolded_only())
                 void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ysimple_name(ublindf.v));
             else if (propidx == NHC.BLINDED && cptr.ldI32o(u, $you_ucreamed) && BlindedTimeout() == BigInt(cptr.ldI32o(u, $you_ucreamed) >>> 0) && !EBlinded() && !(HBlinded() & -16777216n))
-                void cptr.sprintf(cptr.decay(__static_from_what_buf), __sl118, body_part(NHC.FACE));
-            if ((p = strstri(cptr.decay(__static_from_what_buf), __sl119)) !== null)
-                copynchars(cptr.add(p, 1), cptr.add(p, 9), NHM.BUFSZ);
-            else if (propidx == NHC.STRANGLED && (p = strstri(cptr.decay(__static_from_what_buf), __sl120)) !== null)
+                void cptr.sprintf(cptr.decay(__static_from_what_buf), __s_due_to_goop_covering_your_s, body_part(NHC.FACE));
+
+            /* remove some verbosity and/or redundancy */
+            if ((p = strstri(cptr.decay(__static_from_what_buf), __s_pair_of)) !== null)
+                copynchars(cptr.add(p, 1), cptr.add(p, 9), NHM.BUFSZ);  /* overlapping buffers ok */
+            else if (propidx == NHC.STRANGLED && (p = strstri(cptr.decay(__static_from_what_buf), __s_of_strangulation)) !== null)
                 cptr.st1(p, 0);
+
         } else {
+            /* if more blocking capabilities get implemented we'll need to
+               replace this with what_blocks() comparable to what_gives() */
             switch (-propidx) {
                 case NHC.BLINDED:
+                /* wearing the Eyes of the Overworld overrides blindness */
                 if (BBlinded() && is_art(ublindf.v, NHC.ART_EYES_OF_THE_OVERWORLD))
                     void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), bare_artifactname(ublindf.v));
                 break;
                 case NHC.INVIS:
-                if (cptr.ldI64o2(u, NHC.INVIS, 24, $you_uprops + $prop_blocked) & 2n)
+                if (cptr.ldI64o2(u, NHC.INVIS, $sizeof_prop, $you_uprops + $prop_blocked) & 2n)
                     void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ysimple_name(uarmc.v));
                 break;
                 case NHC.CLAIRVOYANT:
-                if (wizard() && (cptr.ldI64o2(u, NHC.CLAIRVOYANT, 24, $you_uprops + $prop_blocked) & 4n))
+                if (wizard() && (cptr.ldI64o2(u, NHC.CLAIRVOYANT, $sizeof_prop, $you_uprops + $prop_blocked) & 4n))
                     void cptr.sprintf(cptr.decay(__static_from_what_buf), cptr.decay(__static_from_what_because_of), ysimple_name(uarmh.v));
                 break;
             }
         }
-    }
+
+    }  /*wizard*/
     return cptr.decay(__static_from_what_buf);
 }
 
@@ -1208,7 +1415,9 @@ export function adjabil(oldlevel, newlevel) {
     let rabil;
     let prevabil;
     let mask = 16777216n;
+
     abil = role_abil(Role_switch());
+
     switch (Race_switch()) {
         case NHC.PM_ELF:
         rabil = elf_abil;
@@ -1223,8 +1432,11 @@ export function adjabil(oldlevel, newlevel) {
         rabil = null;
         break;
     }
+
     while (abil || rabil) {
+        /* Have we finished with the intrinsics list? */
         if (!abil || !cptr.ldPtro(abil, $innate_ability)) {
+            /* Try the race intrinsics */
             if (!rabil || !cptr.ldPtro(rabil, $innate_ability))
                 break;
             abil = rabil;
@@ -1233,27 +1445,34 @@ export function adjabil(oldlevel, newlevel) {
         }
         prevabil = cptr.ldI64((cptr.ldPtro(abil, $innate_ability)));
         if (oldlevel < cptr.ld1s(abil) && newlevel >= cptr.ld1s(abil)) {
+            /* Abilities gained at level 1 can never be lost
+             * via level loss, only via means that remove _any_
+             * sort of ability.  A "gain" of such an ability from
+             * an outside source is devoid of meaning, so we set
+             * FROMOUTSIDE to avoid such gains.
+             */
             if (cptr.ld1s(abil) == 1)
                 cptr.stI64((cptr.ldPtro(abil, $innate_ability)), cptr.ldI64((cptr.ldPtro(abil, $innate_ability))) | (mask | 67108864n));
             else
                 cptr.stI64((cptr.ldPtro(abil, $innate_ability)), cptr.ldI64((cptr.ldPtro(abil, $innate_ability))) | mask);
             if (!(cptr.ldI64((cptr.ldPtro(abil, $innate_ability))) & 117440512n & BigInt.asIntN(64, ~mask))) {
                 if (cptr.ld1s((cptr.ldPtro(abil, $innate_gainstr))))
-                    You_feel(__sl121, cptr.ldPtro(abil, $innate_gainstr));
+                    You_feel(__s_pct_s_bang, cptr.ldPtro(abil, $innate_gainstr));
             }
         } else if (oldlevel >= cptr.ld1s(abil) && newlevel < cptr.ld1s(abil)) {
             cptr.stI64((cptr.ldPtro(abil, $innate_ability)), cptr.ldI64((cptr.ldPtro(abil, $innate_ability))) & BigInt.asIntN(64, ~mask));
             if (!(cptr.ldI64((cptr.ldPtro(abil, $innate_ability))) & 117440512n)) {
                 if (cptr.ld1s((cptr.ldPtro(abil, $innate_losestr))))
-                    You_feel(__sl121, cptr.ldPtro(abil, $innate_losestr));
+                    You_feel(__s_pct_s_bang, cptr.ldPtro(abil, $innate_losestr));
                 else if (cptr.ld1s((cptr.ldPtro(abil, $innate_gainstr))))
-                    You_feel(__sl122, cptr.ldPtro(abil, $innate_gainstr));
+                    You_feel(__s_less_s, cptr.ldPtro(abil, $innate_gainstr));
             }
         }
         if (prevabil != cptr.ldI64((cptr.ldPtro(abil, $innate_ability))))
             postadjabil(cptr.ldPtro(abil, $innate_ability));
         abil = cptr.add(abil, 1, 32);
     }
+
     if (oldlevel > 0) {
         if (newlevel > oldlevel)
             add_weapon_skill((newlevel - oldlevel) | 0);
@@ -1262,33 +1481,40 @@ export function adjabil(oldlevel, newlevel) {
     }
 }
 
+/* called when gaining a level (before u.ulevel gets incremented);
+   also called with u.ulevel==0 during hero initialization or for
+   re-init if hero turns into a "new man/woman/elf/&c" */
 /** C ref: attrib.c:1080 @returns {CInt} */
 export function newhp() {
     let hp;
     let conplus;
+
     if (cptr.ldI32o(u, $you_ulevel) == 0) {
+        /* Initialize hit points */
         hp = (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv) + cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv)) | 0;
         if (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_inrnd) > 0)
-            hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1088, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_inrnd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_inrnd)))) | 0;
+            hp = (hp + rnd_at(__s_attrib_c, 1088, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_inrnd))) | 0;
         if (cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_inrnd) > 0)
-            hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1090, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_inrnd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_inrnd)))) | 0;
+            hp = (hp + rnd_at(__s_attrib_c, 1090, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_inrnd))) | 0;
         if (cptr.ldI64o(svm, $instance_globals_saved_m_moves) == 0n) {
-            cptr.st1o(u, $you_ualign, cptr.ld1so2(aligns, cptr.ldI32o(flags, $flag_initalign), 32, $Align_value));
+            /* Initialize alignment stuff */
+            cptr.st1o(u, $you_ualign, cptr.ld1so2(aligns, cptr.ldI32o(flags, $flag_initalign), $sizeof_Align, $Align_value));
             cptr.stI32o(u, $you_ualign + $align_record, cptr.ldI16o(gu, $instance_globals_u_urole + $Role_initrecord));
         }
+        /* no Con adjustment for initial hit points */
     } else {
         if (cptr.ldI32o(u, $you_ulevel) < cptr.ldI16o(gu, $instance_globals_u_urole + $Role_xlev)) {
             hp = (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_lofix) + cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_lofix)) | 0;
             if (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_lornd) > 0)
-                hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1101, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_lornd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_lornd)))) | 0;
+                hp = (hp + rnd_at(__s_attrib_c, 1101, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_lornd))) | 0;
             if (cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_lornd) > 0)
-                hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1103, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_lornd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_lornd)))) | 0;
+                hp = (hp + rnd_at(__s_attrib_c, 1103, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_lornd))) | 0;
         } else {
             hp = (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_hifix) + cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_hifix)) | 0;
             if (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_hirnd) > 0)
-                hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1107, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_hirnd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_hirnd)))) | 0;
+                hp = (hp + rnd_at(__s_attrib_c, 1107, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urole + $Role_hpadv + $RoleAdvance_hirnd))) | 0;
             if (cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_hirnd) > 0)
-                hp = (hp + (rng_log_enabled() ? (rng_log_set_caller(__sl38, 1109, __sl123), rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_hirnd))) : rnd(cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_hirnd)))) | 0;
+                hp = (hp + rnd_at(__s_attrib_c, 1109, __s_newhp, cptr.ldI16o(gu, $instance_globals_u_urace + $Race_hpadv + $RoleAdvance_hirnd))) | 0;
         }
         if ((acurr(NHC.A_CON)) <= 3)
             conplus = -2;
@@ -1309,9 +1535,13 @@ export function newhp() {
     if (hp <= 0)
         hp = 1;
     if (cptr.ldI32o(u, $you_ulevel) < NHM.MAXULEV) {
+        /* remember increment; future level drain could take it away again */
         cptr.stI16o2(u, cptr.ldI32o(u, $you_ulevel), 2, $you_uhpinc, i16(hp));
     } else {
+        /* after level 30, throttle hit point gains from extra experience;
+           once max reaches 1200, further increments will be just 1 more */
         let lim = schar(((5 - ((cptr.ldI32o(u, $you_uhpmax) / 300) | 0)) | 0));
+
         lim = schar(((lim) > 1 ? (lim) : 1));
         if (hp > lim)
             hp = lim;
@@ -1319,6 +1549,8 @@ export function newhp() {
     return hp;
 }
 
+/* minimum value for uhpmax is ulevel but for life-saving it is always at
+   least 10 if ulevel is less than that */
 /** C ref: attrib.c:1147 — @param {CInt} altmin @returns {CInt} */
 export function minuhpmax(altmin) {
     if (altmin < 1)
@@ -1326,6 +1558,8 @@ export function minuhpmax(altmin) {
     return max(cptr.ldI32o(u, $you_ulevel), altmin);
 }
 
+/* update u.uhpmax or u.mhmax and values of other things that depend upon
+   whichever of them is relevant */
 /** C ref: attrib.c:1157 — @param {CInt} newmax @param {CInt} even_when_polyd */
 export function setuhpmax(newmax, even_when_polyd) {
     if (!Upolyd() || even_when_polyd) {
@@ -1347,6 +1581,9 @@ export function setuhpmax(newmax, even_when_polyd) {
     }
 }
 
+/* called after setuhpmax() when damage is pending;
+   if uhpmax (or mhmax) has been reduced, it might have caused uhp (or mh)
+   to be reduced too; if so, recalculate pending loss to account for that */
 /** C ref: attrib.c:1182 — @param {CInt} loss @param {CInt} olduhp @returns {CInt} */
 export function adjuhploss(loss, olduhp) {
     if (!Upolyd()) {
@@ -1359,16 +1596,30 @@ export function adjuhploss(loss, olduhp) {
     return ((loss) > 1 ? (loss) : 1);
 }
 
+/* return the current effective value of a specific characteristic
+   (the 'a' in 'acurr()' comes from outdated use of "attribute" for the
+   six Str/Dex/&c characteristics; likewise for u.abon, u.atemp, u.acurr) */
 /** C ref: attrib.c:1200 — @param {CInt} chridx @returns {CInt} */
 export function acurr(chridx) {
     let tmp;
-    let result = 0;
-    (__builtin_expect(BigInt((!(chridx >= 0 && chridx < NHC.A_MAX))), 0n) ? __assert_rtn(__sl124, __sl38, 1204, __sl125) : void 0);
+    let result = 0;  /* 'result' will always be reset to positive value */
+
+    (__builtin_expect(BigInt((!(chridx >= 0 && chridx < NHC.A_MAX))), 0n) ? __assert_rtn(__s_acurr, __s_attrib_c, 1204, __s_chridx_0_chridx_a_max) : void 0);
     tmp = (((cptr.ld1so2(u, chridx, 1, $you_abon) + cptr.ld1so2(u, chridx, 1, $you_atemp)) | 0) + cptr.ld1so2(u, chridx, 1, $you_acurr)) | 0;
+
+    /* for Strength:  3 <= result <= 125;
+       for all others:  3 <= result <= 25 */
     if (chridx == NHC.A_STR) {
+        /* strength value is encoded:  3..18 normal, 19..118 for 18/xx (with
+           1 <= xx <= 100), and 119..125 for other characteristics' 19..25;
+           STR18(x) yields 18 + x (intended for 0 <= x <= 100; not used here);
+           STR19(y) yields 100 + y (intended for 19 <= y <= 25) */
         if (tmp >= 125 || (uarmg.v && cptr.ldI16o(uarmg.v, $obj_otyp) == NHC.GAUNTLETS_OF_POWER))
-            result = 125;
+            result = 125;  /* 125 */
         else
+            /* need non-zero here to avoid 'if(result==0)' below because
+               that doesn't deal with Str encoding; the cap of 25 applied
+               there would limit Str to 18/07 [18 + 7] */
             result = ((tmp) > 3 ? (tmp) : 3);
     } else if (chridx == NHC.A_CHA) {
         if (tmp < 18 && (cptr.ld1so(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), $permonst_mlet) == NHC.S_NYMPH || cptr.ldI32o(u, $you_umonnum) == NHC.PM_AMOROUS_DEMON))
@@ -1377,54 +1628,80 @@ export function acurr(chridx) {
         if (is_art(uwep.v, NHC.ART_OGRESMASHER))
             result = 25;
     } else if (chridx == NHC.A_INT || chridx == NHC.A_WIS) {
+        /* Yes, this may raise Int and/or Wis if hero is sufficiently
+           stupid.  There are lower levels of cognition than "dunce". */
         if (uarmh.v && cptr.ldI16o(uarmh.v, $obj_otyp) == NHC.DUNCE_CAP)
             result = 6;
     } else if (chridx == NHC.A_DEX) {
-        ;
+        ;  /* there aren't any special cases for dexterity */
     }
+
     if (result == 0)
         result = (tmp >= 25) ? 25 : ((tmp <= 3) ? 3 : tmp);
+
     return schar(result);
 }
 
+/* condense clumsy ACURR(A_STR) value into value that fits into formulas */
 /** C ref: attrib.c:1245 @returns {CInt} */
 export function acurrstr() {
     let str = (acurr(NHC.A_STR));
-    let result;
+    let result;  /* 3..25 */
+
     if (str <= 18)
-        result = ((str) > 3 ? (str) : 3);
+        result = ((str) > 3 ? (str) : 3);  /* 3..18 */
     else if (str <= 121)
-        result = (19 + ((str / 50) | 0)) | 0;
+        /* this converts
+           18/01..18/31 into 19,
+           18/32..18/81 into 20,
+           18/82..18/100 and 19..21 into 21 */
+        result = (19 + ((str / 50) | 0)) | 0;  /* map to 19..21 */
     else
-        result = (((str) < 125 ? (str) : 125) - 100) | 0;
+        result = (((str) < 125 ? (str) : 125) - 100) | 0;  /* 22..25 */
+
     return schar(result);
 }
 
+/* when wearing (or taking off) an unID'd item, this routine is used
+   to distinguish between observable +0 result and no-visible-effect
+   due to an attribute not being able to exceed maximum or minimum */
 /** C ref: attrib.c:1268 — @param {CInt} attrindx @returns {CInt} */
 export function extremeattr(attrindx) {
+    /* Fixed_abil and racial MINATTR/MAXATTR aren't relevant here */
     let lolimit = 3;
     let hilimit = 25;
     let curval = (acurr(attrindx));
+
+    /* upper limit for Str is 25 but its value is encoded differently */
     if (attrindx == NHC.A_STR) {
-        hilimit = 125;
+        hilimit = 125;  /* 125 */
+        /* lower limit for Str can also be 25 */
         if (uarmg.v && cptr.ldI16o(uarmg.v, $obj_otyp) == NHC.GAUNTLETS_OF_POWER)
             lolimit = hilimit;
     } else if (attrindx == NHC.A_CON) {
         if (is_art(uwep.v, NHC.ART_OGRESMASHER))
             lolimit = hilimit;
     }
+    /* this exception is hypothetical; the only other worn item affecting
+       Int or Wis is another helmet so can't be in use at the same time */
     if (attrindx == NHC.A_INT || attrindx == NHC.A_WIS) {
         if (uarmh.v && cptr.ldI16o(uarmh.v, $obj_otyp) == NHC.DUNCE_CAP)
             hilimit = (lolimit = 6);
     }
+
+    /* are we currently at either limit? */
     return schar(((curval == lolimit || curval == hilimit) ? 1 : 0));
 }
 
+/* avoid possible problems with alignment overflow, and provide a centralized
+   location for any future alignment limits */
 /** C ref: attrib.c:1298 — @param {CInt} n */
 export function adjalign(n) {
     let newalign = (cptr.ldI32o(u, $you_ualign + $align_record) + n) | 0;
+
     if (n < 0) {
         let newabuse = (cptr.ldI32o(u, $you_ualign + $align_abuse) - (n >>> 0)) >>> 0;
+
         if (newalign < cptr.ldI32o(u, $you_ualign + $align_record))
             cptr.stI32o(u, $you_ualign + $align_record, newalign);
         if (newabuse > cptr.ldI32o(u, $you_ualign + $align_abuse)) {
@@ -1438,32 +1715,40 @@ export function adjalign(n) {
     }
 }
 
+/* change hero's alignment type, possibly losing use of artifacts */
 /** C ref: attrib.c:1320 — @param {CInt} newalign @param {CInt} reason */
 export function uchangealign(newalign, reason) {
     let oldalign = cptr.ld1so(u, $you_ualign);
-    cptr.stI32o(u, $you_ublessed, 0);
-    cptr.st1(disp, 1);
+
+    cptr.stI32o(u, $you_ublessed, 0);  /* lose divine protection */
+    /* You/Your/pline message with call flush_screen(), triggering bot(),
+       so the actual data change needs to come before the message */
+    cptr.st1(disp, 1);  /* status line needs updating */
     if (reason == NHC.A_CG_CONVERT) {
-        livelog_printf(512n, __sl126, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
+        /* conversion via altar */
+        livelog_printf(512n, __s_permanently_converted_to_s, cptr.ldPtro2(aligns, (1 - newalign) | 0, $sizeof_Align, $Align_adj));
         cptr.st1o2(u, NHM.A_CURRENT, 1, $you_ualignbase, schar(newalign));
+        /* worn helm of opposite alignment might block change */
         if (!uarmh.v || cptr.ldI16o(uarmh.v, $obj_otyp) != NHC.HELM_OF_OPPOSITE_ALIGNMENT)
             cptr.st1o(u, $you_ualign, cptr.ld1so2(u, NHM.A_CURRENT, 1, $you_ualignbase));
-        You(__sl127, (cptr.ld1so(u, $you_ualign) != oldalign) ? __sl128 : __sl18);
+        You(__s_have_a_ssense_of_a_new_direction, (cptr.ld1so(u, $you_ualign) != oldalign) ? __s_sudden : __s_empty);
     } else {
+        /* putting on or taking off a helm of opposite alignment */
         cptr.st1o(u, $you_ualign, schar(newalign));
         if (reason == NHC.A_CG_HELM_ON) {
-            adjalign(-7);
-            Your(__sl129, Hallucination() ? __sl130 : __sl131);
-            make_confused(BigInt((((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1346, __sl132), rn2(2)) : rn2(2)) + 3) | 0)), 0);
-            if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || ((rng_log_enabled() ? (rng_log_set_caller(__sl38, 1347, __sl132), rn2(50)) : rn2(50)) >>> 0 < cptr.ldI32o(u, $you_ualign + $align_abuse)))
+            adjalign(-7);  /* for abuse -- record will be cleared shortly */
+            Your(__s_mind_oscillates_s, Hallucination() ? __s_wildly : __s_briefly);
+            make_confused(BigInt(((rn2_at(__s_attrib_c, 1346, __s_uchangealign, 2) + 3) | 0)), 0);
+            if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || (rn2_at(__s_attrib_c, 1347, __s_uchangealign, 50) >>> 0 < cptr.ldI32o(u, $you_ualign + $align_abuse)))
                 summon_furies((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) ? 0 : 1);
-            livelog_printf(512n, __sl133, cptr.ldPtro2(aligns, (1 - newalign) | 0, 32, $Align_adj));
+            /* don't livelog taking it back off */
+            livelog_printf(512n, __s_used_a_helm_to_turn_s, cptr.ldPtro2(aligns, (1 - newalign) | 0, $sizeof_Align, $Align_adj));
         } else if (reason == NHC.A_CG_HELM_OFF) {
-            Your(__sl134, Hallucination() ? __sl135 : __sl136);
+            Your(__s_mind_is_s, Hallucination() ? __s_much_of_a_muchness : __s_back_in_sync_with_your_body);
         }
     }
     if (cptr.ld1so(u, $you_ualign) != oldalign) {
-        cptr.stI32o(u, $you_ualign + $align_record, 0);
+        cptr.stI32o(u, $you_ualign + $align_record, 0);  /* slate is wiped clean */
         retouch_equipment(0);
     }
 }

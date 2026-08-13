@@ -25,147 +25,157 @@ const $LoadF_buff = FLD.LoadF_buff, $LoadF_f = FLD.LoadF_f, $LoadS_size = FLD.Lo
     $lua_Debug_currentline = FLD.lua_Debug_currentline, $lua_Debug_istailcall = FLD.lua_Debug_istailcall,
     $lua_Debug_linedefined = FLD.lua_Debug_linedefined, $lua_Debug_name = FLD.lua_Debug_name,
     $lua_Debug_namewhat = FLD.lua_Debug_namewhat, $lua_Debug_short_src = FLD.lua_Debug_short_src,
-    $lua_Debug_what = FLD.lua_Debug_what;
+    $lua_Debug_what = FLD.lua_Debug_what, $sizeof_luaL_Reg = FLD.sizeof_luaL_Reg;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit(".");
-const __sl1 = cptr.lit("f");
-const __sl2 = cptr.lit("_LOADED");
-const __sl3 = cptr.lit("not enough stack");
-const __sl4 = cptr.lit("_G.");
-const __sl5 = cptr.lit("function '%s'");
-const __sl6 = cptr.lit("%s '%s'");
-const __sl7 = cptr.lit("main chunk");
-const __sl8 = cptr.lit("function <%s:%d>");
-const __sl9 = cptr.lit("?");
-const __sl10 = cptr.lit("stack traceback:");
-const __sl11 = cptr.lit("\n\t...\t(skipping %d levels)");
-const __sl12 = cptr.lit("Slnt");
-const __sl13 = cptr.lit("\n\t%s: in ");
-const __sl14 = cptr.lit("\n\t%s:%d: in ");
-const __sl15 = cptr.lit("\n\t(...tail calls...)");
-const __sl16 = cptr.lit("bad argument #%d (%s)");
-const __sl17 = cptr.lit("n");
-const __sl18 = cptr.lit("method");
-const __sl19 = cptr.lit("calling '%s' on bad self (%s)");
-const __sl20 = cptr.lit("bad argument #%d to '%s' (%s)");
-const __sl21 = cptr.lit("__name");
-const __sl22 = cptr.lit("light userdata");
-const __sl23 = cptr.lit("%s expected, got %s");
-const __sl24 = cptr.lit("Sl");
-const __sl25 = cptr.lit("%s:%d: ");
-const __sl26 = cptr.lit("");
-const __sl27 = cptr.lit("(no extra info)");
-const __sl28 = cptr.lit("%s: %s");
-const __sl29 = cptr.lit("exit");
-const __sl30 = cptr.lit("signal");
-const __sl31 = cptr.lit("invalid option '%s'");
-const __sl32 = cptr.lit("stack overflow (%s)");
-const __sl33 = cptr.lit("stack overflow");
-const __sl34 = cptr.lit("value expected");
-const __sl35 = cptr.lit("number has no integer representation");
-const __sl36 = cptr.lit("not enough memory");
-const __sl37 = cptr.lit("__gc");
-const __sl38 = cptr.lit("__close");
-const __sl39 = cptr.lit("_UBOX*");
-const __sl40 = cptr.lit("buffer too large");
-const __sl41 = cptr.lit("cannot %s %s: %s");
-const __sl42 = cptr.lit("cannot %s %s");
-const __sl43 = cptr.lit("=stdin");
-const __sl44 = cptr.lit("@%s");
-const __sl45 = cptr.lit("r");
-const __sl46 = cptr.lit("open");
-const __sl47 = cptr.lit("\x1bLua");
-const __sl48 = cptr.lit("rb");
-const __sl49 = cptr.lit("reopen");
-const __sl50 = cptr.lit("read");
-const __sl51 = cptr.lit("object length is not an integer");
-const __sl52 = cptr.lit("__tostring");
-const __sl53 = cptr.lit("'__tostring' must return a string");
-const __sl54 = cptr.lit("%I");
-const __sl55 = cptr.lit("%f");
-const __sl56 = cptr.lit("true");
-const __sl57 = cptr.lit("false");
-const __sl58 = cptr.lit("nil");
-const __sl59 = cptr.lit("%s: %p");
-const __sl60 = cptr.lit("too many upvalues");
-const __sl61 = cptr.lit("error object is not a string");
-const __sl62 = cptr.lit("PANIC: unprotected error in call to Lua API (%s)\n");
-const __sl63 = cptr.lit("off");
-const __sl64 = cptr.lit("on");
-const __sl65 = cptr.lit("%s");
-const __sl66 = cptr.lit("\n");
-const __sl67 = cptr.lit("Lua warning: ");
-const __sl68 = cptr.lit("core and library have incompatible numeric types");
-const __sl69 = cptr.lit("version mismatch: app. needs %f, Lua core provides %f");
+const __s_dot = cptr.lit(".");
+const __s_f = cptr.lit("f");
+const __s_loaded = cptr.lit("_LOADED");
+const __s_not_enough_stack = cptr.lit("not enough stack");
+const __s_us_g_dot = cptr.lit("_G.");
+const __s_function_s = cptr.lit("function '%s'");
+const __s_s_s = cptr.lit("%s '%s'");
+const __s_main_chunk = cptr.lit("main chunk");
+const __s_function_s_d = cptr.lit("function <%s:%d>");
+const __s_query = cptr.lit("?");
+const __s_stack_traceback = cptr.lit("stack traceback:");
+const __s_skipping_d_levels = cptr.lit("\n\t...\t(skipping %d levels)");
+const __s_slnt = cptr.lit("Slnt");
+const __s_s_in = cptr.lit("\n\t%s: in ");
+const __s_s_d_in = cptr.lit("\n\t%s:%d: in ");
+const __s_tail_calls = cptr.lit("\n\t(...tail calls...)");
+const __s_bad_argument_d_s = cptr.lit("bad argument #%d (%s)");
+const __s_n = cptr.lit("n");
+const __s_method = cptr.lit("method");
+const __s_calling_s_on_bad_self_s = cptr.lit("calling '%s' on bad self (%s)");
+const __s_bad_argument_d_to_s_s = cptr.lit("bad argument #%d to '%s' (%s)");
+const __s_name = cptr.lit("__name");
+const __s_light_userdata = cptr.lit("light userdata");
+const __s_s_expected_got_s = cptr.lit("%s expected, got %s");
+const __s_sl = cptr.lit("Sl");
+const __s_s_d = cptr.lit("%s:%d: ");
+const __s_empty = cptr.lit("");
+const __s_no_extra_info = cptr.lit("(no extra info)");
+const __s_s_s__2 = cptr.lit("%s: %s");
+const __s_exit = cptr.lit("exit");
+const __s_signal = cptr.lit("signal");
+const __s_invalid_option_s = cptr.lit("invalid option '%s'");
+const __s_stack_overflow_s = cptr.lit("stack overflow (%s)");
+const __s_stack_overflow = cptr.lit("stack overflow");
+const __s_value_expected = cptr.lit("value expected");
+const __s_number_has_no_integer_representation = cptr.lit("number has no integer representation");
+const __s_not_enough_memory = cptr.lit("not enough memory");
+const __s_gc = cptr.lit("__gc");
+const __s_close = cptr.lit("__close");
+const __s_ubox = cptr.lit("_UBOX*");
+const __s_buffer_too_large = cptr.lit("buffer too large");
+const __s_cannot_s_s_s = cptr.lit("cannot %s %s: %s");
+const __s_cannot_s_s = cptr.lit("cannot %s %s");
+const __s_stdin = cptr.lit("=stdin");
+const __s_at_pct_s = cptr.lit("@%s");
+const __s_r = cptr.lit("r");
+const __s_open = cptr.lit("open");
+const __s_lua = cptr.lit("\x1bLua");
+const __s_rb = cptr.lit("rb");
+const __s_reopen = cptr.lit("reopen");
+const __s_read = cptr.lit("read");
+const __s_object_length_is_not_an_integer = cptr.lit("object length is not an integer");
+const __s_tostring = cptr.lit("__tostring");
+const __s_tostring_must_return_a_string = cptr.lit("'__tostring' must return a string");
+const __s_pct_i = cptr.lit("%I");
+const __s_pct_f = cptr.lit("%f");
+const __s_true = cptr.lit("true");
+const __s_false = cptr.lit("false");
+const __s_nil = cptr.lit("nil");
+const __s_s_p = cptr.lit("%s: %p");
+const __s_too_many_upvalues = cptr.lit("too many upvalues");
+const __s_error_object_is_not_a_string = cptr.lit("error object is not a string");
+const __s_panic_unprotected_error_in_call_to_lua = cptr.lit("PANIC: unprotected error in call to Lua API (%s)\n");
+const __s_off = cptr.lit("off");
+const __s_on = cptr.lit("on");
+const __s_pct_s = cptr.lit("%s");
+const __s_nl = cptr.lit("\n");
+const __s_lua_warning = cptr.lit("Lua warning: ");
+const __s_core_and_library_have_incompatible = cptr.lit("core and library have incompatible numeric types");
+const __s_version_mismatch_app_needs_f_lua_core = cptr.lit("version mismatch: app. needs %f, Lua core provides %f");
 
-/** C ref: lauxlib.c:52 — @param {CPtr} L @param {CInt} objidx @param {CInt} level @returns {CInt} */
+/*
+** Search for 'objidx' in table at index -1. ('objidx' must be an
+** absolute index.) Return 1 + string at top if it found a good name.
+*/
+/** C ref: lauxlib.c:52 — @param {CPtr<lua_State>} L @param {CInt} objidx @param {CInt} level @returns {CInt} */
 function* findfield(L, objidx, level) {
     if (level == 0 || !(lua_type(L, -1) == 5))
-        return 0;
-    (yield* lua_pushnil(L));
+        return 0;  /* not found */
+    (yield* lua_pushnil(L));  /* start 'next' loop */
     while ((yield* lua_next(L, -2))) {
         if (lua_type(L, -2) == 4) {
             if ((yield* lua_rawequal(L, objidx, -1))) {
-                (yield* lua_settop(L, -2));
+                (yield* lua_settop(L, -2));  /* remove value (but keep name) */
                 return 1;
             } else if ((yield* findfield(L, objidx, (level - 1) | 0))) {
-                (yield* lua_pushstring(L, __sl0));
-                (lua_copy(L, -1, -3), (yield* lua_settop(L, -2)));
-                (yield* lua_concat(L, 3));
+                /* stack: lib_name, lib_table, field_name (top) */
+                (yield* lua_pushstring(L, __s_dot));  /* place '.' between the two names */
+                (lua_copy(L, -1, -3), (yield* lua_settop(L, -2)));  /* (in the slot occupied by table) */
+                (yield* lua_concat(L, 3));  /* lib_name.field_name */
                 return 1;
             }
         }
-        (yield* lua_settop(L, -2));
+        (yield* lua_settop(L, -2));  /* remove value */
     }
-    return 0;
+    return 0;  /* not found */
 }
 
-/** C ref: lauxlib.c:79 — @param {CPtr} L @param {CPtr} ar @returns {CInt} */
+/*
+** Search for a name for a function in all loaded modules
+*/
+/** C ref: lauxlib.c:79 — @param {CPtr<lua_State>} L @param {CPtr<lua_Debug>} ar @returns {CInt} */
 function* pushglobalfuncname(L, ar) {
     let top = lua_gettop(L);
-    (yield* lua_getinfo(L, __sl1, ar));
-    (yield* lua_getfield(L, -1001000, __sl2));
-    (yield* luaL_checkstack(L, 6, __sl3));
+    (yield* lua_getinfo(L, __s_f, ar));  /* push function */
+    (yield* lua_getfield(L, -1001000, __s_loaded));
+    (yield* luaL_checkstack(L, 6, __s_not_enough_stack));  /* slots for 'findfield' */
     if ((yield* findfield(L, (top + 1) | 0, 2))) {
         let name = (yield* lua_tolstring(L, -1, null));
-        if (cptr.strncmp(name, __sl4, 3n) == 0) {
-            (yield* lua_pushstring(L, cptr.add(name, 3)));
-            (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
+        if (cptr.strncmp(name, __s_us_g_dot, 3n) == 0) {
+            (yield* lua_pushstring(L, cptr.add(name, 3)));  /* push name without prefix */
+            (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove original name */
         }
-        lua_copy(L, -1, (top + 1) | 0);
-        (yield* lua_settop(L, (top + 1) | 0));
+        lua_copy(L, -1, (top + 1) | 0);  /* copy name to proper place */
+        (yield* lua_settop(L, (top + 1) | 0));  /* remove table "loaded" and name copy */
         return 1;
     } else {
-        (yield* lua_settop(L, top));
+        (yield* lua_settop(L, top));  /* remove function and global table */
         return 0;
     }
 }
 
-/** C ref: lauxlib.c:101 — @param {CPtr} L @param {CPtr} ar */
+/** C ref: lauxlib.c:101 — @param {CPtr<lua_State>} L @param {CPtr<lua_Debug>} ar */
 function* pushfuncname(L, ar) {
     if ((yield* pushglobalfuncname(L, ar))) {
-        (yield* lua_pushfstring(L, __sl5, (yield* lua_tolstring(L, -1, null))));
-        (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
+        (yield* lua_pushfstring(L, __s_function_s, (yield* lua_tolstring(L, -1, null))));
+        (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove name */
     } else if (cptr.ld1s(cptr.ldPtro(ar, $lua_Debug_namewhat)) != 0)
-        (yield* lua_pushfstring(L, __sl6, cptr.ldPtro(ar, $lua_Debug_namewhat), cptr.ldPtro(ar, $lua_Debug_name)));
+        (yield* lua_pushfstring(L, __s_s_s, cptr.ldPtro(ar, $lua_Debug_namewhat), cptr.ldPtro(ar, $lua_Debug_name)));  /* use it */
     else if (cptr.ld1s(cptr.ldPtro(ar, $lua_Debug_what)) == 109)
-        (yield* lua_pushstring(L, __sl7));
+        (yield* lua_pushstring(L, __s_main_chunk));
     else if (cptr.ld1s(cptr.ldPtro(ar, $lua_Debug_what)) != 67)
-        (yield* lua_pushfstring(L, __sl8, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_linedefined)));
+        (yield* lua_pushfstring(L, __s_function_s_d, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_linedefined)));
     else
-        (yield* lua_pushstring(L, __sl9));
+        (yield* lua_pushstring(L, __s_query));
 }
 
-/** C ref: lauxlib.c:117 — @param {CPtr} L @returns {CInt} */
+/** C ref: lauxlib.c:117 — @param {CPtr<lua_State>} L @returns {CInt} */
 function lastlevel(L) {
     let ar = cptr.alloc(136);
     let li = 1;
     let le = 1;
     while (lua_getstack(L, le, ar)) {
+        /* find an upper bound */
         li = le;
         le = Math.imul(le, 2);
     }
+    /* do a binary search */
     while (li < le) {
         let m = (((li + le) | 0) / 2) | 0;
         if (lua_getstack(L, m, ar))
@@ -176,7 +186,7 @@ function lastlevel(L) {
     return (le - 1) | 0;
 }
 
-/** C ref: lauxlib.c:132 — @param {CPtr} L @param {CPtr} L1 @param {CPtr} msg @param {CInt} level */
+/** C ref: lauxlib.c:132 — @param {CPtr<lua_State>} L @param {CPtr<lua_State>} L1 @param {CPtr<char>} msg @param {CInt} level */
 export function* luaL_traceback(L, L1, msg, level) {
     let b = cptr.alloc(1056);
     let ar = cptr.alloc(136);
@@ -187,78 +197,95 @@ export function* luaL_traceback(L, L1, msg, level) {
         (yield* luaL_addstring(b, msg));
         (void (cptr.ldU64o((b), $luaL_Buffer_n) < cptr.ldU64o((b), $luaL_Buffer_size) || (yield* luaL_prepbuffsize((b), 1n)) ? 1 : 0), (cptr.st1o(cptr.ldPtr((b)), (cptr.stU64o((b), $luaL_Buffer_n, cptr.ldU64o((b), $luaL_Buffer_n) + 1n)) - (1n), 10)));
     }
-    (yield* luaL_addstring(b, __sl10));
+    (yield* luaL_addstring(b, __s_stack_traceback));
     while (lua_getstack(L1, level++, ar)) {
         if (limit2show-- == 0) {
-            let n = (((((last - level) | 0) - 11) | 0) + 1) | 0;
-            (yield* lua_pushfstring(L, __sl11, n));
-            (yield* luaL_addvalue(b));
-            level = (level + n) | 0;
+            let n = (((((last - level) | 0) - 11) | 0) + 1) | 0;  /* number of levels to skip */
+            (yield* lua_pushfstring(L, __s_skipping_d_levels, n));
+            (yield* luaL_addvalue(b));  /* add warning about skip */
+            level = (level + n) | 0;  /* and skip to last levels */
         } else {
-            (yield* lua_getinfo(L1, __sl12, ar));
+            (yield* lua_getinfo(L1, __s_slnt, ar));
             if (cptr.ldI32o(ar, $lua_Debug_currentline) <= 0)
-                (yield* lua_pushfstring(L, __sl13, cptr.add(ar, $lua_Debug_short_src)));
+                (yield* lua_pushfstring(L, __s_s_in, cptr.add(ar, $lua_Debug_short_src)));
             else
-                (yield* lua_pushfstring(L, __sl14, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_currentline)));
+                (yield* lua_pushfstring(L, __s_s_d_in, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_currentline)));
             (yield* luaL_addvalue(b));
             (yield* pushfuncname(L, ar));
             (yield* luaL_addvalue(b));
             if (cptr.ld1so(ar, $lua_Debug_istailcall))
-                (yield* luaL_addstring(b, __sl15));
+                (yield* luaL_addstring(b, __s_tail_calls));
         }
     }
     (yield* luaL_pushresult(b));
 }
 
-/** C ref: lauxlib.c:176 — @param {CPtr} L @param {CInt} arg @param {CPtr} extramsg @returns {CInt} */
+/* }====================================================== */
+
+/*
+** {======================================================
+** Error-report functions
+** =======================================================
+*/
+
+/** C ref: lauxlib.c:176 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CPtr<char>} extramsg @returns {CInt} */
 export function* luaL_argerror(L, arg, extramsg) {
     let ar = cptr.alloc(136);
     if (!lua_getstack(L, 0, ar))
-        return (yield* luaL_error(L, __sl16, arg, extramsg));
-    (yield* lua_getinfo(L, __sl17, ar));
-    if (strcmp(cptr.ldPtro(ar, $lua_Debug_namewhat), __sl18) == 0) {
-        arg--;
+        return (yield* luaL_error(L, __s_bad_argument_d_s, arg, extramsg));
+    (yield* lua_getinfo(L, __s_n, ar));
+    if (strcmp(cptr.ldPtro(ar, $lua_Debug_namewhat), __s_method) == 0) {
+        arg--;  /* do not count 'self' */
         if (arg == 0)
-            return (yield* luaL_error(L, __sl19, cptr.ldPtro(ar, $lua_Debug_name), extramsg));
+            return (yield* luaL_error(L, __s_calling_s_on_bad_self_s, cptr.ldPtro(ar, $lua_Debug_name), extramsg));
     }
     if (cptr.eq(cptr.ldPtro(ar, $lua_Debug_name), (null)))
-        cptr.stPtro(ar, $lua_Debug_name, ((yield* pushglobalfuncname(L, ar))) ? (yield* lua_tolstring(L, -1, null)) : __sl9);
-    return (yield* luaL_error(L, __sl20, arg, cptr.ldPtro(ar, $lua_Debug_name), extramsg));
+        cptr.stPtro(ar, $lua_Debug_name, ((yield* pushglobalfuncname(L, ar))) ? (yield* lua_tolstring(L, -1, null)) : __s_query);
+    return (yield* luaL_error(L, __s_bad_argument_d_to_s_s, arg, cptr.ldPtro(ar, $lua_Debug_name), extramsg));
 }
 
-/** C ref: lauxlib.c:194 — @param {CPtr} L @param {CInt} arg @param {CPtr} tname @returns {CInt} */
+/** C ref: lauxlib.c:194 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CPtr<char>} tname @returns {CInt} */
 export function* luaL_typeerror(L, arg, tname) {
     let msg;
-    let typearg;
-    if ((yield* luaL_getmetafield(L, arg, __sl21)) == 4)
-        typearg = (yield* lua_tolstring(L, -1, null));
+    let typearg;  /* name for the type of the actual argument */
+    if ((yield* luaL_getmetafield(L, arg, __s_name)) == 4)
+        typearg = (yield* lua_tolstring(L, -1, null));  /* use the given type name */
     else if (lua_type(L, arg) == 2)
-        typearg = __sl22;
+        typearg = __s_light_userdata;  /* special name for messages */
     else
-        typearg = lua_typename(L, lua_type(L, (arg)));
-    msg = (yield* lua_pushfstring(L, __sl23, tname, typearg));
+        typearg = lua_typename(L, lua_type(L, (arg)));  /* standard name */
+    msg = (yield* lua_pushfstring(L, __s_s_expected_got_s, tname, typearg));
     return (yield* luaL_argerror(L, arg, msg));
 }
 
-/** C ref: lauxlib.c:208 — @param {CPtr} L @param {CInt} arg @param {CInt} tag */
+/** C ref: lauxlib.c:208 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CInt} tag */
 function* tag_error(L, arg, tag) {
     (yield* luaL_typeerror(L, arg, lua_typename(L, tag)));
 }
 
-/** C ref: lauxlib.c:217 — @param {CPtr} L @param {CInt} level */
+/*
+** The use of 'lua_pushfstring' ensures this function does not
+** need reserved stack space when called.
+*/
+/** C ref: lauxlib.c:217 — @param {CPtr<lua_State>} L @param {CInt} level */
 export function* luaL_where(L, level) {
     let ar = cptr.alloc(136);
     if (lua_getstack(L, level, ar)) {
-        (yield* lua_getinfo(L, __sl24, ar));
+        (yield* lua_getinfo(L, __s_sl, ar));  /* get info about it */
         if (cptr.ldI32o(ar, $lua_Debug_currentline) > 0) {
-            (yield* lua_pushfstring(L, __sl25, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_currentline)));
+            (yield* lua_pushfstring(L, __s_s_d, cptr.add(ar, $lua_Debug_short_src), cptr.ldI32o(ar, $lua_Debug_currentline)));
             return;
         }
     }
-    (yield* lua_pushfstring(L, __sl26));
+    (yield* lua_pushfstring(L, __s_empty));  /* else, no information available... */
 }
 
-/** C ref: lauxlib.c:235 — @param {CPtr} L @param {CPtr} fmt @returns {CInt} */
+/*
+** Again, the use of 'lua_pushvfstring' ensures this function does
+** not need reserved stack space when called. (At worst, it generates
+** an error with "stack overflow" instead of the given message.)
+*/
+/** C ref: lauxlib.c:235 — @param {CPtr<lua_State>} L @param {CPtr<char>} fmt @returns {CInt} */
 export function* luaL_error(L, fmt, ...__va) {
     let argp;
     argp = cptr.vaList(__va);
@@ -269,18 +296,18 @@ export function* luaL_error(L, fmt, ...__va) {
     return (yield* lua_error(L));
 }
 
-/** C ref: lauxlib.c:246 — @param {CPtr} L @param {CInt} stat @param {CPtr} fname @returns {CInt} */
+/** C ref: lauxlib.c:246 — @param {CPtr<lua_State>} L @param {CInt} stat @param {CPtr<char>} fname @returns {CInt} */
 export function* luaL_fileresult(L, stat, fname) {
-    let en = (cptr.ldI32(__error()));
+    let en = (cptr.ldI32(__error()));  /* calls to Lua API may change this value */
     if (stat) {
         (yield* lua_pushboolean(L, 1));
         return 1;
     } else {
         let msg;
         (yield* lua_pushnil(L));
-        msg = (en != 0) ? strerror(en) : __sl27;
+        msg = (en != 0) ? strerror(en) : __s_no_extra_info;
         if (fname)
-            (yield* lua_pushfstring(L, __sl28, fname, msg));
+            (yield* lua_pushfstring(L, __s_s_s__2, fname, msg));
         else
             (yield* lua_pushstring(L, msg));
         (yield* lua_pushinteger(L, BigInt(en)));
@@ -288,17 +315,17 @@ export function* luaL_fileresult(L, stat, fname) {
     }
 }
 
-/** C ref: lauxlib.c:288 — @param {CPtr} L @param {CInt} stat @returns {CInt} */
+/** C ref: lauxlib.c:288 — @param {CPtr<lua_State>} L @param {CInt} stat @returns {CInt} */
 export function* luaL_execresult(L, stat) {
     if (stat != 0 && (cptr.ldI32(__error())) != 0)
         return (yield* luaL_fileresult(L, 0, null));
     else {
-        let what = __sl29;
+        let what = __s_exit;  /* type of termination */
         if ((((stat) & 127) == 0)) {
-            stat = (((stat) >> 8) & 255);
+            stat = (((stat) >> 8) & 255);  /* interpret result */
         } else if ((((stat) & 127) != 127 && ((stat) & 127) != 0)) {
             stat = (((stat) & 127));
-            what = __sl30;
+            what = __s_signal;
         }
         ;
         if (cptr.ld1s(what) == 101 && stat == 0)
@@ -307,84 +334,107 @@ export function* luaL_execresult(L, stat) {
             (yield* lua_pushnil(L));
         (yield* lua_pushstring(L, what));
         (yield* lua_pushinteger(L, BigInt(stat)));
-        return 3;
+        return 3;  /* return true/fail,what,code */
     }
 }
 
-/** C ref: lauxlib.c:314 — @param {CPtr} L @param {CPtr} tname @returns {CInt} */
+/* }====================================================== */
+
+/*
+** {======================================================
+** Userdata's metatable manipulation
+** =======================================================
+*/
+
+/** C ref: lauxlib.c:314 — @param {CPtr<lua_State>} L @param {CPtr<char>} tname @returns {CInt} */
 export function* luaL_newmetatable(L, tname) {
     if (((yield* lua_getfield(L, -1001000, (tname)))) != 0)
-        return 0;
+        return 0;  /* leave previous value on top, but return 0 */
     (yield* lua_settop(L, -2));
-    (yield* lua_createtable(L, 0, 2));
+    (yield* lua_createtable(L, 0, 2));  /* create metatable */
     (yield* lua_pushstring(L, tname));
-    (yield* lua_setfield(L, -2, __sl21));
+    (yield* lua_setfield(L, -2, __s_name));  /* metatable.__name = tname */
     (yield* lua_pushvalue(L, -1));
-    (yield* lua_setfield(L, -1001000, tname));
+    (yield* lua_setfield(L, -1001000, tname));  /* registry.name = metatable */
     return 1;
 }
 
-/** C ref: lauxlib.c:327 — @param {CPtr} L @param {CPtr} tname */
+/** C ref: lauxlib.c:327 — @param {CPtr<lua_State>} L @param {CPtr<char>} tname */
 export function* luaL_setmetatable(L, tname) {
     ((yield* lua_getfield(L, -1001000, (tname))));
     (yield* lua_setmetatable(L, -2));
 }
 
-/** C ref: lauxlib.c:333 — @param {CPtr} L @param {CInt} ud @param {CPtr} tname @returns {CPtr} */
+/** C ref: lauxlib.c:333 — @param {CPtr<lua_State>} L @param {CInt} ud @param {CPtr<char>} tname @returns {CPtr<void>} */
 export function* luaL_testudata(L, ud, tname) {
     let p = lua_touserdata(L, ud);
     if (!cptr.eq(p, (null))) {
         if ((yield* lua_getmetatable(L, ud))) {
-            ((yield* lua_getfield(L, -1001000, (tname))));
+            ((yield* lua_getfield(L, -1001000, (tname))));  /* get correct metatable */
             if (!(yield* lua_rawequal(L, -1, -2)))
-                p = (null);
-            (yield* lua_settop(L, -3));
+                p = (null);  /* value is a userdata with wrong metatable */
+            (yield* lua_settop(L, -3));  /* remove both metatables */
             return p;
         }
     }
-    return (null);
+    return (null);  /* value is not a userdata with a metatable */
 }
 
-/** C ref: lauxlib.c:348 — @param {CPtr} L @param {CInt} ud @param {CPtr} tname @returns {CPtr} */
+/** C ref: lauxlib.c:348 — @param {CPtr<lua_State>} L @param {CInt} ud @param {CPtr<char>} tname @returns {CPtr<void>} */
 export function* luaL_checkudata(L, ud, tname) {
     let p = (yield* luaL_testudata(L, ud, tname));
     (void ((__builtin_expect(BigInt(((!cptr.eq(p, (null))) != 0)), 1n)) || (yield* luaL_typeerror(L, (ud), (tname))) ? 1 : 0));
     return p;
 }
 
-/** C ref: lauxlib.c:363 — @param {CPtr} L @param {CInt} arg @param {CPtr} def @param {CPtr} lst @returns {CInt} */
+/* }====================================================== */
+
+/*
+** {======================================================
+** Argument check functions
+** =======================================================
+*/
+
+/** C ref: lauxlib.c:363 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CPtr<char>} def @param {CPtr<char *>} lst @returns {CInt} */
 export function* luaL_checkoption(L, arg, def, lst) {
     let name = (def) ? ((yield* luaL_optlstring(L, (arg), (def), null))) : ((yield* luaL_checklstring(L, (arg), null)));
     let i;
     for (i = 0; cptr.ldPtro(lst, i, 8); i++)
         if (strcmp(cptr.ldPtro(lst, i, 8), name) == 0)
             return i;
-    return (yield* luaL_argerror(L, arg, (yield* lua_pushfstring(L, __sl31, name))));
+    return (yield* luaL_argerror(L, arg, (yield* lua_pushfstring(L, __s_invalid_option_s, name))));
 }
 
-/** C ref: lauxlib.c:383 — @param {CPtr} L @param {CInt} space @param {CPtr} msg */
+/*
+** Ensures the stack has at least 'space' extra slots, raising an error
+** if it cannot fulfill the request. (The error handling needs a few
+** extra slots to format the error message. In case of an error without
+** this extra space, Lua will generate the same 'stack overflow' error,
+** but without 'msg'.)
+*/
+/** C ref: lauxlib.c:383 — @param {CPtr<lua_State>} L @param {CInt} space @param {CPtr<char>} msg */
 export function* luaL_checkstack(L, space, msg) {
     if ((__builtin_expect(BigInt(((!(yield* lua_checkstack(L, space))) != 0)), 0n))) {
         if (msg)
-            (yield* luaL_error(L, __sl32, msg));
+            (yield* luaL_error(L, __s_stack_overflow_s, msg));
         else
-            (yield* luaL_error(L, __sl33));
+            (yield* luaL_error(L, __s_stack_overflow));
     }
 }
 
-/** C ref: lauxlib.c:393 — @param {CPtr} L @param {CInt} arg @param {CInt} t */
+/** C ref: lauxlib.c:393 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CInt} t */
 export function* luaL_checktype(L, arg, t) {
     if ((__builtin_expect(BigInt(((lua_type(L, arg) != t) != 0)), 0n)))
         (yield* tag_error(L, arg, t));
 }
 
-/** C ref: lauxlib.c:399 — @param {CPtr} L @param {CInt} arg */
+/** C ref: lauxlib.c:399 — @param {CPtr<lua_State>} L @param {CInt} arg */
 export function* luaL_checkany(L, arg) {
     if ((__builtin_expect(BigInt(((lua_type(L, arg) == -1) != 0)), 0n)))
-        (yield* luaL_argerror(L, arg, __sl34));
+        (yield* luaL_argerror(L, arg, __s_value_expected));
 }
 
-/** C ref: lauxlib.c:405 — @param {CPtr} L @param {CInt} arg @param {CPtr} len @returns {CPtr} */
+/** C ref: lauxlib.c:405 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CPtr<size_t>} len @returns {CPtr<char>} */
 export function* luaL_checklstring(L, arg, len) {
     let s = (yield* lua_tolstring(L, arg, len));
     if ((__builtin_expect(BigInt(((!s) != 0)), 0n)))
@@ -392,7 +442,7 @@ export function* luaL_checklstring(L, arg, len) {
     return s;
 }
 
-/** C ref: lauxlib.c:412 — @param {CPtr} L @param {CInt} arg @param {CPtr} def @param {CPtr} len @returns {CPtr} */
+/** C ref: lauxlib.c:412 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CPtr<char>} def @param {CPtr<size_t>} len @returns {CPtr<char>} */
 export function* luaL_optlstring(L, arg, def, len) {
     if ((lua_type(L, (arg)) <= 0)) {
         if (len)
@@ -402,7 +452,7 @@ export function* luaL_optlstring(L, arg, def, len) {
         return (yield* luaL_checklstring(L, arg, len));
 }
 
-/** C ref: lauxlib.c:423 — @param {CPtr} L @param {CInt} arg @returns {*} */
+/** C ref: lauxlib.c:423 — @param {CPtr<lua_State>} L @param {CInt} arg @returns {*} */
 export function* luaL_checknumber(L, arg) {
     let isnum = cptr.box(0);
     let d = (yield* lua_tonumberx(L, arg, isnum));
@@ -411,20 +461,20 @@ export function* luaL_checknumber(L, arg) {
     return d;
 }
 
-/** C ref: lauxlib.c:432 — @param {CPtr} L @param {CInt} arg @param {CDouble} def @returns {*} */
+/** C ref: lauxlib.c:432 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CDouble} def @returns {*} */
 export function* luaL_optnumber(L, arg, def) {
     return ((lua_type(L, ((arg))) <= 0) ? (def) : (yield* luaL_checknumber(L, (arg))));
 }
 
-/** C ref: lauxlib.c:437 — @param {CPtr} L @param {CInt} arg */
+/** C ref: lauxlib.c:437 — @param {CPtr<lua_State>} L @param {CInt} arg */
 function* interror(L, arg) {
     if ((yield* lua_isnumber(L, arg)))
-        (yield* luaL_argerror(L, arg, __sl35));
+        (yield* luaL_argerror(L, arg, __s_number_has_no_integer_representation));
     else
         (yield* tag_error(L, arg, 3));
 }
 
-/** C ref: lauxlib.c:445 — @param {CPtr} L @param {CInt} arg @returns {*} */
+/** C ref: lauxlib.c:445 — @param {CPtr<lua_State>} L @param {CInt} arg @returns {*} */
 export function* luaL_checkinteger(L, arg) {
     let isnum = cptr.box(0);
     let d = (yield* lua_tointegerx(L, arg, isnum));
@@ -434,66 +484,85 @@ export function* luaL_checkinteger(L, arg) {
     return d;
 }
 
-/** C ref: lauxlib.c:455 — @param {CPtr} L @param {CInt} arg @param {CLongLong} def @returns {*} */
+/** C ref: lauxlib.c:455 — @param {CPtr<lua_State>} L @param {CInt} arg @param {CLongLong} def @returns {*} */
 export function* luaL_optinteger(L, arg, def) {
     return ((lua_type(L, ((arg))) <= 0) ? (def) : (yield* luaL_checkinteger(L, (arg))));
 }
 
+/* }====================================================== */
+
+/*
+** {======================================================
+** Generic Buffer manipulation
+** =======================================================
+*/
+
+/* userdata to box arbitrary data */
 /** C ref: lauxlib.c:470 — struct UBox { box, bsize } (memory model v0.5) */
 
 /** C ref: lauxlib.c:473 — typedef UBox (type alias only, no runtime output) */
 
-/** C ref: lauxlib.c:476 — @param {CPtr} L @param {CInt} idx @param {CLongLong} newsize @returns {CPtr} */
+/** C ref: lauxlib.c:476 — @param {CPtr<lua_State>} L @param {CInt} idx @param {CLongLong} newsize @returns {CPtr<void>} */
 function* resizebox(L, idx, newsize) {
     let ud = cptr.box(0);
     let allocf = lua_getallocf(L, ud);
     let box = lua_touserdata(L, idx);
     let temp = (yield* Y.icall(allocf(ud.v, cptr.ldPtr(box), cptr.ldU64o(box, $UBox_bsize), newsize)));
     if ((__builtin_expect(BigInt(((cptr.eq(temp, (null)) && newsize > 0n ? 1 : 0) != 0)), 0n))) {
-        (yield* lua_pushstring(L, __sl36));
-        (yield* lua_error(L));
+        (yield* lua_pushstring(L, __s_not_enough_memory));
+        (yield* lua_error(L));  /* raise a memory error */
     }
     cptr.stPtr(box, temp);
     cptr.stU64o(box, $UBox_bsize, newsize);
     return temp;
 }
 
-/** C ref: lauxlib.c:491 — @param {CPtr} L @returns {CInt} */
+/** C ref: lauxlib.c:491 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* boxgc(L) {
     (yield* resizebox(L, 1, 0n));
     return 0;
 }
 
 /** C ref: lauxlib.c:497 — luaL_Reg[3] */
-const boxmt = cptr.alloc(3 * 16);
-cptr.stPtro(boxmt, 0, __sl37);
+const boxmt = cptr.alloc(3 * $sizeof_luaL_Reg);
+cptr.stPtro(boxmt, 0, __s_gc);
 cptr.stPtro(boxmt, 0 + $luaL_Reg_func, boxgc);
-cptr.stPtro(boxmt, 16, __sl38);
+cptr.stPtro(boxmt, 16, __s_close);
 cptr.stPtro(boxmt, 16 + $luaL_Reg_func, boxgc);
 cptr.stPtro(boxmt, 32, null);
 cptr.stPtro(boxmt, 32 + $luaL_Reg_func, null);
 
-/** C ref: lauxlib.c:504 — @param {CPtr} L */
+/** C ref: lauxlib.c:504 — @param {CPtr<lua_State>} L */
 function* newbox(L) {
     let box = (yield* lua_newuserdatauv(L, 16n, 0));
     cptr.stPtr(box, (null));
     cptr.stU64o(box, $UBox_bsize, 0n);
-    if ((yield* luaL_newmetatable(L, __sl39)))
-        (yield* luaL_setfuncs(L, boxmt, 0));
+    if ((yield* luaL_newmetatable(L, __s_ubox)))
+        (yield* luaL_setfuncs(L, boxmt, 0));  /* set its metamethods */
     (yield* lua_setmetatable(L, -2));
 }
 
-/** C ref: lauxlib.c:535 — @param {CPtr} B @param {CLongLong} sz @returns {*} */
+/*
+** Compute new size for buffer 'B', enough to accommodate extra 'sz'
+** bytes. (The test for "not big enough" also gets the case when the
+** computation of 'newsize' overflows.)
+*/
+/** C ref: lauxlib.c:535 — @param {CPtr<luaL_Buffer>} B @param {CLongLong} sz @returns {*} */
 function* newbuffsize(B, sz) {
-    let newsize = BigInt.asUintN(64, (cptr.ldU64o(B, $luaL_Buffer_size) / 2n) * 3n);
+    let newsize = BigInt.asUintN(64, (cptr.ldU64o(B, $luaL_Buffer_size) / 2n) * 3n);  /* buffer size * 1.5 */
     if ((__builtin_expect(BigInt(((BigInt.asUintN(64, 18446744073709551615n - sz) < cptr.ldU64o(B, $luaL_Buffer_n)) != 0)), 0n)))
-        return BigInt.asUintN(64, BigInt((yield* luaL_error(cptr.ldPtro(B, $luaL_Buffer_L), __sl40))));
+        return BigInt.asUintN(64, BigInt((yield* luaL_error(cptr.ldPtro(B, $luaL_Buffer_L), __s_buffer_too_large))));
     if (newsize < BigInt.asUintN(64, cptr.ldU64o(B, $luaL_Buffer_n) + sz))
         newsize = BigInt.asUintN(64, cptr.ldU64o(B, $luaL_Buffer_n) + sz);
     return newsize;
 }
 
-/** C ref: lauxlib.c:550 — @param {CPtr} B @param {CLongLong} sz @param {CInt} boxidx @returns {CPtr} */
+/*
+** Returns a pointer to a free area with at least 'sz' bytes in buffer
+** 'B'. 'boxidx' is the relative position in the stack where is the
+** buffer's box or its placeholder.
+*/
+/** C ref: lauxlib.c:550 — @param {CPtr<luaL_Buffer>} B @param {CLongLong} sz @param {CInt} boxidx @returns {CPtr<char>} */
 function* prepbuffsize(B, sz, boxidx) {
     (void 0);
     if (BigInt.asUintN(64, cptr.ldU64o(B, $luaL_Buffer_size) - cptr.ldU64o(B, $luaL_Buffer_n)) >= sz)
@@ -502,15 +571,16 @@ function* prepbuffsize(B, sz, boxidx) {
         let L = cptr.ldPtro(B, $luaL_Buffer_L);
         let newbuff;
         let newsize = (yield* newbuffsize(B, sz));
+        /* create larger buffer */
         if ((!cptr.eq(cptr.ldPtr((B)), cptr.add((B), $luaL_Buffer_init))))
-            newbuff = (yield* resizebox(L, boxidx, newsize));
+            newbuff = (yield* resizebox(L, boxidx, newsize));  /* resize it */
         else {
-            (lua_rotate(L, (boxidx), -1), (yield* lua_settop(L, -2)));
-            (yield* newbox(L));
-            lua_rotate(L, (boxidx), 1);
+            (lua_rotate(L, (boxidx), -1), (yield* lua_settop(L, -2)));  /* remove placeholder */
+            (yield* newbox(L));  /* create a new box */
+            lua_rotate(L, (boxidx), 1);  /* move box to its intended position */
             (yield* lua_toclose(L, boxidx));
             newbuff = (yield* resizebox(L, boxidx, newsize));
-            cptr.memcpy(newbuff, cptr.ldPtr(B), BigInt.asUintN(64, cptr.ldU64o(B, $luaL_Buffer_n) * 1n));
+            cptr.memcpy(newbuff, cptr.ldPtr(B), BigInt.asUintN(64, cptr.ldU64o(B, $luaL_Buffer_n) * 1n));  /* copy original content */
         }
         cptr.stPtr(B, newbuff);
         cptr.stU64o(B, $luaL_Buffer_size, newsize);
@@ -518,12 +588,15 @@ function* prepbuffsize(B, sz, boxidx) {
     }
 }
 
-/** C ref: lauxlib.c:578 — @param {CPtr} B @param {CLongLong} sz @returns {CPtr} */
+/*
+** returns a pointer to a free area with at least 'sz' bytes
+*/
+/** C ref: lauxlib.c:578 — @param {CPtr<luaL_Buffer>} B @param {CLongLong} sz @returns {CPtr<char>} */
 export function* luaL_prepbuffsize(B, sz) {
     return (yield* prepbuffsize(B, sz, -1));
 }
 
-/** C ref: lauxlib.c:583 — @param {CPtr} B @param {CPtr} s @param {CLongLong} l */
+/** C ref: lauxlib.c:583 — @param {CPtr<luaL_Buffer>} B @param {CPtr<char>} s @param {CLongLong} l */
 export function* luaL_addlstring(B, s, l) {
     if (l > 0n) {
         let b = (yield* prepbuffsize(B, l, -1));
@@ -532,28 +605,37 @@ export function* luaL_addlstring(B, s, l) {
     }
 }
 
-/** C ref: lauxlib.c:592 — @param {CPtr} B @param {CPtr} s */
+/** C ref: lauxlib.c:592 — @param {CPtr<luaL_Buffer>} B @param {CPtr<char>} s */
 export function* luaL_addstring(B, s) {
     (yield* luaL_addlstring(B, s, cptr.strlen(s)));
 }
 
-/** C ref: lauxlib.c:597 — @param {CPtr} B */
+/** C ref: lauxlib.c:597 — @param {CPtr<luaL_Buffer>} B */
 export function* luaL_pushresult(B) {
     let L = cptr.ldPtro(B, $luaL_Buffer_L);
     (void 0);
     (yield* lua_pushlstring(L, cptr.ldPtr(B), cptr.ldU64o(B, $luaL_Buffer_n)));
     if ((!cptr.eq(cptr.ldPtr((B)), cptr.add((B), $luaL_Buffer_init))))
-        (yield* lua_closeslot(L, -2));
-    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
+        (yield* lua_closeslot(L, -2));  /* close the box */
+    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove box or placeholder from the stack */
 }
 
-/** C ref: lauxlib.c:607 — @param {CPtr} B @param {CLongLong} sz */
+/** C ref: lauxlib.c:607 — @param {CPtr<luaL_Buffer>} B @param {CLongLong} sz */
 export function* luaL_pushresultsize(B, sz) {
     (cptr.stU64o((B), $luaL_Buffer_n, cptr.ldU64o((B), $luaL_Buffer_n) + (sz)));
     (yield* luaL_pushresult(B));
 }
 
-/** C ref: lauxlib.c:622 — @param {CPtr} B */
+/*
+** 'luaL_addvalue' is the only function in the Buffer system where the
+** box (if existent) is not on the top of the stack. So, instead of
+** calling 'luaL_addlstring', it replicates the code using -2 as the
+** last argument to 'prepbuffsize', signaling that the box is (or will
+** be) below the string being added to the buffer. (Box creation can
+** trigger an emergency GC, so we should not remove the string from the
+** stack before we have the space guaranteed.)
+*/
+/** C ref: lauxlib.c:622 — @param {CPtr<luaL_Buffer>} B */
 export function* luaL_addvalue(B) {
     let L = cptr.ldPtro(B, $luaL_Buffer_L);
     let len = cptr.box(0n);
@@ -561,155 +643,184 @@ export function* luaL_addvalue(B) {
     let b = (yield* prepbuffsize(B, len.v, -2));
     cptr.memcpy(b, s, BigInt.asUintN(64, len.v * 1n));
     (cptr.stU64o((B), $luaL_Buffer_n, cptr.ldU64o((B), $luaL_Buffer_n) + (len.v)));
-    (yield* lua_settop(L, -2));
+    (yield* lua_settop(L, -2));  /* pop string */
 }
 
-/** C ref: lauxlib.c:633 — @param {CPtr} L @param {CPtr} B */
+/** C ref: lauxlib.c:633 — @param {CPtr<lua_State>} L @param {CPtr<luaL_Buffer>} B */
 export function* luaL_buffinit(L, B) {
     cptr.stPtro(B, $luaL_Buffer_L, L);
     cptr.stPtr(B, cptr.add(B, $luaL_Buffer_init));
     cptr.stU64o(B, $luaL_Buffer_n, 0n);
     cptr.stU64o(B, $luaL_Buffer_size, 1024n);
-    (yield* lua_pushlightuserdata(L, B));
+    (yield* lua_pushlightuserdata(L, B));  /* push placeholder */
 }
 
-/** C ref: lauxlib.c:642 — @param {CPtr} L @param {CPtr} B @param {CLongLong} sz @returns {CPtr} */
+/** C ref: lauxlib.c:642 — @param {CPtr<lua_State>} L @param {CPtr<luaL_Buffer>} B @param {CLongLong} sz @returns {CPtr<char>} */
 export function* luaL_buffinitsize(L, B, sz) {
     (yield* luaL_buffinit(L, B));
     return (yield* prepbuffsize(B, sz, -1));
 }
 
-/** C ref: lauxlib.c:664 — @param {CPtr} L @param {CInt} t @returns {CInt} */
+/*
+** The previously freed references form a linked list:
+** t[freelist] is the index of a first free index, or zero if list is
+** empty; t[t[freelist]] is the index of the second element; etc.
+*/
+/** C ref: lauxlib.c:664 — @param {CPtr<lua_State>} L @param {CInt} t @returns {CInt} */
 export function* luaL_ref(L, t) {
     let ref;
     if ((lua_type(L, -1) == 0)) {
-        (yield* lua_settop(L, -2));
-        return -1;
+        (yield* lua_settop(L, -2));  /* remove from stack */
+        return -1;  /* 'nil' has a unique fixed reference */
     }
     t = lua_absindex(L, t);
     if ((yield* lua_rawgeti(L, t, 3n)) == 0) {
-        ref = 0;
-        (yield* lua_pushinteger(L, 0n));
-        (yield* lua_rawseti(L, t, 3n));
+        ref = 0;  /* list is empty */
+        (yield* lua_pushinteger(L, 0n));  /* initialize as an empty list */
+        (yield* lua_rawseti(L, t, 3n));  /* ref = t[freelist] = 0 */
     } else {
         (void 0);
-        ref = Number(BigInt.asIntN(32, (yield* lua_tointegerx(L, -1, null))));
+        ref = Number(BigInt.asIntN(32, (yield* lua_tointegerx(L, -1, null))));  /* ref = t[freelist] */
     }
-    (yield* lua_settop(L, -2));
+    (yield* lua_settop(L, -2));  /* remove element from stack */
     if (ref != 0) {
-        (yield* lua_rawgeti(L, t, BigInt(ref)));
-        (yield* lua_rawseti(L, t, 3n));
+        (yield* lua_rawgeti(L, t, BigInt(ref)));  /* remove it from list */
+        (yield* lua_rawseti(L, t, 3n));  /* (t[freelist] = t[ref]) */
     } else
-        ref = (Number(BigInt.asIntN(32, lua_rawlen(L, t))) + 1) | 0;
+        ref = (Number(BigInt.asIntN(32, lua_rawlen(L, t))) + 1) | 0;  /* get a new reference */
     (yield* lua_rawseti(L, t, BigInt(ref)));
     return ref;
 }
 
-/** C ref: lauxlib.c:692 — @param {CPtr} L @param {CInt} t @param {CInt} ref */
+/** C ref: lauxlib.c:692 — @param {CPtr<lua_State>} L @param {CInt} t @param {CInt} ref */
 export function* luaL_unref(L, t, ref) {
     if (ref >= 0) {
         t = lua_absindex(L, t);
         (yield* lua_rawgeti(L, t, 3n));
         (void 0);
-        (yield* lua_rawseti(L, t, BigInt(ref)));
+        (yield* lua_rawseti(L, t, BigInt(ref)));  /* t[ref] = t[freelist] */
         (yield* lua_pushinteger(L, BigInt(ref)));
-        (yield* lua_rawseti(L, t, 3n));
+        (yield* lua_rawseti(L, t, 3n));  /* t[freelist] = ref */
     }
 }
+
+/* }====================================================== */
+
+/*
+** {======================================================
+** Load functions
+** =======================================================
+*/
 
 /** C ref: lauxlib.c:712 — struct LoadF { n, f, buff } (memory model v0.5) */
 
 /** C ref: lauxlib.c:716 — typedef LoadF (type alias only, no runtime output) */
 
-/** C ref: lauxlib.c:719 — @param {CPtr} L @param {CPtr} ud @param {CPtr} size @returns {CPtr} */
+/** C ref: lauxlib.c:719 — @param {CPtr<lua_State>} L @param {CPtr<void>} ud @param {CPtr<size_t>} size @returns {CPtr<char>} */
 function getF(L, ud, size) {
     let lf = ud;
-    void L;
+    void L;  /* not used */
     if (cptr.ldI32(lf) > 0) {
-        cptr.stU64(size, BigInt.asUintN(64, BigInt(cptr.ldI32(lf))));
-        cptr.stI32(lf, 0);
+        cptr.stU64(size, BigInt.asUintN(64, BigInt(cptr.ldI32(lf))));  /* return them (chars already in buffer) */
+        cptr.stI32(lf, 0);  /* no more pre-read characters */
     } else {
         if (feof(cptr.ldPtro(lf, $LoadF_f)))
+            /* 'fread' can return > 0 *and* set the EOF flag. If next call to
+               'getF' called 'fread', it might still wait for user input.
+               The next check avoids this problem. */
             return null;
-        cptr.stU64(size, fread(cptr.add(lf, $LoadF_buff), 1n, 1024n, cptr.ldPtro(lf, $LoadF_f)));
+        cptr.stU64(size, fread(cptr.add(lf, $LoadF_buff), 1n, 1024n, cptr.ldPtro(lf, $LoadF_f)));  /* read block */
     }
     return cptr.add(lf, $LoadF_buff);
 }
 
-/** C ref: lauxlib.c:737 — @param {CPtr} L @param {CPtr} what @param {CInt} fnameindex @returns {CInt} */
+/** C ref: lauxlib.c:737 — @param {CPtr<lua_State>} L @param {CPtr<char>} what @param {CInt} fnameindex @returns {CInt} */
 function* errfile(L, what, fnameindex) {
     let err = (cptr.ldI32(__error()));
     let filename = cptr.add((yield* lua_tolstring(L, (fnameindex), null)), 1);
     if (err != 0)
-        (yield* lua_pushfstring(L, __sl41, what, filename, strerror(err)));
+        (yield* lua_pushfstring(L, __s_cannot_s_s_s, what, filename, strerror(err)));
     else
-        (yield* lua_pushfstring(L, __sl42, what, filename));
+        (yield* lua_pushfstring(L, __s_cannot_s_s, what, filename));
     (lua_rotate(L, (fnameindex), -1), (yield* lua_settop(L, -2)));
     return 6;
 }
 
-/** C ref: lauxlib.c:755 — @param {CPtr} f @returns {CInt} */
+/*
+** Skip an optional BOM at the start of a stream. If there is an
+** incomplete BOM (the first character is correct but the rest is
+** not), returns the first character anyway to force an error
+** (as no chunk can start with 0xEF).
+*/
+/** C ref: lauxlib.c:755 — @param {CPtr<FILE>} f @returns {CInt} */
 function skipBOM(f) {
-    let c = getc(f);
+    let c = getc(f);  /* read first character */
     if (c == 239 && getc(f) == 187 && getc(f) == 191)
-        return getc(f);
+        return getc(f);  /* ignore BOM and return next char */
     else
-        return c;
+        return c;  /* return first character */
 }
 
-/** C ref: lauxlib.c:771 — @param {CPtr} f @param {CPtr} cp @returns {CInt} */
+/*
+** reads the first character of file 'f' and skips an optional BOM mark
+** in its beginning plus its first line if it starts with '#'. Returns
+** true if it skipped the first line.  In any case, '*cp' has the
+** first "valid" character of the file (after the optional BOM and
+** a first-line comment).
+*/
+/** C ref: lauxlib.c:771 — @param {CPtr<FILE>} f @param {CPtr<int>} cp @returns {CInt} */
 function skipcomment(f, cp) {
     let c = cptr.stI32(cp, skipBOM(f));
     if (c == 35) {
         do {
             c = getc(f);
         } while (c != -1 && c != 10);
-        cptr.stI32(cp, getc(f));
-        return 1;
+        cptr.stI32(cp, getc(f));  /* next character after comment, if present */
+        return 1;  /* there was a comment */
     } else
-        return 0;
+        return 0;  /* no comment */
 }
 
-/** C ref: lauxlib.c:784 — @param {CPtr} L @param {CPtr} filename @param {CPtr} mode @returns {CInt} */
+/** C ref: lauxlib.c:784 — @param {CPtr<lua_State>} L @param {CPtr<char>} filename @param {CPtr<char>} mode @returns {CInt} */
 export function* luaL_loadfilex(L, filename, mode) {
     let lf = cptr.alloc(1040);
     let status;
     let readstatus;
     let c = cptr.box(0);
-    let fnameindex = (lua_gettop(L) + 1) | 0;
+    let fnameindex = (lua_gettop(L) + 1) | 0;  /* index of filename on the stack */
     if (cptr.eq(filename, (null))) {
-        (yield* lua_pushstring(L, __sl43));
+        (yield* lua_pushstring(L, __s_stdin));
         cptr.stPtro(lf, $LoadF_f, __stdinp);
     } else {
-        (yield* lua_pushfstring(L, __sl44, filename));
+        (yield* lua_pushfstring(L, __s_at_pct_s, filename));
         cptr.stI32(__error(), 0);
-        cptr.stPtro(lf, $LoadF_f, fopen(filename, __sl45));
+        cptr.stPtro(lf, $LoadF_f, fopen(filename, __s_r));
         if (cptr.eq(cptr.ldPtro(lf, $LoadF_f), (null)))
-            return (yield* errfile(L, __sl46, fnameindex));
+            return (yield* errfile(L, __s_open, fnameindex));
     }
     cptr.stI32(lf, 0);
     if (skipcomment(cptr.ldPtro(lf, $LoadF_f), c))
-        cptr.st1o2(lf, (cptr.stI32(lf, cptr.ldI32(lf) + 1)) - (1), 1, $LoadF_buff, 10);
-    if (c.v == cptr.ld1so(__sl47, 0, 1)) {
-        cptr.stI32(lf, 0);
+        cptr.st1o2(lf, (cptr.stI32(lf, cptr.ldI32(lf) + 1)) - (1), 1, $LoadF_buff, 10);  /* add newline to correct line numbers */
+    if (c.v == cptr.ld1so(__s_lua, 0, 1)) {
+        cptr.stI32(lf, 0);  /* remove possible newline */
         if (filename) {
             cptr.stI32(__error(), 0);
-            cptr.stPtro(lf, $LoadF_f, freopen(filename, __sl48, cptr.ldPtro(lf, $LoadF_f)));
+            cptr.stPtro(lf, $LoadF_f, freopen(filename, __s_rb, cptr.ldPtro(lf, $LoadF_f)));  /* reopen in binary mode */
             if (cptr.eq(cptr.ldPtro(lf, $LoadF_f), (null)))
-                return (yield* errfile(L, __sl49, fnameindex));
-            skipcomment(cptr.ldPtro(lf, $LoadF_f), c);
+                return (yield* errfile(L, __s_reopen, fnameindex));
+            skipcomment(cptr.ldPtro(lf, $LoadF_f), c);  /* re-read initial portion */
         }
     }
     if (c.v != -1)
-        cptr.st1o2(lf, (cptr.stI32(lf, cptr.ldI32(lf) + 1)) - (1), 1, $LoadF_buff, schar(c.v));
+        cptr.st1o2(lf, (cptr.stI32(lf, cptr.ldI32(lf) + 1)) - (1), 1, $LoadF_buff, schar(c.v));  /* 'c' is the first character of the stream */
     cptr.stI32(__error(), 0);
     status = (yield* lua_load(L, getF, lf, (yield* lua_tolstring(L, -1, null)), mode));
     readstatus = ferror(cptr.ldPtro(lf, $LoadF_f));
     if (filename)
-        fclose(cptr.ldPtro(lf, $LoadF_f));
+        fclose(cptr.ldPtro(lf, $LoadF_f));  /* close file (even in case of errors) */
     if (readstatus) {
-        (yield* lua_settop(L, fnameindex));
-        return (yield* errfile(L, __sl50, fnameindex));
+        (yield* lua_settop(L, fnameindex));  /* ignore results from 'lua_load' */
+        return (yield* errfile(L, __s_read, fnameindex));
     }
     (lua_rotate(L, (fnameindex), -1), (yield* lua_settop(L, -2)));
     return status;
@@ -719,10 +830,10 @@ export function* luaL_loadfilex(L, filename, mode) {
 
 /** C ref: lauxlib.c:830 — typedef LoadS (type alias only, no runtime output) */
 
-/** C ref: lauxlib.c:833 — @param {CPtr} L @param {CPtr} ud @param {CPtr} size @returns {CPtr} */
+/** C ref: lauxlib.c:833 — @param {CPtr<lua_State>} L @param {CPtr<void>} ud @param {CPtr<size_t>} size @returns {CPtr<char>} */
 function getS(L, ud, size) {
     let ls = ud;
-    void L;
+    void L;  /* not used */
     if (cptr.ldU64o(ls, $LoadS_size) == 0n)
         return null;
     cptr.stU64(size, cptr.ldU64o(ls, $LoadS_size));
@@ -730,7 +841,7 @@ function getS(L, ud, size) {
     return cptr.ldPtr(ls);
 }
 
-/** C ref: lauxlib.c:843 — @param {CPtr} L @param {CPtr} buff @param {CLongLong} size @param {CPtr} name @param {CPtr} mode @returns {CInt} */
+/** C ref: lauxlib.c:843 — @param {CPtr<lua_State>} L @param {CPtr<char>} buff @param {CLongLong} size @param {CPtr<char>} name @param {CPtr<char>} mode @returns {CInt} */
 export function* luaL_loadbufferx(L, buff, size, name, mode) {
     let ls = cptr.alloc(16);
     cptr.stPtr(ls, buff);
@@ -738,12 +849,14 @@ export function* luaL_loadbufferx(L, buff, size, name, mode) {
     return (yield* lua_load(L, getS, ls, name, mode));
 }
 
-/** C ref: lauxlib.c:852 — @param {CPtr} L @param {CPtr} s @returns {CInt} */
+/** C ref: lauxlib.c:852 — @param {CPtr<lua_State>} L @param {CPtr<char>} s @returns {CInt} */
 export function* luaL_loadstring(L, s) {
     return (yield* luaL_loadbufferx(L, s, cptr.strlen(s), s, null));
 }
 
-/** C ref: lauxlib.c:860 — @param {CPtr} L @param {CInt} obj @param {CPtr} event @returns {CInt} */
+/* }====================================================== */
+
+/** C ref: lauxlib.c:860 — @param {CPtr<lua_State>} L @param {CInt} obj @param {CPtr<char>} event @returns {CInt} */
 export function* luaL_getmetafield(L, obj, event) {
     if (!(yield* lua_getmetatable(L, obj)))
         return 0;
@@ -752,14 +865,14 @@ export function* luaL_getmetafield(L, obj, event) {
         (yield* lua_pushstring(L, event));
         tt = (yield* lua_rawget(L, -2));
         if (tt == 0)
-            (yield* lua_settop(L, -3));
+            (yield* lua_settop(L, -3));  /* remove metatable and metafield */
         else
-            (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
-        return tt;
+            (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove only metatable */
+        return tt;  /* return metafield type */
     }
 }
 
-/** C ref: lauxlib.c:876 — @param {CPtr} L @param {CInt} obj @param {CPtr} event @returns {CInt} */
+/** C ref: lauxlib.c:876 — @param {CPtr<lua_State>} L @param {CInt} obj @param {CPtr<char>} event @returns {CInt} */
 export function* luaL_callmeta(L, obj, event) {
     obj = lua_absindex(L, obj);
     if ((yield* luaL_getmetafield(L, obj, event)) == 0)
@@ -769,50 +882,50 @@ export function* luaL_callmeta(L, obj, event) {
     return 1;
 }
 
-/** C ref: lauxlib.c:886 — @param {CPtr} L @param {CInt} idx @returns {*} */
+/** C ref: lauxlib.c:886 — @param {CPtr<lua_State>} L @param {CInt} idx @returns {*} */
 export function* luaL_len(L, idx) {
     let l;
     let isnum = cptr.box(0);
     (yield* lua_len(L, idx));
     l = (yield* lua_tointegerx(L, -1, isnum));
     if ((__builtin_expect(BigInt(((!isnum.v) != 0)), 0n)))
-        (yield* luaL_error(L, __sl51));
-    (yield* lua_settop(L, -2));
+        (yield* luaL_error(L, __s_object_length_is_not_an_integer));
+    (yield* lua_settop(L, -2));  /* remove object */
     return l;
 }
 
-/** C ref: lauxlib.c:898 — @param {CPtr} L @param {CInt} idx @param {CPtr} len @returns {CPtr} */
+/** C ref: lauxlib.c:898 — @param {CPtr<lua_State>} L @param {CInt} idx @param {CPtr<size_t>} len @returns {CPtr<char>} */
 export function* luaL_tolstring(L, idx, len) {
     idx = lua_absindex(L, idx);
-    if ((yield* luaL_callmeta(L, idx, __sl52))) {
+    if ((yield* luaL_callmeta(L, idx, __s_tostring))) {
         if (!lua_isstring(L, -1))
-            (yield* luaL_error(L, __sl53));
+            (yield* luaL_error(L, __s_tostring_must_return_a_string));
     } else {
         switch (lua_type(L, idx)) {
             case 3:
             {
                 if (lua_isinteger(L, idx))
-                    (yield* lua_pushfstring(L, __sl54, (yield* lua_tointegerx(L, (idx), null))));
+                    (yield* lua_pushfstring(L, __s_pct_i, (yield* lua_tointegerx(L, (idx), null))));
                 else
-                    (yield* lua_pushfstring(L, __sl55, (yield* lua_tonumberx(L, (idx), null))));
+                    (yield* lua_pushfstring(L, __s_pct_f, (yield* lua_tonumberx(L, (idx), null))));
                 break;
             }
             case 4:
             (yield* lua_pushvalue(L, idx));
             break;
             case 1:
-            (yield* lua_pushstring(L, (lua_toboolean(L, idx) ? __sl56 : __sl57)));
+            (yield* lua_pushstring(L, (lua_toboolean(L, idx) ? __s_true : __s_false)));
             break;
             case 0:
-            (yield* lua_pushstring(L, __sl58));
+            (yield* lua_pushstring(L, __s_nil));
             break;
             default:
             {
-                let tt = (yield* luaL_getmetafield(L, idx, __sl21));
+                let tt = (yield* luaL_getmetafield(L, idx, __s_name));  /* try name */
                 let kind = (tt == 4) ? (yield* lua_tolstring(L, -1, null)) : lua_typename(L, lua_type(L, (idx)));
-                (yield* lua_pushfstring(L, __sl59, kind, lua_topointer(L, idx)));
+                (yield* lua_pushfstring(L, __s_s_p, kind, lua_topointer(L, idx)));
                 if (tt != 0)
-                    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
+                    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove '__name' */
                 break;
             }
         }
@@ -820,9 +933,14 @@ export function* luaL_tolstring(L, idx, len) {
     return (yield* lua_tolstring(L, -1, len));
 }
 
-/** C ref: lauxlib.c:942 — @param {CPtr} L @param {CPtr} l @param {CInt} nup */
+/*
+** set functions from list 'l' into table at top - 'nup'; each
+** function gets the 'nup' elements at the top as upvalues.
+** Returns with only the table at the stack.
+*/
+/** C ref: lauxlib.c:942 — @param {CPtr<lua_State>} L @param {CPtr<luaL_Reg>} l @param {CInt} nup */
 export function* luaL_setfuncs(L, l, nup) {
-    (yield* luaL_checkstack(L, nup, __sl60));
+    (yield* luaL_checkstack(L, nup, __s_too_many_upvalues));
     for (; !cptr.eq(cptr.ldPtr(l), (null)); l = cptr.add(l, 1, 16)) {
         if (cptr.ldPtro(l, $luaL_Reg_func) === (null))
             (yield* lua_pushboolean(L, 0));
@@ -830,59 +948,69 @@ export function* luaL_setfuncs(L, l, nup) {
             let i;
             for (i = 0; i < nup; i++)
                 (yield* lua_pushvalue(L, -nup));
-            (yield* lua_pushcclosure(L, cptr.ldPtro(l, $luaL_Reg_func), nup));
+            (yield* lua_pushcclosure(L, cptr.ldPtro(l, $luaL_Reg_func), nup));  /* closure with those upvalues */
         }
         (yield* lua_setfield(L, -((nup + 2) | 0), cptr.ldPtr(l)));
     }
-    (yield* lua_settop(L, (-(nup) - 1) | 0));
+    (yield* lua_settop(L, (-(nup) - 1) | 0));  /* remove upvalues */
 }
 
-/** C ref: lauxlib.c:963 — @param {CPtr} L @param {CInt} idx @param {CPtr} fname @returns {CInt} */
+/*
+** ensure that stack[idx][fname] has a table and push that table
+** into the stack
+*/
+/** C ref: lauxlib.c:963 — @param {CPtr<lua_State>} L @param {CInt} idx @param {CPtr<char>} fname @returns {CInt} */
 export function* luaL_getsubtable(L, idx, fname) {
     if ((yield* lua_getfield(L, idx, fname)) == 5)
-        return 1;
+        return 1;  /* table already there */
     else {
-        (yield* lua_settop(L, -2));
+        (yield* lua_settop(L, -2));  /* remove previous result */
         idx = lua_absindex(L, idx);
         (yield* lua_createtable(L, 0, 0));
-        (yield* lua_pushvalue(L, -1));
-        (yield* lua_setfield(L, idx, fname));
-        return 0;
+        (yield* lua_pushvalue(L, -1));  /* copy to be left at top */
+        (yield* lua_setfield(L, idx, fname));  /* assign new table to field */
+        return 0;  /* false, because did not find table there */
     }
 }
 
-/** C ref: lauxlib.c:983 — @param {CPtr} L @param {CPtr} modname @param {CPtr} openf @param {CInt} glb */
+/*
+** Stripped-down 'require': After checking "loaded" table, calls 'openf'
+** to open a module, registers the result in 'package.loaded' table and,
+** if 'glb' is true, also registers the result in the global table.
+** Leaves resulting module on the top.
+*/
+/** C ref: lauxlib.c:983 — @param {CPtr<lua_State>} L @param {CPtr<char>} modname @param {CPtr} openf @param {CInt} glb */
 export function* luaL_requiref(L, modname, openf, glb) {
-    (yield* luaL_getsubtable(L, -1001000, __sl2));
-    (yield* lua_getfield(L, -1, modname));
+    (yield* luaL_getsubtable(L, -1001000, __s_loaded));
+    (yield* lua_getfield(L, -1, modname));  /* LOADED[modname] */
     if (!lua_toboolean(L, -1)) {
-        (yield* lua_settop(L, -2));
+        (yield* lua_settop(L, -2));  /* remove field */
         (yield* lua_pushcclosure(L, (openf), 0));
-        (yield* lua_pushstring(L, modname));
-        (yield* lua_callk(L, 1, 1, 0n, null));
-        (yield* lua_pushvalue(L, -1));
-        (yield* lua_setfield(L, -3, modname));
+        (yield* lua_pushstring(L, modname));  /* argument to open function */
+        (yield* lua_callk(L, 1, 1, 0n, null));  /* call 'openf' to open module */
+        (yield* lua_pushvalue(L, -1));  /* make copy of module (call result) */
+        (yield* lua_setfield(L, -3, modname));  /* LOADED[modname] = module */
     }
-    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));
+    (lua_rotate(L, -2, -1), (yield* lua_settop(L, -2)));  /* remove LOADED table */
     if (glb) {
-        (yield* lua_pushvalue(L, -1));
-        (yield* lua_setglobal(L, modname));
+        (yield* lua_pushvalue(L, -1));  /* copy of module */
+        (yield* lua_setglobal(L, modname));  /* _G[modname] = module */
     }
 }
 
-/** C ref: lauxlib.c:1003 — @param {CPtr} b @param {CPtr} s @param {CPtr} p @param {CPtr} r */
+/** C ref: lauxlib.c:1003 — @param {CPtr<luaL_Buffer>} b @param {CPtr<char>} s @param {CPtr<char>} p @param {CPtr<char>} r */
 export function* luaL_addgsub(b, s, p, r) {
     let wild;
     let l = cptr.strlen(p);
     while (!cptr.eq((wild = cptr.strstr(s, p)), (null))) {
-        (yield* luaL_addlstring(b, s, BigInt.asUintN(64, cptr.diff(wild, s))));
-        (yield* luaL_addstring(b, r));
-        s = cptr.add(wild, l);
+        (yield* luaL_addlstring(b, s, BigInt.asUintN(64, cptr.diff(wild, s))));  /* push prefix */
+        (yield* luaL_addstring(b, r));  /* push replacement in place of pattern */
+        s = cptr.add(wild, l);  /* continue after 'p' */
     }
-    (yield* luaL_addstring(b, s));
+    (yield* luaL_addstring(b, s));  /* push last suffix */
 }
 
-/** C ref: lauxlib.c:1016 — @param {CPtr} L @param {CPtr} s @param {CPtr} p @param {CPtr} r @returns {CPtr} */
+/** C ref: lauxlib.c:1016 — @param {CPtr<lua_State>} L @param {CPtr<char>} s @param {CPtr<char>} p @param {CPtr<char>} r @returns {CPtr<char>} */
 export function* luaL_gsub(L, s, p, r) {
     let b = cptr.alloc(1056);
     (yield* luaL_buffinit(L, b));
@@ -891,9 +1019,9 @@ export function* luaL_gsub(L, s, p, r) {
     return (yield* lua_tolstring(L, -1, null));
 }
 
-/** C ref: lauxlib.c:1026 — @param {CPtr} ud @param {CPtr} ptr @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr} */
+/** C ref: lauxlib.c:1026 — @param {CPtr<void>} ud @param {CPtr<void>} ptr @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr<void>} */
 function l_alloc(ud, ptr, osize, nsize) {
-    void ud;
+    void ud;  /* not used */
     void osize;
     if (nsize == 0n) {
         cptr.free(ptr);
@@ -902,68 +1030,80 @@ function l_alloc(ud, ptr, osize, nsize) {
         return realloc(ptr, nsize);
 }
 
-/** C ref: lauxlib.c:1041 — @param {CPtr} L @returns {CInt} */
+/*
+** Standard panic funcion just prints an error message. The test
+** with 'lua_type' avoids possible memory errors in 'lua_tostring'.
+*/
+/** C ref: lauxlib.c:1041 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* panic(L) {
-    let msg = (lua_type(L, -1) == 4) ? (yield* lua_tolstring(L, -1, null)) : __sl61;
-    (fprintf(__stderrp, (__sl62), (msg)), fflush(__stderrp));
-    return 0;
+    let msg = (lua_type(L, -1) == 4) ? (yield* lua_tolstring(L, -1, null)) : __s_error_object_is_not_a_string;
+    (fprintf(__stderrp, (__s_panic_unprotected_error_in_call_to_lua), (msg)), fflush(__stderrp));
+    return 0;  /* return to Lua to abort */
 }
 
-/** C ref: lauxlib.c:1066 — @param {CPtr} L @param {CPtr} message @param {CInt} tocont @returns {CInt} */
+/*
+** Check whether message is a control message. If so, execute the
+** control or ignore it if unknown.
+*/
+/** C ref: lauxlib.c:1066 — @param {CPtr<lua_State>} L @param {CPtr<char>} message @param {CInt} tocont @returns {CInt} */
 function* checkcontrol(L, message, tocont) {
     if (tocont || cptr.ld1s((cptr.postinc(() => message, (v) => { message = v; }))) != 64)
         return 0;
     else {
-        if (strcmp(message, __sl63) == 0)
-            lua_setwarnf(L, warnfoff, L);
-        else if (strcmp(message, __sl64) == 0)
-            lua_setwarnf(L, warnfon, L);
-        return 1;
+        if (strcmp(message, __s_off) == 0)
+            lua_setwarnf(L, warnfoff, L);  /* turn warnings off */
+        else if (strcmp(message, __s_on) == 0)
+            lua_setwarnf(L, warnfon, L);  /* turn warnings on */
+        return 1;  /* it was a control message */
     }
 }
 
-/** C ref: lauxlib.c:1079 — @param {CPtr} ud @param {CPtr} message @param {CInt} tocont */
+/** C ref: lauxlib.c:1079 — @param {CPtr<void>} ud @param {CPtr<char>} message @param {CInt} tocont */
 function* warnfoff(ud, message, tocont) {
     (yield* checkcontrol(ud, message, tocont));
 }
 
-/** C ref: lauxlib.c:1088 — @param {CPtr} ud @param {CPtr} message @param {CInt} tocont */
+/*
+** Writes the message and handle 'tocont', finishing the message
+** if needed and setting the next warn function.
+*/
+/** C ref: lauxlib.c:1088 — @param {CPtr<void>} ud @param {CPtr<char>} message @param {CInt} tocont */
 function warnfcont(ud, message, tocont) {
     let L = ud;
-    (fprintf(__stderrp, (__sl65), (message)), fflush(__stderrp));
+    (fprintf(__stderrp, (__s_pct_s), (message)), fflush(__stderrp));  /* write message */
     if (tocont)
-        lua_setwarnf(L, warnfcont, L);
+        lua_setwarnf(L, warnfcont, L);  /* to be continued */
     else {
-        (fprintf(__stderrp, (__sl65), (__sl66)), fflush(__stderrp));
-        lua_setwarnf(L, warnfon, L);
+        (fprintf(__stderrp, (__s_pct_s), (__s_nl)), fflush(__stderrp));  /* finish message with end-of-line */
+        lua_setwarnf(L, warnfon, L);  /* next call is a new message */
     }
 }
 
-/** C ref: lauxlib.c:1100 — @param {CPtr} ud @param {CPtr} message @param {CInt} tocont */
+/** C ref: lauxlib.c:1100 — @param {CPtr<void>} ud @param {CPtr<char>} message @param {CInt} tocont */
 function* warnfon(ud, message, tocont) {
     if ((yield* checkcontrol(ud, message, tocont)))
-        return;
-    (fprintf(__stderrp, (__sl65), (__sl67)), fflush(__stderrp));
-    warnfcont(ud, message, tocont);
+        return;  /* nothing else to be done */
+    (fprintf(__stderrp, (__s_pct_s), (__s_lua_warning)), fflush(__stderrp));  /* start a new warning */
+    warnfcont(ud, message, tocont);  /* finish processing */
 }
 
-/** C ref: lauxlib.c:1108 @returns {CPtr} */
+/** C ref: lauxlib.c:1108 @returns {CPtr<lua_State>} */
 export function* luaL_newstate() {
     let L = (yield* lua_newstate(l_alloc, (null)));
     if ((__builtin_expect(BigInt(((L) !== null)), 1n))) {
         lua_atpanic(L, panic);
-        lua_setwarnf(L, warnfoff, L);
+        lua_setwarnf(L, warnfoff, L);  /* default is warnings off */
     }
     return L;
 }
 
-/** C ref: lauxlib.c:1118 — @param {CPtr} L @param {CDouble} ver @param {CLongLong} sz */
+/** C ref: lauxlib.c:1118 — @param {CPtr<lua_State>} L @param {CDouble} ver @param {CLongLong} sz */
 export function* luaL_checkversion_(L, ver, sz) {
     let v = lua_version(L);
     if (sz != 136n)
-        (yield* luaL_error(L, __sl68));
+        (yield* luaL_error(L, __s_core_and_library_have_incompatible));
     else if (v != ver)
-        (yield* luaL_error(L, __sl69, ver, v));
+        (yield* luaL_error(L, __s_version_mismatch_app_needs_f_lua_core, ver, v));
 }
 
 // --- BEGIN c2js reset block (tools/c2js/resetify.mjs) — do not edit ---

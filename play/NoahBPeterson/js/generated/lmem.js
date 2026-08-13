@@ -16,31 +16,38 @@ const $TValue_tt_ = FLD.TValue_tt_, $global_State_GCdebt = FLD.global_State_GCde
     $global_State_ud = FLD.global_State_ud, $lua_State_l_G = FLD.lua_State_l_G;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("too many %s (limit is %d)");
-const __sl1 = cptr.lit("memory allocation error: block too big");
+const __s_too_many_s_limit_is_d = cptr.lit("too many %s (limit is %d)");
+const __s_memory_allocation_error_block_too_big = cptr.lit("memory allocation error: block too big");
 
-/** C ref: lmem.c:97 — @param {CPtr} L @param {CPtr} block @param {CInt} nelems @param {CPtr} psize @param {CInt} size_elems @param {CInt} limit @param {CPtr} what @returns {CPtr} */
+/** C ref: lmem.c:97 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CInt} nelems @param {CPtr<int>} psize @param {CInt} size_elems @param {CInt} limit @param {CPtr<char>} what @returns {CPtr<void>} */
 export function luaM_growaux_(L, block, nelems, psize, size_elems, limit, what) {
     let newblock;
     let size = cptr.ldI32(psize);
     if (((nelems + 1) | 0) <= size)
-        return block;
+        return block;  /* nothing to be done */
     if (size >= ((limit / 2) | 0)) {
         if ((__builtin_expect(BigInt(((size >= limit) != 0)), 0n)))
-            luaG_runerror(L, __sl0, what, limit);
-        size = limit;
+            luaG_runerror(L, __s_too_many_s_limit_is_d, what, limit);
+        size = limit;  /* still have at least one free place */
     } else {
         size = Math.imul(size, 2);
         if (size < 4)
-            size = 4;
+            size = 4;  /* minimum size */
     }
     (void 0);
+    /* 'limit' ensures that multiplication will not overflow */
     newblock = luaM_saferealloc_(L, block, BigInt.asUintN(64, (BigInt.asUintN(64, BigInt(((cptr.ldI32(psize)))))) * BigInt.asUintN(64, BigInt(size_elems))), BigInt.asUintN(64, (BigInt.asUintN(64, BigInt(((size))))) * BigInt.asUintN(64, BigInt(size_elems))));
-    cptr.stI32(psize, size);
+    cptr.stI32(psize, size);  /* update only when everything else is OK */
     return newblock;
 }
 
-/** C ref: lmem.c:128 — @param {CPtr} L @param {CPtr} block @param {CPtr} size @param {CInt} final_n @param {CInt} size_elem @returns {CPtr} */
+/*
+** In prototypes, the size of the array is also its number of
+** elements (to save memory). So, if it cannot shrink an array
+** to its number of elements, the only option is to raise an
+** error.
+*/
+/** C ref: lmem.c:128 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CPtr<int>} size @param {CInt} final_n @param {CInt} size_elem @returns {CPtr<void>} */
 export function luaM_shrinkvector_(L, block, size, final_n, size_elem) {
     let newblock;
     let oldsize = (BigInt.asUintN(64, BigInt(((Math.imul((cptr.ldI32(size)), size_elem))))));
@@ -51,12 +58,17 @@ export function luaM_shrinkvector_(L, block, size, final_n, size_elem) {
     return newblock;
 }
 
-/** C ref: lmem.c:142 — @param {CPtr} L */
+/* }================================================================== */
+
+/** C ref: lmem.c:142 — @param {CPtr<lua_State>} L */
 export function luaM_toobig(L) {
-    luaG_runerror(L, __sl1);
+    luaG_runerror(L, __s_memory_allocation_error_block_too_big);
 }
 
-/** C ref: lmem.c:150 — @param {CPtr} L @param {CPtr} block @param {CLongLong} osize */
+/*
+** Free memory
+*/
+/** C ref: lmem.c:150 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CLongLong} osize */
 export function luaM_free_(L, block, osize) {
     let g = (cptr.ldPtro(L, $lua_State_l_G));
     (void 0);
@@ -64,17 +76,24 @@ export function luaM_free_(L, block, osize) {
     cptr.stI64o(g, $global_State_GCdebt, cptr.ldI64o(g, $global_State_GCdebt) - BigInt.asIntN(64, osize));
 }
 
-/** C ref: lmem.c:162 — @param {CPtr} L @param {CPtr} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr} */
+/*
+** In case of allocation fail, this function will do an emergency
+** collection to free some memory and then try the allocation again.
+*/
+/** C ref: lmem.c:162 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr<void>} */
 function tryagain(L, block, osize, nsize) {
     let g = (cptr.ldPtro(L, $lua_State_l_G));
     if (((((((cptr.ld1uo(((cptr.add(g, $global_State_nilvalue))), $TValue_tt_))) & 15)) == 0) && !cptr.ld1uo(g, $global_State_gcstopem))) {
-        luaC_fullgc(L, 1);
-        return ((cptr.ldPtr(g))(cptr.ldPtro(g, $global_State_ud), block, osize, nsize));
+        luaC_fullgc(L, 1);  /* try to free some memory... */
+        return ((cptr.ldPtr(g))(cptr.ldPtro(g, $global_State_ud), block, osize, nsize));  /* try again */
     } else
-        return (null);
+        return (null);  /* cannot run an emergency collection */
 }
 
-/** C ref: lmem.c:176 — @param {CPtr} L @param {CPtr} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr} */
+/*
+** Generic allocation routine.
+*/
+/** C ref: lmem.c:176 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr<void>} */
 export function luaM_realloc_(L, block, osize, nsize) {
     let newblock;
     let g = (cptr.ldPtro(L, $lua_State_l_G));
@@ -83,14 +102,14 @@ export function luaM_realloc_(L, block, osize, nsize) {
     if ((__builtin_expect(BigInt(((cptr.eq(newblock, (null)) && nsize > 0n ? 1 : 0) != 0)), 0n))) {
         newblock = tryagain(L, block, osize, nsize);
         if (cptr.eq(newblock, (null)))
-            return (null);
+            return (null);  /* do not update 'GCdebt' */
     }
     (void 0);
     cptr.stI64o(g, $global_State_GCdebt, BigInt.asIntN(64, BigInt.asUintN(64, (BigInt.asUintN(64, BigInt.asUintN(64, cptr.ldI64o(g, $global_State_GCdebt)) + nsize)) - osize)));
     return newblock;
 }
 
-/** C ref: lmem.c:192 — @param {CPtr} L @param {CPtr} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr} */
+/** C ref: lmem.c:192 — @param {CPtr<lua_State>} L @param {CPtr<void>} block @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr<void>} */
 export function luaM_saferealloc_(L, block, osize, nsize) {
     let newblock = luaM_realloc_(L, block, osize, nsize);
     if ((__builtin_expect(BigInt(((cptr.eq(newblock, (null)) && nsize > 0n ? 1 : 0) != 0)), 0n)))
@@ -98,10 +117,10 @@ export function luaM_saferealloc_(L, block, osize, nsize) {
     return newblock;
 }
 
-/** C ref: lmem.c:201 — @param {CPtr} L @param {CLongLong} size @param {CInt} tag @returns {CPtr} */
+/** C ref: lmem.c:201 — @param {CPtr<lua_State>} L @param {CLongLong} size @param {CInt} tag @returns {CPtr<void>} */
 export function luaM_malloc_(L, size, tag) {
     if (size == 0n)
-        return (null);
+        return (null);  /* that's all */
     else {
         let g = (cptr.ldPtro(L, $lua_State_l_G));
         let newblock = ((cptr.ldPtr(g))(cptr.ldPtro(g, $global_State_ud), (null), BigInt.asUintN(64, BigInt(tag)), size));

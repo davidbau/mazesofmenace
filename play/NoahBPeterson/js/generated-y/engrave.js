@@ -13,9 +13,10 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { IS_AIR, SURFACE_AT, bimanual, cantwield, ceiling_hider, is_blade, is_boots, is_wet_towel, is_whirly, min } from './nhmacrofn.js';
+import { rn2_at, rnd_at } from './nhrng.js';
 import { Blind, Deaf, Flying, HConfusion, HStun, Hallucination, Levitation } from './nhprop.js';
-import { rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { get_rnd_text, getrumor } from './rumors.js';
+import { rn2 } from './rnd.js';
 import { c_common_strings, flags, gi, gm, gn, gy, hands_obj, head_engr, iflags, svc, svd, svl, svm, u, uarms, ublindf, uwep, ynqchars } from './decl.js';
 import { attacktype, resists_blnd, sticks } from './mondata.js';
 import { ceiling, on_level, surface } from './dungeon.js';
@@ -100,322 +101,331 @@ const $NHFILE_mode = FLD.NHFILE_mode, $_doengrave_ctx_adding = FLD._doengrave_ct
     $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
     $permonst_msize = FLD.permonst_msize, $prop_blocked = FLD.prop_blocked,
     $prop_intrinsic = FLD.prop_intrinsic, $rm_flags = FLD.rm_flags, $rm_horizontal = FLD.rm_horizontal,
-    $rm_typ = FLD.rm_typ, $u_conduct_literate = FLD.u_conduct_literate,
+    $rm_typ = FLD.rm_typ, $sizeof_objclass = FLD.sizeof_objclass, $sizeof_permonst = FLD.sizeof_permonst,
+    $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
+    $sizeof_skills = FLD.sizeof_skills, $u_conduct_literate = FLD.u_conduct_literate,
     $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_uconduct = FLD.you_uconduct, $you_uprops = FLD.you_uprops,
     $you_uroleplay = FLD.you_uroleplay, $you_usteed = FLD.you_usteed, $you_ustuck = FLD.you_ustuck,
     $you_uswallow = FLD.you_uswallow, $you_uundetected = FLD.you_uundetected, $you_uy = FLD.you_uy,
     $you_uz = FLD.you_uz, $you_weapon_skills = FLD.you_weapon_skills;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("engrave.c");
-const __sl1 = cptr.lit("random_engraving");
-const __sl2 = cptr.lit("engrave");
-const __sl3 = cptr.lit("^");
-const __sl4 = cptr.lit("Pb[");
-const __sl5 = cptr.lit("(");
-const __sl6 = cptr.lit("|)[");
-const __sl7 = cptr.lit("|FL[_");
-const __sl8 = cptr.lit("|-");
-const __sl9 = cptr.lit("C(");
-const __sl10 = cptr.lit("|");
-const __sl11 = cptr.lit("|<");
-const __sl12 = cptr.lit("|_");
-const __sl13 = cptr.lit("|\\");
-const __sl14 = cptr.lit("F");
-const __sl15 = cptr.lit("PF");
-const __sl16 = cptr.lit("J");
-const __sl17 = cptr.lit("/\\");
-const __sl18 = cptr.lit("V/\\");
-const __sl19 = cptr.lit("/");
-const __sl20 = cptr.lit("c|");
-const __sl21 = cptr.lit("c");
-const __sl22 = cptr.lit("n");
-const __sl23 = cptr.lit("i");
-const __sl24 = cptr.lit("nr");
-const __sl25 = cptr.lit("r");
-const __sl26 = cptr.lit("v");
-const __sl27 = cptr.lit(".");
-const __sl28 = cptr.lit(",:");
-const __sl29 = cptr.lit("-");
-const __sl30 = cptr.lit("-|");
-const __sl31 = cptr.lit("+");
-const __sl32 = cptr.lit("0");
-const __sl33 = cptr.lit("o");
-const __sl34 = cptr.lit("3o");
-const __sl35 = cptr.lit("wipeout_text");
-const __sl36 = cptr.lit("?.,'`-|_");
-const __sl37 = cptr.lit("%s can't reach the %s.");
-const __sl38 = cptr.lit("The wand does nothing more, and the tip of the wand");
-const __sl39 = cptr.lit("You");
-const __sl40 = cptr.lit("bottom of the pit");
-const __sl41 = cptr.lit("asked to erode %d characters");
-const __sl42 = cptr.lit("wipe_engr_at");
-const __sl43 = cptr.lit("actually eroding %d characters");
-const __sl44 = cptr.lit("%s is written here in the %s.");
-const __sl45 = cptr.lit("frost");
-const __sl46 = cptr.lit("dust");
-const __sl47 = cptr.lit("%s is engraved here on the %s.");
-const __sl48 = cptr.lit("Some text has been %s into the %s here.");
-const __sl49 = cptr.lit("melted");
-const __sl50 = cptr.lit("burned");
-const __sl51 = cptr.lit("There's some graffiti on the %s here.");
-const __sl52 = cptr.lit("a message scrawled in blood here.");
-const __sl53 = cptr.lit("%s is written in a very strange way.");
-const __sl54 = cptr.lit("");
-const __sl55 = cptr.lit(".!?");
-const __sl56 = cptr.lit("%s: \"%s\"%s");
-const __sl57 = cptr.lit("feel the words");
-const __sl58 = cptr.lit("read");
-const __sl59 = cptr.lit("make_engr_at");
-const __sl60 = cptr.lit("Elbereth");
-const __sl61 = cptr.lit("What would you write?  \"Jonah was here\"?");
-const __sl62 = cptr.lit("write on the %s!");
-const __sl63 = cptr.lit("write in %s!");
-const __sl64 = cptr.lit("cloud vapor");
-const __sl65 = cptr.lit("thin air");
-const __sl66 = cptr.lit("write here.");
-const __sl67 = cptr.lit("even hold anything!");
-const __sl68 = cptr.lit("The wand unsuccessfully fights your attempt to write!");
-const __sl69 = cptr.lit("The bugs on the %s slow down!");
-const __sl70 = cptr.lit("The bugs on the %s speed up!");
-const __sl71 = cptr.lit("The %s is riddled by bullet holes!");
-const __sl72 = cptr.lit("The bugs on the %s stop moving!");
-const __sl73 = cptr.lit("A few ice cubes drop from the wand.");
-const __sl74 = cptr.lit("engraving on the %s vanishes!");
-const __sl75 = cptr.lit("This %s is a wand of digging!");
-const __sl76 = cptr.lit("You hear drilling!");
-const __sl77 = cptr.lit("You feel tremors.");
-const __sl78 = cptr.lit("Chips fly out from the headstone.");
-const __sl79 = cptr.lit("Ice chips fly up from the ice surface!");
-const __sl80 = cptr.lit("Splinters fly up from the bridge.");
-const __sl81 = cptr.lit("Gravel flies up from the floor.");
-const __sl82 = cptr.lit("This %s is a wand of fire!");
-const __sl83 = cptr.lit("You feel the wand heat up.");
-const __sl84 = cptr.lit("Flames fly from the wand.");
-const __sl85 = cptr.lit("This %s is a wand of lightning!");
-const __sl86 = cptr.lit("Lightning arcs from the wand.");
-const __sl87 = cptr.lit("You hear crackling!");
-const __sl88 = cptr.lit("Your hair stands up!");
-const __sl89 = cptr.lit("engrave with such a large object!");
-const __sl90 = cptr.lit("%s would get %s.");
-const __sl91 = cptr.lit("all frosty");
-const __sl92 = cptr.lit("too dirty");
-const __sl93 = cptr.lit("doengrave_sfx_item");
-const __sl94 = cptr.lit("wand is too worn out to engrave.");
-const __sl95 = cptr.lit("%s can only scratch the %s.");
-const __sl96 = cptr.lit("%s too dull for engraving.");
-const __sl97 = cptr.lit("are");
-const __sl98 = cptr.lit("That is a bit difficult to engrave with, don't you think?");
-const __sl99 = cptr.lit("marker has dried out.");
-const __sl100 = cptr.lit("wipe out the message here.");
-const __sl101 = cptr.lit("%s %s.");
-const __sl102 = cptr.lit("get");
-const __sl103 = cptr.lit("frosty");
-const __sl104 = cptr.lit("dusty");
-const __sl105 = cptr.lit("%s can't wipe out this engraving.");
-const __sl106 = cptr.lit("Writing a poison pen letter?");
-const __sl107 = cptr.lit("You're engraving with an illegal object!");
-const __sl108 = cptr.lit("add to the weird writing on");
-const __sl109 = cptr.lit("write strangely on");
-const __sl110 = cptr.lit("add to the writing in");
-const __sl111 = cptr.lit("write in");
-const __sl112 = cptr.lit("add to the epitaph on");
-const __sl113 = cptr.lit("engrave on");
-const __sl114 = cptr.lit("add to the engraving in");
-const __sl115 = cptr.lit("engrave in");
-const __sl116 = cptr.lit("add to the text melted into");
-const __sl117 = cptr.lit("add to the text burned into");
-const __sl118 = cptr.lit("melt into");
-const __sl119 = cptr.lit("burn into");
-const __sl120 = cptr.lit("add to the graffiti on");
-const __sl121 = cptr.lit("scribble on");
-const __sl122 = cptr.lit("add to the scrawl on");
-const __sl123 = cptr.lit("scrawl on");
-const __sl124 = cptr.lit("write with");
-const __sl125 = cptr.lit("your ");
-const __sl126 = cptr.lit("have no free %s to write with!");
-const __sl127 = cptr.lit("tickle %s with %s.");
-const __sl128 = cptr.lit("message dissolves...");
-const __sl129 = cptr.lit("gesture, with your wand, towards the %s below you.");
-const __sl130 = cptr.lit("make a motion towards the altar with %s.");
-const __sl131 = cptr.lit("would only make a small smudge on the %s.");
-const __sl132 = cptr.lit("engraving now reads: \"%s\".");
-const __sl133 = cptr.lit("%s %sturns to dust.");
-const __sl134 = cptr.lit("glows violently, then ");
-const __sl135 = cptr.lit("are not going to get anywhere trying to write in the %s with your dust.");
-const __sl136 = cptr.lit("Do you want to add to the current engraving?");
-const __sl137 = cptr.lit("%s");
-const __sl138 = cptr.lit("wipe out the message that was %s here.");
-const __sl139 = cptr.lit("written in the frost");
-const __sl140 = cptr.lit("written in the dust");
-const __sl141 = cptr.lit("scrawled in blood");
-const __sl142 = cptr.lit("written");
-const __sl143 = cptr.lit("cannot wipe out the message that is %s the %s here.");
-const __sl144 = cptr.lit("melted into");
-const __sl145 = cptr.lit("burned into");
-const __sl146 = cptr.lit("engraved in");
-const __sl147 = cptr.lit("will overwrite the current message.");
-const __sl148 = cptr.lit("doengrave");
-const __sl149 = cptr.lit("is no room to add anything else here.");
-const __sl150 = cptr.lit("%s the %s with %s%s.");
-const __sl151 = cptr.lit("1 of ");
-const __sl152 = cptr.lit("%s the %s with your %s.");
-const __sl153 = cptr.lit("What do you want to %s the %s here?");
-const __sl154 = cptr.lit("%s, then %s.");
-const __sl155 = cptr.lit("glow");
-const __sl156 = cptr.lit("fade");
-const __sl157 = cptr.lit("became literate by engraving \"%s\"");
-const __sl158 = cptr.lit("engraving");
-const __sl159 = cptr.lit("are blinded by the flash!");
-const __sl160 = cptr.lit("are unable to continue engraving.");
-const __sl161 = cptr.lit("carving with non-bladed weapon");
-const __sl162 = cptr.lit("making graffiti with non-marker stylus");
-const __sl163 = cptr.lit("One of %s gets dull.");
-const __sl164 = cptr.lit("%s gets dull.");
-const __sl165 = cptr.lit("<= -3 weapon valid for engraving");
-const __sl166 = cptr.lit("You drop one %s!");
-const __sl167 = cptr.lit("overly dry marker valid for graffiti?");
-const __sl168 = cptr.lit("marker dries out.");
-const __sl169 = cptr.lit("your weird engraving");
-const __sl170 = cptr.lit("writing in the frost");
-const __sl171 = cptr.lit("writing in the dust");
-const __sl172 = cptr.lit("melting your message into the ice");
-const __sl173 = cptr.lit("burning your message into the floor");
-const __sl174 = cptr.lit("defacing the dungeon");
-const __sl175 = cptr.lit("scrawling");
-const __sl176 = cptr.lit("run out of room to write.");
-const __sl177 = cptr.lit("are only able to write \"%s\".");
-const __sl178 = cptr.lit("cannot write any more.");
-const __sl179 = cptr.lit("finish %s.");
-const __sl180 = cptr.lit("engraving sanity: on plane of air/water");
-const __sl181 = cptr.lit("engraving sanity: !isok <%i,%i>");
-const __sl182 = cptr.lit("engraving sanity: illegal surface (%d: \"%s\")");
-const __sl183 = cptr.lit("engraving-engr_alloc");
-const __sl184 = cptr.lit("engraving-actual_text");
-const __sl185 = cptr.lit("engraving-remembered_text");
-const __sl186 = cptr.lit("engraving-pristine_text");
-const __sl187 = cptr.lit("Error in del_engr?");
-const __sl188 = cptr.lit("rloc_engr");
-const __sl189 = cptr.lit("epitaph");
-const __sl190 = cptr.lit("Disturbing grave that isn't a grave? (%d)");
-const __sl191 = cptr.lit("Disturbing already disturbed grave?");
-const __sl192 = cptr.lit("disturb the undead!");
-const __sl193 = cptr.lit("blengr");
+const __s_engrave_c = cptr.lit("engrave.c");
+const __s_random_engraving = cptr.lit("random_engraving");
+const __s_engrave = cptr.lit("engrave");
+const __s_caret = cptr.lit("^");
+const __s_pb = cptr.lit("Pb[");
+const __s_lparen = cptr.lit("(");
+const __s_bar_rparen_lbrack = cptr.lit("|)[");
+const __s_fl = cptr.lit("|FL[_");
+const __s_bar_dash = cptr.lit("|-");
+const __s_c_lparen = cptr.lit("C(");
+const __s_bar = cptr.lit("|");
+const __s_bar_lt = cptr.lit("|<");
+const __s_bar_us = cptr.lit("|_");
+const __s_bar_bslash = cptr.lit("|\\");
+const __s_f = cptr.lit("F");
+const __s_pf = cptr.lit("PF");
+const __s_j = cptr.lit("J");
+const __s_slash_bslash = cptr.lit("/\\");
+const __s_v_slash_bslash = cptr.lit("V/\\");
+const __s_slash = cptr.lit("/");
+const __s_c_bar = cptr.lit("c|");
+const __s_c = cptr.lit("c");
+const __s_n = cptr.lit("n");
+const __s_i = cptr.lit("i");
+const __s_nr = cptr.lit("nr");
+const __s_r = cptr.lit("r");
+const __s_v = cptr.lit("v");
+const __s_dot = cptr.lit(".");
+const __s_comma_colon = cptr.lit(",:");
+const __s_dash = cptr.lit("-");
+const __s_dash_bar = cptr.lit("-|");
+const __s_plus = cptr.lit("+");
+const __s_0 = cptr.lit("0");
+const __s_o = cptr.lit("o");
+const __s_3o = cptr.lit("3o");
+const __s_wipeout_text = cptr.lit("wipeout_text");
+const __s_query_dot_comma_apos_tick_dash_bar_us = cptr.lit("?.,'`-|_");
+const __s_s_can_t_reach_the_s = cptr.lit("%s can't reach the %s.");
+const __s_the_wand_does_nothing_more_and_the_tip = cptr.lit("The wand does nothing more, and the tip of the wand");
+const __s_you = cptr.lit("You");
+const __s_bottom_of_the_pit = cptr.lit("bottom of the pit");
+const __s_asked_to_erode_d_characters = cptr.lit("asked to erode %d characters");
+const __s_wipe_engr_at = cptr.lit("wipe_engr_at");
+const __s_actually_eroding_d_characters = cptr.lit("actually eroding %d characters");
+const __s_s_is_written_here_in_the_s = cptr.lit("%s is written here in the %s.");
+const __s_frost = cptr.lit("frost");
+const __s_dust = cptr.lit("dust");
+const __s_s_is_engraved_here_on_the_s = cptr.lit("%s is engraved here on the %s.");
+const __s_some_text_has_been_s_into_the_s_here = cptr.lit("Some text has been %s into the %s here.");
+const __s_melted = cptr.lit("melted");
+const __s_burned = cptr.lit("burned");
+const __s_there_s_some_graffiti_on_the_s_here = cptr.lit("There's some graffiti on the %s here.");
+const __s_a_message_scrawled_in_blood_here = cptr.lit("a message scrawled in blood here.");
+const __s_s_is_written_in_a_very_strange_way = cptr.lit("%s is written in a very strange way.");
+const __s_empty = cptr.lit("");
+const __s_dot_bang_query = cptr.lit(".!?");
+const __s_s_s_s = cptr.lit("%s: \"%s\"%s");
+const __s_feel_the_words = cptr.lit("feel the words");
+const __s_read = cptr.lit("read");
+const __s_make_engr_at = cptr.lit("make_engr_at");
+const __s_elbereth = cptr.lit("Elbereth");
+const __s_what_would_you_write_jonah_was_here = cptr.lit("What would you write?  \"Jonah was here\"?");
+const __s_write_on_the_s = cptr.lit("write on the %s!");
+const __s_write_in_s = cptr.lit("write in %s!");
+const __s_cloud_vapor = cptr.lit("cloud vapor");
+const __s_thin_air = cptr.lit("thin air");
+const __s_write_here = cptr.lit("write here.");
+const __s_even_hold_anything = cptr.lit("even hold anything!");
+const __s_the_wand_unsuccessfully_fights_your = cptr.lit("The wand unsuccessfully fights your attempt to write!");
+const __s_the_bugs_on_the_s_slow_down = cptr.lit("The bugs on the %s slow down!");
+const __s_the_bugs_on_the_s_speed_up = cptr.lit("The bugs on the %s speed up!");
+const __s_the_s_is_riddled_by_bullet_holes = cptr.lit("The %s is riddled by bullet holes!");
+const __s_the_bugs_on_the_s_stop_moving = cptr.lit("The bugs on the %s stop moving!");
+const __s_a_few_ice_cubes_drop_from_the_wand = cptr.lit("A few ice cubes drop from the wand.");
+const __s_engraving_on_the_s_vanishes = cptr.lit("engraving on the %s vanishes!");
+const __s_this_s_is_a_wand_of_digging = cptr.lit("This %s is a wand of digging!");
+const __s_you_hear_drilling = cptr.lit("You hear drilling!");
+const __s_you_feel_tremors = cptr.lit("You feel tremors.");
+const __s_chips_fly_out_from_the_headstone = cptr.lit("Chips fly out from the headstone.");
+const __s_ice_chips_fly_up_from_the_ice_surface = cptr.lit("Ice chips fly up from the ice surface!");
+const __s_splinters_fly_up_from_the_bridge = cptr.lit("Splinters fly up from the bridge.");
+const __s_gravel_flies_up_from_the_floor = cptr.lit("Gravel flies up from the floor.");
+const __s_this_s_is_a_wand_of_fire = cptr.lit("This %s is a wand of fire!");
+const __s_you_feel_the_wand_heat_up = cptr.lit("You feel the wand heat up.");
+const __s_flames_fly_from_the_wand = cptr.lit("Flames fly from the wand.");
+const __s_this_s_is_a_wand_of_lightning = cptr.lit("This %s is a wand of lightning!");
+const __s_lightning_arcs_from_the_wand = cptr.lit("Lightning arcs from the wand.");
+const __s_you_hear_crackling = cptr.lit("You hear crackling!");
+const __s_your_hair_stands_up = cptr.lit("Your hair stands up!");
+const __s_engrave_with_such_a_large_object = cptr.lit("engrave with such a large object!");
+const __s_s_would_get_s = cptr.lit("%s would get %s.");
+const __s_all_frosty = cptr.lit("all frosty");
+const __s_too_dirty = cptr.lit("too dirty");
+const __s_doengrave_sfx_item = cptr.lit("doengrave_sfx_item");
+const __s_wand_is_too_worn_out_to_engrave = cptr.lit("wand is too worn out to engrave.");
+const __s_s_can_only_scratch_the_s = cptr.lit("%s can only scratch the %s.");
+const __s_s_too_dull_for_engraving = cptr.lit("%s too dull for engraving.");
+const __s_are = cptr.lit("are");
+const __s_that_is_a_bit_difficult_to_engrave_with = cptr.lit("That is a bit difficult to engrave with, don't you think?");
+const __s_marker_has_dried_out = cptr.lit("marker has dried out.");
+const __s_wipe_out_the_message_here = cptr.lit("wipe out the message here.");
+const __s_s_s = cptr.lit("%s %s.");
+const __s_get = cptr.lit("get");
+const __s_frosty = cptr.lit("frosty");
+const __s_dusty = cptr.lit("dusty");
+const __s_s_can_t_wipe_out_this_engraving = cptr.lit("%s can't wipe out this engraving.");
+const __s_writing_a_poison_pen_letter = cptr.lit("Writing a poison pen letter?");
+const __s_you_re_engraving_with_an_illegal_object = cptr.lit("You're engraving with an illegal object!");
+const __s_add_to_the_weird_writing_on = cptr.lit("add to the weird writing on");
+const __s_write_strangely_on = cptr.lit("write strangely on");
+const __s_add_to_the_writing_in = cptr.lit("add to the writing in");
+const __s_write_in = cptr.lit("write in");
+const __s_add_to_the_epitaph_on = cptr.lit("add to the epitaph on");
+const __s_engrave_on = cptr.lit("engrave on");
+const __s_add_to_the_engraving_in = cptr.lit("add to the engraving in");
+const __s_engrave_in = cptr.lit("engrave in");
+const __s_add_to_the_text_melted_into = cptr.lit("add to the text melted into");
+const __s_add_to_the_text_burned_into = cptr.lit("add to the text burned into");
+const __s_melt_into = cptr.lit("melt into");
+const __s_burn_into = cptr.lit("burn into");
+const __s_add_to_the_graffiti_on = cptr.lit("add to the graffiti on");
+const __s_scribble_on = cptr.lit("scribble on");
+const __s_add_to_the_scrawl_on = cptr.lit("add to the scrawl on");
+const __s_scrawl_on = cptr.lit("scrawl on");
+const __s_write_with = cptr.lit("write with");
+const __s_your = cptr.lit("your ");
+const __s_have_no_free_s_to_write_with = cptr.lit("have no free %s to write with!");
+const __s_tickle_s_with_s = cptr.lit("tickle %s with %s.");
+const __s_message_dissolves = cptr.lit("message dissolves...");
+const __s_gesture_with_your_wand_towards_the_s = cptr.lit("gesture, with your wand, towards the %s below you.");
+const __s_make_a_motion_towards_the_altar_with_s = cptr.lit("make a motion towards the altar with %s.");
+const __s_would_only_make_a_small_smudge_on_the_s = cptr.lit("would only make a small smudge on the %s.");
+const __s_engraving_now_reads_s = cptr.lit("engraving now reads: \"%s\".");
+const __s_s_sturns_to_dust = cptr.lit("%s %sturns to dust.");
+const __s_glows_violently_then = cptr.lit("glows violently, then ");
+const __s_are_not_going_to_get_anywhere_trying_to = cptr.lit("are not going to get anywhere trying to write in the %s with your dust.");
+const __s_do_you_want_to_add_to_the_current = cptr.lit("Do you want to add to the current engraving?");
+const __s_pct_s = cptr.lit("%s");
+const __s_wipe_out_the_message_that_was_s_here = cptr.lit("wipe out the message that was %s here.");
+const __s_written_in_the_frost = cptr.lit("written in the frost");
+const __s_written_in_the_dust = cptr.lit("written in the dust");
+const __s_scrawled_in_blood = cptr.lit("scrawled in blood");
+const __s_written = cptr.lit("written");
+const __s_cannot_wipe_out_the_message_that_is_s = cptr.lit("cannot wipe out the message that is %s the %s here.");
+const __s_melted_into = cptr.lit("melted into");
+const __s_burned_into = cptr.lit("burned into");
+const __s_engraved_in = cptr.lit("engraved in");
+const __s_will_overwrite_the_current_message = cptr.lit("will overwrite the current message.");
+const __s_doengrave = cptr.lit("doengrave");
+const __s_is_no_room_to_add_anything_else_here = cptr.lit("is no room to add anything else here.");
+const __s_s_the_s_with_s_s = cptr.lit("%s the %s with %s%s.");
+const __s_1_of = cptr.lit("1 of ");
+const __s_s_the_s_with_your_s = cptr.lit("%s the %s with your %s.");
+const __s_what_do_you_want_to_s_the_s_here = cptr.lit("What do you want to %s the %s here?");
+const __s_s_then_s = cptr.lit("%s, then %s.");
+const __s_glow = cptr.lit("glow");
+const __s_fade = cptr.lit("fade");
+const __s_became_literate_by_engraving_s = cptr.lit("became literate by engraving \"%s\"");
+const __s_engraving = cptr.lit("engraving");
+const __s_are_blinded_by_the_flash = cptr.lit("are blinded by the flash!");
+const __s_are_unable_to_continue_engraving = cptr.lit("are unable to continue engraving.");
+const __s_carving_with_non_bladed_weapon = cptr.lit("carving with non-bladed weapon");
+const __s_making_graffiti_with_non_marker_stylus = cptr.lit("making graffiti with non-marker stylus");
+const __s_one_of_s_gets_dull = cptr.lit("One of %s gets dull.");
+const __s_s_gets_dull = cptr.lit("%s gets dull.");
+const __s_3_weapon_valid_for_engraving = cptr.lit("<= -3 weapon valid for engraving");
+const __s_you_drop_one_s = cptr.lit("You drop one %s!");
+const __s_overly_dry_marker_valid_for_graffiti = cptr.lit("overly dry marker valid for graffiti?");
+const __s_marker_dries_out = cptr.lit("marker dries out.");
+const __s_your_weird_engraving = cptr.lit("your weird engraving");
+const __s_writing_in_the_frost = cptr.lit("writing in the frost");
+const __s_writing_in_the_dust = cptr.lit("writing in the dust");
+const __s_melting_your_message_into_the_ice = cptr.lit("melting your message into the ice");
+const __s_burning_your_message_into_the_floor = cptr.lit("burning your message into the floor");
+const __s_defacing_the_dungeon = cptr.lit("defacing the dungeon");
+const __s_scrawling = cptr.lit("scrawling");
+const __s_run_out_of_room_to_write = cptr.lit("run out of room to write.");
+const __s_are_only_able_to_write_s = cptr.lit("are only able to write \"%s\".");
+const __s_cannot_write_any_more = cptr.lit("cannot write any more.");
+const __s_finish_s = cptr.lit("finish %s.");
+const __s_engraving_sanity_on_plane_of_air_water = cptr.lit("engraving sanity: on plane of air/water");
+const __s_engraving_sanity_isok_i_i = cptr.lit("engraving sanity: !isok <%i,%i>");
+const __s_engraving_sanity_illegal_surface_d_s = cptr.lit("engraving sanity: illegal surface (%d: \"%s\")");
+const __s_engraving_engr_alloc = cptr.lit("engraving-engr_alloc");
+const __s_engraving_actual_text = cptr.lit("engraving-actual_text");
+const __s_engraving_remembered_text = cptr.lit("engraving-remembered_text");
+const __s_engraving_pristine_text = cptr.lit("engraving-pristine_text");
+const __s_error_in_del_engr = cptr.lit("Error in del_engr?");
+const __s_rloc_engr = cptr.lit("rloc_engr");
+const __s_epitaph = cptr.lit("epitaph");
+const __s_disturbing_grave_that_isn_t_a_grave_d = cptr.lit("Disturbing grave that isn't a grave? (%d)");
+const __s_disturbing_already_disturbed_grave = cptr.lit("Disturbing already disturbed grave?");
+const __s_disturb_the_undead = cptr.lit("disturb the undead!");
+const __s_blengr = cptr.lit("blengr");
 
+/* doengrave() data */
 /** C ref: engrave.c:9 — struct _doengrave_ctx { dengr, doblind, doknown, eow, jello, ptext, teleengr, zapwand, disprefresh, frosted, adding, ret, type, oetype, otmp, oep, buf, ebuf, fbuf, qbuf, post_engr_text, writer, everb, eloc, len } (memory model v0.5) */
 
-/** C ref: engrave.c:51 — @param {CPtr} outbuf @param {CPtr} pristine_copy @returns {CPtr} */
+/** C ref: engrave.c:51 — @param {CPtr<char>} outbuf @param {CPtr<char>} pristine_copy @returns {CPtr<char>} */
 export function* random_engraving(outbuf, pristine_copy) {
     let rumor;
-    if (!(rng_log_enabled() ? (rng_log_set_caller(__sl0, 57, __sl1), rn2(4)) : rn2(4)) || !(rumor = (yield* getrumor(0, pristine_copy, 1))) || !cptr.ld1s(rumor))
-        void (yield* get_rnd_text(__sl2, pristine_copy, rn2, NHM.MD_PAD_RUMORS));
+
+    /* a random engraving may come from the "rumors" file,
+       or from the "engrave" file (formerly in an array here) */
+    if (!rn2_at(__s_engrave_c, 57, __s_random_engraving, 4) || !(rumor = (yield* getrumor(0, pristine_copy, 1))) || !cptr.ld1s(rumor))
+        void (yield* get_rnd_text(__s_engrave, pristine_copy, rn2, NHM.MD_PAD_RUMORS));
+
     void cptr.strcpy(outbuf, pristine_copy);
     wipeout_text(outbuf, Number(BigInt.asIntN(32, (cptr.strlen(outbuf) / 4n))), 0);
     return outbuf;
 }
 
+/* Partial rubouts for engraving characters. -3. */
 /** C ref: engrave.c:66 — struct undefined {  } (memory model v0.5) */
 
 /** C ref: engrave.c:69 — struct (unnamed struct at engrave.c:66:14)[48] */
 const rubouts = cptr.alloc(48 * 16);
 cptr.st1o(rubouts, 0, 65);
-cptr.stPtro(rubouts, 8, __sl3);
+cptr.stPtro(rubouts, 8, __s_caret);
 cptr.st1o(rubouts, 16, 66);
-cptr.stPtro(rubouts, 24, __sl4);
+cptr.stPtro(rubouts, 24, __s_pb);
 cptr.st1o(rubouts, 32, 67);
-cptr.stPtro(rubouts, 40, __sl5);
+cptr.stPtro(rubouts, 40, __s_lparen);
 cptr.st1o(rubouts, 48, 68);
-cptr.stPtro(rubouts, 56, __sl6);
+cptr.stPtro(rubouts, 56, __s_bar_rparen_lbrack);
 cptr.st1o(rubouts, 64, 69);
-cptr.stPtro(rubouts, 72, __sl7);
+cptr.stPtro(rubouts, 72, __s_fl);
 cptr.st1o(rubouts, 80, 70);
-cptr.stPtro(rubouts, 88, __sl8);
+cptr.stPtro(rubouts, 88, __s_bar_dash);
 cptr.st1o(rubouts, 96, 71);
-cptr.stPtro(rubouts, 104, __sl9);
+cptr.stPtro(rubouts, 104, __s_c_lparen);
 cptr.st1o(rubouts, 112, 72);
-cptr.stPtro(rubouts, 120, __sl8);
+cptr.stPtro(rubouts, 120, __s_bar_dash);
 cptr.st1o(rubouts, 128, 73);
-cptr.stPtro(rubouts, 136, __sl10);
+cptr.stPtro(rubouts, 136, __s_bar);
 cptr.st1o(rubouts, 144, 75);
-cptr.stPtro(rubouts, 152, __sl11);
+cptr.stPtro(rubouts, 152, __s_bar_lt);
 cptr.st1o(rubouts, 160, 76);
-cptr.stPtro(rubouts, 168, __sl12);
+cptr.stPtro(rubouts, 168, __s_bar_us);
 cptr.st1o(rubouts, 176, 77);
-cptr.stPtro(rubouts, 184, __sl10);
+cptr.stPtro(rubouts, 184, __s_bar);
 cptr.st1o(rubouts, 192, 78);
-cptr.stPtro(rubouts, 200, __sl13);
+cptr.stPtro(rubouts, 200, __s_bar_bslash);
 cptr.st1o(rubouts, 208, 79);
-cptr.stPtro(rubouts, 216, __sl9);
+cptr.stPtro(rubouts, 216, __s_c_lparen);
 cptr.st1o(rubouts, 224, 80);
-cptr.stPtro(rubouts, 232, __sl14);
+cptr.stPtro(rubouts, 232, __s_f);
 cptr.st1o(rubouts, 240, 81);
-cptr.stPtro(rubouts, 248, __sl9);
+cptr.stPtro(rubouts, 248, __s_c_lparen);
 cptr.st1o(rubouts, 256, 82);
-cptr.stPtro(rubouts, 264, __sl15);
+cptr.stPtro(rubouts, 264, __s_pf);
 cptr.st1o(rubouts, 272, 84);
-cptr.stPtro(rubouts, 280, __sl10);
+cptr.stPtro(rubouts, 280, __s_bar);
 cptr.st1o(rubouts, 288, 85);
-cptr.stPtro(rubouts, 296, __sl16);
+cptr.stPtro(rubouts, 296, __s_j);
 cptr.st1o(rubouts, 304, 86);
-cptr.stPtro(rubouts, 312, __sl17);
+cptr.stPtro(rubouts, 312, __s_slash_bslash);
 cptr.st1o(rubouts, 320, 87);
-cptr.stPtro(rubouts, 328, __sl18);
+cptr.stPtro(rubouts, 328, __s_v_slash_bslash);
 cptr.st1o(rubouts, 336, 90);
-cptr.stPtro(rubouts, 344, __sl19);
+cptr.stPtro(rubouts, 344, __s_slash);
 cptr.st1o(rubouts, 352, 98);
-cptr.stPtro(rubouts, 360, __sl10);
+cptr.stPtro(rubouts, 360, __s_bar);
 cptr.st1o(rubouts, 368, 100);
-cptr.stPtro(rubouts, 376, __sl20);
+cptr.stPtro(rubouts, 376, __s_c_bar);
 cptr.st1o(rubouts, 384, 101);
-cptr.stPtro(rubouts, 392, __sl21);
+cptr.stPtro(rubouts, 392, __s_c);
 cptr.st1o(rubouts, 400, 103);
-cptr.stPtro(rubouts, 408, __sl21);
+cptr.stPtro(rubouts, 408, __s_c);
 cptr.st1o(rubouts, 416, 104);
-cptr.stPtro(rubouts, 424, __sl22);
+cptr.stPtro(rubouts, 424, __s_n);
 cptr.st1o(rubouts, 432, 106);
-cptr.stPtro(rubouts, 440, __sl23);
+cptr.stPtro(rubouts, 440, __s_i);
 cptr.st1o(rubouts, 448, 107);
-cptr.stPtro(rubouts, 456, __sl10);
+cptr.stPtro(rubouts, 456, __s_bar);
 cptr.st1o(rubouts, 464, 108);
-cptr.stPtro(rubouts, 472, __sl10);
+cptr.stPtro(rubouts, 472, __s_bar);
 cptr.st1o(rubouts, 480, 109);
-cptr.stPtro(rubouts, 488, __sl24);
+cptr.stPtro(rubouts, 488, __s_nr);
 cptr.st1o(rubouts, 496, 110);
-cptr.stPtro(rubouts, 504, __sl25);
+cptr.stPtro(rubouts, 504, __s_r);
 cptr.st1o(rubouts, 512, 111);
-cptr.stPtro(rubouts, 520, __sl21);
+cptr.stPtro(rubouts, 520, __s_c);
 cptr.st1o(rubouts, 528, 113);
-cptr.stPtro(rubouts, 536, __sl21);
+cptr.stPtro(rubouts, 536, __s_c);
 cptr.st1o(rubouts, 544, 119);
-cptr.stPtro(rubouts, 552, __sl26);
+cptr.stPtro(rubouts, 552, __s_v);
 cptr.st1o(rubouts, 560, 121);
-cptr.stPtro(rubouts, 568, __sl26);
+cptr.stPtro(rubouts, 568, __s_v);
 cptr.st1o(rubouts, 576, 58);
-cptr.stPtro(rubouts, 584, __sl27);
+cptr.stPtro(rubouts, 584, __s_dot);
 cptr.st1o(rubouts, 592, 59);
-cptr.stPtro(rubouts, 600, __sl28);
+cptr.stPtro(rubouts, 600, __s_comma_colon);
 cptr.st1o(rubouts, 608, 44);
-cptr.stPtro(rubouts, 616, __sl27);
+cptr.stPtro(rubouts, 616, __s_dot);
 cptr.st1o(rubouts, 624, 61);
-cptr.stPtro(rubouts, 632, __sl29);
+cptr.stPtro(rubouts, 632, __s_dash);
 cptr.st1o(rubouts, 640, 43);
-cptr.stPtro(rubouts, 648, __sl30);
+cptr.stPtro(rubouts, 648, __s_dash_bar);
 cptr.st1o(rubouts, 656, 42);
-cptr.stPtro(rubouts, 664, __sl31);
+cptr.stPtro(rubouts, 664, __s_plus);
 cptr.st1o(rubouts, 672, 64);
-cptr.stPtro(rubouts, 680, __sl32);
+cptr.stPtro(rubouts, 680, __s_0);
 cptr.st1o(rubouts, 688, 48);
-cptr.stPtro(rubouts, 696, __sl9);
+cptr.stPtro(rubouts, 696, __s_c_lparen);
 cptr.st1o(rubouts, 704, 49);
-cptr.stPtro(rubouts, 712, __sl10);
+cptr.stPtro(rubouts, 712, __s_bar);
 cptr.st1o(rubouts, 720, 54);
-cptr.stPtro(rubouts, 728, __sl33);
+cptr.stPtro(rubouts, 728, __s_o);
 cptr.st1o(rubouts, 736, 55);
-cptr.stPtro(rubouts, 744, __sl19);
+cptr.stPtro(rubouts, 744, __s_slash);
 cptr.st1o(rubouts, 752, 56);
-cptr.stPtro(rubouts, 760, __sl34);
+cptr.stPtro(rubouts, 760, __s_3o);
 
-/** C ref: engrave.c:120 — @param {CPtr} engr @param {CInt} cnt @param {CUInt} seed */
+/* degrade some of the characters in a string */
+/** C ref: engrave.c:120 — @param {CPtr<char>} engr @param {CInt} cnt @param {CUInt} seed */
 export function wipeout_text(engr, cnt, seed) {
     let s;
     let i;
@@ -423,12 +433,18 @@ export function wipeout_text(engr, cnt, seed) {
     let nxt;
     let use_rubout;
     let lth = Number(BigInt.asUintN(32, cptr.strlen(engr)));
+
     if (lth && cnt > 0) {
         while (cnt--) {
+            /* pick next character */
             if (!seed) {
-                nxt = (rng_log_enabled() ? (rng_log_set_caller(__sl0, 134, __sl35), rn2(lth | 0)) : rn2(lth | 0));
-                use_rubout = (rng_log_enabled() ? (rng_log_set_caller(__sl0, 135, __sl35), rn2(4)) : rn2(4));
+                /* random */
+                nxt = rn2_at(__s_engrave_c, 134, __s_wipeout_text, lth | 0);
+                use_rubout = rn2_at(__s_engrave_c, 135, __s_wipeout_text, 4);
             } else {
+                /* predictable; caller can reproduce the same sequence by
+                   supplying the same arguments later, or a pseudo-random
+                   sequence by varying any of them */
                 nxt = u32mod(seed, lth) | 0;
                 seed = Math.imul(seed, 31), seed %= 255;
                 use_rubout = ((seed & 3) >>> 0) | 0;
@@ -436,18 +452,24 @@ export function wipeout_text(engr, cnt, seed) {
             s = cptr.add(engr, nxt);
             if (cptr.ld1s(s) == 32)
                 continue;
-            if (cptr.strchr(__sl36, cptr.ld1s(s))) {
+
+            /* rub out unreadable & small punctuation marks */
+            if (cptr.strchr(__s_query_dot_comma_apos_tick_dash_bar_us, cptr.ld1s(s))) {
                 cptr.st1(s, 32);
                 continue;
             }
+
             if (!use_rubout) {
                 i = 48;
             } else {
                 for (i = 0; i < 48; i++)
                     if (cptr.ld1s(s) == cptr.ld1so(rubouts, i, 16)) {
                         let ln = Number(BigInt.asUintN(32, cptr.strlen(cptr.ldPtro2(rubouts, i, 16, 8))));
+                        /*
+                         * Pick one of the substitutes at random.
+                         */
                         if (!seed) {
-                            j = (rng_log_enabled() ? (rng_log_set_caller(__sl0, 164, __sl35), rn2(ln | 0)) : rn2(ln | 0));
+                            j = rn2_at(__s_engrave_c, 164, __s_wipeout_text, ln | 0);
                         } else {
                             seed = Math.imul(seed, 31), seed %= 255;
                             j = u32mod(seed, ln) | 0;
@@ -456,38 +478,50 @@ export function wipeout_text(engr, cnt, seed) {
                         break;
                     }
             }
+
+            /* didn't pick rubout; use '?' for unreadable character */
             if (i == 48)
                 cptr.st1(s, 63);
         }
     }
+
+    /* trim trailing spaces */
     while (lth && cptr.ld1so(engr, (lth - 1) >>> 0) == 32)
         cptr.st1o(engr, --lth, 0);
 }
 
+/* check whether hero can reach something at ground level */
 /** C ref: engrave.c:187 — @param {CInt} check_pit @returns {CInt} */
 export function can_reach_floor(check_pit) {
     let t;
+
     if ((cptr.ldI32o(u, $you_uswallow) & 1) | 0 || (cptr.ldPtro(u, $you_ustuck) && !sticks(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)) && attacktype(cptr.ldPtro(cptr.ldPtro(u, $you_ustuck), $monst_data), NHM.AT_HUGS)) || (Levitation() && !((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)))) || (((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))))))
         return 0;
-    if (cptr.ldPtro(u, $you_usteed) && (cptr.ldI16o2(u, NHC.P_RIDING, 6, $you_weapon_skills)) < NHC.P_BASIC)
+    /* Restricted/unskilled riders can't reach the floor */
+    if (cptr.ldPtro(u, $you_usteed) && (cptr.ldI16o2(u, NHC.P_RIDING, $sizeof_skills, $you_weapon_skills)) < NHC.P_BASIC)
         return 0;
     if ((cptr.ldI32o(u, $you_uundetected) & 1) | 0 && ceiling_hider(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)))
         return 0;
+
     if (Flying() || cptr.ld1uo(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), $permonst_msize) >= NHM.MZ_HUGE)
         return 1;
+
     if (check_pit && (t = t_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) !== null && (uteetering_at_seen_pit(t) || uescaped_shaft(t)))
         return 0;
+
     return 1;
 }
 
+/* give a message after caller has determined that hero can't reach */
 /** C ref: engrave.c:218 — @param {CInt} x @param {CInt} y @param {CInt} up @param {CInt} check_pit @param {CInt} wand_engraving */
 export function* cant_reach_floor(x, y, up, check_pit, wand_engraving) {
-    (yield* pline(__sl37, wand_engraving ? __sl38 : __sl39, up ? (yield* ceiling(x, y)) : ((check_pit && can_reach_floor(0)) ? __sl40 : surface(x, y))));
+    (yield* pline(__s_s_can_t_reach_the_s, wand_engraving ? __s_the_wand_does_nothing_more_and_the_tip : __s_you, up ? (yield* ceiling(x, y)) : ((check_pit && can_reach_floor(0)) ? __s_bottom_of_the_pit : surface(x, y))));
 }
 
-/** C ref: engrave.c:231 — @param {CInt} x @param {CInt} y @returns {CPtr} */
+/** C ref: engrave.c:231 — @param {CInt} x @param {CInt} y @returns {CPtr<struct engr>} */
 export function engr_at(x, y) {
     let ep = head_engr.v;
+
     while (ep) {
         if (x == cptr.ldI16o(ep, $engr_engr_x) && y == cptr.ldI16o(ep, $engr_engr_y))
             return ep;
@@ -496,9 +530,17 @@ export function engr_at(x, y) {
     return null;
 }
 
-/** C ref: engrave.c:251 — @param {CPtr} s @param {CInt} x @param {CInt} y @param {CInt} strict @returns {CPtr} */
+/* Decide whether a particular string is engraved at a specified
+ * location; a case-insensitive substring match is used.
+ * Ignore headstones, in case the player names herself "Elbereth".
+ *
+ * If strict checking is requested, the word is only considered to be
+ * present if it is intact and is the entire content of the engraving.
+ */
+/** C ref: engrave.c:251 — @param {CPtr<char>} s @param {CInt} x @param {CInt} y @param {CInt} strict @returns {CPtr<struct engr>} */
 export function* sengr_at(s, x, y, strict) {
     let ep = engr_at(x, y);
+
     if (ep && cptr.ld1so(ep, $engr_engr_type) != NHM.HEADSTONE && cptr.ldI64o(ep, $engr_engr_time) <= cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
         if (strict ? !(yield* strncmpi((cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt)), (s), -1)) : ((yield* strstri(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), s)) !== null))
             return ep;
@@ -515,21 +557,23 @@ export function* u_wipe_engr(cnt) {
 /** C ref: engrave.c:271 — @param {CInt} x @param {CInt} y @param {CInt} cnt @param {CInt} magical */
 export function* wipe_engr_at(x, y, cnt, magical) {
     let ep = engr_at(x, y);
+
+    /* Headstones and some specially marked engravings are indelible */
     if (ep && cptr.ld1so(ep, $engr_engr_type) != NHM.HEADSTONE && !(cptr.ldI32o(ep, $engr_nowipeout) & 1)) {
         {
-            if ((yield* debugcore(__sl0, 1))) {
+            if ((yield* debugcore(__s_engrave_c, 1))) {
                 let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                (yield* pline(__sl41, cnt));
+                (yield* pline(__s_asked_to_erode_d_characters, cnt));
                 cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
             }
         }
-        if (cptr.ld1so(ep, $engr_engr_type) != NHM.BURN || is_ice(x, y) || (magical && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 278, __sl42), rn2(2)) : rn2(2)))) {
+        if (cptr.ld1so(ep, $engr_engr_type) != NHM.BURN || is_ice(x, y) || (magical && !rn2_at(__s_engrave_c, 278, __s_wipe_engr_at, 2))) {
             if (cptr.ld1so(ep, $engr_engr_type) != NHM.DUST && cptr.ld1so(ep, $engr_engr_type) != NHM.ENGR_BLOOD) {
-                cnt = i16(((rng_log_enabled() ? (rng_log_set_caller(__sl0, 280, __sl42), rn2((1 + ((50 / ((cnt + 1) | 0)) | 0)) | 0)) : rn2((1 + ((50 / ((cnt + 1) | 0)) | 0)) | 0)) ? 0 : 1));
+                cnt = i16((rn2_at(__s_engrave_c, 280, __s_wipe_engr_at, (1 + ((50 / ((cnt + 1) | 0)) | 0)) | 0) ? 0 : 1));
                 {
-                    if ((yield* debugcore(__sl0, 1))) {
+                    if ((yield* debugcore(__s_engrave_c, 1))) {
                         let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                        (yield* pline(__sl43, cnt));
+                        (yield* pline(__s_actually_eroding_d_characters, cnt));
                         cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                     }
                 }
@@ -543,9 +587,14 @@ export function* wipe_engr_at(x, y, cnt, magical) {
     }
 }
 
-/** C ref: engrave.c:297 — @param {CPtr} ep @returns {CInt} */
+/*
+ * Returns:
+ *    non-zero if it can be felt
+ */
+/** C ref: engrave.c:297 — @param {CPtr<struct engr>} ep @returns {CInt} */
 export function engr_can_be_felt(ep) {
     let canfeel = 0;
+
     switch (cptr.ld1so(ep, $engr_engr_type)) {
         case NHM.ENGRAVE:
         case NHM.HEADSTONE:
@@ -567,43 +616,52 @@ export function* read_engr_at(x, y) {
     let ep = engr_at(x, y);
     let eloc = surface(x, y);
     let sensed = 0;
+
+    /* Sensing an engraving does not require sight for some engraving types,
+     * nor does it necessarily imply comprehension (literacy).
+     */
     if (ep && cptr.ld1so(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), 0)) {
         switch (cptr.ld1so(ep, $engr_engr_type)) {
             case NHM.DUST:
             if (!Blind()) {
                 sensed = 1;
-                (yield* pline(__sl44, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), is_ice(x, y) ? __sl45 : __sl46));
+                (yield* pline(__s_s_is_written_here_in_the_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), is_ice(x, y) ? __s_frost : __s_dust));
             }
             break;
             case NHM.ENGRAVE:
             case NHM.HEADSTONE:
             if (!Blind() || can_reach_floor(1)) {
                 sensed = 1;
-                (yield* pline(__sl47, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), eloc));
+                (yield* pline(__s_s_is_engraved_here_on_the_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something), eloc));
             }
             break;
             case NHM.BURN:
             if (!Blind() || can_reach_floor(1)) {
                 sensed = 1;
-                (yield* pline(__sl48, is_ice(x, y) ? __sl49 : __sl50, eloc));
+                (yield* pline(__s_some_text_has_been_s_into_the_s_here, is_ice(x, y) ? __s_melted : __s_burned, eloc));
             }
             break;
             case NHM.MARK:
             if (!Blind()) {
                 sensed = 1;
-                (yield* pline(__sl51, eloc));
+                (yield* pline(__s_there_s_some_graffiti_on_the_s_here, eloc));
             }
             break;
             case NHM.ENGR_BLOOD:
+            /* "It's a message!  Scrawled in blood!"
+             * "What's it say?"
+             * "It says... `See you next Wednesday.'" -- Thriller
+             */
             if (!Blind()) {
                 sensed = 1;
-                (yield* You_see(__sl52));
+                (yield* You_see(__s_a_message_scrawled_in_blood_here));
             }
             break;
             default:
-            (yield* impossible(__sl53, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something)));
+            (yield* impossible(__s_s_is_written_in_a_very_strange_way, cptr.ldPtro(c_common_strings, $c_common_strings_c_Something)));
             sensed = 1;
         }
+
         if (sensed) {
             let et;
             let buf = new Uint8Array(256);
@@ -611,6 +669,7 @@ export function* read_engr_at(x, y) {
             let maxelen = 232;
             let elen = Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt))));
             let off = Number(BigInt.asIntN(32, (cptr.diff(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), ((cptr.add((ep), 1, 80)))))));
+
             if (elen > maxelen) {
                 void __builtin___strncpy_chk(cptr.decay(buf), cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), BigInt.asUintN(64, BigInt(maxelen)), __builtin_object_size(cptr.decay(buf), 1));
                 cptr.st1o(cptr.decay(buf), maxelen, 0, 1);
@@ -619,11 +678,11 @@ export function* read_engr_at(x, y) {
             } else {
                 et = cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt);
             }
-            endpunct = __sl54;
-            if (elen < 2 || !((cptr.ld1so(cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), (((off + elen) | 0) - 1) | 0) == cptr.ld1so(et, (elen - 1) | 0)) && cptr.strchr(__sl55, cptr.ld1so(et, (elen - 1) | 0)))) {
-                endpunct = __sl27;
+            endpunct = __s_empty;
+            if (elen < 2 || !((cptr.ld1so(cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), (((off + elen) | 0) - 1) | 0) == cptr.ld1so(et, (elen - 1) | 0)) && cptr.strchr(__s_dot_bang_query, cptr.ld1so(et, (elen - 1) | 0)))) {
+                endpunct = __s_dot;
             }
-            (yield* You(__sl56, (Blind()) ? __sl57 : __sl58, et, endpunct));
+            (yield* You(__s_s_s_s, (Blind()) ? __s_feel_the_words : __s_read, et, endpunct));
             void cptr.strcpy(cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt));
             cptr.stI32o(ep, $engr_eread, 1);
             cptr.stI32o(ep, $engr_erevealed, 1);
@@ -633,20 +692,22 @@ export function* read_engr_at(x, y) {
     }
 }
 
-/** C ref: engrave.c:408 — @param {CInt} x @param {CInt} y @param {CPtr} s @param {CPtr} pristine_s @param {CLongLong} e_time @param {CInt} e_type */
+/** C ref: engrave.c:408 — @param {CInt} x @param {CInt} y @param {CPtr<char>} s @param {CPtr<char>} pristine_s @param {CLongLong} e_time @param {CInt} e_type */
 export function* make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     let i;
     let ep;
-    let smem = ((yield* Strlen_(s, __sl59, 417)) + 1) >>> 0;
+    let smem = ((yield* Strlen_(s, __s_make_engr_at, 417)) + 1) >>> 0;
     let havepristine = 0;
+
     if (!cptr.eq(pristine_s, (null))) {
-        let prmem = ((yield* Strlen_(pristine_s, __sl59, 421)) + 1) >>> 0;
+        let prmem = ((yield* Strlen_(pristine_s, __s_make_engr_at, 421)) + 1) >>> 0;
         if (prmem > smem)
             smem = prmem;
         havepristine = 1;
     }
     if ((ep = engr_at(x, y)) !== null)
         (yield* del_engr(ep));
+
     ep = (yield* alloc(((Math.imul(smem, 3) >>> 0) + 80) >>> 0));
     void __builtin___memset_chk(ep, 0, BigInt.asUintN(64, BigInt((Math.imul(smem, 3) >>> 0) >>> 0) + 80n), __builtin_object_size(ep, 0));
     cptr.stPtr(ep, head_engr.v);
@@ -660,67 +721,92 @@ export function* make_engr_at(x, y, s, pristine_s, e_time, e_type) {
         void cptr.strcpy(cptr.ldPtro2(ep, i, 8, $engr_engr_txt), s);
     if (havepristine)
         void cptr.strcpy(cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), pristine_s);
-    if (!strcmp(s, __sl60)) {
+    if (!strcmp(s, __s_elbereth)) {
+        /* engraving "Elbereth":  if done when making a level, it creates
+           an old-style Elbereth that deters monsters when any objects are
+           present; otherwise (done by the player), exercises wisdom */
         if (cptr.ld1so(gi, $instance_globals_i_in_mklev))
             cptr.stI32o(ep, $engr_guardobjects, 1);
         else
             (yield* exercise(NHC.A_WIS, 1));
     }
     cptr.stI64o(ep, $engr_engr_time, e_time);
-    cptr.st1o(ep, $engr_engr_type, schar(((e_type > 0) ? e_type : (rng_log_enabled() ? (rng_log_set_caller(__sl0, 452, __sl59), rnd(5)) : rnd(5)))));
+    cptr.st1o(ep, $engr_engr_type, schar(((e_type > 0) ? e_type : rnd_at(__s_engrave_c, 452, __s_make_engr_at, 5))));
     cptr.stI32o(ep, $engr_engr_szeach, smem);
     cptr.stI32o(ep, $engr_engr_alloc, Math.imul(smem, 3) >>> 0);
+    /* we do not set ep->eread or ep->erevealed;
+     * the caller will need to if required */
 }
 
+/* delete any engraving at location <x,y> */
 /** C ref: engrave.c:461 — @param {CInt} x @param {CInt} y */
 export function* del_engr_at(x, y) {
     let ep = engr_at(x, y);
+
     if (ep)
         (yield* del_engr(ep));
 }
 
+/*
+ * freehand - returns true if player has a free hand
+ */
 /** C ref: engrave.c:473 @returns {CInt} */
 export function* freehand() {
     return (!uwep.v || !(yield* welded(uwep.v)) || (!bimanual(uwep.v) && (!uarms.v || !(cptr.ldI32o(uarms.v, $obj_cursed) & 1))) ? 1 : 0);
 }
 
-/** C ref: engrave.c:481 — @param {CPtr} obj @returns {CInt} */
+/* getobj callback for an object to engrave with */
+/** C ref: engrave.c:481 — @param {CPtr<struct obj>} obj @returns {CInt} */
 function stylus_ok(obj) {
     if (!obj)
         return NHC.GETOBJ_SUGGEST;
+
+    /* Potential extension: exclude weapons that don't make any sense (such as
+     * bullwhips) and downplay rings and gems that wouldn't be good to write
+     * with (such as glass and non-gem rings) */
     if (cptr.ld1so(obj, $obj_oclass) == NHC.WEAPON_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.WAND_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS || cptr.ld1so(obj, $obj_oclass) == NHC.RING_CLASS)
         return NHC.GETOBJ_SUGGEST;
+
+    /* Only markers and towels are recommended tools. */
     if (cptr.ld1so(obj, $obj_oclass) == NHC.TOOL_CLASS && (cptr.ldI16o(obj, $obj_otyp) == NHC.TOWEL || cptr.ldI16o(obj, $obj_otyp) == NHC.MAGIC_MARKER))
         return NHC.GETOBJ_SUGGEST;
+
     return NHC.GETOBJ_DOWNPLAY;
 }
 
+/* can hero engrave at all (at their location)? */
 /** C ref: engrave.c:503 @returns {CInt} */
 function* u_can_engrave() {
     let levtyp = SURFACE_AT(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
+
     if ((cptr.ldI32o(u, $you_uswallow) & 1)) {
         if (((cptr.ldU64o((cptr.ldPtro(cptr.ldPtro(u, $you_ustuck), $monst_data)), $permonst_mflags1) & 262144n) != 0n)) {
-            (yield* pline(__sl61));
+            (yield* pline(__s_what_would_you_write_jonah_was_here));
             return 0;
         } else if (is_whirly(cptr.ldPtro(cptr.ldPtro(u, $you_ustuck), $monst_data))) {
             (yield* cant_reach_floor(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 0, 0, 0));
             return 0;
         }
+        /* Note: for amorphous engulfers, writing attempt is allowed here
+           but yields the 'jello' result in doengrave() */
     } else if (is_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) {
-        (yield* You_cant(__sl62, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+        (yield* You_cant(__s_write_on_the_s, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
         return 0;
     } else if (is_pool(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) || ((levtyp) == NHC.FOUNTAIN)) {
-        (yield* You_cant(__sl62, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+        (yield* You_cant(__s_write_on_the_s, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
         return 0;
     } else if (IS_AIR(levtyp)) {
-        (yield* You_cant(__sl63, (levtyp == NHC.CLOUD) ? __sl64 : __sl65));
+        /* airlevel or inside bubble on waterlevel */
+        (yield* You_cant(__s_write_in_s, (levtyp == NHC.CLOUD) ? __s_cloud_vapor : __s_thin_air));
         return 0;
     } else if (!((levtyp) >= NHC.DOOR)) {
-        (yield* You_cant(__sl66));
+        /* stone, tree, wall, secret corridor, pool, lava, bars */
+        (yield* You_cant(__s_write_here));
         return 0;
     }
+
     if (cantwield(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data))) {
-        (yield* You_cant(__sl67));
+        (yield* You_cant(__s_even_hold_anything));
         return 0;
     }
     if ((yield* check_capacity(null)))
@@ -728,7 +814,8 @@ function* u_can_engrave() {
     return 1;
 }
 
-/** C ref: engrave.c:545 — @param {CPtr} de */
+/* initialize the doengrave data */
+/** C ref: engrave.c:545 — @param {CPtr<struct _doengrave_ctx>} de */
 function doengrave_ctx_init(de) {
     cptr.st1(de, 0);
     cptr.st1o(de, $_doengrave_ctx_doblind, 0);
@@ -739,26 +826,32 @@ function doengrave_ctx_init(de) {
     cptr.st1o(de, $_doengrave_ctx_zapwand, 0);
     cptr.st1o(de, $_doengrave_ctx_disprefresh, 0);
     cptr.st1o(de, $_doengrave_ctx_adding, 0);
+
     cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_OK);
     cptr.stI32o(de, $_doengrave_ctx_type, NHM.DUST);
     cptr.stI32o(de, $_doengrave_ctx_oetype, 0);
+
     cptr.stPtro(de, $_doengrave_ctx_otmp, null);
     cptr.stPtro(de, $_doengrave_ctx_oep, engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+
     cptr.st1o2(de, 0, 1, $_doengrave_ctx_buf, 0);
     cptr.st1o2(de, 0, 1, $_doengrave_ctx_ebuf, 0);
     cptr.st1o2(de, 0, 1, $_doengrave_ctx_fbuf, 0);
     cptr.st1o2(de, 0, 1, $_doengrave_ctx_qbuf, 0);
     cptr.st1o2(de, 0, 1, $_doengrave_ctx_post_engr_text, 0);
     cptr.stPtro(de, $_doengrave_ctx_writer, null);
+
     if (cptr.ldPtro(de, $_doengrave_ctx_oep))
         cptr.stI32o(de, $_doengrave_ctx_oetype, cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type));
     if (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags2) & 256n) != 0n) || (cptr.ld1so((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mlet) == NHC.S_VAMPIRE))
         cptr.stI32o(de, $_doengrave_ctx_type, NHM.ENGR_BLOOD);
+
     cptr.st1o(de, $_doengrave_ctx_jello, schar(((cptr.ldI32o(u, $you_uswallow) & 1) | 0 && !(((cptr.ldU64o((cptr.ldPtro(cptr.ldPtro(u, $you_ustuck), $monst_data)), $permonst_mflags1) & 262144n) != 0n) || is_whirly(cptr.ldPtro(cptr.ldPtro(u, $you_ustuck), $monst_data))) ? 1 : 0)));
     cptr.st1o(de, $_doengrave_ctx_frosted, is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
 }
 
-/** C ref: engrave.c:583 — @param {CPtr} de */
+/* special engraving effects for WAND objects */
+/** C ref: engrave.c:583 — @param {CPtr<struct _doengrave_ctx>} de */
 function* doengrave_sfx_item_WAN(de) {
     switch (cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp)) {
         default:
@@ -772,24 +865,28 @@ function* doengrave_sfx_item_WAN(de) {
         (yield* zapnodir(cptr.ldPtro(de, $_doengrave_ctx_otmp)));
         break;
         case NHC.WAN_STRIKING:
-        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl68);
+        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_the_wand_unsuccessfully_fights_your);
         break;
         case NHC.WAN_SLOW_MONSTER:
         if (!Blind()) {
-            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl69, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_the_bugs_on_the_s_slow_down, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
         }
         break;
         case NHC.WAN_SPEED_MONSTER:
         if (!Blind()) {
-            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl70, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_the_bugs_on_the_s_speed_up, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
         }
         break;
         case NHC.WAN_POLYMORPH:
         if (cptr.ldPtro(de, $_doengrave_ctx_oep)) {
             if (!Blind()) {
-                cptr.stI32o(de, $_doengrave_ctx_type, 0);
+                cptr.stI32o(de, $_doengrave_ctx_type, 0);  /* random */
                 void (yield* random_engraving(cptr.add(de, $_doengrave_ctx_buf), cptr.add(de, $_doengrave_ctx_ebuf)));
             } else {
+                /* keep the same type so that feels don't
+                   change and only the text is altered,
+                   but you won't know anyway because
+                   you're a _blind writer_ */
                 if (cptr.ldI32o(de, $_doengrave_ctx_oetype))
                     cptr.stI32o(de, $_doengrave_ctx_type, cptr.ldI32o(de, $_doengrave_ctx_oetype));
                 (yield* xcrypt(blengr(), cptr.add(de, $_doengrave_ctx_buf)));
@@ -806,18 +903,18 @@ function* doengrave_sfx_item_WAN(de) {
         case NHC.WAN_MAGIC_MISSILE:
         cptr.st1o(de, $_doengrave_ctx_ptext, 1);
         if (!Blind()) {
-            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl71, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_the_s_is_riddled_by_bullet_holes, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
         }
         break;
         case NHC.WAN_SLEEP:
         case NHC.WAN_DEATH:
         if (!Blind()) {
-            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl72, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+            void cptr.sprintf(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_the_bugs_on_the_s_stop_moving, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
         }
         break;
         case NHC.WAN_COLD:
         if (!Blind())
-            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl73);
+            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_a_few_ice_cubes_drop_from_the_wand);
         if (!cptr.ldPtro(de, $_doengrave_ctx_oep) || (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) != NHM.BURN))
             break;
         // @FallThrough
@@ -826,56 +923,57 @@ function* doengrave_sfx_item_WAN(de) {
         case NHC.WAN_MAKE_INVISIBLE:
         if (cptr.ldPtro(de, $_doengrave_ctx_oep) && cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) != NHM.HEADSTONE) {
             if (!Blind())
-                (yield* pline_The(__sl74, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                (yield* pline_The(__s_engraving_on_the_s_vanishes, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
             cptr.st1(de, 1);
         }
         break;
         case NHC.WAN_TELEPORTATION:
         if (cptr.ldPtro(de, $_doengrave_ctx_oep) && cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) != NHM.HEADSTONE) {
             if (!Blind())
-                (yield* pline_The(__sl74, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                (yield* pline_The(__s_engraving_on_the_s_vanishes, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
             cptr.st1o(de, $_doengrave_ctx_teleengr, 1);
         }
         break;
         case NHC.WAN_DIGGING:
         cptr.st1o(de, $_doengrave_ctx_ptext, 1);
         cptr.stI32o(de, $_doengrave_ctx_type, NHM.ENGRAVE);
-        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), 120, $objclass_oc_name_known) & 1)) {
+        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1)) {
             if (cptr.ld1so(flags, $flag_verbose))
-                (yield* pline(__sl75, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
+                (yield* pline(__s_this_s_is_a_wand_of_digging, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
             cptr.st1o(de, $_doengrave_ctx_doknown, 1);
         }
-        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), (Blind() && !Deaf()) ? __sl76 : (Blind() ? __sl77 : (((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE) ? __sl78 : (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl79 : ((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_DOWN) ? __sl80 : __sl81)))));
+        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), (Blind() && !Deaf()) ? __s_you_hear_drilling : (Blind() ? __s_you_feel_tremors : (((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE) ? __s_chips_fly_out_from_the_headstone : (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_ice_chips_fly_up_from_the_ice_surface : ((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_DOWN) ? __s_splinters_fly_up_from_the_bridge : __s_gravel_flies_up_from_the_floor)))));
         break;
         case NHC.WAN_FIRE:
         cptr.st1o(de, $_doengrave_ctx_ptext, 1);
         cptr.stI32o(de, $_doengrave_ctx_type, NHM.BURN);
-        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), 120, $objclass_oc_name_known) & 1)) {
+        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1)) {
             if (cptr.ld1so(flags, $flag_verbose))
-                (yield* pline(__sl82, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
+                (yield* pline(__s_this_s_is_a_wand_of_fire, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
             cptr.st1o(de, $_doengrave_ctx_doknown, 1);
         }
-        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), Blind() ? __sl83 : __sl84);
+        void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), Blind() ? __s_you_feel_the_wand_heat_up : __s_flames_fly_from_the_wand);
         break;
         case NHC.WAN_LIGHTNING:
         cptr.st1o(de, $_doengrave_ctx_ptext, 1);
         cptr.stI32o(de, $_doengrave_ctx_type, NHM.BURN);
-        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), 120, $objclass_oc_name_known) & 1)) {
+        if (!(cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1)) {
             if (cptr.ld1so(flags, $flag_verbose))
-                (yield* pline(__sl85, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
+                (yield* pline(__s_this_s_is_a_wand_of_lightning, (yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
             cptr.st1o(de, $_doengrave_ctx_doknown, 1);
         }
         if (!Blind()) {
-            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __sl86);
+            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), __s_lightning_arcs_from_the_wand);
             cptr.st1o(de, $_doengrave_ctx_doblind, 1);
         } else {
-            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), !Deaf() ? __sl87 : __sl88);
+            void cptr.strcpy(cptr.add(de, $_doengrave_ctx_post_engr_text), !Deaf() ? __s_you_hear_crackling : __s_your_hair_stands_up);
         }
         break;
     }
 }
 
-/** C ref: engrave.c:742 — @param {CPtr} de @returns {CInt} */
+/* special engraving effects for all objects */
+/** C ref: engrave.c:742 — @param {CPtr<struct _doengrave_ctx>} de @returns {CInt} */
 function* doengrave_sfx_item(de) {
     switch (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_oclass)) {
         default:
@@ -886,7 +984,8 @@ function* doengrave_sfx_item(de) {
         break;
         case NHC.RING_CLASS:
         case NHC.GEM_CLASS:
-        if ((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), 120, $objclass_oc_tough) & 1)) {
+        /* diamonds & other hard gems should work */
+        if ((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), $sizeof_objclass, $objclass_oc_tough) & 1)) {
             cptr.stI32o(de, $_doengrave_ctx_type, NHM.ENGRAVE);
             break;
         }
@@ -900,13 +999,13 @@ function* doengrave_sfx_item(de) {
         ;
         case NHC.BALL_CLASS:
         case NHC.ROCK_CLASS:
-        (yield* You_cant(__sl89));
+        (yield* You_cant(__s_engrave_with_such_a_large_object));
         cptr.st1o(de, $_doengrave_ctx_ptext, 0);
         break;
         case NHC.FOOD_CLASS:
         case NHC.SCROLL_CLASS:
         case NHC.SPBOOK_CLASS:
-        (yield* pline(__sl90, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp))), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl91 : __sl92));
+        (yield* pline(__s_s_would_get_s, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp))), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_all_frosty : __s_too_dirty));
         cptr.st1o(de, $_doengrave_ctx_ptext, 0);
         break;
         case NHC.RANDOM_CLASS:
@@ -914,7 +1013,7 @@ function* doengrave_sfx_item(de) {
         case NHC.WAND_CLASS:
         if ((yield* zappable(cptr.ldPtro(de, $_doengrave_ctx_otmp)))) {
             (yield* check_unpaid(cptr.ldPtro(de, $_doengrave_ctx_otmp)));
-            if ((cptr.ldI32o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_cursed) & 1) | 0 && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 794, __sl93), rn2(NHM.WAND_BACKFIRE_CHANCE)) : rn2(NHM.WAND_BACKFIRE_CHANCE))) {
+            if ((cptr.ldI32o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_cursed) & 1) | 0 && !rn2_at(__s_engrave_c, 794, __s_doengrave_sfx_item, NHM.WAND_BACKFIRE_CHANCE)) {
                 (yield* wand_explode(cptr.ldPtro(de, $_doengrave_ctx_otmp), 0));
                 cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_TIME);
                 return 0;
@@ -924,56 +1023,63 @@ function* doengrave_sfx_item(de) {
                 cptr.st1o(de, $_doengrave_ctx_ptext, 0);
             (yield* doengrave_sfx_item_WAN(de));
         } else {
-            cptr.st1o(de, $_doengrave_ctx_ptext, 0);
+            /* failing to wrest one last charge takes time */
+            cptr.st1o(de, $_doengrave_ctx_ptext, 0);  /* use "early exit" below, return 1 */
+            /* give feedback here if we won't be getting the
+               "can't reach floor" message below */
             if (can_reach_floor(1)) {
+                /* cancelled wand turns to dust */
                 if (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_spe) < 0)
                     cptr.st1o(de, $_doengrave_ctx_zapwand, 1);
                 else
-                    (yield* pline_The(__sl94));
+                    (yield* pline_The(__s_wand_is_too_worn_out_to_engrave));
             }
         }
         break;
         case NHC.WEAPON_CLASS:
         if (is_art(cptr.ldPtro(de, $_doengrave_ctx_otmp), NHC.ART_FIRE_BRAND)) {
-            cptr.stI32o(de, $_doengrave_ctx_type, NHM.BURN);
+            cptr.stI32o(de, $_doengrave_ctx_type, NHM.BURN);  /* doesn't dull weapon */
         } else if (is_blade(cptr.ldPtro(de, $_doengrave_ctx_otmp))) {
+            /* if non-blade or welded or too dull, engraving type stays set
+               to DUST; feedback for that is only given for bladed weapons */
             if ((yield* welded(cptr.ldPtro(de, $_doengrave_ctx_otmp))))
-                (yield* pline(__sl95, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp))), surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                (yield* pline(__s_s_can_only_scratch_the_s, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp))), surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
             else if (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_spe) <= -3)
-                (yield* pline(__sl96, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __sl97))));
+                (yield* pline(__s_s_too_dull_for_engraving, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __s_are))));
             else
                 cptr.stI32o(de, $_doengrave_ctx_type, NHM.ENGRAVE);
         }
         break;
         case NHC.TOOL_CLASS:
         if (cptr.eq(cptr.ldPtro(de, $_doengrave_ctx_otmp), ublindf.v)) {
-            (yield* pline(__sl98));
+            (yield* pline(__s_that_is_a_bit_difficult_to_engrave_with));
             cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_FAIL);
             return 0;
         }
         switch (cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp)) {
             case NHC.MAGIC_MARKER:
             if (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_spe) <= 0)
-                (yield* Your(__sl99));
+                (yield* Your(__s_marker_has_dried_out));
             else
                 cptr.stI32o(de, $_doengrave_ctx_type, NHM.MARK);
             break;
             case NHC.TOWEL:
+            /* Can't really engrave with a towel */
             cptr.st1o(de, $_doengrave_ctx_ptext, 0);
             if (cptr.ldPtro(de, $_doengrave_ctx_oep)) {
                 if (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.DUST || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.ENGR_BLOOD || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.MARK) {
                     if (is_wet_towel(cptr.ldPtro(de, $_doengrave_ctx_otmp)))
                         (yield* dry_a_towel(cptr.ldPtro(de, $_doengrave_ctx_otmp), -1, 1));
                     if (!Blind())
-                        (yield* You(__sl100));
+                        (yield* You(__s_wipe_out_the_message_here));
                     else
-                        (yield* pline(__sl101, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __sl102)), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl103 : __sl104));
+                        (yield* pline(__s_s_s, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __s_get)), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_frosty : __s_dusty));
                     cptr.st1(de, 1);
                 } else {
-                    (yield* pline(__sl105, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
+                    (yield* pline(__s_s_can_t_wipe_out_this_engraving, (yield* Yname2(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
                 }
             } else {
-                (yield* pline(__sl101, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __sl102)), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl103 : __sl104));
+                (yield* pline(__s_s_s, (yield* Yobjnam2(cptr.ldPtro(de, $_doengrave_ctx_otmp), __s_get)), cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_frosty : __s_dusty));
             }
             break;
             default:
@@ -981,74 +1087,122 @@ function* doengrave_sfx_item(de) {
         }
         break;
         case NHC.VENOM_CLASS:
-        (yield* pline(__sl106));
+        /* this used to be ``if (wizard)'' and fall through to ILLOBJ_CLASS
+           for normal play, but splash of venom isn't "illegal" because it
+           could occur in normal play via wizard mode bones */
+        (yield* pline(__s_writing_a_poison_pen_letter));
         break;
         case NHC.ILLOBJ_CLASS:
-        (yield* impossible(__sl107));
+        (yield* impossible(__s_you_re_engraving_with_an_illegal_object));
         break;
     }
+
     return 1;
 }
 
-/** C ref: engrave.c:896 — @param {CPtr} de */
+/* which verb phrasing to use for engraving */
+/** C ref: engrave.c:896 — @param {CPtr<struct _doengrave_ctx>} de */
 function doengrave_ctx_verb(de) {
     switch (cptr.ldI32o(de, $_doengrave_ctx_type)) {
         default:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl108 : __sl109);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_weird_writing_on : __s_write_strangely_on);
         break;
         case NHM.DUST:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl110 : __sl111);
-        cptr.stPtro(de, $_doengrave_ctx_eloc, cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl45 : __sl46);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_writing_in : __s_write_in);
+        cptr.stPtro(de, $_doengrave_ctx_eloc, cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_frost : __s_dust);
         break;
         case NHM.HEADSTONE:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl112 : __sl113);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_epitaph_on : __s_engrave_on);
         break;
         case NHM.ENGRAVE:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl114 : __sl115);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_engraving_in : __s_engrave_in);
         break;
         case NHM.BURN:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl116 : __sl117) : (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl118 : __sl119));
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_add_to_the_text_melted_into : __s_add_to_the_text_burned_into) : (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_melt_into : __s_burn_into));
         break;
         case NHM.MARK:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl120 : __sl121);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_graffiti_on : __s_scribble_on);
         break;
         case NHM.ENGR_BLOOD:
-        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __sl122 : __sl123);
+        cptr.stPtro(de, $_doengrave_ctx_everb, cptr.ld1so(de, $_doengrave_ctx_adding) ? __s_add_to_the_scrawl_on : __s_scrawl_on);
         break;
     }
 }
 
+/* Mohs' Hardness Scale:
+ *  1 - Talc             6 - Orthoclase
+ *  2 - Gypsum           7 - Quartz
+ *  3 - Calcite          8 - Topaz
+ *  4 - Fluorite         9 - Corundum
+ *  5 - Apatite         10 - Diamond
+ *
+ * Since granite is an igneous rock hardness ~ 7, anything >= 8 should
+ * probably be able to scratch the rock.
+ * Devaluation of less hard gems is not easily possible because obj struct
+ * does not contain individual oc_cost currently. 7/91
+ *
+ * steel      - 5-8.5   (usu. weapon)
+ * diamond    - 10                      * jade       -  5-6      (nephrite)
+ * ruby       -  9      (corundum)      * turquoise  -  5-6
+ * sapphire   -  9      (corundum)      * opal       -  5-6
+ * topaz      -  8                      * glass      - ~5.5
+ * emerald    -  7.5-8  (beryl)         * dilithium  -  4-5??
+ * aquamarine -  7.5-8  (beryl)         * iron       -  4-5
+ * garnet     -  7.25   (var. 6.5-8)    * fluorite   -  4
+ * agate      -  7      (quartz)        * brass      -  3-4
+ * amethyst   -  7      (quartz)        * gold       -  2.5-3
+ * jasper     -  7      (quartz)        * silver     -  2.5-3
+ * onyx       -  7      (quartz)        * copper     -  2.5-3
+ * moonstone  -  6      (orthoclase)    * amber      -  2-2.5
+ */
+
+/* the #engrave command */
 /** C ref: engrave.c:956 @returns {CInt} */
 export function* doengrave() {
-    let sp;
+    let sp;  /* Place holder for space count of engr text */
     let de;
     let retval;
     let initial_msg_given = 0;
     __lbl_doengr_exit: {
+
+        /* Can the adventurer engrave at all? */
         if (!(yield* u_can_engrave()))
             return NHM.ECMD_FAIL;
+
         de = (yield* alloc(1224));
         doengrave_ctx_init(de);
-        cptr.stI64o(gm, $instance_globals_m_multi, 0n);
-        cptr.stPtro(gn, $instance_globals_n_nomovemsg, null);
-        cptr.stPtro(de, $_doengrave_ctx_otmp, (yield* getobj(__sl124, stylus_ok, NHM.GETOBJ_PROMPT)));
+
+        cptr.stI64o(gm, $instance_globals_m_multi, 0n);  /* moves consumed */
+        cptr.stPtro(gn, $instance_globals_n_nomovemsg, null);  /* occupation end message */
+
+        /* One may write with finger, or weapon, or wand, or..., or...
+         * Edited by GAN 10/20/86 so as not to change weapon wielded.
+         */
+
+        cptr.stPtro(de, $_doengrave_ctx_otmp, (yield* getobj(__s_write_with, stylus_ok, NHM.GETOBJ_PROMPT)));
         if (!cptr.ldPtro(de, $_doengrave_ctx_otmp)) {
             cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_CANCEL);
             break __lbl_doengr_exit;
         }
+
         if (cptr.eq(cptr.ldPtro(de, $_doengrave_ctx_otmp), hands_obj)) {
-            void cptr.strcat(cptr.strcpy(cptr.add(de, $_doengrave_ctx_fbuf), __sl125), (yield* body_part(NHC.FINGERTIP)));
+            void cptr.strcat(cptr.strcpy(cptr.add(de, $_doengrave_ctx_fbuf), __s_your), (yield* body_part(NHC.FINGERTIP)));
             cptr.stPtro(de, $_doengrave_ctx_writer, cptr.add(de, $_doengrave_ctx_fbuf));
         } else {
             cptr.stPtro(de, $_doengrave_ctx_writer, (yield* yname(cptr.ldPtro(de, $_doengrave_ctx_otmp))));
         }
+
+        /* There's no reason you should be able to write with a wand
+         * while both your hands are tied up.
+         */
         if (!(yield* freehand()) && !cptr.eq(cptr.ldPtro(de, $_doengrave_ctx_otmp), uwep.v) && !cptr.ldI64o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_owornmask)) {
-            (yield* You(__sl126, (yield* body_part(NHC.HAND))));
+            (yield* You(__s_have_no_free_s_to_write_with, (yield* body_part(NHC.HAND))));
             break __lbl_doengr_exit;
         }
+
         if (cptr.ld1so(de, $_doengrave_ctx_jello)) {
-            (yield* You(__sl127, (yield* mon_nam(cptr.ldPtro(u, $you_ustuck))), cptr.ldPtro(de, $_doengrave_ctx_writer)));
-            (yield* Your(__sl128));
+            (yield* You(__s_tickle_s_with_s, (yield* mon_nam(cptr.ldPtro(u, $you_ustuck))), cptr.ldPtro(de, $_doengrave_ctx_writer)));
+            (yield* Your(__s_message_dissolves));
             break __lbl_doengr_exit;
         }
         if (!can_reach_floor(1)) {
@@ -1056,40 +1210,53 @@ export function* doengrave() {
                 (yield* cant_reach_floor(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 0, 1, 0));
                 break __lbl_doengr_exit;
             } else {
-                (yield* You(__sl129, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                (yield* You(__s_gesture_with_your_wand_towards_the_s, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
                 initial_msg_given = 1;
             }
         }
-        if (((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.ALTAR)) {
+        if (((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.ALTAR)) {
             if (!initial_msg_given)
-                (yield* You(__sl130, cptr.ldPtro(de, $_doengrave_ctx_writer)));
+                (yield* You(__s_make_a_motion_towards_the_altar_with_s, cptr.ldPtro(de, $_doengrave_ctx_writer)));
             (yield* altar_wrath(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
             break __lbl_doengr_exit;
         }
-        if (((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE)) {
+        if (((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE)) {
             if (cptr.eq(cptr.ldPtro(de, $_doengrave_ctx_otmp), hands_obj)) {
-                (yield* You(__sl131, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                (yield* You(__s_would_only_make_a_small_smudge_on_the_s, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
                 break __lbl_doengr_exit;
-            } else if (!(cptr.ldI32o3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_horizontal) & 1)) {
+            } else if (!(cptr.ldI32o3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_horizontal) & 1)) {
+                /* disturb the grave: summon a ghoul, same as sometimes
+                   happens when kicking; sets levl[ux][uy]->disturbed so
+                   that it'll only happen once */
                 (yield* disturb_grave(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
                 break __lbl_doengr_exit;
             }
         }
+
+        /* SPFX for items */
         if (!(yield* doengrave_sfx_item(de)))
             break __lbl_doengr_exit;
-        if (((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE)) {
+
+        if (((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE)) {
             if (cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGRAVE || cptr.ldI32o(de, $_doengrave_ctx_type) == 0) {
                 cptr.stI32o(de, $_doengrave_ctx_type, NHM.HEADSTONE);
             } else {
+                /* ensures the "cannot wipe out" case */
                 cptr.stI32o(de, $_doengrave_ctx_type, NHM.DUST);
                 cptr.st1(de, 0);
                 cptr.st1o(de, $_doengrave_ctx_teleengr, 0);
                 cptr.st1o2(de, 0, 1, $_doengrave_ctx_buf, 0);
             }
         }
+
+        /*
+         * End of implement setup
+         */
+
+        /* Identify stylus */
         if (cptr.ld1so(de, $_doengrave_ctx_doknown)) {
             (yield* learnwand(cptr.ldPtro(de, $_doengrave_ctx_otmp)));
-            if ((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), 120, $objclass_oc_name_known) & 1))
+            if ((cptr.ldI32o2(objects, cptr.ldI16o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_otyp), $sizeof_objclass, $objclass_oc_name_known) & 1))
                 (yield* more_experienced(0, 10));
         }
         if (cptr.ld1so(de, $_doengrave_ctx_teleengr)) {
@@ -1104,13 +1271,15 @@ export function* doengrave() {
             cptr.stPtro(de, $_doengrave_ctx_oep, null);
             cptr.st1o(de, $_doengrave_ctx_disprefresh, 1);
         }
+        /* Something has changed the engraving here */
         if (cptr.ld1so(de, $_doengrave_ctx_buf)) {
             let tmp_ep;
+
             (yield* make_engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.add(de, $_doengrave_ctx_buf), cptr.add(de, $_doengrave_ctx_ebuf), cptr.ldI64o(svm, $instance_globals_saved_m_moves), cptr.ldI32o(de, $_doengrave_ctx_type)));
             tmp_ep = engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
             if (!Blind()) {
                 if (tmp_ep !== null) {
-                    (yield* pline_The(__sl132, cptr.add(de, $_doengrave_ctx_buf)));
+                    (yield* pline_The(__s_engraving_now_reads_s, cptr.add(de, $_doengrave_ctx_buf)));
                     cptr.stI32o(tmp_ep, $engr_eread, 1);
                     cptr.stI32o(tmp_ep, $engr_erevealed, 1);
                     cptr.st1o(de, $_doengrave_ctx_disprefresh, 1);
@@ -1119,94 +1288,121 @@ export function* doengrave() {
             cptr.st1o(de, $_doengrave_ctx_ptext, 0);
         }
         if (cptr.ld1so(de, $_doengrave_ctx_zapwand) && (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_spe) < 0)) {
-            (yield* pline(__sl133, (yield* The((yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp))))), Blind() ? __sl54 : __sl134));
-            if (!((cptr.ld1so3(svl, cptr.ldI16(u), 756, cptr.ldI16o(u, $you_uy), 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE))
-                (yield* You(__sl135, cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl45 : __sl46));
+            (yield* pline(__s_s_sturns_to_dust, (yield* The((yield* xname(cptr.ldPtro(de, $_doengrave_ctx_otmp))))), Blind() ? __s_empty : __s_glows_violently_then));
+            if (!((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.GRAVE))
+                (yield* You(__s_are_not_going_to_get_anywhere_trying_to, cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_frost : __s_dust));
             (yield* useup(cptr.ldPtro(de, $_doengrave_ctx_otmp)));
-            cptr.stPtro(de, $_doengrave_ctx_otmp, null);
+            cptr.stPtro(de, $_doengrave_ctx_otmp, null);  /* wand is now gone */
             cptr.st1o(de, $_doengrave_ctx_ptext, 0);
         }
+        /* Early exit for some implements. */
         if (!cptr.ld1so(de, $_doengrave_ctx_ptext)) {
             if (cptr.ldPtro(de, $_doengrave_ctx_otmp) && cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_oclass) == NHC.WAND_CLASS && !can_reach_floor(1))
                 (yield* cant_reach_floor(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), 0, 1, 1));
             cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_TIME);
             break __lbl_doengr_exit;
         }
+        /*
+         * Special effects should have deleted the current engraving (if
+         * possible) by now.
+         */
         if (cptr.ldPtro(de, $_doengrave_ctx_oep)) {
             let c = 110;
+
+            /* Give player the choice to add to engraving. */
             if (cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.HEADSTONE) {
+                /* no choice, only append */
                 c = 121;
             } else if (cptr.ldI32o(de, $_doengrave_ctx_type) == cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) && (!Blind() || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.BURN || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.ENGRAVE)) {
-                c = (yield* yn_function(__sl136, cptr.decay(ynqchars), 121, 1));
+                c = (yield* yn_function(__s_do_you_want_to_add_to_the_current, cptr.decay(ynqchars), 121, 1));
                 if (c == 113) {
-                    (yield* pline(__sl137, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
+                    (yield* pline(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
                     break __lbl_doengr_exit;
                 }
             }
+
             if (c == 110 || Blind()) {
                 if (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.DUST || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.ENGR_BLOOD || cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.MARK) {
                     if (!Blind()) {
-                        (yield* You(__sl138, (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.DUST) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl139 : __sl140) : ((cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.ENGR_BLOOD) ? __sl141 : __sl142)));
+                        (yield* You(__s_wipe_out_the_message_that_was_s_here, (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.DUST) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_written_in_the_frost : __s_written_in_the_dust) : ((cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.ENGR_BLOOD) ? __s_scrawled_in_blood : __s_written)));
                         (yield* del_engr(cptr.ldPtro(de, $_doengrave_ctx_oep)));
                         cptr.stPtro(de, $_doengrave_ctx_oep, null);
                         cptr.st1o(de, $_doengrave_ctx_disprefresh, 1);
                     } else {
+                        /* defer deletion until after we *know* we're engraving */
                         cptr.st1o(de, $_doengrave_ctx_eow, 1);
                     }
                 } else if (cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.DUST || cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.MARK || cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGR_BLOOD) {
-                    (yield* You(__sl143, (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.BURN) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __sl144 : __sl145) : __sl146, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
+                    (yield* You(__s_cannot_wipe_out_the_message_that_is_s, (cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) == NHM.BURN) ? (cptr.ld1so(de, $_doengrave_ctx_frosted) ? __s_melted_into : __s_burned_into) : __s_engraved_in, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))));
                     cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_TIME);
                     break __lbl_doengr_exit;
                 } else if (cptr.ldI32o(de, $_doengrave_ctx_type) != cptr.ld1so(cptr.ldPtro(de, $_doengrave_ctx_oep), $engr_engr_type) || c == 110) {
                     if (!Blind() || can_reach_floor(1))
-                        (yield* You(__sl147));
+                        (yield* You(__s_will_overwrite_the_current_message));
                     cptr.st1o(de, $_doengrave_ctx_eow, 1);
                 }
-            } else if (cptr.ldPtro(de, $_doengrave_ctx_oep) && (yield* Strlen_(cptr.ldPtro2(cptr.ldPtro(de, $_doengrave_ctx_oep), NHC.actual_text, 8, $engr_engr_txt), __sl148, 1163)) >= 255) {
-                (yield* There(__sl149));
+            } else if (cptr.ldPtro(de, $_doengrave_ctx_oep) && (yield* Strlen_(cptr.ldPtro2(cptr.ldPtro(de, $_doengrave_ctx_oep), NHC.actual_text, 8, $engr_engr_txt), __s_doengrave, 1163)) >= 255) {
+                (yield* There(__s_is_no_room_to_add_anything_else_here));
                 cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_TIME);
                 break __lbl_doengr_exit;
             }
         }
+
         cptr.stPtro(de, $_doengrave_ctx_eloc, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
         cptr.st1o(de, $_doengrave_ctx_adding, schar((cptr.ldPtro(de, $_doengrave_ctx_oep) && !cptr.ld1so(de, $_doengrave_ctx_eow) ? 1 : 0)));
         doengrave_ctx_verb(de);
+
+        /* Tell adventurer what is going on */
         if (!cptr.eq(cptr.ldPtro(de, $_doengrave_ctx_otmp), hands_obj))
-            (yield* You(__sl150, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc), (cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGRAVE && cptr.ldI64o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_quan) > 1n) ? __sl151 : __sl54, (yield* doname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
+            (yield* You(__s_s_the_s_with_s_s, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc), (cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGRAVE && cptr.ldI64o(cptr.ldPtro(de, $_doengrave_ctx_otmp), $obj_quan) > 1n) ? __s_1_of : __s_empty, (yield* doname(cptr.ldPtro(de, $_doengrave_ctx_otmp)))));
         else
-            (yield* You(__sl152, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc), (yield* body_part(NHC.FINGERTIP))));
-        void cptr.sprintf(cptr.add(de, $_doengrave_ctx_qbuf), __sl153, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc));
+            (yield* You(__s_s_the_s_with_your_s, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc), (yield* body_part(NHC.FINGERTIP))));
+
+        /* Prompt for engraving! */
+        void cptr.sprintf(cptr.add(de, $_doengrave_ctx_qbuf), __s_what_do_you_want_to_s_the_s_here, cptr.ldPtro(de, $_doengrave_ctx_everb), cptr.ldPtro(de, $_doengrave_ctx_eloc));
         (yield* getlin(cptr.add(de, $_doengrave_ctx_qbuf), cptr.add(de, $_doengrave_ctx_ebuf)));
+        /* convert tabs to spaces and condense consecutive spaces to one */
         (yield* mungspaces(cptr.add(de, $_doengrave_ctx_ebuf)));
+
+        /* Count the actual # of chars engraved not including spaces */
         cptr.stU64o(de, $_doengrave_ctx_len, cptr.strlen(cptr.add(de, $_doengrave_ctx_ebuf)));
         for (sp = cptr.add(de, $_doengrave_ctx_ebuf); cptr.ld1s(sp); sp = cptr.add(sp, 1))
             if (cptr.ld1s(sp) == 32)
                 cptr.stU64o(de, $_doengrave_ctx_len, cptr.ldU64o(de, $_doengrave_ctx_len) - 1n);
+
         if (cptr.ldU64o(de, $_doengrave_ctx_len) == 0n || cptr.strchr(cptr.add(de, $_doengrave_ctx_ebuf), 27)) {
             if (cptr.ld1so(de, $_doengrave_ctx_zapwand)) {
                 if (!Blind())
-                    (yield* pline(__sl154, (yield* Tobjnam(cptr.ldPtro(de, $_doengrave_ctx_otmp), __sl155)), (yield* otense(cptr.ldPtro(de, $_doengrave_ctx_otmp), __sl156))));
+                    (yield* pline(__s_s_then_s, (yield* Tobjnam(cptr.ldPtro(de, $_doengrave_ctx_otmp), __s_glow)), (yield* otense(cptr.ldPtro(de, $_doengrave_ctx_otmp), __s_fade))));
                 cptr.stI32o(de, $_doengrave_ctx_ret, NHM.ECMD_TIME);
                 break __lbl_doengr_exit;
             } else {
-                (yield* pline(__sl137, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
+                (yield* pline(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind)));
                 break __lbl_doengr_exit;
             }
         }
+
+        /* A single `x' is the traditional signature of an illiterate person */
         if (cptr.ldU64o(de, $_doengrave_ctx_len) != 1n || (!cptr.strchr(cptr.add(de, $_doengrave_ctx_ebuf), 120) && !cptr.strchr(cptr.add(de, $_doengrave_ctx_ebuf), 88)))
             if (!((cptr.stI64o(u, $you_uconduct + $u_conduct_literate, cptr.ldI64o(u, $you_uconduct + $u_conduct_literate) + 1n)) - (1n)))
-                (yield* livelog_printf(32n, __sl157, cptr.add(de, $_doengrave_ctx_ebuf)));
+                (yield* livelog_printf(32n, __s_became_literate_by_engraving_s, cptr.add(de, $_doengrave_ctx_ebuf)));
+
+        /* Mix up engraving if surface or state of mind is unsound.
+           Note: this won't add or remove any spaces. */
         for (sp = cptr.add(de, $_doengrave_ctx_ebuf); cptr.ld1s(sp); sp = cptr.add(sp, 1)) {
             if (cptr.ld1s(sp) == 32)
                 continue;
-            if (((cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.DUST || cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGR_BLOOD) && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1223, __sl148), rn2(25)) : rn2(25))) || (Blind() && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1224, __sl148), rn2(11)) : rn2(11))) || (HConfusion() && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1224, __sl148), rn2(7)) : rn2(7))) || (HStun() && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1225, __sl148), rn2(4)) : rn2(4))) || (Hallucination() && !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1225, __sl148), rn2(2)) : rn2(2))))
-                cptr.st1(sp, schar(((32 + (rng_log_enabled() ? (rng_log_set_caller(__sl0, 1226, __sl148), rnd(94)) : rnd(94))) | 0)));
+            if (((cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.DUST || cptr.ldI32o(de, $_doengrave_ctx_type) == NHM.ENGR_BLOOD) && !rn2_at(__s_engrave_c, 1223, __s_doengrave, 25)) || (Blind() && !rn2_at(__s_engrave_c, 1224, __s_doengrave, 11)) || (HConfusion() && !rn2_at(__s_engrave_c, 1224, __s_doengrave, 7)) || (HStun() && !rn2_at(__s_engrave_c, 1225, __s_doengrave, 4)) || (Hallucination() && !rn2_at(__s_engrave_c, 1225, __s_doengrave, 2)))
+                cptr.st1(sp, schar(((32 + rnd_at(__s_engrave_c, 1226, __s_doengrave, 94)) | 0)));
         }
+
+        /* Previous engraving is overwritten */
         if (cptr.ld1so(de, $_doengrave_ctx_eow)) {
             (yield* del_engr(cptr.ldPtro(de, $_doengrave_ctx_oep)));
             cptr.stPtro(de, $_doengrave_ctx_oep, null);
             cptr.st1o(de, $_doengrave_ctx_disprefresh, 1);
         }
+
         void cptr.strcpy(cptr.add(svc, $context_info_engraving), cptr.add(de, $_doengrave_ctx_ebuf));
         cptr.stPtro(svc, $context_info_engraving + $engrave_info_nextc, cptr.add(svc, $context_info_engraving));
         cptr.stPtro(svc, $context_info_engraving + $engrave_info_stylus, cptr.ldPtro(de, $_doengrave_ctx_otmp));
@@ -1214,14 +1410,15 @@ export function* doengrave() {
         cptr.stI16o(svc, $context_info_engraving + $engrave_info_pos, cptr.ldI16(u));
         cptr.stI16o(svc, $context_info_engraving + $engrave_info_pos + $nhcoord_y, cptr.ldI16o(u, $you_uy));
         cptr.stI32o(svc, $context_info_engraving + $engrave_info_actionct, 0);
-        set_occupation(engrave, __sl158, 0n);
+        set_occupation(engrave, __s_engraving, 0n);
+
         if (cptr.ld1so2(de, 0, 1, $_doengrave_ctx_post_engr_text))
-            (yield* pline(__sl137, cptr.add(de, $_doengrave_ctx_post_engr_text)));
+            (yield* pline(__s_pct_s, cptr.add(de, $_doengrave_ctx_post_engr_text)));
         if (cptr.ld1so(de, $_doengrave_ctx_doblind) && !(yield* resists_blnd(cptr.add(gy, $instance_globals_y_youmonst)))) {
-            (yield* You(__sl159));
-            (yield* make_blinded(BigInt((rng_log_enabled() ? (rng_log_set_caller(__sl0, 1250, __sl148), rnd(50)) : rnd(50))), 0));
+            (yield* You(__s_are_blinded_by_the_flash));
+            (yield* make_blinded(BigInt(rnd_at(__s_engrave_c, 1250, __s_doengrave, 50)), 0));
             if (!Blind())
-                (yield* Your(__sl137, cptr.ldPtro(c_common_strings, $c_common_strings_c_vision_clears)));
+                (yield* Your(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_vision_clears)));
         }
     }
     if (cptr.ld1so(de, $_doengrave_ctx_disprefresh))
@@ -1231,26 +1428,31 @@ export function* doengrave() {
     return retval;
 }
 
+/* occupation callback for engraving some text */
 /** C ref: engrave.c:1267 @returns {CInt} */
 function* engrave() {
     let oep;
     let buf = new Uint8Array(256);
-    let finishverb;
-    let stylus;
+    let finishverb;  /* "You finish [foo]." */
+    let stylus;  /* shorthand for svc.context.engraving.stylus */
     let firsttime = schar((cptr.ldI32o(svc, $context_info_engraving + $engrave_info_actionct) == 0));
-    let rate = 10;
+    let rate = 10;  /* # characters that can be engraved in this action */
     let truncate = 0;
     let neweng = schar((cptr.ldI32o(svc, $context_info_engraving + $engrave_info_actionct) == 0));
+
     let carving = schar((cptr.ld1so(svc, $context_info_engraving + $engrave_info_type) == NHM.ENGRAVE || cptr.ld1so(svc, $context_info_engraving + $engrave_info_type) == NHM.HEADSTONE ? 1 : 0));
     let dulling_wep;
     let marker;
     let endc;
     let i;
     let space_left;
+
     if (cptr.ldI16o(svc, $context_info_engraving + $engrave_info_pos) != cptr.ldI16(u) || cptr.ldI16o(svc, $context_info_engraving + $engrave_info_pos + $nhcoord_y) != cptr.ldI16o(u, $you_uy)) {
-        (yield* You(__sl160));
+        (yield* You(__s_are_unable_to_continue_engraving));
         return 0;
     }
+    /* Stylus might have been taken out of inventory and destroyed somehow.
+     * Not safe to dereference stylus until after this. */
     if (cptr.eq(cptr.ldPtro(svc, $context_info_engraving + $engrave_info_stylus), hands_obj)) {
         stylus = null;
     } else {
@@ -1259,46 +1461,78 @@ function* engrave() {
                 break;
         }
         if (!stylus) {
-            (yield* You(__sl160));
+            (yield* You(__s_are_unable_to_continue_engraving));
             return 0;
         }
     }
+
     dulling_wep = schar((carving && stylus && cptr.ld1so(stylus, $obj_oclass) == NHC.WEAPON_CLASS && (cptr.ldI16o(stylus, $obj_otyp) != NHC.ATHAME || (cptr.ldI32o(stylus, $obj_cursed) & 1) | 0) ? 1 : 0));
     marker = schar((stylus && cptr.ldI16o(stylus, $obj_otyp) == NHC.MAGIC_MARKER && cptr.ld1so(svc, $context_info_engraving + $engrave_info_type) == NHM.MARK ? 1 : 0));
+
     (cptr.stI32o(svc, $context_info_engraving + $engrave_info_actionct, cptr.ldI32o(svc, $context_info_engraving + $engrave_info_actionct) + 1)) - (1);
+
+    /* sanity checks */
     if (dulling_wep && !is_blade(stylus)) {
-        (yield* impossible(__sl161));
+        (yield* impossible(__s_carving_with_non_bladed_weapon));
     } else if (cptr.ld1so(svc, $context_info_engraving + $engrave_info_type) == NHM.MARK && !marker) {
-        (yield* impossible(__sl162));
+        (yield* impossible(__s_making_graffiti_with_non_marker_stylus));
     }
+
+    /* Step 1: Compute rate. */
     if (carving && stylus && (dulling_wep || cptr.ld1so(stylus, $obj_oclass) == NHC.RING_CLASS || cptr.ld1so(stylus, $obj_oclass) == NHC.GEM_CLASS)) {
+        /* slow engraving methods */
         rate = 1;
     } else if (marker) {
+        /* one charge / 2 letters */
         rate = min(rate, Math.imul(cptr.ld1so(stylus, $obj_spe), 2));
     }
+
+    /* Step 2: Compute last character that can be engraved this action. */
     i = rate;
     for (endc = cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc); cptr.ld1s(endc) && i > 0; endc = cptr.add(endc, 1)) {
         if (cptr.ld1s(endc) != 32) {
             i--;
         }
     }
+
+    /* Step 3: affect stylus from engraving - it might wear out. */
     if (dulling_wep) {
         let splitstack = 0;
         let dulled = 0;
+
+        /* 'dulling_wep' guarantees that 'stylus' is a weapon which is
+           not welded to the hero's hand(s) */
         if (cptr.ldI64o(stylus, $obj_quan) > 1n) {
             if (firsttime)
-                (yield* pline(__sl163, (yield* yname(stylus))));
+                (yield* pline(__s_one_of_s_gets_dull, (yield* yname(stylus))));
             stylus = cptr.stPtro(svc, $context_info_engraving + $engrave_info_stylus, (yield* splitobj(stylus, 1n)));
+            /* if stack is wielded or quivered, the split-off one isn't */
             cptr.stI64o(stylus, $obj_owornmask, 0n);
             splitstack = 1;
         } else {
+            /* normal case: stylus->quan==1 */
             if (firsttime)
-                (yield* pline(__sl164, (yield* Yname2(stylus))));
+                (yield* pline(__s_s_gets_dull, (yield* Yname2(stylus))));
         }
+        /* Dull the weapon at a rate of -1 enchantment per 2 characters,
+         * rounding down.
+         * The number of characters obtainable given starting enchantment:
+         * -2 => 3, -1 => 5, 0 => 7, +1 => 9, +2 => 11
+         * Note: this does not allow a +0 anything (except an athame) to
+         * engrave "Elbereth" all at once.
+         * However, you can engrave "Elb", then "ere", then "th", by taking
+         * advantage of the rounding down. */
         if (cptr.ldI32o(svc, $context_info_engraving + $engrave_info_actionct) % 2 == 1) {
+            /* deduct a point on 1st, 3rd, 5th, ... turns, unless this is the
+             * last character being engraved (a rather convoluted way to round
+             * down), but always deduct a point on the 1st turn to prevent
+             * zero-cost engravings.
+             * Check for truncation *before* deducting a point - otherwise,
+             * attempting to e.g. engrave 3 characters with a -2 weapon will
+             * stop at the 1st. */
             if (cptr.ld1so(stylus, $obj_spe) <= -3) {
                 if (firsttime) {
-                    (yield* impossible(__sl165));
+                    (yield* impossible(__s_3_weapon_valid_for_engraving));
                 }
                 truncate = 1;
             } else if (cptr.ld1s(endc) || cptr.ldI32o(svc, $context_info_engraving + $engrave_info_actionct) == 1) {
@@ -1308,62 +1542,77 @@ function* engrave() {
         }
         if (splitstack) {
             (yield* obj_extract_self(stylus));
-            stylus = (yield* hold_another_object(stylus, __sl166, (yield* doname(stylus)), (null)));
+            stylus = (yield* hold_another_object(stylus, __s_you_drop_one_s, (yield* doname(stylus)), (null)));
             (void (stylus));
         } else if (dulled && (cptr.ldI32o(stylus, $obj_known) & 1) | 0) {
+            /* reflect change in stylus->spe; not needed for splitstack
+               since hold_another_object() does this */
             (yield* prinv((null), stylus, 1n));
             (yield* update_inventory());
         }
     } else if (marker) {
-        let ink_cost = (((rate / 2) | 0) > 1 ? ((rate / 2) | 0) : 1);
+        let ink_cost = (((rate / 2) | 0) > 1 ? ((rate / 2) | 0) : 1);  /* Prevent infinite graffiti */
+
         if (cptr.ld1so(stylus, $obj_spe) < ink_cost) {
-            (yield* impossible(__sl167));
+            (yield* impossible(__s_overly_dry_marker_valid_for_graffiti));
             ink_cost = cptr.ld1so(stylus, $obj_spe);
             truncate = 1;
         }
         cptr.st1o(stylus, $obj_spe, cptr.ld1so(stylus, $obj_spe) - ink_cost);
         (yield* update_inventory());
         if (cptr.ld1so(stylus, $obj_spe) == 0) {
-            (yield* Your(__sl168));
+            /* can't engrave any further; truncate the string */
+            (yield* Your(__s_marker_dries_out));
             truncate = 1;
         }
     }
+
     switch (cptr.ld1so(svc, $context_info_engraving + $engrave_info_type)) {
         default:
-        finishverb = __sl169;
+        finishverb = __s_your_weird_engraving;
         break;
         case NHM.DUST:
-        finishverb = is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __sl170 : __sl171;
+        finishverb = is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __s_writing_in_the_frost : __s_writing_in_the_dust;
         break;
         case NHM.HEADSTONE:
         case NHM.ENGRAVE:
-        finishverb = __sl158;
+        finishverb = __s_engraving;
         break;
         case NHM.BURN:
-        finishverb = is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __sl172 : __sl173;
+        finishverb = is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __s_melting_your_message_into_the_ice : __s_burning_your_message_into_the_floor;
         break;
         case NHM.MARK:
-        finishverb = __sl174;
+        finishverb = __s_defacing_the_dungeon;
         break;
         case NHM.ENGR_BLOOD:
-        finishverb = __sl175;
+        finishverb = __s_scrawling;
     }
+
+    /* actions that happen at the end of every engraving action go here */
+
     cptr.st1o(cptr.decay(buf), 0, 0, 1);
     oep = engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
     if (oep)
         void cptr.strcpy(cptr.decay(buf), cptr.ldPtro2(oep, NHC.actual_text, 8, $engr_engr_txt));
+
     space_left = Number(BigInt.asIntN(32, (BigInt.asUintN(64, BigInt.asUintN(64, 256n - cptr.strlen(cptr.decay(buf))) - 1n))));
     if (cptr.diff(endc, cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc)) > BigInt(space_left)) {
-        (yield* You(__sl176));
+        (yield* You(__s_run_out_of_room_to_write));
         endc = cptr.add(cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc), space_left);
         truncate = 1;
     }
+
+    /* If the stylus did wear out mid-engraving, truncate the input so that we
+     * can't go any further. */
     if (truncate && cptr.ld1s(endc) != 0) {
         cptr.st1(endc, 0);
-        (yield* You(__sl177, cptr.add(svc, $context_info_engraving)));
+        (yield* You(__s_are_only_able_to_write_s, cptr.add(svc, $context_info_engraving)));
     } else {
+        /* input was not truncated; stylus may still have worn out on the last
+         * character, though */
         truncate = 0;
     }
+
     void __builtin___strncat_chk(cptr.decay(buf), cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc), BigInt.asUintN(64, (BigInt((space_left)) < (cptr.diff(endc, cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc))) ? BigInt((space_left)) : (cptr.diff(endc, cptr.ldPtro(svc, $context_info_engraving + $engrave_info_nextc))))), __builtin_object_size(cptr.decay(buf), 1));
     (yield* make_engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.decay(buf), null, BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - cptr.ldI64o(gm, $instance_globals_m_multi)), cptr.ld1so(svc, $context_info_engraving + $engrave_info_type)));
     oep = engr_at(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
@@ -1371,17 +1620,23 @@ function* engrave() {
         cptr.stI32o(oep, $engr_eread, 1);
         cptr.stI32o(oep, $engr_erevealed, 1);
     }
+
     if (cptr.ld1s(endc)) {
         cptr.stPtro(svc, $context_info_engraving + $engrave_info_nextc, endc);
         if (neweng) {
             (yield* newsym(cptr.ldI16o(svc, $context_info_engraving + $engrave_info_pos), cptr.ldI16o(svc, $context_info_engraving + $engrave_info_pos + $nhcoord_y)));
         }
-        return 1;
+        return 1;  /* not yet finished this turn */
     } else {
+        /* actions that happen after the engraving is finished go here */
+
         if (truncate) {
-            (yield* You(__sl178));
+            /* Now that "You are only able to write 'foo'" also prints at the
+             * end of engraving, this might be redundant. */
+            (yield* You(__s_cannot_write_any_more));
         } else if (!firsttime) {
-            (yield* You(__sl179, finishverb));
+            /* only print this if engraving took multiple actions */
+            (yield* You(__s_finish_s, finishverb));
         }
         cptr.st1o2(svc, 0, 1, $context_info_engraving, 0);
         cptr.stPtro(svc, $context_info_engraving + $engrave_info_nextc, null);
@@ -1392,19 +1647,29 @@ function* engrave() {
     return 0;
 }
 
+/* while loading bones, clean up text which might accidentally
+   or maliciously disrupt player's terminal when displayed */
 /** C ref: engrave.c:1498 */
 export function sanitize_engravings() {
     let ep;
+
     for (ep = head_engr.v; ep; ep = cptr.ldPtr(ep)) {
         sanitize_name(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt));
     }
 }
 
+/* mark all engravings as not-discovered/not-read when saving bones */
 /** C ref: engrave.c:1509 */
 export function forget_engravings() {
     let ep;
+
     for (ep = head_engr.v; ep; ep = cptr.ldPtr(ep)) {
         cptr.stI32o(ep, $engr_erevealed, cptr.stI32o(ep, $engr_eread, 0));
+
+        /* Note: engr_txt[actual_text], engr_txt[rememberd_text], and
+         * engr_txt[pristine_text] retain their original text rather
+         * than get updated to reflect each engraving's current text.
+         * Does it matter? */
     }
 }
 
@@ -1412,89 +1677,100 @@ export function forget_engravings() {
 export function* engraving_sanity_check() {
     let ep;
     let levtyp;
+
     if (head_engr.v && ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_air_level)))) || (((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))))) {
-        (yield* impossible(__sl180));
+        (yield* impossible(__s_engraving_sanity_on_plane_of_air_water));
         return;
     }
+
     for (ep = head_engr.v; ep; ep = cptr.ldPtr(ep)) {
         let x = cptr.ldI16o(ep, $engr_engr_x);
         let y = cptr.ldI16o(ep, $engr_engr_y);
+
         if (!isok(x, y)) {
-            (yield* impossible(__sl181, x, y));
+            (yield* impossible(__s_engraving_sanity_isok_i_i, x, y));
             continue;
         }
         levtyp = SURFACE_AT(x, y);
         if (is_pool_or_lava(x, y) || IS_AIR(levtyp) || !((levtyp) >= NHC.DOOR)) {
-            (yield* impossible(__sl182, levtyp, surface(x, y)));
+            (yield* impossible(__s_engraving_sanity_illegal_surface_d_s, levtyp, surface(x, y)));
             continue;
         }
     }
 }
 
-/** C ref: engrave.c:1551 — @param {CPtr} nhfp */
+/** C ref: engrave.c:1551 — @param {CPtr<NHFILE>} nhfp */
 export function* save_engravings(nhfp) {
     let ep;
     let ep2;
     let no_more_engr = cptr.box(0);
     let engr_alloc = cptr.box(0);
     let szeach;
+
     for (ep = head_engr.v; ep; ep = ep2) {
         ep2 = cptr.ldPtr(ep);
         if (cptr.ldI32o(ep, $engr_engr_alloc) && cptr.ld1so(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), 0) && (cptr.ldI32o((nhfp), $NHFILE_mode) & 3)) {
             engr_alloc.v = cptr.ldI32o(ep, $engr_engr_alloc);
             szeach = cptr.ldI32o(ep, $engr_engr_szeach);
-            (yield* sfo_unsigned(nhfp, engr_alloc, __sl183));
-            (yield* sfo_engr(nhfp, ep, __sl158));
+            (yield* sfo_unsigned(nhfp, engr_alloc, __s_engraving_engr_alloc));
+            (yield* sfo_engr(nhfp, ep, __s_engraving));
             cptr.stPtro2(ep, NHC.actual_text, 8, $engr_engr_txt, ((cptr.add((ep), 1, 80))));
             cptr.stPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt, cptr.add(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), szeach));
             cptr.stPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt, cptr.add(cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), szeach));
-            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), __sl184, szeach | 0));
-            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), __sl185, szeach | 0));
-            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), __sl186, szeach | 0));
+            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), __s_engraving_actual_text, szeach | 0));
+            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), __s_engraving_remembered_text, szeach | 0));
+            (yield* sfo_char(nhfp, cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), __s_engraving_pristine_text, szeach | 0));
         }
         if ((cptr.ldI32o((nhfp), $NHFILE_mode) & NHM.FREEING))
             cptr.free((ep));
     }
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & 3)) {
-        (yield* sfo_unsigned(nhfp, no_more_engr, __sl183));
+        (yield* sfo_unsigned(nhfp, no_more_engr, __s_engraving_engr_alloc));
     }
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & NHM.FREEING))
         head_engr.v = null;
 }
 
-/** C ref: engrave.c:1584 — @param {CPtr} nhfp */
+/** C ref: engrave.c:1584 — @param {CPtr<NHFILE>} nhfp */
 export function* rest_engravings(nhfp) {
     let ep;
     let lth = cptr.box(0);
     let szeach;
+
     head_engr.v = null;
     while (1) {
-        (yield* sfi_unsigned(nhfp, lth, __sl183));
+        (yield* sfi_unsigned(nhfp, lth, __s_engraving_engr_alloc));
         ;
         if (lth.v == 0)
             return;
         ep = (yield* alloc(((lth.v) + 80) >>> 0));
-        (yield* sfi_engr(nhfp, ep, __sl158));
+        (yield* sfi_engr(nhfp, ep, __s_engraving));
         szeach = cptr.ldI32o(ep, $engr_engr_szeach);
         cptr.stPtr(ep, head_engr.v);
         head_engr.v = ep;
-        cptr.stPtro2(ep, NHC.actual_text, 8, $engr_engr_txt, ((cptr.add((ep), 1, 80))));
+        cptr.stPtro2(ep, NHC.actual_text, 8, $engr_engr_txt, ((cptr.add((ep), 1, 80))));  /* Andreas Bormann */
         cptr.stPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt, cptr.add(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), szeach));
         cptr.stPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt, cptr.add(cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), szeach));
-        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), __sl184, szeach | 0));
-        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), __sl185, szeach | 0));
-        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), __sl186, szeach | 0));
+        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), __s_engraving_actual_text, szeach | 0));
+        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), __s_engraving_remembered_text, szeach | 0));
+        (yield* sfi_char(nhfp, cptr.ldPtro2(ep, NHC.pristine_text, 8, $engr_engr_txt), __s_engraving_pristine_text, szeach | 0));
+
         while (cptr.ld1so(cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), 0) == 32)
             cptr.postinc(() => cptr.ldPtro2(ep, NHC.actual_text, 8, $engr_engr_txt), (v) => { cptr.stPtro2(ep, NHC.actual_text, 8, $engr_engr_txt, v); });
         while (cptr.ld1so(cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), 0) == 32)
             cptr.postinc(() => cptr.ldPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt), (v) => { cptr.stPtro2(ep, NHC.remembered_text, 8, $engr_engr_txt, v); });
+        /* mark as finished for bones levels -- no problem for
+         * normal levels as the player must have finished engraving
+         * to be able to move again */
         cptr.stI64o(ep, $engr_engr_time, cptr.ldI64o(svm, $instance_globals_saved_m_moves));
     }
 }
 
-/** C ref: engrave.c:1626 — @param {CPtr} hdrfmt @param {CPtr} hdrbuf @param {CPtr} count @param {CPtr} size */
+/* to support '#stats' wizard-mode command */
+/** C ref: engrave.c:1626 — @param {CPtr<char>} hdrfmt @param {CPtr<char>} hdrbuf @param {CPtr<long>} count @param {CPtr<long>} size */
 export function engr_stats(hdrfmt, hdrbuf, count, size) {
     let ep;
+
     void cptr.sprintf(hdrbuf, hdrfmt, 80n);
     cptr.stI64(count, cptr.stI64(size, 0n));
     for (ep = head_engr.v; ep; ep = cptr.ldPtr(ep)) {
@@ -1503,81 +1779,97 @@ export function engr_stats(hdrfmt, hdrbuf, count, size) {
     }
 }
 
-/** C ref: engrave.c:1645 — @param {CPtr} ep */
+/** C ref: engrave.c:1645 — @param {CPtr<struct engr>} ep */
 export function* del_engr(ep) {
     if (cptr.eq(ep, head_engr.v)) {
         head_engr.v = cptr.ldPtr(ep);
     } else {
         let ept;
+
         for (ept = head_engr.v; ept; ept = cptr.ldPtr(ept))
             if (cptr.eq(cptr.ldPtr(ept), ep)) {
                 cptr.stPtr(ept, cptr.ldPtr(ep));
                 break;
             }
         if (!ept) {
-            (yield* impossible(__sl187));
+            (yield* impossible(__s_error_in_del_engr));
             return;
         }
     }
     cptr.free((ep));
 }
 
-/** C ref: engrave.c:1667 — @param {CPtr} ep */
+/* randomly relocate an engraving */
+/** C ref: engrave.c:1667 — @param {CPtr<struct engr>} ep */
 export function* rloc_engr(ep) {
     let tx;
     let ty;
     let tryct = 200;
+
     do {
         if (--tryct < 0)
             return;
-        tx = (((rng_log_enabled() ? (rng_log_set_caller(__sl0, 1674, __sl188), rn2(77)) : rn2(77)) + 2) | 0);
-        ty = (rng_log_enabled() ? (rng_log_set_caller(__sl0, 1675, __sl188), rn2(NHM.ROWNO)) : rn2(NHM.ROWNO));
+        tx = ((rn2_at(__s_engrave_c, 1674, __s_rloc_engr, 77) + 2) | 0);
+        ty = rn2_at(__s_engrave_c, 1675, __s_rloc_engr, NHM.ROWNO);
     } while (engr_at(i16(tx), i16(ty)) || !(yield* goodpos(i16(tx), i16(ty), null, 0)));
+
     cptr.stI16o(ep, $engr_engr_x, i16(tx));
     cptr.stI16o(ep, $engr_engr_y, i16(ty));
-    (yield* newsym(i16(tx), i16(ty)));
+    (yield* newsym(i16(tx), i16(ty)));  /* caller took care of the old location */
 }
 
-/** C ref: engrave.c:1687 — @param {CInt} x @param {CInt} y @param {CPtr} str */
+/* Create a headstone at the given location.
+ * The caller is responsible for newsym(x, y).
+ */
+/** C ref: engrave.c:1687 — @param {CInt} x @param {CInt} y @param {CPtr<char>} str */
 export function* make_grave(x, y, str) {
     let buf = new Uint8Array(256);
-    if ((cptr.ld1so3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ) != NHC.ROOM && cptr.ld1so3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ) != NHC.GRAVE) || t_at(x, y))
+
+    /* Can we put a grave here? */
+    if ((cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) != NHC.ROOM && cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) != NHC.GRAVE) || t_at(x, y))
         return;
+    /* Make the grave */
     if (!(yield* set_levltyp(x, y, NHC.GRAVE)))
         return;
+    /* Engrave the headstone */
     (yield* del_engr_at(x, y));
     if (!str)
-        str = (yield* get_rnd_text(__sl189, cptr.decay(buf), rn2, NHM.MD_PAD_RUMORS));
+        str = (yield* get_rnd_text(__s_epitaph, cptr.decay(buf), rn2, NHM.MD_PAD_RUMORS));
     (yield* make_engr_at(x, y, str, null, 0n, NHM.HEADSTONE));
     return;
 }
 
+/* called when kicking or engraving on a grave's headstone */
 /** C ref: engrave.c:1707 — @param {CInt} x @param {CInt} y */
 export function* disturb_grave(x, y) {
-    let lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36);
+    let lev = cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm);
+
     if (!((cptr.ld1so(lev, $rm_typ)) == NHC.GRAVE)) {
-        (yield* impossible(__sl190, cptr.ld1so(lev, $rm_typ)));
+        (yield* impossible(__s_disturbing_grave_that_isn_t_a_grave_d, cptr.ld1so(lev, $rm_typ)));
     } else if ((cptr.ldI32o(lev, $rm_horizontal) & 1)) {
-        (yield* impossible(__sl191));
+        (yield* impossible(__s_disturbing_already_disturbed_grave));
     } else {
-        (yield* You(__sl192));
+        (yield* You(__s_disturb_the_undead));
         cptr.stI32o(lev, $rm_horizontal, 1);
-        void (yield* makemon(cptr.add(mons, NHC.PM_GHOUL, 96), x, y, NHM.NO_MM_FLAGS));
+        void (yield* makemon(cptr.add(mons, NHC.PM_GHOUL, $sizeof_permonst), x, y, NHM.NO_MM_FLAGS));
         (yield* exercise(NHC.A_WIS, 0));
     }
 }
 
-/** C ref: engrave.c:1724 — @param {CPtr} ep */
+/** C ref: engrave.c:1724 — @param {CPtr<struct engr>} ep */
 export function* see_engraving(ep) {
     (yield* newsym(cptr.ldI16o(ep, $engr_engr_x), cptr.ldI16o(ep, $engr_engr_y)));
 }
 
-/** C ref: engrave.c:1732 — @param {CPtr} ep */
+/* like see_engravings() but overrides vision, but only for some types
+   of engravings that can be felt  [this isn't actually used anywhere?] */
+/** C ref: engrave.c:1732 — @param {CPtr<struct engr>} ep */
 export function* feel_engraving(ep) {
     if (engr_can_be_felt(ep)) {
         cptr.stI32o(ep, $engr_eread, 1);
         cptr.stI32o(ep, $engr_erevealed, 1);
         (yield* map_engraving(ep, 1));
+        /* in case it's beneath something, redisplay the something */
         (yield* newsym(cptr.ldI16o(ep, $engr_engr_x), cptr.ldI16o(ep, $engr_engr_y)));
     }
 }
@@ -1585,9 +1877,9 @@ export function* feel_engraving(ep) {
 /** C ref: engrave.c:1743 — char[9][21] */
 const blind_writing = [[68, 102, 109, 105, 98, 101, 34, 69, 123, 113, 101, 109, 114, 0, 0, 0, 0, 0, 0, 0, 0], [81, 103, 96, 122, 127, 33, 64, 113, 107, 113, 111, 103, 99, 0, 0, 0, 0, 0, 0, 0, 0], [73, 109, 115, 105, 98, 101, 34, 76, 97, 124, 109, 103, 36, 66, 127, 105, 108, 119, 103, 126, 0], [75, 109, 108, 102, 48, 76, 107, 104, 124, 127, 111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [81, 103, 112, 122, 127, 111, 103, 104, 100, 113, 33, 79, 107, 109, 126, 114, 0, 0, 0, 0, 0], [76, 99, 118, 97, 113, 33, 72, 107, 123, 117, 103, 99, 36, 69, 101, 107, 107, 101, 0, 0, 0], [76, 103, 104, 107, 120, 104, 109, 118, 122, 117, 33, 79, 113, 122, 117, 111, 119, 0, 0, 0, 0], [68, 102, 109, 124, 120, 33, 80, 101, 102, 101, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [68, 102, 115, 105, 98, 101, 34, 86, 125, 99, 105, 118, 107, 102, 0, 0, 0, 0, 0, 0, 0]];
 
-/** C ref: engrave.c:1765 @returns {CPtr} */
+/** C ref: engrave.c:1765 @returns {CPtr<char>} */
 function blengr() {
-    return cptr.decay(blind_writing[(rng_log_enabled() ? (rng_log_set_caller(__sl0, 1767, __sl193), rn2(blind_writing.length)) : rn2(blind_writing.length))]);
+    return cptr.decay(blind_writing[rn2_at(__s_engrave_c, 1767, __s_blengr, blind_writing.length)]);
 }
 
 // --- BEGIN c2js reset block (tools/c2js/resetify.mjs) — do not edit ---

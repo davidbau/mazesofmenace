@@ -53,101 +53,104 @@ const $NHFILE_eof = FLD.NHFILE_eof, $NHFILE_fnidx = FLD.NHFILE_fnidx, $NHFILE_fp
     $sf_procs_sf_ushort = FLD.sf_procs_sf_ushort, $sf_procs_sf_version_info = FLD.sf_procs_sf_version_info,
     $sf_procs_sf_xint16 = FLD.sf_procs_sf_xint16, $sf_procs_sf_xint8 = FLD.sf_procs_sf_xint8,
     $sf_procs_sf_you = FLD.sf_procs_sf_you, $sf_structlevel_procs_fn = FLD.sf_structlevel_procs_fn,
+    $sizeof_sf_fieldlevel_procs = FLD.sizeof_sf_fieldlevel_procs,
+    $sizeof_sf_structlevel_procs = FLD.sizeof_sf_structlevel_procs,
     $version_info_feature_set = FLD.version_info_feature_set;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("%08ld %s sz=%zu cnt=%d |%s|\n");
-const __sl1 = cptr.lit("sfvalue_boolean");
-const __sl2 = cptr.lit("%s");
-const __sl3 = cptr.lit("false");
-const __sl4 = cptr.lit("true");
-const __sl5 = cptr.lit("sfvalue_schar");
-const __sl6 = cptr.lit("%d");
-const __sl7 = cptr.lit("sfvalue_aligntyp");
-const __sl8 = cptr.lit("sfvalue_any");
-const __sl9 = cptr.lit("%lld");
-const __sl10 = cptr.lit("sfvalue_genericptr");
-const __sl11 = cptr.lit("0");
-const __sl12 = cptr.lit("glorkum");
-const __sl13 = cptr.lit("sfvalue_int16");
-const __sl14 = cptr.lit("sfvalue_int32");
-const __sl15 = cptr.lit("sfvalue_int64");
-const __sl16 = cptr.lit("sfvalue_uchar");
-const __sl17 = cptr.lit("%03u");
-const __sl18 = cptr.lit("sfvalue_uint16");
-const __sl19 = cptr.lit("%u");
-const __sl20 = cptr.lit("sfvalue_uint32");
-const __sl21 = cptr.lit("sfvalue_uint64");
-const __sl22 = cptr.lit("%llu");
-const __sl23 = cptr.lit("sfvalue_size_t");
-const __sl24 = cptr.lit("");
-const __sl25 = cptr.lit("sfvalue_time_t");
-const __sl26 = cptr.lit("sfvalue_short");
-const __sl27 = cptr.lit("sfvalue_ushort");
-const __sl28 = cptr.lit("sfvalue_int");
-const __sl29 = cptr.lit("sfvalue_unsigned");
-const __sl30 = cptr.lit("sfvalue_long");
-const __sl31 = cptr.lit("%ld");
-const __sl32 = cptr.lit("sfvalue_ulong");
-const __sl33 = cptr.lit("%lu");
-const __sl34 = cptr.lit("sfvalue_xint8");
-const __sl35 = cptr.lit("sfvalue_xint16");
-const __sl36 = cptr.lit("sfvalue_bitfield");
-const __sl37 = cptr.lit("bitfield_dump");
-const __sl38 = cptr.lit("complex_dump");
-const __sl39 = cptr.lit("%03x %03x %03x %03x %03x %03x %03x %03x %03x %03x");
+const __s_08ld_s_sz_zu_cnt_d_s = cptr.lit("%08ld %s sz=%zu cnt=%d |%s|\n");
+const __s_sfvalue_boolean = cptr.lit("sfvalue_boolean");
+const __s_pct_s = cptr.lit("%s");
+const __s_false = cptr.lit("false");
+const __s_true = cptr.lit("true");
+const __s_sfvalue_schar = cptr.lit("sfvalue_schar");
+const __s_pct_d = cptr.lit("%d");
+const __s_sfvalue_aligntyp = cptr.lit("sfvalue_aligntyp");
+const __s_sfvalue_any = cptr.lit("sfvalue_any");
+const __s_lld = cptr.lit("%lld");
+const __s_sfvalue_genericptr = cptr.lit("sfvalue_genericptr");
+const __s_0 = cptr.lit("0");
+const __s_glorkum = cptr.lit("glorkum");
+const __s_sfvalue_int16 = cptr.lit("sfvalue_int16");
+const __s_sfvalue_int32 = cptr.lit("sfvalue_int32");
+const __s_sfvalue_int64 = cptr.lit("sfvalue_int64");
+const __s_sfvalue_uchar = cptr.lit("sfvalue_uchar");
+const __s_03u = cptr.lit("%03u");
+const __s_sfvalue_uint16 = cptr.lit("sfvalue_uint16");
+const __s_pct_u = cptr.lit("%u");
+const __s_sfvalue_uint32 = cptr.lit("sfvalue_uint32");
+const __s_sfvalue_uint64 = cptr.lit("sfvalue_uint64");
+const __s_llu = cptr.lit("%llu");
+const __s_sfvalue_size_t = cptr.lit("sfvalue_size_t");
+const __s_empty = cptr.lit("");
+const __s_sfvalue_time_t = cptr.lit("sfvalue_time_t");
+const __s_sfvalue_short = cptr.lit("sfvalue_short");
+const __s_sfvalue_ushort = cptr.lit("sfvalue_ushort");
+const __s_sfvalue_int = cptr.lit("sfvalue_int");
+const __s_sfvalue_unsigned = cptr.lit("sfvalue_unsigned");
+const __s_sfvalue_long = cptr.lit("sfvalue_long");
+const __s_ld = cptr.lit("%ld");
+const __s_sfvalue_ulong = cptr.lit("sfvalue_ulong");
+const __s_lu = cptr.lit("%lu");
+const __s_sfvalue_xint8 = cptr.lit("sfvalue_xint8");
+const __s_sfvalue_xint16 = cptr.lit("sfvalue_xint16");
+const __s_sfvalue_bitfield = cptr.lit("sfvalue_bitfield");
+const __s_bitfield_dump = cptr.lit("bitfield_dump");
+const __s_complex_dump = cptr.lit("complex_dump");
+const __s_03x_03x_03x_03x_03x_03x_03x_03x_03x_03x = cptr.lit("%03x %03x %03x %03x %03x %03x %03x %03x %03x %03x");
 
 /** C ref: sfbase.c:17 — struct sf_structlevel_procs[3] */
-export const sfoprocs = cptr.alloc(3 * 552);
+export const sfoprocs = cptr.alloc(3 * $sizeof_sf_structlevel_procs);
 
 /** C ref: sfbase.c:17 — struct sf_structlevel_procs[3] */
-export const sfiprocs = cptr.alloc(3 * 552);
+export const sfiprocs = cptr.alloc(3 * $sizeof_sf_structlevel_procs);
 
 /** C ref: sfbase.c:18 — struct sf_structlevel_procs */
-export let zerosfoprocs = cptr.alloc(552);
+export let zerosfoprocs = cptr.alloc($sizeof_sf_structlevel_procs);
 cptr.stPtr(zerosfoprocs, null);
 
 /** C ref: sfbase.c:18 — struct sf_structlevel_procs */
-export let zerosfiprocs = cptr.alloc(552);
+export let zerosfiprocs = cptr.alloc($sizeof_sf_structlevel_procs);
 cptr.stPtr(zerosfiprocs, null);
 
 /** C ref: sfbase.c:19 — struct sf_fieldlevel_procs[3] */
-export const sfoflprocs = cptr.alloc(3 * 552);
+export const sfoflprocs = cptr.alloc(3 * $sizeof_sf_fieldlevel_procs);
 
 /** C ref: sfbase.c:19 — struct sf_fieldlevel_procs[3] */
-export const sfiflprocs = cptr.alloc(3 * 552);
+export const sfiflprocs = cptr.alloc(3 * $sizeof_sf_fieldlevel_procs);
 
 /** C ref: sfbase.c:20 — struct sf_fieldlevel_procs */
-export let zerosfoflprocs = cptr.alloc(552);
+export let zerosfoflprocs = cptr.alloc($sizeof_sf_fieldlevel_procs);
 cptr.stPtr(zerosfoflprocs, null);
 
 /** C ref: sfbase.c:20 — struct sf_fieldlevel_procs */
-export let zerosfiflprocs = cptr.alloc(552);
+export let zerosfiflprocs = cptr.alloc($sizeof_sf_fieldlevel_procs);
 cptr.stPtr(zerosfiflprocs, null);
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_arti_info @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct arti_info>} d_arti_info @param {CPtr<char>} myname */
 export function sfo_arti_info(nhfp, d_arti_info, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
+        //#include "sfproto.h"
         sf_log(nhfp, myname, 36n, 1, complex_dump(d_arti_info));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn))(nhfp, d_arti_info, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn))(nhfp, d_arti_info, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x))(nhfp, d_arti_info, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x))(nhfp, d_arti_info, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_arti_info @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct arti_info>} d_arti_info @param {CPtr<char>} myname */
 export function sfi_arti_info(nhfp, d_arti_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn))(nhfp, d_arti_info, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn))(nhfp, d_arti_info, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x))(nhfp, d_arti_info, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x))(nhfp, d_arti_info, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -159,29 +162,30 @@ export function sfi_arti_info(nhfp, d_arti_info, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_nhrect @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhrect>} d_nhrect @param {CPtr<char>} myname */
 export function sfo_nhrect(nhfp, d_nhrect, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, complex_dump(d_nhrect));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
+
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_nhrect @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhrect>} d_nhrect @param {CPtr<char>} myname */
 export function sfi_nhrect(nhfp, d_nhrect, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhrect))(nhfp, d_nhrect, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -193,29 +197,31 @@ export function sfi_nhrect(nhfp, d_nhrect, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_branch @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct branch>} d_branch @param {CPtr<char>} myname */
 export function sfo_branch(nhfp, d_branch, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 32n, 1, complex_dump(d_branch));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_branch))(nhfp, d_branch, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_branch))(nhfp, d_branch, myname);
+        /* #define DO_DEBUG */
+
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_branch))(nhfp, d_branch, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_branch))(nhfp, d_branch, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_branch @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct branch>} d_branch @param {CPtr<char>} myname */
 export function sfi_branch(nhfp, d_branch, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_branch))(nhfp, d_branch, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_branch))(nhfp, d_branch, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_branch))(nhfp, d_branch, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_branch))(nhfp, d_branch, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -227,29 +233,30 @@ export function sfi_branch(nhfp, d_branch, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_bubble @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct bubble>} d_bubble @param {CPtr<char>} myname */
 export function sfo_bubble(nhfp, d_bubble, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
+        //#define TURN_OFF_LOGGING 0x20
         sf_log(nhfp, myname, 40n, 1, complex_dump(d_bubble));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_bubble @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct bubble>} d_bubble @param {CPtr<char>} myname */
 export function sfi_bubble(nhfp, d_bubble, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bubble))(nhfp, d_bubble, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -261,29 +268,29 @@ export function sfi_bubble(nhfp, d_bubble, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_cemetery @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct cemetery>} d_cemetery @param {CPtr<char>} myname */
 export function sfo_cemetery(nhfp, d_cemetery, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 184n, 1, complex_dump(d_cemetery));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_cemetery @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct cemetery>} d_cemetery @param {CPtr<char>} myname */
 export function sfi_cemetery(nhfp, d_cemetery, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_cemetery))(nhfp, d_cemetery, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -295,29 +302,29 @@ export function sfi_cemetery(nhfp, d_cemetery, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_context_info @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct context_info>} d_context_info @param {CPtr<char>} myname */
 export function sfo_context_info(nhfp, d_context_info, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 720n, 1, complex_dump(d_context_info));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_context_info @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct context_info>} d_context_info @param {CPtr<char>} myname */
 export function sfi_context_info(nhfp, d_context_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_context_info))(nhfp, d_context_info, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -329,29 +336,29 @@ export function sfi_context_info(nhfp, d_context_info, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_nhcoord @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhcoord>} d_nhcoord @param {CPtr<char>} myname */
 export function sfo_nhcoord(nhfp, d_nhcoord, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, complex_dump(d_nhcoord));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_nhcoord @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct nhcoord>} d_nhcoord @param {CPtr<char>} myname */
 export function sfi_nhcoord(nhfp, d_nhcoord, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_nhcoord))(nhfp, d_nhcoord, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -363,29 +370,29 @@ export function sfi_nhcoord(nhfp, d_nhcoord, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_damage @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct damage>} d_damage @param {CPtr<char>} myname */
 export function sfo_damage(nhfp, d_damage, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 32n, 1, complex_dump(d_damage));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_damage))(nhfp, d_damage, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_damage))(nhfp, d_damage, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_damage))(nhfp, d_damage, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_damage))(nhfp, d_damage, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_damage @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct damage>} d_damage @param {CPtr<char>} myname */
 export function sfi_damage(nhfp, d_damage, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_damage))(nhfp, d_damage, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_damage))(nhfp, d_damage, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_damage))(nhfp, d_damage, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_damage))(nhfp, d_damage, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -397,29 +404,29 @@ export function sfi_damage(nhfp, d_damage, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dest_area @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dest_area>} d_dest_area @param {CPtr<char>} myname */
 export function sfo_dest_area(nhfp, d_dest_area, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 16n, 1, complex_dump(d_dest_area));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dest_area @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dest_area>} d_dest_area @param {CPtr<char>} myname */
 export function sfi_dest_area(nhfp, d_dest_area, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dest_area))(nhfp, d_dest_area, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -431,29 +438,29 @@ export function sfi_dest_area(nhfp, d_dest_area, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dgn_topology @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dgn_topology>} d_dgn_topology @param {CPtr<char>} myname */
 export function sfo_dgn_topology(nhfp, d_dgn_topology, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 114n, 1, complex_dump(d_dgn_topology));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dgn_topology @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dgn_topology>} d_dgn_topology @param {CPtr<char>} myname */
 export function sfi_dgn_topology(nhfp, d_dgn_topology, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dgn_topology))(nhfp, d_dgn_topology, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -465,29 +472,29 @@ export function sfi_dgn_topology(nhfp, d_dgn_topology, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dungeon @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dungeon>} d_dungeon @param {CPtr<char>} myname */
 export function sfo_dungeon(nhfp, d_dungeon, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 112n, 1, complex_dump(d_dungeon));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_dungeon @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct dungeon>} d_dungeon @param {CPtr<char>} myname */
 export function sfi_dungeon(nhfp, d_dungeon, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_dungeon))(nhfp, d_dungeon, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -499,29 +506,29 @@ export function sfi_dungeon(nhfp, d_dungeon, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_d_level @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct d_level>} d_d_level @param {CPtr<char>} myname */
 export function sfo_d_level(nhfp, d_d_level, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, complex_dump(d_d_level));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_d_level @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct d_level>} d_d_level @param {CPtr<char>} myname */
 export function sfi_d_level(nhfp, d_d_level, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_d_level))(nhfp, d_d_level, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -533,29 +540,29 @@ export function sfi_d_level(nhfp, d_d_level, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ebones @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ebones>} d_ebones @param {CPtr<char>} myname */
 export function sfo_ebones(nhfp, d_ebones, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 36n, 1, complex_dump(d_ebones));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ebones @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ebones>} d_ebones @param {CPtr<char>} myname */
 export function sfi_ebones(nhfp, d_ebones, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ebones))(nhfp, d_ebones, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -567,29 +574,29 @@ export function sfi_ebones(nhfp, d_ebones, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_edog @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct edog>} d_edog @param {CPtr<char>} myname */
 export function sfo_edog(nhfp, d_edog, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 64n, 1, complex_dump(d_edog));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_edog))(nhfp, d_edog, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_edog))(nhfp, d_edog, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_edog))(nhfp, d_edog, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_edog))(nhfp, d_edog, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_edog @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct edog>} d_edog @param {CPtr<char>} myname */
 export function sfi_edog(nhfp, d_edog, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_edog))(nhfp, d_edog, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_edog))(nhfp, d_edog, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_edog))(nhfp, d_edog, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_edog))(nhfp, d_edog, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -601,29 +608,29 @@ export function sfi_edog(nhfp, d_edog, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_egd @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct egd>} d_egd @param {CPtr<char>} myname */
 export function sfo_egd(nhfp, d_egd, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 652n, 1, complex_dump(d_egd));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_egd))(nhfp, d_egd, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_egd))(nhfp, d_egd, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_egd))(nhfp, d_egd, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_egd))(nhfp, d_egd, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_egd @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct egd>} d_egd @param {CPtr<char>} myname */
 export function sfi_egd(nhfp, d_egd, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_egd))(nhfp, d_egd, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_egd))(nhfp, d_egd, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_egd))(nhfp, d_egd, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_egd))(nhfp, d_egd, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -635,29 +642,29 @@ export function sfi_egd(nhfp, d_egd, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_emin @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct emin>} d_emin @param {CPtr<char>} myname */
 export function sfo_emin(nhfp, d_emin, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, complex_dump(d_emin));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_emin))(nhfp, d_emin, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_emin))(nhfp, d_emin, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_emin))(nhfp, d_emin, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_emin))(nhfp, d_emin, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_emin @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct emin>} d_emin @param {CPtr<char>} myname */
 export function sfi_emin(nhfp, d_emin, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_emin))(nhfp, d_emin, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_emin))(nhfp, d_emin, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_emin))(nhfp, d_emin, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_emin))(nhfp, d_emin, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -669,29 +676,29 @@ export function sfi_emin(nhfp, d_emin, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_engr @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct engr>} d_engr @param {CPtr<char>} myname */
 export function sfo_engr(nhfp, d_engr, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 80n, 1, complex_dump(d_engr));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_engr))(nhfp, d_engr, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_engr))(nhfp, d_engr, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_engr))(nhfp, d_engr, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_engr))(nhfp, d_engr, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_engr @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct engr>} d_engr @param {CPtr<char>} myname */
 export function sfi_engr(nhfp, d_engr, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_engr))(nhfp, d_engr, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_engr))(nhfp, d_engr, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_engr))(nhfp, d_engr, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_engr))(nhfp, d_engr, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -703,29 +710,29 @@ export function sfi_engr(nhfp, d_engr, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_epri @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct epri>} d_epri @param {CPtr<char>} myname */
 export function sfo_epri(nhfp, d_epri, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 56n, 1, complex_dump(d_epri));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_epri))(nhfp, d_epri, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_epri))(nhfp, d_epri, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_epri))(nhfp, d_epri, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_epri))(nhfp, d_epri, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_epri @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct epri>} d_epri @param {CPtr<char>} myname */
 export function sfi_epri(nhfp, d_epri, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_epri))(nhfp, d_epri, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_epri))(nhfp, d_epri, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_epri))(nhfp, d_epri, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_epri))(nhfp, d_epri, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -737,29 +744,30 @@ export function sfi_epri(nhfp, d_epri, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_eshk @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct eshk>} d_eshk @param {CPtr<char>} myname */
 export function sfo_eshk(nhfp, d_eshk, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
+
         sf_log(nhfp, myname, 4960n, 1, complex_dump(d_eshk));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_eshk @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct eshk>} d_eshk @param {CPtr<char>} myname */
 export function sfi_eshk(nhfp, d_eshk, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_eshk))(nhfp, d_eshk, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -771,29 +779,29 @@ export function sfi_eshk(nhfp, d_eshk, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_fe @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fe>} d_fe @param {CPtr<char>} myname */
 export function sfo_fe(nhfp, d_fe, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 48n, 1, complex_dump(d_fe));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_fe))(nhfp, d_fe, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_fe))(nhfp, d_fe, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fe))(nhfp, d_fe, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fe))(nhfp, d_fe, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_fe @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fe>} d_fe @param {CPtr<char>} myname */
 export function sfi_fe(nhfp, d_fe, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_fe))(nhfp, d_fe, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_fe))(nhfp, d_fe, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fe))(nhfp, d_fe, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fe))(nhfp, d_fe, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -805,29 +813,29 @@ export function sfi_fe(nhfp, d_fe, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_flag @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct flag>} d_flag @param {CPtr<char>} myname */
 export function sfo_flag(nhfp, d_flag, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 208n, 1, complex_dump(d_flag));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_flag))(nhfp, d_flag, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_flag))(nhfp, d_flag, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_flag))(nhfp, d_flag, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_flag))(nhfp, d_flag, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_flag @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct flag>} d_flag @param {CPtr<char>} myname */
 export function sfi_flag(nhfp, d_flag, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_flag))(nhfp, d_flag, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_flag))(nhfp, d_flag, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_flag))(nhfp, d_flag, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_flag))(nhfp, d_flag, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -839,29 +847,29 @@ export function sfi_flag(nhfp, d_flag, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_fruit @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fruit>} d_fruit @param {CPtr<char>} myname */
 export function sfo_fruit(nhfp, d_fruit, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 48n, 1, complex_dump(d_fruit));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_fruit @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct fruit>} d_fruit @param {CPtr<char>} myname */
 export function sfi_fruit(nhfp, d_fruit, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_fruit))(nhfp, d_fruit, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -873,29 +881,29 @@ export function sfi_fruit(nhfp, d_fruit, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_gamelog_line @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct gamelog_line>} d_gamelog_line @param {CPtr<char>} myname */
 export function sfo_gamelog_line(nhfp, d_gamelog_line, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 32n, 1, complex_dump(d_gamelog_line));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_gamelog_line @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct gamelog_line>} d_gamelog_line @param {CPtr<char>} myname */
 export function sfi_gamelog_line(nhfp, d_gamelog_line, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_gamelog_line))(nhfp, d_gamelog_line, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -907,29 +915,29 @@ export function sfi_gamelog_line(nhfp, d_gamelog_line, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_kinfo @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct kinfo>} d_kinfo @param {CPtr<char>} myname */
 export function sfo_kinfo(nhfp, d_kinfo, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 272n, 1, complex_dump(d_kinfo));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_kinfo @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct kinfo>} d_kinfo @param {CPtr<char>} myname */
 export function sfi_kinfo(nhfp, d_kinfo, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_kinfo))(nhfp, d_kinfo, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -941,29 +949,29 @@ export function sfi_kinfo(nhfp, d_kinfo, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_levelflags @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct levelflags>} d_levelflags @param {CPtr<char>} myname */
 export function sfo_levelflags(nhfp, d_levelflags, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 128n, 1, complex_dump(d_levelflags));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_levelflags @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct levelflags>} d_levelflags @param {CPtr<char>} myname */
 export function sfi_levelflags(nhfp, d_levelflags, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_levelflags))(nhfp, d_levelflags, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -975,29 +983,29 @@ export function sfi_levelflags(nhfp, d_levelflags, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ls_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ls_t>} d_ls_t @param {CPtr<char>} myname */
 export function sfo_ls_t(nhfp, d_ls_t, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 32n, 1, complex_dump(d_ls_t));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ls_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct ls_t>} d_ls_t @param {CPtr<char>} myname */
 export function sfi_ls_t(nhfp, d_ls_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ls_t))(nhfp, d_ls_t, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1009,29 +1017,29 @@ export function sfi_ls_t(nhfp, d_ls_t, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_linfo @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct linfo>} d_linfo @param {CPtr<char>} myname */
 export function sfo_linfo(nhfp, d_linfo, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, complex_dump(d_linfo));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_linfo @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct linfo>} d_linfo @param {CPtr<char>} myname */
 export function sfi_linfo(nhfp, d_linfo, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_linfo))(nhfp, d_linfo, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1043,29 +1051,29 @@ export function sfi_linfo(nhfp, d_linfo, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_feat @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_feat>} d_mapseen_feat @param {CPtr<char>} myname */
 export function sfo_mapseen_feat(nhfp, d_mapseen_feat, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 52n, 1, complex_dump(d_mapseen_feat));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_feat @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_feat>} d_mapseen_feat @param {CPtr<char>} myname */
 export function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_feat))(nhfp, d_mapseen_feat, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1077,29 +1085,29 @@ export function sfi_mapseen_feat(nhfp, d_mapseen_feat, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_flags @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_flags>} d_mapseen_flags @param {CPtr<char>} myname */
 export function sfo_mapseen_flags(nhfp, d_mapseen_flags, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 64n, 1, complex_dump(d_mapseen_flags));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_flags @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_flags>} d_mapseen_flags @param {CPtr<char>} myname */
 export function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_flags))(nhfp, d_mapseen_flags, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1111,29 +1119,29 @@ export function sfi_mapseen_flags(nhfp, d_mapseen_flags, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_rooms @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_rooms>} d_mapseen_rooms @param {CPtr<char>} myname */
 export function sfo_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, complex_dump(d_mapseen_rooms));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mapseen_rooms @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mapseen_rooms>} d_mapseen_rooms @param {CPtr<char>} myname */
 export function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mapseen_rooms))(nhfp, d_mapseen_rooms, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1145,29 +1153,29 @@ export function sfi_mapseen_rooms(nhfp, d_mapseen_rooms, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mkroom @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mkroom>} d_mkroom @param {CPtr<char>} myname */
 export function sfo_mkroom(nhfp, d_mkroom, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 224n, 1, complex_dump(d_mkroom));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mkroom @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mkroom>} d_mkroom @param {CPtr<char>} myname */
 export function sfi_mkroom(nhfp, d_mkroom, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mkroom))(nhfp, d_mkroom, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1179,29 +1187,29 @@ export function sfi_mkroom(nhfp, d_mkroom, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_monst @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct monst>} d_monst @param {CPtr<char>} myname */
 export function sfo_monst(nhfp, d_monst, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 320n, 1, complex_dump(d_monst));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_monst))(nhfp, d_monst, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_monst))(nhfp, d_monst, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_monst))(nhfp, d_monst, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_monst))(nhfp, d_monst, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_monst @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct monst>} d_monst @param {CPtr<char>} myname */
 export function sfi_monst(nhfp, d_monst, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_monst))(nhfp, d_monst, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_monst))(nhfp, d_monst, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_monst))(nhfp, d_monst, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_monst))(nhfp, d_monst, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1213,29 +1221,29 @@ export function sfi_monst(nhfp, d_monst, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mvitals @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mvitals>} d_mvitals @param {CPtr<char>} myname */
 export function sfo_mvitals(nhfp, d_mvitals, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 12n, 1, complex_dump(d_mvitals));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_mvitals @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct mvitals>} d_mvitals @param {CPtr<char>} myname */
 export function sfi_mvitals(nhfp, d_mvitals, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_mvitals))(nhfp, d_mvitals, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1247,29 +1255,29 @@ export function sfi_mvitals(nhfp, d_mvitals, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_obj @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct obj>} d_obj @param {CPtr<char>} myname */
 export function sfo_obj(nhfp, d_obj, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 216n, 1, complex_dump(d_obj));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_obj))(nhfp, d_obj, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_obj))(nhfp, d_obj, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_obj))(nhfp, d_obj, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_obj))(nhfp, d_obj, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_obj @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct obj>} d_obj @param {CPtr<char>} myname */
 export function sfi_obj(nhfp, d_obj, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_obj))(nhfp, d_obj, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_obj))(nhfp, d_obj, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_obj))(nhfp, d_obj, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_obj))(nhfp, d_obj, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1281,29 +1289,29 @@ export function sfi_obj(nhfp, d_obj, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_objclass @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct objclass>} d_objclass @param {CPtr<char>} myname */
 export function sfo_objclass(nhfp, d_objclass, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 120n, 1, complex_dump(d_objclass));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_objclass @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct objclass>} d_objclass @param {CPtr<char>} myname */
 export function sfi_objclass(nhfp, d_objclass, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_objclass))(nhfp, d_objclass, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1315,29 +1323,29 @@ export function sfi_objclass(nhfp, d_objclass, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_q_score @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct q_score>} d_q_score @param {CPtr<char>} myname */
 export function sfo_q_score(nhfp, d_q_score, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 88n, 1, complex_dump(d_q_score));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_q_score @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct q_score>} d_q_score @param {CPtr<char>} myname */
 export function sfi_q_score(nhfp, d_q_score, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_q_score))(nhfp, d_q_score, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1349,29 +1357,29 @@ export function sfi_q_score(nhfp, d_q_score, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_rm @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct rm>} d_rm @param {CPtr<char>} myname */
 export function sfo_rm(nhfp, d_rm, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 36n, 1, complex_dump(d_rm));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_rm))(nhfp, d_rm, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_rm))(nhfp, d_rm, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_rm))(nhfp, d_rm, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_rm))(nhfp, d_rm, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_rm @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct rm>} d_rm @param {CPtr<char>} myname */
 export function sfi_rm(nhfp, d_rm, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_rm))(nhfp, d_rm, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_rm))(nhfp, d_rm, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_rm))(nhfp, d_rm, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_rm))(nhfp, d_rm, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1383,29 +1391,29 @@ export function sfi_rm(nhfp, d_rm, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_spell @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct spell>} d_spell @param {CPtr<char>} myname */
 export function sfo_spell(nhfp, d_spell, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, complex_dump(d_spell));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_spell))(nhfp, d_spell, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_spell))(nhfp, d_spell, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_spell))(nhfp, d_spell, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_spell))(nhfp, d_spell, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_spell @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct spell>} d_spell @param {CPtr<char>} myname */
 export function sfi_spell(nhfp, d_spell, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_spell))(nhfp, d_spell, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_spell))(nhfp, d_spell, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_spell))(nhfp, d_spell, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_spell))(nhfp, d_spell, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1417,29 +1425,29 @@ export function sfi_spell(nhfp, d_spell, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_stairway @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct stairway>} d_stairway @param {CPtr<char>} myname */
 export function sfo_stairway(nhfp, d_stairway, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 24n, 1, complex_dump(d_stairway));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_stairway @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct stairway>} d_stairway @param {CPtr<char>} myname */
 export function sfi_stairway(nhfp, d_stairway, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_stairway))(nhfp, d_stairway, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1451,29 +1459,29 @@ export function sfi_stairway(nhfp, d_stairway, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_s_level @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct s_level>} d_s_level @param {CPtr<char>} myname */
 export function sfo_s_level(nhfp, d_s_level, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 56n, 1, complex_dump(d_s_level));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_s_level @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct s_level>} d_s_level @param {CPtr<char>} myname */
 export function sfi_s_level(nhfp, d_s_level, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_s_level))(nhfp, d_s_level, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1485,29 +1493,29 @@ export function sfi_s_level(nhfp, d_s_level, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_trap @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct trap>} d_trap @param {CPtr<char>} myname */
 export function sfo_trap(nhfp, d_trap, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 40n, 1, complex_dump(d_trap));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_trap))(nhfp, d_trap, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_trap))(nhfp, d_trap, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_trap))(nhfp, d_trap, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_trap))(nhfp, d_trap, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_trap @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct trap>} d_trap @param {CPtr<char>} myname */
 export function sfi_trap(nhfp, d_trap, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_trap))(nhfp, d_trap, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_trap))(nhfp, d_trap, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_trap))(nhfp, d_trap, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_trap))(nhfp, d_trap, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1519,29 +1527,29 @@ export function sfi_trap(nhfp, d_trap, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_you @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct you>} d_you @param {CPtr<char>} myname */
 export function sfo_you(nhfp, d_you, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2864n, 1, complex_dump(d_you));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_you))(nhfp, d_you, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_you))(nhfp, d_you, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_you))(nhfp, d_you, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_you))(nhfp, d_you, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_you @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct you>} d_you @param {CPtr<char>} myname */
 export function sfi_you(nhfp, d_you, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_you))(nhfp, d_you, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_you))(nhfp, d_you, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_you))(nhfp, d_you, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_you))(nhfp, d_you, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1553,29 +1561,29 @@ export function sfi_you(nhfp, d_you, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_any @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<union any>} d_any @param {CPtr<char>} myname */
 export function sfo_any(nhfp, d_any, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, complex_dump(d_any));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_any))(nhfp, d_any, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_any))(nhfp, d_any, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_any))(nhfp, d_any, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_any))(nhfp, d_any, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_any @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<union any>} d_any @param {CPtr<char>} myname */
 export function sfi_any(nhfp, d_any, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_any))(nhfp, d_any, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_any))(nhfp, d_any, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_any))(nhfp, d_any, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_any))(nhfp, d_any, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1587,29 +1595,29 @@ export function sfi_any(nhfp, d_any, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_aligntyp @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<aligntyp>} d_aligntyp @param {CPtr<char>} myname */
 export function sfo_aligntyp(nhfp, d_aligntyp, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, sfvalue_aligntyp(d_aligntyp));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_aligntyp @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<aligntyp>} d_aligntyp @param {CPtr<char>} myname */
 export function sfi_aligntyp(nhfp, d_aligntyp, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_aligntyp))(nhfp, d_aligntyp, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1621,29 +1629,29 @@ export function sfi_aligntyp(nhfp, d_aligntyp, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_boolean @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<boolean>} d_boolean @param {CPtr<char>} myname */
 export function sfo_boolean(nhfp, d_boolean, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, sfvalue_boolean(d_boolean));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_boolean @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<boolean>} d_boolean @param {CPtr<char>} myname */
 export function sfi_boolean(nhfp, d_boolean, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_boolean))(nhfp, d_boolean, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1655,29 +1663,29 @@ export function sfi_boolean(nhfp, d_boolean, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_coordxy @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<coordxy>} d_coordxy @param {CPtr<char>} myname */
 export function sfo_coordxy(nhfp, d_coordxy, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_int16(d_coordxy));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_coordxy @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<coordxy>} d_coordxy @param {CPtr<char>} myname */
 export function sfi_coordxy(nhfp, d_coordxy, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_coordxy))(nhfp, d_coordxy, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1689,29 +1697,29 @@ export function sfi_coordxy(nhfp, d_coordxy, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int>} d_int @param {CPtr<char>} myname */
 export function sfo_int(nhfp, d_int, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, sfvalue_int(d_int));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int))(nhfp, d_int, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int))(nhfp, d_int, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int))(nhfp, d_int, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int))(nhfp, d_int, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int>} d_int @param {CPtr<char>} myname */
 export function sfi_int(nhfp, d_int, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int))(nhfp, d_int, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int))(nhfp, d_int, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int))(nhfp, d_int, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int))(nhfp, d_int, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1723,29 +1731,29 @@ export function sfi_int(nhfp, d_int, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int16>} d_int16 @param {CPtr<char>} myname */
 export function sfo_int16(nhfp, d_int16, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_int16(d_int16));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int16))(nhfp, d_int16, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int16))(nhfp, d_int16, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int16))(nhfp, d_int16, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int16))(nhfp, d_int16, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int16>} d_int16 @param {CPtr<char>} myname */
 export function sfi_int16(nhfp, d_int16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int16))(nhfp, d_int16, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int16))(nhfp, d_int16, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int16))(nhfp, d_int16, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int16))(nhfp, d_int16, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1757,29 +1765,29 @@ export function sfi_int16(nhfp, d_int16, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int32 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int32>} d_int32 @param {CPtr<char>} myname */
 export function sfo_int32(nhfp, d_int32, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, sfvalue_int32(d_int32));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int32))(nhfp, d_int32, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int32))(nhfp, d_int32, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int32))(nhfp, d_int32, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int32))(nhfp, d_int32, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int32 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int32>} d_int32 @param {CPtr<char>} myname */
 export function sfi_int32(nhfp, d_int32, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int32))(nhfp, d_int32, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int32))(nhfp, d_int32, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int32))(nhfp, d_int32, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int32))(nhfp, d_int32, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1791,29 +1799,29 @@ export function sfi_int32(nhfp, d_int32, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int64 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int64>} d_int64 @param {CPtr<char>} myname */
 export function sfo_int64(nhfp, d_int64, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_int64(d_int64));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int64))(nhfp, d_int64, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int64))(nhfp, d_int64, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int64))(nhfp, d_int64, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int64))(nhfp, d_int64, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_int64 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<int64>} d_int64 @param {CPtr<char>} myname */
 export function sfi_int64(nhfp, d_int64, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_int64))(nhfp, d_int64, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_int64))(nhfp, d_int64, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int64))(nhfp, d_int64, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_int64))(nhfp, d_int64, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1825,29 +1833,29 @@ export function sfi_int64(nhfp, d_int64, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_long @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<long>} d_long @param {CPtr<char>} myname */
 export function sfo_long(nhfp, d_long, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_long(d_long));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_long))(nhfp, d_long, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_long))(nhfp, d_long, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_long))(nhfp, d_long, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_long))(nhfp, d_long, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_long @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<long>} d_long @param {CPtr<char>} myname */
 export function sfi_long(nhfp, d_long, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_long))(nhfp, d_long, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_long))(nhfp, d_long, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_long))(nhfp, d_long, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_long))(nhfp, d_long, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1859,29 +1867,29 @@ export function sfi_long(nhfp, d_long, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_schar @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<schar>} d_schar @param {CPtr<char>} myname */
 export function sfo_schar(nhfp, d_schar, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, sfvalue_schar(d_schar));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_schar))(nhfp, d_schar, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_schar))(nhfp, d_schar, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_schar))(nhfp, d_schar, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_schar))(nhfp, d_schar, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_schar @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<schar>} d_schar @param {CPtr<char>} myname */
 export function sfi_schar(nhfp, d_schar, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_schar))(nhfp, d_schar, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_schar))(nhfp, d_schar, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_schar))(nhfp, d_schar, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_schar))(nhfp, d_schar, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1893,29 +1901,29 @@ export function sfi_schar(nhfp, d_schar, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_short @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<short>} d_short @param {CPtr<char>} myname */
 export function sfo_short(nhfp, d_short, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_short(d_short));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_short))(nhfp, d_short, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_short))(nhfp, d_short, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_short))(nhfp, d_short, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_short))(nhfp, d_short, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_short @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<short>} d_short @param {CPtr<char>} myname */
 export function sfi_short(nhfp, d_short, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_short))(nhfp, d_short, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_short))(nhfp, d_short, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_short))(nhfp, d_short, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_short))(nhfp, d_short, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1927,29 +1935,29 @@ export function sfi_short(nhfp, d_short, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_size_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<size_t>} d_size_t @param {CPtr<char>} myname */
 export function sfo_size_t(nhfp, d_size_t, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_size_t(d_size_t));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_size_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<size_t>} d_size_t @param {CPtr<char>} myname */
 export function sfi_size_t(nhfp, d_size_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_size_t))(nhfp, d_size_t, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1961,29 +1969,29 @@ export function sfi_size_t(nhfp, d_size_t, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_time_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<time_t>} d_time_t @param {CPtr<char>} myname */
 export function sfo_time_t(nhfp, d_time_t, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_time_t(d_time_t));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_time_t @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<time_t>} d_time_t @param {CPtr<char>} myname */
 export function sfi_time_t(nhfp, d_time_t, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_time_t))(nhfp, d_time_t, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -1995,29 +2003,29 @@ export function sfi_time_t(nhfp, d_time_t, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uchar @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uchar>} d_uchar @param {CPtr<char>} myname */
 export function sfo_uchar(nhfp, d_uchar, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, sfvalue_uchar(d_uchar));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uchar @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uchar>} d_uchar @param {CPtr<char>} myname */
 export function sfi_uchar(nhfp, d_uchar, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uchar))(nhfp, d_uchar, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2029,29 +2037,29 @@ export function sfi_uchar(nhfp, d_uchar, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint16>} d_uint16 @param {CPtr<char>} myname */
 export function sfo_uint16(nhfp, d_uint16, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_uint16(d_uint16));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint16>} d_uint16 @param {CPtr<char>} myname */
 export function sfi_uint16(nhfp, d_uint16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint16))(nhfp, d_uint16, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2063,29 +2071,29 @@ export function sfi_uint16(nhfp, d_uint16, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint32 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint32>} d_uint32 @param {CPtr<char>} myname */
 export function sfo_uint32(nhfp, d_uint32, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, sfvalue_uint32(d_uint32));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint32 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint32>} d_uint32 @param {CPtr<char>} myname */
 export function sfi_uint32(nhfp, d_uint32, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint32))(nhfp, d_uint32, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2097,29 +2105,29 @@ export function sfi_uint32(nhfp, d_uint32, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint64 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint64>} d_uint64 @param {CPtr<char>} myname */
 export function sfo_uint64(nhfp, d_uint64, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_uint64(d_uint64));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_uint64 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint64>} d_uint64 @param {CPtr<char>} myname */
 export function sfi_uint64(nhfp, d_uint64, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_uint64))(nhfp, d_uint64, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2131,29 +2139,29 @@ export function sfi_uint64(nhfp, d_uint64, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ulong @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ulong>} d_ulong @param {CPtr<char>} myname */
 export function sfo_ulong(nhfp, d_ulong, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_ulong(d_ulong));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ulong @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ulong>} d_ulong @param {CPtr<char>} myname */
 export function sfi_ulong(nhfp, d_ulong, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ulong))(nhfp, d_ulong, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2165,29 +2173,29 @@ export function sfi_ulong(nhfp, d_ulong, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_unsigned @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<unsigned int>} d_unsigned @param {CPtr<char>} myname */
 export function sfo_unsigned(nhfp, d_unsigned, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 4n, 1, sfvalue_unsigned(d_unsigned));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_unsigned @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<unsigned int>} d_unsigned @param {CPtr<char>} myname */
 export function sfi_unsigned(nhfp, d_unsigned, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_unsigned))(nhfp, d_unsigned, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2199,29 +2207,29 @@ export function sfi_unsigned(nhfp, d_unsigned, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ushort @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ushort>} d_ushort @param {CPtr<char>} myname */
 export function sfo_ushort(nhfp, d_ushort, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_ushort(d_ushort));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_ushort @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<ushort>} d_ushort @param {CPtr<char>} myname */
 export function sfi_ushort(nhfp, d_ushort, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_ushort))(nhfp, d_ushort, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2233,29 +2241,29 @@ export function sfi_ushort(nhfp, d_ushort, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_xint16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint16>} d_xint16 @param {CPtr<char>} myname */
 export function sfo_xint16(nhfp, d_xint16, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 2n, 1, sfvalue_xint16(d_xint16));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_xint16 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint16>} d_xint16 @param {CPtr<char>} myname */
 export function sfi_xint16(nhfp, d_xint16, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint16))(nhfp, d_xint16, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2267,29 +2275,29 @@ export function sfi_xint16(nhfp, d_xint16, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_xint8 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint8>} d_xint8 @param {CPtr<char>} myname */
 export function sfo_xint8(nhfp, d_xint8, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, 1, sfvalue_xint8(d_xint8));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_xint8 @param {CPtr} myname */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<xint8>} d_xint8 @param {CPtr<char>} myname */
 export function sfi_xint8(nhfp, d_xint8, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_xint8))(nhfp, d_xint8, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2301,31 +2309,32 @@ export function sfi_xint8(nhfp, d_xint8, myname) {
     }
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_bitfield @param {CPtr} myname @param {CInt} bfsz */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint8_t>} d_bitfield @param {CPtr<char>} myname @param {CInt} bfsz */
 export function sfo_bitfield(nhfp, d_bitfield, myname, bfsz) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
+
         sf_log(nhfp, myname, 1n, 1, sfvalue_bitfield(d_bitfield));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
     if (cptr.ldPtro(nhfp, $NHFILE_fplog) && !cptr.ld1so(nhfp, $NHFILE_eof))
         sf_log(nhfp, myname, 1n, 1, sfvalue_bitfield(d_bitfield));
 }
 
-/** C ref: sfbase.c — @param {CPtr} nhfp @param {CPtr} d_bitfield @param {CPtr} myname @param {CInt} bfsz */
+/** C ref: sfbase.c — @param {CPtr<NHFILE>} nhfp @param {CPtr<uint8_t>} d_bitfield @param {CPtr<char>} myname @param {CInt} bfsz */
 export function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_bitfield))(nhfp, d_bitfield, myname, bfsz);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2337,29 +2346,31 @@ export function sfi_bitfield(nhfp, d_bitfield, myname, bfsz) {
     }
 }
 
-/** C ref: sfbase.c:249 — @param {CPtr} nhfp @param {CPtr} d_char @param {CPtr} myname @param {CInt} cnt */
+/** C ref: sfbase.c:249 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} d_char @param {CPtr<char>} myname @param {CInt} cnt */
 export function sfo_char(nhfp, d_char, myname, cnt) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 1n, cnt, sfvalue_char(d_char, cnt));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
+
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c:265 — @param {CPtr} nhfp @param {CPtr} d_char @param {CPtr} myname @param {CInt} cnt */
+/** C ref: sfbase.c:265 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} d_char @param {CPtr<char>} myname @param {CInt} cnt */
 export function sfi_char(nhfp, d_char, myname, cnt) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
+
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_char))(nhfp, d_char, myname, cnt);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2371,29 +2382,29 @@ export function sfi_char(nhfp, d_char, myname, cnt) {
     }
 }
 
-/** C ref: sfbase.c:290 — @param {CPtr} nhfp @param {CPtr} d_genericptr @param {CPtr} myname */
+/** C ref: sfbase.c:290 — @param {CPtr<NHFILE>} nhfp @param {CPtr<void *>} d_genericptr @param {CPtr<char>} myname */
 export function sfo_genericptr(nhfp, d_genericptr, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 8n, 1, sfvalue_genericptr(d_genericptr));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c:306 — @param {CPtr} nhfp @param {CPtr} d_genericptr @param {CPtr} myname */
+/** C ref: sfbase.c:306 — @param {CPtr<NHFILE>} nhfp @param {CPtr<void *>} d_genericptr @param {CPtr<char>} myname */
 export function sfi_genericptr(nhfp, d_genericptr, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_genericptr))(nhfp, d_genericptr, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2405,29 +2416,29 @@ export function sfi_genericptr(nhfp, d_genericptr, myname) {
     }
 }
 
-/** C ref: sfbase.c:330 — @param {CPtr} nhfp @param {CPtr} d_version_info @param {CPtr} myname */
+/** C ref: sfbase.c:330 — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct version_info>} d_version_info @param {CPtr<char>} myname */
 export function sfo_version_info(nhfp, d_version_info, myname) {
     if (cptr.ldPtro(nhfp, $NHFILE_fplog))
         sf_log(nhfp, myname, 24n, 1, complex_dump(d_version_info));
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
+        (cptr.ldPtro2(sfoprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
     } else {
         let save_fplog = cptr.ldPtro(nhfp, $NHFILE_fplog);
         cptr.stPtro(nhfp, $NHFILE_fplog, null);
-        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
+        (cptr.ldPtro2(sfoflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
         cptr.stPtro(nhfp, $NHFILE_fplog, save_fplog);
     }
 }
 
-/** C ref: sfbase.c:348 — @param {CPtr} nhfp @param {CPtr} d_version_info @param {CPtr} myname */
+/** C ref: sfbase.c:348 — @param {CPtr<NHFILE>} nhfp @param {CPtr<struct version_info>} d_version_info @param {CPtr<char>} myname */
 export function sfi_version_info(nhfp, d_version_info, myname) {
     if (cptr.ld1so(nhfp, $NHFILE_structlevel)) {
-        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_structlevel_procs_fn + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
+        (cptr.ldPtro2(sfiprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_structlevel_procs, $sf_structlevel_procs_fn + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
     } else {
         let save_mode = cptr.ldI32o(nhfp, $NHFILE_mode);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) & -25);
         cptr.stI32o(nhfp, $NHFILE_mode, cptr.ldI32o(nhfp, $NHFILE_mode) | 32);
-        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), 552, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
+        (cptr.ldPtro2(sfiflprocs, cptr.ldI32o(nhfp, $NHFILE_fnidx), $sizeof_sf_fieldlevel_procs, $sf_fieldlevel_procs_fn_x + $sf_procs_sf_version_info))(nhfp, d_version_info, myname);
         cptr.stI32o(nhfp, $NHFILE_mode, save_mode);
     }
     if (!cptr.ld1so(nhfp, $NHFILE_eof)) {
@@ -2440,24 +2451,31 @@ export function sfi_version_info(nhfp, d_version_info, myname) {
     }
 }
 
-/** C ref: sfbase.c:377 — @param {CPtr} nhfp @param {CPtr} t1 @param {CLongLong} sz @param {CInt} cnt @param {CPtr} txtvalue */
+/* ---------------------------------------------------------------*/
+
+/** C ref: sfbase.c:377 — @param {CPtr<NHFILE>} nhfp @param {CPtr<char>} t1 @param {CLongLong} sz @param {CInt} cnt @param {CPtr<char>} txtvalue */
 export function sf_log(nhfp, t1, sz, cnt, txtvalue) {
     let fp = cptr.ldPtro(nhfp, $NHFILE_fplog);
     let iocount;
     let dolog = schar(((cptr.ldI32o(nhfp, $NHFILE_mode) & 32) == 0));
+
     if (fp && dolog) {
         iocount = ((cptr.ldI32o(nhfp, $NHFILE_mode) & NHM.WRITING) == 0) ? cptr.add(nhfp, $NHFILE_rcount) : cptr.add(nhfp, $NHFILE_wcount);
-        void fprintf(fp, __sl0, cptr.ldI64(iocount), t1, sz, cnt, txtvalue);
+        void fprintf(fp, __s_08ld_s_sz_zu_cnt_d_s, cptr.ldI64(iocount), t1, sz, cnt, txtvalue);
+        //        (*iocount)++;
+        //        if (*iocount == 87)
+        //            __debugbreak();
         fflush(fp);
     }
 }
 
 const __static_sfvalue_char_buf = new Uint8Array(120); /** C ref: sfbase.c:409 — char[120] (function-static) */
 
-/** C ref: sfbase.c:406 — @param {CPtr} a @param {CInt} n @returns {CPtr} */
+/** C ref: sfbase.c:406 — @param {CPtr<char>} a @param {CInt} n @returns {CPtr<char>} */
 export function sfvalue_char(a, n) {
     let i;
     let cp;
+
     cp = cptr.add(cptr.decay(__static_sfvalue_char_buf), 0, 1);
     if (n < 119)
         cptr.st1o(cptr.decay(__static_sfvalue_char_buf), n, 0, 1);
@@ -2471,524 +2489,554 @@ export function sfvalue_char(a, n) {
 
 const __static_sfvalue_boolean_buf = new Uint8Array(20); /** C ref: sfbase.c:425 — char[20] (function-static) */
 
-/** C ref: sfbase.c:423 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:423 — @param {CPtr<boolean>} a @returns {CPtr<char>} */
 export function sfvalue_boolean(a) {
-    nh_snprintf(__sl1, 428, cptr.decay(__static_sfvalue_boolean_buf), 20n, __sl2, (cptr.ld1s(a) == 0) ? __sl3 : __sl4);
+
+    nh_snprintf(__s_sfvalue_boolean, 428, cptr.decay(__static_sfvalue_boolean_buf), 20n, __s_pct_s, (cptr.ld1s(a) == 0) ? __s_false : __s_true);
     return cptr.decay(__static_sfvalue_boolean_buf);
 }
 
 const __static_sfvalue_schar_buf = new Uint8Array(20); /** C ref: sfbase.c:434 — char[20] (function-static) */
 
-/** C ref: sfbase.c:432 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:432 — @param {CPtr<schar>} a @returns {CPtr<char>} */
 export function sfvalue_schar(a) {
-    nh_snprintf(__sl5, 436, cptr.decay(__static_sfvalue_schar_buf), 20n, __sl6, cptr.ld1s(a));
+
+    nh_snprintf(__s_sfvalue_schar, 436, cptr.decay(__static_sfvalue_schar_buf), 20n, __s_pct_d, cptr.ld1s(a));
     return cptr.decay(__static_sfvalue_schar_buf);
 }
 
 const __static_sfvalue_aligntyp_buf = new Uint8Array(20); /** C ref: sfbase.c:442 — char[20] (function-static) */
 
-/** C ref: sfbase.c:440 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:440 — @param {CPtr<aligntyp>} a @returns {CPtr<char>} */
 export function sfvalue_aligntyp(a) {
-    nh_snprintf(__sl7, 444, cptr.decay(__static_sfvalue_aligntyp_buf), 20n, __sl6, cptr.ld1s(a));
+
+    nh_snprintf(__s_sfvalue_aligntyp, 444, cptr.decay(__static_sfvalue_aligntyp_buf), 20n, __s_pct_d, cptr.ld1s(a));
     return cptr.decay(__static_sfvalue_aligntyp_buf);
 }
 
 const __static_sfvalue_any_buf = new Uint8Array(20); /** C ref: sfbase.c:451 — char[20] (function-static) */
 
-/** C ref: sfbase.c:449 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:449 — @param {CPtr<anything>} a @returns {CPtr<char>} */
 export function sfvalue_any(a) {
-    nh_snprintf(__sl8, 455, cptr.decay(__static_sfvalue_any_buf), 20n, __sl9, cptr.ldI64(a));
+
+    nh_snprintf(__s_sfvalue_any, 455, cptr.decay(__static_sfvalue_any_buf), 20n, __s_lld, cptr.ldI64(a));
     return cptr.decay(__static_sfvalue_any_buf);
 }
 
 const __static_sfvalue_genericptr_buf = new Uint8Array(20); /** C ref: sfbase.c:462 — char[20] (function-static) */
 
-/** C ref: sfbase.c:460 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:460 — @param {CPtr<void>} a @returns {CPtr<char>} */
 export function sfvalue_genericptr(a) {
-    nh_snprintf(__sl10, 465, cptr.decay(__static_sfvalue_genericptr_buf), 20n, __sl2, (a === null) ? __sl11 : __sl12);
+
+    nh_snprintf(__s_sfvalue_genericptr, 465, cptr.decay(__static_sfvalue_genericptr_buf), 20n, __s_pct_s, (a === null) ? __s_0 : __s_glorkum);
     return cptr.decay(__static_sfvalue_genericptr_buf);
 }
 
 const __static_sfvalue_int16_buf = new Uint8Array(20); /** C ref: sfbase.c:471 — char[20] (function-static) */
 
-/** C ref: sfbase.c:469 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:469 — @param {CPtr<int16>} a @returns {CPtr<char>} */
 export function sfvalue_int16(a) {
-    nh_snprintf(__sl13, 473, cptr.decay(__static_sfvalue_int16_buf), 20n, __sl6, a);
+
+    nh_snprintf(__s_sfvalue_int16, 473, cptr.decay(__static_sfvalue_int16_buf), 20n, __s_pct_d, a);
     return cptr.decay(__static_sfvalue_int16_buf);
 }
 
 const __static_sfvalue_int32_buf = new Uint8Array(20); /** C ref: sfbase.c:479 — char[20] (function-static) */
 
-/** C ref: sfbase.c:477 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:477 — @param {CPtr<int32>} a @returns {CPtr<char>} */
 export function sfvalue_int32(a) {
-    nh_snprintf(__sl14, 481, cptr.decay(__static_sfvalue_int32_buf), 20n, __sl6, a);
+
+    nh_snprintf(__s_sfvalue_int32, 481, cptr.decay(__static_sfvalue_int32_buf), 20n, __s_pct_d, a);
     return cptr.decay(__static_sfvalue_int32_buf);
 }
 
 const __static_sfvalue_int64_buf = new Uint8Array(20); /** C ref: sfbase.c:487 — char[20] (function-static) */
 
-/** C ref: sfbase.c:485 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:485 — @param {CPtr<int64>} a @returns {CPtr<char>} */
 export function sfvalue_int64(a) {
-    nh_snprintf(__sl15, 488, cptr.decay(__static_sfvalue_int64_buf), 20n, __sl9, a);
+    nh_snprintf(__s_sfvalue_int64, 488, cptr.decay(__static_sfvalue_int64_buf), 20n, __s_lld, a);
     return cptr.decay(__static_sfvalue_int64_buf);
 }
 
 const __static_sfvalue_uchar_buf = new Uint8Array(20); /** C ref: sfbase.c:494 — char[20] (function-static) */
 
-/** C ref: sfbase.c:492 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:492 — @param {CPtr<uchar>} a @returns {CPtr<char>} */
 export function sfvalue_uchar(a) {
     let x;
+
     x = cptr.ld1u(a);
-    nh_snprintf(__sl16, 498, cptr.decay(__static_sfvalue_uchar_buf), 20n, __sl17, x);
+    nh_snprintf(__s_sfvalue_uchar, 498, cptr.decay(__static_sfvalue_uchar_buf), 20n, __s_03u, x);
     return cptr.decay(__static_sfvalue_uchar_buf);
 }
 
 const __static_sfvalue_uint16_buf = new Uint8Array(20); /** C ref: sfbase.c:504 — char[20] (function-static) */
 
-/** C ref: sfbase.c:502 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:502 — @param {CPtr<uint16>} a @returns {CPtr<char>} */
 export function sfvalue_uint16(a) {
-    nh_snprintf(__sl18, 506, cptr.decay(__static_sfvalue_uint16_buf), 20n, __sl19, cptr.ldU16(a));
+
+    nh_snprintf(__s_sfvalue_uint16, 506, cptr.decay(__static_sfvalue_uint16_buf), 20n, __s_pct_u, cptr.ldU16(a));
     return cptr.decay(__static_sfvalue_uint16_buf);
 }
 
 const __static_sfvalue_uint32_buf = new Uint8Array(20); /** C ref: sfbase.c:512 — char[20] (function-static) */
 
-/** C ref: sfbase.c:510 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:510 — @param {CPtr<uint32>} a @returns {CPtr<char>} */
 export function sfvalue_uint32(a) {
-    nh_snprintf(__sl20, 514, cptr.decay(__static_sfvalue_uint32_buf), 20n, __sl19, cptr.ldI32(a));
+
+    nh_snprintf(__s_sfvalue_uint32, 514, cptr.decay(__static_sfvalue_uint32_buf), 20n, __s_pct_u, cptr.ldI32(a));
     return cptr.decay(__static_sfvalue_uint32_buf);
 }
 
 const __static_sfvalue_uint64_buf = new Uint8Array(20); /** C ref: sfbase.c:520 — char[20] (function-static) */
 
-/** C ref: sfbase.c:518 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:518 — @param {CPtr<uint64>} a @returns {CPtr<char>} */
 export function sfvalue_uint64(a) {
-    nh_snprintf(__sl21, 522, cptr.decay(__static_sfvalue_uint64_buf), 20n, __sl22, cptr.ldU64(a));
+
+    nh_snprintf(__s_sfvalue_uint64, 522, cptr.decay(__static_sfvalue_uint64_buf), 20n, __s_llu, cptr.ldU64(a));
     return cptr.decay(__static_sfvalue_uint64_buf);
 }
 
 const __static_sfvalue_size_t_buf = new Uint8Array(20); /** C ref: sfbase.c:528 — char[20] (function-static) */
 
-/** C ref: sfbase.c:526 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:526 — @param {CPtr<size_t>} a @returns {CPtr<char>} */
 export function sfvalue_size_t(a) {
-    nh_snprintf(__sl23, 530, cptr.decay(__static_sfvalue_size_t_buf), 20n, __sl2, __sl24);
+
+    nh_snprintf(__s_sfvalue_size_t, 530, cptr.decay(__static_sfvalue_size_t_buf), 20n, __s_pct_s, __s_empty);
     return cptr.decay(__static_sfvalue_size_t_buf);
 }
 
 const __static_sfvalue_time_t_buf = new Uint8Array(20); /** C ref: sfbase.c:536 — char[20] (function-static) */
 
-/** C ref: sfbase.c:534 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:534 — @param {CPtr<time_t>} a @returns {CPtr<char>} */
 export function sfvalue_time_t(a) {
-    nh_snprintf(__sl25, 538, cptr.decay(__static_sfvalue_time_t_buf), 20n, __sl2, __sl24);
+
+    nh_snprintf(__s_sfvalue_time_t, 538, cptr.decay(__static_sfvalue_time_t_buf), 20n, __s_pct_s, __s_empty);
     return cptr.decay(__static_sfvalue_time_t_buf);
 }
 
 const __static_sfvalue_short_buf = new Uint8Array(20); /** C ref: sfbase.c:544 — char[20] (function-static) */
 
-/** C ref: sfbase.c:542 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:542 — @param {CPtr<short>} a @returns {CPtr<char>} */
 export function sfvalue_short(a) {
-    nh_snprintf(__sl26, 546, cptr.decay(__static_sfvalue_short_buf), 20n, __sl6, cptr.ldI16(a));
+
+    nh_snprintf(__s_sfvalue_short, 546, cptr.decay(__static_sfvalue_short_buf), 20n, __s_pct_d, cptr.ldI16(a));
     return cptr.decay(__static_sfvalue_short_buf);
 }
 
 const __static_sfvalue_ushort_buf = new Uint8Array(20); /** C ref: sfbase.c:552 — char[20] (function-static) */
 
-/** C ref: sfbase.c:550 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:550 — @param {CPtr<ushort>} a @returns {CPtr<char>} */
 export function sfvalue_ushort(a) {
-    nh_snprintf(__sl27, 554, cptr.decay(__static_sfvalue_ushort_buf), 20n, __sl19, cptr.ldU16(a));
+
+    nh_snprintf(__s_sfvalue_ushort, 554, cptr.decay(__static_sfvalue_ushort_buf), 20n, __s_pct_u, cptr.ldU16(a));
     return cptr.decay(__static_sfvalue_ushort_buf);
 }
 
 const __static_sfvalue_int_buf = new Uint8Array(20); /** C ref: sfbase.c:560 — char[20] (function-static) */
 
-/** C ref: sfbase.c:558 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:558 — @param {CPtr<int>} a @returns {CPtr<char>} */
 export function sfvalue_int(a) {
-    nh_snprintf(__sl28, 562, cptr.decay(__static_sfvalue_int_buf), 20n, __sl6, cptr.ldI32(a));
+
+    nh_snprintf(__s_sfvalue_int, 562, cptr.decay(__static_sfvalue_int_buf), 20n, __s_pct_d, cptr.ldI32(a));
     return cptr.decay(__static_sfvalue_int_buf);
 }
 
 const __static_sfvalue_unsigned_buf = new Uint8Array(20); /** C ref: sfbase.c:568 — char[20] (function-static) */
 
-/** C ref: sfbase.c:566 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:566 — @param {CPtr<unsigned int>} a @returns {CPtr<char>} */
 export function sfvalue_unsigned(a) {
-    nh_snprintf(__sl29, 570, cptr.decay(__static_sfvalue_unsigned_buf), 20n, __sl19, cptr.ldI32(a));
+
+    nh_snprintf(__s_sfvalue_unsigned, 570, cptr.decay(__static_sfvalue_unsigned_buf), 20n, __s_pct_u, cptr.ldI32(a));
     return cptr.decay(__static_sfvalue_unsigned_buf);
 }
 
 const __static_sfvalue_long_buf = new Uint8Array(20); /** C ref: sfbase.c:576 — char[20] (function-static) */
 
-/** C ref: sfbase.c:574 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:574 — @param {CPtr<long>} a @returns {CPtr<char>} */
 export function sfvalue_long(a) {
-    nh_snprintf(__sl30, 578, cptr.decay(__static_sfvalue_long_buf), 20n, __sl31, cptr.ldI64(a));
+
+    nh_snprintf(__s_sfvalue_long, 578, cptr.decay(__static_sfvalue_long_buf), 20n, __s_ld, cptr.ldI64(a));
     return cptr.decay(__static_sfvalue_long_buf);
 }
 
 const __static_sfvalue_ulong_buf = new Uint8Array(20); /** C ref: sfbase.c:584 — char[20] (function-static) */
 
-/** C ref: sfbase.c:582 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:582 — @param {CPtr<ulong>} a @returns {CPtr<char>} */
 export function sfvalue_ulong(a) {
-    nh_snprintf(__sl32, 586, cptr.decay(__static_sfvalue_ulong_buf), 20n, __sl33, cptr.ldU64(a));
+
+    nh_snprintf(__s_sfvalue_ulong, 586, cptr.decay(__static_sfvalue_ulong_buf), 20n, __s_lu, cptr.ldU64(a));
     return cptr.decay(__static_sfvalue_ulong_buf);
 }
 
 const __static_sfvalue_xint8_buf = new Uint8Array(20); /** C ref: sfbase.c:592 — char[20] (function-static) */
 
-/** C ref: sfbase.c:590 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:590 — @param {CPtr<xint8>} a @returns {CPtr<char>} */
 export function sfvalue_xint8(a) {
-    nh_snprintf(__sl34, 594, cptr.decay(__static_sfvalue_xint8_buf), 20n, __sl6, cptr.ld1s(a));
+
+    nh_snprintf(__s_sfvalue_xint8, 594, cptr.decay(__static_sfvalue_xint8_buf), 20n, __s_pct_d, cptr.ld1s(a));
     return cptr.decay(__static_sfvalue_xint8_buf);
 }
 
 const __static_sfvalue_xint16_buf = new Uint8Array(20); /** C ref: sfbase.c:600 — char[20] (function-static) */
 
-/** C ref: sfbase.c:598 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:598 — @param {CPtr<xint16>} a @returns {CPtr<char>} */
 export function sfvalue_xint16(a) {
-    nh_snprintf(__sl35, 603, cptr.decay(__static_sfvalue_xint16_buf), 20n, __sl6, cptr.ldI16(a));
+
+    nh_snprintf(__s_sfvalue_xint16, 603, cptr.decay(__static_sfvalue_xint16_buf), 20n, __s_pct_d, cptr.ldI16(a));
     return cptr.decay(__static_sfvalue_xint16_buf);
 }
 
 const __static_sfvalue_bitfield_buf = new Uint8Array(20); /** C ref: sfbase.c:610 — char[20] (function-static) */
 
-/** C ref: sfbase.c:608 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:608 — @param {CPtr<uint8>} a @returns {CPtr<char>} */
 export function sfvalue_bitfield(a) {
-    nh_snprintf(__sl36, 612, cptr.decay(__static_sfvalue_bitfield_buf), 20n, __sl19, cptr.ld1u(a));
+
+    nh_snprintf(__s_sfvalue_bitfield, 612, cptr.decay(__static_sfvalue_bitfield_buf), 20n, __s_pct_u, cptr.ld1u(a));
     return cptr.decay(__static_sfvalue_bitfield_buf);
 }
 
 const __static_bitfield_dump_buf = new Uint8Array(20); /** C ref: sfbase.c:619 — char[20] (function-static) */
 
-/** C ref: sfbase.c:617 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:617 — @param {CPtr<uint8>} a @returns {CPtr<char>} */
 export function bitfield_dump(a) {
-    nh_snprintf(__sl37, 621, cptr.decay(__static_bitfield_dump_buf), 20n, __sl19, cptr.ld1u(a));
+
+    nh_snprintf(__s_bitfield_dump, 621, cptr.decay(__static_bitfield_dump_buf), 20n, __s_pct_u, cptr.ld1u(a));
     return cptr.decay(__static_bitfield_dump_buf);
 }
 
 const __static_complex_dump_buf = new Uint8Array(50); /** C ref: sfbase.c:629 — char[50] (function-static) */
 
-/** C ref: sfbase.c:625 — @param {CPtr} a @returns {CPtr} */
+/** C ref: sfbase.c:625 — @param {CPtr<uchar>} a @returns {CPtr<char>} */
 export function complex_dump(a) {
     let i;
     let uc = a;
     let x = cptr.alloc(10 * 4);
+
     for (i = 0; i < 10; ++i) {
         cptr.stI32o(x, i, cptr.ld1u(cptr.postinc(() => uc, (v) => { uc = v; })), 4);
     }
-    nh_snprintf(__sl38, 636, cptr.decay(__static_complex_dump_buf), 50n, __sl39, cptr.ldI32o(x, 0, 4), cptr.ldI32o(x, 1, 4), cptr.ldI32o(x, 2, 4), cptr.ldI32o(x, 3, 4), cptr.ldI32o(x, 4, 4), cptr.ldI32o(x, 5, 4), cptr.ldI32o(x, 6, 4), cptr.ldI32o(x, 7, 4), cptr.ldI32o(x, 8, 4), cptr.ldI32o(x, 9, 4));
+    nh_snprintf(__s_complex_dump, 636, cptr.decay(__static_complex_dump_buf), 50n, __s_03x_03x_03x_03x_03x_03x_03x_03x_03x_03x, cptr.ldI32o(x, 0, 4), cptr.ldI32o(x, 1, 4), cptr.ldI32o(x, 2, 4), cptr.ldI32o(x, 3, 4), cptr.ldI32o(x, 4, 4), cptr.ldI32o(x, 5, 4), cptr.ldI32o(x, 6, 4), cptr.ldI32o(x, 7, 4), cptr.ldI32o(x, 8, 4), cptr.ldI32o(x, 9, 4));
     cptr.st1o(cptr.decay(__static_complex_dump_buf), 40, 0, 1);
     return cptr.decay(__static_complex_dump_buf);
 }
 
+/*
+ *----------------------------------------------------------------------------
+ * initialize the function pointers. These are called from initoptions_init().
+ *----------------------------------------------------------------------------
+ */
+
 /** C ref: sfbase.c:647 */
 export function sf_init() {
-    cptr.memcpy(cptr.add(sfoprocs, NHC.invalid, 552), zerosfoprocs, 552);
-    cptr.memcpy(cptr.add(sfiprocs, NHC.invalid, 552), zerosfiprocs, 552);
-    cptr.memcpy(cptr.add(sfoprocs, NHC.historical, 552), historical_sfo_procs, 552);
-    cptr.memcpy(cptr.add(sfiprocs, NHC.historical, 552), historical_sfi_procs, 552);
-    cptr.memcpy(cptr.add(sfoflprocs, NHC.exportascii, 552), zerosfoflprocs, 552);
-    cptr.memcpy(cptr.add(sfiflprocs, NHC.exportascii, 552), zerosfiflprocs, 552);
+    cptr.memcpy(cptr.add(sfoprocs, NHC.invalid, $sizeof_sf_structlevel_procs), zerosfoprocs, 552);
+    cptr.memcpy(cptr.add(sfiprocs, NHC.invalid, $sizeof_sf_structlevel_procs), zerosfiprocs, 552);
+    cptr.memcpy(cptr.add(sfoprocs, NHC.historical, $sizeof_sf_structlevel_procs), historical_sfo_procs, 552);
+    cptr.memcpy(cptr.add(sfiprocs, NHC.historical, $sizeof_sf_structlevel_procs), historical_sfi_procs, 552);
+    cptr.memcpy(cptr.add(sfoflprocs, NHC.exportascii, $sizeof_sf_fieldlevel_procs), zerosfoflprocs, 552);
+    cptr.memcpy(cptr.add(sfiflprocs, NHC.exportascii, $sizeof_sf_fieldlevel_procs), zerosfiflprocs, 552);
 }
 
-/** C ref: sfbase.c:658 — @param {CInt} idx @param {CPtr} sfi @param {CPtr} sfo */
+/** C ref: sfbase.c:658 — @param {CInt} idx @param {CPtr<struct sf_structlevel_procs>} sfi @param {CPtr<struct sf_structlevel_procs>} sfo */
 export function sf_setprocs(idx, sfi, sfo) {
-    cptr.memcpy(cptr.add(sfoprocs, idx, 552), sfo, 552);
-    cptr.memcpy(cptr.add(sfiprocs, idx, 552), sfi, 552);
+    cptr.memcpy(cptr.add(sfoprocs, idx, $sizeof_sf_structlevel_procs), sfo, 552);
+    cptr.memcpy(cptr.add(sfiprocs, idx, $sizeof_sf_structlevel_procs), sfi, 552);
 }
 
-/** C ref: sfbase.c:664 — @param {CInt} idx @param {CPtr} flsfi @param {CPtr} flsfo */
+/** C ref: sfbase.c:664 — @param {CInt} idx @param {CPtr<struct sf_fieldlevel_procs>} flsfi @param {CPtr<struct sf_fieldlevel_procs>} flsfo */
 export function sf_setflprocs(idx, flsfi, flsfo) {
-    cptr.memcpy(cptr.add(sfoflprocs, idx, 552), flsfo, 552);
-    cptr.memcpy(cptr.add(sfiflprocs, idx, 552), flsfi, 552);
+    cptr.memcpy(cptr.add(sfoflprocs, idx, $sizeof_sf_fieldlevel_procs), flsfo, 552);
+    cptr.memcpy(cptr.add(sfiflprocs, idx, $sizeof_sf_fieldlevel_procs), flsfi, 552);
 }
 
-/** C ref: sfbase.c:748 — @param {CPtr} d_any */
+/** C ref: sfbase.c:748 — @param {CPtr<union any>} d_any */
 export function norm_ptrs_any(d_any) {
 }
 
-/** C ref: sfbase.c:752 — @param {CPtr} d_align */
+/** C ref: sfbase.c:752 — @param {CPtr<struct align>} d_align */
 export function norm_ptrs_align(d_align) {
 }
 
-/** C ref: sfbase.c:757 — @param {CPtr} d_arti_info */
+/** C ref: sfbase.c:757 — @param {CPtr<struct arti_info>} d_arti_info */
 export function norm_ptrs_arti_info(d_arti_info) {
 }
 
-/** C ref: sfbase.c:762 — @param {CPtr} d_attribs */
+/** C ref: sfbase.c:762 — @param {CPtr<struct attribs>} d_attribs */
 export function norm_ptrs_attribs(d_attribs) {
 }
 
-/** C ref: sfbase.c:767 — @param {CPtr} d_bill_x */
+/** C ref: sfbase.c:767 — @param {CPtr<struct bill_x>} d_bill_x */
 export function norm_ptrs_bill_x(d_bill_x) {
 }
 
-/** C ref: sfbase.c:772 — @param {CPtr} d_branch */
+/** C ref: sfbase.c:772 — @param {CPtr<struct branch>} d_branch */
 export function norm_ptrs_branch(d_branch) {
 }
 
-/** C ref: sfbase.c:777 — @param {CPtr} d_bubble */
+/** C ref: sfbase.c:777 — @param {CPtr<struct bubble>} d_bubble */
 export function norm_ptrs_bubble(d_bubble) {
 }
 
-/** C ref: sfbase.c:782 — @param {CPtr} d_cemetery */
+/** C ref: sfbase.c:782 — @param {CPtr<struct cemetery>} d_cemetery */
 export function norm_ptrs_cemetery(d_cemetery) {
 }
 
-/** C ref: sfbase.c:787 — @param {CPtr} d_context_info */
+/** C ref: sfbase.c:787 — @param {CPtr<struct context_info>} d_context_info */
 export function norm_ptrs_context_info(d_context_info) {
 }
 
-/** C ref: sfbase.c:792 — @param {CPtr} d_achievement_tracking */
+/** C ref: sfbase.c:792 — @param {CPtr<struct achievement_tracking>} d_achievement_tracking */
 export function norm_ptrs_achievement_tracking(d_achievement_tracking) {
 }
 
-/** C ref: sfbase.c:797 — @param {CPtr} d_book_info */
+/** C ref: sfbase.c:797 — @param {CPtr<struct book_info>} d_book_info */
 export function norm_ptrs_book_info(d_book_info) {
 }
 
-/** C ref: sfbase.c:802 — @param {CPtr} d_dig_info */
+/** C ref: sfbase.c:802 — @param {CPtr<struct dig_info>} d_dig_info */
 export function norm_ptrs_dig_info(d_dig_info) {
 }
 
-/** C ref: sfbase.c:807 — @param {CPtr} d_engrave_info */
+/** C ref: sfbase.c:807 — @param {CPtr<struct engrave_info>} d_engrave_info */
 export function norm_ptrs_engrave_info(d_engrave_info) {
 }
 
-/** C ref: sfbase.c:812 — @param {CPtr} d_obj_split */
+/** C ref: sfbase.c:812 — @param {CPtr<struct obj_split>} d_obj_split */
 export function norm_ptrs_obj_split(d_obj_split) {
 }
 
-/** C ref: sfbase.c:817 — @param {CPtr} d_polearm_info */
+/** C ref: sfbase.c:817 — @param {CPtr<struct polearm_info>} d_polearm_info */
 export function norm_ptrs_polearm_info(d_polearm_info) {
 }
 
-/** C ref: sfbase.c:822 — @param {CPtr} d_takeoff_info */
+/** C ref: sfbase.c:822 — @param {CPtr<struct takeoff_info>} d_takeoff_info */
 export function norm_ptrs_takeoff_info(d_takeoff_info) {
 }
 
-/** C ref: sfbase.c:827 — @param {CPtr} d_tin_info */
+/** C ref: sfbase.c:827 — @param {CPtr<struct tin_info>} d_tin_info */
 export function norm_ptrs_tin_info(d_tin_info) {
 }
 
-/** C ref: sfbase.c:832 — @param {CPtr} d_tribute_info */
+/** C ref: sfbase.c:832 — @param {CPtr<struct tribute_info>} d_tribute_info */
 export function norm_ptrs_tribute_info(d_tribute_info) {
 }
 
-/** C ref: sfbase.c:837 — @param {CPtr} d_victual_info */
+/** C ref: sfbase.c:837 — @param {CPtr<struct victual_info>} d_victual_info */
 export function norm_ptrs_victual_info(d_victual_info) {
 }
 
-/** C ref: sfbase.c:842 — @param {CPtr} d_warntype_info */
+/** C ref: sfbase.c:842 — @param {CPtr<struct warntype_info>} d_warntype_info */
 export function norm_ptrs_warntype_info(d_warntype_info) {
 }
 
-/** C ref: sfbase.c:847 — @param {CPtr} d_d_flags */
+/** C ref: sfbase.c:847 — @param {CPtr<struct d_flags>} d_d_flags */
 export function norm_ptrs_d_flags(d_d_flags) {
 }
 
-/** C ref: sfbase.c:852 — @param {CPtr} d_d_level */
+/** C ref: sfbase.c:852 — @param {CPtr<struct d_level>} d_d_level */
 export function norm_ptrs_d_level(d_d_level) {
 }
 
-/** C ref: sfbase.c:857 — @param {CPtr} d_damage */
+/** C ref: sfbase.c:857 — @param {CPtr<struct damage>} d_damage */
 export function norm_ptrs_damage(d_damage) {
 }
 
-/** C ref: sfbase.c:862 — @param {CPtr} d_dest_area */
+/** C ref: sfbase.c:862 — @param {CPtr<struct dest_area>} d_dest_area */
 export function norm_ptrs_dest_area(d_dest_area) {
 }
 
-/** C ref: sfbase.c:867 — @param {CPtr} d_dgn_topology */
+/** C ref: sfbase.c:867 — @param {CPtr<struct dgn_topology>} d_dgn_topology */
 export function norm_ptrs_dgn_topology(d_dgn_topology) {
 }
 
-/** C ref: sfbase.c:872 — @param {CPtr} d_dungeon */
+/** C ref: sfbase.c:872 — @param {CPtr<struct dungeon>} d_dungeon */
 export function norm_ptrs_dungeon(d_dungeon) {
 }
 
-/** C ref: sfbase.c:877 — @param {CPtr} d_ebones */
+/** C ref: sfbase.c:877 — @param {CPtr<struct ebones>} d_ebones */
 export function norm_ptrs_ebones(d_ebones) {
 }
 
-/** C ref: sfbase.c:882 — @param {CPtr} d_edog */
+/** C ref: sfbase.c:882 — @param {CPtr<struct edog>} d_edog */
 export function norm_ptrs_edog(d_edog) {
 }
 
-/** C ref: sfbase.c:887 — @param {CPtr} d_egd */
+/** C ref: sfbase.c:887 — @param {CPtr<struct egd>} d_egd */
 export function norm_ptrs_egd(d_egd) {
 }
 
-/** C ref: sfbase.c:892 — @param {CPtr} d_emin */
+/** C ref: sfbase.c:892 — @param {CPtr<struct emin>} d_emin */
 export function norm_ptrs_emin(d_emin) {
 }
 
-/** C ref: sfbase.c:897 — @param {CPtr} d_engr */
+/** C ref: sfbase.c:897 — @param {CPtr<struct engr>} d_engr */
 export function norm_ptrs_engr(d_engr) {
 }
 
-/** C ref: sfbase.c:902 — @param {CPtr} d_epri */
+/** C ref: sfbase.c:902 — @param {CPtr<struct epri>} d_epri */
 export function norm_ptrs_epri(d_epri) {
 }
 
-/** C ref: sfbase.c:907 — @param {CPtr} d_eshk */
+/** C ref: sfbase.c:907 — @param {CPtr<struct eshk>} d_eshk */
 export function norm_ptrs_eshk(d_eshk) {
 }
 
-/** C ref: sfbase.c:912 — @param {CPtr} d_fakecorridor */
+/** C ref: sfbase.c:912 — @param {CPtr<struct fakecorridor>} d_fakecorridor */
 export function norm_ptrs_fakecorridor(d_fakecorridor) {
 }
 
-/** C ref: sfbase.c:917 — @param {CPtr} d_fe */
+/** C ref: sfbase.c:917 — @param {CPtr<struct fe>} d_fe */
 export function norm_ptrs_fe(d_fe) {
 }
 
-/** C ref: sfbase.c:922 — @param {CPtr} d_flag */
+/** C ref: sfbase.c:922 — @param {CPtr<struct flag>} d_flag */
 export function norm_ptrs_flag(d_flag) {
 }
 
-/** C ref: sfbase.c:927 — @param {CPtr} d_fruit */
+/** C ref: sfbase.c:927 — @param {CPtr<struct fruit>} d_fruit */
 export function norm_ptrs_fruit(d_fruit) {
 }
 
-/** C ref: sfbase.c:932 — @param {CPtr} d_gamelog_line */
+/** C ref: sfbase.c:932 — @param {CPtr<struct gamelog_line>} d_gamelog_line */
 export function norm_ptrs_gamelog_line(d_gamelog_line) {
 }
 
-/** C ref: sfbase.c:937 — @param {CPtr} d_kinfo */
+/** C ref: sfbase.c:937 — @param {CPtr<struct kinfo>} d_kinfo */
 export function norm_ptrs_kinfo(d_kinfo) {
 }
 
-/** C ref: sfbase.c:942 — @param {CPtr} d_levelflags */
+/** C ref: sfbase.c:942 — @param {CPtr<struct levelflags>} d_levelflags */
 export function norm_ptrs_levelflags(d_levelflags) {
 }
 
-/** C ref: sfbase.c:947 — @param {CPtr} d_linfo */
+/** C ref: sfbase.c:947 — @param {CPtr<struct linfo>} d_linfo */
 export function norm_ptrs_linfo(d_linfo) {
 }
 
-/** C ref: sfbase.c:952 — @param {CPtr} d_ls_t */
+/** C ref: sfbase.c:952 — @param {CPtr<struct ls_t>} d_ls_t */
 export function norm_ptrs_ls_t(d_ls_t) {
 }
 
-/** C ref: sfbase.c:957 — @param {CPtr} d_mapseen_feat */
+/** C ref: sfbase.c:957 — @param {CPtr<struct mapseen_feat>} d_mapseen_feat */
 export function norm_ptrs_mapseen_feat(d_mapseen_feat) {
 }
 
-/** C ref: sfbase.c:962 — @param {CPtr} d_mapseen_flags */
+/** C ref: sfbase.c:962 — @param {CPtr<struct mapseen_flags>} d_mapseen_flags */
 export function norm_ptrs_mapseen_flags(d_mapseen_flags) {
 }
 
-/** C ref: sfbase.c:967 — @param {CPtr} d_mapseen_rooms */
+/** C ref: sfbase.c:967 — @param {CPtr<struct mapseen_rooms>} d_mapseen_rooms */
 export function norm_ptrs_mapseen_rooms(d_mapseen_rooms) {
 }
 
-/** C ref: sfbase.c:972 — @param {CPtr} d_mapseen */
+/** C ref: sfbase.c:972 — @param {CPtr<struct mapseen>} d_mapseen */
 export function norm_ptrs_mapseen(d_mapseen) {
 }
 
-/** C ref: sfbase.c:977 — @param {CPtr} d_mextra */
+/** C ref: sfbase.c:977 — @param {CPtr<struct mextra>} d_mextra */
 export function norm_ptrs_mextra(d_mextra) {
 }
 
-/** C ref: sfbase.c:982 — @param {CPtr} d_mkroom */
+/** C ref: sfbase.c:982 — @param {CPtr<struct mkroom>} d_mkroom */
 export function norm_ptrs_mkroom(d_mkroom) {
 }
 
-/** C ref: sfbase.c:987 — @param {CPtr} d_monst */
+/** C ref: sfbase.c:987 — @param {CPtr<struct monst>} d_monst */
 export function norm_ptrs_monst(d_monst) {
 }
 
-/** C ref: sfbase.c:992 — @param {CPtr} d_mvitals */
+/** C ref: sfbase.c:992 — @param {CPtr<struct mvitals>} d_mvitals */
 export function norm_ptrs_mvitals(d_mvitals) {
 }
 
-/** C ref: sfbase.c:997 — @param {CPtr} d_nhcoord */
+/** C ref: sfbase.c:997 — @param {CPtr<struct nhcoord>} d_nhcoord */
 export function norm_ptrs_nhcoord(d_nhcoord) {
 }
 
-/** C ref: sfbase.c:1002 — @param {CPtr} d_nhrect */
+/** C ref: sfbase.c:1002 — @param {CPtr<struct nhrect>} d_nhrect */
 export function norm_ptrs_nhrect(d_nhrect) {
 }
 
-/** C ref: sfbase.c:1007 — @param {CPtr} d_novel_tracking */
+/** C ref: sfbase.c:1007 — @param {CPtr<struct novel_tracking>} d_novel_tracking */
 export function norm_ptrs_novel_tracking(d_novel_tracking) {
 }
 
-/** C ref: sfbase.c:1012 — @param {CPtr} d_obj */
+/** C ref: sfbase.c:1012 — @param {CPtr<struct obj>} d_obj */
 export function norm_ptrs_obj(d_obj) {
 }
 
-/** C ref: sfbase.c:1017 — @param {CPtr} d_objclass */
+/** C ref: sfbase.c:1017 — @param {CPtr<struct objclass>} d_objclass */
 export function norm_ptrs_objclass(d_objclass) {
 }
 
-/** C ref: sfbase.c:1022 — @param {CPtr} d_oextra */
+/** C ref: sfbase.c:1022 — @param {CPtr<struct oextra>} d_oextra */
 export function norm_ptrs_oextra(d_oextra) {
 }
 
-/** C ref: sfbase.c:1027 — @param {CPtr} d_prop */
+/** C ref: sfbase.c:1027 — @param {CPtr<struct prop>} d_prop */
 export function norm_ptrs_prop(d_prop) {
 }
 
-/** C ref: sfbase.c:1032 — @param {CPtr} d_q_score */
+/** C ref: sfbase.c:1032 — @param {CPtr<struct q_score>} d_q_score */
 export function norm_ptrs_q_score(d_q_score) {
 }
 
-/** C ref: sfbase.c:1037 — @param {CPtr} d_rm */
+/** C ref: sfbase.c:1037 — @param {CPtr<struct rm>} d_rm */
 export function norm_ptrs_rm(d_rm) {
 }
 
-/** C ref: sfbase.c:1042 — @param {CPtr} d_s_level */
+/** C ref: sfbase.c:1042 — @param {CPtr<struct s_level>} d_s_level */
 export function norm_ptrs_s_level(d_s_level) {
 }
 
-/** C ref: sfbase.c:1047 — @param {CPtr} d_skills */
+/** C ref: sfbase.c:1047 — @param {CPtr<struct skills>} d_skills */
 export function norm_ptrs_skills(d_skills) {
 }
 
-/** C ref: sfbase.c:1052 — @param {CPtr} d_spell */
+/** C ref: sfbase.c:1052 — @param {CPtr<struct spell>} d_spell */
 export function norm_ptrs_spell(d_spell) {
 }
 
-/** C ref: sfbase.c:1057 — @param {CPtr} d_stairway */
+/** C ref: sfbase.c:1057 — @param {CPtr<struct stairway>} d_stairway */
 export function norm_ptrs_stairway(d_stairway) {
 }
 
-/** C ref: sfbase.c:1062 — @param {CPtr} d_trap */
+/** C ref: sfbase.c:1062 — @param {CPtr<struct trap>} d_trap */
 export function norm_ptrs_trap(d_trap) {
 }
 
-/** C ref: sfbase.c:1067 — @param {CPtr} d_u_conduct */
+/** C ref: sfbase.c:1067 — @param {CPtr<struct u_conduct>} d_u_conduct */
 export function norm_ptrs_u_conduct(d_u_conduct) {
 }
 
-/** C ref: sfbase.c:1072 — @param {CPtr} d_u_event */
+/** C ref: sfbase.c:1072 — @param {CPtr<struct u_event>} d_u_event */
 export function norm_ptrs_u_event(d_u_event) {
 }
 
-/** C ref: sfbase.c:1077 — @param {CPtr} d_u_have */
+/** C ref: sfbase.c:1077 — @param {CPtr<struct u_have>} d_u_have */
 export function norm_ptrs_u_have(d_u_have) {
 }
 
-/** C ref: sfbase.c:1082 — @param {CPtr} d_u_realtime */
+/** C ref: sfbase.c:1082 — @param {CPtr<struct u_realtime>} d_u_realtime */
 export function norm_ptrs_u_realtime(d_u_realtime) {
 }
 
-/** C ref: sfbase.c:1087 — @param {CPtr} d_u_roleplay */
+/** C ref: sfbase.c:1087 — @param {CPtr<struct u_roleplay>} d_u_roleplay */
 export function norm_ptrs_u_roleplay(d_u_roleplay) {
 }
 
-/** C ref: sfbase.c:1092 — @param {CPtr} d_version_info */
+/** C ref: sfbase.c:1092 — @param {CPtr<struct version_info>} d_version_info */
 export function norm_ptrs_version_info(d_version_info) {
 }
 
-/** C ref: sfbase.c:1097 — @param {CPtr} d_vlaunchinfo */
+/** C ref: sfbase.c:1097 — @param {CPtr<union vlaunchinfo>} d_vlaunchinfo */
 export function norm_ptrs_vlaunchinfo(d_vlaunchinfo) {
 }
 
-/** C ref: sfbase.c:1102 — @param {CPtr} d_vptrs */
+/** C ref: sfbase.c:1102 — @param {CPtr<union vptrs>} d_vptrs */
 export function norm_ptrs_vptrs(d_vptrs) {
 }
 
-/** C ref: sfbase.c:1107 — @param {CPtr} d_you */
+/** C ref: sfbase.c:1107 — @param {CPtr<struct you>} d_you */
 export function norm_ptrs_you(d_you) {
 }
 

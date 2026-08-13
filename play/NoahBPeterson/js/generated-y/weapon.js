@@ -14,6 +14,7 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { bimanual, greatest_erosion, is_ammo, is_axe, is_graystone, is_pick, is_plural, is_spear, is_weptool, is_wet_towel, touch_petrifies } from './nhmacrofn.js';
+import { d_at, rn2_at, rnd_at } from './nhrng.js';
 import { Upolyd, create_nhwindow, destroy_nhwindow, end_menu, start_menu, wizard } from './nhprop.js';
 import { You, You_feel, Your, impossible, pline, pline_mon } from './pline.js';
 import { handle_tip } from './hack.js';
@@ -24,7 +25,6 @@ import { The, Tobjnam, Yname2, Yobjnam2, distant_name, doname, makeplural, makes
 import { Resists_Elem, attacktype, mon_hates_blessings, mon_hates_silver, pronoun_gender } from './mondata.js';
 import { is_pool } from './dbridge.js';
 import { artifact_light, is_art, shade_glare, spec_abon, spec_dbon, touch_artifact, undiscovered_artifact } from './artifact.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { mons } from './monst.js';
 import { bypass_obj, which_armor } from './worn.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -75,9 +75,13 @@ const $Gender_his = FLD.Gender_his, $Role_mnum = FLD.Role_mnum, $Role_petnum = F
     $objclass_oc_weight = FLD.objclass_oc_weight, $objclass_oc_wldam = FLD.objclass_oc_wldam,
     $objclass_oc_wsdam = FLD.objclass_oc_wsdam, $permonst_mflags1 = FLD.permonst_mflags1,
     $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
-    $permonst_msize = FLD.permonst_msize, $skill_range_last = FLD.skill_range_last,
-    $skill_range_name = FLD.skill_range_name, $skills_advance = FLD.skills_advance,
-    $skills_max_skill = FLD.skills_max_skill,
+    $permonst_msize = FLD.permonst_msize, $sizeof_Gender = FLD.sizeof_Gender,
+    $sizeof_class_sym = FLD.sizeof_class_sym, $sizeof_menu_item = FLD.sizeof_menu_item,
+    $sizeof_objclass = FLD.sizeof_objclass, $sizeof_objdescr = FLD.sizeof_objdescr,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_skill_range = FLD.sizeof_skill_range,
+    $sizeof_skills = FLD.sizeof_skills, $sizeof_throw_and_return_weapon = FLD.sizeof_throw_and_return_weapon,
+    $skill_range_last = FLD.skill_range_last, $skill_range_name = FLD.skill_range_name,
+    $skills_advance = FLD.skills_advance, $skills_max_skill = FLD.skills_max_skill,
     $throw_and_return_weapon_range = FLD.throw_and_return_weapon_range,
     $throw_and_return_weapon_tethered = FLD.throw_and_return_weapon_tethered,
     $u_roleplay_pauper = FLD.u_roleplay_pauper,
@@ -91,114 +95,114 @@ const $Gender_his = FLD.Gender_his, $Role_mnum = FLD.Role_mnum, $Role_petnum = F
     $you_weapon_skills = FLD.you_weapon_skills, $you_weapon_slots = FLD.you_weapon_slots;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("no skill");
-const __sl1 = cptr.lit("bare hands");
-const __sl2 = cptr.lit("two weapon combat");
-const __sl3 = cptr.lit("riding");
-const __sl4 = cptr.lit("polearms");
-const __sl5 = cptr.lit("saber");
-const __sl6 = cptr.lit("hammer");
-const __sl7 = cptr.lit("whip");
-const __sl8 = cptr.lit("attack spells");
-const __sl9 = cptr.lit("healing spells");
-const __sl10 = cptr.lit("divination spells");
-const __sl11 = cptr.lit("enchantment spells");
-const __sl12 = cptr.lit("clerical spells");
-const __sl13 = cptr.lit("escape spells");
-const __sl14 = cptr.lit("matter spells");
-const __sl15 = cptr.lit("bare handed combat");
-const __sl16 = cptr.lit("martial arts");
-const __sl17 = cptr.lit("more confident in your %sskills.");
-const __sl18 = cptr.lit("");
-const __sl19 = cptr.lit("weapon ");
-const __sl20 = cptr.lit("spell casting ");
-const __sl21 = cptr.lit("fighting ");
-const __sl22 = cptr.lit("glob");
-const __sl23 = cptr.lit("stone");
-const __sl24 = cptr.lit("gem");
-const __sl25 = cptr.lit("arrow");
-const __sl26 = cptr.lit("bolt");
-const __sl27 = cptr.lit("hook");
-const __sl28 = cptr.lit("mattock");
-const __sl29 = cptr.lit("weapon.c");
-const __sl30 = cptr.lit("dmgval");
-const __sl31 = cptr.lit("special_dmgval");
-const __sl32 = cptr.lit("ring%s");
-const __sl33 = cptr.lit("s");
-const __sl34 = cptr.lit("%s%s %s %s!");
-const __sl35 = cptr.lit("silver ");
-const __sl36 = cptr.lit("left ");
-const __sl37 = cptr.lit("right ");
-const __sl38 = cptr.lit("sear");
-const __sl39 = cptr.lit("%s drops %s.");
-const __sl40 = cptr.lit("drop");
-const __sl41 = cptr.lit("weapon_check %d for %s?");
-const __sl42 = cptr.lit("%s welded to %s %s");
-const __sl43 = cptr.lit("are");
-const __sl44 = cptr.lit("Since %s weapon%s %s,");
-const __sl45 = cptr.lit("%s cannot wield that %s.");
-const __sl46 = cptr.lit("%s tries to wield %s.");
-const __sl47 = cptr.lit("%s %s!");
-const __sl48 = cptr.lit("%s wields %s%c");
-const __sl49 = cptr.lit("%s secures the tether on %s.");
-const __sl50 = cptr.lit("%s %s to %s %s!");
-const __sl51 = cptr.lit("weld");
-const __sl52 = cptr.lit("themselves");
-const __sl53 = cptr.lit("itself");
-const __sl54 = cptr.lit("%s %s in %s %s!");
-const __sl55 = cptr.lit("shine");
-const __sl56 = cptr.lit("Light begins shining %s.");
-const __sl57 = cptr.lit("nearby");
-const __sl58 = cptr.lit("in the distance");
-const __sl59 = cptr.lit("damp");
-const __sl60 = cptr.lit("damper");
-const __sl61 = cptr.lit("wet");
-const __sl62 = cptr.lit("wetter");
-const __sl63 = cptr.lit("%s gets %s.");
-const __sl64 = cptr.lit("%s %s gets %s.");
-const __sl65 = cptr.lit("%s dries%s.");
-const __sl66 = cptr.lit(" out");
-const __sl67 = cptr.lit("%s %s dries%s.");
-const __sl68 = cptr.lit("Unskilled");
-const __sl69 = cptr.lit("Basic");
-const __sl70 = cptr.lit("Skilled");
-const __sl71 = cptr.lit("Expert");
-const __sl72 = cptr.lit("Master");
-const __sl73 = cptr.lit("Grand Master");
-const __sl74 = cptr.lit("Unknown");
-const __sl75 = cptr.lit("are now %s skilled in %s.");
-const __sl76 = cptr.lit("most");
-const __sl77 = cptr.lit("more");
-const __sl78 = cptr.lit("Fighting Skills");
-const __sl79 = cptr.lit("Weapon Skills");
-const __sl80 = cptr.lit("Spellcasting Skills");
-const __sl81 = cptr.lit("add_skills_to_menu");
-const __sl82 = cptr.lit("  * ");
-const __sl83 = cptr.lit("  # ");
-const __sl84 = cptr.lit("    ");
-const __sl85 = cptr.lit(" %s%-*s %-12s %5d(%4d)");
-const __sl86 = cptr.lit(" %s%s\t%s\t%5d(%4d)");
-const __sl87 = cptr.lit(" %s %-*s [%s]");
-const __sl88 = cptr.lit(" %s%s\t[%s]");
-const __sl89 = cptr.lit("Skills:");
-const __sl90 = cptr.lit("Advance skills without practice?");
-const __sl91 = cptr.lit("(Skill%s flagged by \"*\" may be enhanced %s.)");
-const __sl92 = cptr.lit("when you're more experienced");
-const __sl93 = cptr.lit("if skill slots become available");
-const __sl94 = cptr.lit("(Skill%s flagged by \"#\" cannot be enhanced any further.)");
-const __sl95 = cptr.lit("Pick a skill to advance:");
-const __sl96 = cptr.lit("Current skills:");
-const __sl97 = cptr.lit("  (%d slot%s available)");
-const __sl98 = cptr.lit("you could be more dangerous!");
-const __sl99 = cptr.lit("lose_weapon_skill (%d)");
-const __sl100 = cptr.lit("drain_weapon_skill");
-const __sl101 = cptr.lit("drain_weapon_skill (%d)");
-const __sl102 = cptr.lit("forget %syour training in %s.");
-const __sl103 = cptr.lit("some of ");
-const __sl104 = cptr.lit("weapon_dam_bonus: bad skill %d");
-const __sl105 = cptr.lit("skill_init: curr > max: %s");
-const __sl106 = cptr.lit("%s in %s %s %s shining.");
-const __sl107 = cptr.lit("stop");
+const __s_no_skill = cptr.lit("no skill");
+const __s_bare_hands = cptr.lit("bare hands");
+const __s_two_weapon_combat = cptr.lit("two weapon combat");
+const __s_riding = cptr.lit("riding");
+const __s_polearms = cptr.lit("polearms");
+const __s_saber = cptr.lit("saber");
+const __s_hammer = cptr.lit("hammer");
+const __s_whip = cptr.lit("whip");
+const __s_attack_spells = cptr.lit("attack spells");
+const __s_healing_spells = cptr.lit("healing spells");
+const __s_divination_spells = cptr.lit("divination spells");
+const __s_enchantment_spells = cptr.lit("enchantment spells");
+const __s_clerical_spells = cptr.lit("clerical spells");
+const __s_escape_spells = cptr.lit("escape spells");
+const __s_matter_spells = cptr.lit("matter spells");
+const __s_bare_handed_combat = cptr.lit("bare handed combat");
+const __s_martial_arts = cptr.lit("martial arts");
+const __s_more_confident_in_your_sskills = cptr.lit("more confident in your %sskills.");
+const __s_empty = cptr.lit("");
+const __s_weapon = cptr.lit("weapon ");
+const __s_spell_casting = cptr.lit("spell casting ");
+const __s_fighting = cptr.lit("fighting ");
+const __s_glob = cptr.lit("glob");
+const __s_stone = cptr.lit("stone");
+const __s_gem = cptr.lit("gem");
+const __s_arrow = cptr.lit("arrow");
+const __s_bolt = cptr.lit("bolt");
+const __s_hook = cptr.lit("hook");
+const __s_mattock = cptr.lit("mattock");
+const __s_weapon_c = cptr.lit("weapon.c");
+const __s_dmgval = cptr.lit("dmgval");
+const __s_special_dmgval = cptr.lit("special_dmgval");
+const __s_ring_s = cptr.lit("ring%s");
+const __s_s = cptr.lit("s");
+const __s_s_s_s_s = cptr.lit("%s%s %s %s!");
+const __s_silver = cptr.lit("silver ");
+const __s_left = cptr.lit("left ");
+const __s_right = cptr.lit("right ");
+const __s_sear = cptr.lit("sear");
+const __s_s_drops_s = cptr.lit("%s drops %s.");
+const __s_drop = cptr.lit("drop");
+const __s_weapon_check_d_for_s = cptr.lit("weapon_check %d for %s?");
+const __s_s_welded_to_s_s = cptr.lit("%s welded to %s %s");
+const __s_are = cptr.lit("are");
+const __s_since_s_weapon_s_s = cptr.lit("Since %s weapon%s %s,");
+const __s_s_cannot_wield_that_s = cptr.lit("%s cannot wield that %s.");
+const __s_s_tries_to_wield_s = cptr.lit("%s tries to wield %s.");
+const __s_s_s = cptr.lit("%s %s!");
+const __s_s_wields_s_c = cptr.lit("%s wields %s%c");
+const __s_s_secures_the_tether_on_s = cptr.lit("%s secures the tether on %s.");
+const __s_s_s_to_s_s = cptr.lit("%s %s to %s %s!");
+const __s_weld = cptr.lit("weld");
+const __s_themselves = cptr.lit("themselves");
+const __s_itself = cptr.lit("itself");
+const __s_s_s_in_s_s = cptr.lit("%s %s in %s %s!");
+const __s_shine = cptr.lit("shine");
+const __s_light_begins_shining_s = cptr.lit("Light begins shining %s.");
+const __s_nearby = cptr.lit("nearby");
+const __s_in_the_distance = cptr.lit("in the distance");
+const __s_damp = cptr.lit("damp");
+const __s_damper = cptr.lit("damper");
+const __s_wet = cptr.lit("wet");
+const __s_wetter = cptr.lit("wetter");
+const __s_s_gets_s = cptr.lit("%s gets %s.");
+const __s_s_s_gets_s = cptr.lit("%s %s gets %s.");
+const __s_s_dries_s = cptr.lit("%s dries%s.");
+const __s_out = cptr.lit(" out");
+const __s_s_s_dries_s = cptr.lit("%s %s dries%s.");
+const __s_unskilled = cptr.lit("Unskilled");
+const __s_basic = cptr.lit("Basic");
+const __s_skilled = cptr.lit("Skilled");
+const __s_expert = cptr.lit("Expert");
+const __s_master = cptr.lit("Master");
+const __s_grand_master = cptr.lit("Grand Master");
+const __s_unknown = cptr.lit("Unknown");
+const __s_are_now_s_skilled_in_s = cptr.lit("are now %s skilled in %s.");
+const __s_most = cptr.lit("most");
+const __s_more = cptr.lit("more");
+const __s_fighting_skills = cptr.lit("Fighting Skills");
+const __s_weapon_skills = cptr.lit("Weapon Skills");
+const __s_spellcasting_skills = cptr.lit("Spellcasting Skills");
+const __s_add_skills_to_menu = cptr.lit("add_skills_to_menu");
+const __s_sp2_star_sp = cptr.lit("  * ");
+const __s_sp2_hash_sp = cptr.lit("  # ");
+const __s_sp4 = cptr.lit("    ");
+const __s_s_s_12s_5d_4d = cptr.lit(" %s%-*s %-12s %5d(%4d)");
+const __s_s_s_s_5d_4d = cptr.lit(" %s%s\t%s\t%5d(%4d)");
+const __s_s_s_s = cptr.lit(" %s %-*s [%s]");
+const __s_s_s_s__2 = cptr.lit(" %s%s\t[%s]");
+const __s_skills = cptr.lit("Skills:");
+const __s_advance_skills_without_practice = cptr.lit("Advance skills without practice?");
+const __s_skill_s_flagged_by_may_be_enhanced_s = cptr.lit("(Skill%s flagged by \"*\" may be enhanced %s.)");
+const __s_when_you_re_more_experienced = cptr.lit("when you're more experienced");
+const __s_if_skill_slots_become_available = cptr.lit("if skill slots become available");
+const __s_skill_s_flagged_by_cannot_be_enhanced = cptr.lit("(Skill%s flagged by \"#\" cannot be enhanced any further.)");
+const __s_pick_a_skill_to_advance = cptr.lit("Pick a skill to advance:");
+const __s_current_skills = cptr.lit("Current skills:");
+const __s_d_slot_s_available = cptr.lit("  (%d slot%s available)");
+const __s_you_could_be_more_dangerous = cptr.lit("you could be more dangerous!");
+const __s_lose_weapon_skill_d = cptr.lit("lose_weapon_skill (%d)");
+const __s_drain_weapon_skill = cptr.lit("drain_weapon_skill");
+const __s_drain_weapon_skill_d = cptr.lit("drain_weapon_skill (%d)");
+const __s_forget_syour_training_in_s = cptr.lit("forget %syour training in %s.");
+const __s_some_of = cptr.lit("some of ");
+const __s_weapon_dam_bonus_bad_skill_d = cptr.lit("weapon_dam_bonus: bad skill %d");
+const __s_skill_init_curr_max_s = cptr.lit("skill_init: curr > max: %s");
+const __s_s_in_s_s_s_shining = cptr.lit("%s in %s %s %s shining.");
+const __s_stop = cptr.lit("stop");
 
 /** C ref: weapon.c:38 — short[38] */
 const skill_names_indices = cptr.alloc(38 * 2);
@@ -241,65 +245,80 @@ cptr.stI16o(skill_names_indices, 70, -1);
 cptr.stI16o(skill_names_indices, 72, -2);
 cptr.stI16o(skill_names_indices, 74, -3);
 
+/* note: entry [0] isn't used */
 /** C ref: weapon.c:52 — char *[15] */
 const odd_skill_names = cptr.alloc(15 * 8);
-cptr.stPtro(odd_skill_names, 0, __sl0);
-cptr.stPtro(odd_skill_names, 8, __sl1);
-cptr.stPtro(odd_skill_names, 16, __sl2);
-cptr.stPtro(odd_skill_names, 24, __sl3);
-cptr.stPtro(odd_skill_names, 32, __sl4);
-cptr.stPtro(odd_skill_names, 40, __sl5);
-cptr.stPtro(odd_skill_names, 48, __sl6);
-cptr.stPtro(odd_skill_names, 56, __sl7);
-cptr.stPtro(odd_skill_names, 64, __sl8);
-cptr.stPtro(odd_skill_names, 72, __sl9);
-cptr.stPtro(odd_skill_names, 80, __sl10);
-cptr.stPtro(odd_skill_names, 88, __sl11);
-cptr.stPtro(odd_skill_names, 96, __sl12);
-cptr.stPtro(odd_skill_names, 104, __sl13);
-cptr.stPtro(odd_skill_names, 112, __sl14);
+cptr.stPtro(odd_skill_names, 0, __s_no_skill);
+cptr.stPtro(odd_skill_names, 8, __s_bare_hands);
+cptr.stPtro(odd_skill_names, 16, __s_two_weapon_combat);
+cptr.stPtro(odd_skill_names, 24, __s_riding);
+cptr.stPtro(odd_skill_names, 32, __s_polearms);
+cptr.stPtro(odd_skill_names, 40, __s_saber);
+cptr.stPtro(odd_skill_names, 48, __s_hammer);
+cptr.stPtro(odd_skill_names, 56, __s_whip);
+cptr.stPtro(odd_skill_names, 64, __s_attack_spells);
+cptr.stPtro(odd_skill_names, 72, __s_healing_spells);
+cptr.stPtro(odd_skill_names, 80, __s_divination_spells);
+cptr.stPtro(odd_skill_names, 88, __s_enchantment_spells);
+cptr.stPtro(odd_skill_names, 96, __s_clerical_spells);
+cptr.stPtro(odd_skill_names, 104, __s_escape_spells);
+cptr.stPtro(odd_skill_names, 112, __s_matter_spells);
 
+/* indexed via is_martial() */
 /** C ref: weapon.c:59 — char *[2] */
 const barehands_or_martial = cptr.alloc(2 * 8);
-cptr.stPtro(barehands_or_martial, 0, __sl15);
-cptr.stPtro(barehands_or_martial, 8, __sl16);
+cptr.stPtro(barehands_or_martial, 0, __s_bare_handed_combat);
+cptr.stPtro(barehands_or_martial, 8, __s_martial_arts);
 
+/* targets that provide attacker with small to-hit bonus when using a spear */
 /** C ref: weapon.c:71 — char[6] */
 const kebabable = [NHC.S_XORN, NHC.S_DRAGON, NHC.S_JABBERWOCK, NHC.S_NAGA, NHC.S_GIANT, 0];
 
 /** C ref: weapon.c:76 — @param {CInt} skill */
 function* give_may_advance_msg(skill) {
-    (yield* You_feel(__sl17, (skill == NHC.P_NONE) ? __sl18 : ((skill <= NHC.P_UNICORN_HORN) ? __sl19 : ((skill <= NHC.P_MATTER_SPELL) ? __sl20 : __sl21))));
+    (yield* You_feel(__s_more_confident_in_your_sskills, (skill == NHC.P_NONE) ? __s_empty : ((skill <= NHC.P_UNICORN_HORN) ? __s_weapon : ((skill <= NHC.P_MATTER_SPELL) ? __s_spell_casting : __s_fighting))));
     void (yield* handle_tip(NHC.TIP_ENHANCE));
 }
 
-/** C ref: weapon.c:90 — @param {CPtr} obj @returns {CPtr} */
+/* weapon's skill category name for use as generalized description of weapon;
+   mostly used to shorten "you drop your <weapon>" messages when slippery
+   fingers or polymorph causes hero to involuntarily drop wielded weapon(s) */
+/** C ref: weapon.c:90 — @param {CPtr<struct obj>} obj @returns {CPtr<char>} */
 export function* weapon_descr(obj) {
     let skill = weapon_type(obj);
-    let descr = ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
+    let descr = ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
+
+    /* assorted special cases */
     switch (skill) {
         case NHC.P_NONE:
-        descr = (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN || cptr.ldI16o(obj, $obj_otyp) == NHC.EGG || cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE || cptr.ldI16o(obj, $obj_otyp) == NHC.BOULDER || cptr.ldI16o(obj, $obj_otyp) == NHC.TOWEL || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN_OPENER) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(obj, $obj_otyp), 120))), 16)) : ((cptr.ldI32o(obj, $obj_globby) & 1) | 0 ? __sl22 : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, $obj_oclass), 24, $class_sym_name));
+        /* not a weapon or weptool: use item class name;
+           override class name for things where it sounds strange and
+           for things that aren't unexpected to find being wielded:
+           corpses, tins, eggs, and globs avoid "food",
+           statues and boulders avoid "large rock",
+           and towels and tin openers avoid "tool" */
+        descr = (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN || cptr.ldI16o(obj, $obj_otyp) == NHC.EGG || cptr.ldI16o(obj, $obj_otyp) == NHC.STATUE || cptr.ldI16o(obj, $obj_otyp) == NHC.BOULDER || cptr.ldI16o(obj, $obj_otyp) == NHC.TOWEL || cptr.ldI16o(obj, $obj_otyp) == NHC.TIN_OPENER) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass))), $sizeof_objdescr)) : ((cptr.ldI32o(obj, $obj_globby) & 1) | 0 ? __s_glob : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, $obj_oclass), $sizeof_class_sym, $class_sym_name));
         break;
         case NHC.P_SLING:
         if (is_ammo(obj))
-            descr = (cptr.ldI16o(obj, $obj_otyp) == NHC.ROCK || is_graystone(obj)) ? __sl23 : ((cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS) ? __sl24 : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, $obj_oclass), 24, $class_sym_name));
+            descr = (cptr.ldI16o(obj, $obj_otyp) == NHC.ROCK || is_graystone(obj)) ? __s_stone : ((cptr.ld1so(obj, $obj_oclass) == NHC.GEM_CLASS) ? __s_gem : cptr.ldPtro2(def_oc_syms, cptr.ld1so(obj, $obj_oclass), $sizeof_class_sym, $class_sym_name));
         break;
         case NHC.P_BOW:
         if (is_ammo(obj))
-            descr = __sl25;
+            descr = __s_arrow;
         break;
         case NHC.P_CROSSBOW:
         if (is_ammo(obj))
-            descr = __sl26;
+            descr = __s_bolt;
         break;
         case NHC.P_FLAIL:
         if (cptr.ldI16o(obj, $obj_otyp) == NHC.GRAPPLING_HOOK)
-            descr = __sl27;
+            descr = __s_hook;
         break;
         case NHC.P_PICK_AXE:
+        /* even if "dwarvish mattock" hasn't been discovered yet */
         if (cptr.ldI16o(obj, $obj_otyp) == NHC.DWARVISH_MATTOCK)
-            descr = __sl28;
+            descr = __s_mattock;
         break;
         default:
         break;
@@ -307,42 +326,89 @@ export function* weapon_descr(obj) {
     return (yield* makesingular(descr));
 }
 
-/** C ref: weapon.c:149 — @param {CPtr} otmp @param {CPtr} mon @returns {CInt} */
+/*
+ *      hitval returns an integer representing the "to hit" bonuses
+ *      of "otmp" against the monster.
+ */
+/** C ref: weapon.c:149 — @param {CPtr<struct obj>} otmp @param {CPtr<struct monst>} mon @returns {CInt} */
 export function* hitval(otmp, mon) {
     let tmp = 0;
     let ptr = cptr.ldPtro(mon, $monst_data);
     let Is_weapon = schar((cptr.ld1so(otmp, $obj_oclass) == NHC.WEAPON_CLASS || is_weptool(otmp) ? 1 : 0));
+
     if (Is_weapon)
         tmp = (tmp + cptr.ld1so(otmp, $obj_spe)) | 0;
-    tmp = (tmp + cptr.ld1so2(objects, cptr.ldI16o(otmp, $obj_otyp), 120, $objclass_oc_oc1)) | 0;
+
+    /* Put weapon-specific "to hit" bonuses in below: */
+    tmp = (tmp + cptr.ld1so2(objects, cptr.ldI16o(otmp, $obj_otyp), $sizeof_objclass, $objclass_oc_oc1)) | 0;
+
+    /* Put weapon vs. monster type "to hit" bonuses in below: */
+
+    /* Blessed weapons used against undead or demons */
     if (Is_weapon && (cptr.ldI32o(otmp, $obj_blessed) & 1) | 0 && mon_hates_blessings(mon))
         tmp = (tmp + 2) | 0;
+
     if (is_spear(otmp) && cptr.strchr(cptr.decay(kebabable), cptr.ld1so(ptr, $permonst_mlet)))
         tmp = (tmp + 2) | 0;
+
+    /* trident is highly effective against swimmers */
     if (cptr.ldI16o(otmp, $obj_otyp) == NHC.TRIDENT && ((cptr.ldU64o((ptr), $permonst_mflags1) & 2n) != 0n)) {
         if (is_pool(cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my)))
             tmp = (tmp + 4) | 0;
         else if (cptr.ld1so(ptr, $permonst_mlet) == NHC.S_EEL || cptr.ld1so(ptr, $permonst_mlet) == NHC.S_SNAKE)
             tmp = (tmp + 2) | 0;
     }
+
+    /* Picks used against xorns and earth elementals */
     if (is_pick(otmp) && (((cptr.ldU64o((ptr), $permonst_mflags1) & 8n) != 0n) && ((cptr.ldU64o((ptr), $permonst_mflags1) & 2097152n) != 0n)))
         tmp = (tmp + 2) | 0;
+
+    /* Check specially named weapon "to hit" bonuses */
     if (cptr.ld1so(otmp, $obj_oartifact))
         tmp = (tmp + (yield* spec_abon(otmp, mon))) | 0;
+
     return tmp;
 }
 
-/** C ref: weapon.c:216 — @param {CPtr} otmp @param {CPtr} mon @returns {CInt} */
+/* Historical note: The original versions of Hack used a range of damage
+ * which was similar to, but not identical to, the damage used in Advanced
+ * Dungeons and Dragons.  I figured that since it was so close, I may as well
+ * make it exactly the same as AD&D, adding some more weapons in the process.
+ * This has the advantage that it is at least possible that the player would
+ * already know the damage of at least some of the weapons.  This was circa
+ * 1987 and I used the table from Unearthed Arcana until I got tired of typing
+ * them in (leading to something of an imbalance towards weapons early in
+ * alphabetical order).  The data structure still doesn't include fields that
+ * fully allow the appropriate damage to be described (there's no way to say
+ * 3d6 or 1d6+1) so we add on the extra damage in dmgval() if the weapon
+ * doesn't do an exact die of damage.
+ *
+ * Of course new weapons were added later in the development of Nethack.  No
+ * AD&D consistency was kept, but most of these don't exist in AD&D anyway.
+ *
+ * Second edition AD&D came out a few years later; luckily it used the same
+ * table.  As of this writing (1999), third edition is in progress but not
+ * released.  Let's see if the weapon table stays the same.  --KAA
+ * October 2000: It didn't.  Oh, well.
+ */
+
+/*
+ *      dmgval returns an integer representing the damage bonuses
+ *      of "otmp" against the monster.
+ */
+/** C ref: weapon.c:216 — @param {CPtr<struct obj>} otmp @param {CPtr<struct monst>} mon @returns {CInt} */
 export function* dmgval(otmp, mon) {
     let tmp = 0;
     let otyp = cptr.ldI16o(otmp, $obj_otyp);
     let ptr = cptr.ldPtro(mon, $monst_data);
     let Is_weapon = schar((cptr.ld1so(otmp, $obj_oclass) == NHC.WEAPON_CLASS || is_weptool(otmp) ? 1 : 0));
+
     if (otyp == NHC.CREAM_PIE)
         return 0;
+
     if ((cptr.ld1uo((ptr), $permonst_msize) >= NHM.MZ_LARGE)) {
-        if (cptr.ld1so2(objects, otyp, 120, $objclass_oc_wldam))
-            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 227, __sl30), rnd(cptr.ld1so2(objects, otyp, 120, $objclass_oc_wldam))) : rnd(cptr.ld1so2(objects, otyp, 120, $objclass_oc_wldam)));
+        if (cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_wldam))
+            tmp = rnd_at(__s_weapon_c, 227, __s_dmgval, cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_wldam));
         switch (otyp) {
             case NHC.IRON_CHAIN:
             case NHC.CROSSBOW_BOLT:
@@ -356,27 +422,27 @@ export function* dmgval(otmp, mon) {
             case NHC.FLAIL:
             case NHC.RANSEUR:
             case NHC.VOULGE:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 242, __sl30), rnd(4)) : rnd(4))) | 0;
+            tmp = (tmp + rnd_at(__s_weapon_c, 242, __s_dmgval, 4)) | 0;
             break;
             case NHC.ACID_VENOM:
             case NHC.HALBERD:
             case NHC.SPETUM:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 248, __sl30), rnd(6)) : rnd(6))) | 0;
+            tmp = (tmp + rnd_at(__s_weapon_c, 248, __s_dmgval, 6)) | 0;
             break;
             case NHC.BATTLE_AXE:
             case NHC.BARDICHE:
             case NHC.TRIDENT:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 254, __sl30), d(2, 4)) : d(2, 4))) | 0;
+            tmp = (tmp + d_at(__s_weapon_c, 254, __s_dmgval, 2, 4)) | 0;
             break;
             case NHC.TSURUGI:
             case NHC.DWARVISH_MATTOCK:
             case NHC.TWO_HANDED_SWORD:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 260, __sl30), d(2, 6)) : d(2, 6))) | 0;
+            tmp = (tmp + d_at(__s_weapon_c, 260, __s_dmgval, 2, 6)) | 0;
             break;
         }
     } else {
-        if (cptr.ld1so2(objects, otyp, 120, $objclass_oc_wsdam))
-            tmp = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 265, __sl30), rnd(cptr.ld1so2(objects, otyp, 120, $objclass_oc_wsdam))) : rnd(cptr.ld1so2(objects, otyp, 120, $objclass_oc_wsdam)));
+        if (cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_wsdam))
+            tmp = rnd_at(__s_weapon_c, 265, __s_dmgval, cptr.ld1so2(objects, otyp, $sizeof_objclass, $objclass_oc_wsdam));
         switch (otyp) {
             case NHC.IRON_CHAIN:
             case NHC.CROSSBOW_BOLT:
@@ -399,60 +465,83 @@ export function* dmgval(otmp, mon) {
             case NHC.ELVEN_BROADSWORD:
             case NHC.RUNESWORD:
             case NHC.VOULGE:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 289, __sl30), rnd(4)) : rnd(4))) | 0;
+            tmp = (tmp + rnd_at(__s_weapon_c, 289, __s_dmgval, 4)) | 0;
             break;
             case NHC.ACID_VENOM:
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 293, __sl30), rnd(6)) : rnd(6))) | 0;
+            tmp = (tmp + rnd_at(__s_weapon_c, 293, __s_dmgval, 6)) | 0;
             break;
         }
     }
     if (Is_weapon) {
         tmp = (tmp + cptr.ld1so(otmp, $obj_spe)) | 0;
+        /* negative enchantment mustn't produce negative damage */
         if (tmp < 0)
             tmp = 0;
     }
-    if (((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_material) & 31) | 0) <= NHC.LEATHER && ((cptr.ldU64o((ptr), $permonst_mflags1) & 2097152n) != 0n))
+
+    if (((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_material) & 31) | 0) <= NHC.LEATHER && ((cptr.ldU64o((ptr), $permonst_mflags1) & 2097152n) != 0n))
+        /* thick-skinned or scaled creatures don't feel it */
         tmp = 0;
-    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_SHADE, 96)) && !shade_glare(otmp))
+    if (cptr.eq(ptr, cptr.add(mons, NHC.PM_SHADE, $sizeof_permonst)) && !shade_glare(otmp))
         tmp = 0;
+
+    /* "very heavy iron ball"; weight increase is in increments */
     if (otyp == NHC.HEAVY_IRON_BALL && tmp > 0) {
-        let wt = cptr.ldI32o2(objects, NHC.HEAVY_IRON_BALL, 120, $objclass_oc_weight) | 0;
+        let wt = cptr.ldI32o2(objects, NHC.HEAVY_IRON_BALL, $sizeof_objclass, $objclass_oc_weight) | 0;
+
         if ((cptr.ldI32o(otmp, $obj_owt) | 0) > wt) {
             wt = ((((cptr.ldI32o(otmp, $obj_owt) | 0) - wt) | 0) / NHC.WT_IRON_BALL_INCR) | 0;
-            tmp = (tmp + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 316, __sl30), rnd(Math.imul(4, wt))) : rnd(Math.imul(4, wt)))) | 0;
+            tmp = (tmp + rnd_at(__s_weapon_c, 316, __s_dmgval, Math.imul(4, wt))) | 0;
             if (tmp > 25)
-                tmp = 25;
+                tmp = 25;  /* objects[].oc_wldam */
         }
     }
+
+    /* Put weapon vs. monster type damage bonuses in below: */
     if (Is_weapon || cptr.ld1so(otmp, $obj_oclass) == NHC.GEM_CLASS || cptr.ld1so(otmp, $obj_oclass) == NHC.BALL_CLASS || cptr.ld1so(otmp, $obj_oclass) == NHC.CHAIN_CLASS) {
         let bonus = 0;
+
         if ((cptr.ldI32o(otmp, $obj_blessed) & 1) | 0 && mon_hates_blessings(mon))
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 328, __sl30), rnd(4)) : rnd(4))) | 0;
-        if (is_axe(otmp) && (cptr.eq((ptr), cptr.add(mons, NHC.PM_WOOD_GOLEM, 96))))
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 330, __sl30), rnd(4)) : rnd(4))) | 0;
-        if (((cptr.ldI32o2(objects, otyp, 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mon))
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 332, __sl30), rnd(20)) : rnd(20))) | 0;
-        if (artifact_light(otmp) && (cptr.ldI32o(otmp, $obj_lamplit) & 1) | 0 && (cptr.eq((ptr), cptr.add(mons, NHC.PM_GREMLIN, 96))))
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 334, __sl30), rnd(8)) : rnd(8))) | 0;
+            bonus = (bonus + rnd_at(__s_weapon_c, 328, __s_dmgval, 4)) | 0;
+        if (is_axe(otmp) && (cptr.eq((ptr), cptr.add(mons, NHC.PM_WOOD_GOLEM, $sizeof_permonst))))
+            bonus = (bonus + rnd_at(__s_weapon_c, 330, __s_dmgval, 4)) | 0;
+        if (((cptr.ldI32o2(objects, otyp, $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mon))
+            bonus = (bonus + rnd_at(__s_weapon_c, 332, __s_dmgval, 20)) | 0;
+        if (artifact_light(otmp) && (cptr.ldI32o(otmp, $obj_lamplit) & 1) | 0 && (cptr.eq((ptr), cptr.add(mons, NHC.PM_GREMLIN, $sizeof_permonst))))
+            bonus = (bonus + rnd_at(__s_weapon_c, 334, __s_dmgval, 8)) | 0;
+
+        /* if the weapon is going to get a double damage bonus, adjust
+           this bonus so that effectively it's added after the doubling */
         if (bonus > 1 && cptr.ld1so(otmp, $obj_oartifact) && (yield* spec_dbon(otmp, mon, 25)) >= 25)
             bonus = (((bonus + 1) | 0) / 2) | 0;
+
         tmp = (tmp + bonus) | 0;
     }
+
     if (tmp > 0) {
+        /* It's debatable whether a rusted blunt instrument
+           should do less damage than a pristine one, since
+           it will hit with essentially the same impact, but
+           there ought to some penalty for using damaged gear
+           so always subtract erosion even for blunt weapons. */
         tmp = (tmp - greatest_erosion(otmp)) | 0;
         if (tmp < 1)
             tmp = 1;
     }
+
     return tmp;
 }
 
-/** C ref: weapon.c:361 — @param {CPtr} magr @param {CPtr} mdef @param {CLongLong} armask @param {CPtr} silverhit_p @returns {CInt} */
+/* check whether blessed and/or silver damage applies for *non-weapon* hit;
+   return value is the amount of the extra damage */
+/** C ref: weapon.c:361 — @param {CPtr<struct monst>} magr @param {CPtr<struct monst>} mdef @param {CLongLong} armask @param {CPtr<long>} silverhit_p @returns {CInt} */
 export function* special_dmgval(magr, mdef, armask, silverhit_p) {
     let obj;
     let left_ring = schar(((armask & 131072n) ? 1 : 0));
     let right_ring = schar(((armask & 262144n) ? 1 : 0));
     let silverhit = 0n;
     let bonus = 0;
+
     obj = null;
     if (armask & 67n) {
         if ((armask & 2n) != 0n && (obj = (yield* which_armor(magr, 2n))) !== null)
@@ -468,60 +557,84 @@ export function* special_dmgval(magr, mdef, armask, silverhit_p) {
     } else {
         obj = (yield* which_armor(magr, armask));
     }
+
     if (obj) {
         if ((cptr.ldI32o(obj, $obj_blessed) & 1) | 0 && mon_hates_blessings(mdef))
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 396, __sl31), rnd(4)) : rnd(4))) | 0;
-        if (((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
-            bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 403, __sl31), rnd(20)) : rnd(20))) | 0;
+            bonus = (bonus + rnd_at(__s_weapon_c, 396, __s_special_dmgval, 4)) | 0;
+        /* the only silver armor is shield of reflection (silver dragon
+           scales refer to color, not material) and the only way to hit
+           with one--aside from throwing--is to wield it and perform a
+           weapon hit, but we include a general check here */
+        if (((cptr.ldI32o2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
+            bonus = (bonus + rnd_at(__s_weapon_c, 403, __s_special_dmgval, 20)) | 0;
             silverhit |= armask;
         }
+
+        /* when no gloves we check for silver rings (blessed rings ignored) */
     } else if ((left_ring || right_ring) && cptr.eq(magr, cptr.add(gy, $instance_globals_y_youmonst))) {
         if (left_ring && uleft.v) {
-            if (((cptr.ldI32o2(objects, cptr.ldI16o(uleft.v, $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
-                bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 412, __sl31), rnd(20)) : rnd(20))) | 0;
+            if (((cptr.ldI32o2(objects, cptr.ldI16o(uleft.v, $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
+                bonus = (bonus + rnd_at(__s_weapon_c, 412, __s_special_dmgval, 20)) | 0;
                 silverhit |= 131072n;
             }
         }
         if (right_ring && uright.v) {
-            if (((cptr.ldI32o2(objects, cptr.ldI16o(uright.v, $obj_otyp), 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
+            if (((cptr.ldI32o2(objects, cptr.ldI16o(uright.v, $obj_otyp), $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && mon_hates_silver(mdef)) {
+                /* two silver rings don't give double silver damage
+                   but 'silverhit' messages might be adjusted for them */
                 if (!(silverhit & 131072n))
-                    bonus = (bonus + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 422, __sl31), rnd(20)) : rnd(20))) | 0;
+                    bonus = (bonus + rnd_at(__s_weapon_c, 422, __s_special_dmgval, 20)) | 0;
                 silverhit |= 262144n;
             }
         }
     }
+
     if (silverhit_p)
         cptr.stI64(silverhit_p, silverhit);
     return bonus;
 }
 
-/** C ref: weapon.c:436 — @param {CPtr} magr @param {CPtr} mdef @param {CLongLong} silverhit */
+/* give a "silver <item> sears <target>" message;
+   not used for weapon hit, so we only handle rings */
+/** C ref: weapon.c:436 — @param {CPtr<struct monst>} magr @param {CPtr<struct monst>} mdef @param {CLongLong} silverhit */
 export function* silver_sears(magr, mdef, silverhit) {
-    let rings = new Uint8Array(20);
+    let rings = new Uint8Array(20);  /* plenty of room for "rings" */
     let ltyp = ((uleft.v && (silverhit & 131072n) != 0n) ? cptr.ldI16o(uleft.v, $obj_otyp) : NHC.STRANGE_OBJECT);
     let rtyp = ((uright.v && (silverhit & 262144n) != 0n) ? cptr.ldI16o(uright.v, $obj_otyp) : NHC.STRANGE_OBJECT);
     let both;
     let l_dknown = schar((uleft.v && (cptr.ldI32o(uleft.v, $obj_dknown) & 1) | 0 ? 1 : 0));
     let r_dknown = schar((uright.v && (cptr.ldI32o(uright.v, $obj_dknown) & 1) | 0 ? 1 : 0));
-    let l_ag = schar((((cptr.ldI32o2(objects, ltyp, 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && l_dknown ? 1 : 0));
-    let r_ag = schar((((cptr.ldI32o2(objects, rtyp, 120, $objclass_oc_material) & 31) | 0) == NHC.SILVER && r_dknown ? 1 : 0));
+    let l_ag = schar((((cptr.ldI32o2(objects, ltyp, $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && l_dknown ? 1 : 0));
+    let r_ag = schar((((cptr.ldI32o2(objects, rtyp, $sizeof_objclass, $objclass_oc_material) & 31) | 0) == NHC.SILVER && r_dknown ? 1 : 0));
+
     if ((silverhit & 393216n) != 0n) {
+        /* plural if both the same type (so not multi_claw and both rings
+           are non-Null) and either both known or neither known, or both
+           silver (in case there is ever more than one type of silver ring)
+           and both known; singular if multi_claw (where one of ltyp or
+           rtyp will always be STRANGE_OBJECT) even if both rings are known
+           silver [see hmonas(uhitm.c) for explanation of 'multi_claw'] */
         both = schar(((ltyp == rtyp && l_dknown == r_dknown) || (l_ag && r_ag) ? 1 : 0));
-        void cptr.sprintf(cptr.decay(rings), __sl32, both ? __sl33 : __sl18);
-        (yield* Your(__sl34, (l_ag || r_ag) ? __sl35 : (both ? __sl18 : (((silverhit & 131072n) != 0n) ? __sl36 : __sl37)), cptr.decay(rings), (yield* vtense(cptr.decay(rings), __sl38)), (yield* mon_nam(mdef))));
+        void cptr.sprintf(cptr.decay(rings), __s_ring_s, both ? __s_s : __s_empty);
+        (yield* Your(__s_s_s_s_s, (l_ag || r_ag) ? __s_silver : (both ? __s_empty : (((silverhit & 131072n) != 0n) ? __s_left : __s_right)), cptr.decay(rings), (yield* vtense(cptr.decay(rings), __s_sear)), (yield* mon_nam(mdef))));
     }
 }
 
-/** C ref: weapon.c:476 — @param {CPtr} mtmp @param {CInt} type @returns {CPtr} */
+/** C ref: weapon.c:476 — @param {CPtr<struct monst>} mtmp @param {CInt} type @returns {CPtr<struct obj>} */
 function* oselect(mtmp, type) {
     let otmp;
+
     for (otmp = cptr.ldPtro(mtmp, $monst_minvent); otmp; otmp = cptr.ldPtr(otmp)) {
         if (cptr.ldI16o(otmp, $obj_otyp) != type)
             continue;
-        if ((type == NHC.CORPSE || type == NHC.EGG) && (cptr.ldI32o(otmp, $obj_corpsenm) == NHC.NON_PM || !touch_petrifies(cptr.add(mons, cptr.ldI32o(otmp, $obj_corpsenm), 96))))
+
+        /* never select non-cockatrice corpses */
+        if ((type == NHC.CORPSE || type == NHC.EGG) && (cptr.ldI32o(otmp, $obj_corpsenm) == NHC.NON_PM || !touch_petrifies(cptr.add(mons, cptr.ldI32o(otmp, $obj_corpsenm), $sizeof_permonst))))
             continue;
+
         if (!(yield* can_touch_safely(mtmp, otmp)))
             continue;
+
         return otmp;
     }
     return null;
@@ -554,6 +667,7 @@ cptr.stI32o(rwep, 84, NHC.LUCKSTONE);
 cptr.stI32o(rwep, 88, NHC.DART);
 cptr.stI32o(rwep, 92, NHC.CREAM_PIE);
 
+/* polearms */
 /** C ref: weapon.c:506 — int[13] */
 const pwep = cptr.alloc(13 * 4);
 cptr.stI32o(pwep, 0, NHC.HALBERD);
@@ -570,33 +684,38 @@ cptr.stI32o(pwep, 40, NHC.FAUCHARD);
 cptr.stI32o(pwep, 44, NHC.PARTISAN);
 cptr.stI32o(pwep, 48, NHC.LANCE);
 
+/* throw-and-return weapons */
 /** C ref: weapon.c:514 — struct throw_and_return_weapon[1] */
-const arwep = cptr.alloc(1 * 12);
+const arwep = cptr.alloc(1 * $sizeof_throw_and_return_weapon);
 cptr.stI16o(arwep, 0, NHC.AKLYS);
 cptr.stI32o(arwep, 0 + $throw_and_return_weapon_range, 16);
 cptr.stI32o(arwep, 0 + $throw_and_return_weapon_tethered, 1);
 
-/** C ref: weapon.c:520 — @param {CPtr} otmp @returns {CPtr} */
+/** C ref: weapon.c:520 — @param {CPtr<struct obj>} otmp @returns {CPtr<struct throw_and_return_weapon>} */
 export function autoreturn_weapon(otmp) {
     let i;
+
     for (i = 0; i < 1; i++) {
-        if (cptr.ldI16o(otmp, $obj_otyp) == cptr.ldI16o(arwep, i, 12))
-            return cptr.add(arwep, i, 12);
+        if (cptr.ldI16o(otmp, $obj_otyp) == cptr.ldI16o(arwep, i, $sizeof_throw_and_return_weapon))
+            return cptr.add(arwep, i, $sizeof_throw_and_return_weapon);
     }
     return null;
 }
 
-/** C ref: weapon.c:533 — @param {CPtr} mtmp @returns {CPtr} */
+/* select a ranged weapon for the monster */
+/** C ref: weapon.c:533 — @param {CPtr<struct monst>} mtmp @returns {CPtr<struct obj>} */
 export function* select_rwep(mtmp) {
     let otmp;
     let mwep;
     let mweponly;
     let i;
+
     let mlet = cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_mlet);
+
     cptr.stPtro(gp, $instance_globals_p_propellor, hands_obj);
     {
         if ((otmp = (yield* oselect(mtmp, NHC.EGG))) !== null)
-            return otmp;
+            return otmp;  /* cockatrice egg */
     }
     if (mlet == NHC.S_KOP)
         {
@@ -608,35 +727,63 @@ export function* select_rwep(mtmp) {
             if ((otmp = (yield* oselect(mtmp, NHC.BOULDER))) !== null)
                 return otmp;
         }
+
+    /* Select polearms first; they do more damage and aren't expendable.
+       But don't pick one if monster's weapon is welded, because then
+       we'd never have a chance to throw non-wielding missiles. */
+    /* The limit of 13 here is based on the monster polearm range limit
+     * (defined as 5 in mthrowu.c).  5 corresponds to a distance of 2 in
+     * one direction and 1 in another; one space beyond that would be 3 in
+     * one direction and 2 in another; 3^2+2^2=13.
+     */
     mwep = (cptr.ldPtro((mtmp), $monst_mw));
+    /* NO_WEAPON_WANTED means we already tried to wield and failed */
     mweponly = schar((mwelded(mwep) && cptr.ldI16o(mtmp, $monst_weapon_check) == NHC.NO_WEAPON_WANTED ? 1 : 0));
     if (dist2(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my), cptr.ldI16o(mtmp, $monst_mux), cptr.ldI16o(mtmp, $monst_muy)) <= 13 && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mtmp, $monst_my), 8), cptr.ldI16o(mtmp, $monst_mx)) & NHM.COULD_SEE) != 0)) {
         if (is_art(mwep, NHC.ART_SNICKERSNEE)) {
             cptr.stPtro(gp, $instance_globals_p_propellor, mwep);
             return mwep;
         }
+
         for (i = 0; i < 13; i++) {
-            if (((((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 67108864n) != 0n) && (cptr.ldI64o(mtmp, $monst_misc_worn_check) & 8n) == 0n) || !(cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), 120, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), 120, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp))) {
+            /* Only strong monsters can wield big (esp. long) weapons.
+             * Big weapon is basically the same as bimanual.
+             * All monsters can wield the remaining weapons.
+             */
+            if (((((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 67108864n) != 0n) && (cptr.ldI64o(mtmp, $monst_misc_worn_check) & 8n) == 0n) || !(cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), $sizeof_objclass, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI32o(pwep, i, 4), $sizeof_objclass, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp))) {
                 if ((otmp = (yield* oselect(mtmp, cptr.ldI32o(pwep, i, 4)))) !== null && (cptr.eq(otmp, mwep) || !mweponly)) {
-                    cptr.stPtro(gp, $instance_globals_p_propellor, otmp);
+                    cptr.stPtro(gp, $instance_globals_p_propellor, otmp);  /* force the monster to wield it */
                     return otmp;
                 }
             }
         }
     }
+    /* Next, try to select a throw-and-return weapon, since they are
+     * also not as expendable. Again, don't pick one if monster's
+     * weapon is welded.
+     */
     for (i = 0; i < 1; i++) {
-        let arw = cptr.add(arwep, i, 12);
+        let arw = cptr.add(arwep, i, $sizeof_throw_and_return_weapon);
+
         if (!((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 65536n) != 0n) && !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 262144n) != 0n) && !mweponly && dist2(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my), cptr.ldI16o(mtmp, $monst_mux), cptr.ldI16o(mtmp, $monst_muy)) <= cptr.ldI32o(arw, $throw_and_return_weapon_range) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mtmp, $monst_my), 8), cptr.ldI16o(mtmp, $monst_mx)) & NHM.COULD_SEE) != 0)) {
-            if ((((cptr.ldI64o(mtmp, $monst_misc_worn_check) & 8n) == 0n) || !(cptr.ldI32o2(objects, cptr.ldI16(arw), 120, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI16(arw), 120, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp))) {
+            if ((((cptr.ldI64o(mtmp, $monst_misc_worn_check) & 8n) == 0n) || !(cptr.ldI32o2(objects, cptr.ldI16(arw), $sizeof_objclass, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI16(arw), $sizeof_objclass, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp))) {
                 if ((otmp = (yield* oselect(mtmp, cptr.ldI16(arw)))) !== null && (cptr.eq(otmp, mwep) || !mweponly)) {
-                    cptr.stPtro(gp, $instance_globals_p_propellor, otmp);
+                    cptr.stPtro(gp, $instance_globals_p_propellor, otmp);  /* force the monster to wield it */
                     return otmp;
                 }
             }
         }
     }
+
+    /*
+     * other than the specific cases above, always select the
+     * most potent ranged weapon to hand.
+     */
     for (i = 0; i < 24; i++) {
         let prop;
+
+        /* shooting gems from slings; this goes just before the darts */
+        /* (shooting rocks is already handled via the rwep[] ordering) */
         if (cptr.ldI32o(rwep, i, 4) == NHC.DART && !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 536870912n) != 0n) && m_carrying(mtmp, NHC.SLING)) {
             for (otmp = cptr.ldPtro(mtmp, $monst_minvent); otmp; otmp = cptr.ldPtr(otmp))
                 if (cptr.ld1so(otmp, $obj_oclass) == NHC.GEM_CLASS && (cptr.ldI16o(otmp, $obj_otyp) != NHC.LOADSTONE || !(cptr.ldI32o(otmp, $obj_cursed) & 1))) {
@@ -644,8 +791,11 @@ export function* select_rwep(mtmp) {
                     return otmp;
                 }
         }
+
+        /* KMH -- This belongs here so darts will work */
         cptr.stPtro(gp, $instance_globals_p_propellor, hands_obj);
-        prop = cptr.ld1so2(objects, cptr.ldI32o(rwep, i, 4), 120, $objclass_oc_subtyp);
+
+        prop = cptr.ld1so2(objects, cptr.ldI32o(rwep, i, 4), $sizeof_objclass, $objclass_oc_subtyp);
         if (prop < 0) {
             switch (-prop) {
                 case NHC.P_BOW:
@@ -666,8 +816,17 @@ export function* select_rwep(mtmp) {
             if ((otmp = (cptr.ldPtro((mtmp), $monst_mw))) && mwelded(otmp) && !cptr.eq(otmp, cptr.ldPtro(gp, $instance_globals_p_propellor)) && cptr.ldI16o(mtmp, $monst_weapon_check) == NHC.NO_WEAPON_WANTED)
                 cptr.stPtro(gp, $instance_globals_p_propellor, null);
         }
+        /* propellor = obj, propellor to use
+         * propellor = &hands_obj, doesn't need a propellor
+         * propellor = 0, needed one and didn't have one
+         */
         if (cptr.ldPtro(gp, $instance_globals_p_propellor) !== null) {
+            /* Note: cannot use m_carrying for loadstones, since it will
+             * always select the first object of a type, and maybe the
+             * monster is carrying two but only the first is unthrowable.
+             */
             if (cptr.ldI32o(rwep, i, 4) != NHC.LOADSTONE) {
+                /* Don't throw a cursed weapon-in-hand or an artifact */
                 if ((otmp = (yield* oselect(mtmp, cptr.ldI32o(rwep, i, 4)))) && !cptr.ld1so(otmp, $obj_oartifact) && !(cptr.eq(otmp, (cptr.ldPtro((mtmp), $monst_mw))) && mwelded(otmp)))
                     return otmp;
             } else
@@ -677,18 +836,23 @@ export function* select_rwep(mtmp) {
                 }
         }
     }
+
+    /* failure */
     return null;
 }
 
-/** C ref: weapon.c:680 — @param {CPtr} obj @returns {CInt} */
+/* is 'obj' a type of weapon that any monster knows how to throw? */
+/** C ref: weapon.c:680 — @param {CPtr<struct obj>} obj @returns {CInt} */
 export function monmightthrowwep(obj) {
     let idx;
+
     for (idx = 0; idx < 24; ++idx)
         if (cptr.ldI16o(obj, $obj_otyp) == cptr.ldI32o(rwep, idx, 4))
             return 1;
     return 0;
 }
 
+/* Weapons in order of preference */
 /** C ref: weapon.c:691 — short[45] */
 const hwep = cptr.alloc(45 * 2);
 cptr.stI16o(hwep, 0, NHC.CORPSE);
@@ -737,42 +901,56 @@ cptr.stI16o(hwep, 84, NHC.SCALPEL);
 cptr.stI16o(hwep, 86, NHC.KNIFE);
 cptr.stI16o(hwep, 88, NHC.WORM_TOOTH);
 
-/** C ref: weapon.c:705 — @param {CPtr} mtmp @returns {CPtr} */
+/* select a hand to hand weapon for the monster */
+/** C ref: weapon.c:705 — @param {CPtr<struct monst>} mtmp @returns {CPtr<struct obj>} */
 export function* select_hwep(mtmp) {
     let otmp;
     let i;
     let strong = schar(((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 67108864n) != 0n));
     let wearing_shield = schar(((cptr.ldI64o(mtmp, $monst_misc_worn_check) & 8n) != 0n));
+
+    /* prefer artifacts to everything else */
     for (otmp = cptr.ldPtro(mtmp, $monst_minvent); otmp; otmp = cptr.ldPtr(otmp)) {
-        if (cptr.ld1so(otmp, $obj_oclass) == NHC.WEAPON_CLASS && cptr.ld1so(otmp, $obj_oartifact) && (yield* touch_artifact(otmp, mtmp)) && ((strong && !wearing_shield) || !(cptr.ldI32o2(objects, cptr.ldI16o(otmp, $obj_otyp), 120, $objclass_oc_big) & 1)))
+        if (cptr.ld1so(otmp, $obj_oclass) == NHC.WEAPON_CLASS && cptr.ld1so(otmp, $obj_oartifact) && (yield* touch_artifact(otmp, mtmp)) && ((strong && !wearing_shield) || !(cptr.ldI32o2(objects, cptr.ldI16o(otmp, $obj_otyp), $sizeof_objclass, $objclass_oc_big) & 1)))
             return otmp;
     }
+
     if (((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 8192n) != 0n))
         {
             if ((otmp = (yield* oselect(mtmp, NHC.CLUB))) !== null)
                 return otmp;
         }
-    else if (cptr.eq(cptr.ldPtro(mtmp, $monst_data), cptr.add(mons, NHC.PM_BALROG, 96)) && uwep.v)
+    else if (cptr.eq(cptr.ldPtro(mtmp, $monst_data), cptr.add(mons, NHC.PM_BALROG, $sizeof_permonst)) && uwep.v)
         {
             if ((otmp = (yield* oselect(mtmp, NHC.BULLWHIP))) !== null)
                 return otmp;
         }
+
+    /* only strong monsters can wield big (esp. long) weapons */
+    /* big weapon is basically the same as bimanual */
+    /* all monsters can wield the remaining weapons */
     for (i = 0; i < 45; i++) {
         if (cptr.ldI16o(hwep, i, 2) == NHC.CORPSE && !(cptr.ldI64o(mtmp, $monst_misc_worn_check) & 16n) && !(yield* Resists_Elem(mtmp, NHC.STONE_RES)))
             continue;
-        if (((strong && !wearing_shield) || !(cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), 120, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), 120, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp)))
+        if (((strong && !wearing_shield) || !(cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), $sizeof_objclass, $objclass_oc_big) & 1)) && (((cptr.ldI32o2(objects, cptr.ldI16o(hwep, i, 2), $sizeof_objclass, $objclass_oc_material) & 31) | 0) != NHC.SILVER || !mon_hates_silver(mtmp)))
             {
                 if ((otmp = (yield* oselect(mtmp, cptr.ldI16o(hwep, i, 2)))) !== null)
                     return otmp;
             }
     }
+
+    /* failure */
     return null;
 }
 
-/** C ref: weapon.c:747 — @param {CPtr} mon @param {CInt} polyspot */
+/* Called after polymorphing a monster, robbing it, etc....  Monsters
+ * otherwise never unwield stuff on their own.  Might print message.
+ */
+/** C ref: weapon.c:747 — @param {CPtr<struct monst>} mon @param {CInt} polyspot */
 export function* possibly_unwield(mon, polyspot) {
     let obj;
     let mw_tmp;
+
     if (!(mw_tmp = (cptr.ldPtro((mon), $monst_mw))))
         return;
     for (obj = cptr.ldPtro(mon, $monst_minvent); obj; obj = cptr.ldPtr(obj))
@@ -786,12 +964,14 @@ export function* possibly_unwield(mon, polyspot) {
     if (!attacktype(cptr.ldPtro(mon, $monst_data), NHM.AT_WEAP)) {
         (yield* setmnotwielded(mon, mw_tmp));
         cptr.stI16o(mon, $monst_weapon_check, NHC.NO_WEAPON_WANTED);
+        /* if we're going to call distant_name(), do so before extract_self */
         if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mon, $monst_my), 8), cptr.ldI16o(mon, $monst_mx)) & NHM.IN_SIGHT) != 0)) {
-            (yield* pline_mon(mon, __sl39, (yield* Monnam(mon)), (yield* distant_name(obj, doname))));
+            (yield* pline_mon(mon, __s_s_drops_s, (yield* Monnam(mon)), (yield* distant_name(obj, doname))));
             (yield* newsym(cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my)));
         }
         (yield* obj_extract_self(obj));
-        if (!(yield* flooreffects(obj, cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my), __sl40))) {
+        /* might be dropping object into water or lava */
+        if (!(yield* flooreffects(obj, cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my), __s_drop))) {
             if (polyspot)
                 bypass_obj(obj);
             (yield* place_object(obj, cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my)));
@@ -799,15 +979,33 @@ export function* possibly_unwield(mon, polyspot) {
         }
         return;
     }
+    /* The remaining case where there is a change is where a monster
+     * is polymorphed into a stronger/weaker monster with a different
+     * choice of weapons.  This has no parallel for players.  It can
+     * be handled by waiting until mon_wield_item is actually called.
+     * Though the monster still wields the wrong weapon until then,
+     * this is OK since the player can't see it.  (FIXME: Not okay since
+     * probing can reveal it.)
+     * Note that if there is no change, setting the check to NEED_WEAPON
+     * is harmless.
+     * Possible problem: big monster with big cursed weapon gets
+     * polymorphed into little monster.  But it's not quite clear how to
+     * handle this anyway....
+     */
     if (!(mwelded(mw_tmp) && cptr.ldI16o(mon, $monst_weapon_check) == NHC.NO_WEAPON_WANTED))
         cptr.stI16o(mon, $monst_weapon_check, NHC.NEED_WEAPON);
     return;
 }
 
-/** C ref: weapon.c:801 — @param {CPtr} mon @returns {CInt} */
+/* Let a monster try to wield a weapon, based on mon->weapon_check.
+ * Returns 1 if the monster took time to do it, 0 if it did not.
+ */
+/** C ref: weapon.c:801 — @param {CPtr<struct monst>} mon @returns {CInt} */
 export function* mon_wield_item(mon) {
     let obj;
-    let exclaim = 1;
+    let exclaim = 1;  /* assume mon is planning to attack */
+
+    /* This case actually should never happen */
     if (cptr.ldI16o(mon, $monst_weapon_check) == NHC.NO_WEAPON_WANTED)
         return 0;
     switch (cptr.ldI16o(mon, $monst_weapon_check)) {
@@ -820,17 +1018,20 @@ export function* mon_wield_item(mon) {
         break;
         case NHC.NEED_PICK_AXE:
         obj = m_carrying(mon, NHC.PICK_AXE);
+        /* KMH -- allow other picks */
         if (!obj && !(yield* which_armor(mon, 8n)))
             obj = m_carrying(mon, NHC.DWARVISH_MATTOCK);
-        exclaim = 0;
+        exclaim = 0;  /* mon is just planning to dig */
         break;
         case NHC.NEED_AXE:
+        /* currently, only 2 types of axe */
         obj = m_carrying(mon, NHC.BATTLE_AXE);
         if (!obj || (yield* which_armor(mon, 8n)))
             obj = m_carrying(mon, NHC.AXE);
         exclaim = 0;
         break;
         case NHC.NEED_PICK_OR_AXE:
+        /* prefer pick for fewer switches on most levels */
         obj = m_carrying(mon, NHC.DWARVISH_MATTOCK);
         if (!obj)
             obj = m_carrying(mon, NHC.BATTLE_AXE);
@@ -842,60 +1043,77 @@ export function* mon_wield_item(mon) {
         exclaim = 0;
         break;
         default:
-        (yield* impossible(__sl41, cptr.ldI16o(mon, $monst_weapon_check), (yield* mon_nam(mon))));
+        (yield* impossible(__s_weapon_check_d_for_s, cptr.ldI16o(mon, $monst_weapon_check), (yield* mon_nam(mon))));
         return 0;
     }
     if (obj && !cptr.eq(obj, hands_obj)) {
         let mw_tmp = (cptr.ldPtro((mon), $monst_mw));
+
         if (mw_tmp && cptr.ldI16o(mw_tmp, $obj_otyp) == cptr.ldI16o(obj, $obj_otyp)) {
+            /* already wielding it */
             cptr.stI16o(mon, $monst_weapon_check, NHC.NEED_WEAPON);
             return 0;
         }
+        /* Actually, this isn't necessary--as soon as the monster
+         * wields the weapon, the weapon welds itself, so the monster
+         * can know it's cursed and needn't even bother trying.
+         * Still....
+         */
         if (mw_tmp && mwelded(mw_tmp)) {
             if (canseemon(mon)) {
                 let welded_buf = new Uint8Array(256);
                 let mon_hand = (yield* mbodypart(mon, NHC.HAND));
+
                 if (bimanual(mw_tmp))
                     mon_hand = (yield* makeplural(mon_hand));
-                void cptr.sprintf(cptr.decay(welded_buf), __sl42, (yield* otense(mw_tmp, __sl43)), (cptr.ldPtro2(genders, pronoun_gender(mon, NHM.PRONOUN_HALLU), 48, $Gender_his)), mon_hand);
+                void cptr.sprintf(cptr.decay(welded_buf), __s_s_welded_to_s_s, (yield* otense(mw_tmp, __s_are)), (cptr.ldPtro2(genders, pronoun_gender(mon, NHM.PRONOUN_HALLU), $sizeof_Gender, $Gender_his)), mon_hand);
+
                 if (cptr.ldI16o(obj, $obj_otyp) == NHC.PICK_AXE) {
-                    (yield* pline(__sl44, (yield* s_suffix((yield* mon_nam(mon)))), (((cptr.ldI64o(mw_tmp, $obj_quan)) == 1n) ? __sl18 : __sl33), cptr.decay(welded_buf)));
-                    (yield* pline(__sl45, (yield* mon_nam(mon)), (yield* xname(obj))));
+                    (yield* pline(__s_since_s_weapon_s_s, (yield* s_suffix((yield* mon_nam(mon)))), (((cptr.ldI64o(mw_tmp, $obj_quan)) == 1n) ? __s_empty : __s_s), cptr.decay(welded_buf)));
+                    (yield* pline(__s_s_cannot_wield_that_s, (yield* mon_nam(mon)), (yield* xname(obj))));
                 } else {
-                    (yield* pline_mon(mon, __sl46, (yield* Monnam(mon)), (yield* doname(obj))));
-                    (yield* pline(__sl47, (yield* Yname2(mw_tmp)), cptr.decay(welded_buf)));
+                    (yield* pline_mon(mon, __s_s_tries_to_wield_s, (yield* Monnam(mon)), (yield* doname(obj))));
+                    (yield* pline(__s_s_s, (yield* Yname2(mw_tmp)), cptr.decay(welded_buf)));
                 }
                 cptr.stI32o(mw_tmp, $obj_bknown, 1);
             }
             cptr.stI16o(mon, $monst_weapon_check, NHC.NO_WEAPON_WANTED);
             return 1;
         }
-        cptr.stPtro(mon, $monst_mw, obj);
+        cptr.stPtro(mon, $monst_mw, obj);  /* wield obj */
         (yield* setmnotwielded(mon, mw_tmp));
         cptr.stI16o(mon, $monst_weapon_check, NHC.NEED_WEAPON);
         if (canseemon(mon)) {
             let newly_welded;
             let arw;
-            (yield* pline_mon(mon, __sl48, (yield* Monnam(mon)), (yield* doname(obj)), exclaim ? 33 : 46));
+
+            (yield* pline_mon(mon, __s_s_wields_s_c, (yield* Monnam(mon)), (yield* doname(obj)), exclaim ? 33 : 46));
             if ((arw = autoreturn_weapon(obj)) !== null && ((cptr.ldI32o(arw, $throw_and_return_weapon_tethered) & 1) | 0) != 0)
-                (yield* pline_mon(mon, __sl49, (yield* Monnam(mon)), (yield* the((yield* xname(obj))))));
+                (yield* pline_mon(mon, __s_s_secures_the_tether_on_s, (yield* Monnam(mon)), (yield* the((yield* xname(obj))))));
+
+            /* 3.6.3: mwelded() predicate expects the object to have its
+               W_WEP bit set in owormmask, but the pline here and for
+               artifact_light don't want that because they'd have '(weapon
+               in hand/claw)' appended; so we set it for the mwelded test
+               and then clear it, until finally setting it for good below */
             cptr.stI64o(obj, $obj_owornmask, cptr.ldI64o(obj, $obj_owornmask) | 256n);
             newly_welded = mwelded(obj);
             cptr.stI64o(obj, $obj_owornmask, cptr.ldI64o(obj, $obj_owornmask) & (-257n));
             if (newly_welded) {
                 let mon_hand = (yield* mbodypart(mon, NHC.HAND));
+
                 if (bimanual(obj))
                     mon_hand = (yield* makeplural(mon_hand));
-                (yield* pline(__sl50, (yield* Tobjnam(obj, __sl51)), is_plural(obj) ? __sl52 : __sl53, (yield* s_suffix((yield* mon_nam(mon)))), mon_hand));
+                (yield* pline(__s_s_s_to_s_s, (yield* Tobjnam(obj, __s_weld)), is_plural(obj) ? __s_themselves : __s_itself, (yield* s_suffix((yield* mon_nam(mon)))), mon_hand));
                 cptr.stI32o(obj, $obj_bknown, 1);
             }
         }
         if (artifact_light(obj) && !(cptr.ldI32o(obj, $obj_lamplit) & 1)) {
             (yield* begin_burn(obj, 0));
             if (canseemon(mon))
-                (yield* pline(__sl54, (yield* Tobjnam(obj, __sl55)), arti_light_description(obj), (yield* s_suffix((yield* mon_nam(mon)))), (yield* mbodypart(mon, NHC.HAND))));
+                (yield* pline(__s_s_s_in_s_s, (yield* Tobjnam(obj, __s_shine)), arti_light_description(obj), (yield* s_suffix((yield* mon_nam(mon)))), (yield* mbodypart(mon, NHC.HAND))));
             else if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mon, $monst_my), 8), cptr.ldI16o(mon, $monst_mx)) & NHM.IN_SIGHT) != 0))
-                (yield* pline(__sl56, (dist2((cptr.ldI16o((mon), $monst_mx)), (cptr.ldI16o((mon), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= 25) ? __sl57 : __sl58));
+                (yield* pline(__s_light_begins_shining_s, (dist2((cptr.ldI16o((mon), $monst_mx)), (cptr.ldI16o((mon), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= 25) ? __s_nearby : __s_in_the_distance));
         }
         cptr.stI64o(obj, $obj_owornmask, 256n);
         return 1;
@@ -904,22 +1122,31 @@ export function* mon_wield_item(mon) {
     return 0;
 }
 
-/** C ref: weapon.c:938 — @param {CPtr} mon */
+/* force monster to stop wielding current weapon, if any */
+/** C ref: weapon.c:938 — @param {CPtr<struct monst>} mon */
 export function* mwepgone(mon) {
     let mwep = (cptr.ldPtro((mon), $monst_mw));
+
     if (mwep) {
         (yield* setmnotwielded(mon, mwep));
         cptr.stI16o(mon, $monst_weapon_check, NHC.NEED_WEAPON);
     }
 }
 
+/* attack bonus for strength & dexterity */
 /** C ref: weapon.c:950 @returns {CInt} */
 export function* abon() {
     let sbon;
     let str = (acurr(NHC.A_STR));
     let dex = (acurr(NHC.A_DEX));
+
     if (Upolyd())
-        return (((yield* adj_lev(cptr.add(mons, cptr.ldI32o(u, $you_umonnum), 96))) - 3) | 0);
+        return (((yield* adj_lev(cptr.add(mons, cptr.ldI32o(u, $you_umonnum), $sizeof_permonst))) - 3) | 0);
+
+    /* this used to be '<= 18/50' for bonus of 1 but got changed to '< 18/50'
+       so that '18/50' gives a bonus of 2; gnome and orc player characters
+       have max Str of 18/50 and giving an extra bonus at that break point
+       provides an incentive for them to max out that characteristic */
     if (str < 6)
         sbon = -2;
     else if (str < 8)
@@ -927,12 +1154,16 @@ export function* abon() {
     else if (str < 17)
         sbon = 0;
     else if (str < 68)
-        sbon = 1;
+        sbon = 1;  /* up to 18/49 */
     else if (str < 118)
         sbon = 2;
     else
         sbon = 3;
+
+    /* Game tuning kludge: make it a bit easier for a low level character to
+     * hit */
     sbon = (sbon + ((cptr.ldI32o(u, $you_ulevel) < 3) ? 1 : 0)) | 0;
+
     if (dex < 4)
         return ((sbon - 3) | 0);
     else if (dex < 6)
@@ -945,11 +1176,14 @@ export function* abon() {
         return ((((sbon + dex) | 0) - 14) | 0);
 }
 
+/* damage bonus for strength */
 /** C ref: weapon.c:993 @returns {CInt} */
 export function dbon() {
     let str = (acurr(NHC.A_STR));
+
     if (Upolyd())
         return 0;
+
     if (str < 6)
         return -1;
     else if (str < 16)
@@ -957,130 +1191,176 @@ export function dbon() {
     else if (str < 18)
         return 1;
     else if (str == 18)
-        return 2;
+        return 2;  /* up to 18 */
     else if (str <= 93)
-        return 3;
+        return 3;  /* up to 18/75 */
     else if (str <= 108)
-        return 4;
+        return 4;  /* up to 18/90 */
     else if (str < 118)
-        return 5;
+        return 5;  /* up to 18/99 */
     else
         return 6;
 }
 
-/** C ref: weapon.c:1020 — @param {CPtr} obj @param {CInt} newspe */
+/* called when wet_a_towel() or dry_a_towel() is changing a towel's wetness */
+/** C ref: weapon.c:1020 — @param {CPtr<struct obj>} obj @param {CInt} newspe */
 function* finish_towel_change(obj, newspe) {
+    /* towel wetness is always between 0 (dry) and 7, inclusive */
     newspe = ((newspe) < 7 ? (newspe) : 7);
     cptr.st1o(obj, $obj_spe, schar(((newspe) > 0 ? (newspe) : 0)));
+
+    /* if hero is wielding this towel, don't give "you begin bashing with
+       your [wet] towel" message if it's wet, do give one if it's dry */
     if (cptr.eq(obj, uwep.v))
         cptr.st1o(gu, $instance_globals_u_unweapon, schar((!is_wet_towel(obj))));
+
+    /* description might change: "towel" vs "moist towel" vs "wet towel" */
     if ((cptr.ld1so((obj), $obj_where) == NHM.OBJ_INVENT))
         (yield* update_inventory());
 }
 
-/** C ref: weapon.c:1038 — @param {CPtr} obj @param {CInt} amt @param {CInt} verbose */
+/* increase a towel's wetness */
+/** C ref: weapon.c:1038 — @param {CPtr<struct obj>} obj @param {CInt} amt @param {CInt} verbose */
 export function* wet_a_towel(obj, amt, verbose) {
     let newspe = (amt <= 0) ? (cptr.ld1so(obj, $obj_spe) - amt) | 0 : amt;
+
+    /* new state is only reported if it's an increase */
     if (newspe > cptr.ld1so(obj, $obj_spe)) {
         if (verbose) {
-            let wetness = (newspe < 3) ? (!cptr.ld1so(obj, $obj_spe) ? __sl59 : __sl60) : (!cptr.ld1so(obj, $obj_spe) ? __sl61 : __sl62);
+            let wetness = (newspe < 3) ? (!cptr.ld1so(obj, $obj_spe) ? __s_damp : __s_damper) : (!cptr.ld1so(obj, $obj_spe) ? __s_wet : __s_wetter);
+
             if ((cptr.ld1so((obj), $obj_where) == NHM.OBJ_INVENT))
-                (yield* pline(__sl63, (yield* Yobjnam2(obj, null)), wetness));
+                (yield* pline(__s_s_gets_s, (yield* Yobjnam2(obj, null)), wetness));
             else if ((cptr.ld1so((obj), $obj_where) == NHM.OBJ_MINVENT) && canseemon(cptr.ldPtro(obj, $obj_v)))
-                (yield* pline(__sl64, (yield* s_suffix((yield* Monnam(cptr.ldPtro(obj, $obj_v))))), (yield* xname(obj)), wetness));
+                (yield* pline(__s_s_s_gets_s, (yield* s_suffix((yield* Monnam(cptr.ldPtro(obj, $obj_v))))), (yield* xname(obj)), wetness));
         }
     }
+
     if (newspe != cptr.ld1so(obj, $obj_spe))
         (yield* finish_towel_change(obj, newspe));
 }
 
-/** C ref: weapon.c:1067 — @param {CPtr} obj @param {CInt} amt @param {CInt} verbose */
+/* decrease a towel's wetness; unlike when wetting, 0 is not a no-op */
+/** C ref: weapon.c:1067 — @param {CPtr<struct obj>} obj @param {CInt} amt @param {CInt} verbose */
 export function* dry_a_towel(obj, amt, verbose) {
     let newspe = (amt < 0) ? (cptr.ld1so(obj, $obj_spe) + amt) | 0 : amt;
+
+    /* new state is only reported if it's a decrease */
     if (newspe < cptr.ld1so(obj, $obj_spe)) {
         if (verbose) {
             if ((cptr.ld1so((obj), $obj_where) == NHM.OBJ_INVENT))
-                (yield* pline(__sl65, (yield* Yobjnam2(obj, null)), !newspe ? __sl66 : __sl18));
+                (yield* pline(__s_s_dries_s, (yield* Yobjnam2(obj, null)), !newspe ? __s_out : __s_empty));
             else if ((cptr.ld1so((obj), $obj_where) == NHM.OBJ_MINVENT) && canseemon(cptr.ldPtro(obj, $obj_v)))
-                (yield* pline(__sl67, (yield* s_suffix((yield* Monnam(cptr.ldPtro(obj, $obj_v))))), (yield* xname(obj)), !newspe ? __sl66 : __sl18));
+                (yield* pline(__s_s_s_dries_s, (yield* s_suffix((yield* Monnam(cptr.ldPtro(obj, $obj_v))))), (yield* xname(obj)), !newspe ? __s_out : __s_empty));
         }
     }
+
     if (newspe != cptr.ld1so(obj, $obj_spe))
         (yield* finish_towel_change(obj, newspe));
 }
 
-/** C ref: weapon.c:1092 — @param {CInt} skill @param {CPtr} buf @returns {CPtr} */
+/* copy the skill level name into the given buffer */
+/** C ref: weapon.c:1092 — @param {CInt} skill @param {CPtr<char>} buf @returns {CPtr<char>} */
 export function skill_level_name(skill, buf) {
     let ptr;
-    switch ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills))) {
+
+    switch ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))) {
         case NHC.P_UNSKILLED:
-        ptr = __sl68;
+        ptr = __s_unskilled;
         break;
         case NHC.P_BASIC:
-        ptr = __sl69;
+        ptr = __s_basic;
         break;
         case NHC.P_SKILLED:
-        ptr = __sl70;
+        ptr = __s_skilled;
         break;
         case NHC.P_EXPERT:
-        ptr = __sl71;
+        ptr = __s_expert;
         break;
         case NHC.P_MASTER:
-        ptr = __sl72;
+        ptr = __s_master;
         break;
         case NHC.P_GRAND_MASTER:
-        ptr = __sl73;
+        ptr = __s_grand_master;
         break;
         default:
-        ptr = __sl74;
+        ptr = __s_unknown;
         break;
     }
     void cptr.strcpy(buf, ptr);
     return buf;
 }
 
-/** C ref: weapon.c:1125 — @param {CInt} skill @returns {CPtr} */
+/** C ref: weapon.c:1125 — @param {CInt} skill @returns {CPtr<char>} */
 export function skill_name(skill) {
-    return ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
+    return ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)));
 }
 
+/* return the # of slots required to advance the skill */
 /** C ref: weapon.c:1132 — @param {CInt} skill @returns {CInt} */
 function slots_required(skill) {
-    let tmp = (cptr.ldI16o2(u, skill, 6, $you_weapon_skills));
+    let tmp = (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills));
+
+    /* The more difficult the training, the more slots it takes.
+     *  unskilled -> basic      1
+     *  basic -> skilled        2
+     *  skilled -> expert       3
+     */
     if (skill <= NHC.P_UNICORN_HORN || skill == NHC.P_TWO_WEAPON_COMBAT)
         return tmp;
+
+    /* Fewer slots used up for unarmed or martial.
+     *  unskilled -> basic      1
+     *  basic -> skilled        1
+     *  skilled -> expert       2
+     *  expert -> master        2
+     *  master -> grand master  3
+     */
     return (((tmp + 1) | 0) / 2) | 0;
 }
 
+/* return true if this skill can be advanced */
 /** C ref: weapon.c:1156 — @param {CInt} skill @param {CInt} speedy @returns {CInt} */
 export function can_advance(skill, speedy) {
-    if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill)) || cptr.ldI32o(u, $you_skills_advanced) >= NHM.P_SKILL_LIMIT)
+    if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) || cptr.ldI32o(u, $you_skills_advanced) >= NHM.P_SKILL_LIMIT)
         return 0;
+
     if (wizard() && speedy)
         return 1;
-    return schar(((cptr.ldU16o2(u, skill, 6, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)))), 20)) && cptr.ldI32o(u, $you_weapon_slots) >= slots_required(skill) ? 1 : 0));
+
+    return schar(((cptr.ldU16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)))), 20)) && cptr.ldI32o(u, $you_weapon_slots) >= slots_required(skill) ? 1 : 0));
 }
 
+/* return true if this skill could be advanced if more slots were available */
 /** C ref: weapon.c:1173 — @param {CInt} skill @returns {CInt} */
 function could_advance(skill) {
-    if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill)) || cptr.ldI32o(u, $you_skills_advanced) >= NHM.P_SKILL_LIMIT)
+    if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED) || (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) || cptr.ldI32o(u, $you_skills_advanced) >= NHM.P_SKILL_LIMIT)
         return 0;
-    return schar(((cptr.ldU16o2(u, skill, 6, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)))), 20))));
+
+    return schar(((cptr.ldU16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)))), 20))));
 }
 
+/* return true if this skill has reached its maximum and there's been enough
+   practice to become eligible for the next step if that had been possible */
 /** C ref: weapon.c:1187 — @param {CInt} skill @returns {CInt} */
 function peaked_skill(skill) {
-    if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED))
+    if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED))
         return 0;
-    return schar(((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill)) && ((cptr.ldU16o2(u, skill, 6, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)))), 20))) ? 1 : 0));
+
+    return schar(((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) && ((cptr.ldU16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance)) >= (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)))), 20))) ? 1 : 0));
 }
 
 /** C ref: weapon.c:1198 — @param {CInt} skill */
 function* skill_advance(skill) {
     cptr.stI32o(u, $you_weapon_slots, (cptr.ldI32o(u, $you_weapon_slots) - slots_required(skill)) | 0);
-    (cptr.stI16o2(u, skill, 6, $you_weapon_skills, cptr.ldI16o2(u, skill, 6, $you_weapon_skills) + 1)) - (1);
+    (cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) + 1)) - (1);
     cptr.stI16o2(u, (cptr.stI32o(u, $you_skills_advanced, cptr.ldI32o(u, $you_skills_advanced) + 1)) - (1), 2, $you_skill_record, i16(skill));
-    (yield* You(__sl75, (cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill)) ? __sl76 : __sl77, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
+    /* subtly change the advance message to indicate no more advancement */
+    (yield* You(__s_are_now_s_skilled_in_s, (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) >= (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) ? __s_most : __s_more, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
+
+    /* wizards discover spellbook IDs depending on spell 'school' skill limits;
+       this allows them to successfully write books for unknown spells without
+       the Luck bias they used to have over other roles */
     if (skill >= NHC.P_ATTACK_SPELL && skill <= NHC.P_MATTER_SPELL)
         (yield* skill_based_spellbook_id());
 }
@@ -1088,17 +1368,21 @@ function* skill_advance(skill) {
 /** C ref: weapon.c:1215 — struct skill_range { first, last, name } (memory model v0.5) */
 
 /** C ref: weapon.c:1218 — struct skill_range[3] */
-const skill_ranges = cptr.alloc(3 * 16);
+const skill_ranges = cptr.alloc(3 * $sizeof_skill_range);
 cptr.stI16o(skill_ranges, 0, NHC.P_BARE_HANDED_COMBAT);
 cptr.stI16o(skill_ranges, 0 + $skill_range_last, NHC.P_RIDING);
-cptr.stPtro(skill_ranges, 0 + $skill_range_name, __sl78);
+cptr.stPtro(skill_ranges, 0 + $skill_range_name, __s_fighting_skills);
 cptr.stI16o(skill_ranges, 16, NHC.P_DAGGER);
 cptr.stI16o(skill_ranges, 16 + $skill_range_last, NHC.P_UNICORN_HORN);
-cptr.stPtro(skill_ranges, 16 + $skill_range_name, __sl79);
+cptr.stPtro(skill_ranges, 16 + $skill_range_name, __s_weapon_skills);
 cptr.stI16o(skill_ranges, 32, NHC.P_ATTACK_SPELL);
 cptr.stI16o(skill_ranges, 32 + $skill_range_last, NHC.P_MATTER_SPELL);
-cptr.stPtro(skill_ranges, 32 + $skill_range_name, __sl80);
+cptr.stPtro(skill_ranges, 32 + $skill_range_name, __s_spellcasting_skills);
 
+/* write a list of skills onto the given menu
+
+   if selectable is set, give selection letters for skills that can be
+   advanced and leave room for them on skills that can't be advanced */
 /** C ref: weapon.c:1229 — @param {CInt} win @param {CInt} selectable @param {CInt} speedy */
 export function* add_skills_to_menu(win, selectable, speedy) {
     let pass;
@@ -1110,59 +1394,85 @@ export function* add_skills_to_menu(win, selectable, speedy) {
     let sklnambuf = new Uint8Array(256);
     let prefix;
     let clr = NHM.NO_COLOR;
+
+    /* Find the longest skill name. */
     for (longest = 0, i = 0; i < NHC.P_NUM_SKILLS; i++) {
-        if ((cptr.ldI16o2(u, i, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED))
+        if ((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED))
             continue;
-        if ((len = (yield* Strlen_(((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), __sl81, 1241)) | 0) > longest)
+        if ((len = (yield* Strlen_(((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), __s_add_skills_to_menu, 1241)) | 0) > longest)
             longest = len;
     }
+
+    /* List the skills, making ones that could be advanced selectable if
+       selectable is set.  List the miscellaneous skills first.  Possible
+       future enhancement: list spell skills before weapon skills for
+       spellcaster roles. */
     for (pass = 0; pass < 3; pass++)
-        for (i = cptr.ldI16o(skill_ranges, pass, 16); i <= cptr.ldI16o2(skill_ranges, pass, 16, $skill_range_last); i++) {
+        for (i = cptr.ldI16o(skill_ranges, pass, $sizeof_skill_range); i <= cptr.ldI16o2(skill_ranges, pass, $sizeof_skill_range, $skill_range_last); i++) {
+            /* Print headings for skill types */
             cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
-            if (i == cptr.ldI16o(skill_ranges, pass, 16))
-                (yield* add_menu_heading(win, cptr.ldPtro2(skill_ranges, pass, 16, $skill_range_name)));
-            if ((cptr.ldI16o2(u, i, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED))
+            if (i == cptr.ldI16o(skill_ranges, pass, $sizeof_skill_range))
+                (yield* add_menu_heading(win, cptr.ldPtro2(skill_ranges, pass, $sizeof_skill_range, $skill_range_name)));
+
+            if ((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED))
                 continue;
+            /*
+             * Sigh, this assumes a monospaced font unless
+             * iflags.menu_tab_sep is set in which case it puts
+             * tabs between columns.
+             * The 12 is the longest skill level name.
+             * The "    " is room for a selection letter and dash, "a - ".
+             */
             if (!selectable)
-                prefix = __sl18;
+                prefix = __s_empty;
             else if (can_advance(i, speedy))
-                prefix = __sl18;
+                prefix = __s_empty;  /* will be preceded by menu choice */
             else if (could_advance(i))
-                prefix = __sl82;
+                prefix = __s_sp2_star_sp;
             else if (peaked_skill(i))
-                prefix = __sl83;
+                prefix = __s_sp2_hash_sp;
             else
-                prefix = __sl84;
+                prefix = __s_sp4;
             void skill_level_name(i, cptr.decay(sklnambuf));
             if (wizard()) {
                 if (!cptr.ld1so(iflags, $instance_flags_menu_tab_sep))
-                    nh_snprintf(__sl81, 1282, cptr.decay(buf), 256n, __sl85, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, 6, $you_weapon_skills + $skills_advance)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, i, 6, $you_weapon_skills)))), 20)));
+                    nh_snprintf(__s_add_skills_to_menu, 1282, cptr.decay(buf), 256n, __s_s_s_12s_5d_4d, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, $sizeof_skills, $you_weapon_skills + $skills_advance)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills)))), 20)));
                 else
-                    nh_snprintf(__sl81, 1287, cptr.decay(buf), 256n, __sl86, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, 6, $you_weapon_skills + $skills_advance)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, i, 6, $you_weapon_skills)))), 20)));
+                    nh_snprintf(__s_add_skills_to_menu, 1287, cptr.decay(buf), 256n, __s_s_s_s_5d_4d, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf), (cptr.ldU16o2(u, i, $sizeof_skills, $you_weapon_skills + $skills_advance)), (Math.imul(Math.imul(((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills)))), 20)));
             } else {
                 if (!cptr.ld1so(iflags, $instance_flags_menu_tab_sep))
-                    nh_snprintf(__sl81, 1292, cptr.decay(buf), 256n, __sl87, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
+                    nh_snprintf(__s_add_skills_to_menu, 1292, cptr.decay(buf), 256n, __s_s_s_s, prefix, longest, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
                 else
-                    nh_snprintf(__sl81, 1296, cptr.decay(buf), 256n, __sl88, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), 120))), 16)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
+                    nh_snprintf(__s_add_skills_to_menu, 1296, cptr.decay(buf), 256n, __s_s_s_s__2, prefix, ((cptr.ldI16o(skill_names_indices, i, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, i, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((i == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, i, 2), 8))), cptr.decay(sklnambuf));
             }
             cptr.stI32(any, selectable && can_advance(i, speedy) ? (i + 1) | 0 : 0);
             (yield* add_menu(win, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, cptr.decay(buf), NHM.MENU_ITEMFLAGS_NONE));
         }
 }
 
+/* Displays a skill list for dumplog purposes. */
 /** C ref: weapon.c:1306 */
 export function* show_skills() {
     let win;
     let selected = cptr.box(0);
-    (yield* pline(__sl89));
+
+    (yield* pline(__s_skills));
     win = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
     (yield* Y.icall(start_menu()(win, 0n)));
     (yield* add_skills_to_menu(win, 0, 0));
-    (yield* Y.icall(end_menu()(win, __sl18)));
+    (yield* Y.icall(end_menu()(win, __s_empty)));
     (void ((yield* select_menu(win, NHM.PICK_NONE, selected))));
     (yield* Y.icall(destroy_nhwindow()(win)));
 }
 
+/*
+ * The `#enhance' extended command.  What we _really_ would like is
+ * to keep being able to pick things to advance until we couldn't any
+ * more.  This is currently not possible -- the menu code has no way
+ * to call us back for instant action.  Even if it did, we would also need
+ * to be able to update the menu since selecting one item could make
+ * others unselectable.
+ */
 /** C ref: weapon.c:1329 @returns {CInt} */
 export function* enhance_weapon_skill() {
     let i;
@@ -1174,13 +1484,18 @@ export function* enhance_weapon_skill() {
     let selected = cptr.box(0);
     let win;
     let speedy = 0;
+
+    /* player knows about #enhance, don't show tip anymore */
     cptr.stU64o(svc, $context_info_tips, cptr.ldU64o(svc, $context_info_tips) | 1n);
-    if (wizard() && (yield* yn_function(__sl90, cptr.decay(ynchars), 110, 1)) == 121)
+
+    if (wizard() && (yield* yn_function(__s_advance_skills_without_practice, cptr.decay(ynchars), 110, 1)) == 121)
         speedy = 1;
+
     do {
+        /* count advanceable skills */
         to_advance = (eventually_advance = (maxxed_cnt = 0));
         for (i = 0; i < NHC.P_NUM_SKILLS; i++) {
-            if ((cptr.ldI16o2(u, i, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED))
+            if ((cptr.ldI16o2(u, i, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED))
                 continue;
             if (can_advance(i, speedy))
                 to_advance++;
@@ -1189,34 +1504,41 @@ export function* enhance_weapon_skill() {
             else if (peaked_skill(i))
                 maxxed_cnt++;
         }
+
         win = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
         (yield* Y.icall(start_menu()(win, 0n)));
+
+        /* start with a legend if any entries will be annotated
+           with "*" or "#" below */
         if (eventually_advance > 0 || maxxed_cnt > 0) {
             if (eventually_advance > 0) {
-                void cptr.sprintf(cptr.decay(buf), __sl91, (((eventually_advance) == 1) ? __sl18 : __sl33), (cptr.ldI32o(u, $you_ulevel) < NHM.MAXULEV) ? __sl92 : __sl93);
+                void cptr.sprintf(cptr.decay(buf), __s_skill_s_flagged_by_may_be_enhanced_s, (((eventually_advance) == 1) ? __s_empty : __s_s), (cptr.ldI32o(u, $you_ulevel) < NHM.MAXULEV) ? __s_when_you_re_more_experienced : __s_if_skill_slots_become_available);
                 (yield* add_menu_str(win, cptr.decay(buf)));
             }
             if (maxxed_cnt > 0) {
-                void cptr.sprintf(cptr.decay(buf), __sl94, (((maxxed_cnt) == 1) ? __sl18 : __sl33));
+                void cptr.sprintf(cptr.decay(buf), __s_skill_s_flagged_by_cannot_be_enhanced, (((maxxed_cnt) == 1) ? __s_empty : __s_s));
                 (yield* add_menu_str(win, cptr.decay(buf)));
             }
-            (yield* add_menu_str(win, __sl18));
+            (yield* add_menu_str(win, __s_empty));
         }
+
         (yield* add_skills_to_menu(win, schar((((((to_advance + eventually_advance) | 0) + maxxed_cnt) | 0) > 0)), speedy));
-        void cptr.strcpy(cptr.decay(buf), (to_advance > 0) ? __sl95 : __sl96);
+
+        void cptr.strcpy(cptr.decay(buf), (to_advance > 0) ? __s_pick_a_skill_to_advance : __s_current_skills);
         if (wizard() && !speedy)
-            void cptr.sprintf(eos(cptr.decay(buf)), __sl97, cptr.ldI32o(u, $you_weapon_slots), (((cptr.ldI32o(u, $you_weapon_slots)) == 1) ? __sl18 : __sl33));
+            void cptr.sprintf(eos(cptr.decay(buf)), __s_d_slot_s_available, cptr.ldI32o(u, $you_weapon_slots), (((cptr.ldI32o(u, $you_weapon_slots)) == 1) ? __s_empty : __s_s));
         (yield* Y.icall(end_menu()(win, cptr.decay(buf))));
         n = (yield* select_menu(win, to_advance ? NHM.PICK_ONE : NHM.PICK_NONE, selected));
         (yield* Y.icall(destroy_nhwindow()(win)));
         if (n > 0) {
-            n = (cptr.ldI32o(selected.v, 0, 24) - 1) | 0;
+            n = (cptr.ldI32o(selected.v, 0, $sizeof_menu_item) - 1) | 0;  /* get item selected */
             cptr.free(selected.v);
             (yield* skill_advance(n));
+            /* check for more skills able to advance; if so, then... */
             for (n = (i = 0); i < NHC.P_NUM_SKILLS; i++) {
                 if (can_advance(i, speedy)) {
                     if (!speedy)
-                        (yield* You_feel(__sl98));
+                        (yield* You_feel(__s_you_could_be_more_dangerous));
                     n++;
                     break;
                 }
@@ -1226,21 +1548,26 @@ export function* enhance_weapon_skill() {
     return NHM.ECMD_OK;
 }
 
+/*
+ * Change from restricted to unrestricted, allowing P_BASIC as max.  This
+ * function may be called with with P_NONE.  Used in pray.c as well as below.
+ */
 /** C ref: weapon.c:1414 — @param {CInt} skill */
 export function unrestrict_weapon_skill(skill) {
-    if (skill < NHC.P_NUM_SKILLS && (cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills, NHC.P_UNSKILLED);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill, NHC.P_BASIC);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_advance, 0);
+    if (skill < NHC.P_NUM_SKILLS && (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, NHC.P_UNSKILLED);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill, NHC.P_BASIC);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance, 0);
     }
 }
 
 /** C ref: weapon.c:1424 — @param {CInt} skill @param {CInt} degree */
 export function* use_skill(skill, degree) {
     let advance_before;
-    if (skill != NHC.P_NONE && !(cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
+
+    if (skill != NHC.P_NONE && !(cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
         advance_before = can_advance(skill, 0);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_advance, cptr.ldU16o2(u, skill, 6, $you_weapon_skills + $skills_advance) + degree);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance, cptr.ldU16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance) + degree);
         if (!advance_before && can_advance(skill, 0))
             (yield* give_may_advance_msg(skill));
     }
@@ -1251,6 +1578,7 @@ export function* add_weapon_skill(n) {
     let i;
     let before;
     let after;
+
     for (i = 0, before = 0; i < NHC.P_NUM_SKILLS; i++)
         if (can_advance(i, 0))
             before++;
@@ -1265,15 +1593,21 @@ export function* add_weapon_skill(n) {
 /** C ref: weapon.c:1453 — @param {CInt} n */
 export function* lose_weapon_skill(n) {
     let skill;
+
     while (--n >= 0) {
+        /* deduct first from unused slots then from last placed one, if any */
         if (cptr.ldI32o(u, $you_weapon_slots)) {
             (cptr.stI32o(u, $you_weapon_slots, cptr.ldI32o(u, $you_weapon_slots) + -1)) - (-1);
         } else if (cptr.ldI32o(u, $you_skills_advanced)) {
             skill = cptr.ldI16o2(u, cptr.stI32o(u, $you_skills_advanced, cptr.ldI32o(u, $you_skills_advanced) + -1), 2, $you_skill_record);
-            if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) <= NHC.P_UNSKILLED)
-                (yield* panic(__sl99, skill));
-            (cptr.stI16o2(u, skill, 6, $you_weapon_skills, cptr.ldI16o2(u, skill, 6, $you_weapon_skills) + -1)) - (-1);
+            if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) <= NHC.P_UNSKILLED)
+                (yield* panic(__s_lose_weapon_skill_d, skill));
+            (cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) + -1)) - (-1);  /* drop skill one level */
+            /* Lost skill might have taken more than one slot; refund rest. */
             cptr.stI32o(u, $you_weapon_slots, (slots_required(skill) - 1) | 0);
+            /* It might now be possible to advance some other pending
+               skill by using the refunded slots, but giving a message
+               to that effect would seem pretty confusing.... */
         }
     }
 }
@@ -1285,40 +1619,48 @@ export function* drain_weapon_skill(n) {
     let curradv;
     let prevadv;
     let tmpskills = cptr.alloc(38 * 4);
+
     void __builtin___memset_chk(tmpskills, 0, 152n, __builtin_object_size(tmpskills, 0));
+
     while (--n >= 0) {
         if (cptr.ldI32o(u, $you_skills_advanced)) {
-            i = (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1489, __sl100), rn2(cptr.ldI32o(u, $you_skills_advanced))) : rn2(cptr.ldI32o(u, $you_skills_advanced)));
+            /* Pick a random skill, deleting it from the list. */
+            i = rn2_at(__s_weapon_c, 1489, __s_drain_weapon_skill, cptr.ldI32o(u, $you_skills_advanced));
             skill = cptr.ldI16o2(u, i, 2, $you_skill_record);
             cptr.stI32o(tmpskills, skill, 1, 4);
             for (; i < ((cptr.ldI32o(u, $you_skills_advanced) - 1) | 0); i++) {
                 cptr.stI16o2(u, i, 2, $you_skill_record, cptr.ldI16o2(u, (i + 1) | 0, 2, $you_skill_record));
             }
             (cptr.stI32o(u, $you_skills_advanced, cptr.ldI32o(u, $you_skills_advanced) + -1)) - (-1);
-            if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) <= NHC.P_UNSKILLED)
-                (yield* panic(__sl101, skill));
-            (cptr.stI16o2(u, skill, 6, $you_weapon_skills, cptr.ldI16o2(u, skill, 6, $you_weapon_skills) + -1)) - (-1);
+            if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) <= NHC.P_UNSKILLED)
+                (yield* panic(__s_drain_weapon_skill_d, skill));
+            (cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) + -1)) - (-1);  /* drop skill one level */
+            /* refund slots used for skill */
             cptr.stI32o(u, $you_weapon_slots, (cptr.ldI32o(u, $you_weapon_slots) + slots_required(skill)) | 0);
-            curradv = (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, 6, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)))), 20));
-            prevadv = (Math.imul(Math.imul((((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) - 1) | 0), (((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) - 1) | 0)), 20));
-            if ((cptr.ldU16o2(u, skill, 6, $you_weapon_skills + $skills_advance)) >= curradv)
-                cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_advance, u16(((prevadv + (rng_log_enabled() ? (rng_log_set_caller(__sl29, 1505, __sl100), rn2((curradv - prevadv) | 0)) : rn2((curradv - prevadv) | 0))) | 0)));
+            /* drain skill training to a value appropriate for new level */
+            curradv = (Math.imul(Math.imul(((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))), ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)))), 20));
+            prevadv = (Math.imul(Math.imul((((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) - 1) | 0), (((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) - 1) | 0)), 20));
+            if ((cptr.ldU16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance)) >= curradv)
+                cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance, u16(((prevadv + rn2_at(__s_weapon_c, 1505, __s_drain_weapon_skill, (curradv - prevadv) | 0)) | 0)));
         }
     }
+
     for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++)
         if (cptr.ldI32o(tmpskills, skill, 4)) {
-            (yield* You(__sl102, (cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) >= NHC.P_BASIC ? __sl103 : __sl18, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
+            (yield* You(__s_forget_syour_training_in_s, (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) >= NHC.P_BASIC ? __s_some_of : __s_empty, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
         }
 }
 
-/** C ref: weapon.c:1517 — @param {CPtr} obj @returns {CInt} */
+/** C ref: weapon.c:1517 — @param {CPtr<struct obj>} obj @returns {CInt} */
 export function weapon_type(obj) {
+    /* KMH -- now uses the object table */
     let type;
+
     if (!obj)
-        return NHC.P_BARE_HANDED_COMBAT;
+        return NHC.P_BARE_HANDED_COMBAT;  /* Not using a weapon */
     if (cptr.ld1so(obj, $obj_oclass) != NHC.WEAPON_CLASS && cptr.ld1so(obj, $obj_oclass) != NHC.TOOL_CLASS && cptr.ld1so(obj, $obj_oclass) != NHC.GEM_CLASS)
-        return NHC.P_NONE;
-    type = cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), 120, $objclass_oc_subtyp);
+        return NHC.P_NONE;  /* Not a weapon, weapon-tool, or ammo */
+    type = cptr.ld1so2(objects, cptr.ldI16o(obj, $obj_otyp), $sizeof_objclass, $objclass_oc_subtyp);
     return (type < 0) ? -type : type;
 }
 
@@ -1329,22 +1671,30 @@ export function uwep_skill_type() {
     return weapon_type(uwep.v);
 }
 
+/*
+ * Return hit bonus/penalty based on skill of weapon.
+ * weapon can be null, meaning bare-handed combat.
+ * Treat restricted weapons as unskilled.
+ */
 const __static_weapon_hit_bonus_bad_skill = cptr.bytes("weapon_hit_bonus: bad skill %d"); /** C ref: weapon.c:1548 — char[31] (function-static) */
 
-/** C ref: weapon.c:1545 — @param {CPtr} weapon @returns {CInt} */
+/** C ref: weapon.c:1545 — @param {CPtr<struct obj>} weapon @returns {CInt} */
 export function* weapon_hit_bonus(weapon) {
     let type;
     let wep_type;
     let skill;
     let bonus = 0;
+
     wep_type = weapon_type(weapon);
+    /* use two weapon skill only if attacking with one of the wielded weapons
+     */
     type = (cptr.ld1so(u, $you_twoweap) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v))) ? NHC.P_TWO_WEAPON_COMBAT : wep_type;
     if (type == NHC.P_NONE) {
         bonus = 0;
     } else if (type <= NHC.P_UNICORN_HORN) {
-        switch ((cptr.ldI16o2(u, type, 6, $you_weapon_skills))) {
+        switch ((cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills))) {
             default:
-            (yield* impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), (cptr.ldI16o2(u, type, 6, $you_weapon_skills))));
+            (yield* impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), (cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills))));
             // @FallThrough
             ;
             case NHC.P_ISRESTRICTED:
@@ -1362,9 +1712,9 @@ export function* weapon_hit_bonus(weapon) {
             break;
         }
     } else if (type == NHC.P_TWO_WEAPON_COMBAT) {
-        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, 6, $you_weapon_skills));
-        if ((cptr.ldI16o2(u, wep_type, 6, $you_weapon_skills)) < skill)
-            skill = (cptr.ldI16o2(u, wep_type, 6, $you_weapon_skills));
+        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, $sizeof_skills, $you_weapon_skills));
+        if ((cptr.ldI16o2(u, wep_type, $sizeof_skills, $you_weapon_skills)) < skill)
+            skill = (cptr.ldI16o2(u, wep_type, $sizeof_skills, $you_weapon_skills));
         switch (skill) {
             default:
             (yield* impossible(cptr.decay(__static_weapon_hit_bonus_bad_skill), skill));
@@ -1385,12 +1735,23 @@ export function* weapon_hit_bonus(weapon) {
             break;
         }
     } else if (type == NHC.P_BARE_HANDED_COMBAT) {
-        bonus = (cptr.ldI16o2(u, type, 6, $you_weapon_skills));
-        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;
+        /*
+         *        b.h. m.a.
+         * unskl:  +1  n/a
+         * basic:  +1   +3
+         * skild:  +2   +4
+         * exprt:  +2   +5
+         * mastr:  +3   +6
+         * grand:  +3   +7
+         */
+        bonus = (cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills));
+        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;  /* unskilled => 0 */
         bonus = ((Math.imul(((bonus + 2) | 0), (((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK)) ? 2 : 1))) / 2) | 0;
     }
+
+    /* KMH -- It's harder to hit while you are riding */
     if (cptr.ldPtro(u, $you_usteed)) {
-        switch ((cptr.ldI16o2(u, NHC.P_RIDING, 6, $you_weapon_skills))) {
+        switch ((cptr.ldI16o2(u, NHC.P_RIDING, $sizeof_skills, $you_weapon_skills))) {
             case NHC.P_ISRESTRICTED:
             case NHC.P_UNSKILLED:
             bonus = (bonus - 2) | 0;
@@ -1406,23 +1767,32 @@ export function* weapon_hit_bonus(weapon) {
         if (cptr.ld1so(u, $you_twoweap))
             bonus = (bonus - 2) | 0;
     }
+
     return bonus;
 }
 
-/** C ref: weapon.c:1644 — @param {CPtr} weapon @returns {CInt} */
+/*
+ * Return damage bonus/penalty based on skill of weapon.
+ * weapon can be null, meaning bare-handed combat.
+ * Treat restricted weapons as unskilled.
+ */
+/** C ref: weapon.c:1644 — @param {CPtr<struct obj>} weapon @returns {CInt} */
 export function* weapon_dam_bonus(weapon) {
     let type;
     let wep_type;
     let skill;
     let bonus = 0;
+
     wep_type = weapon_type(weapon);
+    /* use two weapon skill only if attacking with one of the wielded weapons
+     */
     type = (cptr.ld1so(u, $you_twoweap) && (cptr.eq(weapon, uwep.v) || cptr.eq(weapon, uswapwep.v))) ? NHC.P_TWO_WEAPON_COMBAT : wep_type;
     if (type == NHC.P_NONE) {
         bonus = 0;
     } else if (type <= NHC.P_UNICORN_HORN) {
-        switch ((cptr.ldI16o2(u, type, 6, $you_weapon_skills))) {
+        switch ((cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills))) {
             default:
-            (yield* impossible(__sl104, (cptr.ldI16o2(u, type, 6, $you_weapon_skills))));
+            (yield* impossible(__s_weapon_dam_bonus_bad_skill_d, (cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills))));
             // @FallThrough
             ;
             case NHC.P_ISRESTRICTED:
@@ -1440,9 +1810,9 @@ export function* weapon_dam_bonus(weapon) {
             break;
         }
     } else if (type == NHC.P_TWO_WEAPON_COMBAT) {
-        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, 6, $you_weapon_skills));
-        if ((cptr.ldI16o2(u, wep_type, 6, $you_weapon_skills)) < skill)
-            skill = (cptr.ldI16o2(u, wep_type, 6, $you_weapon_skills));
+        skill = (cptr.ldI16o2(u, NHC.P_TWO_WEAPON_COMBAT, $sizeof_skills, $you_weapon_skills));
+        if ((cptr.ldI16o2(u, wep_type, $sizeof_skills, $you_weapon_skills)) < skill)
+            skill = (cptr.ldI16o2(u, wep_type, $sizeof_skills, $you_weapon_skills));
         switch (skill) {
             default:
             case NHC.P_ISRESTRICTED:
@@ -1460,12 +1830,23 @@ export function* weapon_dam_bonus(weapon) {
             break;
         }
     } else if (type == NHC.P_BARE_HANDED_COMBAT) {
-        bonus = (cptr.ldI16o2(u, type, 6, $you_weapon_skills));
-        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;
+        /*
+         *        b.h. m.a.
+         * unskl:   0  n/a
+         * basic:  +1   +3
+         * skild:  +1   +4
+         * exprt:  +2   +6
+         * mastr:  +2   +7
+         * grand:  +3   +9
+         */
+        bonus = (cptr.ldI16o2(u, type, $sizeof_skills, $you_weapon_skills));
+        bonus = (((bonus) > NHC.P_UNSKILLED ? (bonus) : NHC.P_UNSKILLED) - 1) | 0;  /* unskilled => 0 */
         bonus = ((Math.imul(((bonus + 1) | 0), (((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK)) ? 3 : 1))) / 2) | 0;
     }
+
+    /* KMH -- Riding gives some thrusting damage */
     if (cptr.ldPtro(u, $you_usteed) && type != NHC.P_TWO_WEAPON_COMBAT) {
-        switch ((cptr.ldI16o2(u, NHC.P_RIDING, 6, $you_weapon_skills))) {
+        switch ((cptr.ldI16o2(u, NHC.P_RIDING, $sizeof_skills, $you_weapon_skills))) {
             case NHC.P_ISRESTRICTED:
             case NHC.P_UNSKILLED:
             break;
@@ -1479,67 +1860,100 @@ export function* weapon_dam_bonus(weapon) {
             break;
         }
     }
+
     return bonus;
 }
 
-/** C ref: weapon.c:1738 — @param {CPtr} class_skill */
+/*
+ * Initialize weapon skill array for the game.  Start by setting all
+ * skills to restricted, then set the skill for every weapon the
+ * hero is holding, finally reading the given array that sets
+ * maximums.
+ */
+/** C ref: weapon.c:1738 — @param {CPtr<struct def_skill>} class_skill */
 export function* skill_init(class_skill) {
     let obj;
     let skmax;
     let skill;
+
+    /* initialize skill array; by default, everything is restricted */
     for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++) {
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills, NHC.P_ISRESTRICTED);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill, NHC.P_ISRESTRICTED);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_advance, 0);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, NHC.P_ISRESTRICTED);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill, NHC.P_ISRESTRICTED);
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance, 0);
     }
+
+    /* Set skill for all weapons in inventory to be basic */
     for (obj = cptr.ldPtro(gi, $instance_globals_i_invent); obj; obj = cptr.ldPtr(obj)) {
+        /* don't give skill just because of carried ammo, wait until
+           we see the relevant launcher (prevents an archeologist's
+           touchstone from inadvertently providing skill in sling) */
         if (is_ammo(obj))
             continue;
+
         skill = weapon_type(obj);
         if (skill != NHC.P_NONE)
-            cptr.stI16o2(u, skill, 6, $you_weapon_skills, NHC.P_BASIC);
+            cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
     }
+
+    /* set skills for magic */
     if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_HEALER) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK)) {
-        cptr.stI16o2(u, NHC.P_HEALING_SPELL, 6, $you_weapon_skills, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_HEALING_SPELL, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
     } else if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_CLERIC)) {
-        cptr.stI16o2(u, NHC.P_CLERIC_SPELL, 6, $you_weapon_skills, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_CLERIC_SPELL, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
     } else if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_WIZARD)) {
-        cptr.stI16o2(u, NHC.P_ATTACK_SPELL, 6, $you_weapon_skills, NHC.P_BASIC);
-        cptr.stI16o2(u, NHC.P_ENCHANTMENT_SPELL, 6, $you_weapon_skills, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_ATTACK_SPELL, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_ENCHANTMENT_SPELL, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
     }
+
+    /* walk through array to set skill maximums */
     for (; cptr.ldI16(class_skill) != NHC.P_NONE; class_skill = cptr.add(class_skill, 1, 4)) {
         skmax = cptr.ldI16o(class_skill, $def_skill_skmax);
         skill = cptr.ldI16(class_skill);
-        cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill, i16(skmax));
-        if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) == NHC.P_ISRESTRICTED)
-            cptr.stI16o2(u, skill, 6, $you_weapon_skills, NHC.P_UNSKILLED);
+
+        cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill, i16(skmax));
+        if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) == NHC.P_ISRESTRICTED)
+            cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills, NHC.P_UNSKILLED);
     }
-    if ((cptr.ldI16o2(u, NHC.P_BARE_HANDED_COMBAT, 6, $you_weapon_skills + $skills_max_skill)) > NHC.P_EXPERT)
-        cptr.stI16o2(u, NHC.P_BARE_HANDED_COMBAT, 6, $you_weapon_skills, NHC.P_BASIC);
+
+    /* High potential fighters already know how to use their hands. */
+    if ((cptr.ldI16o2(u, NHC.P_BARE_HANDED_COMBAT, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) > NHC.P_EXPERT)
+        cptr.stI16o2(u, NHC.P_BARE_HANDED_COMBAT, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
+
+    /* Roles that start with a horse know how to ride it */
     if (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_petnum) == NHC.PM_PONY)
-        cptr.stI16o2(u, NHC.P_RIDING, 6, $you_weapon_skills, NHC.P_BASIC);
+        cptr.stI16o2(u, NHC.P_RIDING, $sizeof_skills, $you_weapon_skills, NHC.P_BASIC);
+
+    /*
+     * Make sure we haven't missed setting the max on a skill
+     * & set advance
+     */
     for (skill = 0; skill < NHC.P_NUM_SKILLS; skill++) {
-        if (!(cptr.ldI16o2(u, skill, 6, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
-            if ((cptr.ldI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill)) < (cptr.ldI16o2(u, skill, 6, $you_weapon_skills))) {
-                (yield* impossible(__sl105, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), 120))), 16)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
-                cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_max_skill, (cptr.ldI16o2(u, skill, 6, $you_weapon_skills)));
+        if (!(cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills) == NHC.P_ISRESTRICTED)) {
+            if ((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill)) < (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills))) {
+                (yield* impossible(__s_skill_init_curr_max_s, ((cptr.ldI16o(skill_names_indices, skill, 2) > 0) ? (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, cptr.ldI16o(skill_names_indices, skill, 2), $sizeof_objclass))), $sizeof_objdescr)) : ((skill == NHC.P_BARE_HANDED_COMBAT) ? cptr.ldPtro(barehands_or_martial, ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_SAMURAI) || (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_MONK) ? 1 : 0), 8) : cptr.ldPtro(odd_skill_names, -cptr.ldI16o(skill_names_indices, skill, 2), 8)))));
+                cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_max_skill, (cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)));
             }
-            cptr.stI16o2(u, skill, 6, $you_weapon_skills + $skills_advance, u16((Math.imul(Math.imul((((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) - 1) | 0), (((cptr.ldI16o2(u, skill, 6, $you_weapon_skills)) - 1) | 0)), 20))));
+            cptr.stI16o2(u, skill, $sizeof_skills, $you_weapon_skills + $skills_advance, u16((Math.imul(Math.imul((((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) - 1) | 0), (((cptr.ldI16o2(u, skill, $sizeof_skills, $you_weapon_skills)) - 1) | 0)), 20))));
         }
     }
+
+    /* each role has a special spell; allow at least basic for its type
+       (despite the function name, this works for spell skills too) */
     unrestrict_weapon_skill(spell_skilltype(cptr.ldI32o(gu, $instance_globals_u_urole + $Role_spelspec)));
+
     if (!cptr.ld1so(u, $you_uroleplay + $u_roleplay_pauper))
         (yield* skill_based_spellbook_id());
 }
 
-/** C ref: weapon.c:1814 — @param {CPtr} mon @param {CPtr} obj */
+/** C ref: weapon.c:1814 — @param {CPtr<struct monst>} mon @param {CPtr<struct obj>} obj */
 export function* setmnotwielded(mon, obj) {
     if (!obj)
         return;
     if (artifact_light(obj) && (cptr.ldI32o(obj, $obj_lamplit) & 1) | 0) {
         (yield* end_burn(obj, 0));
         if (canseemon(mon))
-            (yield* pline(__sl106, (yield* The((yield* xname(obj)))), (yield* s_suffix((yield* mon_nam(mon)))), (yield* mbodypart(mon, NHC.HAND)), (yield* otense(obj, __sl107))));
+            (yield* pline(__s_s_in_s_s_s_shining, (yield* The((yield* xname(obj)))), (yield* s_suffix((yield* mon_nam(mon)))), (yield* mbodypart(mon, NHC.HAND)), (yield* otense(obj, __s_stop))));
     }
     if (cptr.eq((cptr.ldPtro((mon), $monst_mw)), obj))
         (cptr.stPtro((mon), $monst_mw, null));

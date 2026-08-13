@@ -15,8 +15,9 @@ import { gc } from './decl.js';
 // (values from ./nhfield.js, which is the whole table)
 const $instance_globals_c_crash_email = FLD.instance_globals_c_crash_email,
     $instance_globals_c_crash_name = FLD.instance_globals_c_crash_name,
-    $sysopt_s_accessibility = FLD.sysopt_s_accessibility, $sysopt_s_bones_pools = FLD.sysopt_s_bones_pools,
-    $sysopt_s_bonesformat = FLD.sysopt_s_bonesformat, $sysopt_s_check_plname = FLD.sysopt_s_check_plname,
+    $sizeof_sysopt_s = FLD.sizeof_sysopt_s, $sysopt_s_accessibility = FLD.sysopt_s_accessibility,
+    $sysopt_s_bones_pools = FLD.sysopt_s_bones_pools, $sysopt_s_bonesformat = FLD.sysopt_s_bonesformat,
+    $sysopt_s_check_plname = FLD.sysopt_s_check_plname,
     $sysopt_s_check_save_uid = FLD.sysopt_s_check_save_uid,
     $sysopt_s_crashreporturl = FLD.sysopt_s_crashreporturl, $sysopt_s_debugfiles = FLD.sysopt_s_debugfiles,
     $sysopt_s_entrymax = FLD.sysopt_s_entrymax, $sysopt_s_env_dbgfl = FLD.sysopt_s_env_dbgfl,
@@ -33,25 +34,30 @@ const $instance_globals_c_crash_email = FLD.instance_globals_c_crash_email,
     $sysopt_s_wizards = FLD.sysopt_s_wizards;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("DEBUGFILES");
-const __sl1 = cptr.lit("config error: PERS_IS_UID must be either 0 or 1");
-const __sl2 = cptr.lit("/usr/bin/gdb");
-const __sl3 = cptr.lit("/bin/grep");
+const __s_debugfiles = cptr.lit("DEBUGFILES");
+const __s_config_error_pers_is_uid_must_be_either = cptr.lit("config error: PERS_IS_UID must be either 0 or 1");
+const __s_usr_bin_gdb = cptr.lit("/usr/bin/gdb");
+const __s_bin_grep = cptr.lit("/bin/grep");
 
 /** C ref: sys.c:18 — struct sysopt_s */
-export let sysopt = cptr.alloc(184);
+export let sysopt = cptr.alloc($sizeof_sysopt_s);
 
 /** C ref: sys.c:21 */
 export function sys_early_init() {
     let p;
+
+    /* Don't assume that these are not already set, and that it is
+     * safe to dupstr() without orphaning any pointers. Check them. */
+
     cptr.stPtr(sysopt, null);
     cptr.stPtro(sysopt, $sysopt_s_recover, null);
     cptr.stPtro(sysopt, $sysopt_s_wizards, null);
-    if ((p = getenv(__sl0)) !== null) {
+
+    if ((p = getenv(__s_debugfiles)) !== null) {
         if (cptr.ldPtro(sysopt, $sysopt_s_debugfiles))
             cptr.free(cptr.ldPtro(sysopt, $sysopt_s_debugfiles));
         cptr.stPtro(sysopt, $sysopt_s_debugfiles, dupstr(p));
-        cptr.stI32o(sysopt, $sysopt_s_env_dbgfl, 1);
+        cptr.stI32o(sysopt, $sysopt_s_env_dbgfl, 1);  /* prevent sysconf processing from overriding */
     } else {
         cptr.stPtro(sysopt, $sysopt_s_debugfiles, null);
         cptr.stI32o(sysopt, $sysopt_s_env_dbgfl, 0);
@@ -60,32 +66,41 @@ export function sys_early_init() {
     cptr.stPtro(sysopt, $sysopt_s_explorers, null);
     cptr.stPtro(sysopt, $sysopt_s_genericusers, null);
     cptr.stPtro(sysopt, $sysopt_s_msghandler, null);
-    cptr.stI32o(sysopt, $sysopt_s_maxplayers, 0);
+    cptr.stI32o(sysopt, $sysopt_s_maxplayers, 0);  /* XXX eventually replace MAX_NR_OF_PLAYERS */
     cptr.stI32o(sysopt, $sysopt_s_bones_pools, 0);
     cptr.stI64o(sysopt, $sysopt_s_livelog, 0n);
+
+    /* record file */
     cptr.stI32o(sysopt, $sysopt_s_persmax, NHM.PERSMAX);
     cptr.stI32o(sysopt, $sysopt_s_entrymax, NHM.ENTRYMAX);
     cptr.stI32o(sysopt, $sysopt_s_pointsmin, 1);
     cptr.stI32o(sysopt, $sysopt_s_pers_is_uid, 1);
     cptr.stI32o(sysopt, $sysopt_s_tt_oname_maxrank, 10);
+
+    /* sanity checks */
     if (cptr.ldI32o(sysopt, $sysopt_s_pers_is_uid) != 0 && cptr.ldI32o(sysopt, $sysopt_s_pers_is_uid) != 1)
-        panic(__sl1);
+        panic(__s_config_error_pers_is_uid_must_be_either);
+    /* panic options */
     if (cptr.ldPtro(sysopt, $sysopt_s_gdbpath))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_gdbpath));
-    cptr.stPtro(sysopt, $sysopt_s_gdbpath, dupstr(__sl2));
+    cptr.stPtro(sysopt, $sysopt_s_gdbpath, dupstr(__s_usr_bin_gdb));
     if (cptr.ldPtro(sysopt, $sysopt_s_greppath))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_greppath));
-    cptr.stPtro(sysopt, $sysopt_s_greppath, dupstr(__sl3));
+    cptr.stPtro(sysopt, $sysopt_s_greppath, dupstr(__s_bin_grep));
     cptr.stI32o(sysopt, $sysopt_s_panictrace_gdb, 0);
     cptr.stI32o(sysopt, $sysopt_s_panictrace_libc, 0);
     cptr.stPtro(sysopt, $sysopt_s_crashreporturl, null);
+
     cptr.stI32o(sysopt, $sysopt_s_check_save_uid, 1);
     cptr.stI32o(sysopt, $sysopt_s_check_plname, 0);
-    cptr.stI32o(sysopt, $sysopt_s_seduce, 1);
+    cptr.stI32o(sysopt, $sysopt_s_seduce, 1);  /* if it's compiled in, default to on */
     sysopt_seduce_set(cptr.ldI32o(sysopt, $sysopt_s_seduce));
     cptr.stI32o2(sysopt, 0, 4, $sysopt_s_saveformat, cptr.stI32o2(sysopt, 0, 4, $sysopt_s_bonesformat, NHC.historical));
     cptr.stI32o(sysopt, $sysopt_s_accessibility, 0);
+
+    /* help menu */
     cptr.stI32o(sysopt, $sysopt_s_hideusage, 0);
+
     return;
 }
 
@@ -116,6 +131,9 @@ export function sysopt_release() {
         cptr.free(cptr.ldPtro(gc, $instance_globals_c_crash_email)), cptr.stPtro(gc, $instance_globals_c_crash_email, (null));
     if (cptr.ldPtro(gc, $instance_globals_c_crash_name))
         cptr.free(cptr.ldPtro(gc, $instance_globals_c_crash_name)), cptr.stPtro(gc, $instance_globals_c_crash_name, (null));
+
+    /* this one's last because it might be used in panic feedback, although
+       none of the preceding ones are likely to trigger a controlled panic */
     if (cptr.ldPtro(sysopt, $sysopt_s_fmtd_wizard_list))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_fmtd_wizard_list)), cptr.stPtro(sysopt, $sysopt_s_fmtd_wizard_list, null);
     return;

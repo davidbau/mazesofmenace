@@ -37,13 +37,14 @@ const $CClosure_nupvalues = FLD.CClosure_nupvalues, $GCObject_marked = FLD.GCObj
     $global_State_twups = FLD.global_State_twups, $lua_State_ci = FLD.lua_State_ci,
     $lua_State_l_G = FLD.lua_State_l_G, $lua_State_openupval = FLD.lua_State_openupval,
     $lua_State_stack = FLD.lua_State_stack, $lua_State_tbclist = FLD.lua_State_tbclist,
-    $lua_State_top = FLD.lua_State_top, $lua_State_twups = FLD.lua_State_twups;
+    $lua_State_top = FLD.lua_State_top, $lua_State_twups = FLD.lua_State_twups,
+    $sizeof_LocVar = FLD.sizeof_LocVar;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("?");
-const __sl1 = cptr.lit("variable '%s' got a non-closable value");
+const __s_query = cptr.lit("?");
+const __s_variable_s_got_a_non_closable_value = cptr.lit("variable '%s' got a non-closable value");
 
-/** C ref: lfunc.c:27 — @param {CPtr} L @param {CInt} nupvals @returns {CPtr} */
+/** C ref: lfunc.c:27 — @param {CPtr<lua_State>} L @param {CInt} nupvals @returns {CPtr<CClosure>} */
 export function* luaF_newCclosure(L, nupvals) {
     let o = (yield* luaC_newobj(L, 38, BigInt.asUintN(64, BigInt((((32) + Math.imul(16, (nupvals))) | 0)))));
     let c = (((((o)))));
@@ -51,7 +52,7 @@ export function* luaF_newCclosure(L, nupvals) {
     return c;
 }
 
-/** C ref: lfunc.c:35 — @param {CPtr} L @param {CInt} nupvals @returns {CPtr} */
+/** C ref: lfunc.c:35 — @param {CPtr<lua_State>} L @param {CInt} nupvals @returns {CPtr<LClosure>} */
 export function* luaF_newLclosure(L, nupvals) {
     let o = (yield* luaC_newobj(L, 6, BigInt.asUintN(64, BigInt((((32) + Math.imul(8, (nupvals))) | 0)))));
     let c = (((((o)))));
@@ -62,38 +63,49 @@ export function* luaF_newLclosure(L, nupvals) {
     return c;
 }
 
-/** C ref: lfunc.c:48 — @param {CPtr} L @param {CPtr} cl */
+/*
+** fill a closure with new closed upvalues
+*/
+/** C ref: lfunc.c:48 — @param {CPtr<lua_State>} L @param {CPtr<LClosure>} cl */
 export function* luaF_initupvals(L, cl) {
     let i;
     for (i = 0; i < cptr.ld1uo(cl, $LClosure_nupvalues); i++) {
         let o = (yield* luaC_newobj(L, 9, 40n));
         let uv = (((((o)))));
-        cptr.stPtro(uv, $UpVal_v, cptr.add(uv, $UpVal_u));
+        cptr.stPtro(uv, $UpVal_v, cptr.add(uv, $UpVal_u));  /* make it closed */
         (cptr.st1o((cptr.ldPtro(uv, $UpVal_v)), $TValue_tt_, 0));
         cptr.stPtro2(cl, i, 8, $LClosure_upvals, uv);
         ((((cptr.ld1uo((cl), $LClosure_marked)) & 32) && ((cptr.ld1uo((uv), $UpVal_marked)) & 24)) ? luaC_barrier_(L, ((((cl)))), ((((uv))))) : (void 0));
     }
 }
 
-/** C ref: lfunc.c:65 — @param {CPtr} L @param {CPtr} level @param {CPtr} prev @returns {CPtr} */
+/*
+** Create a new upvalue at the given level, and link it to the list of
+** open upvalues of 'L' after entry 'prev'.
+**/
+/** C ref: lfunc.c:65 — @param {CPtr<lua_State>} L @param {CPtr} level @param {CPtr<UpVal *>} prev @returns {CPtr<UpVal>} */
 function* newupval(L, level, prev) {
     let o = (yield* luaC_newobj(L, 9, 40n));
     let uv = (((((o)))));
     let next = cptr.ldPtr(prev);
-    cptr.stPtro(uv, $UpVal_v, ((level)));
-    cptr.stPtro(uv, $UpVal_u, next);
+    cptr.stPtro(uv, $UpVal_v, ((level)));  /* current value lives in the stack */
+    cptr.stPtro(uv, $UpVal_u, next);  /* link it to list of open upvalues */
     cptr.stPtro(uv, $UpVal_u + 8, prev);
     if (next)
         cptr.stPtro(next, $UpVal_u + 8, cptr.add(uv, $UpVal_u));
     cptr.stPtr(prev, uv);
     if (!(!cptr.eq(cptr.ldPtro(L, $lua_State_twups), L))) {
-        cptr.stPtro(L, $lua_State_twups, cptr.ldPtro((cptr.ldPtro(L, $lua_State_l_G)), $global_State_twups));
+        cptr.stPtro(L, $lua_State_twups, cptr.ldPtro((cptr.ldPtro(L, $lua_State_l_G)), $global_State_twups));  /* link it to the list */
         cptr.stPtro((cptr.ldPtro(L, $lua_State_l_G)), $global_State_twups, L);
     }
     return uv;
 }
 
-/** C ref: lfunc.c:87 — @param {CPtr} L @param {CPtr} level @returns {CPtr} */
+/*
+** Find and reuse, or create if it does not exist, an upvalue
+** at the given level.
+*/
+/** C ref: lfunc.c:87 — @param {CPtr<lua_State>} L @param {CPtr} level @returns {CPtr<UpVal>} */
 export function* luaF_findupval(L, level) {
     let pp = cptr.add(L, $lua_State_openupval);
     let p;
@@ -101,18 +113,24 @@ export function* luaF_findupval(L, level) {
     while (!cptr.eq((p = cptr.ldPtr(pp)), (null)) && cptr.cmp((((cptr.ldPtro((p), $UpVal_v)))), level) >= 0) {
         (void 0);
         if (cptr.eq((((cptr.ldPtro((p), $UpVal_v)))), level))
-            return p;
+            return p;  /* return it */
         pp = cptr.add(p, $UpVal_u);
     }
+    /* not found: create a new upvalue after 'pp' */
     return (yield* newupval(L, level, pp));
 }
 
-/** C ref: lfunc.c:107 — @param {CPtr} L @param {CPtr} obj @param {CPtr} err @param {CInt} yy */
+/*
+** Call closing method for object 'obj' with error message 'err'. The
+** boolean 'yy' controls whether the call is yieldable.
+** (This function assumes EXTRA_STACK.)
+*/
+/** C ref: lfunc.c:107 — @param {CPtr<lua_State>} L @param {CPtr<TValue>} obj @param {CPtr<TValue>} err @param {CInt} yy */
 function* callclosemethod(L, obj, err, yy) {
     let top = cptr.ldPtro(L, $lua_State_top);
     let tm = luaT_gettmbyobj(L, obj, NHC.TM_CLOSE);
     {
-        let io1 = (((top)));
+        let io1 = (((top)));  /* will call metamethod... */
         let io2 = (tm);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -121,7 +139,7 @@ function* callclosemethod(L, obj, err, yy) {
     }
     ;
     {
-        let io1 = (((cptr.add(top, 1, 16))));
+        let io1 = (((cptr.add(top, 1, 16))));  /* with 'self' as the 1st argument */
         let io2 = (obj);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -130,7 +148,7 @@ function* callclosemethod(L, obj, err, yy) {
     }
     ;
     {
-        let io1 = (((cptr.add(top, 2, 16))));
+        let io1 = (((cptr.add(top, 2, 16))));  /* and error msg. as 2nd argument */
         let io2 = (err);
         cptr.memcpy(io1, io2, 8);
         (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -138,53 +156,67 @@ function* callclosemethod(L, obj, err, yy) {
         (void 0);
     }
     ;
-    cptr.stPtro(L, $lua_State_top, cptr.add(top, 3, 16));
+    cptr.stPtro(L, $lua_State_top, cptr.add(top, 3, 16));  /* add function and arguments */
     if (yy)
         (yield* luaD_call(L, top, 0));
     else
         (yield* luaD_callnoyield(L, top, 0));
 }
 
-/** C ref: lfunc.c:125 — @param {CPtr} L @param {CPtr} level */
+/*
+** Check whether object at given level has a close metamethod and raise
+** an error if not.
+*/
+/** C ref: lfunc.c:125 — @param {CPtr<lua_State>} L @param {CPtr} level */
 function* checkclosemth(L, level) {
     let tm = luaT_gettmbyobj(L, ((level)), NHC.TM_CLOSE);
     if ((((((cptr.ld1uo(((tm)), $TValue_tt_))) & 15)) == 0)) {
-        let idx = (Number(BigInt.asIntN(32, ((cptr.diff(level, cptr.ldPtr(cptr.ldPtro(L, $lua_State_ci))) / 16n)))));
+        let idx = (Number(BigInt.asIntN(32, ((cptr.diff(level, cptr.ldPtr(cptr.ldPtro(L, $lua_State_ci))) / 16n)))));  /* variable index */
         let vname = luaG_findlocal(L, cptr.ldPtro(L, $lua_State_ci), idx, null);
         if (cptr.eq(vname, (null)))
-            vname = __sl0;
-        (yield* luaG_runerror(L, __sl1, vname));
+            vname = __s_query;
+        (yield* luaG_runerror(L, __s_variable_s_got_a_non_closable_value, vname));
     }
 }
 
-/** C ref: lfunc.c:143 — @param {CPtr} L @param {CPtr} level @param {CInt} status @param {CInt} yy */
+/*
+** Prepare and call a closing method.
+** If status is CLOSEKTOP, the call to the closing method will be pushed
+** at the top of the stack. Otherwise, values can be pushed right after
+** the 'level' of the upvalue being closed, as everything after that
+** won't be used again.
+*/
+/** C ref: lfunc.c:143 — @param {CPtr<lua_State>} L @param {CPtr} level @param {CInt} status @param {CInt} yy */
 function* prepcallclosemth(L, level, status, yy) {
-    let uv = ((level));
+    let uv = ((level));  /* value being closed */
     let errobj;
     if (status == -1)
-        errobj = cptr.add((cptr.ldPtro(L, $lua_State_l_G)), $global_State_nilvalue);
+        errobj = cptr.add((cptr.ldPtro(L, $lua_State_l_G)), $global_State_nilvalue);  /* error object is nil */
     else {
-        errobj = ((cptr.add(level, 1, 16)));
-        luaD_seterrorobj(L, status, cptr.add(level, 1, 16));
+        errobj = ((cptr.add(level, 1, 16)));  /* error object goes after 'uv' */
+        luaD_seterrorobj(L, status, cptr.add(level, 1, 16));  /* set error object */
     }
     (yield* callclosemethod(L, uv, errobj, yy));
 }
 
-/** C ref: lfunc.c:168 — @param {CPtr} L @param {CPtr} level */
+/*
+** Insert a variable in the list of to-be-closed variables.
+*/
+/** C ref: lfunc.c:168 — @param {CPtr<lua_State>} L @param {CPtr} level */
 export function* luaF_newtbcupval(L, level) {
     (void 0);
     if ((((cptr.ld1uo(((((level)))), $TValue_tt_)) == 1) || (((((cptr.ld1uo(((((level)))), $TValue_tt_))) & 15)) == 0)))
-        return;
-    (yield* checkclosemth(L, level));
+        return;  /* false doesn't need to be closed */
+    (yield* checkclosemth(L, level));  /* value must have a close method */
     while (BigInt((Number(BigInt.asUintN(32, ((cptr.diff(level, cptr.ldPtro(L, $lua_State_tbclist)) / 16n))))) >>> 0) > 65535n) {
-        cptr.stPtro(L, $lua_State_tbclist, cptr.add(cptr.ldPtro(L, $lua_State_tbclist), 65535n, 16));
+        cptr.stPtro(L, $lua_State_tbclist, cptr.add(cptr.ldPtro(L, $lua_State_tbclist), 65535n, 16));  /* create a dummy node at maximum delta */
         cptr.stI16o(cptr.ldPtro(L, $lua_State_tbclist), 10, 0);
     }
     cptr.stI16o(level, 10, (Number(BigInt.asUintN(16, (cptr.diff(level, cptr.ldPtro(L, $lua_State_tbclist)) / 16n)))));
     cptr.stPtro(L, $lua_State_tbclist, level);
 }
 
-/** C ref: lfunc.c:182 — @param {CPtr} uv */
+/** C ref: lfunc.c:182 — @param {CPtr<UpVal>} uv */
 export function luaF_unlinkupval(uv) {
     (void 0);
     cptr.stPtr(cptr.ldPtro(uv, $UpVal_u + 8), cptr.ldPtro(uv, $UpVal_u));
@@ -192,16 +224,19 @@ export function luaF_unlinkupval(uv) {
         cptr.stPtro(cptr.ldPtro(uv, $UpVal_u), $UpVal_u + 8, cptr.ldPtro(uv, $UpVal_u + 8));
 }
 
-/** C ref: lfunc.c:193 — @param {CPtr} L @param {CPtr} level */
+/*
+** Close all upvalues up to the given stack level.
+*/
+/** C ref: lfunc.c:193 — @param {CPtr<lua_State>} L @param {CPtr} level */
 export function luaF_closeupval(L, level) {
     let uv;
-    let upl;
+    let upl;  /* stack index pointed by 'uv' */
     while (!cptr.eq((uv = cptr.ldPtro(L, $lua_State_openupval)), (null)) && cptr.cmp((upl = (((cptr.ldPtro((uv), $UpVal_v))))), level) >= 0) {
-        let slot = cptr.add(uv, $UpVal_u);
+        let slot = cptr.add(uv, $UpVal_u);  /* new position for value */
         (void 0);
-        luaF_unlinkupval(uv);
+        luaF_unlinkupval(uv);  /* remove upvalue from 'openupval' list */
         {
-            let io1 = (slot);
+            let io1 = (slot);  /* move value to upvalue slot */
             let io2 = (cptr.ldPtro(uv, $UpVal_v));
             cptr.memcpy(io1, io2, 8);
             (cptr.st1o((io1), $TValue_tt_, (cptr.ld1uo(io2, $TValue_tt_))));
@@ -209,38 +244,45 @@ export function luaF_closeupval(L, level) {
             (void 0);
         }
         ;
-        cptr.stPtro(uv, $UpVal_v, slot);
+        cptr.stPtro(uv, $UpVal_v, slot);  /* now current value lives here */
         if (!((cptr.ld1uo((uv), $UpVal_marked)) & 24)) {
-            ((cptr.st1o((uv), $UpVal_marked, cptr.ld1uo((uv), $UpVal_marked) | 32)));
+            ((cptr.st1o((uv), $UpVal_marked, cptr.ld1uo((uv), $UpVal_marked) | 32)));  /* closed upvalues cannot be gray */
             (((cptr.ld1uo((slot), $TValue_tt_)) & 64) ? ((((cptr.ld1uo((uv), $UpVal_marked)) & 32) && ((cptr.ld1uo(((cptr.ldPtr(((slot))))), $GCObject_marked)) & 24)) ? luaC_barrier_(L, ((((uv)))), (((((cptr.ldPtr(((slot))))))))) : (void 0)) : (void 0));
         }
     }
 }
 
-/** C ref: lfunc.c:213 — @param {CPtr} L */
+/*
+** Remove first element from the tbclist plus its dummy nodes.
+*/
+/** C ref: lfunc.c:213 — @param {CPtr<lua_State>} L */
 function poptbclist(L) {
     let tbc = cptr.ldPtro(L, $lua_State_tbclist);
-    (void 0);
+    (void 0);  /* first element cannot be dummy */
     tbc = cptr.sub(tbc, cptr.ldU16o(tbc, 10), 16);
     while (cptr.cmp(tbc, cptr.ldPtro(L, $lua_State_stack)) > 0 && cptr.ldU16o(tbc, 10) == 0)
-        tbc = cptr.sub(tbc, 65535n, 16);
+        tbc = cptr.sub(tbc, 65535n, 16);  /* remove dummy nodes */
     cptr.stPtro(L, $lua_State_tbclist, tbc);
 }
 
-/** C ref: lfunc.c:227 — @param {CPtr} L @param {CPtr} level @param {CInt} status @param {CInt} yy @returns {*} */
+/*
+** Close all upvalues and to-be-closed variables up to the given stack
+** level. Return restored 'level'.
+*/
+/** C ref: lfunc.c:227 — @param {CPtr<lua_State>} L @param {CPtr} level @param {CInt} status @param {CInt} yy @returns {*} */
 export function* luaF_close(L, level, status, yy) {
     let levelrel = (cptr.diff((((level))), (((cptr.ldPtro(L, $lua_State_stack))))));
-    luaF_closeupval(L, level);
+    luaF_closeupval(L, level);  /* first, close the upvalues */
     while (cptr.cmp(cptr.ldPtro(L, $lua_State_tbclist), level) >= 0) {
-        let tbc = cptr.ldPtro(L, $lua_State_tbclist);
-        poptbclist(L);
-        (yield* prepcallclosemth(L, tbc, status, yy));
+        let tbc = cptr.ldPtro(L, $lua_State_tbclist);  /* get variable index */
+        poptbclist(L);  /* remove it from list */
+        (yield* prepcallclosemth(L, tbc, status, yy));  /* close variable */
         level = ((cptr.add((((cptr.ldPtro(L, $lua_State_stack)))), (levelrel))));
     }
     return level;
 }
 
-/** C ref: lfunc.c:240 — @param {CPtr} L @returns {CPtr} */
+/** C ref: lfunc.c:240 — @param {CPtr<lua_State>} L @returns {CPtr<Proto>} */
 export function* luaF_newproto(L) {
     let o = (yield* luaC_newobj(L, 10, 128n));
     let f = (((((o)))));
@@ -267,7 +309,7 @@ export function* luaF_newproto(L) {
     return f;
 }
 
-/** C ref: lfunc.c:267 — @param {CPtr} L @param {CPtr} f */
+/** C ref: lfunc.c:267 — @param {CPtr<lua_State>} L @param {CPtr<Proto>} f */
 export function* luaF_freeproto(L, f) {
     (yield* luaM_free_(L, (cptr.ldPtro(f, $Proto_code)), BigInt.asUintN(64, BigInt.asUintN(64, BigInt((cptr.ldI32o(f, $Proto_sizecode)))) * 4n)));
     (yield* luaM_free_(L, (cptr.ldPtro(f, $Proto_p)), BigInt.asUintN(64, BigInt.asUintN(64, BigInt((cptr.ldI32o(f, $Proto_sizep)))) * 8n)));
@@ -279,15 +321,19 @@ export function* luaF_freeproto(L, f) {
     (yield* luaM_free_(L, (f), 128n));
 }
 
-/** C ref: lfunc.c:283 — @param {CPtr} f @param {CInt} local_number @param {CInt} pc @returns {CPtr} */
+/*
+** Look for n-th local variable at line 'line' in function 'func'.
+** Returns NULL if not found.
+*/
+/** C ref: lfunc.c:283 — @param {CPtr<Proto>} f @param {CInt} local_number @param {CInt} pc @returns {CPtr<char>} */
 export function luaF_getlocalname(f, local_number, pc) {
     let i;
-    for (i = 0; i < cptr.ldI32o(f, $Proto_sizelocvars) && cptr.ldI32o2(cptr.ldPtro(f, $Proto_locvars), i, 16, $LocVar_startpc) <= pc; i++) {
-        if (pc < cptr.ldI32o2(cptr.ldPtro(f, $Proto_locvars), i, 16, $LocVar_endpc)) {
+    for (i = 0; i < cptr.ldI32o(f, $Proto_sizelocvars) && cptr.ldI32o2(cptr.ldPtro(f, $Proto_locvars), i, $sizeof_LocVar, $LocVar_startpc) <= pc; i++) {
+        if (pc < cptr.ldI32o2(cptr.ldPtro(f, $Proto_locvars), i, $sizeof_LocVar, $LocVar_endpc)) {
             local_number--;
             if (local_number == 0)
-                return (cptr.add((cptr.ldPtro(cptr.ldPtro(f, $Proto_locvars), i, 16)), $TString_contents));
+                return (cptr.add((cptr.ldPtro(cptr.ldPtro(f, $Proto_locvars), i, $sizeof_LocVar)), $TString_contents));
         }
     }
-    return null;
+    return null;  /* not found */
 }

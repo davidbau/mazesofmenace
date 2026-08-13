@@ -13,6 +13,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
+import { rn2_at } from './nhrng.js';
 import { wait_synch } from './nhprop.js';
 import { pline, raw_printf } from './pline.js';
 import { flags, gc, gd, gn, go, gw, iflags, program_state, svp } from './decl.js';
@@ -22,7 +23,6 @@ import { strbuf_empty, strbuf_init } from './strutil.js';
 import { add_autopickup_exception, all_options_strbuf, allopt_array_init, assign_warnings, disregard_all_options, disregard_this_option, heed_all_options, heed_this_option, match_optname, msgtype_parse_add, nh_getenv, parsebindings, parseoptions, reset_duplicate_opt_detection } from './options.js';
 import { debugcore, do_deferred_showpaths, fqname } from './files.js';
 import { c_eos, eos, mungspaces, nh_snprintf, trimspaces } from './hacklib.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { alloc, dupstr } from './alloc.js';
 import { str2role } from './role.js';
 import { sysopt, sysopt_seduce_set } from './sys.js';
@@ -69,7 +69,8 @@ const $_cnf_parser_state_buf = FLD._cnf_parser_state_buf,
     $match_config_line_stmt_len = FLD.match_config_line_stmt_len,
     $match_config_line_stmt_origbuf = FLD.match_config_line_stmt_origbuf,
     $match_config_line_stmt_syscnf_only = FLD.match_config_line_stmt_syscnf_only,
-    $sinfo_config_error_ready = FLD.sinfo_config_error_ready, $strbuf_str = FLD.strbuf_str,
+    $sinfo_config_error_ready = FLD.sinfo_config_error_ready,
+    $sizeof_match_config_line_stmt = FLD.sizeof_match_config_line_stmt, $strbuf_str = FLD.strbuf_str,
     $sysopt_s_accessibility = FLD.sysopt_s_accessibility, $sysopt_s_bones_pools = FLD.sysopt_s_bones_pools,
     $sysopt_s_check_plname = FLD.sysopt_s_check_plname,
     $sysopt_s_check_save_uid = FLD.sysopt_s_check_save_uid,
@@ -88,137 +89,137 @@ const $_cnf_parser_state_buf = FLD._cnf_parser_state_buf,
     $window_procs_win_wait_synch = FLD.window_procs_win_wait_synch;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit(".nethackrc");
-const __sl1 = cptr.lit("Strange, could not figure out config file name.");
-const __sl2 = cptr.lit("Warning: saveoptions is highly experimental!");
-const __sl3 = cptr.lit("Some settings are not saved!");
-const __sl4 = cptr.lit("All manual customization and comments are removed from the file!");
-const __sl5 = cptr.lit("Overwrite config file %.*s?");
-const __sl6 = cptr.lit("w");
-const __sl7 = cptr.lit("An error occurred, wrote only partial data (%zu/%zu).");
-const __sl8 = cptr.lit("r");
-const __sl9 = cptr.lit("~/");
-const __sl10 = cptr.lit("HOME");
-const __sl11 = cptr.lit("fopen_config_file");
-const __sl12 = cptr.lit("%s/%s");
-const __sl13 = cptr.lit("Access to %s denied (%d).");
-const __sl14 = cptr.lit("Couldn't open requested config file %s (%d).");
-const __sl15 = cptr.lit("Library/Preferences/NetHack Defaults");
-const __sl16 = cptr.lit("Library/Preferences/NetHack Defaults.txt");
-const __sl17 = cptr.lit("");
-const __sl18 = cptr.lit("Couldn't open default config file %s %s(%d).");
-const __sl19 = cptr.lit("Syntax error in %s");
-const __sl20 = cptr.lit("cfgfiles.c");
-const __sl21 = cptr.lit("choose_random_part");
-const __sl22 = cptr.lit("Section \"[%s]\" without CHOOSE");
-const __sl23 = cptr.lit("set config section: '%s'");
-const __sl24 = cptr.lit("unset config section");
-const __sl25 = cptr.lit("*");
-const __sl26 = cptr.lit("Illegal value in SEDUCE");
-const __sl27 = cptr.lit("Illegal value in MAXPLAYERS (maximum is 25)");
-const __sl28 = cptr.lit("Illegal value in PERSMAX (minimum is 1)");
-const __sl29 = cptr.lit("Illegal value in PERS_IS_UID (must be 0 or 1)");
-const __sl30 = cptr.lit("Illegal value in ENTRYMAX (minimum is 10)");
-const __sl31 = cptr.lit("Illegal value in POINTSMIN (minimum is 1)");
-const __sl32 = cptr.lit("Illegal value in MAX_STATUENAME_RANK (minimum is 1)");
-const __sl33 = cptr.lit("Illegal value for LIVELOG (must be between 0 and 0xFFFF).");
-const __sl34 = cptr.lit("Illegal value in PANICTRACE_LIBC (not 0,1,2)");
-const __sl35 = cptr.lit("Illegal value in PANICTRACE_GDB (not 0,1,2)");
-const __sl36 = cptr.lit("File specified in GDBPATH does not exist");
-const __sl37 = cptr.lit("File specified in GREPPATH does not exist");
-const __sl38 = cptr.lit("Illegal value in ACCESSIBILITY (not 0,1)");
-const __sl39 = cptr.lit("PORTABLE_DEVICE_PATHS is not supported");
-const __sl40 = cptr.lit("BOULDER");
-const __sl41 = cptr.lit("WARNINGS");
-const __sl42 = cptr.lit("Error in ROGUESYMBOLS definition '%s'");
-const __sl43 = cptr.lit("Error in SYMBOLS definition '%s'");
-const __sl44 = cptr.lit("OPTIONS");
-const __sl45 = cptr.lit("AUTOPICKUP_EXCEPTION");
-const __sl46 = cptr.lit("BINDINGS");
-const __sl47 = cptr.lit("AUTOCOMPLETE");
-const __sl48 = cptr.lit("MSGTYPE");
-const __sl49 = cptr.lit("HACKDIR");
-const __sl50 = cptr.lit("LEVELDIR");
-const __sl51 = cptr.lit("LEVELS");
-const __sl52 = cptr.lit("SAVEDIR");
-const __sl53 = cptr.lit("BONESDIR");
-const __sl54 = cptr.lit("DATADIR");
-const __sl55 = cptr.lit("SCOREDIR");
-const __sl56 = cptr.lit("LOCKDIR");
-const __sl57 = cptr.lit("CONFIGDIR");
-const __sl58 = cptr.lit("TROUBLEDIR");
-const __sl59 = cptr.lit("NAME");
-const __sl60 = cptr.lit("ROLE");
-const __sl61 = cptr.lit("CHARACTER");
-const __sl62 = cptr.lit("dogname");
-const __sl63 = cptr.lit("catname");
-const __sl64 = cptr.lit("WIZARDS");
-const __sl65 = cptr.lit("SHELLERS");
-const __sl66 = cptr.lit("MSGHANDLER");
-const __sl67 = cptr.lit("EXPLORERS");
-const __sl68 = cptr.lit("DEBUGFILES");
-const __sl69 = cptr.lit("DUMPLOGFILE");
-const __sl70 = cptr.lit("GENERICUSERS");
-const __sl71 = cptr.lit("BONES_POOLS");
-const __sl72 = cptr.lit("SUPPORT");
-const __sl73 = cptr.lit("RECOVER");
-const __sl74 = cptr.lit("CHECK_SAVE_UID");
-const __sl75 = cptr.lit("CHECK_PLNAME");
-const __sl76 = cptr.lit("SEDUCE");
-const __sl77 = cptr.lit("HIDEUSAGE");
-const __sl78 = cptr.lit("MAXPLAYERS");
-const __sl79 = cptr.lit("PERSMAX");
-const __sl80 = cptr.lit("PERS_IS_UID");
-const __sl81 = cptr.lit("ENTRYMAX");
-const __sl82 = cptr.lit("POINTSMIN");
-const __sl83 = cptr.lit("MAX_STATUENAME_RANK");
-const __sl84 = cptr.lit("LIVELOG");
-const __sl85 = cptr.lit("PANICTRACE_LIBC");
-const __sl86 = cptr.lit("PANICTRACE_GDB");
-const __sl87 = cptr.lit("CRASHREPORTURL");
-const __sl88 = cptr.lit("GDBPATH");
-const __sl89 = cptr.lit("GREPPATH");
-const __sl90 = cptr.lit("ACCESSIBILITY");
-const __sl91 = cptr.lit("PORTABLE_DEVICE_PATHS");
-const __sl92 = cptr.lit("MENUCOLOR");
-const __sl93 = cptr.lit("HILITE_STATUS");
-const __sl94 = cptr.lit("ROGUESYMBOLS");
-const __sl95 = cptr.lit("SYMBOLS");
-const __sl96 = cptr.lit("WIZKIT");
-const __sl97 = cptr.lit("QT_TILEWIDTH");
-const __sl98 = cptr.lit("QT_TILEHEIGHT");
-const __sl99 = cptr.lit("QT_FONTSIZE");
-const __sl100 = cptr.lit("QT_COMPACT");
-const __sl101 = cptr.lit("Not a config statement, missing '='");
-const __sl102 = cptr.lit("Unknown config statement");
-const __sl103 = cptr.lit("line");
-const __sl104 = cptr.lit("error");
-const __sl105 = cptr.lit("Unknown error");
-const __sl106 = cptr.lit(".!?");
-const __sl107 = cptr.lit(".");
-const __sl108 = cptr.lit("%s%s%s");
-const __sl109 = cptr.lit("config_error_add: ");
-const __sl110 = cptr.lit("\n%s");
-const __sl111 = cptr.lit("Line %d: ");
-const __sl112 = cptr.lit("%s %s%s%s");
-const __sl113 = cptr.lit("Error:");
-const __sl114 = cptr.lit(" *");
-const __sl115 = cptr.lit("command line");
-const __sl116 = cptr.lit("\n%d error%s %s %s.\n");
-const __sl117 = cptr.lit("s");
-const __sl118 = cptr.lit("on");
-const __sl119 = cptr.lit("in");
-const __sl120 = cptr.lit("Line too long, skipping");
-const __sl121 = cptr.lit(" ");
-const __sl122 = cptr.lit("CHOOSE");
-const __sl123 = cptr.lit("Format is CHOOSE=section1,section2,...");
-const __sl124 = cptr.lit("No config section to choose");
-const __sl125 = cptr.lit("parse_conf_str");
-const __sl126 = cptr.lit("NETHACKOPTIONS");
-const __sl127 = cptr.lit("HACKOPTIONS");
-const __sl128 = cptr.lit("nethackrc file name \"%.40s\"... too long; using default");
-const __sl129 = cptr.lit("sysconf");
-const __sl130 = cptr.lit("Unable to open SYSCF_FILE.\n");
+const __s_nethackrc = cptr.lit(".nethackrc");
+const __s_strange_could_not_figure_out_config = cptr.lit("Strange, could not figure out config file name.");
+const __s_warning_saveoptions_is_highly = cptr.lit("Warning: saveoptions is highly experimental!");
+const __s_some_settings_are_not_saved = cptr.lit("Some settings are not saved!");
+const __s_all_manual_customization_and_comments = cptr.lit("All manual customization and comments are removed from the file!");
+const __s_overwrite_config_file_s = cptr.lit("Overwrite config file %.*s?");
+const __s_w = cptr.lit("w");
+const __s_an_error_occurred_wrote_only_partial = cptr.lit("An error occurred, wrote only partial data (%zu/%zu).");
+const __s_r = cptr.lit("r");
+const __s_tilde_slash = cptr.lit("~/");
+const __s_home = cptr.lit("HOME");
+const __s_fopen_config_file = cptr.lit("fopen_config_file");
+const __s_s_s = cptr.lit("%s/%s");
+const __s_access_to_s_denied_d = cptr.lit("Access to %s denied (%d).");
+const __s_couldn_t_open_requested_config_file_s_d = cptr.lit("Couldn't open requested config file %s (%d).");
+const __s_library_preferences_nethack_defaults = cptr.lit("Library/Preferences/NetHack Defaults");
+const __s_library_preferences_nethack_defaults_txt = cptr.lit("Library/Preferences/NetHack Defaults.txt");
+const __s_empty = cptr.lit("");
+const __s_couldn_t_open_default_config_file_s_s_d = cptr.lit("Couldn't open default config file %s %s(%d).");
+const __s_syntax_error_in_s = cptr.lit("Syntax error in %s");
+const __s_cfgfiles_c = cptr.lit("cfgfiles.c");
+const __s_choose_random_part = cptr.lit("choose_random_part");
+const __s_section_s_without_choose = cptr.lit("Section \"[%s]\" without CHOOSE");
+const __s_set_config_section_s = cptr.lit("set config section: '%s'");
+const __s_unset_config_section = cptr.lit("unset config section");
+const __s_star = cptr.lit("*");
+const __s_illegal_value_in_seduce = cptr.lit("Illegal value in SEDUCE");
+const __s_illegal_value_in_maxplayers_maximum_is = cptr.lit("Illegal value in MAXPLAYERS (maximum is 25)");
+const __s_illegal_value_in_persmax_minimum_is_1 = cptr.lit("Illegal value in PERSMAX (minimum is 1)");
+const __s_illegal_value_in_pers_is_uid_must_be_0 = cptr.lit("Illegal value in PERS_IS_UID (must be 0 or 1)");
+const __s_illegal_value_in_entrymax_minimum_is_10 = cptr.lit("Illegal value in ENTRYMAX (minimum is 10)");
+const __s_illegal_value_in_pointsmin_minimum_is_1 = cptr.lit("Illegal value in POINTSMIN (minimum is 1)");
+const __s_illegal_value_in_max_statuename_rank = cptr.lit("Illegal value in MAX_STATUENAME_RANK (minimum is 1)");
+const __s_illegal_value_for_livelog_must_be = cptr.lit("Illegal value for LIVELOG (must be between 0 and 0xFFFF).");
+const __s_illegal_value_in_panictrace_libc_not_0 = cptr.lit("Illegal value in PANICTRACE_LIBC (not 0,1,2)");
+const __s_illegal_value_in_panictrace_gdb_not_0_1 = cptr.lit("Illegal value in PANICTRACE_GDB (not 0,1,2)");
+const __s_file_specified_in_gdbpath_does_not_exist = cptr.lit("File specified in GDBPATH does not exist");
+const __s_file_specified_in_greppath_does_not = cptr.lit("File specified in GREPPATH does not exist");
+const __s_illegal_value_in_accessibility_not_0_1 = cptr.lit("Illegal value in ACCESSIBILITY (not 0,1)");
+const __s_portable_device_paths_is_not_supported = cptr.lit("PORTABLE_DEVICE_PATHS is not supported");
+const __s_boulder = cptr.lit("BOULDER");
+const __s_warnings = cptr.lit("WARNINGS");
+const __s_error_in_roguesymbols_definition_s = cptr.lit("Error in ROGUESYMBOLS definition '%s'");
+const __s_error_in_symbols_definition_s = cptr.lit("Error in SYMBOLS definition '%s'");
+const __s_options = cptr.lit("OPTIONS");
+const __s_autopickup_exception = cptr.lit("AUTOPICKUP_EXCEPTION");
+const __s_bindings = cptr.lit("BINDINGS");
+const __s_autocomplete = cptr.lit("AUTOCOMPLETE");
+const __s_msgtype = cptr.lit("MSGTYPE");
+const __s_hackdir = cptr.lit("HACKDIR");
+const __s_leveldir = cptr.lit("LEVELDIR");
+const __s_levels = cptr.lit("LEVELS");
+const __s_savedir = cptr.lit("SAVEDIR");
+const __s_bonesdir = cptr.lit("BONESDIR");
+const __s_datadir = cptr.lit("DATADIR");
+const __s_scoredir = cptr.lit("SCOREDIR");
+const __s_lockdir = cptr.lit("LOCKDIR");
+const __s_configdir = cptr.lit("CONFIGDIR");
+const __s_troubledir = cptr.lit("TROUBLEDIR");
+const __s_name = cptr.lit("NAME");
+const __s_role = cptr.lit("ROLE");
+const __s_character = cptr.lit("CHARACTER");
+const __s_dogname = cptr.lit("dogname");
+const __s_catname = cptr.lit("catname");
+const __s_wizards = cptr.lit("WIZARDS");
+const __s_shellers = cptr.lit("SHELLERS");
+const __s_msghandler = cptr.lit("MSGHANDLER");
+const __s_explorers = cptr.lit("EXPLORERS");
+const __s_debugfiles = cptr.lit("DEBUGFILES");
+const __s_dumplogfile = cptr.lit("DUMPLOGFILE");
+const __s_genericusers = cptr.lit("GENERICUSERS");
+const __s_bones_pools = cptr.lit("BONES_POOLS");
+const __s_support = cptr.lit("SUPPORT");
+const __s_recover = cptr.lit("RECOVER");
+const __s_check_save_uid = cptr.lit("CHECK_SAVE_UID");
+const __s_check_plname = cptr.lit("CHECK_PLNAME");
+const __s_seduce = cptr.lit("SEDUCE");
+const __s_hideusage = cptr.lit("HIDEUSAGE");
+const __s_maxplayers = cptr.lit("MAXPLAYERS");
+const __s_persmax = cptr.lit("PERSMAX");
+const __s_pers_is_uid = cptr.lit("PERS_IS_UID");
+const __s_entrymax = cptr.lit("ENTRYMAX");
+const __s_pointsmin = cptr.lit("POINTSMIN");
+const __s_max_statuename_rank = cptr.lit("MAX_STATUENAME_RANK");
+const __s_livelog = cptr.lit("LIVELOG");
+const __s_panictrace_libc = cptr.lit("PANICTRACE_LIBC");
+const __s_panictrace_gdb = cptr.lit("PANICTRACE_GDB");
+const __s_crashreporturl = cptr.lit("CRASHREPORTURL");
+const __s_gdbpath = cptr.lit("GDBPATH");
+const __s_greppath = cptr.lit("GREPPATH");
+const __s_accessibility = cptr.lit("ACCESSIBILITY");
+const __s_portable_device_paths = cptr.lit("PORTABLE_DEVICE_PATHS");
+const __s_menucolor = cptr.lit("MENUCOLOR");
+const __s_hilite_status = cptr.lit("HILITE_STATUS");
+const __s_roguesymbols = cptr.lit("ROGUESYMBOLS");
+const __s_symbols = cptr.lit("SYMBOLS");
+const __s_wizkit = cptr.lit("WIZKIT");
+const __s_qt_tilewidth = cptr.lit("QT_TILEWIDTH");
+const __s_qt_tileheight = cptr.lit("QT_TILEHEIGHT");
+const __s_qt_fontsize = cptr.lit("QT_FONTSIZE");
+const __s_qt_compact = cptr.lit("QT_COMPACT");
+const __s_not_a_config_statement_missing = cptr.lit("Not a config statement, missing '='");
+const __s_unknown_config_statement = cptr.lit("Unknown config statement");
+const __s_line = cptr.lit("line");
+const __s_error = cptr.lit("error");
+const __s_unknown_error = cptr.lit("Unknown error");
+const __s_dot_bang_query = cptr.lit(".!?");
+const __s_dot = cptr.lit(".");
+const __s_s_s_s = cptr.lit("%s%s%s");
+const __s_config_error_add = cptr.lit("config_error_add: ");
+const __s_nl_pct_s = cptr.lit("\n%s");
+const __s_line_d = cptr.lit("Line %d: ");
+const __s_s_s_s_s = cptr.lit("%s %s%s%s");
+const __s_error__2 = cptr.lit("Error:");
+const __s_sp_star = cptr.lit(" *");
+const __s_command_line = cptr.lit("command line");
+const __s_d_error_s_s_s = cptr.lit("\n%d error%s %s %s.\n");
+const __s_s = cptr.lit("s");
+const __s_on = cptr.lit("on");
+const __s_in = cptr.lit("in");
+const __s_line_too_long_skipping = cptr.lit("Line too long, skipping");
+const __s_sp = cptr.lit(" ");
+const __s_choose = cptr.lit("CHOOSE");
+const __s_format_is_choose_section1_section2 = cptr.lit("Format is CHOOSE=section1,section2,...");
+const __s_no_config_section_to_choose = cptr.lit("No config section to choose");
+const __s_parse_conf_str = cptr.lit("parse_conf_str");
+const __s_nethackoptions = cptr.lit("NETHACKOPTIONS");
+const __s_hackoptions = cptr.lit("HACKOPTIONS");
+const __s_nethackrc_file_name_40s_too_long_using = cptr.lit("nethackrc file name \"%.40s\"... too long; using default");
+const __s_sysconf = cptr.lit("sysconf");
+const __s_unable_to_open_syscf_file = cptr.lit("Unable to open SYSCF_FILE.\n");
 
 /** C ref: cfgfiles.c:113 — signed char */
 let ignore_errors_on_unmatched = 0;
@@ -226,46 +227,53 @@ let ignore_errors_on_unmatched = 0;
 /** C ref: cfgfiles.c:114 — signed char */
 let ignore_statement_errors = 0;
 
+/* ----------  BEGIN CONFIG FILE HANDLING ----------- */
+
+/* used for messaging. Also used in options.c */
 /** C ref: cfgfiles.c:126 — char * */
-let default_configfile = __sl0;
+let default_configfile = __s_nethackrc;
 
 /** C ref: cfgfiles.c:140 — char[256] */
 const configfile = new Uint8Array(256);
 
-/** C ref: cfgfiles.c:143 @returns {CPtr} */
+/** C ref: cfgfiles.c:143 @returns {CPtr<char>} */
 export function get_configfile() {
     return cptr.decay(configfile);
 }
 
-/** C ref: cfgfiles.c:149 @returns {CPtr} */
+/** C ref: cfgfiles.c:149 @returns {CPtr<char>} */
 export function get_default_configfile() {
     return default_configfile;
 }
 
+/* #saveoptions - save config options into file */
 /** C ref: cfgfiles.c:169 @returns {CInt} */
 export function* do_write_config_file() {
     let fp;
     let tmp = new Uint8Array(256);
+
     if (!cptr.ld1so(cptr.decay(configfile), 0, 1)) {
-        (yield* pline(__sl1));
+        (yield* pline(__s_strange_could_not_figure_out_config));
         return NHM.ECMD_OK;
     }
     if (cptr.ldU64o(flags, $flag_suppress_alert) < 50790400n) {
-        (yield* pline(__sl2));
+        (yield* pline(__s_warning_saveoptions_is_highly));
         (yield* Y.icall(wait_synch()()));
-        (yield* pline(__sl3));
+        (yield* pline(__s_some_settings_are_not_saved));
         (yield* Y.icall(wait_synch()()));
-        (yield* pline(__sl4));
+        (yield* pline(__s_all_manual_customization_and_comments));
         (yield* Y.icall(wait_synch()()));
     }
-    void cptr.sprintf(cptr.decay(tmp), __sl5, 226, cptr.decay(configfile));
+    void cptr.sprintf(cptr.decay(tmp), __s_overwrite_config_file_s, 226, cptr.decay(configfile));
     if (!(yield* paranoid_query(1, cptr.decay(tmp))))
         return NHM.ECMD_OK;
-    fp = fopen(cptr.decay(configfile), __sl6);
+
+    fp = fopen(cptr.decay(configfile), __s_w);
     if (fp) {
         let len;
         let wrote;
         let buf = cptr.alloc(272);
+
         strbuf_init(buf);
         (yield* all_options_strbuf(buf));
         len = cptr.strlen(cptr.ldPtro(buf, $strbuf_str));
@@ -273,83 +281,118 @@ export function* do_write_config_file() {
         fclose(fp);
         strbuf_empty(buf);
         if (wrote != len)
-            (yield* pline(__sl7, wrote, len));
+            (yield* pline(__s_an_error_occurred_wrote_only_partial, wrote, len));
     }
     return NHM.ECMD_OK;
 }
 
-/** C ref: cfgfiles.c:216 — @param {CPtr} fname */
+/* remember the name of the file we're accessing;
+   if may be used in option reject messages */
+/** C ref: cfgfiles.c:216 — @param {CPtr<char>} fname */
 export function set_configfile_name(fname) {
     void __builtin___strncpy_chk(cptr.decay(configfile), fname, 255n, __builtin_object_size(cptr.decay(configfile), 1));
     cptr.st1o(cptr.decay(configfile), 255n, 0, 1);
 }
 
-/** C ref: cfgfiles.c:223 — @param {CPtr} filename @param {CInt} src @returns {CPtr} */
+/** C ref: cfgfiles.c:223 — @param {CPtr<char>} filename @param {CInt} src @returns {CPtr<FILE>} */
 function* fopen_config_file(filename, src) {
     let fp;
     let tmp_config = new Uint8Array(256);
     let envp;
+
     if (src == NHC.set_in_sysconf) {
+        /* SYSCF_FILE; if we can't open it, caller will bail */
         if (filename && cptr.ld1s(filename)) {
             set_configfile_name(fqname(filename, NHM.SYSCONFPREFIX, 0));
-            fp = fopen(cptr.decay(configfile), __sl8);
+            fp = fopen(cptr.decay(configfile), __s_r);
         } else
             fp = null;
         return fp;
     }
+    /* If src != set_in_sysconf, "filename" is an environment variable, so it
+     * should hang around. If set, it is expected to be a full path name
+     * (if relevant)
+     */
     if (filename && cptr.ld1s(filename)) {
         set_configfile_name(filename);
-        if (!cptr.strncmp(cptr.decay(configfile), __sl9, 2n) && (envp = nh_getenv(__sl10)) !== null) {
-            nh_snprintf(__sl11, 251, cptr.decay(tmp_config), 256n, __sl12, envp, cptr.add(cptr.decay(configfile), 2));
+        if (!cptr.strncmp(cptr.decay(configfile), __s_tilde_slash, 2n) && (envp = nh_getenv(__s_home)) !== null) {
+            /* support for command line '--nethackrc=~/path' (or for
+               NETHACKOPTIONS='@~/path'; we don't support ~user/path) */
+            nh_snprintf(__s_fopen_config_file, 251, cptr.decay(tmp_config), 256n, __s_s_s, envp, cptr.add(cptr.decay(configfile), 2));
             set_configfile_name(cptr.decay(tmp_config));
         }
         if (access(cptr.decay(configfile), 4) == -1) {
-            (yield* raw_printf(__sl13, cptr.decay(configfile), (cptr.ldI32(__error()))));
+            /* nasty sneaky attempt to read file through
+             * NetHack's setuid permissions -- this is the only
+             * place a file name may be wholly under the player's
+             * control (but SYSCF_FILE is not under the player's
+             * control so it's OK).
+             */
+            (yield* raw_printf(__s_access_to_s_denied_d, cptr.decay(configfile), (cptr.ldI32(__error()))));
             (yield* Y.icall(wait_synch()()));
-        } else if ((fp = fopen(cptr.decay(configfile), __sl8)) !== null) {
+            /* fall through to standard names */
+        } else if ((fp = fopen(cptr.decay(configfile), __s_r)) !== null) {
             return fp;
         } else {
-            (yield* raw_printf(__sl14, cptr.decay(configfile), (cptr.ldI32(__error()))));
+            /* access() above probably caught most problems for UNIX */
+            (yield* raw_printf(__s_couldn_t_open_requested_config_file_s_d, cptr.decay(configfile), (cptr.ldI32(__error()))));
             (yield* Y.icall(wait_synch()()));
         }
     }
-    envp = nh_getenv(__sl10);
+    envp = nh_getenv(__s_home);
     if (!envp)
-        void cptr.strcpy(cptr.decay(tmp_config), __sl0);
+        void cptr.strcpy(cptr.decay(tmp_config), __s_nethackrc);
     else
-        void cptr.sprintf(cptr.decay(tmp_config), __sl12, envp, __sl0);
+        void cptr.sprintf(cptr.decay(tmp_config), __s_s_s, envp, __s_nethackrc);
+
     set_configfile_name(cptr.decay(tmp_config));
-    if ((fp = fopen(cptr.decay(configfile), __sl8)) !== null)
+    if ((fp = fopen(cptr.decay(configfile), __s_r)) !== null)
         return fp;
+    /* try an alternative */
     if (envp) {
+        /* keep 'tmp_config' intact here; if alternates fail, use it to
+           restore configfile[] to its preferred setting (".nethackrc") */
         let alt_config = new Uint8Array(256);
-        nh_snprintf(__sl11, 338, cptr.decay(alt_config), 256n, __sl12, envp, __sl15);
+
+        /* OSX-style configuration settings */
+        nh_snprintf(__s_fopen_config_file, 338, cptr.decay(alt_config), 256n, __s_s_s, envp, __s_library_preferences_nethack_defaults);
         set_configfile_name(cptr.decay(alt_config));
-        if ((fp = fopen(cptr.decay(configfile), __sl8)) !== null)
+        if ((fp = fopen(cptr.decay(configfile), __s_r)) !== null)
             return fp;
-        nh_snprintf(__sl11, 344, cptr.decay(alt_config), 256n, __sl12, envp, __sl16);
+        /* may be easier for user to edit if filename has '.txt' suffix */
+        nh_snprintf(__s_fopen_config_file, 344, cptr.decay(alt_config), 256n, __s_s_s, envp, __s_library_preferences_nethack_defaults_txt);
         set_configfile_name(cptr.decay(alt_config));
-        if ((fp = fopen(cptr.decay(configfile), __sl8)) !== null)
+        if ((fp = fopen(cptr.decay(configfile), __s_r)) !== null)
             return fp;
+        /* couldn't open either of the alternate names; for use in
+           messages, put 'configfile' back to the normal value rather than
+           leaving it set to last alternate; retry open() to reset 'errno' */
         set_configfile_name(cptr.decay(tmp_config));
-        if ((fp = fopen(cptr.decay(configfile), __sl8)) !== null)
+        if ((fp = fopen(cptr.decay(configfile), __s_r)) !== null)
             return fp;
     }
     if ((cptr.ldI32(__error())) != 2) {
         let details;
         if ((details = strerror((cptr.ldI32(__error())))) === null)
-            details = __sl17;
-        (yield* raw_printf(__sl18, cptr.decay(configfile), details, (cptr.ldI32(__error()))));
+            details = __s_empty;
+        (yield* raw_printf(__s_couldn_t_open_default_config_file_s_s_d, cptr.decay(configfile), details, (cptr.ldI32(__error()))));
         (yield* Y.icall(wait_synch()()));
     }
     return null;
 }
 
-/** C ref: cfgfiles.c:381 — @param {CPtr} bufp @param {CPtr} list @param {CInt} modlist @param {CInt} size @param {CPtr} name @returns {CInt} */
+/*
+ * Retrieve a list of integers from buf into a uchar array.
+ *
+ * NOTE: zeros are inserted unless modlist is TRUE, in which case the list
+ *  location is unchanged.  Callers must handle zeros if modlist is FALSE.
+ */
+/** C ref: cfgfiles.c:381 — @param {CPtr<char>} bufp @param {CPtr<uchar>} list @param {CInt} modlist @param {CInt} size @param {CPtr<char>} name @returns {CInt} */
 function* get_uchars(bufp, list, modlist, size, name) {
     let num = 0;
     let count = 0;
     let havenum = 0;
+
     while (1) {
         switch (cptr.ld1s(bufp)) {
             case 32:
@@ -357,6 +400,7 @@ function* get_uchars(bufp, list, modlist, size, name) {
             case 9:
             case 10:
             if (havenum) {
+                /* if modifying in place, don't insert zeros */
                 if (num || !modlist)
                     cptr.st1o(list, count, uchar(num));
                 count++;
@@ -383,32 +427,36 @@ function* get_uchars(bufp, list, modlist, size, name) {
             break;
             case 92:
             {
-                (yield* raw_printf(__sl19, name));
+                (yield* raw_printf(__s_syntax_error_in_s, name));
                 (yield* Y.icall(wait_synch()()));
                 return count;
             }
             default:
-            (yield* raw_printf(__sl19, name));
+            (yield* raw_printf(__s_syntax_error_in_s, name));
             (yield* Y.icall(wait_synch()()));
             return count;
         }
     }
+    /*NOTREACHED*/
 }
 
-/** C ref: cfgfiles.c:464 — @param {CPtr} str @param {CInt} sep @returns {CPtr} */
+/* Choose at random one of the sep separated parts from str. Mangles str. */
+/** C ref: cfgfiles.c:464 — @param {CPtr<char>} str @param {CInt} sep @returns {CPtr<char>} */
 function choose_random_part(str, sep) {
     let nsep = 1;
     let csep;
     let len = 0;
     let begin = str;
+
     if (!str)
         return null;
+
     while (cptr.ld1s(str)) {
         if (cptr.ld1s(str) == sep)
             nsep++;
         str = cptr.add(str, 1);
     }
-    csep = (rng_log_enabled() ? (rng_log_set_caller(__sl20, 480, __sl21), rn2(nsep)) : rn2(nsep));
+    csep = rn2_at(__s_cfgfiles_c, 480, __s_choose_random_part, nsep);
     str = begin;
     while ((csep > 0) && cptr.ld1s(str)) {
         str = cptr.add(str, 1);
@@ -442,56 +490,72 @@ function free_config_sections() {
     }
 }
 
-/** C ref: cfgfiles.c:523 — @param {CPtr} str @returns {CPtr} */
+/* check for " [ anything-except-bracket-or-empty ] # arbitrary-comment"
+   with spaces optional; returns pointer to "anything-except..." (with
+   trailing " ] #..." stripped) if ok, otherwise Null */
+/** C ref: cfgfiles.c:523 — @param {CPtr<char>} str @returns {CPtr<char>} */
 function* is_config_section(str) {
     let a;
     let c;
     let z;
+
+    /* remove any spaces at start and end; won't significantly interfere
+       with echoing the string in a config error message, if warranted */
     a = (yield* trimspaces(str));
+    /* first character should be open square bracket; set pointer past it */
     if (cptr.ld1s(cptr.postinc(() => a, (v) => { a = v; })) != 91)
         return null;
+    /* last character should be close bracket, ignoring any comment */
     z = cptr.strchr(a, 93);
     if (!z)
         return null;
+    /* comment, if present, can be preceded by spaces */
     for (c = cptr.add(z, 1); cptr.ld1s(c) == 32; c = cptr.add(c, 1))
         continue;
     if (cptr.ld1s(c) && cptr.ld1s(c) != 35)
         return null;
+    /* we now know that result is good; there won't be a config error
+       message so we can modify the input string */
     cptr.st1(z, 0);
+    /* 'a' points past '[' and the string ends where ']' was; remove any
+       spaces between '[' and choice-start and between choice-end and ']' */
     return (yield* trimspaces(a));
 }
 
-/** C ref: cfgfiles.c:552 — @param {CPtr} buf @returns {CInt} */
+/** C ref: cfgfiles.c:552 — @param {CPtr<char>} buf @returns {CInt} */
 function* handle_config_section(buf) {
     let sect = (yield* is_config_section(buf));
+
     if (sect) {
         if (cptr.ldPtro(gc, $instance_globals_c_config_section_current))
             cptr.free(cptr.ldPtro(gc, $instance_globals_c_config_section_current)), cptr.stPtro(gc, $instance_globals_c_config_section_current, null);
+        /* is_config_section() removed brackets from 'sect' */
         if (!cptr.ldPtro(gc, $instance_globals_c_config_section_chosen)) {
-            (yield* config_error_add(__sl22, sect));
+            (yield* config_error_add(__s_section_s_without_choose, sect));
             return 1;
         }
         if (cptr.ld1s(sect)) {
             cptr.stPtro(gc, $instance_globals_c_config_section_current, (yield* dupstr(sect)));
             {
-                if ((yield* debugcore(__sl20, 1))) {
+                if ((yield* debugcore(__s_cfgfiles_c, 1))) {
                     let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                    (yield* pline(__sl23, cptr.ldPtro(gc, $instance_globals_c_config_section_current)));
+                    (yield* pline(__s_set_config_section_s, cptr.ldPtro(gc, $instance_globals_c_config_section_current)));
                     cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                 }
             }
         } else {
             free_config_sections();
             {
-                if ((yield* debugcore(__sl20, 1))) {
+                if ((yield* debugcore(__s_cfgfiles_c, 1))) {
                     let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-                    (yield* pline(__sl24));
+                    (yield* pline(__s_unset_config_section));
                     cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
                 }
             }
         }
         return 1;
     }
+
     if (cptr.ldPtro(gc, $instance_globals_c_config_section_current)) {
         if (!cptr.ldPtro(gc, $instance_globals_c_config_section_chosen))
             return 1;
@@ -501,132 +565,140 @@ function* handle_config_section(buf) {
     return 0;
 }
 
-/** C ref: cfgfiles.c:588 — @param {CPtr} buf @returns {CPtr} */
+/* find the '=' or ':' */
+/** C ref: cfgfiles.c:588 — @param {CPtr<char>} buf @returns {CPtr<char>} */
 function find_optparam(buf) {
     let bufp;
     let altp;
+
     bufp = cptr.strchr(buf, 61);
     altp = cptr.strchr(buf, 58);
     if (!bufp || (altp && cptr.cmp(altp, bufp) < 0))
         bufp = altp;
+
     return bufp;
 }
 
-/** C ref: cfgfiles.c:603 — @param {CPtr} origbuf @returns {CInt} */
+/** C ref: cfgfiles.c:603 — @param {CPtr<char>} origbuf @returns {CInt} */
 function* cnf_line_OPTIONS(origbuf) {
     let bufp = find_optparam(origbuf);
-    bufp = cptr.add(bufp, 1);
+
+    bufp = cptr.add(bufp, 1);  /* skip '='; parseoptions() handles spaces */
     return (yield* parseoptions(bufp, 1, 1));
 }
 
-/** C ref: cfgfiles.c:612 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:612 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_AUTOPICKUP_EXCEPTION(bufp) {
     (yield* add_autopickup_exception(bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:619 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:619 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_BINDINGS(bufp) {
     return (yield* parsebindings(bufp));
 }
 
-/** C ref: cfgfiles.c:625 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:625 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_AUTOCOMPLETE(bufp) {
     (yield* parseautocomplete(bufp, 1));
     return 1;
 }
 
-/** C ref: cfgfiles.c:632 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:632 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_MSGTYPE(bufp) {
     return (yield* msgtype_parse_add(bufp));
 }
 
-/** C ref: cfgfiles.c:638 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:638 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_HACKDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:653 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:653 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_LEVELDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:673 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:673 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_SAVEDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:695 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:695 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_BONESDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:706 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:706 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_DATADIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:717 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:717 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_SCOREDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:728 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:728 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_LOCKDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:739 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:739 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_CONFIGDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:750 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:750 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_TROUBLEDIR(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:761 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:761 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_NAME(bufp) {
     void __builtin___strncpy_chk(svp, bufp, 31n, __builtin_object_size(svp, 1));
     return 1;
 }
 
-/** C ref: cfgfiles.c:768 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:768 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_ROLE(bufp) {
     let len;
+
     if ((len = (yield* str2role(bufp))) >= 0)
         cptr.stI32o(flags, $flag_initrole, len);
     return 1;
 }
 
-/** C ref: cfgfiles.c:778 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:778 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_dogname(bufp) {
     void __builtin___strncpy_chk(cptr.add(gd, $instance_globals_d_dogname), bufp, 62n, __builtin_object_size(cptr.add(gd, $instance_globals_d_dogname), 1));
     return 1;
 }
 
-/** C ref: cfgfiles.c:785 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:785 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_catname(bufp) {
     void __builtin___strncpy_chk(cptr.add(gc, $instance_globals_c_catname), bufp, 62n, __builtin_object_size(cptr.add(gc, $instance_globals_c_catname), 1));
     return 1;
 }
 
-/** C ref: cfgfiles.c:795 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:795 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_WIZARDS(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_wizards))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_wizards));
     cptr.stPtro(sysopt, $sysopt_s_wizards, (yield* dupstr(bufp)));
-    if (cptr.strlen(cptr.ldPtro(sysopt, $sysopt_s_wizards)) && strcmp(cptr.ldPtro(sysopt, $sysopt_s_wizards), __sl25)) {
+    if (cptr.strlen(cptr.ldPtro(sysopt, $sysopt_s_wizards)) && strcmp(cptr.ldPtro(sysopt, $sysopt_s_wizards), __s_star)) {
+        /* pre-format WIZARDS list now; it's displayed during a panic
+           and since that panic might be due to running out of memory,
+           we don't want to risk attempting to allocate any memory then */
         if (cptr.ldPtro(sysopt, $sysopt_s_fmtd_wizard_list))
             cptr.free(cptr.ldPtro(sysopt, $sysopt_s_fmtd_wizard_list));
         cptr.stPtro(sysopt, $sysopt_s_fmtd_wizard_list, (yield* build_english_list(cptr.ldPtro(sysopt, $sysopt_s_wizards))));
@@ -634,7 +706,7 @@ function* cnf_line_WIZARDS(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:812 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:812 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_SHELLERS(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_shellers))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_shellers));
@@ -642,7 +714,7 @@ function* cnf_line_SHELLERS(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:821 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:821 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_MSGHANDLER(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_msghandler))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_msghandler));
@@ -650,7 +722,7 @@ function* cnf_line_MSGHANDLER(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:830 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:830 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_EXPLORERS(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_explorers))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_explorers));
@@ -658,8 +730,10 @@ function* cnf_line_EXPLORERS(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:839 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:839 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_DEBUGFILES(bufp) {
+    /* might already have a vaule from getenv("DEBUGFILES");
+       if so, ignore this value from SYSCF */
     if (!cptr.ldI32o(sysopt, $sysopt_s_env_dbgfl)) {
         if (cptr.ldPtro(sysopt, $sysopt_s_debugfiles))
             cptr.free(cptr.ldPtro(sysopt, $sysopt_s_debugfiles));
@@ -668,13 +742,13 @@ function* cnf_line_DEBUGFILES(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:852 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:852 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_DUMPLOGFILE(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:865 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:865 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_GENERICUSERS(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_genericusers))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_genericusers));
@@ -682,14 +756,20 @@ function* cnf_line_GENERICUSERS(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:874 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:874 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_BONES_POOLS(bufp) {
+    /* max value of 10 guarantees (N % bones.pools) will be one digit
+       so we don't lose control of the length of bones file names */
     let n = atoi(bufp);
+
     cptr.stI32o(sysopt, $sysopt_s_bones_pools, (n <= 0) ? 0 : ((n) < 10 ? (n) : 10));
+    /* note: right now bones_pools==0 is the same as bones_pools==1,
+       but we could change that and make bones_pools==0 become an
+       indicator to suppress bones usage altogether */
     return 1;
 }
 
-/** C ref: cfgfiles.c:888 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:888 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_SUPPORT(bufp) {
     if (cptr.ldPtr(sysopt))
         cptr.free(cptr.ldPtr(sysopt));
@@ -697,7 +777,7 @@ function* cnf_line_SUPPORT(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:897 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:897 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_RECOVER(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_recover))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_recover));
@@ -705,27 +785,32 @@ function* cnf_line_RECOVER(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:906 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:906 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_CHECK_SAVE_UID(bufp) {
     let n = atoi(bufp);
+
     cptr.stI32o(sysopt, $sysopt_s_check_save_uid, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:915 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:915 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_CHECK_PLNAME(bufp) {
     let n = atoi(bufp);
+
     cptr.stI32o(sysopt, $sysopt_s_check_plname, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:924 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:924 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_SEDUCE(bufp) {
-    let n = !!atoi(bufp);
+    let n = !!atoi(bufp);  /* XXX this could be tighter */
     let src = cptr.ldI32o(iflags, $instance_flags_parse_config_file_src);
     let in_sysconf = schar((src == NHC.set_in_sysconf));
+
+    /* allow anyone to disable it but can only enable it in sysconf
+       or as a no-op for the user when sysconf hasn't disabled it */
     if (!in_sysconf && !cptr.ldI32o(sysopt, $sysopt_s_seduce) && n != 0) {
-        (yield* config_error_add(__sl26));
+        (yield* config_error_add(__s_illegal_value_in_seduce));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_seduce, n);
@@ -733,116 +818,128 @@ function* cnf_line_SEDUCE(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:946 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:946 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_HIDEUSAGE(bufp) {
     let n = !!atoi(bufp);
+
     cptr.stI32o(sysopt, $sysopt_s_hideusage, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:955 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:955 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_MAXPLAYERS(bufp) {
     let n = atoi(bufp);
+
+    /* XXX to get more than 25, need to rewrite all lock code */
     if (n < 0 || n > 25) {
-        (yield* config_error_add(__sl27));
+        (yield* config_error_add(__s_illegal_value_in_maxplayers_maximum_is));
         n = 5;
     }
     cptr.stI32o(sysopt, $sysopt_s_maxplayers, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:969 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:969 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_PERSMAX(bufp) {
     let n = atoi(bufp);
+
     if (n < 1) {
-        (yield* config_error_add(__sl28));
+        (yield* config_error_add(__s_illegal_value_in_persmax_minimum_is_1));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_persmax, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:982 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:982 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_PERS_IS_UID(bufp) {
     let n = atoi(bufp);
+
     if (n != 0 && n != 1) {
-        (yield* config_error_add(__sl29));
+        (yield* config_error_add(__s_illegal_value_in_pers_is_uid_must_be_0));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_pers_is_uid, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:995 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:995 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_ENTRYMAX(bufp) {
     let n = atoi(bufp);
+
     if (n < 10) {
-        (yield* config_error_add(__sl30));
+        (yield* config_error_add(__s_illegal_value_in_entrymax_minimum_is_10));
         n = 10;
     }
     cptr.stI32o(sysopt, $sysopt_s_entrymax, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1008 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1008 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_POINTSMIN(bufp) {
     let n = atoi(bufp);
+
     if (n < 1) {
-        (yield* config_error_add(__sl31));
+        (yield* config_error_add(__s_illegal_value_in_pointsmin_minimum_is_1));
         n = 100;
     }
     cptr.stI32o(sysopt, $sysopt_s_pointsmin, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1021 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1021 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_MAX_STATUENAME_RANK(bufp) {
     let n = atoi(bufp);
+
     if (n < 1) {
-        (yield* config_error_add(__sl32));
+        (yield* config_error_add(__s_illegal_value_in_max_statuename_rank));
         n = 10;
     }
     cptr.stI32o(sysopt, $sysopt_s_tt_oname_maxrank, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1035 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1035 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_LIVELOG(bufp) {
+    /* using 0 for base accepts "dddd" as decimal provided that first 'd'
+       isn't '0', "0xhhhh" as hexadecimal, and "0oooo" as octal; ignores
+       any trailing junk, including '8' or '9' for leading '0' octal */
     let L = strtol(bufp, null, 0);
+
     if (L < 0n || L > 65535n) {
-        (yield* config_error_add(__sl33));
+        (yield* config_error_add(__s_illegal_value_for_livelog_must_be));
         return 0;
     }
     cptr.stI64o(sysopt, $sysopt_s_livelog, L);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1052 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1052 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_PANICTRACE_LIBC(bufp) {
     let n = atoi(bufp);
     if (n < 0 || n > 2) {
-        (yield* config_error_add(__sl34));
+        (yield* config_error_add(__s_illegal_value_in_panictrace_libc_not_0));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_panictrace_libc, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1067 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1067 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_PANICTRACE_GDB(bufp) {
     let n = atoi(bufp);
     if (n < 0 || n > 2) {
-        (yield* config_error_add(__sl35));
+        (yield* config_error_add(__s_illegal_value_in_panictrace_gdb_not_0_1));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_panictrace_gdb, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1082 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1082 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_GDBPATH(bufp) {
     if (!file_exists(bufp)) {
-        (yield* config_error_add(__sl36));
+        (yield* config_error_add(__s_file_specified_in_gdbpath_does_not_exist));
         return 0;
     }
     if (cptr.ldPtro(sysopt, $sysopt_s_gdbpath))
@@ -851,10 +948,10 @@ function* cnf_line_GDBPATH(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:1097 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1097 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_GREPPATH(bufp) {
     if (!file_exists(bufp)) {
-        (yield* config_error_add(__sl37));
+        (yield* config_error_add(__s_file_specified_in_greppath_does_not));
         return 0;
     }
     if (cptr.ldPtro(sysopt, $sysopt_s_greppath))
@@ -863,7 +960,7 @@ function* cnf_line_GREPPATH(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:1112 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1112 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_CRASHREPORTURL(bufp) {
     if (cptr.ldPtro(sysopt, $sysopt_s_crashreporturl))
         cptr.free(cptr.ldPtro(sysopt, $sysopt_s_crashreporturl));
@@ -871,94 +968,96 @@ function* cnf_line_CRASHREPORTURL(bufp) {
     return 1;
 }
 
-/** C ref: cfgfiles.c:1121 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1121 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_ACCESSIBILITY(bufp) {
     let n = atoi(bufp);
+
     if (n < 0 || n > 1) {
-        (yield* config_error_add(__sl38));
+        (yield* config_error_add(__s_illegal_value_in_accessibility_not_0_1));
         n = 0;
     }
     cptr.stI32o(sysopt, $sysopt_s_accessibility, n);
     return 1;
 }
 
-/** C ref: cfgfiles.c:1134 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1134 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_PORTABLE_DEVICE_PATHS(bufp) {
     (void (bufp));
-    (yield* config_error_add(__sl39));
+    (yield* config_error_add(__s_portable_device_paths_is_not_supported));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1156 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1156 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_BOULDER(bufp) {
-    void (yield* get_uchars(bufp, cptr.add(cptr.add(go, $instance_globals_o_ov_primary_syms), ((NHC.SYM_BOULDER + (((((((((0) + NHC.MAXPCHARS) | 0) + NHC.MAXOCLASSES) | 0) + NHC.MAXMCLASSES) | 0) + 6) | 0)) | 0), 1), 1, 1, __sl40));
+    void (yield* get_uchars(bufp, cptr.add(cptr.add(go, $instance_globals_o_ov_primary_syms), ((NHC.SYM_BOULDER + (((((((((0) + NHC.MAXPCHARS) | 0) + NHC.MAXOCLASSES) | 0) + NHC.MAXMCLASSES) | 0) + 6) | 0)) | 0), 1), 1, 1, __s_boulder));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1164 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1164 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_MENUCOLOR(bufp) {
     return (yield* add_menu_coloring(bufp));
 }
 
-/** C ref: cfgfiles.c:1170 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1170 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_HILITE_STATUS(bufp) {
     return (yield* parse_status_hl1(bufp, 1));
 }
 
-/** C ref: cfgfiles.c:1181 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1181 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_WARNINGS(bufp) {
     let translate = new Uint8Array(105);
-    void (yield* get_uchars(bufp, cptr.decay(translate), 0, NHM.WARNCOUNT, __sl41));
+
+    void (yield* get_uchars(bufp, cptr.decay(translate), 0, NHM.WARNCOUNT, __s_warnings));
     assign_warnings(cptr.decay(translate));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1191 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1191 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_ROGUESYMBOLS(bufp) {
     if ((yield* parsesymbols(bufp, NHC.ROGUESET))) {
         (yield* switch_symbols(1));
         return 1;
     }
-    (yield* config_error_add(__sl42, bufp));
+    (yield* config_error_add(__s_error_in_roguesymbols_definition_s, bufp));
     return 0;
 }
 
-/** C ref: cfgfiles.c:1202 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1202 — @param {CPtr<char>} bufp @returns {CInt} */
 function* cnf_line_SYMBOLS(bufp) {
     if ((yield* parsesymbols(bufp, NHC.PRIMARYSET))) {
         (yield* switch_symbols(1));
         return 1;
     }
     if (!config_unmatched_ignored())
-        (yield* config_error_add(__sl43, bufp));
+        (yield* config_error_add(__s_error_in_symbols_definition_s, bufp));
     return 0;
 }
 
-/** C ref: cfgfiles.c:1214 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1214 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_WIZKIT(bufp) {
     void __builtin___strncpy_chk(cptr.add(gw, $instance_globals_w_wizkit), bufp, 127n, __builtin_object_size(cptr.add(gw, $instance_globals_w_wizkit), 1));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1239 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1239 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_QT_TILEWIDTH(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1253 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1253 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_QT_TILEHEIGHT(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1267 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1267 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_QT_FONTSIZE(bufp) {
     (void (bufp));
     return 1;
 }
 
-/** C ref: cfgfiles.c:1281 — @param {CPtr} bufp @returns {CInt} */
+/** C ref: cfgfiles.c:1281 — @param {CPtr<char>} bufp @returns {CInt} */
 function cnf_line_QT_COMPACT(bufp) {
     (void (bufp));
     return 1;
@@ -969,298 +1068,298 @@ function cnf_line_QT_COMPACT(bufp) {
 /** C ref: cfgfiles.c:1303 — struct match_config_line_stmt { name, len, syscnf_only, origbuf, fn } (memory model v0.5) */
 
 /** C ref: cfgfiles.c:1309 — struct match_config_line_stmt[59] */
-const config_line_stmt = cptr.alloc(59 * 24);
-cptr.stPtro(config_line_stmt, 0, __sl44);
+const config_line_stmt = cptr.alloc(59 * $sizeof_match_config_line_stmt);
+cptr.stPtro(config_line_stmt, 0, __s_options);
 cptr.stI32o(config_line_stmt, 0 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 0 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 0 + $match_config_line_stmt_origbuf, 1);
 cptr.stPtro(config_line_stmt, 0 + $match_config_line_stmt_fn, cnf_line_OPTIONS);
-cptr.stPtro(config_line_stmt, 24, __sl45);
+cptr.stPtro(config_line_stmt, 24, __s_autopickup_exception);
 cptr.stI32o(config_line_stmt, 24 + $match_config_line_stmt_len, 5);
 cptr.st1o(config_line_stmt, 24 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 24 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 24 + $match_config_line_stmt_fn, cnf_line_AUTOPICKUP_EXCEPTION);
-cptr.stPtro(config_line_stmt, 48, __sl46);
+cptr.stPtro(config_line_stmt, 48, __s_bindings);
 cptr.stI32o(config_line_stmt, 48 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 48 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 48 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 48 + $match_config_line_stmt_fn, cnf_line_BINDINGS);
-cptr.stPtro(config_line_stmt, 72, __sl47);
+cptr.stPtro(config_line_stmt, 72, __s_autocomplete);
 cptr.stI32o(config_line_stmt, 72 + $match_config_line_stmt_len, 5);
 cptr.st1o(config_line_stmt, 72 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 72 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 72 + $match_config_line_stmt_fn, cnf_line_AUTOCOMPLETE);
-cptr.stPtro(config_line_stmt, 96, __sl48);
+cptr.stPtro(config_line_stmt, 96, __s_msgtype);
 cptr.stI32o(config_line_stmt, 96 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 96 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 96 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 96 + $match_config_line_stmt_fn, cnf_line_MSGTYPE);
-cptr.stPtro(config_line_stmt, 120, __sl49);
+cptr.stPtro(config_line_stmt, 120, __s_hackdir);
 cptr.stI32o(config_line_stmt, 120 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 120 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 120 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 120 + $match_config_line_stmt_fn, cnf_line_HACKDIR);
-cptr.stPtro(config_line_stmt, 144, __sl50);
+cptr.stPtro(config_line_stmt, 144, __s_leveldir);
 cptr.stI32o(config_line_stmt, 144 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 144 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 144 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 144 + $match_config_line_stmt_fn, cnf_line_LEVELDIR);
-cptr.stPtro(config_line_stmt, 168, __sl51);
+cptr.stPtro(config_line_stmt, 168, __s_levels);
 cptr.stI32o(config_line_stmt, 168 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 168 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 168 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 168 + $match_config_line_stmt_fn, cnf_line_LEVELDIR);
-cptr.stPtro(config_line_stmt, 192, __sl52);
+cptr.stPtro(config_line_stmt, 192, __s_savedir);
 cptr.stI32o(config_line_stmt, 192 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 192 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 192 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 192 + $match_config_line_stmt_fn, cnf_line_SAVEDIR);
-cptr.stPtro(config_line_stmt, 216, __sl53);
+cptr.stPtro(config_line_stmt, 216, __s_bonesdir);
 cptr.stI32o(config_line_stmt, 216 + $match_config_line_stmt_len, 5);
 cptr.st1o(config_line_stmt, 216 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 216 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 216 + $match_config_line_stmt_fn, cnf_line_BONESDIR);
-cptr.stPtro(config_line_stmt, 240, __sl54);
+cptr.stPtro(config_line_stmt, 240, __s_datadir);
 cptr.stI32o(config_line_stmt, 240 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 240 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 240 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 240 + $match_config_line_stmt_fn, cnf_line_DATADIR);
-cptr.stPtro(config_line_stmt, 264, __sl55);
+cptr.stPtro(config_line_stmt, 264, __s_scoredir);
 cptr.stI32o(config_line_stmt, 264 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 264 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 264 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 264 + $match_config_line_stmt_fn, cnf_line_SCOREDIR);
-cptr.stPtro(config_line_stmt, 288, __sl56);
+cptr.stPtro(config_line_stmt, 288, __s_lockdir);
 cptr.stI32o(config_line_stmt, 288 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 288 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 288 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 288 + $match_config_line_stmt_fn, cnf_line_LOCKDIR);
-cptr.stPtro(config_line_stmt, 312, __sl57);
+cptr.stPtro(config_line_stmt, 312, __s_configdir);
 cptr.stI32o(config_line_stmt, 312 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 312 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 312 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 312 + $match_config_line_stmt_fn, cnf_line_CONFIGDIR);
-cptr.stPtro(config_line_stmt, 336, __sl58);
+cptr.stPtro(config_line_stmt, 336, __s_troubledir);
 cptr.stI32o(config_line_stmt, 336 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 336 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 336 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 336 + $match_config_line_stmt_fn, cnf_line_TROUBLEDIR);
-cptr.stPtro(config_line_stmt, 360, __sl59);
+cptr.stPtro(config_line_stmt, 360, __s_name);
 cptr.stI32o(config_line_stmt, 360 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 360 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 360 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 360 + $match_config_line_stmt_fn, cnf_line_NAME);
-cptr.stPtro(config_line_stmt, 384, __sl60);
+cptr.stPtro(config_line_stmt, 384, __s_role);
 cptr.stI32o(config_line_stmt, 384 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 384 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 384 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 384 + $match_config_line_stmt_fn, cnf_line_ROLE);
-cptr.stPtro(config_line_stmt, 408, __sl61);
+cptr.stPtro(config_line_stmt, 408, __s_character);
 cptr.stI32o(config_line_stmt, 408 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 408 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 408 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 408 + $match_config_line_stmt_fn, cnf_line_ROLE);
-cptr.stPtro(config_line_stmt, 432, __sl62);
+cptr.stPtro(config_line_stmt, 432, __s_dogname);
 cptr.stI32o(config_line_stmt, 432 + $match_config_line_stmt_len, 3);
 cptr.st1o(config_line_stmt, 432 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 432 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 432 + $match_config_line_stmt_fn, cnf_line_dogname);
-cptr.stPtro(config_line_stmt, 456, __sl63);
+cptr.stPtro(config_line_stmt, 456, __s_catname);
 cptr.stI32o(config_line_stmt, 456 + $match_config_line_stmt_len, 3);
 cptr.st1o(config_line_stmt, 456 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 456 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 456 + $match_config_line_stmt_fn, cnf_line_catname);
-cptr.stPtro(config_line_stmt, 480, __sl64);
+cptr.stPtro(config_line_stmt, 480, __s_wizards);
 cptr.stI32o(config_line_stmt, 480 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 480 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 480 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 480 + $match_config_line_stmt_fn, cnf_line_WIZARDS);
-cptr.stPtro(config_line_stmt, 504, __sl65);
+cptr.stPtro(config_line_stmt, 504, __s_shellers);
 cptr.stI32o(config_line_stmt, 504 + $match_config_line_stmt_len, 8);
 cptr.st1o(config_line_stmt, 504 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 504 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 504 + $match_config_line_stmt_fn, cnf_line_SHELLERS);
-cptr.stPtro(config_line_stmt, 528, __sl66);
+cptr.stPtro(config_line_stmt, 528, __s_msghandler);
 cptr.stI32o(config_line_stmt, 528 + $match_config_line_stmt_len, 9);
 cptr.st1o(config_line_stmt, 528 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 528 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 528 + $match_config_line_stmt_fn, cnf_line_MSGHANDLER);
-cptr.stPtro(config_line_stmt, 552, __sl67);
+cptr.stPtro(config_line_stmt, 552, __s_explorers);
 cptr.stI32o(config_line_stmt, 552 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 552 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 552 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 552 + $match_config_line_stmt_fn, cnf_line_EXPLORERS);
-cptr.stPtro(config_line_stmt, 576, __sl68);
+cptr.stPtro(config_line_stmt, 576, __s_debugfiles);
 cptr.stI32o(config_line_stmt, 576 + $match_config_line_stmt_len, 5);
 cptr.st1o(config_line_stmt, 576 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 576 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 576 + $match_config_line_stmt_fn, cnf_line_DEBUGFILES);
-cptr.stPtro(config_line_stmt, 600, __sl69);
+cptr.stPtro(config_line_stmt, 600, __s_dumplogfile);
 cptr.stI32o(config_line_stmt, 600 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 600 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 600 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 600 + $match_config_line_stmt_fn, cnf_line_DUMPLOGFILE);
-cptr.stPtro(config_line_stmt, 624, __sl70);
+cptr.stPtro(config_line_stmt, 624, __s_genericusers);
 cptr.stI32o(config_line_stmt, 624 + $match_config_line_stmt_len, 12);
 cptr.st1o(config_line_stmt, 624 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 624 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 624 + $match_config_line_stmt_fn, cnf_line_GENERICUSERS);
-cptr.stPtro(config_line_stmt, 648, __sl71);
+cptr.stPtro(config_line_stmt, 648, __s_bones_pools);
 cptr.stI32o(config_line_stmt, 648 + $match_config_line_stmt_len, 10);
 cptr.st1o(config_line_stmt, 648 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 648 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 648 + $match_config_line_stmt_fn, cnf_line_BONES_POOLS);
-cptr.stPtro(config_line_stmt, 672, __sl72);
+cptr.stPtro(config_line_stmt, 672, __s_support);
 cptr.stI32o(config_line_stmt, 672 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 672 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 672 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 672 + $match_config_line_stmt_fn, cnf_line_SUPPORT);
-cptr.stPtro(config_line_stmt, 696, __sl73);
+cptr.stPtro(config_line_stmt, 696, __s_recover);
 cptr.stI32o(config_line_stmt, 696 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 696 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 696 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 696 + $match_config_line_stmt_fn, cnf_line_RECOVER);
-cptr.stPtro(config_line_stmt, 720, __sl74);
+cptr.stPtro(config_line_stmt, 720, __s_check_save_uid);
 cptr.stI32o(config_line_stmt, 720 + $match_config_line_stmt_len, 14);
 cptr.st1o(config_line_stmt, 720 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 720 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 720 + $match_config_line_stmt_fn, cnf_line_CHECK_SAVE_UID);
-cptr.stPtro(config_line_stmt, 744, __sl75);
+cptr.stPtro(config_line_stmt, 744, __s_check_plname);
 cptr.stI32o(config_line_stmt, 744 + $match_config_line_stmt_len, 12);
 cptr.st1o(config_line_stmt, 744 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 744 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 744 + $match_config_line_stmt_fn, cnf_line_CHECK_PLNAME);
-cptr.stPtro(config_line_stmt, 768, __sl76);
+cptr.stPtro(config_line_stmt, 768, __s_seduce);
 cptr.stI32o(config_line_stmt, 768 + $match_config_line_stmt_len, 6);
 cptr.st1o(config_line_stmt, 768 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 768 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 768 + $match_config_line_stmt_fn, cnf_line_SEDUCE);
-cptr.stPtro(config_line_stmt, 792, __sl77);
+cptr.stPtro(config_line_stmt, 792, __s_hideusage);
 cptr.stI32o(config_line_stmt, 792 + $match_config_line_stmt_len, 9);
 cptr.st1o(config_line_stmt, 792 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 792 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 792 + $match_config_line_stmt_fn, cnf_line_HIDEUSAGE);
-cptr.stPtro(config_line_stmt, 816, __sl78);
+cptr.stPtro(config_line_stmt, 816, __s_maxplayers);
 cptr.stI32o(config_line_stmt, 816 + $match_config_line_stmt_len, 10);
 cptr.st1o(config_line_stmt, 816 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 816 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 816 + $match_config_line_stmt_fn, cnf_line_MAXPLAYERS);
-cptr.stPtro(config_line_stmt, 840, __sl79);
+cptr.stPtro(config_line_stmt, 840, __s_persmax);
 cptr.stI32o(config_line_stmt, 840 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 840 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 840 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 840 + $match_config_line_stmt_fn, cnf_line_PERSMAX);
-cptr.stPtro(config_line_stmt, 864, __sl80);
+cptr.stPtro(config_line_stmt, 864, __s_pers_is_uid);
 cptr.stI32o(config_line_stmt, 864 + $match_config_line_stmt_len, 11);
 cptr.st1o(config_line_stmt, 864 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 864 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 864 + $match_config_line_stmt_fn, cnf_line_PERS_IS_UID);
-cptr.stPtro(config_line_stmt, 888, __sl81);
+cptr.stPtro(config_line_stmt, 888, __s_entrymax);
 cptr.stI32o(config_line_stmt, 888 + $match_config_line_stmt_len, 8);
 cptr.st1o(config_line_stmt, 888 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 888 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 888 + $match_config_line_stmt_fn, cnf_line_ENTRYMAX);
-cptr.stPtro(config_line_stmt, 912, __sl82);
+cptr.stPtro(config_line_stmt, 912, __s_pointsmin);
 cptr.stI32o(config_line_stmt, 912 + $match_config_line_stmt_len, 9);
 cptr.st1o(config_line_stmt, 912 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 912 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 912 + $match_config_line_stmt_fn, cnf_line_POINTSMIN);
-cptr.stPtro(config_line_stmt, 936, __sl83);
+cptr.stPtro(config_line_stmt, 936, __s_max_statuename_rank);
 cptr.stI32o(config_line_stmt, 936 + $match_config_line_stmt_len, 10);
 cptr.st1o(config_line_stmt, 936 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 936 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 936 + $match_config_line_stmt_fn, cnf_line_MAX_STATUENAME_RANK);
-cptr.stPtro(config_line_stmt, 960, __sl84);
+cptr.stPtro(config_line_stmt, 960, __s_livelog);
 cptr.stI32o(config_line_stmt, 960 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 960 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 960 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 960 + $match_config_line_stmt_fn, cnf_line_LIVELOG);
-cptr.stPtro(config_line_stmt, 984, __sl85);
+cptr.stPtro(config_line_stmt, 984, __s_panictrace_libc);
 cptr.stI32o(config_line_stmt, 984 + $match_config_line_stmt_len, 15);
 cptr.st1o(config_line_stmt, 984 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 984 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 984 + $match_config_line_stmt_fn, cnf_line_PANICTRACE_LIBC);
-cptr.stPtro(config_line_stmt, 1008, __sl86);
+cptr.stPtro(config_line_stmt, 1008, __s_panictrace_gdb);
 cptr.stI32o(config_line_stmt, 1008 + $match_config_line_stmt_len, 14);
 cptr.st1o(config_line_stmt, 1008 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1008 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1008 + $match_config_line_stmt_fn, cnf_line_PANICTRACE_GDB);
-cptr.stPtro(config_line_stmt, 1032, __sl87);
+cptr.stPtro(config_line_stmt, 1032, __s_crashreporturl);
 cptr.stI32o(config_line_stmt, 1032 + $match_config_line_stmt_len, 13);
 cptr.st1o(config_line_stmt, 1032 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1032 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1032 + $match_config_line_stmt_fn, cnf_line_CRASHREPORTURL);
-cptr.stPtro(config_line_stmt, 1056, __sl88);
+cptr.stPtro(config_line_stmt, 1056, __s_gdbpath);
 cptr.stI32o(config_line_stmt, 1056 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 1056 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1056 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1056 + $match_config_line_stmt_fn, cnf_line_GDBPATH);
-cptr.stPtro(config_line_stmt, 1080, __sl89);
+cptr.stPtro(config_line_stmt, 1080, __s_greppath);
 cptr.stI32o(config_line_stmt, 1080 + $match_config_line_stmt_len, 7);
 cptr.st1o(config_line_stmt, 1080 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1080 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1080 + $match_config_line_stmt_fn, cnf_line_GREPPATH);
-cptr.stPtro(config_line_stmt, 1104, __sl90);
+cptr.stPtro(config_line_stmt, 1104, __s_accessibility);
 cptr.stI32o(config_line_stmt, 1104 + $match_config_line_stmt_len, 13);
 cptr.st1o(config_line_stmt, 1104 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1104 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1104 + $match_config_line_stmt_fn, cnf_line_ACCESSIBILITY);
-cptr.stPtro(config_line_stmt, 1128, __sl91);
+cptr.stPtro(config_line_stmt, 1128, __s_portable_device_paths);
 cptr.stI32o(config_line_stmt, 1128 + $match_config_line_stmt_len, 8);
 cptr.st1o(config_line_stmt, 1128 + $match_config_line_stmt_syscnf_only, 1);
 cptr.st1o(config_line_stmt, 1128 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1128 + $match_config_line_stmt_fn, cnf_line_PORTABLE_DEVICE_PATHS);
-cptr.stPtro(config_line_stmt, 1152, __sl40);
+cptr.stPtro(config_line_stmt, 1152, __s_boulder);
 cptr.stI32o(config_line_stmt, 1152 + $match_config_line_stmt_len, 3);
 cptr.st1o(config_line_stmt, 1152 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1152 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1152 + $match_config_line_stmt_fn, cnf_line_BOULDER);
-cptr.stPtro(config_line_stmt, 1176, __sl92);
+cptr.stPtro(config_line_stmt, 1176, __s_menucolor);
 cptr.stI32o(config_line_stmt, 1176 + $match_config_line_stmt_len, 9);
 cptr.st1o(config_line_stmt, 1176 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1176 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1176 + $match_config_line_stmt_fn, cnf_line_MENUCOLOR);
-cptr.stPtro(config_line_stmt, 1200, __sl93);
+cptr.stPtro(config_line_stmt, 1200, __s_hilite_status);
 cptr.stI32o(config_line_stmt, 1200 + $match_config_line_stmt_len, 6);
 cptr.st1o(config_line_stmt, 1200 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1200 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1200 + $match_config_line_stmt_fn, cnf_line_HILITE_STATUS);
-cptr.stPtro(config_line_stmt, 1224, __sl41);
+cptr.stPtro(config_line_stmt, 1224, __s_warnings);
 cptr.stI32o(config_line_stmt, 1224 + $match_config_line_stmt_len, 5);
 cptr.st1o(config_line_stmt, 1224 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1224 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1224 + $match_config_line_stmt_fn, cnf_line_WARNINGS);
-cptr.stPtro(config_line_stmt, 1248, __sl94);
+cptr.stPtro(config_line_stmt, 1248, __s_roguesymbols);
 cptr.stI32o(config_line_stmt, 1248 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 1248 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1248 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1248 + $match_config_line_stmt_fn, cnf_line_ROGUESYMBOLS);
-cptr.stPtro(config_line_stmt, 1272, __sl95);
+cptr.stPtro(config_line_stmt, 1272, __s_symbols);
 cptr.stI32o(config_line_stmt, 1272 + $match_config_line_stmt_len, 4);
 cptr.st1o(config_line_stmt, 1272 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1272 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1272 + $match_config_line_stmt_fn, cnf_line_SYMBOLS);
-cptr.stPtro(config_line_stmt, 1296, __sl96);
+cptr.stPtro(config_line_stmt, 1296, __s_wizkit);
 cptr.stI32o(config_line_stmt, 1296 + $match_config_line_stmt_len, 6);
 cptr.st1o(config_line_stmt, 1296 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1296 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1296 + $match_config_line_stmt_fn, cnf_line_WIZKIT);
-cptr.stPtro(config_line_stmt, 1320, __sl97);
+cptr.stPtro(config_line_stmt, 1320, __s_qt_tilewidth);
 cptr.stI32o(config_line_stmt, 1320 + $match_config_line_stmt_len, 12);
 cptr.st1o(config_line_stmt, 1320 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1320 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1320 + $match_config_line_stmt_fn, cnf_line_QT_TILEWIDTH);
-cptr.stPtro(config_line_stmt, 1344, __sl98);
+cptr.stPtro(config_line_stmt, 1344, __s_qt_tileheight);
 cptr.stI32o(config_line_stmt, 1344 + $match_config_line_stmt_len, 13);
 cptr.st1o(config_line_stmt, 1344 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1344 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1344 + $match_config_line_stmt_fn, cnf_line_QT_TILEHEIGHT);
-cptr.stPtro(config_line_stmt, 1368, __sl99);
+cptr.stPtro(config_line_stmt, 1368, __s_qt_fontsize);
 cptr.stI32o(config_line_stmt, 1368 + $match_config_line_stmt_len, 11);
 cptr.st1o(config_line_stmt, 1368 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1368 + $match_config_line_stmt_origbuf, 0);
 cptr.stPtro(config_line_stmt, 1368 + $match_config_line_stmt_fn, cnf_line_QT_FONTSIZE);
-cptr.stPtro(config_line_stmt, 1392, __sl100);
+cptr.stPtro(config_line_stmt, 1392, __s_qt_compact);
 cptr.stI32o(config_line_stmt, 1392 + $match_config_line_stmt_len, 10);
 cptr.st1o(config_line_stmt, 1392 + $match_config_line_stmt_syscnf_only, 0);
 cptr.st1o(config_line_stmt, 1392 + $match_config_line_stmt_origbuf, 0);
@@ -1269,38 +1368,48 @@ cptr.stPtro(config_line_stmt, 1392 + $match_config_line_stmt_fn, cnf_line_QT_COM
 /** C ref: cfgfiles.c:1386 — boolean[59] */
 const disregarded_config_lines = new Uint8Array(59);
 
-/** C ref: cfgfiles.c:1389 — @param {CPtr} origbuf @returns {CInt} */
+/** C ref: cfgfiles.c:1389 — @param {CPtr<char>} origbuf @returns {CInt} */
 export function* parse_config_line(origbuf) {
     let src = cptr.ldI32o(iflags, $instance_flags_parse_config_file_src);
     let in_sysconf = schar((src == NHC.set_in_sysconf));
     let bufp;
     let buf = new Uint8Array(1024);
     let i;
+
     while (cptr.ld1s(origbuf) == 32 || cptr.ld1s(origbuf) == 9)
-        origbuf = cptr.add(origbuf, 1);
+        origbuf = cptr.add(origbuf, 1);  /* (caller probably already did this) */
     void __builtin___strncpy_chk(cptr.decay(buf), origbuf, 1023n, __builtin_object_size(cptr.decay(buf), 1));
-    cptr.st1o(cptr.decay(buf), 1023n, 0, 1);
+    cptr.st1o(cptr.decay(buf), 1023n, 0, 1);  /* strncpy not guaranteed to NUL terminate */
+    /* convert any tab to space, condense consecutive spaces into one,
+       remove leading and trailing spaces (exception: if there is nothing
+       but spaces, one of them will be kept even though it leads/trails) */
     (yield* mungspaces(cptr.decay(buf)));
+
+    /* find the '=' or ':' */
     bufp = find_optparam(cptr.decay(buf));
     if (!bufp) {
         if (!ignore_statement_errors)
-            (yield* config_error_add(__sl101));
+            (yield* config_error_add(__s_not_a_config_statement_missing));
         return 0;
     }
+    /* skip past '=', then space between it and value, if any */
     bufp = cptr.add(bufp, 1);
     if (cptr.ld1s(bufp) == 32)
         bufp = cptr.add(bufp, 1);
+
     for (i = 0; i < 59; i++) {
-        if (cptr.ld1so2(config_line_stmt, i, 24, $match_config_line_stmt_syscnf_only) && !in_sysconf)
+        if (cptr.ld1so2(config_line_stmt, i, $sizeof_match_config_line_stmt, $match_config_line_stmt_syscnf_only) && !in_sysconf)
             continue;
-        if ((yield* match_optname(cptr.decay(buf), cptr.ldPtro(config_line_stmt, i, 24), cptr.ldI32o2(config_line_stmt, i, 24, $match_config_line_stmt_len), 1))) {
-            let parm = cptr.ld1so2(config_line_stmt, i, 24, $match_config_line_stmt_origbuf) ? origbuf : bufp;
+        if ((yield* match_optname(cptr.decay(buf), cptr.ldPtro(config_line_stmt, i, $sizeof_match_config_line_stmt), cptr.ldI32o2(config_line_stmt, i, $sizeof_match_config_line_stmt, $match_config_line_stmt_len), 1))) {
+            let parm = cptr.ld1so2(config_line_stmt, i, $sizeof_match_config_line_stmt, $match_config_line_stmt_origbuf) ? origbuf : bufp;
+
             if (!cptr.ld1so(cptr.decay(disregarded_config_lines), i, 1))
-                return (yield* Y.icall(cptr.ldPtro2(config_line_stmt, i, 24, $match_config_line_stmt_fn)(parm)));
+                return (yield* Y.icall(cptr.ldPtro2(config_line_stmt, i, $sizeof_match_config_line_stmt, $match_config_line_stmt_fn)(parm)));
         }
     }
+
     if (!ignore_errors_on_unmatched)
-        (yield* config_error_add(__sl102));
+        (yield* config_error_add(__s_unknown_config_statement));
     return 0;
 }
 
@@ -1314,9 +1423,10 @@ let config_error_data = null;
 /** C ref: cfgfiles.c:1467 — struct _config_error_errmsg * */
 let config_error_msg = null;
 
-/** C ref: cfgfiles.c:1470 — @param {CInt} from_file @param {CPtr} sourcename @param {CInt} secure */
+/** C ref: cfgfiles.c:1470 — @param {CInt} from_file @param {CPtr<char>} sourcename @param {CInt} secure */
 export function* config_error_init(from_file, sourcename, secure) {
     let tmp = (yield* alloc(1304));
+
     cptr.stI32(tmp, 0);
     cptr.stI32o(tmp, $_config_error_frame_num_errors, 0);
     cptr.st1o(tmp, $_config_error_frame_origline_shown, 0);
@@ -1328,18 +1438,22 @@ export function* config_error_init(from_file, sourcename, secure) {
         cptr.st1o2(tmp, 255n, 1, $_config_error_frame_source, 0);
     } else
         cptr.st1o2(tmp, 0, 1, $_config_error_frame_source, 0);
+
     cptr.stPtro(tmp, $_config_error_frame_next, config_error_data);
     config_error_data = tmp;
     cptr.stI32o(program_state, $sinfo_config_error_ready, 1);
 }
 
-/** C ref: cfgfiles.c:1493 — @param {CPtr} line @returns {CInt} */
+/** C ref: cfgfiles.c:1493 — @param {CPtr<char>} line @returns {CInt} */
 function config_error_nextline(line) {
     let ced = config_error_data;
+
     if (!ced)
         return 0;
+
     if (cptr.ldI32o(ced, $_config_error_frame_num_errors) && cptr.ld1so(ced, $_config_error_frame_secure))
         return 0;
+
     (cptr.stI32(ced, cptr.ldI32(ced) + 1)) - (1);
     cptr.st1o(ced, $_config_error_frame_origline_shown, 0);
     if (line && cptr.ld1so(line, 0)) {
@@ -1347,20 +1461,23 @@ function config_error_nextline(line) {
         cptr.st1o2(ced, 1023n, 1, $_config_error_frame_origline, 0);
     } else
         cptr.st1o2(ced, 0, 1, $_config_error_frame_origline, 0);
+
     return 1;
 }
 
-/** C ref: cfgfiles.c:1516 — @param {CPtr} L @returns {CInt} */
+/** C ref: cfgfiles.c:1516 — @param {CPtr<lua_State>} L @returns {CInt} */
 export function* l_get_config_errors(L) {
     let dat = config_error_msg;
     let tmp;
     let idx = 1;
+
     (yield* lua_createtable(L, 0, 0));
+
     while (dat) {
         (yield* lua_pushinteger(L, BigInt((idx++))));
         (yield* lua_createtable(L, 0, 0));
-        (yield* nhl_add_table_entry_int(L, __sl103, BigInt(cptr.ldI32(dat))));
-        (yield* nhl_add_table_entry_str(L, __sl104, cptr.ldPtro(dat, $_config_error_errmsg_errormsg)));
+        (yield* nhl_add_table_entry_int(L, __s_line, BigInt(cptr.ldI32(dat))));
+        (yield* nhl_add_table_entry_str(L, __s_error, cptr.ldPtro(dat, $_config_error_errmsg_errormsg)));
         (yield* lua_settable(L, -3));
         tmp = cptr.ldPtro(dat, $_config_error_errmsg_next);
         cptr.free(cptr.ldPtro(dat, $_config_error_errmsg_errormsg));
@@ -1369,56 +1486,74 @@ export function* l_get_config_errors(L) {
         dat = tmp;
     }
     config_error_msg = null;
+
     return 1;
 }
 
-/** C ref: cfgfiles.c:1544 — @param {CPtr} buf */
+/* varargs 'config_error_add()' moved to pline.c */
+/** C ref: cfgfiles.c:1544 — @param {CPtr<char>} buf */
 export function* config_erradd(buf) {
     let lineno = new Uint8Array(128);
     let punct;
+
     if (!buf || !cptr.ld1s(buf))
-        buf = __sl105;
-    punct = cptr.add(c_eos(buf), -(1));
-    punct = cptr.strchr(__sl106, cptr.ld1s(punct)) ? __sl17 : __sl107;
+        buf = __s_unknown_error;
+
+    /* if buf[] doesn't end in a period, exclamation point, or question mark,
+       we'll include a period (in the message, not appended to buf[]) */
+    punct = cptr.add(c_eos(buf), -(1));  /* eos(buf)-1 is valid */
+    punct = cptr.strchr(__s_dot_bang_query, cptr.ld1s(punct)) ? __s_empty : __s_dot;
+
     if (!cptr.ldI32o(program_state, $sinfo_config_error_ready)) {
-        (yield* pline(__sl108, !cptr.ld1so(iflags, $instance_flags_window_inited) ? __sl109 : __sl17, buf, punct));
+        /* either very early, where pline() will use raw_print(), or
+           player gave bad value when prompted by interactive 'O' command */
+        (yield* pline(__s_s_s_s, !cptr.ld1so(iflags, $instance_flags_window_inited) ? __s_config_error_add : __s_empty, buf, punct));
         (yield* Y.icall(wait_synch()()));
         return;
     }
+
     if (cptr.ld1so(iflags, $instance_flags_in_lua)) {
         let dat = (yield* alloc(24));
+
         cptr.stPtro(dat, $_config_error_errmsg_next, config_error_msg);
         cptr.stI32(dat, cptr.ldI32(config_error_data));
         cptr.stPtro(dat, $_config_error_errmsg_errormsg, (yield* dupstr(buf)));
         config_error_msg = dat;
         return;
     }
+
     (cptr.stI32o(config_error_data, $_config_error_frame_num_errors, cptr.ldI32o(config_error_data, $_config_error_frame_num_errors) + 1)) - (1);
     if (!cptr.ld1so(config_error_data, $_config_error_frame_origline_shown) && !cptr.ld1so(config_error_data, $_config_error_frame_secure)) {
-        (yield* pline(__sl110, cptr.add(config_error_data, $_config_error_frame_origline)));
+        (yield* pline(__s_nl_pct_s, cptr.add(config_error_data, $_config_error_frame_origline)));
         cptr.st1o(config_error_data, $_config_error_frame_origline_shown, 1);
     }
     if (cptr.ldI32(config_error_data) > 0 && !cptr.ld1so(config_error_data, $_config_error_frame_secure)) {
-        void cptr.sprintf(cptr.decay(lineno), __sl111, cptr.ldI32(config_error_data));
+        void cptr.sprintf(cptr.decay(lineno), __s_line_d, cptr.ldI32(config_error_data));
     } else
         cptr.st1o(cptr.decay(lineno), 0, 0, 1);
-    (yield* pline(__sl112, cptr.ld1so(config_error_data, $_config_error_frame_secure) ? __sl113 : __sl114, cptr.decay(lineno), buf, punct));
+
+    (yield* pline(__s_s_s_s_s, cptr.ld1so(config_error_data, $_config_error_frame_secure) ? __s_error__2 : __s_sp_star, cptr.decay(lineno), buf, punct));
 }
 
 /** C ref: cfgfiles.c:1592 @returns {CInt} */
 export function* config_error_done() {
     let n;
     let tmp = config_error_data;
+
     if (!config_error_data)
         return 0;
     n = cptr.ldI32o(config_error_data, $_config_error_frame_num_errors);
     if (cptr.ldI32o(gn, $instance_globals_n_no_sound_notified) > 0) {
+        /* no USER_SOUNDS; config_error_add() was called once for first
+           SOUND or SOUNDDIR entry seen, then skipped for any others;
+           include those skipped ones in the total error count */
         n = (n + ((cptr.ldI32o(gn, $instance_globals_n_no_sound_notified) - 1) | 0)) | 0;
         cptr.stI32o(gn, $instance_globals_n_no_sound_notified, 0);
     }
     if (n) {
-        let cmdline = schar((!strcmp(cptr.add(config_error_data, $_config_error_frame_source), __sl115)));
-        (yield* pline(__sl116, n, (((n) == 1) ? __sl17 : __sl117), cmdline ? __sl118 : __sl119, cptr.ld1so(config_error_data, $_config_error_frame_source) ? cptr.add(config_error_data, $_config_error_frame_source) : cptr.decay(configfile)));
+        let cmdline = schar((!strcmp(cptr.add(config_error_data, $_config_error_frame_source), __s_command_line)));
+
+        (yield* pline(__s_d_error_s_s_s, n, (((n) == 1) ? __s_empty : __s_s), cmdline ? __s_on : __s_in, cptr.ld1so(config_error_data, $_config_error_frame_source) ? cptr.add(config_error_data, $_config_error_frame_source) : cptr.decay(configfile)));
         (yield* Y.icall(wait_synch()()));
     }
     config_error_data = cptr.ldPtro(tmp, $_config_error_frame_next);
@@ -1427,27 +1562,33 @@ export function* config_error_done() {
     return n;
 }
 
-/** C ref: cfgfiles.c:1624 — @param {CPtr} filename @param {CInt} src @returns {CInt} */
+/** C ref: cfgfiles.c:1624 — @param {CPtr<char>} filename @param {CInt} src @returns {CInt} */
 export function* read_config_file(filename, src) {
     let fp;
     let rv = 1;
+
     if (!(fp = (yield* fopen_config_file(filename, src))))
         return 0;
+    /* begin detection of duplicate configfile options */
     reset_duplicate_opt_detection();
     free_config_sections();
     cptr.stI32o(iflags, $instance_flags_parse_config_file_src, src);
+
     rv = (yield* parse_conf_file(fp, parse_config_line));
     void fclose(fp);
+
     free_config_sections();
+    /* turn off detection of duplicate configfile options */
     reset_duplicate_opt_detection();
     return rv;
 }
 
 /** C ref: cfgfiles.c:1649 — struct _cnf_parser_state { inbuf, inbufsz, rv, ep, buf, skip, morelines, cont, pbreak } (memory model v0.5) */
 
-/** C ref: cfgfiles.c:1662 — @param {CPtr} parser */
+/* Initialize config parser data */
+/** C ref: cfgfiles.c:1662 — @param {CPtr<struct _cnf_parser_state>} parser */
 function* cnf_parser_init(parser) {
-    cptr.stI32o(parser, $_cnf_parser_state_rv, 1);
+    cptr.stI32o(parser, $_cnf_parser_state_rv, 1);  /* assume successful parse */
     cptr.stPtro(parser, $_cnf_parser_state_ep, cptr.stPtro(parser, $_cnf_parser_state_buf, null));
     cptr.st1o(parser, $_cnf_parser_state_skip, 0);
     cptr.st1o(parser, $_cnf_parser_state_morelines, 0);
@@ -1458,44 +1599,58 @@ function* cnf_parser_init(parser) {
     __builtin___memset_chk(cptr.ldPtr(parser), 0, BigInt(cptr.ldI32o(parser, $_cnf_parser_state_inbufsz) >>> 0), __builtin_object_size(cptr.ldPtr(parser), 0));
 }
 
-/** C ref: cfgfiles.c:1677 — @param {CPtr} parser */
+/* caller has finished with 'parser' (except for 'rv' so leave that intact) */
+/** C ref: cfgfiles.c:1677 — @param {CPtr<struct _cnf_parser_state>} parser */
 function cnf_parser_done(parser) {
-    cptr.stPtro(parser, $_cnf_parser_state_ep, null);
+    cptr.stPtro(parser, $_cnf_parser_state_ep, null);  /* points into parser->inbuf, so becoming stale */
     if (cptr.ldPtr(parser))
         cptr.free(cptr.ldPtr(parser)), cptr.stPtr(parser, null);
     if (cptr.ldPtro(parser, $_cnf_parser_state_buf))
         cptr.free(cptr.ldPtro(parser, $_cnf_parser_state_buf)), cptr.stPtro(parser, $_cnf_parser_state_buf, null);
 }
 
-/** C ref: cfgfiles.c:1693 — @param {CPtr} p @param {CPtr} proc */
+/*
+ * Parse config buffer, handling comments, empty lines, config sections,
+ * CHOOSE, and line continuation, calling proc for every valid line.
+ *
+ * Continued lines are merged together with one space in between.
+ */
+/** C ref: cfgfiles.c:1693 — @param {CPtr<struct _cnf_parser_state>} p @param {CPtr} proc */
 function* parse_conf_buf(p, proc) {
     cptr.st1o(p, $_cnf_parser_state_cont, 0);
     cptr.st1o(p, $_cnf_parser_state_pbreak, 0);
     cptr.stPtro(p, $_cnf_parser_state_ep, cptr.strchr(cptr.ldPtr(p), 10));
     if (cptr.ld1so(p, $_cnf_parser_state_skip)) {
         if (cptr.ldPtro(p, $_cnf_parser_state_ep))
-            cptr.st1o(p, $_cnf_parser_state_skip, 0);
+            cptr.st1o(p, $_cnf_parser_state_skip, 0);  /* found newline; next line is normal */
     } else {
         if (!cptr.ldPtro(p, $_cnf_parser_state_ep)) {
             if (cptr.strlen(cptr.ldPtr(p)) < BigInt(((cptr.ldI32o(p, $_cnf_parser_state_inbufsz) - 2) >>> 0) >>> 0)) {
+                /* likely the last line of file is just
+                   missing a newline; process it anyway  */
                 cptr.stPtro(p, $_cnf_parser_state_ep, eos(cptr.ldPtr(p)));
             } else {
-                (yield* config_error_add(__sl120));
-                cptr.st1o(p, $_cnf_parser_state_skip, 1);
+                (yield* config_error_add(__s_line_too_long_skipping));
+                cptr.st1o(p, $_cnf_parser_state_skip, 1);  /* discard next fgets */
             }
         } else {
-            cptr.st1(cptr.ldPtro(p, $_cnf_parser_state_ep), 0);
+            cptr.st1(cptr.ldPtro(p, $_cnf_parser_state_ep), 0);  /* remove newline */
         }
         if (cptr.ldPtro(p, $_cnf_parser_state_ep)) {
             let tmpbuf = null;
             let len;
             let ignoreline = 0;
             let oldline = 0;
+
+            /* line continuation (trailing '\') */
             cptr.st1o(p, $_cnf_parser_state_morelines, schar((cptr.cmp(cptr.predec(() => cptr.ldPtro(p, $_cnf_parser_state_ep), (v) => { cptr.stPtro(p, $_cnf_parser_state_ep, v); }), cptr.ldPtr(p)) >= 0 && cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 92 ? 1 : 0)));
             if (cptr.ld1so(p, $_cnf_parser_state_morelines))
                 cptr.st1(cptr.ldPtro(p, $_cnf_parser_state_ep), 0);
+
+            /* trim off spaces at end of line */
             while (cptr.cmp(cptr.ldPtro(p, $_cnf_parser_state_ep), cptr.ldPtr(p)) >= 0 && (cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 32 || cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 9 || cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 13))
                 cptr.st1(cptr.postdec(() => cptr.ldPtro(p, $_cnf_parser_state_ep), (v) => { cptr.stPtro(p, $_cnf_parser_state_ep, v); }), 0);
+
             if (!config_error_nextline(cptr.ldPtr(p))) {
                 cptr.stI32o(p, $_cnf_parser_state_rv, 0);
                 if (cptr.ldPtro(p, $_cnf_parser_state_buf))
@@ -1503,38 +1658,50 @@ function* parse_conf_buf(p, proc) {
                 cptr.st1o(p, $_cnf_parser_state_pbreak, 1);
                 return;
             }
+
             cptr.stPtro(p, $_cnf_parser_state_ep, cptr.ldPtr(p));
             while (cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 32 || cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 9)
                 cptr.preinc(() => cptr.ldPtro(p, $_cnf_parser_state_ep), (v) => { cptr.stPtro(p, $_cnf_parser_state_ep, v); });
+
+            /* ignore empty lines and full-line comment lines */
             if (!cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) || cptr.ld1s(cptr.ldPtro(p, $_cnf_parser_state_ep)) == 35)
                 ignoreline = 1;
+
             if (cptr.ldPtro(p, $_cnf_parser_state_buf))
                 oldline = 1;
+
+            /* merge now read line with previous ones, if necessary */
             if (!ignoreline) {
-                len = (Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(p, $_cnf_parser_state_ep)))) + 1) | 0;
+                len = (Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(p, $_cnf_parser_state_ep)))) + 1) | 0;  /* +1: final '\0' */
                 if (cptr.ldPtro(p, $_cnf_parser_state_buf))
-                    len = (len + ((Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(p, $_cnf_parser_state_buf)))) + 1) | 0)) | 0;
+                    len = (len + ((Number(BigInt.asIntN(32, cptr.strlen(cptr.ldPtro(p, $_cnf_parser_state_buf)))) + 1) | 0)) | 0;  /* +1: space */
                 tmpbuf = (yield* alloc(len >>> 0));
                 cptr.st1(tmpbuf, 0);
                 if (cptr.ldPtro(p, $_cnf_parser_state_buf)) {
-                    void cptr.strcat(cptr.strcpy(tmpbuf, cptr.ldPtro(p, $_cnf_parser_state_buf)), __sl121);
+                    void cptr.strcat(cptr.strcpy(tmpbuf, cptr.ldPtro(p, $_cnf_parser_state_buf)), __s_sp);
                     cptr.free(cptr.ldPtro(p, $_cnf_parser_state_buf)), cptr.stPtro(p, $_cnf_parser_state_buf, null);
                 }
                 cptr.stPtro(p, $_cnf_parser_state_buf, cptr.strcat(tmpbuf, cptr.ldPtro(p, $_cnf_parser_state_ep)));
                 if (cptr.strlen(cptr.ldPtro(p, $_cnf_parser_state_buf)) >= BigInt(cptr.ldI32o(p, $_cnf_parser_state_inbufsz) >>> 0))
                     cptr.st1o(cptr.ldPtro(p, $_cnf_parser_state_buf), (cptr.ldI32o(p, $_cnf_parser_state_inbufsz) - 1) >>> 0, 0);
             }
+
             if (cptr.ld1so(p, $_cnf_parser_state_morelines) || (ignoreline && !oldline))
                 return;
+
             if ((yield* handle_config_section(cptr.ldPtro(p, $_cnf_parser_state_buf)))) {
                 cptr.free(cptr.ldPtro(p, $_cnf_parser_state_buf)), cptr.stPtro(p, $_cnf_parser_state_buf, null);
                 return;
             }
-            if ((yield* match_optname(cptr.ldPtro(p, $_cnf_parser_state_buf), __sl122, 6, 1))) {
+
+            /* from here onwards, we'll handle buf only */
+
+            if ((yield* match_optname(cptr.ldPtro(p, $_cnf_parser_state_buf), __s_choose, 6, 1))) {
                 let section;
                 let bufp = find_optparam(cptr.ldPtro(p, $_cnf_parser_state_buf));
+
                 if (!bufp) {
-                    (yield* config_error_add(__sl123));
+                    (yield* config_error_add(__s_format_is_choose_section1_section2));
                     cptr.stI32o(p, $_cnf_parser_state_rv, 0);
                     cptr.free(cptr.ldPtro(p, $_cnf_parser_state_buf)), cptr.stPtro(p, $_cnf_parser_state_buf, null);
                     return;
@@ -1546,26 +1713,29 @@ function* parse_conf_buf(p, proc) {
                 if (section) {
                     cptr.stPtro(gc, $instance_globals_c_config_section_chosen, (yield* dupstr(section)));
                 } else {
-                    (yield* config_error_add(__sl124));
+                    (yield* config_error_add(__s_no_config_section_to_choose));
                     cptr.stI32o(p, $_cnf_parser_state_rv, 0);
                 }
                 cptr.free(cptr.ldPtro(p, $_cnf_parser_state_buf)), cptr.stPtro(p, $_cnf_parser_state_buf, null);
                 return;
             }
+
             if (!(yield* Y.icall((proc)(cptr.ldPtro(p, $_cnf_parser_state_buf)))))
                 cptr.stI32o(p, $_cnf_parser_state_rv, 0);
+
             cptr.free(cptr.ldPtro(p, $_cnf_parser_state_buf)), cptr.stPtro(p, $_cnf_parser_state_buf, null);
         }
     }
 }
 
-/** C ref: cfgfiles.c:1810 — @param {CPtr} str @param {CPtr} proc @returns {CInt} */
+/** C ref: cfgfiles.c:1810 — @param {CPtr<char>} str @param {CPtr} proc @returns {CInt} */
 export function* parse_conf_str(str, proc) {
     let len;
     let parser = cptr.alloc(40);
+
     (yield* cnf_parser_init(parser));
     free_config_sections();
-    (yield* config_error_init(0, __sl125, 0));
+    (yield* config_error_init(0, __s_parse_conf_str, 0));
     while (str && cptr.ld1s(str)) {
         len = 0n;
         while (cptr.ld1s(str) && len < BigInt(((cptr.ldI32o(parser, $_cnf_parser_state_inbufsz) - 1) >>> 0) >>> 0)) {
@@ -1581,38 +1751,48 @@ export function* parse_conf_str(str, proc) {
             break;
     }
     cnf_parser_done(parser);
+
     free_config_sections();
     (yield* config_error_done());
     return schar(cptr.ldI32o(parser, $_cnf_parser_state_rv));
 }
 
-/** C ref: cfgfiles.c:1844 — @param {CPtr} fp @param {CPtr} proc @returns {CInt} */
+/* parse_conf_file
+ *
+ * Read from file fp, calling parse_conf_buf for each line.
+ */
+/** C ref: cfgfiles.c:1844 — @param {CPtr<FILE>} fp @param {CPtr} proc @returns {CInt} */
 export function* parse_conf_file(fp, proc) {
     let parser = cptr.alloc(40);
+
     (yield* cnf_parser_init(parser));
     free_config_sections();
+
     while (fgets(cptr.ldPtr(parser), cptr.ldI32o(parser, $_cnf_parser_state_inbufsz) | 0, fp)) {
         (yield* parse_conf_buf(parser, proc));
         if (cptr.ld1so(parser, $_cnf_parser_state_pbreak))
             break;
     }
     cnf_parser_done(parser);
+
     free_config_sections();
     return schar(cptr.ldI32o(parser, $_cnf_parser_state_rv));
 }
 
-/** C ref: cfgfiles.c:1865 — @param {CPtr} str */
+/** C ref: cfgfiles.c:1865 — @param {CPtr<char>} str */
 export function* config_error_add(str, ...__va) {
     let the_args;
+
     the_args = cptr.vaList(__va);
     (yield* vconfig_error_add(str, the_args));
     the_args = null;
 }
 
-/** C ref: cfgfiles.c:1875 — @param {CPtr} str @param {CPtr} the_args */
+/** C ref: cfgfiles.c:1875 — @param {CPtr<char>} str @param {CPtr} the_args */
 function* vconfig_error_add(str, the_args) {
     let vlen = 0;
-    let buf = new Uint8Array(1280);
+    let buf = new Uint8Array(1280);  /* will be chopped down to BUFSZ-1 if longer */
+
     vlen = cptr.vsnprintf(cptr.decay(buf), 1280n, str, the_args);
     (void (vlen));
     cptr.st1o(cptr.decay(buf), 255, 0, 1);
@@ -1626,47 +1806,63 @@ export function* rcfile() {
     let envname;
     let namesrc;
     let nameval;
+
     cptr.stI32o(go, $instance_globals_o_opt_phase, NHC.environ_opt);
-    envname = __sl126;
+    /* getenv() instead of nhgetenv(): let total length of options be long;
+       parseoptions() will check each individually */
+    envname = __s_nethackoptions;
     opts = getenv(envname);
     if (!opts) {
-        envname = __sl127;
+        /* fall back to original name; discouraged */
+        envname = __s_hackoptions;
         opts = getenv(envname);
     }
+
     if (cptr.ldPtro(gc, $instance_globals_c_cmdline_rcfile)) {
-        namesrc = __sl115;
+        namesrc = __s_command_line;
         nameval = cptr.ldPtro(gc, $instance_globals_c_cmdline_rcfile);
         xtraopts = opts;
         if (opts && (cptr.ld1s(opts) == 47 || cptr.ld1s(opts) == 92 || cptr.ld1s(opts) == 64))
-            xtraopts = null;
+            xtraopts = null;  /* NETHACKOPTIONS is a file name; ignore it */
     } else if (opts && (cptr.ld1s(opts) == 47 || cptr.ld1s(opts) == 92 || cptr.ld1s(opts) == 64)) {
+        /* NETHACKOPTIONS is a file name; use that instead of the default */
         if (cptr.ld1s(opts) == 64)
-            opts = cptr.add(opts, 1);
+            opts = cptr.add(opts, 1);  /* @filename */
         namesrc = envname;
         nameval = opts;
         xtraopts = null;
     } else {
+        /* either no NETHACKOPTIONS or it wasn't a file name;
+           read the default configuration file */
         nameval = (namesrc = null);
         xtraopts = opts;
     }
+
     cptr.stI32o(go, $instance_globals_o_opt_phase, NHC.rc_file_opt);
+    /* seemingly arbitrary name length restriction is to prevent error
+       messages, if any were to be delivered while accessing the file,
+       from potentially overflowing buffers */
     if (nameval && Number(BigInt.asIntN(32, cptr.strlen(nameval))) >= 128) {
         (yield* config_error_init(1, namesrc, 0));
-        (yield* config_error_add(__sl128, nameval));
+        (yield* config_error_add(__s_nethackrc_file_name_40s_too_long_using, nameval));
         (yield* config_error_done());
-        nameval = (namesrc = null);
+        nameval = (namesrc = null);  /* revert to default nethackrc */
     }
+
     (yield* config_error_init(1, nameval, schar((nameval ? 1 : 0))));
     void (yield* read_config_file(nameval, NHC.set_in_config));
     (yield* config_error_done());
     if (xtraopts) {
+        /* NETHACKOPTIONS is present and not a file name */
         cptr.stI32o(go, $instance_globals_o_opt_phase, NHC.environ_opt);
         (yield* config_error_init(0, envname, 0));
         void (yield* parseoptions(xtraopts, 1, 0));
         (yield* config_error_done());
     }
+
     if (cptr.ldPtro(gc, $instance_globals_c_cmdline_rcfile))
         cptr.free(cptr.ldPtro(gc, $instance_globals_c_cmdline_rcfile)), cptr.stPtro(gc, $instance_globals_c_cmdline_rcfile, null);
+    /*[end of nethackrc handling]*/
 }
 
 /** C ref: cfgfiles.c:1960 */
@@ -1690,6 +1886,7 @@ export function* rcfile_interface_options() {
 /** C ref: cfgfiles.c:1979 */
 export function heed_all_config_statements() {
     let i;
+
     for (i = 0; i < disregarded_config_lines.length; i++) {
         cptr.st1o(cptr.decay(disregarded_config_lines), i, 0, 1);
     }
@@ -1698,6 +1895,7 @@ export function heed_all_config_statements() {
 /** C ref: cfgfiles.c:1988 */
 export function disregard_all_config_statements() {
     let i;
+
     for (i = 0; i < disregarded_config_lines.length; i++) {
         cptr.st1o(cptr.decay(disregarded_config_lines), i, 1, 1);
     }
@@ -1735,14 +1933,15 @@ export function config_unmatched_ignored() {
 /** C ref: cfgfiles.c:2031 */
 export function* assure_syscf_file() {
     let fd;
-    fd = open(__sl129, 0);
+    fd = open(__s_sysconf, 0);
     if (fd >= 0) {
+        /* readable */
         close(fd);
         return;
     }
     if (cptr.ld1so(gd, $instance_globals_d_deferred_showpaths))
-        (yield* do_deferred_showpaths(1));
-    (yield* raw_printf(__sl130));
+        (yield* do_deferred_showpaths(1));  /* does not return */
+    (yield* raw_printf(__s_unable_to_open_syscf_file));
     exit(1);
 }
 

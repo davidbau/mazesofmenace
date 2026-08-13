@@ -108,6 +108,12 @@ const $const_globals_zeroany = FLD.const_globals_zeroany, $d_level_dlevel = FLD.
     $objclass_oc_uname = FLD.objclass_oc_uname, $rm_candig = FLD.rm_candig, $rm_edge = FLD.rm_edge,
     $rm_flags = FLD.rm_flags, $rm_horizontal = FLD.rm_horizontal, $rm_lit = FLD.rm_lit,
     $rm_roomno = FLD.rm_roomno, $rm_seenv = FLD.rm_seenv, $rm_typ = FLD.rm_typ, $rm_waslit = FLD.rm_waslit,
+    $sizeof_any = FLD.sizeof_any, $sizeof_class_sym = FLD.sizeof_class_sym,
+    $sizeof_d_level = FLD.sizeof_d_level, $sizeof_dungeon = FLD.sizeof_dungeon, $sizeof_e = FLD.sizeof_e,
+    $sizeof_luaL_Reg = FLD.sizeof_luaL_Reg, $sizeof_menu_item = FLD.sizeof_menu_item,
+    $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_objclass = FLD.sizeof_objclass,
+    $sizeof_objdescr = FLD.sizeof_objdescr, $sizeof_permonst = FLD.sizeof_permonst,
+    $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
     $stairway_isladder = FLD.stairway_isladder, $stairway_next = FLD.stairway_next,
     $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev, $stairway_up = FLD.stairway_up,
     $trap_launch = FLD.trap_launch, $trap_madeby_u = FLD.trap_madeby_u, $trap_once = FLD.trap_once,
@@ -126,342 +132,345 @@ const $const_globals_zeroany = FLD.const_globals_zeroany, $d_level_dlevel = FLD.
     $you_uz = FLD.you_uz, $you_uz0 = FLD.you_uz0, $you_xray_range = FLD.you_xray_range;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("start_new_game");
-const __sl1 = cptr.lit("restore_old_game");
-const __sl2 = cptr.lit("moveloop_turn");
-const __sl3 = cptr.lit("game_exit");
-const __sl4 = cptr.lit("getpos_tip");
-const __sl5 = cptr.lit("enter_tutorial");
-const __sl6 = cptr.lit("leave_tutorial");
-const __sl7 = cptr.lit("nhcore.lua");
-const __sl8 = cptr.lit("l_nhcore_init failed");
-const __sl9 = cptr.lit("nhcore");
-const __sl10 = cptr.lit("l_nhcore_call");
-const __sl11 = cptr.lit("lS");
-const __sl12 = cptr.lit("%s (line %d ");
-const __sl13 = cptr.lit("%.*s)");
-const __sl14 = cptr.lit("Erroneous map char");
-const __sl15 = cptr.lit("Unknown timer type");
-const __sl16 = cptr.lit("rot-organic");
-const __sl17 = cptr.lit("rot-corpse");
-const __sl18 = cptr.lit("revive-mon");
-const __sl19 = cptr.lit("zombify-mon");
-const __sl20 = cptr.lit("burn-obj");
-const __sl21 = cptr.lit("hatch-egg");
-const __sl22 = cptr.lit("fig-transform");
-const __sl23 = cptr.lit("shrink-glob");
-const __sl24 = cptr.lit("melt-ice");
-const __sl25 = cptr.lit("%c");
-const __sl26 = cptr.lit("x1");
-const __sl27 = cptr.lit("y1");
-const __sl28 = cptr.lit("x2");
-const __sl29 = cptr.lit("y2");
-const __sl30 = cptr.lit("Incorrect arguments");
-const __sl31 = cptr.lit("tx");
-const __sl32 = cptr.lit("ty");
-const __sl33 = cptr.lit("ttyp");
-const __sl34 = cptr.lit("ttyp_name");
-const __sl35 = cptr.lit("tseen");
-const __sl36 = cptr.lit("madeby_u");
-const __sl37 = cptr.lit("once");
-const __sl38 = cptr.lit("tnote");
-const __sl39 = cptr.lit("launchx");
-const __sl40 = cptr.lit("launchy");
-const __sl41 = cptr.lit("launch2x");
-const __sl42 = cptr.lit("launch2y");
-const __sl43 = cptr.lit("conjoined");
-const __sl44 = cptr.lit("No trap at location");
-const __sl45 = cptr.lit("Coordinates out of range");
-const __sl46 = cptr.lit("glyph");
-const __sl47 = cptr.lit("typ");
-const __sl48 = cptr.lit("typ_name");
-const __sl49 = cptr.lit("mapchr");
-const __sl50 = cptr.lit("seenv");
-const __sl51 = cptr.lit("horizontal");
-const __sl52 = cptr.lit("lit");
-const __sl53 = cptr.lit("waslit");
-const __sl54 = cptr.lit("roomno");
-const __sl55 = cptr.lit("edge");
-const __sl56 = cptr.lit("candig");
-const __sl57 = cptr.lit("has_trap");
-const __sl58 = cptr.lit("flags");
-const __sl59 = cptr.lit("nodoor");
-const __sl60 = cptr.lit("broken");
-const __sl61 = cptr.lit("isopen");
-const __sl62 = cptr.lit("closed");
-const __sl63 = cptr.lit("locked");
-const __sl64 = cptr.lit("trapped");
-const __sl65 = cptr.lit("shrine");
-const __sl66 = cptr.lit("looted");
-const __sl67 = cptr.lit("swarm");
-const __sl68 = cptr.lit("warned");
-const __sl69 = cptr.lit("pudding");
-const __sl70 = cptr.lit("dishwasher");
-const __sl71 = cptr.lit("ring");
-const __sl72 = cptr.lit("%s");
-const __sl73 = cptr.lit("Wrong args");
-const __sl74 = cptr.lit("");
-const __sl75 = cptr.lit("one");
-const __sl76 = cptr.lit("key");
-const __sl77 = cptr.lit("text");
-const __sl78 = cptr.lit("none");
-const __sl79 = cptr.lit("any");
-const __sl80 = cptr.lit("NETHACK_LUA_RNGLOG_CTX");
-const __sl81 = cptr.lit("0");
-const __sl82 = cptr.lit("NETHACK_RNGLOG");
-const __sl83 = cptr.lit("lua");
-const __sl84 = cptr.lit("nhl_rnglog_set_lua_caller");
-const __sl85 = cptr.lit("nSl");
-const __sl86 = cptr.lit("[string \"");
-const __sl87 = cptr.lit("%.*s");
-const __sl88 = cptr.lit("%s src=%s:%d parent=%s");
-const __sl89 = cptr.lit("nh.rn2");
-const __sl90 = cptr.lit("nh.random");
-const __sl91 = cptr.lit("level_difficulty should not have any args");
-const __sl92 = cptr.lit("THEMERMFILL");
-const __sl93 = cptr.lit("THEMERM");
-const __sl94 = cptr.lit("debug_themerm should have 1 boolean arg");
-const __sl95 = cptr.lit("get_table_str_opt");
-const __sl96 = cptr.lit("get_table_str_opt: no string");
-const __sl97 = cptr.lit("Expected a boolean");
-const __sl98 = cptr.lit("true");
-const __sl99 = cptr.lit("false");
-const __sl100 = cptr.lit("yes");
-const __sl101 = cptr.lit("no");
-const __sl102 = cptr.lit("Expected an integer parameter");
-const __sl103 = cptr.lit("nh luacore not inited");
-const __sl104 = cptr.lit("nh_lua_variables");
-const __sl105 = cptr.lit("nh_lua_variables is not a lua table");
-const __sl106 = cptr.lit("nh_get_variables_string");
-const __sl107 = cptr.lit("nhl_variable");
-const __sl108 = cptr.lit("nhl_variable-1");
-const __sl109 = cptr.lit("Cannot get variable of that type");
-const __sl110 = cptr.lit("nh_set_variables_string");
-const __sl111 = cptr.lit("nhl_variable-2");
-const __sl112 = cptr.lit("nhl_variable-3");
-const __sl113 = cptr.lit("Cannot set variable of that type");
-const __sl114 = cptr.lit("Wrong number of arguments");
-const __sl115 = cptr.lit("get_variables_string");
-const __sl116 = cptr.lit("get_nh_lua_variables");
-const __sl117 = cptr.lit("save_luadata");
-const __sl118 = cptr.lit("luadata-lua_data_len");
-const __sl119 = cptr.lit("luadata");
-const __sl120 = cptr.lit("restore_luadata");
-const __sl121 = cptr.lit("up");
-const __sl122 = cptr.lit("ladder");
-const __sl123 = cptr.lit("x");
-const __sl124 = cptr.lit("y");
-const __sl125 = cptr.lit("dnum");
-const __sl126 = cptr.lit("dlevel");
-const __sl127 = cptr.lit("name");
-const __sl128 = cptr.lit("TEST:{ x=%i, y=%i, name=\"%s\" }");
-const __sl129 = cptr.lit("mongen");
-const __sl130 = cptr.lit("hunger");
-const __sl131 = cptr.lit("overwrite_stairs");
-const __sl132 = cptr.lit("prevent_pline");
-const __sl133 = cptr.lit("nhl_timer_has_at: Wrong args");
-const __sl134 = cptr.lit("nhl_timer_peek_at: Wrong args");
-const __sl135 = cptr.lit("nhl_timer_stop_at: Wrong args");
-const __sl136 = cptr.lit("nhl_timer_start_at: Wrong args");
-const __sl137 = cptr.lit("nh.callback counts are wrong");
-const __sl138 = cptr.lit("nh_callback_rm");
-const __sl139 = cptr.lit("nh_callback_set");
-const __sl140 = cptr.lit("nhl_callback");
-const __sl141 = cptr.lit("nhlua.c");
-const __sl142 = cptr.lit("gamestate: %d:%d (%c vs %c)");
-const __sl143 = cptr.lit("Resetting time to move #%ld.");
-const __sl144 = cptr.lit("nhl_gamestate");
-const __sl145 = cptr.lit("gg.gmst_ubak != NULL");
-const __sl146 = cptr.lit("gg.gmst_disco != NULL");
-const __sl147 = cptr.lit("gg.gmst_mvitals != NULL");
-const __sl148 = cptr.lit("nhl_gamestate: inconsistent state (%s vs %s)");
-const __sl149 = cptr.lit("restore");
-const __sl150 = cptr.lit("save");
-const __sl151 = cptr.lit("already stored");
-const __sl152 = cptr.lit("not stored");
-const __sl153 = cptr.lit("test");
-const __sl154 = cptr.lit("getmap");
-const __sl155 = cptr.lit("gettrap");
-const __sl156 = cptr.lit("deltrap");
-const __sl157 = cptr.lit("has_timer_at");
-const __sl158 = cptr.lit("peek_timer_at");
-const __sl159 = cptr.lit("stop_timer_at");
-const __sl160 = cptr.lit("start_timer_at");
-const __sl161 = cptr.lit("abscoord");
-const __sl162 = cptr.lit("impossible");
-const __sl163 = cptr.lit("pline");
-const __sl164 = cptr.lit("verbalize");
-const __sl165 = cptr.lit("menu");
-const __sl166 = cptr.lit("getlin");
-const __sl167 = cptr.lit("eckey");
-const __sl168 = cptr.lit("callback");
-const __sl169 = cptr.lit("gamestate");
-const __sl170 = cptr.lit("makeplural");
-const __sl171 = cptr.lit("makesingular");
-const __sl172 = cptr.lit("s_suffix");
-const __sl173 = cptr.lit("ing_suffix");
-const __sl174 = cptr.lit("an");
-const __sl175 = cptr.lit("rn2");
-const __sl176 = cptr.lit("random");
-const __sl177 = cptr.lit("level_difficulty");
-const __sl178 = cptr.lit("is_genocided");
-const __sl179 = cptr.lit("debug_themerm");
-const __sl180 = cptr.lit("parse_config");
-const __sl181 = cptr.lit("get_config");
-const __sl182 = cptr.lit("get_config_errors");
-const __sl183 = cptr.lit("dnum_name");
-const __sl184 = cptr.lit("int_to_pmname");
-const __sl185 = cptr.lit("int_to_objname");
-const __sl186 = cptr.lit("variable");
-const __sl187 = cptr.lit("stairways");
-const __sl188 = cptr.lit("pushkey");
-const __sl189 = cptr.lit("doturn");
-const __sl190 = cptr.lit("debug_flags");
-const __sl191 = cptr.lit("flip_level");
-const __sl192 = cptr.lit("COLNO");
-const __sl193 = cptr.lit("ROWNO");
-const __sl194 = cptr.lit("NUMMONS");
-const __sl195 = cptr.lit("LOW_PM");
-const __sl196 = cptr.lit("HIGH_PM");
-const __sl197 = cptr.lit("FIRST_OBJECT");
-const __sl198 = cptr.lit("LAST_OBJECT");
-const __sl199 = cptr.lit("DLB");
-const __sl200 = cptr.lit("nhc");
-const __sl201 = cptr.lit("inventory");
-const __sl202 = cptr.lit("role");
-const __sl203 = cptr.lit("moves");
-const __sl204 = cptr.lit("uhave_amulet");
-const __sl205 = cptr.lit("depth");
-const __sl206 = cptr.lit("invocation_level");
-const __sl207 = cptr.lit("Unknown u table index");
-const __sl208 = cptr.lit("ux");
-const __sl209 = cptr.lit("uy");
-const __sl210 = cptr.lit("dx");
-const __sl211 = cptr.lit("dy");
-const __sl212 = cptr.lit("dz");
-const __sl213 = cptr.lit("ulevel");
-const __sl214 = cptr.lit("ulevelmax");
-const __sl215 = cptr.lit("uhunger");
-const __sl216 = cptr.lit("nv_range");
-const __sl217 = cptr.lit("xray_range");
-const __sl218 = cptr.lit("umonster");
-const __sl219 = cptr.lit("umonnum");
-const __sl220 = cptr.lit("mh");
-const __sl221 = cptr.lit("mhmax");
-const __sl222 = cptr.lit("mtimedone");
-const __sl223 = cptr.lit("uluck");
-const __sl224 = cptr.lit("uhp");
-const __sl225 = cptr.lit("uhpmax");
-const __sl226 = cptr.lit("uen");
-const __sl227 = cptr.lit("uenmax");
-const __sl228 = cptr.lit("Cannot set u table values");
-const __sl229 = cptr.lit("clear_inventory");
-const __sl230 = cptr.lit("giveobj");
-const __sl231 = cptr.lit("__index");
-const __sl232 = cptr.lit("__newindex");
-const __sl233 = cptr.lit("u");
-const __sl234 = cptr.lit("Lua time exceeded %d:%s");
-const __sl235 = cptr.lit("(unknown)");
-const __sl236 = cptr.lit("LUASTATS PCAL %d:%s %ld");
-const __sl237 = cptr.lit("LUASTATS PMEM %d:%s %lu");
-const __sl238 = cptr.lit("Lua error %d:%s %s");
-const __sl239 = cptr.lit("Lua error: %d:%s %s");
-const __sl240 = cptr.lit("nhl_loadlua");
-const __sl241 = cptr.lit("(%s)");
-const __sl242 = cptr.lit("r");
-const __sl243 = cptr.lit("nhl_loadlua: Error opening %s");
-const __sl244 = cptr.lit("(%s) line too long");
-const __sl245 = cptr.lit("luaL_loadbuffer: Error loading %s: %s");
-const __sl246 = cptr.lit("sandbox doesn't know this Lua version: this=%d != expected=%d ");
-const __sl247 = cptr.lit("nhl_init");
-const __sl248 = cptr.lit("nh");
-const __sl249 = cptr.lit("math");
-const __sl250 = cptr.lit("nhlib.lua");
-const __sl251 = cptr.lit("LUASTATS DONE %d:%s %ld");
-const __sl252 = cptr.lit("LUASTATS DMEM %d:%s %lu");
-const __sl253 = cptr.lit("_RELEASE");
-const __sl254 = cptr.lit("Lua 5.4.8");
-const __sl255 = cptr.lit("_VERSION");
-const __sl256 = cptr.lit("Lua 5.4");
-const __sl257 = cptr.lit("Lua");
-const __sl258 = cptr.lit("Lua 5.4.8  Copyright (C) 1994-2025 Lua.org, PUC-Rio");
-const __sl259 = cptr.lit("ipairs");
-const __sl260 = cptr.lit("next");
-const __sl261 = cptr.lit("pairs");
-const __sl262 = cptr.lit("pcall");
-const __sl263 = cptr.lit("select");
-const __sl264 = cptr.lit("tonumber");
-const __sl265 = cptr.lit("tostring");
-const __sl266 = cptr.lit("type");
-const __sl267 = cptr.lit("xpcall");
-const __sl268 = cptr.lit("assert");
-const __sl269 = cptr.lit("error");
-const __sl270 = cptr.lit("print");
-const __sl271 = cptr.lit("warn");
-const __sl272 = cptr.lit("getmetatable");
-const __sl273 = cptr.lit("rawequal");
-const __sl274 = cptr.lit("rawget");
-const __sl275 = cptr.lit("rawlen");
-const __sl276 = cptr.lit("rawset");
-const __sl277 = cptr.lit("setmetatable");
-const __sl278 = cptr.lit("collectgarbage");
-const __sl279 = cptr.lit("dofile");
-const __sl280 = cptr.lit("loadfile");
-const __sl281 = cptr.lit("load");
-const __sl282 = cptr.lit("debug");
-const __sl283 = cptr.lit("getuservalue");
-const __sl284 = cptr.lit("gethook");
-const __sl285 = cptr.lit("getinfo");
-const __sl286 = cptr.lit("getlocal");
-const __sl287 = cptr.lit("getregistry");
-const __sl288 = cptr.lit("getupvalue");
-const __sl289 = cptr.lit("upvaluejoin");
-const __sl290 = cptr.lit("upvalueid");
-const __sl291 = cptr.lit("setuservalue");
-const __sl292 = cptr.lit("sethook");
-const __sl293 = cptr.lit("setlocal");
-const __sl294 = cptr.lit("setupvalue");
-const __sl295 = cptr.lit("setcstacklimit");
-const __sl296 = cptr.lit("traceback");
-const __sl297 = cptr.lit("clock");
-const __sl298 = cptr.lit("date");
-const __sl299 = cptr.lit("difftime");
-const __sl300 = cptr.lit("time");
-const __sl301 = cptr.lit("execute");
-const __sl302 = cptr.lit("exit");
-const __sl303 = cptr.lit("getenv");
-const __sl304 = cptr.lit("remove");
-const __sl305 = cptr.lit("rename");
-const __sl306 = cptr.lit("setlocale");
-const __sl307 = cptr.lit("tmpname");
-const __sl308 = cptr.lit("org.nethack.nethack.sb.fs");
-const __sl309 = cptr.lit("_G");
-const __sl310 = cptr.lit("coroutine");
-const __sl311 = cptr.lit("table");
-const __sl312 = cptr.lit("os");
-const __sl313 = cptr.lit("string");
-const __sl314 = cptr.lit("NETHACK_SEED");
-const __sl315 = cptr.lit("randomseed");
-const __sl316 = cptr.lit("utf8");
-const __sl317 = cptr.lit("error object is not a string");
-const __sl318 = cptr.lit("unprotected error in call to Lua API (%s)\n");
-const __sl319 = cptr.lit("[lua]");
-const __sl320 = cptr.lit("NULL lua_newstate");
-const __sl321 = cptr.lit("steps and perpcall both non-zero");
+const __s_start_new_game = cptr.lit("start_new_game");
+const __s_restore_old_game = cptr.lit("restore_old_game");
+const __s_moveloop_turn = cptr.lit("moveloop_turn");
+const __s_game_exit = cptr.lit("game_exit");
+const __s_getpos_tip = cptr.lit("getpos_tip");
+const __s_enter_tutorial = cptr.lit("enter_tutorial");
+const __s_leave_tutorial = cptr.lit("leave_tutorial");
+const __s_nhcore_lua = cptr.lit("nhcore.lua");
+const __s_l_nhcore_init_failed = cptr.lit("l_nhcore_init failed");
+const __s_nhcore = cptr.lit("nhcore");
+const __s_l_nhcore_call = cptr.lit("l_nhcore_call");
+const __s_ls = cptr.lit("lS");
+const __s_s_line_d = cptr.lit("%s (line %d ");
+const __s_pct_dot_star_s_rparen = cptr.lit("%.*s)");
+const __s_erroneous_map_char = cptr.lit("Erroneous map char");
+const __s_unknown_timer_type = cptr.lit("Unknown timer type");
+const __s_rot_organic = cptr.lit("rot-organic");
+const __s_rot_corpse = cptr.lit("rot-corpse");
+const __s_revive_mon = cptr.lit("revive-mon");
+const __s_zombify_mon = cptr.lit("zombify-mon");
+const __s_burn_obj = cptr.lit("burn-obj");
+const __s_hatch_egg = cptr.lit("hatch-egg");
+const __s_fig_transform = cptr.lit("fig-transform");
+const __s_shrink_glob = cptr.lit("shrink-glob");
+const __s_melt_ice = cptr.lit("melt-ice");
+const __s_pct_c = cptr.lit("%c");
+const __s_x1 = cptr.lit("x1");
+const __s_y1 = cptr.lit("y1");
+const __s_x2 = cptr.lit("x2");
+const __s_y2 = cptr.lit("y2");
+const __s_incorrect_arguments = cptr.lit("Incorrect arguments");
+const __s_tx = cptr.lit("tx");
+const __s_ty = cptr.lit("ty");
+const __s_ttyp = cptr.lit("ttyp");
+const __s_ttyp_name = cptr.lit("ttyp_name");
+const __s_tseen = cptr.lit("tseen");
+const __s_madeby_u = cptr.lit("madeby_u");
+const __s_once = cptr.lit("once");
+const __s_tnote = cptr.lit("tnote");
+const __s_launchx = cptr.lit("launchx");
+const __s_launchy = cptr.lit("launchy");
+const __s_launch2x = cptr.lit("launch2x");
+const __s_launch2y = cptr.lit("launch2y");
+const __s_conjoined = cptr.lit("conjoined");
+const __s_no_trap_at_location = cptr.lit("No trap at location");
+const __s_coordinates_out_of_range = cptr.lit("Coordinates out of range");
+const __s_glyph = cptr.lit("glyph");
+const __s_typ = cptr.lit("typ");
+const __s_typ_name = cptr.lit("typ_name");
+const __s_mapchr = cptr.lit("mapchr");
+const __s_seenv = cptr.lit("seenv");
+const __s_horizontal = cptr.lit("horizontal");
+const __s_lit = cptr.lit("lit");
+const __s_waslit = cptr.lit("waslit");
+const __s_roomno = cptr.lit("roomno");
+const __s_edge = cptr.lit("edge");
+const __s_candig = cptr.lit("candig");
+const __s_has_trap = cptr.lit("has_trap");
+const __s_flags = cptr.lit("flags");
+const __s_nodoor = cptr.lit("nodoor");
+const __s_broken = cptr.lit("broken");
+const __s_isopen = cptr.lit("isopen");
+const __s_closed = cptr.lit("closed");
+const __s_locked = cptr.lit("locked");
+const __s_trapped = cptr.lit("trapped");
+const __s_shrine = cptr.lit("shrine");
+const __s_looted = cptr.lit("looted");
+const __s_swarm = cptr.lit("swarm");
+const __s_warned = cptr.lit("warned");
+const __s_pudding = cptr.lit("pudding");
+const __s_dishwasher = cptr.lit("dishwasher");
+const __s_ring = cptr.lit("ring");
+const __s_pct_s = cptr.lit("%s");
+const __s_wrong_args = cptr.lit("Wrong args");
+const __s_empty = cptr.lit("");
+const __s_one = cptr.lit("one");
+const __s_key = cptr.lit("key");
+const __s_text = cptr.lit("text");
+const __s_none = cptr.lit("none");
+const __s_any = cptr.lit("any");
+const __s_nethack_lua_rnglog_ctx = cptr.lit("NETHACK_LUA_RNGLOG_CTX");
+const __s_0 = cptr.lit("0");
+const __s_nethack_rnglog = cptr.lit("NETHACK_RNGLOG");
+const __s_lua = cptr.lit("lua");
+const __s_nhl_rnglog_set_lua_caller = cptr.lit("nhl_rnglog_set_lua_caller");
+const __s_nsl = cptr.lit("nSl");
+const __s_string = cptr.lit("[string \"");
+const __s_pct_dot_star_s = cptr.lit("%.*s");
+const __s_s_src_s_d_parent_s = cptr.lit("%s src=%s:%d parent=%s");
+const __s_nh_rn2 = cptr.lit("nh.rn2");
+const __s_nh_random = cptr.lit("nh.random");
+const __s_level_difficulty_should_not_have_any = cptr.lit("level_difficulty should not have any args");
+const __s_themermfill = cptr.lit("THEMERMFILL");
+const __s_themerm = cptr.lit("THEMERM");
+const __s_debug_themerm_should_have_1_boolean_arg = cptr.lit("debug_themerm should have 1 boolean arg");
+const __s_get_table_str_opt = cptr.lit("get_table_str_opt");
+const __s_get_table_str_opt_no_string = cptr.lit("get_table_str_opt: no string");
+const __s_expected_a_boolean = cptr.lit("Expected a boolean");
+const __s_true = cptr.lit("true");
+const __s_false = cptr.lit("false");
+const __s_yes = cptr.lit("yes");
+const __s_no = cptr.lit("no");
+const __s_expected_an_integer_parameter = cptr.lit("Expected an integer parameter");
+const __s_nh_luacore_not_inited = cptr.lit("nh luacore not inited");
+const __s_nh_lua_variables = cptr.lit("nh_lua_variables");
+const __s_nh_lua_variables_is_not_a_lua_table = cptr.lit("nh_lua_variables is not a lua table");
+const __s_nh_get_variables_string = cptr.lit("nh_get_variables_string");
+const __s_nhl_variable = cptr.lit("nhl_variable");
+const __s_nhl_variable_1 = cptr.lit("nhl_variable-1");
+const __s_cannot_get_variable_of_that_type = cptr.lit("Cannot get variable of that type");
+const __s_nh_set_variables_string = cptr.lit("nh_set_variables_string");
+const __s_nhl_variable_2 = cptr.lit("nhl_variable-2");
+const __s_nhl_variable_3 = cptr.lit("nhl_variable-3");
+const __s_cannot_set_variable_of_that_type = cptr.lit("Cannot set variable of that type");
+const __s_wrong_number_of_arguments = cptr.lit("Wrong number of arguments");
+const __s_get_variables_string = cptr.lit("get_variables_string");
+const __s_get_nh_lua_variables = cptr.lit("get_nh_lua_variables");
+const __s_save_luadata = cptr.lit("save_luadata");
+const __s_luadata_lua_data_len = cptr.lit("luadata-lua_data_len");
+const __s_luadata = cptr.lit("luadata");
+const __s_restore_luadata = cptr.lit("restore_luadata");
+const __s_up = cptr.lit("up");
+const __s_ladder = cptr.lit("ladder");
+const __s_x = cptr.lit("x");
+const __s_y = cptr.lit("y");
+const __s_dnum = cptr.lit("dnum");
+const __s_dlevel = cptr.lit("dlevel");
+const __s_name = cptr.lit("name");
+const __s_test_x_i_y_i_name_s = cptr.lit("TEST:{ x=%i, y=%i, name=\"%s\" }");
+const __s_mongen = cptr.lit("mongen");
+const __s_hunger = cptr.lit("hunger");
+const __s_overwrite_stairs = cptr.lit("overwrite_stairs");
+const __s_prevent_pline = cptr.lit("prevent_pline");
+const __s_nhl_timer_has_at_wrong_args = cptr.lit("nhl_timer_has_at: Wrong args");
+const __s_nhl_timer_peek_at_wrong_args = cptr.lit("nhl_timer_peek_at: Wrong args");
+const __s_nhl_timer_stop_at_wrong_args = cptr.lit("nhl_timer_stop_at: Wrong args");
+const __s_nhl_timer_start_at_wrong_args = cptr.lit("nhl_timer_start_at: Wrong args");
+const __s_nh_callback_counts_are_wrong = cptr.lit("nh.callback counts are wrong");
+const __s_nh_callback_rm = cptr.lit("nh_callback_rm");
+const __s_nh_callback_set = cptr.lit("nh_callback_set");
+const __s_nhl_callback = cptr.lit("nhl_callback");
+const __s_nhlua_c = cptr.lit("nhlua.c");
+const __s_gamestate_d_d_c_vs_c = cptr.lit("gamestate: %d:%d (%c vs %c)");
+const __s_resetting_time_to_move_ld = cptr.lit("Resetting time to move #%ld.");
+const __s_nhl_gamestate = cptr.lit("nhl_gamestate");
+const __s_gg_gmst_ubak_null = cptr.lit("gg.gmst_ubak != NULL");
+const __s_gg_gmst_disco_null = cptr.lit("gg.gmst_disco != NULL");
+const __s_gg_gmst_mvitals_null = cptr.lit("gg.gmst_mvitals != NULL");
+const __s_nhl_gamestate_inconsistent_state_s_vs_s = cptr.lit("nhl_gamestate: inconsistent state (%s vs %s)");
+const __s_restore = cptr.lit("restore");
+const __s_save = cptr.lit("save");
+const __s_already_stored = cptr.lit("already stored");
+const __s_not_stored = cptr.lit("not stored");
+const __s_test = cptr.lit("test");
+const __s_getmap = cptr.lit("getmap");
+const __s_gettrap = cptr.lit("gettrap");
+const __s_deltrap = cptr.lit("deltrap");
+const __s_has_timer_at = cptr.lit("has_timer_at");
+const __s_peek_timer_at = cptr.lit("peek_timer_at");
+const __s_stop_timer_at = cptr.lit("stop_timer_at");
+const __s_start_timer_at = cptr.lit("start_timer_at");
+const __s_abscoord = cptr.lit("abscoord");
+const __s_impossible = cptr.lit("impossible");
+const __s_pline = cptr.lit("pline");
+const __s_verbalize = cptr.lit("verbalize");
+const __s_menu = cptr.lit("menu");
+const __s_getlin = cptr.lit("getlin");
+const __s_eckey = cptr.lit("eckey");
+const __s_callback = cptr.lit("callback");
+const __s_gamestate = cptr.lit("gamestate");
+const __s_makeplural = cptr.lit("makeplural");
+const __s_makesingular = cptr.lit("makesingular");
+const __s_s_suffix = cptr.lit("s_suffix");
+const __s_ing_suffix = cptr.lit("ing_suffix");
+const __s_an = cptr.lit("an");
+const __s_rn2 = cptr.lit("rn2");
+const __s_random = cptr.lit("random");
+const __s_level_difficulty = cptr.lit("level_difficulty");
+const __s_is_genocided = cptr.lit("is_genocided");
+const __s_debug_themerm = cptr.lit("debug_themerm");
+const __s_parse_config = cptr.lit("parse_config");
+const __s_get_config = cptr.lit("get_config");
+const __s_get_config_errors = cptr.lit("get_config_errors");
+const __s_dnum_name = cptr.lit("dnum_name");
+const __s_int_to_pmname = cptr.lit("int_to_pmname");
+const __s_int_to_objname = cptr.lit("int_to_objname");
+const __s_variable = cptr.lit("variable");
+const __s_stairways = cptr.lit("stairways");
+const __s_pushkey = cptr.lit("pushkey");
+const __s_doturn = cptr.lit("doturn");
+const __s_debug_flags = cptr.lit("debug_flags");
+const __s_flip_level = cptr.lit("flip_level");
+const __s_colno = cptr.lit("COLNO");
+const __s_rowno = cptr.lit("ROWNO");
+const __s_nummons = cptr.lit("NUMMONS");
+const __s_low_pm = cptr.lit("LOW_PM");
+const __s_high_pm = cptr.lit("HIGH_PM");
+const __s_first_object = cptr.lit("FIRST_OBJECT");
+const __s_last_object = cptr.lit("LAST_OBJECT");
+const __s_dlb = cptr.lit("DLB");
+const __s_nhc = cptr.lit("nhc");
+const __s_inventory = cptr.lit("inventory");
+const __s_role = cptr.lit("role");
+const __s_moves = cptr.lit("moves");
+const __s_uhave_amulet = cptr.lit("uhave_amulet");
+const __s_depth = cptr.lit("depth");
+const __s_invocation_level = cptr.lit("invocation_level");
+const __s_unknown_u_table_index = cptr.lit("Unknown u table index");
+const __s_ux = cptr.lit("ux");
+const __s_uy = cptr.lit("uy");
+const __s_dx = cptr.lit("dx");
+const __s_dy = cptr.lit("dy");
+const __s_dz = cptr.lit("dz");
+const __s_ulevel = cptr.lit("ulevel");
+const __s_ulevelmax = cptr.lit("ulevelmax");
+const __s_uhunger = cptr.lit("uhunger");
+const __s_nv_range = cptr.lit("nv_range");
+const __s_xray_range = cptr.lit("xray_range");
+const __s_umonster = cptr.lit("umonster");
+const __s_umonnum = cptr.lit("umonnum");
+const __s_mh = cptr.lit("mh");
+const __s_mhmax = cptr.lit("mhmax");
+const __s_mtimedone = cptr.lit("mtimedone");
+const __s_uluck = cptr.lit("uluck");
+const __s_uhp = cptr.lit("uhp");
+const __s_uhpmax = cptr.lit("uhpmax");
+const __s_uen = cptr.lit("uen");
+const __s_uenmax = cptr.lit("uenmax");
+const __s_cannot_set_u_table_values = cptr.lit("Cannot set u table values");
+const __s_clear_inventory = cptr.lit("clear_inventory");
+const __s_giveobj = cptr.lit("giveobj");
+const __s_index = cptr.lit("__index");
+const __s_newindex = cptr.lit("__newindex");
+const __s_u = cptr.lit("u");
+const __s_lua_time_exceeded_d_s = cptr.lit("Lua time exceeded %d:%s");
+const __s_unknown = cptr.lit("(unknown)");
+const __s_luastats_pcal_d_s_ld = cptr.lit("LUASTATS PCAL %d:%s %ld");
+const __s_luastats_pmem_d_s_lu = cptr.lit("LUASTATS PMEM %d:%s %lu");
+const __s_lua_error_d_s_s = cptr.lit("Lua error %d:%s %s");
+const __s_lua_error_d_s_s__2 = cptr.lit("Lua error: %d:%s %s");
+const __s_nhl_loadlua = cptr.lit("nhl_loadlua");
+const __s_lparen_pct_s_rparen = cptr.lit("(%s)");
+const __s_r = cptr.lit("r");
+const __s_nhl_loadlua_error_opening_s = cptr.lit("nhl_loadlua: Error opening %s");
+const __s_s_line_too_long = cptr.lit("(%s) line too long");
+const __s_lual_loadbuffer_error_loading_s_s = cptr.lit("luaL_loadbuffer: Error loading %s: %s");
+const __s_sandbox_doesn_t_know_this_lua_version = cptr.lit("sandbox doesn't know this Lua version: this=%d != expected=%d ");
+const __s_nhl_init = cptr.lit("nhl_init");
+const __s_nh = cptr.lit("nh");
+const __s_math = cptr.lit("math");
+const __s_nhlib_lua = cptr.lit("nhlib.lua");
+const __s_luastats_done_d_s_ld = cptr.lit("LUASTATS DONE %d:%s %ld");
+const __s_luastats_dmem_d_s_lu = cptr.lit("LUASTATS DMEM %d:%s %lu");
+const __s_release = cptr.lit("_RELEASE");
+const __s_lua_5_4_8 = cptr.lit("Lua 5.4.8");
+const __s_version = cptr.lit("_VERSION");
+const __s_lua_5_4 = cptr.lit("Lua 5.4");
+const __s_lua__2 = cptr.lit("Lua");
+const __s_lua_5_4_8_copyright_c_1994_2025_lua_org = cptr.lit("Lua 5.4.8  Copyright (C) 1994-2025 Lua.org, PUC-Rio");
+const __s_ipairs = cptr.lit("ipairs");
+const __s_next = cptr.lit("next");
+const __s_pairs = cptr.lit("pairs");
+const __s_pcall = cptr.lit("pcall");
+const __s_select = cptr.lit("select");
+const __s_tonumber = cptr.lit("tonumber");
+const __s_tostring = cptr.lit("tostring");
+const __s_type = cptr.lit("type");
+const __s_xpcall = cptr.lit("xpcall");
+const __s_assert = cptr.lit("assert");
+const __s_error = cptr.lit("error");
+const __s_print = cptr.lit("print");
+const __s_warn = cptr.lit("warn");
+const __s_getmetatable = cptr.lit("getmetatable");
+const __s_rawequal = cptr.lit("rawequal");
+const __s_rawget = cptr.lit("rawget");
+const __s_rawlen = cptr.lit("rawlen");
+const __s_rawset = cptr.lit("rawset");
+const __s_setmetatable = cptr.lit("setmetatable");
+const __s_collectgarbage = cptr.lit("collectgarbage");
+const __s_dofile = cptr.lit("dofile");
+const __s_loadfile = cptr.lit("loadfile");
+const __s_load = cptr.lit("load");
+const __s_debug = cptr.lit("debug");
+const __s_getuservalue = cptr.lit("getuservalue");
+const __s_gethook = cptr.lit("gethook");
+const __s_getinfo = cptr.lit("getinfo");
+const __s_getlocal = cptr.lit("getlocal");
+const __s_getregistry = cptr.lit("getregistry");
+const __s_getupvalue = cptr.lit("getupvalue");
+const __s_upvaluejoin = cptr.lit("upvaluejoin");
+const __s_upvalueid = cptr.lit("upvalueid");
+const __s_setuservalue = cptr.lit("setuservalue");
+const __s_sethook = cptr.lit("sethook");
+const __s_setlocal = cptr.lit("setlocal");
+const __s_setupvalue = cptr.lit("setupvalue");
+const __s_setcstacklimit = cptr.lit("setcstacklimit");
+const __s_traceback = cptr.lit("traceback");
+const __s_clock = cptr.lit("clock");
+const __s_date = cptr.lit("date");
+const __s_difftime = cptr.lit("difftime");
+const __s_time = cptr.lit("time");
+const __s_execute = cptr.lit("execute");
+const __s_exit = cptr.lit("exit");
+const __s_getenv = cptr.lit("getenv");
+const __s_remove = cptr.lit("remove");
+const __s_rename = cptr.lit("rename");
+const __s_setlocale = cptr.lit("setlocale");
+const __s_tmpname = cptr.lit("tmpname");
+const __s_org_nethack_nethack_sb_fs = cptr.lit("org.nethack.nethack.sb.fs");
+const __s_us_g = cptr.lit("_G");
+const __s_coroutine = cptr.lit("coroutine");
+const __s_table = cptr.lit("table");
+const __s_os = cptr.lit("os");
+const __s_string__2 = cptr.lit("string");
+const __s_nethack_seed = cptr.lit("NETHACK_SEED");
+const __s_randomseed = cptr.lit("randomseed");
+const __s_utf8 = cptr.lit("utf8");
+const __s_error_object_is_not_a_string = cptr.lit("error object is not a string");
+const __s_unprotected_error_in_call_to_lua_api_s = cptr.lit("unprotected error in call to Lua API (%s)\n");
+const __s_lua__3 = cptr.lit("[lua]");
+const __s_null_lua_newstate = cptr.lit("NULL lua_newstate");
+const __s_steps_and_perpcall_both_non_zero = cptr.lit("steps and perpcall both non-zero");
 
 /** C ref: nhlua.c:103 — char *[7] */
 const nhcore_call_names = cptr.alloc(7 * 8);
-cptr.stPtro(nhcore_call_names, 0, __sl0);
-cptr.stPtro(nhcore_call_names, 8, __sl1);
-cptr.stPtro(nhcore_call_names, 16, __sl2);
-cptr.stPtro(nhcore_call_names, 24, __sl3);
-cptr.stPtro(nhcore_call_names, 32, __sl4);
-cptr.stPtro(nhcore_call_names, 40, __sl5);
-cptr.stPtro(nhcore_call_names, 48, __sl6);
+cptr.stPtro(nhcore_call_names, 0, __s_start_new_game);
+cptr.stPtro(nhcore_call_names, 8, __s_restore_old_game);
+cptr.stPtro(nhcore_call_names, 16, __s_moveloop_turn);
+cptr.stPtro(nhcore_call_names, 24, __s_game_exit);
+cptr.stPtro(nhcore_call_names, 32, __s_getpos_tip);
+cptr.stPtro(nhcore_call_names, 40, __s_enter_tutorial);
+cptr.stPtro(nhcore_call_names, 48, __s_leave_tutorial);
 
 /** C ref: nhlua.c:112 — boolean[7] */
 const nhcore_call_available = new Uint8Array(7);
 
+/* internal structure that hangs off L->ud (but use lua_getallocf() )
+ * Note that we use it for both memory use tracking and instruction counting.
+ */
 /** C ref: nhlua.c:118 — struct nhl_user_data { L, flags, memlimit, steps, osteps, perpcall, statctr, sid, name, jb } (memory model v0.5) */
 
 /** C ref: nhlua.c:136 — typedef nhl_user_data (type alias only, no runtime output) */
@@ -472,16 +481,18 @@ let luapat = null;
 /** C ref: nhlua.c:142 */
 export function* l_nhcore_init() {
     let sbi = cptr.alloc(16); cptr.stI32(sbi, NHM.NHL_SB_SAFE); cptr.stI32o(sbi, $nhl_sandbox_info_memlimit, 1048576); cptr.stI32o(sbi, $nhl_sandbox_info_steps, 0); cptr.stI32o(sbi, $nhl_sandbox_info_perpcall, 1048576);
+
     if ((cptr.stPtro(gl, $instance_globals_l_luacore, (yield* nhl_init(sbi)))) !== null) {
-        if (!(yield* nhl_loadlua(cptr.ldPtro(gl, $instance_globals_l_luacore), __sl7))) {
+        if (!(yield* nhl_loadlua(cptr.ldPtro(gl, $instance_globals_l_luacore), __s_nhcore_lua))) {
             cptr.stPtro(gl, $instance_globals_l_luacore, null);
         } else {
             let i;
+
             for (i = 0; i < NHC.NUM_NHCORE_CALLS; i++)
                 cptr.st1o(cptr.decay(nhcore_call_available), i, 1, 1);
         }
     } else
-        (yield* impossible(__sl8));
+        (yield* impossible(__s_l_nhcore_init_failed));
 }
 
 /** C ref: nhlua.c:161 */
@@ -496,66 +507,82 @@ export function* l_nhcore_done() {
 /** C ref: nhlua.c:171 — @param {CInt} callidx */
 export function* l_nhcore_call(callidx) {
     let ltyp;
+
     if (callidx < 0 || callidx >= NHC.NUM_NHCORE_CALLS || !cptr.ldPtro(gl, $instance_globals_l_luacore) || !cptr.ld1so(cptr.decay(nhcore_call_available), callidx, 1))
         return;
-    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __sl9));
+
+    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __s_nhcore));
     if (!(lua_type(cptr.ldPtro(gl, $instance_globals_l_luacore), -1) == 5)) {
+        /*impossible("nhcore is not a lua table");*/
         (yield* nhl_done(cptr.ldPtro(gl, $instance_globals_l_luacore)));
         cptr.stPtro(gl, $instance_globals_l_luacore, null);
         return;
     }
+
     (yield* lua_getfield(cptr.ldPtro(gl, $instance_globals_l_luacore), -1, cptr.ldPtro(nhcore_call_names, callidx, 8)));
     ltyp = lua_type(cptr.ldPtro(gl, $instance_globals_l_luacore), -1);
     if (ltyp == 6) {
-        (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 1, __sl10, NHC.NHLpa_panic));
+        (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 1, __s_l_nhcore_call, NHC.NHLpa_panic));
     } else {
+        /*impossible("nhcore.%s is not a lua function",
+          nhcore_call_names[callidx]);*/
         cptr.st1o(cptr.decay(nhcore_call_available), callidx, 0, 1);
     }
 }
 
-/** C ref: nhlua.c:201 — @param {CPtr} L @param {CPtr} msg */
+/** C ref: nhlua.c:201 — @param {CPtr<lua_State>} L @param {CPtr<char>} msg */
 export function* nhl_error(L, msg) {
     let ar = cptr.alloc(136);
     let buf = new Uint8Array(512);
+
     lua_getstack(L, 1, ar);
-    (yield* lua_getinfo(L, __sl11, ar));
-    void cptr.sprintf(cptr.decay(buf), __sl12, msg, cptr.ldI32o(ar, $lua_Debug_currentline));
-    void cptr.sprintf(eos(cptr.decay(buf)), __sl13, Number(BigInt.asIntN(32, (BigInt.asUintN(64, 512n - (BigInt.asUintN(64, cptr.strlen(cptr.decay(buf)) + 2n)))))), cptr.add(ar, $lua_Debug_short_src));
+    (yield* lua_getinfo(L, __s_ls, ar));
+    void cptr.sprintf(cptr.decay(buf), __s_s_line_d, msg, cptr.ldI32o(ar, $lua_Debug_currentline));
+    void cptr.sprintf(eos(cptr.decay(buf)), __s_pct_dot_star_s_rparen, Number(BigInt.asIntN(32, (BigInt.asUintN(64, 512n - (BigInt.asUintN(64, cptr.strlen(cptr.decay(buf)) + 2n)))))), cptr.add(ar, $lua_Debug_short_src));
     (yield* lua_pushstring(L, cptr.decay(buf)));
     void (yield* lua_error(L));
+    /*NOTREACHED*/
 }
 
-/** C ref: nhlua.c:227 — @param {CPtr} L */
+/* Check that parameters are nothing but single table,
+   or if no parameters given, put empty table there */
+/** C ref: nhlua.c:227 — @param {CPtr<lua_State>} L */
 export function* lcheck_param_table(L) {
     let argc = lua_gettop(L);
+
     if (argc < 1)
         (yield* lua_createtable(L, 0, 0));
+
+    /* discard any extra arguments passed in */
     (yield* lua_settop(L, 1));
+
     (yield* luaL_checktype(L, 1, 5));
 }
 
-/** C ref: nhlua.c:243 — @param {CPtr} L @param {CPtr} name @returns {CInt} */
+/** C ref: nhlua.c:243 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @returns {CInt} */
 export function* get_table_mapchr(L, name) {
     let ter;
     let typ;
+
     ter = (yield* get_table_str(L, name));
     typ = check_mapchr(ter);
     if (typ == NHC.INVALID_TYPE)
-        (yield* nhl_error(L, __sl14));
+        (yield* nhl_error(L, __s_erroneous_map_char));
     if (ter)
         cptr.free(ter);
     return typ;
 }
 
-/** C ref: nhlua.c:258 — @param {CPtr} L @param {CPtr} name @param {CInt} defval @returns {CInt} */
+/** C ref: nhlua.c:258 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} defval @returns {CInt} */
 export function* get_table_mapchr_opt(L, name, defval) {
     let ter;
     let typ;
+
     ter = (yield* get_table_str_opt(L, name, cptr.decay(emptystr)));
     if (ter && cptr.ld1s(ter)) {
         typ = check_mapchr(ter);
         if (typ == NHC.INVALID_TYPE)
-            (yield* nhl_error(L, __sl14));
+            (yield* nhl_error(L, __s_erroneous_map_char));
     } else
         typ = defval;
     if (ter)
@@ -564,66 +591,69 @@ export function* get_table_mapchr_opt(L, name, defval) {
 }
 
 const __static_nhl_get_timertype_timerstr = cptr.alloc(10 * 8);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 0, __sl16);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 8, __sl17);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 16, __sl18);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 24, __sl19);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 32, __sl20);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 40, __sl21);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 48, __sl22);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 56, __sl23);
-cptr.stPtro(__static_nhl_get_timertype_timerstr, 64, __sl24);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 0, __s_rot_organic);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 8, __s_rot_corpse);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 16, __s_revive_mon);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 24, __s_zombify_mon);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 32, __s_burn_obj);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 40, __s_hatch_egg);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 48, __s_fig_transform);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 56, __s_shrink_glob);
+cptr.stPtro(__static_nhl_get_timertype_timerstr, 64, __s_melt_ice);
 cptr.stPtro(__static_nhl_get_timertype_timerstr, 72, null); /** C ref: nhlua.c:280 — char *[10] (function-static) */
 
-/** C ref: nhlua.c:276 — @param {CPtr} L @param {CInt} idx @returns {CInt} */
+/** C ref: nhlua.c:276 — @param {CPtr<lua_State>} L @param {CInt} idx @returns {CInt} */
 export function* nhl_get_timertype(L, idx) {
     let ret = i16((yield* luaL_checkoption(L, idx, null, __static_nhl_get_timertype_timerstr)));
+
     if (ret < 0 || ret >= NHC.NUM_TIME_FUNCS)
-        (yield* nhl_error(L, __sl15));
+        (yield* nhl_error(L, __s_unknown_timer_type));
     return ret;
 }
 
-/** C ref: nhlua.c:295 — @param {CPtr} L @param {CPtr} name @param {CLongLong} value */
+/** C ref: nhlua.c:295 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CLongLong} value */
 export function* nhl_add_table_entry_int(L, name, value) {
     (yield* lua_pushstring(L, name));
     (yield* lua_pushinteger(L, value));
     (yield* lua_rawset(L, -3));
 }
 
-/** C ref: nhlua.c:303 — @param {CPtr} L @param {CPtr} name @param {CInt} value */
+/** C ref: nhlua.c:303 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} value */
 export function* nhl_add_table_entry_char(L, name, value) {
     let buf = new Uint8Array(2);
-    void cptr.sprintf(cptr.decay(buf), __sl25, value);
+    void cptr.sprintf(cptr.decay(buf), __s_pct_c, value);
     (yield* lua_pushstring(L, name));
     (yield* lua_pushstring(L, cptr.decay(buf)));
     (yield* lua_rawset(L, -3));
 }
 
-/** C ref: nhlua.c:313 — @param {CPtr} L @param {CPtr} name @param {CPtr} value */
+/** C ref: nhlua.c:313 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CPtr<char>} value */
 export function* nhl_add_table_entry_str(L, name, value) {
     (yield* lua_pushstring(L, name));
     (yield* lua_pushstring(L, value));
     (yield* lua_rawset(L, -3));
 }
 
-/** C ref: nhlua.c:320 — @param {CPtr} L @param {CPtr} name @param {CInt} value */
+/** C ref: nhlua.c:320 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} value */
 export function* nhl_add_table_entry_bool(L, name, value) {
     (yield* lua_pushstring(L, name));
     (yield* lua_pushboolean(L, value));
     (yield* lua_rawset(L, -3));
 }
 
-/** C ref: nhlua.c:328 — @param {CPtr} L @param {CPtr} name @param {CInt} x1 @param {CInt} y1 @param {CInt} x2 @param {CInt} y2 */
+/** C ref: nhlua.c:328 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} x1 @param {CInt} y1 @param {CInt} x2 @param {CInt} y2 */
 export function* nhl_add_table_entry_region(L, name, x1, y1, x2, y2) {
     (yield* lua_pushstring(L, name));
     (yield* lua_createtable(L, 0, 0));
-    (yield* nhl_add_table_entry_int(L, __sl26, BigInt(x1)));
-    (yield* nhl_add_table_entry_int(L, __sl27, BigInt(y1)));
-    (yield* nhl_add_table_entry_int(L, __sl28, BigInt(x2)));
-    (yield* nhl_add_table_entry_int(L, __sl29, BigInt(y2)));
+    (yield* nhl_add_table_entry_int(L, __s_x1, BigInt(x1)));
+    (yield* nhl_add_table_entry_int(L, __s_y1, BigInt(y1)));
+    (yield* nhl_add_table_entry_int(L, __s_x2, BigInt(x2)));
+    (yield* nhl_add_table_entry_int(L, __s_y2, BigInt(y2)));
     (yield* lua_rawset(L, -3));
 }
 
+/* converting from special level "map character" to levl location type
+   and back. order here is important. */
 /** C ref: nhlua.c:342 — struct undefined {  } (memory model v0.5) */
 
 /** C ref: nhlua.c:345 — struct (unnamed struct at nhlua.c:342:14)[35] */
@@ -702,13 +732,14 @@ cptr.st1o(char2typ, 69, NHC.STONE);
 /** C ref: nhlua.c:384 — @param {CInt} c @returns {CInt} */
 export function splev_chr2typ(c) {
     let i;
+
     for (i = 0; cptr.ld1so(char2typ, i, 2); i++)
         if (c == cptr.ld1so(char2typ, i, 2))
             return cptr.ld1so2(char2typ, i, 2, 1);
     return NHC.INVALID_TYPE;
 }
 
-/** C ref: nhlua.c:395 — @param {CPtr} s @returns {CInt} */
+/** C ref: nhlua.c:395 — @param {CPtr<char>} s @returns {CInt} */
 export function check_mapchr(s) {
     if (s && cptr.strlen(s) == 1n)
         return splev_chr2typ(cptr.ld1so(s, 0));
@@ -718,86 +749,109 @@ export function check_mapchr(s) {
 /** C ref: nhlua.c:403 — @param {CInt} typ @returns {CInt} */
 function splev_typ2chr(typ) {
     let i;
+
     for (i = 0; cptr.ld1so2(char2typ, i, 2, 1) < NHC.MAX_TYPE; i++)
         if (typ == cptr.ld1so2(char2typ, i, 2, 1))
             return cptr.ld1so(char2typ, i, 2);
     return 120;
 }
 
-/** C ref: nhlua.c:418 — @param {CPtr} L @returns {CInt} */
+/* local t = nh.gettrap(x,y); */
+/* local t = nh.gettrap({ x = 10, y = 10 }); */
+/** C ref: nhlua.c:418 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_gettrap(L) {
     let lx = cptr.box(0n);
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
+
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl30));
+        (yield* nhl_error(L, __s_incorrect_arguments));
+        /*NOTREACHED*/
         return 0;
     }
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (isok(x.v, y.v)) {
         let ttmp = t_at(x.v, y.v);
+
         if (ttmp) {
             (yield* lua_createtable(L, 0, 0));
-            (yield* nhl_add_table_entry_int(L, __sl31, BigInt(cptr.ldI16o(ttmp, $trap_tx))));
-            (yield* nhl_add_table_entry_int(L, __sl32, BigInt(cptr.ldI16o(ttmp, $trap_ty))));
-            (yield* nhl_add_table_entry_int(L, __sl33, BigInt((cptr.ldI32o(ttmp, $trap_ttyp) & 31) >>> 0)));
-            (yield* nhl_add_table_entry_str(L, __sl34, get_trapname_bytype((cptr.ldI32o(ttmp, $trap_ttyp) & 31) | 0)));
-            (yield* nhl_add_table_entry_bool(L, __sl35, schar((cptr.ldI32o(ttmp, $trap_tseen) & 1))));
-            (yield* nhl_add_table_entry_bool(L, __sl36, schar((cptr.ldI32o(ttmp, $trap_madeby_u) & 1))));
-            (yield* nhl_add_table_entry_bool(L, __sl37, schar((cptr.ldI32o(ttmp, $trap_once) & 1))));
+
+            (yield* nhl_add_table_entry_int(L, __s_tx, BigInt(cptr.ldI16o(ttmp, $trap_tx))));
+            (yield* nhl_add_table_entry_int(L, __s_ty, BigInt(cptr.ldI16o(ttmp, $trap_ty))));
+            (yield* nhl_add_table_entry_int(L, __s_ttyp, BigInt((cptr.ldI32o(ttmp, $trap_ttyp) & 31) >>> 0)));
+            (yield* nhl_add_table_entry_str(L, __s_ttyp_name, get_trapname_bytype((cptr.ldI32o(ttmp, $trap_ttyp) & 31) | 0)));
+            (yield* nhl_add_table_entry_bool(L, __s_tseen, schar((cptr.ldI32o(ttmp, $trap_tseen) & 1))));
+            (yield* nhl_add_table_entry_bool(L, __s_madeby_u, schar((cptr.ldI32o(ttmp, $trap_madeby_u) & 1))));
+            (yield* nhl_add_table_entry_bool(L, __s_once, schar((cptr.ldI32o(ttmp, $trap_once) & 1))));
             switch ((cptr.ldI32o(ttmp, $trap_ttyp) & 31) | 0) {
                 case NHC.SQKY_BOARD:
-                (yield* nhl_add_table_entry_int(L, __sl38, BigInt(cptr.ldI16o(ttmp, $trap_vl))));
+                (yield* nhl_add_table_entry_int(L, __s_tnote, BigInt(cptr.ldI16o(ttmp, $trap_vl))));
                 break;
                 case NHC.ROLLING_BOULDER_TRAP:
-                (yield* nhl_add_table_entry_int(L, __sl39, BigInt(cptr.ldI16o(ttmp, $trap_launch))));
-                (yield* nhl_add_table_entry_int(L, __sl40, BigInt(cptr.ldI16o(ttmp, $trap_launch + $nhcoord_y))));
-                (yield* nhl_add_table_entry_int(L, __sl41, BigInt(cptr.ldI16o(ttmp, $trap_vl))));
-                (yield* nhl_add_table_entry_int(L, __sl42, BigInt(cptr.ldI16o(ttmp, $trap_vl + $nhcoord_y))));
+                (yield* nhl_add_table_entry_int(L, __s_launchx, BigInt(cptr.ldI16o(ttmp, $trap_launch))));
+                (yield* nhl_add_table_entry_int(L, __s_launchy, BigInt(cptr.ldI16o(ttmp, $trap_launch + $nhcoord_y))));
+                (yield* nhl_add_table_entry_int(L, __s_launch2x, BigInt(cptr.ldI16o(ttmp, $trap_vl))));
+                (yield* nhl_add_table_entry_int(L, __s_launch2y, BigInt(cptr.ldI16o(ttmp, $trap_vl + $nhcoord_y))));
                 break;
                 case NHC.PIT:
                 case NHC.SPIKED_PIT:
-                (yield* nhl_add_table_entry_int(L, __sl43, BigInt(cptr.ld1uo(ttmp, $trap_vl) >>> 0)));
+                (yield* nhl_add_table_entry_int(L, __s_conjoined, BigInt(cptr.ld1uo(ttmp, $trap_vl) >>> 0)));
                 break;
             }
             return 1;
         } else {
-            (yield* nhl_error(L, __sl44));
+            (yield* nhl_error(L, __s_no_trap_at_location));
         }
     } else {
-        (yield* nhl_error(L, __sl45));
+        (yield* nhl_error(L, __s_coordinates_out_of_range));
     }
     return 0;
 }
 
-/** C ref: nhlua.c:473 — @param {CPtr} L @returns {CInt} */
+/* nh.deltrap(x,y); nh.deltrap({ x = 10, y = 15 }); */
+/** C ref: nhlua.c:473 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_deltrap(L) {
     let lx = cptr.box(0n);
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
+
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl30));
+        (yield* nhl_error(L, __s_incorrect_arguments));
+        /*NOTREACHED*/
         return 0;
     }
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (isok(x.v, y.v)) {
         let ttmp = t_at(x.v, y.v);
+
         if (ttmp)
             (yield* deltrap(ttmp));
     }
     return 0;
 }
 
-/** C ref: nhlua.c:508 — @param {CPtr} L @param {CPtr} x @param {CPtr} y @returns {CInt} */
+/* get parameters (XX,YY) or ({ x = XX, y = YY }) or ({ XX, YY }),
+   and set the x and y values.
+   return TRUE if there are such params in the stack.
+   Note that this does not adjust the values of x and y at all from what is
+   specified in the level file; so, it returns absolute coordinates rather
+   than map-relative coordinates. Callers of this function must decide if
+   they want to interpret the values as absolute or as map-relative, and
+   adjust accordingly.
+ */
+/** C ref: nhlua.c:508 — @param {CPtr<lua_State>} L @param {CPtr<lua_Integer>} x @param {CPtr<lua_Integer>} y @returns {CInt} */
 export function* nhl_get_xy_params(L, x, y) {
     let argc = lua_gettop(L);
     let ret = 0;
+
     if (argc == 2) {
         cptr.stI64(x, (yield* lua_tointegerx(L, 1, null)));
         cptr.stI64(y, (yield* lua_tointegerx(L, 2, null)));
@@ -805,6 +859,7 @@ export function* nhl_get_xy_params(L, x, y) {
     } else if (argc == 1 && lua_type(L, 1) == 5) {
         let ax = cptr.box(0n);
         let ay = cptr.box(0n);
+
         ret = (yield* get_coord(L, 1, ax, ay));
         cptr.stI64(x, ax.v);
         cptr.stI64(y, ay.v);
@@ -812,219 +867,288 @@ export function* nhl_get_xy_params(L, x, y) {
     return ret;
 }
 
-/** C ref: nhlua.c:532 — @param {CPtr} L @returns {CInt} */
+/* local loc = nh.getmap(x,y); */
+/* local loc = nh.getmap({ x = 10, y = 35 }); */
+/** C ref: nhlua.c:532 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_getmap(L) {
     let lx = cptr.box(0n);
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
+
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl30));
+        (yield* nhl_error(L, __s_incorrect_arguments));
         return 0;
     }
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (isok(x.v, y.v)) {
         let buf = new Uint8Array(256);
         (yield* lua_createtable(L, 0, 0));
-        (yield* nhl_add_table_entry_int(L, __sl46, BigInt(cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level))));
-        (yield* nhl_add_table_entry_int(L, __sl47, BigInt(cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ))));
-        (yield* nhl_add_table_entry_str(L, __sl48, levltyp_to_name(cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ))));
-        void cptr.sprintf(cptr.decay(buf), __sl25, splev_typ2chr(cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)));
-        (yield* nhl_add_table_entry_str(L, __sl49, cptr.decay(buf)));
-        (yield* nhl_add_table_entry_int(L, __sl50, BigInt(cptr.ld1uo3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_seenv) >>> 0)));
-        (yield* nhl_add_table_entry_bool(L, __sl51, schar((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_horizontal) & 1))));
-        (yield* nhl_add_table_entry_bool(L, __sl52, schar((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_lit) & 1))));
-        (yield* nhl_add_table_entry_bool(L, __sl53, schar((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_waslit) & 1))));
-        (yield* nhl_add_table_entry_int(L, __sl54, BigInt((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_roomno) & 63) >>> 0)));
-        (yield* nhl_add_table_entry_bool(L, __sl55, schar((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_edge) & 1))));
-        (yield* nhl_add_table_entry_bool(L, __sl56, schar((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_candig) & 1))));
-        (yield* nhl_add_table_entry_bool(L, __sl57, schar((t_at(x.v, y.v) ? 1 : 0))));
-        (yield* lua_pushstring(L, __sl58));
+
+        /* FIXME: some should be boolean values */
+        (yield* nhl_add_table_entry_int(L, __s_glyph, BigInt(cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level))));
+        (yield* nhl_add_table_entry_int(L, __s_typ, BigInt(cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ))));
+        (yield* nhl_add_table_entry_str(L, __s_typ_name, levltyp_to_name(cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ))));
+        void cptr.sprintf(cptr.decay(buf), __s_pct_c, splev_typ2chr(cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)));
+        (yield* nhl_add_table_entry_str(L, __s_mapchr, cptr.decay(buf)));
+        (yield* nhl_add_table_entry_int(L, __s_seenv, BigInt(cptr.ld1uo3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_seenv) >>> 0)));
+        (yield* nhl_add_table_entry_bool(L, __s_horizontal, schar((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_horizontal) & 1))));
+        (yield* nhl_add_table_entry_bool(L, __s_lit, schar((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_lit) & 1))));
+        (yield* nhl_add_table_entry_bool(L, __s_waslit, schar((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_waslit) & 1))));
+        (yield* nhl_add_table_entry_int(L, __s_roomno, BigInt((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_roomno) & 63) >>> 0)));
+        (yield* nhl_add_table_entry_bool(L, __s_edge, schar((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_edge) & 1))));
+        (yield* nhl_add_table_entry_bool(L, __s_candig, schar((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_candig) & 1))));
+
+        (yield* nhl_add_table_entry_bool(L, __s_has_trap, schar((t_at(x.v, y.v) ? 1 : 0))));
+
+        /* TODO: FIXME: levl[x][y].flags */
+
+        (yield* lua_pushstring(L, __s_flags));
         (yield* lua_createtable(L, 0, 0));
-        if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR)) {
-            (yield* nhl_add_table_entry_bool(L, __sl59, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) == NHM.D_NODOOR))));
-            (yield* nhl_add_table_entry_bool(L, __sl60, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_BROKEN))));
-            (yield* nhl_add_table_entry_bool(L, __sl61, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_ISOPEN))));
-            (yield* nhl_add_table_entry_bool(L, __sl62, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_CLOSED))));
-            (yield* nhl_add_table_entry_bool(L, __sl63, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_LOCKED))));
-            (yield* nhl_add_table_entry_bool(L, __sl64, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_TRAPPED))));
-        } else if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.ALTAR)) {
-            (yield* nhl_add_table_entry_bool(L, __sl65, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.AM_SHRINE))));
-        } else if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.THRONE)) {
-            (yield* nhl_add_table_entry_bool(L, __sl66, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.T_LOOTED))));
-        } else if (cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ) == NHC.TREE) {
-            (yield* nhl_add_table_entry_bool(L, __sl66, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.TREE_LOOTED))));
-            (yield* nhl_add_table_entry_bool(L, __sl67, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.TREE_SWARM))));
-        } else if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.FOUNTAIN)) {
-            (yield* nhl_add_table_entry_bool(L, __sl66, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.F_LOOTED))));
-            (yield* nhl_add_table_entry_bool(L, __sl68, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.F_WARNED))));
-        } else if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.SINK)) {
-            (yield* nhl_add_table_entry_bool(L, __sl69, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LPUDDING))));
-            (yield* nhl_add_table_entry_bool(L, __sl70, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LDWASHER))));
-            (yield* nhl_add_table_entry_bool(L, __sl71, schar((((cptr.ldI32o3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LRING))));
+
+        if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.DOOR)) {
+            (yield* nhl_add_table_entry_bool(L, __s_nodoor, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) == NHM.D_NODOOR))));
+            (yield* nhl_add_table_entry_bool(L, __s_broken, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_BROKEN))));
+            (yield* nhl_add_table_entry_bool(L, __s_isopen, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_ISOPEN))));
+            (yield* nhl_add_table_entry_bool(L, __s_closed, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_CLOSED))));
+            (yield* nhl_add_table_entry_bool(L, __s_locked, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_LOCKED))));
+            (yield* nhl_add_table_entry_bool(L, __s_trapped, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.D_TRAPPED))));
+        } else if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.ALTAR)) {
+            /* TODO: bits 0, 1, 2 */
+            (yield* nhl_add_table_entry_bool(L, __s_shrine, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.AM_SHRINE))));
+        } else if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.THRONE)) {
+            (yield* nhl_add_table_entry_bool(L, __s_looted, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.T_LOOTED))));
+        } else if (cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.TREE) {
+            (yield* nhl_add_table_entry_bool(L, __s_looted, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.TREE_LOOTED))));
+            (yield* nhl_add_table_entry_bool(L, __s_swarm, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.TREE_SWARM))));
+        } else if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.FOUNTAIN)) {
+            (yield* nhl_add_table_entry_bool(L, __s_looted, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.F_LOOTED))));
+            (yield* nhl_add_table_entry_bool(L, __s_warned, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.F_WARNED))));
+        } else if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.SINK)) {
+            (yield* nhl_add_table_entry_bool(L, __s_pudding, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LPUDDING))));
+            (yield* nhl_add_table_entry_bool(L, __s_dishwasher, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LDWASHER))));
+            (yield* nhl_add_table_entry_bool(L, __s_ring, schar((((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.S_LRING))));
         }
+        /* TODO: drawbridges, walls, ladders, room=>ICED_xxx */
+
         (yield* lua_settable(L, -3));
+
         return 1;
     } else {
-        (yield* nhl_error(L, __sl45));
+        /* TODO: return zerorm instead? */
+        (yield* nhl_error(L, __s_coordinates_out_of_range));
         return 0;
     }
 }
 
-/** C ref: nhlua.c:622 — @param {CPtr} L @returns {CInt} */
+/* impossible("Error!") */
+/** C ref: nhlua.c:622 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_impossible(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
-        (yield* impossible(__sl72, ((yield* luaL_checklstring(L, 1, null)))));
+        (yield* impossible(__s_pct_s, ((yield* luaL_checklstring(L, 1, null)))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
     return 0;
 }
 
-/** C ref: nhlua.c:636 — @param {CPtr} L @returns {CInt} */
+/* pline("It hits!") */
+/* pline("It hits!", true) */
+/** C ref: nhlua.c:636 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_pline(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1 || argc == 2) {
-        (yield* pline(__sl72, ((yield* luaL_checklstring(L, 1, null)))));
+        (yield* pline(__s_pct_s, ((yield* luaL_checklstring(L, 1, null)))));
         if (lua_toboolean(L, 2))
-            (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 1)));
+            (yield* Y.icall(display_nhwindow()(WIN_MESSAGE.v, 1)));  /* --more-- */
     } else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 0;
 }
 
-/** C ref: nhlua.c:652 — @param {CPtr} L @returns {CInt} */
+/* verbalize("Fool!") */
+/** C ref: nhlua.c:652 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_verbalize(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
-        (yield* verbalize(__sl72, ((yield* luaL_checklstring(L, 1, null)))));
+        (yield* verbalize(__s_pct_s, ((yield* luaL_checklstring(L, 1, null)))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 0;
 }
 
-/** C ref: nhlua.c:666 — @param {CPtr} L @returns {CInt} */
+/* parse_config("OPTIONS=!color") */
+/** C ref: nhlua.c:666 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_parse_config(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* parse_conf_str(((yield* luaL_checklstring(L, 1, null))), parse_config_line));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 0;
 }
 
-/** C ref: nhlua.c:680 — @param {CPtr} L @returns {CInt} */
+/* local windowtype = get_config("windowtype"); */
+/** C ref: nhlua.c:680 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_get_config(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         (yield* lua_pushstring(L, (yield* get_option_value(((yield* luaL_checklstring(L, 1, null))), 1))));
         return 1;
     } else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 0;
 }
 
-/** C ref: nhlua.c:697 — @param {CPtr} L @returns {CInt} */
+/*
+  str = getlin("What do you want to call this dungeon level?");
+ */
+/** C ref: nhlua.c:697 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_getlin(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let prompt = ((yield* luaL_checklstring(L, 1, null)));
         let buf = new Uint8Array(256);
+
         (yield* getlin(prompt, cptr.decay(buf)));
         (yield* lua_pushstring(L, cptr.decay(buf)));
         return 1;
     }
-    (yield* nhl_error(L, __sl73));
+
+    (yield* nhl_error(L, __s_wrong_args));
+    /*NOTREACHED*/
     return 0;
 }
 
-const __static_nhl_menu_pickX = cptr.alloc(3 * 8);
-cptr.stPtro(__static_nhl_menu_pickX, 0, __sl78);
-cptr.stPtro(__static_nhl_menu_pickX, 8, __sl75);
-cptr.stPtro(__static_nhl_menu_pickX, 16, __sl79); /** C ref: nhlua.c:725 — char *[3] (function-static) */
+/*
+ selected = menu("prompt",default,pickX,{"a"="option a", "b"="option b",...})
+ pickX = 0,1,2, or "none", "one", "any" (PICK_X in code)
 
-/** C ref: nhlua.c:723 — @param {CPtr} L @returns {CInt} */
+ selected = menu("prompt", default, pickX,
+                 {{key:"a", text:"option a"},{key:"b", text:"option b"},... })
+ */
+const __static_nhl_menu_pickX = cptr.alloc(3 * 8);
+cptr.stPtro(__static_nhl_menu_pickX, 0, __s_none);
+cptr.stPtro(__static_nhl_menu_pickX, 8, __s_one);
+cptr.stPtro(__static_nhl_menu_pickX, 16, __s_any); /** C ref: nhlua.c:725 — char *[3] (function-static) */
+
+/** C ref: nhlua.c:723 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_menu(L) {
     let argc = lua_gettop(L);
     let prompt;
-    let defval = __sl74;
+    let defval = __s_empty;
     let pick = NHM.PICK_ONE;
     let pick_cnt;
     let tmpwin;
     let any = cptr.alloc(8);
     let picks = cptr.box(null);
     let clr = NHM.NO_COLOR;
+
     if (argc < 2 || argc > 4) {
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+        /*NOTREACHED*/
         return 0;
     }
+
     prompt = ((yield* luaL_checklstring(L, 1, null)));
     if (lua_isstring(L, 2))
         defval = ((yield* luaL_checklstring(L, 2, null)));
     if (lua_isstring(L, 3))
-        pick = (yield* luaL_checkoption(L, 3, __sl75, __static_nhl_menu_pickX));
+        pick = (yield* luaL_checkoption(L, 3, __s_one, __static_nhl_menu_pickX));
     (yield* luaL_checktype(L, argc, 5));
+
     tmpwin = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
     (yield* Y.icall(start_menu()(tmpwin, 0n)));
-    (yield* lua_pushnil(L));
+
+    (yield* lua_pushnil(L));  /* first key */
     while ((yield* lua_next(L, argc)) != 0) {
-        let str = __sl74;
-        let key = __sl74;
+        let str = __s_empty;
+        let key = __s_empty;
+
+        /* key @ index -2, value @ index -1 */
         if ((lua_type(L, -1) == 5)) {
-            (yield* lua_pushstring(L, __sl76));
+            (yield* lua_pushstring(L, __s_key));
             (yield* lua_gettable(L, -2));
             key = (yield* lua_tolstring(L, -1, null));
             (yield* lua_settop(L, -2));
-            (yield* lua_pushstring(L, __sl77));
+
+            (yield* lua_pushstring(L, __s_text));
             (yield* lua_gettable(L, -2));
             str = (yield* lua_tolstring(L, -1, null));
             (yield* lua_settop(L, -2));
+
+            /* TODO: glyph, attr, accel, group accel (all optional) */
         } else if (lua_isstring(L, -1)) {
             str = ((yield* luaL_checklstring(L, -1, null)));
             key = ((yield* luaL_checklstring(L, -2, null)));
         }
+
         cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
         if (cptr.ld1s(key))
             cptr.st1(any, cptr.ld1so(key, 0));
         (yield* add_menu(tmpwin, nul_glyphinfo.v, any, 0, 0, NHM.ATR_NONE, clr, str, (cptr.ld1s(defval) && cptr.ld1s(key) && cptr.ld1so(defval, 0) == cptr.ld1so(key, 0)) ? NHM.MENU_ITEMFLAGS_SELECTED : NHM.MENU_ITEMFLAGS_NONE));
-        (yield* lua_settop(L, -2));
+
+        (yield* lua_settop(L, -2));  /* removes 'value'; keeps 'key' for next iteration */
     }
+
     (yield* Y.icall(end_menu()(tmpwin, prompt)));
     pick_cnt = (yield* select_menu(tmpwin, pick, picks));
     (yield* Y.icall(destroy_nhwindow()(tmpwin)));
+
     if (pick_cnt > 0) {
         let buf = new Uint8Array(2);
-        cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(picks.v, 0, 24), 1);
-        if (pick == NHM.PICK_ONE && pick_cnt > 1 && cptr.ld1s(defval) && cptr.ld1so(defval, 0) == cptr.ld1so(picks.v, 0, 24))
-            cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(picks.v, 1, 24), 1);
+        cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(picks.v, 0, $sizeof_menu_item), 1);
+
+        if (pick == NHM.PICK_ONE && pick_cnt > 1 && cptr.ld1s(defval) && cptr.ld1so(defval, 0) == cptr.ld1so(picks.v, 0, $sizeof_menu_item))
+            cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(picks.v, 1, $sizeof_menu_item), 1);
+
         cptr.st1o(cptr.decay(buf), 1, 0, 1);
         (yield* lua_pushstring(L, cptr.decay(buf)));
+        /* TODO: pick any */
     } else {
         let buf = new Uint8Array(2);
         cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(defval, 0), 1);
         cptr.st1o(cptr.decay(buf), 1, 0, 1);
         (yield* lua_pushstring(L, cptr.decay(buf)));
     }
+
     return 1;
 }
 
-/** C ref: nhlua.c:812 — @param {CPtr} L @returns {CInt} */
+/* text("foo\nbar\nbaz") */
+/** C ref: nhlua.c:812 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_text(L) {
     let argc = lua_gettop(L);
+
     if (argc > 0) {
         let picks = cptr.box(null);
         let tmpwin;
+
         tmpwin = (yield* Y.icall(create_nhwindow()(NHM.NHW_MENU)));
         (yield* Y.icall(start_menu()(tmpwin, 0n)));
+
         while (lua_gettop(L) > 0) {
             let ostr = (yield* dupstr(((yield* luaL_checklstring(L, 1, null)))));
             let ptr;
             let str = ostr;
             let lstr = cptr.add(cptr.add(str, cptr.strlen(str)), -(1));
+
             do {
                 let nlp = cptr.strchr(str, 10);
+
                 if (nlp && (cptr.diff(nlp, str)) <= 76n) {
                     ptr = nlp;
                 } else {
@@ -1041,6 +1165,7 @@ function* nhl_text(L) {
             (yield* lua_settop(L, -2));
             cptr.free(ostr);
         }
+
         (yield* Y.icall(end_menu()(tmpwin, null)));
         void (yield* select_menu(tmpwin, NHM.PICK_NONE, picks));
         (yield* Y.icall(destroy_nhwindow()(tmpwin)));
@@ -1048,70 +1173,90 @@ function* nhl_text(L) {
     return 0;
 }
 
-/** C ref: nhlua.c:857 — @param {CPtr} L @returns {CInt} */
+/* makeplural("zorkmid") */
+/** C ref: nhlua.c:857 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_makeplural(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* lua_pushstring(L, (yield* makeplural(((yield* luaL_checklstring(L, 1, null)))))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:871 — @param {CPtr} L @returns {CInt} */
+/* makesingular("zorkmids") */
+/** C ref: nhlua.c:871 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_makesingular(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* lua_pushstring(L, (yield* makesingular(((yield* luaL_checklstring(L, 1, null)))))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:885 — @param {CPtr} L @returns {CInt} */
+/* s_suffix("foo") */
+/** C ref: nhlua.c:885 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_s_suffix(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* lua_pushstring(L, (yield* s_suffix(((yield* luaL_checklstring(L, 1, null)))))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:899 — @param {CPtr} L @returns {CInt} */
+/* ing_suffix("foo") */
+/** C ref: nhlua.c:899 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_ing_suffix(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* lua_pushstring(L, (yield* ing_suffix(((yield* luaL_checklstring(L, 1, null)))))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:913 — @param {CPtr} L @returns {CInt} */
+/* an("foo") */
+/** C ref: nhlua.c:913 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_an(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1)
         (yield* lua_pushstring(L, (yield* an(((yield* luaL_checklstring(L, 1, null)))))));
     else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
+/* rn2(10) */
 let __static_nhl_lua_rnglog_ctx_enabled_enabled = -1; /** C ref: nhlua.c:929 — int (function-static) */
 
 /** C ref: nhlua.c:927 @returns {CInt} */
 function nhl_lua_rnglog_ctx_enabled() {
     let env;
     let rnglog;
+
     if (__static_nhl_lua_rnglog_ctx_enabled_enabled >= 0)
         return schar((__static_nhl_lua_rnglog_ctx_enabled_enabled ? 1 : 0));
-    env = getenv(__sl80);
+
+    env = getenv(__s_nethack_lua_rnglog_ctx);
     if (env) {
-        __static_nhl_lua_rnglog_ctx_enabled_enabled = (cptr.ld1s(env) && strcmp(env, __sl81)) ? 1 : 0;
+        __static_nhl_lua_rnglog_ctx_enabled_enabled = (cptr.ld1s(env) && strcmp(env, __s_0)) ? 1 : 0;
         return schar((__static_nhl_lua_rnglog_ctx_enabled_enabled ? 1 : 0));
     }
-    rnglog = getenv(__sl82);
+
+    /* Harness default: when RNG logging is active, include Lua callsites. */
+    rnglog = getenv(__s_nethack_rnglog);
     __static_nhl_lua_rnglog_ctx_enabled_enabled = (rnglog && cptr.ld1s(rnglog)) ? 1 : 0;
     return schar((__static_nhl_lua_rnglog_ctx_enabled_enabled ? 1 : 0));
 }
@@ -1123,7 +1268,7 @@ const __static_nhl_rnglog_set_lua_caller_rnglog_src1buf = new Uint8Array(256); /
 const __static_nhl_rnglog_set_lua_caller_rnglog_src2buf = new Uint8Array(256); /** C ref: nhlua.c:958 — char[256] (function-static) */
 const __static_nhl_rnglog_set_lua_caller_rnglog_parentbuf = new Uint8Array(256); /** C ref: nhlua.c:959 — char[256] (function-static) */
 
-/** C ref: nhlua.c:949 — @param {CPtr} L @param {CPtr} fallback */
+/** C ref: nhlua.c:949 — @param {CPtr<lua_State>} L @param {CPtr<char>} fallback */
 function* nhl_rnglog_set_lua_caller(L, fallback) {
     let ar = cptr.alloc(136);
     let ar2 = cptr.alloc(136);
@@ -1133,19 +1278,25 @@ function* nhl_rnglog_set_lua_caller(L, fallback) {
     let line2 = 0;
     let name = fallback;
     let name1 = fallback;
-    let name2 = __sl83;
+    let name2 = __s_lua;
     let have1 = 0;
     let have2 = 0;
+
     if (!nhl_lua_rnglog_ctx_enabled())
         return;
-    nh_snprintf(__sl84, 972, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_srcbuf), 256n, __sl72, __sl83);
-    nh_snprintf(__sl84, 973, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), 256n, __sl72, __sl83);
-    nh_snprintf(__sl84, 974, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src2buf), 256n, __sl72, __sl83);
-    if (lua_getstack(L, 1, ar) && (yield* lua_getinfo(L, __sl85, ar))) {
+
+    nh_snprintf(__s_nhl_rnglog_set_lua_caller, 972, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_srcbuf), 256n, __s_pct_s, __s_lua);
+    nh_snprintf(__s_nhl_rnglog_set_lua_caller, 973, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), 256n, __s_pct_s, __s_lua);
+    nh_snprintf(__s_nhl_rnglog_set_lua_caller, 974, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src2buf), 256n, __s_pct_s, __s_lua);
+
+    if (lua_getstack(L, 1, ar) && (yield* lua_getinfo(L, __s_nsl, ar))) {
         if (cptr.add(ar, $lua_Debug_short_src) && cptr.ld1so(ar, $lua_Debug_short_src)) {
             let src_start = cptr.add(ar, $lua_Debug_short_src);
             let src_len = cptr.strlen(cptr.add(ar, $lua_Debug_short_src));
-            if (src_len >= 11n && !cptr.strncmp(src_start, __sl86, 9n) && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 2n)) == 34 && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 1n)) == 93) {
+
+            /* Lua string chunks render as [string "(name.lua)"].
+               Normalize to plain "name.lua" for readable RNG logs. */
+            if (src_len >= 11n && !cptr.strncmp(src_start, __s_string, 9n) && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 2n)) == 34 && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 1n)) == 93) {
                 src_start = cptr.add(src_start, 9);
                 src_len -= 11n;
             }
@@ -1157,20 +1308,22 @@ function* nhl_rnglog_set_lua_caller(L, fallback) {
                 src_start = cptr.add(src_start, 1);
                 src_len -= 2n;
             }
-            nh_snprintf(__sl84, 1001, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), 256n, __sl87, Number(BigInt.asIntN(32, src_len)), src_start);
+            nh_snprintf(__s_nhl_rnglog_set_lua_caller, 1001, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), 256n, __s_pct_dot_star_s, Number(BigInt.asIntN(32, src_len)), src_start);
         }
         line1 = cptr.ldI32o(ar, $lua_Debug_currentline);
         if (cptr.ldPtro(ar, $lua_Debug_name) && cptr.ld1s(cptr.ldPtro(ar, $lua_Debug_name)) && ((cptr.ld1so(cptr.ldPtro(ar, $lua_Debug_name), 0) >= 65 && cptr.ld1so(cptr.ldPtro(ar, $lua_Debug_name), 0) <= 90) || (cptr.ld1so(cptr.ldPtro(ar, $lua_Debug_name), 0) >= 97 && cptr.ld1so(cptr.ldPtro(ar, $lua_Debug_name), 0) <= 122) || cptr.ld1so(cptr.ldPtro(ar, $lua_Debug_name), 0) == 95)) {
-            nh_snprintf(__sl84, 1008, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_name1buf), 256n, __sl72, cptr.ldPtro(ar, $lua_Debug_name));
+            nh_snprintf(__s_nhl_rnglog_set_lua_caller, 1008, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_name1buf), 256n, __s_pct_s, cptr.ldPtro(ar, $lua_Debug_name));
             name1 = cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_name1buf);
         }
         have1 = 1;
     }
-    if (lua_getstack(L, 2, ar2) && (yield* lua_getinfo(L, __sl85, ar2))) {
+
+    if (lua_getstack(L, 2, ar2) && (yield* lua_getinfo(L, __s_nsl, ar2))) {
         if (cptr.add(ar2, $lua_Debug_short_src) && cptr.ld1so(ar2, $lua_Debug_short_src)) {
             let src_start = cptr.add(ar2, $lua_Debug_short_src);
             let src_len = cptr.strlen(cptr.add(ar2, $lua_Debug_short_src));
-            if (src_len >= 11n && !cptr.strncmp(src_start, __sl86, 9n) && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 2n)) == 34 && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 1n)) == 93) {
+
+            if (src_len >= 11n && !cptr.strncmp(src_start, __s_string, 9n) && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 2n)) == 34 && cptr.ld1so(src_start, BigInt.asUintN(64, src_len - 1n)) == 93) {
                 src_start = cptr.add(src_start, 9);
                 src_len -= 11n;
             }
@@ -1182,20 +1335,21 @@ function* nhl_rnglog_set_lua_caller(L, fallback) {
                 src_start = cptr.add(src_start, 1);
                 src_len -= 2n;
             }
-            nh_snprintf(__sl84, 1037, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src2buf), 256n, __sl87, Number(BigInt.asIntN(32, src_len)), src_start);
+            nh_snprintf(__s_nhl_rnglog_set_lua_caller, 1037, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src2buf), 256n, __s_pct_dot_star_s, Number(BigInt.asIntN(32, src_len)), src_start);
         }
         line2 = cptr.ldI32o(ar2, $lua_Debug_currentline);
         if (cptr.ldPtro(ar2, $lua_Debug_name) && cptr.ld1s(cptr.ldPtro(ar2, $lua_Debug_name)) && ((cptr.ld1so(cptr.ldPtro(ar2, $lua_Debug_name), 0) >= 65 && cptr.ld1so(cptr.ldPtro(ar2, $lua_Debug_name), 0) <= 90) || (cptr.ld1so(cptr.ldPtro(ar2, $lua_Debug_name), 0) >= 97 && cptr.ld1so(cptr.ldPtro(ar2, $lua_Debug_name), 0) <= 122) || cptr.ld1so(cptr.ldPtro(ar2, $lua_Debug_name), 0) == 95)) {
-            nh_snprintf(__sl84, 1044, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_parentbuf), 256n, __sl72, cptr.ldPtro(ar2, $lua_Debug_name));
+            nh_snprintf(__s_nhl_rnglog_set_lua_caller, 1044, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_parentbuf), 256n, __s_pct_s, cptr.ldPtro(ar2, $lua_Debug_name));
             name2 = cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_parentbuf);
         }
         have2 = 1;
     }
+
     if (have2) {
         src = cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src2buf);
         line = line2;
         if (have1) {
-            nh_snprintf(__sl84, 1056, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_namebuf), 256n, __sl88, name1, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), line1, name2);
+            nh_snprintf(__s_nhl_rnglog_set_lua_caller, 1056, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_namebuf), 256n, __s_s_src_s_d_parent_s, name1, cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_src1buf), line1, name2);
             name = cptr.decay(__static_nhl_rnglog_set_lua_caller_rnglog_namebuf);
         } else {
             name = name2;
@@ -1208,61 +1362,76 @@ function* nhl_rnglog_set_lua_caller(L, fallback) {
     rng_log_set_caller(src, line, name);
 }
 
-/** C ref: nhlua.c:1071 — @param {CPtr} L @returns {CInt} */
+/* rn2(10) */
+/** C ref: nhlua.c:1071 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_rn2(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let range = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, 1))));
-        (yield* nhl_rnglog_set_lua_caller(L, __sl89));
+        (yield* nhl_rnglog_set_lua_caller(L, __s_nh_rn2));
         (yield* lua_pushinteger(L, BigInt((yield* Y.icall((rn2)(range))))));
     } else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:1089 — @param {CPtr} L @returns {CInt} */
+/* random(10);  -- is the same as rn2(10); */
+/* random(5,8); -- same as 5 + rn2(8); */
+/** C ref: nhlua.c:1089 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_random(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let range = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, 1))));
-        (yield* nhl_rnglog_set_lua_caller(L, __sl90));
+        (yield* nhl_rnglog_set_lua_caller(L, __s_nh_random));
         (yield* lua_pushinteger(L, BigInt((yield* Y.icall((rn2)(range))))));
     } else if (argc == 2) {
         let base = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, 1))));
         let range = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, 2))));
-        (yield* nhl_rnglog_set_lua_caller(L, __sl90));
+        (yield* nhl_rnglog_set_lua_caller(L, __s_nh_random));
         (yield* lua_pushinteger(L, BigInt(((base + (yield* Y.icall((rn2)(range)))) | 0))));
     } else
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
+
     return 1;
 }
 
-/** C ref: nhlua.c:1111 — @param {CPtr} L @returns {CInt} */
+/* level_difficulty() */
+/** C ref: nhlua.c:1111 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_level_difficulty(L) {
     let argc = lua_gettop(L);
     if (argc == 0) {
         (yield* lua_pushinteger(L, BigInt((yield* level_difficulty()))));
     } else {
-        (yield* nhl_error(L, __sl91));
+        (yield* nhl_error(L, __s_level_difficulty_should_not_have_any));
     }
     return 1;
 }
 
-/** C ref: nhlua.c:1124 — @param {CPtr} L @returns {CInt} */
+/* local x = nh.is_genocided("vampire") */
+/** C ref: nhlua.c:1124 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_is_genocided(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let paramstr = ((yield* luaL_checklstring(L, 1, null)));
         let mgend = cptr.box(0);
         let i = (yield* name_to_mon(paramstr, mgend));
-        (yield* lua_pushboolean(L, (i != NHC.NON_PM) && (cptr.ld1uo2(svm, i, 12, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_GENOD) ? 1 : 0));
+
+        (yield* lua_pushboolean(L, (i != NHC.NON_PM) && (cptr.ld1uo2(svm, i, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_GENOD) ? 1 : 0));
     } else {
-        (yield* nhl_error(L, __sl73));
+        (yield* nhl_error(L, __s_wrong_args));
     }
     return 1;
 }
 
-/** C ref: nhlua.c:1147 — @param {CPtr} L @returns {CInt} */
+/* local debug_themerm = nh.debug_themerm(isfill)
+ * if isfill is false, returns value of env variable THEMERM
+ * if isfill is true,  returns value of env variable THEMERMFILL
+ * return nil if not in wizard mode or the variable isn't set */
+/** C ref: nhlua.c:1147 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_get_debug_themerm_name(L) {
     let argc = lua_gettop(L);
     if (argc == 1) {
@@ -1270,30 +1439,34 @@ function* nhl_get_debug_themerm_name(L) {
         let is_fill = schar(lua_toboolean(L, 1));
         (yield* lua_settop(L, -2));
         if (wizard())
-            dbg_themerm = getenv(is_fill ? __sl92 : __sl93);
+            dbg_themerm = getenv(is_fill ? __s_themermfill : __s_themerm);
         if (!dbg_themerm || !cptr.ld1s(dbg_themerm)) {
             (yield* lua_pushnil(L));
         } else {
             (yield* lua_pushstring(L, dbg_themerm));
         }
     } else {
-        (yield* nhl_error(L, __sl94));
+        (yield* nhl_error(L, __s_debug_themerm_should_have_1_boolean_arg));
     }
     return 1;
 }
 
-/** C ref: nhlua.c:1171 — @param {CPtr} L @param {CPtr} name @returns {CInt} */
+/* get mandatory integer value from table */
+/** C ref: nhlua.c:1171 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @returns {CInt} */
 export function* get_table_int(L, name) {
     let ret;
+
     (yield* lua_getfield(L, -1, name));
     ret = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, -1))));
     (yield* lua_settop(L, -2));
     return ret;
 }
 
-/** C ref: nhlua.c:1183 — @param {CPtr} L @param {CPtr} name @param {CInt} defval @returns {CInt} */
+/* get optional integer value from table */
+/** C ref: nhlua.c:1183 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} defval @returns {CInt} */
 export function* get_table_int_opt(L, name, defval) {
     let ret = defval;
+
     (yield* lua_getfield(L, -1, name));
     if (!(lua_type(L, -1) == 0)) {
         ret = Number(BigInt.asIntN(32, (yield* luaL_checkinteger(L, -1))));
@@ -1302,28 +1475,32 @@ export function* get_table_int_opt(L, name, defval) {
     return ret;
 }
 
-/** C ref: nhlua.c:1196 — @param {CPtr} L @param {CPtr} name @returns {CPtr} */
+/** C ref: nhlua.c:1196 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @returns {CPtr<char>} */
 export function* get_table_str(L, name) {
     let ret;
+
     (yield* lua_getfield(L, -1, name));
     ret = (yield* dupstr(((yield* luaL_checklstring(L, -1, null)))));
     (yield* lua_settop(L, -2));
     return ret;
 }
 
-/** C ref: nhlua.c:1209 — @param {CPtr} L @param {CPtr} name @param {CPtr} defval @returns {CPtr} */
+/* get optional string value from table.
+   return value must be freed by caller. */
+/** C ref: nhlua.c:1209 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CPtr<char>} defval @returns {CPtr<char>} */
 export function* get_table_str_opt(L, name, defval) {
     let ret;
     let ltyp;
+
     (yield* lua_getfield(L, -1, name));
     ltyp = lua_type(L, -1);
     if (ltyp == 4 || ltyp == 0) {
         ret = ((yield* luaL_optlstring(L, -1, (defval), null)));
     } else if (ltyp == 6) {
-        (yield* nhl_pcall_handle(L, 0, 1, __sl95, NHC.NHLpa_panic));
+        (yield* nhl_pcall_handle(L, 0, 1, __s_get_table_str_opt, NHC.NHLpa_panic));
         ret = ((yield* luaL_optlstring(L, -1, (defval), null)));
     } else {
-        (yield* nhl_error(L, __sl96));
+        (yield* nhl_error(L, __s_get_table_str_opt_no_string));
     }
     if (ret) {
         (yield* lua_settop(L, -2));
@@ -1334,20 +1511,23 @@ export function* get_table_str_opt(L, name, defval) {
 }
 
 const __static_get_table_boolean_boolstr = cptr.alloc(5 * 8);
-cptr.stPtro(__static_get_table_boolean_boolstr, 0, __sl98);
-cptr.stPtro(__static_get_table_boolean_boolstr, 8, __sl99);
-cptr.stPtro(__static_get_table_boolean_boolstr, 16, __sl100);
-cptr.stPtro(__static_get_table_boolean_boolstr, 24, __sl101);
+cptr.stPtro(__static_get_table_boolean_boolstr, 0, __s_true);
+cptr.stPtro(__static_get_table_boolean_boolstr, 8, __s_false);
+cptr.stPtro(__static_get_table_boolean_boolstr, 16, __s_yes);
+cptr.stPtro(__static_get_table_boolean_boolstr, 24, __s_no);
 cptr.stPtro(__static_get_table_boolean_boolstr, 32, null); /** C ref: nhlua.c:1235 — char *[5] (function-static) */
 
-/** C ref: nhlua.c:1233 — @param {CPtr} L @param {CPtr} name @returns {CInt} */
+/** C ref: nhlua.c:1233 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @returns {CInt} */
 export function* get_table_boolean(L, name) {
+    /* static const int boolstr2i[] = { TRUE, FALSE, TRUE, FALSE, -1 }; */
     let ltyp;
     let ret = -1;
+
     (yield* lua_getfield(L, -1, name));
     ltyp = lua_type(L, -1);
     if (ltyp == 4) {
         ret = (yield* luaL_checkoption(L, -1, null, __static_get_table_boolean_boolstr));
+        /* nhUse(boolstr2i[0]); */
     } else if (ltyp == 1) {
         ret = lua_toboolean(L, -1);
     } else if (ltyp == 3) {
@@ -1357,13 +1537,14 @@ export function* get_table_boolean(L, name) {
     }
     (yield* lua_settop(L, -2));
     if (ret == -1)
-        (yield* nhl_error(L, __sl97));
+        (yield* nhl_error(L, __s_expected_a_boolean));
     return ret;
 }
 
-/** C ref: nhlua.c:1261 — @param {CPtr} L @param {CPtr} name @param {CInt} defval @returns {CInt} */
+/** C ref: nhlua.c:1261 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CInt} defval @returns {CInt} */
 export function* get_table_boolean_opt(L, name, defval) {
     let ret = defval;
+
     (yield* lua_getfield(L, -1, name));
     if (lua_type(L, -1) != 0) {
         (yield* lua_settop(L, -2));
@@ -1373,79 +1554,103 @@ export function* get_table_boolean_opt(L, name, defval) {
     return ret;
 }
 
-/** C ref: nhlua.c:1276 — @param {CPtr} L @param {CPtr} name @param {CPtr} defval @param {CPtr} opts @returns {CInt} */
+/* opts[] is a null-terminated list */
+/** C ref: nhlua.c:1276 — @param {CPtr<lua_State>} L @param {CPtr<char>} name @param {CPtr<char>} defval @param {CPtr<char *>} opts @returns {CInt} */
 export function* get_table_option(L, name, defval, opts) {
     let ret;
+
     (yield* lua_getfield(L, -1, name));
     ret = (yield* luaL_checkoption(L, -1, defval, opts));
     (yield* lua_settop(L, -2));
     return ret;
 }
 
-/** C ref: nhlua.c:1307 — @param {CPtr} L @returns {CInt} */
+/* local dungeon_name = dnum_name(u.dnum); */
+/** C ref: nhlua.c:1307 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_dnum_name(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let dnum = (yield* luaL_checkinteger(L, 1));
+
         if (dnum >= 0n && dnum < BigInt(cptr.ldI32(svn)))
-            (yield* lua_pushstring(L, cptr.add(svd, dnum, 112)));
+            (yield* lua_pushstring(L, cptr.add(svd, dnum, $sizeof_dungeon)));
         else
-            (yield* lua_pushstring(L, __sl74));
+            (yield* lua_pushstring(L, __s_empty));
     } else
-        (yield* nhl_error(L, __sl102));
+        (yield* nhl_error(L, __s_expected_an_integer_parameter));
     return 1;
 }
 
-/** C ref: nhlua.c:1327 — @param {CPtr} L @returns {CInt} */
+/* return gender-neutral monster type name by integer value,
+   or empty string if outside LOW_PM - HIGH_PM range */
+/* local montypename = int_to_pmname(12); */
+/** C ref: nhlua.c:1327 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_int_to_pm_name(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let i = (yield* luaL_checkinteger(L, 1));
+
         if (i >= 0n && i <= 382n)
-            (yield* lua_pushstring(L, cptr.ldPtro3(mons, i, 96, NHC.NEUTRAL, 8, 0)));
+            (yield* lua_pushstring(L, cptr.ldPtro3(mons, i, $sizeof_permonst, NHC.NEUTRAL, 8, 0)));
         else
-            (yield* lua_pushstring(L, __sl74));
+            (yield* lua_pushstring(L, __s_empty));
     } else
-        (yield* nhl_error(L, __sl102));
+        (yield* nhl_error(L, __s_expected_an_integer_parameter));
     return 1;
 }
 
-/** C ref: nhlua.c:1346 — @param {CPtr} L @returns {CInt} */
+/* convert integer to object type name and class */
+/* local oname,oclass = int_to_objname(25); */
+/** C ref: nhlua.c:1346 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_int_to_obj_name(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let buf = new Uint8Array(8);
         let i = (yield* luaL_checkinteger(L, 1));
-        if (i >= 0n && i < 481n && (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, 120))), 16))) {
-            (yield* lua_pushstring(L, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, 120))), 16))));
-            cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(def_oc_syms, cptr.ld1so2(objects, i, 120, $objclass_oc_class), 24), 1);
+
+        if (i >= 0n && i < 481n && (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, $sizeof_objclass))), $sizeof_objdescr))) {
+            (yield* lua_pushstring(L, (cptr.ldPtro(obj_descr, cptr.ldI16((cptr.add(objects, i, $sizeof_objclass))), $sizeof_objdescr))));
+            cptr.st1o(cptr.decay(buf), 0, cptr.ld1so(def_oc_syms, cptr.ld1so2(objects, i, $sizeof_objclass, $objclass_oc_class), $sizeof_class_sym), 1);
             cptr.st1o(cptr.decay(buf), 1, 0, 1);
             (yield* lua_pushstring(L, cptr.decay(buf)));
         } else {
-            (yield* lua_pushstring(L, __sl74));
-            (yield* lua_pushstring(L, __sl74));
+            (yield* lua_pushstring(L, __s_empty));
+            (yield* lua_pushstring(L, __s_empty));
         }
     } else
-        (yield* nhl_error(L, __sl102));
+        (yield* nhl_error(L, __s_expected_an_integer_parameter));
     return 2;
 }
 
-/** C ref: nhlua.c:1375 — @param {CPtr} L @returns {CInt} */
+/* because nhl_error() does not return */
+
+/* set or get variables which are saved and restored along with the game.
+   nh.variable("test", 10);
+   local ten = nh.variable("test"); */
+/** C ref: nhlua.c:1375 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_variable(L) {
     let argc = lua_gettop(L);
     let typ;
     let key;
+
     if (!cptr.ldPtro(gl, $instance_globals_l_luacore)) {
-        (yield* panic(__sl103));
+        (yield* panic(__s_nh_luacore_not_inited));
+        /*NOTREACHED*/
         return 0;
     }
-    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __sl104));
+
+    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __s_nh_lua_variables));
     if (!(lua_type(cptr.ldPtro(gl, $instance_globals_l_luacore), -1) == 5)) {
-        (yield* impossible(__sl105));
+        (yield* impossible(__s_nh_lua_variables_is_not_a_lua_table));
         return 0;
     }
+
     if (argc == 1) {
         key = ((yield* luaL_checklstring(L, 1, null)));
+
         (yield* lua_getfield(cptr.ldPtro(gl, $instance_globals_l_luacore), -1, key));
         typ = lua_type(cptr.ldPtro(gl, $instance_globals_l_luacore), -1);
         if (typ == 4)
@@ -1457,17 +1662,21 @@ function* nhl_variable(L) {
         else if (typ == 3)
             (yield* lua_pushinteger(L, (yield* lua_tointegerx(cptr.ldPtro(gl, $instance_globals_l_luacore), -1, null))));
         else if (typ == 5) {
-            (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __sl106));
+            (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __s_nh_get_variables_string));
             (yield* lua_pushvalue(cptr.ldPtro(gl, $instance_globals_l_luacore), -2));
-            (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 1, 1, __sl107, NHC.NHLpa_panic));
+            (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 1, 1, __s_nhl_variable, NHC.NHLpa_panic));
             (yield* luaL_loadstring(L, (yield* lua_tolstring(cptr.ldPtro(gl, $instance_globals_l_luacore), -1, null))));
-            (yield* nhl_pcall_handle(L, 0, 1, __sl108, NHC.NHLpa_panic));
+            (yield* nhl_pcall_handle(L, 0, 1, __s_nhl_variable_1, NHC.NHLpa_panic));
         } else
-            (yield* nhl_error(L, __sl109));
+            (yield* nhl_error(L, __s_cannot_get_variable_of_that_type));
         return 1;
     } else if (argc == 2) {
+        /* set nh_lua_variables[key] = value;
+           nh.variable("key", value); */
         key = ((yield* luaL_checklstring(L, 1, null)));
+        //pline("SETVAR:%s", key);
         typ = lua_type(L, -1);
+
         if (typ == 4) {
             (yield* lua_pushstring(cptr.ldPtro(gl, $instance_globals_l_luacore), (yield* lua_tolstring(L, -1, null))));
             (yield* lua_setfield(cptr.ldPtro(gl, $instance_globals_l_luacore), -2, key));
@@ -1481,30 +1690,33 @@ function* nhl_variable(L) {
             (yield* lua_pushinteger(cptr.ldPtro(gl, $instance_globals_l_luacore), (yield* lua_tointegerx(L, -1, null))));
             (yield* lua_setfield(cptr.ldPtro(gl, $instance_globals_l_luacore), -2, key));
         } else if (typ == 5) {
-            (yield* lua_getglobal(L, __sl110));
+            (yield* lua_getglobal(L, __s_nh_set_variables_string));
             (yield* lua_pushstring(L, key));
-            (yield* lua_pushvalue(L, -3));
-            (yield* nhl_pcall_handle(L, 2, 1, __sl111, NHC.NHLpa_panic));
+            (yield* lua_pushvalue(L, -3));  /* copy value to top */
+            (yield* nhl_pcall_handle(L, 2, 1, __s_nhl_variable_2, NHC.NHLpa_panic));
             (yield* luaL_loadstring(cptr.ldPtro(gl, $instance_globals_l_luacore), (yield* lua_tolstring(L, -1, null))));
-            (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 0, __sl112, NHC.NHLpa_panic));
+            (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 0, __s_nhl_variable_3, NHC.NHLpa_panic));
         } else
-            (yield* nhl_error(L, __sl113));
+            (yield* nhl_error(L, __s_cannot_set_variable_of_that_type));
         return 0;
     } else
-        (yield* nhl_error(L, __sl114));
+        (yield* nhl_error(L, __s_wrong_number_of_arguments));
     return 1;
 }
 
-/** C ref: nhlua.c:1451 @returns {CPtr} */
+/* return nh_lua_variable lua table as a string */
+/** C ref: nhlua.c:1451 @returns {CPtr<char>} */
 export function* get_nh_lua_variables() {
     let key = null;
+
     if (!cptr.ldPtro(gl, $instance_globals_l_luacore)) {
-        (yield* panic(__sl103));
+        (yield* panic(__s_nh_luacore_not_inited));
+        /*NOTREACHED*/
         return key;
     }
-    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __sl115));
+    (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), __s_get_variables_string));
     if (lua_type(cptr.ldPtro(gl, $instance_globals_l_luacore), -1) == 6) {
-        if ((yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 1, __sl116, NHC.NHLpa_impossible))) {
+        if ((yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 1, __s_get_nh_lua_variables, NHC.NHLpa_impossible))) {
             return key;
         }
         key = (yield* dupstr((yield* lua_tolstring(cptr.ldPtro(gl, $instance_globals_l_luacore), -1, null))));
@@ -1513,105 +1725,144 @@ export function* get_nh_lua_variables() {
     return key;
 }
 
-/** C ref: nhlua.c:1482 — @param {CPtr} nhfp */
+/* save nh_lua_variables table to file */
+/** C ref: nhlua.c:1482 — @param {CPtr<NHFILE>} nhfp */
 export function* save_luadata(nhfp) {
     let lua_data_len = cptr.box(0);
-    let lua_data = (yield* get_nh_lua_variables());
+    let lua_data = (yield* get_nh_lua_variables());  /* note: '\0' terminated */
+
     if (!lua_data)
         lua_data = (yield* dupstr(cptr.decay(emptystr)));
-    lua_data_len.v = ((yield* Strlen_(lua_data, __sl117, 1491)) + 1) >>> 0;
-    (yield* sfo_unsigned(nhfp, lua_data_len, __sl118));
-    (yield* sfo_char(nhfp, lua_data, __sl119, lua_data_len.v | 0));
+    lua_data_len.v = ((yield* Strlen_(lua_data, __s_save_luadata, 1491)) + 1) >>> 0;  /* +1: include the terminator */
+    (yield* sfo_unsigned(nhfp, lua_data_len, __s_luadata_lua_data_len));
+    (yield* sfo_char(nhfp, lua_data, __s_luadata, lua_data_len.v | 0));
     cptr.free(lua_data);
 }
 
-/** C ref: nhlua.c:1499 — @param {CPtr} nhfp */
+/* restore nh_lua_variables table from file */
+/** C ref: nhlua.c:1499 — @param {CPtr<NHFILE>} nhfp */
 export function* restore_luadata(nhfp) {
     let lua_data_len = cptr.box(0);
     let lua_data;
-    (yield* sfi_unsigned(nhfp, lua_data_len, __sl118));
+
+    (yield* sfi_unsigned(nhfp, lua_data_len, __s_luadata_lua_data_len));
     ;
     lua_data = (yield* alloc(lua_data_len.v));
-    (yield* sfi_char(nhfp, lua_data, __sl119, lua_data_len.v | 0));
+    (yield* sfi_char(nhfp, lua_data, __s_luadata, lua_data_len.v | 0));
     if (!cptr.ldPtro(gl, $instance_globals_l_luacore))
         (yield* l_nhcore_init());
     (yield* luaL_loadstring(cptr.ldPtro(gl, $instance_globals_l_luacore), lua_data));
     cptr.free(lua_data);
-    (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 0, __sl120, NHC.NHLpa_panic));
+    (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 0, 0, __s_restore_luadata, NHC.NHLpa_panic));
 }
 
-/** C ref: nhlua.c:1523 — @param {CPtr} L @returns {CInt} */
+/* local stairs = stairways(); */
+/** C ref: nhlua.c:1523 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_stairways(L) {
     let tmp = cptr.ldPtro(gs, $instance_globals_s_stairs);
-    let i = 1;
+    let i = 1;  /* lua arrays should start at 1 */
+
     (yield* lua_createtable(L, 0, 0));
+
     while (tmp) {
         (yield* lua_pushinteger(L, BigInt(i)));
         (yield* lua_createtable(L, 0, 0));
-        (yield* nhl_add_table_entry_bool(L, __sl121, cptr.ld1so(tmp, $stairway_up)));
-        (yield* nhl_add_table_entry_bool(L, __sl122, cptr.ld1so(tmp, $stairway_isladder)));
-        (yield* nhl_add_table_entry_int(L, __sl123, BigInt(cptr.ldI16(tmp))));
-        (yield* nhl_add_table_entry_int(L, __sl124, BigInt(cptr.ldI16o(tmp, $stairway_sy))));
-        (yield* nhl_add_table_entry_int(L, __sl125, BigInt(cptr.ldI16o(tmp, $stairway_tolev))));
-        (yield* nhl_add_table_entry_int(L, __sl126, BigInt(cptr.ldI16o(tmp, $stairway_tolev + $d_level_dlevel))));
+
+        (yield* nhl_add_table_entry_bool(L, __s_up, cptr.ld1so(tmp, $stairway_up)));
+        (yield* nhl_add_table_entry_bool(L, __s_ladder, cptr.ld1so(tmp, $stairway_isladder)));
+        (yield* nhl_add_table_entry_int(L, __s_x, BigInt(cptr.ldI16(tmp))));
+        (yield* nhl_add_table_entry_int(L, __s_y, BigInt(cptr.ldI16o(tmp, $stairway_sy))));
+        (yield* nhl_add_table_entry_int(L, __s_dnum, BigInt(cptr.ldI16o(tmp, $stairway_tolev))));
+        (yield* nhl_add_table_entry_int(L, __s_dlevel, BigInt(cptr.ldI16o(tmp, $stairway_tolev + $d_level_dlevel))));
+
         (yield* lua_settable(L, -3));
+
         tmp = cptr.ldPtro(tmp, $stairway_next);
         i++;
     }
+
     return 1;
 }
 
-/** C ref: nhlua.c:1554 — @param {CPtr} L @returns {CInt} */
+/*
+  test( { x = 123, y = 456 } );
+*/
+/** C ref: nhlua.c:1554 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_test(L) {
     let x;
     let y;
     let name;
     let Player = cptr.bytes("Player");
+
+    /* discard any extra arguments passed in */
     (yield* lua_settop(L, 1));
+
     (yield* luaL_checktype(L, 1, 5));
-    x = i16((yield* get_table_int(L, __sl123)));
-    y = i16((yield* get_table_int(L, __sl124)));
-    name = (yield* get_table_str_opt(L, __sl127, cptr.decay(Player)));
-    (yield* pline(__sl128, x, y, name));
+
+    x = i16((yield* get_table_int(L, __s_x)));
+    y = i16((yield* get_table_int(L, __s_y)));
+    name = (yield* get_table_str_opt(L, __s_name, cptr.decay(Player)));
+
+    (yield* pline(__s_test_x_i_y_i_name_s, x, y, name));
+
     cptr.free(name);
+
     return 1;
 }
 
-/** C ref: nhlua.c:1578 — @param {CPtr} L @returns {CInt} */
+/* push a key into command queue */
+/* nh.pushkey("i"); */
+/** C ref: nhlua.c:1578 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_pushkey(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let key = ((yield* luaL_checklstring(L, 1, null)));
+
         while (cptr.ld1s(key)) {
             (yield* cmdq_add_key(NHC.CQ_CANNED, cptr.ld1s(key)));
             key = cptr.add(key, 1);
         }
     }
+
     return 0;
 }
 
-/** C ref: nhlua.c:1597 — @param {CPtr} L @returns {CInt} */
+/* do a turn of moveloop, or until gm.multi is done if param is true. */
+/* nh.doturn(); nh.doturn(true); */
+/** C ref: nhlua.c:1597 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_doturn(L) {
     let argc = lua_gettop(L);
     let domulti = 0;
+
     if (argc == 1)
         domulti = schar(lua_toboolean(L, 1));
+
     do {
         (yield* moveloop_core());
     } while (domulti && cptr.ldI64o(gm, $instance_globals_m_multi));
+
     return 0;
 }
 
-/** C ref: nhlua.c:1617 — @param {CPtr} L @returns {CInt} */
+/* set debugging flags. debugging use only, of course. */
+/* nh.debug_flags({ mongen = false,
+                    hunger = false,
+                    overwrite_stairs = true }); */
+/** C ref: nhlua.c:1617 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_debug_flags(L) {
     let val;
+
     (yield* lcheck_param_table(L));
-    val = (yield* get_table_boolean_opt(L, __sl129, -1));
+
+    /* disable monster generation */
+    val = (yield* get_table_boolean_opt(L, __s_mongen, -1));
     if (val != -1) {
-        cptr.st1o(iflags, $instance_flags_debug_mongen, schar((!schar(val))));
+        cptr.st1o(iflags, $instance_flags_debug_mongen, schar((!schar(val))));  /* value in lua is negated */
         if (cptr.ld1so(iflags, $instance_flags_debug_mongen)) {
             let mtmp;
             let mtmp2;
+
             for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = mtmp2) {
                 mtmp2 = cptr.ldPtr(mtmp);
                 if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
@@ -1620,32 +1871,47 @@ function* nhl_debug_flags(L) {
             }
         }
     }
-    val = (yield* get_table_boolean_opt(L, __sl130, -1));
+
+    /* prevent hunger */
+    val = (yield* get_table_boolean_opt(L, __s_hunger, -1));
     if (val != -1) {
-        cptr.st1o(iflags, $instance_flags_debug_hunger, schar((!schar(val))));
+        cptr.st1o(iflags, $instance_flags_debug_hunger, schar((!schar(val))));  /* value in lua is negated */
     }
-    val = (yield* get_table_boolean_opt(L, __sl131, -1));
+
+    /* allow overwriting stairs */
+    val = (yield* get_table_boolean_opt(L, __s_overwrite_stairs, -1));
     if (val != -1) {
         cptr.st1o(iflags, $instance_flags_debug_overwrite_stairs, schar(val));
     }
-    val = (yield* get_table_boolean_opt(L, __sl132, -1));
+
+    /* prevent pline going out to the UI */
+    val = (yield* get_table_boolean_opt(L, __s_prevent_pline, -1));
     if (val != -1) {
         cptr.st1o(iflags, $instance_flags_debug_prevent_pline, schar(val));
     }
+
     return 0;
 }
 
-/** C ref: nhlua.c:1663 — @param {CPtr} L @returns {CInt} */
+/* flip level */
+/* nh.flip_level(n); */
+/** C ref: nhlua.c:1663 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_flip_level(L) {
     let argc = lua_gettop(L);
     let flp = 0;
+
     if (argc == 1)
         flp = Number(BigInt.asIntN(32, (yield* lua_tointegerx(L, 1, null))));
+
     (yield* flip_level(flp, schar((!cptr.ld1so(gi, $instance_globals_i_in_mklev)))));
+
     return 0;
 }
 
-/** C ref: nhlua.c:1682 — @param {CPtr} L @returns {CInt} */
+/* does location at x,y have timer? */
+/* local has_melttimer = nh.has_timer_at(x,y, "melt-ice"); */
+/* local has_melttimer = nh.has_timer_at({x=4,y=7}, "melt-ice"); */
+/** C ref: nhlua.c:1682 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_timer_has_at(L) {
     let ret = 0;
     let timertype = (yield* nhl_get_timertype(L, -1));
@@ -1654,14 +1920,18 @@ function* nhl_timer_has_at(L) {
     let x = cptr.box(0);
     let y = cptr.box(0);
     let when;
-    (yield* lua_settop(L, -2));
+
+    (yield* lua_settop(L, -2));  /* remove timertype */
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl133));
+        (yield* nhl_error(L, __s_nhl_timer_has_at_wrong_args));
+        /*NOTREACHED*/
         return 0;
     }
+
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (isok(x.v, y.v)) {
         when = spot_time_expires(x.v, y.v, timertype);
         ret = schar((when > 0n));
@@ -1670,7 +1940,10 @@ function* nhl_timer_has_at(L) {
     return 1;
 }
 
-/** C ref: nhlua.c:1713 — @param {CPtr} L @returns {CInt} */
+/* when does location at x,y timer trigger? */
+/* local melttime = nh.peek_timer_at(x,y, "melt-ice"); */
+/* local melttime = nh.peek_timer_at({x=5,y=6}, "melt-ice"); */
+/** C ref: nhlua.c:1713 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_timer_peek_at(L) {
     let when = 0n;
     let timertype = (yield* nhl_get_timertype(L, -1));
@@ -1678,41 +1951,54 @@ function* nhl_timer_peek_at(L) {
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
-    (yield* lua_settop(L, -2));
+
+    (yield* lua_settop(L, -2));  /* remove timertype */
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl134));
+        (yield* nhl_error(L, __s_nhl_timer_peek_at_wrong_args));
+        /*NOTREACHED*/
         return 0;
     }
+
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (((timertype) == NHC.MELT_ICE_AWAY) && isok(x.v, y.v))
         when = spot_time_expires(x.v, y.v, timertype);
     (yield* lua_pushinteger(L, when));
     return 1;
 }
 
-/** C ref: nhlua.c:1741 — @param {CPtr} L @returns {CInt} */
+/* stop timer at location x,y */
+/* nh.stop_timer_at(x,y, "melt-ice"); */
+/* nh.stop_timer_at({x=6,y=8}, "melt-ice"); */
+/** C ref: nhlua.c:1741 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_timer_stop_at(L) {
     let timertype = (yield* nhl_get_timertype(L, -1));
     let lx = cptr.box(0n);
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
-    (yield* lua_settop(L, -2));
+
+    (yield* lua_settop(L, -2));  /* remove timertype */
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl135));
+        (yield* nhl_error(L, __s_nhl_timer_stop_at_wrong_args));
+        /*NOTREACHED*/
         return 0;
     }
+
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (((timertype) == NHC.MELT_ICE_AWAY) && isok(x.v, y.v))
         (yield* spot_stop_timers(x.v, y.v, timertype));
     return 0;
 }
 
-/** C ref: nhlua.c:1766 — @param {CPtr} L @returns {CInt} */
+/* start timer at location x,y */
+/* nh.start_timer_at(x,y, "melt-ice", 10); */
+/** C ref: nhlua.c:1766 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_timer_start_at(L) {
     let timertype = (yield* nhl_get_timertype(L, -2));
     let when = (yield* lua_tointegerx(L, -1, null));
@@ -1720,43 +2006,60 @@ function* nhl_timer_start_at(L) {
     let ly = cptr.box(0n);
     let x = cptr.box(0);
     let y = cptr.box(0);
-    (yield* lua_settop(L, -3));
+
+    (yield* lua_settop(L, -3));  /* remove when and timertype */
     if (!(yield* nhl_get_xy_params(L, lx, ly))) {
-        (yield* nhl_error(L, __sl136));
+        (yield* nhl_error(L, __s_nhl_timer_start_at_wrong_args));
+        /*NOTREACHED*/
         return 0;
     }
+
     x.v = Number(BigInt.asIntN(16, lx.v));
     y.v = Number(BigInt.asIntN(16, ly.v));
     cvt_to_abscoord(x, y);
+
     if (((timertype) == NHC.MELT_ICE_AWAY) && isok(x.v, y.v)) {
         let where = (BigInt(x.v) << 16n) | BigInt(y.v);
+
         (yield* spot_stop_timers(x.v, y.v, timertype));
         void (yield* start_timer(when, NHC.TIMER_LEVEL, NHC.MELT_ICE_AWAY, long_to_any(where)));
     }
     return 0;
 }
 
-/** C ref: nhlua.c:1798 — @param {CPtr} L @returns {CInt} */
+/* returns the visual interpretation of the key bound to an extended command,
+   or the ext cmd name if not bound to any key */
+/* local helpkey = eckey("help"); */
+/** C ref: nhlua.c:1798 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_get_cmd_key(L) {
     let argc = lua_gettop(L);
+
     if (argc == 1) {
         let cmd = ((yield* luaL_checklstring(L, 1, null)));
         let key = cmd_from_ecname(cmd);
+
         (yield* lua_pushstring(L, key));
         return 1;
     }
+
     return 0;
 }
 
-/** C ref: nhlua.c:1818 — @param {CPtr} L @returns {CInt} */
+/* add or remove a lua function callback */
+/* callback("level_enter", "function_name"); */
+/* callback("level_enter", "function_name", true); */
+/* level_enter, level_leave, cmd_before */
+/** C ref: nhlua.c:1818 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_callback(L) {
     let argc = lua_gettop(L);
     let i;
     let rm;
     let fn;
     let cb;
+
     if (!cptr.ldPtro(gl, $instance_globals_l_luacore)) {
-        (yield* panic(__sl103));
+        (yield* panic(__s_nh_luacore_not_inited));
+        /*NOTREACHED*/
         return 0;
     }
     if (argc == 2 || argc == 3) {
@@ -1774,22 +2077,37 @@ function* nhl_callback(L) {
                 break;
         if (i >= NHC.NUM_NHCB)
             return 0;
+
         if (rm) {
             (cptr.stI32o(nhcb_counts, i, cptr.ldI32o(nhcb_counts, i, 4) + -1, 4)) - (-1);
             if (cptr.ldI32o(nhcb_counts, i, 4) < 0)
-                (yield* impossible(__sl137));
+                (yield* impossible(__s_nh_callback_counts_are_wrong));
         } else {
             (cptr.stI32o(nhcb_counts, i, cptr.ldI32o(nhcb_counts, i, 4) + 1, 4)) - (1);
         }
-        (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), rm ? __sl138 : __sl139));
+
+        (yield* lua_getglobal(cptr.ldPtro(gl, $instance_globals_l_luacore), rm ? __s_nh_callback_rm : __s_nh_callback_set));
         (yield* lua_pushstring(cptr.ldPtro(gl, $instance_globals_l_luacore), cb));
         (yield* lua_pushstring(cptr.ldPtro(gl, $instance_globals_l_luacore), fn));
-        (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 2, 0, __sl140, NHC.NHLpa_panic));
+        (yield* nhl_pcall_handle(cptr.ldPtro(gl, $instance_globals_l_luacore), 2, 0, __s_nhl_callback, NHC.NHLpa_panic));
     }
     return 0;
 }
 
-/** C ref: nhlua.c:1876 — @param {CPtr} L @returns {CInt} */
+/* store or restore game state */
+/*
+ * Currently handles
+ *   turn counter,
+ *   hero inventory and hunger,
+ *   hero attributes and skills and conducts (all via 'struct u'),
+ *   object discoveries,
+ *   monster generation and vanquished statistics.
+ * NOTE: wouldn't work after restore if game has been saved, so the
+ * #save command ('S') is disabled during the tutorial.
+ */
+/* gamestate(); -- save state */
+/* gamestate(true); -- restore state */
+/** C ref: nhlua.c:1876 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_gamestate(L) {
     let wornmask;
     let otmp;
@@ -1797,18 +2115,23 @@ function* nhl_gamestate(L) {
     let reststate = schar(((argc > 0) ? lua_toboolean(L, -1) : 0));
     let otyp;
     {
-        if ((yield* debugcore(__sl141, 1))) {
+        if ((yield* debugcore(__s_nhlua_c, 1))) {
+
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-            (yield* pline(__sl142, cptr.ldI16o(u, $you_uz), cptr.ldI16o(u, $you_uz + $d_level_dlevel), reststate ? 84 : 70, cptr.ld1so(gg, $instance_globals_g_gmst_stored) ? 116 : 102));
+            (yield* pline(__s_gamestate_d_d_c_vs_c, cptr.ldI16o(u, $you_uz), cptr.ldI16o(u, $you_uz + $d_level_dlevel), reststate ? 84 : 70, cptr.ld1so(gg, $instance_globals_g_gmst_stored) ? 116 : 102));
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
     }
+
     if (reststate && cptr.ld1so(gg, $instance_globals_g_gmst_stored)) {
-        let cur_uz = cptr.alloc(4); cptr.memcpy(cur_uz, cptr.add(u, $you_uz), 4);
-        let cur_uz0 = cptr.alloc(4); cptr.memcpy(cur_uz0, cptr.add(u, $you_uz0), 4);
+        let cur_uz = cptr.alloc(4); cptr.memcpy(cur_uz, cptr.add(u, $you_uz), $sizeof_d_level);
+        let cur_uz0 = cptr.alloc(4); cptr.memcpy(cur_uz0, cptr.add(u, $you_uz0), $sizeof_d_level);
+
+        /* restore game state */
         cptr.stI64o(svm, $instance_globals_saved_m_moves, cptr.ldI64o(gg, $instance_globals_g_gmst_moves));
-        (yield* pline(__sl143, cptr.ldI64o(svm, $instance_globals_saved_m_moves)));
+        (yield* pline(__s_resetting_time_to_move_ld, cptr.ldI64o(svm, $instance_globals_saved_m_moves)));
         cptr.stI64o(gg, $instance_globals_g_gmst_moves, 0n);
+
         cptr.stI32o(gl, $instance_globals_l_lastinvnr, 51);
         while (cptr.ldPtro(gi, $instance_globals_i_invent))
             (yield* useupall(cptr.ldPtro(gi, $instance_globals_i_invent)));
@@ -1820,33 +2143,36 @@ function* nhl_gamestate(L) {
             if (wornmask)
                 (yield* setworn(otmp, wornmask));
         }
-        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_ubak), (null))))), 0n) ? __assert_rtn(__sl144, __sl141, 1906, __sl145) : void 0);
+        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_ubak), (null))))), 0n) ? __assert_rtn(__s_nhl_gamestate, __s_nhlua_c, 1906, __s_gg_gmst_ubak_null) : void 0);
         void cptr.memcpy(u, cptr.ldPtro(gg, $instance_globals_g_gmst_ubak), 2864n);
-        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_disco), (null))))), 0n) ? __assert_rtn(__sl144, __sl141, 1908, __sl146) : void 0);
+        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_disco), (null))))), 0n) ? __assert_rtn(__s_nhl_gamestate, __s_nhlua_c, 1908, __s_gg_gmst_disco_null) : void 0);
         void cptr.memcpy(cptr.add(svd, $instance_globals_saved_d_disco), cptr.ldPtro(gg, $instance_globals_g_gmst_disco), 962n);
-        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_mvitals), (null))))), 0n) ? __assert_rtn(__sl144, __sl141, 1911, __sl147) : void 0);
+        (__builtin_expect(BigInt((!(!cptr.eq(cptr.ldPtro(gg, $instance_globals_g_gmst_mvitals), (null))))), 0n) ? __assert_rtn(__s_nhl_gamestate, __s_nhlua_c, 1911, __s_gg_gmst_mvitals_null) : void 0);
         void cptr.memcpy(cptr.add(svm, $instance_globals_saved_m_mvitals), cptr.ldPtro(gg, $instance_globals_g_gmst_mvitals), 4596n);
+        /* clear user-given object type names */
         for (otyp = 0; otyp < NHC.NUM_OBJECTS; otyp++)
-            if (cptr.ldPtro2(objects, otyp, 120, $objclass_oc_uname)) {
-                cptr.free(cptr.ldPtro2(objects, otyp, 120, $objclass_oc_uname));
-                cptr.stPtro2(objects, otyp, 120, $objclass_oc_uname, null);
+            if (cptr.ldPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname)) {
+                cptr.free(cptr.ldPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname));
+                cptr.stPtro2(objects, otyp, $sizeof_objclass, $objclass_oc_uname, null);
             }
+        /* some restored state would confuse the level change in progress */
         cptr.memcpy(cptr.add(u, $you_uz), cur_uz, 4), cptr.memcpy(cptr.add(u, $you_uz0), cur_uz0, 4);
         (yield* init_uhunger());
-        (yield* free_tutorial());
+        (yield* free_tutorial());  /* release gg.gmst_XYZ */
         cptr.st1o(gg, $instance_globals_g_gmst_stored, 0);
         void cptr.memcpy(svs, cptr.add(gg, $instance_globals_g_gmst_spl_book), 344n);
     } else if (!reststate && !cptr.ld1so(gg, $instance_globals_g_gmst_stored)) {
+        /* store game state */
         cptr.stI64o(gg, $instance_globals_g_gmst_moves, cptr.ldI64o(svm, $instance_globals_saved_m_moves));
         while (!cptr.eq((otmp = cptr.ldPtro(gi, $instance_globals_i_invent)), (null))) {
             wornmask = cptr.ldI64o(otmp, $obj_owornmask);
             (yield* setnotworn(otmp));
             (yield* freeinv(otmp));
-            cptr.stI64o(otmp, $obj_owornmask, wornmask);
+            cptr.stI64o(otmp, $obj_owornmask, wornmask);  /* flag for later restore */
             cptr.stPtr(otmp, cptr.ldPtro(gg, $instance_globals_g_gmst_invent));
             cptr.stPtro(gg, $instance_globals_g_gmst_invent, otmp);
         }
-        cptr.stI32o(gl, $instance_globals_l_lastinvnr, 51);
+        cptr.stI32o(gl, $instance_globals_l_lastinvnr, 51);  /* next inv letter to try to use will be 'a' */
         cptr.stPtro(gg, $instance_globals_g_gmst_ubak, (yield* alloc(2864)));
         void cptr.memcpy(cptr.ldPtro(gg, $instance_globals_g_gmst_ubak), u, 2864n);
         cptr.stPtro(gg, $instance_globals_g_gmst_disco, (yield* alloc(962)));
@@ -1857,20 +2183,32 @@ function* nhl_gamestate(L) {
         void __builtin___memset_chk(svs, 0, 344n, __builtin_object_size(svs, 0));
         cptr.st1o(gg, $instance_globals_g_gmst_stored, 1);
     } else {
-        (yield* impossible(__sl148, reststate ? __sl149 : __sl150, cptr.ld1so(gg, $instance_globals_g_gmst_stored) ? __sl151 : __sl152));
+        (yield* impossible(__s_nhl_gamestate_inconsistent_state_s_vs_s, reststate ? __s_restore : __s_save, cptr.ld1so(gg, $instance_globals_g_gmst_stored) ? __s_already_stored : __s_not_stored));
     }
     (yield* update_inventory());
     return 0;
 }
 
+/* free dynamic date allocated when entering tutorial;
+   called when exiting tutorial normally or if player quits while in it */
 /** C ref: nhlua.c:1963 */
 export function* free_tutorial() {
     let otmp;
+
+    /* for normal tutorial exit, gmst_invent will already be Null */
     while ((otmp = cptr.ldPtro(gg, $instance_globals_g_gmst_invent)) !== null) {
+        /* set otmp->where = OBJ_FREE, otmp->nobj = NULL */
         (yield* extract_nobj(otmp, cptr.add(gg, $instance_globals_g_gmst_invent)));
+        /* gmst_invent is a list of invent items sequestered when entering
+           the tutorial; for them, owornmask is used as a flag to re-wear
+           them when exiting tutorial, not that they are currently worn;
+           clear it to avoid a "deleting worn obj" complaint from obfree() */
         cptr.stI64o(otmp, $obj_owornmask, 0n);
+        /* dealloc_obj() isn't enough (for containers, it assumes that
+           caller has already freed their contents) */
         (yield* obfree(otmp, null));
     }
+
     if (cptr.ldPtro(gg, $instance_globals_g_gmst_ubak))
         cptr.free(cptr.ldPtro(gg, $instance_globals_g_gmst_ubak)), cptr.stPtro(gg, $instance_globals_g_gmst_ubak, null);
     if (cptr.ldPtro(gg, $instance_globals_g_gmst_disco))
@@ -1879,95 +2217,97 @@ export function* free_tutorial() {
         cptr.free(cptr.ldPtro(gg, $instance_globals_g_gmst_mvitals)), cptr.stPtro(gg, $instance_globals_g_gmst_mvitals, null);
 }
 
+/* called from gotolevel(do.c) */
 /** C ref: nhlua.c:1991 — @param {CInt} entering */
 export function* tutorial(entering) {
     (yield* l_nhcore_call(entering ? NHC.NHCORE_ENTER_TUTORIAL : NHC.NHCORE_LEAVE_TUTORIAL));
+
     if (!entering) {
         cptr.st1o(cptr.decay(nhcore_call_available), NHC.NHCORE_ENTER_TUTORIAL, cptr.st1o(cptr.decay(nhcore_call_available), NHC.NHCORE_LEAVE_TUTORIAL, 0, 1), 1);
     }
 }
 
 /** C ref: nhlua.c:2002 — struct luaL_Reg[41] */
-const nhl_functions = cptr.alloc(41 * 16);
-cptr.stPtro(nhl_functions, 0, __sl153);
+const nhl_functions = cptr.alloc(41 * $sizeof_luaL_Reg);
+cptr.stPtro(nhl_functions, 0, __s_test);
 cptr.stPtro(nhl_functions, 0 + $luaL_Reg_func, nhl_test);
-cptr.stPtro(nhl_functions, 16, __sl154);
+cptr.stPtro(nhl_functions, 16, __s_getmap);
 cptr.stPtro(nhl_functions, 16 + $luaL_Reg_func, nhl_getmap);
-cptr.stPtro(nhl_functions, 32, __sl155);
+cptr.stPtro(nhl_functions, 32, __s_gettrap);
 cptr.stPtro(nhl_functions, 32 + $luaL_Reg_func, nhl_gettrap);
-cptr.stPtro(nhl_functions, 48, __sl156);
+cptr.stPtro(nhl_functions, 48, __s_deltrap);
 cptr.stPtro(nhl_functions, 48 + $luaL_Reg_func, nhl_deltrap);
-cptr.stPtro(nhl_functions, 64, __sl157);
+cptr.stPtro(nhl_functions, 64, __s_has_timer_at);
 cptr.stPtro(nhl_functions, 64 + $luaL_Reg_func, nhl_timer_has_at);
-cptr.stPtro(nhl_functions, 80, __sl158);
+cptr.stPtro(nhl_functions, 80, __s_peek_timer_at);
 cptr.stPtro(nhl_functions, 80 + $luaL_Reg_func, nhl_timer_peek_at);
-cptr.stPtro(nhl_functions, 96, __sl159);
+cptr.stPtro(nhl_functions, 96, __s_stop_timer_at);
 cptr.stPtro(nhl_functions, 96 + $luaL_Reg_func, nhl_timer_stop_at);
-cptr.stPtro(nhl_functions, 112, __sl160);
+cptr.stPtro(nhl_functions, 112, __s_start_timer_at);
 cptr.stPtro(nhl_functions, 112 + $luaL_Reg_func, nhl_timer_start_at);
-cptr.stPtro(nhl_functions, 128, __sl161);
+cptr.stPtro(nhl_functions, 128, __s_abscoord);
 cptr.stPtro(nhl_functions, 128 + $luaL_Reg_func, nhl_abs_coord);
-cptr.stPtro(nhl_functions, 144, __sl162);
+cptr.stPtro(nhl_functions, 144, __s_impossible);
 cptr.stPtro(nhl_functions, 144 + $luaL_Reg_func, nhl_impossible);
-cptr.stPtro(nhl_functions, 160, __sl163);
+cptr.stPtro(nhl_functions, 160, __s_pline);
 cptr.stPtro(nhl_functions, 160 + $luaL_Reg_func, nhl_pline);
-cptr.stPtro(nhl_functions, 176, __sl164);
+cptr.stPtro(nhl_functions, 176, __s_verbalize);
 cptr.stPtro(nhl_functions, 176 + $luaL_Reg_func, nhl_verbalize);
-cptr.stPtro(nhl_functions, 192, __sl165);
+cptr.stPtro(nhl_functions, 192, __s_menu);
 cptr.stPtro(nhl_functions, 192 + $luaL_Reg_func, nhl_menu);
-cptr.stPtro(nhl_functions, 208, __sl77);
+cptr.stPtro(nhl_functions, 208, __s_text);
 cptr.stPtro(nhl_functions, 208 + $luaL_Reg_func, nhl_text);
-cptr.stPtro(nhl_functions, 224, __sl166);
+cptr.stPtro(nhl_functions, 224, __s_getlin);
 cptr.stPtro(nhl_functions, 224 + $luaL_Reg_func, nhl_getlin);
-cptr.stPtro(nhl_functions, 240, __sl167);
+cptr.stPtro(nhl_functions, 240, __s_eckey);
 cptr.stPtro(nhl_functions, 240 + $luaL_Reg_func, nhl_get_cmd_key);
-cptr.stPtro(nhl_functions, 256, __sl168);
+cptr.stPtro(nhl_functions, 256, __s_callback);
 cptr.stPtro(nhl_functions, 256 + $luaL_Reg_func, nhl_callback);
-cptr.stPtro(nhl_functions, 272, __sl169);
+cptr.stPtro(nhl_functions, 272, __s_gamestate);
 cptr.stPtro(nhl_functions, 272 + $luaL_Reg_func, nhl_gamestate);
-cptr.stPtro(nhl_functions, 288, __sl170);
+cptr.stPtro(nhl_functions, 288, __s_makeplural);
 cptr.stPtro(nhl_functions, 288 + $luaL_Reg_func, nhl_makeplural);
-cptr.stPtro(nhl_functions, 304, __sl171);
+cptr.stPtro(nhl_functions, 304, __s_makesingular);
 cptr.stPtro(nhl_functions, 304 + $luaL_Reg_func, nhl_makesingular);
-cptr.stPtro(nhl_functions, 320, __sl172);
+cptr.stPtro(nhl_functions, 320, __s_s_suffix);
 cptr.stPtro(nhl_functions, 320 + $luaL_Reg_func, nhl_s_suffix);
-cptr.stPtro(nhl_functions, 336, __sl173);
+cptr.stPtro(nhl_functions, 336, __s_ing_suffix);
 cptr.stPtro(nhl_functions, 336 + $luaL_Reg_func, nhl_ing_suffix);
-cptr.stPtro(nhl_functions, 352, __sl174);
+cptr.stPtro(nhl_functions, 352, __s_an);
 cptr.stPtro(nhl_functions, 352 + $luaL_Reg_func, nhl_an);
-cptr.stPtro(nhl_functions, 368, __sl175);
+cptr.stPtro(nhl_functions, 368, __s_rn2);
 cptr.stPtro(nhl_functions, 368 + $luaL_Reg_func, nhl_rn2);
-cptr.stPtro(nhl_functions, 384, __sl176);
+cptr.stPtro(nhl_functions, 384, __s_random);
 cptr.stPtro(nhl_functions, 384 + $luaL_Reg_func, nhl_random);
-cptr.stPtro(nhl_functions, 400, __sl177);
+cptr.stPtro(nhl_functions, 400, __s_level_difficulty);
 cptr.stPtro(nhl_functions, 400 + $luaL_Reg_func, nhl_level_difficulty);
-cptr.stPtro(nhl_functions, 416, __sl178);
+cptr.stPtro(nhl_functions, 416, __s_is_genocided);
 cptr.stPtro(nhl_functions, 416 + $luaL_Reg_func, nhl_is_genocided);
-cptr.stPtro(nhl_functions, 432, __sl179);
+cptr.stPtro(nhl_functions, 432, __s_debug_themerm);
 cptr.stPtro(nhl_functions, 432 + $luaL_Reg_func, nhl_get_debug_themerm_name);
-cptr.stPtro(nhl_functions, 448, __sl180);
+cptr.stPtro(nhl_functions, 448, __s_parse_config);
 cptr.stPtro(nhl_functions, 448 + $luaL_Reg_func, nhl_parse_config);
-cptr.stPtro(nhl_functions, 464, __sl181);
+cptr.stPtro(nhl_functions, 464, __s_get_config);
 cptr.stPtro(nhl_functions, 464 + $luaL_Reg_func, nhl_get_config);
-cptr.stPtro(nhl_functions, 480, __sl182);
+cptr.stPtro(nhl_functions, 480, __s_get_config_errors);
 cptr.stPtro(nhl_functions, 480 + $luaL_Reg_func, l_get_config_errors);
-cptr.stPtro(nhl_functions, 496, __sl183);
+cptr.stPtro(nhl_functions, 496, __s_dnum_name);
 cptr.stPtro(nhl_functions, 496 + $luaL_Reg_func, nhl_dnum_name);
-cptr.stPtro(nhl_functions, 512, __sl184);
+cptr.stPtro(nhl_functions, 512, __s_int_to_pmname);
 cptr.stPtro(nhl_functions, 512 + $luaL_Reg_func, nhl_int_to_pm_name);
-cptr.stPtro(nhl_functions, 528, __sl185);
+cptr.stPtro(nhl_functions, 528, __s_int_to_objname);
 cptr.stPtro(nhl_functions, 528 + $luaL_Reg_func, nhl_int_to_obj_name);
-cptr.stPtro(nhl_functions, 544, __sl186);
+cptr.stPtro(nhl_functions, 544, __s_variable);
 cptr.stPtro(nhl_functions, 544 + $luaL_Reg_func, nhl_variable);
-cptr.stPtro(nhl_functions, 560, __sl187);
+cptr.stPtro(nhl_functions, 560, __s_stairways);
 cptr.stPtro(nhl_functions, 560 + $luaL_Reg_func, nhl_stairways);
-cptr.stPtro(nhl_functions, 576, __sl188);
+cptr.stPtro(nhl_functions, 576, __s_pushkey);
 cptr.stPtro(nhl_functions, 576 + $luaL_Reg_func, nhl_pushkey);
-cptr.stPtro(nhl_functions, 592, __sl189);
+cptr.stPtro(nhl_functions, 592, __s_doturn);
 cptr.stPtro(nhl_functions, 592 + $luaL_Reg_func, nhl_doturn);
-cptr.stPtro(nhl_functions, 608, __sl190);
+cptr.stPtro(nhl_functions, 608, __s_debug_flags);
 cptr.stPtro(nhl_functions, 608 + $luaL_Reg_func, nhl_debug_flags);
-cptr.stPtro(nhl_functions, 624, __sl191);
+cptr.stPtro(nhl_functions, 624, __s_flip_level);
 cptr.stPtro(nhl_functions, 624 + $luaL_Reg_func, nhl_flip_level);
 cptr.stPtro(nhl_functions, 640, null);
 cptr.stPtro(nhl_functions, 640 + $luaL_Reg_func, null);
@@ -1976,40 +2316,45 @@ cptr.stPtro(nhl_functions, 640 + $luaL_Reg_func, null);
 
 /** C ref: nhlua.c:2060 — struct (unnamed struct at nhlua.c:2057:14)[9] */
 const nhl_consts = cptr.alloc(9 * 16);
-cptr.stPtro(nhl_consts, 0, __sl192);
+cptr.stPtro(nhl_consts, 0, __s_colno);
 cptr.stI64o(nhl_consts, 8, 80n);
-cptr.stPtro(nhl_consts, 16, __sl193);
+cptr.stPtro(nhl_consts, 16, __s_rowno);
 cptr.stI64o(nhl_consts, 24, 21n);
-cptr.stPtro(nhl_consts, 32, __sl194);
+cptr.stPtro(nhl_consts, 32, __s_nummons);
 cptr.stI64o(nhl_consts, 40, 383n);
-cptr.stPtro(nhl_consts, 48, __sl195);
+cptr.stPtro(nhl_consts, 48, __s_low_pm);
 cptr.stI64o(nhl_consts, 56, 0n);
-cptr.stPtro(nhl_consts, 64, __sl196);
+cptr.stPtro(nhl_consts, 64, __s_high_pm);
 cptr.stI64o(nhl_consts, 72, 382n);
-cptr.stPtro(nhl_consts, 80, __sl197);
+cptr.stPtro(nhl_consts, 80, __s_first_object);
 cptr.stI64o(nhl_consts, 88, 18n);
-cptr.stPtro(nhl_consts, 96, __sl198);
+cptr.stPtro(nhl_consts, 96, __s_last_object);
 cptr.stI64o(nhl_consts, 104, 480n);
-cptr.stPtro(nhl_consts, 112, __sl199);
+cptr.stPtro(nhl_consts, 112, __s_dlb);
 cptr.stI64o(nhl_consts, 120, 0n);
 cptr.stPtro(nhl_consts, 128, null);
 cptr.stI64o(nhl_consts, 136, 0n);
 
-/** C ref: nhlua.c:2078 — @param {CPtr} L */
+/* register and init the constants table */
+/** C ref: nhlua.c:2078 — @param {CPtr<lua_State>} L */
 function* init_nhc_data(L) {
     let i;
+
     (yield* lua_createtable(L, 0, 0));
+
     for (i = 0; cptr.ldPtro(nhl_consts, i, 16); i++) {
         (yield* lua_pushstring(L, cptr.ldPtro(nhl_consts, i, 16)));
         (yield* lua_pushinteger(L, cptr.ldI64o2(nhl_consts, i, 16, 8)));
         (yield* lua_rawset(L, -3));
     }
-    (yield* lua_setglobal(L, __sl200));
+
+    (yield* lua_setglobal(L, __s_nhc));
 }
 
-/** C ref: nhlua.c:2094 — @param {CPtr} L @param {CInt} anytype @param {CPtr} src @returns {CInt} */
+/** C ref: nhlua.c:2094 — @param {CPtr<lua_State>} L @param {CInt} anytype @param {CPtr<void>} src @returns {CInt} */
 function* nhl_push_anything(L, anytype, src) {
-    let any = cptr.alloc(8); cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
+    let any = cptr.alloc(8); cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), $sizeof_any);
+
     switch (anytype) {
         case NHC.ANY_INT:
         cptr.stI32(any, cptr.ldI32(src));
@@ -2028,171 +2373,185 @@ function* nhl_push_anything(L, anytype, src) {
 }
 
 const __static_nhl_meta_u_index_ustruct = cptr.alloc(24 * 24);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 0, __sl208);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 0, __s_ux);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 8, u);
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 16, NHC.ANY_UCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 24, __sl209);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 24, __s_uy);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 32, cptr.add(u, $you_uy));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 40, NHC.ANY_UCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 48, __sl210);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 48, __s_dx);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 56, cptr.add(u, $you_dx));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 64, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 72, __sl211);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 72, __s_dy);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 80, cptr.add(u, $you_dy));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 88, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 96, __sl212);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 96, __s_dz);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 104, cptr.add(u, $you_dz));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 112, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 120, __sl31);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 120, __s_tx);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 128, cptr.add(u, $you_tx));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 136, NHC.ANY_UCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 144, __sl32);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 144, __s_ty);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 152, cptr.add(u, $you_ty));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 160, NHC.ANY_UCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 168, __sl213);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 168, __s_ulevel);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 176, cptr.add(u, $you_ulevel));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 184, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 192, __sl214);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 192, __s_ulevelmax);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 200, cptr.add(u, $you_ulevelmax));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 208, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 216, __sl215);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 216, __s_uhunger);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 224, cptr.add(u, $you_uhunger));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 232, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 240, __sl216);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 240, __s_nv_range);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 248, cptr.add(u, $you_nv_range));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 256, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 264, __sl217);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 264, __s_xray_range);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 272, cptr.add(u, $you_xray_range));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 280, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 288, __sl218);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 288, __s_umonster);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 296, cptr.add(u, $you_umonster));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 304, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 312, __sl219);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 312, __s_umonnum);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 320, cptr.add(u, $you_umonnum));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 328, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 336, __sl220);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 336, __s_mh);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 344, cptr.add(u, $you_mh));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 352, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 360, __sl221);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 360, __s_mhmax);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 368, cptr.add(u, $you_mhmax));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 376, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 384, __sl222);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 384, __s_mtimedone);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 392, cptr.add(u, $you_mtimedone));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 400, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 408, __sl126);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 408, __s_dlevel);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 416, cptr.add(u, $you_uz + $d_level_dlevel));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 424, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 432, __sl125);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 432, __s_dnum);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 440, cptr.add(u, $you_uz));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 448, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 456, __sl223);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 456, __s_uluck);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 464, cptr.add(u, $you_uluck));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 472, NHC.ANY_SCHAR);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 480, __sl224);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 480, __s_uhp);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 488, cptr.add(u, $you_uhp));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 496, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 504, __sl225);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 504, __s_uhpmax);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 512, cptr.add(u, $you_uhpmax));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 520, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 528, __sl226);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 528, __s_uen);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 536, cptr.add(u, $you_uen));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 544, NHC.ANY_INT);
-cptr.stPtro(__static_nhl_meta_u_index_ustruct, 552, __sl227);
+cptr.stPtro(__static_nhl_meta_u_index_ustruct, 552, __s_uenmax);
 cptr.stPtro(__static_nhl_meta_u_index_ustruct, 560, cptr.add(u, $you_uenmax));
 cptr.stI32o(__static_nhl_meta_u_index_ustruct, 568, NHC.ANY_INT); /** C ref: nhlua.c:2124 — struct (unnamed struct at nhlua.c:2120:18)[24] (function-static) */
 
-/** C ref: nhlua.c:2118 — @param {CPtr} L @returns {CInt} */
+/** C ref: nhlua.c:2118 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_meta_u_index(L) {
     let tkey = ((yield* luaL_checklstring(L, 2, null)));
     let i;
+
+    /* FIXME: doesn't really work, eg. negative values for u.dx */
     for (i = 0; i < 24; i++)
         if (!strcmp(tkey, cptr.ldPtro(__static_nhl_meta_u_index_ustruct, i, 24))) {
             return (yield* nhl_push_anything(L, cptr.ldI32o2(__static_nhl_meta_u_index_ustruct, i, 24, 16), cptr.ldPtro2(__static_nhl_meta_u_index_ustruct, i, 24, 8)));
         }
-    if (!strcmp(tkey, __sl201)) {
+
+    if (!strcmp(tkey, __s_inventory)) {
         (yield* nhl_push_obj(L, cptr.ldPtro(gi, $instance_globals_i_invent)));
         return 1;
-    } else if (!strcmp(tkey, __sl202)) {
+    } else if (!strcmp(tkey, __s_role)) {
         (yield* lua_pushstring(L, cptr.ldPtro(gu, $instance_globals_u_urole)));
         return 1;
-    } else if (!strcmp(tkey, __sl203)) {
+    } else if (!strcmp(tkey, __s_moves)) {
         (yield* lua_pushinteger(L, cptr.ldI64o(svm, $instance_globals_saved_m_moves)));
         return 1;
-    } else if (!strcmp(tkey, __sl204)) {
+    } else if (!strcmp(tkey, __s_uhave_amulet)) {
         (yield* lua_pushinteger(L, BigInt((cptr.ldI32o(u, $you_uhave) & 1) >>> 0)));
         return 1;
-    } else if (!strcmp(tkey, __sl205)) {
+    } else if (!strcmp(tkey, __s_depth)) {
         (yield* lua_pushinteger(L, BigInt(depth(cptr.add(u, $you_uz)))));
         return 1;
-    } else if (!strcmp(tkey, __sl206)) {
+    } else if (!strcmp(tkey, __s_invocation_level)) {
         (yield* lua_pushboolean(L, Invocation_lev(cptr.add(u, $you_uz))));
         return 1;
     }
-    (yield* nhl_error(L, __sl207));
+
+    (yield* nhl_error(L, __s_unknown_u_table_index));
+    /*NOTREACHED*/
     return 0;
 }
 
-/** C ref: nhlua.c:2185 — @param {CPtr} L @returns {CInt} */
+/** C ref: nhlua.c:2185 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_meta_u_newindex(L) {
-    (yield* nhl_error(L, __sl228));
+    (yield* nhl_error(L, __s_cannot_set_u_table_values));
+    /*NOTREACHED*/
     return 0;
 }
 
-/** C ref: nhlua.c:2195 — @param {CPtr} L @returns {CInt} */
+/** C ref: nhlua.c:2195 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_u_clear_inventory(L) {
     while (cptr.ldPtro(gi, $instance_globals_i_invent))
         (yield* useupall(cptr.ldPtro(gi, $instance_globals_i_invent)));
     return 0;
 }
 
-/** C ref: nhlua.c:2205 — @param {CPtr} L @returns {CInt} */
+/* Put object into player's inventory */
+/* u.giveobj(obj.new("rock")); */
+/** C ref: nhlua.c:2205 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_u_giveobj(L) {
     return (yield* nhl_obj_u_giveobj(L));
 }
 
 /** C ref: nhlua.c:2210 — struct luaL_Reg[3] */
-const nhl_u_functions = cptr.alloc(3 * 16);
-cptr.stPtro(nhl_u_functions, 0, __sl229);
+const nhl_u_functions = cptr.alloc(3 * $sizeof_luaL_Reg);
+cptr.stPtro(nhl_u_functions, 0, __s_clear_inventory);
 cptr.stPtro(nhl_u_functions, 0 + $luaL_Reg_func, nhl_u_clear_inventory);
-cptr.stPtro(nhl_u_functions, 16, __sl230);
+cptr.stPtro(nhl_u_functions, 16, __s_giveobj);
 cptr.stPtro(nhl_u_functions, 16 + $luaL_Reg_func, nhl_u_giveobj);
 cptr.stPtro(nhl_u_functions, 32, null);
 cptr.stPtro(nhl_u_functions, 32 + $luaL_Reg_func, null);
 
-/** C ref: nhlua.c:2217 — @param {CPtr} L */
+/** C ref: nhlua.c:2217 — @param {CPtr<lua_State>} L */
 function* init_u_data(L) {
     (yield* lua_createtable(L, 0, 0));
     (yield* luaL_setfuncs(L, nhl_u_functions, 0));
     (yield* lua_createtable(L, 0, 0));
     (yield* lua_pushcclosure(L, (nhl_meta_u_index), 0));
-    (yield* lua_setfield(L, -2, __sl231));
+    (yield* lua_setfield(L, -2, __s_index));
     (yield* lua_pushcclosure(L, (nhl_meta_u_newindex), 0));
-    (yield* lua_setfield(L, -2, __sl232));
+    (yield* lua_setfield(L, -2, __s_newindex));
     (yield* lua_setmetatable(L, -2));
-    (yield* lua_setglobal(L, __sl233));
+    (yield* lua_setglobal(L, __s_u));
 }
 
-/** C ref: nhlua.c:2246 — @param {CPtr} L @returns {CInt} */
+/** C ref: nhlua.c:2246 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* traceback_handler(L) {
     (yield* luaL_traceback(L, L, (yield* lua_tolstring(L, 1, null)), 0));
+    /* TODO: call impossible() if fuzzing? */
     return 1;
 }
 
-/** C ref: nhlua.c:2254 — @param {CPtr} L @returns {*} */
+/** C ref: nhlua.c:2254 — @param {CPtr<lua_State>} L @returns {*} */
 function* nhl_getmeminuse(L) {
     return ((Math.imul((yield* lua_gc(L, 3)), 1024) + (yield* lua_gc(L, 4))) | 0) >>> 0;
 }
 
-/** C ref: nhlua.c:2263 — @param {CPtr} L @param {CInt} nargs @param {CInt} nresults @param {CPtr} name @returns {CInt} */
+/* lua_pcall with our traceback handler and memory and instruction step
+ * limiting.
+ *  On error, traceback will be on top of stack */
+/** C ref: nhlua.c:2263 — @param {CPtr<lua_State>} L @param {CInt} nargs @param {CInt} nresults @param {CPtr<char>} name @returns {CInt} */
 export function* nhl_pcall(L, nargs, nresults, name) {
     let nud = cptr.box(0);
     let rv;
+
     (yield* lua_pushcclosure(L, (traceback_handler), 0));
     lua_rotate(L, 1, 1);
     void lua_getallocf(L, nud);
     if (nud.v && name) {
         cptr.stPtro(nud.v, $nhl_user_data_name, name);
     }
+    /* NB: We don't need to deal with nud->memlimit - Lua handles that. */
     if (nud.v && (cptr.ldI32o(nud.v, $nhl_user_data_steps) || cptr.ldI32o(nud.v, $nhl_user_data_perpcall))) {
         if (cptr.ldI32o(nud.v, $nhl_user_data_perpcall)) {
             cptr.stI32o(nud.v, $nhl_user_data_steps, cptr.ldI32o(nud.v, $nhl_user_data_perpcall));
@@ -2203,48 +2562,58 @@ export function* nhl_pcall(L, nargs, nresults, name) {
             let __sv1 = 0;
             try {
                 if (__sv1) {
-                    (yield* panic(__sl234, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __sl235));
+                    /* panic, because we don't know if the game state is corrupt */
+                    /* XXX can we get a lua stack trace as well? */
+                    (yield* panic(__s_lua_time_exceeded_d_s, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __s_unknown));
                 }
             } catch (__e1) {
                 if (!cjmp.matches(__e1, __sj1)) throw __e1;
                 __sv1 = cjmp.jbval(__e1);
                 if (__sv1) {
-                    (yield* panic(__sl234, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __sl235));
+                    (yield* panic(__s_lua_time_exceeded_d_s, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __s_unknown));
                 }
             }
         }
     }
+
     rv = (yield* lua_pcallk(L, (nargs), (nresults), 1, 0n, null));
-    (lua_rotate(L, 1, -1), (yield* lua_settop(L, -2)));
+
+    (lua_rotate(L, 1, -1), (yield* lua_settop(L, -2)));  /* remove handler */
     if (nud.v && cptr.ldI32o(nud.v, $nhl_user_data_perpcall) && cptr.ldI32o(gl, $instance_globals_l_loglua)) {
-        let ic = BigInt((Math.imul(cptr.ldI32o(nud.v, $nhl_user_data_statctr), NHM.NHL_SB_STEPSIZE) >>> 0) >>> 0);
-        (yield* livelog_printf(32768n, __sl236, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), ic));
+        let ic = BigInt((Math.imul(cptr.ldI32o(nud.v, $nhl_user_data_statctr), NHM.NHL_SB_STEPSIZE) >>> 0) >>> 0);  // an approximation
+        (yield* livelog_printf(32768n, __s_luastats_pcal_d_s_ld, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), ic));
     }
     if (nud.v && cptr.ldI32o(nud.v, $nhl_user_data_memlimit) && cptr.ldI32o(gl, $instance_globals_l_loglua)) {
-        (yield* livelog_printf(32768n, __sl237, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), BigInt((yield* nhl_getmeminuse(L)) >>> 0)));
+        (yield* livelog_printf(32768n, __s_luastats_pmem_d_s_lu, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), BigInt((yield* nhl_getmeminuse(L)) >>> 0)));
     }
     return rv;
 }
 
-/** C ref: nhlua.c:2309 — @param {CPtr} L @param {CInt} nargs @param {CInt} nresults @param {CPtr} name @param {*} npa @returns {CInt} */
+/** C ref: nhlua.c:2309 — @param {CPtr<lua_State>} L @param {CInt} nargs @param {CInt} nresults @param {CPtr<char>} name @param {*} npa @returns {CInt} */
 export function* nhl_pcall_handle(L, nargs, nresults, name, npa) {
     let rv = (yield* nhl_pcall(L, nargs, nresults, name));
     if (rv) {
         let nud = cptr.box(0);
         void lua_getallocf(L, nud);
+        /* XXX can we get a lua stack trace as well? */
         switch (npa) {
             case NHC.NHLpa_panic:
-            (yield* panic(__sl238, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __sl235, (yield* lua_tolstring(L, -1, null))));
+            (yield* panic(__s_lua_error_d_s_s, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __s_unknown, (yield* lua_tolstring(L, -1, null))));
+            /*NOTREACHED*/
             break;
             case NHC.NHLpa_impossible:
-            (yield* impossible(__sl239, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __sl235, (yield* lua_tolstring(L, -1, null))));
+            (yield* impossible(__s_lua_error_d_s_s__2, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name) ? cptr.ldPtro(nud.v, $nhl_user_data_name) : __s_unknown, (yield* lua_tolstring(L, -1, null))));
+            /* Drop the error.  If the caller cares, use nhl_pcall(). */
             (yield* lua_settop(L, -2));
         }
     }
     return rv;
 }
 
-/** C ref: nhlua.c:2338 — @param {CPtr} L @param {CPtr} fname @returns {CInt} */
+/* XXX impossible() should be swappable with pline/nothing/panic via flag */
+/* read lua code/data from a dlb module or an external file
+   into a string buffer and feed that to lua */
+/** C ref: nhlua.c:2338 — @param {CPtr<lua_State>} L @param {CPtr<char>} fname @returns {CInt} */
 export function* nhl_loadlua(L, fname) {
     let ret = 1;
     let fh;
@@ -2259,57 +2628,86 @@ export function* nhl_loadlua(L, fname) {
     let cnt;
     let llret;
     __lbl_give_up: {
-        altfname = (yield* alloc(((yield* Strlen_(fname, __sl240, 2347)) + 3) >>> 0));
-        void cptr.sprintf(altfname, __sl241, fname);
-        fh = fopen(fname, __sl242);
+
+        altfname = (yield* alloc(((yield* Strlen_(fname, __s_nhl_loadlua, 2347)) + 3) >>> 0));  /* 3: '('...')\0' */
+        /* don't know whether 'fname' is inside a dlb container;
+           if we did, we could choose between "nhdat(<fname>)" and "<fname>"
+           but since we don't, compromise */
+        void cptr.sprintf(altfname, __s_lparen_pct_s_rparen, fname);
+        fh = fopen(fname, __s_r);
         if (!fh) {
-            (yield* impossible(__sl243, altfname));
+            (yield* impossible(__s_nhl_loadlua_error_opening_s, altfname));
             ret = 0;
             break __lbl_give_up;
         }
+
         fseek(fh, 0n, 2);
         buflen = ftell(fh);
         fseek(fh, 0n, 0);
-        buf = (bufout = (yield* alloc((yield* FITSint_(BigInt.asIntN(64, BigInt.asIntN(64, buflen + 1n) + 1n), __sl240, 2364)) >>> 0)));
+
+        /* extra +1: room to add final '\n' if missing */
+        buf = (bufout = (yield* alloc((yield* FITSint_(BigInt.asIntN(64, BigInt.asIntN(64, buflen + 1n) + 1n), __s_nhl_loadlua, 2364)) >>> 0)));
         cptr.st1o(buf, 0, 0);
         bufin = (bufout = buf);
+
         ct = 0n;
         while (buflen > 0n || ct) {
+            /*
+             * Semi-arbitrarily limit reads to 8K at a time.  That's big
+             * enough to cover the majority of our Lua files in one bite
+             * but small enough to fully exercise the partial record
+             * handling (when processing the castle's level description).
+             *
+             * [For an external file (non-DLB), VMS may only be able to
+             * read at most 32K-1 at a time depending on the file format
+             * in use, and fseek(SEEK_END) only yields an upper bound on
+             * the actual amount of data in that situation.]
+             */
             if ((cnt = BigInt.asIntN(64, fread(bufin, 1n, BigInt.asUintN(64, (BigInt((Number(BigInt.asIntN(32, buflen)))) < 8192n ? BigInt((Number(BigInt.asIntN(32, buflen)))) : 8192n)), fh))) < 0n)
                 break;
-            buflen -= cnt;
+            buflen -= cnt;  /* set up for next iteration, if any */
             if (cnt == 0n) {
-                cptr.st1(bufin, 10);
+                cptr.st1(bufin, 10);  /* very last line is unterminated? */
                 cnt = 1n;
             }
-            cptr.st1o(bufin, cnt, 0);
+            cptr.st1o(bufin, cnt, 0);  /* fread() doesn't do this */
+
+            /* in case partial line was leftover from previous fread */
             bufin = cptr.sub(bufin, ct), cnt += ct, ct = 0n;
+
             while (cnt > 0n) {
                 if ((nl = cptr.strchr(bufin, 10)) !== null) {
-                    ct = (BigInt.asIntN(64, cptr.diff(nl, bufin) + 1n));
+                    /* normal case, newline is present */
+                    ct = (BigInt.asIntN(64, cptr.diff(nl, bufin) + 1n));  /* +1: keep the newline */
                     for (p = bufin; cptr.cmp(p, nl) <= 0; p = cptr.add(p, 1))
                         cptr.st1(cptr.postinc(() => bufout, (v) => { bufout = v; }), cptr.ld1s(cptr.postinc(() => bufin, (v) => { bufin = v; })));
                     if (cptr.ld1s(bufin) == 13)
                         bufin = cptr.add(bufin, 1), ++ct;
+                    /* update for next loop iteration */
                     cnt -= ct;
                     ct = 0n;
                 } else if (cptr.strlen(bufin) < 8192n) {
+                    /* no newline => partial record; move unprocessed chars
+                       to front of input buffer (bufin portion of buf[]) */
                     ct = (cnt = (cptr.diff(eos(bufin), bufin)));
                     for (p = bufout; cnt > 0n; --cnt)
                         cptr.st1(cptr.postinc(() => p, (v) => { p = v; }), cptr.ld1s(cptr.postinc(() => bufin, (v) => { bufin = v; })));
                     cptr.st1(p, 0);
-                    bufin = p;
+                    bufin = p;  /* next fread() populates buf[] starting here */
+                    /* cnt==0 so inner loop will terminate */
                 } else {
-                    (yield* impossible(__sl244, altfname));
+                    /* LOADCHUNKSIZE portion of buffer already completely full */
+                    (yield* impossible(__s_s_line_too_long, altfname));
                     break __lbl_give_up;
                 }
             }
         }
         cptr.st1(bufout, 0);
         void fclose(fh);
+
         llret = (yield* luaL_loadbufferx(L, buf, cptr.strlen(buf), altfname, null));
         if (llret != 0) {
-            (yield* impossible(__sl245, altfname, (yield* lua_tolstring(L, -1, null))));
+            (yield* impossible(__s_lual_loadbuffer_error_loading_s_s, altfname, (yield* lua_tolstring(L, -1, null))));
             ret = 0;
             break __lbl_give_up;
         } else {
@@ -2326,96 +2724,120 @@ export function* nhl_loadlua(L, fname) {
     return ret;
 }
 
-/** C ref: nhlua.c:2449 — @param {CPtr} sbi @returns {CPtr} */
+/** C ref: nhlua.c:2449 — @param {CPtr<nhl_sandbox_info>} sbi @returns {CPtr<lua_State>} */
 export function* nhl_init(sbi) {
     if (0) {
-        (yield* panic(__sl246, 50408, 50408));
+        (yield* panic(__s_sandbox_doesn_t_know_this_lua_version, 50408, 50408));
     }
-    let L = (yield* nhlL_newstate(sbi, __sl247));
+
+    let L = (yield* nhlL_newstate(sbi, __s_nhl_init));
     if (!L)
         return null;
+
     cptr.st1o(iflags, $instance_flags_in_lua, 1);
     (yield* nhlL_openlibs(L, cptr.ldI32(sbi)));
+
+    /* register nh -table, and functions for it */
     (yield* lua_createtable(L, 0, 0));
     (yield* luaL_setfuncs(L, nhl_functions, 0));
-    (yield* lua_setglobal(L, __sl248));
+    (yield* lua_setglobal(L, __s_nh));
+
+    /* init nhc -table */
     (yield* init_nhc_data(L));
+
+    /* init u -table */
     (yield* init_u_data(L));
+
     (yield* l_selection_register(L));
     (yield* l_register_des(L));
+
     (yield* l_obj_register(L));
-    if (5 != (yield* lua_getglobal(L, __sl249))) {
+
+    /* nhlib.lua assumes the math table exists. */
+    if (5 != (yield* lua_getglobal(L, __s_math))) {
         (yield* lua_createtable(L, 0, 0));
-        (yield* lua_setglobal(L, __sl249));
+        (yield* lua_setglobal(L, __s_math));
     }
-    if (!(yield* nhl_loadlua(L, __sl250))) {
+
+    if (!(yield* nhl_loadlua(L, __s_nhlib_lua))) {
         (yield* nhl_done(L));
         return null;
     }
+
     return L;
 }
 
-/** C ref: nhlua.c:2522 — @param {CPtr} L */
+/** C ref: nhlua.c:2522 — @param {CPtr<lua_State>} L */
 export function* nhl_done(L) {
     if (L) {
         let nud = cptr.box(null);
         void lua_getallocf(L, nud);
         if (cptr.ldI32o(gl, $instance_globals_l_loglua)) {
             if (nud.v && cptr.ldI32o(nud.v, $nhl_user_data_osteps)) {
-                let ic = BigInt((Math.imul(cptr.ldI32o(nud.v, $nhl_user_data_statctr), NHM.NHL_SB_STEPSIZE) >>> 0) >>> 0);
-                (yield* livelog_printf(32768n, __sl251, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), ic));
+                let ic = BigInt((Math.imul(cptr.ldI32o(nud.v, $nhl_user_data_statctr), NHM.NHL_SB_STEPSIZE) >>> 0) >>> 0);  // an approximation
+                (yield* livelog_printf(32768n, __s_luastats_done_d_s_ld, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), ic));
             }
             if (nud.v && cptr.ldI32o(nud.v, $nhl_user_data_memlimit) && !cptr.ldI32o(nud.v, $nhl_user_data_perpcall)) {
-                (yield* livelog_printf(32768n, __sl252, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), BigInt((yield* nhl_getmeminuse(L)) >>> 0)));
+                (yield* livelog_printf(32768n, __s_luastats_dmem_d_s_lu, cptr.ldI32o(nud.v, $nhl_user_data_sid), cptr.ldPtro(nud.v, $nhl_user_data_name), BigInt((yield* nhl_getmeminuse(L)) >>> 0)));
             }
         }
         (yield* lua_close(L));
         if (nud.v)
-            (yield* nhl_alloc((null), nud.v, 0n, 0n));
+            (yield* nhl_alloc((null), nud.v, 0n, 0n));  // free nud
     }
     cptr.st1o(iflags, $instance_flags_in_lua, 0);
 }
 
-/** C ref: nhlua.c:2546 — @param {CPtr} name @param {CPtr} sbi @returns {CInt} */
+/** C ref: nhlua.c:2546 — @param {CPtr<char>} name @param {CPtr<nhl_sandbox_info>} sbi @returns {CInt} */
 export function* load_lua(name, sbi) {
     let ret = 1;
     let L = (yield* nhl_init(sbi));
     __lbl_give_up: {
+
         if (!L) {
             ret = 0;
             break __lbl_give_up;
         }
+
         if (!(yield* nhl_loadlua(L, name))) {
             ret = 0;
             break __lbl_give_up;
         }
     }
     (yield* nhl_done(L));
+
     return ret;
 }
 
-/** C ref: nhlua.c:2570 @returns {CPtr} */
+/** C ref: nhlua.c:2570 @returns {CPtr<char>} */
 export function* get_lua_version() {
     let sbi = cptr.alloc(16); cptr.stI32(sbi, NHM.NHL_SB_VERSION); cptr.stI32o(sbi, $nhl_sandbox_info_memlimit, 1048576); cptr.stI32o(sbi, $nhl_sandbox_info_steps, 0); cptr.stI32o(sbi, $nhl_sandbox_info_perpcall, 1048576);
+
     if (cptr.ld1so2(gl, 0, 1, $instance_globals_l_lua_ver) == 0) {
         let L = (yield* nhl_init(sbi));
+
         if (L) {
             let len = cptr.box(0n);
             let vs = null;
-            (yield* lua_getglobal(L, __sl253));
+
+            /* LUA_VERSION yields "<major>.<minor>" although we check to see
+               whether it is "Lua-<major>.<minor>" and strip prefix if so;
+               LUA_RELEASE is <LUA_VERSION>.<LUA_VERSION_RELEASE> but doesn't
+               get set up as a lua global */
+            (yield* lua_getglobal(L, __s_release));
             if (lua_isstring(L, -1))
                 vs = (yield* lua_tolstring(L, -1, len));
             else
-                vs = __sl254, len.v = cptr.strlen(vs);
+                vs = __s_lua_5_4_8, len.v = cptr.strlen(vs);
             if (!vs) {
-                (yield* lua_getglobal(L, __sl255));
+                (yield* lua_getglobal(L, __s_version));
                 if (lua_isstring(L, -1))
                     vs = (yield* lua_tolstring(L, -1, len));
                 else
-                    vs = __sl256, len.v = cptr.strlen(vs);
+                    vs = __s_lua_5_4, len.v = cptr.strlen(vs);
             }
             if (vs && len.v < 20n) {
-                if (!(yield* strncmpi(vs, __sl257, 3))) {
+                if (!(yield* strncmpi(vs, __s_lua__2, 3))) {
                     vs = cptr.add(vs, 3);
                     if (cptr.ld1s(vs) == 45 || cptr.ld1s(vs) == 32)
                         vs = cptr.add(vs, 1);
@@ -2425,7 +2847,7 @@ export function* get_lua_version() {
         }
         (yield* nhl_done(L));
         if (1)
-            void cptr.strcpy(cptr.add(gl, $instance_globals_l_lua_copyright), __sl258);
+            void cptr.strcpy(cptr.add(gl, $instance_globals_l_lua_copyright), __s_lua_5_4_8_copyright_c_1994_2025_lua_org);
     }
     return cptr.add(gl, $instance_globals_l_lua_ver);
 }
@@ -2437,157 +2859,174 @@ export const EOT = 2;
 
 /** C ref: nhlua.c:2648 — struct e { when, fnname } (memory model v0.5) */
 
+/* NHL_BASE_BASE - safe things */
 /** C ref: nhlua.c:2654 — struct e[10] */
-const ct_base_base = cptr.alloc(10 * 16);
+const ct_base_base = cptr.alloc(10 * $sizeof_e);
 cptr.stI32o(ct_base_base, 0, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 0 + $e_fnname, __sl259);
+cptr.stPtro(ct_base_base, 0 + $e_fnname, __s_ipairs);
 cptr.stI32o(ct_base_base, 16, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 16 + $e_fnname, __sl260);
+cptr.stPtro(ct_base_base, 16 + $e_fnname, __s_next);
 cptr.stI32o(ct_base_base, 32, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 32 + $e_fnname, __sl261);
+cptr.stPtro(ct_base_base, 32 + $e_fnname, __s_pairs);
 cptr.stI32o(ct_base_base, 48, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 48 + $e_fnname, __sl262);
+cptr.stPtro(ct_base_base, 48 + $e_fnname, __s_pcall);
 cptr.stI32o(ct_base_base, 64, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 64 + $e_fnname, __sl263);
+cptr.stPtro(ct_base_base, 64 + $e_fnname, __s_select);
 cptr.stI32o(ct_base_base, 80, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 80 + $e_fnname, __sl264);
+cptr.stPtro(ct_base_base, 80 + $e_fnname, __s_tonumber);
 cptr.stI32o(ct_base_base, 96, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 96 + $e_fnname, __sl265);
+cptr.stPtro(ct_base_base, 96 + $e_fnname, __s_tostring);
 cptr.stI32o(ct_base_base, 112, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 112 + $e_fnname, __sl266);
+cptr.stPtro(ct_base_base, 112 + $e_fnname, __s_type);
 cptr.stI32o(ct_base_base, 128, NHC.IFFLAG);
-cptr.stPtro(ct_base_base, 128 + $e_fnname, __sl267);
+cptr.stPtro(ct_base_base, 128 + $e_fnname, __s_xpcall);
 cptr.stI32o(ct_base_base, 144, NHC.EOT);
 cptr.stPtro(ct_base_base, 144 + $e_fnname, null);
 
+/* NHL_BASE_ERROR - not really safe--might not want Lua to kill the process */
 /** C ref: nhlua.c:2668 — struct e[5] */
-const ct_base_error = cptr.alloc(5 * 16);
+const ct_base_error = cptr.alloc(5 * $sizeof_e);
 cptr.stI32o(ct_base_error, 0, NHC.IFFLAG);
-cptr.stPtro(ct_base_error, 0 + $e_fnname, __sl268);
+cptr.stPtro(ct_base_error, 0 + $e_fnname, __s_assert);
 cptr.stI32o(ct_base_error, 16, NHC.IFFLAG);
-cptr.stPtro(ct_base_error, 16 + $e_fnname, __sl269);
+cptr.stPtro(ct_base_error, 16 + $e_fnname, __s_error);
 cptr.stI32o(ct_base_error, 32, NHC.NEVER);
-cptr.stPtro(ct_base_error, 32 + $e_fnname, __sl270);
+cptr.stPtro(ct_base_error, 32 + $e_fnname, __s_print);
 cptr.stI32o(ct_base_error, 48, NHC.NEVER);
-cptr.stPtro(ct_base_error, 48 + $e_fnname, __sl271);
+cptr.stPtro(ct_base_error, 48 + $e_fnname, __s_warn);
 cptr.stI32o(ct_base_error, 64, NHC.EOT);
 cptr.stPtro(ct_base_error, 64 + $e_fnname, null);
 
+/* NHL_BASE_META - metatable access */
 /** C ref: nhlua.c:2679 — struct e[7] */
-const ct_base_meta = cptr.alloc(7 * 16);
+const ct_base_meta = cptr.alloc(7 * $sizeof_e);
 cptr.stI32o(ct_base_meta, 0, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 0 + $e_fnname, __sl272);
+cptr.stPtro(ct_base_meta, 0 + $e_fnname, __s_getmetatable);
 cptr.stI32o(ct_base_meta, 16, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 16 + $e_fnname, __sl273);
+cptr.stPtro(ct_base_meta, 16 + $e_fnname, __s_rawequal);
 cptr.stI32o(ct_base_meta, 32, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 32 + $e_fnname, __sl274);
+cptr.stPtro(ct_base_meta, 32 + $e_fnname, __s_rawget);
 cptr.stI32o(ct_base_meta, 48, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 48 + $e_fnname, __sl275);
+cptr.stPtro(ct_base_meta, 48 + $e_fnname, __s_rawlen);
 cptr.stI32o(ct_base_meta, 64, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 64 + $e_fnname, __sl276);
+cptr.stPtro(ct_base_meta, 64 + $e_fnname, __s_rawset);
 cptr.stI32o(ct_base_meta, 80, NHC.IFFLAG);
-cptr.stPtro(ct_base_meta, 80 + $e_fnname, __sl277);
+cptr.stPtro(ct_base_meta, 80 + $e_fnname, __s_setmetatable);
 cptr.stI32o(ct_base_meta, 96, NHC.EOT);
 cptr.stPtro(ct_base_meta, 96 + $e_fnname, null);
 
+/* NHL_BASE_GC - questionable safety */
 /** C ref: nhlua.c:2690 — struct e[2] */
-const ct_base_iffy = cptr.alloc(2 * 16);
+const ct_base_iffy = cptr.alloc(2 * $sizeof_e);
 cptr.stI32o(ct_base_iffy, 0, NHC.IFFLAG);
-cptr.stPtro(ct_base_iffy, 0 + $e_fnname, __sl278);
+cptr.stPtro(ct_base_iffy, 0 + $e_fnname, __s_collectgarbage);
 cptr.stI32o(ct_base_iffy, 16, NHC.EOT);
 cptr.stPtro(ct_base_iffy, 16 + $e_fnname, null);
 
+/* NHL_BASE_UNSAFE - include only if required */
+/* TODO: if NHL_BASE_UNSAFE is ever used, we need to wrap lua_load with
+ * something to forbid mode=="b" */
 /** C ref: nhlua.c:2698 — struct e[4] */
-const ct_base_unsafe = cptr.alloc(4 * 16);
+const ct_base_unsafe = cptr.alloc(4 * $sizeof_e);
 cptr.stI32o(ct_base_unsafe, 0, NHC.IFFLAG);
-cptr.stPtro(ct_base_unsafe, 0 + $e_fnname, __sl279);
+cptr.stPtro(ct_base_unsafe, 0 + $e_fnname, __s_dofile);
 cptr.stI32o(ct_base_unsafe, 16, NHC.IFFLAG);
-cptr.stPtro(ct_base_unsafe, 16 + $e_fnname, __sl280);
+cptr.stPtro(ct_base_unsafe, 16 + $e_fnname, __s_loadfile);
 cptr.stI32o(ct_base_unsafe, 32, NHC.IFFLAG);
-cptr.stPtro(ct_base_unsafe, 32 + $e_fnname, __sl281);
+cptr.stPtro(ct_base_unsafe, 32 + $e_fnname, __s_load);
 cptr.stI32o(ct_base_unsafe, 48, NHC.EOT);
 cptr.stPtro(ct_base_unsafe, 48 + $e_fnname, null);
 
+/* no ct_co_ tables; all fns at same level of concern */
+/* no ct_string_ tables; all fns at same level of concern */
+/* no ct_table_ tables; all fns at same level of concern (but
+   sort can take a lot of time and can't be caught by the step limit */
+/* no ct_utf8_ tables; all fns at same level of concern */
+
+/* possible ct_debug tables - likely to need changes */
 /** C ref: nhlua.c:2713 — struct e[17] */
-const ct_debug_debug = cptr.alloc(17 * 16);
+const ct_debug_debug = cptr.alloc(17 * $sizeof_e);
 cptr.stI32o(ct_debug_debug, 0, NHC.NEVER);
-cptr.stPtro(ct_debug_debug, 0 + $e_fnname, __sl282);
+cptr.stPtro(ct_debug_debug, 0 + $e_fnname, __s_debug);
 cptr.stI32o(ct_debug_debug, 16, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 16 + $e_fnname, __sl283);
+cptr.stPtro(ct_debug_debug, 16 + $e_fnname, __s_getuservalue);
 cptr.stI32o(ct_debug_debug, 32, NHC.NEVER);
-cptr.stPtro(ct_debug_debug, 32 + $e_fnname, __sl284);
+cptr.stPtro(ct_debug_debug, 32 + $e_fnname, __s_gethook);
 cptr.stI32o(ct_debug_debug, 48, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 48 + $e_fnname, __sl285);
+cptr.stPtro(ct_debug_debug, 48 + $e_fnname, __s_getinfo);
 cptr.stI32o(ct_debug_debug, 64, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 64 + $e_fnname, __sl286);
+cptr.stPtro(ct_debug_debug, 64 + $e_fnname, __s_getlocal);
 cptr.stI32o(ct_debug_debug, 80, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 80 + $e_fnname, __sl287);
+cptr.stPtro(ct_debug_debug, 80 + $e_fnname, __s_getregistry);
 cptr.stI32o(ct_debug_debug, 96, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 96 + $e_fnname, __sl272);
+cptr.stPtro(ct_debug_debug, 96 + $e_fnname, __s_getmetatable);
 cptr.stI32o(ct_debug_debug, 112, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 112 + $e_fnname, __sl288);
+cptr.stPtro(ct_debug_debug, 112 + $e_fnname, __s_getupvalue);
 cptr.stI32o(ct_debug_debug, 128, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 128 + $e_fnname, __sl289);
+cptr.stPtro(ct_debug_debug, 128 + $e_fnname, __s_upvaluejoin);
 cptr.stI32o(ct_debug_debug, 144, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 144 + $e_fnname, __sl290);
+cptr.stPtro(ct_debug_debug, 144 + $e_fnname, __s_upvalueid);
 cptr.stI32o(ct_debug_debug, 160, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 160 + $e_fnname, __sl291);
+cptr.stPtro(ct_debug_debug, 160 + $e_fnname, __s_setuservalue);
 cptr.stI32o(ct_debug_debug, 176, NHC.NEVER);
-cptr.stPtro(ct_debug_debug, 176 + $e_fnname, __sl292);
+cptr.stPtro(ct_debug_debug, 176 + $e_fnname, __s_sethook);
 cptr.stI32o(ct_debug_debug, 192, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 192 + $e_fnname, __sl293);
+cptr.stPtro(ct_debug_debug, 192 + $e_fnname, __s_setlocal);
 cptr.stI32o(ct_debug_debug, 208, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 208 + $e_fnname, __sl277);
+cptr.stPtro(ct_debug_debug, 208 + $e_fnname, __s_setmetatable);
 cptr.stI32o(ct_debug_debug, 224, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 224 + $e_fnname, __sl294);
+cptr.stPtro(ct_debug_debug, 224 + $e_fnname, __s_setupvalue);
 cptr.stI32o(ct_debug_debug, 240, NHC.IFFLAG);
-cptr.stPtro(ct_debug_debug, 240 + $e_fnname, __sl295);
+cptr.stPtro(ct_debug_debug, 240 + $e_fnname, __s_setcstacklimit);
 cptr.stI32o(ct_debug_debug, 256, NHC.EOT);
 cptr.stPtro(ct_debug_debug, 256 + $e_fnname, null);
 
 /** C ref: nhlua.c:2732 — struct e[2] */
-const ct_debug_safe = cptr.alloc(2 * 16);
+const ct_debug_safe = cptr.alloc(2 * $sizeof_e);
 cptr.stI32o(ct_debug_safe, 0, NHC.IFFLAG);
-cptr.stPtro(ct_debug_safe, 0 + $e_fnname, __sl296);
+cptr.stPtro(ct_debug_safe, 0 + $e_fnname, __s_traceback);
 cptr.stI32o(ct_debug_safe, 16, NHC.EOT);
 cptr.stPtro(ct_debug_safe, 16 + $e_fnname, null);
 
+/* possible ct_os_ tables */
 /** C ref: nhlua.c:2738 — struct e[5] */
-const ct_os_time = cptr.alloc(5 * 16);
+const ct_os_time = cptr.alloc(5 * $sizeof_e);
 cptr.stI32o(ct_os_time, 0, NHC.IFFLAG);
-cptr.stPtro(ct_os_time, 0 + $e_fnname, __sl297);
+cptr.stPtro(ct_os_time, 0 + $e_fnname, __s_clock);
 cptr.stI32o(ct_os_time, 16, NHC.IFFLAG);
-cptr.stPtro(ct_os_time, 16 + $e_fnname, __sl298);
+cptr.stPtro(ct_os_time, 16 + $e_fnname, __s_date);
 cptr.stI32o(ct_os_time, 32, NHC.IFFLAG);
-cptr.stPtro(ct_os_time, 32 + $e_fnname, __sl299);
+cptr.stPtro(ct_os_time, 32 + $e_fnname, __s_difftime);
 cptr.stI32o(ct_os_time, 48, NHC.IFFLAG);
-cptr.stPtro(ct_os_time, 48 + $e_fnname, __sl300);
+cptr.stPtro(ct_os_time, 48 + $e_fnname, __s_time);
 cptr.stI32o(ct_os_time, 64, NHC.EOT);
 cptr.stPtro(ct_os_time, 64 + $e_fnname, null);
 
 /** C ref: nhlua.c:2746 — struct e[8] */
-const ct_os_files = cptr.alloc(8 * 16);
+const ct_os_files = cptr.alloc(8 * $sizeof_e);
 cptr.stI32o(ct_os_files, 0, NHC.NEVER);
-cptr.stPtro(ct_os_files, 0 + $e_fnname, __sl301);
+cptr.stPtro(ct_os_files, 0 + $e_fnname, __s_execute);
 cptr.stI32o(ct_os_files, 16, NHC.NEVER);
-cptr.stPtro(ct_os_files, 16 + $e_fnname, __sl302);
+cptr.stPtro(ct_os_files, 16 + $e_fnname, __s_exit);
 cptr.stI32o(ct_os_files, 32, NHC.NEVER);
-cptr.stPtro(ct_os_files, 32 + $e_fnname, __sl303);
+cptr.stPtro(ct_os_files, 32 + $e_fnname, __s_getenv);
 cptr.stI32o(ct_os_files, 48, NHC.IFFLAG);
-cptr.stPtro(ct_os_files, 48 + $e_fnname, __sl304);
+cptr.stPtro(ct_os_files, 48 + $e_fnname, __s_remove);
 cptr.stI32o(ct_os_files, 64, NHC.IFFLAG);
-cptr.stPtro(ct_os_files, 64 + $e_fnname, __sl305);
+cptr.stPtro(ct_os_files, 64 + $e_fnname, __s_rename);
 cptr.stI32o(ct_os_files, 80, NHC.NEVER);
-cptr.stPtro(ct_os_files, 80 + $e_fnname, __sl306);
+cptr.stPtro(ct_os_files, 80 + $e_fnname, __s_setlocale);
 cptr.stI32o(ct_os_files, 96, NHC.NEVER);
-cptr.stPtro(ct_os_files, 96 + $e_fnname, __sl307);
+cptr.stPtro(ct_os_files, 96 + $e_fnname, __s_tmpname);
 cptr.stI32o(ct_os_files, 112, NHC.EOT);
 cptr.stPtro(ct_os_files, 112 + $e_fnname, null);
 
-/** C ref: nhlua.c:2762 — @param {CPtr} L @param {CInt} flag @param {CInt} tndx @param {CPtr} todo */
+/** C ref: nhlua.c:2762 — @param {CPtr<lua_State>} L @param {CInt} flag @param {CInt} tndx @param {CPtr<struct e>} todo */
 function* nhl_clearfromtable(L, flag, tndx, todo) {
     while (cptr.ldI32(todo) != NHC.EOT) {
         (yield* lua_pushnil(L));
+        /* if we load the library at all, NEVER items must be erased
+         * and IFFLAG items should be erased if !flag */
         if (cptr.ldI32(todo) == NHC.NEVER || !flag) {
             (yield* lua_setfield(L, tndx, cptr.ldPtro(todo, $e_fnname)));
         }
@@ -2603,21 +3042,24 @@ function* end_luapat() {
     }
 }
 
-/** C ref: nhlua.c:2887 — @param {CPtr} L */
+/** C ref: nhlua.c:2887 — @param {CPtr<lua_State>} L */
 export function* nhl_pushhooked_open_table(L) {
-    let hot = (yield* lua_getfield(L, -1001000, __sl308));
+    let hot = (yield* lua_getfield(L, -1001000, __s_org_nethack_nethack_sb_fs));
+
     if (hot == -1) {
         (yield* lua_createtable(L, 0, 0));
         (yield* lua_pushvalue(L, -1));
-        (yield* lua_setfield(L, -1001000, __sl308));
+        (yield* lua_setfield(L, -1001000, __s_org_nethack_nethack_sb_fs));
     }
 }
 
-/** C ref: nhlua.c:3000 — @param {CPtr} L @param {CUInt} lflags */
+/** C ref: nhlua.c:3000 — @param {CPtr<lua_State>} L @param {CUInt} lflags */
 function* nhlL_openlibs(L, lflags) {
+    /* translate lflags from user-friendly to internal */
     if ((NHM.NHL_SB_DEBUGGING & lflags) >>> 0) {
         lflags |= NHM.NHL_SB_DB_SAFE;
     }
+    /* only for debugging the sandbox integration */
     if ((NHM.NHL_SB_ALL & lflags) >>> 0) {
         lflags = 4294967295;
     } else if ((NHM.NHL_SB_SAFE & lflags) >>> 0) {
@@ -2630,44 +3072,55 @@ function* nhlL_openlibs(L, lflags) {
     } else if (NHM.NHL_SB_VERSION) {
         lflags |= NHM.NHL_SB_BASE_BASE;
     }
+
     if ((lflags & NHM.NHL_SB_BASEMASK) >>> 0) {
         let baselib;
-        (yield* luaL_requiref(L, __sl309, luaopen_base, 1));
+        /* load the entire library ... */
+        (yield* luaL_requiref(L, __s_us_g, luaopen_base, 1));
+
         baselib = lua_gettop(L);
+
+        /* ... and remove anything unsupported or not requested */
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_BASE_BASE) >>> 0), baselib, ct_base_base));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_BASE_ERROR) >>> 0), baselib, ct_base_error));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_BASE_META) >>> 0), baselib, ct_base_meta));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_BASE_GC) >>> 0), baselib, ct_base_iffy));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_BASE_UNSAFE) >>> 0), baselib, ct_base_unsafe));
+
         (yield* lua_settop(L, -2));
     }
+
     if ((lflags & NHM.NHL_SB_COROUTINE) >>> 0) {
-        (yield* luaL_requiref(L, __sl310, luaopen_coroutine, 1));
+        (yield* luaL_requiref(L, __s_coroutine, luaopen_coroutine, 1));
         (yield* lua_settop(L, -2));
     }
     if ((lflags & NHM.NHL_SB_TABLE) >>> 0) {
-        (yield* luaL_requiref(L, __sl311, luaopen_table, 1));
+        (yield* luaL_requiref(L, __s_table, luaopen_table, 1));
         (yield* lua_settop(L, -2));
     }
     if ((lflags & NHM.NHL_SB_OSMASK) >>> 0) {
         let oslib;
-        (yield* luaL_requiref(L, __sl312, luaopen_os, 1));
+        (yield* luaL_requiref(L, __s_os, luaopen_os, 1));
         oslib = lua_gettop(L);
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_OS_TIME) >>> 0), oslib, ct_os_time));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_OS_FILES) >>> 0), oslib, ct_os_files));
         (yield* lua_settop(L, -2));
     }
+
     if ((lflags & NHM.NHL_SB_STRING) >>> 0) {
-        (yield* luaL_requiref(L, __sl313, luaopen_string, 1));
+        (yield* luaL_requiref(L, __s_string__2, luaopen_string, 1));
         (yield* lua_settop(L, -2));
     }
     if ((lflags & NHM.NHL_SB_MATH) >>> 0) {
-        (yield* luaL_requiref(L, __sl249, luaopen_math, 1));
+        (yield* luaL_requiref(L, __s_math, luaopen_math, 1));
+        /* Seed Lua's math.random (xoshiro256**) from the game seed so
+         * that math.random() calls in level scripts produce deterministic,
+         * reproducible results. */
         {
-            let env_seed = nh_getenv(__sl314);
+            let env_seed = nh_getenv(__s_nethack_seed);
             if (env_seed) {
                 let seed = strtoul(env_seed, null, 10);
-                (yield* lua_getfield(L, -1, __sl315));
+                (yield* lua_getfield(L, -1, __s_randomseed));
                 (yield* lua_pushinteger(L, BigInt.asIntN(64, seed)));
                 (yield* lua_callk(L, 1, 0, 0n, null));
             }
@@ -2675,12 +3128,12 @@ function* nhlL_openlibs(L, lflags) {
         (yield* lua_settop(L, -2));
     }
     if ((lflags & NHM.NHL_SB_UTF8) >>> 0) {
-        (yield* luaL_requiref(L, __sl316, luaopen_utf8, 1));
+        (yield* luaL_requiref(L, __s_utf8, luaopen_utf8, 1));
         (yield* lua_settop(L, -2));
     }
     if ((lflags & NHM.NHL_SB_DBMASK) >>> 0) {
         let dblib;
-        (yield* luaL_requiref(L, __sl282, luaopen_debug, 1));
+        (yield* luaL_requiref(L, __s_debug, luaopen_debug, 1));
         dblib = lua_gettop(L);
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_DB_DB) >>> 0), dblib, ct_debug_debug));
         (yield* nhl_clearfromtable(L, !!((lflags & NHM.NHL_SB_DB_SAFE) >>> 0), dblib, ct_debug_safe));
@@ -2688,35 +3141,44 @@ function* nhlL_openlibs(L, lflags) {
     }
 }
 
-/** C ref: nhlua.c:3132 — @param {CPtr} ud @param {CPtr} ptr @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr} */
+/** C ref: nhlua.c:3132 — @param {CPtr<void>} ud @param {CPtr<void>} ptr @param {CLongLong} osize @param {CLongLong} nsize @returns {CPtr<void>} */
 function* nhl_alloc(ud, ptr, osize, nsize) {
     let nud = ud;
+
     if (nsize == 0n) {
         if (!cptr.eq(ptr, (null))) {
             cptr.free(ptr);
         }
         return (null);
     }
+
+    /* Check nud->L because it will be NULL during state init. */
     if (nud && cptr.ldPtr(nud) && cptr.ldI32o(nud, $nhl_user_data_memlimit)) {
         if ((yield* nhl_getmeminuse(cptr.ldPtr(nud))) > cptr.ldI32o(nud, $nhl_user_data_memlimit))
             return (null);
     }
+
     return (yield* re_alloc(ptr, Number(BigInt.asUintN(32, nsize))));
 }
 
-/** C ref: nhlua.c:3155 — @param {CPtr} L @returns {CInt} */
+/** C ref: nhlua.c:3155 — @param {CPtr<lua_State>} L @returns {CInt} */
 function* nhl_panic(L) {
     let msg = (yield* lua_tolstring(L, -1, null));
+
     if (cptr.eq(msg, (null)))
-        msg = __sl317;
-    (yield* panic(__sl318, msg));
-    return 0;
+        msg = __s_error_object_is_not_a_string;
+    (yield* panic(__s_unprotected_error_in_call_to_lua_api_s, msg));
+    /*NOTREACHED*/
+    return 0;  /* return to Lua to abort */
 }
 
-/** C ref: nhlua.c:3171 — @param {CPtr} userdata @param {CPtr} msg_fragment @param {CInt} to_be_continued */
+/* called when lua issues a warning message; the text of the message
+   is passed to us in pieces across multiple function calls */
+/** C ref: nhlua.c:3171 — @param {CPtr<void>} userdata @param {CPtr<char>} msg_fragment @param {CInt} to_be_continued */
 function* nhl_warn(userdata, msg_fragment, to_be_continued) {
     let fraglen;
     let buflen = cptr.strlen(cptr.add(gl, $instance_globals_l_lua_warnbuf));
+
     if (msg_fragment && buflen < 255n) {
         fraglen = cptr.strlen(msg_fragment);
         if (BigInt.asUintN(64, buflen + fraglen) > 255n)
@@ -2724,50 +3186,57 @@ function* nhl_warn(userdata, msg_fragment, to_be_continued) {
         void __builtin___strncat_chk(cptr.add(gl, $instance_globals_l_lua_warnbuf), msg_fragment, fraglen, __builtin_object_size(cptr.add(gl, $instance_globals_l_lua_warnbuf), 1));
     }
     if (!to_be_continued) {
-        (yield* paniclog(__sl319, cptr.add(gl, $instance_globals_l_lua_warnbuf)));
+        (yield* paniclog(__s_lua__3, cptr.add(gl, $instance_globals_l_lua_warnbuf)));
         cptr.st1o2(gl, 0, 1, $instance_globals_l_lua_warnbuf, 0);
     }
 }
 
-/** C ref: nhlua.c:3192 — @param {CPtr} L @param {CPtr} ar */
+/** C ref: nhlua.c:3192 — @param {CPtr<lua_State>} L @param {CPtr<lua_Debug>} ar */
 function nhl_hookfn(L, ar) {
     let nud = cptr.box(0);
+
     void lua_getallocf(L, nud);
+
     if (cptr.ldI32o(nud.v, $nhl_user_data_steps) <= NHM.NHL_SB_STEPSIZE)
         cjmp.longjmp(cptr.add(nud.v, $nhl_user_data_jb), 1);
+
     cptr.stI32o(nud.v, $nhl_user_data_steps, (cptr.ldI32o(nud.v, $nhl_user_data_steps) - NHM.NHL_SB_STEPSIZE) | 0);
     (cptr.stI32o(nud.v, $nhl_user_data_statctr, cptr.ldI32o(nud.v, $nhl_user_data_statctr) + 1)) - (1);
 }
 
-/** C ref: nhlua.c:3207 — @param {CPtr} sbi @param {CPtr} name @returns {CPtr} */
+/** C ref: nhlua.c:3207 — @param {CPtr<nhl_sandbox_info>} sbi @param {CPtr<char>} name @returns {CPtr<lua_State>} */
 function* nhlL_newstate(sbi, name) {
     let nud = null;
+
     if (cptr.ldI32o(sbi, $nhl_sandbox_info_memlimit) || cptr.ldI32o(sbi, $nhl_sandbox_info_steps) || cptr.ldI32o(sbi, $nhl_sandbox_info_perpcall)) {
         nud = (yield* nhl_alloc((null), (null), 0n, 240n));
         if (!nud)
             return null;
         cptr.stPtr(nud, null);
         cptr.stI32o(nud, $nhl_user_data_memlimit, cptr.ldI32o(sbi, $nhl_sandbox_info_memlimit));
-        cptr.stI32o(nud, $nhl_user_data_perpcall, 0);
+        cptr.stI32o(nud, $nhl_user_data_perpcall, 0);  /* set up below, if needed */
         cptr.stI32o(nud, $nhl_user_data_steps, 0);
         cptr.stI32o(nud, $nhl_user_data_osteps, 0);
-        cptr.stI32o(nud, $nhl_user_data_flags, cptr.ldI32(sbi));
+        cptr.stI32o(nud, $nhl_user_data_flags, cptr.ldI32(sbi));  /* save reporting flags */
         cptr.stI32o(nud, $nhl_user_data_statctr, 0);
+
         if (name) {
             cptr.stPtro(nud, $nhl_user_data_name, name);
         }
         cptr.stI32o(nud, $nhl_user_data_sid, cptr.stI32o(gl, $instance_globals_l_lua_sid, cptr.ldI32o(gl, $instance_globals_l_lua_sid) + 1));
     }
+
     let L = (yield* lua_newstate(nhl_alloc, nud));
     if (!L)
-        (yield* panic(__sl320));
+        (yield* panic(__s_null_lua_newstate));
     if (nud)
+
         cptr.stPtr(nud, L);
     lua_atpanic(L, nhl_panic);
     lua_setwarnf(L, nhl_warn, L);
     if (nud && (cptr.ldI32o(sbi, $nhl_sandbox_info_steps) || cptr.ldI32o(sbi, $nhl_sandbox_info_perpcall))) {
         if (cptr.ldI32o(sbi, $nhl_sandbox_info_steps) && cptr.ldI32o(sbi, $nhl_sandbox_info_perpcall))
-            (yield* impossible(__sl321));
+            (yield* impossible(__s_steps_and_perpcall_both_non_zero));
         if (cptr.ldI32o(sbi, $nhl_sandbox_info_perpcall)) {
             cptr.stI32o(nud, $nhl_user_data_perpcall, cptr.ldI32o(sbi, $nhl_sandbox_info_perpcall));
         } else {
@@ -2776,6 +3245,7 @@ function* nhlL_newstate(sbi, name) {
         }
         lua_sethook(L, nhl_hookfn, 8, NHM.NHL_SB_STEPSIZE);
     }
+
     return L;
 }
 

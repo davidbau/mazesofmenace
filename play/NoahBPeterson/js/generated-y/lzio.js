@@ -16,7 +16,7 @@ import * as FLD from './nhfield.js';
 // (values from ./nhfield.js, which is the whole table)
 const $ZIO_L = FLD.ZIO_L, $ZIO_data = FLD.ZIO_data, $ZIO_p = FLD.ZIO_p, $ZIO_reader = FLD.ZIO_reader;
 
-/** C ref: lzio.c:23 — @param {CPtr} z @returns {CInt} */
+/** C ref: lzio.c:23 — @param {CPtr<ZIO>} z @returns {CInt} */
 export function* luaZ_fill(z) {
     let size = cptr.box(0n);
     let L = cptr.ldPtro(z, $ZIO_L);
@@ -26,12 +26,12 @@ export function* luaZ_fill(z) {
     (void 0);
     if (cptr.eq(buff, (null)) || size.v == 0n)
         return -1;
-    cptr.stU64(z, BigInt.asUintN(64, size.v - 1n));
+    cptr.stU64(z, BigInt.asUintN(64, size.v - 1n));  /* discount char being returned */
     cptr.stPtro(z, $ZIO_p, buff);
     return (uchar(((cptr.ld1s((cptr.postinc(() => cptr.ldPtro(z, $ZIO_p), (v) => { cptr.stPtro(z, $ZIO_p, v); })))))));
 }
 
-/** C ref: lzio.c:38 — @param {CPtr} L @param {CPtr} z @param {CPtr} reader @param {CPtr} data */
+/** C ref: lzio.c:38 — @param {CPtr<lua_State>} L @param {CPtr<ZIO>} z @param {CPtr} reader @param {CPtr<void>} data */
 export function luaZ_init(L, z, reader, data) {
     cptr.stPtro(z, $ZIO_L, L);
     cptr.stPtro(z, $ZIO_reader, reader);
@@ -40,19 +40,20 @@ export function luaZ_init(L, z, reader, data) {
     cptr.stPtro(z, $ZIO_p, null);
 }
 
-/** C ref: lzio.c:48 — @param {CPtr} z @param {CPtr} b @param {CLongLong} n @returns {*} */
+/* --------------------------------------------------------------- read --- */
+/** C ref: lzio.c:48 — @param {CPtr<ZIO>} z @param {CPtr<void>} b @param {CLongLong} n @returns {*} */
 export function* luaZ_read(z, b, n) {
     while (n) {
         let m;
         if (cptr.ldU64(z) == 0n) {
             if ((yield* luaZ_fill(z)) == -1)
-                return n;
+                return n;  /* no more input; return number of missing bytes */
             else {
-                (cptr.stU64(z, cptr.ldU64(z) + 1n)) - (1n);
+                (cptr.stU64(z, cptr.ldU64(z) + 1n)) - (1n);  /* luaZ_fill consumed first byte; put it back */
                 cptr.postdec(() => cptr.ldPtro(z, $ZIO_p), (v) => { cptr.stPtro(z, $ZIO_p, v); });
             }
         }
-        m = (n <= cptr.ldU64(z)) ? n : cptr.ldU64(z);
+        m = (n <= cptr.ldU64(z)) ? n : cptr.ldU64(z);  /* min. between n and z->n */
         cptr.memcpy(b, cptr.ldPtro(z, $ZIO_p), m);
         cptr.stU64(z, cptr.ldU64(z) - m);
         cptr.stPtro(z, $ZIO_p, cptr.add(cptr.ldPtro(z, $ZIO_p), m));

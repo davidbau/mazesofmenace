@@ -17,18 +17,18 @@ import { iflags } from './decl.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $instance_flags_cbreak = FLD.instance_flags_cbreak, $instance_flags_echo = FLD.instance_flags_echo,
-    $instance_flags_window_inited = FLD.instance_flags_window_inited, $termios_c_cc = FLD.termios_c_cc,
-    $termios_c_cflag = FLD.termios_c_cflag, $termios_c_lflag = FLD.termios_c_lflag,
-    $termios_c_oflag = FLD.termios_c_oflag,
+    $instance_flags_window_inited = FLD.instance_flags_window_inited, $sizeof_termios = FLD.sizeof_termios,
+    $termios_c_cc = FLD.termios_c_cc, $termios_c_cflag = FLD.termios_c_cflag,
+    $termios_c_lflag = FLD.termios_c_lflag, $termios_c_oflag = FLD.termios_c_oflag,
     $window_procs_win_exit_nhwindows = FLD.window_procs_win_exit_nhwindows,
     $window_procs_win_raw_print = FLD.window_procs_win_raw_print,
     $window_procs_wp_id = FLD.window_procs_wp_id;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("NOMUX_MARKERS");
-const __sl1 = cptr.lit("NetHack (setctty)");
-const __sl2 = cptr.lit("NetHack (gettty)");
-const __sl3 = cptr.lit("NetHack (settty)");
+const __s_nomux_markers = cptr.lit("NOMUX_MARKERS");
+const __s_nethack_setctty = cptr.lit("NetHack (setctty)");
+const __s_nethack_gettty = cptr.lit("NetHack (gettty)");
+const __s_nethack_settty = cptr.lit("NetHack (settty)");
 
 /** C ref: unixtty.c:150 — char */
 export let erase_char = 0;
@@ -43,10 +43,10 @@ export let kill_char = 0;
 let settty_needed = 0;
 
 /** C ref: unixtty.c:153 — struct termios */
-export let inittyb = cptr.alloc(72);
+export let inittyb = cptr.alloc($sizeof_termios);
 
 /** C ref: unixtty.c:153 — struct termios */
-export let curttyb = cptr.alloc(72);
+export let curttyb = cptr.alloc($sizeof_termios);
 
 /** C ref: unixtty.c:157 — @param {CLongLong} speed @returns {CInt} */
 function speednum(speed) {
@@ -84,24 +84,35 @@ function speednum(speed) {
         case 38400n:
         return 15;
     }
+
     return 0;
 }
 
 /** C ref: unixtty.c:199 */
 function setctty() {
     if ((tcsetattr(0, 1, curttyb)) < 0 || 0) {
-        if (!getenv(__sl0))
-            perror(__sl1);
+        /* Silent when running under NOMUX_MARKERS (no controlling tty). */
+        if (!getenv(__s_nomux_markers))
+            perror(__s_nethack_setctty);
     }
 }
 
+/*
+ * Get initial state of terminal, set ospeed (for termcap routines)
+ * and switch off tab expansion if necessary.
+ * Called by startup() in termcap.c and after returning from ! or ^Z
+ */
 /** C ref: unixtty.c:214 */
 export function gettty() {
     if ((tcgetattr(0, inittyb)) < 0 || 0) {
-        if (!getenv(__sl0))
-            perror(__sl2);
+        if (!getenv(__s_nomux_markers))
+            perror(__s_nethack_gettty);
     }
-    if (getenv(__sl0)) {
+    if (getenv(__s_nomux_markers)) {
+        /* Without a real tty the GTTY ioctls leave inittyb zeroed.
+         * Synthesize the conventional terminal control characters so
+         * getline.c sees the same erase_char/kill_char as a recording
+         * captured under tmux: \177 (DEL) for erase, ^U for kill. */
         cptr.st1o2(inittyb, 3, 1, $termios_c_cc, 127);
         cptr.st1o2(inittyb, 5, 1, $termios_c_cc, 21);
         cptr.st1o2(inittyb, 8, 1, $termios_c_cc, 3);
@@ -113,6 +124,8 @@ export function gettty() {
     kill_char = schar(cptr.ld1uo2(inittyb, 5, 1, $termios_c_cc));
     intr_char = schar(cptr.ld1uo2(inittyb, 8, 1, $termios_c_cc));
     getioctls();
+
+    /* do not expand tabs - they might be needed inside a cm sequence */
     if (cptr.ldU64o(curttyb, $termios_c_oflag) & 4n) {
         cptr.stU64o(curttyb, $termios_c_oflag, cptr.ldU64o(curttyb, $termios_c_oflag) & 18446744073709551611n);
         setctty();
@@ -120,15 +133,16 @@ export function gettty() {
     settty_needed = 1;
 }
 
-/** C ref: unixtty.c:247 — @param {CPtr} s */
+/* reset terminal to original state */
+/** C ref: unixtty.c:247 — @param {CPtr<char>} s */
 export function settty(s) {
     if ((cptr.ldI32o(windowprocs, $window_procs_wp_id) == NHC.wp_tty))
         term_end_screen();
     if (s)
         raw_print()(s);
     if ((tcsetattr(0, 1, inittyb)) < 0 || 0) {
-        if (!getenv(__sl0))
-            perror(__sl3);
+        if (!getenv(__s_nomux_markers))
+            perror(__s_nethack_settty);
     }
     cptr.st1o(iflags, $instance_flags_echo, schar(((cptr.ldU64o(inittyb, $termios_c_lflag) & 8n) ? NHM.ON : NHM.OFF)));
     cptr.st1o(iflags, $instance_flags_cbreak, schar(((!(cptr.ldU64o(inittyb, $termios_c_lflag) & 256n)) ? NHM.ON : NHM.OFF)));
@@ -142,19 +156,23 @@ export function setftty() {
     let ef;
     let cf;
     let change = 0;
-    ef = 0;
-    cf = 0;
+
+    ef = 0;  /* desired value of flags & ECHO */
+    cf = 0;  /* desired value of flags & CBREAK */
     cptr.st1o(iflags, $instance_flags_cbreak, NHM.ON);
     cptr.st1o(iflags, $instance_flags_echo, NHM.OFF);
+    /* Should use (ECHO|CRMOD) here instead of ECHO */
     if (Number(BigInt.asUintN(32, (cptr.ldU64o(curttyb, $termios_c_lflag) & 8n))) != ef) {
         cptr.stU64o(curttyb, $termios_c_lflag, cptr.ldU64o(curttyb, $termios_c_lflag) & 18446744073709551607n);
+        /* curttyb.echoflgs |= ef; */
         change++;
     }
     if (Number(BigInt.asUintN(32, (cptr.ldU64o(curttyb, $termios_c_lflag) & 256n))) != cf) {
         cptr.stU64o(curttyb, $termios_c_lflag, cptr.ldU64o(curttyb, $termios_c_lflag) & 18446744073709551359n);
         cptr.stU64o(curttyb, $termios_c_lflag, cptr.ldU64o(curttyb, $termios_c_lflag) | BigInt(cf >>> 0));
-        cptr.st1o2(curttyb, 16, 1, $termios_c_cc, 1);
-        cptr.st1o2(curttyb, 17, 1, $termios_c_cc, 0);
+        /* be satisfied with one character; no timeout */
+        cptr.st1o2(curttyb, 16, 1, $termios_c_cc, 1);  /* was VEOF */
+        cptr.st1o2(curttyb, 17, 1, $termios_c_cc, 0);  /* was VEOL */
         cptr.st1o2(curttyb, 10, 1, $termios_c_cc, Number(BigInt.asUintN(8, (fpathconf(0, 9)))));
         cptr.st1o2(curttyb, 11, 1, $termios_c_cc, Number(BigInt.asUintN(8, (fpathconf(0, 9)))));
         cptr.st1o2(curttyb, 6, 1, $termios_c_cc, Number(BigInt.asUintN(8, (fpathconf(0, 9)))));
@@ -165,10 +183,14 @@ export function setftty() {
     }
     if (!(cptr.ldU64o((inittyb), $termios_c_cflag) & 512n))
         cptr.stU64(curttyb, cptr.ldU64(curttyb) & 18446744073709551583n);
+    /* If an interrupt character is used, it will be overridden and
+     * set to ^C.
+     */
     if (BigInt(intr_char) != (fpathconf(0, 9)) && cptr.ld1uo2(curttyb, 8, 1, $termios_c_cc) != 3) {
         cptr.st1o2(curttyb, 8, 1, $termios_c_cc, 3);
         change++;
     }
+
     if (change)
         setctty();
     if ((cptr.ldI32o(windowprocs, $window_procs_wp_id) == NHC.wp_tty))
@@ -177,6 +199,7 @@ export function setftty() {
 
 /** C ref: unixtty.c:338 */
 export function intron() {
+    /* Ugly hack to keep from changing tty modes for non-tty games -dlc */
     if ((cptr.ldI32o(windowprocs, $window_procs_wp_id) == NHC.wp_tty) && BigInt(intr_char) != (fpathconf(0, 9)) && cptr.ld1uo2(curttyb, 8, 1, $termios_c_cc) != 3) {
         cptr.st1o2(curttyb, 8, 1, $termios_c_cc, 3);
         setctty();
@@ -185,18 +208,21 @@ export function intron() {
 
 /** C ref: unixtty.c:350 */
 export function introff() {
+    /* Ugly hack to keep from changing tty modes for non-tty games -dlc */
     if ((cptr.ldI32o(windowprocs, $window_procs_wp_id) == NHC.wp_tty) && BigInt(cptr.ld1uo2(curttyb, 8, 1, $termios_c_cc) >>> 0) != (fpathconf(0, 9))) {
         cptr.st1o2(curttyb, 8, 1, $termios_c_cc, Number(BigInt.asUintN(8, (fpathconf(0, 9)))));
         setctty();
     }
 }
 
-/** C ref: unixtty.c:489 — @param {CPtr} s */
+/* fatal error */
+/** C ref: unixtty.c:489 — @param {CPtr<char>} s */
 export function error(s, ...__va) {
     let the_args;
+
     the_args = cptr.vaList(__va);
     if (cptr.ld1so(iflags, $instance_flags_window_inited))
-        exit_nhwindows()(null);
+        exit_nhwindows()(null);  /* for tty, will call settty() */
     if (settty_needed)
         settty(null);
     void vprintf(s, the_args);
@@ -205,6 +231,11 @@ export function error(s, ...__va) {
     exit(1);
 }
 
+/*
+ * set in term_start_screen() and allows
+ * OS-specific changes that may be
+ * required for support of utf8.
+ */
 /** C ref: unixtty.c:514 */
 export function tty_utf8graphics_fixup() {
 }

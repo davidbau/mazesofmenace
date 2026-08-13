@@ -9,13 +9,13 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { ceiling_hider, has_mgivenname, is_pit } from './nhmacrofn.js';
+import { d_at, rn2_at, rnd_at, rnl_at } from './nhrng.js';
 import { Blind, Deaf, Flying, Fumbling, HConfusion, HStun, Half_physical_damage, Hallucination, Levitation, Unchanging, Underwater, Upolyd, sokoban_dnum } from './nhprop.js';
 import { flash_str, resist, ubuzz, zapyourself } from './zap.js';
 import { monflee, onscary } from './monmove.js';
 import { c_common_strings, disp, flags, gc, gu, gv, gy, svc, svd, svl, svt, u, ynqchars } from './decl.js';
 import { dist2, highc, mungspaces } from './hacklib.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
-import { d, rn2, rnd, rng_log_enabled, rng_log_set_caller, rnl } from './rnd.js';
 import { canseemon, newsym } from './display.js';
 import { Norep, You, You_cant, You_feel, You_hear, Your, impossible, pline, pline_The } from './pline.js';
 import { Amonnam, Monnam, a_monnam, mon_nam, x_monnam } from './do_name.js';
@@ -38,6 +38,7 @@ import { add_damage } from './shk.js';
 import { In_V_tower, on_level } from './dungeon.js';
 import { objects } from './objects.js';
 import { Tobjnam, Yname2, an, the, thesimpleoname, xname, yname } from './objnam.js';
+import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { getdir, isok, yn_function } from './cmd.js';
 import { genders } from './role.js';
 import { discover_object } from './o_init.js';
@@ -74,143 +75,152 @@ const $Gender_him = FLD.Gender_him, $Role_mnum = FLD.Role_mnum,
     $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
     $permonst_mlevel = FLD.permonst_mlevel, $prop_blocked = FLD.prop_blocked,
     $prop_intrinsic = FLD.prop_intrinsic, $rm_flags = FLD.rm_flags, $rm_typ = FLD.rm_typ,
-    $trap_tseen = FLD.trap_tseen, $trap_ttyp = FLD.trap_ttyp, $u_event_uheard_tune = FLD.u_event_uheard_tune,
-    $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_dx = FLD.you_dx, $you_dy = FLD.you_dy, $you_dz = FLD.you_dz,
-    $you_uevent = FLD.you_uevent, $you_uinwater = FLD.you_uinwater, $you_ulevel = FLD.you_ulevel,
-    $you_umonnum = FLD.you_umonnum, $you_umonster = FLD.you_umonster, $you_uprops = FLD.you_uprops,
-    $you_uroleplay = FLD.you_uroleplay, $you_usteed = FLD.you_usteed, $you_uswallow = FLD.you_uswallow,
-    $you_utrap = FLD.you_utrap, $you_utraptype = FLD.you_utraptype, $you_uy = FLD.you_uy,
-    $you_uz = FLD.you_uz;
+    $sizeof_Gender = FLD.sizeof_Gender, $sizeof_objclass = FLD.sizeof_objclass,
+    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm,
+    $sizeof_rm_x21 = FLD.sizeof_rm_x21, $trap_tseen = FLD.trap_tseen, $trap_ttyp = FLD.trap_ttyp,
+    $u_event_uheard_tune = FLD.u_event_uheard_tune, $u_roleplay_deaf = FLD.u_roleplay_deaf,
+    $you_dx = FLD.you_dx, $you_dy = FLD.you_dy, $you_dz = FLD.you_dz, $you_uevent = FLD.you_uevent,
+    $you_uinwater = FLD.you_uinwater, $you_ulevel = FLD.you_ulevel, $you_umonnum = FLD.you_umonnum,
+    $you_umonster = FLD.you_umonster, $you_uprops = FLD.you_uprops, $you_uroleplay = FLD.you_uroleplay,
+    $you_usteed = FLD.you_usteed, $you_uswallow = FLD.you_uswallow, $you_utrap = FLD.you_utrap,
+    $you_utraptype = FLD.you_utraptype, $you_uy = FLD.you_uy, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("music.c");
-const __sl1 = cptr.lit("put_monsters_to_sleep");
-const __sl2 = cptr.lit("notice %s, swaying with the music.");
-const __sl3 = cptr.lit("%s freezes, then sways with the music%s.");
-const __sl4 = cptr.lit("");
-const __sl5 = cptr.lit(", and now seems quieter");
-const __sl6 = cptr.lit("%s listens cheerfully to the music, then seems quieter.");
-const __sl7 = cptr.lit("%s is now ready for battle!");
-const __sl8 = cptr.lit("%s the rattle of battle gear being readied.");
-const __sl9 = cptr.lit("You hear");
-const __sl10 = cptr.lit("KADOOM!  The boulder falls into a chasm%s!");
-const __sl11 = cptr.lit(" below you");
-const __sl12 = cptr.lit("%s falls into a chasm!");
-const __sl13 = cptr.lit("a scream!");
-const __sl14 = cptr.lit("Falling, ");
-const __sl15 = cptr.lit("do_pit");
-const __sl16 = cptr.lit("It is destroyed!");
-const __sl17 = cptr.lit("destroy %s!");
-const __sl18 = cptr.lit("poor");
-const __sl19 = cptr.lit("chain breaks!");
-const __sl20 = cptr.lit("A chasm opens up under you!");
-const __sl21 = cptr.lit("don't fall in!");
-const __sl22 = cptr.lit("fall into a chasm!");
-const __sl23 = cptr.lit("fell into a chasm");
-const __sl24 = cptr.lit("Falling, you");
-const __sl25 = cptr.lit("are jostled around violently!");
-const __sl26 = cptr.lit("hurt in a chasm");
-const __sl27 = cptr.lit("Shaken, you");
-const __sl28 = cptr.lit("Falling down, you");
-const __sl29 = cptr.lit("%s is shaken loose from the ceiling!");
-const __sl30 = cptr.lit("a thump.");
-const __sl31 = cptr.lit("do_earthquake");
-const __sl32 = cptr.lit("fountain falls%s.");
-const __sl33 = cptr.lit("kitchen sink falls%s.");
-const __sl34 = cptr.lit("%s altar falls%s.");
-const __sl35 = cptr.lit("headstone topples%s.");
-const __sl36 = cptr.lit("throne falls%s.");
-const __sl37 = cptr.lit("A secret corridor is revealed.");
-const __sl38 = cptr.lit("A secret door is revealed.");
-const __sl39 = cptr.lit("door collapses.");
-const __sl40 = cptr.lit("astral plane");
-const __sl41 = cptr.lit("plane");
-const __sl42 = cptr.lit("sanctum");
-const __sl43 = cptr.lit("puzzle");
-const __sl44 = cptr.lit("tower");
-const __sl45 = cptr.lit("dungeon");
-const __sl46 = cptr.lit("stepper");
-const __sl47 = cptr.lit("one drop");
-const __sl48 = cptr.lit("slow two");
-const __sl49 = cptr.lit("triple stroke roll");
-const __sl50 = cptr.lit("double shuffle");
-const __sl51 = cptr.lit("half-time shuffle");
-const __sl52 = cptr.lit("second line");
-const __sl53 = cptr.lit("train");
-const __sl54 = cptr.lit("do_improvisation");
-const __sl55 = cptr.lit("start playing %s.");
-const __sl56 = cptr.lit("radiate an obnoxious droning sound.");
-const __sl57 = cptr.lit("a monotonous vibration.");
-const __sl58 = cptr.lit("generate a raucous noise.");
-const __sl59 = cptr.lit("a jarring vibration.");
-const __sl60 = cptr.lit("disseminate a kaleidoscopic display of floating butterflies.");
-const __sl61 = cptr.lit("What you perform is quite far from music...");
-const __sl62 = cptr.lit("%sproduce %s%s music.");
-const __sl63 = cptr.lit("seem to ");
-const __sl64 = cptr.lit("piped");
-const __sl65 = cptr.lit("soft");
-const __sl66 = cptr.lit(", familiar");
-const __sl67 = cptr.lit("%s%s.");
-const __sl68 = cptr.lit("trill");
-const __sl69 = cptr.lit("toot");
-const __sl70 = cptr.lit(" a familiar tune");
-const __sl71 = cptr.lit("%s %s.");
-const __sl72 = cptr.lit("%s.");
-const __sl73 = cptr.lit("vibrate");
-const __sl74 = cptr.lit("using a magical horn on %sself");
-const __sl75 = cptr.lit("A %s blasts out of the horn!");
-const __sl76 = cptr.lit("produce a frightful, grave%s sound.");
-const __sl77 = cptr.lit(", yet familiar,");
-const __sl78 = cptr.lit("blow into the horn.");
-const __sl79 = cptr.lit("extract a loud%s noise from %s.");
-const __sl80 = cptr.lit("blow into the bugle.");
-const __sl81 = cptr.lit("%s very attractive%s music.");
-const __sl82 = cptr.lit("produce");
-const __sl83 = cptr.lit(" and familiar");
-const __sl84 = cptr.lit("very soothing vibrations.");
-const __sl85 = cptr.lit("produces a familiar, lilting melody");
-const __sl86 = cptr.lit("produces a lilting melody");
-const __sl87 = cptr.lit("twangs a familiar tune");
-const __sl88 = cptr.lit("twangs");
-const __sl89 = cptr.lit("soothing vibrations.");
-const __sl90 = cptr.lit("produce a heavy, thunderous rolling!");
-const __sl91 = cptr.lit("entire %s is shaking around you!");
-const __sl92 = cptr.lit("beat a %sdeafening row!");
-const __sl93 = cptr.lit("familiar ");
-const __sl94 = cptr.lit("pound on the drum.");
-const __sl95 = cptr.lit("butcher");
-const __sl96 = cptr.lit("manage");
-const __sl97 = cptr.lit("pull off");
-const __sl98 = cptr.lit("What a weird instrument (%d)!");
-const __sl99 = cptr.lit("improvised_notes");
-const __sl100 = cptr.lit("play music underwater!");
-const __sl101 = cptr.lit("are incapable of playing %s.");
-const __sl102 = cptr.lit("Improvise?");
-const __sl103 = cptr.lit("Play the passtune?");
-const __sl104 = cptr.lit("What tune are you playing? [5 notes, A-G]");
-const __sl105 = cptr.lit("extract a strange sound from %s!");
-const __sl106 = cptr.lit("can feel %s emitting vibrations.");
-const __sl107 = cptr.lit("%d tumbler%s click and %d gear%s turn.");
-const __sl108 = cptr.lit("s");
-const __sl109 = cptr.lit("%d tumbler%s click.");
-const __sl110 = cptr.lit("%d gear%s turn.");
-const __sl111 = cptr.lit("%s");
+const __s_music_c = cptr.lit("music.c");
+const __s_put_monsters_to_sleep = cptr.lit("put_monsters_to_sleep");
+const __s_notice_s_swaying_with_the_music = cptr.lit("notice %s, swaying with the music.");
+const __s_s_freezes_then_sways_with_the_music_s = cptr.lit("%s freezes, then sways with the music%s.");
+const __s_empty = cptr.lit("");
+const __s_and_now_seems_quieter = cptr.lit(", and now seems quieter");
+const __s_s_listens_cheerfully_to_the_music_then = cptr.lit("%s listens cheerfully to the music, then seems quieter.");
+const __s_s_is_now_ready_for_battle = cptr.lit("%s is now ready for battle!");
+const __s_s_the_rattle_of_battle_gear_being = cptr.lit("%s the rattle of battle gear being readied.");
+const __s_you_hear = cptr.lit("You hear");
+const __s_kadoom_the_boulder_falls_into_a_chasm_s = cptr.lit("KADOOM!  The boulder falls into a chasm%s!");
+const __s_below_you = cptr.lit(" below you");
+const __s_s_falls_into_a_chasm = cptr.lit("%s falls into a chasm!");
+const __s_a_scream = cptr.lit("a scream!");
+const __s_falling = cptr.lit("Falling, ");
+const __s_do_pit = cptr.lit("do_pit");
+const __s_it_is_destroyed = cptr.lit("It is destroyed!");
+const __s_destroy_s = cptr.lit("destroy %s!");
+const __s_poor = cptr.lit("poor");
+const __s_chain_breaks = cptr.lit("chain breaks!");
+const __s_a_chasm_opens_up_under_you = cptr.lit("A chasm opens up under you!");
+const __s_don_t_fall_in = cptr.lit("don't fall in!");
+const __s_fall_into_a_chasm = cptr.lit("fall into a chasm!");
+const __s_fell_into_a_chasm = cptr.lit("fell into a chasm");
+const __s_falling_you = cptr.lit("Falling, you");
+const __s_are_jostled_around_violently = cptr.lit("are jostled around violently!");
+const __s_hurt_in_a_chasm = cptr.lit("hurt in a chasm");
+const __s_shaken_you = cptr.lit("Shaken, you");
+const __s_falling_down_you = cptr.lit("Falling down, you");
+const __s_s_is_shaken_loose_from_the_ceiling = cptr.lit("%s is shaken loose from the ceiling!");
+const __s_a_thump = cptr.lit("a thump.");
+const __s_do_earthquake = cptr.lit("do_earthquake");
+const __s_fountain_falls_s = cptr.lit("fountain falls%s.");
+const __s_kitchen_sink_falls_s = cptr.lit("kitchen sink falls%s.");
+const __s_s_altar_falls_s = cptr.lit("%s altar falls%s.");
+const __s_headstone_topples_s = cptr.lit("headstone topples%s.");
+const __s_throne_falls_s = cptr.lit("throne falls%s.");
+const __s_a_secret_corridor_is_revealed = cptr.lit("A secret corridor is revealed.");
+const __s_a_secret_door_is_revealed = cptr.lit("A secret door is revealed.");
+const __s_door_collapses = cptr.lit("door collapses.");
+const __s_astral_plane = cptr.lit("astral plane");
+const __s_plane = cptr.lit("plane");
+const __s_sanctum = cptr.lit("sanctum");
+const __s_puzzle = cptr.lit("puzzle");
+const __s_tower = cptr.lit("tower");
+const __s_dungeon = cptr.lit("dungeon");
+const __s_stepper = cptr.lit("stepper");
+const __s_one_drop = cptr.lit("one drop");
+const __s_slow_two = cptr.lit("slow two");
+const __s_triple_stroke_roll = cptr.lit("triple stroke roll");
+const __s_double_shuffle = cptr.lit("double shuffle");
+const __s_half_time_shuffle = cptr.lit("half-time shuffle");
+const __s_second_line = cptr.lit("second line");
+const __s_train = cptr.lit("train");
+const __s_do_improvisation = cptr.lit("do_improvisation");
+const __s_start_playing_s = cptr.lit("start playing %s.");
+const __s_radiate_an_obnoxious_droning_sound = cptr.lit("radiate an obnoxious droning sound.");
+const __s_a_monotonous_vibration = cptr.lit("a monotonous vibration.");
+const __s_generate_a_raucous_noise = cptr.lit("generate a raucous noise.");
+const __s_a_jarring_vibration = cptr.lit("a jarring vibration.");
+const __s_disseminate_a_kaleidoscopic_display_of = cptr.lit("disseminate a kaleidoscopic display of floating butterflies.");
+const __s_what_you_perform_is_quite_far_from_music = cptr.lit("What you perform is quite far from music...");
+const __s_sproduce_s_s_music = cptr.lit("%sproduce %s%s music.");
+const __s_seem_to = cptr.lit("seem to ");
+const __s_piped = cptr.lit("piped");
+const __s_soft = cptr.lit("soft");
+const __s_familiar = cptr.lit(", familiar");
+const __s_s_s = cptr.lit("%s%s.");
+const __s_trill = cptr.lit("trill");
+const __s_toot = cptr.lit("toot");
+const __s_a_familiar_tune = cptr.lit(" a familiar tune");
+const __s_s_s__2 = cptr.lit("%s %s.");
+const __s_pct_s_dot = cptr.lit("%s.");
+const __s_vibrate = cptr.lit("vibrate");
+const __s_using_a_magical_horn_on_sself = cptr.lit("using a magical horn on %sself");
+const __s_a_s_blasts_out_of_the_horn = cptr.lit("A %s blasts out of the horn!");
+const __s_produce_a_frightful_grave_s_sound = cptr.lit("produce a frightful, grave%s sound.");
+const __s_yet_familiar = cptr.lit(", yet familiar,");
+const __s_blow_into_the_horn = cptr.lit("blow into the horn.");
+const __s_extract_a_loud_s_noise_from_s = cptr.lit("extract a loud%s noise from %s.");
+const __s_blow_into_the_bugle = cptr.lit("blow into the bugle.");
+const __s_s_very_attractive_s_music = cptr.lit("%s very attractive%s music.");
+const __s_produce = cptr.lit("produce");
+const __s_and_familiar = cptr.lit(" and familiar");
+const __s_very_soothing_vibrations = cptr.lit("very soothing vibrations.");
+const __s_produces_a_familiar_lilting_melody = cptr.lit("produces a familiar, lilting melody");
+const __s_produces_a_lilting_melody = cptr.lit("produces a lilting melody");
+const __s_twangs_a_familiar_tune = cptr.lit("twangs a familiar tune");
+const __s_twangs = cptr.lit("twangs");
+const __s_soothing_vibrations = cptr.lit("soothing vibrations.");
+const __s_produce_a_heavy_thunderous_rolling = cptr.lit("produce a heavy, thunderous rolling!");
+const __s_entire_s_is_shaking_around_you = cptr.lit("entire %s is shaking around you!");
+const __s_beat_a_sdeafening_row = cptr.lit("beat a %sdeafening row!");
+const __s_familiar__2 = cptr.lit("familiar ");
+const __s_pound_on_the_drum = cptr.lit("pound on the drum.");
+const __s_butcher = cptr.lit("butcher");
+const __s_manage = cptr.lit("manage");
+const __s_pull_off = cptr.lit("pull off");
+const __s_what_a_weird_instrument_d = cptr.lit("What a weird instrument (%d)!");
+const __s_improvised_notes = cptr.lit("improvised_notes");
+const __s_play_music_underwater = cptr.lit("play music underwater!");
+const __s_are_incapable_of_playing_s = cptr.lit("are incapable of playing %s.");
+const __s_improvise = cptr.lit("Improvise?");
+const __s_play_the_passtune = cptr.lit("Play the passtune?");
+const __s_what_tune_are_you_playing_5_notes_a_g = cptr.lit("What tune are you playing? [5 notes, A-G]");
+const __s_extract_a_strange_sound_from_s = cptr.lit("extract a strange sound from %s!");
+const __s_can_feel_s_emitting_vibrations = cptr.lit("can feel %s emitting vibrations.");
+const __s_d_tumbler_s_click_and_d_gear_s_turn = cptr.lit("%d tumbler%s click and %d gear%s turn.");
+const __s_s = cptr.lit("s");
+const __s_d_tumbler_s_click = cptr.lit("%d tumbler%s click.");
+const __s_d_gear_s_turn = cptr.lit("%d gear%s turn.");
+const __s_pct_s = cptr.lit("%s");
 
-/** C ref: music.c:45 — @param {CPtr} mtmp @param {CInt} scary */
+/* wake up monster, possibly scare it */
+/** C ref: music.c:45 — @param {CPtr<struct monst>} mtmp @param {CInt} scary */
 function awaken_scare(mtmp, scary) {
     cptr.stI32o(mtmp, $monst_msleeping, 0);
     cptr.stI32o(mtmp, $monst_mcanmove, 1);
     cptr.stI32o(mtmp, $monst_mfrozen, 0);
+    /* may scare some monsters -- waiting monsters excluded */
     if (!((cptr.ldU16o((cptr.ldPtro(mtmp, $monst_data)), $permonst_geno) & NHM.G_UNIQ) != 0) && (cptr.ldU64o(mtmp, $monst_mstrategy) & 805306368n) != 0n)
         cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744072904245247n);
     else if (scary && !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 65536n) != 0n) && !resist(mtmp, NHC.TOOL_CLASS, 0, NHM.NOTELL) && onscary(0, 0, mtmp))
         monflee(mtmp, 0, 0, 1);
 }
 
+/*
+ * Wake every monster in range...
+ */
+
 /** C ref: music.c:67 — @param {CInt} distance */
 function awaken_monsters(distance) {
     let mtmp;
     let distm;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
@@ -219,24 +229,34 @@ function awaken_monsters(distance) {
     }
 }
 
+/*
+ * Make monsters fall asleep.  Note that they may resist the spell.
+ */
+
 /** C ref: music.c:85 — @param {CInt} distance */
 function put_monsters_to_sleep(distance) {
     let mtmp;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
-        if (dist2((cptr.ldI16o((mtmp), $monst_mx)), (cptr.ldI16o((mtmp), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) < distance && sleep_monst(mtmp, (rng_log_enabled() ? (rng_log_set_caller(__sl0, 93, __sl1), d(10, 10)) : d(10, 10)), NHC.TOOL_CLASS)) {
-            cptr.stI32o(mtmp, $monst_msleeping, 1);
+        if (dist2((cptr.ldI16o((mtmp), $monst_mx)), (cptr.ldI16o((mtmp), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) < distance && sleep_monst(mtmp, d_at(__s_music_c, 93, __s_put_monsters_to_sleep, 10, 10), NHC.TOOL_CLASS)) {
+            cptr.stI32o(mtmp, $monst_msleeping, 1);  /* 10d10 turns + wake_nearby to rouse */
             slept_monst(mtmp);
         }
     }
 }
+
+/*
+ * Charm snakes in range.  Note that the snakes are NOT tamed.
+ */
 
 /** C ref: music.c:105 — @param {CInt} distance */
 function charm_snakes(distance) {
     let mtmp;
     let could_see_mon;
     let was_peaceful;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
@@ -250,17 +270,22 @@ function charm_snakes(distance) {
             newsym(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my));
             if (canseemon(mtmp)) {
                 if (!could_see_mon)
-                    You(__sl2, a_monnam(mtmp));
+                    You(__s_notice_s_swaying_with_the_music, a_monnam(mtmp));
                 else
-                    pline(__sl3, Monnam(mtmp), was_peaceful ? __sl4 : __sl5);
+                    pline(__s_s_freezes_then_sways_with_the_music_s, Monnam(mtmp), was_peaceful ? __s_empty : __s_and_now_seems_quieter);
             }
         }
     }
 }
 
+/*
+ * Calm nymphs in range.
+ */
+
 /** C ref: music.c:139 — @param {CInt} distance */
 function calm_nymphs(distance) {
     let mtmp;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
@@ -270,100 +295,125 @@ function calm_nymphs(distance) {
             cptr.stI32o(mtmp, $monst_mavenge, 0);
             cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744072904245247n);
             if (canseemon(mtmp))
-                pline(__sl6, Monnam(mtmp));
+                pline(__s_s_listens_cheerfully_to_the_music_then, Monnam(mtmp));
         }
     }
 }
 
-/** C ref: music.c:162 — @param {CPtr} bugler */
+/* Awake soldiers anywhere the level (and any nearby monster). */
+/** C ref: music.c:162 — @param {CPtr<struct monst>} bugler */
 export function awaken_soldiers(bugler) {
     let mtmp;
     let distance;
     let distm;
+
+    /* distance of affected non-soldier monsters to bugler */
     distance = Math.imul(((cptr.eq(bugler, cptr.add(gy, $instance_globals_y_youmonst))) ? cptr.ldI32o(u, $you_ulevel) : cptr.ld1so(cptr.ldPtro(bugler, $monst_data), $permonst_mlevel)), 30);
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
-        if (((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 512n) != 0n) && !cptr.eq(cptr.ldPtro(mtmp, $monst_data), cptr.add(mons, NHC.PM_GUARD, 96))) {
+        if (((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 512n) != 0n) && !cptr.eq(cptr.ldPtro(mtmp, $monst_data), cptr.add(mons, NHC.PM_GUARD, $sizeof_permonst))) {
             if (!cptr.ld1so(mtmp, $monst_mtame))
                 cptr.stI32o(mtmp, $monst_mpeaceful, 0);
             cptr.stI32o(mtmp, $monst_msleeping, cptr.stI32o(mtmp, $monst_mfrozen, 0));
             cptr.stI32o(mtmp, $monst_mcanmove, 1);
             cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744072904245247n);
             if (canseemon(mtmp))
-                pline(__sl7, Monnam(mtmp));
+                pline(__s_s_is_now_ready_for_battle, Monnam(mtmp));
             else if (!Deaf())
-                Norep(__sl8, __sl9);
+                Norep(__s_s_the_rattle_of_battle_gear_being, __s_you_hear);  /* Deaf-aware */
         } else if ((distm = ((cptr.eq(bugler, cptr.add(gy, $instance_globals_y_youmonst))) ? dist2((cptr.ldI16o((mtmp), $monst_mx)), (cptr.ldI16o((mtmp), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) : dist2(cptr.ldI16o(bugler, $monst_mx), cptr.ldI16o(bugler, $monst_my), cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my)))) < distance) {
             awaken_scare(mtmp, schar((distm < ((distance / 3) | 0))));
         }
     }
 }
 
+/* Charm monsters in range.  Note that they may resist the spell. */
 /** C ref: music.c:196 — @param {CInt} distance */
 function charm_monsters(distance) {
     let mtmp;
     let mtmp2;
+
     if ((cptr.ldI32o(u, $you_uswallow) & 1))
         distance = 0;
+
     for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = mtmp2) {
         mtmp2 = cptr.ldPtr(mtmp);
         if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
             continue;
+
         if (dist2((cptr.ldI16o((mtmp), $monst_mx)), (cptr.ldI16o((mtmp), $monst_my)), cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) <= distance) {
+            /* a shopkeeper can't be tamed but tamedog() pacifies an angry
+               one; do that even if mtmp resists in order to behave the same
+               as a non-cursed scroll of taming or spell of charm monster */
             if (!resist(mtmp, NHC.TOOL_CLASS, 0, NHM.NOTELL) || (cptr.ldI32o(mtmp, $monst_isshk) & 1) | 0)
                 void tamedog(mtmp, null, 1);
         }
     }
 }
 
+/* Try to make a pit. */
 /** C ref: music.c:221 — @param {CInt} x @param {CInt} y @param {CUInt} tu_pit */
 function do_pit(x, y, tu_pit) {
     let mtmp;
     let otmp;
     let chasm;
     let filltype;
+
     chasm = maketrap(x, y, NHC.PIT);
     if (!chasm)
-        return;
+        return;  /* no pit if portal at that location */
     cptr.stI32o(chasm, $trap_tseen, 1);
-    mtmp = (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
+
+    mtmp = (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters));  /* (redundant?) */
     if ((otmp = sobj_at(NHC.BOULDER, x, y)) !== null) {
         if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-            pline(__sl10, ((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)) ? __sl11 : __sl4);
+            pline(__s_kadoom_the_boulder_falls_into_a_chasm_s, ((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)) ? __s_below_you : __s_empty);
         if (mtmp)
             cptr.stI32o(mtmp, $monst_mtrapped, 0);
         obj_extract_self(otmp);
-        void flooreffects(otmp, x, y, __sl4);
+        void flooreffects(otmp, x, y, __s_empty);
         return;
     }
+
+    /* Let liquid flow into the newly created chasm.
+       Adjust corresponding code in apply.c for exploding
+       wand of digging if you alter this sequence. */
     filltype = fillholetyp(x, y, 0);
     if (filltype != NHC.ROOM) {
-        set_levltyp(x, y, filltype);
+        set_levltyp(x, y, filltype);  /* levl[x][y] = filltype; */
         liquid_flow(x, y, filltype, chasm, null);
+        /* liquid_flow() deletes trap, might kill mtmp */
         if (cptr.eq((chasm = t_at(x, y)), (null)))
             return;
     }
+
+    /* We have to check whether monsters or hero falls into a
+       new pit....  Note: if we get here, chasm is non-Null. */
     if (mtmp) {
         if (!((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 1n) != 0n) && !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 16n) != 0n)) {
             let m_already_trapped = schar((cptr.ldI32o(mtmp, $monst_mtrapped) & 1));
+
             cptr.stI32o(mtmp, $monst_mtrapped, 1);
             if (!m_already_trapped) {
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0)) {
-                    pline(__sl12, Monnam(mtmp));
+                    pline(__s_s_falls_into_a_chasm, Monnam(mtmp));
                 } else if (((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 131072n) != 0n)) {
                     ;
-                    You_hear(__sl13);
+                    You_hear(__s_a_scream);
                 }
             }
-            mselftouch(mtmp, __sl14, 1);
+            /* Falling is okay for falling down
+               within a pit from jostling too */
+            mselftouch(mtmp, __s_falling, 1);
             if (!(cptr.ldI32o((mtmp), $monst_mhp) < 1)) {
-                cptr.stI32o(mtmp, $monst_mhp, (cptr.ldI32o(mtmp, $monst_mhp) - (rng_log_enabled() ? (rng_log_set_caller(__sl0, 276, __sl15), rnd(m_already_trapped ? 4 : 6)) : rnd(m_already_trapped ? 4 : 6))) | 0);
+                cptr.stI32o(mtmp, $monst_mhp, (cptr.ldI32o(mtmp, $monst_mhp) - rnd_at(__s_music_c, 276, __s_do_pit, m_already_trapped ? 4 : 6)) | 0);
                 if ((cptr.ldI32o((mtmp), $monst_mhp) < 1)) {
                     if (!((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0)) {
-                        pline(__sl16);
+                        pline(__s_it_is_destroyed);
                     } else {
-                        You(__sl17, cptr.ld1so(mtmp, $monst_mtame) ? x_monnam(mtmp, NHM.ARTICLE_THE, __sl18, has_mgivenname(mtmp) ? NHM.SUPPRESS_SADDLE : 0, 0) : mon_nam(mtmp));
+                        You(__s_destroy_s, cptr.ld1so(mtmp, $monst_mtame) ? x_monnam(mtmp, NHM.ARTICLE_THE, __s_poor, has_mgivenname(mtmp) ? NHM.SUPPRESS_SADDLE : 0, 0) : mon_nam(mtmp));
                     }
                     xkilled(mtmp, NHM.XKILL_NOMSG);
                 }
@@ -371,34 +421,46 @@ function do_pit(x, y, tu_pit) {
         }
     } else if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy))) {
         if (cptr.ldI32o(u, $you_utrap) && cptr.ldI32o(u, $you_utraptype) == NHC.TT_BURIEDBALL) {
-            Your(__sl19);
+            /* Note:  the chain should break if a pit gets
+               created at the buried ball's location, which
+               is not necessarily here.  But if we don't do
+               things this way, entering the new pit below
+               will override current trap anyway, but too
+               late to get Lev and Fly handling. */
+            Your(__s_chain_breaks);
             reset_utrap(1);
         }
         if (Levitation() || Flying() || ((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 16n) != 0n)) {
             if (!tu_pit) {
-                pline(__sl20);
-                You(__sl21);
+                pline(__s_a_chasm_opens_up_under_you);
+                You(__s_don_t_fall_in);
             }
         } else if (!tu_pit || !cptr.ldI32o(u, $you_utrap) || cptr.ldI32o(u, $you_utraptype) != NHC.TT_PIT) {
-            You(__sl22);
-            set_utrap((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 313, __sl15), rn2(6)) : rn2(6)) + 2) | 0) >>> 0, NHC.TT_PIT);
-            losehp(((Half_physical_damage()) ? ((((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 314, __sl15), rnd(6)) : rnd(6))) + 1) | 0) / 2) | 0) : ((rng_log_enabled() ? (rng_log_set_caller(__sl0, 314, __sl15), rnd(6)) : rnd(6)))), __sl23, NHM.NO_KILLER_PREFIX);
-            selftouch(__sl24);
+            /* no pit here previously, or you were
+               not in it even if there was */
+            You(__s_fall_into_a_chasm);
+            set_utrap(((rn2_at(__s_music_c, 313, __s_do_pit, 6) + 2) | 0) >>> 0, NHC.TT_PIT);
+            losehp(((Half_physical_damage()) ? ((((rnd_at(__s_music_c, 314, __s_do_pit, 6) + 1) | 0) / 2) | 0) : rnd_at(__s_music_c, 314, __s_do_pit, 6)), __s_fell_into_a_chasm, NHM.NO_KILLER_PREFIX);
+            selftouch(__s_falling_you);
         } else if (cptr.ldI32o(u, $you_utrap) && cptr.ldI32o(u, $you_utraptype) == NHC.TT_PIT) {
-            let keepfooting = schar((!(Fumbling() && (rng_log_enabled() ? (rng_log_set_caller(__sl0, 319, __sl15), rn2(5)) : rn2(5))) && (!((rng_log_enabled() ? (rng_log_set_caller(__sl0, 320, __sl15), rnl((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) ? 3 : 9)) : rnl((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) ? 3 : 9))) || (((acurr(NHC.A_DEX)) > 7) && (rng_log_enabled() ? (rng_log_set_caller(__sl0, 321, __sl15), rn2(5)) : rn2(5)))) ? 1 : 0));
-            You(__sl25);
-            set_utrap((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 324, __sl15), rn2(6)) : rn2(6)) + 2) | 0) >>> 0, NHC.TT_PIT);
-            losehp(((Half_physical_damage()) ? ((((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 325, __sl15), rnd(keepfooting ? 2 : 4)) : rnd(keepfooting ? 2 : 4))) + 1) | 0) / 2) | 0) : ((rng_log_enabled() ? (rng_log_set_caller(__sl0, 325, __sl15), rnd(keepfooting ? 2 : 4)) : rnd(keepfooting ? 2 : 4)))), __sl26, NHM.NO_KILLER_PREFIX);
+            let keepfooting = schar((!(Fumbling() && rn2_at(__s_music_c, 319, __s_do_pit, 5)) && (!rnl_at(__s_music_c, 320, __s_do_pit, (cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) ? 3 : 9) || (((acurr(NHC.A_DEX)) > 7) && rn2_at(__s_music_c, 321, __s_do_pit, 5))) ? 1 : 0));
+
+            You(__s_are_jostled_around_violently);
+            set_utrap(((rn2_at(__s_music_c, 324, __s_do_pit, 6) + 2) | 0) >>> 0, NHC.TT_PIT);
+            losehp(((Half_physical_damage()) ? ((((rnd_at(__s_music_c, 325, __s_do_pit, keepfooting ? 2 : 4) + 1) | 0) / 2) | 0) : rnd_at(__s_music_c, 325, __s_do_pit, keepfooting ? 2 : 4)), __s_hurt_in_a_chasm, NHM.NO_KILLER_PREFIX);
             if (keepfooting)
                 exercise(NHC.A_DEX, 1);
             else
-                selftouch((Upolyd() && (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 524288n) != 0n) || ((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 24576n) == 24576n))) ? __sl27 : __sl28);
+                selftouch((Upolyd() && (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 524288n) != 0n) || ((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 24576n) == 24576n))) ? __s_shaken_you : __s_falling_down_you);
         }
     } else {
         newsym(x, y);
     }
 }
 
+/* Generate earthquake :-) of desired force.
+ * That is:  create random chasms (pits).
+ */
 const __static_do_earthquake_into_a_chasm = cptr.bytes(" into a chasm"); /** C ref: music.c:346 — char[14] (function-static) */
 
 /** C ref: music.c:344 — @param {CInt} force */
@@ -414,6 +476,7 @@ function do_earthquake(force) {
     let amsk;
     let algn;
     let tu_pit = 0;
+
     if (trap_at_u)
         tu_pit = is_pit((cptr.ldI32o(trap_at_u, $trap_ttyp) & 31)) >>> 0;
     if (force > 13)
@@ -429,60 +492,80 @@ function do_earthquake(force) {
     for (x = i16(start_x); x <= end_x; x++)
         for (y = i16(start_y); y <= end_y; y++) {
             if ((mtmp = (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) !== null) {
-                wakeup(mtmp, 1);
+                wakeup(mtmp, 1);  /* peaceful monster will become hostile */
                 if ((cptr.ldI32o(mtmp, $monst_mundetected) & 1)) {
                     cptr.stI32o(mtmp, $monst_mundetected, 0);
                     newsym(x, y);
                     if (ceiling_hider(cptr.ldPtro(mtmp, $monst_data))) {
                         if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0)) {
-                            pline(__sl29, Amonnam(mtmp));
+                            pline(__s_s_is_shaken_loose_from_the_ceiling, Amonnam(mtmp));
                         } else if (!((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 1n) != 0n)) {
                             ;
-                            You_hear(__sl30);
+                            You_hear(__s_a_thump);
                         }
                     }
                 }
                 if ((cptr.ld1uo((mtmp), $monst_m_ap_type) & NHM.M_AP_TYPMASK) != NHC.M_AP_NOTHING && (cptr.ld1uo((mtmp), $monst_m_ap_type) & NHM.M_AP_TYPMASK) != NHC.M_AP_MONSTER)
                     seemimic(mtmp);
             }
-            if ((rng_log_enabled() ? (rng_log_set_caller(__sl0, 387, __sl31), rn2((14 - force) | 0)) : rn2((14 - force) | 0)))
+            if (rn2_at(__s_music_c, 387, __s_do_earthquake, (14 - force) | 0))
                 continue;
-            switch (cptr.ld1so3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ)) {
+
+            /*
+             * Possible extensions:
+             *  When a door is trapped, explode it instead of silently
+             *   turning it into an empty doorway.
+             *  Trigger divine wrath when an altar is dumped into a chasm.
+             *  Sometimes replace sink with fountain or fountain with pool
+             *   instead of always producing a pit.
+             *  Sometimes release monster and/or treasure from a grave or
+             *   a throne instead of just dumping them into the chasm.
+             *  Chance to destroy wall segments?  Trees too?
+             *  Honor non-diggable for locked doors, walls, and trees.
+             *   Treat non-passwall as if it was non-diggable?
+             *  Conjoin some of the umpteen pits when they're adjacent?
+             *
+             *  Replace 'goto do_pit;' with 'do_pit = TRUE; break;' and
+             *   move the pit code to after the switch.
+             */
+
+            switch (cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) {
                 case NHC.FOUNTAIN:
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl32, cptr.decay(__static_do_earthquake_into_a_chasm));
+                    pline_The(__s_fountain_falls_s, cptr.decay(__static_do_earthquake_into_a_chasm));
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.SINK:
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl33, cptr.decay(__static_do_earthquake_into_a_chasm));
+                    pline_The(__s_kitchen_sink_falls_s, cptr.decay(__static_do_earthquake_into_a_chasm));
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.ALTAR:
                 amsk = altarmask_at(x, y);
+                /* always preserve the high altars */
                 if ((amsk & NHM.AM_SANCTUM) != 0)
                     break;
                 algn = (schar(((((amsk & NHM.AM_MASK) & NHM.AM_MASK) == 0) ? -128 : ((((amsk & NHM.AM_MASK) & NHM.AM_MASK) == NHM.AM_LAWFUL) ? NHM.A_LAWFUL : ((((amsk & NHM.AM_MASK) & NHM.AM_MASK)) - 2) | 0))));
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl34, align_str(algn), cptr.decay(__static_do_earthquake_into_a_chasm));
+                    pline_The(__s_s_altar_falls_s, align_str(algn), cptr.decay(__static_do_earthquake_into_a_chasm));
                 desecrate_altar(0, algn);
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.GRAVE:
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl35, cptr.decay(__static_do_earthquake_into_a_chasm));
+                    pline_The(__s_headstone_topples_s, cptr.decay(__static_do_earthquake_into_a_chasm));
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.THRONE:
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl36, cptr.decay(__static_do_earthquake_into_a_chasm));
+                    pline_The(__s_throne_falls_s, cptr.decay(__static_do_earthquake_into_a_chasm));
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.SCORR:
-                cptr.st1o3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_typ, NHC.CORR);
+                cptr.st1o3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ, NHC.CORR);
                 unblock_point(x, y);
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline(__sl37);
+                    pline(__s_a_secret_corridor_is_revealed);
                 // @FallThrough
                 ;
                 case NHC.CORR:
@@ -490,21 +573,23 @@ function do_earthquake(force) {
                 do_pit(x, y, tu_pit);
                 break;
                 case NHC.SDOOR:
-                cvt_sdoor_to_door(cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, 756), y, 36));
+                cvt_sdoor_to_door(cptr.add(cptr.add(cptr.add(svl, $instance_globals_saved_l_level), x, $sizeof_rm_x21), y, $sizeof_rm));  /* .typ = DOOR */
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline(__sl38);
+                    pline(__s_a_secret_door_is_revealed);
                 // @FallThrough
                 ;
                 case NHC.DOOR:
-                if (((cptr.ldI32o3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) == NHM.D_NODOOR) {
+                /* if already doorless, treat like room or corridor */
+                if (((cptr.ldI32o3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) == NHM.D_NODOOR) {
                     do_pit(x, y, tu_pit);
                     break;
                 }
-                cptr.stI32o3(svl, x, 756, y, 36, $instance_globals_saved_l_level + $rm_flags, NHM.D_NODOOR);
+                /* wasn't doorless, now it will be */
+                cptr.stI32o3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags, NHM.D_NODOOR);
                 recalc_block_point(x, y);
-                newsym(x, y);
+                newsym(x, y);  /* before pline */
                 if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.IN_SIGHT) != 0))
-                    pline_The(__sl39);
+                    pline_The(__s_door_collapses);
                 if (cptr.ld1s(in_rooms(x, y, NHC.SHOPBASE)))
                     add_damage(x, y, 0n);
                 break;
@@ -512,37 +597,40 @@ function do_earthquake(force) {
         }
 }
 
-/** C ref: music.c:478 @returns {CPtr} */
+/** C ref: music.c:478 @returns {CPtr<char>} */
 function generic_lvl_desc() {
     if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
-        return __sl40;
+        return __s_astral_plane;
     else if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
-        return __sl41;
+        return __s_plane;
     else if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level)))))
-        return __sl42;
+        return __s_sanctum;
     else if ((cptr.ldI16((cptr.add(u, $you_uz))) == sokoban_dnum()))
-        return __sl43;
+        return __s_puzzle;
     else if (In_V_tower(cptr.add(u, $you_uz)))
-        return __sl44;
+        return __s_tower;
     else
-        return __sl45;
+        return __s_dungeon;
 }
 
 /** C ref: music.c:494 — char *[8] */
 const beats = cptr.alloc(8 * 8);
-cptr.stPtro(beats, 0, __sl46);
-cptr.stPtro(beats, 8, __sl47);
-cptr.stPtro(beats, 16, __sl48);
-cptr.stPtro(beats, 24, __sl49);
-cptr.stPtro(beats, 32, __sl50);
-cptr.stPtro(beats, 40, __sl51);
-cptr.stPtro(beats, 48, __sl52);
-cptr.stPtro(beats, 56, __sl53);
+cptr.stPtro(beats, 0, __s_stepper);
+cptr.stPtro(beats, 8, __s_one_drop);
+cptr.stPtro(beats, 16, __s_slow_two);
+cptr.stPtro(beats, 24, __s_triple_stroke_roll);
+cptr.stPtro(beats, 32, __s_double_shuffle);
+cptr.stPtro(beats, 40, __s_half_time_shuffle);
+cptr.stPtro(beats, 48, __s_second_line);
+cptr.stPtro(beats, 56, __s_train);
 
+/*
+ * The player is trying to extract something from his/her instrument.
+ */
 const __static_do_improvisation_my_goto_song = [67, 0]; /** C ref: music.c:508 — char[2] (function-static) */
 let __static_do_improvisation_improvisation = cptr.decay(__static_do_improvisation_my_goto_song); /** C ref: music.c:509 — char * (function-static) */
 
-/** C ref: music.c:503 — @param {CPtr} instr @returns {CInt} */
+/** C ref: music.c:503 — @param {CPtr<struct obj>} instr @returns {CInt} */
 function do_improvisation(instr) {
     let damage;
     let mode;
@@ -550,10 +638,13 @@ function do_improvisation(instr) {
     let itmp = cptr.alloc(216);
     let mundane = 0;
     let same_old_song = cptr.box(0);
+
     cptr.memcpy(itmp, instr, 216);
     cptr.stPtro(itmp, $obj_oextra, null);
+
+    /* if won't yield special effect, make sound of mundane counterpart */
     if (!do_spec || cptr.ld1so(instr, $obj_spe) <= 0)
-        while ((cptr.ldI32o2(objects, cptr.ldI16o(itmp, $obj_otyp), 120, $objclass_oc_magic) & 1)) {
+        while ((cptr.ldI32o2(objects, cptr.ldI16o(itmp, $obj_otyp), $sizeof_objclass, $objclass_oc_magic) & 1)) {
             cptr.stI16o(itmp, $obj_otyp, cptr.ldI16o(itmp, $obj_otyp) - 1);
             mundane = 1;
         }
@@ -564,54 +655,69 @@ function do_improvisation(instr) {
         mode |= 2;
     if (Hallucination())
         mode |= 4;
-    if (!(rng_log_enabled() ? (rng_log_set_caller(__sl0, 535, __sl54), rn2(2)) : rn2(2))) {
+
+    if (!rn2_at(__s_music_c, 535, __s_do_improvisation, 2)) {
+        /*
+         * TEMPORARY?  for multiple impairments, don't always
+         * give the generic "it's far from music" message.
+         */
+        /* remove if STUNNED+CONFUSED ever gets its own message below */
         if (mode == 3)
-            mode = !(rng_log_enabled() ? (rng_log_set_caller(__sl0, 542, __sl54), rn2(2)) : rn2(2)) ? 1 : 2;
+            mode = !rn2_at(__s_music_c, 542, __s_do_improvisation, 2) ? 1 : 2;
+        /* likewise for stunned and/or confused combined with hallucination */
         if (mode & 4)
             mode = 4;
     }
+
+    /* 3.6.3: most of these gave "You produce <blah>" and then many of
+       the instrument-specific messages below which immediately follow
+       also gave "You produce <something>."  That looked strange so we
+       now use a different verb here */
     switch (mode) {
         case 0:
-        You(__sl55, yname(instr));
+        You(__s_start_playing_s, yname(instr));
         break;
         case 1:
         if (!Deaf())
-            You(__sl56);
+            You(__s_radiate_an_obnoxious_droning_sound);
         else
-            You_feel(__sl57);
+            You_feel(__s_a_monotonous_vibration);
         break;
         case 2:
         if (!Deaf())
-            You(__sl58);
+            You(__s_generate_a_raucous_noise);
         else
-            You_feel(__sl59);
+            You_feel(__s_a_jarring_vibration);
         break;
         case 4:
-        You(__sl60);
+        You(__s_disseminate_a_kaleidoscopic_display_of);
         break;
         case 3:
         case 5:
         case 6:
         case 7:
         default:
-        pline(__sl61);
+        pline(__s_what_you_perform_is_quite_far_from_music);
         break;
     }
+
     __static_do_improvisation_improvisation = improvised_notes(same_old_song);
+
     switch (cptr.ldI16o(itmp, $obj_otyp)) {
         case NHC.MAGIC_FLUTE:
         consume_obj_charge(instr, 1);
-        You(__sl62, !Deaf() ? __sl4 : __sl63, Hallucination() ? __sl64 : __sl65, same_old_song.v ? __sl66 : __sl4);
+
+        You(__s_sproduce_s_s_music, !Deaf() ? __s_empty : __s_seem_to, Hallucination() ? __s_piped : __s_soft, same_old_song.v ? __s_familiar : __s_empty);
         ;
         put_monsters_to_sleep(Math.imul(cptr.ldI32o(u, $you_ulevel), 5));
         exercise(NHC.A_DEX, 1);
         break;
         case NHC.WOODEN_FLUTE:
-        do_spec &= ((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 600, __sl54), rn2((acurr(NHC.A_DEX)))) : rn2((acurr(NHC.A_DEX)))) + cptr.ldI32o(u, $you_ulevel)) | 0) > 25);
+        do_spec &= ((((rng_log_enabled() ? (rng_log_set_caller(__s_music_c, 600, __s_do_improvisation), rn2((acurr(NHC.A_DEX)))) : rn2((acurr(NHC.A_DEX)))) + cptr.ldI32o(u, $you_ulevel)) | 0) > 25);
         if (!Deaf())
-            pline(__sl67, Tobjnam(instr, do_spec ? __sl68 : __sl69), same_old_song.v ? __sl70 : __sl4);
+            pline(__s_s_s, Tobjnam(instr, do_spec ? __s_trill : __s_toot), same_old_song.v ? __s_a_familiar_tune : __s_empty);
         else
-            You_feel(__sl71, yname(instr), do_spec ? __sl68 : __sl69);
+            You_feel(__s_s_s__2, yname(instr), do_spec ? __s_trill : __s_toot);
         ;
         if (do_spec)
             charm_snakes(Math.imul(cptr.ldI32o(u, $you_ulevel), 3));
@@ -620,109 +726,126 @@ function do_improvisation(instr) {
         case NHC.FIRE_HORN:
         case NHC.FROST_HORN:
         consume_obj_charge(instr, 1);
+
         if (!getdir(null)) {
-            pline(__sl72, Tobjnam(instr, __sl73));
+            pline(__s_pct_s_dot, Tobjnam(instr, __s_vibrate));
             break;
         } else if (!cptr.ldI32o(u, $you_dx) && !cptr.ldI32o(u, $you_dy) && !cptr.ldI32o(u, $you_dz)) {
             if ((damage = zapyourself(instr, 1)) != 0) {
                 let buf = new Uint8Array(256);
-                void cptr.sprintf(cptr.decay(buf), __sl74, (cptr.ldPtro2(genders, cptr.ld1so(flags, $flag_female) ? 1 : 0, 48, $Gender_him)));
+
+                void cptr.sprintf(cptr.decay(buf), __s_using_a_magical_horn_on_sself, (cptr.ldPtro2(genders, cptr.ld1so(flags, $flag_female) ? 1 : 0, $sizeof_Gender, $Gender_him)));
                 ;
-                losehp(damage, cptr.decay(buf), NHM.KILLED_BY);
+                losehp(damage, cptr.decay(buf), NHM.KILLED_BY);  /* fire or frost damage */
             }
         } else {
             let type = (Math.abs((((cptr.ldI16o(instr, $obj_otyp) == NHC.FROST_HORN) ? NHM.AD_COLD : NHM.AD_FIRE) - NHM.AD_MAGM) | 0) % 10);
+
             if (!Blind())
-                pline(__sl75, flash_str(type, 0));
+                pline(__s_a_s_blasts_out_of_the_horn, flash_str(type, 0));
             ;
             cptr.stPtro(gc, $instance_globals_c_current_wand, instr);
-            ubuzz(((0 + (type)) | 0), (((rng_log_enabled() ? (rng_log_set_caller(__sl0, 634, __sl54), rn2(6)) : rn2(6)) + 6) | 0));
+            ubuzz(((0 + (type)) | 0), ((rn2_at(__s_music_c, 634, __s_do_improvisation, 6) + 6) | 0));
             cptr.stPtro(gc, $instance_globals_c_current_wand, null);
         }
         discover_object((cptr.ldI16o(instr, $obj_otyp)), 1, 1, 1);
         break;
         case NHC.TOOLED_HORN:
         if (!Deaf())
-            You(__sl76, same_old_song.v ? __sl77 : __sl4);
+            You(__s_produce_a_frightful_grave_s_sound, same_old_song.v ? __s_yet_familiar : __s_empty);
         else
-            You(__sl78);
+            You(__s_blow_into_the_horn);
         ;
         awaken_monsters(Math.imul(cptr.ldI32o(u, $you_ulevel), 30));
         exercise(NHC.A_WIS, 0);
         break;
         case NHC.BUGLE:
         if (!Deaf())
-            You(__sl79, same_old_song.v ? __sl66 : __sl4, yname(instr));
+            You(__s_extract_a_loud_s_noise_from_s, same_old_song.v ? __s_familiar : __s_empty, yname(instr));
         else
-            You(__sl80);
+            You(__s_blow_into_the_bugle);
         ;
         awaken_soldiers(cptr.add(gy, $instance_globals_y_youmonst));
         exercise(NHC.A_WIS, 0);
         break;
         case NHC.MAGIC_HARP:
         consume_obj_charge(instr, 1);
+
         if (!Deaf())
-            pline(__sl81, Tobjnam(instr, __sl82), same_old_song.v ? __sl83 : __sl4);
+            pline(__s_s_very_attractive_s_music, Tobjnam(instr, __s_produce), same_old_song.v ? __s_and_familiar : __s_empty);
         else
-            You_feel(__sl84);
+            You_feel(__s_very_soothing_vibrations);
         ;
         charm_monsters((((((cptr.ldI32o(u, $you_ulevel) - 1) | 0) / 3) | 0) + 1) | 0);
         exercise(NHC.A_DEX, 1);
         break;
         case NHC.WOODEN_HARP:
-        do_spec &= ((((rng_log_enabled() ? (rng_log_set_caller(__sl0, 673, __sl54), rn2((acurr(NHC.A_DEX)))) : rn2((acurr(NHC.A_DEX)))) + cptr.ldI32o(u, $you_ulevel)) | 0) > 25);
+        do_spec &= ((((rng_log_enabled() ? (rng_log_set_caller(__s_music_c, 673, __s_do_improvisation), rn2((acurr(NHC.A_DEX)))) : rn2((acurr(NHC.A_DEX)))) + cptr.ldI32o(u, $you_ulevel)) | 0) > 25);
         if (!Deaf())
-            pline(__sl71, Yname2(instr), (do_spec && same_old_song.v) ? __sl85 : ((do_spec) ? __sl86 : ((same_old_song.v) ? __sl87 : __sl88)));
+            pline(__s_s_s__2, Yname2(instr), (do_spec && same_old_song.v) ? __s_produces_a_familiar_lilting_melody : ((do_spec) ? __s_produces_a_lilting_melody : ((same_old_song.v) ? __s_twangs_a_familiar_tune : __s_twangs)));
         else
-            You_feel(__sl89);
+            You_feel(__s_soothing_vibrations);
         ;
         if (do_spec)
             calm_nymphs(Math.imul(cptr.ldI32o(u, $you_ulevel), 3));
         exercise(NHC.A_DEX, 1);
         break;
         case NHC.DRUM_OF_EARTHQUAKE:
+        /* a drum of earthquake does not cause deafness
+           while still magically functional, nor afterwards
+           when it invokes the LEATHER_DRUM case instead and
+           mundane is flagged */
         consume_obj_charge(instr, 1);
-        You(__sl90);
+
+        You(__s_produce_a_heavy_thunderous_rolling);
         ;
-        pline_The(__sl91, generic_lvl_desc());
+        pline_The(__s_entire_s_is_shaking_around_you, generic_lvl_desc());
         do_earthquake((((((cptr.ldI32o(u, $you_ulevel) - 1) | 0) / 3) | 0) + 1) | 0);
+        /* shake up monsters in a much larger radius... */
         awaken_monsters(1680);
         discover_object(NHC.DRUM_OF_EARTHQUAKE, 1, 1, 1);
         break;
         case NHC.LEATHER_DRUM:
         if (!mundane) {
             if (!Deaf()) {
-                You(__sl92, same_old_song.v ? __sl93 : __sl4);
+                You(__s_beat_a_sdeafening_row, same_old_song.v ? __s_familiar__2 : __s_empty);
                 ;
-                incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, 24), $prop_intrinsic), (((rng_log_enabled() ? (rng_log_set_caller(__sl0, 709, __sl54), rn2(20)) : rn2(20)) + 30) | 0));
+                incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic), ((rn2_at(__s_music_c, 709, __s_do_improvisation, 20) + 30) | 0));
             } else {
-                You(__sl94);
+                You(__s_pound_on_the_drum);
             }
             exercise(NHC.A_WIS, 0);
         } else {
-            You(__sl71, (rng_log_enabled() ? (rng_log_set_caller(__sl0, 717, __sl54), rn2(2)) : rn2(2)) ? __sl95 : ((rng_log_enabled() ? (rng_log_set_caller(__sl0, 717, __sl54), rn2(2)) : rn2(2)) ? __sl96 : __sl97), an(cptr.ldPtro(beats, (rng_log_enabled() ? (rng_log_set_caller(__sl0, 718, __sl54), rn2(8)) : rn2(8)), 8)));
+            /* TODO maybe: sound effects for these riffs */
+            You(__s_s_s__2, rn2_at(__s_music_c, 717, __s_do_improvisation, 2) ? __s_butcher : (rn2_at(__s_music_c, 717, __s_do_improvisation, 2) ? __s_manage : __s_pull_off), an(cptr.ldPtro(beats, rn2_at(__s_music_c, 718, __s_do_improvisation, 8), 8)));
             ;
         }
         awaken_monsters(Math.imul(cptr.ldI32o(u, $you_ulevel), (mundane ? 5 : 40)));
         cptr.st1(disp, 1);
         break;
         default:
-        impossible(__sl98, cptr.ldI16o(instr, $obj_otyp));
+        impossible(__s_what_a_weird_instrument_d, cptr.ldI16o(instr, $obj_otyp));
         return 0;
     }
     (void (__static_do_improvisation_improvisation));
-    return 2;
+    return 2;  /* That takes time */
 }
 
 const __static_improvised_notes_notes = [65, 66, 67, 68, 69, 70, 71]; /** C ref: music.c:735 — char[7] (function-static) */
 
-/** C ref: music.c:733 — @param {CPtr} same_as_last_time @returns {CPtr} */
+/** C ref: music.c:733 — @param {CPtr<boolean>} same_as_last_time @returns {CPtr<char>} */
 function improvised_notes(same_as_last_time) {
+    /* target buffer has to be in svc.context, otherwise saving game
+     * between improvised recitals would not be able to maintain
+     * the same_as_last_time context. */
+
+    /* You can change your tune, usually */
     if (!(Unchanging() && cptr.ld1so2(svc, 0, 1, $context_info_jingle) != 0)) {
         let i;
-        let notecount = (rng_log_enabled() ? (rng_log_set_caller(__sl0, 742, __sl99), rnd((Number(BigInt.asIntN(32, (6n / 1n))) - 1) | 0)) : rnd((Number(BigInt.asIntN(32, (6n / 1n))) - 1) | 0));
+        let notecount = rnd_at(__s_music_c, 742, __s_improvised_notes, (Number(BigInt.asIntN(32, (6n / 1n))) - 1) | 0);  /* 1 - 5 */
+
         for (i = 0; i < notecount; ++i) {
-            cptr.st1o2(svc, i, 1, $context_info_jingle, cptr.ld1so(cptr.decay(__static_improvised_notes_notes), (rng_log_enabled() ? (rng_log_set_caller(__sl0, 745, __sl99), rn2(__static_improvised_notes_notes.length)) : rn2(__static_improvised_notes_notes.length)), 1));
+            cptr.st1o2(svc, i, 1, $context_info_jingle, cptr.ld1so(cptr.decay(__static_improvised_notes_notes), rn2_at(__s_music_c, 745, __s_improvised_notes, __static_improvised_notes_notes.length), 1));
         }
         cptr.st1o2(svc, notecount, 1, $context_info_jingle, 0);
         cptr.st1(same_as_last_time, 0);
@@ -732,7 +855,10 @@ function improvised_notes(same_as_last_time) {
     return cptr.add(svc, $context_info_jingle);
 }
 
-/** C ref: music.c:759 — @param {CPtr} instr @returns {CInt} */
+/*
+ * So you want music...
+ */
+/** C ref: music.c:759 — @param {CPtr<struct obj>} instr @returns {CInt} */
 export function do_play_instrument(instr) {
     let buf = [0];
     let c = 121;
@@ -741,50 +867,62 @@ export function do_play_instrument(instr) {
     let y = cptr.box(0);
     let ok;
     __lbl_nevermind: {
+
         if (Underwater()) {
-            You_cant(__sl100);
+            You_cant(__s_play_music_underwater);
             return NHM.ECMD_OK;
         } else if ((cptr.ldI16o(instr, $obj_otyp) == NHC.WOODEN_FLUTE || cptr.ldI16o(instr, $obj_otyp) == NHC.MAGIC_FLUTE || cptr.ldI16o(instr, $obj_otyp) == NHC.TOOLED_HORN || cptr.ldI16o(instr, $obj_otyp) == NHC.FROST_HORN || cptr.ldI16o(instr, $obj_otyp) == NHC.FIRE_HORN || cptr.ldI16o(instr, $obj_otyp) == NHC.BUGLE) && !can_blow(cptr.add(gy, $instance_globals_y_youmonst))) {
-            You(__sl101, thesimpleoname(instr));
+            You(__s_are_incapable_of_playing_s, thesimpleoname(instr));
             return NHM.ECMD_OK;
         }
         if (cptr.ldI16o(instr, $obj_otyp) != NHC.LEATHER_DRUM && cptr.ldI16o(instr, $obj_otyp) != NHC.DRUM_OF_EARTHQUAKE && !(HStun() || HConfusion() || Hallucination())) {
-            c = yn_function(__sl102, cptr.decay(ynqchars), 113, 1);
+            c = yn_function(__s_improvise, cptr.decay(ynqchars), 113, 1);
             if (c == 113)
                 break __lbl_nevermind;
         }
+
         if (c != 110)
             return do_improvisation(instr) ? NHM.ECMD_TIME : NHM.ECMD_OK;
+
         if (((cptr.ldI32o(u, $you_uevent + $u_event_uheard_tune) & 3) | 0) == 2)
-            c = yn_function(__sl103, cptr.decay(ynqchars), 113, 1);
+            c = yn_function(__s_play_the_passtune, cptr.decay(ynqchars), 113, 1);
         if (c == 113) {
             break __lbl_nevermind;
         } else if (c == 121) {
             void cptr.strcpy(cptr.decay(buf), svt);
         } else {
-            getlin(__sl104, cptr.decay(buf));
+            getlin(__s_what_tune_are_you_playing_5_notes_a_g, cptr.decay(buf));
             void mungspaces(cptr.decay(buf));
             if (cptr.ld1s(cptr.decay(buf)) == 27)
                 break __lbl_nevermind;
+
+            /* convert to uppercase and change any "H" to the expected "B" */
             for (s = cptr.decay(buf); cptr.ld1s(s); s = cptr.add(s, 1)) {
                 cptr.st1(s, highc(cptr.ld1s(s)));
                 if (cptr.ld1s(s) == 72)
                     cptr.st1(s, 66);
             }
         }
-        You(!Deaf() ? __sl105 : __sl106, the(xname(instr)));
+
+        You(!Deaf() ? __s_extract_a_strange_sound_from_s : __s_can_feel_s_emitting_vibrations, the(xname(instr)));
         ;
+
+        /* Check if there was the Stronghold drawbridge near
+         * and if the tune conforms to what we're waiting for.
+         */
         if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level))))) {
-            exercise(NHC.A_WIS, 1);
+            exercise(NHC.A_WIS, 1);  /* just for trying */
             if (!strcmp(cptr.decay(buf), svt)) {
+                /* Search for the drawbridge */
                 for (y.v = i16(((cptr.ldI16o(u, $you_uy) - 1) | 0)); y.v <= ((cptr.ldI16o(u, $you_uy) + 1) | 0); y.v++)
                     for (x.v = i16(((cptr.ldI16(u) - 1) | 0)); x.v <= ((cptr.ldI16(u) + 1) | 0); x.v++) {
                         if (!isok(x.v, y.v))
                             continue;
                         if (find_drawbridge(x, y)) {
+                            /* tune now fully known */
                             cptr.stI32o(u, $you_uevent + $u_event_uheard_tune, 2);
                             record_achievement(NHC.ACH_TUNE);
-                            if (cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_DOWN)
+                            if (cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_DOWN)
                                 close_drawbridge(x.v, y.v);
                             else
                                 open_drawbridge(x.v, y.v);
@@ -794,19 +932,24 @@ export function do_play_instrument(instr) {
             } else if (!Deaf()) {
                 if (((cptr.ldI32o(u, $you_uevent + $u_event_uheard_tune) & 3) | 0) < 1)
                     cptr.stI32o(u, $you_uevent + $u_event_uheard_tune, 1);
+                /* Okay, it wasn't the right tune, but perhaps
+                 * we can give the player some hints like in the
+                 * Mastermind game */
                 ok = 0;
                 for (y.v = i16(((cptr.ldI16o(u, $you_uy) - 1) | 0)); y.v <= ((cptr.ldI16o(u, $you_uy) + 1) | 0) && !ok; y.v++)
                     for (x.v = i16(((cptr.ldI16(u) - 1) | 0)); x.v <= ((cptr.ldI16(u) + 1) | 0) && !ok; x.v++)
                         if (isok(x.v, y.v))
-                            if (((cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DRAWBRIDGE_UP || (cptr.ld1so3(svl, x.v, 756, y.v, 36, $instance_globals_saved_l_level + $rm_typ)) == NHC.DRAWBRIDGE_DOWN) || is_drawbridge_wall(x.v, y.v) >= 0)
+                            if (((cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.DRAWBRIDGE_UP || (cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.DRAWBRIDGE_DOWN) || is_drawbridge_wall(x.v, y.v) >= 0)
                                 ok = 1;
                 if (ok) {
                     let tumblers;
                     let gears;
                     let matched = new Uint8Array(5);
+
                     tumblers = (gears = 0);
                     for (x.v = 0; x.v < 5; x.v++)
                         cptr.st1o(cptr.decay(matched), x.v, 0, 1);
+
                     for (x.v = 0; x.v < Number(BigInt.asIntN(32, cptr.strlen(cptr.decay(buf)))); x.v++)
                         if (x.v < 5) {
                             if (cptr.ld1so(cptr.decay(buf), x.v, 1) == cptr.ld1so(svt, x.v, 1)) {
@@ -825,13 +968,16 @@ export function do_play_instrument(instr) {
                         if (gears) {
                             ;
                             ;
-                            You_hear(__sl107, tumblers, (((tumblers) == 1) ? __sl4 : __sl108), gears, (((gears) == 1) ? __sl4 : __sl108));
+                            You_hear(__s_d_tumbler_s_click_and_d_gear_s_turn, tumblers, (((tumblers) == 1) ? __s_empty : __s_s), gears, (((gears) == 1) ? __s_empty : __s_s));
                         } else {
                             ;
-                            You_hear(__sl109, tumblers, (((tumblers) == 1) ? __sl4 : __sl108));
+                            You_hear(__s_d_tumbler_s_click, tumblers, (((tumblers) == 1) ? __s_empty : __s_s));
                         }
                     } else if (gears) {
-                        You_hear(__sl110, gears, (((gears) == 1) ? __sl4 : __sl108));
+                        You_hear(__s_d_gear_s_turn, gears, (((gears) == 1) ? __s_empty : __s_s));
+                        /* could only get `gears == 5' by playing five
+                           correct notes followed by excess; otherwise,
+                           tune would have matched above */
                         if (gears == 5) {
                             cptr.stI32o(u, $you_uevent + $u_event_uheard_tune, 2);
                             record_achievement(NHC.ACH_TUNE);
@@ -842,11 +988,11 @@ export function do_play_instrument(instr) {
         }
         return NHM.ECMD_TIME;
     }
-    pline(__sl111, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind));
+    pline(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_Never_mind));
     return NHM.ECMD_OK;
 }
 
-/** C ref: music.c:902 — @param {CPtr} obj @returns {*} */
+/** C ref: music.c:902 — @param {CPtr<struct obj>} obj @returns {*} */
 export function obj_to_instr(obj) {
     let ret_instr = NHC.ins_no_instrument;
     return ret_instr;

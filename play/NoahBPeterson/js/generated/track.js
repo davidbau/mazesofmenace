@@ -15,13 +15,13 @@ import { panic } from './end.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $NHFILE_mode = FLD.NHFILE_mode, $coord_y = FLD.coord_y, $nhcoord_y = FLD.nhcoord_y,
-    $obj_otyp = FLD.obj_otyp, $you_uy = FLD.you_uy;
+    $obj_otyp = FLD.obj_otyp, $sizeof_coord = FLD.sizeof_coord, $you_uy = FLD.you_uy;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __sl0 = cptr.lit("track-utcnt");
-const __sl1 = cptr.lit("track-utpnt");
-const __sl2 = cptr.lit("utrack");
-const __sl3 = cptr.lit("rest_track: impossible pt counts");
+const __s_track_utcnt = cptr.lit("track-utcnt");
+const __s_track_utpnt = cptr.lit("track-utpnt");
+const __s_utrack = cptr.lit("utrack");
+const __s_rest_track_impossible_pt_counts = cptr.lit("rest_track: impossible pt counts");
 
 /** C ref: track.c:11 — int */
 let utcnt = cptr.box(0);
@@ -30,7 +30,7 @@ let utcnt = cptr.box(0);
 let utpnt = cptr.box(0);
 
 /** C ref: track.c:12 — coord[100] */
-const utrack = cptr.alloc(100 * 4);
+const utrack = cptr.alloc(100 * $sizeof_coord);
 
 /** C ref: track.c:15 */
 export function initrack() {
@@ -38,71 +38,84 @@ export function initrack() {
     void __builtin___memset_chk(utrack, 0, 400n, __builtin_object_size(utrack, 0));
 }
 
+/* add to track */
 /** C ref: track.c:24 */
 export function settrack() {
     if ((uleft.v && cptr.ldI16o(uleft.v, $obj_otyp) == NHC.RIN_STEALTH) || (uright.v && cptr.ldI16o(uright.v, $obj_otyp) == NHC.RIN_STEALTH))
         return;
+
     if (utcnt.v < 100)
         utcnt.v++;
     if (utpnt.v == 100)
         utpnt.v = 0;
-    cptr.stI16o(utrack, utpnt.v, cptr.ldI16(u), 4);
-    cptr.stI16o2(utrack, utpnt.v, 4, $nhcoord_y, cptr.ldI16o(u, $you_uy));
+    cptr.stI16o(utrack, utpnt.v, cptr.ldI16(u), $sizeof_coord);
+    cptr.stI16o2(utrack, utpnt.v, $sizeof_coord, $nhcoord_y, cptr.ldI16o(u, $you_uy));
     utpnt.v++;
 }
 
-/** C ref: track.c:42 — @param {CInt} x @param {CInt} y @returns {CPtr} */
+/* get a track coord on or next to x,y and last tracked by hero,
+   returns null if no such track */
+/** C ref: track.c:42 — @param {CInt} x @param {CInt} y @returns {CPtr<coord>} */
 export function gettrack(x, y) {
     let cnt;
     let ndist;
     let tc;
     cnt = utcnt.v;
-    for (tc = cptr.add(utrack, utpnt.v, 4); cnt--; ) {
+    for (tc = cptr.add(utrack, utpnt.v, $sizeof_coord); cnt--; ) {
         if (cptr.eq(tc, utrack))
-            tc = cptr.add(utrack, 99, 4);
+            tc = cptr.add(utrack, 99, $sizeof_coord);
         else
             tc = cptr.add(tc, -1, 4);
         ndist = distmin(x, y, cptr.ldI16(tc), cptr.ldI16o(tc, $coord_y));
+
         if (ndist <= 1)
             return (ndist ? tc : null);
     }
     return null;
 }
 
+/* return TRUE if x,y has hero tracks on it */
 /** C ref: track.c:63 — @param {CInt} x @param {CInt} y @returns {CInt} */
 export function hastrack(x, y) {
     let i;
+
     for (i = 0; i < utcnt.v; i++)
-        if (cptr.ldI16o(utrack, i, 4) == x && cptr.ldI16o2(utrack, i, 4, $nhcoord_y) == y)
+        if (cptr.ldI16o(utrack, i, $sizeof_coord) == x && cptr.ldI16o2(utrack, i, $sizeof_coord, $nhcoord_y) == y)
             return 1;
+
     return 0;
 }
 
-/** C ref: track.c:76 — @param {CPtr} nhfp */
+/* save the hero tracking info */
+/** C ref: track.c:76 — @param {CPtr<NHFILE>} nhfp */
 export function save_track(nhfp) {
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & 3)) {
         let i;
-        sfo_int(nhfp, utcnt, __sl0);
-        sfo_int(nhfp, utpnt, __sl1);
+
+        sfo_int(nhfp, utcnt, __s_track_utcnt);
+        sfo_int(nhfp, utpnt, __s_track_utpnt);
         for (i = 0; i < utcnt.v; i++) {
-            sfo_nhcoord(nhfp, cptr.add(utrack, i, 4), __sl2);
+            sfo_nhcoord(nhfp, cptr.add(utrack, i, $sizeof_coord), __s_utrack);
         }
     }
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & NHM.FREEING))
         initrack();
 }
 
-/** C ref: track.c:93 — @param {CPtr} nhfp */
+/* restore the hero tracking info */
+/** C ref: track.c:93 — @param {CPtr<NHFILE>} nhfp */
 export function rest_track(nhfp) {
     let i;
-    sfi_int(nhfp, utcnt, __sl0);
+
+    sfi_int(nhfp, utcnt, __s_track_utcnt);
     ;
-    sfi_int(nhfp, utpnt, __sl1);
+    sfi_int(nhfp, utpnt, __s_track_utpnt);
     ;
+
     if (utcnt.v > 100 || utpnt.v > 100)
-        panic(__sl3);
+        panic(__s_rest_track_impossible_pt_counts);
     for (i = 0; i < utcnt.v; i++) {
-        sfi_nhcoord(nhfp, cptr.add(utrack, i, 4), __sl2);
+        sfi_nhcoord(nhfp, cptr.add(utrack, i, $sizeof_coord), __s_utrack);
     }
 }
 

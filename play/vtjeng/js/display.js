@@ -43,6 +43,7 @@ import {
     DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_UNDER,
     D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, LA_DOWN,
     IS_STWALL, isok, u_at,
+    BEAR_TRAP, NO_TRAP, WEB, is_pit,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
@@ -2082,11 +2083,38 @@ export function newsym(x, y) {
         }
     }
 
+    // display.c:1013, `mon && (see_it || (!worm_tail && Detect_monsters))`.
+    // C evaluates this before _map_location() files the remembered glyph, so
+    // it is hoisted above the layer choice below rather than computed with
+    // the rest of the monster presentation. No worm_tail operand: long worms
+    // have no port, so is_worm_tail() is constantly false here.
+    const shouldDisplayMonster = Boolean(
+        monster && (monsterDirectlyVisible || monsterSensed),
+    );
+
     const covered = floorLayersCovered(loc, game);
     const object = covered
         ? null : game.level?.objects?.[x]?.[y] ?? null;
     if (object) observeNearbyObject(object, x, y, game);
-    const trap = covered ? null : t_at(x, y, game);
+    const trapAt = t_at(x, y, game);
+    // display.c:1014-1023. Seeing a monster held in a physical trap tells the
+    // hero what holds it, and C writes that before _map_location() picks the
+    // remembered glyph, so the first frame that shows the monster already
+    // remembers the trap under it. trap.c mintrap():3742-3749 repeats the
+    // write on the held monster's next move and pager.c:468-476 on a farlook,
+    // but neither runs when the hero sees the monster and then empties the
+    // square before it moves again.
+    //
+    // Two differences from the layer choice below, both C's: the trap is read
+    // through t_at() rather than through covers_traps(), so water over the
+    // square does not suppress the write; and the hero's own square cannot
+    // reach it, because C runs this in the `else` of `if (u_at(x, y))` and the
+    // port's m_at() answers null wherever the hero stands.
+    const tt = trapAt ? trapAt.ttyp : NO_TRAP;
+    if (shouldDisplayMonster && monster.mtrapped
+        && (tt === BEAR_TRAP || is_pit(tt) || tt === WEB))
+        trapAt.tseen = true;
+    const trap = covered ? null : trapAt;
     const mapsLocation = visible
         || (game.u?.ux === x && game.u?.uy === y);
     let underlying;
@@ -2127,9 +2155,6 @@ export function newsym(x, y) {
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (visible) {
-        const shouldDisplayMonster = Boolean(
-            monster && (monsterDirectlyVisible || monsterSensed),
-        );
         const mimicAppearanceType = monster?.m_ap_type & M_AP_TYPMASK;
         // PHYSICALLY_SEEN mimicry presents the disguise before any sensed real
         // monster presentation. Object disguises therefore own their complete
@@ -3517,8 +3542,17 @@ function _statusLine3DetailsLayout({ initialTtyRefresh }) {
     return { ...row.finish(), fields, hungerX };
 }
 
+// C ref: win/tty/wintty.c tty_create_nhwindow()'s NHW_STATUS arm (896-914),
+// which clamps iflags.wc2_statuslines into 2..3 and sizes wins[WIN_STATUS] at
+// that many rows, pinned to the bottom of the terminal.  Every reader of the
+// status window's height goes through this: statusLayouts() produces one entry
+// per row and writeStatusRows() writes them at display.rows - count.
+export function status_window_rows() {
+    return game.iflags?.wc2_statuslines === 3 ? 3 : 2;
+}
+
 function statusLayouts({ initialTtyRefresh = false } = {}) {
-    const count = game.iflags?.wc2_statuslines === 3 ? 3 : 2;
+    const count = status_window_rows();
     if (game.iflags?.status_updates === false) {
         return Array.from({ length: count }, () => ({ text: '', owners: [] }));
     }
@@ -3526,7 +3560,7 @@ function statusLayouts({ initialTtyRefresh = false } = {}) {
     // stores inv_weight()'s result in gw.wc, so layout retries and highlight
     // selection must reuse this snapshot rather than recomputing live state.
     const capacity = game.u ? near_capacity(game) : 0;
-    return game.iflags?.wc2_statuslines === 3
+    return count === 3
         ? [
             _statusLine1Layout(false),
             _statusLine3VitalsLayout(capacity),
@@ -4052,7 +4086,21 @@ export async function cls() {
 }
 
 // ── bot ──
+
+// C ref: botl.c bot() (253-272).
+//
+// The gb.bot_disabled test at 254-256 returns before the status window is
+// written *and* before disp.botl, disp.botlx and disp.time_botl are cleared,
+// so the pending update survives the suppressed pass and the next enabled
+// bot() still paints it.  js/windows.js select_menu() and getlin() are the two
+// writers of the flag.
+//
+// C's remaining guards -- u.uhp != -1, gy.youmonst.data and
+// suppress_map_output() -- cover dosave(), pre-initialization and the
+// save/restore/hangup states this port does not enter.
 export async function bot({ initialTtyRefresh = false } = {}) {
+    if (game.gb?.bot_disabled === true)
+        return;
     const optionalSnapshot = game.iflags?.wc2_statuslines === 3
         ? JSON.stringify(_optionalStatusEntries().map(
             ({ field, text }) => [field, text],
@@ -4086,9 +4134,12 @@ export async function bot({ initialTtyRefresh = false } = {}) {
 // disp.botl and disp.botlx are both clear, which is the turn counter moving
 // with nothing else marked dirty.
 //
-// gb.bot_disabled has no ported writer, and suppress_map_output() covers the
-// save, restore and hangup states this port does not enter.
+// The gb.bot_disabled test at 276-278 returns before disp.time_botl is
+// cleared, exactly as bot() does above; suppress_map_output() covers the save,
+// restore and hangup states this port does not enter.
 export async function timebot() {
+    if (game.gb?.bot_disabled === true)
+        return;
     if (game.flags?.time && game.iflags?.status_updates !== false) {
         // VIA_WINDOWPORT() is true for the tty: wintty.c sets both
         // WC2_HILITE_STATUS and WC2_FLUSH_STATUS in tty_procs.wincap2, so C
