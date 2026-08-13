@@ -11,7 +11,7 @@ import { update_topl, vobj_at } from './display.js';
 import { surface, hliquid } from './dungeon.js';
 import { t_at, dotrap } from './trap.js';
 import { exercise } from './attrib.js';
-import { useupf } from './invent.js';
+import { useupf, makeplural } from './invent.js';
 import { objects, COIN_CLASS, CORPSE } from './mkobj.js';
 import {
     FOUNTAIN, STAIRS, LADDER, DRAWBRIDGE_DOWN, ICE, POOL, MOAT, WATER,
@@ -55,9 +55,11 @@ function can_reach_floor(_check_pit) {
 // C ref: objnam.c the(xname(obj)) for the sit-on-object message.  Object
 // identification internals are owned elsewhere; use the object's plain
 // name from the objects table for the (polymorph/rare) sit-on-object path.
+// C ref: sit.c dosit() `You("sit on %s.", the(xname(obj)))` — xname() is
+// quantity-aware, so a stack of two apples reads "the apples", not "the apple".
 function sit_obj_name(obj) {
     const nm = objects[obj.otyp]?.name || 'object';
-    return `the ${nm}`;
+    return `the ${(obj.quan || 1) > 1 ? makeplural(nm) : nm}`;
 }
 
 // C ref: sit.c dosit() — the #sit command.

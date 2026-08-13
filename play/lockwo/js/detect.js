@@ -10,7 +10,13 @@ import { couldsee } from './vision.js';
 import { exercise } from './attrib.js';
 import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS,
          STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
-import { BOULDER } from './mkobj.js';
+import { BOULDER, COIN_CLASS, GOLD_PIECE, objects } from './mkobj.js';
+import { NO_COLOR, CLR_WHITE } from './terminal.js';
+import { rnd } from './rng.js';
+
+// objclass.h obj_material_types GOLD == 15 (the blessed-scroll "any gold
+// object" scan, o_material(obj, GOLD)).
+const GOLD_MATERIAL = 15;
 
 // C ref: detect.c findone — reveal a single hidden feature at (zx,zy).
 function findone(zx, zy, found) {
@@ -123,6 +129,75 @@ export async function do_mapping() {
             show_map_spot(x, y);
     exercise(A_WIS, true);
 }
+
+// C ref: detect.c gold_detect(sobj) — the scroll/spell of gold detection.
+// Returns TRUE when nothing was detected (C's caller then does the
+// strange_feeling()/useup); FALSE when the gold map was shown.
+//
+// This whole command was previously unported, so seffects() fell through its
+// default and the browse_map() cursor loop never ran — the keystrokes C feeds
+// to getpos then reached the command parser and moved the hero for real.
+export async function gold_detect(sobj, getposFn, docrtFn, updateTopl, moreFn, flushFn) {
+    const u = game.u;
+    const objs = (game.level?.objects || []).filter((o) => o.where === 'floor');
+    const gold = objs.filter((o) => o.oclass === COIN_CLASS
+                                 || (sobj?.blessed && objects[o.otyp]?.material === GOLD_MATERIAL));
+    // C: monsters carrying gold map a synthetic pile at their square, whose
+    // quan is rnd(10) — an RNG draw, so it must only happen when one does.
+    const goldmons = (game.level?.monsters || []).filter(
+        (m) => !(m.mhp != null && m.mhp <= 0)
+            && (m.minvent || []).some((o) => o.oclass === COIN_CLASS));
+
+    // gk.known: any gold anywhere (carried by a monster, or on the floor).
+    // "only under me" (every pile is on the hero's square) is not the
+    // outgoldmap path — C prints "You notice some gold between your feet."
+    const offSelf = gold.some((o) => o.ox !== u.ux || o.oy !== u.uy);
+    if (!gold.length && !goldmons.length) return true;
+    if (!offSelf && !goldmons.length) {
+        await updateTopl(`You notice some gold between your ${makeplural_foot()}.`);
+        return false;
+    }
+
+    // outgoldmap: cls() first does display_nhwindow(WIN_MESSAGE, FALSE), which
+    // fires the pending --More-- (wintty.c:1874) — BEFORE the gold map is
+    // painted, so the recorded --More-- frame still shows the ordinary map.
+    if (game._toplin === 1) await moreFn();
+    // ...then it blanks the map.  Each detected pile is map_object()ed, which
+    // writes hero MEMORY as well as the live display, so the '$'s survive the
+    // closing map_redisplay()/docrt().
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
+    let ugold = false;
+    const mark = (x, y, obj) => {
+        const g = object_glyph(obj);
+        const loc = game.level?.at(x, y);
+        if (loc) loc.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.dec };
+        show_glyph_cell(x, y, g.ch, g.color, g.dec);
+        if (x === u.ux && y === u.uy) ugold = true;
+    };
+    for (const o of gold) mark(o.ox, o.oy, o);
+    for (const m of goldmons) {
+        const fake = { otyp: GOLD_PIECE, oclass: COIN_CLASS, quan: rnd(10) };
+        mark(m.mx, m.my, fake);
+    }
+    if (!ugold) {
+        // newsym(u.ux, u.uy) redraws the hero on top of the blanked map.
+        show_glyph_cell(u.ux, u.uy, '@', CLR_WHITE, false);
+    }
+    await flushFn(1);
+    await updateTopl('You feel very greedy, and sense gold!');
+    exercise(A_WIS, true);
+
+    // browse_map(TER_DETECT|TER_OBJ[|TER_MON], "gold")
+    await getposFn('gold');
+    // map_redisplay() -> docrt()
+    await docrtFn();
+    return false;
+}
+
+// C ref: body_part(FOOT) pluralised — the hero is always humanoid here.
+function makeplural_foot() { return 'feet'; }
 
 // C ref: detect.c skip_premap_detect — a STONE cell flagged both nondiggable
 // and nonpasswall is outside the special level's own map footprint (the rest

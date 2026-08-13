@@ -1806,24 +1806,34 @@ async function maybe_unhide_at(x, y) {
     if (noLongerHidden) await hideunder(m);
 }
 
-// C ref: mon.c hideunder(mtmp) — a just-moved concealing monster re-hides under
-// the object on its square.  Only the non-eel M1_CONCEAL branch (cobra under a
-// statue &c.) is modelled: set mundetected, and if the hero can see the monster
-// announce "You see the <mon> <locomotion> under <object>." then newsym() so the
+// C ref: mon.c:4726 hideunder(mtmp) — a just-moved concealing monster re-hides
+// under the object on its square (or, for an eel, under the water): set
+// mundetected, and if the hero can see the monster announce
+// "You see the <mon> <locomotion> under <object>." then newsym() so the
 // now-hidden monster disappears from the map.  Consumes NO RNG.
+// The `is_u` (hero polymorphed into a hider) arm is not modelled.
 export async function hideunder(mtmp) {
     const ptr = mtmp.data;
     const x = mtmp.mx, y = mtmp.my;
     const seeit = canseemon_mm(mtmp);
     let undetected = false;
     let seenobj = null;
+    let seenlocomo = null;
     const t = t_at(x, y);
     if (mtmp === game.u?.ustuck) {
         /* can't hide while holding / held by the hero */
     } else if (mtmp.mtrapped || (t && !is_pit(t.ttyp))) {
         /* can't hide while trapped or on a non-pit trap */
     } else if (ptr?.mcls === S_EEL) {
-        /* aquatic hiders (eels) not exercised here */
+        // C ref: mon.c:4742 — "aquatic creatures only hide under water, not
+        // under objects; they don't do so on the Plane of Water or when hero is
+        // also under water unless some obstacle blocks line-of-sight".  This
+        // arm used to be an empty stub, so an eel never re-hid: it stayed
+        // visible on the map and mon.c:1291's per-turn eel re-hide check
+        // (mon.js movemon_singlemon) could never take its early return.
+        undetected = is_pool_at(x, y) && !Is_waterlevel(game.u?.uz)
+                     && (!Underwater() || !couldsee(x, y));
+        if (seeit) { seenobj = 'the water'; seenlocomo = 'dive'; }
     } else if (hides_under_pm(ptr) && OBJ_AT(x, y)
                && can_hide_under_obj_at(x, y)
                && !(IS_POOL(terrainTyp(x, y)) || IS_LAVA(terrainTyp(x, y)))) {
@@ -1840,7 +1850,9 @@ export async function hideunder(mtmp) {
     // mtmp.mundetected until AFTER the message so the monster is still drawn on
     // the captured --More-- frame, then hide it with newsym().  (No RNG here.)
     if (undetected && seeit && seenobj) {
-        const locomo = locomotion(ptr, 'hide');
+        // C: `if (!locomo) locomo = locomotion(mtmp->data, "hide");` — the eel
+        // arm has already set it to "dive".
+        const locomo = seenlocomo || locomotion(ptr, 'hide');
         const { update_topl } = await import('./display.js');
         await update_topl(`You see ${y_monnam_local(mtmp)} ${locomo} under ${seenobj}.`);
     }
@@ -6365,15 +6377,14 @@ async function mhitm_ad_phys(mtmp, mattk, mhm) {
     const AT_WEAP_LOCAL = 254;
     const otmp = (mattk.aatyp === AT_WEAP_LOCAL) ? MON_WEP(mtmp) : null;
     if (otmp) {
-        // dmgval(otmp, hero): small defender -> rnd(oc_wsdam) + spe.
-        let dmg = 0;
-        const wsdam = thrown_wsdam(otmp.otyp);
-        if (wsdam) dmg = rnd(wsdam);
-        if (otmp.oclass === WEAPON_CLASS_MM) {
-            dmg += (otmp.spe | 0);
-            if (dmg < 0) dmg = 0;
-        }
-        mhm.damage += dmg;
+        // C ref: uhitm.c mhitm_ad_phys() — `mhm->damage += dmgval(otmp, mdef)`.
+        // This used to inline a SUBSET of dmgval (rnd(oc_wsdam) + spe only),
+        // dropping the per-otyp bonus dice, the blessed-vs-undead bonus and the
+        // EROSION subtraction — so an orc's rusty dagger hit for its full dice
+        // instead of the clamped-to-1 eroded amount.
+        mhm.damage += dmgval(otmp, game.youmonst || game.u);
+        // GAUNTLETS_OF_POWER on the attacker (rn1(4,3)): no recorded monster
+        // wears them.
         if (mhm.damage <= 0) mhm.damage = 1;
     }
     await hitmsg(mtmp, mattk);

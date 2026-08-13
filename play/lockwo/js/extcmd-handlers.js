@@ -29,7 +29,8 @@ import { newsym } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { delobj, stackobj } from './invent.js';
-import { count_unpaid } from './invent.js';
+import { count_unpaid, is_worn, wearing_armor, inventoryArray, takeoff_worn_obj,
+         dismiss_invent_screen } from './invent.js';
 import { exercise } from './attrib.js';
 import { rn2 } from './rng.js';
 import { A_STR, A_WIS, A_DEX } from './const.js';
@@ -1457,6 +1458,144 @@ async function query_objlist_take_out(box, allow) {
     return picked.map((it) => it.obj);
 }
 
+// C ref: pickup.c query_category(qflags = WORN_TYPES|ALL_TYPES|UNPAID_TYPES|
+// BUCX_TYPES) as called by do_wear.c menu_remarm() — the 'A' class filter.
+// WORN_TYPES sets ofilter = is_worn, so only worn/wielded items contribute the
+// class list AND the BUC counts.  CHOOSE_ALL is NOT passed, so there is no 'A'
+// auto-select entry and no hint line.
+async function query_category_takeoff() {
+    const worn = inventoryArray().filter(is_worn);
+    const order = game?.flags?.inv_order || DEFAULT_INV_ORDER;
+    const presentClasses = order.filter((oc) => worn.some((o) => o.oclass === oc));
+    const ccount = presentClasses.length;
+
+    const goldX = !!(game?.flags?.goldX);
+    const bucCount = (type) => worn.filter((o) => (o.oclass === COIN_CLASS)
+        ? type === (goldX ? 'X' : 'U')
+        : type === (!o.bknown ? 'X' : o.blessed ? 'B' : o.cursed ? 'C' : 'U')).length;
+    const do_blessed = bucCount('B') > 0, do_cursed = bucCount('C') > 0;
+    const do_uncursed = bucCount('U') > 0, do_unknown = bucCount('X') > 0;
+    const num_buc_types = [do_blessed, do_cursed, do_uncursed, do_unknown].filter(Boolean).length;
+    // pickup.c query_category: `(qflags & UNPAID_TYPES) && count_unpaid(olist)`
+    // — count_unpaid is NOT passed the ofilter, so it scans the WHOLE pack, not
+    // just the worn subset.
+    const do_unpaid = count_unpaid(inventoryArray()) > 0;
+
+    // C: "no point in actually showing a menu for a single category".
+    if (ccount === 1 && !do_unpaid && num_buc_types <= 1)
+        return [presentClasses[0]];
+
+    const show_a = ccount > 1;
+    const items = [];
+    if (show_a) items.push({ letter: 'a', token: 'ALL', skipinvert: true, selected: false,
+                             desc: 'All worn and wielded types' });
+    let invlet = show_a ? 'b' : 'a';
+    for (const oc of presentClasses) {
+        items.push({ letter: invlet, token: oc, skipinvert: false, selected: false,
+                     desc: let_to_name(oc, false, false) });
+        invlet = nextMenuCh(invlet);
+    }
+    // pickup.c: the unpaid entry precedes the b/u/c/unknown cluster, and the
+    // blank separator is emitted when ANY of them is present.
+    const bucItems = [];
+    if (do_unpaid) bucItems.push(['u', 'Unpaid items']);
+    if (do_blessed) bucItems.push(['B', 'Items known to be Blessed']);
+    if (do_cursed) bucItems.push(['C', 'Items known to be Cursed']);
+    if (do_uncursed) bucItems.push(['U', 'Items known to be Uncursed']);
+    if (do_unknown) bucItems.push(['X', 'Items of unknown Bless/Curse status']);
+    for (const [ltr, desc] of bucItems)
+        items.push({ letter: ltr, token: ltr, skipinvert: true, selected: false, desc });
+
+    const nClassEntries = items.length - bucItems.length;
+    const buildLines = () => {
+        const lines = [{ text: 'What type of things do you want to take off?', attr: ATR_INVERSE },
+                       { text: '' }];
+        for (let k = 0; k < nClassEntries; k++) lines.push({ text: menuItemLine(items[k]) });
+        if (bucItems.length) lines.push({ text: '' });
+        for (let k = nClassEntries; k < items.length; k++) lines.push({ text: menuItemLine(items[k]) });
+        return lines;
+    };
+    const picked = await run_pickany_menu(items, buildLines);
+    if (picked === null) return null;
+    return picked.map((it) => it.token);
+}
+
+// C ref: pickup.c query_objlist("What do you want to take off?", invent,
+// SIGNAL_NOMENU|USE_INVLET|INVORDER_SORT, PICK_ANY, filter).  USE_INVLET means
+// the accelerators are the objects' own inventory letters.
+async function query_objlist_takeoff(allow) {
+    const items = [], linePlan = [];
+    const sorted = sortloot(inventoryArray(), SORTLOOT_LOOT | SORTLOOT_PACK, false, allow);
+    let curClass = null;
+    for (const sli of sorted) {
+        if (!sli.obj) break;
+        const o = sli.obj;
+        if (o.oclass !== curClass) {
+            curClass = o.oclass;
+            linePlan.push({ type: 'header', text: let_to_name(curClass, false, false) });
+        }
+        const it = { letter: o.invlet, obj: o, selected: false, skipinvert: false, desc: obj_doname(o) };
+        items.push(it);
+        linePlan.push({ type: 'item', item: it });
+    }
+    if (!items.length) return [];
+    const buildLines = () => {
+        const lines = [{ text: 'What do you want to take off?', attr: ATR_INVERSE }, { text: '' }];
+        for (const p of linePlan) {
+            if (p.type === 'header') lines.push({ text: p.text, attr: ATR_INVERSE });
+            else lines.push({ text: menuItemLine(p.item) });
+        }
+        return lines;
+    };
+    const picked = await run_pickany_menu(items, buildLines);
+    if (picked === null) return null;
+    return picked.map((it) => it.obj);
+}
+
+// C ref: do_wear.c doddoremarm() — the 'A' (#takeoffall) command with the
+// default menustyle:Full, i.e. menu_remarm(0): a class-filter menu, then an item
+// menu, then take_off().  NOT ported: take_off()'s multi-turn disrobing
+// occupation (per-item oc_delay) — the selected items come off on this command's
+// own turn instead.  Rendering both menus is what keeps their keystrokes out of
+// the command parser.
+export async function doddoremarm() {
+    const g = game;
+    if (!g.uwep && !g.uswapwep && !g.uquiver && !g.uamul && !g.ublindf
+        && !g.uleft && !g.uright && !wearing_armor()) {
+        await pline('You are not wearing anything.');
+        return 0;
+    }
+    const picks = await query_category_takeoff();
+    if (!picks || !picks.length) { await dismiss_invent_screen(); return 0; }
+
+    let all_worn_categories = false;
+    const validClasses = new Set(), bucFilters = new Set();
+    for (const p of picks) {
+        if (p === 'ALL') all_worn_categories = true;
+        else if (typeof p === 'number') validClasses.add(p);
+        else bucFilters.add(p);
+    }
+    // C: a BUC pick clears all_worn_categories (is_worn_by_type applies both).
+    if (bucFilters.size) all_worn_categories = false;
+    const bucOf = (o) => (o.oclass === COIN_CLASS ? (game?.flags?.goldX ? 'X' : 'U')
+        : !o.bknown ? 'X' : o.blessed ? 'B' : o.cursed ? 'C' : 'U');
+    const allow = (o) => is_worn(o)
+        && (all_worn_categories
+            || ((!validClasses.size || validClasses.has(o.oclass))
+                && (!bucFilters.size || bucFilters.has(bucOf(o)))));
+
+    const chosen = await query_objlist_takeoff(allow);
+    if (chosen === null || !chosen.length) { await dismiss_invent_screen(); return 0; }
+    await dismiss_invent_screen();
+    for (const obj of chosen) await takeoff_worn_obj(obj);
+    // C: takeoff.disrobing is "disarming" when only weapon slots are involved.
+    await pline(`You finish ${chosen.some((o) => !((o.owornmask || 0) & WEAPON_SLOT_MASK))
+        ? 'disrobing' : 'disarming'}.`);
+    return 0; /* ECMD_OK: take_off() accounts for the time itself */
+}
+// Worn-mask bits for the three weapon slots (js/invent.js QW_* convention).
+const WEAPON_SLOT_MASK = 0x100 | 0x200 | 0x400;
+
 // C ref: pickup.c menu_loot(retry=0, put_in=FALSE) for menustyle:Full — pick the
 // object classes ("Take out what type of objects?"), then the items ("Take out
 // what?"), then out_container() each.  Returns the number removed (>0 => a turn
@@ -1592,6 +1731,18 @@ async function pick_lock_box(pick, box) {
 // (AUTOUNLOCK_APPLY_KEY): pick an unlocking tool and run pick_lock(); unlocked
 // -> use_container().
 async function doloot() {
+    // C ref: pickup.c doloot():2198 — a handless polyform can't loot at all.
+    // Skipping this opened the container menu, which then ate the keystrokes
+    // C hands to the command parser.
+    // Only consult the form while polymorphed: an unpolymorphed hero's
+    // u.umonnum is this port's ROLE index, not a mons[] pmidx (every player
+    // monster has hands anyway, so C's answer is FALSE either way).
+    const { nohands } = await import('./monflags_data.js');
+    const ydata = game.u?.Upolyd ? (game.u?.data || null) : null;
+    if (ydata && nohands(ydata)) {
+        await pline('You have no hands!');
+        return 0; // ECMD_OK
+    }
     const box = floor_box_here();
     if (!box) {
         // C: "You don't find anything here to loot." (ECMD_TIME elsewhere, but
@@ -1656,6 +1807,23 @@ export async function picklock() {
     return 0; // usedtime = 0
 }
 
+// C ref: obj.h is_weptool() / lock.c:660 u_have_forceable_weapon().
+const WEAPON_CLASS_OC = 2, TOOL_CLASS_OC = 6, ROCK_CLASS_OC = 14;
+const P_DAGGER_SK = 1, P_FLAIL_SK = 13, P_LANCE_SK = 19; // skills.h
+function is_weptool_obj(o) {
+    return !!o && o.oclass === TOOL_CLASS_OC && (objects[o.otyp]?.oc_skill ?? 0) !== 0;
+}
+function u_have_forceable_weapon() {
+    const uwep = game.uwep;
+    if (!uwep) return false;
+    const sk = objects[uwep.otyp]?.oc_skill ?? 0;
+    if ((uwep.oclass === WEAPON_CLASS_OC || is_weptool_obj(uwep))
+        ? (sk < P_DAGGER_SK || sk === P_FLAIL_SK || sk > P_LANCE_SK)
+        : uwep.oclass !== ROCK_CLASS_OC)
+        return false;
+    return true;
+}
+
 // C ref: lock.c doforce().  Scoped to the recorded path: a forceable weapon
 // (the dwarvish spear is a blunt/non-blade weapon -> picktyp 0), a single
 // locked floor box.  Prompts "There is <a locked box> here; force its lock?
@@ -1663,10 +1831,16 @@ export async function picklock() {
 // begins the forcelock occupation (which elapses game turns via the move loop).
 async function doforce() {
     const uwep = game.uwep;
-    // u_have_forceable_weapon(): a wielded weapon/weapon-tool that isn't purely
-    // for cutting.  The recorded hero wields a dwarvish spear (a weapon).
-    if (!uwep || uwep.oclass !== 2 /*WEAPON_CLASS*/) {
-        await pline("You can't force anything without a proper weapon.");
+    // C ref: lock.c:694 — the You_cant() phrase depends on WHY the weapon is
+    // unusable; the no-weapon case reads "when not wielding a" (this always
+    // said "without a proper", which is only the wrong-object-class wording).
+    if (!u_have_forceable_weapon()) {
+        const use_plural = !!(uwep && (uwep.quan || 1) > 1);
+        const why = !uwep ? 'when not wielding a'
+            : (uwep.oclass !== WEAPON_CLASS_OC && !is_weptool_obj(uwep))
+                ? (use_plural ? 'without proper' : 'without a proper')
+                : (use_plural ? 'with those' : 'with that');
+        await pline(`You can't force anything ${why} weapon${use_plural ? 's' : ''}.`);
         return 0;
     }
     const box = floor_lockbox_here();
@@ -1924,7 +2098,24 @@ const HANDLERS = {
     polyself: wiz_polyself,
     monster: domonability_extcmd,
     turn: doturn,
+    wait: dowait_extcmd,
+    terrain: doterrain_extcmd,
 };
+
+// C ref: cmd.c { '\177', "terrain", ..., doterrain } — '#terrain' is the same
+// command as the <rubout> key.  It had no HANDLERS entry, so the extended form
+// silently did nothing and its menu's keystrokes went to the command parser.
+async function doterrain_extcmd() {
+    const { doterrain } = await import('./hack.js');
+    return await doterrain();
+}
+
+// C ref: cmd.c { '.', "wait", donull } — '#wait' is the same command as '.'.
+// It had no handler, so the extended form silently cost no turn.
+async function dowait_extcmd() {
+    const { donull } = await import('./cmd.js');
+    return await donull();
+}
 
 // C ref: cmd.c domonability() return convention — ECMD_OK(0)/ECMD_TIME(1);
 // the extcmd dispatcher's turn convention already treats non-1 as "no turn",

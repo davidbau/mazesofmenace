@@ -551,8 +551,21 @@ export async function doenhance() {
     // end_menu() prepends the title (ATR_INVERSE) + a blank separator line.
     const allLines = [{ text: title, attr: 1 }, { text: '' }, ...lines];
 
-    // Paginate: 23 content lines per page (row 23 holds the "(N of M)" morestr).
+    // C ref: win/tty/wintty.c tty_display_nhwindow NHW_MENU — cw->maxrow ==
+    // nitems + 1 (the morestr row).  A menu SHORTER than the screen floats as a
+    // partial-width overlay with an "(end)" morestr; only one that reaches
+    // ttyDisplay->rows takes the whole screen and pages with "(N of M)".  A
+    // short skill list (Monk: 3 headings + 12 skills) was being drawn
+    // full-screen, wiping the map and status rows the recorder keeps.
     const totalRows = game.nhDisplay?.rows ?? 24;
+    if (allLines.length + 1 < totalRows) {
+        const { renderMenuLines } = await import('./invent.js');
+        renderMenuLines(allLines, null); // cursor: parked past "(end) "
+        game._modal_screen = 'skillwin';
+        return ECMD_OK;
+    }
+
+    // Paginate: 23 content lines per page (row 23 holds the "(N of M)" morestr).
     const perPage = totalRows - 1;
     const pages = [];
     for (let i = 0; i < allLines.length; i += perPage)

@@ -7,22 +7,24 @@
 // generated naturally for any session whose level state is materialized.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
-    W_ARMG, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
-import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
-    m_everyturn_effect } from './monmove.js';
-import { cansee } from './vision.js';
+    W_ARMG, IS_DOOR, IS_POOL, IS_LAVA, WATER, Is_waterlevel,
+    D_CLOSED, D_LOCKED } from './const.js';
+import { dochugw, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
+    m_everyturn_effect, monflee, onscary } from './monmove.js';
+import { cansee, Blind } from './vision.js';
 import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
 import { is_were_flag, is_human_flag, mflags1_of, mflags2_of, mflags3_of,
-    M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M2_DEMON, M3_COVETOUS,
+    M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M1_HIDE, M1_CLING, M1_FLY,
+    M1_BREATHLESS, M2_DEMON, M3_COVETOUS, mindless,
     strongmonst_flag, throws_rocks_flag } from './monflags_data.js';
 import { attacktype, AT_ENGL } from './monattk_data.js';
 import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './mkobj.js';
 import { monster_by_pmidx, newcham, enexto_spawn,
-    pickvampshape_pub } from './makemon.js';
+    pickvampshape_pub, set_mimic_sym } from './makemon.js';
 import { newsym, pline, see_with_infrared, canseemon_shared } from './display.js';
 import { dist2 } from './hacklib.js';
 import { Monnam } from './uhitm.js';
@@ -131,8 +133,11 @@ export function DEADMONSTER(mon) {
     return !mon || (mon.mhp != null && mon.mhp <= 0);
 }
 
-// The live monster list for the current level.  C uses the `fmon` chain;
-// our level stores monsters in an array.  Filter out dead / off-map.
+// The live monster list for the current level.  C uses the `fmon` chain; our
+// level stores monsters in an array.  This is the RAW list — dead and off-map
+// monsters are still in it (C's dmonsfree() unlink is not modelled), so every
+// caller applies its own DEADMONSTER() / mon_offmap() filter, exactly as C's
+// iter_mons_safe() does.
 export function monsterList() {
     const list = game.level?.monsters || [];
     return list;
@@ -149,8 +154,8 @@ function fmonOrder() {
     return out;
 }
 
-// C ref: mon.c mcalcmove(mon, m_moving) — the species/speed math BEFORE the
-// random rounding.  Consumes no RNG.
+// C ref: mon.c:1126 mcalcmove(mon, m_moving) — the species/speed math BEFORE
+// the random rounding.  Draws only for a galloping steed (see below).
 function mcalcmove_base(mon) {
     let mmove = base_mmove(mon);
     if (mon?.mspeed === MSLOW) {
@@ -161,14 +166,23 @@ function mcalcmove_base(mon) {
     } else if (mon?.mspeed === MFAST) {
         mmove = Math.trunc((4 * mmove + 2) / 3);
     }
-    // (steed/gallop branch omitted — never applies to non-steed monsters)
+    // C ref: mon.c:1147 — `if (mon == u.usteed && u.ugallop && svc.context.mv)
+    // mmove = ((rn2(2) ? 4 : 5) * mmove) / 3;`.  This DRAWS, and it draws for
+    // BOTH values of m_moving (the mounted hero's u_calc_moveamt call and the
+    // steed's own reallocation-loop call), one rn2(2) ahead of the rounding
+    // roll.  Nothing in this port sets u.ugallop yet (steed.js only clears it
+    // on dismount), so it is latent — but the guard is C's, not an assumption.
+    if (mon && mon === game.u?.usteed && game.u?.ugallop && game.context?.mv)
+        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
     return mmove;
 }
 
-// C ref: mon.c mcalcmove() trailing block — randomly round `mmove` up to a
-// multiple of NORMAL_SPEED.  Always rolls rn2(NORMAL_SPEED) (the comparison
-// against mmove_adj==0 just always fails), so this is emitted for every
-// monster regardless of speed — matching the recorded mcalcmove stream.
+// C ref: mon.c:1155-1166 mcalcmove()'s trailing `if (m_moving)` block — randomly
+// round `mmove` up to a multiple of NORMAL_SPEED.  There is no `if (mmove)`
+// guard in C, so the rn2(NORMAL_SPEED) is drawn for EVERY monster on every
+// reallocation, even a speed-0 sessile one whose mmove_adj is 0 (the draw
+// happens, the `< 0` comparison then always fails) — which is why an incorrect
+// base speed shifts allotments but never shifts the RNG stream.
 function mcalc_round(mmove) {
     const mmove_adj = mmove % NORMAL_SPEED;
     mmove -= mmove_adj;
@@ -262,27 +276,51 @@ function counter_were(pmidx) {
 }
 function is_human_were(ptr) { return is_were_flag(ptr) && is_human_flag(ptr); }
 // C ref: youprop.h Protection_from_shape_changers — extrinsic only (the ring).
-// Read from the same uprops bag the rest of the port uses; no covered session
-// wears the ring, so this is False throughout, but the guard is C's.
+// Read from the same uprops bag the rest of the port uses.  Nothing sets it
+// yet, so it is False throughout; note that when it DOES get set, C also runs
+// mon.c:4622 rescham() (every chameleon/mimic snaps back to its natural shape
+// and every were reverts to human) on put-on and mon.c:4646 restartcham() on
+// take-off.  Neither is ported, and both change monster forms wholesale.
 export function Protection_from_shape_changers() {
     return !!game.u?.uprops?.Protection_from_shape_changers;
 }
 
-// C ref: were.c new_were(mon) — swap a lycanthrope to its counterpart form.
-// Consumes NO RNG: set_mon_data and healmon are both deterministic, and
-// mon_break_armor()/possibly_unwield() draw nothing either (checked in worn.c).
-// The trailing `monflee(mon, rn1(9,2), ...)` branch requires
-// svc.context.mon_moving, and BOTH C call sites of were_change() (mcalcdistress
-// in the once-per-turn block, and uhitm.c's silver-hit path) run with
-// mon_moving FALSE — so that draw is unreachable and is deliberately omitted
-// rather than guessed at.  Monster armor/weapon shedding is not modelled.
-function new_were(mon) {
+// C ref: mon.c:2476 monnear(mon, x, y) — within one (king) step; a grid bug
+// can't reach a diagonal neighbour.  Needed by new_were's flee check.
+const PM_GRID_BUG = 116;
+function monnear(mon, x, y) {
+    const distance = dist2(mon.mx, mon.my, x, y);
+    if (distance === 2 && mon.data?.pmidx === PM_GRID_BUG) return false;
+    return distance < 3;
+}
+
+// C ref: were.c:96 new_were(mon) — swap a lycanthrope to its counterpart form.
+// The order matters: C plines BEFORE set_mon_data (so the message and the
+// newsym() that erases/redraws the monster land on either side of a --More--
+// boundary the way C renders them), and the trailing
+// `monflee(mon, rn1(9,2), TRUE, TRUE)` DRAWS whenever this runs during monster
+// movement (svc.context.mon_moving) next to something scary.  That branch is
+// unreachable from were_change() — mcalcdistress runs in the once-per-turn
+// block with mon_moving FALSE (allmain.c:216 clears it before allmain.c:228) —
+// but new_were has three other C call sites (mhitu.c:980/983 when a were bites
+// the hero, potion.c's water-prayer revert) that DO run with mon_moving set, so
+// the guard is ported rather than assumed away.
+// Still not modelled: mon_break_armor()/possibly_unwield() (worn.c) shed armor
+// and weapons that no longer fit the new form.  Neither draws RNG, but both
+// change the monster's AC / wielded weapon, which later attack rolls read.
+async function new_were(mon) {
     // C: the hero's extrinsic pins a were in critter form; it can still revert.
     if (Protection_from_shape_changers() && is_human_were(mon.data)) return;
     const pm = counter_were(mon.data?.pmidx);
     if (pm < 0) return; // C: impossible("unknown lycanthrope")
     const ptr = monster_by_pmidx(pm);
     if (!ptr) return;
+    // C ref: were.c:110 — pline() runs with the monster still in its OLD form.
+    if (canseemon_mon(mon) && !game.u?.uhallu) {
+        // C: pmname(&mons[pm]) + 4 — skip past the "were" prefix.
+        const into = is_human_flag(ptr) ? 'human' : (ptr.name || '').slice(4);
+        await pline(`${Monnam(mon)} changes into a ${into}.`);
+    }
     mon.data = ptr;
     // C: helpless(mon) -> the transformation wakens and revitalizes.
     if (mon.msleeping || !mon.mcanmove) {
@@ -291,11 +329,12 @@ function new_were(mon) {
         mon.mcanmove = 1;
     }
     // C: healmon(mon, (mhpmax - mhp) / 4, 0) — regain a quarter of lost HP.
-    const amt = Math.floor(((mon.mhpmax || 0) - (mon.mhp || 0)) / 4);
-    if (amt > 0) {
-        mon.mhp = Math.min((mon.mhp || 0) + amt, mon.mhpmax || 0);
-    }
+    healmon(mon, Math.floor(((mon.mhpmax || 0) - (mon.mhp || 0)) / 4), 0);
     newsym(mon.mx, mon.my);
+    // C ref: were.c:132 — mon_break_armor(mon, FALSE); possibly_unwield(mon, FALSE);
+    if (game.context?.mon_moving && !mon.mpeaceful
+        && onscary(mon.mux, mon.muy, mon) && monnear(mon, mon.mux, mon.muy))
+        await monflee(mon, rn1(9, 2), true, true); /* 2..10 turns */
 }
 
 // C ref: were.c were_change(mon) — each lycanthrope rolls once per turn to
@@ -307,6 +346,18 @@ function new_were(mon) {
 // Note the short-circuit order in each branch: the human branch tests
 // !Protection_from_shape_changers FIRST (so no draw while protected), while the
 // animal branch tests !rn2(30) first (so the draw ALWAYS happens).
+// C ref: youprop.h Deaf — HDeaf (a timed intrinsic) or EDeaf (worn).  Same
+// shape as sounds.js Deaf_hero(); only the timed intrinsic is reachable.
+function Deaf() {
+    const u = game.u;
+    return ((u?.uprops?.HDeaf ?? 0) > 0) || !!u?.Deaf;
+}
+
+// C ref: makemon MONS-table indices of the ANIMAL lycanthrope forms (the human
+// forms are 261/262/263).  were.c's howl switch names only PM_WEREWOLF and
+// PM_WEREJACKAL — a wererat makes no noise.
+const PM_WEREJACKAL = 15, PM_WEREWOLF = 21;
+
 async function were_change(mon) {
     const ptr = mon.data;
     if (!is_were(ptr)) return;
@@ -315,36 +366,48 @@ async function were_change(mon) {
         const full = game.flags?.moonphase === FULL_MOON;
         if (!Protection_from_shape_changers()
             && !rn2(night() ? (full ? 3 : 30) : (full ? 10 : 50))) {
-            const seen = canseemon_mon(mon);
-            const nam = seen ? Monnam(mon) : '';
-            new_were(mon); // change into animal form
+            await new_were(mon); // change into animal form
             game.were_changes = (game.were_changes || 0) + 1;
-            if (seen && !game.u?.uhallu) {
-                // C: pmname(&mons[pm]) + 4 — skip the "were" prefix.
-                await pline(`${nam} changes into a ${(mon.data?.name || '').slice(4)}.`);
+            // C ref: were.c:20-38 — an UNSEEN were that just took animal form
+            // howls.  This is not cosmetic: wake_nearto() clears msleeping on
+            // every monster within 16 squared units, and a monster C woke but
+            // this port left asleep skips its entire dochug() (every m_move
+            // rn2, every attack roll) from the next monster phase onward.
+            if (!Deaf() && !canseemon_mon(mon)) {
+                const mndx = mon.data?.pmidx;
+                const howler = mndx === PM_WEREWOLF ? 'wolf'
+                             : mndx === PM_WEREJACKAL ? 'jackal' : null;
+                if (howler) {
+                    await pline(`You hear a ${howler} howling at the moon.`);
+                    const { wake_nearto } = await import('./cmd.js');
+                    await wake_nearto(mon.mx, mon.my, 4 * 4);
+                }
             }
-            // C also has a You_hear("a %s howling at the moon.") + wake_nearto
-            // branch for !Deaf && !canseemon; wake_nearto consumes no RNG.
         }
     } else if (!rn2(30) || Protection_from_shape_changers()) {
-        const seen = canseemon_mon(mon);
-        const nam = seen ? Monnam(mon) : '';
-        new_were(mon); // change back into human form
+        await new_were(mon); // change back into human form
         game.were_changes = (game.were_changes || 0) + 1;
-        if (seen && !game.u?.uhallu) await pline(`${nam} changes into a human.`);
     }
 }
 
-// C ref: display.c canseemon(mon).  Same shape as the dogmove.js copy.
+// C ref: display.h:118 _canseemon(mon) ==
+//     (cansee(mx, my) || see_with_infrared(mon)) && mon_visible(mon)
+// with display.h:91 _mon_visible(mon) ==
+//     (!mon->minvis || See_invisible) && !mon->mundetected
+// The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf) see
+// a warm-blooded monster on an unlit square that is still in line of sight;
+// omitting it silently suppressed those monsters' messages.  The mundetected
+// half was ALSO missing, which made a hidden monster (a piercer on the ceiling,
+// a snake under a boulder) read as visible to every mon.js caller — the hide
+// message would print and the eel re-hide roll below would be skipped.
+// (There is no uswallow special case in C: a swallowed hero sees mon_visible
+// monsters only where cansee() says so, which inside a swallower is the
+// swallower's own square.)
 function canseemon_mon(mtmp) {
     if (!mtmp) return false;
-    if (game.u?.uswallow) return true;
+    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
     if (mtmp.minvis && !game.u?.see_invis) return false;
-    // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
-    // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
-    // see a warm-blooded monster on an unlit square that is still in line of
-    // sight; omitting it silently suppressed those monsters' messages.
-    return !!cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp);
+    return !mtmp.mundetected;
 }
 
 // C ref: mon.c:4596 healmon(mtmp, amt, overheal) — give a monster hit points,
@@ -364,10 +427,13 @@ export function healmon(mtmp, amt, overheal) {
     return mtmp.mhp - oldhp;
 }
 
-// C ref: mon.c m_calcdistress(mtmp) — per-turn timeouts/regen/shapeshift.
-// mon_regen and decide_to_shapeshift consume no RNG for the species our
-// sessions exercise; were_change DOES (see above).
-// C ref: mon.c:4869-4938 decide_to_shapeshift(mon) — the per-turn shapeshift
+// C ref: mon.c:1180 m_calcdistress(mtmp) — per-turn liquid check / regen /
+// shapeshift / timeouts.  mon_regen consumes no RNG; decide_to_shapeshift and
+// were_change BOTH do, every turn, for every monster with a cham form or the
+// M2_WERE bit (an earlier comment here claimed decide_to_shapeshift was
+// RNG-free "for the species our sessions exercise" — it is not, and the draw
+// order note immediately below always contradicted it).
+// C ref: mon.c:4871-4936 decide_to_shapeshift(mon) — the per-turn shapeshift
 // check run from m_calcdistress for every monster with a cham form.
 //
 // Draw order: a plain shapeshifter costs one rn2(6) per turn (plus rn2(10) when
@@ -438,13 +504,81 @@ function mdistu(mon) {
     return dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
 }
 
+// C ref: monsym.h S_EYE=5, S_LIGHT=25 — mondata.h is_floater(ptr) is exactly
+// `mlet == S_EYE || mlet == S_LIGHT`.
+const S_EYE_MCLS = 5, S_LIGHT_MCLS = 25;
+function is_floater(ptr) {
+    return ptr?.mcls === S_EYE_MCLS || ptr?.mcls === S_LIGHT_MCLS;
+}
+function is_flyer_m(ptr) { return (mflags1_of(ptr) & M1_FLY) !== 0; }
+// C ref: mondata.h breathless(ptr) = (mflags1 & M1_BREATHLESS).
+function breathless(ptr) { return (mflags1_of(ptr) & M1_BREATHLESS) !== 0; }
+
+// C ref: mon.c:947 minliquid(mtmp) / mon.c:961 minliquid_core(mtmp) — reconcile
+// a monster with the water or lava it is standing in.  C runs this from TWO
+// places this port had left out entirely: m_calcdistress()'s leading
+// `mtmp->data->mmove == 0` guard (mon.c:1185) and movemon_singlemon() right
+// after the movement-point deduction (mon.c:1254), i.e. for EVERY monster on
+// EVERY move.
+//
+// Ported completely: the trailing "but eels have a difficult time outside" arm,
+// the only one whose RNG is self-contained —
+//     if (mtmp->mhp > 1 && rn2(mtmp->mhp) > rn2(8)) mtmp->mhp--;
+//     monflee(mtmp, 2, FALSE, FALSE);
+// two draws every turn an eel spends out of water, plus a flee timer that
+// steers its m_move for the next two turns.
+//
+// DEFERRED, and drawing NOTHING rather than half of C's stream (a partial guard
+// would trade one wrong stream for another):
+//   * gremlin in a pool/fountain (mon.c:987): rn2(3), then split_mon() clones
+//     it — makemon-level RNG with no entry point in this port — plus dryup().
+//   * iron golem in a pool (mon.c:994): rn2(5), then d(2,6) rust damage and
+//     possibly mondied().
+//   * the inlava / inpool arms (mon.c:1010, 1064): an rloc() escape for
+//     can_teleport species, then mondead()/mondied()/xkilled().  Monster death
+//     with corpse creation (make_corpse's corpse_chance rolls) has no shared
+//     helper here yet, and killing a monster this port would otherwise keep
+//     alive is the largest possible divergence.
+// Returns 1 if the monster died (never, until the arms above land).
+async function minliquid(mtmp) {
+    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    const typ = loc?.typ;
+    if (typ == null) return 0;
+    const ptr = mtmp.data;
+    const airborne = is_flyer_m(ptr) || is_floater(ptr);
+    // C ref: dbridge.c is_pool(x,y)/is_lava(x,y) are the POSITION forms, which
+    // read a raised drawbridge's DB_UNDER mask.  rm.h's IS_POOL(typ) counts
+    // every DRAWBRIDGE_UP as water, so it is a strict SUPERSET: using it here
+    // can only SUPPRESS the eel arm on a dry drawbridge, never fire it on a
+    // square C considers dry.
+    const waterwall = (typ === WATER);
+    const inpool = IS_POOL(typ) && (!airborne || Is_waterlevel(game.u?.uz));
+    const inlava = IS_LAVA(typ) && !airborne;
+
+    if (inlava || inpool || waterwall)
+        return 0; /* deferred: see the drown/burn arms above */
+
+    // C ref: mon.c:1108 — out of liquid entirely; only eels care.
+    if (ptr?.mcls === S_EEL_MCLS && !Is_waterlevel(game.u?.uz)
+        && !breathless(ptr)) {
+        // C: "as mhp gets lower, the rate of further loss slows down".
+        if (mtmp.mhp > 1 && rn2(mtmp.mhp) > rn2(8))
+            mtmp.mhp--;
+        await monflee(mtmp, 2, false, false);
+    }
+    return 0;
+}
+
 async function m_calcdistress(mtmp) {
+    // C ref: mon.c:1183-1189 — a sessile species (data->mmove == 0) is checked
+    // against water/lava once per turn even though it never moves, because it
+    // can be carried/teleported into liquid.  The `if (gv.vision_full_recalc)
+    // vision_recalc(0);` that precedes it is display bookkeeping and draws
+    // nothing.
+    if (mmove_of(mtmp.data) === 0 && await minliquid(mtmp))
+        return;
     // C ref: mon.c:1193 — regenerate hit points, BEFORE the shapeshift and
     // timeout blocks.  RNG-free but state-critical: see monmove.js mon_regen.
-    // (The leading `data->mmove == 0 -> minliquid()` guard covers immobile
-    // species drowning/burning in liquid; no covered session has a sessile
-    // monster standing in water or lava, and minliquid is not ported, so that
-    // branch is deliberately omitted rather than guessed at.)
     mon_regen(mtmp, false);
     // C ref: mon.c:1196 `if (ismnum(mtmp->cham)) decide_to_shapeshift(mtmp);`
     // — BEFORE were_change().
@@ -463,30 +597,59 @@ export async function mcalcdistress() {
     }
 }
 
-// C ref: mondata.h is_hider(ptr) = (mflags1 & M1_HIDE).  The monster data here
-// carries no mflags1, so identify the hiding species by pmidx (the 8 M1_HIDE
-// entries in include/monsters.h: small/large/giant mimic, rock/iron/glass
-// piercer, lurker above, trapper).
-const M1_HIDE_PMIDX = new Set([64, 65, 66, 78, 79, 80, 98, 99]);
+// C ref: mondata.h:38 is_hider(ptr) = (mflags1 & M1_HIDE).  monflags_data.js
+// carries the real mflags1 column, so read the bit instead of the hand-listed
+// pmidx set this replaces — that list named exactly today's eight M1_HIDE
+// species, so it happened to be right, but it answers FALSE for any hider the
+// tables gain and it is keyed on an index convention only makemon.js owns.
 function is_hider(ptr) {
-    return ptr != null && M1_HIDE_PMIDX.has(ptr.pmidx);
+    return ptr != null && (mflags1_of(ptr) & M1_HIDE) !== 0;
 }
 
-// C ref: monsym.h S_MIMIC=13, S_PIERCER=16, S_TRAPPER=20.  ceiling_hider(ptr)
-// is True for clinging hiders that aren't mimics and for flyers (lurker above);
-// piercers (S_PIERCER) cling so they are ceiling hiders, mimics are not.
-const S_MIMIC = 13, S_PIERCER = 16, S_TRAPPER = 20;
+// C ref: monsym.h S_MIMIC=13 (S_PIERCER=16 / S_TRAPPER=20 are reached through
+// the mflags1 bits now, not by class number).
+const S_MIMIC = 13;
+// C ref: mondata.h:43
+//   #define ceiling_hider(ptr) \
+//       (is_hider(ptr) && ((is_clinger(ptr) && (ptr)->mlet != S_MIMIC) \
+//                          || is_flyer(ptr)))
+// Mimics are flagged M1_CLING but have nothing to do with ceilings, hence the
+// mlet exclusion; the lurker above qualifies through M1_FLY.  The previous
+// `mcls === S_PIERCER || pmidx === 98` shortcut agreed with this on the current
+// table but was a hardcode of the answer rather than the test.
 function ceiling_hider(ptr) {
-    // M1_CLING hiders (piercers) and M1_FLY hiders (lurker above) hang from the
-    // ceiling; the mimics (S_MIMIC) and floor trapper do not.
-    const mcls = ptr?.mcls;
-    return mcls === S_PIERCER || ptr?.pmidx === 98 /* lurker above (flyer) */;
+    if (!is_hider(ptr)) return false;
+    const f1 = mflags1_of(ptr);
+    return (((f1 & M1_CLING) !== 0) && ptr?.mcls !== S_MIMIC)
+        || ((f1 & M1_FLY) !== 0);
 }
 
-// C ref: display.c sensemon(mon) — telepathy / detect-monster sensing.  The
-// knight / monsters in these sessions carry no telepathy item, ESP intrinsic,
-// or detect-monster effect, so the hero never senses a monster magically.
-function sensemon(_mtmp) { return false; }
+// C ref: display.h:41/55 _tp_sensemon(mon) / _sensemon(mon).  Nothing in this
+// port grants telepathy, monster detection or warn-of-monster yet, so this is
+// still False throughout — but it now reads the hero's state instead of being
+// hardcoded, so the day an ESP source lands (eating a floating eye corpse, an
+// amulet of ESP, a blessed potion of object detection) restrap()'s
+// "won't hide when adjacent to hero" test starts answering correctly.
+// MATCH_WARN_OF_MON needs svc.warntype (worn warn-of-monster gear), which this
+// port does not track at all; it is the one term left out.
+function tp_sensemon(mtmp) {
+    const u = game.u, p = u?.uprops || {};
+    if (mindless(mtmp.data)) return false;
+    // C: Blind_telepat is the INTRINSIC half (HTelepat); it only works blind.
+    if (Blind() && ((p.Telepat ?? 0) || (p.HTelepat ?? 0))) return true;
+    // C: Unblind_telepat is the EXTRINSIC (worn/wielded) half only.
+    return !!(p.ETelepat) && mdistu(mtmp) <= (u?.unblind_telepat_range ?? -1);
+}
+function sensemon(mtmp) {
+    if (!mtmp) return false;
+    const u = game.u, p = u?.uprops || {};
+    if (u?.uswallow && mtmp !== u.ustuck) return false;
+    if (u?.uunderwater
+        && !(mdistu(mtmp) <= 2 && IS_POOL(game.level?.at(mtmp.mx, mtmp.my)?.typ)))
+        return false;
+    return !!((p.Detect_monsters ?? 0) || (p.HDetect_monsters ?? 0))
+        || tp_sensemon(mtmp);
+}
 
 // C ref: mon.c restrap(mtmp) — an unwatched hider may re-hide.  Returns true if
 // the monster successfully hid (in which case movemon_singlemon skips dochug,
@@ -512,8 +675,16 @@ function restrap(mtmp) {
 
     if (mtmp.data?.mcls === S_MIMIC) {
         if (mtmp.msleeping || mtmp.mfrozen) return false;
-        // set_mimic_sym: the mimic disguises itself; no RNG beyond the rolls
-        // inside set_mimic_sym (not reached by our piercer-only sessions).
+        // C ref: mon.c:4682 set_mimic_sym(mtmp) — the mimic picks a disguise.
+        // This was skipped with "not reached by our piercer-only sessions", but
+        // it is the single biggest RNG call in restrap(): makemon.js's port of
+        // it draws ROLL_FROM(syms) rn2(17), a whole mkobj() for the chosen
+        // class, rn2(2)/rn2(10)/get_shop_item in a maze or a shop, and
+        // rndmonnum() for a statue/corpse/egg/tin appearance.  It also SETS
+        // m_ap_type, which movemon_singlemon() reads on the very next line to
+        // decide whether the mimic skips its move, and which hide_monst()'s
+        // second restrap() call keys off.
+        set_mimic_sym(mtmp);
         return true;
     } else if (game.level?.at(mtmp.mx, mtmp.my)?.typ === ROOM) {
         mtmp.mundetected = 1;
@@ -522,31 +693,58 @@ function restrap(mtmp) {
     return false;
 }
 
-// C ref: dungeon.c has_ceiling(&u.uz) — TRUE everywhere except the endgame's
-// air/water planes, which these dungeon sessions never reach.
-function has_ceiling() { return true; }
+// C ref: dungeon.c:1690 has_ceiling(lev) —
+//   `if (In_endgame(lev) && !Is_earthlevel(lev)) return FALSE; return TRUE;`
+// i.e. false on the Plane of Air/Fire/Water/Astral, true on the Plane of Earth
+// and everywhere in the dungeon.  dungeon.js does not model the endgame branch
+// (dungeon.js:815) so dnum can't identify those levels yet; the C test is
+// spelled out here so the day it can, this is a one-line change instead of a
+// rediscovery.  (Reached only through ceiling_hider(), i.e. a piercer or lurker
+// above on an endgame plane.)
+function has_ceiling() {
+    return true;
+}
 
 // C ref: monsym.h S_EEL=57.
 const S_EEL_MCLS = 57;
 
-// C ref: mon.c hide_monst(mon) — give a hider a chance to hide before its next
-// move.  Called from restore.c getlev() when the hero returns to a level that
-// was left, and from a couple of monster-placement paths.  A monster already
-// hidden (mundetected) or wearing an appearance is skipped.  is_hider species
-// (mimics, piercers, lurker above, trapper) re-hide via restrap() (which rolls
-// rn2(3) internally); M1_CONCEAL species (cave spiders, centipedes, scorpions,
-// snakes) and eels re-hide via hideunder() (no RNG).  The C code brackets the
-// restrap() call with a viz_array override so the hero can't "watch" the
-// monster hide; that override is display-only (no RNG) and is not modelled.
+// C ref: mon.c:4806 hide_monst(mon) — give a hider a chance to hide before its
+// next move.  Called from restore.c getlev() when the hero returns to a level
+// that was left, and from a couple of monster-placement paths.  A monster
+// already hidden (mundetected) or wearing an appearance is skipped.  is_hider
+// species (mimics, piercers, lurker above, trapper) re-hide via restrap()
+// (which rolls rn2(3) internally); M1_CONCEAL species and eels re-hide via
+// hideunder() (no RNG).
+//
+// The viz_array bracket is NOT display-only, which is why it is modelled now:
+//
+//     char save_viz = gv.viz_array[y][x];
+//     gv.viz_array[y][x] &= ~(IN_SIGHT | COULD_SEE);
+//     ... restrap(mon) ...
+//     gv.viz_array[y][x] = save_viz;
+//
+// restrap()'s short-circuit chain tests `cansee(mtmp->mx, mtmp->my)` BEFORE its
+// rn2(3), and cansee() is exactly `viz_array[y][x] & IN_SIGHT`.  Clearing the
+// bit forces that test false, so C ALWAYS reaches the rn2(3) here (twice for a
+// mimic).  Leaving the override out made a hider standing on a lit, in-sight
+// square bail out of restrap() with no draw at all — a silently missing rn2 in
+// the level-arrival stream, and one that also decides whether the monster is
+// hidden when the hero first sees the level.
+const VIZ_IN_SIGHT = 0x2, VIZ_COULD_SEE = 0x1;
 export async function hide_monst(mon) {
     const hider_under = hides_under_pm(mon.data) || mon.data?.mcls === S_EEL_MCLS;
     if ((is_hider(mon.data) || hider_under)
         && !(mon.mundetected || mon.m_ap_type)) {
+        const x = mon.mx, y = mon.my;
+        const row = game.viz_array?.[y];
+        const save_viz = row ? row[x] : undefined;
+        if (row) row[x] &= ~(VIZ_IN_SIGHT | VIZ_COULD_SEE);
         if (is_hider(mon.data))
             restrap(mon);
         // try again if a mimic missed its 1/3 chance to hide
         if (mon.data?.mcls === S_MIMIC && !mon.m_ap_type)
             restrap(mon);
+        if (row) row[x] = save_viz;
         if (hider_under)
             await hideunder(mon);
     }
@@ -577,6 +775,23 @@ async function movemon_singlemon(mtmp) {
     // those rolls already happened in the makemon RNG stream at create time.
     initMonMoveState(mtmp);
 
+    // C ref: mon.c:1254 — `if (minliquid(mtmp)) return FALSE;`, run for every
+    // monster on every move (see minliquid() above for what is and isn't
+    // ported).  The `if (gv.vision_full_recalc) vision_recalc(0);` and the
+    // clear_bypasses()/clear_splitobjs() that sit between the movement
+    // deduction and this call are obj-flag/display bookkeeping and draw nothing.
+    if (await minliquid(mtmp)) return false;
+
+    // C ref: mon.c:1259-1275 — `if (mtmp->misc_worn_check & I_SPECIAL)` sends a
+    // monster that just lost equipment through m_dowear() to put on a
+    // replacement, and it spends the whole turn doing so (returns FALSE before
+    // dochugw).  DEFERRED: m_dowear() is not ported (monmove.js:4492 notes the
+    // same gap), and I_SPECIAL is never set on a monster here.
+    //
+    // C ref: mon.c:1300-1313 — the Conflict branch (fightm()).  Nothing in this
+    // port grants Conflict, so m_canseeu/fightm is unreachable; fightm() would
+    // draw (it picks a victim and runs a full mattackm).
+
     // C ref: mon.c movemon_singlemon() — hiding monsters (mimics, piercers,
     // lurker above / trapper; M1_HIDE) get a chance to re-hide BEFORE dochug.
     // If restrap() succeeds the monster hides and skips its move entirely.
@@ -592,9 +807,21 @@ async function movemon_singlemon(mtmp) {
         if (mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj')
             return false;
         if (mtmp.mundetected) return false;
+    } else if (mtmp.data?.mcls === S_EEL_MCLS && !mtmp.mundetected
+               && (mtmp.mflee || !m_next2u(mtmp))
+               && !canseemon_mon(mtmp) && !rn2(4)) {
+        // C ref: mon.c:1291-1298 — the `else if` arm of the is_hider test.
+        // "some eels end up stuck in isolated pools, where they can't--or at
+        // least won't--move, so they never reach their post-move chance to
+        // re-hide".  The rn2(4) is unconditional once the three RNG-free guards
+        // pass, so every unwatched, non-adjacent eel costs a draw per turn for
+        // as long as it is alive — the same shape of omission that desynced
+        // every session with a lycanthrope before were_change() was ported.
+        if (await hideunder(mtmp))
+            return false;
     }
 
-    await dochug(mtmp);
+    await dochugw(mtmp, true);
     return false;
 }
 
@@ -624,13 +851,18 @@ async function movemon_pass() {
     return !!game._somebody_can_move;
 }
 
-// C ref: mon.c movemon(void) / allmain.c inner movement loop.  A single pass
-// over all monsters.  (NetHack's caller would loop movemon() while a monster
-// still has a full NORMAL_SPEED of movement left so fast monsters act twice in
-// one turn; reproducing those extra passes here is left for a future change —
-// it requires faithful floor-object placement for the pet's repeat-move
-// object scans, which the current level materialization does not yet provide,
-// and enabling it without that regresses pet-position screens.)
+// C ref: mon.c:1326 movemon(void).  One pass over every monster, returning
+// gs.somebody_can_move.  (The repeat passes that let a fast monster act twice
+// in a turn ARE modelled — they live in the caller, allmain.js's
+// `do { monscanmove = await movemon(); } while (monscanmove)`, exactly as in
+// allmain.c:211-215.  An older comment here claimed they were unimplemented.)
+//
+// Not modelled from C's movemon(): any_light_source()/vision_full_recalc,
+// clear_bypasses()/clear_splitobjs() (obj bypass flags aren't tracked),
+// dmonsfree() (dead monsters stay in game.level.monsters and are skipped by
+// DEADMONSTER instead of being unlinked), and the `u.utotype -> deferred_goto()`
+// level-change handoff.  None of them draws; dmonsfree's absence is visible
+// only to code that counts list entries.
 export async function movemon() {
     return await movemon_pass();
 }
@@ -701,11 +933,23 @@ const MR_STONE = 0x80;
 export function resists_ston(mon) {
     return ((mon?.data?.mresists ?? 0) & MR_STONE) !== 0;
 }
-// C ref: artifact.c touch_artifact(obj, mon).  An ordinary object is always
-// safe; the alignment/role blast that can reject an ARTIFACT is not modeled
-// (no monster in the recorded sessions ever stands next to a loose artifact),
-// so an artifact conservatively reads as touchable, exactly as before this
-// function existed.
+// C ref: artifact.c:912 touch_artifact(obj, mon).  An ordinary object is always
+// safe (get_artifact returns ART_NONARTIFACT -> 1).  The MONSTER arm is not
+// modelled and always returns "touchable"; C's is:
+//     else if (!is_covetous(mon->data) && !is_mplayer(mon->data)) {
+//         badclass = self_willed && oart->role != NON_PM
+//                    && oart != &artilist[ART_EXCALIBUR];
+//         badalign = (oart->spfx & SPFX_RESTR) && oart->alignment != A_NONE
+//                    && (oart->alignment != mon_aligntyp(mon));
+//     } else badclass = badalign = FALSE;
+//     if (!badalign) badalign = bane_applies(oart, mon);
+//     if (((badclass || badalign) && self_willed) || badalign) return 0;
+// It draws NOTHING for a monster (the rn2(4) at artifact.c:945 is guarded by
+// `badalign && (!yours || !rn2(4))`, and !yours short-circuits it), so this is
+// a state omission, not an RNG one: an unaligned monster that C leaves standing
+// next to Stormbringer picks it up here.  Implementing it needs the artilist
+// SPFX/alignment columns (invent.js has them as a private ARTI_TOUCH_PROPS
+// table), mon_aligntyp(), and bane_applies() — none reachable from mon.js yet.
 function touch_artifact(_otmp, _mtmp) { return true; }
 
 // C ref: mon.c:1960 can_touch_safely(mtmp, otmp).
@@ -732,8 +976,12 @@ export function can_touch_safely(mtmp, otmp) {
 export function curr_mon_load(mtmp) {
     let curload = 0;
     for (const obj of (mtmp.minvent || [])) {
+        // C: `curload += obj->owt;` — the raw weight, no floor.  (mkobj.js
+        // weight() already reproduces 5.0's `max(wt, 1)` for coins, so the
+        // Math.max(1, ...) this replaces was a second, non-C floor applied to
+        // every object.)
         if (obj.otyp !== BOULDER || !throws_rocks_flag(mtmp.data))
-            curload += Math.max(1, obj.owt ?? 1);
+            curload += (obj.owt | 0);
     }
     return curload;
 }
@@ -762,14 +1010,18 @@ export function max_mon_load(mtmp) {
 // always manages a single item from a pile however overloaded it is.
 export function can_carry(mtmp, otmp) {
     const otyp = otmp.otyp;
-    const newload = Math.max(1, otmp.owt ?? 1);
+    const newload = (otmp.owt | 0); // C: `int newload = otmp->owt;` — no floor
     const mdat = mtmp.data;
 
     if (notake(mdat)) return 0;
     if (!can_touch_safely(mtmp, otmp)) return 0;
 
-    // C's `quan > LARGEST_INT` branch (a 2-billion-item stack) cannot arise
-    // here — nothing in the port creates one — so the plain cast is exact.
+    // C ref: mon.c:2002 —
+    //   iquan = (otmp->quan > (long) LARGEST_INT)
+    //              ? 20000 + rn2(LARGEST_INT - 20000 + 1) : (int) otmp->quan;
+    // The overflow arm DRAWS, but it needs a stack of more than 2^31-1 items;
+    // nothing in this port (or in C's own object creation) makes one, so the
+    // plain cast is exact and the missing rn2 is unreachable, not skipped.
     const iquan = otmp.quan || 1;
 
     if (iquan > 1) {

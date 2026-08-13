@@ -58,7 +58,7 @@ import {
     base_oc_weight,
 } from './mkobj.js';
 
-import { getpos, getpos_render } from './hack.js';
+import { getpos, getpos_render, travel_adjacent_step } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
 import { strongmonst_flag as strongmonst, throws_rocks_flag, is_were_flag,
@@ -83,13 +83,14 @@ import {
     AM_SHRINE, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
     TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
     POOL, MOAT, WATER,
-    IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
+    IS_DOOR, IS_FURNITURE, STONE, STAIRS, D_NODOOR, D_ISOPEN, D_BROKEN,
     Is_airlevel,
     DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
     PLNMSG_MON_TAKES_OFF_ITEM,
-    TIMEOUT,
+    TIMEOUT, isok,
 } from './const.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
+import { costly_spot, addtobill, unpaid_cost, get_cost_of_shop_item } from './shkroom.js';
 // role.js imports only gstate/rng/const, so this is cycle-safe.
 import { roles, align_gname } from './role.js';
 
@@ -160,10 +161,18 @@ const TRUE = true;
 const FALSE = false;
 const WIN_ERR = -1;
 
-const W_WEP = 0x00000001;
-const W_SWAPWEP = 0x00000002;
-const W_QUIVER = 0x00000004;
-const W_ARMOR = 0x00000008;
+// C ref: prop.h:101-113.  These four used to be 0x01/0x02/0x04/0x08, which is
+// NOT what the runtime stamps into owornmask: setworn_slot() writes QW_WEP
+// 0x100 / QW_QUIVER 0x200 / QW_SWAPWEP 0x400 and armor_slot_mask() writes the
+// WA_ARMOR_ALL 0x7f bits (both blocks below hold prop.h's real values).  So
+// is_worn() answered FALSE for every wielded weapon and TRUE for body armor
+// only by accident (W_ARM 0x01 == the old W_WEP), and W_ARMOR 0x08 was really
+// the shield slot.  Unlike the accessory bits, these can hold their true
+// values without colliding with anything else in this file's remapped block.
+const W_WEP = 0x00000100;
+const W_QUIVER = 0x00000200;
+const W_SWAPWEP = 0x00000400;
+const W_ARMOR = 0x0000007f;  /* W_ARM|W_ARMC|W_ARMH|W_ARMS|W_ARMG|W_ARMF|W_ARMU */
 // C ref: prop.h — accessory worn-mask bits.  These MUST NOT collide with the
 // WA_ARMOR_ALL (0x7f) armor-slot bits used by armor_slot_mask()/worn_slot_get();
 // the original low-bit values (0x10/0x20/0x40/0x100) overlapped WA_ARMS/G/F and
@@ -188,13 +197,16 @@ const BALL_CLASS_INV = 15;   // C ref: objclass.h BALL_CLASS
 const W_CHAIN = 0x00400000;  // C ref: prop.h:127 — punishment chain
 const W_ACCESSORY = W_RINGL | W_RINGR | W_AMUL | W_BLINDF;
 const W_WEAPONS = W_WEP | W_SWAPWEP | W_QUIVER;
-const WORN_ARMOR = W_ARMOR;
-const WORN_SHIRT = 0x00000200;
-const WORN_BOOTS = 0x00000400;
-const WORN_GLOVES = 0x00000800;
-const WORN_HELMET = 0x00001000;
-const WORN_SHIELD = 0x00002000;
-const WORN_CLOAK = 0x00004000;
+// C ref: prop.h:152-160 — the per-slot armor bits, which must be the same ones
+// armor_slot_mask() stamps (WA_ARM..WA_ARMU below), not a parallel high-bit set:
+// inuse_classify() tests these against a live owornmask.
+const WORN_ARMOR = 0x00000001;  /* W_ARM  */
+const WORN_CLOAK = 0x00000002;  /* W_ARMC */
+const WORN_HELMET = 0x00000004; /* W_ARMH */
+const WORN_SHIELD = 0x00000008; /* W_ARMS */
+const WORN_GLOVES = 0x00000010; /* W_ARMG */
+const WORN_BOOTS = 0x00000020;  /* W_ARMF */
+const WORN_SHIRT = 0x00000040;  /* W_ARMU */
 const WORN_AMUL = W_AMUL;
 const WORN_BLINDF = W_BLINDF;
 const W_SADDLE = 0x00008000;
@@ -288,7 +300,24 @@ function Has_contents(obj) { return !!(obj?.cobj && obj.cobj.length); }
 function Is_container(obj) { return !!obj?.cobj || [214, 215, 216, 217, 218, 219].includes(obj?.otyp); }
 function Is_pudding(obj) { return !!obj?.globby; }
 function Is_candle(obj) { return obj?.otyp === 224 || obj?.otyp === 225; }
-function is_pole(_obj) { return false; }
+// C ref: obj.h is_pole() — polearms and lances (Snickersnee too, but no covered
+// hero carries an artifact).  Was hardcoded false, which silently disabled the
+// dofire()/dothrow() polearm branches for every role that starts with one.
+const P_POLEARMS = 16, P_LANCE = 19, P_AXE = 3, P_PICK_AXE = 4;
+export function is_pole(obj) {
+    if (!obj || (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS)) return false;
+    const sk = objects[obj.otyp]?.oc_skill ?? 0;
+    return sk === P_POLEARMS || sk === P_LANCE;
+}
+// C ref: obj.h is_pick/is_axe — same class test, the digging/chopping skills.
+export function is_pick(obj) {
+    if (!obj || (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS)) return false;
+    return (objects[obj.otyp]?.oc_skill ?? 0) === P_PICK_AXE;
+}
+export function is_axe(obj) {
+    if (!obj || (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS)) return false;
+    return (objects[obj.otyp]?.oc_skill ?? 0) === P_AXE;
+}
 function touch_petrifies(_mon) { return false; }
 function dead_species(_mnum, _force) { return false; }
 function attach_fig_transform_timeout(obj) { if (obj) obj.timed = true; }
@@ -308,7 +337,21 @@ function setworn_slot(obj, mask, getCur, setCur) {
 }
 function setuqwep(obj) { setworn_slot(obj, QW_QUIVER, () => game.uquiver, (o) => { game.uquiver = o; }); }
 function setuswapwep(obj) { setworn_slot(obj, QW_SWAPWEP, () => game.uswapwep, (o) => { game.uswapwep = o; }); }
-function setuwep_slot(obj) { setworn_slot(obj, QW_WEP, () => game.uwep, (o) => { game.uwep = o; }); }
+// C ref: wield.c setuwep() — besides moving the slot, C recomputes gu.unweapon,
+// which drives uhitm.c's one-shot "You begin bashing monsters with ..." line.
+// Without it, unwielding (drop / w-) never re-armed the message.
+function setuwep_slot(obj) {
+    if (obj === game.uwep) return; /* C: "necessary to not set gu.unweapon" */
+    setworn_slot(obj, QW_WEP, () => game.uwep, (o) => { game.uwep = o; });
+    if (obj) {
+        game.unweapon = (obj.oclass === WEAPON_CLASS)
+            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+               || (is_pole(obj) && !game.u?.usteed))
+            : !(is_weptool(obj) || is_wet_towel(obj));
+    } else {
+        game.unweapon = true; /* for "bare hands" message */
+    }
+}
 function throwing_weapon(obj) { return obj?.oclass === WEAPON_CLASS; }
 // C ref: include/obj.h is_ammo/is_launcher/matching_launcher/ammo_and_launcher.
 // Ammunition's oc_skill is the negative of its launcher's (arrow == -P_BOW), so
@@ -357,17 +400,35 @@ export function cxname_singular(obj) { return simple_obj_name(obj, { article: fa
 export function xname(obj) { observe_object(obj); return simple_obj_name(obj, { article: false, buc: false }); }
 function yname(obj) { return simple_obj_name(obj); }
 function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
-function simpleonames(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
+// C ref: objnam.c simpleonames() — minimal_xname(), then makeplural() whenever
+// quan != 1.  Without the pluralisation a readied stack read "36 dart".
+function simpleonames(obj) {
+    const nm = simple_obj_name(obj, { article: false, quantity: false, buc: false });
+    return (obj?.quan || 1) !== 1 ? makeplural(nm) : nm;
+}
 function distant_name(obj, fn = doname) { return fn(obj); }
 // C ref: objnam.c doname() appends the worn-status suffix ("(being worn)",
 // "(wielded)", "(on right hand)", ...) unconditionally — it is not limited to
 // the inventory window, so every doname()/obj_doname() caller (dip/wield/drop
 // prompts included) must see it too.
-function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj); }
-function doname_with_price(obj) { return doname(obj); }
-// C ref: invent.c doname() — full floor-object name (with quantity/article) for
-// the "You see here ..." auto-announcement after a step.  Exported for cmd.js.
-export function floor_object_name(obj) { return doname(obj); }
+function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj) + unpaid_price_suffix(obj); }
+// C ref: objnam.c doname_with_price() -> doname_base(obj, DONAME_WITH_PRICE) —
+// an object seen on shop floor reads " (for sale, <N> <currency>)", or
+// " (no charge)" for the shk's own free spot / a no_charge item.  Without this
+// every "You see here ..." line inside a shop dropped the price.
+function doname_with_price(obj) {
+    const base = doname(obj);
+    if (obj.unpaid) return base; // the unpaid suffix already covers it
+    const { cost, nochrg } = get_cost_of_shop_item(obj);
+    if (cost > 0)
+        return `${base} (${nochrg ? 'contents' : 'for sale'}, ${cost} ${currency(cost)})`;
+    if (nochrg > 0) return `${base} (no charge)`;
+    return base;
+}
+// C ref: invent.c look_here():4282 `You("%s here %s.", verb,
+// doname_with_price(otmp))` — the "You see here ..." announcement quotes the
+// shop price, so this is doname_with_price, not bare doname.
+export function floor_object_name(obj) { return doname_with_price(obj); }
 
 // C ref: invent.c doname()/wield.c wield_tool() — exposed for apply.js #rub.
 export function obj_doname(obj) { return doname(obj); }
@@ -939,9 +1000,7 @@ function money_cnt(list) {
     return sum;
 }
 function shopper_financial_report() {}
-function addtobill(_obj, _a, _b, _c) {}
 function stolen_value(_obj, _x, _y, _a, _b) { return 0; }
-function costly_spot(_x, _y) { return false; }
 function in_rooms(_x, _y, _shop) { return ''; }
 function u_at(x, y) { return game.u?.ux === x && game.u?.uy === y; }
 function hides_under(_data) { return false; }
@@ -1119,6 +1178,12 @@ export function makeplural(oldstr) {
     // "pair of boots/gloves" stays singular ("3 pair of boots").
     if (/^pair of /i.test(s)) return s;
 
+    // C ref: objnam.c makeplural():2903 — "words which don't need
+    // pluralization": the already_plural[] suffixes, plus the ya special case
+    // ("32 ya", not "32 yas").
+    if (/(ae|eaux|matzot)$/i.test(s)) return s;
+    if (/^ya$/i.test(s) || / ya$/i.test(s)) return s;
+
     // Split off a compound tail ("X of Y") so only the head pluralizes.
     let head = s, excess = '';
     const cidx = singplur_compound(s);
@@ -1190,7 +1255,8 @@ export function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
 export function is_weptool(obj) {
     return obj?.oclass === TOOL_CLASS && (objects[obj.otyp]?.oc_skill ?? 0) !== 0;
 }
-function is_wet_towel(_obj) { return false; }
+// C ref: obj.h is_wet_towel(o) — a towel with charges (wetness) left.
+function is_wet_towel(obj) { return obj?.otyp === 234 /*TOWEL*/ && (obj.spe | 0) > 0; }
 function poly_when_stoned(_data) { return false; }
 function instapetrify(_why) {}
 function will_feel_cockatrice_external(_obj, _force) { return false; }
@@ -1212,7 +1278,7 @@ const names = [
     'Gems/Stones', 'Boulders/Statues', 'Iron balls', 'Chains', 'Venoms',
 ];
 
-function inventoryArray() {
+export function inventoryArray() {
     if (Array.isArray(game.invent)) return game.invent;
     if (Array.isArray(game.gi?.invent)) return game.gi.invent;
     if (game.gi?.invent && typeof game.gi.invent === 'object') {
@@ -1695,10 +1761,20 @@ export function distant_doname(obj) {
     return obj ? doname_invent_core(obj) : 'nothing';
 }
 
+// C ref: objnam.c doname_base():1657 — an unpaid inventory item shows what the
+// shopkeeper quoted: " (unpaid, <N> <currency>)".  Always appended (it is not
+// gated on with_price, unlike the "(for sale, ...)" floor form below).
+function unpaid_price_suffix(obj) {
+    if (!obj.unpaid) return '';
+    const quoted = unpaid_cost(obj, false);
+    return ` (unpaid, ${quoted} ${currency(quoted)})`;
+}
+
 function doname_invent_core(obj) {
     const oc = obj.oclass;
     if (oc !== WEAPON_CLASS && oc !== ARMOR_CLASS)
-        return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj);
+        return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj)
+            + unpaid_price_suffix(obj);
 
     const jname = Japanese_item_name(obj.otyp);
     let base = jname || objectBaseName(obj);
@@ -1728,7 +1804,8 @@ function doname_invent_core(obj) {
         phrase = `${obj.quan} ${prefix}${makeplural_obj(base)}`;
     else
         phrase = with_article(`${prefix}${base}`);
-    return phrase + oname_suffix(obj) + worn_status_suffix(obj);
+    return phrase + oname_suffix(obj) + worn_status_suffix(obj)
+        + unpaid_price_suffix(obj);
 }
 
 // C ref: objnam.c makeplural — handles the "ya" special case (ends in "ya"
@@ -1808,6 +1885,55 @@ function inventoryRows(lets = null, ofilter = null) {
     return rows;
 }
 
+// C ref: invent.c:62 inuse_headers[] — "menu heading lines used instead of
+// object classes when sorting by in-use"; indexed by Loot.orderclass, which
+// inuse_classify() numbers 4 (accessories) first down to 1 (miscellaneous).
+// Entry [4] is what dispinv_with_action()'s alt_label temporarily replaces.
+const INUSE_HEADERS = ['', 'Miscellaneous', 'Worn Armor',
+                       'Wielded/Readied Weapons', 'Accessories'];
+
+// C ref: invent.c display_pickinv() with flags.sortloot == 'i' (set by
+// dispinv_with_action's use_inuse_ordering): sortpack off, SORTLOOT_INUSE,
+// filter is_inuse, an "Inventory in use" heading before the first surviving
+// item, then a heading whenever orderclass changes.  sortloot() only classifies
+// during the qsort, so a single in-use item keeps orderclass 0 and gets NO
+// class heading — that C quirk is reproduced by reading sli.orderclass as-is.
+function inuseRows(lets = null, altLabel = null) {
+    const headers = INUSE_HEADERS.slice();
+    if (altLabel) headers[4] = altLabel;
+    // C invent.c:3195 — nothing wielded: a fake STRANGE_OBJECT carrying W_WEP
+    // is spliced to the HEAD of invent so it sorts into the primary weapon
+    // slot, formatted "bare|gloved hands (no weapon)" (:3307), and dropped
+    // again if it would be sortedinvent's only entry (:3216).
+    const list = [...inventoryArray()];
+    let fake = null;
+    if (!game.uwep) {
+        fake = { otyp: 0, oclass: ILLOBJ_CLASS, invlet: HANDS_SYM,
+                 owornmask: W_WEP, where: OBJ_INVENT, quan: 1 };
+        list.unshift(fake);
+    }
+    const sorted = sortloot(list, SORTLOOT_INUSE, false, is_inuse);
+    if (fake && sorted[0]?.obj === fake && !sorted[1]?.obj) return [];
+    const rows = [];
+    let cur = null, prevorderclass = 0, inusecount = 0;
+    for (const sli of sorted) {
+        const obj = sli.obj;
+        if (!obj) continue;
+        if (lets && !String(lets).includes(obj.invlet)) continue;
+        if (!inusecount++) { cur = ['Inventory in use']; rows.push(cur); }
+        if (sli.orderclass !== prevorderclass) {
+            cur = [headers[sli.orderclass] || ''];
+            rows.push(cur);
+            prevorderclass = sli.orderclass;
+        }
+        const text = (obj === fake)
+            ? `${game.uarmg ? 'gloved' : 'bare'} ${makeplural(body_part(6 /*HAND*/))} (no weapon)`
+            : doname_invent(obj);
+        cur.push(`${obj.invlet || obj_to_let(obj)} - ${text}`);
+    }
+    return rows;
+}
+
 function renderMenuScreen(lines, cursor = [36, 8]) {
     // C ref: windows.c:1816 add_menu_heading() — `if (program_state.gameover)
     // attr = ATR_NONE`, so the end-of-game disclosure lists draw class headers
@@ -1833,14 +1959,28 @@ export function renderMenuLines(flat, cursor = [36, 8]) {
     // an overlay: the map (and status) show through in the columns/rows the menu
     // doesn't cover.  Lay the map down first, then draw the menu on top.
     render_map_to_grid();
-    // C ref: win/tty/wintty.c finalize NHW_MENU offx =
-    //   max(10, cols - (maxcol+1) - 1) where maxcol is the widest line; the
-    //   "+1" is the menu's leading selector column.  (end) participates too.
-    let widest = '(end)'.length;
+    // C ref: win/tty/wintty.c tty_end_menu() `len = strlen(str) + 2` (a space
+    // either side) vs the morestr's bare strlen("(end) ") == 6, so
+    //   maxcol = max(6, widest + 2)
+    // and tty_display_nhwindow's H2344_BROKEN branch (wintty.c:13 defines it in
+    // the recorder's build) picks
+    //   offx = min(min(82, cols/2), cols - maxcol - 1), floored at 0,
+    // with the text itself drawn at offx+1 (tty_curs adds cw->offx).  The old
+    // max(10, ...) form is the #else arm: it pushed every menu narrower than 38
+    // columns too far right (a 20-wide pickup menu landed at 58, not 41).
+    let widest = 0;
     for (const ln of flat) if (ln.text.length > widest) widest = ln.text.length;
     const cols = display.cols ?? 80;
     const rows = display.rows ?? 24;
-    let col = Math.max(10, cols - (widest + 1) - 1);
+    // wintty.c:1907 is compiled with H2344_BROKEN (wintty.c:13), so the offx
+    // formula is min(min(82, cols/2), cols - maxcol - 1) — a CAP at cols/2, not
+    // a floor at 10.  A narrow menu therefore stops at text column 41 instead
+    // of drifting further right.  maxcol is tty_end_menu()'s cw->cols
+    // (wintty.c:2762): the widest item + 2 (a space at each end), but never
+    // below strlen("(end) ") == 6.
+    const maxcol = Math.max(6, widest + 2);
+    let col = Math.max(0, Math.min(Math.min(82, Math.floor(cols / 2)),
+                                   cols - maxcol - 1)) + 1;
     // C ref: win/tty/wintty.c tty_display_nhwindow — offx is forced back to 0
     // (full-screen) when cw->maxrow (== nitems+1: one entry per heading/item,
     // plus the "(end)" line) reaches the screen height; a menu that tall can't
@@ -2150,9 +2290,14 @@ export async function dovspell() {
     // menu row is cleared from offx to offx+maxcol (background spaces) before
     // the (left-justified) text is written, so short rows hide the map beneath.
     const winRight = Math.min(offx + maxcol, 80);
+    // C ref: wintty.c:1843 process_menu_window()/process_text_window() — the
+    // window's own offx is one column LEFT of the text and each row starts with
+    // an explicit `putchar(' ')` there, so that column is blanked too.  `offx`
+    // above is already the text column.
+    const winLeft = Math.max(0, offx - 1);
     const totalRows = 3 + itemLines.length + 1; // prompt, blank, header, items, (end)
     for (let r = 0; r < totalRows; r++)
-        for (let c = offx; c < winRight; c++)
+        for (let c = winLeft; c < winRight; c++)
             display.setCell(c, r, ' ', NO_COLOR, 0);
     let row = 0;
     drawHeading(prompt, row++);
@@ -2202,33 +2347,45 @@ export async function dismiss_invent_screen() {
     return true;
 }
 
+// C ref: invent.c inuse_classify():69.  USE_RATING(test) is `++rating; if (test)
+// goto assign_rating;` — the FIRST matching test fixes both the rating and the
+// altclass and stops the scan.  The previous port ran every test to the end, so
+// an in-use item always came out orderclass 4 with an inflated rating (a wielded
+// weapon scored 15/4 instead of 11/3), which put the "Accessories" heading over
+// the weapons and collapsed the class groups display_pickinv() keys off.
 export function inuse_classify(sort_item, obj) {
-    const wMask = obj?.owornmask & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
-    let rating = 0;
-    let altclass = 0;
-    const useRating = (test) => {
+    const wMask = (obj?.owornmask || 0) & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
+    // C: ULEFTY/URIGHTY (u.uhandedness) pick the off-hand ring first.
+    const ULEFTY = !!game.u?.uleft_handed;
+    const checks = [
+        /* 1: Miscellaneous — a doubly-used lamp/leash only counts as a tool
+           when owornmask is 0, so used-as-weapon takes precedence. */
+        [1, !wMask && obj?.otyp === LEASH && obj.leashmon],
+        [1, !wMask && obj?.oclass === TOOL_CLASS && obj.lamplit],
+        /* 2: Worn Armor */
+        [2, wMask & WORN_SHIRT],
+        [2, wMask & WORN_BOOTS],
+        [2, wMask & WORN_GLOVES],
+        [2, wMask & WORN_HELMET],
+        [2, wMask & WORN_SHIELD],
+        [2, wMask & WORN_CLOAK],
+        [2, wMask & WORN_ARMOR],
+        /* 3: Wielded/Readied Weapons */
+        [3, wMask & W_QUIVER],
+        [3, wMask & W_SWAPWEP],
+        [3, wMask & W_WEP],
+        /* 4: Accessories */
+        [4, wMask & WORN_BLINDF],
+        [4, wMask & (ULEFTY ? W_RINGR : W_RINGL)],  /* off hand */
+        [4, wMask & (ULEFTY ? W_RINGL : W_RINGR)],  /* main hand */
+        [4, wMask & WORN_AMUL],
+    ];
+    let rating = 0, altclass = -1; /* no match: 'orderclass' must be non-zero */
+    for (const [cls, test] of checks) {
         ++rating;
-        return !!test;
-    };
-
-    ++altclass;
-    if ((!wMask && obj?.otyp === LEASH && obj.leashmon)
-        || useRating(!wMask && obj?.oclass === TOOL_CLASS && obj.lamplit)) {
-        // useRating already advanced for lamp; leash uses same ordering.
+        if (test) { altclass = cls; break; }
     }
-    ++altclass;
-    const armorTests = [WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET,
-        WORN_SHIELD, WORN_CLOAK, WORN_ARMOR];
-    for (const mask of armorTests) if (useRating(wMask & mask)) break;
-    ++altclass;
-    for (const mask of [W_QUIVER, W_SWAPWEP, W_WEP]) if (useRating(wMask & mask)) break;
-    ++altclass;
-    for (const mask of [WORN_BLINDF, W_RINGL, W_RINGR, WORN_AMUL]) if (useRating(wMask & mask)) break;
-
-    if (!obj || !(wMask || obj.lamplit || obj.leashmon)) {
-        rating = 0;
-        altclass = -1;
-    }
+    if (altclass < 0) rating = 0;
     sort_item.inuse = rating;
     sort_item.orderclass = altclass;
     sort_item.subclass = 0;
@@ -3894,6 +4051,43 @@ function count_worn_stuff(accessorizing) {
 // C ref: do_wear.c armoroff(otmp) — remove a worn armor piece, with its
 // donning delay.  For a no-delay item the slot clears immediately and the
 // "You were wearing ..." feedback follows the removal.
+// C ref: objnam.c armor_simple_name()/gloves_simple_name()/boots_simple_name()/
+// cloak_simple_name() — the generic noun for a worn slot.  gauntlets/shoes and
+// the "mail"/"armor" suit variants depend on discovery state; the covered items
+// are all the plain forms.
+function armor_slot_noun(obj, mask) {
+    const oc = objects[obj?.otyp] || {};
+    const nm = oc.name || '';
+    if (mask & WA_ARMG) return /gauntlets/.test(nm) ? 'gauntlets' : 'gloves';
+    if (mask & WA_ARMF) return /shoes/.test(nm) ? 'shoes' : 'boots';
+    if (mask & WA_ARMC) {
+        if (obj?.otyp === ROBE) return 'robe';
+        if (nm === 'mummy wrapping') return 'wrapping';
+        if (nm === 'alchemy smock') return (oc.oc_name_known && obj?.dknown) ? 'smock' : 'apron';
+        return 'cloak';
+    }
+    // C ref: objnam.c helm_simple_name() — `hard_helmet()` (is_metallic ||
+    // is_crackable) decides "helm" vs "hat"; is_metallic is oc_material in
+    // [IRON, MITHRIL].  This slot used to answer "helmet", which is not a word
+    // any *_simple_name() can produce.
+    if (mask & WA_ARMH) {
+        const mat = oc.material | 0;
+        return (mat >= 11 /*IRON*/ && mat <= 17 /*MITHRIL*/) ? 'helm' : 'hat';
+    }
+    if (mask & WA_ARMS) {
+        if (nm === 'shield of reflection') return obj?.dknown ? 'silver shield' : 'smooth shield';
+        return 'shield';
+    }
+    if (mask & WA_ARMU) return 'shirt';
+    // C ref: objnam.c suit_simple_name() — the dragon suits, then a literal
+    // suffix match on the object's own name ("... mail" / "... jacket").
+    if (/ dragon scale mail$/.test(nm)) return 'dragon mail';
+    if (/ dragon scales$/.test(nm)) return 'dragon scales';
+    if (nm.length > 5 && nm.endsWith(' mail')) return 'mail';
+    if (nm.length > 7 && nm.endsWith(' jacket')) return 'jacket';
+    return 'suit';
+}
+
 async function armoroff(otmp) {
     const mask = (otmp.owornmask || 0) & WA_ARMOR_ALL;
     const delay = ARMOR_OC_DELAY.get(otmp.otyp) || 0;
@@ -3902,7 +4096,10 @@ async function armoroff(otmp) {
         // The slot stays occupied until the afternmv fires; deferred-removal
         // bookkeeping isn't needed by the current sessions (their pieces have
         // delay 0), so the occupation just elapses and then clears the slot.
-        start_occupation(delay, `You finish taking off your ${simpleonames(otmp)}.`, () => {
+        // C ref: do_wear.c armoroff() — `what` is the SLOT's generic noun from
+        // the *_simple_name() family ("gloves", "boots", "suit", ...), not the
+        // item's own name, so a pair of leather gloves reads "your gloves".
+        start_occupation(delay, `You finish taking off your ${armor_slot_noun(otmp, mask)}.`, () => {
             otmp.owornmask = (otmp.owornmask || 0) & ~mask;
             worn_slot_clear(mask);
             find_ac();
@@ -4065,6 +4262,31 @@ async function armor_or_accessory_off(obj) {
     return ECMD_TIME;
 }
 
+// C ref: do_wear.c do_takeoff() — remove ONE slot's item; the body of the
+// disrobing occupation the 'A' command drives.  NOT ported: take_off()'s
+// per-item oc_delay occupation, so the caller removes everything on its own
+// turn.
+export async function takeoff_worn_obj(obj) {
+    if (!obj) return ECMD_OK;
+    if ((obj.owornmask || 0) & (WA_ARMOR_ALL | W_ACCESSORY))
+        return await armor_or_accessory_off(obj);
+    const was_twoweap = !!game.u?.twoweap;
+    if (obj === game.uwep) {
+        if (welded(obj)) return ECMD_OK;
+        setuwep_slot(null);
+        await pline(was_twoweap ? 'You are no longer wielding either weapon.'
+                                : `You are ${empty_handed()}.`);
+    } else if (obj === game.uswapwep) {
+        setuswapwep(null);
+        await pline(was_twoweap ? 'You are no longer wielding two weapons at once.'
+                                : 'You no longer have a second weapon readied.');
+    } else if (obj === game.uquiver) {
+        setuqwep(null);
+        await pline('You no longer have ammunition readied.');
+    }
+    return ECMD_TIME;
+}
+
 // C ref: do_wear.c dotakeoff() — the 'T' command (armor; accessorizing=FALSE).
 export async function dotakeoff() {
     const { Narmorpieces, Naccessories, which } = count_worn_stuff(false);
@@ -4137,10 +4359,15 @@ export async function doremring() {
 // for `delay` extra turns, running `afternmv` (and printing `msg`) when the
 // occupation completes.  The moveloop advances monsters each elapsed turn.
 function start_occupation(delay, msg, afternmv) {
-    game.multi = delay;
-    game.multi_reason = 'dressing up';
+    // C ref: do_wear.c armoroff()/armor_on() call nomul(-oc_delay): multi is
+    // NEGATIVE (helpless) and the callback hangs off ga.afternmv.  This used to
+    // set a POSITIVE multi and a `_afternmv` field nothing reads, so a
+    // delay-bearing piece (leather gloves, boots, any real suit) was never
+    // actually taken off and its "You finish ..." line never printed.
+    game.multi = -delay;
+    game.multi_reason = 'disrobing';
     game.nomovemsg = msg;
-    game._afternmv = afternmv || null;
+    game.afternmv = afternmv || null;
 }
 
 // C ref: hack.h ynq(query) — yes/no/quit prompt, default 'q' on space/return/ESC.
@@ -4248,9 +4475,16 @@ async function doquiver_core(verb) {
         untwoweapon();
     }
 
-    // quivering:
-    setuqwep(newquiver);
-    prinv(null, newquiver, 0);
+    // quivering: C ref: wield.c — "ready" quivers first so the line shows
+    // "(at the ready)"; "fire" prints "You ready: ..." BEFORE quivering so it
+    // does not.
+    if (verb === 'ready') {
+        setuqwep(newquiver);
+        prinv(null, newquiver, 0);
+    } else {
+        prinv('You ready:', newquiver, 0);
+        setuqwep(newquiver);
+    }
 
     let res = 0;
     if (was_uwep) {
@@ -4424,8 +4658,38 @@ export async function dowield() {
     } else if (newwep === game.uswapwep) {
         return await doswapweapon();
     } else if (newwep === game.uquiver) {
-        // (quiver-confirm path not exercised; fall through to wield it)
-        setuqwep(null);
+        // C ref: wield.c dowield() — wielding the READIED stack always needs
+        // confirmation; a multi-item stack first offers to split one off.
+        // Skipping the prompt wielded the quiver silently and let the answer
+        // keystroke reach the command parser.
+        let qbuf, split = false;
+        if ((game.uquiver.quan || 1) > 1 && inv_cnt(false) < 52 /*invlet_basic*/
+            && splittable(game.uquiver)) {
+            qbuf = `You have ${game.uquiver.quan} ${simpleonames(game.uquiver)} readied.  Wield one?`;
+            const c = await ynq(qbuf);
+            if (c === 'q') return ECMD_OK;
+            if (c === 'y') {
+                newwep = splitobj(game.uquiver, 1); // leave N-1 quivered
+                split = true;
+            } else {
+                qbuf = 'Wield all of them instead?';
+            }
+        } else {
+            const use_plural = is_plural(game.uquiver) || pair_of(game.uquiver);
+            qbuf = `You have ${!use_plural ? 'that' : 'those'} readied.  Wield ${
+                !use_plural ? 'it' : 'them'} instead?`;
+        }
+        if (!split) {
+            if ((await ynq(qbuf)) !== 'y') {
+                // C: Shk_Your() prefixes "Your "/"<shk>'s "; an unpaid quivered
+                // stack doesn't occur for these heroes.
+                await pline(`Your ${simpleonames(game.uquiver)} ${
+                    otense(game.uquiver, 'remain')} readied.`);
+                return ECMD_OK;
+            }
+            // wielding the whole readied stack, so no longer quivered
+            setuqwep(null);
+        }
     } else if ((newwep.owornmask || 0) & (QW_ARMOR_ALL_MASK)) {
         game._pending_message = 'You cannot wield that!';
         return ECMD_FAIL;
@@ -4633,8 +4897,25 @@ function thrown_breaks(obj) {
         nonbreakchance = 90;
     const chance = rn2(100); // obj_resists rn2(100)
     if (chance < (obj.oartifact ? 99 : nonbreakchance)) return false; // resisted
-    // glass / specific fragile otyps would break here; the arrow does not.
-    return false;
+    // C ref: dothrow.c breaktest():2594 — every GLASS non-gem breaks, and so do
+    // the seven fragile otyps below.  This used to `return false` unconditionally
+    // ("the arrow does not"), so a thrown potion never shattered: it stayed on
+    // the floor as a phantom '!' and skipped breakobj()'s delobj() rn2(100).
+    if (objects[obj.otyp]?.material === 19 /* GLASS */ && !obj.oartifact
+        && obj.oclass !== GEM_CLASS)
+        return true;
+    if (obj.oclass === POTION_CLASS) return true; // "really, all potions"
+    switch (obj.otyp) {
+    case 229: /* EXPENSIVE_CAMERA */
+    case 266: /* EGG */
+    case 287: /* CREAM_PIE */
+    case 280: /* MELON */
+    case 479: /* BLINDING_VENOM */
+    case 480: /* ACID_VENOM */
+        return true;
+    default:
+        return false;
+    }
 }
 
 // C ref: dothrow.c throw_obj()/throwit() — the throw of a single ammo item by a
@@ -4698,6 +4979,38 @@ async function throw_obj(obj, dir) {
     }
     freeinv(otmp);
 
+    // C ref: dothrow.c throwit():1259 `} else if (u.dz) {` — a throw straight
+    // down never enters the trajectory block at all: it goes to hitfloor(),
+    // which announces the object and drops it at the hero's feet.  Omitting
+    // this ran the horizontal trajectory with dx==dy==0 and printed nothing.
+    if (u.dz > 0) {
+        // hitfloor(obj, TRUE): announce, then hero_breaks() -> breaktest(),
+        // whose obj_resists() rn2(100) is part of the recorded stream.  (The
+        // altar and soft-terrain branches don't apply to the plain floor the
+        // recorded heroes throw from.)
+        const hereTyp = game.level.at(u.ux, u.uy)?.typ ?? 0;
+        const soft = IS_SOFT(hereTyp);
+        if (!soft) {
+            const dn = doname_invent(otmp);
+            const verb = (otmp.quan || 1) === 1 ? 'hits' : 'hit';
+            await pline(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} ${verb} the ${surface_underfoot()}.`);
+        }
+        const brokeDown = !soft && thrown_breaks(otmp);
+        otmp.owornmask = 0;
+        if (brokeDown) {
+            const dn = doname_invent(otmp);
+            await pline(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
+            delobj(otmp);
+        } else {
+            mkobj_place_object(otmp, u.ux, u.uy);
+            otmp.where = OBJ_FLOOR;
+            otmp.how_lost = LOST_THROWN;
+            stackobj(otmp);
+        }
+        newsym(u.ux, u.uy);
+        return ECMD_TIME;
+    }
+
     // C ref: dothrow.c throwit() lines 1614-1648 — range derives from strength,
     // is clamped to >= 1, then ammo is adjusted: matching-launcher ammo gains a
     // cell (range++), while ammo thrown by hand (no wielded launcher, non-gem)
@@ -4729,6 +5042,19 @@ async function throw_obj(obj, dir) {
         mkobj_place_object(otmp, land.x, land.y);
         otmp.where = OBJ_FLOOR;
         otmp.how_lost = LOST_THROWN;
+        // C ref: dothrow.c throwit():1838 stackobj(obj) after place_object() —
+        // a thrown apple merges into an identical pile already on that square.
+        stackobj(otmp);
+        newsym(land.x, land.y);
+    } else {
+        // C ref: dothrow.c breakmsg() + breakobj().  Potions (and other glass)
+        // shatter where they land; breakobj() ends in delobj(), whose
+        // obj_resists() rn2(100) is part of the recorded stream.  potionbreathe()
+        // only fires when the break is next2u(), which a thrown potion is not.
+        const dn = doname_invent(otmp);
+        await pline(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
+        otmp.owornmask = 0;
+        delobj(otmp);
         newsym(land.x, land.y);
     }
     return ECMD_TIME;
@@ -4775,6 +5101,22 @@ export async function dothrow(getDir) {
     return await throw_obj(obj, dir);
 }
 
+// C ref: dothrow.c find_launcher() — scan the pack for a launcher matching
+// `ammo`; a known-cursed one is skipped, a known-BUC one wins outright, and an
+// unidentified-BUC one is only the fallback.
+function find_launcher(ammo) {
+    if (!ammo) return null;
+    let oX = null;
+    for (const otmp of inventoryArray()) {
+        if (otmp.cursed && otmp.bknown) continue;
+        if (ammo_and_launcher(ammo, otmp)) {
+            if (otmp.bknown) return otmp;
+            if (!oX) oX = otmp;
+        }
+    }
+    return oX;
+}
+
 // C ref: dothrow.c dofire() — the #fire ('f') command.  Throws/shoots from the
 // quiver, with fireassist auto-wielding the launcher.  Ports the ranger path the
 // recorded sessions take: quiver holds bow ammo (arrows), the matching bow is the
@@ -4794,10 +5136,43 @@ export async function dofire(getDir) {
     // ok_to_throw: starter hero has hands and isn't overloaded -> proceed.
     let obj = game.uquiver;
 
-    // uwep is not a throw-and-return artifact for the starter roles, and the
-    // quiver is non-empty here, so skip the throw-and-return / autoquiver /
-    // doquiver_core(!obj) branches and go straight to fireassist.
-    let skip_fireassist = false;
+    // uwep is not a throw-and-return artifact for the starter roles.
+    const skip_fireassist = false;
+    let res = ECMD_OK;
+
+    // C ref: dothrow.c:510-541 — empty quiver with flags.autoquiver off (the
+    // default).  Omitting this made 'f' with an empty quiver a silent no-op, so
+    // every following keystroke was read by the command parser instead of by
+    // the "What do you want to fire?" prompt.
+    if (!obj) {
+        // C ref: dothrow.c:512 — a WIELDED polearm is applied instead of fired,
+        // and C `return`s that result (it does NOT fall through to
+        // doquiver_core).  This is the second half of the Knight's 'f': the
+        // uswapwep branch below swaps the lance in and re-runs dofire, which
+        // then lands here.  (use_whip() is not ported.)
+        if (game.uwep && is_pole(game.uwep)) {
+            const A = await import('./apply.js');
+            const r = await A.use_pole(game.uwep, true);
+            return r === A.ECMD.ECMD_TIME ? ECMD_TIME : ECMD_OK;
+        }
+        if (game.uswapwep && is_pole(game.uswapwep)
+            && !(game.uswapwep.cursed && game.uswapwep.bknown)) {
+            // cmdq: doswapweapon then re-run dofire.
+            await doswapweapon_inline();
+            game.context.move = 0;
+            await moveloop_turn();
+            return await dofire(getDir);
+        } else {
+            await pline('You have no ammunition readied.');
+            game._yn_need_more = true; // getobj's prompt pages this line first
+        }
+    }
+
+    if (!obj) {
+        res = await doquiver_core('fire');
+        if (res !== ECMD_OK && res !== ECMD_TIME) return res;
+        obj = game.uquiver;
+    }
 
     // C ref: dothrow.c:557 — `if (uquiver && is_ammo(uquiver) && iflags.fireassist
     // && !skip_fireassist)`.  fireassist defaults On.
@@ -4819,19 +5194,47 @@ export async function dofire(getDir) {
             await moveloop_turn();
             // retry dofire: now the launcher is wielded.
             obj = game.uquiver;
+        } else {
+            // C ref: dothrow.c:571 — launcher is in the PACK (a Samurai's yumi:
+            // ini_inv fills uwep with the katana and uswapwep with the
+            // wakizashi, so the bow never reaches a weapon slot).  C queues
+            // `doswapweapon`, `dowield`, the launcher's invlet and `dofire`, and
+            // rhack() dispatches each as its own command — so BOTH ready_weapon
+            // calls return ECMD_TIME and each runs a full moveloop turn before
+            // the next runs.  Collapsing them into one turn desyncs the stream:
+            // with intrinsic Fast the hero often holds 24 movement points, so
+            // the first turn only runs movemon() and the second is the one that
+            // reallocates movement.
+            const olauncher = find_launcher(game.uquiver);
+            if (olauncher) {
+                if (game.uwep && !game.flags?.pushweapon) {
+                    if ((await doswapweapon()) === ECMD_TIME) {
+                        game.context.move = 0;
+                        await moveloop_turn();
+                    }
+                }
+                // The queued invlet is popped by getobj()'s cmdq fast path, so
+                // dowield draws no prompt.
+                cmdq_add_key(CQ_CANNED, olauncher.invlet);
+                if ((await dowield()) === ECMD_TIME) {
+                    game.context.move = 0;
+                    await moveloop_turn();
+                }
+                obj = game.uquiver;
+            }
         }
-        // (find_launcher-from-pack branch: not reached for the starter ranger,
-        // whose bow is always the swap weapon.)
     }
 
-    // throw_obj asks the direction; the recorded session supplies an invalid
-    // key then ESC, so getDir returns null and the fire is cancelled with no
-    // missile launched.  The swap turn was already taken inline above, so we
-    // return ECMD_OK (context.move stays 0) to avoid double-counting the turn.
-    if (!obj) return ECMD_OK;
+    // C ref: dothrow.c:582 — `altres = obj ? throw_obj(obj, shotlimit)
+    // : ECMD_CANCEL; return (res == ECMD_TIME) ? res : altres;`  Filling the
+    // quiver can consume time even when the throw itself is cancelled.  Our
+    // throw_obj() takes the direction from the caller, so getDir() stands in
+    // for the getdir() inside C's throw_obj.
+    if (!obj) return (res === ECMD_TIME) ? res : ECMD_CANCEL;
     const dir = await getDir();
-    if (!dir) return ECMD_OK; // no direction -> throw cancelled; swap turn already taken
-    return await throw_obj(obj, dir);
+    if (!dir) return (res === ECMD_TIME) ? res : ECMD_OK;
+    const altres = await throw_obj(obj, dir);
+    return (res === ECMD_TIME) ? res : altres;
 }
 
 // C ref: wield.c doswapweapon()/ready_weapon() — swap the primary and secondary
@@ -4871,12 +5274,19 @@ async function doswapweapon_inline() {
 // C ref: cmd.c dotravel().  Prompts for a destination via the shared
 // getpos() cursor selector (hack.js — also used by #jump/farlook/#terrain),
 // in travel mode so auto-describe flags cells with no travel path.  On
-// cancel (ESC), no time passes.  Reaching a destination (dotravel_target /
-// the actual travel walk via findtravelpath) is not ported — picking a
-// destination is a no-op (no time), matching the ESC-cancel behavior for
-// sessions that pick rather than cancel.
+// cancel (ESC), no time passes.  Picking a destination runs dotravel_target();
+// only findtravelpath()'s adjacent-destination fast path is ported, so a
+// farther destination still costs no time.
 export async function dotravel() {
     const u = game.u;
+    // C ref: cmd.c dotravel():`cc = iflags.travelcc; if (!cc.x && !cc.y) cc = u`
+    // — the cursor starts on the PREVIOUS destination, not on the hero, so a
+    // second '_' in a session opens with the cursor already parked where the
+    // first one left it.
+    const iflags = game.iflags = game.iflags || {};
+    const tcc = iflags.travelcc || { x: 0, y: 0 };
+    const startx = (tcc.x || tcc.y) ? tcc.x : u.ux;
+    const starty = (tcc.x || tcc.y) ? tcc.y : u.uy;
     await pline('Where do you want to travel to?');
     // C ref: getpos.c getpos() -> handle_tip(TIP_GETPOS): the first-ever
     // getpos() call pages this pending line with --More-- before showing the
@@ -4889,14 +5299,46 @@ export async function dotravel() {
     if (tipPending) {
         await topl_more();
     } else {
-        await getpos_render('Where do you want to travel to?', u.ux, u.uy);
+        await getpos_render('Where do you want to travel to?', startx, starty);
+        // C's pline() left toplin == NEED_MORE, so getpos()'s "(For
+        // instructions type a '?')" MERGES onto this line rather than
+        // replacing it (both fit inside CO-8).
+        game._toplin = 1; // TOPLIN_NEED_MORE
     }
     // C ref: options.c NHOPTB(verbose, ...) defaults On — getpos() prints the
     // "(For instructions type a '?')" line unless a session explicitly turns
     // verbose off (none of these do).
-    const cc = await getpos('the desired destination', u.ux, u.uy, null,
+    const cc = await getpos('the desired destination', startx, starty, null,
                             /*force=*/true, /*verbose=*/true, /*travelMode=*/true);
     if (!cc) return ECMD_CANCEL; // ESC -> cancelled, no time
+    game.iflags = game.iflags || {};
+    game.iflags.travelcc = { x: cc.x, y: cc.y };
+    return await dotravel_target();
+}
+
+// C ref: cmd.c dotravel_target():5348 — the #retravel body dotravel() tail-calls
+// once a destination is picked.  The two RNG-free early-outs come first; then
+// domove() reaches findtravelpath(TRAVP_TRAVEL), whose adjacent-destination
+// fast path IS ported (hack.js travel_adjacent_step).  Longer walks still need
+// the BFS and cost no time.
+async function dotravel_target() {
+    const u = game.u;
+    const cc = game.iflags?.travelcc || { x: 0, y: 0 };
+    if (!isok(cc.x, cc.y)) {
+        await pline('No travel destination set.');
+        return ECMD_OK;
+    }
+    if (cc.x === u.ux && cc.y === u.uy) {
+        await pline('You are already here.');
+        game.iflags.travelcc = { x: 0, y: 0 };
+        return ECMD_OK;
+    }
+    u.tx = cc.x; u.ty = cc.y;
+    // hack.c:1276 — the fast path zeroes travelcc before taking the step.
+    if (await travel_adjacent_step(cc.x, cc.y)) {
+        game.iflags.travelcc = { x: 0, y: 0 };
+        return ECMD_TIME;
+    }
     return ECMD_OK;
 }
 
@@ -4978,13 +5420,19 @@ function floor_extract_self(obj) {
 
 // C ref: pickup.c pick_obj() + pickup_object() for the ordinary by-hand path:
 // detach the object from the floor, add it to inventory (assigning an invlet),
-// and announce it via prinv ("<letter> - <doname>.").  The shop/billing,
-// telekinesis, corpse-touch, and scare-monster branches are not reached for the
-// recorded sessions.
+// and announce it via prinv ("<letter> - <doname>.").  The telekinesis,
+// corpse-touch and scare-monster branches are not reached for the recorded
+// sessions; the shop-billing one is (see addtobill below).
 export async function pick_one_obj(obj) {
     const quan = obj.quan || 1;
     observe_object(obj);
+    // C ref: pickup.c pick_obj():1907 — a shop-floor item is billed BEFORE
+    // addinv(), so the merge that addinv() may do can see obj->unpaid.  This is
+    // where the "For you, ...; only N zorkmids for this <item>." quote (and its
+    // rn2(4)) comes from, and what makes doname() read "(unpaid, N zorkmids)".
+    const robshop = costly_spot(obj.ox, obj.oy);
     floor_extract_self(obj);
+    if (robshop) await addtobill(obj, true, false, false);
     const held = addinv(obj);
     // C ref: pickup.c pickup_prinv(held, count, "lifting") — only announce an
     // encumbrance-level change since the last check this pickup() call (reset
@@ -5000,10 +5448,12 @@ export async function pick_one_obj(obj) {
         game._pickup_encumbrance = nearload;
         if (pfx) liftPrefix = `${pfx} lifting`;
     }
-    if (game._merge_discovery_pending) {
-        // A merge inside addinv() above discovered new BUC/id info; page the
-        // "You learn more..." message first, then route the pickup line
-        // through update_topl() so it pages/accumulates after it correctly.
+    if (game._merge_discovery_pending || (robshop && obj.unpaid)) {
+        // A merge inside addinv() above discovered new BUC/id info, or
+        // addtobill() just printed the shop's price quote.  Either way a
+        // message is already on the top line, and C's prinv() -> pline() would
+        // page it with --More-- first, so route the pickup line through
+        // update_topl() rather than the bare-setter prinv().
         await report_merge_discovery();
         await update_topl(prinv_fmt(liftPrefix, held, quan));
     } else {
@@ -5160,10 +5610,20 @@ export async function dopickup() {
     const x = u.ux, y = u.uy;
     const here = objects_at(x, y); // topmost-first; chain excludes uchain/uball
     if (here.length === 0) {
-        // pickup_checks(): !OBJ_AT -> "There is nothing here to pick up."
-        // (plain ROOM floor; the throne/sink/fountain/etc. branches are not
-        // reached on the recorded tiles).
-        game._pending_message = 'There is nothing here to pick up.';
+        // C ref: hack.c:3826-3846 pickup_checks() !OBJ_AT cascade — the terrain
+        // under the hero picks the message; only the final `else` is the
+        // generic one.  Previously all of them collapsed to the generic line.
+        const typ = game.level?.at(x, y)?.typ;
+        const dmask = game.level?.at(x, y)?.doormask || 0;
+        const looted = game.level?.at(x, y)?.looted;
+        if (IS_THRONE(typ)) game._pending_message = `It must weigh${looted ? ' almost' : ''} a ton!`;
+        else if (IS_SINK(typ)) game._pending_message = 'The plumbing connects it to the floor.';
+        else if (IS_GRAVE(typ)) game._pending_message = "You don't need a gravestone.  Yet.";
+        else if (IS_FOUNTAIN(typ)) game._pending_message = 'You could drink the water...';
+        else if (IS_DOOR(typ) && (dmask & D_ISOPEN)) game._pending_message = "It won't come off the hinges.";
+        else if (IS_ALTAR(typ)) game._pending_message = 'Moving the altar would be a very bad idea.';
+        else if (typ === STAIRS) game._pending_message = 'The stairs are solidly affixed.';
+        else game._pending_message = 'There is nothing here to pick up.';
         return 0;
     }
     if (here.length === 1) {
@@ -5372,6 +5832,9 @@ export function silly_thing(word, otmp) {
 export function ckvalidcat(otmp) { return allow_category(otmp) ? 1 : 0; }
 export function ckunpaid(otmp) { return otmp?.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj)); }
 export function wearing_armor() { return !!(game.uarm || game.uarmc || game.uarmf || game.uarmg || game.uarmh || game.uarms || game.uarmu); }
+// C ref: obj.h is_worn() — armor | accessory | saddle | any weapon slot.
+// W_ARMOR/W_WEAPONS above are the same numbers setworn_slot()/armor_slot_mask()
+// stamp (0x7f and 0x100|0x200|0x400) since the 770688a worn-mask correction.
 export function is_worn(otmp) { return !!(otmp?.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS)); }
 export function is_inuse(obj) { return carried(obj) && (is_worn(obj) || tool_being_used(obj)); }
 export function safeq_xprname(obj) { return xprname(obj, null, safeq_xprn_ctx.let, safeq_xprn_ctx.dot, 0, 0); }
@@ -5763,7 +6226,6 @@ async function itemactions_dispatch(otmp, act, getDir) {
 // space/return/ESC dismiss without a selection, and an invalid key rings the
 // bell and keeps the menu shown.  Returns the chosen command's ECMD result.
 export async function dispinv_with_action(lets = null, use_inuse_ordering = false, alt_label = null, getDir = null) {
-    void use_inuse_ordering; void alt_label;
     const len = lets ? String(lets).length : 0;
     const menumode = (len !== 1) || !!game.iflags?.menu_requested;
     if (!menumode) {
@@ -5773,7 +6235,10 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
         return ECMD_OK;
     }
     // Build the selectable inventory; empty -> "Not carrying anything."
-    const rows = inventoryRows(lets);
+    // C ref: invent.c dispinv_with_action() sets flags.sortloot = 'i', which
+    // display_pickinv() reads as inuse_only (its own headings + ordering).
+    const rows = use_inuse_ordering ? inuseRows(lets, alt_label)
+                                    : inventoryRows(lets);
     if (!rows.length) {
         await renderMessageOnMap('Not carrying anything.');
         return ECMD_OK;
@@ -6321,9 +6786,27 @@ export function feel_cockatrice(otmp, force_touch) {
         instapetrify(`touching ${killer_xname(otmp)} bare-handed`);
 }
 
+// C ref: invent.c stackobj() — merge the just-placed floor object with an
+// identical pile already on that square (C walks levl[x][y]'s nexthere chain).
+// Our floor store is the FLAT game.level.objects array, so the old
+// `objects[ox][oy]` lookup was always undefined and the merge never ran; and
+// merged() only unlinks the absorbed object from INVENTORY, so the floor array
+// needs the splice too.
 export function stackobj(obj) {
-    const list = game.level?.objects?.[obj?.ox]?.[obj?.oy] || [];
-    for (const otmp of iterateObjects(list, true)) if (otmp !== obj && merged({ obj }, { obj: otmp })) break;
+    if (!obj) return;
+    const all = game.level?.objects;
+    if (!obj.ox && obj.ox !== 0) return;
+    for (const otmp of objects_at(obj.ox, obj.oy)) {
+        if (otmp === obj) continue;
+        if (merged({ obj }, { obj: otmp })) {
+            if (Array.isArray(all)) {
+                const ix = all.indexOf(otmp);
+                if (ix >= 0) all.splice(ix, 1);
+            }
+            otmp.where = OBJ_FREE;
+            break;
+        }
+    }
 }
 
 export function mergable(otmp, obj) {
@@ -6446,10 +6929,15 @@ export function doprtool() {
     return ECMD_OK;
 }
 
-export function doprinuse() {
-    if (!inventoryArray().some(is_inuse)) game._pending_message = 'You are not wearing or wielding anything.';
-    else display_inventory(null, false);
-    return ECMD_OK;
+// C ref: invent.c doprinuse() — the '*' command.  Nothing in use gives a
+// one-line message; otherwise it is a full PICK_ONE menu whose keystrokes must
+// be consumed by the menu, not by the command parser.
+export async function doprinuse(getDir = null) {
+    if (!inventoryArray().some(is_inuse)) {
+        await pline('You are not wearing or wielding anything.');
+        return ECMD_OK;
+    }
+    return await dispinv_with_action(null, true, null, getDir);
 }
 
 export function useupf(obj, numused) {

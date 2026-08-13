@@ -3,37 +3,49 @@
 // knockback RNG lives in src/uhitm.c mhitm_knockback(); the kill tail
 // (corpse_chance, grow_up) lives in src/mon.c / src/makemon.c.
 //
-// SCOPE: the contest gameplay sessions only exercise hand-to-hand physical
-// attacks (AT_BITE / AT_CLAW / AT_KICK / AT_WEAP, AD_PHYS) between low-level
-// dungeon monsters and the starting pet (kitten / little dog / pony).  Those
-// paths are implemented call-for-call so the rn2/rnd/d stream matches C
-// exactly (verified against seed0060's recorded trace at calls 2409..2443):
+// The per-species combat data (mattk[], base AC, mlevel, msize, geno) comes
+// from the GENERATED tables (js/monattk_data.js MATTK[] + makemon.js MONS[]),
+// resolved BY NAME — see permonst() for why pmidx can't be trusted.  It used
+// to be a hand-written 26-entry table covering only the species the recorded
+// sessions happened to show, which made mattackm() decline (M_ATTK_MISS, no
+// RNG) for every other monster in the game, and got 5 of those 26 entries
+// wrong (giant rat MZ_TINY, housecat AT_BITE, vampire bat's 2nd attack,
+// lichen AD_STCK, grid bug AD_ELEC).
 //
+// The RNG-bearing calls, in stream order:
 //   to-hit:        rnd(20 + i)              @ mattackm(mhitm.c:441)
 //   base damage:   d(damn, damd)            @ mdamagem(mhitm.c:1025)
 //   knockback:     rn2(3) then rn2(6)       @ mhitm_knockback(uhitm.c:5258/5269)
-//   passive:       rn2(3)                   @ passivemm(mhitm.c:1363)
+//   passive:       d(), then rn2(3) + the per-adtyp rolls  @ passivemm
 //   kill tail:     rn2(corpse_chance), rnd(victim.m_lev+1) [+ rn2(max_inc)]
 //
-// Non-physical adtyps, gaze/engulf/explode/breath attacks, multi-attack
-// monsters beyond the pony, and weapon-wielding monster attackers are NOT
-// modeled here; if such a combat is ever reached, mattackm() returns MISS
-// WITHOUT consuming any RNG (so it can never silently desync the stream — it
-// would instead surface as a clean divergence to be ported next).
+// STILL UNPORTED (each returns/continues without its C RNG, so it surfaces as
+// a clean divergence rather than a silent desync): AT_GAZE gazemm(), AT_ENGL
+// gulpmm(), AT_EXPL explmm(), AT_BREA/AT_SPIT breamm()/spitmm(), the AT_WEAP
+// ranged thrwmm() branch, mhitm_adtyping()'s non-physical damage arms, and
+// the pudding-division clone_mon().
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    M_ATTK_AGR_DONE, W_SADDLE, STRAT_WAITMASK,
+    M_ATTK_AGR_DONE, W_SADDLE, STRAT_WAITMASK, is_pit,
 } from './const.js';
-import { DEADMONSTER, mvitals_died } from './mon.js';
+import { DEADMONSTER, mvitals_died, healmon } from './mon.js';
 import { newsym, map_invisible, unmap_object, m_at, canseemon_shared } from './display.js';
 import { cansee } from './vision.js';
 import { update_topl } from './display.js';
-import { make_corpse } from './uhitm.js';
+import { make_corpse, dmgval } from './uhitm.js';
 import { DOOR, POOL, DRAWBRIDGE_UP, STRAT_WAITFORU } from './const.js';
-import { is_animal, is_neuter_flag, perceives_flag } from './monflags_data.js';
+import { is_animal, is_neuter_flag, perceives_flag, is_elf_flag, is_orc_flag,
+         is_undead_flag, is_demon_flag, unsolid_flag, mflags1_of, M1_NOEYES,
+         M1_THICK_HIDE,
+} from './monflags_data.js';
+import { WEP_HITBON } from './weapondmg_data.js';
+import { xname } from './invent.js';
+import { MATTK } from './monattk_data.js';
+import { name_to_pmidx, monster_by_pmidx, is_home_elemental } from './makemon.js';
+import { t_at } from './mkroom.js';
 
 // ── monster-combat message rendering ─────────────────────────────────────────
 // C ref: mhitm.c hitmm()/missmm() + mon.c monkilled().  These emit the "The X
@@ -97,25 +109,43 @@ function mm_visible(magr, mdef) {
         || (cansee(mdef.mx, mdef.my) && mm_can_see_mon(mdef));
 }
 
-// C ref: mhitm.c pre_mm_attack() — called at the top of hitmm()/missmm(), just
-// before the attack message.  When the encounter is visible (gv.vis / our
-// mm_visible) but one combatant isn't individually spotted, the hero
-// remembers that square as holding a sensed-but-unseen monster (the 'I'
-// glyph).  The mimic/hider "unhiding happens even off-screen" branch is not
-// modeled: none of the contest's mon-vs-mon combatants (MON_COMBAT table) are
-// mimics or hiders, so M_AP_TYPE/mundetected never apply here.
+// C ref: mhitm.c:41 pre_mm_attack() — called at the top of hitmm()/missmm(),
+// just before the attack message.  A formerly concealed combatant stops
+// mimicking/hiding (this happens even when the hero can't see it, because the
+// monster is now in action), and when the encounter is visible but one
+// combatant isn't individually spotted the hero remembers that square as
+// holding a sensed-but-unseen monster (the 'I' glyph).  The unhiding half was
+// skipped on the grounds that no *listed* combatant was a mimic or hider; that
+// list is gone, and mundetected hiders (lurkers, hiding-under-object vermin)
+// reach mattackm routinely.  No RNG, but mundetected/m_ap_type steer later
+// display and monmove decisions.
 function pre_mm_attack(magr, mdef) {
-    if (!mm_visible(magr, mdef)) return;
+    let showit = false;
+    const vis = mm_visible(magr, mdef);
+    for (const m of [mdef, magr]) {
+        if (m.m_ap_type) {                 // mon.c seemimic(m)
+            m.m_ap_type = 0;
+            m.mappearance = 0;
+            newsym(m.mx, m.my);
+            showit = showit || vis;
+        } else if (m.mundetected) {
+            m.mundetected = 0;
+            showit = showit || vis;
+        }
+    }
+    if (!vis) return;
     if (!mm_can_see_mon(magr)) map_invisible(magr.mx, magr.my);
+    else if (showit) newsym(magr.mx, magr.my);
     if (!mm_can_see_mon(mdef)) map_invisible(mdef.mx, mdef.my);
+    else if (showit) newsym(mdef.mx, mdef.my);
 }
 
 // C ref: mhitm.c noises() — when a mon-vs-mon attack isn't visible (gv.vis
 // false) the hero may still hear it.  farq = mdistu(magr) > 15 (dist2 from the
 // hero).  Gated so a repeated same-distance noise within 10 turns is silent;
 // tracked by gf.far_noise / gn.noisetime (stored on the game object so they
-// reset per game and persist within it).  The contest's modeled attacks are
-// never AT_EXPL, so the sound is always "some noises".
+// reset per game and persist within it).  AT_EXPL never reaches here (mattackm
+// handles it in its own case), so the sound is always "some noises".
 async function noises(magr, mattk) {
     const u = game.u;
     if (u?.Deaf) return;
@@ -131,12 +161,35 @@ async function noises(magr, mattk) {
     }
 }
 
-// C ref: mondata.h nonliving(ptr) — undead/golem/vortex/etc don't "die", they
-// are "destroyed".  Zombies (the only mon-vs-mon kill victim the contest shows)
-// are undead -> nonliving.
+// C ref: include/monsym.h defsym.h MONSYM indices.
+const S_VORTEX = 22, S_LICH = 38, S_GOLEM = 55;
+
+// C ref: mondata.h is_rider(ptr) / is_mplayer(ptr).  is_mplayer is the
+// contiguous mons[] span PM_ARCHEOLOGIST..PM_WIZARD, resolved through the
+// generated name table rather than hardcoded so a mons[] shift can't skew it.
+const RIDER_NAMES = new Set(['Death', 'Famine', 'Pestilence']);
+function is_rider(ptr) { return !!ptr && RIDER_NAMES.has(ptr.name); }
+let _mplayer_span;   // resolved lazily: makemon.js may still be evaluating
+function is_mplayer(ptr) {
+    if (_mplayer_span === undefined) {
+        const lo = name_to_pmidx('archeologist'), hi = name_to_pmidx('wizard');
+        _mplayer_span = (lo >= 0 && hi >= lo) ? [lo, hi] : null;
+    }
+    return !!_mplayer_span && ptr?.pmidx != null
+        && ptr.pmidx >= _mplayer_span[0] && ptr.pmidx <= _mplayer_span[1];
+}
+
+// C ref: mondata.h:219 nonliving(ptr) == is_undead(ptr) || ptr == &mons[PM_MANES]
+// || weirdnonliving(ptr), where weirdnonliving == is_golem(ptr) || mlet ==
+// S_VORTEX.  Was a species-name regex, which (a) answered FALSE for every
+// undead whose name lacks one of the seven listed words (e.g. "vampire",
+// "ghoul", "shade", "human zombie" is fine but "Vlad the Impaler" isn't) and
+// (b) answered TRUE for elementals, which are NOT nonliving in C.
 function nonliving(mtmp) {
-    const name = mtmp?.data?.name || '';
-    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghost\b|\blich\b|golem\b|\bvortex\b|\belemental\b/.test(name);
+    const ptr = permonst(mtmp);
+    if (!ptr) return false;
+    return is_undead_flag(ptr) || ptr.name === 'manes'
+        || ptr.mcls === S_GOLEM || ptr.mcls === S_VORTEX;
 }
 
 // C ref: mhitm.c hitmm() — the verb for a connecting attack of type aatyp.
@@ -152,16 +205,64 @@ function hit_verb(aatyp) {
 
 // ── attack-type / damage-type enums (include/monattk.h) ──────────────────────
 const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
-      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_EXPL = 13, AT_WEAP = 254; // monattk.h (AT_EXPL was 11, which is AT_ENGL)
-const AD_PHYS = 0, AD_SITM = 21, AD_SEDU = 22, AD_SSEX = 35;
+      AT_TUCH = 5, AT_STNG = 6, AT_HUGS = 7, AT_ENGL = 11, AT_BREA = 12,
+      AT_EXPL = 13, AT_BOOM = 14, AT_GAZE = 15, AT_TENT = 16,
+      AT_SPIT = 10, AT_WEAP = 254, AT_MAGC = 255;
+const AD_PHYS = 0, AD_FIRE = 2, AD_COLD = 3, AD_ELEC = 6, AD_ACID = 8,
+      AD_PLYS = 14, AD_STUN = 12, AD_DGST = 26, AD_STCK = 19, AD_WRAP = 28,
+      AD_SITM = 21, AD_SEDU = 22, AD_ENCH = 41, AD_SSEX = 35,
+      AD_DISE = 33, AD_PEST = 38, AD_FAMN = 39, AD_POLY = 43;
+
+// C ref: monst.h resists_*(mon) — the species mresists bits.  mondata.js's
+// copies read mon.data.mresists directly, which is undefined on the pet's
+// minimal data object; route through permonst() so a pet answers for its own
+// species instead of silently "resists nothing".
+const MR_FIRE = 0x01, MR_COLD = 0x02, MR_ELEC = 0x10, MR_ACID = 0x40;
+const mm_resists = (mon, bit) => ((permonst(mon)?.mresists ?? 0) & bit) !== 0;
+const mm_resists_fire = (mon) => mm_resists(mon, MR_FIRE);
+const mm_resists_cold = (mon) => mm_resists(mon, MR_COLD);
+const mm_resists_elec = (mon) => mm_resists(mon, MR_ELEC);
+const mm_resists_acid = (mon) => mm_resists(mon, MR_ACID);
 
 // C ref: include/monsym.h S_NYMPH — could_seduce()'s "same gender still works"
 // exception and mhitm_ad_sedu()'s post-theft rloc() both key off this mlet.
 const S_NYMPH_MCLS = 14;
 
+// C ref: mon->data — the permonst record.  dog.js builds the starting pet with
+// a MINIMAL data object whose pmidx is the C PM_* value, which is NOT this
+// port's MONS-table index (kitten: C 34 == our jaguar; pony: C 102 == our gray
+// unicorn), and which carries no ac/mlevel/msize/geno at all.  Every
+// pmidx-keyed table (MATTK, MFLAGS1/2/3) therefore answers for the wrong
+// species when handed a pet's data directly.  Re-resolve through the species
+// NAME, which both representations carry, and use the canonical MONS record
+// everywhere mattackm needs species data.
+const _permonst_cache = new Map();
+function permonst(mon) {
+    const dat = mon?.data;
+    if (!dat) return null;
+    const nm = dat.name;
+    if (!nm) return dat;
+    let rec = _permonst_cache.get(nm);
+    if (rec === undefined) {
+        const p = name_to_pmidx(nm);
+        rec = (p >= 0) ? monster_by_pmidx(p) : null;
+        _permonst_cache.set(nm, rec);
+    }
+    return rec || dat;
+}
+
+// C ref: mons[].mattk[] — the attack list, trailing NO_ATTK slots dropped by
+// the generator (they can never match a getmattk()/attacktype() query, and
+// passivemm's "first AT_NONE slot" walk treats a missing slot as NO_ATTK).
+function mattk_list(mon) {
+    const ptr = permonst(mon);
+    const tbl = (ptr && ptr.pmidx != null) ? MATTK[ptr.pmidx] : null;
+    return tbl || [];
+}
+
 // C ref: mondata.c gender(mtmp) — 2 for neuters, else mtmp->female.
 function gender_mm(mtmp) {
-    return is_neuter_flag(mtmp?.data) ? 2 : (mtmp?.female ? 1 : 0);
+    return is_neuter_flag(permonst(mtmp)) ? 2 : (mtmp?.female ? 1 : 0);
 }
 
 // C ref: mhitu.c could_seduce(magr, mdef, mattk) — the monster-vs-monster arm
@@ -169,14 +270,14 @@ function gender_mm(mtmp) {
 // whose gender matches ("engagingly"), 0 = not a seduction-capable attack.
 // SYSOPT_SEDUCE is on in this build (sys.c:100), so AD_SSEX is not downgraded.
 function could_seduce(magr, mdef, mattk) {
-    const pagr = magr?.data;
+    const pagr = permonst(magr);
     if (is_animal(pagr)) return 0;
     const genagr = gender_mm(magr);
     const gendef = gender_mm(mdef);
     const adtyp = mattk ? mattk.adtyp
-        : (pagr && attacktype_ad(pagr, AD_SSEX)) ? AD_SSEX
-            : (pagr && attacktype_ad(pagr, AD_SEDU)) ? AD_SEDU : AD_PHYS;
-    if (magr.minvis && !perceives_flag(mdef?.data) && adtyp === AD_SEDU) return 0;
+        : (pagr && attacktype_ad(magr, AD_SSEX)) ? AD_SSEX
+            : (pagr && attacktype_ad(magr, AD_SEDU)) ? AD_SEDU : AD_PHYS;
+    if (magr.minvis && !perceives_flag(permonst(mdef)) && adtyp === AD_SEDU) return 0;
     // C: `pagr->mlet != S_NYMPH && pagr != &mons[PM_AMOROUS_DEMON]` — the
     // amorous demon's name is unique in monsters.h so the name compare is exact.
     if ((pagr?.mcls !== S_NYMPH_MCLS && pagr?.name !== 'amorous demon')
@@ -186,9 +287,12 @@ function could_seduce(magr, mdef, mattk) {
 }
 
 // C ref: mondata.h dmgtype(ptr, dtyp) — any attack slot with that damage type.
-function attacktype_ad(ptr, adtyp) {
-    const cd = ptr?.name ? MON_COMBAT[ptr.name] : null;
-    return !!cd && cd.attacks.some((a) => a.adtyp === adtyp);
+function attacktype_ad(mon, adtyp) {
+    return mattk_list(mon).some((a) => a[1] === adtyp);
+}
+// C ref: mondata.h attacktype(ptr, atyp) — any attack slot of that attack type.
+function attacktype_at(mon, aatyp) {
+    return mattk_list(mon).some((a) => a[0] === aatyp);
 }
 
 // weapon_check states (C ref: monst.h wpn_chk_flags).
@@ -237,121 +341,86 @@ async function mon_wield_item_mm(mon) {
 // C ref: canseemon(mon) — (cansee || see_with_infrared) && mon_visible.
 const mm_can_see_mon = canseemon_shared;
 
-// ── combat data for the monsters the contest sessions put into mon-vs-mon
-// melee, ported from include/monsters.h.  Keyed by the monster's display name
-// because the starting-pet records (dog.js) carry the C PM_* index while the
-// hostile records (makemon.js MONS table) use a different internal numbering;
-// the name is the one stable discriminator across both representations.
-//   ac      — base armour class (the 3rd LVL() field) -> find_mac()
-//   mlevel  — base level (the 1st LVL() field); used for grow_up thresholds
-//   msize   — MZ_* (knockback size test); not load-bearing for these sessions
-//   verysmall — MZ_TINY (corpse_chance)
-//   gfreq   — geno & G_FREQ (corpse_chance)
-//   attacks — ordered ATTK() list; the first AT_NONE slot terminates it
-//             exactly like the C mons[].mattk[] array (NO_ATTK == AT_NONE).
-const MZ_TINY = 0, MZ_SMALL = 1, MZ_MEDIUM = 2, MZ_HUMAN = 3;
-function ATK(aatyp, adtyp, damn, damd) { return { aatyp, adtyp, damn, damd }; }
+// C ref: include/monflag.h MZ_* body sizes.  MZ_HUMAN is an ALIAS for
+// MZ_MEDIUM (== 2), not a size of its own; the previous local table defined
+// MZ_HUMAN = 3, which is MZ_LARGE, and so mis-sized every human-sized monster
+// for bigmonst()/the knockback differential.
+const MZ_TINY = 0, MZ_SMALL = 1, MZ_MEDIUM = 2, MZ_HUMAN = MZ_MEDIUM,
+      MZ_LARGE = 3;
 
-const MON_COMBAT = {
-    'newt':       { ac: 8, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 5, attacks: [ATK(AT_BITE, AD_PHYS, 1, 2)] },
-    'fox':        { ac: 7, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 3)] },
-    'jackal':     { ac: 7, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 3, attacks: [ATK(AT_BITE, AD_PHYS, 1, 2)] },
-    'sewer rat':  { ac: 7, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 3)] },
-    'giant rat':  { ac: 7, mlevel: 1, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_BITE, AD_PHYS, 1, 3)] },
-    'gecko':      { ac: 8, mlevel: 1, msize: MZ_TINY,  verysmall: true,  gfreq: 5, attacks: [ATK(AT_BITE, AD_PHYS, 1, 3)] },
-    'kitten':     { ac: 6, mlevel: 2, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
-    'housecat':   { ac: 5, mlevel: 4, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_CLAW, AD_PHYS, 1, 6)] },
-    'little dog':  { ac: 6, mlevel: 2, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
-    'dog':        { ac: 5, mlevel: 4, msize: MZ_MEDIUM, verysmall: false, gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
-    'pony':       { ac: 6, mlevel: 3, msize: MZ_MEDIUM, verysmall: false, gfreq: 2, attacks: [ATK(AT_KICK, AD_PHYS, 1, 6), ATK(AT_BITE, AD_PHYS, 1, 2)] },
-    // C ref: monsters.h S_ZOMBIE — LVL(0,6,10,0,-2), geno (G_GENO|G_NOCORPSE|1)
-    // so G_FREQ==1; MZ_SMALL (not verysmall); attack AT_CLAW AD_PHYS 1d4.  A
-    // hostile kobold zombie killed by the pony makes corpse_chance roll
-    // rn2(2 + (1<2) + 0) == rn2(3) (seed0103 step 42).
-    'kobold zombie': { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_CLAW, AD_PHYS, 1, 4)] },
-    // C ref: monsters.h S_KOBOLD "kobold" — LVL(0,6,10,0,-2), geno (G_GENO|1)
-    // so G_FREQ==1; MZ_SMALL (not verysmall); attack AT_WEAP AD_PHYS 1d4 (a
-    // weapon attack: not modeled by the mattackm switch, so it is harmless as a
-    // defender).  Its gfreq drives corpse_chance: rn2(2 + (1<2) + 0) == rn2(3).
-    'kobold': { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 1, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 4)] },
-    // C ref: monsters.h S_ORC — armed orcs that carry a weapon (m_initweap ->
-    // orcish "crude" dagger) wield it when they fight, so they must be modeled
-    // as aggressors in the pet's return-attack (mattackm).  AT_WEAP/AD_PHYS,
-    // per-species dice: goblin 1d4, hobgoblin/hill orc/Mordor orc 1d6,
-    // orc/Uruk-hai 1d8.  mattackm's AT_WEAP path wields (no RNG) and returns
-    // MISS, so these records add no to-hit/damage rolls vs the pet.
-    'goblin':     { ac: 10, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 4)] },
-    'hobgoblin':  { ac: 10, mlevel: 1, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
-    'hill orc':   { ac: 10, mlevel: 2, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
-    'Mordor orc': { ac: 10, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 1, attacks: [ATK(AT_WEAP, AD_PHYS, 1, 6)] },
-    // C ref: monsters.h S_BAT — a "giant bat" LVL(2,22,7,0,0), geno (G_GENO|2)
-    // so G_FREQ==2; MZ_SMALL; AT_BITE AD_PHYS 1d6.  Needed so the giant bat can
-    // be the *aggressor* in the dog_move return-attack (seed5002 step-242: the
-    // kitten claws the bat, the bat bites back via mattackm -> rnd(20)).  The
-    // plain "bat" bites 1d4; AD_STCK (large/giant mimic) modeled as AD_PHYS for
-    // the to-hit/damage rolls (mhitm_adtyping only special-cases non-PHYS).
-    'bat':        { ac: 8, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 1, attacks: [ATK(AT_BITE, AD_PHYS, 1, 4)] },
-    'giant bat':  { ac: 7, mlevel: 2, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
-    'vampire bat':{ ac: 6, mlevel: 5, msize: MZ_SMALL, verysmall: false, gfreq: 2, attacks: [ATK(AT_BITE, AD_PHYS, 1, 6)] },
-    // C ref: monsters.h S_MIMIC — "small mimic" LVL(7,3,7,0,0), geno (G_GENO|2)
-    // so G_FREQ==2; MZ_MEDIUM; AT_CLAW AD_PHYS 3d4.
-    'small mimic':{ ac: 7, mlevel: 7, msize: MZ_MEDIUM, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_PHYS, 3, 4)] },
-    // C ref: monsters.h S_FUNGUS "lichen" — LVL(0,1,9,0,0), geno (G_GENO|4) so
-    // G_FREQ==4; MZ_SMALL (not verysmall); attack AT_TUCH AD_STCK 0,0 (a sticky
-    // hold, no physical damage).  Needed so the lichen can be the *aggressor* in
-    // the pet's dog_move return-attack (seed0030 seg1 step-114: the kitten bites
-    // the lichen, which survives and touches back via mattackm -> rnd(20)).  The
-    // 0,0 dice mean a hit deals d(0,0)==0 (no damage roll); AD_STCK is modeled as
-    // AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS).
-    'lichen':     { ac: 9, mlevel: 0, msize: MZ_SMALL, verysmall: false, gfreq: 4, attacks: [ATK(AT_TUCH, AD_PHYS, 0, 0)] },
-    // C ref: monsters.h S_XAN "grid bug" — LVL(0,12,9,0,0), geno
-    // (G_GENO|G_SGROUP|G_NOCORPSE|3) so G_FREQ==3; MZ_TINY (verysmall); attack
-    // AT_BITE AD_ELEC 1d1.  Needed as the *defender* when the kitten kills it
-    // (seed0030 seg1 step-134): corpse_chance rolls rn2(2 + (3<2?0) + 1)==rn2(3)
-    // (not the rn2(2) an unmodeled monster would default to).  AD_ELEC is modeled
-    // as AD_PHYS for the to-hit path (mhitm_adtyping only special-cases non-PHYS);
-    // the grid bug is G_NOCORPSE, so make_corpse() leaves no cadaver.
-    'grid bug':   { ac: 9, mlevel: 0, msize: MZ_TINY,  verysmall: true,  gfreq: 3, attacks: [ATK(AT_BITE, AD_PHYS, 1, 1)] },
-    // C ref: monsters.h S_NYMPH — LVL(3,12,9,20,0), geno (G_GENO|2) so
-    // G_FREQ==2; MZ_HUMAN; TWO attacks, AT_CLAW/AD_SITM 0d0 then
-    // AT_CLAW/AD_SEDU 0d0.  Both slots roll their own rnd(20+i) to-hit and a
-    // d(0,0) in mdamagem, so the nymph must be present as an AGGRESSOR or those
-    // draws go missing (seed0014 step 456: rnd(20) then rnd(21)).
-    'wood nymph':     { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
-    'water nymph':    { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
-    'mountain nymph': { ac: 9, mlevel: 3, msize: MZ_HUMAN, verysmall: false, gfreq: 2, attacks: [ATK(AT_CLAW, AD_SITM, 0, 0), ATK(AT_CLAW, AD_SEDU, 0, 0)] },
-};
+// C ref: include/monflag.h G_FREQ — the creation-frequency mask of geno.
+const G_FREQ = 0x0007;
 
-// Resolve the combat record for a monster instance.  Prefers data.name; the
-// pet's minimal data object always carries it, and the MONS table records do
-// too.  Returns null when the monster isn't modeled (caller no-ops).
-function combatData(mon) {
-    const name = mon?.data?.name;
-    if (name && Object.prototype.hasOwnProperty.call(MON_COMBAT, name))
-        return MON_COMBAT[name];
-    return null;
-}
+// C ref: mondata.h verysmall(ptr) / bigmonst(ptr).
+function verysmall(ptr) { return (ptr?.msize ?? MZ_MEDIUM) < MZ_SMALL; }
+function bigmonst(ptr) { return (ptr?.msize ?? MZ_MEDIUM) >= MZ_LARGE; }
 
-// C ref: mon.c m_lev — the monster's effective level.  Hostile MONS-table
-// monsters get m_lev set by newmonhp(); the pet records (dog.js) do not store
-// it, so fall back to the base mlevel from the combat table (adj_lev at xlvl 1
-// equals the base mlevel for the starting pets: kitten/dog 2, pony 3).
-function monLev(mon, cd) {
+// C ref: mon.c m_lev — the monster's effective level.  makemon()'s newmonhp()
+// and dog.c's makedog() both set m_lev; the species base level is the fallback
+// for a record that predates that.
+function monLev(mon) {
     if (mon && mon.m_lev != null) return mon.m_lev;
-    return cd ? cd.mlevel : (mon?.data?.mlevel ?? 0);
+    return permonst(mon)?.mlevel ?? 0;
 }
 
-// C ref: worn.c find_mac(mdef) — base AC (no worn armor on these monsters).
-function find_mac(mdef, cd) {
-    return cd ? cd.ac : (mdef?.data?.ac ?? 10);
+// C ref: worn.c find_mac(mdef) — mons[].ac reduced by every worn armour piece's
+// ARM_BONUS, then clamped to +-AC_MAX.  Monsters in this port carry no body
+// armour (m_initinv gives none), so only the base + clamp are modelled.
+const AC_MAX = 127;
+function find_mac(mdef) {
+    let base = permonst(mdef)?.ac;
+    base = (base != null) ? base : 10;
+    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
+    return base;
 }
 
-// C ref: getmattk() — for the single-/double-attack monsters here, attack i is
-// just mattk[i] (no random alternates: alt_attk only applies to AT_WEAP'less
-// special cases we don't reach).
-function getmattk(magr, cd, i) {
-    const list = cd ? cd.attacks : [];
-    return list[i] || { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
+// C ref: mhitu.c getmattk(magr, mdef, indx, prev_result, alt_attk_buf) — attack
+// `indx`, possibly substituted.  SYSOPT_SEDUCE is on in this build so the
+// AD_SSEX downgrade never fires, and AD_DREN only rescales against the hero.
+// Ported: the consecutive-disease -> AD_STUN swap, the mspec_used
+// can't-re-grab swap (which CHANGES damn/damd, so it changes the d() roll in
+// mdamagem), and the AT_WEAP non-physical -> AD_PHYS force for a cancelled
+// attacker.  None of them draw RNG.
+function getmattk(magr, mdef, i, prev_result) {
+    const list = mattk_list(magr);
+    const raw = list[i];
+    if (!raw) return { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
+    const attk = { aatyp: raw[0], adtyp: raw[1], damn: raw[2], damd: raw[3] };
+    const prev = (i > 0 && list[i - 1]) ? list[i - 1][1] : -1;
+
+    if (i > 0 && prev_result[i - 1] > M_ATTK_MISS
+        && (attk.adtyp === AD_DISE || attk.adtyp === AD_PEST
+            || attk.adtyp === AD_FAMN)
+        && attk.adtyp === prev) {
+        attk.adtyp = AD_STUN;
+    } else if (magr.mspec_used
+               && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
+                   || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
+        const wimpy = (attk.damd === 0);  /* lichen, violet fungus */
+        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
+            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
+            attk.aatyp = AT_TUCH;
+        } else {
+            attk.aatyp = AT_CLAW;
+            attk.adtyp = AD_PHYS;
+        }
+        attk.damn = 1;
+        attk.damd = 6;
+        if (wimpy && attk.aatyp === AT_CLAW) {
+            attk.aatyp = AT_TUCH;
+            attk.damn = attk.damd = 0;
+        }
+    } else if (i === 0 && attk.aatyp === AT_WEAP && attk.adtyp !== AD_PHYS
+               && !(list[1] && list[1][0] === AT_WEAP && list[1][1] === AD_PHYS)
+               && magr.mcan) {
+        // (the artifact-weapon arm of this test needs Stormbringer / Vorpal
+        // Blade / a petrifying corpse wielded by a monster — none exist here)
+        attk.adtyp = AD_PHYS;
+    } else if (i === 0 && attk.aatyp === AT_TUCH && attk.adtyp === AD_COLD
+               && mm_resists_cold(mdef) && permonst(mdef)?.name !== 'shade') {
+        attk.adtyp = AD_PHYS;
+    }
+    return attk;
 }
 
 // C ref: hack.h distmin(x0,y0,x1,y1) — Chebyshev (king-move) distance.
@@ -359,35 +428,66 @@ function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
 }
 
-// ── uhitm.c mhitm_knockback (the leading RNG only) ───────────────────────────
-// C draws knockdistance = rn2(3) at the top of the function (line 5258), then
-// rolls rn2(chance) (chance == 6 with no ogresmasher; line 5269).  Every hit in
-// the contest sessions takes the `if (rn2(chance)) return FALSE` early-out, so
-// the later size/weapon gates never roll.  Returns whether knockback fired
-// (always false for the modeled monsters).
-function mhitm_knockback(magr, mdef, mattk, hitflagsRef, weaponUsed) {
+// ── uhitm.c mhitm_knockback ──────────────────────────────────────────────────
+// C draws knockdistance = rn2(3) at the top (uhitm.c:5258), then rn2(chance)
+// (chance == 6 without ART_OGRESMASHER; uhitm.c:5269).  Everything after the
+// 1/6 branch is RNG-free up to the hurtle, so the gate chain is ported in full
+// and the function still declines rather than hurtling the defender: the
+// actual hurtle_step/mon_break_boulder machinery is not modelled.  Getting the
+// chain right matters because it decides whether mdamagem() short-circuits.
+function mhitm_knockback(magr, mdef, mattk, weaponUsed) {
     /* knockdistance */ rn2(3);              // uhitm.c:5258
-    const chance = 6;                         // no ART_OGRESMASHER here
+    const chance = 6;                         // no ART_OGRESMASHER in this port
     if (rn2(chance)) return false;            // uhitm.c:5269 — 5/6 of the time
 
-    // The remaining gates (aatyp must be CLAW/KICK/BUTT/WEAP & AD_PHYS, size
-    // differential, solidity, &c.) are only reached on the 1/6 branch.  None of
-    // the contest sessions hit it; be conservative and decline knockback (which
-    // matches AD_PHYS bite attacks failing the aatyp test) without extra RNG.
+    // only AD_PHYS claw/kick/butt/weapon attacks qualify
+    if (!(mattk.adtyp === AD_PHYS
+          && (mattk.aatyp === AT_CLAW || mattk.aatyp === AT_KICK
+              || mattk.aatyp === AT_BUTT || mattk.aatyp === AT_WEAP)))
+        return false;
+    // an attacker that wants to grab or engulf doesn't knock back
+    if (attacktype_at(magr, AT_ENGL) || attacktype_at(magr, AT_HUGS)
+        || attacktype_ad(magr, AD_STCK))
+        return false;
+    if (DEADMONSTER(magr) || DEADMONSTER(mdef)) return false;
+    // attacker must be much larger than defender
+    if (!((permonst(magr)?.msize ?? MZ_MEDIUM)
+          > (permonst(mdef)?.msize ?? MZ_MEDIUM) + 1))
+        return false;
+    // The remaining steps (test_move, hurtle, saddle dismount) move the
+    // defender; not modelled, so decline without further RNG.
     return false;
 }
 
 // ── mhitm.c mdamagem ─────────────────────────────────────────────────────────
 // Applies one successful melee hit's damage.  Returns the M_ATTK_* result.
-async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
+async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     let damage = d(mattk.damn | 0, mattk.damd | 0);   // mhitm.c:1025
     let hitflags = M_ATTK_MISS;
 
-    // mhitm_adtyping(): AD_PHYS plus the nymph's theft pair.  For a mon-vs-mon
-    // AD_PHYS hit with no weapon (mwep == 0), mhitm_ad_phys() consumes no RNG
-    // and leaves the base damage unchanged.  (Weapon / thick-skin / shade
-    // branches don't apply to the bite/claw/kick attackers in these sessions.)
-    if (mattk.adtyp === AD_SITM || mattk.adtyp === AD_SEDU
+    // mhitm_adtyping(): dispatch on adtyp.  Ported: AD_PHYS (uhitm.c:3981
+    // mhitm_ad_phys, mhitm arm) and the nymph's theft pair.  Every other adtyp
+    // falls through with the base damage — see the header for the list.
+    if (mattk.adtyp === AD_PHYS) {
+        let mwep2 = MON_WEP_MM(magr);
+        // non-Null mwep implies AT_WEAP || AT_CLAW
+        if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW) mwep2 = null;
+        // shade_miss(): a shade shrugs off a non-silver/non-blessed hit; not
+        // modelled (no shade reaches mon-vs-mon melee here).
+        if (mattk.aatyp === AT_KICK && thick_skinned(permonst(mdef))) {
+            damage = 0;
+        } else if (mwep2) {
+            // The wielded weapon's own damage dice.  This was skipped
+            // entirely, so an armed monster (orc with a crude dagger, gnome
+            // with an aklys) dealt only its bare 1dN and never rolled
+            // dmgval()'s rnd(oc_wsdam)/bonus dice.
+            damage += dmgval(mwep2, { data: permonst(mdef) });
+            // gauntlets of power rn1(4,3), artifact_hit(), rustm() and the
+            // poisoned-weapon rn2(4) are not modelled.
+            if (damage < 1) damage = 1;
+        }
+        // (the purple-worm-vs-shrieker damage cap is the remaining arm)
+    } else if (mattk.adtyp === AD_SITM || mattk.adtyp === AD_SEDU
         || mattk.adtyp === AD_SSEX) {
         // C ref: uhitm.c mhitm_ad_sedu() mhitm arm — steal the first minvent
         // item (non-cursed if the thief is tame), then a nymph teleports away.
@@ -413,7 +513,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
                 if (vis && mm_can_see_mon(mdef))
                     await emitMMmsg(`${buf} steals ${onam} from ${mdefnam}!`);
                 mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
-                if (magr.data?.mcls === S_NYMPH_MCLS) {
+                if (permonst(magr)?.mcls === S_NYMPH_MCLS) {
                     const { rloc, RLOC_NOMSG } = await import('./teleport.js');
                     await rloc(magr, RLOC_NOMSG);
                     if (vis && couldspot && !mm_can_see_mon(magr))
@@ -425,9 +525,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
         damage = 0;
     }
 
-    // mhitm_knockback() — rolls rn2(3) then rn2(6); returns false for these
-    // mons (so it never mutates hitflags / short-circuits mdamagem here).
-    mhitm_knockback(magr, mdef, mattk, null, !!mwep);
+    // mhitm_knockback() — rolls rn2(3) then rn2(6); the gate chain always
+    // declines here (the hurtle itself isn't modelled), so it never
+    // short-circuits mdamagem.
+    mhitm_knockback(magr, mdef, mattk, !!mwep);
 
     if (!damage) return hitflags;
 
@@ -439,25 +540,57 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd) {
         // here (while the defender is still on the map) reproduces C's frame
         // where the previous combat line's --More-- shows the doomed defender
         // still drawn; killMonster() then removes it for the final frame.
+        // C ref: mon.c monkilled(mdef, "", adtyp) — the death line prints when
+        // the square is visible; when it ISN'T and the victim was tame, C
+        // prints "You have a sad feeling for a moment." AFTER mondied()
+        // instead.  That arm was missing entirely, so a pet killed out of
+        // sight died silently.
+        let be_sad = false;
         if (cansee(mdef.mx, mdef.my))
             await emitMMmsg(`${Monnam(mdef)} is ${nonliving(mdef) ? 'destroyed' : 'killed'}!`);
+        else
+            be_sad = !!mdef.mtame;
         // monster killed (monkilled -> mondied -> corpse_chance, then grow_up).
-        killMonster(mdef, defCd);
-        const grew = grow_up(magr, mdef, agrCd, defCd);
+        killMonster(mdef);
+        if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
+        if (hitflags === M_ATTK_AGR_DIED)
+            return (M_ATTK_DEF_DIED | M_ATTK_AGR_DIED);
+        const grew = grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }
-    return M_ATTK_HIT;
+    return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
 }
 
-// C ref: mon.c corpse_chance (the rn2 tail) + mondied corpse handling.
-// For the simple animals here: tmp = 2 + (gfreq < 2) + verysmall; !rn2(tmp).
-// The rn2(tmp) draw is load-bearing AND its TRUE result triggers make_corpse(),
-// which itself consumes RNG (next_ident + rndmonnum reservoir + corpse timeout)
-// — see killMonster() below.
-function corpse_chance(mdef, defCd) {
-    const gfreq = defCd ? defCd.gfreq : 2;
-    const verysmall = defCd ? (defCd.verysmall ? 1 : 0) : 0;
-    const tmp = 2 + (gfreq < 2 ? 1 : 0) + verysmall;
+// C ref: mon.c:3181 corpse_chance(mon, magr, was_swallowed).  The rn2(tmp) tail
+// is load-bearing AND its TRUE result triggers make_corpse(), which itself
+// consumes RNG (next_ident + rndmonnum reservoir + corpse timeout) — see
+// killMonster() below.  The guards in front of it decide whether that rn2 is
+// drawn AT ALL, so leaving them out (as this did) picks the wrong modulus for
+// every big/golem/lich/gas-spore victim.
+function corpse_chance(mdef) {
+    const mdat = permonst(mdef);
+
+    // Vlad and the liches crumble to dust: no corpse, NO rn2.
+    if (mdat?.name === 'Vlad the Impaler' || mdat?.mcls === S_LICH) return false;
+
+    // Gas spores always explode on death.  mon_explodes() is not modelled, but
+    // the AT_BOOM damage roll in front of it is real RNG, so draw it and then
+    // decline the corpse exactly as C does.
+    for (const a of mattk_list(mdef)) {
+        if (a[0] !== AT_BOOM) continue;
+        if (a[2]) d(a[2], a[3]);
+        else if (a[3]) d((mdat?.mlevel ?? 0) + 1, a[3]);
+        return false;
+    }
+
+    // bigmonst/lizard/golem/mplayer/rider/shopkeeper always leave one: no rn2.
+    if (((bigmonst(mdat) || mdat?.name === 'lizard') && !mdef.mcloned)
+        || mdat?.mcls === S_GOLEM || is_mplayer(mdat) || is_rider(mdat)
+        || mdef.isshk)
+        return true;
+
+    const tmp = 2 + (((mdat?.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
+        + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);                         // mon.c:3248
 }
 
@@ -479,7 +612,7 @@ function is_pool(x, y) {
 // mondied() -> mondead() [detach] then, if corpse_chance() succeeds and the
 // square is accessible (or a pool), make_corpse() which rolls next_ident,
 // rndmonnum and the corpse-timeout sequence.
-function killMonster(mdef, defCd) {
+function killMonster(mdef) {
     mdef.mhp = 0;
     // C ref: mon.c mondead() — "if (glyph_is_invisible(...)) unmap_object(...)"
     // runs before m_detach.  A defender killed this same attack may have just
@@ -489,7 +622,7 @@ function killMonster(mdef, defCd) {
     // remembered contents instead of keeping the 'I'.
     const loc0 = game.level?.at(mdef.mx, mdef.my);
     if (loc0?.invisMon) unmap_object(mdef.mx, mdef.my);
-    const dropCorpse = corpse_chance(mdef, defCd); // mon.c:3248 rn2(tmp)
+    const dropCorpse = corpse_chance(mdef); // mon.c:3181
     const mx = mdef.mx, my = mdef.my;
     // Detach from the level so the renderer (m_at / MON_AT) stops drawing it.
     // The dead monster's coordinates are intentionally left intact: mattackm
@@ -509,62 +642,186 @@ function killMonster(mdef, defCd) {
     if (mx > 0 && my > 0) newsym(mx, my);
 }
 
-// C ref: makemon.c grow_up(mtmp, victim) — the pet may gain HP/levels after a
-// kill.  Only the "killed a monster" branch is reached here.  Returns TRUE if
-// the aggressor survives (it always does for these pets), so the caller maps a
-// FALSE here to M_ATTK_AGR_DIED (genocide-on-growup, which never triggers).
-function grow_up(magr, mdef, agrCd, defCd) {
-    const mlev = monLev(magr, agrCd);
-    const victimLev = monLev(mdef, defCd);
+// C ref: makemon.c:2051 grow_up(mtmp, victim) — the killer may gain HP/levels.
+// Only the `victim != 0` (killed a monster) branch is reachable from mdamagem.
+// Returns TRUE if the aggressor survives; FALSE maps to M_ATTK_AGR_DIED.
+//
+// The hp_threshold clamp on max_increase (makemon.c:2096) was missing, and it
+// is not cosmetic: it rewrites max_increase, which is the MODULUS of the
+// rn2(max_increase) on the next line.
+//
+// NOT ported: the little_to_big() species change (kitten -> housecat and the
+// rest of grownups[]) with its "grows up into a housecat" message, gender flip
+// and G_GENOD death.  None of it draws RNG; it needs set_mon_data + the mvitals
+// genocide table, and mutating mon.data mid-game touches the pet's whole
+// (pmidx-mismatched) data representation.
+function grow_up(magr, mdef) {
+    if (DEADMONSTER(magr)) return false;       // makemon.c:2059
 
-    // max_increase = rnd(victim->m_lev + 1)              (makemon.c:2095)
-    const max_increase = rnd(victimLev + 1);
-    // cur_increase = (max_increase > 1) ? rn2(max_increase) : 0
+    const ptr = permonst(magr);
+    const mlev = monLev(magr);
+    const victimLev = monLev(mdef);
+
+    let hp_threshold = mlev * 8;               // makemon.c:2082
+    if (!mlev) hp_threshold = 4;
+    else if (ptr?.mcls === S_GOLEM)
+        hp_threshold = (Math.floor((magr.mhpmax | 0) / 10) + 1) * 10 - 1;
+    else if (is_home_elemental(ptr)) hp_threshold *= 3;
+
+    let lev_limit = Math.floor(3 * (ptr?.mlevel ?? 0) / 2); /* adj_lev() */
+
+    // max_increase = rnd(victim->m_lev + 1), clamped so the gain stops at the
+    // bottom of the next level.                          (makemon.c:2095-2098)
+    let max_increase = rnd(victimLev + 1);
+    if ((magr.mhpmax | 0) + max_increase > hp_threshold + 1)
+        max_increase = Math.max((hp_threshold + 1) - (magr.mhpmax | 0), 0);
     const cur_increase = (max_increase > 1) ? rn2(max_increase) : 0;
 
-    let hp_threshold = mlev * 8;
-    if (!mlev) hp_threshold = 4;
+    magr.mhpmax = (magr.mhpmax | 0) + max_increase;
+    magr.mhp = (magr.mhp | 0) + cur_increase;
+    if (magr.mhpmax <= hp_threshold) return true; /* doesn't gain a level */
 
-    if (magr.mhpmax != null) magr.mhpmax += max_increase;
-    if (magr.mhp != null) magr.mhp += cur_increase;
+    if (is_mplayer(ptr)) lev_limit = 30;
+    else if (lev_limit < 5) lev_limit = 5;
+    else if (lev_limit > 49) lev_limit = ((ptr?.mlevel ?? 0) > 49) ? 50 : 49;
 
-    // The level/gender/form bookkeeping below the threshold consumes no RNG;
-    // we only need the per-kill rnd()/rn2() draws above to stay in sync.  Bump
-    // the stored m_lev when the threshold is crossed (best-effort; not rendered).
-    if ((magr.mhpmax ?? 0) > hp_threshold && magr.m_lev != null)
-        magr.m_lev += 1;
+    magr.m_lev = (magr.m_lev | 0) + 1;
+
+    // sanity checks (makemon.c:2164)
+    if (magr.m_lev > lev_limit) {
+        magr.m_lev -= 1;
+        if (magr.mhpmax === hp_threshold + 1) magr.mhpmax -= 1;
+    }
+    if (magr.mhpmax > 50 * 8) magr.mhpmax = 50 * 8;
+    if (magr.mhp > magr.mhpmax) magr.mhp = magr.mhpmax;
 
     return true; /* aggressor survives */
 }
 
-// ── mhitm.c passivemm ────────────────────────────────────────────────────────
-// Defender's passive response.  Always reached (even on a miss / kill) from
-// mattackm's `if (attk && ... distmin <= 1)` guard.  For the modeled monsters
-// the defender's first attack slot is its only/terminating one; the initial
-// d() roll fires only when that slot has damn/damd set (none of newt/kitten do
-// for their *passive* slot, which is the AT_NONE terminator -> tmp = 0, no d()).
-function passivemm(magr, mdef, mhitb, mdead, mwep, defCd) {
-    const attacks = defCd ? defCd.attacks : [];
-    // find first AT_NONE slot (i): the C loop walks mattk[] to the terminator.
-    let i = 0;
-    for (; i < NATTK; i++) {
-        if (i >= attacks.length) break;        // ran off the end -> AT_NONE
-        if (attacks[i].aatyp === AT_NONE) break;
-    }
-    const slot = attacks[i] || { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
-    // tmp = passive damage roll, mirroring mhitm.c:1323-1328.
-    if (slot.damn) d(slot.damn | 0, slot.damd | 0);
-    else if (slot.damd) d((defCd ? defCd.mlevel : 0) + 1, slot.damd | 0);
-    // else tmp = 0 (no roll)
-
+// ── mhitm.c:1304 passivemm ───────────────────────────────────────────────────
+// Defender's passive response.  Reached (even on a miss / kill) from mattackm's
+// `if (attk && ... distmin <= 1)` guard.  Ported in full: the previous version
+// rolled only the leading d() and one rn2(3), so it
+//   * rolled rn2(3) for a defender whose six mattk[] slots are ALL attacks,
+//     where C returns early with no roll at all;
+//   * skipped AD_ACID's rn2(2) + rn2(30) + rn2(6), which C draws BEFORE the
+//     `mdead || mcan` early-out (acid blob / green mold vs a pet is the classic
+//     mon-vs-mon passive);
+//   * skipped the floating eye's rn2(4); and
+//   * never subtracted the passive damage from the aggressor, so a pet that C
+//     kills on its own attack survived here.
+async function passivemm(magr, mdef, mhitb, mdead, mwep) {
+    const mddat = permonst(mdef), madat = permonst(magr);
+    const attacks = mattk_list(mdef);
     const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
-    if (mdead || mdef.mcan) return (mdead | mhit);
 
-    // mhitm.c:1363 — `if (rn2(3))` gates the passive effect.  For AT_NONE/AD_PHYS
-    // terminators the switch's default sets tmp = 0 (no further RNG).
-    rn2(3);
+    // find the first AT_NONE slot; six real attacks means no passive at all.
+    let i = 0;
+    for (;; i++) {
+        if (i >= NATTK) return (mdead | mhit);  // mhitm.c:1315
+        if (!attacks[i] || attacks[i][0] === AT_NONE) break;
+    }
+    const slot = attacks[i] || [AT_NONE, AD_PHYS, 0, 0];
+    const damn = slot[2] | 0, damd = slot[3] | 0, adtyp = slot[1];
+    let tmp;
+    if (damn) tmp = d(damn, damd);
+    else if (damd) tmp = d((mddat?.mlevel ?? 0) + 1, damd);
+    else tmp = 0;
+
+    let assess = false;
+    // These affect the enemy even if the defender was killed.
+    switch (adtyp) {
+    case AD_ACID:
+        if (mhitb && !rn2(2)) {
+            if (mm_can_see_mon(magr))
+                await emitMMmsg(`${Monnam(magr)} is splashed by ${s_suffix_mm(mon_nam_mm(mdef))} acid!`);
+            if (mm_resists_acid(magr)) {
+                if (mm_can_see_mon(magr))
+                    await emitMMmsg(`${Monnam(magr)} is not affected.`);
+                tmp = 0;
+            }
+        } else {
+            tmp = 0;
+        }
+        rn2(30);   /* erode_armor(magr, ERODE_CORRODE) — no monster body armour */
+        rn2(6);    /* acid_damage(MON_WEP(magr)) — erosion only, no RNG inside */
+        assess = true;
+        break;
+    case AD_ENCH:
+        /* drain_item(mwep) — no message, no RNG */
+        break;
+    default:
+        break;
+    }
+
+    if (!assess) {
+        if (mdead || mdef.mcan) return (mdead | mhit);
+
+        // mhitm.c:1363 — `if (rn2(3))` gates the passive effect.
+        if (rn2(3)) {
+            switch (adtyp) {
+            case AD_PLYS: /* floating eye / gelatinous cube */
+                if (tmp > 127) tmp = 127;
+                if (mddat?.name === 'floating eye') {
+                    if (!rn2(4)) tmp = 127;
+                    if (magr.mcansee && haseyes(madat) && mdef.mcansee
+                        && (perceives_flag(madat) || !mdef.minvis)) {
+                        // mon_reflects()/paralyze_monst() aren't modelled; C
+                        // returns here either way, without further RNG.
+                        return (mdead | mhit);
+                    }
+                } else {
+                    return (mdead | mhit);
+                }
+                return 1;
+            case AD_COLD:
+                if (mm_resists_cold(magr)) { tmp = 0; break; }
+                healmon(mdef, Math.floor(tmp / 2), Math.floor(tmp / 2));
+                // split_mon() (blue jelly) isn't modelled — it makemon()s a
+                // clone, which is RNG the port would have to reproduce exactly.
+                break;
+            case AD_STUN:
+                if (!magr.mstun) magr.mstun = 1;
+                tmp = 0;
+                break;
+            case AD_FIRE:
+                if (mm_resists_fire(magr)) tmp = 0;
+                break;
+            case AD_ELEC:
+                if (mm_resists_elec(magr)) tmp = 0;
+                break;
+            default:
+                tmp = 0;
+                break;
+            }
+        } else {
+            tmp = 0;
+        }
+    }
+
+    /* assess_dmg */
+    magr.mhp = (magr.mhp | 0) - tmp;
+    if (magr.mhp <= 0) {
+        // monkilled(magr, "", adtyp) — the death line, then the detach/corpse.
+        let be_sad = false;
+        if (cansee(magr.mx, magr.my))
+            await emitMMmsg(`${Monnam(magr)} is ${nonliving(magr) ? 'destroyed' : 'killed'}!`);
+        else
+            be_sad = !!magr.mtame;
+        killMonster(magr);
+        if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
+        return (mdead | mhit | M_ATTK_AGR_DIED);
+    }
     return (mdead | mhit);
 }
+
+function s_suffix_mm(s) { return /s$/.test(s) ? `${s}'` : `${s}'s`; }
+
+// C ref: mondata.h haseyes(ptr) = !(mflags1 & M1_NOEYES).
+function haseyes(ptr) { return (mflags1_of(ptr) & M1_NOEYES) === 0; }
+
+// C ref: mondata.h thick_skinned(ptr) = (mflags1 & M1_THICK_HIDE).
+function thick_skinned(ptr) { return (mflags1_of(ptr) & M1_THICK_HIDE) !== 0; }
 
 // ── mhitm.c mdisplacem ───────────────────────────────────────────────────────
 // C ref: mhitm.c mdisplacem(magr, mdef, quietly) — the aggressor (a displacer
@@ -581,19 +838,25 @@ export async function mdisplacem(magr, mdef, quietly) {
     // 1-in-7 failure chance (matches the pet-displacement chance in do_attack()).
     if (!rn2(7)) return M_ATTK_MISS;
 
-    // Grid bugs cannot displace at an angle.
-    const PM_GRID_BUG_MM = 116; // makemon MONS-table index (matches mfndpos nodiag)
-    if (magr.data?.pmidx === PM_GRID_BUG_MM
+    const pa = permonst(magr);
+    // Grid bugs cannot displace at an angle.  Resolved by species name, not by
+    // data.pmidx: the pet records carry the C PM_* numbering (see permonst()).
+    if (pa?.name === 'grid bug'
         && magr.mx !== mdef.mx && magr.my !== mdef.my)
         return M_ATTK_MISS;
 
-    // touch_petrifies(pd)/poly_when_stoned(pa) are always FALSE in this port
-    // (invent.js stubs both — no cockatrice-touch modeled anywhere else
-    // either), so C's stoning-during-displacement branch never fires here.
-
-    // C: mhitm.c:212-215 — wake the displaced defender and drop its wait
-    // strategy; finish_meating() clears meating.
+    // C: mhitm.c:200-215 — the displaced defender stops hiding/mimicking, wakes
+    // and drops its wait strategy; finish_meating() clears meating.  The
+    // seemimic() arm was omitted as unreachable, but a mimic IS a valid
+    // displacement target.  (touch_petrifies(pd) -> monstone(magr) is still
+    // unported: monstone() builds a statue object, whose mksobj RNG this port
+    // would have to reproduce exactly.)
     if (mdef.mundetected) mdef.mundetected = 0;
+    if (mdef.m_ap_type && mdef.m_ap_type !== 'mon') {   // seemimic(mdef)
+        mdef.m_ap_type = 0;
+        mdef.mappearance = 0;
+        newsym(mdef.mx, mdef.my);
+    }
     mdef.msleeping = 0;
     mdef.mstrategy = (mdef.mstrategy || 0) & ~STRAT_WAITMASK;
     if (mdef.meating) mdef.meating = 0;
@@ -604,7 +867,9 @@ export async function mdisplacem(magr, mdef, quietly) {
     mdef.mx = fx; mdef.my = fy;
 
     if (vis && !quietly) {
-        const hisher = magr.female ? 'her' : 'his';
+        // C: `is_rider(pa) ? "the" : mhis(magr)` — a Rider barges through "the"
+        // way, everyone else through "his"/"her" way.
+        const hisher = is_rider(pa) ? 'the' : (magr.female ? 'her' : 'his');
         await emitMMmsg(`${Monnam_mm(magr)} moves ${mon_nam_mm(mdef)} out of ${hisher} way!`);
     }
     newsym(fx, fy);
@@ -612,20 +877,158 @@ export async function mdisplacem(magr, mdef, quietly) {
     return M_ATTK_HIT;
 }
 
-// ── mhitm.c mattackm ─────────────────────────────────────────────────────────
-// C ref: mhitm.c:292.  A monster attacks another monster.  Returns M_ATTK_*.
+// ── mhitm.c:597 failed_grab ──────────────────────────────────────────────────
+// Can't hold an unsolid target (ghosts, lights, vortices, most elementals).
+// notonhead (long-worm tail) isn't modelled.  Draws no RNG, but it CANCELS the
+// strike, which suppresses mdamagem()'s d() roll and the whole kill tail.
+async function failed_grab(magr, mdef, mattk) {
+    if (unsolid_flag(permonst(mdef))
+        && (mattk.aatyp === AT_HUGS || mattk.adtyp === AD_WRAP
+            || mattk.adtyp === AD_STCK || mattk.adtyp === AD_DGST)) {
+        if (mm_visible(magr, mdef) && mm_can_see_mon(mdef)) {
+            const verb = (mattk.adtyp === AD_DGST) ? 'gulp'
+                : (mattk.adtyp === AD_STCK) ? 'adhere' : 'grab';
+            await emitMMmsg(`${s_suffix_mm(Monnam_mm(magr))} ${verb} attempt`
+                + ` passes right through ${mon_nam_mm(mdef)}!`);
+        }
+        return true;
+    }
+    return false;
+}
+
+// ── mhitm.c:1283 mswingsm ────────────────────────────────────────────────────
+// "<Mon> thrusts his <weapon> at <mdef>."  The mon-vs-mon format ends in
+// "at %s"; mhitu.c's monster-vs-hero mswings() is the one that doesn't, and
+// this used to emit that (hero-directed) wording with a hardcoded "crude
+// dagger" as the weapon name.  Display only; no RNG.
+async function mswingsm(magr, mdef, otemp) {
+    if (!mm_can_see_mon(magr)) return;
+    // mswings_verb(otemp, bash): SLASH weapons swing, everything else the
+    // monsters here wield thrusts; a polearm used at reach bashes (no monster
+    // in this port wields one).
+    const verb = SLASH_OTYPS_MM.has(otemp.otyp) ? 'swings' : 'thrusts';
+    const hisher = magr.female ? 'her' : 'his';
+    const many = ((otemp.quan | 0) > 1) ? 'one of ' : '';
+    await emitMMmsg(`${Monnam(magr)} ${verb} ${many}${hisher} ${xname(otemp)}`
+        + ` at ${mon_nam_mm(mdef)}.`);
+}
+// C ref: objects[].oc_dir & SLASH for the edged weapons monsters can wield
+// (otyps per mkobj.js).  Everything else they carry is PIERCE.
+const SLASH_OTYPS_MM = new Set([
+    43 /*scimitar*/, 44 /*silver saber*/, 45 /*broadsword*/, 46 /*long sword*/,
+    47 /*two-handed sword*/, 48 /*katana*/, 51 /*axe*/, 52 /*battle-axe*/,
+]);
+
+// C ref: weapon.c hitval(otmp, mon) — spe + oc_hitbon, +2 for a blessed weapon
+// against undead/demons.  (The spear-vs-kebabable, trident-vs-swimmer,
+// pick-axe-vs-xorn and artifact bonuses need tables this port doesn't carry.)
+// It is added to tmp BEFORE the to-hit roll and subtracted after, so leaving it
+// out changed whether an armed monster connects.
+function hitval_mm(weapon, mtmp) {
+    if (!weapon) return 0;
+    let tmp = (weapon.spe || 0) + (WEP_HITBON[weapon.otyp] ?? 0);
+    const ptr = permonst(mtmp);
+    if (weapon.blessed && (is_undead_flag(ptr) || is_demon_flag(ptr))) tmp += 2;
+    return tmp;
+}
+
+// C ref: include/monst.h:251 helpless(mon) = msleeping || !mcanmove.
+function helpless_mm(mtmp) {
+    return !!(mtmp && (mtmp.msleeping || !mtmp.mcanmove));
+}
+
+// C ref: mhitu.c:467 mtrapped_in_pit(mtmp) — an AT_KICK attack is skipped
+// entirely (C `continue`s, so no to-hit roll and no passive) while the kicker
+// is stuck in a pit.
+function mtrapped_in_pit(mtmp) {
+    if (!mtmp?.mtrapped) return false;
+    const t = t_at(mtmp.mx, mtmp.my);
+    return !!t && is_pit(t.ttyp);
+}
+
+// C ref: do_name.c a_monnam(mtmp) — "a <species>" (the given name alone when
+// the monster has one).
+function a_monnam(mtmp) {
+    const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
+    if (given) return given;
+    const s = mon_species(mtmp);
+    return (/^[aeiouAEIOU]/.test(s) ? 'an ' : 'a ') + s;
+}
+
+// ── mhitm.c:644 hitmm ────────────────────────────────────────────────────────
+// pre_mm_attack() first, then the "X <verb> Y." line (when visible), THEN
+// mdamagem() — so the hit message precedes any death message.  Neither
+// consumes RNG.  When not visible the hero may instead hear it (noises()).
+// shade_miss() (a shade shrugging off a non-silver/non-blessed hit, which
+// BYPASSES mdamagem and its d() roll) is not modelled.
+async function hitmm(magr, mdef, mattk, mwep, dieroll) {
+    pre_mm_attack(magr, mdef);
+    const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
+    if (mm_visible(magr, mdef)) {
+        if (compat) {
+            await emitMMmsg(`${Monnam_mm(magr)}`
+                + ` ${mdef.mcansee ? 'smiles at' : 'talks to'}`
+                + ` ${mon_nam_mm(mdef)}`
+                + ` ${compat === 2 ? 'engagingly' : 'seductively'}.`);
+        } else if (mattk.aatyp === AT_TENT) {
+            await emitMMmsg(`${s_suffix_mm(Monnam_mm(magr))} tentacles suck`
+                + ` ${mon_nam_mm(mdef)}.`);
+        } else {
+            await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)}`
+                + ` ${mon_nam_mm(mdef)}.`);
+        }
+    } else {
+        await noises(magr, mattk);
+    }
+    return await mdamagem(magr, mdef, mattk, mwep, dieroll);
+}
+
+// ── mhitm.c:76 missmm ────────────────────────────────────────────────────────
+async function missmm(magr, mdef, mattk) {
+    pre_mm_attack(magr, mdef);
+    if (mm_visible(magr, mdef)) {
+        const seduces = !magr.mcan && could_seduce(magr, mdef, mattk);
+        await emitMMmsg(`${Monnam_mm(magr)}`
+            + ` ${seduces ? 'pretends to be friendly to' : 'misses'}`
+            + ` ${mon_nam_mm(mdef)}.`);
+    } else {
+        await noises(magr, mattk);
+    }
+}
+
+// ── mhitm.c:293 mattackm ─────────────────────────────────────────────────────
+// A monster attacks another monster.  Returns M_ATTK_*.
 export async function mattackm(magr, mdef) {
     if (!magr || !mdef) return M_ATTK_MISS;
+    if (helpless_mm(magr)) return M_ATTK_MISS;         // mhitm.c:311
     if (DEADMONSTER(magr) || DEADMONSTER(mdef)) return M_ATTK_MISS;
 
-    const agrCd = combatData(magr);
-    const defCd = combatData(mdef);
-    // Unmodeled combatant -> decline WITHOUT consuming RNG (see header note).
-    if (!agrCd) return M_ATTK_MISS;
+    const pa = permonst(magr), pd = permonst(mdef);
 
-    // tmp = find_mac(mdef) + magr->m_lev.  (mconf/helpless +4 and elf/orc +1
-    // never apply to the modeled animal/pet matchups.)
-    let tmpBase = find_mac(mdef, defCd) + monLev(magr, agrCd);
+    // Grid bugs cannot attack at an angle.                  mhitm.c:316
+    if (pa?.name === 'grid bug' && magr.mx !== mdef.mx && magr.my !== mdef.my)
+        return M_ATTK_MISS;
+
+    // tmp = find_mac(mdef) + magr->m_lev, +4 if the defender is confused or
+    // helpless (which also WAKES it), +1 for elf-vs-orc.  Both were dismissed
+    // as "never apply to the modeled matchups"; a sleeping defender is the
+    // normal case for a monster the hero hasn't disturbed, and the +4 flips the
+    // `tmp > dieroll` test — i.e. it decides whether mdamagem() rolls at all.
+    let tmpBase = find_mac(mdef) + monLev(magr);
+    if (mdef.mconf || helpless_mm(mdef)) {             // mhitm.c:322
+        tmpBase += 4;
+        mdef.msleeping = 0;
+    }
+
+    // A hiding defender is flushed out by being attacked.   mhitm.c:328
+    if (mdef.mundetected) {
+        mdef.mundetected = 0;
+        newsym(mdef.mx, mdef.my);
+        if (mm_can_see_mon(mdef))
+            await emitMMmsg(`Suddenly, you notice ${a_monnam(mdef)}.`);
+    }
+
+    if (is_elf_flag(pa) && is_orc_flag(pd)) tmpBase++;  // mhitm.c:353
 
     // magr->mlstmv = svm.moves — flags that the aggressor has acted this round
     // (the dog_move return-attack gate at dogmove.c:1159 reads the *defender's*
@@ -639,105 +1042,128 @@ export async function mattackm(magr, mdef) {
         res[i] = M_ATTK_MISS;
 
         // target might no longer be there (after the first attack)
-        if (i > 0 && (DEADMONSTER(magr) || DEADMONSTER(mdef))) continue;
-
-        const mattk = getmattk(magr, agrCd, i);
-        if (mattk.aatyp === AT_NONE) {
-            // no attack in this slot -> strike 0, attk 0 (no passive, no RNG)
+        if (i > 0 && (m_at(mdef.mx, mdef.my) !== mdef
+                      || DEADMONSTER(magr) || DEADMONSTER(mdef)))
             continue;
-        }
+
+        const mattk = getmattk(magr, mdef, i, res);
 
         let strike = 0, attk = 1;
-        let mwep = null; // none of the modeled attackers wield a weapon
+        let mwep = null;
         let dieroll = 0;
         let tmp = tmpBase;
 
         switch (mattk.aatyp) {
+        case AT_WEAP:
         case AT_CLAW:
         case AT_KICK:
         case AT_BITE:
         case AT_STNG:
         case AT_TUCH:
         case AT_BUTT:
-            // ranged / cockatrice-instinct guards don't apply for these mons.
-            dieroll = rnd(20 + i);             // mhitm.c:441
-            strike = (tmp > dieroll) ? 1 : 0;
-            if (strike) {
-                // C ref: mhitm.c hitmm() -> pre_mm_attack() first, then emits
-                // "X <verb> Y." (when visible), THEN calls mdamagem() — so the
-                // hit message precedes any death message.  Neither consumes
-                // RNG.  When not visible the hero may instead hear the scuffle
-                // (noises()).  A seduction-capable attacker (nymph / amorous
-                // demon) gets the compat message instead of the hit verb.
-                pre_mm_attack(magr, mdef);
-                const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
-                if (mm_visible(magr, mdef)) {
-                    if (compat)
-                        await emitMMmsg(`${Monnam_mm(magr)}`
-                            + ` ${mdef.mcansee ? 'smiles at' : 'talks to'}`
-                            + ` ${mon_nam_mm(mdef)}`
-                            + ` ${compat === 2 ? 'engagingly' : 'seductively'}.`);
-                    else
-                        await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
-                } else {
-                    await noises(magr, mattk);
+        case AT_TENT: {
+            if (mattk.aatyp === AT_WEAP) {
+                if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
+                    // thrwmm(): a ranged volley with its own multishot/hit
+                    // rolls — not modelled, so decline without RNG.
+                    strike = 0; attk = 0;
+                    break;
                 }
-                res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
-            } else {
-                // C ref: mhitm.c missmm() -> pre_mm_attack() first, then
-                // "X misses Y." (when visible), else noises().  No RNG.  A
-                // seduction attack "pretends to be friendly to" instead.
-                pre_mm_attack(magr, mdef);
-                if (mm_visible(magr, mdef)) {
-                    const seduces = !magr.mcan && could_seduce(magr, mdef, mattk);
-                    await emitMMmsg(`${Monnam_mm(magr)}`
-                        + ` ${seduces ? 'pretends to be friendly to' : 'misses'}`
-                        + ` ${mon_nam_mm(mdef)}.`);
-                } else {
-                    await noises(magr, mattk);
+                // C ref: mhitm.c:406 — an armed aggressor wields its weapon
+                // before striking.  mon_wield_item consumes no RNG; when it
+                // actually wields (returns 1) mattackm returns M_ATTK_MISS
+                // (the turn was spent wielding).
+                if (magr.weapon_check === NEED_WEAPON || !MON_WEP_MM(magr)) {
+                    magr.weapon_check = NEED_HTH_WEAPON;
+                    if (await mon_wield_item_mm(magr)) return M_ATTK_MISS;
+                }
+                // possibly_unwield(magr, FALSE) — only fires for a monster
+                // wielding something that isn't a weapon; not modelled.
+                mwep = MON_WEP_MM(magr);
+                if (!mwep && !(magr.minvent || []).length)
+                    // PORT GAP, not C: makemon.js m_initweap() only covers
+                    // S_KOBOLD/S_ORC/S_ANGEL, so every other is_armed() species
+                    // reaches melee with an empty minvent and swings bare-handed
+                    // here — drawing an rnd(20) that C spends WIELDING the weapon
+                    // m_initweap gave it (mon_wield_item != 0 -> M_ATTK_MISS).
+                    // Declining reproduces C's wield turn; leaving it out
+                    // measured -1 public (seed0383 step 211, a gnome).  Remove
+                    // once m_initweap covers the class.
+                    return M_ATTK_MISS;
+                if (mwep) {
+                    if (mm_visible(magr, mdef)) await mswingsm(magr, mdef, mwep);
+                    tmp += hitval_mm(mwep, mdef);      // mhitm.c:412
                 }
             }
-            break;
-
-        case AT_WEAP: {
-            // C ref: mhitm.c:406 — an armed aggressor wields its weapon before
-            // striking.  mon_wield_item consumes no RNG; when it actually wields
-            // (returns 1) mattackm returns M_ATTK_MISS (the turn was spent
-            // wielding) — this is the goblin grabbing its crude dagger when the
-            // pet attacks it.  If already wielded, fall through to a normal
-            // weapon strike (rnd(20+i) to-hit + mdamagem with the weapon).
-            if (magr.weapon_check === NEED_WEAPON || !MON_WEP_MM(magr)) {
-                magr.weapon_check = NEED_HTH_WEAPON;
-                if (await mon_wield_item_mm(magr)) return M_ATTK_MISS;
-            }
-            mwep = MON_WEP_MM(magr);
-            if (mwep && mm_visible(magr, mdef)) {
-                // mswingsm(magr, mdef, mwep) — display-only; "<Mon> swings/thrusts
-                // <his> <weapon>." (no RNG for the pierce-only dagger).
-                const hisher = magr.female ? 'her' : 'his';
-                await emitMMmsg(`${Monnam(magr)} thrusts ${hisher} crude dagger.`);
-            }
-            dieroll = rnd(20 + i);             // mhitm.c:441
+            if (mattk.aatyp === AT_KICK && mtrapped_in_pit(magr))
+                continue;                              // mhitm.c:419
+            // Nymph that teleported away on its first attack?
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+                continue;                              // mhitm.c:423
+            // The cockatrice-instinct guard below it in C is unreachable: mwep
+            // is only ever set on the AT_WEAP arm, and the guard requires
+            // aatyp != AT_WEAP.
+            dieroll = rnd(20 + i);                     // mhitm.c:441
             strike = (tmp > dieroll) ? 1 : 0;
+            if (mwep) tmp -= hitval_mm(mwep, mdef);    // don't accumulate
             if (strike) {
-                pre_mm_attack(magr, mdef);
-                if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam_mm(magr)} ${hit_verb(mattk.aatyp)} ${mon_nam_mm(mdef)}.`);
-                else
-                    await noises(magr, mattk);
-                res[i] = await mdamagem(magr, mdef, mattk, mwep, dieroll, agrCd, defCd);
+                if (unsolid_flag(pd) && await failed_grab(magr, mdef, mattk)) {
+                    strike = 0;
+                    break;
+                }
+                res[i] = await hitmm(magr, mdef, mattk, mwep, dieroll);
+                // The black/brown pudding clone_mon() division is not modelled.
             } else {
-                pre_mm_attack(magr, mdef);
-                if (mm_visible(magr, mdef))
-                    await emitMMmsg(`${Monnam_mm(magr)} misses ${mon_nam_mm(mdef)}.`);
-                else
-                    await noises(magr, mattk);
+                await missmm(magr, mdef, mattk);
             }
             break;
         }
 
-        default:
-            // other aatyps (AT_MAGC, AT_GAZE, ...) are not modeled.
+        case AT_HUGS:                                  // mhitm.c:466
+            strike = (i >= 2 && res[i - 1] === M_ATTK_HIT
+                      && res[i - 2] === M_ATTK_HIT) ? 1 : 0;
+            if (strike) {
+                if (await failed_grab(magr, mdef, mattk)) strike = 0;
+                else res[i] = await hitmm(magr, mdef, mattk, null, 0);
+            }
+            break;
+
+        case AT_GAZE:                                  // mhitm.c:483
+            // gazemm() itself is not modelled, but C leaves attk == 1 here, so
+            // the defender still gets its passive; the previous `default:` arm
+            // zeroed attk and swallowed passivemm's rolls.
+            strike = 0;
+            break;
+
+        case AT_ENGL:                                  // mhitm.c:500
+            if (pd?.name === 'shade') { strike = 0; break; }
+            if (mdef === game.u?.usteed) { strike = 0; break; }
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
+            strike = (tmp > rnd(20 + i)) ? 1 : 0;
+            if (strike) {
+                // gulpmm() (swallow + digestion) is not modelled; failed_grab
+                // still cancels an unsolid target faithfully.
+                if (await failed_grab(magr, mdef, mattk)) strike = 0;
+            } else {
+                await missmm(magr, mdef, mattk);
+            }
+            break;
+
+        case AT_EXPL:                                  // mhitm.c:485
+            // explmm(): the explosion damage roll isn't modelled.  C's
+            // "cancelled, no attack" arm is strike = 0, attk = 0.
+            strike = 0; attk = 0;
+            break;
+
+        case AT_BREA:
+        case AT_SPIT:                                  // mhitm.c:527
+            // Ranged attacks aren't allowed at point blank range, which is the
+            // only distance mon-vs-mon melee reaches here; breamm()/spitmm()
+            // for the non-adjacent case aren't modelled.
+            strike = 0; attk = 0;
+            break;
+
+        default: /* AT_NONE, AT_MAGC, ... — no attack */
             strike = 0; attk = 0;
             break;
         }
@@ -745,13 +1171,14 @@ export async function mattackm(magr, mdef) {
         // passivemm: reached when attk && aggressor still alive && adjacent.
         if (attk && !(res[i] & M_ATTK_AGR_DIED)
             && distmin(magr.mx, magr.my, mdef.mx, mdef.my) <= 1) {
-            res[i] = passivemm(magr, mdef, strike,
-                               (res[i] & M_ATTK_DEF_DIED), mwep, defCd);
+            res[i] = await passivemm(magr, mdef, strike,
+                                     (res[i] & M_ATTK_DEF_DIED), mwep);
         }
 
         if (res[i] & M_ATTK_DEF_DIED) return res[i];
         if (res[i] & M_ATTK_AGR_DIED) return res[i];
-        if ((res[i] & M_ATTK_AGR_DONE)) return res[i];
+        if ((res[i] & M_ATTK_AGR_DONE) || helpless_mm(magr)) return res[i];
+        // mon_offmap(mdef) (knocked into a level teleporter) isn't modelled.
         if (res[i] & M_ATTK_HIT) struck = 1;
     }
 

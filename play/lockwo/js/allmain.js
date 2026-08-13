@@ -1365,6 +1365,21 @@ export async function moveloop_core() {
         return;
     }
 
+    // C ref: allmain.c moveloop_core():485 — the engrave() occupation (set by
+    // engrave.c doengrave()'s set_occupation(engrave, "engraving", 0)).  One
+    // action per turn; a carving stylus manages only ONE character per action
+    // (rate 1), so an eight-character engraving is eight turns with no command
+    // read in between.
+    if (g._engrave_occupation) {
+        const { engrave_step } = await import('./engrave.js');
+        const busy = await engrave_step();
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        if (!busy) g._engrave_occupation = null;
+        return;
+    }
+
     // C ref: allmain.c moveloop_core():485 — the learn() occupation (set by
     // spell.c study_book()).  An UNTIMED occupation: learn() counts
     // context.spbook.delay up toward zero itself, one turn per call, so the move

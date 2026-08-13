@@ -160,6 +160,16 @@ export async function outrip_and_score(how) {
         disp.setCursor(MORE.length, row); // cursor one past --More-- (col 8)
     };
 
+    // C ref: getline.c xwaitforspace(quitchars) behind every dmore() — only
+    // " \r\n\033" dismiss the page; any other key rings the bell and waits
+    // again WITHOUT redrawing, so it is recorded as a repeat of the same frame.
+    const waitforspace = async () => {
+        for (;;) {
+            const k = await nhgetch();
+            if (k === 32 || k === 13 || k === 10 || k === 27) return k;
+        }
+    };
+
     // Page 1 — the tombstone.  C tty process_text_window() prints window lines
     // 0..(rows-2) then pauses with --More-- on the last row (rows-1 == 23).
     disp.clearScreen();
@@ -167,15 +177,19 @@ export async function outrip_and_score(how) {
         if (lines[i]) disp.putstr(0, i, lines[i], NO_COLOR, 0);
     }
     drawMore(ROWS - 1);
-    await nhgetch();
+    // wintty.c:1821 — ESC sets WIN_CANCELLED and abandons every remaining page.
+    const ripCancelled = (await waitforspace()) === 27;
 
     // The remaining pages are blank --More-- acknowledgements: process_text_window
     // clears and shows its final page (window line 23 == "" -> blank) with
     // --More--, then the endgame window teardown / topten() setup pauses for the
     // recorded space/return acknowledgements before the score line is printed.
-    for (let b = 0; b < 5; b++) {
+    for (let b = 0; !ripCancelled && b < 5; b++) {
         disp.clearScreen();
         drawMore(ROWS - 1);
+        // NOT waitforspace(): this port folds really_done()'s disclosure
+        // queries into these frames, and those answer keys ('y'/'n') are not
+        // quitchars — looping here would swallow the next command.
         await nhgetch();
     }
 
@@ -598,13 +612,26 @@ async function real_death_epilogue(how) {
         disp.setCursor(MORE.length, row);
     };
 
+    // C ref: getline.c xwaitforspace(quitchars) behind every dmore() — only
+    // " \r\n\033" dismiss; any other key rings the bell and waits again without
+    // redrawing, so it records as a repeat of the same frame.
+    const waitforspace = async () => {
+        for (;;) {
+            const k = await nhgetch();
+            if (k === 32 || k === 13 || k === 10 || k === 27) return k;
+        }
+    };
+
     // Page 1 — the tombstone.
     disp.clearScreen();
     for (let i = 0; i < ROWS - 1 && i < lines.length; i++) {
         if (lines[i]) disp.putstr(0, i, lines[i], NO_COLOR, 0);
     }
     drawMore(ROWS - 1);
-    await nhgetch();
+    // wintty.c:1821 process_text_window() — `if (morc == '\033') { flags |=
+    // WIN_CANCELLED; break; }`, so ESC at any page abandons EVERY remaining
+    // page of the endgame text window and drops straight into topten().
+    const ripCancelled = (await waitforspace()) === 27;
 
     // C ref: topten() — "assure minimum number of points": t0->points is
     // floored to 0 when under sysopt.pointsmin (always 1: POINTSMIN's
@@ -629,9 +656,10 @@ async function real_death_epilogue(how) {
     // makes the list (each of seed0030's diverse deaths scores real points and
     // gets the "You made the top ten list!" banner), one when it doesn't
     // (seed0009's Tutorial death, floored to 0 points; seed0030's Samurai quit).
-    for (let b = 0; b < (tt.banner ? 2 : 1); b++) {
+    for (let b = 0; !ripCancelled && b < (tt.banner ? 2 : 1); b++) {
         disp.clearScreen();
         drawMore(ROWS - 1);
+        // NOT waitforspace(): see outrip_and_score().
         await nhgetch();
     }
 

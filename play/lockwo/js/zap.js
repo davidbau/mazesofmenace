@@ -148,7 +148,7 @@ function zap_ok(obj) {
 
 // C ref: zap.c zappable — can the wand be zapped?  spe<0 -> no; spe==0 wrests
 // a final charge with WAND_WREST_CHANCE odds; otherwise consume one charge.
-function zappable(wand) {
+export function zappable(wand) {
     if (wand.spe < 0 || (wand.spe === 0 && rn2(WAND_WREST_CHANCE)))
         return false;
     if (wand.spe === 0)
@@ -166,6 +166,32 @@ async function backfire(otmp) {
     const dmg = d((otmp.spe | 0) + 2, 6);
     await losehp(Maybe_Half_Phys(dmg), 'exploding wand');
     useupall(otmp);
+}
+
+// C ref: read.c wand_explode(obj, chg) — overcharging a wand, or zapping /
+// engraving with a cursed one.  chg==0 is the zap/engrave case, which uses 2
+// damage dice plus the wand's charges.
+export async function wand_explode(obj, chg) {
+    const expl = !chg ? 'suddenly' : 'vibrates violently and';
+    if (!chg) chg = 2;
+    let n = (obj.spe | 0) + chg;
+    if (n < 2) n = 2;
+    let k;
+    switch (obj.otyp) {
+    case WAN_WISHING: k = 12; break;
+    case WAN_CANCELLATION: case WAN_DEATH: case WAN_POLYMORPH:
+    case WAN_UNDEAD_TURNING: k = 10; break;
+    case WAN_COLD: case WAN_FIRE: case WAN_LIGHTNING:
+    case 429 /*WAN_MAGIC_MISSILE*/: k = 8; break;
+    case WAN_NOTHING: k = 4; break;
+    default: k = 6; break;
+    }
+    const dmg = d(n, k);
+    obj.in_use = true;
+    await pline(`Your ${xname(obj)} ${expl} explodes!`);
+    await losehp(Maybe_Half_Phys(dmg), 'exploding wand');
+    useup(obj);
+    exercise(A_STR, false);
 }
 
 // C ref: youprop.h Maybe_Half_Phys(dmg) — halve physical damage when the hero
@@ -197,7 +223,7 @@ function learnwand(obj) {
 // default each draw RNG (stasis rn1(21,10), create monster rn2(23) + makemon,
 // wishing rn2(5), enlightenment's exercise(A_WIS) rn2(19)) or relight the
 // level (wand of light), which steers every later cansee()-gated predicate.
-async function zapnodir(obj) {
+export async function zapnodir(obj) {
     let known = false;
     switch (obj.otyp) {
     case WAN_LIGHT:

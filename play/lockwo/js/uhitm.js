@@ -44,7 +44,7 @@ import { exercise, adjalign } from './attrib.js';
 import { DEADMONSTER, Protection_from_shape_changers, mmove_of, base_mmove,
          healmon, mvitals_died } from './mon.js';
 import { MFLAGS1, MFLAGS2, M1_WALLWALK, M2_NASTY, M2_ORC, M2_UNDEAD, M2_DEMON,
-         humanoid } from './monflags_data.js';
+         M2_COLLECT, humanoid } from './monflags_data.js';
 const mflags1_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS1[ptr.pmidx] ?? 0) : 0);
 const mflags2_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] ?? 0) : 0);
 import { dmgtype, attacktype, AT_ENGL, AT_HUGS, AD_STCK } from './monattk_data.js';
@@ -53,7 +53,8 @@ import { mattk_of, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_STNG, AT_BUTT, AT_TUCH
          AD_BLND, AD_STUN, AD_PLYS, AD_DRLI, AD_STON, AD_SLIM, AD_RUST, AD_CORR,
          AD_ENCH } from './monattk_data.js';
 import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
-         TOOL_CLASS, GEM_CLASS, objects, COIN_CLASS, STRANGE_OBJECT } from './mkobj.js';
+         TOOL_CLASS, GEM_CLASS, SPBOOK_CLASS, FOOD_CLASS, objects, COIN_CLASS,
+         STRANGE_OBJECT } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
@@ -655,7 +656,24 @@ async function hostile_attack(mtmp) {
         const { can_twoweapon } = await import('./wield.js');
         if (!(await can_twoweapon())) await untwoweapon();
     }
-    // gu.unweapon "begin bashing" message: no RNG.
+    // C ref: uhitm.c:539-549 — the one-shot gu.unweapon notice.  No RNG, but it
+    // occupies the top line and forces a --More-- before the hit message.
+    if (game.unweapon) {
+        game.unweapon = false;
+        if (game.flags?.verbose !== false) {
+            // update_topl (not pline) so the hit message that follows pages
+            // this line with --More-- the way C's toplin state machine does.
+            const { update_topl } = await import('./display.js');
+            const { cxname_singular, makeplural, body_part } = await import('./invent.js');
+            if (game.uwep) {
+                const base = cxname_singular(game.uwep);
+                const nm = ((game.uwep.quan ?? 1) > 1) ? makeplural(base) : base;
+                await update_topl(`You begin bashing monsters with your ${nm}.`);
+            } else {
+                await update_topl(`You begin ${Role_if_MONK() ? 'striking' : 'bashing'} monsters with your ${game.uarmg ? 'gloved' : 'bare'} ${makeplural(body_part(6 /*HAND*/))}.`);
+            }
+        }
+    }
 
     // C ref: uhitm.c:551 — exercise(A_STR, TRUE) "you're exercising muscles".
     exercise(A_STR, true);
@@ -1135,9 +1153,17 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     if (unarmed) {
         // hmon_hitmon_barehands (uhitm.c:847): dmg = rnd(martial ? 4 : 2).
         dmg = rnd(martial_bonus() ? 4 : 2);
-    } else {
+    } else if (weapon.oclass === WEAPON_CLASS || is_weptool(weapon)) {
         // hmon_hitmon_weapon_melee: dmg = dmgval(weapon, mon).
         dmg = dmgval(weapon, mon);
+    } else {
+        // C ref: uhitm.c hmon_hitmon_misc_obj() `default:` — wielding an
+        // ordinary object still hurts, by its weight.  dmgval() returns 0 for
+        // a non-weapon, so this path used to deal NO damage at all (a wielded
+        // stethoscope could never kill anything).  The per-otyp special cases
+        // (boulder, iron ball, potions, cream pie, corpses, ...) are not
+        // reached by the covered sessions and are left to the default arm.
+        dmg = hmon_misc_obj_dmg(weapon);
     }
     const train_weapon_skill = dmg > 1;   // uhitm.c:849 / :946
 
@@ -1184,7 +1210,11 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     // line always follows this one, never precedes it.  minimal_xname()-style
     // bare name (cursed prefix only; no BUC/erosion/enchant/call-name) mirrors
     // first_weapon_hit()'s own avoidance of xname()'s player-supplied name.
-    if (!unarmed && dmg > 0 && (game.u?.uconduct?.weaphit ?? 0) <= 1) {
+    // C ref: uhitm.c:1835-1843 — the conduct line only fires for a real weapon
+    // or weptool (the same test that gates the weaphit++ in known_hitum); a
+    // wielded stethoscope/tool must not log it.
+    if (!unarmed && (weapon.oclass === WEAPON_CLASS || is_weptool(weapon))
+        && dmg > 0 && (game.u?.uconduct?.weaphit ?? 0) <= 1) {
         const buf = (weapon.cursed && weapon.bknown ? 'cursed ' : '')
             + objectBaseName(weapon);
         livelog_printf(LL_CONDUCT,
@@ -1616,7 +1646,16 @@ export async function killed(mon, opts) {
             // invocation-tool guard) even though an ordinary item never
             // resists — skipping that roll (as a bare place always would)
             // desyncs every RNG draw after it, including corpse_chance() below.
-            if ((mon.data?.msize ?? 2 /* MZ_HUMAN */) < 2 && otyp !== FIGURINE
+            // C ref: mon.c:3597 — the FOOD_CLASS arm comes FIRST: newly created
+            // permafood is destroyed unless the killed monster collects food
+            // (M2_COLLECT).  Omitting it left the food on the floor AND skipped
+            // delobj()'s obj_resists() rn2(100), desyncing everything after.
+            const isFoodDrop = otmp.oclass === FOOD_CLASS
+                && !(mflags2_of(mon.data) & M2_COLLECT) && !otmp.oartifact;
+            if (isFoodDrop) {
+                const { delobj } = await import('./invent.js');
+                delobj(otmp);
+            } else if ((mon.data?.msize ?? 2 /* MZ_HUMAN */) < 2 && otyp !== FIGURINE
                 && (otmp.owt || 0) > 30) {
                 const { delobj } = await import('./invent.js');
                 delobj(otmp);
@@ -1813,6 +1852,25 @@ const W = {
     WAR_HAMMER: 76, FLAIL: 81, IRON_CHAIN: 478,
     ACID_VENOM: 480,   // mkobj.js ACID_VENOM
 };
+
+// C ref: uhitm.c hmon_hitmon_misc_obj() `default:` arm — VEGGY/PAPER objects
+// (except spellbooks) are too floppy to hurt; everything else does weight-based
+// damage capped at 6, plus the wet-towel wetness bonus.
+const MAT_VEGGY = 3, MAT_PAPER = 5;
+function hmon_misc_obj_dmg(obj) {
+    const mat = objects[obj.otyp]?.material;
+    if ((mat === MAT_VEGGY || mat === MAT_PAPER) && obj.oclass !== SPBOOK_CLASS)
+        return 0;
+    let dmg = Math.trunc(((obj.owt || 0) + 99) / 100);
+    dmg = (dmg <= 1) ? 1 : rnd(dmg);
+    if (dmg > 6) dmg = 6;
+    // is_wet_towel(obj): a towel with wetness left adds obj->spe, then rerolls.
+    if (obj.otyp === 234 /*TOWEL*/ && (obj.spe | 0) > 0) {
+        dmg += (obj.spe | 0);
+        dmg = rnd(dmg);
+    }
+    return dmg;
+}
 
 export function dmgval(otmp, mon) {
     if (!otmp) return 1;

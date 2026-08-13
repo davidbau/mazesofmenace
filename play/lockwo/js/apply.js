@@ -27,7 +27,9 @@ import { rn2, rnd } from './rng.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, POTION_CLASS, WEAPON_CLASS,
     COIN_CLASS, SCROLL_CLASS, MAGIC_MARKER, SCR_BLANK_PAPER, SPE_BLANK_PAPER,
+    POT_OIL, objects,
 } from './mkobj.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 // C ref: include/onames.h — STETHOSCOPE object type index (mkobj.js OBJECTS
 // row [237, "STETHOSCOPE", ...]).  Defined locally to avoid threading a new
@@ -41,6 +43,10 @@ const BRASS_LANTERN = 226, OIL_LAMP = 227, MAGIC_LAMP = 228;
 const GEM_CLASS = 9, FOOD_CLASS = 7;
 // Applicable foods (mkobj.js OBJECT_DATA indices).
 const EUCALYPTUS_LEAF = 276, LUMP_OF_ROYAL_JELLY_OTYP = 286, CREAM_PIE = 287;
+const BULLWHIP_OTYP = 82; // mkobj.js OBJECT_DATA otyp column
+const STATUE_OTYP = 476;  // mkobj.js STATUE
+// skills.h P_SKILL levels used by calc_pole_range().
+const P_SKILLED = 3, P_EXPERT = 4;
 
 // C ref: include/onames.h — the lock-picking tools (mkobj.js OBJECTS rows).
 const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
@@ -57,11 +63,15 @@ let _invent = null;
 let _display = null;
 let _cmd = null;
 let _uhitm = null;
+let _vision = null;
+let _enhance = null;
 async function loadDeps() {
     if (!_invent) _invent = await import('./invent.js');
     if (!_display) _display = await import('./display.js');
     if (!_cmd) _cmd = await import('./cmd.js');
     if (!_uhitm) _uhitm = await import('./uhitm.js');
+    if (!_vision) _vision = await import('./vision.js');
+    if (!_enhance) _enhance = await import('./enhance.js');
 }
 
 // C ref: do_name.c x_monnam — the article+name string for a monster.  Routed
@@ -89,14 +99,29 @@ function apply_ok(obj) {
 
     if (obj.oclass === COIN_CLASS) return DOWNPLAY;
 
-    // Applicable weapons (pick/axe/pole/bullwhip) — none in the starter
-    // sessions that reach here, but keep the class check for completeness.
-    if (obj.oclass === WEAPON_CLASS) return EXCLUDE_SELECTABLE;
+    // C ref: apply.c apply_ok() — is_pick/is_axe/is_pole/BULLWHIP all SUGGEST.
+    // A Knight's starting lance is the common case; the blanket
+    // EXCLUDE_SELECTABLE left it off the apply prompt's suggested-letter list.
+    if (obj.oclass === WEAPON_CLASS) {
+        if (I && (I.is_pick(obj) || I.is_axe(obj) || I.is_pole(obj)))
+            return SUGGEST;
+        if (obj.otyp === BULLWHIP_OTYP) return SUGGEST;
+        return EXCLUDE_SELECTABLE;
+    }
 
     if (obj.oclass === POTION_CLASS) {
-        // Only oil is applicable, and only once discovered; starter potions are
-        // undiscovered so they DOWNPLAY rather than SUGGEST.
-        return DOWNPLAY;
+        // C ref: apply.c apply_ok() — only an UNIDENTIFIED potion downplays; an
+        // identified one is SUGGESTed when it is oil and otherwise falls
+        // through to EXCLUDE_SELECTABLE below.  Returning DOWNPLAY for every
+        // potion set getobj()'s forceprompt, so 'a' with nothing applicable
+        // raised the prompt instead of printing "You don't have anything to
+        // use or apply." (holy water is type-known from turn 1).
+        // C's oc_name_known: an object with no randomized appearance is
+        // type-known from init_objects (see invent.js not_fully_identified).
+        const typeKnown = !!objects[obj.otyp]?.oc_name_known
+            || DESCR_BY_OTYP[obj.otyp] == null;
+        if (!obj.dknown || !typeKnown) return DOWNPLAY;
+        if (obj.otyp === POT_OIL) return SUGGEST;
     }
 
     // C ref apply.c:4185 — certain foods are applicable (cream pie -> facial,
@@ -581,6 +606,130 @@ export async function dorub() {
     } else {
         await _display.pline('Nothing happens.');
     }
+    return ECMD_TIME;
+}
+
+// C ref: apply.c calc_pole_range() — min is always 4; max grows with the
+// wielded pole's weapon skill (4 at Unskilled/Basic, 5 Skilled, 8 Expert).
+function calc_pole_range() {
+    const min_range = 4;
+    let max_range = 4;
+    const typ = _enhance.uwep_skill_type();
+    const lvl = typ ? _enhance.p_skill_of(typ) : 0;
+    if (lvl >= P_EXPERT) max_range = 8;
+    else if (lvl === P_SKILLED) max_range = 5;
+    return { min_range, max_range };
+}
+
+// C ref: display.h glyph_is_poleable(G) — a displayed monster, a remembered
+// "sensed but unseen monster" mark, or a statue.  This port keeps no glyph
+// array, so the same three cases are read off the level state.
+function poleable_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc?.invisMon) return true;
+    const mtmp = _display.m_at(x, y);
+    if (mtmp && _uhitm.canspotmon(mtmp)) return true;
+    return statue_at(x, y);
+}
+
+function statue_at(x, y) {
+    for (const o of (game.level?.objects || []))
+        if (o && o.otyp === STATUE_OTYP && o.ox === x && o.oy === y) return true;
+    return false;
+}
+
+function distu_sq(x, y) {
+    const dx = x - (game.u?.ux ?? 0), dy = y - (game.u?.uy ?? 0);
+    return dx * dx + dy * dy;
+}
+
+// C ref: apply.c get_valid_polearm_position(x, y).
+function valid_polearm_position(x, y, min_range, max_range) {
+    if (!(x >= 0 && x < 80 && y >= 0 && y < 21)) return false;
+    const d = distu_sq(x, y);
+    if (d < min_range || d > max_range) return false;
+    return _vision.cansee(x, y)
+        || (_vision.couldsee(x, y) && poleable_at(x, y));
+}
+
+// C ref: apply.c find_poleable_mon(pos) — scan the isqrt(max_range) box for
+// EXACTLY ONE poleable square; two or more candidates means "can't guess", so
+// the caller's cc stays where it was.  Tame/peaceful monsters are skipped
+// unless the hero is impaired.  No RNG.
+function find_poleable_mon(pos, min_range, max_range) {
+    const u = game.u;
+    const impaired = !!(game.u?.uconf || game.u?.ustun || game.Hallucination);
+    const rt = Math.floor(Math.sqrt(max_range));
+    const lo_x = Math.max(u.ux - rt, 1), hi_x = Math.min(u.ux + rt, 79);
+    const lo_y = Math.max(u.uy - rt, 0), hi_y = Math.min(u.uy + rt, 20);
+    let mx = 0, my = 0;
+    for (let x = lo_x; x <= hi_x; ++x) {
+        for (let y = lo_y; y <= hi_y; ++y) {
+            if (!valid_polearm_position(x, y, min_range, max_range)) continue;
+            const mtmp = _display.m_at(x, y);
+            if (!impaired && mtmp && _uhitm.canspotmon(mtmp)
+                && (mtmp.mtame || (mtmp.mpeaceful && game.flags?.confirm !== false)))
+                continue;
+            const isStatue = statue_at(x, y);
+            if (poleable_at(x, y) && (!isStatue || impaired)) {
+                if (mx) return false; /* more than one candidate location */
+                mx = x; my = y;
+            }
+        }
+    }
+    if (!mx) return false;
+    pos.x = mx; pos.y = my;
+    return true;
+}
+
+// C ref: apply.c use_pole(obj, autohit) — reached from dofire() as
+// use_pole(uwep, TRUE) when the quiver is empty and a polearm is wielded.
+// With autohit set there is NO "Where do you want to hit?" prompt and no
+// getpos(): the target is whatever find_poleable_mon() uniquely picks, else
+// the last-hit monster, else the hero's own square — which is why an empty
+// room answers "Don't know what to hit."  RNG-free unless a hit lands.
+export async function use_pole(obj, autohit) {
+    await loadDeps();
+    const u = game.u;
+
+    if (obj !== game.uwep) {
+        // C: wield_tool() then re-queue doapply; dofire only calls this with uwep.
+        return ECMD_OK;
+    }
+    const { min_range, max_range } = calc_pole_range();
+
+    if (!autohit) await _display.update_topl('Where do you want to hit?');
+    const cc = { x: u.ux, y: u.uy };
+    const hitm = game.context?.polearm_hitmon;
+    if (!find_poleable_mon(cc, min_range, max_range) && hitm && !hitm.mdead
+        && _uhitm.canspotmon(hitm)
+        && distu_sq(hitm.mx, hitm.my) <= max_range
+        && distu_sq(hitm.mx, hitm.my) >= min_range) {
+        cc.x = hitm.mx; cc.y = hitm.my;
+    }
+    // The !autohit getpos() prompt is not reachable from dofire().
+
+    const d = distu_sq(cc.x, cc.y);
+    if (d > max_range) {
+        await _display.update_topl('Too far!');
+        return ECMD_OK;
+    } else if (d < min_range) {
+        if (autohit && cc.x === u.ux && cc.y === u.uy)
+            await _display.update_topl("Don't know what to hit.");
+        else
+            await _display.update_topl('Too close!');
+        return ECMD_OK;
+    } else if (!_vision.cansee(cc.x, cc.y) && !poleable_at(cc.x, cc.y)) {
+        await _display.update_topl("You won't hit anything if you can't see that spot.");
+        return ECMD_OK;
+    } else if (!_vision.couldsee(cc.x, cc.y)) {
+        await _display.update_topl("You can't reach that spot from here.");
+        return ECMD_OK;
+    }
+
+    // A reachable target square: C runs attack_checks()/thitmonst() (or the
+    // statue/boulder/terrain "Thump!" arms).  thitmonst() is not ported, so
+    // stop here rather than invent an RNG stream C does not draw.
     return ECMD_TIME;
 }
 

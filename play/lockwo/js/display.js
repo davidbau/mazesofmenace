@@ -1651,6 +1651,29 @@ export async function topl_more_ext(extraChars) {
         disp.setCell(curx + i, cury, DEFMORESTR[i], NO_COLOR, 0);
     disp.setCursor(Math.min(curx + DEFMORESTR.length, CO - 1), cury);
 
+    // C ref: win/tty/topl.c more():237 — after xwaitforspace,
+    //   `if (ttyDisplay->toplin && cw->cury) {
+    //        docorner(1, cw->cury + 1, 0); cw->curx = cw->cury = 0; home(); }`
+    // wintty.c docorner() blanks rows 0..cury and row_refresh()es the map rows
+    // underneath them (ymax stays well above the status window, so no bot()).
+    // Without this a --More-- that word-wrapped onto row 1 survived onto the
+    // next frame whenever the following draw repaints only row 0 — which is
+    // exactly what getline.c's prompt does.
+    const clear_wrapped_rows = () => {
+        if (cury <= 0) return;
+        for (let r = 0; r <= cury && r < ROWNO + 1; r++) {
+            for (let x = 0; x < CO; x++) disp.setCell(x, r, ' ', NO_COLOR, 0);
+            const my = r - 1; // map row under screen row r (map offy == 1)
+            if (my < 0 || my >= ROWNO) continue;
+            for (let x = 1; x < COLNO; x++) {
+                const loc = game.level?.at(x, my);
+                if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                disp.setCell(x - 1, r, decgfxMapChar(loc.disp_ch, loc.disp_decgfx),
+                             loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+            }
+        }
+    };
+
     // xwaitforspace: read keys until space / return / escape / an extra char.
     for (;;) {
         const c = await nhgetch();
@@ -1662,9 +1685,18 @@ export async function topl_more_ext(extraChars) {
             // and then unconditionally clears the flag.  Space/return leave
             // messages flowing normally.
             if (c === 27) game._winStop = true;
+            // C more():237-245 — the docorner() and the ESC cl_end() arms are
+            // an if/else: the corner clear only runs with cw->cury != 0, so a
+            // one-row topline dismissed with ESC takes the cl_end() arm and the
+            // message line is WIPED (space/return leave it standing).
+            if (cury > 0) clear_wrapped_rows();
+            else if (c === 27) { game._pending_message = ''; game._toplin = 0; }
             return c;
         }
-        if (extraChars && extraChars.includes(String.fromCharCode(c))) return c;
+        if (extraChars && extraChars.includes(String.fromCharCode(c))) {
+            clear_wrapped_rows();
+            return c;
+        }
     }
 }
 
@@ -1684,6 +1716,15 @@ const TOPLIN_NEED_MORE = 1; // game._toplin: 0 = empty, 1 = NEED_MORE
 export async function update_topl(bp) {
     const n0 = bp.length;
     const cur = game._pending_message || '';
+    // C ref: win/tty/topl.c update_topl():257 `skip = (flags & (WIN_STOP |
+    // WIN_NOSTOP)) == WIN_STOP` — after a --More-- dismissed with ESC the line
+    // is still accumulated into gt.toplines but is neither drawn nor more()d.
+    // The flag dies at the very next nhgetch (input.js), so this window is one
+    // command long; an earlier attempt with a longer lifetime measured -172.
+    if (game._winStop) {
+        game._toplines = (cur && n0 + cur.length + 3 < CO - 8) ? `${cur}  ${bp}` : bp;
+        return;
+    }
     if (game._toplin === TOPLIN_NEED_MORE
         && n0 + cur.length + 3 < CO - 8
         && !bp.startsWith('You die')) {
@@ -1764,7 +1805,16 @@ export async function y_n(query, resp = 'yn\x1b', def = 'n') {
         // printed right after the prompt (e.g. savelife's "OK, so you don't
         // die.") starts a fresh line rather than appending after a phantom
         // "  " separator.
-        if (c === 32 || c === 13 || c === 10 || c === 27) {
+        // C ref: win/tty/topl.c tty_yn_function():463 — ESC is NOT just another
+        // quitchar: it answers 'q' when the response set offers one, else 'n',
+        // and only then falls back to the default.  Treating it as the default
+        // made ESC at "eat it? [ynq] (n)" answer 'n', which falls through to the
+        // inventory-eat prompt C never shows.
+        if (c === 27) {
+            game._toplin = 0;
+            return resp.includes('q') ? 'q' : resp.includes('n') ? 'n' : def;
+        }
+        if (c === 32 || c === 13 || c === 10) {
             game._toplin = 0;
             return def;
         }

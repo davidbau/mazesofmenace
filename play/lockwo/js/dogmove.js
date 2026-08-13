@@ -5,9 +5,18 @@
 // real monster/object records on game.level.  Faithful to the C control flow
 // so the per-move RNG (obj_resists rn2(100), dog_goal rn2(8)/rn2(4),
 // dog_move move-choice rn2(++chcnt)/rn2(3)/rn2(12), backtrack rn2(MTSZ*(k-j)))
-// is emitted call-for-call.  Exotic cases (pet carrying/eating/attacking,
-// leashed pets, ranged attacks, conflict) are intentionally minimal — none of
-// the gameplay sessions exercise them at the point they currently diverge.
+// is emitted call-for-call.  Pet carrying/eating/attacking, hunger/starvation,
+// leashed pets and ridden steeds are all ported now; what is STILL missing is
+// listed here so the next pass does not have to re-derive it:
+//   - Conflict (resist_conflict / lose_guardian_angel / DISMOUNT_THROWN and the
+//     `&& !Conflict` clauses of the ALLOW_M balk test) is not modelled anywhere
+//     in this port, so every Conflict-gated branch here is unreachable;
+//   - an edog-less tame minion (guardian Angel: isminion + ispriest instead of
+//     edog) returns MMOVE_NOTHING at the top of dog_move instead of running the
+//     guardian variant of the candidate loop;
+//   - pet_ranged_attk() does not call mattackm() (see the note there);
+//   - the ALLOW_U (attack-the-hero) / m_in_out_region / m_digweapon_check arms
+//     of newdogpos, none of which a pet can currently reach.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -17,22 +26,32 @@ import { MTSZ, COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, isok,
 import { obj_resists } from './zap.js';
 import { newsym, vobj_at, object_glyph, see_with_infrared } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
-import { Monnam, x_monnam } from './uhitm.js';
+import { Monnam, x_monnam, canspotmon } from './uhitm.js';
 import { floor_object_name, doname_invent, sobj_at } from './invent.js';
-import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc, mon_allowflags } from './monmove.js';
+import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc,
+    mon_allowflags, set_apparxy, onscary, mon_wield_item } from './monmove.js';
+import { goodpos } from './teleport.js';
 import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
 import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
-import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
+import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_MISS } from './const.js';
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, CORPSE, TIN, next_ident,
-    GOLD_PIECE, COIN_CLASS, BOULDER,
+    GOLD_PIECE, COIN_CLASS, BOULDER, objects as OBJECTS, is_rider_pm, weight,
 } from './mkobj.js';
 import { may_dig } from './dig.js';
-import { mflags1_of, msound_of, perceives_flag, M1_NOEYES } from './monflags_data.js';
+import { mflags1_of, msound_of, perceives_flag, M1_NOEYES,
+    M1_ACID, M1_POIS, M1_CARNIVORE, M1_HERBIVORE, M1_METALLIVORE,
+    humanoid, is_human_flag, is_elf_flag, is_dwarf_flag, is_gnome_flag,
+    is_orc_flag, is_giant_flag, is_undead_flag,
+    is_animal, mindless, nohands, M1_TUNNEL,
+    passes_walls_flag, throws_rocks_flag, is_swimmer_flag,
+    regenerates_flag as regenerates, is_flyer_flag } from './monflags_data.js';
+import { healmon, mon_hates_silver } from './mon.js';
 import { max_passive_dmg } from './mondata.js';
+import { attacktype, dmgtype, AT_NONE, AT_ANY, AT_ENGL, AT_WEAP, AD_POLY } from './monattk_data.js';
 import { gettrack } from './track.js';
-import { monster_by_pmidx, mon_msize, mon_cwt } from './makemon.js';
+import { monster_by_pmidx, mon_msize, mon_cwt, mon_cnutrit, pm_to_cham } from './makemon.js';
 
 // dogfood quality enum (mextra.h): lower == more desirable.
 const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
@@ -40,12 +59,21 @@ const DOGFOOD = 0, CADAVER = 1, ACCFOOD = 2, MANFOOD = 3,
 
 const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 
+// C ref: dogmove.c:10-12 — the pet hunger thresholds (moves past hungrytime).
+// DOG_HUNGRY used to be spelled 500 here with a comment naming DOG_HUNGRY; 500
+// is DOG_WEAK.  The value gates pet_ranged_attk's rn2(5).
+const DOG_HUNGRY = 300, DOG_WEAK = 500, DOG_STARVE = 750;
+
 const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
 
 // Food object types referenced by dogfood() (mkobj.js OBJECT_DATA otyp order).
 const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,
-      ENORMOUS_MEATBALL = 269, MEAT_RING = 270, APPLE = 277, BANANA = 281,
-      CARROT = 282, CLOVE_OF_GARLIC = 284, SLIME_MOLD = 285;
+      ENORMOUS_MEATBALL = 269, MEAT_RING = 270, GLOB_OF_GREEN_SLIME = 273,
+      APPLE = 277, BANANA = 281,
+      CARROT = 282, CLOVE_OF_GARLIC = 284, SLIME_MOLD = 285,
+      LUMP_OF_ROYAL_JELLY = 286;
+// C ref: objects.h — the two non-food otyps dogfood() rates TABU outright.
+const RIN_SLOW_DIGESTION = 193, AMULET_OF_STRANGULATION = 203;
 
 // C ref: include/objects.h FOOD() `delay` field — objects[otyp].oc_delay, the
 // number of turns a creature spends digesting each non-corpse comestible.
@@ -68,10 +96,56 @@ const FOOD_OC_DELAY = {
     296: 0,   // tin
 };
 
-// C ref: mondata.h metallivorous(ptr) == (mflags1 & M1_METALLIVORE).  Only three
-// species carry the flag (include/monsters.h); none are tamable pets, so a TIN
-// fed to a contest pet always classifies MANFOOD.  Name-keyed for stability.
-const M1_METALLIVORE_NAMES = new Set(["rock mole", "rust monster", "xorn"]);
+// C ref: include/objects.h FOOD() `nutrition` field — objects[otyp].oc_nutrition,
+// used by dog_nutrition() as the base hungrytime bump for a non-corpse food.
+// The whole FOOD block (otyp 264..296) verbatim, not a subset: the old code used
+// a flat 50 for everything, so a pet that ate a food ration (800 * msize
+// multiplier) was recorded as ~16x less fed than C and fell back into the
+// "hungry" ACCFOOD gate (`edog->hungrytime <= svm.moves`) hundreds of turns early.
+const FOOD_OC_NUTRITION = {
+    264: 200,  // tripe ration
+    265: 0,    // corpse (uses mons[].cnutrit instead)
+    266: 80,   // egg
+    267: 5,    // meatball
+    268: 5,    // meat stick
+    269: 2000, // enormous meatball
+    270: 5,    // meat ring
+    271: 20, 272: 20, 273: 20, 274: 20, // globs
+    275: 30,   // kelp frond
+    276: 1,    // eucalyptus leaf
+    277: 50,   // apple
+    278: 80,   // orange
+    279: 50,   // pear
+    280: 100,  // melon
+    281: 80,   // banana
+    282: 50,   // carrot
+    283: 40,   // sprig of wolfsbane
+    284: 40,   // clove of garlic
+    285: 250,  // slime mold
+    286: 200,  // lump of royal jelly
+    287: 100,  // cream pie
+    288: 100,  // candy bar
+    289: 40,   // fortune cookie
+    290: 200,  // pancake
+    291: 800,  // lembas wafer
+    292: 600,  // cram ration
+    293: 800,  // food ration
+    294: 400,  // K-ration
+    295: 300,  // C-ration
+    296: 0,    // tin
+};
+
+// C ref: mondata.h metallivorous/carnivorous/herbivorous/acidic/poisonous —
+// straight mflags1 bit tests.  These were species-NAME sets (and, for the diet
+// pair, makemon.js's hand-written MFOOD table which disagrees with the
+// machine-generated flag table for 16 species — every renamed leader/ruler:
+// dwarf leader, kobold leader, gnome leader/ruler, ogre leader/tyrant, ...).
+// The name sets also missed "kobold leader" and "amorous demon" for M1_POIS.
+function metallivorous(ptr) { return (mflags1_of(ptr) & M1_METALLIVORE) !== 0; }
+function carnivorous(ptr) { return (mflags1_of(ptr) & M1_CARNIVORE) !== 0; }
+function herbivorous(ptr) { return (mflags1_of(ptr) & M1_HERBIVORE) !== 0; }
+function acidic(ptr) { return (mflags1_of(ptr) & M1_ACID) !== 0; }
+function poisonous(ptr) { return (mflags1_of(ptr) & M1_POIS) !== 0; }
 
 // C ref: mondata.h haseyes(ptr) == !(mflags1 & M1_NOEYES).  Reads the generated
 // flag table (identical to the old constant TRUE for every pet, but correct for
@@ -82,51 +156,37 @@ function haseyes(mdat) { return (mflags1_of(mdat) & M1_NOEYES) === 0; }
 // which a pet refuses to attack while the pet is peaceful toward them.
 const MS_LEADER = 36, MS_GUARDIAN = 38;
 // C ref: mondata.h touch_petrifies(ptr) / monst.h resists_ston(mon).
-const MR_STONE = 0x80;
+// monflag.h MR_POISON 0x20 / MR_ACID 0x40 / MR_STONE 0x80.
+const MR_POISON = 0x20, MR_ACID = 0x40, MR_STONE = 0x80;
 function touch_petrifies_data(ptr) {
     return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+// C ref: mondata.h flesh_petrifies(pm) = touch_petrifies(pm) || pm == Medusa.
+function flesh_petrifies_data(ptr) {
+    return touch_petrifies_data(ptr) || ptr?.name === 'Medusa';
 }
 function resists_ston_mon(mon) {
     return ((mon?.data?.mresists ?? 0) & MR_STONE) !== 0;
 }
-
-// C ref: include/monsters.h MON() M1_POIS / M1_ACID flag bits.  dog.c dogfood()
-// CORPSE branch returns POISON when the corpse's monster (corpsenm) is acidic or
-// poisonous (and the pet doesn't resist), which makes the corpse fail the
-// `otyp < MANFOOD` test and instead drop into the APPORT rn2(8) branch.  The
-// non-poisonous, non-acidic corpses (goblin/orc/jackal/gnome/human/lichen/&c
-// the contest sessions kill) return CADAVER instead, which is < MANFOOD and so
-// emits NO rn2(8) — exactly what makes the post-kill pet RNG stream match C.
-// Name-keyed (the JS pmidx scheme differs from C, but names are stable),
-// extracted from include/monsters.h.
-const M1_POIS_NAMES = new Set([
-    "killer bee","soldier ant","giant beetle","queen bee","werejackal","werewolf",
-    "gremlin","manes","homunculus","lemure","kobold","large kobold","kobold lord",
-    "kobold shaman","rabid rat","wererat","giant spider","scorpion","xan","couatl",
-    "vampire bat","baby green dragon","green dragon","yellow mold","lich","demilich",
-    "master lich","arch-lich","kobold mummy","gnome mummy","orc mummy","dwarf mummy",
-    "elf mummy","human mummy","ettin mummy","giant mummy","guardian naga","quantum mechanic",
-    "genetic engineer","snake","water moccasin","pit viper","cobra","vampire","vampire lord",
-    "vampire mage","Vlad the Impaler","kobold zombie","gnome zombie","orc zombie","dwarf zombie",
-    "ghoul","iron golem","Medusa","water demon","horned devil","erinys","barbed devil",
-    "marilith","vrock","hezrou","bone devil","ice devil","nalfeshnee","pit fiend","balrog",
-    "Juiblex","Yeenoghu","Orcus","Geryon","Dispater","Baalzebub","Asmodeus","Demogorgon",
-    "mail daemon","djinni","jellyfish","salamander","green slime","Minion of Huhetotl",
-    "Chromatic Dragon","Nalzok","Scorpius","vampire lady","vampire leader",
-]);
-const M1_ACID_NAMES = new Set([
-    "acid blob","gelatinous cube","spotted jelly","ochre jelly","baby yellow dragon",
-    "yellow dragon","green mold","black naga hatchling","black naga","gray ooze",
-    "brown pudding","green slime","black pudding","Juiblex",
-]);
+// C ref: monst.h resists_poison(mon) / resists_acid(mon) — Resists_Elem bits.
+function resists_poison_mon(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_POISON) !== 0;
+}
+function resists_acid_mon(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_ACID) !== 0;
+}
 
 // C ref: mondata.h vegan(ptr) — keyed on the monster's class (mlet/mcls): blobs,
 // jellies, fungi/molds, vortices, lights, non-stalker elementals, non-flesh/
 // leather golems, plus noncorporeal monsters.  A vegan corpse fed to a non-
 // herbivore pet returns MANFOOD (>= MANFOOD -> APPORT rn2(8)); to a herbivore
 // pet it returns CADAVER.  S_* numeric class indices (include/defsym.h).
-const S_BLOB = 2, S_JELLY = 10, S_VORTEX = 22, S_LIGHT = 25,
-      S_ELEMENTAL = 31, S_FUNGUS = 32, S_GOLEM = 55;
+// (verified against include/defsym.h MONSYM(idx,...) — mon.data.mcls carries
+//  that numeric index, not the display character.)
+const S_BLOB = 2, S_JELLY = 10, S_KOBOLD = 11, S_MIMIC = 13,
+      S_NYMPH = 14, S_ORC = 15, S_VORTEX = 22, S_LIGHT = 25, S_DRAGON = 30,
+      S_ELEMENTAL = 31, S_FUNGUS = 32, S_OGRE = 41, S_VAMPIRE = 48,
+      S_YETI = 51, S_GHOST = 54, S_GOLEM = 55;
 const PM_STALKER_NAME = "stalker";
 const FLESH_LEATHER_GOLEM = new Set(["flesh golem", "leather golem"]);
 function corpse_is_vegan(fdat) {
@@ -135,26 +195,46 @@ function corpse_is_vegan(fdat) {
         || c === S_LIGHT) return true;
     if (c === S_ELEMENTAL && fdat.name !== PM_STALKER_NAME) return true;
     if (c === S_GOLEM && !FLESH_LEATHER_GOLEM.has(fdat.name)) return true;
-    // noncorporeal (ghost/shade) — not reachable as a floor corpse pet-target
-    // in the contest sessions; omitted.
-    return false;
+    // C ref: mondata.h:31 noncorporeal(ptr) == (mlet == S_GHOST) — ghost and
+    // shade.  Their (bones-file) corpses ARE reachable as pet goals; dropping
+    // this made a ghoul/pony treat one as CADAVER/MANFOOD instead of vegan.
+    return c === S_GHOST;
 }
 
-// C ref: mondata.h humanoid(ptr) == M1_HUMANOID.  Only the EATING pet's
-// humanoid-ness matters in dogfood's cannibalism branch; the contest pets are
-// all animals (dog/cat/pony), so this returns false and that branch never fires.
-// Name-keyed to a small set covering humanoid PET species if one is ever driven.
-function mon_is_humanoid(mdat) {
-    // Dogs/cats/ponies (the only contest pets) are M1_ANIMAL, not M1_HUMANOID.
-    return false && mdat; // keep `mdat` referenced; faithful for animal pets
+// C ref: mondata.c same_race(pm1, pm2) — dogfood()'s cannibalism test.  Player
+// races first (each has its own M2 predicate), then the coarser body classes.
+function is_golem_data(ptr) { return ptr?.mcls === S_GOLEM; }
+function same_race(pm1, pm2) {
+    if (!pm1 || !pm2) return false;
+    if (pm1 === pm2 || pm1.pmidx === pm2.pmidx) return true;
+    if (is_human_flag(pm1)) return is_human_flag(pm2);
+    if (is_elf_flag(pm1)) return is_elf_flag(pm2);
+    if (is_dwarf_flag(pm1)) return is_dwarf_flag(pm2);
+    if (is_gnome_flag(pm1)) return is_gnome_flag(pm2);
+    if (is_orc_flag(pm1)) return is_orc_flag(pm2);
+    if (is_giant_flag(pm1)) return is_giant_flag(pm2);
+    if (is_golem_data(pm1)) return is_golem_data(pm2);
+    return pm1.mcls === pm2.mcls;
+}
+
+// C ref: obj.h polyfood(obj) — an ofood() (corpse/egg/tin) whose corpsenm is a
+// shapeshifter (pm_to_cham) or carries an AD_POLY damage type.  This used to be
+// hardcoded to `fx === 326 /* chameleon */`, which answered FALSE for every
+// other shapeshifter corpse (doppelganger, sandestin, chickatrice/vampire
+// shifters) and for the AD_POLY monsters, so a tame pet ate them instead of
+// classifying MANFOOD.
+function polyfood_corpsenm(fx) {
+    if (fx == null || fx < 0) return false;
+    if (pm_to_cham(fx) >= 0) return true;
+    return dmgtype(monster_by_pmidx(fx), AD_POLY);
 }
 
 // Kept in lock-step with allmain.js MULTIPASS_MOVEMON.  When the C multi-pass
 // movemon() loop is enabled, the pet's repeat object scan needs real
 // line-of-sight (clear_path) and the hero's COULD_SEE bit (couldsee) to match
-// C's obj_resists/rn2(8) stream in dog_goal's APPORT branch.  Stays OFF in
-// lock-step with the multi-pass gate (single-pass keeps the "always sees"
-// approximation that matches the baseline).
+// C's obj_resists/rn2(8) stream in dog_goal's APPORT branch.  This is ON: the
+// trailing "stays OFF in lock-step with the multi-pass gate" sentence was left
+// over from when the constant was false and contradicted the value below.
 export const PET_REAL_VISION = true;
 
 // C ref: mon.c max_mon_load(mtmp).  MAX_CARR_CAP=1000, WT_HUMAN=1450.
@@ -211,10 +291,14 @@ function distmin(x0, y0, x1, y1) {
 // starting level places.
 function dogfood(mon, obj) {
     const mdat = mon.data || {};
-    const carni = !!mdat.carnivore;
-    const herbi = !!mdat.herbivore;
+    const carni = carnivorous(mdat);
+    const herbi = herbivorous(mdat);
 
-    if (obj.opoisoned) return POISON; // resists_poison: pets don't, at start
+    // C ref: dog.c:1011 — `obj->opoisoned && !resists_poison(mon)`.  The
+    // resists_poison() half used to be dropped ("pets don't, at start"), which
+    // made a tamed poison-resistant monster refuse a poisoned item C lets it
+    // consider (POISON >= MANFOOD, so it also suppresses the APPORT rn2(8)).
+    if (obj.opoisoned && !resists_poison_mon(mon)) return POISON;
     // is_quest_artifact() is false for ordinary objects; obj_resists rolls
     // rn2(100) (always FALSE for non-artifacts with ochance 0).
     if (obj_resists(obj, 0, 95))
@@ -230,23 +314,53 @@ function dogfood(mon, obj) {
             ? obj.corpsenm : -1;
         const fdat = (fx != null && fx >= 0) ? monster_by_pmidx(fx) : null;
 
-        // is_rider corpse -> TABU; flesh_petrifies (c*ckatrice/Medusa) -> POISON.
-        // None of these corpses appear in pet boxes in the contest sessions, but
-        // keep the guards faithful.  (resists_ston: pets don't, at start.)
-        // is_rider / flesh_petrifies are name-rare; skip the lookups for the
-        // common case (fdat present, ordinary species).
+        // C ref: dog.c:1024-1030 — these two guards used to be described as
+        // "name-rare; skip the lookups".  They are not optional: they run BEFORE
+        // the `!carni && !herbi` diet gate, and both return a quality >= MANFOOD
+        // for a corpse a carnivore pet would otherwise rate CADAVER — i.e. they
+        // decide whether the pet walks onto the square and eats (and whether the
+        // APPORT rn2(8) fires).  A pet eating a cockatrice corpse also dies.
+        if (obj.otyp === CORPSE && is_rider_pm(fx))
+            return TABU;
+        if ((obj.otyp === CORPSE || obj.otyp === EGG)
+            && flesh_petrifies_data(fdat) && !resists_ston_mon(mon))
+            return POISON;
+        // C ref: dog.c:1031-1038 — a killer bee rates royal jelly DOGFOOD only
+        // while the level has no queen bee (otherwise TABU: it would grow into a
+        // rival queen).  Reachable via a tamed killer bee.
+        if (obj.otyp === LUMP_OF_ROYAL_JELLY && mdat.name === 'killer bee')
+            return find_pmmonst('queen bee') ? TABU : DOGFOOD;
 
         // C ref: dog.c — the per-otyp diet switch is gated by `!carni && !herbi`
         // (omnivore/carnivore/herbivore pets only).  A non-eater pet treats food
         // as APPORT (or UNDEF if cursed).
         if (!carni && !herbi)
             return obj.cursed ? UNDEF : APPORT;
-        // a starving pet (mhpmax_penalty) will eat almost anything; the starting
-        // pets are well-fed, so starving stays false here.
+        // a starving pet (mhpmax_penalty) will eat almost anything.  dog_hunger()
+        // sets mhpmax_penalty once the pet passes DOG_WEAK moves past hungrytime.
         const starving = !!(mon.mtame && !mon.isminion && mon.edog
                             && mon.edog.mhpmax_penalty);
         // even carnivores eat carrots while temporarily blind (mblind)
         const mblind = !mon.mcansee && haseyes(mdat);
+        const moves = game.moves || 1;
+        // C ref: mkobj.c peek_at_iced_corpse_age() — the corpse's age, unshifted
+        // for an off-ice corpse (we have no ice-box aging).
+        const corpse_age = obj.age ?? moves;
+        const isLizardLichen = (fx === 158 /*lichen*/ || fx === 325 /*lizard*/);
+
+        // C ref: dog.c:1041-1055 — the ghoul diet, which inverts the freshness
+        // test (ghouls want ROTTEN corpses and stale eggs) and rates everything
+        // else TABU.  Reachable via a tamed ghoul.
+        if (mdat.name === 'ghoul') {
+            if (obj.otyp === CORPSE)
+                return (corpse_age + 50 <= moves && !isLizardLichen) ? DOGFOOD
+                    : (starving && !(fdat && corpse_is_vegan(fdat))) ? ACCFOOD
+                        : POISON;
+            if (obj.otyp === EGG)
+                return stale_egg(obj) ? CADAVER : starving ? ACCFOOD : POISON;
+            return TABU;
+        }
+
         switch (obj.otyp) {
         case TRIPE_RATION:
         case MEATBALL:
@@ -255,47 +369,58 @@ function dogfood(mon, obj) {
         case ENORMOUS_MEATBALL:
             return carni ? DOGFOOD : MANFOOD;
         case EGG:
+            // C ref: dog.c:1063 — a pyrolisk egg is POISON to a non-fire-liker.
+            if (fdat?.name === 'pyrolisk' && !likes_fire(mdat)) return POISON;
             return carni ? CADAVER : MANFOOD;
         case CORPSE: {
-            // C ref: dog.c dogfood() CORPSE.  peek_at_iced_corpse_age() == age
-            // for an off-ice corpse; a corpse that has rotted (age+50 <= moves)
-            // and isn't a lizard/lichen/fungus, or whose monster is acidic/
-            // poisonous (pet doesn't resist), is POISON.  Otherwise: polyfood ->
-            // MANFOOD; vegan -> herbi?CADAVER:MANFOOD; cannibalism -> TABU/ACCFOOD
-            // (humanoid pets only); else carni?CADAVER:MANFOOD.
-            const moves = game.moves || 1;
-            const age = obj.age ?? moves;
-            const isLizardLichen = (fx === 158 /*lichen*/ || fx === 325 /*lizard*/);
-            const fungus = fdat && fdat.mcls === S_FUNGUS;
-            const acidic = fdat && M1_ACID_NAMES.has(fdat.name);
-            const poisonous = fdat && M1_POIS_NAMES.has(fdat.name);
-            if ((age + 50 <= moves && !isLizardLichen && !fungus)
-                || acidic || poisonous)
+            // C ref: dog.c:1066-1088.  A corpse that has rotted (age+50 <= moves)
+            // and isn't a lizard/lichen — and whose EATER is not a fungus — or
+            // whose monster is acidic/poisonous (eater doesn't resist), is POISON.
+            // Otherwise: polyfood -> MANFOOD; vegan -> herbi?CADAVER:MANFOOD;
+            // cannibalism -> TABU/ACCFOOD; else carni?CADAVER:MANFOOD.
+            //
+            // NOTE the fungus test reads `mptr->mlet` — the EATING monster's
+            // class, not the corpse's.  It was ported as the corpse's class,
+            // which let every pet eat arbitrarily rotten mold/fungus corpses
+            // (and made a fungus pet refuse rotten meat it should accept).
+            const eater_is_fungus = mdat.mcls === S_FUNGUS;
+            if ((corpse_age + 50 <= moves && !isLizardLichen && !eater_is_fungus)
+                || (acidic(fdat) && !resists_acid_mon(mon))
+                || (poisonous(fdat) && !resists_poison_mon(mon)))
                 return POISON;
-            // polyfood: chameleon-class / AD_POLY corpses.  Only the chameleon
-            // (pmidx 326) is reachable in the contest slice; a tame pet (mtame>1)
-            // that isn't starving avoids it (MANFOOD).
-            if (fx === 326 /*chameleon*/ && (mon.mtame > 1) && !starving)
+            if (polyfood_corpsenm(fx) && (mon.mtame > 1) && !starving)
                 return MANFOOD;
             if (fdat && corpse_is_vegan(fdat))
                 return herbi ? CADAVER : MANFOOD;
-            // humanoid-pet cannibalism branch: never fires for animal pets.
-            if (mon_is_humanoid(mdat))
-                return TABU;
+            // C ref: dog.c:1080-1085 — most humanoids avoid cannibalism unless
+            // starving; elves never eat elves.  Kobold/orc/ogre corpses and
+            // undead eaters are exempt.  Ported as a flat `return false` before,
+            // so a tamed gnome/dwarf/human happily ate its own kind.
+            if (humanoid(mdat) && same_race(mdat, fdat)
+                && !is_undead_flag(mdat) && fdat?.mcls !== S_KOBOLD
+                && fdat?.mcls !== S_ORC && fdat?.mcls !== S_OGRE)
+                return (starving && carni && !is_elf_flag(mdat)) ? ACCFOOD : TABU;
             return carni ? CADAVER : MANFOOD;
         }
-        case APPLE:
-            return herbi ? DOGFOOD : MANFOOD; // (starving -> ACCFOOD; never here)
-        case CARROT:
-            return (herbi || mblind) ? DOGFOOD : MANFOOD;
-        case BANANA:
-            return (herbi) ? ACCFOOD : MANFOOD;
+        case GLOB_OF_GREEN_SLIME:
+            // C ref: dog.c:1089 — turning into slime beats starving.
+            return (starving || slimeproof(mdat)) ? ACCFOOD : POISON;
         case CLOVE_OF_GARLIC:
-            return herbi ? ACCFOOD : MANFOOD;
+            // C ref: dog.c:1093 — undead/vampshifters refuse garlic outright.
+            return (is_undead_flag(mdat) || is_vampshifter_mon(mon)) ? TABU
+                : (herbi || starving) ? ACCFOOD : MANFOOD;
         case TIN:
             // C ref: dog.c dogfood() — metallivorous(mptr) ? ACCFOOD : MANFOOD.
             // A pet won't pry a tin open to eat it (MANFOOD) unless it eats metal.
-            return M1_METALLIVORE_NAMES.has(mdat.name) ? ACCFOOD : MANFOOD;
+            return metallivorous(mdat) ? ACCFOOD : MANFOOD;
+        case APPLE:
+            return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case CARROT:
+            return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+        case BANANA:
+            // C ref: dog.c:1104 — herbivorous yetis/sasquatches prefer bananas.
+            return (mdat.mcls === S_YETI && herbi) ? DOGFOOD
+                : (herbi || starving) ? ACCFOOD : MANFOOD;
         default:
             if (starving) return ACCFOOD;
             // C: otyp > SLIME_MOLD ? (carni?ACCFOOD:MANFOOD)
@@ -308,12 +433,76 @@ function dogfood(mon, obj) {
     case ROCK_CLASS:
         return UNDEF;
     default:
+        // C ref: dog.c:1116-1128 — the non-food default arm.  A pet will not
+        // fetch an amulet of strangulation or a ring of slow digestion (it would
+        // put it on / choke), and silver-hating pets refuse silver.  These three
+        // TABU cases were dropped, so a pet apported items C rates TABU (TABU is
+        // > MANFOOD and also fails the APPORT gate, so it changes both the
+        // dog_goal rn2(8) stream and where the pet walks).
+        if (obj.otyp === AMULET_OF_STRANGULATION
+            || obj.otyp === RIN_SLOW_DIGESTION)
+            return TABU;
+        if (mon_hates_silver(mon) && obj_material(obj) === SILVER)
+            return TABU;
+        if (mdat.name === 'gelatinous cube' && is_organic_obj(obj))
+            return ACCFOOD;
+        if (metallivorous(mdat) && is_metallic_obj(obj)
+            && (is_rustprone_obj(obj) || mdat.name !== 'rust monster')) {
+            // Non-rustproofed ferrous-based metals are preferred.
+            return (is_rustprone_obj(obj) && !obj.oerodeproof) ? DOGFOOD : ACCFOOD;
+        }
         if (!obj.cursed && obj.oclass !== BALL_CLASS
             && obj.oclass !== CHAIN_CLASS)
             return APPORT;
         return UNDEF;
     }
 }
+
+// C ref: mon.c find_pmmonst(pm) — the first live monster of a species on the
+// level (dogfood()'s royal-jelly branch).
+function find_pmmonst(name) {
+    for (const m of game.level?.monsters || [])
+        if (m.data?.name === name && !(m.mhp != null && m.mhp <= 0)) return m;
+    return null;
+}
+// C ref: obj.h stale_egg(egg) — (moves - age) > 2*MAX_EGG_HATCH_TIME (200).
+function stale_egg(obj) {
+    return ((game.moves || 1) - (obj.age ?? 0)) > 400;
+}
+// C ref: mondata.h likes_fire(ptr) — fire-immune species (mresists MR_FIRE)
+// plus the fire-liking demons; the MR_FIRE bit is the part dogfood() needs.
+const MR_FIRE = 0x01;
+function likes_fire(ptr) { return ((ptr?.mresists ?? 0) & MR_FIRE) !== 0; }
+// C ref: mondata.h slimeproof(ptr) — green slime itself, flaming, noncorporeal.
+function slimeproof(ptr) {
+    return ptr?.name === 'green slime' || likes_fire(ptr) || ptr?.mcls === S_GHOST;
+}
+// C ref: mondata.h is_vampshifter(mon) — a monster whose cham (true) form is
+// one of the three vampire species.
+const PM_VAMPIRE = 226, PM_VAMPIRE_LEADER = 227, PM_VLAD_THE_IMPALER = 228;
+function is_vampshifter_mon(mon) {
+    const c = mon?.cham;
+    return c === PM_VAMPIRE || c === PM_VAMPIRE_LEADER
+        || c === PM_VLAD_THE_IMPALER;
+}
+
+// C ref: objclass.h obj_material enum — WOOD 8, IRON 11, SILVER 14, MITHRIL 17.
+const MAT_WOOD = 8, MAT_IRON = 11, MAT_SILVER = 14, MAT_MITHRIL = 17;
+const SILVER = MAT_SILVER;
+function obj_material(obj) {
+    return OBJECTS[obj?.otyp]?.material ?? -1;
+}
+// C ref: objclass.h is_metallic(obj) — IRON <= material <= MITHRIL;
+// is_organic(obj) — material <= WOOD; is_rustprone(obj) — material == IRON.
+function is_metallic_obj(obj) {
+    const m = obj_material(obj);
+    return m >= MAT_IRON && m <= MAT_MITHRIL;
+}
+function is_organic_obj(obj) {
+    const m = obj_material(obj);
+    return m > 0 && m <= MAT_WOOD;
+}
+function is_rustprone_obj(obj) { return obj_material(obj) === MAT_IRON; }
 
 // C ref: stairs.c On_stairs(x,y) — stairway_at(x,y) != NULL.  Stairs live on
 // the game.stairs linked list (mklev.js) with .sx/.sy coordinates.
@@ -355,18 +544,214 @@ function edogApport(edog) {
     return edog.apport;
 }
 
+// C ref: objects.h — the tool otyps droppables() reasons about.
+const DWARVISH_MATTOCK = 78, PICK_AXE = 66, UNICORN_HORN = 246,
+      SKELETON_KEY = 235, LOCK_PICK = 236, CREDIT_CARD = 237;
+
 // C ref: dogmove.c droppables(mon) — return the first droppable object in the
-// pet's minvent.  Consumes no RNG.  The starting pets are NOHANDS animals; any
-// ordinary item they've picked up is unworn/unwielded -> returned as droppable
-// (the pickaxe/unihorn/key/weapon "keep" cases never apply to dog/cat/pony).
+// pet's minvent.  Consumes no RNG, but the ANSWER drives dog_invent's drop path
+// and dog_goal's `dog_has_minvent` (which gates the rn2(edog->apport) roll), so
+// keeping the wrong item is an RNG divergence.
+//
+// The old body was just the trailing `!owornmask && obj != wep` filter, valid
+// only for the animal/mindless pets (for which C forces pickaxe/unihorn/key to
+// the &dummy sentinel and so falls straight through the switch).  A tamed
+// gnome/dwarf/soldier carrying a pick-axe, unicorn horn or unlocking tool KEEPS
+// it in C and drops the next thing instead.
 function droppables(mtmp) {
     const inv = mtmp.minvent;
     if (!inv || !inv.length) return null;
+    const wep = mtmp.mw || null;
+    // C ref: dogmove.c:41-60 — `dummy` stands in for "already have one of
+    // these", so any real one becomes an ordinary drop candidate.  It is
+    // otyp GOLD_PIECE with oartifact set (so a real artifact can't beat it).
+    const dummy = { otyp: GOLD_PIECE, oartifact: 1, _dummy: true };
+    let pickaxe = null, unihorn = null, key = null;
+    if (is_animal(mtmp.data) || mindless(mtmp.data)) {
+        pickaxe = unihorn = key = dummy;
+    } else {
+        if (!tunnels(mtmp.data) || !needspick(mtmp.data)) pickaxe = dummy;
+        if (nohands(mtmp.data) || verysmall(mtmp.data)) key = dummy;
+    }
+    if (wep) {
+        if (wep.otyp === PICK_AXE || wep.otyp === DWARVISH_MATTOCK)
+            pickaxe = wep;
+        if (wep.otyp === UNICORN_HORN) unihorn = wep;
+    }
+
     for (const obj of inv) {
-        if (!obj.owornmask && obj !== mtmp.mw) return obj;
+        switch (obj.otyp) {
+        case DWARVISH_MATTOCK:
+            // reject mattock if it couldn't be wielded (shield in the way)
+            if (which_armor_arms(mtmp)) break;
+            if (pickaxe && pickaxe.otyp === PICK_AXE && pickaxe !== wep
+                && (!pickaxe.oartifact || obj.oartifact))
+                return pickaxe; // drop the one we earlier decided to keep
+            /* FALLTHRU */
+        case PICK_AXE:
+            if (!pickaxe || (obj.oartifact && !pickaxe.oartifact)) {
+                if (pickaxe) return pickaxe;
+                pickaxe = obj;
+                continue;
+            }
+            break;
+        case UNICORN_HORN:
+            if (obj.cursed) break;
+            if (!unihorn || (obj.oartifact && !unihorn.oartifact)) {
+                if (unihorn) return unihorn;
+                unihorn = obj;
+                continue;
+            }
+            break;
+        case SKELETON_KEY:
+            if (key && key.otyp === LOCK_PICK
+                && (!key.oartifact || obj.oartifact))
+                return key;
+            /* FALLTHRU */
+        case LOCK_PICK:
+            if (key && key.otyp === CREDIT_CARD
+                && (!key.oartifact || obj.oartifact))
+                return key;
+            /* FALLTHRU */
+        case CREDIT_CARD:
+            if (!key || (obj.oartifact && !key.oartifact)) {
+                if (key) return key;
+                key = obj;
+                continue;
+            }
+            break;
+        default:
+            break;
+        }
+        if (!obj.owornmask && obj !== wep) return obj;
     }
     return null;
 }
+// C ref: worn.c which_armor(mon, W_ARMS) — the monster's worn shield.
+const W_ARMS_BIT = 0x08;
+function which_armor_arms(mtmp) {
+    for (const o of mtmp.minvent || [])
+        if (o.owornmask & W_ARMS_BIT) return o;
+    return null;
+}
+// C ref: mondata.h tunnels/needspick/verysmall — the three flag tests
+// droppables() consults for a non-animal pet.
+function tunnels(ptr) { return cri_tunnels(ptr); }
+function needspick(ptr) {
+    // C ref: mondata.h needspick(ptr) — a tunneller that needs a digging tool
+    // (everything except the rock-eaters: rock mole, umber hulk, dwarf, ...).
+    return !!ptr && !NEEDSPICK_EXEMPT.has(ptr.name);
+}
+const NEEDSPICK_EXEMPT = new Set(['rock mole', 'umber hulk']);
+// C ref: mondata.h verysmall(ptr) = (msize < MZ_SMALL).
+function verysmall(ptr) {
+    const sz = ptr?.msize ?? mon_msize(ptr?.pmidx) ?? 2;
+    return sz < 1;
+}
+
+// C ref: dogmove.c dog_hunger(mtmp, edog) — the per-move hunger effects, run at
+// the TOP of dog_move() before anything else.  Draws no RNG itself, but writes
+// three pieces of state that a later modulus reads:
+//   - edog->mhpmax_penalty ("starving"), which dogfood() consults for EVERY
+//     object it classifies and which gates dog_invent's ACCFOOD eat and
+//     dog_goal's `mhpmax_penalty && otyp < MANFOOD` cursed-square override;
+//   - mtmp->mconf, which forces dog_goal's appr to 0 (changing the jv sign of
+//     every candidate square, hence which rn2(3)/rn2(12) branch is taken) and
+//     adds score_targ's two rn2(3) rolls;
+//   - mtmp->mhpmax/mhp, which feed dog_move's `balk` and the max_passive_dmg
+//     comparison in the ALLOW_M branch.
+// It can also kill the pet (mondied) and print "<pet> is confused from hunger."
+// Returns TRUE on starvation.
+async function dog_hunger(mtmp, edog) {
+    const moves = game.moves || 1;
+    if (moves > (edog.hungrytime || 0) + DOG_WEAK) {
+        if (!carnivorous(mtmp.data) && !herbivorous(mtmp.data)) {
+            edog.hungrytime = moves + DOG_WEAK;
+        } else if (!edog.mhpmax_penalty) {
+            const newmhpmax = Math.trunc((mtmp.mhpmax || 0) / 3);
+            mtmp.mconf = 1;
+            edog.mhpmax_penalty = (mtmp.mhpmax || 0) - newmhpmax;
+            mtmp.mhpmax = newmhpmax;
+            if ((mtmp.mhp ?? 0) > mtmp.mhpmax) mtmp.mhp = mtmp.mhpmax;
+            if ((mtmp.mhp ?? 1) <= 0) {
+                await dog_starve(mtmp);
+                return true;
+            }
+            if (cansee(mtmp.mx, mtmp.my))
+                await emit_pet_msg(`${Monnam(mtmp)} is confused from hunger.`);
+            // C ref: sounds.c beg(mtmp) / You_feel("worried about ...") — the
+            // out-of-sight variants; both are toplines with no RNG.
+            else if (couldsee(mtmp.mx, mtmp.my))
+                await emit_pet_msg(`${Monnam(mtmp)} whines sadly.`);
+            else
+                await emit_pet_msg(`You feel worried about ${y_monnam(mtmp)}.`);
+            stop_pet_occupation();
+        } else if (moves > (edog.hungrytime || 0) + DOG_STARVE
+                   || (mtmp.mhp ?? 1) <= 0) {
+            await dog_starve(mtmp);
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: dogmove.c dog_starve(mtmp) — the pet dies of hunger.  PARTIAL: C calls
+// mondied(), whose corpse_chance() rn2 tail this port keeps per-caller (mhitm.js
+// / muse.js each own a copy) and which is not shared; we take the pet off the
+// map so the map and the movemon loop agree, and leave the corpse roll to the
+// completeness pass.  Only reachable ~DOG_STARVE moves past hungrytime.
+async function dog_starve(mtmp) {
+    if (mtmp.mleashed && mtmp !== game.u?.usteed)
+        await emit_pet_msg('Your leash goes slack.');
+    else if (cansee(mtmp.mx, mtmp.my))
+        await emit_pet_msg(`${Monnam(mtmp)} starves.`);
+    else
+        await emit_pet_msg(`You feel ${game.u?.uhallu ? 'bummed' : 'sad'} for a moment.`);
+    const mx = mtmp.mx, my = mtmp.my;
+    mtmp.mhp = 0;
+    const list = game.level?.monsters;
+    if (list) {
+        const i = list.indexOf(mtmp);
+        if (i >= 0) list.splice(i, 1);
+    }
+    if (game.u?.ustuck === mtmp) game.u.ustuck = null;
+    mtmp.mtrapped = 0;
+    newsym(mx, my);
+}
+
+// C ref: allmain.c stop_occupation() — cancels a running multi-turn occupation
+// (the pet's "confused from hunger" message interrupts it).  This port models
+// occupations with per-command flags (allmain.js `_force_box` and friends)
+// rather than a go.occupation function pointer, so only the generic slot is
+// cleared here; the "You stop <occtxt>." topline and the gm.multi/nomul(0)
+// arm are deliberately NOT reproduced — nomul(0) must leave the occupation
+// armed in this port, and a wrong release point is worth -117 (see the
+// botl-is-a-snapshot note).
+function stop_pet_occupation() {
+    if (game.go?.occupation) game.go.occupation = null;
+}
+// C ref: do_name.c y_monnam(mtmp) — "your kitten" (lower case).
+function y_monnam(mtmp) { return x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, 0, false); }
+
+// C ref: teleport.c goodpos(x, y, mtmp, 0) — the leash-kludge placement test.
+function leash_goodpos(mtmp, x, y) {
+    return isok(x, y) && goodpos(x, y, mtmp, 0);
+}
+
+// C ref: monst.h helpless(mon) — asleep or unable to move.  (monmove.js keeps
+// its own copy; a missing mcanmove defaults to C's TRUE, not 0.)
+function mon_is_helpless(mtmp) {
+    const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
+    return !!mtmp.msleeping || !canmove;
+}
+// C ref: objects.h SCR_MAIL — excluded from a pet's underfoot pickup.
+const SCR_MAIL = 364;
+// C ref: obj.h is_mines_prize/is_soko_prize — the luckstone/bag reserved as the
+// branch-end prize.  invent.js and monmove.js both carry the same stub; the
+// real test needs the per-branch prize o_id bookkeeping (u.uachieve fields),
+// which this port does not track yet.
+function is_mines_prize(_obj) { return false; }
+function is_soko_prize(_obj) { return false; }
 
 // C ref: objnam.c doname(obj) for the items a starter pet carries (gold and
 // ordinary floor objects), used in the pet pickup/drop toplines.  For a single
@@ -386,8 +771,15 @@ function pet_doname(obj) {
 // carried object (relobj, no RNG beyond the drop rolls), eats an underfoot
 // item (counts as its move), or picks one up (splitobj -> next_ident when the
 // stack is split).  Picking up sets minvent so later turns take the drop path
-// and dog_goal's `dog_has_minvent` rolls fire.  Returns 1 if the pet ate.
+// and dog_goal's `dog_has_minvent` rolls fire.  Returns 1 if the pet ate, 2 if
+// it died doing so.
 async function dog_invent(mtmp, edog, udist) {
+    // C ref: dogmove.c:406 — a helpless (asleep/paralysed) or still-digesting
+    // pet does nothing here.  m_move()'s own meating gate normally catches the
+    // second case first, but dog_move() is also reachable from the steed path
+    // (which m_move reaches with meating already decremented) and this guard is
+    // what stops a second dogfood()/rn2(100) in that turn.
+    if (mon_is_helpless(mtmp) || mtmp.meating) return 0;
     const omx = mtmp.mx, omy = mtmp.my;
     const apport = edogApport(edog);
 
@@ -432,18 +824,32 @@ async function dog_invent(mtmp, edog, udist) {
         // acceptance rn2(3)/rn2(12) rolls land one slot early, so it moves
         // when C's rolls, read from the correct slot, all reject and it
         // stays put).
+        // C ref: dogmove.c:429-434 — SCR_MAIL and the Mines/Sokoban prize are
+        // gated out alongside nofetch[], BEFORE dogfood() is called, so they
+        // burn no obj_resists rn2(100) either.
         const nofetch = obj.oclass === BALL_CLASS || obj.oclass === CHAIN_CLASS
-            || obj.oclass === ROCK_CLASS;
+            || obj.oclass === ROCK_CLASS || obj.otyp === SCR_MAIL
+            || is_mines_prize(obj) || is_soko_prize(obj);
         if (!nofetch) {
             const edible = dogfood(mtmp, obj);
-            if (edible <= CADAVER || (edog.mhpmax_penalty && edible === ACCFOOD)) {
-                // would eat -> counts as the pet's move (dog_eat).  Not modeled in
-                // detail; emit no further RNG and report "ate".
-                return 1;
+            // C ref: dogmove.c:437-441 — `&& could_reach_item(mtmp, ox, oy)`.
+            // Dropping it let a pet eat/pick up an object it cannot physically
+            // reach (under a boulder on its own square, or in water/lava when it
+            // is neither swimmer nor lava-liker), which both mis-times the eat
+            // and adds a can_carry/rn2(20) roll C never makes.
+            const reachable = could_reach_item(mtmp, obj.ox, obj.oy);
+            if ((edible <= CADAVER
+                 || (edog.mhpmax_penalty && edible === ACCFOOD))
+                && reachable) {
+                // C ref: dogmove.c:441 — `return dog_eat(mtmp, obj, omx, omy,
+                // FALSE)`.  This used to `return 1` without eating, so the
+                // corpse stayed on the floor forever and C's two rn2(100)s (the
+                // reward-check dogfood() and delobj's obj_resists) never fired.
+                return await dog_eat(mtmp, edog, obj, omx, omy);
             }
             // can_carry / pickup path: rn2(20) < apport+3, then rn2(udist)/rn2(apport)
             const carryamt = can_carry(mtmp, obj);
-            if (carryamt > 0 && !obj.cursed) {
+            if (carryamt > 0 && !obj.cursed && reachable) {
                 if (rn2(20) < apport + 3) {
                     if (rn2(udist) || rn2(apport) === 0) {
                         // C ref: dogmove.c:448-465 — split a partial stack (which
@@ -470,6 +876,23 @@ async function dog_invent(mtmp, edog, udist) {
                         pet_extract_floor(otmp);
                         newsym(omx, omy);
                         mpickobj(mtmp, otmp);
+                        // C ref: dogmove.c:466-471 — a pet that attacks with
+                        // AT_WEAP and still needs a melee weapon WIELDS what it
+                        // just picked up, then flags a gear re-check.  Omitted
+                        // before, so a tamed soldier/gnome that apported a
+                        // weapon never armed itself: mon_wield_item() emits the
+                        // "wields" topline and, more importantly, sets mon.mw,
+                        // which changes every later hitval/damage roll and the
+                        // droppables() "keep the wielded item" filter.
+                        if (attacktype(mtmp.data, AT_WEAP)
+                            && mtmp.weapon_check === NEED_WEAPON_PET) {
+                            mtmp.weapon_check = NEED_HTH_WEAPON_PET;
+                            await mon_wield_item(mtmp);
+                        }
+                        // check_gear_next_turn(mtmp) sets misc_worn_check
+                        // |I_SPECIAL so the monster re-evaluates armour next
+                        // turn; m_dowear is not ported (monmove.js says the same
+                        // at its own mpickobj site), so the bit would be inert.
                     }
                 }
             }
@@ -482,8 +905,8 @@ async function dog_invent(mtmp, edog, udist) {
 // carried objects onto its tile.  is_pet=TRUE means "pet should keep
 // wielded/worn items": the C loop is `while ((otmp = droppables(mtmp)))
 // mdrop_obj(...)`, i.e. it repeatedly asks droppables() (dogmove.c:27-136,
-// same "!obj->owornmask && obj != wep" filter as our droppables() above) for
-// the next candidate and stops once nothing droppable remains — a worn item
+// now ported in full above) for the next candidate and stops once nothing
+// droppable remains — a worn item
 // such as a pony's saddle (owornmask=W_SADDLE) is NEVER returned by
 // droppables() and so is never dropped here, matching a live steed's own
 // relobj() call on dismount.  Placement of what IS dropped is deterministic
@@ -514,12 +937,19 @@ async function relobj(mtmp, x, y) {
     }
 }
 
+// C ref: monmove.c weapon_check states (mon.h NEED_WEAPON / NEED_HTH_WEAPON).
+const NEED_WEAPON_PET = 1, NEED_HTH_WEAPON_PET = 3;
+
 // C ref: mkobj.c splitobj(obj,num) — split `num` off a stack into a new obj
-// whose o_id comes from next_ident() (rnd(2)).  We only need the RNG-faithful
-// next_ident call and a shallow clone for minvent bookkeeping.
+// whose o_id comes from next_ident() (rnd(2)).  Both halves are re-weighed:
+// leaving the remainder at the FULL stack weight made curr_mon_load() and
+// can_carry() (and the hero's own burden maths, once the pet drops it) read a
+// weight C no longer assigns.
 function pet_splitobj(obj, num) {
     const split = { ...obj, quan: num, o_id: next_ident() };
     obj.quan = (obj.quan || 1) - num;
+    obj.owt = weight(obj);
+    split.owt = weight(split);
     return split;
 }
 
@@ -555,16 +985,28 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
     let gtyp = UNDEF;
     g.gx = 0; g.gy = 0;
 
+    // C ref: dogmove.c:501-502 — both are computed before the leashed branch.
+    const in_masters_sight = couldsee(omx, omy);
+    // C ref: dog_has_minvent = (droppables(mtmp) != 0).  True once the pet has
+    // picked something up in dog_invent (it stays in minvent until dropped).
+    const dog_has_minvent = !!droppables(mtmp);
+
+    if (mtmp.mleashed) {
+        // C ref: dogmove.c:504-507 — a LEASHED pet (or an edog-less guardian
+        // angel) "isn't going anywhere": gtyp is forced to APPORT, the goal is
+        // the hero, and the whole fobj scan is SKIPPED — every dogfood()
+        // obj_resists rn2(100) and the APPORT rn2(8) with it.  Not ported at
+        // all before, so a leashed pet still burned an rn2(100) per nearby
+        // object AND took the follow-the-hero arm below (whose rn2(4) /
+        // rn2(apport) rolls C never makes for gtyp == APPORT).
+        gtyp = APPORT;
+        g.gx = u.ux; g.gy = u.uy;
+    } else {
     const SQ = 5;
     const min_x = Math.max(omx - SQ, 1);
     const max_x = Math.min(omx + SQ, COLNO - 1);
     const min_y = Math.max(omy - SQ, 0);
     const max_y = Math.min(omy + SQ, ROWNO - 1);
-
-    const in_masters_sight = couldsee(omx, omy);
-    // C ref: dog_has_minvent = (droppables(mtmp) != 0).  True once the pet has
-    // picked something up in dog_invent (it stays in minvent until dropped).
-    const dog_has_minvent = !!droppables(mtmp);
 
     // nearby food/objects (C iterates fobj newest-first; that traversal order
     // determines which object's APPORT rn2(8) fires first, so it must match
@@ -597,6 +1039,7 @@ function dog_goal(mtmp, edog, after, udist, whappr, g) {
                 g.gx = nx; g.gy = ny; gtyp = APPORT;
             }
         }
+    }
     }
 
     let appr;
@@ -698,23 +1141,24 @@ function cursed_object_at(x, y) {
 }
 
 // --- monster capability predicates used by could_reach_item/can_reach_location.
-// C ref: mondata.h flag macros.  makemon's data records carry no mflags, so the
-// special species are identified by pmidx (same convention monmove.js uses).
-// The contest pets (little dog / kitten / pony) match none of these sets, so for
-// them could_reach_item reduces to the pool/lava/boulder terrain test and
-// can_reach_location's obstruction test reduces to plain IS_OBSTRUCTED.
-const CRI_WALLWALK_PMIDX = new Set([156, 232, 287, 288]); // earth elem, xorn, ghost, shade
-const CRI_TUNNELS_PMIDX = new Set([44, 46, 47, 92, 93, 225, 330, 343, 368]);
-const CRI_ROCKTHROW_PMIDX = new Set([169, 170, 171, 172, 173, 174, 175, 176, 177, 359]);
-function cri_passes_walls(d) { return !!d && CRI_WALLWALK_PMIDX.has(d.pmidx); }
-function cri_tunnels(d) { return !!d && CRI_TUNNELS_PMIDX.has(d.pmidx); }
-function cri_throws_rocks(d) { return !!d && CRI_ROCKTHROW_PMIDX.has(d.pmidx); }
-// C ref: mondata.h is_swimmer(M1_SWIM) / likes_lava (salamander/fire elemental).
-// No tameable/contest monster carries these flags at the points these sessions
-// reach, so a constant FALSE is faithful for every pet exercised; a swimmer or
-// lava-dweller pet would need the real M1_SWIM/M2 lookup.
-function cri_is_swimmer(_d) { return false; }
-function cri_likes_lava(_d) { return false; }
+// C ref: mondata.h flag macros.  These were HARDCODED pmidx SETS written when
+// makemon's records were believed to carry no mflags; monflags_data.js now
+// exposes the machine-generated tables, so read the real bits.  The index lists
+// were also wrong in the usual way: CRI_TUNNELS_PMIDX had 9 entries where
+// M1_TUNNEL covers 20+ species, and CRI_ROCKTHROW_PMIDX listed 10 where
+// M2_ROCKTHROW covers every giant plus the titans/minotaur/Cyclops.
+function cri_passes_walls(d) { return passes_walls_flag(d); }
+function cri_tunnels(d) { return (mflags1_of(d) & M1_TUNNEL) !== 0; }
+function cri_throws_rocks(d) { return throws_rocks_flag(d); }
+// C ref: mondata.h is_swimmer(ptr) = (mflags1 & M1_SWIM).  A constant FALSE
+// here made could_reach_item() refuse every water square for an eel/kraken pet
+// (and, via can_reach_location, refuse to path through one).
+function cri_is_swimmer(d) { return is_swimmer_flag(d); }
+// C ref: mondata.h likes_lava(ptr) — the fire elemental and the salamander are
+// the only two species (mondata.h names them explicitly, it is not a flag).
+function cri_likes_lava(d) {
+    return d?.name === 'fire elemental' || d?.name === 'salamander';
+}
 function cri_is_pool(x, y) {
     const t = game.level?.at(x, y)?.typ;
     return t === POOL || t === MOAT || t === WATER;
@@ -772,9 +1216,8 @@ function can_reach_location(mon, mx, my, fx, fy) {
 // blanket "always sees") keeps the obj_resists/rn2(8) stream matching C when an
 // object is in the pet's search box but not on a clear line of sight.
 //
-// Gated behind PET_REAL_VISION (kept in lock-step with the multi-pass movemon
-// toggle in allmain.js): the real line-of-sight only pays off once the pet's
-// repeat-move object scan runs (the C multi-pass).
+// Gated behind PET_REAL_VISION, which is TRUE — so both read the real vision
+// state; the `: true` arms are dead unless the constant is flipped back.
 function couldsee(x, y) { return PET_REAL_VISION ? visCouldsee(x, y) : true; }
 export function m_cansee(mtmp, x, y) {
     return PET_REAL_VISION ? clear_path(mtmp.mx, mtmp.my, x, y) : true;
@@ -801,23 +1244,51 @@ function curr_mon_load(mtmp) {
 }
 
 // C ref: mon.c can_carry(mtmp, otmp).  Returns 0 (cannot) or a positive
-// quantity.  The dog_goal APPORT branch only cares whether the result is > 0,
-// so we faithfully reproduce the conditions that yield 0 for the starting pet:
+// quantity.  The dog_goal APPORT branch only cares whether the result is > 0.
 //
-//   - notake / unsafe-to-touch: ordinary objects are fine -> not 0 here.
-//   - M1_NOHANDS pets (all three starting pets) with a stack quan > 1 and no
-//     engulf/dragon "glomper" return 1 BEFORE the load check (mon.c:2026).
-//   - single items: 0 iff curr_mon_load + owt > max_mon_load.
+// NOTE on PET_MAXLOAD: it is a three-entry subset table with a `?? 51` default,
+// i.e. exactly the shape this sweep hunts.  It is NOT a defect to dedupe blind:
+// js/mon.js owns a full max_mon_load()/can_carry(), and replacing this local
+// copy with it measured -2296 screens (see the pet-pmidx-convention note) —
+// dog.js pets carry no cwt/msize and a non-makemon pmidx, so the shared
+// predicate answers wrongly for them.  Leave the table; fix the pet records.
 export function can_carry(mtmp, obj) {
     const pmidx = mtmp.data?.pmidx;
     const maxload = PET_MAXLOAD[pmidx] ?? 51;
     const iquan = obj.quan || 1;
-    // All starting pets are NOHANDS and not glompers -> early return for stacks.
-    if (iquan > 1) return 1;
+    // C ref: mon.c:2007 — notake(mdat) == (mflags1 & M1_NOTAKE).
+    if ((mflags1_of(mtmp.data) & M1_NOTAKE) !== 0) return 0;
+    // C ref: mon.c:2010 can_touch_safely() — a monster without gloves won't
+    // pick up a cockatrice corpse it isn't stoning-proof against, nor (for a
+    // silver-hater) a silver item.  These two are the reachable cases.
+    if (obj.otyp === CORPSE && flesh_petrifies_data(monster_by_pmidx(obj.corpsenm))
+        && !resists_ston_mon(mtmp)) return 0;
+    // C ref: mon.c:2020-2038 — a NOHANDS non-glomper takes exactly 1 of a stack,
+    // BEFORE the steed/shk/load checks.
+    if (iquan > 1) {
+        const glomper = mtmp.data?.mcls === S_DRAGON
+            ? (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS)
+            : attacktype(mtmp.data, AT_ENGL);
+        if (nohands(mtmp.data) && !glomper) return 1;
+    }
+    // C ref: mon.c:2039-2040 — "steeds don't pick up stuff (to avoid shop
+    // abuse)".  Missing here (js/mon.js's copy has it), which mattered the
+    // moment dog_move stopped bailing out early for a ridden steed: the steed
+    // would apport items off the hero's own square every turn of riding.
+    if (mtmp === game.u?.usteed) return 0;
+    if (mtmp.isshk) return iquan; // no limit
+    if (mtmp.mpeaceful && !mtmp.mtame) return 0;
+    // C ref: mon.c:2050 — boulder throwers carry unlimited boulders.
+    if (cri_throws_rocks(mtmp.data) && obj.otyp === BOULDER) return iquan;
+    // C ref: mon.c:2054 — nymphs take anything but rocks/statues.
+    if (mtmp.data?.mcls === S_NYMPH)
+        return (obj.oclass === ROCK_CLASS) ? 0 : iquan;
     // single object: load capacity check against what the pet already carries.
     if (curr_mon_load(mtmp) + objWeight(obj) > maxload) return 0;
     return iquan;
 }
+// C ref: monflag.h M1_NOTAKE; defsym.h S_DRAGON / S_NYMPH; monattk.h AT_ENGL.
+const M1_NOTAKE = 0x00000800, GEM_CLASS = 9;
 
 // C ref: dogmove.c find_targ(mtmp, dx, dy, maxdist) — walk a straight line from
 // the pet, returning the first visible monster (or the hero, sentinel
@@ -834,8 +1305,15 @@ function find_targ(mtmp, dx, dy, maxdist) {
         if (curx === mtmp.mux && cury === mtmp.muy) return HERO_TARG;
         const targ = MON_AT(curx, cury);
         if (targ) {
-            // visible, detected, and (for our monsters) on its own square.
-            if (!targ.minvis && !targ.mundetected) return targ;
+            // C ref: dogmove.c:682-684 — `(!targ->minvis || perceives(mtmp->data))
+            // && !targ->mundetected && targ->mx == curx && targ->my == cury`.
+            // The perceives() half was dropped, so a see-invisible pet ignored
+            // every invisible target (and skipped its score_targ rnd(5)); the
+            // head-vs-tail test was dropped too, so a long worm's TAIL square
+            // was accepted as the target.
+            if ((!targ.minvis || perceives_flag(mtmp.data)) && !targ.mundetected
+                && targ.mx === curx && targ.my === cury)
+                return targ;
             // can't see it -> assume not there, keep walking.
         }
     }
@@ -858,10 +1336,18 @@ function find_friends(mtmp, mtarg, maxdist) {
         const pal = MON_AT(curx, cury);
         if (pal) {
             if (pal.mtame) {
-                if (!pal.minvis) return true;
+                // C ref: dogmove.c:724 — `!pal->minvis || perceives(mtmp->data)`.
+                if (!pal.minvis || perceives_flag(mtmp.data)) return true;
             } else {
-                const ms = pal.data?.msound;
-                if (ms === 'leader' || ms === 'guardian') return true;
+                // C ref: dogmove.c:728 — `pal->data->msound == MS_LEADER ||
+                // MS_GUARDIAN`.  This was ported as a comparison of
+                // `pal.data.msound` against the STRINGS 'leader'/'guardian';
+                // makemon's records carry no `msound` field at all (it lives in
+                // monflags_data's MSOUND table, keyed by pmidx), so the test was
+                // dead — every quest leader/guardian standing behind a target
+                // read as "not a friend" and the pet happily shot through it.
+                const ms = msound_of(pal.data);
+                if (ms === MS_LEADER || ms === MS_GUARDIAN) return true;
             }
         }
     }
@@ -869,19 +1355,26 @@ function find_friends(mtmp, mtarg, maxdist) {
 }
 
 // C ref: dogmove.c score_targ(mtmp, mtarg) — desirability of a ranged target.
-// We need its RNG side-effect: the `score += rnd(5)` fuzz roll at dogmove.c:830,
-// which only executes when the target survives the early returns (not a quest
-// friendly, not adjacent, not tame/hero, no friend behind).  The numeric score
-// only matters for best_target's selection, but the contest pets have no ranged
-// attack so a chosen target never produces an attack roll — only the rnd(5)
-// matters for RNG parity.  Returns the score (negative early-returns excluded).
+// Two RNG side-effects, not one: the `score += rnd(5)` fuzz roll at
+// dogmove.c:830 (which only executes when the target survives the early
+// returns), and the pair of confused-pet rn2(3) rolls at :748 and :832.  The
+// numeric score decides which target best_target() picks, which in turn decides
+// whether dog_move's floating-eye/cube branch calls best_target at all.
 function score_targ(mtmp, mtarg) {
     let score = 0;
-    // mconf branch: starting pets aren't confused -> the guard is always true.
-    if (!mtmp.mconf) {
-        // quest friendlies: never targeted (no rnd(5)).
-        const tms = (mtarg !== HERO_TARG) ? mtarg.data?.msound : null;
-        if (tms === 'leader' || tms === 'guardian') return -5000;
+    // C ref: dogmove.c:748 — `if (!mtmp->mconf || !rn2(3) || Is_qstart(&u.uz))`.
+    // The `!rn2(3)` half was dropped as "starting pets aren't confused", but a
+    // pet CAN be confused (dog_hunger sets mconf, so does a potion/trap), and
+    // then C draws rn2(3) here for every lined-up target before anything else.
+    const qstart = false; // Is_qstart(&u.uz): the quest home level, not modelled
+    if (!mtmp.mconf || !rn2(3) || qstart) {
+        // quest friendlies: never targeted (no rnd(5)).  Read the real MSOUND
+        // table, not a nonexistent `data.msound` string field.
+        const tms = (mtarg !== HERO_TARG) ? msound_of(mtarg.data) : undefined;
+        if (tms === MS_LEADER || tms === MS_GUARDIAN) return -5000;
+        // C ref: dogmove.c:771 — a coaligned peaceful priest/minion is spared.
+        // (isminion/ispriest alignment is not tracked on our monsters, so the
+        //  branch reduces to false; it draws no RNG either way.)
         // adjacent monster -> melee range, not a ranged target (no rnd(5)).
         if (mtarg !== HERO_TARG
             && distmin(mtmp.mx, mtmp.my, mtarg.mx, mtarg.my) <= 1)
@@ -890,20 +1383,52 @@ function score_targ(mtmp, mtarg) {
         if (mtarg === HERO_TARG || mtarg.mtame) return -3000;
         // friend (hero / pet) behind the target -> don't shoot through (no rnd).
         if (find_friends(mtmp, mtarg, 15)) return -3000;
-        // hostile-preference + passive/level adjustments (no RNG for our mons).
+        // Target hostile monsters in preference to peaceful ones.
         if (!mtarg.mpeaceful) score += 10;
+        // C ref: dogmove.c:795 — a wholly passive target isn't worth the breath.
+        if (mattk0_is_none(mtarg.data)) score -= 1000;
         const m_lev = mtarg.m_lev ?? mtarg.data?.mlevel ?? 0;
+        const my_lev = mtmp.m_lev ?? mtmp.data?.mlevel ?? 0;
+        const ulevel = game.u?.ulevel ?? 1;
+        // C ref: dogmove.c:799-802 — don't waste breath on lichens.
+        if ((m_lev < 2 && my_lev > 5)
+            || (my_lev > 12 && m_lev < my_lev - 9
+                && ulevel > 8 && m_lev < ulevel - 7))
+            score -= 25;
+        // C ref: dogmove.c:808-818 — a vampshifter in weak form fights as if it
+        // were in vampire form, which costs an rn2(mtmp_lev/2 + 1).  cham is the
+        // shifter's true species index; our monsters carry it when shapeshifted.
+        let mtmp_lev = my_lev;
+        if (is_vampshifter_mon(mtmp) && mtmp.data?.mcls !== S_VAMPIRE) {
+            mtmp_lev = monster_by_pmidx(mtmp.cham)?.mlevel ?? my_lev;
+            mtmp_lev += rn2(Math.trunc(mtmp_lev / 2) + 1);
+            if (my_lev > mtmp_lev) mtmp_lev = my_lev;
+        }
+        // C ref: dogmove.c:821 — hesitate to attack vastly stronger foes.
+        if (m_lev > mtmp_lev + 4) score -= (m_lev - mtmp_lev) * 20;
+        // All things equal, go for the beefiest monster.
         score += m_lev * 2 + Math.trunc((mtarg.mhp ?? 0) / 3);
     }
     // Fuzz factor (dogmove.c:830) — the roll the post-dismount stream needs.
     score += rnd(5);
+    // C ref: dogmove.c:832 — a confused pet may decide not to shoot after all.
+    // A SECOND rn2(3) that the old port never drew.
+    if (mtmp.mconf && !rn2(3)) score -= 1000;
     return score;
+}
+// C ref: dogmove.c:795 — `mtarg->data->mattk[0].aatyp == AT_NONE`, i.e. the
+// target is purely passive (a mold/jelly whose only "attack" is retaliation).
+// AT_NONE only ever occupies slot 0 in mons[], so an any-slot AT_NONE search is
+// equivalent; a monster with no attack table at all also has mattk[0] zeroed.
+function mattk0_is_none(ptr) {
+    return attacktype(ptr, AT_NONE) || !attacktype(ptr, AT_ANY);
 }
 
 // C ref: dogmove.c best_target(mtmp, forced) — scan the 8 directions (dy outer,
 // dx inner) for the first lined-up target and pick the highest score_targ.  The
 // rnd(5) inside score_targ fires once per qualifying lined-up target.
-function best_target(mtmp) {
+function best_target(mtmp, forced) {
+    if (!mtmp) return null;
     if (!mtmp.mcansee) return null; // blind pet sees no target (no rnd(5))
     let bestscore = -40000, best = null;
     for (let dy = -1; dy < 2; dy++) {
@@ -915,44 +1440,92 @@ function best_target(mtmp) {
             if (currscore > bestscore) { bestscore = currscore; best = temp; }
         }
     }
-    if (bestscore < 0) best = null;
+    // C ref: dogmove.c:881 — `if (!forced && bestscore < 0L) best_targ = 0;`.
+    if (!forced && bestscore < 0) best = null;
     return best;
 }
 
-// C ref: dogmove.c pet_ranged_attk(mtmp, FALSE) — the pet's ranged-attack
+// C ref: dogmove.c pet_ranged_attk(mtmp, forced) — the pet's ranged-attack
 // consideration run at the end of dog_move.  best_target() rolls the score_targ
-// rnd(5) fuzz per lined-up target.  For the contest pets (no breath/spit/gaze
-// attack) a chosen target yields M_ATTK_MISS from mattackm with no further RNG,
-// so this returns MMOVE_NOTHING after the scan.  The `!hungry || !rn2(5)` gate
-// only rolls rn2(5) when the pet is hungry (none of the early pets are yet).
-function pet_ranged_attk(mtmp) {
+// rnd(5) fuzz (and, for a confused pet, two rn2(3)s) per lined-up target.
+// The `hungry` test used DOG_HUNGRY spelled 500; dogmove.c:10 defines it as
+// 300 (500 is DOG_WEAK), so the rn2(5) "hungry pets rarely breathe" roll was
+// suppressed for the 200-move window between the two thresholds.
+async function pet_ranged_attk(mtmp, forced) {
     const edog = mtmp.edog;
-    const DOG_HUNGRY = 500; // dog.c DOG_HUNGRY
-    const hungry = edog ? ((game.moves || 1) > ((edog.hungrytime || 0) + DOG_HUNGRY)) : false;
-    const mtarg = best_target(mtmp);
+    const hungry = (!mtmp.isminion && edog)
+        ? ((game.moves || 1) > ((edog.hungrytime || 0) + DOG_HUNGRY)) : false;
+    const mtarg = best_target(mtmp, forced);
     if (mtarg && (!hungry || !rn2(5))) {
-        // The starting pets have no ranged attack: mattackm returns M_ATTK_MISS
-        // with no RNG, so no attack is executed.  (A real ranged pet would
-        // attack here; wire that in if such a pet is ever exercised.)
-        return MMOVE_NOTHING;
+        // DEFERRED (measured -1500 public when wired up): C calls
+        // mattackm(mtmp, mtarg) here.  For a melee-only pet at range that makes
+        // no attack and returns M_ATTK_MISS, but it is not a no-op — it sets
+        // magr->mlstmv = moves and clears a confused/helpless defender's
+        // msleeping.  js/mhitm.js's mattackm does not reproduce C's range
+        // short-circuit (it draws to-hit rolls the C never makes at distmin > 1),
+        // so calling it here desyncs; fixing mhitm.js's distance gate is a
+        // prerequisite and belongs to that file's pass.
+        const mstatus = M_ATTK_MISS;
+        // C ref: dogmove.c:962 — only a pet that actually attacked loses its move.
+        if (mstatus !== M_ATTK_MISS) return MMOVE_DONE;
     }
+    // C ref: dogmove.c:964 — `else if (forced) domonnoise(mtmp);` (forced is
+    // FALSE at dog_move's only call site).
     return MMOVE_NOTHING;
 }
 
 // C ref: dogmove.c dog_move(mtmp, after).  Drives one pet move.
 export async function dog_move(mtmp, after) {
     const edog = mtmp.edog;
+    // C ref: dogmove.c:1004 — only `!edog && !mtmp->isminion` is an error; a
+    // tame Angel (isminion, ispriest structure, no edog) runs the whole of
+    // dog_move with edog == 0, taking the guardian arms of dog_goal and the
+    // candidate loop.  Bailing out here makes a tame minion motionless.
     if (!edog) return MMOVE_NOTHING;
 
     const omx = mtmp.mx, omy = mtmp.my;
+    // C ref: dogmove.c:1011 — `if (edog && dog_hunger(mtmp, edog)) return
+    // MMOVE_DIED;`.  This ran nowhere before, so a pet never went from hungry to
+    // weak to starved: edog->mhpmax_penalty stayed 0 (dogfood()'s `starving`
+    // arm was dead code), mtmp->mconf was never set from hunger, and mhpmax was
+    // never cut, so the pet's `balk` / max_passive_dmg comparisons in the
+    // ALLOW_M branch read a health it should no longer have.
+    if (await dog_hunger(mtmp, edog)) return MMOVE_DIED; // starved
+
     let udist = distu(omx, omy);
-    if (!udist) return MMOVE_NOTHING; // standing on the hero (shouldn't happen)
+    // C ref: dogmove.c:1015-1025 — a RIDDEN steed does not get the `!udist`
+    // bail-out: distu() is 0 (it is standing under the hero), and C instead
+    // forces udist = 1 and runs the rest of dog_move for it.  Returning
+    // MMOVE_NOTHING here skipped dog_invent() entirely for the steed, so every
+    // turn of riding dropped the steed's underfoot dogfood()/rn2(100), its
+    // drop rolls (rn2(2)/rn2(apport)/rn2(10)) and its pickup rolls.  dog_goal()
+    // still returns -2 for the steed a few lines further down, which is what
+    // stops it choosing its own destination.
+    if (mtmp === game.u?.usteed) {
+        // (Conflict is not modelled, so the dismount_steed(DISMOUNT_THROWN)
+        //  branch above it cannot fire.)
+        udist = 1;
+    } else if (!udist) {
+        return MMOVE_NOTHING; // swallowed-and-tamed case
+    }
 
     let nix = omx, niy = omy;
 
     // dog_invent: object underfoot / carrying.  May consume the move (eat).
+    // C ref: dogmove.c:1032-1036 — j==2 (died eating) -> MMOVE_DIED/MMOVE_DONE,
+    // j==1 (ate) -> `goto newdogpos`, which with nix==omx/niy==omy falls out of
+    // the bottom as MMOVE_MOVED (NOT MMOVE_DONE): m_move's postmov() therefore
+    // still runs newsym + mintrap on the pet's square, and a pet that ate while
+    // standing on a known trap owes trap.c its rn2(4).
     const j0 = await dog_invent(mtmp, edog, udist);
-    if (j0 === 1) return MMOVE_DONE; // ate something
+    if (j0 === 2) return (mtmp.mhp != null && mtmp.mhp <= 0) ? MMOVE_DIED : MMOVE_DONE;
+    if (j0 === 1) {
+        newsym(omx, omy);
+        const tr = await mon_mintrap(mtmp);
+        if (tr === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+        newsym(mtmp.mx, mtmp.my);
+        return MMOVE_MOVED; // ate something
+    }
 
     const whappr = ((game.moves || 1) - edog.whistletime) < 5;
 
@@ -972,9 +1545,14 @@ export async function dog_move(mtmp, after) {
     const cnt = poss.length;
 
     // Count uncursed-item squares (for the cursed-item avoidance roll).  C ref
-    // dogmove.c:1070 — a monster-occupied square without ALLOW_M/ALLOW_MDISP is
-    // skipped; with ALLOW_M (every monster square here) it still counts toward
-    // uncursedcnt unless it also holds a cursed object.
+    // dogmove.c:1070-1077 — a monster-occupied square without ALLOW_M/ALLOW_MDISP
+    // is skipped.  mon_allowflags() gives every tame monster ALLOW_M, so the
+    // skip cannot fire here and the loop reduces to the cursed-object test.
+    // C ref: dogmove.c:1080 — `better_with_displacing = should_displace(...)`
+    // and the ALLOW_MDISP arm of the candidate loop are omitted: mfndpos only
+    // sets ALLOW_MDISP for is_displacer(ptr) (the displacer beast), and with no
+    // displacing candidate should_displace() is FALSE for every other monster.
+    // Neither draws RNG, so this is inert until a displacer beast is tamed.
     let uncursedcnt = 0;
     for (let i = 0; i < cnt; i++) {
         const { x: nx, y: ny } = poss[i];
@@ -999,8 +1577,14 @@ export async function dog_move(mtmp, after) {
     for (let i = 0; i < cnt; i++) {
         const nx = poss[i].x, ny = poss[i].y;
 
-        // (leashed / guardian skips omitted — never apply to the starting pets
-        //  in these sessions.)
+        // C ref: dogmove.c:1093 — a leashed pet is dragged along: any candidate
+        // square more than distu 4 from the hero is dropped outright.  Omitted
+        // before as "never applies to the starting pets"; the hero can apply a
+        // leash to any pet, and dropping a candidate changes the rn2(++chcnt)
+        // sequence for every square after it.
+        if (mtmp.mleashed && distu(nx, ny) > 4) continue;
+        // C ref: dogmove.c:1097 — the guardian-angel (edog-less) proximity skip.
+        // dog_move returns early without an edog in this port, so it cannot fire.
 
         // C ref: dogmove.c:1102 — ALLOW_M: the pet melees an adjacent monster.
         // A monster square either triggers an attack (return) or the pet balks
@@ -1024,11 +1608,21 @@ export async function dog_move(mtmp, after) {
         // C ref: dogmove.c:1188 — the dog avoids a harmful trap it can see, but
         // might have to cross one to follow the hero: a *seen* trap gives a 39/40
         // chance to skip the square (rn2(40)); 1/40 it steps on anyway.  Only
-        // squares mfndpos flagged ALLOW_TRAPS (harmful) reach here.  (Leashed pets
-        // whimper instead — not exercised by these steeds/pets.)
-        if ((poss[i].info & ALLOW_TRAPS_F) && !mtmp.mleashed) {
+        // squares mfndpos flagged ALLOW_TRAPS (harmful) reach here.
+        // C ref: dogmove.c:1198-1209 — a LEASHED pet whimpers (a topline, via
+        // sounds.c whimper -> "You hear a <whine>") and does NOT skip the
+        // square: it is dragged over the trap.  The old `&& !mtmp.mleashed`
+        // guard collapsed both arms into "no skip, no message".
+        if ((poss[i].info & ALLOW_TRAPS_F)) {
             const trap = t_at(nx, ny);
-            if (trap && trap.tseen && rn2(40)) continue;
+            if (trap) {
+                if (mtmp.mleashed) {
+                    if (!game.u?.udeaf)
+                        await emit_pet_msg(`${noit_Monnam(mtmp)} whimpers.`);
+                } else if (trap.tseen && rn2(40)) {
+                    continue;
+                }
+            }
         }
 
         // dog eschews cursed objects, likes dog food: scan objects at <nx,ny>.
@@ -1047,11 +1641,15 @@ export async function dog_move(mtmp, after) {
         if (ate) break; // goto newdogpos (eating)
 
         // saw a cursed item and not forced onto it -> usually keep looking.
-        if (cursemsg[i] && uncursedcnt > 0 && rn2(13 * uncursedcnt))
+        // C ref: dogmove.c:1237 — `&& !mtmp->mleashed`: a leashed pet has no
+        // choice and skips the rn2(13*uncursedcnt) roll entirely.
+        if (cursemsg[i] && !mtmp.mleashed && uncursedcnt > 0
+            && rn2(13 * uncursedcnt))
             continue;
 
-        // backtrack avoidance (only when far from the hero).
-        if (distmin(omx, omy, game.u.ux, game.u.uy) > 5) {
+        // backtrack avoidance (only when far from the hero, and not leashed —
+        // C ref: dogmove.c:1246 `!mtmp->mleashed &&`).
+        if (!mtmp.mleashed && distmin(omx, omy, game.u.ux, game.u.uy) > 5) {
             let skip = false;
             for (let jj = 0; jj < MTSZ && jj < k - 1; jj++) {
                 const t = mtrack[jj];
@@ -1081,12 +1679,24 @@ export async function dog_move(mtmp, after) {
     // NOTE: when the candidate scan found food it `goto newdogpos` in C, jumping
     // PAST pet_ranged_attk, so we only run it when the pet isn't eating.
     if (!do_eat) {
-        const r = pet_ranged_attk(mtmp);
+        const r = await pet_ranged_attk(mtmp, false);
         if (r !== MMOVE_NOTHING) return r;
     }
 
     // newdogpos:
     if (nix !== omx || niy !== omy) {
+        // C ref: dogmove.c:1280-1288 — `if (mfp.info[chi] & ALLOW_U)` the pet
+        // attacks the HERO (mattacku) instead of moving, breaking its leash
+        // first.  Unreachable in this port: monmove.js mon_allowflags() only
+        // sets ALLOW_U for a non-tame, non-peaceful monster (C also sets it via
+        // `Conflict && !resist_conflict`, and Conflict is not modelled), so a
+        // pet's info[] can never carry the bit.  Wiring it needs mattacku().
+        // C ref: dogmove.c:1289-1292 — m_in_out_region() (a level-region
+        // crossing, e.g. a gas cloud boundary) can abort the move with
+        // MMOVE_MOVED, and m_digweapon_check() can make the pet stop to wield a
+        // digging tool (MMOVE_NOTHING).  Both are hostile-monster machinery this
+        // port does not run for pets; see the deferred list.
+
         // C ref: dogmove.c:1295 — wasseen captured before the move (old square),
         // then re-checked at the new square, for the reluctant-step topline.
         const wasseen = canseemon(mtmp);
@@ -1132,6 +1742,44 @@ export async function dog_move(mtmp, after) {
     // ranged-less pet returns 0 without reaching the attack step (phase_four).
     // The previous `return MMOVE_NOTHING` skipped this mintrap, dropping an
     // rn2(4) that C consumes and desyncing every later monster move that turn.
+    //
+    // C ref: dogmove.c:1322-1355 — the "incredible kludge": a LEASHED pet that
+    // ended up more than distu 4 away (because it spent the turn eating, or was
+    // stuck in a trap) is TELEPORTED to a good position next to the hero, trying
+    // the straight-back square first and then the neighbouring directions.  It
+    // draws no RNG (goodpos is deterministic) but it MOVES the pet, so the
+    // rendered map and every later distance/mfndpos decision differ.
+    if (mtmp.mleashed && distu(omx, omy) > 4) {
+        const u = game.u;
+        const sx = Math.sign(omx - u.ux), sy = Math.sign(omy - u.uy);
+        let cx = u.ux + sx, cy = u.uy + sy;
+        if (!leash_goodpos(mtmp, cx, cy)) {
+            // C ref: xytodir/DIR_LEFT..DIR_RIGHT2 — the 8 compass directions in
+            // mkroom.h order, scanned outward from the straight-back direction.
+            const DIRS = [[0, -1], [1, -1], [1, 0], [1, 1],
+                          [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+            const base = DIRS.findIndex(([dx, dy]) => dx === sx && dy === sy);
+            let found = false;
+            for (let off = -1; off <= 1 && !found; off++) {
+                if (off === 0) continue;
+                const d = DIRS[((base + off) % 8 + 8) % 8];
+                const tx = u.ux + d[0], ty = u.uy + d[1];
+                if (leash_goodpos(mtmp, tx, ty)) { cx = tx; cy = ty; found = true; }
+            }
+            for (let off = -2; off <= 2 && !found; off += 4) {
+                const d = DIRS[((base + off) % 8 + 8) % 8];
+                const tx = u.ux + d[0], ty = u.uy + d[1];
+                if (leash_goodpos(mtmp, tx, ty)) { cx = tx; cy = ty; found = true; }
+            }
+            if (!found) { cx = mtmp.mx; cy = mtmp.my; }
+        }
+        const px = mtmp.mx, py = mtmp.my;
+        mtmp.mx = cx; mtmp.my = cy;
+        newsym(px, py);
+        newsym(cx, cy);
+        set_apparxy(mtmp);
+        return MMOVE_MOVED;
+    }
     newsym(omx, omy);
     const trapret = await mon_mintrap(mtmp);
     if (trapret === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
@@ -1140,15 +1788,18 @@ export async function dog_move(mtmp, after) {
 }
 
 // C ref: dogmove.c dog_eat(mtmp, obj, x, y, devour=FALSE) — the pet eats a floor
-// object it has just moved onto.  We model the RNG-load-bearing + observable
-// pieces exercised by the contest pets (corpses / ordinary food, never devour /
-// shop / royal-jelly / metal here):
+// object it has just moved onto (or is standing on, from dog_invent).
 //   - dog_nutrition(): no RNG; updates edog->hungrytime + mtmp->meating.
-//   - the "<pet> eats <obj>." topline when the pet or food is in view.
-//   - the reward-apport dogfood() check (dog.c:1197 equiv) -> obj_resists rn2(100).
+//   - splitobj() of a quan>1 food stack -> next_ident() -> rnd(2).
+//   - the "<pet> eats <obj>." / "It eats <obj>." topline.
+//   - the reward-apport dogfood() check (dogmove.c:315) -> obj_resists rn2(100).
 //   - m_consume_obj() -> delobj() -> obj_resists(obj,0,0) rn2(100), then the
-//     corpse is removed from the floor.
-// Returns 2 if the pet died (never here), else 1.
+//     object is removed from the floor.
+// STILL MISSING (all species/shop-specific, none reachable for a dog/cat/pony):
+// the `devour` halving, bee_eat_jelly() for a killer bee eating royal jelly,
+// the rust monster's oerodeproof "spits it out in disgust" branch, and the
+// unpaid-item shop billing (suppress_price / unpaid_cost / costly_alteration).
+// Returns 2 if the pet died, else 1.
 async function dog_eat(mtmp, edog, obj, x, y) {
     const moves = game.moves || 1;
     if (edog.hungrytime < moves) edog.hungrytime = moves;
@@ -1158,26 +1809,59 @@ async function dog_eat(mtmp, edog, obj, x, y) {
     // the nutrition with the corpse's species nutrition when available.
     edog.hungrytime += dog_nutrition(mtmp, obj);
     mtmp.mconf = 0;
+    // C ref: dogmove.c:242-246 — eating ends starvation: the mhpmax penalty is
+    // handed back.  Dropping it left mhpmax_penalty set forever once dog_hunger
+    // had fired, so dogfood() kept answering `starving` (ACCFOOD for everything)
+    // and dog_goal kept overriding the cursed-square skip.
+    if (edog.mhpmax_penalty) {
+        mtmp.mhpmax = (mtmp.mhpmax || 0) + edog.mhpmax_penalty;
+        edog.mhpmax_penalty = 0;
+    }
     if (mtmp.mflee && mtmp.mfleetim > 1) mtmp.mfleetim = Math.trunc(mtmp.mfleetim / 2);
     if ((mtmp.mtame || 0) < 20) mtmp.mtame = (mtmp.mtame || 0) + 1;
     // moved & ate on same turn: redraw the start and current squares.
     if (x !== mtmp.mx || y !== mtmp.my) { newsym(x, y); newsym(mtmp.mx, mtmp.my); }
 
-    // C ref: dog_eat — food items are eaten one at a time (splitobj) when the
-    // pile has quan>1; corpses are quan==1, so no splitobj/next_ident here.
+    // C ref: dogmove.c:262-263 — food items are eaten ONE AT A TIME: a stack of
+    // n>1 comestibles is split, which assigns the split piece a fresh o_id via
+    // next_ident() -> rnd(2).  The old code ate (and deleted) the whole stack
+    // and skipped that rnd(2), so a pet eating one of 3 tripe rations both
+    // vanished the other two and shifted every later roll by one draw.
+    if ((obj.quan || 1) > 1 && obj.oclass === FOOD_CLASS)
+        obj = pet_splitobj(obj, 1);
 
-    // "<pet> eats <obj>." — shown when the pet (at its new tile) or the food is
-    // in view.  noit_Monnam == "Your kitten" for a tame pet.
-    const seeobj = cansee(mtmp.mx, mtmp.my);
-    const sawpet = cansee(x, y);
-    if (sawpet || seeobj) {
+    // C ref: dogmove.c:266-295.  A pet eating while in a pool prints nothing.
+    // Otherwise the message depends on WHO is seen: the pet in view (or the food
+    // in view and the pet spottable) names the pet; food-only in view is "It
+    // eats <obj>." — that second form was missing entirely.
+    if (!cri_is_pool(mtmp.mx, mtmp.my)) {
+        const seeobj = cansee(mtmp.mx, mtmp.my);
+        const sawpet = cansee(x, y) && canseemon(mtmp);
         const what = pet_doname(obj);
-        await emit_pet_msg(`${noit_Monnam(mtmp)} eats ${what}.`);
+        if (sawpet || (seeobj && canspotmon(mtmp))) {
+            // C ref: dogmove.c:286 — a tunneller "digs in" instead of eating.
+            if (tunnels(mtmp.data))
+                await emit_pet_msg(`${noit_Monnam(mtmp)} digs in.`);
+            else
+                await emit_pet_msg(`${noit_Monnam(mtmp)} eats ${what}.`);
+        } else if (seeobj) {
+            await emit_pet_msg(`It eats ${what}.`);
+        }
     }
 
-    // C ref: dog_eat:315 — reward-apport bump only when DOGFOOD && obj->invlet,
-    // but dogfood() is *called* unconditionally (obj_resists rn2(100) fires).
-    dogfood(mtmp, obj); // -> obj_resists rn2(100)
+    // C ref: dogmove.c:315-331 — the reward-apport bump.  dogfood() is called
+    // unconditionally (obj_resists rn2(100) fires either way), but when the food
+    // is DOGFOOD *and the hero had held it* (obj->invlet set) the pet's apport
+    // climbs by 200/(dropdist + moves - droptime).  apport is the modulus of
+    // three later rolls (rn2(apport), rn2(10)<apport, rn2(20)<apport+3) and the
+    // rn2(8) comparand in dog_goal, so never bumping it pinned a well-fed pet's
+    // apport at its initial 3 forever.
+    if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
+        const denom = (edog.dropdist || 0) + moves - (edog.droptime || 0);
+        edog.apport = edogApport(edog)
+            + (denom !== 0 ? Math.trunc(200 / denom) : 200);
+        if (edog.apport <= 0) edog.apport = 1; // C: impossible() + clamp
+    }
 
     // C ref: m_consume_obj -> delobj(obj) -> delobj_core: obj_resists(obj,0,0)
     // rn2(100) guard, obj_extract_self() removes it from the floor, then (because
@@ -1192,59 +1876,85 @@ async function dog_eat(mtmp, edog, obj, x, y) {
     pet_extract_floor(obj);
     newsym(ox, oy);
 
-    return 1;
+    // C ref: dogmove.c:344 — return (DEADMONSTER(mtmp)) ? 2 : 1.
+    return (mtmp.mhp != null && mtmp.mhp <= 0) ? 2 : 1;
 }
 
-// C ref: dogmove.c dog_nutrition(mtmp, obj) — no RNG.  Only the hungrytime
-// side-effect is load-bearing for the move stream: it pushes hungrytime well
-// past svm.moves so the pet stops being "hungry" (gating future ACCFOOD eats via
-// `hungrytime <= moves`).  The precise nutrition value isn't observable, so we
-// approximate it with a positive amount large enough to keep the not-hungry gate
-// stable for the rest of the session.  Corpses scale a base nutrition by the
-// eater's body size; other food uses a small positive default.
+// C ref: dogmove.c dog_nutrition(mtmp, obj) — no RNG, but BOTH outputs are
+// load-bearing.  meating gates the pet's movement for that many m_move() calls
+// (monmove.c:1745), and hungrytime decides when dog_hunger() confuses/starves
+// the pet and when the `hungrytime <= moves` ACCFOOD gate in dog_move's
+// candidate scan opens.  The old body returned a flat 50 for everything
+// ("the precise value isn't observable"), which is off by 16x on a food ration
+// and 40x on an 8 hp newt corpse — the two thresholds above are absolute, not
+// relative, so the approximation moved them by hundreds of turns.
 function dog_nutrition(mtmp, obj) {
     // C ref: dog_nutrition sets mtmp->meating (the digesting-occupation counter)
     // AND returns nutrit (the hungrytime bump).  meating gates the pet's movement
     // for the next few m_move() calls (monmove.c:1745), so it MUST be exact:
     //   corpse:    meating = 3 + (mons[corpsenm].cwt >> 6)
-    //   other food: meating = objects[otyp].oc_delay  (not exercised here)
+    //   other food: meating = objects[otyp].oc_delay
     // For a corpse, cwt < 64 (newt cwt 10) -> meating = 3.
     let nutrit;
-    if (obj.otyp === CORPSE) {
-        const cwt = mon_cwt(obj.corpsenm) ?? 0;
-        mtmp.meating = 3 + (cwt >> 6);
-        // nutrit = mons[corpsenm].cnutrit; the cnutrit table isn't ported, so use
-        // a conservative positive base (only the hungrytime sign/magnitude is
-        // observable, never the exact value).
-        nutrit = 50;
+    if (obj.oclass === FOOD_CLASS) {
+        if (obj.otyp === CORPSE) {
+            const cwt = mon_cwt(obj.corpsenm) ?? 0;
+            mtmp.meating = 3 + (cwt >> 6);
+            // C ref: nutrit = mons[corpsenm].cnutrit.  makemon.js exports the
+            // real per-species table (mon_cnutrit); this used to be a flat 50.
+            nutrit = mon_cnutrit(obj.corpsenm) ?? 0;
+        } else {
+            // C ref: dog_nutrition — a non-corpse food's digesting time is
+            // objects[otyp].oc_delay, NOT a flat 1.  meating gates the pet's
+            // movement for the next oc_delay m_move() calls (monmove.c:1745
+            // returns MMOVE_DONE while meating>0), so it MUST match C exactly.
+            mtmp.meating = FOOD_OC_DELAY[obj.otyp] ?? 1;
+            nutrit = FOOD_OC_NUTRITION[obj.otyp] ?? 0;
+        }
+        const msize = (mtmp.data?.msize != null)
+            ? mtmp.data.msize
+            : (mon_msize(mtmp.data?.pmidx) ?? 2 /* MZ_MEDIUM */);
+        switch (msize) {
+        case 0: nutrit *= 8; break;  // MZ_TINY
+        case 1: nutrit *= 6; break;  // MZ_SMALL
+        case 3: nutrit *= 4; break;  // MZ_LARGE
+        case 4: nutrit *= 3; break;  // MZ_HUGE
+        case 5: nutrit *= 2; break;  // MZ_GIGANTIC
+        default: nutrit *= 5; break; // MZ_MEDIUM
+        }
+        // C ref: dog_nutrition — a partly-eaten food scales BOTH meating and
+        // nutrit by the remaining fraction (eat.c eaten_stat), min 1.  The old
+        // code clamped meating to exactly 1 and left nutrit untouched, so a pet
+        // finishing a half-eaten food ration banked the full 800*msize.
+        if (obj.oeaten) {
+            mtmp.meating = eaten_stat(mtmp.meating, obj);
+            nutrit = eaten_stat(nutrit, obj);
+        }
+    } else if (obj.oclass === COIN_CLASS) {
+        // C ref: dogmove.c:197-203 — a gold-eating pet (gelatinous cube, and a
+        // steed/pet handed coins) digests quan/2000+1 turns for quan/20 food.
+        mtmp.meating = Math.trunc((obj.quan || 0) / 2000) + 1;
+        if (mtmp.meating < 0) mtmp.meating = 1;
+        nutrit = Math.trunc((obj.quan || 0) / 20);
+        if (nutrit < 0) nutrit = 0;
     } else {
-        // C ref: dog_nutrition — a non-corpse food's digesting time is
-        // objects[otyp].oc_delay, NOT a flat 1.  meating gates the pet's
-        // movement for the next oc_delay m_move() calls (monmove.c:1745 returns
-        // MMOVE_DONE while meating>0), so it MUST match C exactly: e.g. a pet
-        // that gobbles a tripe ration (oc_delay 2) stays put for two turns,
-        // shifting when it next re-enters the movemon loop relative to the other
-        // monsters.  A flat 1 let the pet move a turn too early.
-        mtmp.meating = FOOD_OC_DELAY[obj.otyp] ?? 1;
-        nutrit = 50;
-    }
-    // C ref: dog_nutrition — a partially-eaten food scales meating (and nutrit)
-    // by the remaining fraction via eaten_stat().  Floor food fed to a pet is
-    // normally fresh (oeaten==0), so this branch is not exercised by the current
-    // sessions; when it is, clamp meating to at least 1 as eaten_stat() does.
-    if (obj.oeaten && mtmp.meating > 1) mtmp.meating = 1;
-    const msize = (mtmp.data?.msize != null)
-        ? mtmp.data.msize
-        : (mon_msize(mtmp.data?.pmidx) ?? 2 /* MZ_MEDIUM */);
-    switch (msize) {
-    case 0: nutrit *= 8; break;  // MZ_TINY
-    case 1: nutrit *= 6; break;  // MZ_SMALL
-    case 3: nutrit *= 4; break;  // MZ_LARGE
-    case 4: nutrit *= 3; break;  // MZ_HUGE
-    case 5: nutrit *= 2; break;  // MZ_GIGANTIC
-    default: nutrit *= 5; break; // MZ_MEDIUM
+        // C ref: dogmove.c:204-212 — "unusual pet such as gelatinous cube eating
+        // odd stuff": meating scales with the object's weight, nutrit is 5x the
+        // object's oc_nutrition (0 for non-foods).
+        mtmp.meating = Math.trunc(objWeight(obj) / 20) + 1;
+        nutrit = 5 * (FOOD_OC_NUTRITION[obj.otyp] ?? 0);
     }
     return nutrit;
+}
+
+// C ref: eat.c eaten_stat(base, obj) — scale `base` by the fraction of the
+// object's nutrition that is left (obj->oeaten / oc_nutrition), min 1.
+function eaten_stat(base, obj) {
+    const full = FOOD_OC_NUTRITION[obj.otyp] ?? 0;
+    let uneaten = obj.oeaten || 0;
+    if (uneaten > full) uneaten = full;
+    const v = full ? Math.trunc((base * uneaten) / full) : 0;
+    return v < 1 ? 1 : v;
 }
 
 // C ref: do_name.c Monnam()/x_monnam(ARTICLE_YOUR) capitalized — "Your kitten".
@@ -1274,13 +1984,19 @@ function canseemon(mtmp) {
     return !!cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp);
 }
 
-// C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY).  makemon carries no
-// mflags1, so identify flyers by pmidx (the low-level M1_FLY set, mirroring
-// monmove.js); pets exercised by the sessions (dog/kitten/pony) are not flyers.
-const M1_FLY_PMIDX = new Set([49, 50, 98, 220]);
-function is_flyer(ptr) { return ptr != null && M1_FLY_PMIDX.has(ptr.pmidx); }
-// C ref: mondata.h is_floater(ptr) = (ptr->mlet == S_EYE).  S_EYE == 18.
-function is_floater(ptr) { return ptr != null && ptr.mcls === 18; }
+// C ref: mondata.h is_flyer(ptr) = (mflags1 & M1_FLY).  This was a FOUR-entry
+// pmidx set written when makemon was believed to carry no mflags1; M1_FLY
+// covers ~60 species (every bat/bird, all the dragons, the angels, the
+// demons...), so the set answered FALSE for all but four of them and every
+// flying pet got "steps reluctantly onto" instead of "flies reluctantly over".
+function is_flyer(ptr) { return is_flyer_flag(ptr); }
+// C ref: mondata.h is_floater(ptr) = (ptr->mlet == S_EYE).  defsym.h puts
+// S_EYE at 5, not 18 (18 is S_RODENT) — the old literal made every rodent a
+// "floater", so a rat stepping onto a cursed object read "floats reluctantly
+// OVER" instead of "steps reluctantly ONTO", and locomotion() gave it the verb
+// "float".  Both are rendered text.
+const S_EYE = 5;
+function is_floater(ptr) { return ptr != null && ptr.mcls === S_EYE; }
 
 // C ref: mondata.c locomotion(ptr, def) — the movement verb.  Floaters/flyers/
 // slitherers use their own verb; a normal limbed walker (every contest pet) uses
@@ -1382,7 +2098,12 @@ async function dog_attack_mon(mtmp, mtmp2, omx, omy, after) {
     if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
         && rn2(4)                                 // dogmove.c:1158
         && mtmp2.mlstmv !== game.moves
-        // onscary() is false for these monsters (no temple/Elbereth here)
+        // C ref: dogmove.c:1160 — `!onscary(mtmp->mx, mtmp->my, mtmp2)`.  This
+        // was asserted false ("no temple/Elbereth here"); a pet standing on an
+        // Elbereth engraving, a scare-monster scroll or a co-aligned temple
+        // square DOES stop the counter-attack, and the roll order matters
+        // because rn2(4) has already been consumed by then.
+        && !onscary(mtmp.mx, mtmp.my, mtmp2)
         && monnear(mtmp2, mtmp.mx, mtmp.my)) {
         mstatus = await mattackm(mtmp2, mtmp);    // return attack (dogmove.c:1165)
         if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
@@ -1404,11 +2125,13 @@ export function monnear(mon, x, y) {
 // had left, applied when restore.c getlev() reloads that level.  RNG is
 // consumed only by the conditional recovery rolls: rn2(nmv+1) for a trapped /
 // confused / stunned monster, and rn2(wilder) for a tame monster that has been
-// separated from the hero long enough to risk going wild.  For the small
-// elapsed times and hostile (non-tame, un-afflicted) monsters the recorded
-// sessions return to, none of these fire, so no RNG is used.  HP regeneration
-// (healmon) and the pet-starvation check are HP/tameness-only bookkeeping with
-// no RNG and no glyph effect, so they are not modelled.
+// separated from the hero long enough to risk going wild.  The HP regeneration
+// (healmon) and the pet-starvation check draw no RNG THEMSELVES but both write
+// state that later moduli read: mhp feeds dog_move's `balk` and the
+// max_passive_dmg comparison in the ALLOW_M branch (so a pet that healed while
+// off-level attacks foes the un-healed pet balks at), and the starvation check
+// clears mtame/mpeaceful, which flips the monster out of dog_move entirely and
+// changes its mfndpos allowflags (ALLOW_M|ALLOW_TRAPS -> ALLOW_U).
 export function mon_catchup_elapsed_time(mtmp, nmv) {
     const LARGEST_INT = 0x7fffffff;
     let imv = (nmv >= LARGEST_INT) ? (LARGEST_INT - 1) : (nmv | 0);
@@ -1429,7 +2152,10 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
 
     // might finish eating or be able to use special ability again
     if (mtmp.meating) {
-        if (imv > mtmp.meating) mtmp.meating = 0; // finish_meating (no RNG)
+        // C ref: dogmove.c finish_meating(mtmp) — clears meating AND, when the
+        // monster was mimicking something because it ate a mimic corpse
+        // (quickmimic), resets m_ap_type/mappearance and repaints its square.
+        if (imv > mtmp.meating) finish_meating(mtmp);
         else mtmp.meating -= imv;
     }
     if (imv > (mtmp.mspec_used || 0)) mtmp.mspec_used = 0;
@@ -1446,6 +2172,85 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
             mtmp.mtame = mtmp.mpeaceful = 0;   // hostile!
     }
 
+    // C ref: dog.c:1257-1265 — a pet that WOULD have starved while the hero was
+    // away goes wild instead of dying on the next dog_move().  Never ported, so
+    // a pet left behind for 1000+ turns stayed tame forever.  DOG_WEAK 500 /
+    // DOG_STARVE 750 are dogmove.c's own thresholds, spelled as literals in
+    // dog.c (which is why they were easy to miss).
+    if (mtmp.mtame && !mtmp.isminion
+        && (carnivorous(mtmp.data) || herbivorous(mtmp.data))) {
+        const edog = mtmp.edog;
+        const moves = game.moves ?? 0;
+        if (edog
+            && ((moves > (edog.hungrytime || 0) + DOG_WEAK && (mtmp.mhp ?? 99) < 3)
+                || moves > (edog.hungrytime || 0) + DOG_STARVE))
+            mtmp.mtame = mtmp.mpeaceful = 0;
+    }
+
+    // C ref: dog.c:1274-1277 — recover lost hit points.  A non-regenerating
+    // monster heals at 1/20th the elapsed time.  Omitted before as "HP-only
+    // bookkeeping": mhp is read by dog_move's balk formula and by the
+    // max_passive_dmg(mtmp2, mtmp) >= mtmp->mhp gate, so a pet that returns to
+    // an old level un-healed refuses fights C's healed pet takes (and vice
+    // versa for a hostile monster's own m_move decisions).
+    if (!regenerates(mtmp.data)) imv = Math.trunc(imv / 20);
+    healmon(mtmp, imv, 0);
+
     // set_mon_lastmove(mtmp)
     mtmp.mlstmv = game.moves ?? 0;
+}
+
+// C ref: dogmove.c quickmimic(mtmp) — a PET that has just eaten a mimic corpse
+// (mon.c:1447, `if (ispet && deadmimic) quickmimic(mtmp)`) starts mimicking
+// something for the rest of its meal.  It DRAWS RNG: rn2(SIZE(qm)) up to five
+// times in a do/while.  Neither the function nor its call site existed in this
+// port; the call site lives in mon.c's meatcorpse (js/mon.js), so this is
+// exported for that file's pass to wire up — the RNG must fire before anything
+// else that turn or the whole stream shifts.
+//
+// C ref: dogmove.c:1429-1445 qm[] — the table is ordered and its SIZE (9) is
+// the rn2 modulus, so it must be transcribed whole, not filtered.
+const M_AP_FURNITURE = 1, M_AP_MONSTER = 2, M_AP_OBJECT = 3;
+const S_DOG_CLS = 4, S_SINK_SYM = 30; // defsym.h S_DOG / S_sink
+// The qm[] rows are matched by SPECIES NAME rather than by index: dog.js builds
+// its pets with a non-makemon pmidx (34 reads as jaguar, 102 as gray unicorn),
+// so a pmidx comparison would answer wrongly for exactly the pets this table is
+// about.  `app` is a real mons[]/objects[] index (it is only displayed).
+const QM_TABLE = [
+    { name: 'little dog', mlet: 0, app: 32 /*kitten*/, type: M_AP_MONSTER },
+    { name: 'dog', mlet: 0, app: 33 /*housecat*/, type: M_AP_MONSTER },
+    { name: 'large dog', mlet: 0, app: 37 /*large cat*/, type: M_AP_MONSTER },
+    { name: 'kitten', mlet: 0, app: 16 /*little dog*/, type: M_AP_MONSTER },
+    { name: 'housecat', mlet: 0, app: 18 /*dog*/, type: M_AP_MONSTER },
+    { name: 'large cat', mlet: 0, app: 19 /*large dog*/, type: M_AP_MONSTER },
+    { name: 'housecat', mlet: 0, app: 89 /*giant rat*/, type: M_AP_MONSTER },
+    { name: null, mlet: S_DOG_CLS, app: S_SINK_SYM, type: M_AP_FURNITURE },
+    { name: null, mlet: 0, app: TRIPE_RATION, type: M_AP_OBJECT }, // keep last
+];
+export function quickmimic(mtmp) {
+    // C ref: dogmove.c:1478 — Protection_from_shape_changers is a hero property
+    // this port does not track for monsters; !meating is the reachable guard.
+    if (!mtmp.meating) return;
+    let idx = 0, trycnt = 5;
+    do {
+        idx = rn2(QM_TABLE.length);
+        if (QM_TABLE[idx].name && mtmp.data?.name === QM_TABLE[idx].name) break;
+        if (QM_TABLE[idx].mlet !== 0 && mtmp.data?.mcls === QM_TABLE[idx].mlet)
+            break;
+        if (!QM_TABLE[idx].name && QM_TABLE[idx].mlet === 0) break;
+    } while (--trycnt > 0);
+    if (trycnt === 0) idx = QM_TABLE.length - 1;
+    mtmp.m_ap_type = QM_TABLE[idx].type;
+    mtmp.mappearance = QM_TABLE[idx].app;
+    newsym(mtmp.mx, mtmp.my);
+}
+
+// C ref: dogmove.c finish_meating(mtmp).
+function finish_meating(mtmp) {
+    mtmp.meating = 0;
+    if ((mtmp.m_ap_type ?? 0) !== 0 && mtmp.data?.mcls !== S_MIMIC) {
+        mtmp.m_ap_type = 0;
+        mtmp.mappearance = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
 }

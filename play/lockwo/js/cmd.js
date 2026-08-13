@@ -14,7 +14,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
          attr_window_advance, disco_window_advance, dowieldquiver, dowield, doswapweapon, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
-         doprgold, doprwep, doprarm, doprring, dopramulet,
+         doprgold, doprwep, doprarm, doprring, dopramulet, doprinuse,
          renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
 import { WEAPON_CLASS, objects as OBJECTS, KICKING_BOOTS } from './mkobj.js';
 import { doeat } from './eat.js';
@@ -25,7 +25,8 @@ import { docast } from './spell.js';
 import { doread } from './read.js';
 import { dohelp } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
-import { doextcmd, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
+import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
+import { do_gamelog } from './insight.js';
 import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation,
@@ -105,6 +106,20 @@ const CMD_DEFAULT_KEY = {
     up: '<', versionshort: 'V', wait: '.', wear: 'W', whatdoes: '&',
     whatis: '/', wield: 'w', zap: 'z',
 };
+
+// Every default command key (cmd.c extcmdlist), for is_bound_key().
+const BOUND_COMMAND_KEYS = new Set(Object.values(CMD_DEFAULT_KEY));
+
+// C ref: cmd.c cmdbind_get(key) — is this key bound to any command at all?
+// An unbound key (space with rest_on_space Off, most punctuation) makes rhack
+// fall straight through to bad_command, skipping the g/G/F prefix handling.
+function is_bound_key(ch) {
+    if (ch == null || ch === '') return false;
+    if ('hjklyubnHJKLYUBN'.includes(ch)) return true;
+    if (ch >= '0' && ch <= '9') return true;   // count prefix, eaten by parse()
+    if (ch.charCodeAt(0) < 32) return true;    // Ctrl-<key> bindings
+    return BOUND_COMMAND_KEYS.has(ch);
+}
 
 // C ref: cmd.c reset_commands() — with number_pad off the movement keys bind
 // three ways per direction: the plain letter -> walk (do_move, run==0), the
@@ -289,7 +304,7 @@ function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
 // hero facing a boulder inside a cloud gets asked where C stays silent.  The
 // diagonal bad_rock squeeze (hack.c:1153) is likewise unported, but this port's
 // DO_MOVE doesn't model it either, so those two agree.
-function test_move_quiet(x, y) {
+export function test_move_quiet(x, y) {
     const u = game.u;
     if (!isok(x, y)) return false;
     if (blocksMove(x, y)) return false;
@@ -541,6 +556,45 @@ export async function rhack(key) {
         }
     }
 
+    // C ref: cmd.c rhack():3689-3722 — a pending g/G/F prefix followed by a
+    // command that lacks CMD_gGF_PREFIX (only the eight plain move commands
+    // carry it) is refused with this message; the command itself never runs.
+    // Without it an 'F.' pair silently rested, taking a turn C never took.
+    // `_prefix_seen` is C's rhack()-LOCAL `prefix_seen`, set only for the key
+    // read inside the prefix command's own rhack() call.  svc.context.run
+    // (game.context.run_prefix) outlives that call; prefix_seen does not, so
+    // the complaint must key on the local one.
+    if ((game.context.forcefight || game.context._prefix_seen)
+        && !game._modal_screen && !isMovementKey(ch)
+        && ch !== '\x1b' && key !== 32 && key !== 13 && key !== 10
+        && ch !== 'F' && ch !== 'g' && ch !== 'G' && ch !== 'm') {
+        const which = game.context.forcefight ? 'F'
+            : (game.context.run_prefix === 3 ? 'G' : 'g');
+        const updown = (ch === '<' || ch === '>') ? ' other than up or down' : '';
+        await pline(`The '${which}' prefix should be followed by a movement command${updown}.`);
+        game.context.forcefight = 0;
+        game.context.run_prefix = 0;
+        game.context.move = 0;
+        return;
+    }
+    // C ref: cmd.c rhack():3826 — an UNBOUND key (cmdbind_get() == NULL) skips
+    // the whole prefix_seen block and falls to `bad_command`, which returns
+    // WITHOUT reset_cmd_vars().  rhack's `prefix_seen` is a local, so the
+    // rejection message dies with the call, but svc.context.run (set by
+    // do_rush/do_run) survives into the NEXT command: 'g' <space> 'b' still
+    // rushes.  stale_run carries exactly that one-command residue; every other
+    // command path ends in reset_cmd_vars(), which clears it.
+    const staleRun = game.context.stale_run || 0;
+    game.context.stale_run = 0;
+    // A pending g/G prefix is dropped by ESC or a quitchar with no message.
+    if (game.context.run_prefix && !game._modal_screen && !isMovementKey(ch)) {
+        if (!is_bound_key(ch))
+            game.context.stale_run = game.context.run_prefix || staleRun;
+        game.context.run_prefix = 0;
+    } else if (!is_bound_key(ch) && !isMovementKey(ch) && !game._modal_screen) {
+        game.context.stale_run = staleRun; // consecutive unbound keys keep it
+    }
+
     // A paged ^X attributes window consumes space/return to advance pages and
     // dismiss after the last; ESC cancels.  C ref: process_menu_window().
     if (game._modal_screen === 'attrwin'
@@ -575,6 +629,9 @@ export async function rhack(key) {
         } else if (key === 32 && !game._modal_screen) {
             // <space> is unbound with 'rest_on_space' Off (the default) and
             // elicits "Unknown command ' '." (cmd.c update_rest_on_space).
+            // bad_command skips reset_cmd_vars(), so a pending g/G prefix's
+            // svc.context.run survives it — carried by context.stale_run, which
+            // the rhack() head already armed for this unbound key.
             await pline(`Unknown command '${ch}'.`);
             game.context.move = 0;
         } else if ((key === 13 || key === 10) && !game._modal_screen) {
@@ -610,6 +667,20 @@ export async function rhack(key) {
         game.context.move = (await ddoinv(getdir)) === 3 ? 1 : 0;
     } else if (ch === '\\') {
         dodiscovered();
+        game.context.move = 0;
+    } else if (ch === 'v') {
+        // C ref: cmd.c { 'v', "chronicle", ..., do_gamelog } — the #chronicle
+        // text window.  The key was in CMD_DEFAULT_KEY but had no dispatch
+        // branch, so 'v' fell through to "Unknown command 'v'.".
+        await do_gamelog();
+        game.context.move = 0;
+    } else if (ch === '*') {
+        // C ref: cmd.c:1848 { '*', "seeall", doprinuse, IFBURIED | GENERALCMD |
+        // CMD_M_PREFIX } — the ')' + '[' + '=' + '"' + '(' listings combined.
+        // It is a PICK_ONE menu, so its keystrokes must be consumed by the menu
+        // rather than the command parser; getdir feeds the itemactions
+        // follow-up.  C returns ECMD_OK unconditionally: no time passes.
+        await doprinuse(getdir);
         game.context.move = 0;
     } else if (ch === '$') {
         // C ref: cmd.c { GOLD_SYM, "showgold", ..., doprgold } — show wallet gold.
@@ -772,6 +843,13 @@ export async function rhack(key) {
         // C ref: cmd.c keymap 'W' = dowear (do_wear.c).  Prompts for armor to
         // wear; ECMD_TIME (3) only when the don actually costs a turn.
         game.context.move = (await dowear()) === 3 ? 1 : 0;
+    } else if (ch === 'A') {
+        // C ref: cmd.c { 'A', "takeoffall", doddoremarm, 0 } (do_wear.c) — the
+        // multi-item take-off/unwield command.  Under the default
+        // menustyle:Full it opens the query_category() class menu; the command
+        // always returns ECMD_OK (take_off() accounts for its own time).
+        await doddoremarm();
+        game.context.move = 0;
     } else if (ch === 'T') {
         // C ref: cmd.c keymap 'T' = dotakeoff (do_wear.c).  Removes worn armor
         // (a single piece comes off without a disambiguation prompt).
@@ -892,7 +970,15 @@ export async function rhack(key) {
         // multi-turn run inline and leaves game.context.move = 0 (every
         // elapsed turn was already taken), so the moveloop does not schedule
         // another per-turn pass.  C ref: cmd.c do_run_*(), hack.c domove().
-        await do_run(RUN_DX[ch], RUN_DY[ch]);
+        // A still-armed g/G prefix wins: set_move_cmd() leaves context.run at
+        // the prefix's value when gd.domove_attempting is already set.
+        const rprun = game.context.run_prefix || staleRun;
+        if (rprun) {
+            game.context.run_prefix = 0;
+            await do_run_prefixed(RUN_DX[ch], RUN_DY[ch], rprun);
+        } else {
+            await do_run(RUN_DX[ch], RUN_DY[ch]);
+        }
     } else if (CTRL_RUSH_DIR[key] !== undefined) {
         // C ref: cmd.c reset_commands() — Ctrl+<direction letter> is bound to
         // the rush movement (do_rush_*, set_move_cmd(dir, 3)).  Rush goes until
@@ -929,18 +1015,30 @@ export async function rhack(key) {
         }
         game.context.move = 0;
     } else if (ch === 'G' || ch === 'g') {
-        // C ref: cmd.c do_run()/do_rush() prefix commands: read a following
-        // movement key, then run (G -> run==3) / rush (g -> run==2).  An ESC
-        // or a non-movement key cancels with no time elapsed.
-        const dirKey = await nhgetch();
-        const dch = String.fromCharCode(dirKey);
-        const ldir = dch.toLowerCase();
-        if (DIR_DX[ldir] !== undefined) {
-            await do_run_prefixed(DIR_DX[ldir], DIR_DY[ldir], ch === 'G' ? 3 : 2);
-        } else {
-            game.context.move = 0;
-        }
+        // C ref: cmd.c do_run()/do_rush() are PREFIXCMDs: rhack marks the
+        // prefix and jumps back to `got_prefix_input`, which re-enters parse()
+        // — that reads the next key AND clears the top line.  Reading the
+        // direction inline instead left the previous message on the recorded
+        // screen and swallowed a key that C dispatches as its own command.
+        game.context.run_prefix = (ch === 'G') ? 3 : 2;
+        game.context.move = 0;
+        // C: a PREFIXCMD sets rhack()'s local prefix_seen and re-enters
+        // parse() for the follow-up key; that flag dies with this call.
+        const savedSeen = game.context._prefix_seen;
+        game.context._prefix_seen = true;
+        await rhack(0);
+        game.context._prefix_seen = savedSeen;
+        return;
     } else if (isMovementKey(ch)) {
+        // staleRun: svc.context.run left over from a g/G whose next key was
+        // unbound (see the rhack() head) — the walk still runs at that level.
+        if (game.context.run_prefix || staleRun) {
+            const rp = game.context.run_prefix || staleRun;
+            game.context.run_prefix = 0;
+            game.iflags && (game.iflags.menu_requested = false);
+            await do_run_prefixed(DIR_DX[ch], DIR_DY[ch], rp);
+            return;
+        }
         // C ref: cmd.c set_move_cmd() — the 'm' (reqmenu) prefix disables
         // autopickup AND (via swim_move_danger) lets the hero intentionally
         // step into water/lava for this one move.
@@ -973,13 +1071,11 @@ export async function rhack(key) {
         // it prints "Are you waiting to get hit?  Use 'm' prefix to force a no-op
         // (to rest)." and returns ECMD_OK (no turn elapses).  Otherwise the wait
         // returns ECMD_TIME and the hero's turn elapses (monsters move).
-        if (await cmd_safety_prevention('Waiting', 'a no-op (to rest)',
-                                        'Are you waiting to get hit?'))
-            game.context.move = 0;
-        else
-            game.context.move = 1;
+        game.context.move = await donull();
     } else {
-        // Unknown command
+        // Unknown command.  C ref: cmd.c rhack() bad_command — no
+        // reset_cmd_vars(), so a pending g/G prefix's svc.context.run stays
+        // armed for the next command (context.stale_run, set at the head).
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
@@ -1195,6 +1291,15 @@ export function monster_nearby() {
             if (canspotmon(mtmp)) return true;
         }
     return false;
+}
+
+// C ref: do.c donull() — the 'wait'/'#wait' command; ECMD_TIME unless the
+// safe_wait guard refuses it.  Exported because '#wait' dispatches here too.
+export async function donull() {
+    if (await cmd_safety_prevention('Waiting', 'a no-op (to rest)',
+                                    'Are you waiting to get hit?'))
+        return 0; // ECMD_OK
+    return 1;     // ECMD_TIME
 }
 
 // C ref: do.c cmd_safety_prevention() — with the (default-On) safe_wait option
@@ -2271,8 +2376,10 @@ export async function domove(dx, dy) {
     if (await avoid_running_into_trap(newx, newy)) return;
 
     // C ref: hack.c:2760 — after the out-of-bounds / avoid-trap checks and
-    // BEFORE bumping into a monster.  Returns TRUE => the turn is spent.
-    if (await escape_from_sticky_mon(newx, newy)) return;
+    // BEFORE bumping into a monster.  Returns TRUE => the turn is spent:
+    // cmd.c parse() sets svc.context.move = TRUE up front, and domove_core's
+    // early return leaves it set, so a failed escape costs a move.
+    if (await escape_from_sticky_mon(newx, newy)) { game.context.move = 1; return; }
 
     const mtmp = m_at(newx, newy);
 

@@ -345,6 +345,50 @@ async function make_gas_cloud(cloud, damage, insideCloud) {
     }
 }
 
+// C ref: region.c add_region() minus the newsym() refresh.  Level generation
+// (des.gas_cloud) activates regions from the synchronous themeroom_fill path,
+// which cannot await display.js — and mklev draws nothing anyway, the map is
+// rendered from scratch once generation finishes.  Kept separate from
+// add_region() rather than shared, because C interleaves block_point() and
+// newsym() cell by cell and reordering them would change what the gameplay
+// path redraws.
+function add_region_nodisplay(reg) {
+    regions().push(reg);
+    const b = reg.boundingBox;
+    for (let x = b.lx; x <= b.hx; x++) {
+        for (let y = b.ly; y <= b.hy; y++) {
+            if (!isok(x, y)) continue;
+            if (!inside_region(reg, x, y)) continue;
+            const mtmp = (game.level?.monsters || []).find((m) => !m.mridden && m.mx === x && m.my === y);
+            if (mtmp && !reg.monsters.includes(mtmp)) reg.monsters.push(mtmp);
+            if (reg.visible) block_point(x, y);
+        }
+    }
+    reg.heroInside = inside_region(reg, game.u?.ux, game.u?.uy);
+}
+
+// C ref: region.c create_gas_cloud_selection(sel, damage) — des.gas_cloud()'s
+// selection form: one region whose rects are the selection's cells, each 1x1.
+// Draws NO RNG (no BFS growth, no rn1(3,4) ttl), so the region keeps
+// create_region's permanent ttl of -1.
+export function create_gas_cloud_selection(sel, damage) {
+    const cloud = create_region(null);
+    for (const c of sel)
+        add_rect_to_reg(cloud, { lx: c.x, ly: c.y, hx: c.x, hy: c.y });
+    // make_gas_cloud() tail; the "enveloped in steam" line is gated on
+    // !in_mklev, and this form is only reachable from mklev.
+    cloud.herosFault = !game._in_mklev && !game.context?.mon_moving;
+    cloud.insideF = INSIDE_GAS_CLOUD;
+    cloud.expireF = EXPIRE_GAS_CLOUD;
+    cloud.arg = damage;
+    cloud.visible = true;
+    cloud.glyph = damage
+        ? { ch: '#', color: 10 /* CLR_BRIGHT_GREEN, S_poisoncloud */ }
+        : { ch: '#', color: 7 /* CLR_GRAY, S_cloud */ };
+    add_region_nodisplay(cloud);
+    return cloud;
+}
+
 // C ref: region.c create_gas_cloud(x,y,cloudsize,damage) — grow a cloud from
 // (x,y) via a randomized breadth-first search, then give it a lifespan.
 export async function create_gas_cloud(x, y, cloudsize, damage) {

@@ -39,13 +39,14 @@ import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          SCR_EARTH,
          WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          SPBOOK_CLASS, GEM_CLASS,
-         GOLD_PIECE, add_to_container, weight,
+         GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS,
          uncurse, curse } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, newmonhp,
          newcham_vamp, mongets_pub, name_gender_hint, MGEND_NEUTRAL,
-         MM_ASLEEP, MM_NOGRP } from './makemon.js';
+         MM_ASLEEP, MM_NOGRP, MM_EMIN } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
+import { create_gas_cloud_selection } from './region.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
          mflags1_of, mflags2_of, M1_AMPHIBIOUS } from './monflags_data.js';
 import { maketrap, Can_fall_thru } from './trap.js';
@@ -509,7 +510,85 @@ export function themeroom_fill(croom) {
         create_storeroom(croom);
     } else if (pick?.name === 'Trap room') {
         fill_trap_room(croom);
+    } else if (pick?.name === 'Buried treasure') {
+        create_buried_treasure(croom);
+    } else if (pick?.name === 'Cloud room') {
+        create_cloud_room(croom);
     }
+}
+
+// C ref: themerms.lua:134 "Buried treasure".
+//   des.object({ id = "chest", buried = true, contents = function(otmp)
+//      if (otmp:totable().NO_OBJ == nil) then
+//         table.insert(postprocess, { handler = make_dig_engraving,
+//                                     data = { x = xobj.ox, y = xobj.oy }});
+//      end
+//      for i = 1, d(3,4) do des.object(); end
+//   end });
+// create_object (sp_lev.c:2193) order: get_location_coord(DRY) -> somexy;
+// mksobj_at(CHEST,...,artif) -> next_ident + mksobj_init (olocked rn2(5),
+// otrapped rn2(10)) + mkbox_cnts; delete_contents() then throws the mkbox_cnts
+// haul away (the rolls still happened); then buried -> bury_an_obj (dig.c:2007).
+// Only afterwards does lspo_object (sp_lev.c:3738) run the `contents` closure,
+// so d(3,4) and its des.object() calls come AFTER the burial rolls.
+function create_buried_treasure(croom) {
+    // des.object random in-room location; every themed-room cell is ROOM so the
+    // is_ok_location(DRY) retry loop always exits on the first somexy().
+    const c = { x: -1, y: -1 };
+    if (!somexy(croom, c)) return;
+
+    // mksobj_at(CHEST, x, y, TRUE, !named) — no name is supplied, so artif is
+    // TRUE.  Never reaches the floor: bury_an_obj() obj_extract_self()s it.
+    const chest = mksobj(CHEST, true, true);
+    chest.ox = c.x; chest.oy = c.y; chest.where = 'buried';
+    chest.cobj = []; // SP_OBJ_CONTAINER -> delete_contents(otmp)
+
+    // bury_an_obj: obj_resists(otmp, 0, 0) can never succeed (ochance 0).
+    obj_resists_rng();
+    // dig.c:2032 — under ice only POTION_CLASS rots; otherwise is_organic()
+    // (CHEST is oc_material WOOD) gates a second obj_resists(otmp, 5, 95) and a
+    // 250 + rnd(250) ROT_ORGANIC timer.
+    const under_ice = game.level?.at(c.x, c.y)?.typ === ICE;
+    if (!under_ice && obj_resists_rng() >= 5) rnd(250);
+
+    if (game.level) {
+        if (!game.level._themeroom_postprocess)
+            game.level._themeroom_postprocess = [];
+        game.level._themeroom_postprocess.push({
+            handler: 'dig_engraving', x: c.x, y: c.y,
+        });
+    }
+
+    const count = lua_d(3, 4);
+    for (let i = 0; i < count; i++) {
+        const cc = { x: -1, y: -1 };
+        if (!somexy(croom, cc)) continue;
+        // des.object() with no class/id -> mkobj_at(RANDOM_CLASS, x, y, TRUE).
+        // SP_OBJ_CONTENT so create_object skips stackobj/bury and moves it into
+        // the container instead; it is inside a BURIED chest, so it must not be
+        // added to the floor object chain.
+        const otmp = mkobj(RANDOM_CLASS, true);
+        otmp.ox = cc.x; otmp.oy = cc.y;
+        add_to_container(chest, otmp);
+        chest.owt = weight(chest);
+    }
+}
+
+// C ref: dat/themerms.lua:61 "Cloud room".
+//   local fog = selection.room();
+//   for i = 1, (fog:numpoints() / 4) do
+//      des.monster({ id = "fog cloud", asleep = true });
+//   end
+//   des.gas_cloud({ selection = fog });
+// Lua's numeric `for` with a fractional limit stops at floor(limit).  Each
+// des.monster runs with gc.coder->croom set, so the position comes from
+// somexy(croom), not the map-wide xstart/xsize form.  des.gas_cloud draws no RNG.
+function create_cloud_room(croom) {
+    const fog = selection_room(croom);
+    const count = Math.floor(fog.length / 4);
+    for (let i = 0; i < count; i++)
+        splev_create_monster({ name: 'fog cloud', asleep: 1, croom });
+    create_gas_cloud_selection(fog, 0);
 }
 
 // C ref: themerms.lua "Teleportation hub".
@@ -567,15 +646,42 @@ export async function run_themeroom_postprocess() {
     if (!queue || !queue.length) return;
     game.level._themeroom_postprocess = [];
     for (const entry of queue) {
-        if (entry.handler !== 'teleport_trap') continue;
+        if (entry.handler !== 'teleport_trap' && entry.handler !== 'dig_engraving')
+            continue;
         // selection.negate():filter_mapchar(".") — every ROOM ("." char) cell on
         // the level (negate of the empty selection = all cells, filtered to ".").
+        // selvar.c selection_rndcoord scans x outer / y inner, so this build
+        // order is the one rn2(idx) indexes into.
         const allDots = [];
         for (let x = 0; x < COLNO; x++) {
             for (let y = 0; y < ROWNO; y++) {
                 const loc = game.level?.at(x, y);
                 if (loc && loc.typ === ROOM) allDots.push({ x, y });
             }
+        }
+        if (entry.handler === 'dig_engraving') {
+            // C ref: themerms.lua:1052 make_dig_engraving(data) — one
+            // rndcoord(0) (no removal) over the "." cells, then a burned
+            // "Dig ..." engraving there pointing at the buried chest.
+            //   tx = data.x - pos.x - 1 ;  ty = data.y - pos.y
+            // data.{x,y} are absolute (chest ox/oy) while nhlsel.c:419 already
+            // shifted pos by gx.xstart/gy.ystart (1/0 on a random level), so
+            // against our absolute pos the deltas are a plain subtraction.  The
+            // engraving itself lands back on the absolute cell because
+            // get_location() re-adds xstart/ystart (sp_lev.c:1223).
+            const pos = selection_rndcoord(allDots, false);
+            if (!pos) continue;
+            const tx = entry.x - pos.x;
+            const ty = entry.y - pos.y;
+            let dig = '';
+            if (tx === 0 && ty === 0) {
+                dig = ' here';
+            } else {
+                if (tx !== 0) dig = ` ${Math.abs(tx)} ${tx > 0 ? 'east' : 'west'}`;
+                if (ty !== 0) dig += ` ${Math.abs(ty)} ${ty > 0 ? 'south' : 'north'}`;
+            }
+            make_engr_at(pos.x, pos.y, `Dig${dig}`, null, 0, BURN);
+            continue;
         }
         // repeat teledest = locs:rndcoord(1) until teledest != trap coord.
         // C ref themerms.lua make_a_trap: the `until` terminates only when BOTH
@@ -2948,6 +3054,27 @@ export function pm_to_humidity(pm) {
     if (passes_walls_flag(pm) || noncorporeal(pm)) loc |= LOC_SOLID;
     if (likes_fire(pm)) loc |= LOC_HOT;
     return loc;
+}
+
+// C ref: sp_lev.c get_location():1227-1231 — the croom != NULL random branch.
+// The candidate square comes from somexy(croom) (which re-rolls somex/somey
+// itself inside an irregular room), NOT the xstart/xsize form; every
+// themeroom_fill runs with gc.coder->croom set, so this is the one des.monster
+// and des.object use there.
+export function splev_get_location_room(croom, humidity, nowarn = false) {
+    if (!croom) return splev_get_location_rnd(humidity, nowarn);
+    const c = { x: -1, y: -1 };
+    let cpt = 0;
+    do {
+        somexy(croom, c); // C discards the return: a failed somexy still leaves c set
+        if (is_ok_location(c.x, c.y, humidity)) return { x: c.x, y: c.y };
+    } while (++cpt < 100);
+    // C's "last try" scans the croom footprint (mx+xx, my+yy for xx < sx).
+    for (let x = croom.lx; x <= croom.hx; x++)
+        for (let y = croom.ly; y <= croom.hy; y++)
+            if (is_ok_location(x, y, humidity)) return { x, y };
+    if (nowarn) return { x: -1, y: -1 };
+    return { x: gx.x_maze_max, y: gy.y_maze_max };
 }
 
 // C ref: sp_lev.c get_location() random-location branch with croom == NULL:
@@ -5336,8 +5463,11 @@ function sanc_monster(name, mx, my, opts = {}) {
         if (cc) { x = cc.x; y = cc.y; }
     }
     // mk_roamer() -> makemon(ptr, x, y, MM_ADJACENTOK|MM_EMIN|MM_NOMSG); the
-    // AM_SPLEV_RANDOM arm is a plain makemon(pm, x, y, mm_flags).
-    const mtmp = makemon(ptr, x, y, 0);
+    // AM_SPLEV_RANDOM arm is a plain makemon(pm, x, y, mm_flags).  MM_EMIN is
+    // load-bearing: makemon()'s aligned-cleric/high-cleric minion block
+    // (makemon.c:1411) is skipped when the caller supplies the emin itself, and
+    // passing 0 here made every sanctum cleric draw its two rn2(3)s.
+    const mtmp = makemon(ptr, x, y, sp_align !== null ? MM_EMIN : 0);
     if (!mtmp) return null;
     if (sp_align !== null) {
         mtmp.emin = mtmp.emin || {};
@@ -5646,7 +5776,7 @@ function splev_your_race(ptr) {
 //   * the In_mines your_race rn2(3) (sp_lev.c:1957).
 //   * the location (explicit: none; random: the get_location loop).
 function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
-                                peaceful = null }) {
+                                peaceful = null, croom = null, asleep = null }) {
     let ptr = null;
     if (name != null) {
         const pmidx = name_to_pmidx(name);
@@ -5664,22 +5794,26 @@ function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
     if (mx != null) { const c = vly_abs(mx, my); x = c.x; y = c.y; }
     else if (ptr) {
         const hum = pm_to_humidity(ptr);
-        const r = splev_get_location_rnd(hum, true);
+        const r = splev_get_location_room(croom, hum, true);
         x = r.x; y = r.y;
         if (x === -1 && y === -1) {
-            const r2 = splev_get_location_rnd(hum | LOC_DRY);
+            const r2 = splev_get_location_room(croom, hum | LOC_DRY);
             x = r2.x; y = r2.y;
         }
     } else {
-        const r = splev_get_location_rnd(LOC_DRY);
+        const r = splev_get_location_room(croom, LOC_DRY);
         x = r.x; y = r.y;
     }
     if (mm_mon_at(x, y)) {
         const cc = enexto_spawn(x, y, ptr);
         if (cc) { x = cc.x; y = cc.y; }
     }
+    // C ref: sp_lev.c create_monster:1981 — a (possibly enexto-relocated) spot
+    // outside croom aborts the monster entirely, before makemon.
+    if (croom && !inside_room(croom, x, y)) return null;
     const mtmp = makemon(ptr, x, y, 0 /* NO_MM_FLAGS */);
     if (mtmp && peaceful != null) mtmp.mpeaceful = peaceful ? 1 : 0;
+    if (mtmp && asleep != null) mtmp.msleeping = asleep ? 1 : 0;
     return mtmp;
 }
 

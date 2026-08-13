@@ -73,7 +73,7 @@ import {
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    A_LAWFUL, Align2amask,
+    A_LAWFUL, Align2amask, AM_SHRINE,
     LR_UPTELE, LR_DOWNTELE, LR_TELE, LR_UPSTAIR, LR_DOWNSTAIR,
     LR_PORTAL, LR_BRANCH, LA_UP, LA_DOWN,
     In_endgame, BURN,
@@ -120,13 +120,20 @@ const TRAPPED_CHEST = 25;
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 
-// Monster indices referenced only by the special-room dispatch's extinction
-// guards (mvitals_gone ignores the value, so exact indices are non-load-bearing
-// here — they document which species each branch checks).
+// Monster indices referenced only by extinction guards (mvitals_gone ignores
+// the value, so exact indices are non-load-bearing here — they document which
+// species each branch checks).
 const PM_LEPRECHAUN = 0;
 const PM_KILLER_BEE = 0;
 const PM_SOLDIER = 0;
 const PM_COCKATRICE = 0;
+const PM_SMALL_MIMIC = 0;
+const PM_LARGE_MIMIC = 0;
+const PM_GIANT_MIMIC = 0;
+
+// C ref: monsym.h MONSYM(13, 'm', MIMIC, S_MIMIC, ...) — makemon.js keys its
+// set_mimic_sym() dispatch off the same 13.
+const S_MIMIC = 13;
 
 const trap_engravings = {
     [TRAPDOOR]: 'Vlad was here',
@@ -161,16 +168,54 @@ function u_on_newpos(x, y) {
     game.u.uy = y;
 }
 
-// C ref: mkmaze.c bad_location — simplified for skeleton
+// C ref: mkmaze.c bad_location() — the FULL predicate.  Two terms were missing
+// and both change how many rn1() pairs place_lregion() burns before it settles:
+//   occupied(x,y)  — a trap, furniture, lava or pool square is rejected;
+//   typ == AIR     — accepted alongside ROOM (the Plane of Air is all AIR, so
+//                    without it every square there is "bad" and the whole 200-
+//                    iteration probabilistic loop runs before the fallback).
 function bad_location(x, y, nlx, nly, nhx, nhy) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    // Excluded region
+    if (occupied(x, y)) return true;
+    // C: within_bounded_area(x, y, nlx, nly, nhx, nhy) — the `nlx &&` guard is
+    // ours, and inert: place_lregion clamps lx to >= 1, so a 0,0,0,0 exclusion
+    // can only match x == 0, which never comes out of the rn1.
     if (nlx && x >= nlx && x <= nhx && y >= nly && y <= nhy) return true;
-    // Must be ROOM or (CORR in maze)
-    if (loc.typ !== ROOM && !(loc.typ === CORR && game.level?.flags?.is_maze_lev))
-        return true;
-    return false;
+    return !((loc.typ === CORR && !!game.level?.flags?.is_maze_lev)
+             || loc.typ === ROOM || loc.typ === AIR);
+}
+
+// C ref: mkmaze.c put_lregion_here().  Only the LR_*TELE arms are reachable
+// from this port's callers (u_on_upstairs and do.js's level-teleport), so the
+// LR_PORTAL / LR_UPSTAIR / LR_DOWNSTAIR / LR_BRANCH arms stay unported — they
+// would need this function to be async (mkportal/place_branch are).  The
+// is_exclusion_zone(rtype, x, y) test C ANDs into the bad_location check is
+// also unported; no exclusion zone is registered on a level that reaches here.
+function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    if (bad_location(x, y, nlx, nly, nhx, nhy)) {
+        // C's oneshot arm deletes a destroyable trap and re-tests; we only
+        // re-test, so a lone trapped square still fails instead of being freed.
+        if (!oneshot) return false;
+        if (bad_location(x, y, nlx, nly, nhx, nhy)) return false;
+    }
+    switch (rtype) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE:
+        // C: a monster on the spot means "try again" unless this is the only
+        // square left (then it rloc()s the monster, which draws).  Skipping the
+        // retry silently accepted squares C rejects, shortening the rn1 loop.
+        if (m_at(x, y) && !oneshot) return false;
+        u_on_newpos(x, y);
+        break;
+    default:
+        // C does the rtype's work and returns TRUE; we can't, but returning
+        // TRUE keeps the caller's rn1 loop the right length, which is the only
+        // thing an unported arm can still get right.
+        break;
+    }
+    return true;
 }
 
 // C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
@@ -183,22 +228,21 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     if (ly < 0) ly = 0;
     if (hy > ROWNO - 1) hy = ROWNO - 1;
 
-    // Probabilistic search
+    // C: oneshot = (lx == hx && ly == hy) — a 1-cell region has no alternative,
+    // so put_lregion_here() must not reject it.
+    let oneshot = (lx === hx && ly === hy);
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-            u_on_newpos(x, y);
+        if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
             return;
-        }
     }
     // Deterministic fallback
+    oneshot = true;
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-                u_on_newpos(x, y);
+            if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
                 return;
-            }
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -251,7 +295,14 @@ async function makemon(mdat, x, y, mmflags) {
     return mtmp;
 }
 
-// in_rooms stub
+// C ref: mkroom.c in_rooms(x, y, typewanted) — the list of room numbers at/next
+// to <x,y> whose rtype matches (SHOPBASE matches any shop).  Stubbed empty, and
+// that is exact for this file's ONE caller: dosdoor()'s `shdoor` reads it with
+// SHOPBASE, and every dosdoor() call site here (join/makecorridors, makeniche,
+// makevtele) runs before do_mkroom(SHOPBASE) assigns any room a shop rtype, so
+// C's answer is also "no shop" there.  It is NOT a general stub — a caller that
+// runs after mkshop() would need the real scan, which also decides whether
+// dosdoor draws its rn2(25)/rn2(5)/rn2(20).
 function in_rooms(x, y, rtype) { return []; }
 
 // ============================================================
@@ -604,7 +655,9 @@ async function makelevel() {
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
             fill_special_room(vaultRoom);       // C ref: mklev.c:1330
             await mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
-            if (!rn2(3)) await makeniche(TELEP_TRAP);
+            // C ref: mklev.c:1332 `if (!svl.level.flags.noteleport && !rn2(3))
+            // makevtele();` — the flag test short-circuits the rn2(3) away.
+            if (!g.level.flags.noteleport && !rn2(3)) await makevtele();
         } else if (rnd_rect() && create_vault()) {
             // C ref: mklev.c:1334 — fallback vault attempt with fresh rnd_rect
             g.vault_x = g.level.rooms[g.level.nroom]?.lx ?? -1;
@@ -618,7 +671,7 @@ async function makelevel() {
                 if (vaultRoom2) vaultRoom2.needfill = FILL_NORMAL;
                 fill_special_room(vaultRoom2);
                 await mk_knox_portal(vx2.v + vw.v, vy2.v + vh.v);
-                if (!rn2(3)) await makeniche(TELEP_TRAP);
+                if (!g.level.flags.noteleport && !rn2(3)) await makevtele();
             } else {
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
@@ -1484,16 +1537,26 @@ function create_vault() {
 // owned by sp_lev.js and runs from the fill loop, not here.
 // ============================================================
 
-// C ref: mon.c — a monster's mvitals[].mvflags & G_GONE.  At level generation
-// none of the gated species are extinct in any session reachable with correct
-// RNG, and this check consumes no RNG, so a "not gone" default is faithful.
+// C ref: mon.h G_GONE == (G_GENOD | G_EXTINCT); the real test is
+// `svm.mvitals[mndx].mvflags & G_GONE`.  Consumes no RNG, but it is a live
+// predicate, not a constant: G_GENOD comes from #genocide and G_EXTINCT from
+// mvitals[].born hitting 255 (mon.c m_detach/makemon).  Neither happens in a
+// generation-only game, so "not gone" holds for every session that reaches
+// level generation; a session that genocides a gated species (leprechauns,
+// killer bees, soldiers, cockatrices, mimics) would take the wrong branch here.
 function mvitals_gone(_mndx) {
     return false;
 }
 
-// C ref: mkroom.c antholemon() — returns a valid ant permonst (truthy) unless
-// every ant species is extinct; never the case at the depths reached here.
-// No RNG.
+// C ref: mkroom.c antholemon() — picks one of SOLDIER_ANT/FIRE_ANT/GIANT_ANT
+// from ((ubirthday % 3) + level_difficulty() + trycnt) % 3, retrying up to 3
+// times past an extinct species, and returns NULL only if all three are gone.
+// No RNG.  makelevel() uses it purely as a truthiness gate on the ANTHOLE arm,
+// which this constant answers correctly (see mvitals_gone above).  The chosen
+// SPECIES is a different consumer — mkroom.c fill_zoo()'s ANTHOLE arm — and
+// that arm is not ported (sp_lev.js fill_special_room leaves ANTHOLE a no-op),
+// so nothing reads a return value yet.  Porting fill_zoo(ANTHOLE) means
+// returning a real permonst here, which needs ubirthday threaded through.
 function antholemon() {
     return true;
 }
@@ -1622,10 +1685,14 @@ function shrine_pos(roomno) {
     return { x: bx, y: by };
 }
 
-// C ref: mkroom.c mktemple().  The shrine altar is placed at the room center;
-// induced_align()/priestini() (alignment + priest spawn) are owned by other
-// files and not modeled here beyond the room marking.  Only reachable at
-// u_depth > 8, which no parity-tested session reaches with correct RNG.
+// C ref: mkroom.c mktemple().  The shrine altar is placed at the room center
+// and its alignment comes from induced_align(80), which DOES draw (rn2(100)
+// per align source, then rn2(3)) — the port used to hardcode A_LAWFUL and skip
+// the draws entirely.  AM_SHRINE is OR'd in afterwards so the square renders as
+// a temple altar rather than a plain one.  C does NOT set needfill here, so
+// fill_special_room() returns at its `needfill == FILL_NONE` gate; the port set
+// FILL_NORMAL, pushing the room through the fill switch C never runs.
+// priestini() (the temple priest) is still unported — see the deferred list.
 function mktemple() {
     const g = game;
     const sroom = pick_room(true);
@@ -1636,10 +1703,8 @@ function mktemple() {
     const loc = g.level.at(spot.x, spot.y);
     if (loc) {
         loc.typ = ALTAR;
-        // induced_align(80) consumes RNG in C; left to the alignment subsystem.
-        loc.flags = Align2amask(A_LAWFUL);
+        loc.flags = induced_align(80) | AM_SHRINE;
     }
-    sroom.needfill = FILL_NORMAL;
     if (g.level.flags) g.level.flags.has_temple = true;
 }
 
@@ -1647,6 +1712,7 @@ function mktemple() {
 // C ref: include/monsym.h MONSYM(32, 'F', FUNGUS, S_FUNGUS, ...).
 const S_FUNGUS = 32;
 const PM_GIANT_EEL = name_to_pmidx('giant eel');
+const PM_GIANT_SPIDER = name_to_pmidx('giant spider');
 const PM_PIRANHA = name_to_pmidx('piranha');
 const PM_ELECTRIC_EEL = name_to_pmidx('electric eel');
 
@@ -1995,7 +2061,7 @@ function dosdoor(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
-    const shdoor = in_rooms(x, y, 0).length > 0;
+    const shdoor = in_rooms(x, y, SHOPBASE).length > 0;
     if (!IS_WALL(loc.typ)) type = DOOR;
     loc.typ = type;
     // C ref: rm.h — doormask is an alias for the cell's flags field.
@@ -2011,8 +2077,22 @@ function dosdoor(x, y, aroom, type) {
             loc.doormask = shdoor ? D_ISOPEN : D_NODOOR;
         }
         if (loc.doormask & D_TRAPPED) {
-            if (level_difficulty() >= 9 && !rn2(5)) {
+            // C ref: mklev.c:653-663 — a deep trapped door is sometimes a mimic
+            // instead.  The port used to stop at the D_NODOOR assignment, which
+            // silently dropped mkclass(S_MIMIC,0)'s rn2 walk, makemon()'s whole
+            // draw block and set_mimic_sym() (run from makemon for S_MIMIC), and
+            // left the monster off fmon so every later movemon() pass was short
+            // one mcalcmove().  The mvitals guard is "all three mimic species
+            // extinct", never true at generation time.
+            if (level_difficulty() >= 9 && !rn2(5)
+                && !(mvitals_gone(PM_SMALL_MIMIC) && mvitals_gone(PM_LARGE_MIMIC)
+                     && mvitals_gone(PM_GIANT_MIMIC))) {
                 loc.doormask = D_NODOOR;
+                // C's extra set_mimic_sym(mtmp) after makemon() re-runs the same
+                // dispatch; on a DOOR square it takes the RNG-free M_AP_FURNITURE
+                // arm, so the one call inside makemon() is state-identical.
+                const mtmp = make_monster(mkclass(S_MIMIC, 0), x, y, 0);
+                if (mtmp) placeOnLevel(mtmp, x, y);
             }
         }
         loc.flags = loc.doormask;
@@ -2162,6 +2242,13 @@ function generate_stairs_find_room() {
 
 function mkstairs(x, y, up, croom) {
     const g = game;
+    // NOT PORTED (measured: swaps one seed0360 step, gate REJECT).  C ref:
+    // mklev.c:2188 `if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz)))
+    // return;` — "we can't make a regular stair off an end of the dungeon", so
+    // neither stairway_add() nor the STAIRS terrain is written.  Same blocker as
+    // the Is_botlevel() guard dropped from generate_stairs() below: the only
+    // levels it fires on today (Vlad's Tower dlevel 3, non-Barbarian Quest
+    // dlevel 6) are ones C dispatches away from makelevel() entirely.
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;
@@ -2179,7 +2266,18 @@ function mkstairs(x, y, up, croom) {
 async function generate_stairs() {
     const g = game;
     const pos = { x: 0, y: 0 };
-    // Down stairs
+    // Down stairs.
+    //
+    // NOT PORTED (measured -3 on seed0360, gate REJECT): C ref: mklev.c:2258
+    // wraps this whole block in `if (!Is_botlevel(&u.uz))`, so on a dungeon's
+    // last level neither generate_stairs_find_room()'s rn2 nor somexyspace()'s
+    // draws happen.  Adding the guard is correct for the regular generator but
+    // regresses today because two dungeons reach makelevel() that C never sends
+    // here: Vlad's Tower (dnum 6, dlevel 3 == num_dunlevs) — C dispatches on
+    // svd.dungeons[dnum].proto[0] == "tower" at mklev.c:1268, an arm makelevel()
+    // above does not implement — and the non-Barbarian Quest (dnum 3,
+    // dlevel 6 == num_dunlevs), whose "{filecode}-fila/filb" filler is only
+    // ported for Bar.  Land the guard together with either of those dispatches.
     {
         const croom = generate_stairs_find_room();
         if (croom) {
@@ -2210,16 +2308,26 @@ async function generate_stairs() {
 // cannot affect ordinary level generation.
 // ============================================================
 
-// C ref: dungeon.c induced_align(80).  The Oracle level has flags.align set
-// (neutral), so the level-align rn2(100) gate runs; the main dungeon has no
-// align so the fallthrough is just rn2(3).
-function oracle_induced_align(pct = 80) {
+// C ref: dungeon.c induced_align(pct) — returns an ALTARMASK, not an aligntyp.
+// A special level's own flags.align gets first refusal (rn2(100) < pct), then
+// the fallthrough Align2amask(rn2(3) - 1).
+//
+// C's second arm (`if (svd.dungeons[u.uz.dnum].flags.align)`) is DEAD and must
+// stay unported: dungeon.h declares `Bitfield(align, 3)` while dungeon.c:1092
+// assigns the unshifted dgn_align (D_ALIGN_LAWFUL == AM_LAWFUL << 4 == 0x40),
+// so every dungeon's flags.align truncates to 0 and its rn2(100) never runs.
+// s_level's align IS shifted (dungeon.c:588 `>> 4`), which is why arm one lives.
+function induced_align(pct = 80) {
     const slev = Is_special(game.u?.uz);
     if (slev && slev.flags && slev.flags.align) {
-        if (rn2(100) < pct) return; // returns level align (no further rng)
+        if (rn2(100) < pct) return slev.flags.align;
     }
-    // main dungeon flags.align == 0 -> skip its rn2(100); fall through.
-    rn2(3);
+    return Align2amask(rn2(3) - 1);
+}
+
+// Kept as the des.monster() call site's name; identical RNG, result discarded.
+function oracle_induced_align(pct = 80) {
+    induced_align(pct);
 }
 
 // C ref: sp_lev.c create_subroom() — random size/pos within parent.
@@ -4652,9 +4760,11 @@ async function oracle_trap(croom) {
     // is_pool_or_lava(tm) check: room floor is never pool here.
     let kind;
     kind = mktrap_random_kind();
-    const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
-    const canFallThru = (g.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? dungeon?.dunlev_ureached ?? 99);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    // C ref: mklev.c mktrap() `if (is_hole(kind) && !Can_fall_thru(&u.uz))`.
+    // The local "dlevel < num_dunlevs" stand-in dropped Can_dig_down()'s
+    // hardfloor and Invocation_lev tests, so a hole survived on levels C turns
+    // into a ROCKTRAP — a different maketrap() and a different draw count.
+    if (is_hole(kind) && !Can_fall_thru(g.u?.uz)) kind = ROCKTRAP;
     const trap = await maketrap(c.x, c.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
     // C ref: sp_lev.c create_trap() -> mktrap(..., mktrap_flags, ...) — a
@@ -4777,11 +4887,22 @@ async function makeniche(trap_type) {
     }
 }
 
+// C ref: mklev.c makevtele() — `makeniche(TELEP_TRAP)`, nothing more.
+async function makevtele() {
+    await makeniche(TELEP_TRAP);
+}
+
 async function make_niches() {
     const g = game;
+    // C ref: mklev.c:804-807 — `ct = rnd((svn.nroom >> 1) + 1), dep = depth(&u.uz)`
+    // and `ltptr = (!svl.level.flags.noteleport && dep > 15)`.  Both gates read
+    // depth(), NOT u.uz.dlevel: they differ in every branch dungeon (the Mines,
+    // the Quest, Sokoban/Vlad's build upwards), and the missing noteleport test
+    // let a no-teleport level draw the LEVEL_TELEP niche's rn2(6).
     let ct = rnd(Math.trunc(g.level.nroom / 2) + 1);
-    let ltptr = ((g.u?.uz?.dlevel ?? 1) > 15);
-    let vamp = ((g.u?.uz?.dlevel ?? 1) > 5 && (g.u?.uz?.dlevel ?? 1) < 25);
+    const dep = depth_of_level(g.u?.uz);
+    let ltptr = (!g.level.flags.noteleport && dep > 15);
+    let vamp = (dep > 5 && dep < 25);
     while (ct--) {
         if (ltptr && !rn2(6)) {
             ltptr = false;
@@ -5158,9 +5279,8 @@ function mk_sobj_at_boulder(x, y) {
 async function mktrap_room(croom) {
     let kind;
     kind = mktrap_random_kind();
-    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
-    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    // C ref: mklev.c mktrap() — Can_fall_thru(), not a bare bottom-level test.
+    if (is_hole(kind) && !Can_fall_thru(game.u?.uz)) kind = ROCKTRAP;
     // C ref: mklev.c mktrap() — retry the spot until it is neither occupied()
     // nor (for a pit/hole) on top of a boulder.  somexyspace() already rejects
     // occupied squares, so in practice only the boulder test re-rolls.
@@ -5235,21 +5355,32 @@ function mkaltar(croom) {
 }
 
 function mkgrave_room(croom) {
-    if (croom.rtype !== OROOM) return;
+    // C ref: mklev.c mkgrave() — `boolean dobell = !rn2(10);` is a DECLARATION
+    // INITIALISER, so it runs before the `croom->rtype != OROOM` return.  The
+    // port had the rtype test first, which silently skipped the rn2(10) for
+    // every THEMEROOM (fill_ordinary_room admits OROOM *and* THEMEROOM, so a
+    // themed room reaching the grave gate desynced the stream from here on).
     const dobell = !rn2(10);
+    if (croom.rtype !== OROOM) return;
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
         if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
+            // C: rnd(20) + level_difficulty() * rnd(5) — not u.uz.dlevel.
+            gold.quan = rnd(20) + level_difficulty() * rnd(5);
+            gold.owt = weight(gold);
+            gold.ox = pos.x; gold.oy = pos.y;
+            bury_object(gold);
         }
     }
     for (let tryct = rn2(5); tryct > 0; tryct--) {
         const otmp = mkobj(RANDOM_CLASS, true);
+        if (!otmp) return;
         curse(otmp);
+        otmp.ox = pos.x; otmp.oy = pos.y;
+        bury_object(otmp);
     }
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
@@ -5269,13 +5400,21 @@ export async function fill_ordinary_room(croom, bonus_items) {
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
-    // Sleeping monster (33%)
-    if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, 0x00002000); // MM_NOGRP
+    // Sleeping monster.  C ref: mklev.c:974 `(u.uhave.amulet || !rn2(3))` — the
+    // Amulet short-circuits the roll away entirely (every room gets a monster
+    // and no rn2(3) is drawn), and a giant spider that lands on a free square
+    // gets a WEB under it.  Both halves were missing: the web is a real trap
+    // object (t_at/occupied/display) and maketrap() writes level state.
+    if ((g.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
+        const tmonst = await makemon(null, pos.x, pos.y, 0x00002000); // MM_NOGRP
+        if (tmonst && tmonst.data?.pmidx === PM_GIANT_SPIDER
+            && !occupied(pos.x, pos.y))
+            await maketrap(pos.x, pos.y, WEB);
     }
-    // Traps
-    const u_depth = g.u?.uz?.dlevel ?? 1;
-    let x = 8 - Math.trunc(u_depth / 6);
+    // Traps.  C ref: mklev.c:988 `x = 8 - (level_difficulty() / 6);` — the trap
+    // count modulus is level_difficulty(), NOT u.uz.dlevel; they differ in every
+    // branch dungeon (depth_start offset) and in the two build-up branches.
+    let x = 8 - Math.trunc(level_difficulty() / 6);
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
@@ -5296,8 +5435,9 @@ export async function fill_ordinary_room(croom, bonus_items) {
     }
     // Altar
     if (!rn2(60)) mkaltar(croom);
-    // Grave
-    x = 80 - (u_depth * 2);
+    // Grave.  C ref: mklev.c:1000 `x = 80 - (depth(&u.uz) * 2);` — depth(), not
+    // u.uz.dlevel: the modulus is wrong in every branch dungeon.
+    x = 80 - (depth_of_level(g.u?.uz) * 2);
     if (x < 2) x = 2;
     if (!rn2(x)) mkgrave_room(croom);
     // Statue
@@ -5355,8 +5495,8 @@ export async function fill_ordinary_room(croom, bonus_items) {
                         // times and keep the lowest-oc_level book.  C ref:
                         // mklev.c — compares objects[].oc_level, dealloc the
                         // higher one.
-                        const depth = g.u?.uz?.dlevel ?? 1;
-                        const maxpass = (depth > 2) ? 2 : 3;
+                        // C: maxpass = (depth(&u.uz) > 2) ? 2 : 3.
+                        const maxpass = (depth_of_level(g.u?.uz) > 2) ? 2 : 3;
                         for (let pass = 1; pass <= maxpass; pass++) {
                             const otmp2 = mkobj(oclass, false);
                             if (spell_level(otmp.otyp) <= spell_level(otmp2.otyp)) {
@@ -5378,8 +5518,9 @@ export async function fill_ordinary_room(croom, bonus_items) {
     if (!skip_chests && !rn2(Math.trunc(g.level.nroom * 5 / 2)) && somexyspace(croom, pos)) {
         mksobj_at(rn2(3) ? LARGE_BOX : CHEST, pos.x, pos.y, true, false);
     }
-    // Graffiti
-    const depth = g.u?.uz?.dlevel ?? 1;
+    // Graffiti.  C ref: mklev.c:1131 `!rn2(27 + 3 * abs(depth(&u.uz)))` —
+    // depth(), not u.uz.dlevel.
+    const depth = depth_of_level(g.u?.uz);
     if (!rn2(27 + 3 * Math.abs(depth))) {
         const { text: engrText, pristine } = random_engraving();
         if (engrText) {
@@ -5440,10 +5581,18 @@ function bury_object(otmp) {
 
 export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
+    // C ref: mklev.c:1461 — "Place kelp, except on the plane of water": the
+    // In_endgame() bail sits BEFORE the kelp scan, and water_has_kelp() draws an
+    // rn2 per POOL/WATER/MOAT square.  The Plane of Water is almost entirely
+    // water, so omitting this guard spent thousands of draws C never makes.
+    if (!skip_lvl_checks && In_endgame(game.u?.uz)) return;
     mineralize_kelp(kelp_pool, kelp_moat);
     // C ref: mklev.c mineralize() — gold/gem seeding is skipped (after kelp) for
     // almost all special levels: In_hell || In_V_tower || Is_rogue_level ||
     // arboreal || (Is_special && !Is_oracle && (!In_mines || sp->flags.town)).
+    // In_V_tower is subsumed here: every Vlad's Tower level is a named special
+    // (tower1/2/3) with a non-oracle proto outside the Mines, so the Is_special
+    // clause already returns for it.
     // The `town` half is what decides Mine Town: it IS a mines special level,
     // so the !In_mines half is false, but flags.town makes the clause true and
     // the gold/gem loop is suppressed.  A non-town mines special (minend) keeps
@@ -5706,6 +5855,12 @@ function level_finalize_topology() {
     bound_digging();
     // mineralize is consumed by fastforward_fill_mineralize
     game.in_mklev = false;
+    // C ref: mklev.c:1559-1560 — has_morgue implies graveyard (has_morgue is
+    // cleared once the morgue is entered, graveyard is permanent).  This is not
+    // cosmetic: mon.c's LEVEL_SPECIFIC_NOCORPSE macro reads it as
+    // `svl.level.flags.graveyard && is_undead(mdat) && rn2(3)`, so on a morgue
+    // level every undead death rolls an extra rn2(3) before leaving a corpse.
+    if (game.level?.flags?.has_morgue) game.level.flags.graveyard = true;
     // C ref: mklev.c themerooms_post_level_generate() runs the level-wide
     // wallification(1, 0, COLNO-1, ROWNO-1) at the very end of makelevel()
     // (mklev.c:1190), BEFORE mklev()'s topologize + set_wall_state() pass

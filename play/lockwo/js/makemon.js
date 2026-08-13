@@ -8,7 +8,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { builds_up, In_hell, Is_special } from './dungeon.js';
 import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
-         rnd_class,
+         rnd_class, objects,
          // Both spellings are imported on purpose: the pre-existing call sites
          // use the *_OTYP aliases while m_initinv_full() (ported later) uses the
          // plain names.  ESM allows binding one export to two local names.
@@ -23,11 +23,6 @@ import { get_wormno, initworm, count_wsegs,
 // can hit them before mkobj.js finishes initializing.
 const RANDOM_CLASS = 0, COIN_CLASS = 12, MAXOCLASSES = 18;
 
-// Object type indices (mkobj.js OBJECT_DATA), needed by m_initweap.
-const ORCISH_DAGGER = 36;
-// SCIMITAR (50) is the alternative in C's ORCISH_DAGGER/SCIMITAR ternary, but
-// PM_GOBLIN always short-circuits to ORCISH_DAGGER, so it is never reached here.
-const ORCISH_HELM = 90;
 import {
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL,
     AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL,
@@ -50,8 +45,9 @@ import { does_block, block_point } from './vision.js';
 import {
     mflags2_of, mflags3_of, msound_of,
     M2_LORD, M2_PRINCE, M2_NASTY, M2_DEMON, M2_STRONG, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
-    M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN,
+    M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN, M2_MERC,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK,
+    unsolid_flag,
     MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
     is_undead_flag, is_giant_flag, mindless,
     // set_mimic_sym()/newcham() predicates, read from the real mflags tables
@@ -76,6 +72,10 @@ export const MM_ASLEEP = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP = 0x00002000; // suppress creation of monster groups
 const MM_ANGRY = 0x00000020; // monster is created angry
 const MM_ADJACENTOK = 0x00000010; // C ref: makemon.h — ok to displace to an adjacent square
+// C ref: hack.h:1155-1163 — the caller-supplied mextra/gender flags.
+const MM_EPRI = 0x00000100;
+export const MM_EMIN = 0x00000400;
+const MM_MALE = 0x00008000, MM_FEMALE = 0x00010000;
 const G_IGNORE = 0x8000;
 const G_GONE = 0x03; // mvflags G_GENOD | G_EXTINCT
 const G_GENOD = 0x02;
@@ -84,6 +84,8 @@ const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 
 const NON_PM = -1;
+// mons[] index of the Wizard of Yendor (adj_lev's special case).
+const PM_WIZARD_OF_YENDOR_JS = 285;
 // C ref: global.h:411 — #define ALIGNWEIGHT 4 (generation weight of alignment).
 const ALIGNWEIGHT = 4;
 
@@ -630,14 +632,6 @@ const MONS = MONS_RAW.map((t) => ({
     acidic: !!MACID[t[0]],       // C mondata.h acidic() = mflags1 & M1_ACID
 }));
 
-// Monster classes whose members carry their own weapon-generation behavior in
-// m_initweap(); only S_KOBOLD/S_ORC are reachable in the low-level slice.
-// Classes whose m_initweap() body consumes RNG on the conservative (non-Big-Room)
-// generation path.  C gates the call on is_armed(ptr) == attacktype(ptr, AT_WEAP)
-// for every class; this set is the subset whose branch we have ported, so adding a
-// class here must go with porting its m_initweap case (see m_initweap below).
-const ARMED_MCLS = new Set([11 /*S_KOBOLD*/, 15 /*S_ORC*/, 27 /*S_ANGEL*/]);
-
 export function monster_by_pmidx(pmidx) {
     return MONS[pmidx] ?? null;
 }
@@ -962,8 +956,33 @@ function temperature_shift(ptr) {
     return 0;
 }
 
-function wrong_elem_type(_ptr) {
-    // Elemental plane filtering is outside the current level-generation slice.
+// C ref: makemon.c:56 wrong_elem_type() — "true if the given monster cannot
+// exist on this elemental level".  Only consulted when rndmonst_adj()'s
+// `elemlevel` is set (In_endgame && !Is_astralevel), where returning a blanket
+// FALSE let every species into the weighted scan and so changed both the
+// candidate set and the number of rn2(totalweight) draws.
+const S_TRAPPER_CLS = 20, S_GHOST_CLS = 54;
+function wrong_elem_type(ptr) {
+    const uz = game.u?.uz;
+    if (ptr.mcls === S_ELEMENTAL) {
+        return !is_home_elemental(ptr);
+    } else if (Is_earthlevel(uz)) {
+        /* no restrictions */
+    } else if (Is_waterlevel(uz)) {
+        if (!is_swimmer_flag(ptr)) return true;
+    } else if (Is_firelevel(uz)) {
+        // C: pm_resistance(ptr, MR_FIRE) == (ptr->mresists & MR_FIRE)
+        if (!((ptr.mresists ?? 0) & MR_FIRE)) return true;
+    } else if (Is_airlevel(uz)) {
+        // C ref: mondata.h is_whirly(ptr) = mlet == S_VORTEX || air elemental;
+        // is_floater = S_EYE || S_LIGHT; noncorporeal = S_GHOST.
+        const is_whirly = ptr.mcls === S_VORTEX_CLS
+            || ptr.pmidx === PM_AIR_ELEMENTAL;
+        const is_floater = ptr.mcls === S_EYE_CLS || ptr.mcls === S_LIGHT_CLS;
+        if (!(is_flyer_flag(ptr) && ptr.mcls !== S_TRAPPER_CLS) && !is_floater
+            && !amorphous_flag(ptr) && ptr.mcls !== S_GHOST_CLS && !is_whirly)
+            return true;
+    }
     return false;
 }
 
@@ -1210,6 +1229,46 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
     return nums[MONSi(first)] ? MONS[MONSi(first)] : null;
 }
 
+// C ref: makemon.c:1542 mbirth_limit(mndx).  global.h:415 MAXMONNO 120.
+const MAXMONNO = 120, PM_NAZGUL_JS = 231, PM_ERINYS_JS = 292;
+function mbirth_limit(mndx) {
+    return mndx === PM_NAZGUL_JS ? 9 : mndx === PM_ERINYS_JS ? 3 : MAXMONNO;
+}
+
+// C ref: makemon.c:958 propagate(mndx, tally, ghostly) — "once a certain number
+// of monsters are created, don't create any more at random".  Every makemon()
+// runs this; the port never did, so svm.mvitals[].born stayed 0 forever.  That
+// is not cosmetic: potion.c:603 picks its modulus off it
+// (POTION_OCCUPANT_CHANCE(mvitals[PM_GHOST].born) == 13 + 2*born), and
+// uncommon() drops a species from rndmonst()'s weighted scan — changing the
+// number of rn2(totalweight) draws — once it goes extinct.
+const G_EXTINCT = 0x01;
+export function propagate(mndx, tally, ghostly) {
+    const lim = mbirth_limit(mndx);
+    const mv = (game.mvitals = game.mvitals || []);
+    const e = (mv[mndx] = mv[mndx] || { died: 0, born: 0, mvflags: 0 });
+    const geno = MONS[mndx]?.geno ?? 0;
+    const gone = (e.mvflags & G_GONE) !== 0;      /* geno'd | extinct */
+    const result = ((e.born | 0) < lim && !gone);
+
+    /* if it's unique, don't ever make it again */
+    if ((geno & G_UNIQ) !== 0 && mndx !== PM_HIGH_CLERIC)
+        e.mvflags |= G_EXTINCT;
+
+    if ((e.born | 0) < 255 && tally && (!ghostly || result))
+        e.born = (e.born | 0) + 1;
+    if ((e.born | 0) >= lim && !(geno & G_NOGEN) && !(e.mvflags & G_EXTINCT))
+        e.mvflags |= G_EXTINCT;
+    return result;
+}
+const MM_NOCOUNTBIRTH = 0x00000004;
+const MM_MINVIS = 0x00100000;   // hack.h:1168
+const MS_BRIBE = 33;            // monflag.h:48
+// C ref: mondata.h is_dprince(ptr) = is_demon(ptr) && (mflags2 & M2_PRINCE).
+function is_dprince_pm(ptr) {
+    return is_demon_flag(ptr) && (mflags2_of(ptr) & M2_PRINCE) !== 0;
+}
+
 // C ref: makemon.c:1251 `mtmp->m_id = next_ident()`.  next_ident() lives in
 // mkobj.c and is shared between objects (o_id) and monsters (m_id): it returns
 // the current svc.context.ident and then advances it by rnd(2).  We import the
@@ -1219,15 +1278,76 @@ export function mkclass_aligned(klass, spc, atyp = A_NONE) {
 // interleaved o_id/m_id numbering).
 
 // C ref: mongets() (makemon.c:2181). Creates obj via mksobj and gives it to
-// mtmp. We only need the RNG-consuming mksobj() call; the post-creation
-// blessing/spe tweaks in C don't consume RNG for the low-level cases here.
+// mtmp, then applies the per-recipient fixups.
 // C ref: makemon.c mongets() — exported for mkroom.c's fill_zoo(), which hands
 // the throne room's monarch a mace.
 export function mongets_pub(mtmp, otyp) { return mongets(mtmp, otyp); }
 
+// C ref: mondata.h is_lminion(mon) = mon->isminion && EMIN(mon)->min_align
+// == A_LAWFUL.
+function is_lminion_mon(mtmp) {
+    return !!(mtmp && mtmp.isminion && mtmp.emin
+              && mtmp.emin.min_align === A_LAWFUL);
+}
+// C ref: mondata.h is_mplayer(ptr) = ptr >= &mons[PM_ARCHEOLOGIST]
+// && ptr <= &mons[PM_WIZARD] — the player-monster block of mons[].
+function is_mplayer_pm(ptr) {
+    return !!ptr && ptr.pmidx >= PM_ARCHEOLOGIST_MON
+        && ptr.pmidx <= PM_WIZARD_MON;
+}
+// C ref: objclass.h is_sword(obj) = oclass == WEAPON_CLASS
+// && oc_skill in P_DAGGER..P_SABER (skills.h: 1..9).
+const P_DAGGER = 1, P_SABER = 9, P_POLEARMS = 16;
+function is_sword_obj(o) {
+    const oc = objects[o?.otyp];
+    return !!oc && oc.oclass === WEAPON_CLASS_MM
+        && oc.oc_skill >= P_DAGGER && oc.oc_skill <= P_SABER;
+}
+const WEAPON_CLASS_MM = 2, ARMOR_CLASS_MM = 3;
+
 function mongets(_mtmp, otyp) {
     if (!otyp) return null;
     const otmp = mksobj(otyp, true, false);
+    // C ref: makemon.c:2188-2221 — the recipient-specific fixups.  Only the
+    // is_mplayer sword arm draws (rn2(4)); the rest are state, but the flags
+    // they write feed later predicates (blessed/cursed gates m_dowear's choice
+    // and every "is it safe to wear" test) and the object's rendered name.
+    if (otmp) {
+        const ptr = _mtmp?.data;
+        if (ptr && ptr.mcls === S_DEMON_CLS) {
+            /* demons never get blessed objects */
+            if (otmp.blessed) curse(otmp);
+        } else if (is_lminion_mon(_mtmp)) {
+            /* lawful minions don't get cursed, bad, or rusting objects */
+            otmp.cursed = false;
+            if ((otmp.spe ?? 0) < 0) otmp.spe = 0;
+            otmp.oerodeproof = 1;
+            otmp.oeroded = otmp.oeroded2 = 0;
+        } else if (is_mplayer_pm(ptr) && is_sword_obj(otmp)) {
+            otmp.spe = 3 + rn2(4);                        // makemon.c:2200
+        }
+
+        if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+            otmp.spe = 0;
+            otmp.age = 0;
+            otmp.lamplit = false;
+            otmp.blessed = otmp.cursed = false;
+        } else if (otmp.otyp === BELL_OF_OPENING_OTYP) {
+            otmp.blessed = otmp.cursed = false;
+        } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD_OTYP) {
+            otmp.blessed = false;
+            otmp.cursed = true;
+        }
+
+        /* leaders don't tolerate inferior quality battle gear */
+        if (ptr && (mflags2_of(ptr) & M2_PRINCE)) {
+            const oc = objects[otmp.otyp];
+            if (oc?.oclass === WEAPON_CLASS_MM && (otmp.spe ?? 0) < 1)
+                otmp.spe = 1;
+            else if (oc?.oclass === ARMOR_CLASS_MM && (otmp.spe ?? 0) < 0)
+                otmp.spe = 0;
+        }
+    }
     // C ref: mpickobj() adds the object to mtmp->minvent.  Track non-empty
     // inventory so the Big Room m_initinv gold uses d(ld, minvent?5:10), and
     // keep the object itself so it can be dropped (relobj) when the monster
@@ -1235,6 +1355,7 @@ function mongets(_mtmp, otyp) {
     if (_mtmp) { _mtmp._hasinv = true; mpickobj(_mtmp, otmp); }
     return otmp;   // C mongets() returns the created obj (used by ARM_BONUS math)
 }
+const BELL_OF_OPENING_OTYP = 263, SPE_BOOK_OF_THE_DEAD_OTYP = 409;
 
 function m_initthrow(_mtmp, otyp, oquan) {
     const otmp = mksobj(otyp, true, false);
@@ -1263,9 +1384,15 @@ const GOLEM_HP = { 249: 20, 250: 20, 251: 30, 252: 60, 253: 40, 254: 50, 255: 40
 export function golemhp_js(pmidx) { return GOLEM_HP[pmidx] || 0; }
 
 // C ref: adj_lev() (makemon.c:2016). Adjusts a monster's level for the
-// current depth and player level. The slice has no Wizard of Yendor / special
-// (>49) monsters, so only the general path is needed.
+// current depth and player level.
 function adj_lev(ptr) {
+    // C ref: makemon.c:2021 — the Wizard of Yendor does not scale with depth;
+    // he gets one level per previous death instead.  Omitting the arm made his
+    // level (and therefore newmonhp's d(m_lev, 8)) depend on the wrong inputs.
+    if (ptr.pmidx === PM_WIZARD_OF_YENDOR_JS) {
+        const tmpw = ptr.mlevel + (game.mvitals?.[PM_WIZARD_OF_YENDOR_JS]?.died ?? 0);
+        return tmpw > 49 ? 49 : tmpw;
+    }
     let tmp = ptr.mlevel;
     if (tmp > 49) return 50;
 
@@ -1371,11 +1498,6 @@ export function newmonhp(mon) {
     return out.mhp;
 }
 
-function m_initinv(ptr) {
-    rn2(50);
-    rn2(100);
-}
-
 // C ref: makemon.c m_initweap() S_ANGEL branch (makemon.c:330-360) — a humanoid
 // angelic being gets minion gear built directly and handed over with mpickobj,
 // bypassing mongets.  RNG order, exactly as the recorded C stream shows it:
@@ -1418,43 +1540,9 @@ function m_initweap_angel(mtmp, ptr) {
     mpickobj(mtmp, otmp);
 }
 
-// C ref: m_initweap() (makemon.c:160). Only the cases reachable by the
-// low-level mons[] slice (S_KOBOLD, S_ORC) plus the general default tail are
-// ported; the slice contains no giants/mercenaries/elves/etc.
-function m_initweap(mtmp) {
-    const ptr = mtmp?.data;
-    if (!ptr || Is_rogue_level(game.u?.uz)) return;
-
-    switch (ptr.mcls) {
-    case 15: { // S_ORC
-        if (rn2(2)) // makemon.c:411
-            mongets(mtmp, ORCISH_HELM);
-        if (rn2(2)) // mm != PM_ORC_SHAMAN && rn2(2)
-            mongets(mtmp, ORCISH_DAGGER); // mm == PM_GOBLIN -> ORCISH_DAGGER
-        break;
-    }
-    case 11: // S_KOBOLD (makemon.c:469)
-        if (!rn2(4))
-            m_initthrow(mtmp, DART, 12);
-        break;
-    case 27: // S_ANGEL (makemon.c:330)
-        m_initweap_angel(mtmp, ptr);
-        break;
-    default:
-        break;
-    }
-
-    if (mtmp.m_lev > rn2(75))
-        mongets(mtmp, rnd_offensive_item(mtmp));
-}
-
 // C ref: rnd_offensive_item() (muse.c:2035).  Returns the otyp of an offensive
 // item for a monster, or 0 (STRANGE_OBJECT) when none.  Exclusion guard matches
-// C (animal/exploding/mindless/ghost/Kop never get offensive gear).  The case-0
-// SCR_EARTH branch requires a hard helmet or non-corporeal body; for the Big
-// Room armed monsters that branch's predicate is conservatively treated as the
-// FALLTHROUGH to WAN_STRIKING (the recorded stream confirms no case-0 monster
-// satisfies it here), so case 0 falls through to WAN_STRIKING just like case 1.
+// C (animal/exploding/mindless/ghost/Kop never get offensive gear).
 function rnd_offensive_item(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr || rnd_item_excluded(ptr)) return 0;
@@ -1462,7 +1550,17 @@ function rnd_offensive_item(mtmp) {
     if (difficulty > 7 && !rn2(35)) return /*WAN_DEATH*/ 433;
     const roll = rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0));
     switch (roll) {
-    case 0:  // SCR_EARTH only when hard-helmeted/amorphous/etc.; else FALLTHRU
+    case 0:
+        // C ref: muse.c:2050 — SCR_EARTH when the monster wears a hard helmet
+        // or has no solid body.  which_armor(W_ARMH) is Null at creation time
+        // (m_dowear runs after m_initweap), and noncorporeal() is S_GHOST which
+        // the guard above already rejected, so the live part of the predicate
+        // is amorphous/passes_walls/unsolid — true for puddings, xorns, air
+        // elementals and every other non-solid armed species, all of which the
+        // unconditional FALLTHROUGH handed a wand of striking instead.
+        if (amorphous_flag(ptr) || passes_walls_flag(ptr) || unsolid_flag(ptr))
+            return /*SCR_EARTH*/ 340;
+        /* FALLTHROUGH */
     case 1: return /*WAN_STRIKING*/ 417;
     case 2: return /*POT_ACID*/ 320;
     case 3: return /*POT_CONFUSION*/ 299;
@@ -1506,7 +1604,8 @@ const W_BOULDER = 475, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_LEATHER_CLOAK = 145, W_LEATHER_GLOVES = 159, W_LOW_BOOTS = 163,
     W_HIGH_BOOTS = 165, W_POT_HEALING = 307, W_SHURIKEN = 25,
     W_TRIDENT = 33, W_BULLWHIP = 82, W_WAN_DEATH = 433,
-    W_WAN_STRIKING = 417;
+    W_WAN_STRIKING = 417,
+    W_STILETTO = 41, W_CRYSTAL_BALL = 231;
 
 // C ref: mon.c msound MS_GUARDIAN quest-guardian humans (G_NOGEN, so never
 // randomly generated — only placed explicitly by a quest home level).
@@ -1516,9 +1615,14 @@ const GUARDIAN_WEAP_NAMES = new Set([
 ]);
 
 // PM_* indices in this build's JS mons[] (verified by name lookup).
-const ELF_PM = new Set([264, 265, 266, 267, 268]);
-const DWARF_PM = new Set([44, 46, 47]);
-const MERC_PM = new Set([272, 277, 278, 280, 281, 282, 283]);
+// is_elf/is_dwarf/is_mercenary are M2_* flag tests in C (mondata.h); the index
+// sets they replaced were incomplete (ELF_PM stopped one short of the elven
+// monarch), so the flags are read directly now.
+const PM_ELVEN_MONARCH_JS = 269, PM_NINJA_JS = 378, PM_SALAMANDER_JS = 329;
+// makemon()'s minion block (makemon.c:1411); mons[] indices, name-verified.
+const PM_ALIGNED_CLERIC = 275, PM_HIGH_CLERIC = 276, PM_ANGEL = 123;
+const PM_MASTER_LICH_JS = 185, PM_ARCH_LICH_JS = 186;
+const PM_ICE_DEVIL_JS = 298, PM_ASMODEUS_JS = 309;
 const PM_WATCHMAN_JS = 282, PM_SOLDIER_JS = 277, PM_SERGEANT_JS = 278,
     PM_LIEUTENANT_JS = 280, PM_CAPTAIN_JS = 281, PM_WATCH_CAPTAIN_JS = 283;
 const PM_GOBLIN_JS = 70, PM_ORC_SHAMAN_JS = 76, PM_ORC_CAPTAIN_JS = 77,
@@ -1573,13 +1677,20 @@ function m_initweap_full(mtmp) {
             mongets(mtmp, rn2(2) ? W_TWO_HANDED_SWORD : W_BATTLE_AXE);
         break;
     case 53: // S_HUMAN
-        if (MERC_PM.has(mm)) {
+        if (mflags2_of(ptr) & M2_MERC) {   // C: is_mercenary(ptr)
             let w1 = 0, w2 = 0;
             switch (mm) {
             case PM_WATCHMAN_JS:
             case PM_SOLDIER_JS:
-                if (!rn2(3)) { rn2(W_BEC_DE_CORBIN - W_PARTISAN + 1); w1 = W_PARTISAN; w2 = rn2(2) ? W_DAGGER : W_KNIFE; }
-                else w1 = rn2(2) ? W_SPEAR : W_SHORT_SWORD;
+                if (!rn2(3)) {
+                    // C ref: makemon.c:188 — `do { w1 = rn1(BEC_DE_CORBIN -
+                    // PARTISAN + 1, PARTISAN); } while (objects[w1].oc_skill
+                    // != P_POLEARMS);`  The port used to draw the rn1 and then
+                    // discard it, handing every soldier a partisan.
+                    do { w1 = rn2(W_BEC_DE_CORBIN - W_PARTISAN + 1) + W_PARTISAN; }
+                    while (objects[w1]?.oc_skill !== P_POLEARMS);
+                    w2 = rn2(2) ? W_DAGGER : W_KNIFE;
+                } else w1 = rn2(2) ? W_SPEAR : W_SHORT_SWORD;
                 break;
             case PM_SERGEANT_JS: w1 = rn2(2) ? W_FLAIL : W_MACE; break;
             case PM_LIEUTENANT_JS: w1 = rn2(2) ? W_BROADSWORD : W_LONG_SWORD; break;
@@ -1593,7 +1704,10 @@ function m_initweap_full(mtmp) {
             if (w1) mongets(mtmp, w1);
             if (!w2 && w1 !== W_DAGGER && !rn2(4)) w2 = W_KNIFE;
             if (w2) mongets(mtmp, w2);
-        } else if (ELF_PM.has(mm)) {
+        } else if (mflags2_of(ptr) & M2_ELF) {
+            // C ref: makemon.c:216 `is_elf(ptr)` == (mflags2 & M2_ELF).  The
+            // old ELF_PM index set stopped at elf-noble (268) and so silently
+            // excluded the elven monarch (269) — the one elf with a tail branch.
             if (rn2(2)) mongets(mtmp, rn2(2) ? W_ELVEN_MITHRIL_COAT : W_ELVEN_CLOAK);
             if (rn2(2)) mongets(mtmp, W_ELVEN_LEATHER_HELM);
             else if (!rn2(4)) mongets(mtmp, W_ELVEN_BOOTS);
@@ -1612,6 +1726,14 @@ function m_initweap_full(mtmp) {
                 if (rn2(2)) { mongets(mtmp, W_ELVEN_SPEAR); mongets(mtmp, W_ELVEN_SHIELD); }
                 break;
             }
+            // C ref: makemon.c:245-250 — the elven monarch's pick-axe (the
+            // rn2(3) is the LEFT operand of the `||`, so always drawn) and a
+            // 1-in-50 crystal ball.
+            if (mm === PM_ELVEN_MONARCH_JS) {
+                if (rn2(3) || (game.in_mklev && Is_earthlevel(game.u?.uz)))
+                    mongets(mtmp, W_PICK_AXE);
+                if (!rn2(50)) mongets(mtmp, W_CRYSTAL_BALL);
+            }
         } else if (msound_of(ptr) === MS_PRIEST
                    || quest_mon_represents_role(ptr, 'Pri')) {
             // C ref: makemon.c m_initweap S_HUMAN `msound == MS_PRIEST ||
@@ -1621,11 +1743,19 @@ function m_initweap_full(mtmp) {
             const otmp = mksobj(W_MACE, false, false);
             otmp.spe = rnd(3);
             if (!rn2(2)) curse(otmp);
+            mtmp._hasinv = true;
             mpickobj(mtmp, otmp);
-        } else if (GUARDIAN_WEAP_NAMES.has(ptr.name)) {
-            // C ref: makemon.c m_initweap S_HUMAN `msound == MS_GUARDIAN` branch
-            // — quest "guardian" humans (the ninja branch that precedes it in C
-            // is omitted; PM_NINJA never reaches here on the ported levels).
+        } else if (mm === PM_NINJA_JS) {
+            // C ref: makemon.c:270 — "extra quest villains".  The Samurai
+            // quest's ninjas are S_HUMAN with AT_WEAP, so they DO reach here;
+            // skipping the branch dropped both rn2(4) draws and then let the
+            // guardian chain (which they are not part of) fall through to the
+            // shared m_lev > rn2(75) tail one weapon short.
+            mongets(mtmp, rn2(4) ? W_SHURIKEN : W_DART);
+            mongets(mtmp, rn2(4) ? W_SHORT_SWORD : W_AXE);
+        } else if (msound_of(ptr) === MS_GUARDIAN) {
+            // C ref: makemon.c:274 m_initweap S_HUMAN `msound == MS_GUARDIAN`
+            // branch — the 13 quest "guardian" humans.
             const nm = ptr.name;
             if (nm === 'student' || nm === 'attendant' || nm === 'abbot'
                 || nm === 'acolyte' || nm === 'guide' || nm === 'apprentice') {
@@ -1664,7 +1794,7 @@ function m_initweap_full(mtmp) {
             }
             if (!rn2(10)) mongets(mtmp, W_ELVEN_MITHRIL_COAT);
             if (!rn2(10)) mongets(mtmp, W_DWARVISH_CLOAK);
-        } else if (DWARF_PM.has(mm)) {
+        } else if (mflags2_of(ptr) & M2_DWARF) {   // C: is_dwarf(ptr)
             if (rn2(7)) mongets(mtmp, W_DWARVISH_CLOAK);
             if (rn2(7)) mongets(mtmp, W_IRON_SHOES);
             if (!rn2(4)) {
@@ -1730,6 +1860,18 @@ function m_initweap_full(mtmp) {
         break;
     case 49: // S_WRAITH
         mongets(mtmp, W_KNIFE); mongets(mtmp, W_LONG_SWORD);
+        break;
+    case 52: // S_ZOMBIE (makemon.c:487) — reached by PM_SKELETON, the one
+        // AT_WEAP member of the class.  Without this case a skeleton fell into
+        // `default:` and drew the general rnd(14 - 2*bias) instead of C's two
+        // rn2(4)s, so every skeleton desynced the stream from its creation on.
+        if (!rn2(4)) mongets(mtmp, W_LEATHER_ARMOR);
+        if (!rn2(4)) mongets(mtmp, rn2(3) ? W_KNIFE : W_SHORT_SWORD);
+        break;
+    case 58: // S_LIZARD (makemon.c:493) — salamanders only; same
+        // fell-through-to-default problem as S_ZOMBIE above.
+        if (mm === PM_SALAMANDER_JS)
+            mongets(mtmp, rn2(7) ? W_SPEAR : (rn2(3) ? W_TRIDENT : W_STILETTO));
         break;
     case 56: // S_DEMON (makemon.c:500)
         // C switches on the pm index; keyed by name here because the JS mons[]
@@ -1818,10 +1960,16 @@ function rnd_defensive_item(mtmp) {
         case 2: return 329;
         case 3: return 307;
         case 4: return 308;
-        case 5: return 315;
+        // C ref: muse.c:2016 — Pestilence gets sickness, not full healing.
+        case 5: return (pm.name !== 'Pestilence') ? 315 : 318;
         case 7:
             if (inSokoban && rn2(4)) continue;          // goto try_again
-            if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) return 0;
+            // C ref: muse.c:2025 — `is_floater(pm) || isshk || isgd ||
+            // ispriest`.  is_floater (mondata.h) is mlet S_EYE or S_LIGHT;
+            // dropping it handed floating eyes and yellow lights a wand of
+            // digging, whose mongets()/mksobj() draws C never makes.
+            if (pm.mcls === S_EYE_CLS || pm.mcls === S_LIGHT_CLS
+                || mtmp.isshk || mtmp.isgd || mtmp.ispriest) return 0;
             return 428;
         default: return 0;
         }
@@ -1830,6 +1978,8 @@ function rnd_defensive_item(mtmp) {
 // C ref: mondata.h nonliving(ptr) = is_undead(ptr) || PM_MANES ||
 // weirdnonliving(ptr) [is_golem(ptr) || mlet == S_VORTEX].  No RNG.
 const S_VORTEX_CLS = 22, S_GOLEM_CLS = 55;
+// defsym.h MONSYM indices used by mondata.h is_floater(ptr).
+const S_EYE_CLS = 5, S_LIGHT_CLS = 25;
 function nonliving_pm(ptr) {
     if (!ptr) return false;
     return is_undead_flag(ptr) || ptr.name === 'manes'
@@ -1850,25 +2000,28 @@ function rnd_misc_item(mtmp) {
     if (!pm || rnd_item_excluded(pm)) return 0;
     const d = pm.difficulty ?? 0;
     // C ref: muse.c rnd_misc_item() — `return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;`
-    // 422 is WAN_POLYMORPH; 421 (undead turning) is a different wand entirely.
-    if (d < 6 && !rn2(30)) return rn2(6) ? 305 : 422;
+    // POT_POLYMORPH is otyp 316 (305 is POT_INVISIBILITY, a different potion);
+    // 422 is WAN_POLYMORPH.
+    if (d < 6 && !rn2(30)) return rn2(6) ? 316 : 422;
     // C: `if (!rn2(40) && !nonliving(pm) && !is_vampshifter(mtmp))` — the rn2(40)
     // is the LEFT operand so it is always drawn, and an undead/golem/vortex/
     // vampshifter that wins the roll still falls through to the rn2(3) switch
-    // below instead of getting the amulet.
-    if (!rn2(40) && !nonliving_pm(pm) && !is_vampshifter_mon(mtmp)) return 211;
+    // below instead of getting the amulet.  AMULET_OF_LIFE_SAVING is 202;
+    // 211 is the amulet of flying.
+    if (!rn2(40) && !nonliving_pm(pm) && !is_vampshifter_mon(mtmp)) return 202;
     switch (rn2(3)) {
-    case 0: return rn2(6) ? 302 : 420;
-    case 1: if (mtmp.mpeaceful) return 0; return rn2(6) ? 303 : 418;
+    case 0: if (mtmp.isgd) return 0; return rn2(6) ? 302 : 420;
+    // POT_INVISIBILITY is 305 (303 is POT_LEVITATION).  C also lets the item
+    // through for a peaceful monster when the hero has See_invisible.
+    case 1:
+        if (mtmp.mpeaceful && !game.u?.uprops?.See_invisible) return 0;
+        return rn2(6) ? 305 : 418;
     case 2: return 309;
     }
     return 0;
 }
-// C ref: mondata.h is_mercenary(ptr) == (mflags2 & M2_MERC).  The JS MONS slice
-// doesn't carry mflags2, so key on the mercenary PM indices (guard, soldier,
-// sergeant, lieutenant, captain, watchman, watch captain) — reuse the existing
-// MERC_PM set defined above.
-function m_is_mercenary(mm) { return MERC_PM.has(mm); }
+// C ref: mondata.h is_mercenary(ptr) == (mflags2 & M2_MERC).
+function m_is_mercenary(ptr) { return (mflags2_of(ptr) & M2_MERC) !== 0; }
 
 // C ref: hack.h ARM_BONUS(obj) = objects[otyp].a_ac + spe
 //                                 - min(greatest_erosion(obj), a_ac).
@@ -1955,7 +2108,7 @@ function m_initinv_full(mtmp) {
         // a whistle/rations depending on type.  Reached by quest-home watchmen
         // (Arc-strt).  Then the shopkeeper branch (skeleton key + wand/potion
         // cascade), reachable from stock_room.
-        if (m_is_mercenary(mm)) {
+        if (m_is_mercenary(ptr)) {
             m_initinv_mercenary(mtmp, mm);
         } else if (mm === 271 /*PM_SHOPKEEPER*/) {
             mongets(mtmp, 221 /*SKELETON_KEY*/);
@@ -1981,9 +2134,16 @@ function m_initinv_full(mtmp) {
             if (amt > 0) {
                 const gold = mksobj(438 /*GOLD_PIECE*/, false, false);
                 gold.quan = amt;
+                gold.owt = weight(gold);
+                mtmp._hasinv = true;
                 mpickobj(mtmp, gold);
             }
             mtmp._hasgold = true;
+        } else if (quest_mon_represents_role(ptr, 'Mon')) {
+            // C ref: makemon.c:726 — the Monk quest's leader/nemesis get a
+            // robe (or, 1-in-11, a cloak of magic resistance).  The branch was
+            // absent, so both lost the rn2(11).
+            mongets(mtmp, rn2(11) ? 143 /*ROBE*/ : 148 /*CLOAK_OF_MAGIC_RESISTANCE*/);
         }
         break;
     case 14: // S_NYMPH
@@ -1993,39 +2153,58 @@ function m_initinv_full(mtmp) {
     case 39: // S_MUMMY
         if (rn2(7)) mongets(mtmp, 138 /*MUMMY_WRAPPING (armor)*/);
         break;
-    case 34: // S_GIANT — C ref: makemon.c:738-751
+    case 34: // S_GIANT — C ref: makemon.c:734-751.  The Minotaur may carry a
+        // wand of digging (the rn2(8) is the LEFT operand of C's `||`, so it is
+        // always drawn); any other true giant carries a few gem/stone stacks.
+        // (This case used to appear TWICE in this switch; the second copy was
+        // unreachable dead code.)
         if (ptr.name === 'minotaur') {
-            // Is_earthlevel() is false outside the endgame, so only the rn2(8).
-            if (!rn2(8)) mongets(mtmp, WAN_DIGGING);
+            if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u?.uz)))
+                mongets(mtmp, WAN_DIGGING);
         } else if (is_giant_flag(ptr)) {
-            // A giant carries a handful of gem/stone stacks.
             for (let cnt = rn2(Math.trunc((mtmp.m_lev || 0) / 2)); cnt; cnt--) {
                 const otmp = mksobj(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1),
                                     false, false);
                 if (!otmp) continue;
                 otmp.quan = rn1(2, 3);
                 otmp.owt = weight(otmp);
+                mtmp._hasinv = true;
                 mpickobj(mtmp, otmp);
             }
         }
         break;
-    case 33: // S_GNOME
-        if (!rn2((In_mines_js() && game.in_mklev) ? 20 : 60))
-            mksobj(rn2(4) ? 224 /*TALLOW_CANDLE*/ : 225 /*WAX_CANDLE*/, true, false);
-        break;
-    case 34: // S_GIANT
-        // C ref: makemon.c m_initinv() S_GIANT — the Minotaur may carry a wand
-        // of digging (the rn2(8) is the LEFT operand of C's `||`, so it is
-        // always drawn); any other true giant carries a few gems.
-        if (ptr.name === 'minotaur') {
-            if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u?.uz)))
-                mongets(mtmp, WAN_DIGGING_OTYP);
-        } else if (is_giant_flag(ptr)) {
-            for (let cnt = rn2(Math.trunc((mtmp.m_lev || 0) / 2)); cnt; cnt--) {
-                const otmp = mksobj(rnd_class(DILITHIUM_CRYSTAL_OTYP,
-                                              LUCKSTONE_OTYP - 1), false, false);
-                otmp.quan = rn1(2, 3);
+    case 33: { // S_GNOME — C ref: makemon.c:807
+        // C creates the candle, sets quan/owt and mpickobj()s it; the port
+        // built the object and threw it away, so the gnome carried nothing (and
+        // `mtmp->minvent ? 5 : 10` in the gold tail below read the wrong arm).
+        if (!rn2((In_mines_js() && game.in_mklev) ? 20 : 60)) {
+            const otmp = mksobj(rn2(4) ? 224 /*TALLOW_CANDLE*/ : 225 /*WAX_CANDLE*/,
+                                true, false);
+            if (otmp) {
+                otmp.quan = 1;
                 otmp.owt = weight(otmp);
+                mtmp._hasinv = true;
+                mpickobj(mtmp, otmp);
+                /* C: begin_burn() when the square is unlit — display only */
+            }
+        }
+        break;
+    }
+    case 38: // S_LICH — C ref: makemon.c:766-778.  Absent entirely before, so
+        // a master lich lost its rn2(13) and an arch-lich its rn2(3) + tail.
+        if (mm === PM_MASTER_LICH_JS && !rn2(13)) {
+            mongets(mtmp, rn2(7) ? 38 /*ATHAME*/ : 416 /*WAN_NOTHING*/);
+        } else if (mm === PM_ARCH_LICH_JS && !rn2(3)) {
+            // C: mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, TRUE, rn2(13) ? FALSE
+            // : TRUE).  C leaves argument evaluation order unspecified; taken
+            // left-to-right here (otyp roll first, artifact roll second).
+            const otyp = rn2(3) ? 38 /*ATHAME*/ : 79 /*QUARTERSTAFF*/;
+            const artif = rn2(13) ? false : true;
+            const otmp = mksobj(otyp, true, artif);
+            if (otmp) {
+                if ((otmp.spe ?? 0) < 2) otmp.spe = rnd(3);
+                if (!rn2(4)) otmp.oerodeproof = 1;
+                mtmp._hasinv = true;
                 mpickobj(mtmp, otmp);
             }
         }
@@ -2036,18 +2215,46 @@ function m_initinv_full(mtmp) {
         if (ptr.name === 'Nazgul') {
             const otmp = mksobj(198 /*RIN_INVISIBILITY*/, false, false);
             curse(otmp);
+            mtmp._hasinv = true;
             mpickobj(mtmp, otmp);
         }
         break;
-    case 43: // S_QUANTMECH
+    case 43: // S_QUANTMECH — C ref: makemon.c:781.  202 is the AMULET of life
+        // saving; LARGE_BOX is 214 (SchroedingersBox, spe=1, cat corpse inside).
         if (!rn2(20) && mm === 210 /*PM_QUANTUM_MECHANIC*/) {
-            mksobj(202 /*LARGE_BOX*/, false, false); // next_ident rnd(2)
-            mksobj(265 /*CORPSE*/, true, false);     // cat corpse inside
+            const box = mksobj(214 /*LARGE_BOX*/, false, false);
+            const catcorpse = mksobj(265 /*CORPSE*/, true, false);
+            if (box && catcorpse) {
+                box.spe = 1;            /* flag for special SchroedingersBox */
+                catcorpse.corpsenm = 16 /*PM_HOUSECAT*/;
+                if (!box.cobj) box.cobj = [];
+                box.cobj.push(catcorpse);
+                catcorpse.where = 'contained';
+                box.owt = weight(box);
+            }
+            if (box) { mtmp._hasinv = true; mpickobj(mtmp, box); }
+        }
+        break;
+    case 56: // S_DEMON — C ref: makemon.c:797.  These lack AT_WEAP so
+        // m_initweap() never runs for them; C moved their gear here.
+        if (mm === PM_ICE_DEVIL_JS) {
+            if (!rn2(4)) mongets(mtmp, W_SPEAR);
+        } else if (mm === PM_ASMODEUS_JS) {
+            mongets(mtmp, 431 /*WAN_COLD*/);
+            mongets(mtmp, 430 /*WAN_FIRE*/);
         }
         break;
     case 12: { // S_LEPRECHAUN — mkmonmoney(d(level_difficulty(), 30))
         const amt = d(level_difficulty_ext(), 30);
-        if (amt > 0) mksobj(438 /*GOLD_PIECE*/, false, false); // next_ident rnd(2)
+        if (amt > 0) {
+            const gold = mksobj(438 /*GOLD_PIECE*/, false, false); // next_ident rnd(2)
+            if (gold) {
+                gold.quan = amt;
+                gold.owt = weight(gold);
+                mtmp._hasinv = true;
+                mpickobj(mtmp, gold);
+            }
+        }
         mtmp._hasgold = true;
         break;
     }
@@ -2062,8 +2269,17 @@ function m_initinv_full(mtmp) {
         // matching the C engine (rather than n separate rn2 calls).
         const amt = d(level_difficulty_ext(), mtmp._hasinv ? 5 : 10);
         // C ref: mkmonmoney -> if (amount>0) mksobj(GOLD_PIECE, FALSE, FALSE)
-        // (one next_ident rnd(2); no mksobj_init since init==FALSE).
-        if (amt > 0) mksobj(438 /*GOLD_PIECE*/, false, false);
+        // (one next_ident rnd(2); no mksobj_init since init==FALSE) followed by
+        // add_to_minv(), which is what makes the pile drop on death.
+        if (amt > 0) {
+            const gold = mksobj(438 /*GOLD_PIECE*/, false, false);
+            if (gold) {
+                gold.quan = amt;
+                gold.owt = weight(gold);
+                mtmp._hasinv = true;
+                mpickobj(mtmp, gold);
+            }
+        }
         mtmp._hasgold = true;
     }
 }
@@ -2149,7 +2365,7 @@ const SMS_SYMS = [
 // Every branch below is now present in C's order, because the order IS the
 // semantics: each test can consume RNG, so skipping a branch that C evaluates
 // shifts the stream even when the outcome would have been the same.
-function set_mimic_sym(mtmp) {
+export function set_mimic_sym(mtmp) {
     // C ref: `if (!mtmp || Protection_from_shape_changers) return;` — extrinsic
     // ring property, read inline rather than importing mon.js (which imports
     // this module).  No RNG either way.
@@ -2750,6 +2966,13 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     let ptr = mdat;
     let allow_minvent = true;
 
+    // C ref: makemon.c:1167 — `if (iflags.debug_mongen || (!svl.level.flags
+    // .rndmongen && !ptr)) return 0;`  A level whose script cleared rndmongen
+    // (des.level_flags("norandmonst")) never gets a RANDOM monster; a
+    // caller-named species still does.  Tested against `=== false` so a level
+    // that has not written the flag keeps C's default of TRUE.
+    if (!mdat && game.level?.flags?.rndmongen === false) return null;
+
     // C ref: makemon.c:1194 — "Does monster already exist at the position?"
     // Without MM_ADJACENTOK this is a bare early return that consumes NO RNG,
     // and it is load-bearing for fill_zoo(): C tries to stock every square of a
@@ -2810,20 +3033,38 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         }
     }
     if (!ptr) return null;
+    // C ref: makemon.c:1208 — an explicitly requested species that has been
+    // genocided is refused before anything is allocated or rolled.  (The random
+    // arm above can't produce one: rndmonst()'s uncommon() already skips
+    // G_GONE species.)
+    if (mdat && (mvflags(ptr.pmidx) & G_GENOD) !== 0) return null;
+    // C ref: makemon.c:1233 `(void) propagate(mndx, countbirth, FALSE);`
+    propagate(ptr.pmidx, (mmflags & MM_NOCOUNTBIRTH) === 0, false);
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags };
     if (globalThis.__NHMONDBG) globalThis.__NHMONDBG.push([globalThis.__NHRNGLEN(), ptr.name, ptr.mcls, ptr.gcode]);
+    // C ref: makemon.c:1245 `if (mmflags & MM_ASLEEP) mtmp->msleeping = 1;`.
+    // No RNG, but msleeping gates every monster's turn in dochug(), so a caller
+    // that asked for a sleeping monster got a wide-awake one instead.
+    if (mmflags & MM_ASLEEP) mtmp.msleeping = 1;
     mtmp.m_id = next_ident();
+    // C ref: makemon.c:1254 `mtmp->mnum = mndx;` — the species index every
+    // monsndx()-shaped consumer reads.
+    mtmp.mnum = ptr.pmidx;
     newmonhp(mtmp);
     // C makemon.c:1259-1279: femaleok = (!is_male && !is_neuter).  For monsters
     // that aren't fixed-gender (is_male/is_female) and aren't leader/nemesis
     // (none in this slice), the gender draw rn2(2) happens only when femaleok.
     // gcode: 0 femaleok -> rn2(2); 1 male -> female=0; 2 female -> female=1;
     // 3 neuter -> female=0.  No RNG is consumed for fixed-gender/neuter mons.
-    if (ptr.gcode === 0)
-        mtmp.female = rn2(2);
-    else
-        mtmp.female = (ptr.gcode === 2) ? 1 : 0;
+    // C ref: makemon.c:1264-1266 — MM_MALE/MM_FEMALE win over the random roll
+    // (and consume nothing) when the species allows that gender; the roll only
+    // happens on the final `else`.
+    if (ptr.gcode === 2) mtmp.female = 1;                       /* is_female */
+    else if (ptr.gcode === 1 || ptr.gcode === 3) mtmp.female = 0; /* male/neuter */
+    else if (mmflags & MM_FEMALE) mtmp.female = 1;
+    else if (mmflags & MM_MALE) mtmp.female = 0;
+    else mtmp.female = rn2(2);
 
     // C ref: makemon.c:1281-1289 — trap knowledge is granted at CREATION; no
     // RNG here, but mtrapseen was written nowhere on this path (only
@@ -2870,6 +3111,16 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // creation; that guard was dead until this field was written.
     mtmp.mgenmklev = !!game.in_mklev;
     mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : !!peace_minded_bigrm(ptr);
+    // C ref: makemon.c:1288-1292 — locations whose inhabitants have already met
+    // wands, so muse.c doesn't make them re-learn.  No RNG here, but mwandexp
+    // gates the "monster knows what this wand does" branch in muse.
+    if (Is_stronghold(game.u?.uz) || In_endgame(game.u?.uz)
+        || In_hell(game.u?.uz))
+        mtmp.mwandexp = true;
+    // C ref: makemon.c:1301 — `if (mmflags & MM_MINVIS) mon_set_minvis(mtmp)`,
+    // used by #wizgenesis (^G).  mon_set_minvis sets minvis; perminvis is for
+    // species that are permanently invisible (the S_LIGHT/S_ELEMENTAL case).
+    if (mmflags & MM_MINVIS) mtmp.minvis = 1;
 
     // C ref: makemon.c:1307-1312 — the per-mlet switch.  S_SPIDER and S_SNAKE
     // monsters generated during level creation (gi.in_mklev) at a real position
@@ -3001,6 +3252,20 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             mtmp.msleeping = true;
     }
 
+    // C ref: makemon.c:1396-1403 — a bribeable demon prince starts peaceful and
+    // invisible (that is how one is met, and minvis changes what the square
+    // renders as), and a raven leaves the wielder of a bec de corbin alone.
+    if (is_dprince_pm(ptr) && msound_of(ptr) === MS_BRIBE) {
+        mtmp.mpeaceful = mtmp.minvis = mtmp.perminvis = 1;
+        mtmp.mavenge = 0;
+        // C also drops the truce for a hero wielding Excalibur or Demonbane.
+        const uwep = game.u?.uwep;
+        if (uwep?.oname === 'Excalibur' || uwep?.oname === 'Demonbane')
+            mtmp.mpeaceful = mtmp.mtame = false;
+    }
+    if (ptr.name === 'raven' && game.u?.uwep?.otyp === W_BEC_DE_CORBIN)
+        mtmp.mpeaceful = true;
+
     // C ref: makemon.c:1405-1409 — a long worm gets a tail.  initworm() draws
     // rn2(5) for the segment count (allowtail is TRUE for every caller here),
     // and place_worm_tail_randomly() then spends one rnd_nextto_goodpos()
@@ -3031,6 +3296,21 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // let whoever links the leader in splice it ahead of that object — an object
     // anchor rather than an index, because an index goes stale for any monster
     // whose placement happens later (that cost 200 RNG calls when tried).
+    // C ref: makemon.c:1411-1425 — an ordinary (caller didn't pass MM_EPRI /
+    // MM_EMIN) aligned cleric or high cleric, and one Angel in three, is set up
+    // as a roaming minion with its own alignment.  Three rn2(3) draws live here
+    // (the Angel gate, min_align, renegade); none of them were made, and
+    // set_malign() below reads min_align through mtmp.isminion.
+    if ((ptr.pmidx === PM_ALIGNED_CLERIC || ptr.pmidx === PM_HIGH_CLERIC)
+        ? !(mmflags & (MM_EPRI | MM_EMIN))
+        : (ptr.pmidx === PM_ANGEL && !(mmflags & MM_EMIN) && !rn2(3))) {
+        const eminp = { min_align: rn2(3) - 1, renegade: 0 }; /* no A_NONE */
+        eminp.renegade = (mmflags & MM_ANGRY) ? 1 : (!rn2(3) ? 1 : 0);
+        mtmp.isminion = 1;                  /* make priest be a roamer */
+        mtmp.emin = eminp;
+        mtmp.mpeaceful = (eminp.min_align === (game.u?.ualign?.type ?? 0))
+            ? !eminp.renegade : !!eminp.renegade;
+    }
     set_malign(mtmp);   // makemon.c:1429 "having finished peaceful changes"
     const grpFirstIdx = game.level?.monsters?.length ?? 0;
     const anymon = (mdat == null);
@@ -3047,28 +3327,17 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         if (mons && mons.length > grpFirstIdx) mtmp._chainBefore = mons[grpFirstIdx];
     }
 
-    // Weapon/inventory: full C-faithful path during Big Room generation and
-    // shop stocking (_full_mon_gen); conservative (committed) path otherwise.
     // C ref: makemon.c:1441 — the whole block (m_initweap/m_initinv + the
     // saddle rn2(100)) is guarded by allow_minvent, which a shapeshifter's
     // newcham() clears.  For every non-shapeshifter path allow_minvent stays
     // TRUE, so behaviour is unchanged.
     if (allow_minvent) {
         // C ref: makemon.c:1442 — `if (is_armed(ptr)) m_initweap(mtmp);`, one
-        // code path for every monster.  m_initweap_full() is the faithful port;
-        // the old conservative variant only had bodies for S_KOBOLD/S_ORC/
-        // S_ANGEL and was gated on that same short class list, so any other
-        // armed monster generated outside the Big Room / shop-stocking paths
-        // skipped BOTH its class case and the shared
-        // `m_lev > rn2(75) -> rnd_offensive_item` tail.
+        // code path for every monster.
         if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
         // C ref: makemon.c:1443 m_initinv(mtmp) — one code path for every
-        // monster.  m_initinv_full() is the faithful port (per-class branches
-        // plus the rnd_defensive_item / rnd_misc_item / likes_gold tail); the
-        // old two-draw approximation dropped the S_GNOME/S_LEPRECHAUN/... class
-        // cases and the `likes_gold(ptr) && !findgold(...) && !rn2(5)` gold roll,
-        // so any greedy monster (dragons, orcs, dwarves, ogres, ...) generated
-        // outside the Big Room / shop-stocking paths lost an rn2(5).
+        // monster (per-class branches plus the rnd_defensive_item /
+        // rnd_misc_item / likes_gold tail).
         m_initinv_full(mtmp);
         rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
     }
@@ -3239,12 +3508,39 @@ function makemon_rnd_goodpos(ptr) {
                     if (goodpos_spawn(cx, cy, ptr)) { nx = cx; ny = cy; good = true; }
                 }
             }
-            // The stairway rn2(2) tie-break (mon->data->mmove != 0) is omitted:
-            // a good spot is essentially always found above on these levels.
+            // C ref: makemon.c:1113-1128 — when the first (skip-visible) pass
+            // finds nothing, C walks gs.stairs and takes the first same-dungeon
+            // stairway that wins an rn2(2), then tests goodpos() there.  The
+            // rn2(2) fires PER stairway examined, so skipping the block loses
+            // draws (and the fallback position) whenever the whole visible map
+            // is rejected.  `mon` is Null for a caller-picked random monster,
+            // and C's `!mon || mon->data->mmove` accepts that.
+            if (bl === 0 && !good && mon_mmove(ptr)) {
+                let cx = nx, cy = ny;
+                for (let stway = game.stairs; stway; stway = stway.next) {
+                    if (stway.tolev?.dnum === game.u?.uz?.dnum && !rn2(2)) {
+                        cx = stway.sx; cy = stway.sy;
+                        break;
+                    }
+                }
+                if (goodpos_spawn(cx, cy, ptr)) { nx = cx; ny = cy; good = true; }
+            }
         }
         if (!good) return null;
     }
     return { x: nx, y: ny };
+}
+
+// C ref: permonst.h mmove (monsters.h LVL()'s 2nd field) — 0 means the species
+// never moves.  Exactly eight mons[] entries qualify; transcribed by name from
+// monsters.h rather than importing mon.js's MMOVE table, which would close an
+// import cycle (mon.js already imports this module).
+const MM_IMMOBILE_NAMES = new Set([
+    'blue jelly', 'spotted jelly', 'brown mold', 'yellow mold',
+    'green mold', 'red mold', 'Oracle', 'long worm tail',
+]);
+function mon_mmove(ptr) {
+    return ptr ? !MM_IMMOBILE_NAMES.has(ptr.name) : true;
 }
 
 // C ref: teleport.c collect_coords(candy, cx, cy, maxradius, CC_NO_FLAGS):
@@ -3314,13 +3610,9 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
     if (!cnt) cnt++;
     let mx = x, my = y;
     while (cnt-- > 0) {
-        // C ref: makemon.c:125 — peace_minded(mtmp->data) per member; if peaceful,
-        // skip (no enexto/makemon).  During Big Room gen use the full C-faithful
-        // peace_minded (race/msound/minion short-circuits); the ordinary spawn
-        // path keeps the conservative version.
-        const peaceful = game._bigrm_gen ? peace_minded_bigrm(mtmp.data)
-                                         : peace_minded_spawn(mtmp.data);
-        if (peaceful) continue;   // skip peaceful members
+        // C ref: makemon.c:125 — peace_minded(mtmp->data) per member; if
+        // peaceful, skip (no enexto/makemon).  One C function, one port.
+        if (peace_minded_bigrm(mtmp.data)) continue;
         const spot = enexto_spawn(mx, my, mtmp.data);  // enexto_gpflags
         if (spot) {
             mx = spot.x; my = spot.y;
@@ -3387,8 +3679,14 @@ export function makemon_rnd_spawn() {
     do {
         ptr = rndmonst();
         if (!ptr) return null;
-    } while (++tryct <= 50 && !goodpos_spawn(x, y, ptr));
+        // C ref: makemon.c:1228 — in Sokoban the FIRST roll never accepts a
+        // boulder carrier; after that they are fair game.
+    } while (++tryct <= 50
+             && ((tryct === 1 && throws_rocks_flag(ptr) && In_sokoban(game.u?.uz))
+                 || !goodpos_spawn(x, y, ptr)));
     if (!ptr) return null;
+
+    propagate(ptr.pmidx, true, false);   // makemon.c:1233
 
     const mtmp = { data: ptr, mx: x, my: y, mmflags: 0 };
     // C ref: makemon.c:1248-1250 — the new monster is linked into fmon (and gets
@@ -3416,8 +3714,14 @@ export function makemon_rnd_spawn() {
         else m_initgrp(mtmp, x, y, 3, 0);          // m_initsgrp -> rnd(3)
     }
 
-    if (ARMED_MCLS.has(ptr.mcls)) m_initweap(mtmp);
-    m_initinv(ptr);
+    // C ref: makemon.c:1442-1451 — the same two calls every other makemon()
+    // path makes.  This entry point used to call a pair of stubs: an
+    // m_initweap() with bodies for only S_KOBOLD/S_ORC/S_ANGEL gated on an
+    // ARMED_MCLS class list (instead of C's is_armed() == attacktype AT_WEAP),
+    // and an m_initinv() that was literally `rn2(50); rn2(100);` — no per-class
+    // branch, and no mongets() for either roll it won.
+    if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
+    m_initinv_full(mtmp);
     rn2(100); // saddle chance
 
     return mtmp;

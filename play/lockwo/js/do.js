@@ -875,8 +875,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // that the hero now stands on (otherwise the screen stays blank after a
     // level change).
     // C ref: do.c:1976 check_special_room(FALSE) — "give room entrance message,
-    // if any" for the square the hero arrived on.
-    await check_special_room(false);
+    // if any" for the square the hero arrived on.  In C this is one of the LAST
+    // things goto_level() does, i.e. after maybe_lvltport_feedback()'s "You
+    // materialize on a different level!" and the familiar/Knox/temperature
+    // lines.  This port emits those from goto_level's CALLER, so a level-
+    // teleport caller sets _goto_defer_arrival and runs the room-entry check
+    // itself once its messages are on the top line; otherwise the shop greeting
+    // prints first and the arrival message immediately clobbers it.
+    if (g._goto_defer_arrival) g._goto_pending_room_entry = true;
+    else await check_special_room(false);
 
     game.vision_full_recalc = 0;
     vision_reset();
@@ -969,6 +976,20 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // No RNG unless the gain crosses an experience-level boundary (newexplevel
     // -> pluslvl), which does not happen on the shallow covered levels.  This
     // feeds u.urexp for the end-of-game score (rip.c / end.c).
+    // C ref: do.c:1958 — the same `if (new)` block first logs the arrival to
+    // the #chronicle: `describe_level(dloc, 2)` -> "level <depth>, <dungeon
+    // name>" with a leading "The " lowercased.  LL_ACHIEVE only for the
+    // endgame/quest; the main dungeon logs LL_DEBUG, which show_gamelog() still
+    // lists (it filters on LL_SPOILER, not LL_DEBUG).  Without this the
+    // chronicle window showed only the "entered the dungeon" line.
+    if (firstVisit) {
+        const major = !!(In_endgame(u.uz) || In_quest(u.uz));
+        const dname = String(game.dungeons?.[u.uz.dnum]?.dname || 'The Dungeons of Doom')
+            .replace(/^The /, 'the ');
+        const { livelog_printf, LL_ACHIEVE, LL_DEBUG } = await import('./livelog.js');
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG,
+                       `entered level ${depth_of_level(u.uz)}, ${dname}`);
+    }
     if (firstVisit && game.urole?.mnum === PM_TOURIST) {
         more_experienced(level_difficulty(), 0);
         await newexplevel();
@@ -1200,7 +1221,9 @@ export async function wiz_level_tele(readLevel) {
         // force_dest: no further validation; teleport straight to the target.
         if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
             return 0;
+        game._goto_defer_arrival = true;
         await goto_level(newlevel, false, false, false);
+        game._goto_defer_arrival = false;
         // C ref: win/tty/topl.c update_topl() — the arrival message goes through
         // the real append-or-flush topline logic (not the simple pline()), since
         // a familiar-level message right below it may need to share the line
@@ -1229,6 +1252,7 @@ export async function wiz_level_tele(readLevel) {
         // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
         // delivered after the quest/endgame arrival block.
         if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
+        await goto_room_entry();
         // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — the wizard-mode
         // level teleport does NOT cost a game turn (no movemon / gethungry /
         // monster-spawn pass).  Returning ECMD_TIME here advanced moves by one
@@ -1272,7 +1296,9 @@ export async function wiz_level_tele(readLevel) {
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return 0;
 
+    game._goto_defer_arrival = true;
     await goto_level(newlevel, false, false, false);
+    game._goto_defer_arrival = false;
 
     // C ref: teleport.c level_tele() -> schedule_goto(..., "You materialize on
     // a different level!"); the deferred top-line message is delivered after
@@ -1295,9 +1321,21 @@ export async function wiz_level_tele(readLevel) {
     await onquest();
     // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
     if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
+    await goto_room_entry();
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
 }
+
+// C ref: do.c:1976 goto_level()'s trailing check_special_room(FALSE).  Run by
+// the level-teleport callers after their deferred arrival messages, so the shop
+// greeting lands on top of (and pages) the "You materialize..." line the way
+// C's ordering does.
+export async function goto_room_entry() {
+    if (!game._goto_pending_room_entry) return;
+    game._goto_pending_room_entry = false;
+    await check_special_room(false);
+}
+
 
 // ── level_tele (C ref: teleport.c level_tele) ──
 //
@@ -1441,7 +1479,9 @@ export async function run_deferred_lvltport() {
     const pend = game._lvltport_dest;
     if (!pend) return;
     game._lvltport_dest = null;
+    game._goto_defer_arrival = true;
     await goto_level(pend.newlevel, false, false, false);
+    game._goto_defer_arrival = false;
     // update_topl() (not the simple pline()) so a familiar-level message right
     // after this one can share the line or force its own --More--, matching
     // C's pline()/update_topl() for both messages.
@@ -1456,6 +1496,7 @@ export async function run_deferred_lvltport() {
     if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
     // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
     if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
+    await goto_room_entry();
 }
 
 // C ref: dungeon.c Is_botlevel — is <lev> the bottom level of its dungeon?

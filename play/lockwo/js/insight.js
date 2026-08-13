@@ -50,7 +50,8 @@ function Antimagic() {
     return !!(game.u?.HAntimagic);
 }
 import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
-         LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER } from './livelog.js';
+         LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC,
+         livelog_printf } from './livelog.js';
 import { nhgetch } from './input.js';
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
@@ -709,6 +710,51 @@ function plur(n) { return n === 1 ? '' : 's'; }
 // C ref: insight.c N_times() — "once" / "twice" / "N times".
 function N_times(n) {
     return n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`;
+}
+
+// C ref: insight.c achieve_msg[] — one {llflag, msg} per you.h ACH_* index.
+// The eight rank entries (23..30) build their text from the role's rank title
+// at record time and ACH_MINE_PRIZE/ACH_SOKO_PRIZE append an identified item
+// name; neither form is reachable from this port, so both are omitted.
+const ACHIEVE_MSG = {
+    1: [LL_ACHIEVE, 'acquired the Bell of Opening'],
+    2: [LL_ACHIEVE, 'entered Gehennom'],
+    3: [LL_ACHIEVE, 'acquired the Candelabrum of Invocation'],
+    4: [LL_ACHIEVE, 'acquired the Book of the Dead'],
+    5: [LL_ACHIEVE, 'performed the invocation'],
+    6: [LL_ACHIEVE, 'acquired The Amulet of Yendor'],
+    7: [LL_ACHIEVE, 'entered the Elemental Planes'],
+    8: [LL_ACHIEVE, 'entered the Astral Plane'],
+    9: [LL_ACHIEVE, 'ascended'],
+    12: [LL_ACHIEVE | LL_UMONST, 'killed Medusa'],
+    13: [0, 'hero was always blond, no, blind'],
+    14: [0, 'hero never wore armor'],
+    15: [LL_MINORAC | LL_DUMP, 'entered the Gnomish Mines'],
+    16: [LL_ACHIEVE, 'reached Mine Town'],
+    17: [LL_MINORAC, 'entered a shop'],
+    18: [LL_MINORAC, 'entered a temple'],
+    19: [LL_ACHIEVE, 'consulted the Oracle'],
+    20: [LL_MINORAC | LL_DUMP, 'read a Discworld novel'],
+    21: [LL_ACHIEVE, 'entered Sokoban'],
+    22: [LL_ACHIEVE, 'entered the Bigroom'],
+    31: [LL_MINORAC, "learned castle drawbridge's tune"],
+};
+
+// C ref: insight.c record_achievement(achidx) — append to u.uachieved (ignoring
+// duplicates) and chronicle it.  This was a `{}` stub in invent.js, so no
+// achievement ever reached the #chronicle window.  Ranks are stored as the
+// complement to remember the hero's gender, hence the abs() compare.
+export function record_achievement(achidx) {
+    const u = game.u;
+    if (!u) return;
+    if (!Array.isArray(u.uachieved)) u.uachieved = [];
+    const absidx = Math.abs(achidx);
+    if (u.uachieved.some((a) => Math.abs(a) === absidx)) return;
+    u.uachieved.push(achidx);
+    if (game.program_state_gameover) return;
+    const entry = ACHIEVE_MSG[absidx];
+    if (!entry || !entry[1]) return;
+    livelog_printf(entry[0], entry[1]);
 }
 
 // C ref: insight.c show_conduct(final)'s "only report Sokoban conduct if the

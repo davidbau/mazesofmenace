@@ -14,7 +14,7 @@
 // capture sees the final post-run state with the exact cumulative RNG.
 
 import { game } from './gstate.js';
-import { domove, blocksMove } from './cmd.js';
+import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
 import { obj_doname, whatis_pick_inventory } from './invent.js';
@@ -368,6 +368,34 @@ async function run_movement(run) {
     game.multi = 0;
 }
 
+// C ref: cmd.c dotravel_target() feeding hack.c:1268 findtravelpath()'s
+// TRAVP_TRAVEL "if travel to adjacent, reachable location, use normal movement
+// rules" fast path.  There end_running(FALSE) clears context.run and nomul(0)
+// clears multi BEFORE the step, so the command is a single ORDINARY move (run
+// stays 0 for the whole of domove) with context.travel/mv/nopick still set.
+// Longer destinations need the findtravelpath BFS, which is not ported; those
+// still cost no time.  Returns TRUE when the step was taken (the caller then
+// owes ECMD_TIME).
+export async function travel_adjacent_step(tx, ty) {
+    const u = game.u, c = game.context;
+    const dx = tx - u.ux, dy = ty - u.uy;
+    if ((!dx && !dy) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
+    u.dx = dx; u.dy = dy; u.dz = 0;
+    if (!test_move_quiet(tx, ty)) return false;
+    c.travel = 1; c.nopick = 1; c.mv = true;
+    c.travel1 = 0;                      // domove_core() clears it past findtravelpath
+    c.run = 0;                          // end_running(FALSE)
+    u.last_str_turn = 0;
+    game.multi = 0;                     // end_running(FALSE) + nomul(0)
+    await domove(dx, dy);
+    if (c.move) await moveloop_turn();  // the elapsed turn, taken inline
+    // C: reset_cmd_vars() at the top of the next rhack().
+    c.run = 0; c.travel = c.travel1 = c.mv = 0; c.nopick = 0;
+    c.move = 0;
+    game.multi = 0;
+    return true;
+}
+
 // C ref: cmd.c do_run_*()/set_move_cmd(dir, 1) reached via the capital-letter
 // run keys (and via the 'G' run prefix).  Run until something interesting.
 export async function do_run(dx, dy) {
@@ -470,6 +498,133 @@ async function getpos_tip() {
     return true;
 }
 
+// C ref: getpos.c:167 getpos_help() — the '?' response inside getpos().  The
+// window is create_nhwindow(NHW_MENU) but filled with putstr(), so
+// wintty.c:1991 tty_display_nhwindow takes the `if (cw->data || !cw->maxrow)`
+// branch and runs process_text_window(), NOT process_menu_window(): morestr is
+// "--More--", item width is strlen+1 (wintty.c:2459 n0), and dmore()'s NHW_MENU
+// offset of 2 puts the "--More--" at offx+1 with the cursor immediately past
+// its last character.
+const GETPOS_MORESTR = '--More--';
+const GP_VIEW_FILTERS = ['Not limiting targets',
+                         'Limiting targets to those in sight',
+                         'Limiting targets to those in same area'];
+
+// The getpos option toggles live in iflags, so they persist across getpos()
+// calls for the rest of the game.  autodescribe defaults On.
+function gp_iflags() {
+    const ifl = (game.iflags = game.iflags || {});
+    if (ifl.autodescribe === undefined) ifl.autodescribe = true;
+    return ifl;
+}
+
+// A getpos toggle's pline(): unlike the autodescribe line it leaves the topline
+// NEED_MORE, so the goal message that follows has to --More-- past it.
+async function gp_pline(msg, cx, cy) {
+    await update_topl(msg);
+    await flush_screen(1);
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+}
+
+// C ref: pager.c:1670 what_is_a_location[] — getpos_help() compares the goal
+// POINTER against it, so only do_look()'s getpos gets the ',' / ';' / ':' arm.
+const WHAT_IS_A_LOCATION = 'a monster, object or location';
+
+function getpos_help_lines(force, goal, doingWhatIs, hasValid, hasHilite) {
+    const ifl = gp_iflags();
+    const fastmove = ['8 units at a time', 'skipping same glyphs'];
+    const skip = ifl.getloc_moveskip ? 1 : 0;
+    const menu = !!ifl.getloc_usemenu;
+    // getpos.c:129 gloc_filtertxt[] / gloc_descr[gloc][2 + getloc_usemenu].
+    const filt = ['', ' in view', ' in this area'][ifl.getloc_filter || 0];
+    const kx = (k1, k2, descr, menuDescr, explore) => {
+        const to = explore ? 'move the cursor next to an ' : 'move the cursor to ';
+        const ftxt = (explore && menu) ? filt.replace('this area', 'area') : filt;
+        return `Use '${k1}'/'${k2}' to ${menu ? 'get a menu of ' : to}`
+             + `${menu ? menuDescr : descr}${ftxt}.`;
+    };
+    const lines = [];
+    lines.push(`Use 'h', 'j', 'k', 'l' to move the cursor to ${goal}.`);
+    lines.push(`Use 'H', 'J', 'K', 'L' to fast-move the cursor, ${fastmove[skip]}.`);
+    lines.push(`(or prefix normal move with 'G' or 'g' to fast-move)`);
+    lines.push(`Or enter a background symbol (ex. '<').`);
+    lines.push(`Use '@' to move the cursor on yourself.`);
+    lines.push(kx('m', 'M', 'next/previous monster', 'monsters'));
+    // getpos.c:203 `goto skip_non_mons` jumps past everything below down to the
+    // "Type a '.'" line, so a "a monster" goal loses the '*'/'!'/'"'/'#' lines.
+    if (goal !== 'a monster') {
+        lines.push(kx('o', 'O', 'next/previous object', 'objects'));
+        lines.push(kx('d', 'D', 'next/previous door or doorway', 'doors or doorways'));
+        lines.push(kx('x', 'X', 'unexplored location',
+                      'locations next to unexplored locations', true));
+        lines.push(kx('a', 'A', 'anything interesting', 'anything interesting'));
+        lines.push(`Use '*' to change fast-move mode to ${fastmove[1 - skip]}.`);
+        lines.push(`Use '!' to toggle menu listing for possible targets.`);
+        lines.push(`Use '"' to change the mode of limiting possible targets.`);
+        if (hasValid) lines.push(`Use 'z' or 'Z' to move to valid locations.`);
+        if (hasHilite) lines.push(`Use '$' to toggle marking of valid locations.`);
+        lines.push(`Use '#' to toggle automatic description.`);
+    }
+    lines.push(doingWhatIs
+        ? `Type a '.' or ',' or ';' or ':' when you are at the right place.`
+        : `Type a '.' when you are at the right place.`);
+    if (doingWhatIs) {
+        lines.push(`  ':' describe current spot, show 'more info', move to another spot.`);
+        lines.push(`  '.' describe current spot,${!force ? " prompt if 'more info'," : ''} move to another spot;`);
+        lines.push(`  ',' describe current spot, move to another spot;`);
+        lines.push(`  ';' describe current spot, stop looking at things;`);
+    }
+    if (!force) lines.push(`Type Space or Escape when you're done.`);
+    lines.push('');
+    return lines;
+}
+
+// Paint a wintty.c:1810 process_text_window() overlay: cl_end() from offx on
+// every row, a leading blank at offx, the text at offx+1, then the morestr row.
+function render_text_window(lines) {
+    const disp = game.nhDisplay;
+    if (!disp?.putstr) return;
+    const cols = 80;
+    let maxcol = 0;
+    for (const l of lines) if (l.length + 1 > maxcol) maxcol = l.length + 1;
+    let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    // wintty.c:1974 — a window as tall as the terminal drops the overlay form.
+    if (lines.length >= 24) offx = 0;
+    const textCol = offx + 1;
+
+    const blankCols = (row) => {
+        for (let c = offx; c < cols; c++) disp.setCell(c, row, ' ', NO_COLOR, 0);
+    };
+    for (let c = 0; c < cols; c++) disp.setCell(c, 0, ' ', NO_COLOR, 0); // WIN_MESSAGE
+
+    for (let i = 0; i < lines.length; i++) {
+        blankCols(i);
+        if (lines[i]) disp.putstr(textCol, i, lines[i], NO_COLOR, 0);
+    }
+    const endRow = lines.length;
+    blankCols(endRow);
+    disp.putstr(textCol, endRow, GETPOS_MORESTR, NO_COLOR, 0);
+    disp.setCursor(textCol + GETPOS_MORESTR.length, endRow);
+}
+
+async function getpos_help(force, goal, doingWhatIs, hasValid, hasHilite) {
+    // wintty.c:1969 — a pending NEED_MORE topline is acknowledged before the
+    // window is raised.
+    if (game._toplin === 1) {
+        await topl_more();
+        game._toplin = 0;
+        game._pending_message = '';
+    }
+    const lines = getpos_help_lines(force, goal, doingWhatIs, hasValid, hasHilite);
+    for (;;) {
+        render_text_window(lines);
+        const k = await nhgetch();               // getline.c xwaitforspace(quitchars)
+        if (k === 32 || k === 13 || k === 10 || k === 27) break;
+    }
+}
+
 // getpos movement keys: hjkl + diagonals (lower and upper case both move the
 // cursor here; rush/run prefixes handled separately).  C: movecmd().
 const GP_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
@@ -512,9 +667,15 @@ function self_lookat() {
                      : (roleDef.name?.m || 'adventurer');
     const pm = String(roleName).toLowerCase();
 
-    const raceName = String(game.initrace || 'human').toLowerCase();
-    const raceDef = races.find((r) => (r.name || '').toLowerCase() === raceName)
-                    || races[0] || {};
+    // game.initrace is an INDEX into races[] (jsmain.js/role.js set it from the
+    // selection), not a name — the name lookup here matched nothing for every
+    // non-human race and silently fell back to races[0], so a gnome/elf/dwarf
+    // hero farlooked as "human".
+    const raceDef = (Number.isInteger(game.initrace)
+        ? races[game.initrace]
+        : races.find((r) => (r.name || '').toLowerCase()
+                            === String(game.initrace || '').toLowerCase()))
+        || races[0] || {};
     const raceAdj = raceDef.adj || raceDef.noun || 'human';
 
     const plname = game.flags?.debug ? 'wizard' : (game.plname || 'Player');
@@ -589,6 +750,12 @@ function is_valid_travelpt(x, y) {
     if (u && x === u.ux && y === u.uy) return true;
     const loc = game.level?.at(x, y);
     if (loc && !loc.seenv && loc.remembered_glyph == null) return false;
+    // C runs findtravelpath(TRAVP_VALID), a BFS over test_move().  A full port
+    // isn't here, but the case the sessions hit constantly — pointing the travel
+    // cursor at a wall — is decided by test_move's first check: a non-ACCESSIBLE
+    // square is never a travel destination.  Returning TRUE for those dropped
+    // the "(no travel path)" suffix from every wall autodescribe.
+    if (loc && !(loc.typ >= DOOR)) return false; // ACCESSIBLE(typ) == typ >= DOOR
     return true;
 }
 
@@ -787,6 +954,84 @@ function jump_landing(nux, nuy) {
     u.uhunger = (u.uhunger ?? 900) - num;
 }
 
+// C ref: getpos.c IS_UNEXPLORED_LOC() — a never-drawn cell.  Same test
+// terrain_description() uses for its "unexplored area" answer.
+function gloc_unexplored(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    return !loc || (!loc.seenv && loc.remembered_glyph == null);
+}
+
+// C ref: getpos.c gather_locs_interesting(x, y, gloc) — does the DISPLAYED
+// glyph at <x,y> belong to this jump class?  C dispatches on glyph_at(); our
+// display model keeps the same information as seenv/remembered_glyph plus the
+// cell's terrain, so the cmap categories are read off loc.typ once the cell has
+// actually been drawn.  getloc_filter defaults to GFILTER_NONE (no view/area
+// restriction) and getloc_usemenu defaults Off, so neither is modelled.
+const GLOC_MONS = 0, GLOC_OBJS = 1, GLOC_DOOR = 2, GLOC_EXPLORE = 3,
+      GLOC_INTERESTING = 4, GLOC_VALID = 5;
+// C ref: cmd.c spkeys[] defaults for mMoOdDxX_def[] — next/prev pairs, so the
+// index >> 1 is the GLOC_* class.
+const GLOC_KEYS = 'mMoOdDxXaAzZ';
+function gather_locs_interesting(x, y, gloc, validfn) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const explored = !gloc_unexplored(x, y);
+    const isDoorSym = explored && (loc.typ === DOOR || loc.typ === 19 /*DRAWBRIDGE_UP*/
+                                   || loc.typ === 34 /*DRAWBRIDGE_DOWN*/);
+    const mtmp = m_at(x, y);
+    switch (gloc) {
+    case GLOC_MONS:
+        return !!(mtmp && canspotmon(mtmp));
+    case GLOC_OBJS:
+        // C excludes BOULDER and ROCK; look_at_object_here() reports the object
+        // that is actually DRAWN on the cell.
+        if (mtmp && canspotmon(mtmp)) return false;
+        return !!look_at_object_here(x, y) && !covers_objects(x, y);
+    case GLOC_DOOR:
+        return isDoorSym;
+    case GLOC_EXPLORE:
+        return explored
+            && (isDoorSym || loc.typ === ROOM || loc.typ === CORR)
+            && (gloc_unexplored(x + 1, y) || gloc_unexplored(x - 1, y)
+                || gloc_unexplored(x, y + 1) || gloc_unexplored(x, y - 1));
+    case GLOC_VALID:
+        if (validfn) return !!validfn(x, y);
+        /* fallthrough */
+    case GLOC_INTERESTING:
+    default:
+        if (isDoorSym) return true;
+        if (mtmp && canspotmon(mtmp)) return true;
+        if (!explored) return false;
+        if (look_at_object_here(x, y)) return true;
+        // "not interesting": walls, trees, bars, ice, air, cloud, lava, water,
+        // plain room floor and corridor.
+        return !(IS_WALL(loc.typ) || loc.typ === ICE || loc.typ === ROOM
+                 || loc.typ === CORR || loc.typ === STONE
+                 || IS_POOL(loc.typ) || IS_LAVA(loc.typ) || IS_AIR(loc.typ));
+    }
+}
+
+// C ref: getpos.c gather_locs() — every matching spot plus the hero's own,
+// sorted by cmp_coord_distu (chebyshev distance from the hero, ties by y then
+// x).  The hero's spot always sorts to index 0.
+function gather_locs(gloc, validfn) {
+    const u = game.u;
+    const arr = [];
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if ((u && x === u.ux && y === u.uy)
+                || gather_locs_interesting(x, y, gloc, validfn))
+                arr.push({ x, y });
+    const distu_cheb = (c) => Math.max(Math.abs((u?.ux ?? 0) - c.x), Math.abs((u?.uy ?? 0) - c.y));
+    arr.sort((a, b) => {
+        const d = distu_cheb(a) - distu_cheb(b);
+        if (d) return d;
+        return (a.y !== b.y) ? (a.y - b.y) : (a.x - b.x);
+    });
+    return arr;
+}
+
 // Render the farlook/getpos frame: base map + status (already on the grid via
 // flush_screen) with the message line set and the cursor on the map at the
 // targeting location <cx,cy> (display column cx-1, row cy+1).
@@ -812,7 +1057,7 @@ async function getpos_render(message, cx, cy) {
 // `validfn(x,y)` flags invalid targets with a "(invalid target)" suffix.
 // `force` selects the wizard-teleport / #jump behavior (unknown keys keep the
 // loop alive) vs the ';' farlook behavior (unknown keys finish).
-async function getpos(goalText, startx, starty, validfn, force = false, verbose = false, travelMode = false, detectMode = false) {
+async function getpos(goalText, startx, starty, validfn, force = false, verbose = false, travelMode = false, detectMode = false, terrainMode = false) {
     const u = game.u;
     let cx = startx, cy = starty;
 
@@ -834,6 +1079,11 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
     const tipShown = await getpos_tip();
     let showGoal = tipShown;
     let mult = 1;
+    // C ref: getpos.c garr[NUM_GLOCS]/gidx[NUM_GLOCS] — each jump class's spot
+    // list is gathered lazily on first use and its cursor index persists for
+    // the rest of this getpos() call.
+    const garr = {};
+    const gidx = {};
     let msgGiven = true; // C: msg_given defaults TRUE (clear message window)
 
     // C getpos.c:840 — flags.verbose => pline("(For instructions type a '?')").
@@ -880,12 +1130,22 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             const mtmp = m_at(x, y);
             const objname = (mtmp && canspotmon(mtmp)) ? null : look_at_object_here(x, y);
             desc = objname || terrain_description(x, y);
+            // C ref: detect.c reveal_terrain_getglyph() — while browsing a
+            // revealed map, S_darkroom is rewritten to S_room and S_litcorr to
+            // S_corr, and do_screen_description() dispatches on that DISPLAYED
+            // glyph.  So an unlit room square reads "floor of a room" here, not
+            // "dark part of a room".
+            if (terrainMode) {
+                if (desc === 'dark part of a room') desc = 'floor of a room';
+                else if (desc === 'lit corridor') desc = 'corridor';
+            }
         }
         if (validfn && !validfn(x, y)) desc += ' (invalid target)';
         if (travelMode && !is_valid_travelpt(x, y)) desc += ' (no travel path)';
         return desc;
     };
 
+    let firstPass = true;
     for (;;) {
         if (showGoal) {
             // C getpos.c:863 pline("Move cursor to %s:", goal).  In verbose mode
@@ -900,16 +1160,31 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
                 await getpos_render(`Move cursor to ${goalText}:`, cx, cy);
             }
             showGoal = false;
-        } else if (!msgGiven) {
+        } else if (gp_iflags().autodescribe && !msgGiven) {
             // C getpos.c:865 auto_describe(cx, cy) at top of loop.
             await getpos_render(describe(cx, cy), cx, cy);
+        } else if (!firstPass) {
+            // C getpos.c `nxtc:` — curs(WIN_MAP, cx, cy) + flush_screen(0)
+            // after EVERY key, so the cursor keeps tracking the cell even when
+            // no message is drawn (autodescribe toggled off with '#').  Only
+            // the loop iterations are emulated: C's identical PRE-loop pair
+            // runs while the caller's command still has map updates pending,
+            // and flush_screen() leaves the tty cursor on the last glyph it
+            // drew rather than at (cx,cy) — which is what our caller-side
+            // render already reproduces.
+            await flush_screen(1);
+            const disp = game.nhDisplay;
+            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
         }
+        firstPass = false;
         const k = await nhgetch();
         const ch = String.fromCharCode(k);
         // C topl.c — reading a key acknowledges any pending NEED_MORE topline,
         // so subsequent autodescribe plines overwrite without a new --More--.
         game._toplin = 0;
-        msgGiven = false; // C getpos.c:889 — autodescribe clears msg_given
+        // C getpos.c:888 — only autodescribe mode clears msg_given, so with
+        // '#' turned off the last message stays up across keystrokes.
+        if (gp_iflags().autodescribe) msgGiven = false;
 
         if (k === 27) { // ESC: cancel
             // C getpos.c:894 sets msg_given=TRUE on ESC, so exitgetpos clears
@@ -932,11 +1207,83 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             continue; // C: goto nxtc; auto_describe runs at top of next loop
         }
         if (ch === '.' || ch === ',' || ch === ';' || ch === ':') {
+            // C getpos.c:1155 exitgetpos — a pending message is wiped
+            // (clear_nhwindow(WIN_MESSAGE)) on the way out.
+            if (msgGiven) game._pending_message = '';
             return { x: cx, y: cy }; // pick_chars
         }
         if (ch === '@') { // NHKF_GETPOS_SELF: snap cursor to hero
+            // C getpos.c:999 resets every gidx[] so 'm'/'o'/'d'/'x' restart
+            // their cycle; the gathered garr[] arrays are deliberately kept.
+            for (const key of Object.keys(gidx)) gidx[key] = 0;
             if (u) { cx = u.ux; cy = u.uy; }
             continue; // auto_describe self at top of next loop
+        }
+        // C getpos.c:944 — NHKF_GETPOS_HELP ('?') or redraw_cmd (^R): show the
+        // help window (a blocking --More--), refresh, then re-show the goal
+        // message.  ^L is claimed by the rush binding above, as in C.
+        if (ch === '?') {
+            await getpos_help(force, goalText, goalText === WHAT_IS_A_LOCATION,
+                              !!validfn, !!game._getpos_hilite);
+            showGoal = true;
+            continue;
+        }
+        // C getpos.c:954-1006 — the getpos option toggles.  Each one plines
+        // (leaving a NEED_MORE topline that the *next* pline has to --More--
+        // past) and sets msg_given, which with autodescribe off is what keeps
+        // the message on screen while later keys are swallowed by that --More--.
+        if (ch === '#') { // NHKF_GETPOS_AUTODESC
+            const ifl = gp_iflags();
+            ifl.autodescribe = !ifl.autodescribe;
+            await gp_pline(`Automatic description of features under cursor is `
+                           + `${ifl.autodescribe ? 'on' : 'off'}.`, cx, cy);
+            if (!ifl.autodescribe) showGoal = true;
+            msgGiven = true;
+            continue;
+        }
+        if (ch === '"') { // NHKF_GETPOS_LIMITVIEW
+            const ifl = gp_iflags();
+            ifl.getloc_filter = ((ifl.getloc_filter || 0) + 1) % 3;
+            await gp_pline(`${GP_VIEW_FILTERS[ifl.getloc_filter]}.`, cx, cy);
+            msgGiven = true;
+            continue;
+        }
+        if (ch === '!') { // NHKF_GETPOS_MENU
+            const ifl = gp_iflags();
+            ifl.getloc_usemenu = !ifl.getloc_usemenu;
+            await gp_pline(`${ifl.getloc_usemenu ? 'Using' : 'Not using'} a menu `
+                           + `to show possible targets`
+                           + `${ifl.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : ''}.`,
+                           cx, cy);
+            msgGiven = true;
+            continue;
+        }
+        if (ch === '*') { // NHKF_GETPOS_MOVESKIP
+            const ifl = gp_iflags();
+            ifl.getloc_moveskip = !ifl.getloc_moveskip;
+            await gp_pline(`${ifl.getloc_moveskip ? 'S' : 'Not s'}kipping over `
+                           + `similar terrain when fastmoving the cursor.`, cx, cy);
+            msgGiven = true;
+            continue;
+        }
+        // C ref: getpos.c mMoOdDxX[] — jump the cursor to the next/previous
+        // nearest monster / object / door / unexplored-frontier / interesting /
+        // valid spot.  These are checked BEFORE the terrain-symbol fallback, so
+        // without them 'd' (a door jump) fell through to "Unknown direction".
+        {
+            const gtmp = GLOC_KEYS.indexOf(ch);
+            if (gtmp >= 0) {
+                const gloc = gtmp >> 1;
+                if (!garr[gloc]) { garr[gloc] = gather_locs(gloc, validfn); gidx[gloc] = 0; }
+                const n = garr[gloc].length;
+                if (n > 0) {
+                    if (!(gtmp & 1)) gidx[gloc] = ((gidx[gloc] || 0) + 1) % n;
+                    else if (--gidx[gloc] < 0) gidx[gloc] = n - 1;
+                    cx = garr[gloc][gidx[gloc]].x;
+                    cy = garr[gloc][gidx[gloc]].y;
+                }
+                continue;
+            }
         }
         // C getpos.c:1039 else-branch: not move/pick/special.
         const isQuit = (ch === ' ' || ch === '\r' || ch === '\n' || k === 27);
@@ -1150,7 +1497,8 @@ export async function reveal_terrain(which_subset) {
     // browse_map(which_subset, "anything of interest") = getpos autodescribe,
     // force=FALSE, flags.verbose (default on) => the verbose cursor prompt.
     const verbose = game.flags?.verbose !== false;
-    await getpos('anything of interest', u.ux, u.uy, null, /*force=*/false, verbose);
+    await getpos('anything of interest', u.ux, u.uy, null, /*force=*/false, verbose,
+                 /*travelMode=*/false, /*detectMode=*/false, /*terrainMode=*/true);
 
     // map_redisplay(): docrt() redraws the real map.  cls() inside docrt calls
     // display_nhwindow(WIN_MESSAGE,...) which fires more() when the topline is
@@ -1162,6 +1510,23 @@ export async function reveal_terrain(which_subset) {
     }
     await docrt();
     await flush_screen(1);
+}
+
+// C ref: getpos.c browse_map(ter_typ, goal) — the read-only cursor loop the
+// detection effects hand control to after painting their map.  detectMode makes
+// auto_describe report the freshly-cls()'d cells as "unexplored area".
+export async function browse_map_getpos(goal, detectMode = true) {
+    const u = game.u;
+    const verbose = game.flags?.verbose !== false;
+    await getpos(goal, u.ux, u.uy, null, /*force=*/false, verbose,
+                 /*travelMode=*/false, detectMode);
+    // map_redisplay()'s docrt -> cls -> display_nhwindow(WIN_MESSAGE) fires
+    // more() when getpos left "Done." pending.
+    if (game._pending_message) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
 }
 
 // C ref: detect.c monster_detect(otmp, mclass) — crystal ball / fountain /
