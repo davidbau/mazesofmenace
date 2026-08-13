@@ -11,6 +11,7 @@
 // Delete this file once ported coverage makes the boundary unnecessary.
 
 import {
+    BEAR_TRAP,
     BURN,
     CONFLICT,
     CORR,
@@ -111,7 +112,7 @@ import {
     canSpotMonster,
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
-import { is_lava, is_pool } from './trap.js';
+import { is_lava, is_pool, t_at } from './trap.js';
 import { ttyPline } from './tty_message.js';
 import {
     cansee,
@@ -226,8 +227,25 @@ function assertSimpleActionState(monster, state) {
         unsupported('quest wait strategy');
     if (monster.mfrozen)
         unsupported('inconsistent frozen monster state');
-    if (monster.mtrapped)
-        unsupported('a trapped monster');
+    // trap.c mintrap()'s mtmp->mtrapped arm, which monmove.c m_move()'s
+    // prologue reaches at :1734, is admitted for the bear trap alone, and this
+    // gate is the sole guard rather than the outer half of two. mtrapped does
+    // not say which trap holds the monster, so the gate reads the square.
+    //
+    // What the ported arm would do with the others, if this gate let them by:
+    // a web is handled completely, since C's own line at 3768-3770 covers
+    // BEAR_TRAP and WEB alike; a pit stops at js/trap_effects.js's is_pit()
+    // refusal before any write; and only MAGIC_TRAP reaches C:3771's silent
+    // `else`, which messageAt() cannot reproduce, and its refusal fires only
+    // on the branch where the roll frees a visible monster. A web is excluded
+    // here anyway, because the metallivore refusal further down that arm is
+    // unconditional where C's block is conditional on ttyp. Keeping the gate
+    // ahead of dochug() is what stops a turn being half-spent on any of them.
+    if (monster.mtrapped) {
+        const heldBy = t_at(monster.mx, monster.my, state);
+        if (heldBy && heldBy.ttyp !== BEAR_TRAP)
+            unsupported('a trapped monster');
+    }
     if (monster.mconf || monster.mstun || monster.meating)
         unsupported('altered monster movement state');
 
@@ -497,6 +515,17 @@ function planningState(state) {
         // absent from a fresh game -- it exists only once a live distant_name()
         // has created it, and the leak needs both. The frozen-state case in
         // scripts/unported-monster-actions.test.mjs seeds gd to reach it.
+        // cmd.c's gc.command_queue. cmdq_clear() empties a queue in place
+        // (`commandQueue(state)[q].length = 0`), so a shared array is a live
+        // write. The dry run reaches it through stop_occupation(), which
+        // clears CQ_CANNED twice -- once through nomul(0) and once
+        // unconditionally at allmain.c:352 -- and timeout.c's expiring
+        // WOUNDED_LEGS case calls stop_occupation() gated on nothing, unlike
+        // every other route in, which needs an active occupation. A canned
+        // sequence pending from js/dothrow.js would be discarded by the plan
+        // rather than by the game. The rows themselves are read-only
+        // extcmdlist entries and need no deepening.
+        command_queue: state.command_queue?.map((queue) => [...queue]),
         gd: { ...(state.gd ?? {}) },
         gb: state.gb ? {
             ...state.gb,
@@ -709,7 +738,6 @@ async function moveSimpleOrdinary(monster, env) {
         ...env,
         ...doorVisionOperations(env),
         mayCrossRegion: assertSimpleDestination,
-        resolveTrappedMonster: () => false,
         resistsTrapEffect,
         // mon.c can_touch_safely() asks artifact.c touch_artifact() about
         // every item a monster considers, and that function can blast the

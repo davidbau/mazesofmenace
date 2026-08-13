@@ -76,6 +76,7 @@ import {
     is_floater,
     is_flyer,
     is_whirly,
+    metallivorous,
     mindless,
     mon_knows_traps,
     mon_learns_traps,
@@ -100,7 +101,7 @@ import { donameFresh, just_an } from './objnam.js';
 import { body_part } from './polyself.js';
 import { d, rn1, rn2 } from './rng.js';
 import { canSeeMonster, messageAt } from './startup_a11y.js';
-import { Flying, Levitation, set_utrap, t_at } from './trap.js';
+import { Flying, Levitation, set_utrap, t_at, trapname } from './trap.js';
 import { ttyPline } from './tty_message.js';
 import { cansee, clear_path, couldsee } from './vision.js';
 import { find_mac, which_armor } from './worn.js';
@@ -464,31 +465,101 @@ async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
         : mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_bear_trap() (1478-1560), hero arm (1489-1524). The
-// monster arm (1525-1559) stops the scan. Every owner it reads is present now
-// -- a_your[] above, and mon.c m_in_air() and pline.c You_hear() through the
-// env mintrap() proves -- so what stops it is scope rather than a gap, and a
-// monster it catches leaves mtrapped set, which mintrap()'s tail refuses in
-// turn.
+// C ref: trap.c trapeffect_bear_trap() (1478-1560), hero arm (1489-1524) and
+// monster arm (1525-1558), both ported.
 //
-// Two of the hero arm's branches stop as well, and both are refused ahead of
-// the move by preflight_dotrap() rather than here, so that no refusal lands
-// after feeltrap() has repainted or set_utrap() has written u.utrap: the
-// mounted arm at 1507-1511 needs s_suffix(mon_nam()) and mbodypart(), and the
-// iron-shoes line at 1517-1518 needs Yname2(). `dmg` is rolled before either
-// of them, at C's position, because the roll happens whether or not the branch
-// that spends it is taken.
+// Two of the hero arm's branches stop, and both are refused ahead of the move
+// by preflight_dotrap() rather than here, so that no refusal lands after
+// feeltrap() has repainted or set_utrap() has written u.utrap: the mounted arm
+// at 1507-1511 needs s_suffix(mon_nam()) and mbodypart(), and the iron-shoes
+// line at 1517-1518 needs Yname2(). `dmg` is rolled before either of them, at
+// C's position, because the roll happens whether or not the branch that spends
+// it is taken.
+//
+// The monster arm's own d(2, 4) sits where C spends it, after the catch
+// message rather than before: the hero arm's roll leads its messages and this
+// one trails them. C blocks inside pline_mon() at 1534 until the hero clears
+// the --More--, and only then evaluates thitm()'s argument at 1554, so the
+// draw lands in the keystroke that dismissed the message and not in the one
+// that moved the monster. The port reaches the same order by awaiting the
+// message seam, which suspends in the live pass and returns at once in the
+// cloned planning pass, leaving the draw at the same position in both.
 async function trapeffect_bear_trap(mtmp, trap, trflags, env) {
     const { state } = env;
     const random = env.random;
     const message = requireTrapOperation(env, 'message');
-    const unsupported = requireTrapOperation(env, 'unsupported');
     const is_you = mtmp === state.youmonst;
     const forcetrap = (trflags & FORCETRAP) !== 0
         || (trflags & FAILEDUNTRAP) !== 0
         || (is_you && (trflags & VIASITTING) !== 0);
 
-    if (!is_you) unsupported('a monster caught in a bear trap');
+    if (!is_you) {
+        // The two owners the hero arm never reads, so neither can move to the
+        // top of the function: dotrap()'s heroTrapEnv() binds neither. Both
+        // are resolved before the mtrapped write below, so a missing
+        // injection throws with nothing yet changed or drawn.
+        const mInAir = requireTrapOperation(env, 'mInAir');
+        const youHear = requireTrapOperation(env, 'youHear');
+        const mptr = mtmp.data;
+        const in_sight = canSeeMonster(mtmp, state) || mtmp === state.u?.usteed;
+        let trapkilled = false;
+
+        if (mptr.msize > MZ_SMALL && !amorphous(mptr) && !mInAir(mtmp, state)
+            && !is_whirly(mptr) && !unsolid(mptr)) {
+            // C assigns 1 to an unsigned bitfield; js/monst.js and
+            // js/makemon_create.js both keep mtrapped as a boolean.
+            mtmp.mtrapped = true;
+            if (in_sight) {
+                await message(
+                    messageAt(
+                        `${capitalizedMonsterName(mtmp, state)} is caught in`
+                        + ` ${a_your[trap.madeby_u ? 1 : 0]} bear trap!`,
+                        mtmp.mx,
+                        mtmp.my,
+                        state,
+                    ),
+                    state,
+                    env,
+                );
+                seetrap(trap, env);
+            } else if (mptr === state.mons[PM_OWLBEAR]
+                       || mptr === state.mons[PM_BUGBEAR]) {
+                // Soundeffect() is a tty-sound hook and writes nothing to the
+                // terminal the recorder captures, as in
+                // trapeffect_sqky_board() above.
+                const heard = youHear('the roaring of an angry bear!', state);
+                if (heard) await message(heard, state, env);
+            }
+        } else if (forcetrap) {
+            if (in_sight) {
+                await message(
+                    messageAt(
+                        `${capitalizedMonsterName(mtmp, state)} evades`
+                        + ` ${a_your[trap.madeby_u ? 1 : 0]} bear trap!`,
+                        mtmp.mx,
+                        mtmp.my,
+                        state,
+                    ),
+                    state,
+                    env,
+                );
+                seetrap(trap, env);
+            }
+        }
+        if (mtmp.mtrapped && !wearing_iron_shoes(mtmp, state)) {
+            trapkilled = await thitm(
+                0,
+                mtmp,
+                null,
+                random.d(2, 4),
+                false,
+                env,
+            );
+        }
+
+        return trapkilled ? Trap_Killed_Mon
+            : mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
 
     const dmg = random.d(2, 4);
 
@@ -645,11 +716,11 @@ async function trapeffect_pit(mtmp, trap, trflags, env) {
 
 // The trap types whose trapeffect_*() body has no arm in the port yet. C
 // dispatches all of them; each stops the scan before the effect changes state,
-// draws, or writes a message. BEAR_TRAP and PIT are absent because their own
-// bodies now own the refusal: the bear trap's hero arm and the pit's monster
-// arm are ported, and the other arm of each stops there. SPIKED_PIT stays
-// here even though C sends it to trapeffect_pit() as well, because neither
-// arm's spike handling is ported.
+// draws, or writes a message. BEAR_TRAP is absent because both of its arms are
+// ported. PIT is absent because its own body owns the refusal: its monster arm
+// is ported and its hero arm stops there. SPIKED_PIT stays here even though C
+// sends it to trapeffect_pit() as well, because neither arm's spike handling
+// is ported.
 const UNPORTED_TRAP_EFFECTS = Object.freeze(new Set([
     ARROW_TRAP,
     ROCKTRAP,
@@ -791,12 +862,9 @@ export async function dotrap(trap, trflags, state = game) {
     await trapeffect_selector(state.youmonst, trap, flags, env);
 }
 
-// C ref: trap.c mintrap() (3732-3840). Covers the wrapper's `!trap` arm, every
-// gate of its `!mtmp->mtrapped` arm, and the dispatch into
-// trapeffect_selector(). The `mtmp->mtrapped` arm needs fill_pit(), deltrap()
-// and m_easy_escape_pit() and stops the scan instead;
-// assertSimpleActionState() in js/unported_monster_actions.js already refuses a
-// monster carrying mtrapped before dochug() runs, so no scan reaches it.
+// C ref: trap.c mintrap() (3732-3840). Covers the wrapper's `!trap` arm, the
+// BEAR_TRAP-reachable subset of its `mtmp->mtrapped` arm, every gate of its
+// `!mtmp->mtrapped` arm, and the dispatch into trapeffect_selector().
 export async function mintrap(monster, mintrapflags, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const env = { ...rawEnv, state };
@@ -810,7 +878,6 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
         monster.mtrapped = false; /* perhaps teleported? */
         return Trap_Effect_Finished;
     }
-    if (monster.mtrapped) unsupported('a monster escaping a trap');
     // Checked here rather than on entry because C makes no draw for a monster
     // standing on no trap, and postmov() calls this on every completed move.
     // Everything the admitted path can need is proven present here, before the
@@ -830,10 +897,80 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
     for (const name of ['rn1', 'rn2', 'rnd', 'rne', 'rnl'])
         if (typeof random?.[name] !== 'function')
             throw new TypeError('mintrap requires rn1, rn2, rnd, rne and rnl');
-    for (const name of ['redraw', 'mInAir', 'heroDeaf', 'youHear', 'message'])
+    for (const name of ['redraw', 'mInAir', 'heroDeaf', 'youHear'])
         requireTrapOperation(env, name);
+    const message = requireTrapOperation(env, 'message');
 
     const tt = trap.ttyp;
+
+    if (monster.mtrapped) { /* is currently in the trap */
+        // C ref: trap.c:3741-3789. Two of the arm's blocks are unreachable for
+        // a bear trap and are refused here, ahead of seetrap()'s write and of
+        // the rn2(40) below, rather than ported.
+        //
+        // A pit takes C's second escape disjunct, `is_pit(trap->ttyp) &&
+        // m_easy_escape_pit(mtmp)` at 3751, and with it the boulder block at
+        // 3752-3758, which needs sobj_at(BOULDER) and fill_pit(); its escape
+        // line at 3768-3769 needs m_easy_escape_pit() as well. For BEAR_TRAP
+        // is_pit() is false throughout, so C's `||` short-circuits past the
+        // second disjunct and the boulder block cannot be entered.
+        if (is_pit(tt)) unsupported('a monster escaping a pit');
+
+        // 3742-3749. Seeing a held monster reveals what holds it. C's
+        // disjunction admits a pit, a bear trap, a hole and a web. Only the
+        // pit refusal precedes this test, so a hole and a web reach it and
+        // seetrap() runs for them too. The escape-message refusal below is no
+        // general fence for the rest: it sits inside the `!rn2(40)` roll and
+        // the visibility test, so a monster held on an unported type that
+        // fails the roll -- 39 turns in 40 -- runs to the return having passed
+        // seetrap() with no stop at all. A general fence would have to sit
+        // above this line.
+        if (!trap.tseen && cansee(monster.mx, monster.my, state)
+            && canSeeMonster(monster, state)
+            && (is_pit(tt) || tt === BEAR_TRAP || tt === HOLE || tt === WEB))
+            seetrap(trap, env);
+
+        if (!random.rn2(40)) {
+            if (canSeeMonster(monster, state)) {
+                // 3766-3773. The pit arm is gone with is_pit() above. C's
+                // remaining `else if` writes nothing at all for a trap that is
+                // neither a bear trap nor a web, yet still calls set_msg_xy();
+                // messageAt() positions one composed line and cannot leave
+                // that cursor hint standing for whatever prints next, so the
+                // silent case stops instead of diverging on the following
+                // message's position.
+                if (tt !== BEAR_TRAP && tt !== WEB)
+                    unsupported('a monster escaping a trap silently');
+                await message(
+                    messageAt(
+                        `${capitalizedMonsterName(monster, state)} pulls free`
+                        + ` of the ${trapname(tt)}.`,
+                        monster.mx,
+                        monster.my,
+                        state,
+                    ),
+                    state,
+                    env,
+                );
+            }
+            // C assigns 0 to an unsigned bitfield; js/monst.js and
+            // js/makemon_create.js both keep mtrapped as a boolean.
+            monster.mtrapped = false;
+        } else if (metallivorous(species)) {
+            // 3775-3787. A metallivore that did not pull free eats the bear
+            // trap outright through deltrap(), or turns a spiked pit back into
+            // a pit. M1_METALLIVORE appears on three species in monsters.h --
+            // the rock mole at 919-924, the rust monster at 2147-2152 and the
+            // xorn at 2357-2364 -- and no starting pet is one of them. The
+            // refusal sits at C's own position rather than at the top of the
+            // arm, so a metallivore that rolls the escape still takes it.
+            unsupported('a monster eating a trap');
+        }
+        // 3789. Trap_Moved_Mon is unreachable: only the pit arm's fill_pit()
+        // can move a monster out of this arm, and that is refused above.
+        return monster.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+
     let flags = mintrapflags;
     let forcetrap = (flags & FORCETRAP) !== 0;
     const forcebungle = (flags & FORCEBUNGLE) !== 0;
